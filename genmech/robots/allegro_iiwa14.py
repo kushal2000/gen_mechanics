@@ -111,41 +111,34 @@ HAND_ARMATURE: dict[str, float] = {name: 0.001 for name in HAND_JOINT_NAMES}
 # fingers' exact limits ([-0.279, 1.728] / [-0.279, 1.763]) and joint 1 reaches
 # 0.0 too, so all three go straight.
 #
-# `thumb_joint_0` is the one genuine exception, and it is an ABDUCTION joint,
-# not a flexion one. Comparing joint axes in the palm frame settles it:
+# `thumb_joint_0` is the one genuine exception, and it is the thumb's OPPOSITION
+# SWING: its axis is 90 deg to the thumb's long axis, and sweeping it carries the
+# tip 12.9 cm across the range even with the thumb dead straight. It is not an
+# axial rotation (pronation/supination), and it is not flexion.
 #
-#     index_joint_0    ( 0.084,  0.023,  0.996)   abduction
-#     index_joint_1..3 ( 0.962,  0.258, -0.087)   flexion
-#     thumb_joint_0    (-0.084, -0.023, -0.996)   same axis as index_joint_0
-#     thumb_joint_1    ( 0.326, -0.945, -0.006)
-#     thumb_joint_2..3 (-0.942, -0.325,  0.087)   flexion
+# The fingers' joint_0 is the opposite case, which is worth stating because it
+# is easy to mistake for abduction. Its axis lies ALONG the straight finger, so
+# at full extension it is a pure axial roll that moves the tip 0.0 cm; it only
+# becomes a sideways spread once joints 1-3 flex:
 #
-# thumb_joint_0 is parallel to index_joint_0 and perpendicular (90 deg) to every
-# flexion axis, including the thumb's own 2 and 3. So it does not curl the thumb;
-# it swings it about the palm normal. At its lower limit (0.279) the thumb is
-# spread out alongside the fingers -- the hand-wide-open posture -- and at its
-# upper end it is adducted across the palm into opposition, facing the fingers.
-# The thumb's own flexion lives in joints 2 and 3, whose axes are near
-# antiparallel to the fingers', so they curl in a comparable plane.
+#     tip travel over joint_0's full range, vs flexion of joints 1-3
+#         flexion    index      thumb
+#           0 deg    0.0 cm    12.9 cm
+#          30 deg    6.4 cm    12.0 cm
+#          60 deg    8.5 cm     9.8 cm
+#
+# (Axis parallelism alone proves nothing here: thumb_joint_0 and index_joint_0
+# share an axis direction, yet one is a cross-palm swing and the other an axial
+# roll, because each digit is oriented differently relative to that shared axis.
+# Compare the axis against the digit's OWN long axis, and check tip travel.)
 #
 # Its limits are [0.279, 1.571], so 0.0 is outside the range entirely and would
 # clamp: Allegro's zero is not SHARPA's zero.
 #
-# (Do not try to classify this joint by whether it changes base-to-tip distance.
-# It cannot: rotating the FIRST joint of a chain moves the whole rigid remainder,
-# so that distance is invariant for any joint type. Compare axes instead.)
-#
-# 1.5 is chosen by matching SHARPA's thumb posture, measured as the angle at the
-# palm between the thumb ray and the finger-tip centroid ray:
-#
-#     SHARPA at home (all hand joints 0)   29.5 deg,  gap 0.133 m
-#     Allegro thumb_joint_0 = 1.500        38.3 deg,  gap 0.203 m   <- closest
-#     Allegro thumb_joint_0 = 0.279        48.6 deg,  gap 0.224 m
-#
-# The lower limit reads as "more extended" on screen because it splays the
-# straight thumb out with the fingers, but that is the hand-wide-open posture,
-# further from SHARPA's and a worse pre-grasp. 1.5 is also Isaac Lab's
-# KUKA_ALLEGRO_CFG value.
+# The home value is its lower limit, the hand-wide-open end of the swing, chosen
+# visually against how SHARPA presents itself at its own all-zeros home. For
+# reference, thumb-to-finger-centroid opposition angles are 29.5 deg for SHARPA,
+# 48.6 deg for Allegro at this lower limit, and 38.3 deg at Isaac Lab's 1.5.
 HAND_DEFAULT_JOINT_POS: dict[str, float] = {
     **{f"{f}_joint_{i}": 0.0 for f in ("index", "middle", "ring") for i in range(4)},
     # Lower limit: thumb abducted out alongside the fingers, hand wide open.
