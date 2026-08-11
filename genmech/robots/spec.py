@@ -100,6 +100,16 @@ class RobotSpec:
     base_pos: Vec3 = (0.0, 0.8, 0.0)
     base_rot: Quat = (1.0, 0.0, 0.0, 0.0)
 
+    # --- asset conversion ----------------------------------------------------
+    replace_cylinders_with_capsules: bool = False
+    """Convert ``<cylinder>`` collision geometry to PhysX capsules on import.
+
+    URDF has no capsule primitive, so procedurally generated hands emit cylinders
+    and rely on this to get rounded ends — which matter for contact (a cylinder's
+    rim is a sharp edge) and are the cheapest shape PhysX has. Defaults to False
+    so the mesh-based hands convert exactly as before and SHARPA stays
+    bit-identical to simtoolreal (docs/methodology.md §2)."""
+
     notes: str = field(default="", compare=False)
     """Provenance: where gains, offsets, and mount transforms came from."""
 

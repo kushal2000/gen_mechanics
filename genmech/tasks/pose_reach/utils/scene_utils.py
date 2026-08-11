@@ -1642,6 +1642,7 @@ def setup_scene(env) -> None:
         robot_urdf, usd_work_dir,
         fix_base=True, self_collision=True,
         joint_drive=_robot_joint_drive_cfg(),
+        replace_cylinders_with_capsules=spec.replace_cylinders_with_capsules,
     )
     # Isaac Gym enables all robot self-collisions then masks adjacent links; mirror
     # that by authoring FilteredPairsAPI for the spec's adjacency pairs before the
