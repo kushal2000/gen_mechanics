@@ -275,6 +275,7 @@ def main() -> None:
     # grasp and score 0, or grasp and chain the lot -- so the mean describes
     # almost no individual episode and must be read alongside complete/zero
     # rates, which is why both are reported.
+    goals_np = goals_reached.cpu().numpy().astype(float)
     goal_pct = (goals_reached.float() / n_goals * 100.0).cpu().numpy()
     steps_np = episode_steps.cpu().numpy()
     fg = first_goal_step.cpu().numpy()
@@ -307,8 +308,25 @@ def main() -> None:
         },
         # Headline metrics. goal_pct is the primary; reward is diagnostic only
         # (docs/methodology.md §4).
-        "goals_chained_frac_mean": _mean(goal_pct) / 100.0,
-        "goal_pct_mean": _mean(goal_pct),      # same number, legacy key
+        # HEADLINE: expected number of goals reached per episode.
+        #
+        # Uses every episode's full information instead of thresholding it away
+        # -- an env reaching 9 goals and one reaching 0 are identical under a
+        # completion rate, which discards real signal. It also removes a
+        # researcher degree of freedom: with a threshold metric, n_goals has to
+        # be tuned so the reference policy lands mid-range, and that tuning moves
+        # the headline. Here n_goals is just a ceiling.
+        #
+        # The distribution is bimodal, but that is a fact about its shape, not a
+        # defect in the mean: the expected number of goals is the quantity of
+        # interest regardless of how the mass is arranged.
+        "goals_reached_mean": float(np.mean(goals_np)),
+        "goals_reached_sem": _sem(goals_np),
+        "goals_reached_max": n_goals,
+        # Saturation check: if many episodes hit the ceiling the mean compresses
+        # and n_goals should be raised.
+        "ceiling_rate": float(np.mean(goals_np >= n_goals)),
+        "goal_pct_mean": _mean(goal_pct),      # same quantity, percent of ceiling
         "goal_pct_sem": _sem(goal_pct),
         # The honest summary of a bimodal outcome.
         "full_completion_rate": float(np.mean(goal_pct >= 100.0)),
@@ -346,14 +364,14 @@ def main() -> None:
 
     print(
         f"\n[eval] {spec.name} x {condition.id}: "
-        f"complete={result['full_completion_rate']:.1%}  "
-        f"zero={result['zero_goal_rate']:.1%}  "
-        f"chain={result['goal_pct_mean']:.1f}% +/- {result['goal_pct_sem']:.1f}  "
-        f"lift={result['lift_rate']:.1%}  ({roll_sec:.0f}s)"
+        f"goals={result['goals_reached_mean']:.2f} +/- {result['goals_reached_sem']:.2f}"
+        f" of {n_goals}   "
+        f"(complete={result['full_completion_rate']:.0%} zero={result['zero_goal_rate']:.0%})  "
+        f"lift={result['lift_rate']:.0%}  ({roll_sec:.0f}s)"
     )
-    if result["bimodality"] > 0.6:
-        print(f"[eval] NOTE: {result['bimodality']:.0%} of episodes scored either 0 "
-              f"or all {n_goals} goals. Read complete/zero rates, not the mean.")
+    if result["ceiling_rate"] > 0.4:
+        print(f"[eval] NOTE: {result['ceiling_rate']:.0%} of episodes hit the "
+              f"{n_goals}-goal ceiling; the mean is compressed. Raise n_goals.")
     print(f"[eval] wrote {out_dir / 'result.json'}")
 
     del app
