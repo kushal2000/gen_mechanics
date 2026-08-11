@@ -22,10 +22,23 @@ being traceable. So each one says where it came from.
 Provenance:
 
 - **hand gains** (stiffness 3.0, damping 0.1, all 16 joints): Isaac Lab's
-  ``KUKA_ALLEGRO_CFG``. Flagged risk: Isaac Lab pairs these with
-  ``solver_position_iteration_count=32`` while this task runs 8, so they may
-  prove too soft to hold a heavy tool. Verify with a grasp-hold check before
-  trusting a training result.
+  ``KUKA_ALLEGRO_CFG``.
+
+  These were flagged as a risk -- Isaac Lab pairs them with
+  ``solver_position_iteration_count=32`` while this task runs 8, so they might
+  have been too soft to hold a tool. **Checked and cleared.** A PD joint under a
+  static load settles at error tau/K, so for the ~100 g objects this task uses:
+
+      SHARPA   stiffness 0.90 - 13.20 (median 4.76)   worst deflection 0.62 deg
+      Allegro  stiffness 3.00 uniform                 worst deflection 0.23 deg
+
+  SHARPA's distal joints (PIP/DIP/IP) are 0.90, i.e. 3.3x *softer* than
+  Allegro's, and SHARPA has a working trained policy. Allegro's uniform 3.0 sits
+  inside SHARPA's demonstrated-working range and deflects a third as much.
+
+  Static analysis only: it says nothing about contact stability, slip, or
+  dynamics during fast motion, which is where the solver-iteration difference
+  would actually bite.
 - **hand armature** (0.001): not specified by Isaac Lab. Chosen to sit inside
   SHARPA's measured range (0.00042 - 0.0032). Authored, not derived.
 - **home pose**: fingers fully extended to match SHARPA's convention, thumb
