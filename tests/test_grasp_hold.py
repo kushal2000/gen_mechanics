@@ -229,6 +229,18 @@ def main() -> None:
     per_tip = d.mean(dim=0).cpu()
     print(f"[grasp]   fingertip-to-object distance at end of close (cm): "
           f"{[round(float(v) * 100, 1) for v in per_tip]}")
+    def finish_video() -> None:
+        """Write the mp4 now. The contact gate below raises, and a failing grasp
+        is precisely the run worth watching, so the video must not depend on the
+        test passing."""
+        if not args.video:
+            return
+        from pathlib import Path
+
+        env.close()
+        made = sorted(Path(args.video).glob("*.mp4"))
+        print(f"[grasp] wrote {len(made)} video(s): {[str(m) for m in made]}")
+
     n_contact = (d < args.contact_m).float().sum(dim=-1)
     print(f"[grasp]   closest fingertip {float(d.min(dim=-1).values.mean()) * 100:.1f} cm, "
           f"tips within {args.contact_m * 100:.0f} cm: {float(n_contact.mean()):.1f}"
@@ -242,6 +254,7 @@ def main() -> None:
     print(f"[grasp]   envs with >= {args.min_contacts} fingertips in contact: "
           f"{float(grasping):.0%}")
     if float(grasping) < 0.5:
+        finish_video()
         raise AssertionError(
             f"{spec.name}: only {float(grasping):.0%} of envs have "
             f">= {args.min_contacts} fingertips within {args.contact_m * 100:.0f} cm "
@@ -274,17 +287,9 @@ def main() -> None:
 
     print("[grasp] grasp hold test OK")
 
-    # RecordVideo writes the mp4 in close(). The os._exit(0) below skips normal
-    # interpreter teardown -- it exists because Kit hangs on shutdown -- so
-    # without an explicit close here the file is never flushed and the run
-    # completes leaving an empty directory.
-    if args.video:
-        env.close()
-        from pathlib import Path
-
-        made = sorted(Path(args.video).glob("*.mp4"))
-        print(f"[grasp] wrote {len(made)} video(s): "
-              f"{[str(m) for m in made]}")
+    # RecordVideo writes the mp4 in close(); os._exit(0) below skips normal
+    # teardown (Kit hangs on shutdown), so the flush must be explicit.
+    finish_video()
 
     del app
     sys.stdout.flush()

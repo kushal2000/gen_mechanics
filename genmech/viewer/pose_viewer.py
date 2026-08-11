@@ -23,8 +23,11 @@ from genmech.viewer.interactive_viewer import create_html, make_embedded_robot, 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GITHUB_RAW_BASE_MAIN = "https://raw.githubusercontent.com/tylerlum/simtoolreal/main/"
-# Fallback only; the robot's own spec.urdf_path is used when the env exposes it.
-ROBOT_URDF_RELATIVE_PATH = "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
+# Fallback for an env that exposes no robot_spec. Any registered robot supplies
+# its own path; see RobotSpec.urdf_path.
+DEFAULT_ROBOT_URDF_RELATIVE_PATH = (
+    "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
+)
 TABLE_URDF_PATH = REPO_ROOT / "assets" / "urdf" / "table_narrow.urdf"
 
 
@@ -215,20 +218,26 @@ def build_pose_viewer_html(
     object_urdf_path: Path | None = None,
     table_urdf_path: Path | None = None,
     hole_urdf_path: Path | None = None,
+    robot_urdf_relpath: str | None = None,
     github_raw_base: str | None = None,
     url_check: str = "skip",
 ) -> str:
     """Build a self-contained-ish viewer HTML string from captured frames.
 
-    Object and table URDFs are embedded.  The robot URDF is URL-backed because
-    the SHARPA hand references mesh files that the browser must fetch.
+    Object and table URDFs are embedded. The robot URDF stays URL-backed because
+    it references mesh files the browser must fetch.
+
+    ``robot_urdf_relpath`` MUST match the robot the frames were captured from.
+    It used to be hardcoded to SHARPA's, so an Allegro run published Allegro's
+    23 joint names against SHARPA's 29-joint URDF and the viewer failed with
+    'Joint "index_joint_0" not found in URDF'.
     """
 
     if not frames:
         raise ValueError("Cannot build pose viewer from zero frames.")
 
     raw_base = _normalize_raw_base(github_raw_base)
-    robot_urdf_url = raw_base + ROBOT_URDF_RELATIVE_PATH
+    robot_urdf_url = raw_base + (robot_urdf_relpath or DEFAULT_ROBOT_URDF_RELATIVE_PATH)
     _check_url(robot_urdf_url, url_check)
     if object_urdf_path is not None:
         object_urdf_text = _rewrite_embedded_urdf_mesh_urls(
@@ -318,6 +327,13 @@ class PoseViewerWrapper(gym.Wrapper):
             inner, self.env_id
         )
         self._hole_urdf_text, self._hole_urdf_path = hole_urdf_for_env(inner, self.env_id)
+        # The robot URDF must be the one these frames were captured from. Taking
+        # it from the spec rather than a module constant is what keeps the
+        # viewer's joint names and its URDF in agreement for every hand.
+        spec = getattr(inner, "robot_spec", None)
+        self._robot_urdf_relpath = (
+            spec.urdf_path if spec is not None else DEFAULT_ROBOT_URDF_RELATIVE_PATH
+        )
 
         self._step = 0
         self._capture_index = 0
@@ -420,6 +436,7 @@ class PoseViewerWrapper(gym.Wrapper):
             object_urdf_path=self._object_urdf_path,
             table_urdf_path=self._table_urdf_path,
             hole_urdf_path=self._hole_urdf_path,
+            robot_urdf_relpath=self._robot_urdf_relpath,
             github_raw_base=self.github_raw_base,
             url_check=self.url_check,
         )
