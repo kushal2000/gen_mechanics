@@ -238,17 +238,53 @@ one scene over disjoint environment subsets, two articulation views. The
 uniformity requirement is per-*view*, not per-scene — so variable finger count
 is feasible, at one view per topology class.
 
-**Per-robot asset conversion — 1.2 s, steady state. [verified]**
-URDF → USD → physics bake. This is the real bottleneck at scale: 24,576 unique
-embodiments is ~15.3 hours of conversion *per outer iteration*, which dominates
-the RL cost.
+**Per-robot asset conversion — 5.0 s for this robot. [verified]**
+`genmech/tools/probe_usd_override.py`. URDF → USD → PhysX bake for the full
+23-DoF iiwa14+Allegro. (An earlier 1.2 s figure was for a simpler asset; the
+arm+hand costs more.) At 5.0 s, 24,576 unique embodiments is **34.3 hours of
+conversion per outer iteration**, which would dominate the RL cost.
 
-**Scale variation via USD overrides — untested. [open, highest leverage]**
-If morphology variation can be authored as transform/attribute overrides on one
-shared template rather than N distinct USDs, 15 hours becomes seconds. The
-question is whether PhysX picks up scaled collision geometry and recomputed
-inertias through overrides. A ~30-minute probe, and it decides whether
-unique-per-environment morphology is free or expensive.
+**Morphology as USD overrides instead of N conversions — works. [verified]**
+`genmech/tools/probe_usd_override.py`. A variant is authored as a thin USD layer
+that *references* one converted base and overrides a few attributes. Convert
+once, then author N cheap layers. All three override channels were tested
+independently and all take effect in PhysX:
+
+| Channel | Attribute | Result |
+|---|---|---|
+| A · link length | `physics:localPos0` on the joint prim | 0.3022 m → 0.4079 m reach, exactly as authored |
+| B · inertial | `physics:mass` on the link prim | 0.021192 → 0.063577 kg, read back off `root_physx_view` |
+| C · geometry size | `xformOp:scale` on the link prim | visual **and collision** both scaled ×1.5000 against an authored ×1.5 |
+
+C was the one expected to fail — the feared outcome was a hand that renders at
+the new size and collides at the old one. It does not: the collision AABB
+tracks the authored scale exactly. (Measured on the composed scene graph, which
+is what PhysX parses at cook time; a contact-level confirmation is still worth
+doing before relying on it.)
+
+The converter emits links as *flat siblings*, so no kinematics live in the xform
+hierarchy at all — they are entirely in the joint prims, and `physics:localPos0`
+is the joint frame in the parent body, i.e. the URDF joint origin, i.e. the link
+length. Changing it relocates unchanged collision shapes, so channel A implies
+no recooking even in principle.
+
+**Cost, measured:** 26 ms per variant, so 24,576 variants is **10.7 minutes**
+versus 34.3 hours — a ~190× reduction, and no longer the dominant cost. Note
+this is an upper bound on the naive implementation: most of the 26 ms is writing
+a `.usda` file to disk, which an in-memory layer or a single batched layer would
+avoid.
+
+> **Caveat — the override parameterization is not the URDF parameterization.**
+> Scaling every finger-joint `localPos0` by 1.35 gave 0.4079 m reach, while the
+> same nominal change applied to the URDF and fully converted gave 0.3545 m. The
+> override is not wrong; it acted exactly as authored. The two routes scale
+> different quantities: `merge_fixed_joints=True` collapses `palm_link` and
+> `allegro_mount` into `iiwa14_link_7`, so the *first* joint of each finger
+> carries a composed flange→knuckle transform — `index_joint_0` has
+> |localPos0| = 0.2111 m, against 0.0384 m for `index_joint_3`. Scaling that
+> composed vector moves the whole finger outward, not just the phalanx. A
+> morphology design space must therefore be defined on the **post-merge USD
+> frames**, not lifted from URDF joint origins.
 
 The two mechanisms compose well for hands specifically. Hands have few natural
 topology classes with a rich continuous space inside each, so most variation
@@ -303,8 +339,12 @@ Ordered by how much they would reshape the work:
 3. **Reward hacking through morphology.** The two count-scaling shaping terms
    (§1) are an explicit invitation. Drop or normalize them before the first
    co-design run, not after.
-4. **Asset generation cost.** 15.3 hours per iteration at 24,576 unique designs.
-   Resolved or not by the USD-override probe (§5).
+4. ~~**Asset generation cost.**~~ **Resolved** (§5). USD overrides cut 24,576
+   unique designs from 34.3 h to 10.7 min per iteration, and all three override
+   channels — link length, mass, geometry scale — take effect in PhysX. What
+   remains is a contact-level confirmation of channel C, and the fact that
+   the design space must be parameterized on post-merge USD frames rather than
+   URDF joint origins.
 5. **Search collapse onto one family.** Non-stationarity plus a point estimate
    produces rich-get-richer. Rank-based surrogate fitting and Thompson sampling
    are the designed defenses; whether they suffice is empirical.
@@ -316,7 +356,7 @@ Ordered so each step can invalidate the next cheaply, rather than by ambition.
 | Step | Question | Kills the proposal if |
 |---|---|---|
 | **0** · Effect size | Do two real hands differ measurably at all? | differences sit inside ±0.5 goals |
-| **1** · Override probe | Can morphology be authored without reconversion? | nothing — it sets the scale, not the viability |
+| ~~**1** · Override probe~~ | ~~Can morphology be authored without reconversion?~~ | **done — yes, §5** |
 | **2** · Conditioning | Does one policy across a morphology distribution match a specialist on a held-out design? | conditioned policy is far below specialists |
 | **3** · Signal | Does performance vary systematically with morphology parameters? | variation is noise-dominated |
 | **4** · Curriculum (R1) | Does scheduling complexity beat training the target morphology directly? | no speedup, or scaffolding becomes a crutch |
