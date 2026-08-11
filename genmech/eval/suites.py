@@ -50,8 +50,16 @@ TRAIN_DELTA_ROTATION_DEG = 90.0
 TRAIN_VOLUME_MINS = (-0.35, -0.2, 0.6)
 TRAIN_VOLUME_MAXS = (0.35, 0.2, 0.95)
 
-# Goals an episode must reach before it ends.
+# Goals an episode must reach before it ends. Training uses 50; the eval uses a
+# shorter chain so completion rate stays off the floor and can discriminate.
+# Calibrate this once against a reference policy so nominal lands near 50%
+# completion -- maximum sensitivity to shifts in either direction -- then freeze
+# it for every hand.
 GOALS_PER_TRAJECTORY = 10
+
+# Consecutive steps within tolerance that count as reaching a goal. Matches
+# training (TerminationCfg.success_steps).
+TRAIN_SUCCESS_STEPS = 10
 
 
 @dataclass(frozen=True)
@@ -118,11 +126,21 @@ _EVAL_PROTOCOL: dict[str, Any] = {
     "reset.delta_rotation_degrees": TRAIN_DELTA_ROTATION_DEG,
     "reset.target_volume_mins": TRAIN_VOLUME_MINS,
     "reset.target_volume_maxs": TRAIN_VOLUME_MAXS,
-    # Pin the success criterion. The tolerance curriculum ends wherever a run
-    # happened to reach, so scoring at the live tolerance would let a run that
-    # trained further look better for free.
+    # Pin the tolerance. The curriculum ends wherever a run happened to reach,
+    # so scoring at the live tolerance would let a run that trained further look
+    # better for free.
     "termination.eval_success_tolerance": 0.01,
-    "termination.success_steps": 1,
+    # Dwell requirement, matching training. This was 1 (instant credit on first
+    # touch) for sweep throughput, which was a mistake: holding a pose steady for
+    # 10 steps plausibly favours hands with more stable multi-contact grasps, so
+    # removing it risks suppressing exactly the hardware difference this project
+    # exists to measure. A protocol no policy trains under is not a neutral
+    # measuring stick. Costs roughly 4x per condition; worth it.
+    "termination.success_steps": TRAIN_SUCCESS_STEPS,
+    # Chain length stays short. Unlike dwell, this is just "how many goals we
+    # ask for" and is unlikely to interact with hand morphology, and the full
+    # training value of 50 puts completion near the floor (5.5% for the
+    # reference checkpoint), where it cannot discriminate between conditions.
     "termination.max_consecutive_successes": GOALS_PER_TRAJECTORY,
 }
 

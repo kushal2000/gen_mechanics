@@ -182,11 +182,13 @@ def main() -> None:
     N = args.num_envs
     dev = inner.device
 
-    # ~3.3 s per goal at 60 Hz. Generous against the ~2.9 s/goal a succeeding
-    # policy actually took, far below the 600-steps-per-goal worst case that a
-    # run of pure per-goal timeouts would need. Envs that do hit the cap are
-    # counted as `unfinished` in the result, so truncation is never silent.
-    max_steps = args.max_steps or (200 * n_goals)
+    # ~5 s per goal at 60 Hz. 200/goal truncated 2 of 128 envs once the dwell
+    # requirement was restored (success_steps=10 makes each goal slower), and a
+    # truncated env reports a lower bound, so the cap is set above where that
+    # was observed. Still far below the 600-steps-per-goal worst case a run of
+    # pure per-goal timeouts would need. Envs that do hit it are counted as
+    # `unfinished`, so truncation is never silent.
+    max_steps = args.max_steps or (300 * n_goals)
     print(f"[eval] {n_goals} goals per episode, step cap {max_steps}"
           f"{' (derived)' if not args.max_steps else ' (explicit)'}")
 
