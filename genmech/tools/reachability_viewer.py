@@ -121,13 +121,15 @@ def _draw_scene_clone(server, prefix: str, offset_x: float) -> None:
 class RobotView:
     """One robot: its URDF, its scene clone, its sliders, its readouts."""
 
-    def __init__(self, server, spec, offset_x: float, show_meshes: bool = True):
+    def __init__(self, server, spec, offset_x: float, show_meshes: bool = True,
+                 joint_overrides: dict[str, float] | None = None):
         import yourdfpy
         from viser.extras import ViserUrdf
 
         self.server = server
         self.spec = spec
         self.offset_x = offset_x
+        self.joint_overrides = dict(joint_overrides or {})
 
         urdf_path = resolve_repo_path(spec.urdf_path)
         if not urdf_path.exists():
@@ -169,6 +171,10 @@ class RobotView:
                 out[name] = (1 - hand_closed_frac) * hand[name] + hand_closed_frac * hi
             else:
                 out[name] = 0.0
+        # Applied last so a --joint_override wins over the spec's home pose.
+        for name, val in self.joint_overrides.items():
+            if name in out:
+                out[name] = val
         return out
 
     def current(self) -> dict[str, float]:
@@ -334,7 +340,21 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--no_meshes", action="store_true",
                         help="Skip visual meshes (much faster to load).")
+    parser.add_argument(
+        "--joint_override", default="",
+        help="Comma-separated joint=radians applied on top of each spec's home "
+             "pose, e.g. 'thumb_joint_0=0.2792'. Lets a candidate pose be viewed "
+             "WITHOUT editing a spec -- specs feed training, so they should only "
+             "change once a pose has been chosen.",
+    )
     args = parser.parse_args()
+
+    overrides: dict[str, float] = {}
+    for item in filter(None, (t.strip() for t in args.joint_override.split(","))):
+        key, _, val = item.partition("=")
+        if not val:
+            raise SystemExit(f"--joint_override entry {item!r} is not joint=value")
+        overrides[key.strip()] = float(val)
 
     import viser
 
@@ -355,7 +375,8 @@ def main() -> None:
     for i, spec in enumerate(specs):
         print(f"[viewer] loading {spec.name} from {spec.urdf_path}")
         views.append(RobotView(server, spec, i * CLONE_SPACING_X,
-                               show_meshes=not args.no_meshes))
+                               show_meshes=not args.no_meshes,
+                               joint_overrides=overrides))
 
     _build_shared_arm_gui(server, views)
     for view in views:
@@ -368,6 +389,8 @@ def main() -> None:
           f"(each in its own scene clone, {CLONE_SPACING_X} m apart in x)")
     print(f"[viewer] goal volume {GOAL_VOLUME_MINS} .. {GOAL_VOLUME_MAXS}, "
           f"table top z={TABLE_Z}")
+    if overrides:
+        print(f"[viewer] joint overrides (NOT written to any spec): {overrides}")
     print("[viewer] sliders are in DEGREES. The Arm section is SHARED -- it drives "
           "every robot at once, since the arm is identical across hands.")
     print("[viewer] each robot has its own Hand section. 'Print pose' dumps a "

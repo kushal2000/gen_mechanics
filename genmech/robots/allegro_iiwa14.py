@@ -6,6 +6,14 @@ which grafts the Allegro hand onto the SHARPA robot's own iiwa14 chain — the
 stock Allegro asset ships on an iiwa7, and using it would confound every result
 with an arm change (docs/methodology.md §1).
 
+It is a **left** hand, matching SHARPA. The stock asset is right-handed, so the
+builder mirrors the hand subtree and its meshes about the mount's y=0 plane. The
+asset's own comment claims a left hand only needs each finger's y offset and
+splay angle negated, but that is incomplete: the palm and thumb-base meshes are
+not mirror-symmetric (34.8 mm and 30.3 mm maximum residual), so that recipe
+would give left-hand kinematics wearing a right-hand palm. The full reflection is
+verified to 1 micron against the right-hand FK.
+
 Unlike SHARPA, this robot has **no pretrained checkpoint to validate against**.
 Its correctness rests on ``tests/test_robot_spec_invariants.py``, on visual
 inspection in ``genmech/tools/reachability_viewer.py``, and on the values below
@@ -140,7 +148,12 @@ HAND_ARMATURE: dict[str, float] = {name: 0.001 for name in HAND_JOINT_NAMES}
 # KUKA_ALLEGRO_CFG value.
 HAND_DEFAULT_JOINT_POS: dict[str, float] = {
     **{f"{f}_joint_{i}": 0.0 for f in ("index", "middle", "ring") for i in range(4)},
-    "thumb_joint_0": 1.5,
+    # Lower limit: thumb abducted out alongside the fingers, hand wide open.
+    # Chosen visually to match how SHARPA's hand presents itself at its own
+    # all-zeros home. Sitting exactly at a limit means reset DOF noise can only
+    # push inward, a mild asymmetry that is harmless here because evaluation
+    # zeroes that noise and training samples the joint away from home anyway.
+    "thumb_joint_0": 0.279244444444,
     "thumb_joint_1": 0.0,
     "thumb_joint_2": 0.0,
     "thumb_joint_3": 0.0,
@@ -151,8 +164,10 @@ HAND_DEFAULT_JOINT_POS: dict[str, float] = {
 FINGERTIP_BODY_NAMES: tuple[str, ...] = tuple(f"{f}_link_3" for f in FINGERS)
 
 # Collision-mesh centroids, in each distal link's own frame.
-_PAD_FINGER: Vec3 = (0.0357, 0.0015, -0.0001)   # biotac_sensor.obj
-_PAD_THUMB: Vec3 = (0.0470, 0.0010, -0.0002)    # biotac_sensor_thumb.obj
+# Measured on the MIRRORED (left-hand) meshes, so y is negated relative to the
+# stock right-hand asset.
+_PAD_FINGER: Vec3 = (0.0357, -0.0015, -0.0001)   # biotac_sensor.obj
+_PAD_THUMB: Vec3 = (0.0470, -0.0010, -0.0002)    # biotac_sensor_thumb.obj
 
 
 ALLEGRO_IIWA14 = RobotSpec(
