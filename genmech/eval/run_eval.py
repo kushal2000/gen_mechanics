@@ -1,9 +1,18 @@
 """Evaluate one policy under one held-out condition.
 
-Runs a batched rollout: N envs each drive their own frozen goal trajectory to
-completion, giving N independent trials from a single Kit boot. simtoolreal's
-DexToolBench eval used ``num_envs=1`` and one process per case, which is fine
-for 24 real-object trajectories but far too slow for a multi-axis sweep.
+Runs a batched rollout: N envs each chain live-sampled goals until they fail or
+complete the required run of consecutive successes, giving N independent trials
+from a single Kit boot. simtoolreal's DexToolBench eval used ``num_envs=1`` and
+one process per case, which is fine for 24 real-object trajectories but far too
+slow for a multi-axis sweep.
+
+**On the headline metric.** Goals are sampled live, matching training, so there
+is no trajectory to complete a percentage of. What is measured is how many
+consecutive goals a policy chains before falling or timing out. That outcome is
+strongly bimodal -- a policy either fails to establish a grasp and scores zero,
+or grasps and chains the lot -- so the mean describes almost no individual
+episode. ``full_completion_rate`` and ``zero_goal_rate`` are the honest summary
+and are reported alongside it.
 
 One process per condition, because Kit cannot be torn down and re-created
 in-process. ``launch_sweep.py`` fans these out over a SLURM array.
@@ -217,6 +226,16 @@ def main() -> None:
         print(f"[eval] WARNING: {unfinished}/{N} envs hit the {args.max_steps}-step "
               f"cap without terminating; their scores are lower bounds.")
 
+    # Fraction of the required consecutive-goal chain the policy completed.
+    #
+    # NOT "percent of a trajectory": goals are sampled live, so there is no
+    # trajectory. An episode ends on n_goals consecutive successes, a fall, or a
+    # per-goal timeout, making this a normalised CHAIN LENGTH.
+    #
+    # The distribution is strongly bimodal -- policies either fail to establish a
+    # grasp and score 0, or grasp and chain the lot -- so the mean describes
+    # almost no individual episode and must be read alongside complete/zero
+    # rates, which is why both are reported.
     goal_pct = (goals_reached.float() / n_goals * 100.0).cpu().numpy()
     steps_np = episode_steps.cpu().numpy()
     fg = first_goal_step.cpu().numpy()
@@ -249,9 +268,13 @@ def main() -> None:
         },
         # Headline metrics. goal_pct is the primary; reward is diagnostic only
         # (docs/methodology.md §4).
-        "goal_pct_mean": _mean(goal_pct),
+        "goals_chained_frac_mean": _mean(goal_pct) / 100.0,
+        "goal_pct_mean": _mean(goal_pct),      # same number, legacy key
         "goal_pct_sem": _sem(goal_pct),
+        # The honest summary of a bimodal outcome.
         "full_completion_rate": float(np.mean(goal_pct >= 100.0)),
+        "zero_goal_rate": float(np.mean(goal_pct <= 0.0)),
+        "bimodality": float(np.mean((goal_pct <= 0.0) | (goal_pct >= 100.0))),
         "any_goal_rate": float(np.mean(reached_any)),
         "time_to_first_goal_sec": _mean(fg[reached_any] / CONTROL_HZ),
         "mean_episode_sec": _mean(steps_np / CONTROL_HZ),
@@ -280,11 +303,14 @@ def main() -> None:
 
     print(
         f"\n[eval] {spec.name} x {condition.id}: "
-        f"goal_pct={result['goal_pct_mean']:.1f} +/- {result['goal_pct_sem']:.1f}  "
         f"complete={result['full_completion_rate']:.1%}  "
-        f"lift={result['lift_rate']:.1%}  "
-        f"({roll_sec:.0f}s rollout)"
+        f"zero={result['zero_goal_rate']:.1%}  "
+        f"chain={result['goal_pct_mean']:.1f}% +/- {result['goal_pct_sem']:.1f}  "
+        f"lift={result['lift_rate']:.1%}  ({roll_sec:.0f}s)"
     )
+    if result["bimodality"] > 0.6:
+        print(f"[eval] NOTE: {result['bimodality']:.0%} of episodes scored either 0 "
+              f"or all {n_goals} goals. Read complete/zero rates, not the mean.")
     print(f"[eval] wrote {out_dir / 'result.json'}")
 
     del app

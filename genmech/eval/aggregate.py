@@ -4,7 +4,10 @@ Reads every ``result.json`` under a sweep directory and emits a tidy CSV plus a
 printed summary.
 
 The headline number is **retention** — a condition's score divided by the same
-hand's nominal score. Absolute scores are not comparable across hands: the
+hand's nominal score — computed on **full-completion rate** rather than the
+chain-length mean, because the chain-length distribution is bimodal (episodes
+mostly score either zero goals or all of them) and its mean therefore describes
+almost no individual episode. Absolute scores are not comparable across hands: the
 reward is tuned for SHARPA and sums over fingertips and hand DoFs, so a hand can
 be uniformly weaker on this task without being worse at *generalizing*
 (docs/methodology.md §2, §4). Retention removes that offset by scoring each hand
@@ -39,6 +42,8 @@ def load_results(root: Path) -> list[dict]:
             "goal_pct_mean": r["goal_pct_mean"],
             "goal_pct_sem": r["goal_pct_sem"],
             "full_completion_rate": r["full_completion_rate"],
+            "zero_goal_rate": r.get("zero_goal_rate", float("nan")),
+            "bimodality": r.get("bimodality", float("nan")),
             "any_goal_rate": r["any_goal_rate"],
             "lift_rate": r["lift_rate"],
             "time_to_first_goal_sec": r["time_to_first_goal_sec"],
@@ -60,11 +65,24 @@ def add_retention(rows: list[dict]) -> list[dict]:
         r["robot_spec"]: r["goal_pct_mean"]
         for r in rows if r["axis"] == "nominal"
     }
+    # Completion rate is the more robust headline when the chain-length
+    # distribution is bimodal, so retention is computed on both.
+    nominal_complete = {
+        r["robot_spec"]: r["full_completion_rate"]
+        for r in rows if r["axis"] == "nominal"
+    }
     for r in rows:
         base = nominal.get(r["robot_spec"])
         if base is None:
             r["retention"] = float("nan")
             r["gap"] = float("nan")
+        base_c = nominal_complete.get(r["robot_spec"])
+        r["retention_complete"] = (
+            r["full_completion_rate"] / base_c
+            if base_c not in (None, 0.0) else float("nan")
+        )
+        if base is None:
+            pass
         elif base <= 0.0:
             # A hand that scores zero nominally has no meaningful baseline; a
             # ratio here would be an artifact, so leave it undefined rather than
@@ -107,14 +125,17 @@ def print_summary(rows: list[dict]) -> None:
             if r is None:
                 line += f"{'-':>26}"
             else:
-                ret = r["retention"]
+                ret = r["retention_complete"]
                 ret_s = "  n/a" if math.isnan(ret) else f"{ret * 100:5.0f}%"
-                line += (f"{r['goal_pct_mean']:>10.1f}"
-                         f"±{r['goal_pct_sem']:<4.1f}"
+                line += (f"{r['full_completion_rate'] * 100:>8.0f}%"
+                         f"{r['zero_goal_rate'] * 100:>7.0f}%"
                          f"{ret_s:>10}")
         print(line)
     print("-" * len(header))
-    print(f"{'':{width}}" + "".join(f"{'goal_pct    retention':>26}" for _ in robots))
+    print(f"{'':{width}}" + "".join(f"{'complete   zero  retention':>26}" for _ in robots))
+    print("\n(retention is on completion rate, not the chain-length mean: the "
+          "chain-length\n distribution is bimodal, so its mean describes almost no "
+          "individual episode.)")
 
     unfinished = sum(r["term_unfinished"] for r in rows)
     if unfinished:
