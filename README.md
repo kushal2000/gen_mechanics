@@ -42,7 +42,7 @@ assets/urdf/       robot + table + object URDFs and meshes
 third_party/rl_games/  vendored SAPG fork (NOT the PyPI package)
 tests/             standalone Kit-booting smoke and invariant tests
 experiments/       SLURM job scripts
-docs/              installation, methodology
+docs/              installation, methodology, proposals
 ```
 
 ## Quick start
@@ -66,6 +66,16 @@ sbatch experiments/train.sub          # ROBOT=sharpa_iiwa14 SEED=0
 a *hardware* comparison — identical arm, byte-identical reward, equal gradient
 steps (not equal walltime), frozen held-out sets, retention rather than raw
 reward — and the residual confounds that remain.
+
+## Where this is going
+
+[docs/proposal_codesign.md](docs/proposal_codesign.md) proposes the follow-on:
+instead of comparing two fixed hands, *search* over hand morphology jointly with
+a morphology-conditioned policy. It covers the two target results (co-design as
+a training curriculum; co-design for generalization and sim-to-real), the
+Thompson-sampling outer loop, and the feasibility measurements from
+`genmech/tools/probe_heterogeneous_envs.py` and `probe_multi_articulation.py`
+that say heterogeneous morphology per environment is possible in this stack.
 
 ## License
 
