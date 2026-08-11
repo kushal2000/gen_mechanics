@@ -1,7 +1,7 @@
 """Smoke test Phase 1: verify gym.register + YAML overlay compose correctly.
 
 Confirms:
-  1. `import genmech` triggers `gym.register("GenMech-PoseReach-Direct-v0", ...)`.
+  1. `import genmech.tasks` triggers `gym.register("GenMech-PoseReach-Direct-v0", ...)`.
   2. `load_cfg_from_registry` resolves each entry_point to the expected type.
   3. `env_cfg.from_dict(task_yaml)` applies overrides onto the configclass cleanly
      (the merge the trainer relies on).
@@ -32,7 +32,7 @@ def main() -> None:
     import gymnasium as gym
     import yaml
 
-    import genmech  # noqa: F401  triggers gym.register side effect
+    import genmech.tasks  # noqa: F401  registers GenMech-PoseReach-Direct-v0
     from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
     from genmech.tasks.pose_reach.env_cfg import PoseReachEnvCfg
 

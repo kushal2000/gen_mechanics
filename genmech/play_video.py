@@ -63,7 +63,7 @@ def main() -> None:
     from isaaclab.sensors import Camera, CameraCfg
     from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
 
-    import genmech  # noqa: F401  triggers gym.register
+    import genmech.tasks  # noqa: F401  registers GenMech-PoseReach-Direct-v0
     from genmech.utils.rlgames_utils import register_rlgames_env
 
     # --- Env ---

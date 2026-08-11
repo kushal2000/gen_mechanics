@@ -60,7 +60,7 @@ def main() -> None:
     import gymnasium as gym
     import torch
 
-    import genmech  # noqa: F401  registers gym envs
+    import genmech.tasks  # noqa: F401  registers GenMech-PoseReach-Direct-v0
     from genmech.tasks.pose_reach.env_cfg import PoseReachEnvCfg
     from genmech.tasks.pose_reach.utils.obs_utils import compute_obs_dim
 

@@ -111,7 +111,7 @@ def main() -> None:
     from omegaconf import OmegaConf
     from rl_games.torch_runner import Runner
 
-    import genmech  # noqa: F401  triggers gym.register side effects
+    import genmech.tasks  # noqa: F401  registers GenMech-PoseReach-Direct-v0
     from genmech.utils.hydra_utils import hydra_task_config_with_yaml
     from genmech.utils.rlgames_utils import (
         EnvStatsAlgoObserver,
