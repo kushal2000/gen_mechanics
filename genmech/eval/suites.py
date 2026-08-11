@@ -85,8 +85,25 @@ class EvalCondition:
 # ---------------------------------------------------------------------------
 
 _EVAL_PROTOCOL: dict[str, Any] = {
-    # Deterministic initial state, so a condition's effect is not buried in
-    # reset noise. This mirrors the DexToolBench eval setup.
+    # Reset noise zeroed -- but note this does NOT give a deterministic initial
+    # state, and it would be wrong to describe it that way.
+    #
+    # The object still spawns at a uniformly random orientation
+    # (reset_utils calls random_orientation unconditionally; it is not governed
+    # by any noise scale) and free-falls table_object_z_offset = 0.25 m before
+    # settling. Every episode therefore begins with a random tumble whose
+    # outcome depends on the object's shape.
+    #
+    # That variation is deliberate: it is closer to deployment than a pinned
+    # pose, and a hand that copes better with awkward settles is genuinely
+    # better hardware. Both hands draw from the same distribution, so it is
+    # noise in the comparison rather than bias -- but it is a large source of
+    # per-episode variance, and it plausibly drives part of the bimodal outcome
+    # (an object that settles ungraspably yields a zero-goal episode for reasons
+    # unrelated to the policy). Run enough envs that the reported SEM is small,
+    # and do not read a small cross-hand difference as real.
+    #
+    # To pin it for a diagnostic, override reset.fixed_start_pose.
     "reset.reset_position_noise_x": 0.0,
     "reset.reset_position_noise_y": 0.0,
     "reset.reset_position_noise_z": 0.0,
