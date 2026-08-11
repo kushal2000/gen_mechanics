@@ -99,18 +99,22 @@ HAND_ARMATURE: dict[str, float] = {name: 0.001 for name in HAND_JOINT_NAMES}
 # So the four flexion joints per finger are 0.0 (straight; -0.279 is
 # hyperextension, not a pose to start from) and abduction is centred.
 #
-# The thumb cannot follow the same rule: `thumb_joint_0` has limits
-# [0.279, 1.571], so 0.0 is outside its range and would be clamped. Allegro's
-# zero is simply not SHARPA's zero. Its neutral is defined by its own range, and
-# Isaac Lab's KUKA_ALLEGRO_CFG value of 1.5 (95% of range) opposes the thumb
-# across the fingers -- the analogue of where SHARPA's thumb already sits at
-# zero. The remaining thumb joints keep Isaac Lab's values.
+# The thumb's three flexion joints extend the same way: joints 2 and 3 share the
+# fingers' exact limits ([-0.279, 1.728] / [-0.279, 1.763]) and joint 1 reaches
+# 0.0 too, so all three go straight.
+#
+# `thumb_joint_0` is the one genuine exception. Its limits are [0.279, 1.571],
+# so 0.0 is outside its range and would be clamped -- Allegro's zero is not
+# SHARPA's zero. This joint swings the thumb across the palm rather than
+# extending it, and its neutral is defined by its own range, so it keeps Isaac
+# Lab's 1.5 (95% of range), opposing the thumb across the fingers. That is the
+# analogue of where SHARPA's thumb already sits at zero.
 HAND_DEFAULT_JOINT_POS: dict[str, float] = {
     **{f"{f}_joint_{i}": 0.0 for f in ("index", "middle", "ring") for i in range(4)},
     "thumb_joint_0": 1.5,
-    "thumb_joint_1": 0.60147215,
-    "thumb_joint_2": 0.33795027,
-    "thumb_joint_3": 0.60845138,
+    "thumb_joint_1": 0.0,
+    "thumb_joint_2": 0.0,
+    "thumb_joint_3": 0.0,
 }
 
 # Distal links. These carry the biotac sensor geometry and are what the
