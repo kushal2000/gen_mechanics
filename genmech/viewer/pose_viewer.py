@@ -19,11 +19,11 @@ import numpy as np
 
 from genmech.viewer.interactive_viewer import create_html, make_embedded_robot, make_url_robot
 
-from .utils.scene_utils import JOINT_NAMES_CANONICAL
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GITHUB_RAW_BASE_MAIN = "https://raw.githubusercontent.com/tylerlum/simtoolreal/main/"
+# Fallback only; the robot's own spec.urdf_path is used when the env exposes it.
 ROBOT_URDF_RELATIVE_PATH = "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
 TABLE_URDF_PATH = REPO_ROOT / "assets" / "urdf" / "table_narrow.urdf"
 
@@ -175,9 +175,12 @@ def capture_pose_viewer_frame(env, env_id: int) -> dict[str, Any]:
 
     origin = env.scene.env_origins[env_id]
 
-    if hasattr(env, "_perm_lab_to_canon"):
+    # Canonical policy order when the env exposes it, so the viewer's joint
+    # columns line up with the policy's. Names come from the robot spec rather
+    # than a module constant, so this follows whichever hand is mounted.
+    if hasattr(env, "_perm_lab_to_canon") and hasattr(env, "robot_spec"):
         joint_pos = env.robot.data.joint_pos[env_id, env._perm_lab_to_canon]
-        joint_names = list(JOINT_NAMES_CANONICAL)
+        joint_names = list(env.robot_spec.joint_names_canonical)
     else:
         joint_pos = env.robot.data.joint_pos[env_id]
         joint_names = list(env.robot.data.joint_names)

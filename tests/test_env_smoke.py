@@ -56,7 +56,6 @@ def main() -> None:
 
     # Diagnostic: all PhysX joint params that could dampen response —
     # stiffness, damping, armature (virtual inertia), friction, effort limit.
-    from genmech.tasks.pose_reach.utils.scene_utils import JOINT_NAMES_CANONICAL
     stiffness = inner.robot.data.joint_stiffness[0].cpu().numpy()
     damping = inner.robot.data.joint_damping[0].cpu().numpy()
     armature = inner.robot.data.joint_armature[0].cpu().numpy()
@@ -83,7 +82,7 @@ def main() -> None:
     for i in range(29):
         lab_j = perm[i]
         print(
-            f"  [{i:2d}] {JOINT_NAMES_CANONICAL[i]:<22s}  "
+            f"  [{i:2d}] {inner.robot_spec.joint_names_canonical[i]:<22s}  "
             f"{stiffness[lab_j]:>8.4f}  {damping[lab_j]:>8.4f}  "
             f"{armature[lab_j]:>8.5f}  {friction[lab_j]:>8.5f}  {effort_lim[lab_j]:>8.4f}"
         )

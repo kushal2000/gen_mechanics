@@ -8,6 +8,35 @@ from omegaconf import DictConfig, OmegaConf
 from genmech.utils.reformat import omegaconf_to_dict, print_dict
 
 
+def _register_legacy_resolvers() -> None:
+    """Register the OmegaConf resolvers that training-run configs interpolate.
+
+    rl_games checkpoints ship the Hydra config they were trained under, and
+    those files contain interpolations like ``${resolve_default:...}`` and
+    ``${eval:"1/60"}``. In simtoolreal the resolvers behind them were registered
+    as a side effect of importing ``isaacgymenvs``; genmech does not import that
+    package, so reading such a config raises UnsupportedInterpolationType at the
+    first ``.items()``.
+
+    Registering them here keeps every historical checkpoint loadable. The
+    definitions are copied from isaacgymenvs/__init__.py.
+    """
+    from omegaconf import OmegaConf
+
+    resolvers = {
+        "eq": lambda x, y: x.lower() == y.lower(),
+        "contains": lambda x, y: x.lower() in y.lower(),
+        "if": lambda pred, a, b: a if pred else b,
+        "resolve_default": lambda default, arg: default if arg == "" else arg,
+        "eval": lambda x: eval(x),  # noqa: S307 - matches the upstream definition
+    }
+    for name, fn in resolvers.items():
+        OmegaConf.register_new_resolver(name, fn, replace=True)
+
+
+_register_legacy_resolvers()
+
+
 @dataclass
 class DummyEnv:
     observation_space: spaces.Box

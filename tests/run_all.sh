@@ -9,7 +9,14 @@
 #   tests/run_all.sh              # everything
 #   tests/run_all.sh fast         # skip the slow parity + pretrained rollout
 #
-# Requires a GPU. Only run one instance at a time — one Kit per GPU.
+# Requires a GPU. Only run one instance at a time -- one Kit per GPU.
+#
+# WHY EXIT CODES ARE NOT ENOUGH. Kit installs a shutdown handler that calls
+# os._exit(0) while unwinding, so a test that dies on an uncaught exception can
+# still return 0. This runner once reported 8/8 passing while a test was failing
+# on an ImportError. Every test must therefore print an explicit success
+# sentinel as its LAST meaningful output, and a test counts as passed only if
+# the exit code is 0, the sentinel is present, and no traceback appears.
 
 set -uo pipefail
 
@@ -21,34 +28,57 @@ export OMNI_KIT_ACCEPT_EULA=YES
 export OMNI_KIT_CACHE_PATH="${OMNI_KIT_CACHE_PATH:-/tmp/${USER}_ov_cache}"
 mkdir -p "$OMNI_KIT_CACHE_PATH"
 
+LOG_DIR="${LOG_DIR:-/tmp/${USER}_genmech_tests}"
+mkdir -p "$LOG_DIR"
+
 MODE="${1:-all}"
 
+# "script args :: success sentinel"
 TESTS=(
-    "tests/test_load_isaacsim.py"
-    "tests/test_gym_register.py"
-    "tests/test_env_smoke.py --num_envs 8 --num_assets_per_type 2 --steps 10"
-    "tests/test_obs_action_spec.py"
-    "tests/test_action_pipeline.py --num_envs 4 --num_assets_per_type 1"
-    "tests/test_robot_spec_invariants.py"
+    "tests/test_load_isaacsim.py :: Isaac Sim load OK"
+    "tests/test_imports.py :: module import test OK"
+    "tests/test_gym_register.py :: registration smoke test OK"
+    "tests/test_env_smoke.py --num_envs 8 --num_assets_per_type 2 --steps 10 :: [smoke] OK"
+    "tests/test_obs_action_spec.py :: obs/action spec test OK"
+    "tests/test_action_pipeline.py --num_envs 4 --num_assets_per_type 1 :: action pipeline test OK"
+    "tests/test_robot_spec_invariants.py :: robot spec invariants OK"
 )
 SLOW=(
-    "tests/test_sharpa_parity.py"
-    "tests/test_pretrained_rollout.py --num_envs 8 --num_assets_per_type 2 --num_steps 600"
+    "tests/test_sharpa_parity.py :: SHARPA parity test OK"
+    "tests/test_pretrained_rollout.py --num_envs 8 --num_assets_per_type 2 --num_steps 600 :: pretrained rollout test OK"
 )
 [[ "$MODE" != "fast" ]] && TESTS+=("${SLOW[@]}")
 
 pass=0; fail=0; failed_names=()
-for t in "${TESTS[@]}"; do
-    name="${t%% *}"
-    printf '\n\033[1m=== %s ===\033[0m\n' "$t"
+for entry in "${TESTS[@]}"; do
+    cmd="${entry%% :: *}"
+    sentinel="${entry##* :: }"
+    name="${cmd%% *}"
+    log="$LOG_DIR/$(basename "$name" .py).log"
+
+    printf '\n\033[1m=== %s ===\033[0m\n' "$cmd"
     start=$SECONDS
-    if $PY $t > "/tmp/$(basename "$name" .py).log" 2>&1; then
-        printf '\033[32mPASS\033[0m  %s  (%ss)\n' "$name" "$((SECONDS - start))"
+    $PY $cmd > "$log" 2>&1
+    code=$?
+    elapsed=$((SECONDS - start))
+
+    reason=""
+    if (( code != 0 )); then
+        reason="exit $code"
+    elif ! grep -qF "$sentinel" "$log"; then
+        reason="missing sentinel '$sentinel' (exit code was 0, but Kit's shutdown handler masks failures)"
+    elif grep -qE '^Traceback \(most recent call last\)' "$log"; then
+        reason="traceback in output"
+    fi
+
+    if [[ -z "$reason" ]]; then
+        printf '\033[32mPASS\033[0m  %s  (%ss)\n' "$name" "$elapsed"
         pass=$((pass + 1))
     else
-        printf '\033[31mFAIL\033[0m  %s  (%ss)  — see /tmp/%s.log\n' \
-            "$name" "$((SECONDS - start))" "$(basename "$name" .py)"
-        tail -20 "/tmp/$(basename "$name" .py).log"
+        printf '\033[31mFAIL\033[0m  %s  (%ss) -- %s\n' "$name" "$elapsed" "$reason"
+        printf '      log: %s\n' "$log"
+        grep -E '^(Traceback|[A-Za-z_.]*Error|AssertionError)' "$log" | head -5 | sed 's/^/      /'
+        tail -5 "$log" | sed 's/^/      /'
         fail=$((fail + 1)); failed_names+=("$name")
     fi
 done
