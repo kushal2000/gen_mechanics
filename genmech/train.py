@@ -96,6 +96,21 @@ def main() -> None:
     AppLauncher.add_app_launcher_args(parser)
     args_cli, hydra_args = parser.parse_known_args()
 
+    # `--wandb_tags` takes nargs="*", so argparse greedily consumes every
+    # following token that does not start with "-" -- including Hydra overrides
+    # like `agent.params.config.max_epochs=120000`, which are bare key=value
+    # strings. That silently drops the entire override set and trains on YAML
+    # defaults: it cost a 27-minute run that reported max_epochs 1,000,000
+    # instead of the 120,000 it was launched with. Fail loudly instead.
+    swallowed = [t for t in args_cli.wandb_tags if "=" in t]
+    if swallowed:
+        raise SystemExit(
+            "These Hydra overrides were consumed by --wandb_tags instead of "
+            f"reaching Hydra:\n  {swallowed}\n"
+            "Put --wandb_tags immediately before another --flag, or pass it last "
+            "with the overrides ahead of it."
+        )
+
     # Recording a video requires cameras even if user forgot --enable_cameras.
     if args_cli.capture_video:
         args_cli.enable_cameras = True

@@ -87,8 +87,8 @@ python -u genmech/train.py \
     --wandb_project "$WANDB_PROJECT" \
     --wandb_group "$WANDB_GROUP" \
     --wandb_entity "$WANDB_ENTITY" \
-    --wandb_name "$EXPERIMENT_NAME" \
     --wandb_tags "$ROBOT" "seed$SEED" "epochs$MAX_EPOCHS" \
+    --wandb_name "$EXPERIMENT_NAME" \
     env.assets.robot_spec="$ROBOT" \
     env.scene.num_envs="$NUM_ENVS" \
     agent.params.seed="$SEED" \

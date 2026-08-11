@@ -15,13 +15,17 @@ starts in seconds and holds no GPU, so it runs happily alongside training.
 
 Each robot gets its **own complete scene clone** — its own table, goal volume,
 and grid at the same relative placement — so the two are compared like for like
-rather than sharing one table. Each also gets its own GUI section with
-independent sliders, so the hands can be posed separately.
+rather than sharing one table.
+
+The GUI has one **shared Arm section** that drives every robot at once. The arm
+is identical across hands by construction (docs/methodology.md §1), so mirroring
+it is not a convenience but the honest default: comparing hands only means
+anything at a common arm configuration, and separate arm sliders would let the
+two drift apart silently. Each robot then gets its **own Hand section**, since
+that is the part actually under comparison.
 
 Sliders are in **degrees**, labelled with short joint names and grouped per
-finger. "Copy arm pose to ..." transfers the arm joints between robots, which is
-the usual way to compare: pose one arm, copy it, then look at how the two hands
-present themselves at the identical arm configuration.
+finger.
 """
 
 from __future__ import annotations
@@ -223,85 +227,104 @@ class RobotView:
         return "\n".join(lines)
 
 
-def _build_gui(server, view: RobotView, views: list[RobotView]) -> None:
-    """One GUI section per robot: its own sliders, poses, and copy targets."""
+def _slider(server, view: RobotView, name: str, initial: float, on_change):
+    """One degree-valued slider bound to a joint, using its URDF limits."""
+    lo, hi = view.limits[name]
+    lo = -np.pi if lo is None else lo
+    hi = np.pi if hi is None else hi
+    s = server.gui.add_slider(
+        _short(name), min=round(lo / RAD, 1), max=round(hi / RAD, 1),
+        step=0.5, initial_value=round(initial / RAD, 1),
+    )
+    s.on_update(on_change)
+    view.sliders[name] = s
+    return s
+
+
+def _build_shared_arm_gui(server, views: list[RobotView]) -> None:
+    """One Arm section driving every robot.
+
+    The arm is identical across hands by construction, so a single set of
+    sliders is the correct model: the hands are only comparable at a common arm
+    configuration. Each robot still keeps its own entry in `view.sliders` so the
+    rest of the code (pose buttons, reports) stays uniform -- the shared slider
+    writes through to all of them.
+    """
+    ref = views[0]
+    arm_joints = [n for n in ref.spec.arm_joint_names if n in ref.limits]
+
+    def on_change(_=None) -> None:
+        for view in views:
+            view.refresh()
+
+    with server.gui.add_folder("Arm — shared by all robots (deg)"):
+        home = ref.pose_dict()
+        shared: dict[str, object] = {}
+        for name in arm_joints:
+            lo, hi = ref.limits[name]
+            lo = -np.pi if lo is None else lo
+            hi = np.pi if hi is None else hi
+            sl = server.gui.add_slider(
+                _short(name), min=round(lo / RAD, 1), max=round(hi / RAD, 1),
+                step=0.5, initial_value=round(home[name] / RAD, 1),
+            )
+            sl.on_update(on_change)
+            shared[name] = sl
+            # Every robot reads this same handle, so they cannot drift apart.
+            for view in views:
+                if name in view.limits:
+                    view.sliders[name] = sl
+
+        b_home = server.gui.add_button("Arm home")
+        b_high = server.gui.add_button("start_arm_higher")
+
+        def set_arm(start_arm_higher: bool):
+            def _(_):
+                pose = ref.pose_dict(start_arm_higher=start_arm_higher)
+                for name, sl in shared.items():
+                    sl.value = round(pose[name] / RAD, 1)
+                on_change()
+            return _
+
+        b_home.on_click(set_arm(False))
+        b_high.on_click(set_arm(True))
+
+
+def _build_hand_gui(server, view: RobotView) -> None:
+    """One Hand section per robot -- the part actually under comparison."""
     spec = view.spec
 
     def on_change(_=None) -> None:
         view.refresh()
 
-    with server.gui.add_folder(spec.name):
-        home = view.pose_dict()
+    home = view.pose_dict()
+    by_finger: dict[str, list[str]] = {}
+    for name in spec.hand_joint_names:
+        by_finger.setdefault(_finger_of(spec, name), []).append(name)
 
-        with server.gui.add_folder("Arm (deg)"):
-            for name in spec.arm_joint_names:
-                if name not in view.limits:
-                    continue
-                lo, hi = view.limits[name]
-                lo = -np.pi if lo is None else lo
-                hi = np.pi if hi is None else hi
-                s = server.gui.add_slider(
-                    _short(name), min=round(lo / RAD, 1), max=round(hi / RAD, 1),
-                    step=0.5, initial_value=round(home[name] / RAD, 1),
-                )
-                s.on_update(on_change)
-                view.sliders[name] = s
+    with server.gui.add_folder(f"{spec.name} — hand (deg)"):
+        for finger, names in by_finger.items():
+            with server.gui.add_folder(finger, expand_by_default=False):
+                for name in names:
+                    if name in view.limits:
+                        _slider(server, view, name, home[name], on_change)
 
-        # Hand sliders grouped per finger, so a finger can be curled as a unit.
-        by_finger: dict[str, list[str]] = {}
-        for name in spec.hand_joint_names:
-            by_finger.setdefault(_finger_of(spec, name), []).append(name)
-        with server.gui.add_folder("Hand (deg)", expand_by_default=False):
-            for finger, names in by_finger.items():
-                with server.gui.add_folder(finger, expand_by_default=False):
-                    for name in names:
-                        if name not in view.limits:
-                            continue
-                        lo, hi = view.limits[name]
-                        lo = -np.pi if lo is None else lo
-                        hi = np.pi if hi is None else hi
-                        s = server.gui.add_slider(
-                            _short(name), min=round(lo / RAD, 1), max=round(hi / RAD, 1),
-                            step=0.5, initial_value=round(home[name] / RAD, 1),
-                        )
-                        s.on_update(on_change)
-                        view.sliders[name] = s
+        b_open = server.gui.add_button("Open hand")
+        b_close = server.gui.add_button("Close hand")
+        b_print = server.gui.add_button("Print pose")
 
-        with server.gui.add_folder("Pose"):
-            b_home = server.gui.add_button("Home")
-            b_high = server.gui.add_button("start_arm_higher")
-            b_open = server.gui.add_button("Open hand")
-            b_close = server.gui.add_button("Close hand")
-            b_print = server.gui.add_button("Print pose")
+        def apply(frac: float):
+            def _(_):
+                pose = view.pose_dict(hand_closed_frac=frac)
+                for name in spec.hand_joint_names:
+                    if name in view.sliders:
+                        view.sliders[name].value = round(pose[name] / RAD, 1)
+                view.refresh()
+            return _
 
-            def apply(fn):
-                def _(_):
-                    view.set_pose(fn())
-                    view.refresh()
-                return _
-
-            b_home.on_click(apply(lambda: view.pose_dict()))
-            b_high.on_click(apply(lambda: view.pose_dict(start_arm_higher=True)))
-            b_open.on_click(apply(lambda: view.pose_dict(hand_closed_frac=0.0)))
-            b_close.on_click(apply(lambda: view.pose_dict(hand_closed_frac=1.0)))
-            b_print.on_click(lambda _: print("\n" + view.report(), flush=True))
-
-        # The arm is identical across hands by construction, so its joint values
-        # transfer verbatim. Posing one arm and copying it is the natural way to
-        # see how the two hands present themselves at the same configuration.
-        others = [v for v in views if v is not view]
-        if others:
-            with server.gui.add_folder("Copy arm pose"):
-                for other in others:
-                    btn = server.gui.add_button(f"-> {other.spec.name}")
-
-                    def _copy(_, src=view, dst=other):
-                        pose = src.current()
-                        dst.set_pose({n: v for n, v in pose.items()
-                                      if n in dst.spec.arm_joint_names})
-                        dst.refresh()
-
-                    btn.on_click(_copy)
+        b_open.on_click(apply(0.0))
+        b_close.on_click(apply(1.0))
+        b_print.on_click(lambda _: print("\n" + view.report(), flush=True))
 
 
 def main() -> None:
@@ -320,24 +343,35 @@ def main() -> None:
 
     server = viser.ViserServer(port=args.port)
 
+    # viser silently binds the next free port when the requested one is taken,
+    # so the URL we print can be wrong while everything looks fine. Report the
+    # port actually bound.
+    actual_port = getattr(server, "_port", None) or getattr(server, "port", args.port)
+    if actual_port != args.port:
+        print(f"[viewer] WARNING: port {args.port} was busy; viser bound "
+              f"{actual_port} instead. Kill the old instance to reuse {args.port}.")
+
     views: list[RobotView] = []
     for i, spec in enumerate(specs):
         print(f"[viewer] loading {spec.name} from {spec.urdf_path}")
         views.append(RobotView(server, spec, i * CLONE_SPACING_X,
                                show_meshes=not args.no_meshes))
 
+    _build_shared_arm_gui(server, views)
     for view in views:
-        _build_gui(server, view, views)
+        _build_hand_gui(server, view)
     for view in views:
         view.refresh()
 
-    print(f"\n[viewer] serving on http://localhost:{args.port}")
+    print(f"\n[viewer] serving on http://localhost:{actual_port}")
     print(f"[viewer] robots: {[s.name for s in specs]} "
           f"(each in its own scene clone, {CLONE_SPACING_X} m apart in x)")
     print(f"[viewer] goal volume {GOAL_VOLUME_MINS} .. {GOAL_VOLUME_MAXS}, "
           f"table top z={TABLE_Z}")
-    print("[viewer] sliders are in DEGREES. 'Print pose' dumps a pasteable spec "
-          "block. Ctrl-C to stop.")
+    print("[viewer] sliders are in DEGREES. The Arm section is SHARED -- it drives "
+          "every robot at once, since the arm is identical across hands.")
+    print("[viewer] each robot has its own Hand section. 'Print pose' dumps a "
+          "pasteable spec block. Ctrl-C to stop.")
     try:
         while True:
             time.sleep(1.0)
