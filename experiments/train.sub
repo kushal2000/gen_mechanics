@@ -1,0 +1,74 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 7-00:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Pose-reaching training, parameterized by hand.
+#
+#   ROBOT=sharpa_iiwa14  SEED=0 sbatch experiments/train.sub
+#   ROBOT=allegro_iiwa14 SEED=0 sbatch experiments/train.sub
+#
+# MAX_EPOCHS is a HARD requirement for the hand comparison, not a convenience.
+# Allegro (16 hand DoF, 4 fingers) simulates faster than SHARPA (22 DoF, 5
+# fingers), so a walltime-bounded run silently gives Allegro more gradient
+# steps — a confound indistinguishable from "Allegro is better hardware". The
+# 7-day SBATCH walltime is a safety ceiling; the run must end on epochs.
+# See docs/methodology.md §3.
+
+set -euo pipefail
+
+ROBOT="${ROBOT:-sharpa_iiwa14}"
+SEED="${SEED:-0}"
+MAX_EPOCHS="${MAX_EPOCHS:-20000}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
+WANDB_GROUP="${WANDB_GROUP:-${ROBOT}}"
+WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+
+# SAPG requires num_envs % expl_coef_block_size == 0 (block size 4096).
+if (( NUM_ENVS % 4096 != 0 )); then
+    echo "NUM_ENVS=$NUM_ENVS must be a multiple of 4096 (SAPG expl_coef_block_size)" >&2
+    exit 1
+fi
+
+EXPERIMENT_NAME="${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
+
+RUN_DIR="${REPO_ROOT}/train_dir/${WANDB_PROJECT}/${WANDB_GROUP}/${EXPERIMENT_NAME}"
+mkdir -p "$RUN_DIR"
+exec > "${RUN_DIR}/slurm.log" 2> "${RUN_DIR}/slurm.err"
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+echo "robot=$ROBOT seed=$SEED max_epochs=$MAX_EPOCHS num_envs=$NUM_ENVS"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+
+python -u genmech/train.py \
+    --task GenMech-PoseReach-Direct-v0 \
+    --agent rl_games_sapg_cfg_entry_point \
+    --headless \
+    --capture_viewer \
+    --wandb_activate \
+    --wandb_project "$WANDB_PROJECT" \
+    --wandb_group "$WANDB_GROUP" \
+    --wandb_entity "$WANDB_ENTITY" \
+    --wandb_name "$EXPERIMENT_NAME" \
+    env.assets.robot_spec="$ROBOT" \
+    env.scene.num_envs="$NUM_ENVS" \
+    agent.params.seed="$SEED" \
+    agent.params.config.max_epochs="$MAX_EPOCHS" \
+    hydra.run.dir="$RUN_DIR"

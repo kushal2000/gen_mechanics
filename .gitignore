@@ -1,0 +1,35 @@
+# venvs / caches
+.venv*/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.cache/
+.ruff_cache/
+.pytest_cache/
+
+# run outputs
+outputs/
+train_dir/
+results/
+wandb/
+videos/
+viser_viz_data/
+*.log
+
+# large generated assets
+**/generated_urdfs/
+
+# Claude Code local state (contains credentials) — never commit
+.claude/
+
+# Large binaries kept on disk but out of git. Both are copied verbatim from
+# /share/portal/kk837/simtoolreal (.gitignore has no inline comments, so the
+# annotations live here):
+#   pretrained_policy/        395 MB SHARPA SAPG checkpoint - the M1 parity anchor
+#   assets/dextoolbench/data/ 484 MB real tool scans + collision decompositions
+pretrained_policy/
+assets/dextoolbench/data/
+
+# rl_games fork docs/notebooks: ~37 MB of gifs and ipynbs, none of it used here
+third_party/rl_games/docs/
+third_party/rl_games/notebooks/

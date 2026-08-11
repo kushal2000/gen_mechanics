@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gen-mechanics"
+version = "0.1.0"
+description = "Does dexterous hand hardware generalize? A 6D pose-reaching benchmark across hands."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "MIT" }
+authors = [{ name = "Kushal Kedia", email = "kk837@cornell.edu" }]
+keywords = ["robotics", "rl", "dexterous manipulation", "isaac sim"]
+
+# Deliberately minimal. torch, isaacsim, and isaaclab are installed by the
+# recipe in docs/installation.md with exact pins (newer Isaac Lab changes the
+# DirectRLEnv / UrdfConverter APIs this code depends on), so they are NOT
+# listed here — a resolver must never be given the chance to move them.
+# rl_games is the vendored SAPG fork at third_party/rl_games, installed
+# editable; a PyPI rl-games would silently lack SAPG.
+dependencies = [
+    "gym==0.23.1",       # rl_games speaks old-gym spaces; isaaclab uses gymnasium
+    "omegaconf",
+    "hydra-core>=1.2",
+    "numpy",
+    "scipy",
+    "termcolor",
+    "tqdm",
+    "requests",
+    "pyyaml",
+    "jinja2",
+    "trimesh",
+    "yourdfpy",          # URDF loading for the reachability viewer
+    "viser",             # interactive reachability / debug viewers
+    "pandas",            # eval aggregation
+    "matplotlib",
+    "wandb",
+    "tensorboard",
+    "imageio[ffmpeg]",
+    "tyro",
+    "coacd",             # offline collision decomposition for real meshes
+]
+
+[project.optional-dependencies]
+dev = ["ipykernel", "ruff", "pytest"]
+
+[tool.setuptools.packages.find]
+include = ["genmech*"]
+
+[tool.ruff]
+line-length = 100
