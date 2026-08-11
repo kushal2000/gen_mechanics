@@ -20,8 +20,9 @@ Provenance:
   trusting a training result.
 - **hand armature** (0.001): not specified by Isaac Lab. Chosen to sit inside
   SHARPA's measured range (0.00042 - 0.0032). Authored, not derived.
-- **home pose**: Isaac Lab's ``KUKA_ALLEGRO_CFG`` ``joint_pos``, which opposes
-  the thumb — a sane pre-grasp, unlike an all-zeros pose that splays the hand.
+- **home pose**: fingers fully extended to match SHARPA's convention, thumb
+  opposed using Isaac Lab's ``KUKA_ALLEGRO_CFG`` values. See
+  ``HAND_DEFAULT_JOINT_POS`` for why the thumb cannot simply be zeroed.
 - **arm gains, home pose, base placement, arm adjacency**: shared with SHARPA.
 
 Geometry offsets, measured with yourdfpy FK against the generated URDF:
@@ -86,10 +87,26 @@ HAND_DAMPING: dict[str, float] = {name: 0.1 for name in HAND_JOINT_NAMES}
 # Not given by Isaac Lab; sits inside SHARPA's measured 0.00042-0.0032 range.
 HAND_ARMATURE: dict[str, float] = {name: 0.001 for name in HAND_JOINT_NAMES}
 
-# Isaac Lab's home pose: fingers slightly curled, thumb opposed.
+# Fingers fully extended, thumb opposed.
+#
+# SHARPA's home pose is all-zeros, which for its flexion joints (lower limit
+# 0.0) is the hard extension stop -- the hand starts fully open. Allegro must
+# start the same way or the two hands begin episodes at different points in
+# their own ranges, which changes how fast each can enclose an object. That is a
+# config choice, not a hardware property, and it would leak straight into the
+# comparison.
+#
+# So the four flexion joints per finger are 0.0 (straight; -0.279 is
+# hyperextension, not a pose to start from) and abduction is centred.
+#
+# The thumb cannot follow the same rule: `thumb_joint_0` has limits
+# [0.279, 1.571], so 0.0 is outside its range and would be clamped. Allegro's
+# zero is simply not SHARPA's zero. Its neutral is defined by its own range, and
+# Isaac Lab's KUKA_ALLEGRO_CFG value of 1.5 (95% of range) opposes the thumb
+# across the fingers -- the analogue of where SHARPA's thumb already sits at
+# zero. The remaining thumb joints keep Isaac Lab's values.
 HAND_DEFAULT_JOINT_POS: dict[str, float] = {
-    **{f"{f}_joint_0": 0.0 for f in ("index", "middle", "ring")},
-    **{f"{f}_joint_{i}": 0.3 for f in ("index", "middle", "ring") for i in (1, 2, 3)},
+    **{f"{f}_joint_{i}": 0.0 for f in ("index", "middle", "ring") for i in range(4)},
     "thumb_joint_0": 1.5,
     "thumb_joint_1": 0.60147215,
     "thumb_joint_2": 0.33795027,

@@ -28,6 +28,7 @@ reachability viewer before freezing a value.
 from __future__ import annotations
 
 import argparse
+import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -54,6 +55,15 @@ HAND_JOINTS = ("allegro_mount_joint",) + tuple(
 IIWA7_FLANGE_TO_EE_Z = 0.071
 IIWA14_FLANGE_TO_EE_Z = 0.045
 MOUNT_Z = IIWA7_FLANGE_TO_EE_Z - IIWA14_FLANGE_TO_EE_Z  # 0.026
+
+# Rotation of the hand about the flange axis. Unlike MOUNT_Z this is not derived
+# from anything -- it sets where the thumb points relative to the arm, and the
+# right value is a judgement about how the hand presents itself to the table.
+# 60 deg CCW was chosen by eye in genmech/tools/reachability_viewer.py.
+# It is a default rather than a CLI-only flag so that rebuilding the URDF
+# without arguments reproduces the shipped robot instead of silently reverting
+# the hand to 0 and invalidating a trained policy.
+MOUNT_YAW = math.radians(60.0)
 
 # Allegro meshes were copied out of the isaacgym asset tree; rewrite its
 # package-rooted prefix to a path relative to the generated URDF's directory,
@@ -93,9 +103,10 @@ def _rewrite_meshes(elem: ET.Element, frm: str, to: str) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mount_yaw", type=float, default=0.0,
+    parser.add_argument("--mount_yaw", type=float, default=MOUNT_YAW,
                         help="Rotation of the hand about the flange axis, radians. "
-                             "Sets where the thumb points relative to the arm.")
+                             "Sets where the thumb points relative to the arm. "
+                             f"Default {MOUNT_YAW:.4f} rad (60 deg), chosen visually.")
     parser.add_argument("--mount_z", type=float, default=MOUNT_Z)
     parser.add_argument("--out", default=OUT_URDF)
     args = parser.parse_args()
@@ -112,7 +123,8 @@ def main() -> None:
         f"     mount: iiwa14_link_ee -> allegro_mount at z={args.mount_z:.4f}\n"
         f"            (0.071 iiwa7 flange-to-ee minus 0.045 iiwa14 flange-to-ee), so the\n"
         f"            shipped flange-to-palm geometry is reproduced exactly.\n"
-        f"     mount_yaw = {args.mount_yaw} rad\n"
+        f"     mount_yaw = {args.mount_yaw:.6f} rad "
+        f"({math.degrees(args.mount_yaw):.1f} deg), chosen visually.\n"
     ))
 
     # Materials from both sources, first definition wins.

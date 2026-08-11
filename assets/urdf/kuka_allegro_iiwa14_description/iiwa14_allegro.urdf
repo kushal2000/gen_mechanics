@@ -7,7 +7,7 @@
      mount: iiwa14_link_ee -> allegro_mount at z=0.0260
             (0.071 iiwa7 flange-to-ee minus 0.045 iiwa14 flange-to-ee), so the
             shipped flange-to-palm geometry is reproduced exactly.
-     mount_yaw = 0.0 rad
+     mount_yaw = 1.047198 rad (60.0 deg), chosen visually.
 -->
   <material name="Black">
     <color rgba="0.0 0.0 0.0 1.0" />
@@ -280,7 +280,7 @@
   <joint name="iiwa14_allegro" type="fixed">
     <parent link="iiwa14_link_ee" />
     <child link="allegro_mount" />
-    <origin xyz="0 0 0.025999999999999995" rpy="0 0 0.0" />
+    <origin xyz="0 0 0.025999999999999995" rpy="0 0 1.0471975511965976" />
   </joint>
   <link name="allegro_mount">
     <inertial>
