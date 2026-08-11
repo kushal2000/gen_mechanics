@@ -110,9 +110,11 @@ HAND_ARMATURE: dict[str, float] = {name: 0.001 for name in HAND_JOINT_NAMES}
 # structural offset in the thumb's links, not residual curl -- sweeping the
 # flexion joints confirms 0.0 is their maximum-extension value.)
 #
-# What the joint actually sets is opposition: how far the thumb swings across
-# the palm toward the fingers. Its limits are [0.279, 1.571], so 0.0 is outside
-# its range entirely and would clamp -- Allegro's zero is not SHARPA's zero.
+# What the joint actually sets is thumb ABDUCTION. At its lower limit (0.279)
+# the thumb is spread out alongside the fingers -- the hand-wide-open posture.
+# At its upper end it is adducted across the palm into opposition, facing the
+# fingers. Its limits are [0.279, 1.571], so 0.0 is outside the range entirely
+# and would clamp: Allegro's zero is not SHARPA's zero.
 #
 # 1.5 is chosen by matching SHARPA's thumb posture, measured as the angle at the
 # palm between the thumb ray and the finger-tip centroid ray:
@@ -121,9 +123,10 @@ HAND_ARMATURE: dict[str, float] = {name: 0.001 for name in HAND_JOINT_NAMES}
 #     Allegro thumb_joint_0 = 1.500        38.3 deg,  gap 0.203 m   <- closest
 #     Allegro thumb_joint_0 = 0.279        48.6 deg,  gap 0.224 m
 #
-# The lower limit looks "more extended" on screen because the straight thumb
-# points away from the palm, but it is further from SHARPA's posture and a worse
-# pre-grasp. 1.5 is also Isaac Lab's KUKA_ALLEGRO_CFG value.
+# The lower limit reads as "more extended" on screen because it splays the
+# straight thumb out with the fingers, but that is the hand-wide-open posture,
+# further from SHARPA's and a worse pre-grasp. 1.5 is also Isaac Lab's
+# KUKA_ALLEGRO_CFG value.
 HAND_DEFAULT_JOINT_POS: dict[str, float] = {
     **{f"{f}_joint_{i}": 0.0 for f in ("index", "middle", "ring") for i in range(4)},
     "thumb_joint_0": 1.5,
