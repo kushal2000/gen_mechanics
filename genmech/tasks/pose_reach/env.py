@@ -1,7 +1,9 @@
-"""Thin DirectRLEnv wrapper for PoseReach.
+"""Thin DirectRLEnv wrapper for the PoseReach task.
 
 The env owns Isaac Lab hook wiring and state buffers. Task math lives in the
-utility modules called from each hook.
+utility modules called from each hook, and everything hardware-specific comes
+from ``self.robot_spec`` (see genmech/robots/), so swapping hands is a config
+change rather than an edit here.
 """
 
 from __future__ import annotations
@@ -9,6 +11,8 @@ from __future__ import annotations
 import torch
 
 from isaaclab.envs import DirectRLEnv
+
+from genmech.robots import get_robot_spec
 
 from .env_cfg import PoseReachEnvCfg
 from .utils.action_utils import apply_action_pipeline, apply_wrench_dr
@@ -34,10 +38,26 @@ class PoseReachEnv(DirectRLEnv):
     def __init__(
         self, cfg: PoseReachEnvCfg, render_mode: str | None = None, **kwargs
     ) -> None:
-        # Override obs/state space from configured field lists before
-        # DirectRLEnv / rl_games observes the configclass.
-        cfg.observation_space = compute_obs_dim(cfg.obs.obs_list)
-        cfg.state_space = compute_obs_dim(cfg.obs.state_list)
+        # Resolve the robot BEFORE super().__init__: DirectRLEnv and rl_games
+        # read action_space / observation_space off the configclass, and all
+        # three are derived from the spec. _setup_scene also needs self.robot_spec.
+        spec = get_robot_spec(cfg.assets.robot_spec)
+        self.robot_spec = spec
+
+        # action_space defaults to 0 ("derive"). A non-zero value is a caller
+        # assertion about the robot; disagreeing with the spec means a stale
+        # config, which would otherwise silently truncate the action vector.
+        if cfg.action_space not in (0, spec.num_joints):
+            raise ValueError(
+                f"cfg.action_space={cfg.action_space} disagrees with robot_spec "
+                f"{spec.name!r} ({spec.num_joints} joints). Leave it 0 to derive."
+            )
+        cfg.action_space = spec.num_joints
+
+        # Obs/state widths follow the configured field lists and the hand's
+        # joint and fingertip counts.
+        cfg.observation_space = compute_obs_dim(cfg.obs.obs_list, spec)
+        cfg.state_space = compute_obs_dim(cfg.obs.state_list, spec)
 
         super().__init__(cfg, render_mode, **kwargs)  # runs _setup_scene
         apply_physx_material_properties(self)

@@ -54,9 +54,15 @@ from isaaclab.utils import configclass
 
 @configclass
 class AssetsCfg:
-    robot_urdf: str = (
-        "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
-    )
+    # The robot knob. Selects a RobotSpec from genmech.robots.REGISTRY, which
+    # carries the joint names and order, PD gains, home pose, palm and fingertip
+    # geometry, and self-collision adjacency. action_space and the observation
+    # dims are derived from it, so this is the only field a hand swap needs.
+    robot_spec: str = "sharpa_iiwa14"
+    # Optional URDF override for the selected spec. Empty means use
+    # spec.urdf_path. Useful for sweeping a mount transform without editing the
+    # spec; the joint set must still match, which the env asserts.
+    robot_urdf: str = ""
     table_urdf: str = "assets/urdf/table_narrow.urdf"
     # Per-env scale ranges applied to the table mesh at scene-build time.
     # Sampled independently per env: sx ~ U(table_scale_range_x), sy ~ U(table_scale_range_y).
@@ -244,13 +250,13 @@ class StudentObsCfg:
         # `/visuals` group; multi-link URDFs (fabrica) match each link's
         # `/visuals` group independently, which is what we want.
         "/World/envs/env_.*/Object/.*/visuals",
-        # iiwa arm + sharpa hand link visuals. Explicit prefixes (not a
-        # broad `/Robot/.*/visuals`) so the parser doesn't try to make
-        # rigid-body views for non-link prims like `/Robot/Looks` /
-        # `/Robot/joints` (those stall sensor init for several minutes
-        # with PhysX retries before timing out).
-        "/World/envs/env_.*/Robot/iiwa14_link_.*/visuals",
-        "/World/envs/env_.*/Robot/left_.*/visuals",
+        # Robot link visuals are NOT listed here: they come from the selected
+        # RobotSpec's link_prim_regexes and are appended at scene setup, so a
+        # hand swap does not need this list edited. Explicit per-prefix patterns
+        # (rather than a broad `/Robot/.*/visuals`) matter -- the parser would
+        # otherwise try to build rigid-body views for non-link prims like
+        # `/Robot/Looks` and `/Robot/joints`, which stalls sensor init for
+        # minutes on PhysX retries before timing out.
     )
     # Rays that don't intersect any mesh return max_distance (instead of NaN)
     # when `depth_clipping_behavior == "max"`. Keep at the rasterizer's default
@@ -546,7 +552,11 @@ class PoseReachEnvCfg(DirectRLEnvCfg):
     # --- DirectRLEnvCfg required fields ---
     decimation: int = 2  # 2 physics substeps per policy step
     episode_length_s: float = 10.0  # 600 policy steps * 2 * (1/120) = 10s
-    action_space: int = 29  # 7-DOF IIWA + 22-DOF SHARPA hand
+    # 0 means "derive from assets.robot_spec" (PoseReachEnv.__init__ sets it to
+    # spec.num_joints). A non-zero value is checked against the spec and raises
+    # on mismatch, so a stale override fails loudly instead of silently
+    # truncating the action vector.
+    action_space: int = 0
     # Obs/state sizes are derived from obs.obs_list / obs.state_list at env init.
     # Placeholder keeps the configclass instantiable before the env computes the
     # final spaces.

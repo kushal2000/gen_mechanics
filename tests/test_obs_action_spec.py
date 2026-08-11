@@ -62,6 +62,7 @@ def main() -> None:
 
     import genmech.tasks  # noqa: F401  registers GenMech-PoseReach-Direct-v0
     from genmech.tasks.pose_reach.env_cfg import PoseReachEnvCfg
+    from genmech.robots import get_robot_spec
     from genmech.tasks.pose_reach.utils.obs_utils import compute_obs_dim
 
     expected_obs, expected_act = _dims_from_checkpoint(args.checkpoint)
@@ -71,8 +72,8 @@ def main() -> None:
     cfg.scene.num_envs = args.num_envs
     cfg.assets.num_assets_per_type = args.num_assets_per_type
 
-    assert compute_obs_dim(cfg.obs.obs_list) == expected_obs, (
-        f"obs_list sums to {compute_obs_dim(cfg.obs.obs_list)}, "
+    assert compute_obs_dim(cfg.obs.obs_list, get_robot_spec(cfg.assets.robot_spec)) == expected_obs, (
+        f"obs_list sums to {compute_obs_dim(cfg.obs.obs_list, get_robot_spec(cfg.assets.robot_spec))}, "
         f"checkpoint expects {expected_obs}"
     )
 

@@ -14,15 +14,8 @@ from isaaclab.utils.math import convert_quat, quat_apply, quat_from_angle_axis, 
 # ----------------------------------------------------------------------------
 
 
-NUM_JOINTS: int = 29
-NUM_FINGERTIPS: int = 5
+# Task constants — hand-independent.
 NUM_KEYPOINTS: int = 4
-
-# Policy was trained against the palm center, not the raw wrist body.
-PALM_CENTER_OFFSET: tuple[float, float, float] = (-0.0, -0.02, 0.16)
-
-# Shift fingertip body origins to the approximate pad centers.
-FINGERTIP_OFFSET: tuple[float, float, float] = (0.02, 0.002, 0.0)
 
 # Object-frame keypoint corners before scaling.
 KEYPOINT_CORNERS: tuple[tuple[int, int, int], ...] = (
@@ -32,31 +25,51 @@ KEYPOINT_CORNERS: tuple[tuple[int, int, int], ...] = (
     (-1, -1, -1),
 )
 
-OBS_FIELD_SIZES: dict[str, int] = {
-    "joint_pos": NUM_JOINTS,
-    "joint_vel": NUM_JOINTS,
-    "prev_action_targets": NUM_JOINTS,
-    "palm_pos": 3,
-    "palm_rot": 4,
-    "palm_vel": 6,
-    "object_rot": 4,
-    "object_vel": 6,
-    "fingertip_pos_rel_palm": 3 * NUM_FINGERTIPS,  # 15
-    "keypoints_rel_palm": 3 * NUM_KEYPOINTS,  # 12
-    "keypoints_rel_goal": 3 * NUM_KEYPOINTS,  # 12
-    "object_scales": 3,
-    "closest_keypoint_max_dist": 1,
-    "closest_fingertip_dist": NUM_FINGERTIPS,  # 5
-    "lifted_object": 1,
-    "progress": 1,
-    "successes": 1,
-    "reward": 1,
-}
+# Joint count, fingertip count, and the palm/fingertip geometry offsets used to
+# be module constants here (29 / 5 / two fixed 3-vectors). They are now read
+# from the RobotSpec, so obs dims follow the selected hand instead of being
+# pinned to SHARPA. See genmech/robots/spec.py.
 
 
-def compute_obs_dim(field_list) -> int:
-    """Return total tensor dim for an ordered list of obs field names."""
-    return sum(OBS_FIELD_SIZES[f] for f in field_list)
+def obs_field_sizes(spec) -> dict[str, int]:
+    """Per-field observation widths for a given robot.
+
+    Sizes that scale with hardware — joint vectors and the two fingertip
+    fields — come from the spec; the rest are task-fixed.
+    """
+    n_joints = spec.num_joints
+    n_tips = spec.num_fingertips
+    return {
+        "joint_pos": n_joints,
+        "joint_vel": n_joints,
+        "prev_action_targets": n_joints,
+        "palm_pos": 3,
+        "palm_rot": 4,
+        "palm_vel": 6,
+        "object_rot": 4,
+        "object_vel": 6,
+        "fingertip_pos_rel_palm": 3 * n_tips,
+        "keypoints_rel_palm": 3 * NUM_KEYPOINTS,
+        "keypoints_rel_goal": 3 * NUM_KEYPOINTS,
+        "object_scales": 3,
+        "closest_keypoint_max_dist": 1,
+        "closest_fingertip_dist": n_tips,
+        "lifted_object": 1,
+        "progress": 1,
+        "successes": 1,
+        "reward": 1,
+    }
+
+
+def compute_obs_dim(field_list, spec) -> int:
+    """Total tensor dim for an ordered list of obs field names, for this robot."""
+    sizes = obs_field_sizes(spec)
+    unknown = [f for f in field_list if f not in sizes]
+    if unknown:
+        raise KeyError(
+            f"unknown observation field(s) {unknown}; valid: {sorted(sizes)}"
+        )
+    return sum(sizes[f] for f in field_list)
 
 
 def _stack_obs_dict(obs_dict: dict[str, torch.Tensor], field_list) -> torch.Tensor:
@@ -88,10 +101,17 @@ def _perturb_quat(q_wxyz: torch.Tensor, max_deg: float) -> torch.Tensor:
 def _apply_local_offset(
     pos_w: torch.Tensor,
     rot_wxyz: torch.Tensor,
-    offset: tuple[float, float, float],
+    offset,
     batch_shape: tuple[int, ...],
 ) -> torch.Tensor:
-    """Apply one local-frame offset to batched world poses."""
+    """Apply a local-frame offset to batched world poses.
+
+    ``offset`` is either one 3-vector broadcast over the whole batch (the palm
+    center) or a per-item ``(F, 3)`` stack (fingertip pad centers, which differ
+    per finger on hands with asymmetric distal geometry).
+    """
+    # A (3,) offset broadcasts across the whole batch; an (F, 3) stack
+    # broadcasts across the leading env dim, giving each finger its own offset.
     offset_t = torch.as_tensor(offset, device=pos_w.device, dtype=pos_w.dtype)
     offset_t = offset_t.expand(*batch_shape, 3)
     shifted = quat_apply(
@@ -241,7 +261,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     palm_vel = palm_state[:, 7:13]
 
     palm_center_pos_w = _apply_local_offset(
-        palm_pos_w, palm_rot, PALM_CENTER_OFFSET, (env.num_envs,)
+        palm_pos_w, palm_rot, env._palm_center_offset, (env.num_envs,)
     )
     palm_pos = palm_center_pos_w - env_origins
 
@@ -252,8 +272,8 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     ft_pos_w = _apply_local_offset(
         ft_body_pos_w,
         ft_body_rot_w,
-        FINGERTIP_OFFSET,
-        (env.num_envs, NUM_FINGERTIPS),
+        env._fingertip_offsets,
+        (env.num_envs, env._num_fingertips),
     )
 
     obj_pos = env.object.data.root_pos_w - env_origins
@@ -461,11 +481,9 @@ def build_student_observations(env) -> dict[str, torch.Tensor]:
 
 
 __all__ = [
-    "NUM_JOINTS",
-    "NUM_FINGERTIPS",
     "NUM_KEYPOINTS",
     "KEYPOINT_CORNERS",
-    "OBS_FIELD_SIZES",
+    "obs_field_sizes",
     "compute_obs_dim",
     "compute_intermediate_values",
     "build_observations",

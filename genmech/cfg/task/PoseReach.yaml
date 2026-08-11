@@ -3,10 +3,11 @@
 # -----------------------------------------------------------------------------
 decimation: 2
 episode_length_s: 10.0
-action_space: 29
-# observation_space / state_space are computed in PoseReachEnv.__init__ from
-# obs.obs_list / obs.state_list (see Phase D). Configclass defaults (140/140)
-# act only as transient placeholders before __init__ overwrites them.
+# action_space / observation_space / state_space are all DERIVED in
+# PoseReachEnv.__init__ -- action_space from the selected RobotSpec's joint
+# count, obs/state from obs.obs_list / obs.state_list. Do not pin them here: a
+# stale literal would either fail the spec cross-check or silently describe the
+# wrong robot.
 
 # -----------------------------------------------------------------------------
 # 1) sim — SimulationCfg (60 Hz policy control, 120 Hz physics)
@@ -44,7 +45,13 @@ scene:
 # 3) assets — URDFs, procedural-generation knobs, static per-material frictions
 # -----------------------------------------------------------------------------
 assets:
-  robot_urdf: "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
+  # The robot knob. Everything hardware-specific (joint names and order, PD
+  # gains, home pose, palm/fingertip geometry, self-collision adjacency, action
+  # dim) comes from this spec -- see genmech/robots/. Override on the CLI with
+  # env.assets.robot_spec=<name>.
+  robot_spec: "sharpa_iiwa14"
+  # Empty => use the spec's own URDF path.
+  robot_urdf: ""
   table_urdf: "assets/urdf/table_narrow.urdf"
 
   object_name: "handle_head_primitives"

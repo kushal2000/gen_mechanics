@@ -11,14 +11,8 @@ from isaaclab.utils.math import random_orientation
 
 from .action_utils import sample_log_uniform
 from .goal_sampling import sample_absolute_goal_pose, sample_delta_goal_pose
-from .obs_utils import KEYPOINT_CORNERS, NUM_FINGERTIPS
-from .scene_utils import (
-    ARM_JOINT_REGEX,
-    FINGERTIP_BODY_REGEX,
-    HAND_JOINT_REGEX,
-    JOINT_NAMES_CANONICAL,
-    PALM_BODY_NAME,
-)
+from .obs_utils import KEYPOINT_CORNERS
+
 
 def allocate_state_buffers(env) -> None:
     """Populate every per-env buffer + index cache used by the hooks.
@@ -26,34 +20,94 @@ def allocate_state_buffers(env) -> None:
     Called once from ``__init__`` after ``super().__init__`` (which runs
     ``_setup_scene`` and makes ``env.robot``/``env.object``/``env.goal_viz``
     available).
+
+    This is the single place the robot spec meets the live articulation: joint
+    and body ids, the canonical<->Lab permutations, joint limits, and the
+    geometry offsets are all resolved here and cached on ``env``.
     """
     dr = env.cfg.domain_randomization
     rew = env.cfg.reward
+    spec = env.robot_spec
 
     # --- Joint/body id caches ---
-    env._arm_joint_ids = env.robot.find_joints(ARM_JOINT_REGEX)[0]      # 7
-    env._hand_joint_ids = env.robot.find_joints(HAND_JOINT_REGEX)[0]     # 22
-    env._palm_body_id = env.robot.find_bodies(PALM_BODY_NAME)[0][0]
-    env._fingertip_body_ids = env.robot.find_bodies(FINGERTIP_BODY_REGEX)[0]  # 5
-    assert len(env._fingertip_body_ids) == NUM_FINGERTIPS
+    # Joints are *selected* by exact name from the spec (not by a regex like
+    # "left_.*", which assumes a naming convention), then sorted into ascending
+    # Lab order.
+    #
+    # The sort matters. Isaac Lab's parser interleaves the hand joints relative
+    # to canonical order (SHARPA lands as 7, 12, 17, 22, 27, 8, ...), so
+    # preserving spec order here would reorder the summation in the hand action
+    # penalty. That is mathematically identical but not identical in float32:
+    # it perturbed the reward by ~3e-8 and broke bitwise parity. Ascending order
+    # also means the reward cannot depend on the arbitrary order a spec happens
+    # to list its joints in.
+    #
+    # Nothing downstream needs canonical order from these: the action pipeline,
+    # limit tables, and target buffers all index with the same id tensors, so
+    # any consistent order is correct. Canonical order is reached separately via
+    # _perm_lab_to_canon.
+    env._arm_joint_ids = sorted(
+        env.robot.find_joints(list(spec.arm_joint_names), preserve_order=True)[0]
+    )
+    env._hand_joint_ids = sorted(
+        env.robot.find_joints(list(spec.hand_joint_names), preserve_order=True)[0]
+    )
+    env._palm_body_id = env.robot.find_bodies(spec.palm_body_name)[0][0]
+    # Fingertips DO keep spec order: index i must be the same finger as
+    # fingertip_offsets[i], and as column i of the fingertip observations.
+    env._fingertip_body_ids = env.robot.find_bodies(
+        list(spec.fingertip_body_names), preserve_order=True
+    )[0]
+
+    env._num_joints = spec.num_joints
+    env._num_hand_joints = spec.num_hand_joints
+    env._num_fingertips = spec.num_fingertips
+
+    if len(env._fingertip_body_ids) != spec.num_fingertips:
+        raise RuntimeError(
+            f"{spec.name}: found {len(env._fingertip_body_ids)} fingertip bodies, "
+            f"spec declares {spec.num_fingertips} ({list(spec.fingertip_body_names)})"
+        )
+    # Everything downstream — action routing, the arm/hand reward penalties, the
+    # limit tables — assumes these two id sets tile the joint vector exactly.
+    if sorted(env._arm_joint_ids + env._hand_joint_ids) != list(range(spec.num_joints)):
+        raise RuntimeError(
+            f"{spec.name}: arm ids {env._arm_joint_ids} and hand ids "
+            f"{env._hand_joint_ids} do not partition range({spec.num_joints})"
+        )
+
+    # Geometry offsets, spec-provided so they follow the hand.
+    env._palm_center_offset = torch.tensor(
+        spec.palm_center_offset, device=env.device, dtype=torch.float32
+    )  # (3,)
+    env._fingertip_offsets = torch.tensor(
+        spec.fingertip_offsets, device=env.device, dtype=torch.float32
+    )  # (F, 3)
 
     # Convert between Lab parser order and canonical policy order.
+    canonical = spec.joint_names_canonical
     lab_names = list(env.robot.data.joint_names)
-    assert set(lab_names) == set(JOINT_NAMES_CANONICAL)
+    if set(lab_names) != set(canonical):
+        only_urdf = sorted(set(lab_names) - set(canonical))
+        only_spec = sorted(set(canonical) - set(lab_names))
+        raise RuntimeError(
+            f"{spec.name}: URDF joints do not match the spec "
+            f"(in URDF only: {only_urdf}; in spec only: {only_spec})"
+        )
     env._perm_canon_to_lab = torch.tensor(
-        [JOINT_NAMES_CANONICAL.index(n) for n in lab_names],
+        [canonical.index(n) for n in lab_names],
         device=env.device, dtype=torch.long,
     )
     env._perm_lab_to_canon = torch.tensor(
-        [lab_names.index(n) for n in JOINT_NAMES_CANONICAL],
+        [lab_names.index(n) for n in canonical],
         device=env.device, dtype=torch.long,
     )
 
     limits = env.robot.data.joint_pos_limits  # (N, num_joints, 2), Lab order
 
     # Canonical-order limits for normalizing joint_pos observations.
-    env._joint_lower_canon = limits[0, :, 0][env._perm_lab_to_canon]  # (29,)
-    env._joint_upper_canon = limits[0, :, 1][env._perm_lab_to_canon]  # (29,)
+    env._joint_lower_canon = limits[0, :, 0][env._perm_lab_to_canon]  # (num_joints,)
+    env._joint_upper_canon = limits[0, :, 1][env._perm_lab_to_canon]
 
     # Lab-order limits for action target clamping.
     env._arm_lower = limits[:, env._arm_joint_ids, 0]
@@ -99,7 +153,7 @@ def allocate_state_buffers(env) -> None:
     )
     # the minimum distance between a fingertip and the object since the last goal reset
     env._closest_fingertip_dist = torch.full(
-        (env.num_envs, NUM_FINGERTIPS), -1.0, device=env.device
+        (env.num_envs, spec.num_fingertips), -1.0, device=env.device
     )
     # the number of succeesses in the current episode
     env._successes = torch.zeros(
@@ -163,7 +217,7 @@ def allocate_state_buffers(env) -> None:
     # --- Step-shared caches populated by compute_intermediate_values (Phase F) ---
     env._keypoints_max_dist = torch.zeros(env.num_envs, device=env.device)
     env._curr_fingertip_distances = torch.zeros(
-        env.num_envs, NUM_FINGERTIPS, device=env.device
+        env.num_envs, spec.num_fingertips, device=env.device
     )
     env._near_goal = torch.zeros(
         env.num_envs, dtype=torch.bool, device=env.device

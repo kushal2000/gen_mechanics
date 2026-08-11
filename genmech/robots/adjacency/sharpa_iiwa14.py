@@ -1,26 +1,29 @@
 """Self-collision filter pairs for the left SHARPA hand on a KUKA iiwa14.
 
-Link pairs listed here have their self-collision *filtered out*; PhysX already
-auto-filters directly-jointed parent/child pairs, so the value here is the
-non-kinematic-neighbor pairs (palm-to-proximal-phalanx, MC-to-PP).
+Link pairs listed here have their self-collision *filtered out*. PhysX already
+auto-filters directly-jointed parent/child pairs, so what earns its place is the
+non-kinematic-neighbour pairs: palm-to-proximal-phalanx and MC-to-PP, which
+overlap geometrically at the knuckles without being joined.
 
-Ported from simtoolreal ``isaacgymenvs/tasks/simtoolreal/adjacent_links.py``,
-merging its LEFT and RIGHT maps (the RIGHT entries add only the shared iiwa14
-arm chain for a left-hand URDF; right-hand links simply find no prim).
+Names are POST-``merge_fixed_joints``. That is why the palm appears as
+``iiwa14_link_7`` rather than the URDF's ``left_hand_C_MC`` — the importer
+collapses link_ee -> sharpa_mount -> left_hand_C_MC into the arm's last link.
+
+The arm chain is imported from ``iiwa14_arm`` rather than restated, so it stays
+identical across hands along with the rest of the arm (docs/methodology.md §1).
+
+Ported from simtoolreal ``isaacgymenvs/tasks/simtoolreal/adjacent_links.py``.
+Only its LEFT map is used: simtoolreal merged LEFT+RIGHT defensively, but the
+right-hand links match no prim in a left-hand URDF and were silently skipped.
 Pairs are listed in both directions, matching the original.
 """
 
 from __future__ import annotations
 
+from genmech.robots.iiwa14_arm import ARM_ADJACENT_LINKS
 
-SHARPA_IIWA14_ADJACENT_LINKS: dict[str, list[str]] = {
-    "iiwa14_link_0": ["iiwa14_link_1"],
-    "iiwa14_link_1": ["iiwa14_link_0", "iiwa14_link_2"],
-    "iiwa14_link_2": ["iiwa14_link_1", "iiwa14_link_3"],
-    "iiwa14_link_3": ["iiwa14_link_2", "iiwa14_link_4"],
-    "iiwa14_link_4": ["iiwa14_link_3", "iiwa14_link_5"],
-    "iiwa14_link_5": ["iiwa14_link_4", "iiwa14_link_6"],
-    "iiwa14_link_6": ["iiwa14_link_5", "iiwa14_link_7"],
+
+_HAND_ADJACENT_LINKS: dict[str, list[str]] = {
     "iiwa14_link_7": [
         "iiwa14_link_6",
         "left_thumb_CMC_VL",
@@ -32,11 +35,6 @@ SHARPA_IIWA14_ADJACENT_LINKS: dict[str, list[str]] = {
         "left_ring_MCP_VL",
         "left_ring_PP",
         "left_pinky_MC",
-        "right_index_MCP_VL",
-        "right_middle_MCP_VL",
-        "right_pinky_MC",
-        "right_ring_MCP_VL",
-        "right_thumb_CMC_VL",
     ],
     "left_index_MCP_VL": ["iiwa14_link_7", "left_index_PP"],
     "left_index_PP": ["iiwa14_link_7", "left_index_MCP_VL", "left_index_MP"],
@@ -65,28 +63,12 @@ SHARPA_IIWA14_ADJACENT_LINKS: dict[str, list[str]] = {
     "left_thumb_MCP_VL": ["left_thumb_MC", "left_thumb_PP"],
     "left_thumb_PP": ["left_thumb_MC", "left_thumb_MCP_VL", "left_thumb_DP"],
     "left_thumb_DP": ["left_thumb_PP"],
-    "right_index_MCP_VL": ["iiwa14_link_7", "right_index_PP"],
-    "right_index_PP": ["right_index_MCP_VL", "right_index_MP"],
-    "right_index_MP": ["right_index_PP", "right_index_DP"],
-    "right_index_DP": ["right_index_MP"],
-    "right_middle_MCP_VL": ["iiwa14_link_7", "right_middle_PP"],
-    "right_middle_PP": ["right_middle_MCP_VL", "right_middle_MP"],
-    "right_middle_MP": ["right_middle_PP", "right_middle_DP"],
-    "right_middle_DP": ["right_middle_MP"],
-    "right_pinky_MC": ["iiwa14_link_7", "right_pinky_MCP_VL"],
-    "right_pinky_MCP_VL": ["right_pinky_MC", "right_pinky_PP"],
-    "right_pinky_PP": ["right_pinky_MCP_VL", "right_pinky_MP"],
-    "right_pinky_MP": ["right_pinky_PP", "right_pinky_DP"],
-    "right_pinky_DP": ["right_pinky_MP"],
-    "right_ring_MCP_VL": ["iiwa14_link_7", "right_ring_PP"],
-    "right_ring_PP": ["right_ring_MCP_VL", "right_ring_MP"],
-    "right_ring_MP": ["right_ring_PP", "right_ring_DP"],
-    "right_ring_DP": ["right_ring_MP"],
-    "right_thumb_CMC_VL": ["iiwa14_link_7", "right_thumb_MC"],
-    "right_thumb_MC": ["right_thumb_CMC_VL", "right_thumb_MCP_VL"],
-    "right_thumb_MCP_VL": ["right_thumb_MC", "right_thumb_PP"],
-    "right_thumb_PP": ["right_thumb_MCP_VL", "right_thumb_DP"],
-    "right_thumb_DP": ["right_thumb_PP"],
+}
+
+# Shared arm chain + this hand's palm/finger pairs.
+SHARPA_IIWA14_ADJACENT_LINKS: dict[str, list[str]] = {
+    **ARM_ADJACENT_LINKS,
+    **_HAND_ADJACENT_LINKS,
 }
 
 

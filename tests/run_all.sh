@@ -29,6 +29,7 @@ TESTS=(
     "tests/test_env_smoke.py --num_envs 8 --num_assets_per_type 2 --steps 10"
     "tests/test_obs_action_spec.py"
     "tests/test_action_pipeline.py --num_envs 4 --num_assets_per_type 1"
+    "tests/test_robot_spec_invariants.py"
 )
 SLOW=(
     "tests/test_sharpa_parity.py"

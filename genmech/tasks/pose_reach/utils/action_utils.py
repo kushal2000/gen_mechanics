@@ -47,30 +47,38 @@ def apply_action_pipeline(env, actions: torch.Tensor) -> None:
             torch.arange(env.num_envs, device=env.device), delay_idx
         ]
 
+    # Split by joint id, not by position. `actions` and `_prev_targets` are both
+    # in Isaac Lab parser order, and the arm joints are only contiguous at the
+    # front for robots whose URDF happens to declare them first (SHARPA does;
+    # test_action_pipeline.py asserts it). Indexing by _arm_joint_ids /
+    # _hand_joint_ids keeps this correct for any hand, and the id sets are
+    # checked to partition the joint vector in allocate_state_buffers.
+    arm_ids, hand_ids = env._arm_joint_ids, env._hand_joint_ids
+
     # Arm: velocity-delta accumulator.
-    arm_action = actions[:, :7]
-    arm_raw = env._prev_targets[:, :7] + act_cfg.dof_speed_scale * dt * arm_action
+    arm_prev = env._prev_targets[:, arm_ids]
+    arm_raw = arm_prev + act_cfg.dof_speed_scale * dt * actions[:, arm_ids]
     arm_raw = torch.clamp(arm_raw, env._arm_lower, env._arm_upper)
     arm_smoothed = (
         act_cfg.arm_moving_average * arm_raw
-        + (1.0 - act_cfg.arm_moving_average) * env._prev_targets[:, :7]
+        + (1.0 - act_cfg.arm_moving_average) * arm_prev
     )
     arm_smoothed = torch.clamp(arm_smoothed, env._arm_lower, env._arm_upper)
 
     # Hand: absolute [-1, 1] scale.
-    hand_action = actions[:, 7:]
-    hand_raw = env._hand_lower + 0.5 * (hand_action + 1.0) * (
+    hand_prev = env._prev_targets[:, hand_ids]
+    hand_raw = env._hand_lower + 0.5 * (actions[:, hand_ids] + 1.0) * (
         env._hand_upper - env._hand_lower
     )
     hand_smoothed = (
         act_cfg.hand_moving_average * hand_raw
-        + (1.0 - act_cfg.hand_moving_average) * env._prev_targets[:, 7:]
+        + (1.0 - act_cfg.hand_moving_average) * hand_prev
     )
     hand_smoothed = torch.clamp(hand_smoothed, env._hand_lower, env._hand_upper)
 
     # Write Lab-order targets and cache them for the next step.
-    env._cur_targets[:, env._arm_joint_ids] = arm_smoothed
-    env._cur_targets[:, env._hand_joint_ids] = hand_smoothed
+    env._cur_targets[:, arm_ids] = arm_smoothed
+    env._cur_targets[:, hand_ids] = hand_smoothed
     env._prev_targets = env._cur_targets.clone()
 
 
