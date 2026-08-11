@@ -1530,6 +1530,11 @@ def apply_physx_material_properties(env) -> None:
             per_env_obj = bucket_vals[bucket_idx]  # (N_envs,)
             materials[:, :, 0] = per_env_obj.unsqueeze(-1)
             materials[:, :, 1] = per_env_obj.unsqueeze(-1)
+        # Column 2 is restitution. Training uses 0.0 (fully inelastic), so the
+        # default leaves this exactly as before; the object-physics eval axis
+        # raises it to probe bouncier contacts.
+        if name == "object":
+            materials[:, :, 2] = float(assets_cfg.object_restitution)
         view.set_material_properties(materials, env_ids)
 
     _log_scene_step(t0, "applied PhysX material properties")
@@ -1595,6 +1600,8 @@ def setup_scene(env) -> None:
             num_per_type=assets_cfg.num_assets_per_type,
             out_dir=env._tmp_asset_dir,
             shuffle=assets_cfg.shuffle_assets,
+            seed=assets_cfg.object_seed,
+            density_scale=assets_cfg.object_density_scale,
         )
     if not urdf_paths:
         raise ValueError(

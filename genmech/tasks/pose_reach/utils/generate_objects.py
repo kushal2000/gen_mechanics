@@ -306,6 +306,7 @@ def generate_handle_head_urdfs(
     object_base_size: float = _OBJECT_BASE_SIZE,
     seed: int = _SEED,
     shuffle: bool = True,
+    density_scale: float = 1.0,
 ) -> tuple[list[str], list[tuple[float, float, float]]]:
     """Generate a pool of URDFs across the requested handle-head types.
 
@@ -360,8 +361,15 @@ def generate_handle_head_urdfs(
         for idx in range(num_per_type):
             h_scale = tuple(float(x) for x in handle_scales[idx])
             head = tuple(float(x) for x in head_scales[idx]) if head_scales is not None else None
-            h_d = float(handle_densities[idx])
-            head_d = float(head_densities[idx]) if head_densities is not None else None
+            # density_scale multiplies mass and inertia uniformly. Applied
+            # AFTER sampling so the draw sequence -- and therefore the pool's
+            # geometry -- is unchanged: a mass-only held-out condition must not
+            # also perturb the shapes.
+            h_d = float(handle_densities[idx]) * density_scale
+            head_d = (
+                float(head_densities[idx]) * density_scale
+                if head_densities is not None else None
+            )
 
             fname = (
                 f"{idx:03d}_{dist.type}_handle_{h_scale}_head_{head}_d{h_d:.1f}_{head_d}"

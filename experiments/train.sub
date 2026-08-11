@@ -27,17 +27,37 @@ set -euo pipefail
 
 ROBOT="${ROBOT:-sharpa_iiwa14}"
 SEED="${SEED:-0}"
-MAX_EPOCHS="${MAX_EPOCHS:-20000}"
+# 120k epochs. Derived from simtoolreal's two completed 7-day runs at the same
+# 24576 envs, which reached 126,200 and 130,320 epochs (~2.8 s/epoch, ~143k fps
+# total on an RTX 6000 Ada). Sitting just under that means the epoch budget is
+# what stops the run, not the SBATCH walltime ceiling -- which is the whole
+# point: whichever hand simulates faster must not thereby get more gradient
+# steps. See docs/methodology.md §3.
+MAX_EPOCHS="${MAX_EPOCHS:-120000}"
 NUM_ENVS="${NUM_ENVS:-24576}"
+HORIZON_LENGTH=16          # must match cfg/train/PoseReachSAPG.yaml
+EXPL_COEF_BLOCK_SIZE=4096
 WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
 WANDB_GROUP="${WANDB_GROUP:-${ROBOT}}"
 WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
 
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
 
-# SAPG requires num_envs % expl_coef_block_size == 0 (block size 4096).
-if (( NUM_ENVS % 4096 != 0 )); then
-    echo "NUM_ENVS=$NUM_ENVS must be a multiple of 4096 (SAPG expl_coef_block_size)" >&2
+# SAPG requires num_envs % expl_coef_block_size == 0.
+if (( NUM_ENVS % EXPL_COEF_BLOCK_SIZE != 0 )); then
+    echo "NUM_ENVS=$NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE (SAPG expl_coef_block_size)" >&2
+    exit 1
+fi
+
+# rl_games computes num_minibatches = (horizon_length * num_envs) //
+# minibatch_size and then divides by it. The YAML's 98304 is sized for 24576
+# envs; at a smaller NUM_ENVS the batch is smaller than one minibatch,
+# num_minibatches floors to 0, and training dies on a ZeroDivisionError deep
+# inside init_tensors. Scale it down proportionally so reduced-size runs work.
+BATCH=$(( HORIZON_LENGTH * NUM_ENVS ))
+MINIBATCH_SIZE="${MINIBATCH_SIZE:-$(( BATCH / 4 ))}"
+if (( BATCH % MINIBATCH_SIZE != 0 )); then
+    echo "minibatch_size=$MINIBATCH_SIZE must divide horizon*num_envs=$BATCH" >&2
     exit 1
 fi
 
@@ -55,6 +75,7 @@ export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
 mkdir -p "$OMNI_KIT_CACHE_PATH"
 
 echo "robot=$ROBOT seed=$SEED max_epochs=$MAX_EPOCHS num_envs=$NUM_ENVS"
+echo "batch=$BATCH minibatch=$MINIBATCH_SIZE (=$(( BATCH / MINIBATCH_SIZE )) minibatches)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 python -u genmech/train.py \
@@ -67,8 +88,12 @@ python -u genmech/train.py \
     --wandb_group "$WANDB_GROUP" \
     --wandb_entity "$WANDB_ENTITY" \
     --wandb_name "$EXPERIMENT_NAME" \
+    --wandb_tags "$ROBOT" "seed$SEED" "epochs$MAX_EPOCHS" \
     env.assets.robot_spec="$ROBOT" \
     env.scene.num_envs="$NUM_ENVS" \
     agent.params.seed="$SEED" \
     agent.params.config.max_epochs="$MAX_EPOCHS" \
+    agent.params.config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.central_value_config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.expl_coef_block_size="$EXPL_COEF_BLOCK_SIZE" \
     hydra.run.dir="$RUN_DIR"

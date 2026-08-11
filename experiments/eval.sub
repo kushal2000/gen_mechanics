@@ -1,0 +1,71 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=8
+#SBATCH --get-user-env
+#SBATCH --mem=64000
+#SBATCH -t 04:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Evaluate one policy across a suite of held-out conditions, one SLURM array
+# task per condition.
+#
+#   ROBOT=sharpa_iiwa14 \
+#   CHECKPOINT=train_dir/.../nn/0_pose_reach_sapg.pth \
+#   POLICY_CONFIG=train_dir/.../config.yaml \
+#   SWEEP_ID=sweep01 \
+#   sbatch --array=0-20 experiments/eval.sub
+#
+# Array size must equal the condition count (21 for the full suite):
+#   .venv_isaacsim/bin/python -c \
+#     "from genmech.eval.suites import get_suite; print(len(get_suite('full')))"
+#
+# One Kit process per GPU -- never run two array tasks on the same device.
+
+set -euo pipefail
+
+ROBOT="${ROBOT:?set ROBOT, e.g. sharpa_iiwa14}"
+CHECKPOINT="${CHECKPOINT:?set CHECKPOINT to a .pth}"
+POLICY_CONFIG="${POLICY_CONFIG:?set POLICY_CONFIG to the config.yaml of the training run}"
+SUITE="${SUITE:-full}"
+SWEEP_ID="${SWEEP_ID:-$(date +%Y-%m-%d_%H-%M-%S)}"
+NUM_ENVS="${NUM_ENVS:-512}"
+# 50.0 for SAPG checkpoints, negative for plain PPO. Wrong value = silently
+# shifted observations, not an error. See genmech/eval/rl_player.py.
+SAPG_EXPL_COEF="${SAPG_EXPL_COEF:-50.0}"
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+IDX="${SLURM_ARRAY_TASK_ID:-0}"
+CONDITION=$(python -c "
+from genmech.eval.suites import get_suite
+print(get_suite('$SUITE')[$IDX].id)
+")
+
+OUT_DIR="results/${SWEEP_ID}/${ROBOT}/${CONDITION}"
+mkdir -p "$OUT_DIR"
+exec > "${OUT_DIR}/eval.log" 2> "${OUT_DIR}/eval.err"
+
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="eval_${ROBOT}_$(echo "$CONDITION" | tr '/' '_')" || true
+
+echo "robot=$ROBOT condition=$CONDITION suite=$SUITE num_envs=$NUM_ENVS"
+
+python -u -m genmech.eval.run_eval \
+    --robot_spec "$ROBOT" \
+    --checkpoint "$CHECKPOINT" \
+    --policy_config "$POLICY_CONFIG" \
+    --condition "$CONDITION" \
+    --suite "$SUITE" \
+    --num_envs "$NUM_ENVS" \
+    --sapg_expl_coef "$SAPG_EXPL_COEF" \
+    --out "$OUT_DIR"

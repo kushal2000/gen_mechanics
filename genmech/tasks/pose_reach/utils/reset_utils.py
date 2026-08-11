@@ -237,13 +237,20 @@ def allocate_state_buffers(env) -> None:
         all_pos = torch.tensor(payload["pos"], device=env.device, dtype=torch.float32)
         all_quat = torch.tensor(payload["quat_wxyz"], device=env.device, dtype=torch.float32)
         n_total = all_pos.shape[0]
-        n_take = env.cfg.reset.fixed_trajectory_count or n_total
-        if n_take > n_total:
+        offset = env.cfg.reset.fixed_trajectory_offset
+        n_take = env.cfg.reset.fixed_trajectory_count or (n_total - offset)
+        if offset < 0 or offset >= n_total:
             raise ValueError(
-                f"fixed_trajectory_count={n_take} exceeds pool size {n_total} in {path}"
+                f"fixed_trajectory_offset={offset} out of range for pool size "
+                f"{n_total} in {path}"
             )
-        env._fixed_traj_pos = all_pos[:n_take].contiguous()    # (N, K, 3)
-        env._fixed_traj_quat = all_quat[:n_take].contiguous()  # (N, K, 4)
+        if offset + n_take > n_total:
+            raise ValueError(
+                f"fixed_trajectory[{offset}:{offset + n_take}] exceeds pool size "
+                f"{n_total} in {path}"
+            )
+        env._fixed_traj_pos = all_pos[offset:offset + n_take].contiguous()    # (N, K, 3)
+        env._fixed_traj_quat = all_quat[offset:offset + n_take].contiguous()  # (N, K, 4)
         env._traj_id = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
         env._traj_step = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
 
