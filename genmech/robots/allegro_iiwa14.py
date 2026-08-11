@@ -103,18 +103,29 @@ HAND_ARMATURE: dict[str, float] = {name: 0.001 for name in HAND_JOINT_NAMES}
 # fingers' exact limits ([-0.279, 1.728] / [-0.279, 1.763]) and joint 1 reaches
 # 0.0 too, so all three go straight.
 #
-# `thumb_joint_0` is the one genuine exception, and it does NOT extend the thumb
-# at all. Its axis is (0,0,1) at the thumb's base, so it rotates the
-# already-straight thumb about that axis: base-to-tip distance is 0.10692 m and
-# chain straightness 95.63% at BOTH ends of its range. (That 95.63% is a fixed
-# structural offset in the thumb's links, not residual curl -- sweeping the
-# flexion joints confirms 0.0 is their maximum-extension value.)
+# `thumb_joint_0` is the one genuine exception, and it is an ABDUCTION joint,
+# not a flexion one. Comparing joint axes in the palm frame settles it:
 #
-# What the joint actually sets is thumb ABDUCTION. At its lower limit (0.279)
-# the thumb is spread out alongside the fingers -- the hand-wide-open posture.
-# At its upper end it is adducted across the palm into opposition, facing the
-# fingers. Its limits are [0.279, 1.571], so 0.0 is outside the range entirely
-# and would clamp: Allegro's zero is not SHARPA's zero.
+#     index_joint_0    ( 0.084,  0.023,  0.996)   abduction
+#     index_joint_1..3 ( 0.962,  0.258, -0.087)   flexion
+#     thumb_joint_0    (-0.084, -0.023, -0.996)   same axis as index_joint_0
+#     thumb_joint_1    ( 0.326, -0.945, -0.006)
+#     thumb_joint_2..3 (-0.942, -0.325,  0.087)   flexion
+#
+# thumb_joint_0 is parallel to index_joint_0 and perpendicular (90 deg) to every
+# flexion axis, including the thumb's own 2 and 3. So it does not curl the thumb;
+# it swings it about the palm normal. At its lower limit (0.279) the thumb is
+# spread out alongside the fingers -- the hand-wide-open posture -- and at its
+# upper end it is adducted across the palm into opposition, facing the fingers.
+# The thumb's own flexion lives in joints 2 and 3, whose axes are near
+# antiparallel to the fingers', so they curl in a comparable plane.
+#
+# Its limits are [0.279, 1.571], so 0.0 is outside the range entirely and would
+# clamp: Allegro's zero is not SHARPA's zero.
+#
+# (Do not try to classify this joint by whether it changes base-to-tip distance.
+# It cannot: rotating the FIRST joint of a chain moves the whole rigid remainder,
+# so that distance is invariant for any joint type. Compare axes instead.)
 #
 # 1.5 is chosen by matching SHARPA's thumb posture, measured as the angle at the
 # palm between the thumb ray and the finger-tip centroid ray:
