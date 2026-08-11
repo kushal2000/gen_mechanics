@@ -22,7 +22,10 @@ from genmech.viewer.interactive_viewer import create_html, make_embedded_robot, 
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-GITHUB_RAW_BASE_MAIN = "https://raw.githubusercontent.com/tylerlum/simtoolreal/main/"
+# Must serve THIS repo's assets: the generated Allegro URDF and its mirrored
+# meshes exist nowhere upstream, so pointing at simtoolreal renders a non-SHARPA
+# robot as nothing at all.
+GITHUB_RAW_BASE_MAIN = "https://raw.githubusercontent.com/kushal2000/gen_mechanics/master/"
 # Fallback for an env that exposes no robot_spec. Any registered robot supplies
 # its own path; see RobotSpec.urdf_path.
 DEFAULT_ROBOT_URDF_RELATIVE_PATH = (

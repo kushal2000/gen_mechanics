@@ -40,6 +40,11 @@ EXPL_COEF_BLOCK_SIZE=4096
 WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
 WANDB_GROUP="${WANDB_GROUP:-${ROBOT}}"
 WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
+# Where the pose viewer fetches robot/mesh assets from in the browser. It must
+# serve THIS repo: the upstream simtoolreal default has SHARPA's URDF but not our
+# generated Allegro one, so a non-SHARPA robot renders empty (404). Pinned to
+# master; change the ref here if the viewer should track a different branch.
+VIEWER_RAW_BASE="${VIEWER_RAW_BASE:-https://raw.githubusercontent.com/kushal2000/gen_mechanics/master/}"
 
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
 
@@ -83,6 +88,7 @@ python -u genmech/train.py \
     --agent rl_games_sapg_cfg_entry_point \
     --headless \
     --capture_viewer \
+    ${VIEWER_RAW_BASE:+--capture_viewer_github_raw_base "$VIEWER_RAW_BASE"} \
     --wandb_activate \
     --wandb_project "$WANDB_PROJECT" \
     --wandb_group "$WANDB_GROUP" \
