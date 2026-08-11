@@ -73,10 +73,24 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="Directory for result.json")
     parser.add_argument("--num_envs", type=int, default=512)
     parser.add_argument("--num_assets_per_type", type=int, default=100)
-    parser.add_argument("--max_steps", type=int, default=6000,
-                        help="Hard cap. Episodes normally end on the env's own "
-                             "done signal; this only bounds a pathological run.")
+    parser.add_argument("--max_steps", type=int, default=0,
+                        help="Hard cap on rollout steps. 0 derives it from the "
+                             "goal count, which is the right behaviour: the cap "
+                             "exists only to bound a pathological run, and a "
+                             "hand-picked value is either too small (silently "
+                             "truncating) or needlessly large (one straggler "
+                             "then drags the whole batch to the ceiling).")
     parser.add_argument("--rl_device", default="cuda")
+    parser.add_argument(
+        "--override", action="append", default=[],
+        help="Extra cfg override as dotted.path=JSON, repeatable. Applied AFTER "
+             "the condition, so it wins. Use to score a checkpoint under its own "
+             "training protocol rather than the suite's, e.g. "
+             "--override termination.success_steps=10 "
+             "--override 'reset.target_volume_mins=[-0.35,-0.1,0.68]'. Recorded "
+             "in result.json so a re-protocoled run is never mistaken for a "
+             "suite-standard one.",
+    )
     parser.add_argument(
         "--sapg_expl_coef", type=float, default=50.0,
         help="Trailing exploration-coefficient obs column for SAPG checkpoints. "
@@ -97,6 +111,21 @@ def main() -> None:
         )
     condition = conditions[args.condition]
     overrides = resolve_overrides(condition)
+
+    extra: dict = {}
+    for item in args.override:
+        key, _, raw = item.partition("=")
+        if not raw:
+            raise SystemExit(f"--override {item!r} is not dotted.path=value")
+        try:
+            extra[key.strip()] = json.loads(raw)
+        except json.JSONDecodeError:
+            extra[key.strip()] = raw  # bare string
+    if extra:
+        # Applied after the condition so a deliberate protocol change wins over
+        # the suite default.
+        overrides = {**overrides, **extra}
+        print(f"[eval] CLI overrides (non-standard protocol): {extra}")
 
     from genmech.robots import get_robot_spec
     spec = get_robot_spec(args.robot_spec)
@@ -153,6 +182,14 @@ def main() -> None:
     N = args.num_envs
     dev = inner.device
 
+    # ~3.3 s per goal at 60 Hz. Generous against the ~2.9 s/goal a succeeding
+    # policy actually took, far below the 600-steps-per-goal worst case that a
+    # run of pure per-goal timeouts would need. Envs that do hit the cap are
+    # counted as `unfinished` in the result, so truncation is never silent.
+    max_steps = args.max_steps or (200 * n_goals)
+    print(f"[eval] {n_goals} goals per episode, step cap {max_steps}"
+          f"{' (derived)' if not args.max_steps else ' (explicit)'}")
+
     obs, _ = env.reset()
     # Match the reference driver's timing: one physics tick before the first
     # policy action (the first step doubles as the reset trigger).
@@ -173,7 +210,7 @@ def main() -> None:
     term_complete = torch.zeros(N, dtype=torch.bool, device=dev)
 
     t_roll = time.perf_counter()
-    for step in range(args.max_steps):
+    for step in range(max_steps):
         policy_obs = obs["policy"].to(args.rl_device)
         action = player.get_normalized_action(policy_obs, deterministic_actions=True)
         obs, rew, terminated, truncated, _ = env.step(action.to(dev))
@@ -223,7 +260,7 @@ def main() -> None:
     roll_sec = time.perf_counter() - t_roll
     unfinished = int((~done_mask).sum())
     if unfinished:
-        print(f"[eval] WARNING: {unfinished}/{N} envs hit the {args.max_steps}-step "
+        print(f"[eval] WARNING: {unfinished}/{N} envs hit the {max_steps}-step "
               f"cap without terminating; their scores are lower bounds.")
 
     # Fraction of the required consecutive-goal chain the policy completed.
@@ -293,6 +330,10 @@ def main() -> None:
         },
         "overrides": {k: (list(v) if isinstance(v, tuple) else v)
                       for k, v in overrides.items()},
+        # Non-empty means this run did NOT use the suite's standard protocol and
+        # must not be pooled with runs that did.
+        "cli_overrides": {k: (list(v) if isinstance(v, tuple) else v)
+                          for k, v in extra.items()},
         "wall_clock": {"boot_sec": t_roll - t_boot, "rollout_sec": roll_sec},
     }
 
