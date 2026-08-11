@@ -103,12 +103,27 @@ HAND_ARMATURE: dict[str, float] = {name: 0.001 for name in HAND_JOINT_NAMES}
 # fingers' exact limits ([-0.279, 1.728] / [-0.279, 1.763]) and joint 1 reaches
 # 0.0 too, so all three go straight.
 #
-# `thumb_joint_0` is the one genuine exception. Its limits are [0.279, 1.571],
-# so 0.0 is outside its range and would be clamped -- Allegro's zero is not
-# SHARPA's zero. This joint swings the thumb across the palm rather than
-# extending it, and its neutral is defined by its own range, so it keeps Isaac
-# Lab's 1.5 (95% of range), opposing the thumb across the fingers. That is the
-# analogue of where SHARPA's thumb already sits at zero.
+# `thumb_joint_0` is the one genuine exception, and it does NOT extend the thumb
+# at all. Its axis is (0,0,1) at the thumb's base, so it rotates the
+# already-straight thumb about that axis: base-to-tip distance is 0.10692 m and
+# chain straightness 95.63% at BOTH ends of its range. (That 95.63% is a fixed
+# structural offset in the thumb's links, not residual curl -- sweeping the
+# flexion joints confirms 0.0 is their maximum-extension value.)
+#
+# What the joint actually sets is opposition: how far the thumb swings across
+# the palm toward the fingers. Its limits are [0.279, 1.571], so 0.0 is outside
+# its range entirely and would clamp -- Allegro's zero is not SHARPA's zero.
+#
+# 1.5 is chosen by matching SHARPA's thumb posture, measured as the angle at the
+# palm between the thumb ray and the finger-tip centroid ray:
+#
+#     SHARPA at home (all hand joints 0)   29.5 deg,  gap 0.133 m
+#     Allegro thumb_joint_0 = 1.500        38.3 deg,  gap 0.203 m   <- closest
+#     Allegro thumb_joint_0 = 0.279        48.6 deg,  gap 0.224 m
+#
+# The lower limit looks "more extended" on screen because the straight thumb
+# points away from the palm, but it is further from SHARPA's posture and a worse
+# pre-grasp. 1.5 is also Isaac Lab's KUKA_ALLEGRO_CFG value.
 HAND_DEFAULT_JOINT_POS: dict[str, float] = {
     **{f"{f}_joint_{i}": 0.0 for f in ("index", "middle", "ring") for i in range(4)},
     "thumb_joint_0": 1.5,
