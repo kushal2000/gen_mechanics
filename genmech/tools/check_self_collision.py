@@ -98,9 +98,16 @@ def filtered_pairs(spec) -> set[frozenset[str]]:
     return out
 
 
-def link_collision_meshes(urdf, base_dir, merged: dict[str, str],
-                          only_prefix: str | None = None) -> dict[str, "object"]:
-    """One collision mesh per POST-MERGE body, in world coords at the current pose.
+def link_geometry_meshes(urdf, base_dir, merged: dict[str, str],
+                         only_prefix: str | None = None,
+                         which: str = "collision") -> dict[str, "object"]:
+    """One mesh per POST-MERGE body, in world coords at the current pose.
+
+    ``which`` selects ``"collision"`` or ``"visual"`` geometry. Physics only ever
+    means collision; visual exists so a viewer can show what a render will look
+    like, which for generated hands is NOT the same shape -- URDF has no capsule
+    primitive, so a capsule is one collision cylinder but a cylinder plus two
+    spheres in visual.
 
     Fixed-jointed links contribute their geometry to whichever body they collapse
     into, so a fingertip pad is checked as part of its distal phalanx rather than
@@ -117,7 +124,8 @@ def link_collision_meshes(urdf, base_dir, merged: dict[str, str],
         if only_prefix is not None and not name.startswith(only_prefix):
             continue
         body = merged.get(name, name)
-        for coll in link.collisions:
+        elements = link.collisions if which == "collision" else link.visuals
+        for coll in elements:
             mesh = _geometry_to_mesh(coll.geometry, base_dir)
             if mesh is None:
                 continue
@@ -127,6 +135,12 @@ def link_collision_meshes(urdf, base_dir, merged: dict[str, str],
             pieces.setdefault(body, []).append(mesh)
 
     return {b: trimesh.util.concatenate(p) for b, p in pieces.items() if p}
+
+
+def link_collision_meshes(urdf, base_dir, merged, only_prefix=None):
+    """Collision geometry. Thin alias -- physics is always collision."""
+    return link_geometry_meshes(urdf, base_dir, merged, only_prefix,
+                                which="collision")
 
 
 def _geometry_to_mesh(geometry, base_dir):

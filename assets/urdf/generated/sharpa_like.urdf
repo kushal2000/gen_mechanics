@@ -857,18 +857,30 @@
     </inertial>
   </link>
   <link name="gen_f0_MC">
-    <visual>
-      <origin xyz="0.0330490246 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.0660980491" radius="0.0193485768"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.0330490246 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0274008956" radius="0.0193485768"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.0330490246 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0274008956" radius="0.0193485768"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0193485768 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0193485768"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0467494724 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0193485768"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.0330490246 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.115995746"/>
@@ -883,18 +895,30 @@
     </inertial>
   </link>
   <link name="gen_f0_PP">
-    <visual>
-      <origin xyz="0.0195 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.039" radius="0.0101657221"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.0195 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0186685558" radius="0.0101657221"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.0195 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0186685558" radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0101657221 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0288342779 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.0195 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.0331498526"/>
@@ -909,18 +933,30 @@
     </inertial>
   </link>
   <link name="gen_f0_DP">
-    <visual>
-      <origin xyz="0.013805 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.02761" radius="0.00733806181"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.013805 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0129338764" radius="0.00733806181"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.013805 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0129338764" radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.00733806181 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0202719382 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.013805 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.00441595447"/>
@@ -1003,18 +1039,30 @@
     </inertial>
   </link>
   <link name="gen_f1_PP">
-    <visual>
-      <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.047" radius="0.0101657221"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0266685558" radius="0.0101657221"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0266685558" radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0101657221 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0368342779 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.04138"/>
@@ -1022,18 +1070,30 @@
     </inertial>
   </link>
   <link name="gen_f1_MP">
-    <visual>
-      <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.0315" radius="0.00893329899"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.013633402" radius="0.00893329899"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.013633402" radius="0.00893329899"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.00893329899 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00893329899"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.022566701 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00893329899"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.02509"/>
@@ -1041,18 +1101,30 @@
     </inertial>
   </link>
   <link name="gen_f1_DP">
-    <visual>
-      <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.02601" radius="0.00733806181"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0113338764" radius="0.00733806181"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0113338764" radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.00733806181 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0186719382 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.00410494382"/>
@@ -1135,18 +1207,30 @@
     </inertial>
   </link>
   <link name="gen_f2_PP">
-    <visual>
-      <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.047" radius="0.0101657221"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0266685558" radius="0.0101657221"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0266685558" radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0101657221 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0368342779 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.04138"/>
@@ -1154,18 +1238,30 @@
     </inertial>
   </link>
   <link name="gen_f2_MP">
-    <visual>
-      <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.0315" radius="0.00893329899"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.013633402" radius="0.00893329899"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.013633402" radius="0.00893329899"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.00893329899 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00893329899"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.022566701 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00893329899"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.02509"/>
@@ -1173,18 +1269,30 @@
     </inertial>
   </link>
   <link name="gen_f2_DP">
-    <visual>
-      <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.02601" radius="0.00733806181"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0113338764" radius="0.00733806181"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0113338764" radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.00733806181 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0186719382 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.00410494382"/>
@@ -1267,18 +1375,30 @@
     </inertial>
   </link>
   <link name="gen_f3_PP">
-    <visual>
-      <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.047" radius="0.0101657221"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0266685558" radius="0.0101657221"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0266685558" radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0101657221 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0368342779 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.04138"/>
@@ -1286,18 +1406,30 @@
     </inertial>
   </link>
   <link name="gen_f3_MP">
-    <visual>
-      <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.0315" radius="0.00893329899"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.013633402" radius="0.00893329899"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.013633402" radius="0.00893329899"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.00893329899 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00893329899"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.022566701 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00893329899"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.02509"/>
@@ -1305,18 +1437,30 @@
     </inertial>
   </link>
   <link name="gen_f3_DP">
-    <visual>
-      <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.02601" radius="0.00733806181"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0113338764" radius="0.00733806181"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0113338764" radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.00733806181 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0186719382 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.00410494382"/>
@@ -1399,18 +1543,30 @@
     </inertial>
   </link>
   <link name="gen_f4_PP">
-    <visual>
-      <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.047" radius="0.0101657221"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0266685558" radius="0.0101657221"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0266685558" radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0101657221 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0368342779 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.0101657221"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.04138"/>
@@ -1418,18 +1574,30 @@
     </inertial>
   </link>
   <link name="gen_f4_MP">
-    <visual>
-      <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.0315" radius="0.00893329899"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.013633402" radius="0.00893329899"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.013633402" radius="0.00893329899"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.00893329899 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00893329899"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.022566701 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00893329899"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.02509"/>
@@ -1437,18 +1605,30 @@
     </inertial>
   </link>
   <link name="gen_f4_DP">
-    <visual>
-      <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
-      <geometry>
-        <cylinder length="0.02601" radius="0.00733806181"/>
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <geometry>
         <cylinder length="0.0113338764" radius="0.00733806181"/>
       </geometry>
     </collision>
+    <visual>
+      <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
+      <geometry>
+        <cylinder length="0.0113338764" radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.00733806181 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0186719382 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.00733806181"/>
+      </geometry>
+    </visual>
     <inertial>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.00410494382"/>

@@ -156,11 +156,28 @@ def _capsule_link(root: ET.Element, name: str, *, length: float, radius: float,
     geom_xyz = (length / 2.0, 0.0, 0.0)
     geom_rpy = (0.0, math.pi / 2.0, 0.0)
 
-    for tag, geom_len in (("visual", length), ("collision", cyl)):
-        el = ET.SubElement(link, tag)
+    # Collision: one cylinder, which the importer rounds into a capsule.
+    el = ET.SubElement(link, "collision")
+    _origin(el, geom_xyz, geom_rpy)
+    g = ET.SubElement(el, "geometry")
+    ET.SubElement(g, "cylinder", {"length": _f(cyl), "radius": _f(radius)})
+
+    # Visual: the same capsule built by hand. URDF has no capsule primitive and
+    # replace_cylinders_with_capsules only touches COLLISION geometry, so a lone
+    # visual cylinder would render with flat ends while the thing being
+    # simulated has round ones. Spheres at both ends of the cylindrical section
+    # reproduce the collision shape exactly, so renders and videos show the hand
+    # that is actually in contact with the object.
+    if cyl > 0.0:
+        el = ET.SubElement(link, "visual")
         _origin(el, geom_xyz, geom_rpy)
         g = ET.SubElement(el, "geometry")
-        ET.SubElement(g, "cylinder", {"length": _f(geom_len), "radius": _f(radius)})
+        ET.SubElement(g, "cylinder", {"length": _f(cyl), "radius": _f(radius)})
+    for cap_x in (radius, length - radius):
+        el = ET.SubElement(link, "visual")
+        _origin(el, (cap_x, 0.0, 0.0))
+        g = ET.SubElement(el, "geometry")
+        ET.SubElement(g, "sphere", {"radius": _f(radius)})
 
     _add_inertial(link, mass, (ixx, iyy, izz), geom_xyz, geom_rpy)
     return link

@@ -43,7 +43,7 @@ from genmech.robots.iiwa14_arm import ARM_DEFAULT_JOINT_POS, BASE_POS
 from genmech.tools.build_hand_urdf import OUT_DIR, link_name, write_urdf
 from genmech.utils.paths import resolve as resolve_repo_path
 from genmech.tools.check_self_collision import (
-    EPS_M, filtered_pairs, jointed_pairs, link_collision_meshes, merge_map,
+    EPS_M, filtered_pairs, jointed_pairs, link_geometry_meshes, merge_map,
     penetration,
 )
 
@@ -94,7 +94,9 @@ class HandView:
         # The arm never changes -- it is identical across every design by
         # construction -- so its meshes are loaded once. Reloading its STLs on
         # every slider drag is what would make this unusable.
-        self.arm_meshes: dict = {}
+        self.arm_meshes: dict = {}          # collision, for the overlap check
+        self.arm_handles: dict = {}         # {"collision": [...], "visual": [...]}
+        self.show: str = "collision"
 
     def _cfg(self, urdf) -> np.ndarray:
         """Arm at its home pose, hand at zero -- the pose episodes start from."""
@@ -110,12 +112,17 @@ class HandView:
             build_scene_graph=True, build_collision_scene_graph=True,
         )
         urdf.update_cfg(self._cfg(urdf))
-        self.arm_meshes = link_collision_meshes(
-            urdf, ASSET_BASE, merge_map(path), only_prefix="iiwa14_")
-        # iiwa14_link_7 is where the palm merges, so it would be rebuilt with
-        # every hand. Keep only the arm's own links here.
-        self.arm_meshes.pop("iiwa14_link_7", None)
-        return self.arm_meshes
+        merged = merge_map(path)
+        out = {}
+        for which in ("collision", "visual"):
+            m = link_geometry_meshes(urdf, ASSET_BASE, merged,
+                                     only_prefix="iiwa14_", which=which)
+            # iiwa14_link_7 is where the palm merges, so it would be rebuilt
+            # with every hand. Keep only the arm's own links here.
+            m.pop("iiwa14_link_7", None)
+            out[which] = m
+        self.arm_meshes = out["collision"]
+        return out
 
     def rebuild(self, hand: P.HandParams) -> dict:
         import yourdfpy
@@ -132,11 +139,18 @@ class HandView:
         urdf.update_cfg(self._cfg(urdf))
 
         merged = merge_map(path)
-        meshes = link_collision_meshes(urdf, ASSET_BASE, merged,
-                                       only_prefix="gen_")
+        # Collision is what PhysX simulates, so the overlap check always uses
+        # it whatever is being displayed.
+        meshes = link_geometry_meshes(urdf, ASSET_BASE, merged,
+                                      only_prefix="gen_", which="collision")
         # Check the fingers against the arm too. The standalone tool does, and
         # without it a finger curling back into the wrist reads as clean here.
         meshes = {**self.arm_meshes, **meshes}
+        drawn = meshes if self.show == "collision" else {
+            **self.arm_meshes,
+            **link_geometry_meshes(urdf, ASSET_BASE, merged,
+                                   only_prefix="gen_", which="visual"),
+        }
 
         # Same exclusions the simulator applies: directly-jointed pairs are
         # auto-filtered by PhysX, and the template's adjacency map is filtered
@@ -160,7 +174,7 @@ class HandView:
                     bad.add(a)
                     bad.add(b)
 
-        for name, mesh in meshes.items():
+        for name, mesh in drawn.items():
             # Skip only the STATIC arm links; draw_static_scene already drew
             # them. iiwa14_link_7 is NOT static -- merge_fixed_joints folds the
             # palm into it, so it is rebuilt with every hand.
@@ -178,7 +192,7 @@ class HandView:
             )
 
         hits.sort(key=lambda h: -h[2])
-        return {"hits": hits, "n_bodies": len(meshes)}
+        return {"hits": hits, "n_bodies": len(meshes), "shown": self.show}
 
 
 def draw_static_scene(server, view: HandView, hand: P.HandParams) -> None:
@@ -192,12 +206,18 @@ def draw_static_scene(server, view: HandView, hand: P.HandParams) -> None:
 
     server.scene.add_frame(ROBOT_ROOT, show_axes=False,
                            position=tuple(float(v) for v in BASE_POS))
-    for name, mesh in view.load_arm(hand).items():
-        server.scene.add_mesh_simple(
-            f"{ROBOT_ROOT}/arm/{name}",
-            vertices=mesh.vertices, faces=mesh.faces,
-            color=tuple(int(c * 255) for c in ARM_COLOR),
-        )
+    arm_sets = view.load_arm(hand)
+    for which, meshes in arm_sets.items():
+        handles = []
+        for name, mesh in meshes.items():
+            h = server.scene.add_mesh_simple(
+                f"{ROBOT_ROOT}/arm_{which}/{name}",
+                vertices=mesh.vertices, faces=mesh.faces,
+                color=tuple(int(c * 255) for c in ARM_COLOR),
+            )
+            h.visible = (which == view.show)
+            handles.append(h)
+        view.arm_handles[which] = handles
 
     mins = np.array(GOAL_VOLUME_MINS)
     maxs = np.array(GOAL_VOLUME_MAXS)
@@ -235,6 +255,7 @@ def _summary(hand: P.HandParams, info: dict) -> str:
     except P.InvalidHand as exc:
         lines.append(f"sampler gates: **FAIL** — {exc}")
 
+    lines.append(f"showing: **{info.get('shown', 'collision')}** geometry")
     hits = info["hits"]
     if not hits:
         lines.append("self-collision: **none**")
@@ -281,6 +302,13 @@ def main() -> None:
                                        initial_value=P.JOINTS_PER_FINGER_RANGE[1])
         b_sample = server.gui.add_button("Resample")
         b_sharpa = server.gui.add_button("Reset to SHARPA_LIKE")
+        # Collision is what PhysX simulates and what the overlap check always
+        # uses; visual is what a render or video will show. For generated hands
+        # they are the same capsule built two ways -- one cylinder that the
+        # importer rounds, versus a cylinder plus two spheres -- so a mismatch
+        # here means the builder has drifted.
+        g_geom = server.gui.add_dropdown(
+            "show geometry", ("collision", "visual"), initial_value="collision")
 
     # Palm size gates which layouts exist at all -- a thin palm has no room on
     # its +-x faces for an opposed gripper -- so it belongs next to the sampling
@@ -297,6 +325,15 @@ def main() -> None:
 
     for _h in palm_sliders.values():
         _h.on_update(lambda _=None: apply_sliders())
+
+    def on_geom(_=None) -> None:
+        view.show = g_geom.value
+        for which, handles in view.arm_handles.items():
+            for h in handles:
+                h.visible = (which == view.show)
+        render()
+
+    g_geom.on_update(on_geom)
 
     readout = server.gui.add_markdown("")
 
