@@ -23,7 +23,11 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-PY="${PY:-$REPO_ROOT/.venv_isaacsim/bin/python}"
+# -u is load-bearing, not a preference. Kit's shutdown handler calls os._exit(0),
+# which skips flushing stdout -- so with block buffering a passing test can lose
+# its success sentinel and be reported as a failure (and, worse, the reverse).
+# This cost an afternoon once; do not drop the -u.
+PY="${PY:-$REPO_ROOT/.venv_isaacsim/bin/python -u}"
 export OMNI_KIT_ACCEPT_EULA=YES
 export OMNI_KIT_CACHE_PATH="${OMNI_KIT_CACHE_PATH:-/tmp/${USER}_ov_cache}"
 mkdir -p "$OMNI_KIT_CACHE_PATH"

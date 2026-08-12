@@ -21,6 +21,10 @@ def main() -> None:
     parser.add_argument("--num_envs", type=int, default=8)
     parser.add_argument("--num_assets_per_type", type=int, default=2)
     parser.add_argument("--steps", type=int, default=5)
+    parser.add_argument("--robot_spec", default=None,
+                        help="registry name, or a generated hand "
+                             "(gen_sharpa_like, gen_<seed>_<index>). "
+                             "Default: whatever PoseReachEnvCfg ships with.")
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
     args.headless = True
@@ -38,6 +42,8 @@ def main() -> None:
     cfg = PoseReachEnvCfg()
     cfg.scene.num_envs = args.num_envs
     cfg.assets.num_assets_per_type = args.num_assets_per_type
+    if args.robot_spec:
+        cfg.assets.robot_spec = args.robot_spec
 
     env = gym.make("GenMech-PoseReach-Direct-v0", cfg=cfg)
     inner = env.unwrapped

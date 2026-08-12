@@ -30,13 +30,31 @@ REGISTRY: dict[str, RobotSpec] = {
 
 
 def get_robot_spec(name: str) -> RobotSpec:
-    """Look up a spec by name, or fail with the list of valid names."""
-    try:
+    """Look up a spec by name, or fail with the list of valid names.
+
+    Procedurally generated hands are not in ``REGISTRY``: there are too many of
+    them, and their names encode their parameters, so the spec is synthesised on
+    demand instead. ``gen_sharpa_like`` is the measured SHARPA reference vector;
+    ``gen_<seed>_<index>`` is that element of ``sample_population(seed)``. The
+    URDF is written on first use. See ``genmech/robots/generated/synth_spec.py``.
+    """
+    if name in REGISTRY:
         return REGISTRY[name]
-    except KeyError:
-        raise KeyError(
-            f"unknown robot_spec {name!r}; registered: {sorted(REGISTRY)}"
-        ) from None
+
+    # Imported lazily: the generated path pulls in the URDF builder and the
+    # object pipeline's inertia helper, and this module must stay importable
+    # without Isaac Sim for the offline tools.
+    from genmech.robots.generated.synth_spec import (
+        get_generated_spec, is_generated_name,
+    )
+
+    if is_generated_name(name):
+        return get_generated_spec(name)
+
+    raise KeyError(
+        f"unknown robot_spec {name!r}; registered: {sorted(REGISTRY)}, "
+        f"or a generated name (gen_sharpa_like, gen_<seed>_<index>)"
+    )
 
 
 __all__ = ["RobotSpec", "REGISTRY", "get_robot_spec", "SHARPA_IIWA14", "ALLEGRO_IIWA14"]

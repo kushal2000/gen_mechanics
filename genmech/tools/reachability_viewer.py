@@ -31,6 +31,7 @@ finger.
 from __future__ import annotations
 
 import argparse
+import re
 import time
 
 import numpy as np
@@ -82,6 +83,12 @@ def _short(name: str) -> str:
 
 def _finger_of(spec, joint: str) -> str:
     """Group key for a hand joint, so sliders sit under the right finger."""
+    # Generated hands name joints by slot index (gen_f0_CMC_FE), not anatomy --
+    # a sampled hand has no thumb, only finger slot 0. Without this every joint
+    # fell through to "other" and the GUI was one flat list of 30 sliders.
+    m = re.match(r"^gen_f(\d+)_", joint)
+    if m is not None:
+        return f"finger {m.group(1)}"
     for finger in ("thumb", "index", "middle", "ring", "pinky"):
         if finger in joint:
             return finger
@@ -233,11 +240,28 @@ class RobotView:
         return "\n".join(lines)
 
 
+# A joint with less travel than this is ghosted, not steerable. Generated hands
+# lock unused joints to [0, 1e-8] so the articulation keeps one shape across
+# designs (genmech/robots/generated/params.py); a slider whose min and max both
+# round to 0.0 degrees is a broken widget, so they get a disabled one instead --
+# which also makes it visible at a glance WHICH joints a design ghosted.
+GHOST_TRAVEL_RAD = 1e-6
+
+
 def _slider(server, view: RobotView, name: str, initial: float, on_change):
     """One degree-valued slider bound to a joint, using its URDF limits."""
     lo, hi = view.limits[name]
     lo = -np.pi if lo is None else lo
     hi = np.pi if hi is None else hi
+
+    if hi - lo < GHOST_TRAVEL_RAD:
+        s = server.gui.add_slider(
+            f"{_short(name)} 🔒", min=0.0, max=1.0, step=0.5,
+            initial_value=0.0, disabled=True,
+        )
+        view.sliders[name] = s
+        return s
+
     s = server.gui.add_slider(
         _short(name), min=round(lo / RAD, 1), max=round(hi / RAD, 1),
         step=0.5, initial_value=round(initial / RAD, 1),

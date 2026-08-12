@@ -104,6 +104,32 @@ def _virtual_link(root: ET.Element, name: str) -> ET.Element:
     return link
 
 
+def _is_degenerate(length: float, radius: float) -> bool:
+    """A segment shorter than its own diameter is a ball, not a segment.
+
+    SHARPA's pinky metacarpal is the case that forced this: 9.6 mm long against
+    the mc tier's 19.35 mm radius (measured from the *thumb's* metacarpal, the
+    only well-conditioned sample). As a capsule that is a sphere with a sliver in
+    the middle, and it bulged 12.2 mm into the ring finger's proximal phalanx at
+    the home pose -- a self-collision the real hand does not have, which PhysX
+    would spend every step resolving.
+
+    Such a segment keeps its mass, which is real, but contributes no collision or
+    visual geometry. The palm box already covers that region.
+    """
+    return length < 2.0 * radius
+
+
+def _degenerate_link(root: ET.Element, name: str, *, length: float, radius: float,
+                     density: float) -> ET.Element:
+    """Mass but no geometry -- see :func:`_is_degenerate`."""
+    link = ET.SubElement(root, "link", {"name": name})
+    mass, ixx, iyy, izz = _compute_mass_and_inertia((length, 2.0 * radius), density)
+    _add_inertial(link, mass, (ixx, iyy, izz),
+                  (length / 2.0, 0.0, 0.0), (0.0, math.pi / 2.0, 0.0))
+    return link
+
+
 def _capsule_link(root: ET.Element, name: str, *, length: float, radius: float,
                   density: float) -> ET.Element:
     """A capsule of ``length`` along the link's +x axis, starting at the origin.
@@ -196,15 +222,16 @@ def _build_finger(root: ET.Element, index: int, fp: P.FingerParams) -> None:
             _virtual_link(root, name)
             continue
         length = fp.segment_length(tier)
+        radius = A.TIER_RADIUS_M[tier] * fp.radius_scale
+        density = A.TIER_DENSITY_KG_M3[tier]
         if length < MIN_SEGMENT_M:
             _virtual_link(root, name)
-            continue
-        _capsule_link(
-            root, name,
-            length=length,
-            radius=A.TIER_RADIUS_M[tier] * fp.radius_scale,
-            density=A.TIER_DENSITY_KG_M3[tier],
-        )
+        elif _is_degenerate(length, radius):
+            _degenerate_link(root, name, length=length, radius=radius,
+                             density=density)
+        else:
+            _capsule_link(root, name, length=length, radius=radius,
+                          density=density)
 
     # --- joints ---
     limits = dict(zip(P.JOINT_SLOTS, fp.limits))
