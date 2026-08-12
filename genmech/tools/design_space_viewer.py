@@ -144,7 +144,8 @@ class HandView:
         out = {}
         for which in ("collision", "visual"):
             m = link_geometry_meshes(urdf, ASSET_BASE, merged,
-                                     only_prefix="iiwa14_", which=which)
+                                     only_prefix="iiwa14_", which=which,
+                                     hull=False)
             # iiwa14_link_7 is where the palm merges, so it would be rebuilt
             # with every hand. Keep only the arm's own links here.
             m.pop("iiwa14_link_7", None)
@@ -177,7 +178,8 @@ class HandView:
         drawn = meshes if self.show == "collision" else {
             **self.arm_meshes,
             **link_geometry_meshes(urdf, ASSET_BASE, merged,
-                                   only_prefix="gen_", which="visual"),
+                                   only_prefix="gen_", which="visual",
+                                   hull=False),
         }
 
         # Same exclusions the simulator applies: directly-jointed pairs are
@@ -343,8 +345,8 @@ def main() -> None:
         g_geom = server.gui.add_dropdown(
             "show geometry", ("collision", "visual"), initial_value="collision")
         server.gui.add_markdown(
-            "_collision = the CONVEX HULL PhysX actually simulates for meshes; "
-            "generated capsules are exact_")
+            "_geometry as declared by the asset. Generated capsules are "
+            "simulated exactly; the arm's meshes are hulled by PhysX_")
 
     # Palm size gates which layouts exist at all -- a thin palm has no room on
     # its +-x faces for an opposed gripper -- so it belongs next to the sampling

@@ -444,8 +444,8 @@ def main() -> None:
         # between phalanges filled in. What you see is an upper bound on detail,
         # not what resolves contacts.
         server.gui.add_markdown(
-            "_collision here is the URDF triangle mesh; PhysX simulates its "
-            "**convex hull** (concavities filled)_")
+            "_geometry as declared by the URDF. Note PhysX simulates mesh "
+            "colliders as convex hulls, which is coarser than shown_")
 
         def _on_geom(_=None) -> None:
             collision = g_geom.value == "collision"

@@ -100,7 +100,8 @@ def filtered_pairs(spec) -> set[frozenset[str]]:
 
 def link_geometry_meshes(urdf, base_dir, merged: dict[str, str],
                          only_prefix: str | None = None,
-                         which: str = "collision") -> dict[str, "object"]:
+                         which: str = "collision",
+                         hull: bool = True) -> dict[str, "object"]:
     """One mesh per POST-MERGE body, in world coords at the current pose.
 
     ``which`` selects ``"collision"`` or ``"visual"`` geometry. Physics only ever
@@ -126,7 +127,7 @@ def link_geometry_meshes(urdf, base_dir, merged: dict[str, str],
         body = merged.get(name, name)
         elements = link.collisions if which == "collision" else link.visuals
         for coll in elements:
-            mesh = _geometry_to_mesh(coll.geometry, base_dir)
+            mesh = _geometry_to_mesh(coll.geometry, base_dir, hull=hull)
             if mesh is None:
                 continue
             mesh = mesh.copy()
@@ -143,7 +144,7 @@ def link_collision_meshes(urdf, base_dir, merged, only_prefix=None):
                                 which="collision")
 
 
-def _geometry_to_mesh(geometry, base_dir):
+def _geometry_to_mesh(geometry, base_dir, hull: bool = True):
     """URDF collision geometry -> trimesh, for meshes and primitives alike.
 
     Mesh filenames are relative to the URDF's own directory (the generated hands
@@ -166,7 +167,11 @@ def _geometry_to_mesh(geometry, base_dir):
         #
         # Generated hands are unaffected: their capsules and palm box are
         # analytic primitives with approximation "None", i.e. exact.
-        return m.convex_hull
+        #
+        # `hull` is on for the CHECK, which must match physics, and off for
+        # VIEWERS, which should show the geometry the asset actually declares --
+        # a hulled arm renders as blocky lumps that look like a bug.
+        return m.convex_hull if hull else m
     if geometry.box is not None:
         return trimesh.creation.box(extents=geometry.box.size)
     if geometry.cylinder is not None:
