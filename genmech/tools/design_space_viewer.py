@@ -55,7 +55,16 @@ R = math.radians
 OK_COLOR = (0.62, 0.66, 0.70)
 HIT_COLOR = (0.85, 0.25, 0.20)
 PALM_COLOR = (0.45, 0.50, 0.55)
-ARM_COLOR = (0.30, 0.33, 0.36)
+# The arm's own material colours, read from the URDF rather than invented:
+# links 1-6 are "Orange" (1.0, 0.4235, 0.0392) and links 0 and 7 are "Grey"
+# (0.4, 0.4, 0.4). Painting the whole arm one flat grey lost the KUKA livery
+# and made it hard to tell the links apart.
+ARM_COLOR = (0.4, 0.4, 0.4)
+ARM_LINK_COLORS = {
+    "iiwa14_link_0": (0.4, 0.4, 0.4),
+    "iiwa14_link_7": (0.4, 0.4, 0.4),
+    **{f"iiwa14_link_{i}": (1.0, 0.4235, 0.0392) for i in range(1, 7)},
+}
 TABLE_COLOR = (0.55, 0.47, 0.38)
 
 from genmech.tools.reachability_viewer import (          # noqa: E402
@@ -229,10 +238,11 @@ def draw_static_scene(server, view: HandView, hand: P.HandParams) -> None:
     for which, meshes in arm_sets.items():
         handles = []
         for name, mesh in meshes.items():
+            colour = ARM_LINK_COLORS.get(name, ARM_COLOR)
             h = server.scene.add_mesh_simple(
                 f"{ROBOT_ROOT}/arm_{which}/{name}",
                 vertices=mesh.vertices, faces=mesh.faces,
-                color=tuple(int(c * 255) for c in ARM_COLOR),
+                color=tuple(int(c * 255) for c in colour),
             )
             h.visible = (which == view.show)
             handles.append(h)

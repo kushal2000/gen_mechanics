@@ -141,7 +141,16 @@ class RobotView:
         urdf_path = resolve_repo_path(spec.urdf_path)
         if not urdf_path.exists():
             raise SystemExit(f"{spec.name}: URDF not found at {urdf_path}")
-        self.urdf = yourdfpy.URDF.load(str(urdf_path))
+        # Both scene graphs, so the viewer can switch between what is RENDERED
+        # (visual) and what is SIMULATED (collision). They are not the same
+        # geometry: SHARPA's collision meshes are coarser than its visual ones,
+        # and a generated hand's capsule is one collision cylinder but a
+        # cylinder plus two spheres in visual, since URDF has no capsule.
+        self.urdf = yourdfpy.URDF.load(
+            str(urdf_path),
+            load_meshes=True, load_collision_meshes=True,
+            build_scene_graph=True, build_collision_scene_graph=True,
+        )
 
         _draw_scene_clone(server, f"/{spec.name}_scene", offset_x)
 
@@ -149,7 +158,11 @@ class RobotView:
         server.scene.add_frame(f"/{spec.name}", show_axes=False, position=tuple(base),
                                wxyz=tuple(np.array(spec.base_rot, dtype=float)))
         self.viser_urdf = ViserUrdf(server, self.urdf, root_node_name=f"/{spec.name}",
-                                    load_meshes=show_meshes)
+                                    load_meshes=show_meshes,
+                                    load_collision_meshes=True)
+        # show_visual / show_collision are boolean PROPERTIES here, not methods.
+        self.viser_urdf.show_visual = True
+        self.viser_urdf.show_collision = False
         self.joint_names = list(self.viser_urdf.get_actuated_joint_names())
         self.limits = self.viser_urdf.get_actuated_joint_limits()
 
@@ -401,6 +414,18 @@ def main() -> None:
         views.append(RobotView(server, spec, i * CLONE_SPACING_X,
                                show_meshes=not args.no_meshes,
                                joint_overrides=overrides))
+
+    with server.gui.add_folder("Display"):
+        g_geom = server.gui.add_dropdown(
+            "geometry", ("visual", "collision"), initial_value="visual")
+
+        def _on_geom(_=None) -> None:
+            collision = g_geom.value == "collision"
+            for v in views:
+                v.viser_urdf.show_collision = collision
+                v.viser_urdf.show_visual = not collision
+
+        g_geom.on_update(_on_geom)
 
     _build_shared_arm_gui(server, views)
     for view in views:
