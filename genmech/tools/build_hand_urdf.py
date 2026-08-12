@@ -115,7 +115,19 @@ def _is_degenerate(length: float, radius: float) -> bool:
     would spend every step resolving.
 
     Such a segment keeps its mass, which is real, but contributes no collision or
-    visual geometry. The palm box already covers that region.
+    visual geometry.
+
+    KNOWN GAP, accepted for now. The justification used to be "the palm box
+    already covers that region", and for a finger mounted on the +z face that is
+    false: SHARPA's pinky mounts at z = 86.7 mm while the palm box tops out at
+    86.4 mm, so its metacarpal extends *outside* the box. Measured against
+    SHARPA's hull, gen_sharpa_like is missing 39 cm^3 of collision volume at the
+    base of the pinky, and an object can pass through it.
+
+    The fix, if it ever matters, is to emit a SPHERE of `radius` instead of
+    nothing -- that keeps the region solid without the sliver-capsule pathology
+    (a 9.6 mm segment at a 19.35 mm radius) that interpenetrated the neighbouring
+    finger by 12.2 mm and prompted this rule in the first place.
     """
     return length < 2.0 * radius
 
