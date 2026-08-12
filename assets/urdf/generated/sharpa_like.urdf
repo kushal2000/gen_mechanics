@@ -827,19 +827,19 @@
   
   <link name="gen_palm">
     <visual>
-      <origin xyz="0.00034 -0.00109 0.0432" rpy="0 0 0"/>
+      <origin xyz="0.00034 -0.00109 0.0432048663" rpy="0 0 0"/>
       <geometry>
         <box size="0.0498954915 0.0851711147 0.0864097327"/>
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0.00034 -0.00109 0.0432" rpy="0 0 0"/>
+      <origin xyz="0.00034 -0.00109 0.0432048663" rpy="0 0 0"/>
       <geometry>
         <box size="0.0498954915 0.0851711147 0.0864097327"/>
       </geometry>
     </collision>
     <inertial>
-      <origin xyz="0.00034 -0.00109 0.0432" rpy="0 0 0"/>
+      <origin xyz="0.00034 -0.00109 0.0432048663" rpy="0 0 0"/>
       <mass value="0.72045"/>
       <inertia ixx="0.000883797669" iyy="0.000597745476" izz="0.000584986118" ixy="0" ixz="0" iyz="0"/>
     </inertial>
@@ -866,13 +866,13 @@
     <collision>
       <origin xyz="0.0330490246 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.0660980491" radius="0.0193485768"/>
+        <cylinder length="0.0274008956" radius="0.0193485768"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.0330490246 0 0" rpy="0 1.57079633 0"/>
-      <mass value="0.115997537"/>
-      <inertia ixx="9.4246591e-05" iyy="9.4246591e-05" izz="2.04937554e-05" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.115995746"/>
+      <inertia ixx="3.94948e-05" iyy="3.94948e-05" izz="1.96066789e-05" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f0_MCP_VL">
@@ -892,13 +892,13 @@
     <collision>
       <origin xyz="0.0195 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.039" radius="0.0101657221"/>
+        <cylinder length="0.0186685558" radius="0.0101657221"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.0195 0 0" rpy="0 1.57079633 0"/>
-      <mass value="0.0359131707"/>
-      <inertia ixx="9.34849169e-06" iyy="9.34849169e-06" izz="1.75994858e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.0331498526"/>
+      <inertia ixx="3.8376991e-06" iyy="3.8376991e-06" izz="1.56878213e-06" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f0_MP">
@@ -918,13 +918,13 @@
     <collision>
       <origin xyz="0.013805 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.02761" radius="0.00733806181"/>
+        <cylinder length="0.0129338764" radius="0.00733806181"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.013805 0 0" rpy="0 1.57079633 0"/>
-      <mass value="0.00428760247"/>
-      <inertia ixx="5.66920155e-07" iyy="5.66920155e-07" izz="1.09396789e-07" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.00441595447"/>
+      <inertia ixx="2.57082186e-07" iyy="2.57082186e-07" izz="1.08652384e-07" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f0_tip">
@@ -1012,13 +1012,13 @@
     <collision>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.047" radius="0.0101657221"/>
+        <cylinder length="0.0266685558" radius="0.0101657221"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.04138"/>
-      <inertia ixx="1.38996661e-05" iyy="1.38996661e-05" izz="2.04242486e-06" ixy="0" ixz="0" iyz="0"/>
+      <inertia ixx="6.80823728e-06" iyy="6.80823728e-06" izz="1.99404169e-06" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f1_MP">
@@ -1031,13 +1031,13 @@
     <collision>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.0315" radius="0.00893329899"/>
+        <cylinder length="0.013633402" radius="0.00893329899"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.02509"/>
-      <inertia ixx="4.52252182e-06" iyy="4.52252182e-06" izz="9.4620084e-07" ixy="0" ixz="0" iyz="0"/>
+      <inertia ixx="1.9259776e-06" iyy="1.9259776e-06" izz="9.07775336e-07" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f1_DP">
@@ -1050,13 +1050,13 @@
     <collision>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.02601" radius="0.00733806181"/>
+        <cylinder length="0.0113338764" radius="0.00733806181"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
-      <mass value="0.0041041466"/>
-      <inertia ixx="5.02474245e-07" iyy="5.02474245e-07" izz="1.04457501e-07" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.00410494382"/>
+      <inertia ixx="2.14596309e-07" iyy="2.14596309e-07" izz="1.00278865e-07" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f1_tip">
@@ -1144,13 +1144,13 @@
     <collision>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.047" radius="0.0101657221"/>
+        <cylinder length="0.0266685558" radius="0.0101657221"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.04138"/>
-      <inertia ixx="1.38996661e-05" iyy="1.38996661e-05" izz="2.04242486e-06" ixy="0" ixz="0" iyz="0"/>
+      <inertia ixx="6.80823728e-06" iyy="6.80823728e-06" izz="1.99404169e-06" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f2_MP">
@@ -1163,13 +1163,13 @@
     <collision>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.0315" radius="0.00893329899"/>
+        <cylinder length="0.013633402" radius="0.00893329899"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.02509"/>
-      <inertia ixx="4.52252182e-06" iyy="4.52252182e-06" izz="9.4620084e-07" ixy="0" ixz="0" iyz="0"/>
+      <inertia ixx="1.9259776e-06" iyy="1.9259776e-06" izz="9.07775336e-07" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f2_DP">
@@ -1182,13 +1182,13 @@
     <collision>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.02601" radius="0.00733806181"/>
+        <cylinder length="0.0113338764" radius="0.00733806181"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
-      <mass value="0.0041041466"/>
-      <inertia ixx="5.02474245e-07" iyy="5.02474245e-07" izz="1.04457501e-07" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.00410494382"/>
+      <inertia ixx="2.14596309e-07" iyy="2.14596309e-07" izz="1.00278865e-07" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f2_tip">
@@ -1276,13 +1276,13 @@
     <collision>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.047" radius="0.0101657221"/>
+        <cylinder length="0.0266685558" radius="0.0101657221"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.04138"/>
-      <inertia ixx="1.38996661e-05" iyy="1.38996661e-05" izz="2.04242486e-06" ixy="0" ixz="0" iyz="0"/>
+      <inertia ixx="6.80823728e-06" iyy="6.80823728e-06" izz="1.99404169e-06" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f3_MP">
@@ -1295,13 +1295,13 @@
     <collision>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.0315" radius="0.00893329899"/>
+        <cylinder length="0.013633402" radius="0.00893329899"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.02509"/>
-      <inertia ixx="4.52252182e-06" iyy="4.52252182e-06" izz="9.4620084e-07" ixy="0" ixz="0" iyz="0"/>
+      <inertia ixx="1.9259776e-06" iyy="1.9259776e-06" izz="9.07775336e-07" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f3_DP">
@@ -1314,13 +1314,13 @@
     <collision>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.02601" radius="0.00733806181"/>
+        <cylinder length="0.0113338764" radius="0.00733806181"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
-      <mass value="0.0041041466"/>
-      <inertia ixx="5.02474245e-07" iyy="5.02474245e-07" izz="1.04457501e-07" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.00410494382"/>
+      <inertia ixx="2.14596309e-07" iyy="2.14596309e-07" izz="1.00278865e-07" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f3_tip">
@@ -1387,8 +1387,8 @@
   <link name="gen_f4_MC">
     <inertial>
       <origin xyz="0.00482 0 0" rpy="0 1.57079633 0"/>
-      <mass value="0.0447323695"/>
-      <inertia ixx="9.14370186e-06" iyy="9.14370186e-06" izz="7.15407679e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.0562504982"/>
+      <inertia ixx="8.42334163e-06" iyy="8.42334163e-06" izz="8.42334163e-06" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f4_MCP_VL">
@@ -1408,13 +1408,13 @@
     <collision>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.047" radius="0.0101657221"/>
+        <cylinder length="0.0266685558" radius="0.0101657221"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.0235 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.04138"/>
-      <inertia ixx="1.38996661e-05" iyy="1.38996661e-05" izz="2.04242486e-06" ixy="0" ixz="0" iyz="0"/>
+      <inertia ixx="6.80823728e-06" iyy="6.80823728e-06" izz="1.99404169e-06" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f4_MP">
@@ -1427,13 +1427,13 @@
     <collision>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.0315" radius="0.00893329899"/>
+        <cylinder length="0.013633402" radius="0.00893329899"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.01575 0 0" rpy="0 1.57079633 0"/>
       <mass value="0.02509"/>
-      <inertia ixx="4.52252182e-06" iyy="4.52252182e-06" izz="9.4620084e-07" ixy="0" ixz="0" iyz="0"/>
+      <inertia ixx="1.9259776e-06" iyy="1.9259776e-06" izz="9.07775336e-07" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f4_DP">
@@ -1446,13 +1446,13 @@
     <collision>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
       <geometry>
-        <cylinder length="0.02601" radius="0.00733806181"/>
+        <cylinder length="0.0113338764" radius="0.00733806181"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0.013005 0 0" rpy="0 1.57079633 0"/>
-      <mass value="0.0041041466"/>
-      <inertia ixx="5.02474245e-07" iyy="5.02474245e-07" izz="1.04457501e-07" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.00410494382"/>
+      <inertia ixx="2.14596309e-07" iyy="2.14596309e-07" izz="1.00278865e-07" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="gen_f4_tip">

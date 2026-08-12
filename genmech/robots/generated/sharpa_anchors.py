@@ -56,17 +56,25 @@ TIER_MASS_KG: dict[str, float] = {
     "dp": 0.004103,   # left_index_DP + _elastomer + _fingertip
 }
 
-# rho = mass / capsule_volume(nominal_length, radius).
+# rho = mass / capsule_volume(nominal_length, radius), where the capsule's TOTAL
+# length -- cylindrical section plus both hemispherical caps -- equals the joint
+# spacing. Getting that wrong is easy: Isaac Lab's converter reads a URDF
+# cylinder's `length` as the cylindrical section only, so emitting the segment
+# length directly yields a capsule 2r too long (67.3 mm for a 47.0 mm phalanx).
 #
 # The 3.4x spread between MP and DP is real and worth preserving: proximal links
 # house actuators (linear density ~0.85 g/mm) while the distal is a passive shell
 # (~0.12 g/mm). A single global density would be wrong by 7x on the fingertip,
 # which is the link that actually touches the object.
+#
+# Sanity: these land near the densities implied by the real mesh volumes
+# (pp 3032, mp 3131, dp 1644 kg/m^3), which the earlier over-long capsules did
+# not -- the corrected shape is a better model of the link it stands in for.
 TIER_DENSITY_KG_M3: dict[str, float] = {
-    "mc": 1073.2564877431198,
-    "pp": 2104.8404724888096,
-    "mp": 2305.2955170083437,
-    "dp": 677.7960403893011,
+    "mc": 1853.918713613545,
+    "pp": 3168.7741471413146,
+    "mp": 3917.691174722447,
+    "dp": 1149.0599166926079,
 }
 
 # The metacarpal density comes from the THUMB, not the pinky. SHARPA's pinky MC
@@ -163,7 +171,17 @@ FLANGE_TO_PALM_Z_M: float = 0.05
 FLANGE_TO_PALM_YAW_RAD: float = -1.3089969389957472   # -75 deg
 
 
+def cylinder_part(total_length: float, radius: float) -> float:
+    """Cylindrical section of a capsule whose TOTAL length is ``total_length``.
+
+    One definition, shared by the URDF builder and the self-collision checker,
+    so the shape they assume cannot drift from the shape PhysX simulates.
+    """
+    return max(total_length - 2.0 * radius, 0.0)
+
+
 __all__ = [
+    "cylinder_part",
     "TIER_RADIUS_M",
     "TIER_NOMINAL_LENGTH_M",
     "TIER_MASS_KG",

@@ -147,9 +147,11 @@ def _geometry_to_mesh(geometry, base_dir):
     if geometry.box is not None:
         return trimesh.creation.box(extents=geometry.box.size)
     if geometry.cylinder is not None:
-        # The generated hands emit cylinders that the importer turns into
-        # capsules. Check the CAPSULE, since that is what PhysX simulates --
-        # a cylinder would under-report overlap at the rounded ends.
+        # Generated hands emit cylinders that the importer turns into capsules,
+        # adding a hemisphere at each end. trimesh's `height` means the same
+        # thing, so passing the URDF length through reproduces exactly the shape
+        # PhysX ends up with -- including the caps, which a bare cylinder would
+        # miss and so under-report overlap.
         return trimesh.creation.capsule(
             height=geometry.cylinder.length, radius=geometry.cylinder.radius
         )

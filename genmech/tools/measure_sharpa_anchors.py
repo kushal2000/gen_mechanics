@@ -80,9 +80,23 @@ def _link_mass(root: ET.Element, name: str) -> float:
     raise KeyError(f"link {name!r} not in URDF")
 
 
-def capsule_volume(length: float, radius: float) -> float:
-    """Cylinder plus two hemispheres -- matches _compute_mass_and_inertia."""
-    return math.pi * radius * radius * length + (4.0 / 3.0) * math.pi * radius ** 3
+def cylinder_part(total_length: float, radius: float) -> float:
+    """Cylindrical section of a capsule whose TOTAL length is ``total_length``.
+
+    Isaac Lab's converter reads a URDF cylinder's ``length`` as the capsule's
+    cylindrical section and adds a hemisphere of ``radius`` at each end. Emitting
+    the segment length directly therefore produced a collision shape 2r longer
+    than the joint spacing -- 67.3 mm for a 47.0 mm phalanx, +43%. Every capsule
+    overhung both its joints, which inflated self-collision by construction and
+    made fingers physically longer than their kinematics claimed.
+    """
+    return max(total_length - 2.0 * radius, 0.0)
+
+
+def capsule_volume(total_length: float, radius: float) -> float:
+    """Volume of a capsule of the given TOTAL length."""
+    h = cylinder_part(total_length, radius)
+    return math.pi * radius * radius * h + (4.0 / 3.0) * math.pi * radius ** 3
 
 
 def measure() -> dict:

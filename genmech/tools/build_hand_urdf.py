@@ -124,7 +124,8 @@ def _degenerate_link(root: ET.Element, name: str, *, length: float, radius: floa
                      density: float) -> ET.Element:
     """Mass but no geometry -- see :func:`_is_degenerate`."""
     link = ET.SubElement(root, "link", {"name": name})
-    mass, ixx, iyy, izz = _compute_mass_and_inertia((length, 2.0 * radius), density)
+    mass, ixx, iyy, izz = _compute_mass_and_inertia(
+        (A.cylinder_part(length, radius), 2.0 * radius), density)
     _add_inertial(link, mass, (ixx, iyy, izz),
                   (length / 2.0, 0.0, 0.0), (0.0, math.pi / 2.0, 0.0))
     return link
@@ -142,16 +143,24 @@ def _capsule_link(root: ET.Element, name: str, *, length: float, radius: float,
     trick generate_objects.py already uses for its cylinder objects.
     """
     link = ET.SubElement(root, "link", {"name": name})
-    mass, ixx, iyy, izz = _compute_mass_and_inertia((length, 2.0 * radius), density)
+
+    # The COLLISION cylinder carries only the capsule's cylindrical section:
+    # replace_cylinders_with_capsules adds a hemisphere of `radius` at each end,
+    # so emitting `length` here would give a shape 2r longer than the joint
+    # spacing (67.3 mm for a 47.0 mm phalanx) that overhangs both its joints.
+    # The VISUAL stays a full-length cylinder, since it is not converted -- both
+    # then span exactly `length`.
+    cyl = A.cylinder_part(length, radius)
+    mass, ixx, iyy, izz = _compute_mass_and_inertia((cyl, 2.0 * radius), density)
 
     geom_xyz = (length / 2.0, 0.0, 0.0)
     geom_rpy = (0.0, math.pi / 2.0, 0.0)
 
-    for tag in ("visual", "collision"):
+    for tag, geom_len in (("visual", length), ("collision", cyl)):
         el = ET.SubElement(link, tag)
         _origin(el, geom_xyz, geom_rpy)
         g = ET.SubElement(el, "geometry")
-        ET.SubElement(g, "cylinder", {"length": _f(length), "radius": _f(radius)})
+        ET.SubElement(g, "cylinder", {"length": _f(geom_len), "radius": _f(radius)})
 
     _add_inertial(link, mass, (ixx, iyy, izz), geom_xyz, geom_rpy)
     return link
