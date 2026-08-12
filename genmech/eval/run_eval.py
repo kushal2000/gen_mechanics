@@ -72,6 +72,25 @@ def main() -> None:
     parser.add_argument("--suite", default="full")
     parser.add_argument("--out", required=True, help="Directory for result.json")
     parser.add_argument("--num_envs", type=int, default=512)
+    parser.add_argument("--video", default=None,
+                        help="write an mp4 of env --video_env to this path. "
+                             "Needs --enable_cameras on the launcher.")
+    parser.add_argument("--video_env", type=int, default=0)
+    parser.add_argument("--video_fps", type=int, default=30)
+    # PoseReachEnvCfg defines no record_camera_eye/target -- play_video.py and
+    # utils/video_capture.attach_record_camera both reference that attribute and
+    # would fail the same way. These defaults frame the table and goal volume
+    # (table top z=0.38 at the env origin, goals z 0.6..0.95, robot base at
+    # y=+0.8), looking back at the workspace from the front-left.
+    parser.add_argument("--camera_eye", type=float, nargs=3,
+                        default=(1.0, -1.0, 1.1))
+    parser.add_argument("--camera_target", type=float, nargs=3,
+                        default=(0.0, 0.15, 0.55))
+    parser.add_argument("--policy_spec", default=None,
+                        help="robot the CHECKPOINT was trained on, when it "
+                             "differs from --hand. Observations are gathered "
+                             "down to that robot's layout and actions scattered "
+                             "back; ghosted joints are driven to zero.")
     parser.add_argument("--num_assets_per_type", type=int, default=100)
     parser.add_argument("--max_steps", type=int, default=0,
                         help="Hard cap on rollout steps. 0 derives it from the "
@@ -167,9 +186,31 @@ def main() -> None:
     inner._replay_target_lab_order = None
 
     n_act = int(inner.cfg.action_space)
+
+    # Cross-body: drive this robot with a policy trained on a different one.
+    # Only meaningful when the two are the same robot described differently --
+    # gen_sharpa_like reproduces SHARPA's kinematics to 0.002 mm, so a SHARPA
+    # policy should drive it if that reproduction is functionally faithful. The
+    # mapping is a permutation, not a projection (genmech/eval/crossbody.py).
+    adapter = None
+    if args.policy_spec and args.policy_spec != cfg.assets.robot_spec:
+        from genmech.eval.crossbody import CrossBodyAdapter
+        from genmech.robots import get_robot_spec
+        from genmech.tasks.pose_reach.utils.obs_utils import compute_obs_dim
+
+        pol_spec = get_robot_spec(args.policy_spec)
+        adapter = CrossBodyAdapter(pol_spec, inner.robot_spec,
+                                   cfg.obs.obs_list, args.rl_device)
+        print(f"[eval] {adapter.describe()}", flush=True)
+        player_obs = compute_obs_dim(cfg.obs.obs_list, pol_spec)
+        player_act = pol_spec.num_joints
+    else:
+        player_obs = inner.cfg.observation_space
+        player_act = n_act
+
     player = RlPlayer(
-        num_observations=inner.cfg.observation_space,
-        num_actions=n_act,
+        num_observations=player_obs,
+        num_actions=player_act,
         config_path=args.policy_config,
         checkpoint_path=str(checkpoint),
         device=args.rl_device,
@@ -177,6 +218,35 @@ def main() -> None:
         num_envs=args.num_envs,
     )
     player.player.init_rnn()
+
+    camera = frames = None
+    if args.video:
+        import isaaclab.sim as sim_utils
+        from isaaclab.sensors import Camera, CameraCfg
+
+        camera = Camera(cfg=CameraCfg(
+            prim_path="/World/EvalCamera", update_period=0,
+            height=720, width=1280, data_types=["rgb"],
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=24.0, focus_distance=400.0,
+                horizontal_aperture=20.955, clipping_range=(0.1, 100.0)),
+            offset=CameraCfg.OffsetCfg(pos=(0.0, 0.0, 10.0),
+                                       rot=(1.0, 0.0, 0.0, 0.0),
+                                       convention="opengl"),
+        ))
+        inner.sim.reset()
+        origin = inner.scene.env_origins[args.video_env]
+        eye_local = getattr(cfg, "record_camera_eye", tuple(args.camera_eye))
+        tgt_local = getattr(cfg, "record_camera_target", tuple(args.camera_target))
+        eye = origin + torch.tensor(eye_local, device=inner.device,
+                                    dtype=torch.float32)
+        tgt = origin + torch.tensor(tgt_local, device=inner.device,
+                                    dtype=torch.float32)
+        camera.set_world_poses_from_view(eye.unsqueeze(0), tgt.unsqueeze(0))
+        inner.sim.step()
+        camera.update(0.0)
+        frames = []
+        print(f"[eval] recording env {args.video_env} -> {args.video}", flush=True)
 
     n_goals = int(cfg.termination.max_consecutive_successes)
     N = args.num_envs
@@ -214,8 +284,18 @@ def main() -> None:
     t_roll = time.perf_counter()
     for step in range(max_steps):
         policy_obs = obs["policy"].to(args.rl_device)
+        if adapter is not None:
+            policy_obs = adapter.observation(policy_obs)
         action = player.get_normalized_action(policy_obs, deterministic_actions=True)
+        if adapter is not None:
+            action = adapter.action(action)
         obs, rew, terminated, truncated, _ = env.step(action.to(dev))
+
+        if camera is not None:
+            camera.update(0.0)
+            rgb = camera.data.output["rgb"]
+            if rgb is not None and rgb.shape[0] > 0:
+                frames.append(rgb[0].cpu().numpy()[:, :, :3].copy())
 
         active = ~done_mask
         if not bool(active.any()):
@@ -286,6 +366,15 @@ def main() -> None:
 
     def _sem(x) -> float:
         return float(np.std(x, ddof=1) / np.sqrt(len(x))) if len(x) > 1 else 0.0
+
+    if frames:
+        import imageio
+        from pathlib import Path as _Path
+
+        out_video = _Path(args.video)
+        out_video.parent.mkdir(parents=True, exist_ok=True)
+        imageio.mimwrite(str(out_video), frames, fps=args.video_fps)
+        print(f"[eval] wrote {len(frames)} frames -> {out_video}", flush=True)
 
     result = {
         "schema_version": 1,
