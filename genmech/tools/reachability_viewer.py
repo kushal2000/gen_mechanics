@@ -144,11 +144,45 @@ def _draw_scene_clone(server, prefix: str, offset_x: float) -> None:
                           position=(offset_x, 0.0, 0.0))
 
 
+def _hull_collision_scene(urdf) -> int:
+    """Replace each collision mesh with its convex hull, in place.
+
+    Isaac Lab stamps ``approximation="convexHull"`` on every mesh collider
+    (verified in the baked USD: 34/34 on SHARPA, 26/26 on Allegro), so PhysX
+    never resolves contacts against the triangle meshes the URDF declares -- it
+    uses their hulls, with every concavity between phalanges filled in.
+
+    Showing the declared mesh therefore overstates the fidelity of the
+    simulation. Hulling the collision scene before ViserUrdf reads it means the
+    "collision" view is the geometry that actually decides contacts, and it
+    still follows the joint sliders because only the geometry is swapped, not
+    the scene graph.
+
+    Generated hands are unaffected -- their capsules and palm box are analytic
+    primitives with approximation "None", i.e. simulated exactly as declared.
+    """
+    import trimesh
+
+    scene = getattr(urdf, "collision_scene", None)
+    if scene is None:
+        return 0
+    n = 0
+    for key, geom in list(scene.geometry.items()):
+        if isinstance(geom, trimesh.Trimesh) and len(geom.faces) > 3:
+            try:
+                scene.geometry[key] = geom.convex_hull
+                n += 1
+            except Exception:
+                pass
+    return n
+
+
 class RobotView:
     """One robot: its URDF, its scene clone, its sliders, its readouts."""
 
     def __init__(self, server, spec, offset_x: float, show_meshes: bool = True,
-                 joint_overrides: dict[str, float] | None = None):
+                 joint_overrides: dict[str, float] | None = None,
+                 hull_collision: bool = True):
         import yourdfpy
         from viser.extras import ViserUrdf
 
@@ -170,6 +204,8 @@ class RobotView:
             load_meshes=True, load_collision_meshes=True,
             build_scene_graph=True, build_collision_scene_graph=True,
         )
+        if hull_collision:
+            _hull_collision_scene(self.urdf)
 
         _draw_scene_clone(server, f"/{spec.name}_scene", offset_x)
 
@@ -394,6 +430,9 @@ def main() -> None:
     parser.add_argument("--robot_spec", default=",".join(sorted(REGISTRY)),
                         help="Comma-separated spec names; each gets its own scene clone.")
     parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--raw_collision", action="store_true",
+                        help="show the URDF's declared collision meshes instead "
+                             "of the convex hulls PhysX actually simulates")
     parser.add_argument("--no_meshes", action="store_true",
                         help="Skip visual meshes (much faster to load).")
     parser.add_argument(
@@ -432,7 +471,8 @@ def main() -> None:
         print(f"[viewer] loading {spec.name} from {spec.urdf_path}")
         views.append(RobotView(server, spec, i * CLONE_SPACING_X,
                                show_meshes=not args.no_meshes,
-                               joint_overrides=overrides))
+                               joint_overrides=overrides,
+                               hull_collision=not args.raw_collision))
 
     with server.gui.add_folder("Display"):
         g_geom = server.gui.add_dropdown(
@@ -444,8 +484,8 @@ def main() -> None:
         # between phalanges filled in. What you see is an upper bound on detail,
         # not what resolves contacts.
         server.gui.add_markdown(
-            "_geometry as declared by the URDF. Note PhysX simulates mesh "
-            "colliders as convex hulls, which is coarser than shown_")
+            "_collision = the **convex hull** PhysX actually simulates, not the "
+            "URDF's triangle mesh_")
 
         def _on_geom(_=None) -> None:
             collision = g_geom.value == "collision"
