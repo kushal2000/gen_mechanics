@@ -98,17 +98,24 @@ def filtered_pairs(spec) -> set[frozenset[str]]:
     return out
 
 
-def link_collision_meshes(urdf, base_dir, merged: dict[str, str]) -> dict[str, "object"]:
+def link_collision_meshes(urdf, base_dir, merged: dict[str, str],
+                          only_prefix: str | None = None) -> dict[str, "object"]:
     """One collision mesh per POST-MERGE body, in world coords at the current pose.
 
     Fixed-jointed links contribute their geometry to whichever body they collapse
     into, so a fingertip pad is checked as part of its distal phalanx rather than
     as a separate object that trivially overlaps it.
+
+    ``only_prefix`` restricts the work to links whose name starts with it, which
+    skips loading the arm's STLs entirely -- worth ~seconds per call, and the
+    difference between a live design-space viewer and an unusable one.
     """
     import trimesh
 
     pieces: dict[str, list] = {}
     for name, link in urdf.link_map.items():
+        if only_prefix is not None and not name.startswith(only_prefix):
+            continue
         body = merged.get(name, name)
         for coll in link.collisions:
             mesh = _geometry_to_mesh(coll.geometry, base_dir)

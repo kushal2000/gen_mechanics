@@ -299,8 +299,12 @@ def build_urdf(hand: P.HandParams, *, mount_yaw: float | None = None) -> ET.Elem
             root.append(joint)
 
     # --- palm ---
+    # The box centre tracks the palm's own height so it always starts at the
+    # flange and grows outward; a fixed centre would bury a taller palm in the
+    # wrist. At SHARPA's extents this is exactly the measured centre.
     _box_link(root, PALM_LINK, extents=hand.palm_extents,
-              center=A.PALM_BOX_CENTER_M, density=A.PALM_DENSITY_KG_M3)
+              center=P.palm_center(hand.palm_extents),
+              density=A.PALM_DENSITY_KG_M3)
     mount = ET.SubElement(root, "joint",
                           {"name": "iiwa14_gen_palm", "type": "fixed"})
     ET.SubElement(mount, "parent", {"link": FLANGE_LINK})
