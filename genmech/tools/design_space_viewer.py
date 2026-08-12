@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import xml.etree.ElementTree as ET
 import random
 import tempfile
 import time
@@ -57,11 +58,29 @@ PALM_COLOR = (0.45, 0.50, 0.55)
 ARM_COLOR = (0.30, 0.33, 0.36)
 TABLE_COLOR = (0.55, 0.47, 0.38)
 
-# Imported, not restated: the reachability viewer already carries the task's
-# scene geometry, and two copies would drift.
 from genmech.tools.reachability_viewer import (          # noqa: E402
-    GOAL_VOLUME_MAXS, GOAL_VOLUME_MINS, TABLE_SIZE, TABLE_Z,
+    GOAL_VOLUME_MAXS, GOAL_VOLUME_MINS, TABLE_Z,
 )
+
+TABLE_URDF = "assets/urdf/table_narrow.urdf"
+
+
+def table_extents() -> tuple[float, float, float]:
+    """Box dimensions read from the actual table asset.
+
+    Not taken from reachability_viewer's TABLE_SIZE, which is a display
+    constant: at (1.2, 0.8) it is 2.5x too wide in x and 2x in y against the
+    asset's 0.475 x 0.4 x 0.3, and an oversized table swallows the arm's link_3
+    and link_4 -- which looks exactly like the robot colliding with the table
+    when nothing is actually wrong with the robot.
+    """
+    root = ET.parse(resolve_repo_path(TABLE_URDF)).getroot()
+    for link in root.findall("link"):
+        for coll in link.findall("collision"):
+            box = coll.find("geometry/box")
+            if box is not None:
+                return tuple(float(v) for v in box.get("size").split())
+    raise RuntimeError(f"no box collision geometry in {TABLE_URDF}")
 
 # Finger slots keep SHARPA's role names purely as labels; a sampled finger has
 # no anatomy, only a slot index.
@@ -231,9 +250,13 @@ def draw_static_scene(server, view: HandView, hand: P.HandParams) -> None:
         colors=(120, 160, 210), line_width=2.0,
     )
 
+    # Full solid box, with its TOP at TABLE_Z -- the surface the object rests
+    # on. Drawing only a thin slab hides how much of the workspace the table
+    # actually occupies.
+    tx, ty, tz = table_extents()
     server.scene.add_box(
-        "/scene/table", dimensions=(TABLE_SIZE[0], TABLE_SIZE[1], 0.02),
-        position=(0.0, 0.0, TABLE_Z - 0.01),
+        "/scene/table", dimensions=(tx, ty, tz),
+        position=(0.0, 0.0, TABLE_Z - tz / 2.0),
         color=tuple(int(c * 255) for c in TABLE_COLOR),
     )
     server.scene.add_grid("/scene/grid", width=2.4, height=2.4,
