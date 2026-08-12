@@ -44,7 +44,26 @@ from genmech.utils.paths import resolve as resolve_repo_path
 GOAL_VOLUME_MINS = (-0.35, -0.2, 0.6)
 GOAL_VOLUME_MAXS = (0.35, 0.2, 0.95)
 TABLE_Z = 0.38
-TABLE_SIZE = (1.2, 0.8)
+TABLE_URDF = "assets/urdf/table_narrow.urdf"
+
+
+def table_extents() -> tuple[float, float, float]:
+    """Box dimensions read from the actual table asset.
+
+    This used to be a hardcoded TABLE_SIZE = (1.2, 0.8), which is 2.5x too wide
+    in x and 2x in y against the asset's 0.475 x 0.4 x 0.3. An oversized table
+    swallows the arm's link_3 and link_4, which looks exactly like the robot
+    colliding with the table when nothing is wrong with the robot.
+    """
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(resolve_repo_path(TABLE_URDF)).getroot()
+    for link in root.findall("link"):
+        for coll in link.findall("collision"):
+            box = coll.find("geometry/box")
+            if box is not None:
+                return tuple(float(v) for v in box.get("size").split())
+    raise RuntimeError(f"no box collision geometry in {TABLE_URDF}")
 CLONE_SPACING_X = 1.8
 
 RAD = np.pi / 180.0
@@ -115,9 +134,9 @@ def _draw_scene_clone(server, prefix: str, offset_x: float) -> None:
         points=np.array([[corners[a], corners[b]] for a, b in edges]),
         colors=(40, 120, 220), line_width=2.0,
     )
-    server.scene.add_box(f"{prefix}/table",
-                         dimensions=(TABLE_SIZE[0], TABLE_SIZE[1], 0.02),
-                         position=(offset_x, 0.0, TABLE_Z - 0.01),
+    tx, ty, tz = table_extents()
+    server.scene.add_box(f"{prefix}/table", dimensions=(tx, ty, tz),
+                         position=(offset_x, 0.0, TABLE_Z - tz / 2.0),
                          color=(160, 130, 100))
     server.scene.add_frame(f"{prefix}/origin", axes_length=0.15, axes_radius=0.005,
                            position=(offset_x, 0.0, 0.0))
@@ -418,6 +437,15 @@ def main() -> None:
     with server.gui.add_folder("Display"):
         g_geom = server.gui.add_dropdown(
             "geometry", ("visual", "collision"), initial_value="visual")
+        # Worth stating plainly: for MESH-based hands the collision geometry
+        # drawn here is the triangle mesh from the URDF, but Isaac Lab stamps
+        # approximation="convexHull" on every mesh collider (34/34 on SHARPA,
+        # 26/26 on Allegro), so PhysX simulates the HULL of this -- concavities
+        # between phalanges filled in. What you see is an upper bound on detail,
+        # not what resolves contacts.
+        server.gui.add_markdown(
+            "_collision here is the URDF triangle mesh; PhysX simulates its "
+            "**convex hull** (concavities filled)_")
 
         def _on_geom(_=None) -> None:
             collision = g_geom.value == "collision"
