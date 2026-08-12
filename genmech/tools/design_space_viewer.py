@@ -57,16 +57,25 @@ PALM_COLOR = (0.45, 0.50, 0.55)
 ARM_COLOR = (0.30, 0.33, 0.36)
 TABLE_COLOR = (0.55, 0.47, 0.38)
 
-# From the task config: the table top the object rests on, and the volume goals
-# are drawn from. Shown for scale -- a hand is only sensible relative to what it
-# has to reach.
-TABLE_Z = 0.38
-GOAL_VOLUME_MINS = (-0.35, -0.2, 0.6)
-GOAL_VOLUME_MAXS = (0.35, 0.2, 0.95)
+# Imported, not restated: the reachability viewer already carries the task's
+# scene geometry, and two copies would drift.
+from genmech.tools.reachability_viewer import (          # noqa: E402
+    GOAL_VOLUME_MAXS, GOAL_VOLUME_MINS, TABLE_SIZE, TABLE_Z,
+)
 
 # Finger slots keep SHARPA's role names purely as labels; a sampled finger has
 # no anatomy, only a slot index.
 SLOT_LABELS = ("f0 (thumb slot)", "f1", "f2", "f3", "f4")
+
+# Everything the robot owns hangs off this frame, which sits at BASE_POS. The
+# table and goal volume are then drawn in plain world coordinates, matching the
+# reachability viewer -- mixing the two frames is what put the arm through the
+# table.
+ROBOT_ROOT = "/robot"
+
+# Post-merge palm body: merge_fixed_joints folds gen_palm into the arm's last
+# link, so the palm's geometry arrives under this name, not "gen_palm".
+PALM_BODY = "iiwa14_link_7"
 
 # Mesh filenames inside a generated URDF are written relative to the real asset
 # directory (the arm is reached as "../kuka_sharpa_description/..."), so they
@@ -152,18 +161,20 @@ class HandView:
                     bad.add(b)
 
         for name, mesh in meshes.items():
-            if name.startswith("iiwa14_") and name not in bad:
-                continue          # drawn once by draw_arm()
+            # Skip only the STATIC arm links; draw_static_scene already drew
+            # them. iiwa14_link_7 is NOT static -- merge_fixed_joints folds the
+            # palm into it, so it is rebuilt with every hand.
+            if name in self.arm_meshes and name not in bad:
+                continue
             colour = HIT_COLOR if name in bad else (
-                PALM_COLOR if name == "gen_palm" else OK_COLOR)
-            m = mesh.copy()
-            m.visual = __import__("trimesh").visual.ColorVisuals(
-                m, vertex_colors=np.tile(
-                    (np.array(colour) * 255).astype(np.uint8), (len(m.vertices), 1)
-                ),
-            )
+                PALM_COLOR if name == PALM_BODY else OK_COLOR)
+            m = mesh
             self.handles.append(
-                self.server.scene.add_mesh_trimesh(f"/hand/{name}", m)
+                self.server.scene.add_mesh_simple(
+                    f"{ROBOT_ROOT}/hand/{name}",
+                    vertices=m.vertices, faces=m.faces,
+                    color=tuple(int(c * 255) for c in colour),
+                )
             )
 
         hits.sort(key=lambda h: -h[2])
@@ -179,17 +190,17 @@ def draw_static_scene(server, view: HandView, hand: P.HandParams) -> None:
     """
     import trimesh
 
+    server.scene.add_frame(ROBOT_ROOT, show_axes=False,
+                           position=tuple(float(v) for v in BASE_POS))
     for name, mesh in view.load_arm(hand).items():
-        m = mesh.copy()
-        m.visual = trimesh.visual.ColorVisuals(
-            m, vertex_colors=np.tile(
-                (np.array(ARM_COLOR) * 255).astype(np.uint8),
-                (len(m.vertices), 1)),
+        server.scene.add_mesh_simple(
+            f"{ROBOT_ROOT}/arm/{name}",
+            vertices=mesh.vertices, faces=mesh.faces,
+            color=tuple(int(c * 255) for c in ARM_COLOR),
         )
-        server.scene.add_mesh_trimesh(f"/robot/{name}", m)
 
-    mins = np.array(GOAL_VOLUME_MINS) - np.array(BASE_POS)
-    maxs = np.array(GOAL_VOLUME_MAXS) - np.array(BASE_POS)
+    mins = np.array(GOAL_VOLUME_MINS)
+    maxs = np.array(GOAL_VOLUME_MAXS)
     corners = np.array([[x, y, z] for x in (mins[0], maxs[0])
                         for y in (mins[1], maxs[1]) for z in (mins[2], maxs[2])])
     edges = [(0, 1), (0, 2), (0, 4), (1, 3), (1, 5), (2, 3),
@@ -200,16 +211,13 @@ def draw_static_scene(server, view: HandView, hand: P.HandParams) -> None:
         colors=(120, 160, 210), line_width=2.0,
     )
 
-    top = trimesh.creation.box(extents=(1.2, 0.8, 0.02))
-    top.visual = trimesh.visual.ColorVisuals(
-        top, vertex_colors=np.tile(
-            (np.array(TABLE_COLOR) * 255).astype(np.uint8),
-            (len(top.vertices), 1)),
+    server.scene.add_box(
+        "/scene/table", dimensions=(TABLE_SIZE[0], TABLE_SIZE[1], 0.02),
+        position=(0.0, 0.0, TABLE_Z - 0.01),
+        color=tuple(int(c * 255) for c in TABLE_COLOR),
     )
-    server.scene.add_mesh_trimesh(
-        "/scene/table", top,
-        position=(0.0, -float(BASE_POS[1]), TABLE_Z - 0.01),
-    )
+    server.scene.add_grid("/scene/grid", width=2.4, height=2.4,
+                          position=(0.0, 0.0, 0.0))
 
 
 def _summary(hand: P.HandParams, info: dict) -> str:

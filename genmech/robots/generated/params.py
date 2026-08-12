@@ -318,10 +318,20 @@ SHARPA_LIKE = HandParams(
 # The construction reproduces SHARPA exactly: a finger on +z with the default
 # roll gets mount rpy (0, -90, -90) deg, which is what SHARPA's index, middle
 # and ring carry.
-# -z is absent deliberately: the palm box spans z = 0 .. extent_z in the palm
-# link frame and bolts to iiwa14_link_ee at z = 0, so that face is where the arm
-# is. A finger there would be inside the flange.
-PALM_FACES: tuple[str, ...] = ("+z", "+x", "-x", "+y", "-y")
+# Two faces are excluded, for different reasons.
+#
+#   -z  is where the ARM is. The palm box spans z = 0 .. extent_z in the palm
+#       link frame and bolts to iiwa14_link_ee at z = 0, so a finger there would
+#       be inside the flange.
+#   -x  is the BACK OF THE HAND. Measured at the arm's home pose, the palm's
+#       face normals point: +x down at the table (the grasping side), -x
+#       straight up, +z horizontally away from the wrist. SHARPA's index,
+#       middle and ring mount on +z; a finger on -x points away from the
+#       workspace and can never reach the object.
+#
+# Note that "the top face" is -x, NOT +z -- the palm box's local +z is
+# horizontal once the arm is in its home pose.
+PALM_FACES: tuple[str, ...] = ("+z", "+x", "+y", "-y")
 
 FACE_MARGIN = 0.012
 """Inset from the face's edges, metres. A mount on the rim would put half the
@@ -584,7 +594,16 @@ def sample(rng: random.Random, *, name: str, n_fingers: int | None = None,
             enabled=enabled,
             mount=mount_on_face(*mp, extents=palm_extents),
             mount_params=mp,
-            mc=Segment(xyz=(mc_length, 0.0, 0.0), rpy=ref.mc.rpy),
+            # The face mount is the ONLY source of base placement and
+            # orientation. These two must be reset explicitly: `ref` is the
+            # SHARPA finger for this slot, and replace() would otherwise carry
+            # its authored values through -- slot 0 inherits the thumb's 5 mm
+            # cmc offset and (90, -45) roll, slot 4 the pinky's (-90, 90)
+            # metacarpal rotation. Both displace the finger off the palm surface
+            # and rotate it away from the face normal, which showed up as
+            # fingers not meeting the palm.
+            cmc=IDENTITY,
+            mc=Segment(xyz=(mc_length, 0.0, 0.0)),
             pp_length=_u(rng, PP_LENGTH_RANGE),
             mp_length=_u(rng, MP_LENGTH_RANGE),
             dp_length=_u(rng, DP_LENGTH_RANGE),
