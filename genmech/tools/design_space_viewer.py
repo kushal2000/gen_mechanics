@@ -342,6 +342,9 @@ def main() -> None:
         # here means the builder has drifted.
         g_geom = server.gui.add_dropdown(
             "show geometry", ("collision", "visual"), initial_value="collision")
+        server.gui.add_markdown(
+            "_collision = the CONVEX HULL PhysX actually simulates for meshes; "
+            "generated capsules are exact_")
 
     # Palm size gates which layouts exist at all -- a thin palm has no room on
     # its +-x faces for an opposed gripper -- so it belongs next to the sampling

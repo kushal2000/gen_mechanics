@@ -157,7 +157,16 @@ def _geometry_to_mesh(geometry, base_dir):
         if geometry.mesh.scale is not None:
             m = m.copy()
             m.apply_scale(geometry.mesh.scale)
-        return m
+        # PhysX does not simulate the triangle mesh. Isaac Lab's converter
+        # stamps approximation="convexHull" on every mesh collider, verified in
+        # the baked USD for both SHARPA (34/34) and Allegro (26/26), so what
+        # actually resolves contacts is the HULL -- which fills every concavity
+        # and strictly contains the mesh. Checking the mesh under-reports
+        # overlap, sometimes by a lot, because the detail is not real.
+        #
+        # Generated hands are unaffected: their capsules and palm box are
+        # analytic primitives with approximation "None", i.e. exact.
+        return m.convex_hull
     if geometry.box is not None:
         return trimesh.creation.box(extents=geometry.box.size)
     if geometry.cylinder is not None:
