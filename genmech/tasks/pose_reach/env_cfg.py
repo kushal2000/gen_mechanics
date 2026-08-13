@@ -66,8 +66,10 @@ class AssetsCfg:
     table_urdf: str = "assets/urdf/table_narrow.urdf"
     # Per-env scale ranges applied to the table mesh at scene-build time.
     # Sampled independently per env: sx ~ U(table_scale_range_x), sy ~ U(table_scale_range_y).
-    # Z is held at 1.0 so the table surface height stays at table_reset_z (which the
-    # policy was trained to expect). Default (1, 1) means no scaling (legacy behavior).
+    # Z is held at 1.0 so the table surface height does not move (the policy was
+    # trained to expect it where it is). Note that height is NOT table_reset_z --
+    # see the note on table_reset_z below. Default (1, 1) means no scaling
+    # (legacy behavior).
     table_scale_range_x: tuple[float, float] = (1.0, 1.0)
     table_scale_range_y: tuple[float, float] = (1.0, 1.0)
     # Number of pre-baked USD variants spanning the scale range. Per env Isaac Lab
@@ -396,7 +398,18 @@ class ResetCfg:
     # the gym env's startArmHigher, used for DexToolBench evaluation.
     start_arm_higher: bool = False
 
-    # Table reset geometry
+    # Table reset geometry.
+    #
+    # table_reset_z is the table's CENTRE, not its surface. The box in
+    # table_narrow.urdf is 0.3 m tall and centred on its link origin, and
+    # _reset_table_pose writes this value straight to the rigid body's z, so the
+    # surface a tool rests on is table_reset_z + 0.15 ~= 0.53 m.
+    #
+    # Measured, because a comment above used to claim otherwise and cost real
+    # time: objects reset at table_reset_z + table_object_z_offset = 0.63, fall,
+    # and settle at 0.535 with zero velocity -- a 0.525 surface plus ~10 mm of
+    # object half-thickness. Anything drawing or reasoning about "the table
+    # surface" must add the half-height.
     table_reset_z: float = 0.38
     table_reset_z_range: float = 0.01
     table_object_z_offset: float = 0.25
