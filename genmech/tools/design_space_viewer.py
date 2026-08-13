@@ -45,7 +45,7 @@ from genmech.tools.build_hand_urdf import OUT_DIR, link_name, write_urdf
 from genmech.utils.paths import resolve as resolve_repo_path
 from genmech.tools.check_self_collision import (
     EPS_M, filtered_pairs, jointed_pairs, link_geometry_meshes, merge_map,
-    penetration,
+    penetration, sample_collision_free,
 )
 
 
@@ -225,6 +225,78 @@ class HandView:
         return {"hits": hits, "n_bodies": len(meshes), "shown": self.show}
 
 
+def draw_gallery(server, workdir: Path, hands: list[P.HandParams],
+                 spacing: float = 0.42) -> None:
+    """Lay N sampled hands out in a grid, each labelled with what it is.
+
+    This is the visual sign-off on the design space (plan G5): the numbers say
+    64 free parameters over 2-5 fingers and 2-6 joints each, and this is what
+    that actually looks like. Hands are drawn palm-centred at their grid slot,
+    without the arm -- at this size the arm would dominate and it is identical
+    across every design anyway.
+
+    Self-colliding links are red, so a bad region of the space is visible rather
+    than buried in a log.
+    """
+    import trimesh
+    import yourdfpy
+
+    from genmech.robots.generated.synth_spec import template_adjacent_links
+
+    cols = int(math.ceil(math.sqrt(len(hands))))
+    skip_template = set()
+    for a, others in template_adjacent_links().items():
+        for b in others:
+            skip_template.add(frozenset((a, b)))
+
+    for n, hand in enumerate(hands):
+        path = write_urdf(hand, workdir / f"g{n:03d}.urdf")
+        urdf = yourdfpy.URDF.load(
+            str(path), load_meshes=False, load_collision_meshes=False,
+            build_scene_graph=True, build_collision_scene_graph=True)
+        urdf.update_cfg(np.zeros(len(urdf.actuated_joint_names)))
+        merged = merge_map(path)
+        meshes = link_geometry_meshes(urdf, ASSET_BASE, merged,
+                                      only_prefix="gen_", hull=False)
+        if not meshes:
+            continue
+
+        skip = jointed_pairs(path, merged) | skip_template
+        names = sorted(meshes)
+        bad: set[str] = set()
+        hits = 0
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                if frozenset((a, b)) in skip:
+                    continue
+                if penetration(meshes[a], meshes[b]) > EPS_M:
+                    hits += 1
+                    bad.add(a); bad.add(b)
+
+        # Centre each hand on its slot: the palm sits at the flange in robot
+        # coordinates, which would stack every hand on top of the others.
+        palm = urdf.get_transform(PALM_BODY, urdf.base_link)[:3, 3]
+        slot = np.array([(n % cols) * spacing, -(n // cols) * spacing, 0.0])
+        shift = slot - palm
+
+        for name, mesh in meshes.items():
+            colour = HIT_COLOR if name in bad else (
+                PALM_COLOR if name == PALM_BODY else OK_COLOR)
+            m = mesh.copy()
+            m.apply_translation(shift)
+            server.scene.add_mesh_simple(
+                f"/gallery/{n:03d}/{name}",
+                vertices=m.vertices, faces=m.faces,
+                color=tuple(int(c * 255) for c in colour),
+            )
+
+        per = [f.n_active_joints for f in hand.fingers if f.active]
+        tag = f"{hand.n_active_fingers}f {hand.n_active_joints}j {per}"
+        if hits:
+            tag += f"  WARN {hits} self-collision pair(s)"
+        print(f"[gallery] {hand.name}: {tag}", flush=True)
+
+
 def draw_static_scene(server, view: HandView, hand: P.HandParams) -> None:
     """Arm, table and goal volume: the context a hand has to be sensible in.
 
@@ -310,13 +382,36 @@ def main() -> None:
     parser.add_argument("--params", default=None,
                         help="'sharpa_like' to start from the reference hand")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--gallery", type=int, default=0,
+                        help="render N sampled hands in a grid instead of one "
+                             "editable hand (the G5 sign-off view)")
     args = parser.parse_args()
 
     import viser
 
     workdir = Path(tempfile.mkdtemp(prefix="genmech_designviz_"))
     server = viser.ViserServer(port=args.port)
-    server.scene.add_frame("/origin", axes_length=0.06, show_axes=True)
+    # No world frame in gallery mode: the grid has no single origin the axes
+    # would mean anything relative to, and twelve sets of axes among twelve
+    # hands is just clutter. The single-hand explorer keeps it.
+    if not args.gallery:
+        server.scene.add_frame("/origin", axes_length=0.06, show_axes=True)
+
+    if args.gallery:
+        # Rejection-sample on the geometric check, not on the sampler's
+        # proxies: a gallery is for judging the design space, and a hand that
+        # starts every episode inside itself is not a design, it is a bug.
+        hands = sample_collision_free(args.seed, args.gallery, workdir)
+        draw_gallery(server, workdir, hands)
+        print(f"\n[gallery] {args.gallery} hands, seed {args.seed} "
+              f"— red links self-collide at the home pose")
+        print(f"[gallery] serving on http://localhost:{args.port}")
+        try:
+            while True:
+                time.sleep(1.0)
+        except KeyboardInterrupt:
+            print("\n[gallery] stopped")
+        return
 
     view = HandView(server, workdir)
 

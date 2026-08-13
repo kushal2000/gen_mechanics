@@ -211,6 +211,83 @@ def penetration(a, b) -> float:
     return max(worst, 0.0)
 
 
+def generated_hand_hits(hand, workdir, name: str = "probe") -> list:
+    """Self-collision pairs of a ``HandParams`` at its home pose.
+
+    The real gate. ``params.validate()`` only checks mount separation and reach,
+    which are proxies -- every actual overlap found in this project was caught
+    by geometry afterwards, never prevented by those. This builds the hand and
+    measures, which is slow (a URDF write, a load, and pairwise penetration per
+    candidate) but is the thing that is actually true.
+
+    Returns ``[(body_a, body_b, depth_m), ...]``, deepest first.
+    """
+    import yourdfpy
+
+    from genmech.robots.generated.synth_spec import template_adjacent_links
+    from genmech.tools.build_hand_urdf import OUT_DIR, write_urdf
+    from genmech.utils.paths import resolve as _resolve
+
+    path = write_urdf(hand, workdir / f"{name}.urdf")
+    urdf = yourdfpy.URDF.load(
+        str(path), load_meshes=False, load_collision_meshes=False,
+        build_scene_graph=True, build_collision_scene_graph=True)
+    urdf.update_cfg(np.zeros(len(urdf.actuated_joint_names)))
+
+    merged = merge_map(path)
+    meshes = link_geometry_meshes(urdf, _resolve(OUT_DIR), merged,
+                                  only_prefix="gen_", hull=False)
+    skip = jointed_pairs(path, merged)
+    for a, others in template_adjacent_links().items():
+        for b in others:
+            skip.add(frozenset((a, b)))
+
+    names = sorted(meshes)
+    hits = []
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            if frozenset((a, b)) in skip:
+                continue
+            d = penetration(meshes[a], meshes[b])
+            if d > EPS_M:
+                hits.append((a, b, d))
+    hits.sort(key=lambda h: -h[2])
+    return hits
+
+
+def sample_collision_free(seed: int, count: int, workdir,
+                          max_tries_per_hand: int = 40, **sample_kwargs) -> list:
+    """A population of hands that do not overlap themselves at the home pose.
+
+    Rejection sampling on the geometric check rather than on the proxies, so
+    what comes back is clean by measurement. Reports the rejection rate, which
+    is itself a reading on how much of the design space is unusable.
+    """
+    import random as _random
+
+    from genmech.robots.generated import params as _P
+
+    rng = _random.Random(seed)
+    out, tried = [], 0
+    while len(out) < count:
+        ok = False
+        for _ in range(max_tries_per_hand):
+            tried += 1
+            hand = _P.sample_valid(rng, name=f"gen_{seed:04d}_{len(out):03d}",
+                                   **sample_kwargs)
+            if not generated_hand_hits(hand, workdir, f"cand{len(out):03d}"):
+                out.append(hand)
+                ok = True
+                break
+        if not ok:
+            raise RuntimeError(
+                f"no collision-free hand in {max_tries_per_hand} tries "
+                f"(got {len(out)}/{count})")
+    print(f"[sample] {count} collision-free hands from {tried} draws "
+          f"({(1 - count / tried) * 100:.0f}% rejected)", flush=True)
+    return out
+
+
 def check(spec_name: str, *, verbose: bool) -> int:
     import yourdfpy
 

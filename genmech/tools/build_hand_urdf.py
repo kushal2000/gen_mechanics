@@ -104,6 +104,21 @@ def _virtual_link(root: ET.Element, name: str) -> ET.Element:
     return link
 
 
+def has_collision_geometry(fp, tier: str) -> bool:
+    """Does this finger's segment emit a collision shape?
+
+    A segment shorter than MIN_SEGMENT_M becomes a bare virtual link, and one
+    shorter than its own diameter keeps its mass but drops its geometry. Both
+    are invisible to contacts, which matters for the self-collision map: a
+    geometry-less link is *transparent*, so the links either side of it are
+    effectively adjacent.
+    """
+    length = fp.segment_length(tier)
+    if length < MIN_SEGMENT_M:
+        return False
+    return not _is_degenerate(length, A.TIER_RADIUS_M[tier] * fp.radius_scale)
+
+
 def _is_degenerate(length: float, radius: float) -> bool:
     """A segment shorter than its own diameter is a ball, not a segment.
 

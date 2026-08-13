@@ -99,17 +99,40 @@ def _finger_index_of(name: str) -> int:
     return int(name.split("_")[1][1:])
 
 
-def template_adjacent_links() -> dict[str, list[str]]:
-    """Self-collision pairs to filter. A constant of the template.
+# Link chain per finger, paired with the tier that gives each link its geometry.
+# The virtual links never carry geometry, so they are always transparent.
+_CHAIN = (("CMC_VL", None), ("MC", "mc"), ("MCP_VL", None),
+          ("PP", "pp"), ("MP", "mp"), ("DP", "dp"))
 
-    PhysX auto-filters directly-jointed parent/child pairs, so what earns its
-    place here is the non-jointed geometric neighbours: the palm against each
-    finger's first two segments, and each segment against its grandparent across
-    a zero-length virtual link.
+
+def template_adjacent_links(hand: P.HandParams | None = None) -> dict[str, list[str]]:
+    """Self-collision pairs to filter, for a specific hand.
+
+    PhysX auto-filters directly-jointed parent/child pairs. What earns its place
+    here is the palm against the base of each finger -- they overlap at the
+    knuckle without being joined -- plus consecutive links in the chain once
+    GEOMETRY-LESS links are removed.
+
+    That last part is the whole subtlety, and getting it wrong is expensive in
+    both directions:
+
+    * Filter too much and a finger folds through itself. A constant map that
+      filtered every "grandparent" pair across a virtual link included
+      ``PP <-> DP``, which on a four-joint finger is two live joints apart and
+      meets when the finger curls.
+    * Filter too little and rigidly-adjacent links grind. On SHARPA's thumb the
+      PIP is ghosted, so MP is zero-length and carries no geometry -- PP and DP
+      touch across it and overlap by 1.0 mm at the home pose.
+
+    Treating a geometry-less link as transparent handles both, and reproduces
+    SHARPA's own map exactly: it filters ``PP <-> DP`` for the thumb (no MP) and
+    not for the fingers (real MP between them).
 
     Cross-finger pairs are deliberately absent -- fingers *should* collide with
-    each other, or the hand can pass through itself while grasping.
+    each other, or the hand passes through itself while grasping.
     """
+    from genmech.tools.build_hand_urdf import has_collision_geometry
+
     pairs: dict[str, set[str]] = {}
 
     def link(a: str, b: str) -> None:
@@ -117,27 +140,24 @@ def template_adjacent_links() -> dict[str, list[str]]:
         pairs.setdefault(b, set()).add(a)
 
     for i in range(P.N_FINGER_SLOTS):
-        cmc_vl = link_name(i, "CMC_VL")
-        mc = link_name(i, "MC")
-        mcp_vl = link_name(i, "MCP_VL")
-        pp = link_name(i, "PP")
-        mp = link_name(i, "MP")
-        dp = link_name(i, "DP")
+        fp = hand.fingers[i] if hand is not None else None
 
-        # The palm overlaps the base of every finger.
-        for near_palm in (cmc_vl, mc, mcp_vl, pp):
-            link(PALM_BODY, near_palm)
+        solid = []
+        for part, tier in _CHAIN:
+            if tier is None:
+                continue
+            if fp is None or (fp.active and has_collision_geometry(fp, tier)):
+                solid.append(link_name(i, part))
 
-        # Grandparent pairs across the virtual links, plus the phalanx chain.
-        link(cmc_vl, mc)
-        link(cmc_vl, mcp_vl)
-        link(mc, mcp_vl)
-        link(mc, pp)
-        link(mcp_vl, pp)
-        link(mcp_vl, mp)
-        link(pp, mp)
-        link(pp, dp)
-        link(mp, dp)
+        # The palm overlaps whatever the finger presents at its base. Ghosted
+        # fingers still get their virtual links tied to the palm, harmlessly.
+        for part, _ in _CHAIN[:3]:
+            link(PALM_BODY, link_name(i, part))
+        if solid:
+            link(PALM_BODY, solid[0])
+
+        for a, b in zip(solid, solid[1:]):
+            link(a, b)
 
     return {k: sorted(v) for k, v in pairs.items()}
 
@@ -173,7 +193,7 @@ def synth_spec(hand: P.HandParams, *, ensure_urdf: bool = True) -> RobotSpec:
         # the part that actually touches the object -- is one segment length out.
         tip_offsets.append((fp.dp_length, 0.0, 0.0))
 
-    adjacency = {**ARM_ADJACENT_LINKS, **template_adjacent_links()}
+    adjacency = {**ARM_ADJACENT_LINKS, **template_adjacent_links(hand)}
     # The palm key exists in both; the arm's entry must not be dropped.
     arm_palm = ARM_ADJACENT_LINKS.get(PALM_BODY, [])
     if arm_palm:
