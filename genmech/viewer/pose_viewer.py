@@ -173,6 +173,49 @@ def hole_urdf_for_env(env, env_id: int) -> tuple[str, Path] | tuple[None, None]:
     return urdf_path.read_text(encoding="utf-8"), urdf_path
 
 
+_LIMIT_WARN_COUNTS: dict[str, int] = {}
+_LIMIT_WARN_CAP = 5
+
+
+def _warn_joint_limit_violations(env, joint_names, joint_pos, tol: float = 1e-3) -> None:
+    """Warn when a simulated joint sits outside the limits the URDF declares.
+
+    This matters because the two consumers of a captured frame disagree: the
+    browser's urdf-loader *clamps* joint values to the URDF limits, while the
+    sim (and yourdfpy) do not. An out-of-limit value is therefore drawn in a
+    different pose than the physics actually held, and the difference shows up
+    as geometry that appears to interpenetrate. That is exactly how the ghost
+    joints escaping their [0, 0] limits read as finger-object penetration.
+
+    Warnings are capped per joint so a persistent violation cannot flood the
+    training log.
+    """
+
+    limits = getattr(env.robot.data, "joint_pos_limits", None)
+    if limits is None:
+        return
+
+    lim = limits[0]  # (num_joints, 2), Isaac Lab joint order
+    perm = getattr(env, "_perm_lab_to_canon", None)
+    if perm is not None:
+        lim = lim[perm]
+    lower, upper = lim[:, 0], lim[:, 1]
+
+    bad = ((joint_pos < lower - tol) | (joint_pos > upper + tol)).nonzero().flatten().tolist()
+    for i in bad:
+        name = joint_names[i]
+        seen = _LIMIT_WARN_COUNTS.get(name, 0)
+        if seen >= _LIMIT_WARN_CAP:
+            continue
+        _LIMIT_WARN_COUNTS[name] = seen + 1
+        print(
+            f"[pose_viewer] WARNING {name}={float(joint_pos[i]):+.6f} rad is outside its "
+            f"URDF limits [{float(lower[i]):+.6f}, {float(upper[i]):+.6f}] — the browser "
+            f"clamps this joint, so the rendered pose differs from the simulated one",
+            flush=True,
+        )
+
+
 def capture_pose_viewer_frame(env, env_id: int) -> dict[str, Any]:
     """Capture one env-local frame from a live PoseReachEnv."""
 
