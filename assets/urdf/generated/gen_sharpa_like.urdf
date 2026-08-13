@@ -1003,7 +1003,7 @@
     <child link="gen_f0_MP"/>
     <origin xyz="0.039 0 0" rpy="-1.57079633 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="1e-08" effort="0.001" velocity="11.618316"/>
+    <limit lower="0" upper="1e-08" effort="0.638" velocity="11.618316"/>
   </joint>
   <joint name="gen_f0_DIP" type="revolute">
     <parent link="gen_f0_MP"/>
@@ -1143,14 +1143,14 @@
     <child link="gen_f1_CMC_VL"/>
     <origin xyz="0.001 -0.0303 0.0957" rpy="0 -1.57079633 -1.57079633"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="1e-08" effort="0.001" velocity="11.8407683"/>
+    <limit lower="0" upper="1e-08" effort="3.3" velocity="11.8407683"/>
   </joint>
   <joint name="gen_f1_CMC_AA" type="revolute">
     <parent link="gen_f1_CMC_VL"/>
     <child link="gen_f1_MC"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="1e-08" effort="0.001" velocity="11.8407683"/>
+    <limit lower="0" upper="1e-08" effort="3.3" velocity="11.8407683"/>
   </joint>
   <joint name="gen_f1_MCP_FE" type="revolute">
     <parent link="gen_f1_MC"/>
@@ -1311,14 +1311,14 @@
     <child link="gen_f2_CMC_VL"/>
     <origin xyz="0 -0.01 0.0987" rpy="0 -1.57079633 -1.57079633"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="1e-08" effort="0.001" velocity="11.8407683"/>
+    <limit lower="0" upper="1e-08" effort="3.3" velocity="11.8407683"/>
   </joint>
   <joint name="gen_f2_CMC_AA" type="revolute">
     <parent link="gen_f2_CMC_VL"/>
     <child link="gen_f2_MC"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="1e-08" effort="0.001" velocity="11.8407683"/>
+    <limit lower="0" upper="1e-08" effort="3.3" velocity="11.8407683"/>
   </joint>
   <joint name="gen_f2_MCP_FE" type="revolute">
     <parent link="gen_f2_MC"/>
@@ -1479,14 +1479,14 @@
     <child link="gen_f3_CMC_VL"/>
     <origin xyz="0.0015 0.0103 0.0927" rpy="0 -1.57079633 -1.57079633"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="1e-08" effort="0.001" velocity="11.8407683"/>
+    <limit lower="0" upper="1e-08" effort="3.3" velocity="11.8407683"/>
   </joint>
   <joint name="gen_f3_CMC_AA" type="revolute">
     <parent link="gen_f3_CMC_VL"/>
     <child link="gen_f3_MC"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="1e-08" effort="0.001" velocity="11.8407683"/>
+    <limit lower="0" upper="1e-08" effort="3.3" velocity="11.8407683"/>
   </joint>
   <joint name="gen_f3_MCP_FE" type="revolute">
     <parent link="gen_f3_MC"/>
@@ -1654,7 +1654,7 @@
     <child link="gen_f4_MC"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="1e-08" effort="0.001" velocity="11.8407683"/>
+    <limit lower="0" upper="1e-08" effort="3.3" velocity="11.8407683"/>
   </joint>
   <joint name="gen_f4_MCP_FE" type="revolute">
     <parent link="gen_f4_MC"/>

@@ -202,6 +202,82 @@ def check_ghosting(n_fingers: int) -> None:
     _ok(msg) if active_geom > 0 else _fail(msg)
 
 
+def check_ghost_joints_hold(robot_spec: str = "gen_sharpa_like") -> None:
+    """Ghosted joints must not move under load. Needs Isaac Sim.
+
+    This is the check that was missing when ghosting landed, and its absence
+    cost real time. A ghosted joint is locked to [0, 1e-8], but PhysX limits are
+    COMPLIANT -- with a weak actuator behind them, grasp forces push the joint
+    straight open. Measured in a training capture before the fix:
+    gen_f3_CMC_FE reached -0.364 rad (21 deg) against limits of [0, 0], and
+    there were 4832 limit violations across 600 frames.
+
+    It surfaced as apparent finger-object interpenetration in the wandb viewer,
+    because that renderer clamps joint values to the URDF limits while the
+    physics did not -- the drawing and the simulation were 21 deg apart. The
+    underlying fault was the robot, not the viewer.
+
+    Drives every joint to its extremes and asserts the ghosted ones stay put.
+    """
+    import argparse as _ap
+
+    from isaaclab.app import AppLauncher
+
+    _p = _ap.ArgumentParser()
+    AppLauncher.add_app_launcher_args(_p)
+    _a = _p.parse_args([])
+    _a.headless = True
+    app = AppLauncher(_a).app
+
+    import gymnasium as gym
+    import torch
+
+    import genmech.tasks  # noqa: F401
+    from genmech.robots import get_robot_spec
+    from genmech.tasks.pose_reach.env_cfg import PoseReachEnvCfg
+
+    print(f"\n[ghost-load] driving {robot_spec} to its limits")
+    cfg = PoseReachEnvCfg()
+    cfg.scene.num_envs = 8
+    cfg.assets.num_assets_per_type = 2
+    cfg.assets.robot_spec = robot_spec
+    env = gym.make("GenMech-PoseReach-Direct-v0", cfg=cfg)
+    inner = env.unwrapped
+    inner._replay_target_lab_order = None
+    spec = get_robot_spec(robot_spec)
+
+    ghost = [n for n in spec.hand_joint_names
+             if spec.hand_stiffness[n] == max(
+                 spec.hand_stiffness[m] for m in spec.hand_joint_names)]
+    names = list(inner.robot.data.joint_names)
+    n_act = int(inner.cfg.action_space)
+
+    env.reset()
+    worst = {}
+    for sign in (+1.0, -1.0):
+        act = torch.full((cfg.scene.num_envs, n_act), sign, device=inner.device)
+        for _ in range(120):
+            env.step(act)
+            q = inner.robot.data.joint_pos[0].detach().cpu()
+            for j in ghost:
+                if j in names:
+                    v = abs(float(q[names.index(j)]))
+                    worst[j] = max(worst.get(j, 0.0), v)
+
+    TOL = 1e-3          # rad; anything above this is a joint that is not locked
+    moved = {j: v for j, v in worst.items() if v > TOL}
+    for j, v in sorted(worst.items(), key=lambda kv: -kv[1])[:5]:
+        print(f"  {j:20s} max |q| = {v * 1000:8.3f} mrad")
+    msg = (f"{len(ghost)} ghosted joints held under full-range load "
+           f"(worst {max(worst.values()) * 1000:.3f} mrad)")
+    _ok(msg) if not moved else _fail(
+        f"{len(moved)} ghosted joint(s) MOVED under load: "
+        + ", ".join(f"{j}={v:.4f} rad" for j, v in list(moved.items())[:4]))
+
+    env.close()
+    app.close()
+
+
 def check_population() -> None:
     """Every sampled hand must emit a well-formed, uniformly shaped robot."""
     print("\n[population] 24 sampled hands build without error")
@@ -231,7 +307,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", default="all",
                         choices=("all", "kinematics", "masses", "ghosting",
-                                 "population"))
+                                 "population", "ghost_load"))
     parser.add_argument("--n_fingers", type=int, default=3)
     args = parser.parse_args()
 
@@ -243,6 +319,9 @@ def main() -> None:
         check_ghosting(args.n_fingers)
     if args.check in ("all", "population"):
         check_population()
+    # Isaac Sim only, and slow, so it is opt-in rather than part of "all".
+    if args.check == "ghost_load":
+        check_ghost_joints_hold()
 
     print()
     if failures:

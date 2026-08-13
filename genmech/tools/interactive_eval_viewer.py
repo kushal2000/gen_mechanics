@@ -41,7 +41,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--policy_config", required=True)
     parser.add_argument("--policy_spec", default=None)
-    parser.add_argument("--num_envs", type=int, default=4)
+    parser.add_argument("--num_envs", type=int, default=32)
     parser.add_argument("--num_assets_per_type", type=int, default=2)
     parser.add_argument("--port", type=int, default=8084)
     parser.add_argument("--rl_device", default="cuda:0")
@@ -171,6 +171,7 @@ def main() -> None:
 
     obj_frame = server.scene.add_frame("/object", show_axes=False)
     asset_meshes = {}
+    asset_local = {}
     for e in range(args.num_envs):
         idx = int(inner._object_asset_index_per_env[e].item())
         if idx in asset_meshes:
@@ -178,6 +179,7 @@ def main() -> None:
         m = _asset_mesh(inner._object_urdf_paths[idx])
         if m is None:
             continue
+        asset_local[idx] = m
         asset_meshes[idx] = server.scene.add_mesh_simple(
             f"/object/asset{idx}", vertices=m.vertices, faces=m.faces,
             color=(215, 140, 50))
@@ -192,6 +194,88 @@ def main() -> None:
         goal_meshes[idx] = server.scene.add_mesh_simple(
             f"/goal/asset{idx}", vertices=gm.vertices, faces=gm.faces,
             color=(90, 190, 120), opacity=0.45)
+
+    # --- penetration scan --------------------------------------------------
+    # Hunting a rare contact by eye across 32 envs is hopeless, so measure it.
+    #
+    # Exactly, and fast, by exploiting what the geometry IS: every generated
+    # phalanx is a capsule, so its penetration into the object is
+    #   max over points on its axis of (signed_distance_into_object + radius).
+    # Sampling ~9 points per axis and batching every link of an env into ONE
+    # signed_distance call is ~200x less work than testing full meshes pairwise,
+    # which took minutes and froze the loop.
+    import xml.etree.ElementTree as _ET
+
+    _axes = {}          # body -> (p0, p1, radius) in the body's own frame
+    _root = _ET.parse(urdf_path).getroot()
+    for _link in _root.findall("link"):
+        _name = _link.get("name")
+        if not _name.startswith("gen_"):
+            continue
+        for _c in _link.findall("collision"):
+            _cyl = _c.find("geometry/cylinder")
+            if _cyl is None:
+                continue
+            _L = float(_cyl.get("length"))      # cylindrical section only
+            _r = float(_cyl.get("radius"))
+            _o = _c.find("origin")
+            _cx = float(_o.get("xyz").split()[0]) if _o is not None else 0.0
+            # Geometry runs along the link's +x, centred at _cx.
+            _axes[_name] = (np.array([_cx - _L / 2.0, 0.0, 0.0]),
+                            np.array([_cx + _L / 2.0, 0.0, 0.0]), _r)
+
+    body_row = {n: i for i, n in enumerate(inner.robot.data.body_names)}
+    _AXIS_SAMPLES = 9
+
+    def _mat(pos, quat) -> np.ndarray:
+        w, x, y, z = quat
+        R = np.array([
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+        T = np.eye(4); T[:3, :3] = R; T[:3, 3] = pos
+        return T
+
+    def scan() -> list:
+        import trimesh as _tm
+
+        pos_w = inner.robot.data.body_pos_w.cpu().numpy()
+        quat_w = inner.robot.data.body_quat_w.cpu().numpy()
+        opos = inner.object.data.root_pos_w.cpu().numpy()
+        oquat = inner.object.data.root_quat_w.cpu().numpy()
+
+        out = []
+        for e in range(args.num_envs):
+            om = asset_local.get(int(inner._object_asset_index_per_env[e].item()))
+            if om is None:
+                continue
+            obj = om.copy()
+            obj.apply_transform(_mat(opos[e], oquat[e]))
+
+            pts, meta = [], []
+            for body, (p0, p1, r) in _axes.items():
+                row = body_row.get(body)
+                if row is None:
+                    continue
+                T = _mat(pos_w[e, row], quat_w[e, row])
+                a = T[:3, :3] @ p0 + T[:3, 3]
+                b = T[:3, :3] @ p1 + T[:3, 3]
+                for t in np.linspace(0.0, 1.0, _AXIS_SAMPLES):
+                    pts.append(a + t * (b - a))
+                    meta.append((body, r))
+            if not pts:
+                continue
+            sd = _tm.proximity.signed_distance(obj, np.array(pts))
+            best = {}
+            for (body, r), d in zip(meta, sd):
+                depth = float(d) + r          # >0 means the capsule overlaps
+                if depth > best.get(body, -1e9):
+                    best[body] = depth
+            for body, depth in best.items():
+                if depth > 1e-4:
+                    out.append((e, body, depth))
+        out.sort(key=lambda t: -t[2])
+        return out
 
     # --- GUI --------------------------------------------------------------
     server.gui.add_markdown(f"# {args.robot_spec}\n### Interactive policy demo")
@@ -211,11 +295,48 @@ def main() -> None:
             "_judge penetration on **collision** — PhysX simulates mesh "
             "colliders as convex hulls, coarser than the visual_")
 
+    with server.gui.add_folder("Penetration", expand_by_default=True):
+        b_scan = server.gui.add_button("Scan all envs")
+        md_pen = server.gui.add_markdown("_press Scan_")
+
+    def _request_scan(_=None) -> None:
+        # Do NOT read sim state here. viser runs callbacks on its own thread,
+        # and reading body_pos_w while the main loop is inside env.step() makes
+        # PhysX refuse the fetch outright:
+        #   PxDirectGPUAPI::getRigidDynamicData(): not allowed while simulation
+        #   is running. Call will be ignored.
+        # The scan then dies before reporting anything, which looks exactly like
+        # a broken button. Flag it and let the main loop run it between steps.
+        state["scan"] = True
+        md_pen.content = "_scanning…_"
+
+    def _do_scan() -> None:
+        t0 = time.time()
+        hits = scan()
+        # Mirror to stdout: the browser panel is invisible from the shell, and
+        # this number is the whole point of the tool.
+        print(f"[scan] {len(hits)} interpenetrating contact(s) across "
+              f"{args.num_envs} envs in {time.time() - t0:.1f}s", flush=True)
+        for e, body, d in hits[:12]:
+            print(f"[scan]   env {e:3d}  {body:16s} {d * 1000:7.2f} mm", flush=True)
+        if not hits:
+            md_pen.content = (f"**no finger-object penetration** across "
+                              f"{args.num_envs} envs")
+            return
+        worst = hits[0]
+        lines = [f"**{len(hits)} contact(s) interpenetrating**, worst "
+                 f"{worst[2] * 1000:.1f} mm", ""]
+        for e, body, d in hits[:8]:
+            lines.append(f"- env {e} `{body}` — {d * 1000:.1f} mm")
+        md_pen.content = "\n".join(lines)
+        g_env.value = worst[0]        # jump to the worst offender
+    b_scan.on_click(_request_scan)
+
     md_status = server.gui.add_markdown("**Status:** ready")
     md_stats = server.gui.add_markdown("**Episodes:** none yet")
 
     state = {"running": False, "once": False, "reset": False, "step": 0,
-             "eps": [], "cur_goals": 0}
+             "eps": [], "cur_goals": 0, "scan": False}
     b_run.on_click(lambda _: state.update(running=True))
     b_pause.on_click(lambda _: state.update(running=False))
     b_step.on_click(lambda _: state.update(once=True))
@@ -289,6 +410,10 @@ def main() -> None:
                 if bool((term | trunc)[e0].item()):
                     state["eps"].append(state["cur_goals"])
                     state["step"] = 0
+
+            if state["scan"]:
+                state["scan"] = False
+                _do_scan()
 
             e = int(g_env.value)
             state["cur_goals"] = int(inner._successes[e].item())

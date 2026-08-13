@@ -237,7 +237,11 @@ def _joint(root: ET.Element, name: str, *, parent: str, child: str,
     _origin(j, seg.xyz, seg.rpy)
     ET.SubElement(j, "axis", {"xyz": "0 0 1"})
     lo, hi = GHOST_LIMIT if ghost else limits
-    effort = 1e-3 if ghost else A.SLOT_EFFORT_NM[slot]
+    # Do NOT throttle a ghost joint's effort. It has to hold against grasp
+    # forces, and 1e-3 N.m could not -- ghosted joints were being pushed 21 deg
+    # open in training. The limit is compliant in PhysX; the actuator is what
+    # holds the joint shut.
+    effort = A.SLOT_EFFORT_NM[slot]
     ET.SubElement(j, "limit", {
         "lower": _f(lo), "upper": _f(hi),
         "effort": _f(effort), "velocity": _f(A.SLOT_VELOCITY_RAD_S[slot]),

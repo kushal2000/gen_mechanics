@@ -65,12 +65,27 @@ PALM_BODY = "iiwa14_link_7"
 # observations comparable across robots (docs/methodology.md).
 PALM_CENTER_OFFSET = (-0.0, -0.02, 0.16)
 
-# A ghosted joint is held shut by its URDF limits, so its actuator only has to
-# avoid fighting them. Full tier gains on a joint with 1e-8 rad of travel is a
-# PD controller pushing against a hard stop every step.
-GHOST_STIFFNESS = 0.01
-GHOST_DAMPING = 0.001
-GHOST_ARMATURE = 1e-5
+# A ghosted joint must be held shut by its ACTUATOR, not by its limits.
+#
+# This used to be GHOST_STIFFNESS = 0.01 with 1e-3 N.m of effort, on the theory
+# that the [0, 1e-8] limit does the holding and the actuator should just stay out
+# of its way. That is wrong: PhysX joint limits are compliant, not rigid
+# constraints. Under grasp forces the "locked" joints were pushed straight open
+# -- measured in a training capture, gen_f3_CMC_FE reached -0.364 rad (21 deg)
+# against limits of [0, 0], with 4832 limit violations across 600 frames.
+#
+# That is a physics bug, not a cosmetic one: a ghosted finger was moving, so the
+# design space's claim that only ACTIVE joints matter was false, and the drawn
+# pose diverged from the simulated one wherever a renderer clamped to the limits
+# (which is how it was found -- see docs/methodology.md).
+#
+# These gains are the strongest tier's, so a ghost joint resists at least as hard
+# as any live joint, and the effort limit is left at the slot's real value rather
+# than throttled to 1e-3. The cost is solver work on joints that never move,
+# which is the price of the fixed-shape articulation.
+GHOST_STIFFNESS = max(A.SLOT_STIFFNESS.values()) * 10.0
+GHOST_DAMPING = max(A.SLOT_DAMPING.values()) * 10.0
+GHOST_ARMATURE = max(A.SLOT_ARMATURE.values())
 
 _GEN_NAME_RE = re.compile(r"^gen_(\d{4})_(\d{3})$")
 
