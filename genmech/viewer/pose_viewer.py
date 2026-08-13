@@ -191,6 +191,8 @@ def capture_pose_viewer_frame(env, env_id: int) -> dict[str, Any]:
         joint_pos = env.robot.data.joint_pos[env_id]
         joint_names = list(env.robot.data.joint_names)
 
+    _warn_joint_limit_violations(env, joint_names, joint_pos)
+
     robot_root_pos = env.robot.data.root_pos_w[env_id] - origin
     object_pos = env.object.data.root_pos_w[env_id] - origin
     goal_pos = env.goal_viz.data.root_pos_w[env_id] - origin

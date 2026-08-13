@@ -246,9 +246,18 @@ def check_ghost_joints_hold(robot_spec: str = "gen_sharpa_like") -> None:
     inner._replay_target_lab_order = None
     spec = get_robot_spec(robot_spec)
 
-    ghost = [n for n in spec.hand_joint_names
-             if spec.hand_stiffness[n] == max(
-                 spec.hand_stiffness[m] for m in spec.hand_joint_names)]
+    # Ghosted joints are identified by their zero-width LIMITS, not by their
+    # gains: gains are now identical to a live joint of the same slot, which is
+    # the point -- a locked joint is still a real mechanism.
+    import xml.etree.ElementTree as _ET
+    from genmech.utils.paths import resolve as _rp
+    ghost = []
+    for j in _ET.parse(_rp(spec.urdf_path)).getroot().findall("joint"):
+        l = j.find("limit")
+        if l is None or not j.get("name").startswith("gen_"):
+            continue
+        if float(l.get("upper")) - float(l.get("lower")) < 1e-6:
+            ghost.append(j.get("name"))
     names = list(inner.robot.data.joint_names)
     n_act = int(inner.cfg.action_space)
 

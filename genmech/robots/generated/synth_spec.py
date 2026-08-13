@@ -65,27 +65,25 @@ PALM_BODY = "iiwa14_link_7"
 # observations comparable across robots (docs/methodology.md).
 PALM_CENTER_OFFSET = (-0.0, -0.02, 0.16)
 
-# A ghosted joint must be held shut by its ACTUATOR, not by its limits.
+# A ghosted joint gets its slot's REAL actuation -- the same stiffness, damping
+# and armature it would have if it were live -- and is held shut by a zero-width
+# limit. There is deliberately no special "ghost gain" any more.
 #
-# This used to be GHOST_STIFFNESS = 0.01 with 1e-3 N.m of effort, on the theory
-# that the [0, 1e-8] limit does the holding and the actuator should just stay out
-# of its way. That is wrong: PhysX joint limits are compliant, not rigid
-# constraints. Under grasp forces the "locked" joints were pushed straight open
-# -- measured in a training capture, gen_f3_CMC_FE reached -0.364 rad (21 deg)
-# against limits of [0, 0], with 4832 limit violations across 600 frames.
+# The first version made ghosted joints as weak and light as possible (stiffness
+# 0.01, damping 0.001, armature 1e-5, effort throttled to 1e-3 N.m), reasoning
+# that the limit does the holding and the actuator should stay out of its way.
+# That is backwards. PhysX limits are constraints solved iteratively, not hard
+# stops, and the scene runs solver_velocity_iterations=0; a joint with ~300x too
+# little rotational inertia and no actuator authority gets shoved straight
+# through its limit. Measured in training: gen_f3_CMC_FE reached -0.364 rad
+# (21 deg) against limits of [0, 0], 4832 violations in 600 frames.
 #
-# That is a physics bug, not a cosmetic one: a ghosted finger was moving, so the
-# design space's claim that only ACTIVE joints matter was false, and the drawn
-# pose diverged from the simulated one wherever a renderer clamped to the limits
-# (which is how it was found -- see docs/methodology.md).
-#
-# These gains are the strongest tier's, so a ghost joint resists at least as hard
-# as any live joint, and the effort limit is left at the slot's real value rather
-# than throttled to 1e-3. The cost is solver work on joints that never move,
-# which is the price of the fixed-shape articulation.
-GHOST_STIFFNESS = max(A.SLOT_STIFFNESS.values()) * 10.0
-GHOST_DAMPING = max(A.SLOT_DAMPING.values()) * 10.0
-GHOST_ARMATURE = max(A.SLOT_ARMATURE.values())
+# Realistic values are also the honest model: the mechanism is still a real
+# joint with a real motor behind it, it simply has no travel. Verified under a
+# full-range load sweep -- see tests/test_generated_hand.py --check ghost_load.
+def _ghost_tables() -> None:
+    """Ghosted joints use their slot's own values; nothing special."""
+
 
 _GEN_NAME_RE = re.compile(r"^gen_(\d{4})_(\d{3})$")
 
@@ -190,11 +188,11 @@ def synth_spec(hand: P.HandParams, *, ensure_urdf: bool = True) -> RobotSpec:
         slot_on = dict(zip(P.JOINT_SLOTS, fp.enabled))[_slot_of(name)]
         active[name] = fp.active and slot_on
 
-    def table(src: dict[str, float], ghost_value: float) -> dict[str, float]:
-        return {
-            n: (src[_slot_of(n)] if active[n] else ghost_value)
-            for n in names
-        }
+    def table(src: dict[str, float], _unused: float = 0.0) -> dict[str, float]:
+        # Same value whether the joint is live or ghosted: a locked joint is
+        # still a real mechanism, and giving it degenerate inertia is what let
+        # it be pushed through its own limit.
+        return {n: src[_slot_of(n)] for n in names}
 
     # Fingertips: active fingers only (see module docstring). The tip link is
     # fixed-jointed onto DP, so post-merge the fingertip BODY is DP itself.
@@ -230,9 +228,9 @@ def synth_spec(hand: P.HandParams, *, ensure_urdf: bool = True) -> RobotSpec:
 
         arm_stiffness=ARM_STIFFNESS,
         arm_damping=ARM_DAMPING,
-        hand_stiffness=table(A.SLOT_STIFFNESS, GHOST_STIFFNESS),
-        hand_damping=table(A.SLOT_DAMPING, GHOST_DAMPING),
-        hand_armature=table(A.SLOT_ARMATURE, GHOST_ARMATURE),
+        hand_stiffness=table(A.SLOT_STIFFNESS),
+        hand_damping=table(A.SLOT_DAMPING),
+        hand_armature=table(A.SLOT_ARMATURE),
 
         arm_default_joint_pos=ARM_DEFAULT_JOINT_POS,
         # Zero is inside every slot's limits, active or ghosted: SHARPA's own
