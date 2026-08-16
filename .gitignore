@@ -33,3 +33,14 @@ assets/dextoolbench/data/
 # rl_games fork docs/notebooks: ~37 MB of gifs and ipynbs, none of it used here
 third_party/rl_games/docs/
 third_party/rl_games/notebooks/
+
+# benchmark outputs (multi-GB logs; results are summarised in docs)
+bench_dir/
+
+# Sampled hand URDFs are REGENERABLE from the population manifest, which stores
+# every parameter vector. Committing ~100 near-identical generated files per
+# population would bury real diffs. gen_sharpa_like.urdf is NOT ignored: it is a
+# hand-checked reference that training runs and the wandb pose viewer fetch by
+# URL, so it must exist in the repo.
+assets/urdf/generated/gen_[0-9]*.urdf
+assets/urdf/generated/population/**/*.urdf
