@@ -1,0 +1,104 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 6:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Step-rate benchmark at TRAINING scale: what does morphological diversity cost
+# when the scene holds 24,576 envs rather than a toy 64?
+#
+#   NUM_ENVS=24576 sbatch experiments/bench_sps.sub
+#
+# At 64 envs the answer was -7.6% step rate for 64 distinct hands vs one hand
+# replicated. That number is not safe to extrapolate. Two things change at
+# scale, in opposite directions:
+#
+#   - Distinct USDs defeat instancing, so stage memory and PhysX scene-setup
+#     work grow with the number of DISTINCT designs, not with env count. 64
+#     designs is 64 either way; what grows is the cloner's per-env prim
+#     resolution over 24,576 envs.
+#   - Per-step overhead that dominates at 64 envs (Python loop, one
+#     write_data_to_sim, PhysX dispatch) is amortised over 384x more work, so
+#     the step rate is expected to be far lower while env-steps/s rises sharply.
+#
+# CONFIGS run one per PROCESS, deliberately. SimulationContext.clear_instance()
+# drops the context but leaves the previous configuration's prims on the USD
+# stage, so timing several in one process silently measures a scene containing
+# every configuration built so far.
+#
+# gen_population cycles the cached 64-hand population across all envs
+# (MultiUsdFileCfg round-robin), so each design occupies NUM_ENVS/64 envs --
+# 384 at 24,576. That is the shape a morphology search actually wants: many
+# designs evaluated in parallel inside one rollout.
+
+set -euo pipefail
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+NUM_ENVS="${NUM_ENVS:-24576}"
+# Fewer timed steps than the 64-env run: each step costs ~384x more work, and
+# the estimator is already tight at 300 steps. Warmup matters more here --
+# PhysX broadphase and GPU buffers take longer to settle at this scale.
+STEPS="${STEPS:-300}"
+WARMUP="${WARMUP:-100}"
+SEED="${SEED:-0}"
+CONFIGS="${CONFIGS:-sharpa gen_sharpa_like gen_pop_single gen_population}"
+
+STAMP="$(date +%Y-%m-%d_%H-%M-%S)"
+OUT_DIR="${REPO_ROOT}/bench_dir/sps_${NUM_ENVS}_${STAMP}"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="bench_sps_${NUM_ENVS}" || true
+
+exec > "${OUT_DIR}/bench.log" 2> "${OUT_DIR}/bench.err"
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+echo "num_envs=$NUM_ENVS steps=$STEPS warmup=$WARMUP seed=$SEED"
+echo "configs: $CONFIGS"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+
+# The population must already be cached; generating it here would put ~8 minutes
+# of CPU rejection sampling inside a GPU job, and the whole point of the cache
+# is that this cost is paid once.
+POP="assets/urdf/generated/population/seed_$(printf '%04d' "$SEED")/manifest.json"
+if [ ! -f "$POP" ]; then
+    echo "missing cached population: $POP" >&2
+    echo "build it first: python -m genmech.tools.build_hand_population --seed $SEED --count 64" >&2
+    exit 1
+fi
+
+JSON="${OUT_DIR}/bench.json"
+for cfg in $CONFIGS; do
+    echo "=== $cfg ==============================================="
+    # Each config in its own process, and each writes its own log so a failure
+    # in one (most likely gen_population, which is the memory-hungry case)
+    # leaves the others' results intact in the shared JSON.
+    if python -u -m genmech.tools.bench_embodiment_sps \
+            --config "$cfg" \
+            --num_envs "$NUM_ENVS" \
+            --steps "$STEPS" \
+            --warmup "$WARMUP" \
+            --seed "$SEED" \
+            --out "$JSON" > "${OUT_DIR}/${cfg}.log" 2>&1; then
+        grep -E "^\[bench\]" "${OUT_DIR}/${cfg}.log" | tail -3
+    else
+        echo "$cfg FAILED (exit $?), see ${OUT_DIR}/${cfg}.log" >&2
+        tail -20 "${OUT_DIR}/${cfg}.log" >&2 || true
+    fi
+done
+
+echo
+python -m genmech.tools.bench_embodiment_sps --report --out "$JSON"
+echo
+echo "results: $JSON"

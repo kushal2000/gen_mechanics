@@ -1,0 +1,102 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 8:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Why is scene construction so expensive?
+#
+#   sbatch experiments/bench_scene_build.sub
+#
+# Measured at 24,576 envs by experiments/bench_sps.sub: scene build takes
+# 634s (SHARPA), 418s and 387s (capsule hands) against ~8s of timed physics,
+# and the 64-distinct-USD case ran over two hours. Stepping is not the problem;
+# building is. This sweep isolates which factor drives it.
+#
+# The sweep is ordered CHEAP FIRST so that a walltime overrun still leaves the
+# scaling curve intact -- the expensive multi-USD points are last, and they are
+# the ones at risk.
+#
+# Each point runs in its own process. A SimulationContext cannot be torn down
+# cleanly enough to build a second scene in the same process: clear_instance()
+# leaves the previous scene's prims on the USD stage, so point 2 would measure
+# points 1+2 together.
+
+set -euo pipefail
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+STAMP="$(date +%Y-%m-%d_%H-%M-%S)"
+OUT_DIR="${REPO_ROOT}/bench_dir/scene_build_${STAMP}"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="bench_scene_build" || true
+
+exec > "${OUT_DIR}/sweep.log" 2> "${OUT_DIR}/sweep.err"
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+JSON="${OUT_DIR}/scene_build.json"
+
+run () {   # run <label> <extra args...>
+    local label="$1"; shift
+    echo "=== $label ==="
+    if python -u -m genmech.tools.bench_scene_build --out "$JSON" "$@" \
+            > "${OUT_DIR}/${label}.log" 2>&1; then
+        grep -E "^\[build\]" "${OUT_DIR}/${label}.log" | tail -2
+    else
+        echo "$label FAILED (exit $?)" >&2
+        tail -15 "${OUT_DIR}/${label}.log" >&2 || true
+    fi
+}
+
+# 1. Does build time scale linearly with env count? (one USD, capsule hand)
+for n in 1024 4096 16384 24576; do
+    run "envs_${n}" --num_envs "$n" --n_usds 1 --robot gen_sharpa_like
+done
+
+# 2. Mesh colliders vs analytic capsules, same env count.
+run "sharpa_4096" --num_envs 4096 --n_usds 1 --robot sharpa_iiwa14
+
+# 3. Does USD instancing help, and do the self-collision filters survive it?
+#    The tool reports self_collision_filters_ok; a speed-up with filters
+#    dropped is a regression wearing an optimisation's clothes.
+run "inst_4096"        --num_envs 4096 --n_usds 1 --instanceable
+run "inst_24576"       --num_envs 24576 --n_usds 1 --instanceable
+run "inst_sharpa_4096" --num_envs 4096 --n_usds 1 --robot sharpa_iiwa14 --instanceable
+
+# 4. Is the 2.3 GB of Kit warnings costing real time?
+run "quiet_4096" --num_envs 4096 --n_usds 1 --quiet
+
+# 5. How does MultiUsdFileCfg scale in the NUMBER OF DISTINCT USDs? This is the
+#    case that took >2h at 24,576 envs, so it is measured at a smaller env count
+#    first -- if the cost is in distinct-USD count rather than envs, it shows up
+#    here for minutes instead of hours.
+for k in 2 8 32 64; do
+    run "usds_${k}_4096" --num_envs 4096 --n_usds "$k"
+done
+run "usds_64_24576" --num_envs 24576 --n_usds 64
+
+echo
+echo "results: $JSON"
+python - "$JSON" <<'PY'
+import json, sys
+rows = json.load(open(sys.argv[1]))
+print(f"{'robot':<16} {'envs':>6} {'usds':>5} {'inst':>5} {'quiet':>6} "
+      f"{'scene':>8} {'reset':>8} {'total':>8} {'ms/env':>7} {'filters':>8}")
+for r in rows:
+    print(f"{r['robot']:<16} {r['num_envs']:>6} {r['n_usds']:>5} "
+          f"{str(r['instanceable']):>5} {str(r['quiet']):>6} "
+          f"{r['scene_s']:>7.1f}s {r['reset_s']:>7.1f}s {r['build_s']:>7.1f}s "
+          f"{r['per_env_ms']:>7.2f} {str(r['self_collision_filters_ok']):>8}")
+PY

@@ -1327,7 +1327,15 @@ def _convert_urdf_to_usd(
     self_collision: bool | None = None,
     replace_cylinders_with_capsules: bool = False,
     joint_drive=None,
+    make_instanceable: bool = False,
 ) -> str:
+    # make_instanceable puts geometry in a shared prototype that every env
+    # references, instead of deep-copying it per env -- the standard fix for slow
+    # cloning at large env counts. It defaults OFF here because the robot path
+    # authors FilteredPairsAPI per link afterwards (_apply_self_collision_filters)
+    # and instance proxies cannot be edited in place; turning it on without
+    # checking that the filters still land would silently restore the adjacent-
+    # link self-collisions the filters exist to remove. Measure before adopting.
     converter_asset_path = _prepare_urdf_for_isaacsim(asset_path, usd_work_dir)
     cfg_kwargs = dict(
         asset_path=converter_asset_path,
@@ -1335,7 +1343,7 @@ def _convert_urdf_to_usd(
         force_usd_conversion=True,
         fix_base=fix_base,
         merge_fixed_joints=True,
-        make_instanceable=False,
+        make_instanceable=make_instanceable,
         replace_cylinders_with_capsules=replace_cylinders_with_capsules,
         joint_drive=joint_drive,
     )
