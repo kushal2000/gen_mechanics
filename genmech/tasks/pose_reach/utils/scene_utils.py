@@ -1602,8 +1602,11 @@ def setup_scene(env) -> None:
         if not urdf_paths[0].exists():
             raise FileNotFoundError(f"object_urdf not found: {urdf_paths[0]}")
         object_scales_normalized = [tuple(assets_cfg.object_scale)]
+        # A caller-supplied URDF is not generated from parameters we hold, so it
+        # cannot be authored -- only converted.
+        object_params = None
     else:
-        urdf_paths, object_scales_normalized = generate_handle_head_urdfs(
+        urdf_paths, object_scales_normalized, object_params = generate_handle_head_urdfs(
             handle_head_types=tuple(assets_cfg.handle_head_types),
             num_per_type=assets_cfg.num_assets_per_type,
             out_dir=env._tmp_asset_dir,
@@ -1624,12 +1627,32 @@ def setup_scene(env) -> None:
     bake_root = Path(env._tmp_asset_dir) / "baked_usd"
     usd_work_dir.mkdir(parents=True, exist_ok=True)
 
+    # Objects can be AUTHORED instead of converted. Each is one rigid body with
+    # two analytic shapes and a mass/inertia generate_objects already computes in
+    # closed form, so the URDF round-trip through Kit's importer recovers numbers
+    # we started with -- measured at 0.2 s per object, ~240 s for the 1200-object
+    # pool. Authoring is ~5 prims each.
+    #
+    # Verified equivalent before being offered: mass, inertia and centre of mass
+    # agree to ~1e-8 and dropped-object resting poses to ~2e-7 m
+    # (genmech.tools.compare_object_assets, compare_object_physics). The capsule
+    # detail matters and is handled in author_objects: this conversion passes
+    # replace_cylinders_with_capsules=True, so a URDF cylinder becomes a CAPSULE
+    # whose height is the cylindrical section.
+    author_objects = bool(getattr(assets_cfg, "author_object_usds", False))
+    if author_objects and object_params is None:
+        raise ValueError(
+            "assets.author_object_usds=True requires the procedural object pool; "
+            "assets.object_urdf is set, and a caller-supplied URDF carries no "
+            "parameters to author from."
+        )
+
     object_raw_usds = [
         _convert_urdf_to_usd(
             str(urdf), usd_work_dir, fix_base=False, replace_cylinders_with_capsules=True,
         )
         for urdf in urdf_paths
-    ]
+    ] if not author_objects else []
     object_usd_paths = [
         _bake_usd(usd, bake_root, "object", props=dict(
             kinematic_enabled=False, disable_gravity=False,

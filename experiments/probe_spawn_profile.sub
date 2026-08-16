@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 4:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Which loop inside spawn_multi_asset carries the cost?
+#
+#   for k in 8 64 256; do
+#       N_USDS=$k NUM_ENVS=24576 sbatch experiments/probe_spawn_profile.sub
+#   done
+#
+# One job per k so the timings are not distorted by neighbours on the same node.
+# Env count is held fixed: the question is why per-design cost depends on n at
+# all, so n must not vary within the comparison.
+
+set -euo pipefail
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+N_USDS="${N_USDS:-64}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+SEED="${SEED:-0}"
+
+OUT_DIR="${REPO_ROOT}/bench_dir/spawnprof_${NUM_ENVS}"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="spawnprof_k${N_USDS}" || true
+
+exec > "${OUT_DIR}/k${N_USDS}.log" 2> "${OUT_DIR}/k${N_USDS}.err"
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_sp${N_USDS}"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+python -u -m genmech.tools.probe_spawn_profile \
+    --num_envs "$NUM_ENVS" --n_usds "$N_USDS" --seed "$SEED" \
+    --out "${OUT_DIR}/k${N_USDS}.json"

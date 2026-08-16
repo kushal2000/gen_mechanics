@@ -1,0 +1,56 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 4:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# BASELINE for the authoring work: what does the pretrained SHARPA policy score
+# on the training task, through the CURRENT (URDF->USD converter) asset path?
+#
+#   CKPT=... sbatch experiments/eval_baseline.sub
+#
+# Direct authoring is only acceptable if it reproduces this. Faster asset
+# preparation that changes the physics is not a win -- it is a silent
+# regression, and this project has already shipped two of those today (capsule
+# lengths 43-57% oversized, ghost joints escaping their limits), both of which a
+# goals/episode comparison would have caught.
+
+set -euo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+ROBOT="${ROBOT:-sharpa_iiwa14}"
+CKPT="${CKPT:?set CKPT to a checkpoint .pth}"
+NUM_ENVS="${NUM_ENVS:-512}"
+SUITE="${SUITE:-smoke}"
+# run_eval needs the training config (network shape, obs layout) and ONE
+# condition per invocation; nominal is the like-for-like comparison point.
+CONDITION="${CONDITION:-nominal/nominal}"
+POLICY_CONFIG="${POLICY_CONFIG:-$(dirname "$(dirname "$CKPT")")/../.hydra/config.yaml}"
+
+OUT_DIR="${REPO_ROOT}/bench_dir/eval_baseline"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="eval_base_${ROBOT}" || true
+exec > "${OUT_DIR}/${ROBOT}_${SUITE}.log" 2> "${OUT_DIR}/${ROBOT}_${SUITE}.err"
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_eval"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+echo "robot=$ROBOT ckpt=$CKPT num_envs=$NUM_ENVS suite=$SUITE"
+echo "policy_config=$POLICY_CONFIG condition=$CONDITION"
+ls -la "$POLICY_CONFIG"
+python -u -m genmech.eval.run_eval \
+    --robot_spec "$ROBOT" --checkpoint "$CKPT" \
+    --num_envs "$NUM_ENVS" --suite "$SUITE" \
+    --policy_config "$POLICY_CONFIG" \
+    --condition "$CONDITION" \
+    --out "${OUT_DIR}/${ROBOT}_${SUITE}"

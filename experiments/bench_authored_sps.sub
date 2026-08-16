@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=300000
+#SBATCH -t 4:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# k = n: every env a distinct robot, authored directly onto the stage.
+#
+#   ROBOTS=24576 LINKS=44 sbatch experiments/bench_authored_sps.sub
+#
+# Memory is raised to 300G: 24,576 robots x 44 links is ~3.2M prims on the USD
+# stage, which the convert path never had to hold because it shared protos.
+
+set -euo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+ROBOTS="${ROBOTS:-24576}"
+LINKS="${LINKS:-44}"
+STEPS="${STEPS:-300}"
+# 0 = every env unique (k=n); otherwise this many distinct geometries, cycled.
+DISTINCT="${DISTINCT:-0}"
+
+OUT_DIR="${REPO_ROOT}/bench_dir/authored_sps"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="authored_k${ROBOTS}" || true
+TAG="k${ROBOTS}_l${LINKS}_d${DISTINCT}"
+exec > "${OUT_DIR}/${TAG}.log" 2> "${OUT_DIR}/${TAG}.err"
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_auth"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+
+python -u -m genmech.tools.bench_authored_sps \
+    --robots "$ROBOTS" --links "$LINKS" --steps "$STEPS" \
+    --distinct "$DISTINCT" \
+    --out "${OUT_DIR}/${TAG}.json"

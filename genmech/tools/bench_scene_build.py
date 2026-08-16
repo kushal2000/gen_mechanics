@@ -65,6 +65,11 @@ def _parse_args():
     parser.add_argument("--quiet", action="store_true",
                         help="drop Kit's log level to error")
     parser.add_argument("--env_spacing", type=float, default=1.3)
+    parser.add_argument("--steps", type=int, default=0,
+                        help="timed steps after warmup; >0 also reports steps/s "
+                             "so build cost and step cost can be read off the "
+                             "same run at the same k")
+    parser.add_argument("--warmup", type=int, default=100)
     parser.add_argument("--out", default="bench_scene_build.json")
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
@@ -132,7 +137,20 @@ def main() -> None:
         usd, filters_ok = prepare(spec, "robot")
         usds = [usd]
     else:
-        hands = load_population(args.seed)[:args.n_usds]
+        pool = load_population(args.seed)
+        if args.n_usds <= len(pool):
+            hands = pool[:args.n_usds]
+        else:
+            # Not enough sampled designs, so repeat the pool under DISTINCT
+            # names. The cost being measured here is USD composition and prim
+            # resolution per distinct FILE -- the spawner does not know or care
+            # that two files describe the same geometry -- so this isolates the
+            # k dimension without waiting hours on the 94%-rejection sampler.
+            from dataclasses import replace as _replace
+            hands = [_replace(pool[i % len(pool)], name=f"{pool[i % len(pool)].name}_k{i:04d}")
+                     for i in range(args.n_usds)]
+            print(f"[build] {args.n_usds} distinct USDs from {len(pool)} designs "
+                  f"(geometry repeats; file identity does not)")
         specs = [synth_spec(h) for h in hands]
         pairs = [prepare(s, s.name) for s in specs]
         usds = [p[0] for p in pairs]
@@ -162,10 +180,26 @@ def main() -> None:
     q0 = art.data.default_joint_pos.clone()
     art.write_joint_state_to_sim(q0, torch.zeros_like(q0))
     art.set_joint_position_target(q0)
-    for _ in range(20):
+    for _ in range(max(20, args.warmup if args.steps else 20)):
         art.write_data_to_sim()
         sim.step()
         scene.update(1 / 120.0)
+
+    sps = env_sps = 0.0
+    if args.steps:
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.perf_counter()
+        for _ in range(args.steps):
+            art.write_data_to_sim()
+            sim.step()
+            scene.update(1 / 120.0)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        dt = time.perf_counter() - t0
+        sps = args.steps / dt
+        env_sps = args.steps * args.num_envs / dt
+        print(f"[build] {sps:.1f} steps/s, {env_sps:,.0f} env-steps/s")
 
     result = dict(
         robot=args.robot, num_envs=args.num_envs, n_usds=len(set(usds)),
@@ -174,6 +208,7 @@ def main() -> None:
         convert_s=convert_s, scene_s=scene_s, reset_s=reset_s,
         build_s=scene_s + reset_s, self_collision_filters_ok=filters_ok,
         per_env_ms=(scene_s + reset_s) * 1000.0 / args.num_envs,
+        sps=sps, env_sps=env_sps,
     )
     print(f"[build] scene={scene_s:.1f}s reset={reset_s:.1f}s "
           f"total={result['build_s']:.1f}s "

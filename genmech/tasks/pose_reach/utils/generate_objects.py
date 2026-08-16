@@ -348,6 +348,7 @@ def generate_handle_head_urdfs(
 
     paths: list[str] = []
     scales_raw: list[tuple[float, ...]] = []
+    params_raw: list[tuple] = []
     for dist in matching:
         # Sample order MUST match legacy env.py:1758-1772 (densities first,
         # scales second) — the two pools share seed=42 so first-asset URDFs
@@ -386,6 +387,10 @@ def generate_handle_head_urdfs(
             )
             paths.append(str(urdf_path))
             scales_raw.append(h_scale)
+            # The exact arguments this URDF was written from. Direct USD
+            # authoring needs them, and recovering them by parsing the URDF back
+            # would be a second source of truth that could drift from this one.
+            params_raw.append((h_scale, head, h_d, head_d))
 
     # Convert to 3-tuples and normalize by object_base_size (matches env.py:1814-1821).
     scales_3d = [_scale_to_3d(np.asarray(s)) for s in scales_raw]
@@ -403,8 +408,15 @@ def generate_handle_head_urdfs(
         np.random.shuffle(indices)
         paths = [paths[i] for i in indices]
         scales_norm = [scales_norm[i] for i in indices]
+        # params must ride the SAME permutation: env i takes pool entry i, and
+        # a params list left in the original order would author a different
+        # object than the one whose scale the reward and observations use.
+        params_raw = [params_raw[i] for i in indices]
 
-    return paths, scales_norm
+    # Returned as a third element rather than a new function: any caller that
+    # unpacks two values keeps working, and the params cannot drift out of step
+    # with the paths because they are built in the same loop.
+    return paths, scales_norm, params_raw
 
 
 __all__ = [

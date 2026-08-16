@@ -1,0 +1,73 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 6:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# How does cost scale with the NUMBER OF DISTINCT EMBODIMENTS?
+#
+#   for k in 1 8 64 256 512; do
+#       N_USDS=$k NUM_ENVS=24576 sbatch experiments/bench_k_scaling.sub
+#   done
+#
+# One job per k, deliberately. Timing several configurations in one process is
+# wrong (SimulationContext.clear_instance() leaves the previous scene's prims on
+# the stage), and running them concurrently on one node is also wrong -- they
+# would contend for CPU and the step-rate numbers would measure the contention.
+# Separate jobs give each configuration its own node allocation.
+#
+# The hypothesis under test: step rate is unaffected by the number of distinct
+# designs, while setup cost grows with it. At 24,576 envs, 64 designs already
+# measured 42.9 steps/s against 44.5 for one replicated design (-3.6%), with
+# build going 387s -> 739s. This extends k by two decades to see whether the
+# step rate stays flat and whether build stays linear in k.
+#
+# Beyond 64, designs REPEAT under distinct file names: the cached population
+# holds 64 collision-free hands and sampling more costs hours at the 94%
+# rejection rate. What is being measured is USD composition and prim resolution
+# per distinct FILE, which does not depend on whether two files describe the
+# same geometry.
+
+set -euo pipefail
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+N_USDS="${N_USDS:-64}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+STEPS="${STEPS:-300}"
+WARMUP="${WARMUP:-100}"
+SEED="${SEED:-0}"
+
+OUT_DIR="${REPO_ROOT}/bench_dir/kscale_${NUM_ENVS}"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="kscale_k${N_USDS}_n${NUM_ENVS}" || true
+
+exec > "${OUT_DIR}/k${N_USDS}.log" 2> "${OUT_DIR}/k${N_USDS}.err"
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_k${N_USDS}"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+echo "n_usds=$N_USDS num_envs=$NUM_ENVS steps=$STEPS warmup=$WARMUP"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+
+# Each job writes its OWN json. A shared file would be raced by concurrent jobs,
+# and read-modify-write would silently drop results.
+python -u -m genmech.tools.bench_scene_build \
+    --num_envs "$NUM_ENVS" \
+    --n_usds "$N_USDS" \
+    --seed "$SEED" \
+    --steps "$STEPS" \
+    --warmup "$WARMUP" \
+    --out "${OUT_DIR}/k${N_USDS}.json"
+
+echo "done: ${OUT_DIR}/k${N_USDS}.json"
