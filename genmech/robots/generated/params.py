@@ -318,7 +318,7 @@ SHARPA_LIKE = HandParams(
 # The construction reproduces SHARPA exactly: a finger on +z with the default
 # roll gets mount rpy (0, -90, -90) deg, which is what SHARPA's index, middle
 # and ring carry.
-# Two faces are excluded, for different reasons.
+# Three faces are excluded, for different reasons.
 #
 #   -z  is where the ARM is. The palm box spans z = 0 .. extent_z in the palm
 #       link frame and bolts to iiwa14_link_ee at z = 0, so a finger there would
@@ -328,10 +328,19 @@ SHARPA_LIKE = HandParams(
 #       straight up, +z horizontally away from the wrist. SHARPA's index,
 #       middle and ring mount on +z; a finger on -x points away from the
 #       workspace and can never reach the object.
+#   +x  is the PALM SURFACE, the direction fingers close TOWARD. A finger
+#       mounted there grows out of the middle of the palm pointing at the
+#       table, so flexing can only retract it back up and away from the
+#       workspace -- measured, every such finger curls with a NEGATIVE
+#       component along the grasp direction, and no choice of roll fixes it
+#       (the offending term is invariant under roll). Real hands mount fingers
+#       on the palm's EDGES and curl them toward its surface, which is what
+#       leaving +z/+y/-y does. Excluding it costs the "finger sprouting from
+#       the palm centre" layouts; those were never usable as fingers.
 #
 # Note that "the top face" is -x, NOT +z -- the palm box's local +z is
 # horizontal once the arm is in its home pose.
-PALM_FACES: tuple[str, ...] = ("+z", "+x", "+y", "-y")
+PALM_FACES: tuple[str, ...] = ("+z", "+y", "-y")
 
 FACE_MARGIN = 0.012
 """Inset from the face's edges, metres. A mount on the rim would put half the
