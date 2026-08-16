@@ -7,8 +7,9 @@ probe. Reproduce with the tools named in each section.
 The question this branch set out to answer: **can we simulate many different
 robot embodiments at once, and what does it cost?**
 
-Short answer: **diversity is free at steady state, and expensive only at scene
-setup — where the expense turns out to be avoidable.**
+Short answer: **diversity is free.** It costs nothing per step, and the setup
+cost it carries on the URDF-conversion path disappears entirely when assets are
+authored directly — including at one distinct embodiment per environment.
 
 ---
 
@@ -167,19 +168,49 @@ reference hide exactly this class of error.
 
 ## 5. Practical guidance
 
-* **Never run one design per env.** It is the worst operating point: nothing is
-  shared, and statistically you want several envs per design anyway to average
-  over object and goal randomisation.
-* **k designs × n/k envs** is the right shape. 64 designs at 4,096 envs costs
-  122 s to build; 512 designs at 24,576 envs costs 2,286 s.
+**Which asset path you use decides everything below.** The two have different
+economics, and advice written for one is wrong for the other.
+
+### On the authored path: one embodiment per env is free
+
+Measured, not inferred — same robot, same env count, only the number of distinct
+designs varying:
+
+| distinct designs | setup | steps/s | env-steps/s |
+|---|---|---|---|
+| 64 | 368.4 s | 14.3 | 350,860 |
+| 24,576 | 366.5 s | 14.2 | 348,108 |
+
+There is no `k` term left. Authoring is ~8 ms per robot whether the robots differ
+or not, PhysX reset does not care, and the step rate is identical. **k = n is a
+perfectly good operating point** — arguably the natural one, since it gives the
+search loop one evaluation per design with no bookkeeping about which envs share
+an embodiment.
+
+The remaining consideration is statistical, not computational: at k = n each
+design gets a single rollout, so its score carries the full variance of one
+object draw and one goal sequence. That is a choice about estimator noise —
+answerable by longer episodes, more goals per episode, or repeating designs
+across a second scene — not a reason the simulator makes k = n expensive. It
+does not.
+
+### On the convert path: keep k modest
+
+Setup grows as `0.00018*k*n`, so distinct designs are genuinely expensive:
+64 designs at 4,096 envs costs 122 s, 512 designs at 24,576 envs costs 2,286 s,
+and one design per env extrapolates to tens of hours. Here — and only here — the
+`k designs x n/k envs` shape is worth arranging deliberately.
+
+### Independent of path
+
 * **Build once, amortise.** Setup is minutes; make the rollout long enough that
   it does not dominate.
 * **Prefer analytic colliders.** Capsule hands are faster to build *and* faster
   to step than mesh hands, and they author directly.
 * **Small-scale benchmarks mislead.** At 64 envs, per-step overhead dominates and
   the ranking of two robots inverted relative to 24,576 envs.
-
----
+* **Watch articulation depth, not joint count.** A 43-joint serial chain runs 3x
+  slower than a 37-joint hand+arm, because the solve tracks chain depth.
 
 ## 6. Open
 
