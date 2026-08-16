@@ -44,7 +44,23 @@ import math
 OBJECT_ROOT_LINK = "object_root"
 
 
-def _shape_prim(layer, path: str, scale, xyz, rpy, collision: bool = True):
+def author_physics_material(layer, path: str, static_friction: float = 0.5,
+                            dynamic_friction: float = 0.5,
+                            restitution: float = 0.0) -> str:
+    """One physics material for authored colliders to bind against."""
+    from pxr import Sdf
+
+    from genmech.robots.generated.author_usd import attr, define
+
+    mat = define(layer, path, "Material", ["PhysicsMaterialAPI"])
+    attr(mat, "physics:staticFriction", Sdf.ValueTypeNames.Float, float(static_friction))
+    attr(mat, "physics:dynamicFriction", Sdf.ValueTypeNames.Float, float(dynamic_friction))
+    attr(mat, "physics:restitution", Sdf.ValueTypeNames.Float, float(restitution))
+    return path
+
+
+def _shape_prim(layer, path: str, scale, xyz, rpy, collision: bool = True,
+                material_path: str | None = None):
     """One handle/head shape: Cube for a 3-tuple, Cylinder for a 2-tuple."""
     from pxr import Gf, Sdf
 
@@ -60,8 +76,17 @@ def _shape_prim(layer, path: str, scale, xyz, rpy, collision: bool = True):
     # here made objects rest up to 0.53 mm differently from the converted ones.
     # The goal marker is the same shape with no collider, matching how the
     # converted path bakes goalviz with collision_enabled=False.
+    # ALWAYS apply PhysicsCollisionAPI; a non-colliding shape gets
+    # physics:collisionEnabled=False instead of no API at all. This mirrors how
+    # the converted path bakes goalviz (collision_enabled=False keeps the shape
+    # and disables it), and it matters: a body with zero shapes gives PhysX a
+    # view it cannot report materials for, which surfaces as "Failed to get
+    # rigid body material properties from backend" when the env reads frictions.
     prim = define(layer, path, "Cube" if is_box else "Capsule",
-                  ["PhysicsCollisionAPI"] if collision else None)
+                  ["PhysicsCollisionAPI"])
+    if not collision:
+        attr(prim, "physics:collisionEnabled", Sdf.ValueTypeNames.Bool, False)
+
     if is_box:
         lx, ly, lz = (float(v) for v in scale)
         # UsdGeom.Cube has a single `size`; non-uniform box dimensions have to
@@ -94,7 +119,8 @@ def _shape_prim(layer, path: str, scale, xyz, rpy, collision: bool = True):
 
 def author_handle_head(layer, prim_path: str, handle_scale, head_scale,
                        handle_density: float, head_density: float,
-                       body_at_root: bool = False, collision: bool = True):
+                       body_at_root: bool = False, collision: bool = True,
+                       material_path: str | None = None):
     """Author one handle+head object as a single rigid body.
 
     Returns the composite ``(mass, ixx, iyy, izz, com_x)`` actually authored, so
@@ -119,6 +145,23 @@ def author_handle_head(layer, prim_path: str, handle_scale, head_scale,
         # _handle_head_urdf_variable_density.
         handle_mass, handle_izz, handle_iyy, handle_ixx = _compute_mass_and_inertia(
             handle_scale, handle_density)
+
+    # --- handle-only objects ----------------------------------------------
+    # head_scale is None for types the generator emits without a head (its
+    # generate_handle_head_urdf delegates to generate_handle_urdf). The inertia
+    # is then the handle's alone, with the inertial frame at the origin rather
+    # than a composite COM, and no head shape is authored.
+    if head_scale is None:
+        body_path = prim_path if body_at_root else f"{prim_path}/{OBJECT_ROOT_LINK}"
+        body = define(layer, body_path, "Xform",
+                      ["PhysicsRigidBodyAPI", "PhysicsMassAPI"])
+        attr(body, "physics:mass", Sdf.ValueTypeNames.Float, float(handle_mass))
+        attr(body, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
+             Gf.Vec3f(float(handle_ixx), float(handle_iyy), float(handle_izz)))
+        _shape_prim(layer, f"{body_path}/handle", handle_scale, (0.0, 0.0, 0.0),
+                    handle_rpy, collision=collision, material_path=material_path)
+        return (float(handle_mass), float(handle_ixx), float(handle_iyy),
+                float(handle_izz), 0.0)
 
     # --- head -------------------------------------------------------------
     if len(head_scale) == 3:
@@ -160,9 +203,9 @@ def author_handle_head(layer, prim_path: str, handle_scale, head_scale,
          Gf.Vec3f(float(com_x), 0.0, 0.0))
 
     _shape_prim(layer, f"{body_path}/handle", handle_scale, (0.0, 0.0, 0.0),
-                handle_rpy, collision=collision)
+                handle_rpy, collision=collision, material_path=material_path)
     _shape_prim(layer, f"{body_path}/head", head_scale, (x_offset, 0.0, 0.0),
-                head_rpy, collision=collision)
+                head_rpy, collision=collision, material_path=material_path)
 
     return float(total_mass), float(ixx), float(iyy), float(izz), float(com_x)
 

@@ -1559,6 +1559,60 @@ def _materialize_env_prims(env) -> None:
             stage.DefinePrim(env_path, "Xform")
 
 
+def _author_objects_into_envs(env, object_params, n_pool: int) -> None:
+    """Author Object and GoalViz prims directly into every env.
+
+    Env i takes pool entry ``i % n_pool`` -- the same assignment MultiUsdFileCfg
+    makes, so ``_build_object_scale_tensor``'s per-env scale lookup stays correct
+    and the policy sees the object it expects.
+
+    The goal marker is the same geometry with collision omitted, matching how the
+    converted path bakes goalviz with ``collision_enabled=False``.
+    """
+    from pxr import Sdf
+
+    from genmech.tasks.pose_reach.utils.author_objects import (
+        author_handle_head,
+        author_physics_material,
+    )
+
+    stage = get_current_stage()
+    layer = stage.GetRootLayer()
+    t0 = time.perf_counter()
+    with Sdf.ChangeBlock():
+        # One shared material; the env overwrites its values per env through
+        # root_physx_view.set_material_properties, so per-asset materials would
+        # buy nothing and cost a prim each.
+        mat_path = author_physics_material(
+            layer, "/World/PhysicsMaterials/object",
+            static_friction=float(env.cfg.assets.object_friction),
+            dynamic_friction=float(env.cfg.assets.object_friction),
+            restitution=float(env.cfg.assets.object_restitution))
+        for env_id, env_path in enumerate(env.scene.env_prim_paths):
+            handle_scale, head_scale, handle_density, head_density = \
+                object_params[env_id % n_pool]
+            for name, collision in (("Object", True), ("GoalViz", False)):
+                author_handle_head(
+                    layer, f"{env_path}/{name}",
+                    handle_scale, head_scale, handle_density, head_density,
+                    body_at_root=True, collision=collision,
+                    material_path=mat_path)
+    # Bind the physics material AFTER the ChangeBlock, with Isaac Lab's helper
+    # rather than a hand-authored relationship: it applies MaterialBindingAPI
+    # correctly and is decorated with apply_nested, so one call per env covers
+    # both shapes. Without a bound material the env's friction pass fails with
+    # "Failed to get rigid body material properties from backend".
+    from isaaclab.sim.utils import bind_physics_material
+
+    for env_path in env.scene.env_prim_paths:
+        for name in ("Object", "GoalViz"):
+            bind_physics_material(f"{env_path}/{name}", mat_path)
+
+    _log_scene_step(
+        t0, f"authored {env.num_envs} Object + GoalViz prims from a "
+            f"{n_pool}-entry pool")
+
+
 def _build_object_scale_tensor(env, object_scales_normalized, num_object_usds: int) -> None:
     num_envs = env.num_envs
     object_prim_paths = find_matching_prim_paths("/World/envs/env_.*/Object")
@@ -1752,8 +1806,20 @@ def setup_scene(env) -> None:
         start_arm_higher=getattr(env.cfg.reset, "start_arm_higher", False),
     ))
     env.table = RigidObject(build_rigid_object_cfg("/World/envs/env_.*/Table", table_usd_paths))
-    env.object = RigidObject(build_rigid_object_cfg("/World/envs/env_.*/Object", object_usd_paths))
-    env.goal_viz = RigidObject(build_rigid_object_cfg("/World/envs/env_.*/GoalViz", goalviz_usd_paths))
+    if author_objects:
+        # Author one object and one goal marker INTO each env, cycling the pool
+        # the same way MultiUsdFileCfg would. This replaces both the per-variant
+        # conversion (~0.2 s x 1200) and the proto/copy spawn machinery: there is
+        # no USD file, no template prim, and no Sdf.CopySpec.
+        n_pool = len(object_params)
+        _author_objects_into_envs(env, object_params, n_pool)
+        env.object = RigidObject(RigidObjectCfg(
+            prim_path="/World/envs/env_.*/Object", spawn=None))
+        env.goal_viz = RigidObject(RigidObjectCfg(
+            prim_path="/World/envs/env_.*/GoalViz", spawn=None))
+    else:
+        env.object = RigidObject(build_rigid_object_cfg("/World/envs/env_.*/Object", object_usd_paths))
+        env.goal_viz = RigidObject(build_rigid_object_cfg("/World/envs/env_.*/GoalViz", goalviz_usd_paths))
     _log_scene_step(setup_t0, "spawned robot/table/object/goalviz")
 
     # 5. Ground plane + dome light (global, outside env_*).
@@ -1762,7 +1828,9 @@ def setup_scene(env) -> None:
     light_cfg.func("/World/Light", light_cfg)
 
     # 6. Per-env scale tensor for spawned Objects.
-    _build_object_scale_tensor(env, object_scales_normalized, len(object_usd_paths))
+    _build_object_scale_tensor(
+        env, object_scales_normalized,
+        len(object_params) if author_objects else len(object_usd_paths))
 
     # 7. Register with scene so DirectRLEnv refreshes their tensors each step.
     env.scene.articulations["robot"] = env.robot

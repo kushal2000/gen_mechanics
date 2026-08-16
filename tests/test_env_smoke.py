@@ -20,6 +20,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_envs", type=int, default=8)
     parser.add_argument("--num_assets_per_type", type=int, default=2)
+    parser.add_argument("--author_objects", action="store_true",
+                        help="author object USDs directly instead of converting "
+                             "their URDFs (assets.author_object_usds)")
     parser.add_argument("--steps", type=int, default=5)
     parser.add_argument("--robot_spec", default=None,
                         help="registry name, or a generated hand "
@@ -42,6 +45,7 @@ def main() -> None:
     cfg = PoseReachEnvCfg()
     cfg.scene.num_envs = args.num_envs
     cfg.assets.num_assets_per_type = args.num_assets_per_type
+    cfg.assets.author_object_usds = args.author_objects
     if args.robot_spec:
         cfg.assets.robot_spec = args.robot_spec
 
