@@ -11,6 +11,10 @@ Short answer: **diversity is free.** It costs nothing per step, and the setup
 cost it carries on the URDF-conversion path disappears entirely when assets are
 authored directly — including at one distinct embodiment per environment.
 
+The one thing that cost real time was not physics but bookkeeping: which
+environment holds which asset. §4 has that story, and it is the part most likely
+to bite again.
+
 ---
 
 ## 1. Different topologies coexist in one scene
@@ -145,15 +149,57 @@ Authoring the prims directly with Sdf specs inside a `ChangeBlock`:
 Linear in k, verified at 4,096 and 24,576. All instances resolve into one
 articulation view with joints that track their targets.
 
-### Objects: verified physically equivalent
+### Objects: equivalent assets, and the acceptance test that mattered
 
 The task's 1,200 objects (6 types × 100 × box/capsule) are each ONE rigid body
 with two analytic shapes and a closed-form mass/inertia. Authored vs converted:
 
 * mass, diagonal inertia, centre of mass agree to **~1e-8 relative**
 * dropped 30 cm and settled over 400 steps, resting poses agree to **~2e-7 m**
+* composed collider geometry — position and half-extents in the object's own
+  frame — matches **exactly**, for both shapes
 
 `genmech.tools.compare_object_assets`, `genmech.tools.compare_object_physics`.
+
+**None of that was sufficient, and it is worth being precise about why.** With
+all of it green the pretrained policy still scored **3.00 goals/episode against
+the converted path's 5.07**. The assets were identical; they were in the wrong
+environments. `_build_object_scale_tensor` gives env *i* the scale of pool entry
+`i % n_pool` by walking `find_matching_prim_paths`, which returns **numeric**
+order; the authoring pass walked `sorted(env_prim_paths)`, which is
+**lexicographic**. On 512 envs those disagree in **510**. Nearly every env held
+an object its own `object_scales` observation did not describe, and since
+`reset_utils` sizes the goal keypoints from that same tensor, the goal geometry
+was wrong too.
+
+The end-to-end number is what caught it:
+
+| | goals/10 | lift | complete |
+|---|---|---|---|
+| converted (control) | 5.07 ± 0.18 | 77% | 33% |
+| authored, ordering bug | 3.00 ± 0.17 | 71% | 17% |
+| authored, fixed | **4.93 ± 0.18** | 76% | 31% |
+
+The fix removes the second derivation rather than correcting it: authoring
+records the env→pool map and `_build_object_scale_tensor` consumes it, so the
+two cannot desynchronise again. Per-env mass, inertia, `object_scales` and asset
+index are now bit-identical across all 512 envs.
+
+**Three lessons, each one a habit rather than a fact:**
+
+* **Asset equality is not pipeline equality.** Every check compared *an* authored
+  object to *a* converted object. None asked whether env *i* held the right one.
+  A faster asset path has two halves to verify, and the plumbing half is the one
+  with no natural reference to diff against.
+* **A green check can be vacuous.** With 600 pool entries and 512 envs every env
+  holds a unique asset, so "asset_index → mass is single-valued" passes no matter
+  how wrong the assignment is. Two checks inside the failing run read green for
+  exactly this reason. `check_object_identity` now prints when the test cannot
+  fail; the regression uses a 48-entry pool where it bites.
+* **Do not ship two fixes in one run.** The ordering change was credited with a
+  0.00 → 2.92 recovery that the kinematic goal-marker fix in the same run had
+  actually earned. That conflation is what let a change in the wrong direction
+  look like progress.
 
 **One trap worth recording.** The env converts objects with
 `replace_cylinders_with_capsules=True`, which reads a URDF cylinder's `length` as
@@ -217,10 +263,12 @@ and one design per env extrapolates to tens of hours. Here — and only here —
 * Author the generated hand (not just objects) — needed for large-k sweeps, and
   it must reproduce masses, drive gains, self-collision filters and the arm
   reference before it is trusted.
-* Wire object authoring into `scene_utils` behind `assets.author_object_usds`,
-  then confirm the pretrained policy holds its goals/episode. **Faster assets
-  that change the physics are a silent regression, not a win** — the acceptance
-  test is the policy's score, not the clock.
+* Decide whether `assets.author_object_usds` should default ON. It is wired into
+  `scene_utils` and the policy now holds its score through it (§4), but flipping
+  the default changes physics assets for every future training run, so it is a
+  deliberate call rather than a cleanup. **Faster assets that change the physics
+  are a silent regression, not a win** — the acceptance test is the policy's
+  score, not the clock.
 * Prototype grouped `replicate_physics` per design block.
 * The sampler rejects ~93% of draws on self-collision, stable across seeds. An
   analytic capsule-capsule gate inside `params.validate()` would avoid a URDF
