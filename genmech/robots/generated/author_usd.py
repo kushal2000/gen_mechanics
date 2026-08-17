@@ -300,6 +300,98 @@ def flange_to_palm() -> P.Segment:
 
 
 # ---------------------------------------------------------------------------
+# the merged palm body
+# ---------------------------------------------------------------------------
+
+_LINK7_INERTIAL: tuple | None = None
+
+
+def arm_link7_inertial() -> tuple[float, tuple, tuple]:
+    """``(mass, com, (ixx,iyy,izz))`` for iiwa14_link_7 ALONE, from the URDF.
+
+    Parsed rather than hardcoded so it cannot drift from the arm the rest of the
+    stack loads. The arm is identical across every design, so this is read once.
+    """
+    global _LINK7_INERTIAL
+    if _LINK7_INERTIAL is not None:
+        return _LINK7_INERTIAL
+    import xml.etree.ElementTree as ET
+
+    from genmech.tools.build_allegro_urdf import SHARPA_URDF
+    from genmech.utils.paths import resolve as resolve_repo_path
+
+    root = ET.parse(resolve_repo_path(SHARPA_URDF)).getroot()
+    for link in root.findall("link"):
+        if link.get("name") != PALM_BODY:
+            continue
+        inertial = link.find("inertial")
+        origin = inertial.find("origin")
+        com = tuple(float(v) for v in origin.get("xyz").split()) if origin is not None \
+            else (0.0, 0.0, 0.0)
+        it = inertial.find("inertia")
+        _LINK7_INERTIAL = (
+            float(inertial.find("mass").get("value")),
+            com,
+            (float(it.get("ixx")), float(it.get("iyy")), float(it.get("izz"))),
+        )
+        return _LINK7_INERTIAL
+    raise RuntimeError(f"{PALM_BODY} not found in {SHARPA_URDF}")
+
+
+def merged_palm_body_props(hand: P.HandParams):
+    """Mass properties of iiwa14_link_7 AFTER the palm is merged into it.
+
+    merge_fixed_joints collapses gen_palm (and the massless link_ee) into the
+    arm's last link, so the converted robot has no gen_palm body at all -- its
+    720 g box is part of link_7. Authoring link_7 with the ARM's inertial alone
+    would lose that, and the error is not small: the palm is 37% of the merged
+    mass and sits 95 mm off the link_7 origin.
+
+    Both tensors are moved to the merged centre of mass by the parallel-axis
+    theorem and summed in the link_7 frame, then diagonalised -- the palm's box
+    axes are rotated 75 deg about z relative to link_7, so the sum is genuinely
+    off-diagonal and a diagonal-only treatment would be wrong.
+
+    Returns ``(mass, (ixx,iyy,izz), com, principal_axes_quat)``.
+    """
+    import numpy as np
+
+    m_arm, com_arm, diag_arm = arm_link7_inertial()
+    com_arm = np.asarray(com_arm, dtype=float)
+
+    ex, ey, ez = (float(v) for v in hand.palm_extents)
+    m_palm = A.PALM_DENSITY_KG_M3 * ex * ey * ez
+    # Box inertia about its own centre, in the PALM frame.
+    i_palm_local = np.diag([
+        m_palm * (ey * ey + ez * ez) / 12.0,
+        m_palm * (ex * ex + ez * ez) / 12.0,
+        m_palm * (ex * ex + ey * ey) / 12.0,
+    ])
+
+    t_palm = _mat_from_seg(flange_to_palm())          # link_7 <- palm
+    r_palm = t_palm[:3, :3]
+    com_palm = (t_palm @ np.append(
+        np.asarray([float(v) for v in P.palm_center(hand.palm_extents)]), 1.0))[:3]
+    i_palm = r_palm @ i_palm_local @ r_palm.T          # into the link_7 frame
+
+    total = m_arm + m_palm
+    com = (m_arm * com_arm + m_palm * com_palm) / total
+
+    def shift(inertia, mass, centre):
+        d = centre - com
+        return inertia + mass * (float(d @ d) * np.eye(3) - np.outer(d, d))
+
+    i_total = shift(np.diag(diag_arm), m_arm, com_arm) + shift(i_palm, m_palm, com_palm)
+
+    vals, vecs = np.linalg.eigh(i_total)
+    if np.linalg.det(vecs) < 0:                       # keep it a rotation
+        vecs[:, 0] = -vecs[:, 0]
+    return (float(total), tuple(float(v) for v in vals),
+            tuple(float(v) for v in com), _mat_to_pos_quat(
+                np.block([[vecs, np.zeros((3, 1))], [np.zeros((1, 3)), 1.0]]))[1])
+
+
+# ---------------------------------------------------------------------------
 # authoring
 # ---------------------------------------------------------------------------
 
@@ -429,6 +521,15 @@ def author_hand(layer, root_path: str, hand: P.HandParams, spec,
                  float(A.SLOT_EFFORT_NM[slot]))
             attr(j, "drive:angular:physics:targetPosition",
                  Sdf.ValueTypeNames.Float, 0.0)
+            # The URDF's <limit velocity=...>. Omitting it does NOT leave the
+            # joint at some sane default -- it leaves maxJointVelocity
+            # uninitialised, which Isaac Lab reports as 5.9e36 rad/s, i.e. no
+            # limit at all. The hand still looked correct in every static
+            # comparison (masses, inertias, limits, colliders, gains all exact)
+            # while its joints could move arbitrarily fast, and the reaction
+            # torque that produced settled the ARM into a different pose.
+            attr(j, "physxJoint:maxJointVelocity", Sdf.ValueTypeNames.Float,
+                 float(A.SLOT_VELOCITY_RAD_S[slot]))
 
     return {"bodies": n_bodies, "capsules": n_caps,
             "joints": len(hand.fingers) * P.N_JOINT_SLOTS}
