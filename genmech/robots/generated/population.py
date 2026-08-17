@@ -133,6 +133,20 @@ def _roundtrip_ok(hand: P.HandParams) -> bool:
     return hand_from_json(hand_to_json(hand)) == hand
 
 
+def _hits(hand: P.HandParams, gate: str) -> bool:
+    """Does this hand self-collide, under the requested gate?"""
+    if gate == "analytic":
+        from genmech.tools.capsule_collision import analytic_hand_hits
+
+        return bool(analytic_hand_hits(hand))
+    import tempfile
+
+    from genmech.tools.check_self_collision import generated_hand_hits
+
+    with tempfile.TemporaryDirectory(prefix="genmech_align_") as t:
+        return bool(generated_hand_hits(hand, Path(t), hand.name))
+
+
 def build_population(
     seed: int,
     count: int,
@@ -140,6 +154,7 @@ def build_population(
     max_tries_per_hand: int = 400,
     force: bool = False,
     align_flexion: bool = True,
+    gate: str = "analytic",
     **sample_kwargs,
 ) -> list[P.HandParams]:
     """Sample ``count`` collision-free hands and cache them with their URDFs.
@@ -163,10 +178,24 @@ def build_population(
             pass
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="genmech_population_") as tmp:
-        hands = sample_collision_free(seed, count, Path(tmp),
-                                      max_tries_per_hand=max_tries_per_hand,
-                                      **sample_kwargs)
+    if gate == "analytic":
+        # Closed-form capsule/box distances. The mesh gate answers the same
+        # question with trimesh BVH queries over ~400 link pairs per candidate,
+        # after writing and re-parsing a URDF -- measured 6.02 s per accepted
+        # hand, which is 41 hours for 24,576. This is ~30 ms per hand, and
+        # agreed with the mesh gate on 60/60 candidates
+        # (genmech.tools.compare_collision_gates).
+        from genmech.tools.capsule_collision import sample_collision_free_fast
+
+        hands = sample_collision_free_fast(
+            seed, count, max_tries_per_hand=max_tries_per_hand, **sample_kwargs)
+    elif gate == "mesh":
+        with tempfile.TemporaryDirectory(prefix="genmech_population_") as tmp:
+            hands = sample_collision_free(seed, count, Path(tmp),
+                                          max_tries_per_hand=max_tries_per_hand,
+                                          **sample_kwargs)
+    else:
+        raise ValueError(f"gate must be 'analytic' or 'mesh', got {gate!r}")
 
     from genmech.robots.generated.flexion import align_flexion_downward
     from genmech.tools.build_hand_urdf import urdf_path_for
@@ -192,12 +221,16 @@ def build_population(
                 # established during sampling no longer covers this geometry.
                 # Re-check rather than assume; keep the original if the new roll
                 # made the hand overlap itself.
-                with tempfile.TemporaryDirectory(prefix="genmech_align_") as t:
-                    if generated_hand_hits(aligned, Path(t), aligned.name):
-                        write_urdf(hand, urdf)
-                        reverted += 1
-                    else:
-                        hand, realigned = aligned, realigned + 1
+                #
+                # Uses the SAME gate the sampling used. Leaving this on the mesh
+                # gate would have quietly put the 41 hours back: 0.6 s per hand
+                # over 24,576 hands is another four hours, in a loop that runs
+                # after the fast sampler has already finished.
+                if _hits(aligned, gate):
+                    write_urdf(hand, urdf)
+                    reverted += 1
+                else:
+                    hand, realigned = aligned, realigned + 1
 
         if not _roundtrip_ok(hand):
             raise RuntimeError(
