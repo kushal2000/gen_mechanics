@@ -33,6 +33,7 @@ from pathlib import Path
 
 from genmech.robots.generated import params as P
 from genmech.robots.generated.author_usd import (
+    LINK_PARTS,
     PALM_BODY,
     attr,
     author_hand,
@@ -42,10 +43,48 @@ from genmech.robots.generated.author_usd import (
     _mat_from_seg,
     _mat_to_pos_quat,
     _quat_from_rpy,
+    _set_xform,
 )
 
 ARM_PRIM = "/arm"
 ROBOT_ROOT = "/robot"
+
+
+
+def _add_api(spec, name: str) -> None:
+    """Add an API schema to a prim spec WITHOUT destroying what is already there.
+
+    This is subtle enough that getting it wrong cost three separate failures,
+    each with a different symptom and none of them mentioning apiSchemas:
+
+      * on an OVER of a referenced prim the local spec has no apiSchemas of its
+        own, so writing an EXPLICIT list replaces what the reference composes in
+        -- the arm links lost RigidBodyAPI and ArticulationRootAPI and PhysX
+        reported "Failed to create articulation at .../root_joint";
+      * on a LOCALLY DEFINED prim, writing a listOp with only appendedItems
+        replaces the explicit list, so the hand bodies lost RigidBodyAPI, their
+        joints had nothing to attach to, and the articulation came up with the
+        7 arm joints and none of the 30 hand joints;
+      * doing both correctly but in two separate places let the second write
+        clobber the first.
+
+    So: explicit lists are extended explicitly, everything else appends, and the
+    operation is idempotent.
+    """
+    from pxr import Sdf
+
+    op = spec.GetInfo("apiSchemas") if spec.HasInfo("apiSchemas") else None
+    if op is not None and op.isExplicit:
+        items = list(op.explicitItems)
+        if name not in items:
+            spec.SetInfo("apiSchemas", Sdf.TokenListOp.CreateExplicit(items + [name]))
+        return
+    existing = list(op.appendedItems) if op is not None else []
+    if name in existing:
+        return
+    new_op = Sdf.TokenListOp()
+    new_op.appendedItems = existing + [name]
+    spec.SetInfo("apiSchemas", new_op)
 
 
 def arm_only_urdf(out_path: Path) -> Path:
@@ -91,12 +130,30 @@ def arm_only_urdf(out_path: Path) -> Path:
     return out_path
 
 
+# What _bake_usd would set on the hand's bodies and colliders. Authored inline
+# instead: baking re-opens and re-saves a file we just wrote, and
+# _apply_self_collision_filters re-opens it a second time. Three stage
+# open/saves per design over 24,576 designs is ~74,000 file operations on a
+# shared filesystem, and it was HALF the per-design cost (58 ms, of which ~29 ms
+# was the authoring itself).
+#
+# The ARM's properties are not here: they are baked once into the shared arm
+# USD, and every design inherits them through the reference.
+_CONTACT_OFFSET = 0.002
+_REST_OFFSET = 0.0
+_MAX_DEPEN_VELOCITY = 1000.0
+
+
 def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
-                     arm_usd: str, arm_root_prim: str, link7_world) -> str:
+                     arm_usd: str, arm_root_prim: str, link7_world,
+                     adjacency: dict | None = None) -> str:
     """Author one design to ``out_path`` and return the path.
 
     ``link7_world`` is iiwa14_link_7's world transform in the converted arm; it
     is the same for every design (the arm is identical) and is read once.
+
+    ``adjacency`` is the design's self-collision map. When given, FilteredPairsAPI
+    is authored here rather than by a second pass over the finished file.
     """
     import numpy as np
     from pxr import Gf, Sdf, Usd
@@ -122,42 +179,77 @@ def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
         author_hand(layer, ROBOT_ROOT, hand, spec,
                     palm_body_path=palm_path, link7_world=link7_world)
 
-    # --- the merged palm, as an OVER on the referenced link -----------------
-    # Authored outside the ChangeBlock: this edits a prim that only exists once
-    # the reference has composed, and the block defers exactly that.
-    mass, inertia, com, axes = merged_palm_body_props(hand)
-    prim = stage.GetPrimAtPath(palm_path)
-    if not prim or not prim.IsValid():
-        raise RuntimeError(
-            f"{palm_path} did not compose from the arm reference {arm_usd}; "
-            f"the authored hand would attach to nothing.")
-    from pxr import UsdGeom, UsdPhysics
+        # --- the merged palm, as an Sdf OVER on the referenced link ---------
+        # An over is a pure LAYER edit, so it needs no composed stage and works
+        # inside the ChangeBlock. (Sdf.CreatePrimInLayer creates an over by
+        # default -- here that is exactly what we want, unlike every defining
+        # spec above which must be flipped to SpecifierDef.)
+        mass, inertia, com, axes = merged_palm_body_props(hand)
+        palm = Sdf.CreatePrimInLayer(layer, Sdf.Path(palm_path))
+        attr(palm, "physics:mass", Sdf.ValueTypeNames.Float, float(mass))
+        attr(palm, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
+             Gf.Vec3f(*[float(v) for v in inertia]))
+        attr(palm, "physics:centerOfMass", Sdf.ValueTypeNames.Float3,
+             Gf.Vec3f(*[float(v) for v in com]))
+        attr(palm, "physics:principalAxes", Sdf.ValueTypeNames.Quatf,
+             Gf.Quatf(float(axes[0]), Gf.Vec3f(*[float(v) for v in axes[1:]])))
 
-    prim.CreateAttribute("physics:mass", Sdf.ValueTypeNames.Float).Set(float(mass))
-    prim.CreateAttribute("physics:diagonalInertia", Sdf.ValueTypeNames.Float3).Set(
-        Gf.Vec3f(*[float(v) for v in inertia]))
-    prim.CreateAttribute("physics:centerOfMass", Sdf.ValueTypeNames.Float3).Set(
-        Gf.Vec3f(*[float(v) for v in com]))
-    prim.CreateAttribute("physics:principalAxes", Sdf.ValueTypeNames.Quatf).Set(
-        Gf.Quatf(float(axes[0]), Gf.Vec3f(*[float(v) for v in axes[1:]])))
+        # The palm's collision box, placed by the transform merge_fixed_joints
+        # folds away.
+        t = _mat_from_seg(flange_to_palm())
+        centre = np.asarray([float(v) for v in P.palm_center(hand.palm_extents)])
+        _, quat = _mat_to_pos_quat(t)
+        offset = (t @ np.append(centre, 1.0))[:3]
+        ex, ey, ez = (float(v) for v in hand.palm_extents)
+        box = define(layer, f"{palm_path}/palm_collision", "Cube",
+                     ["PhysicsCollisionAPI", "PhysxCollisionAPI"])
+        attr(box, "size", Sdf.ValueTypeNames.Double, 1.0)
+        _set_xform(box, offset, quat, scale=(ex, ey, ez))
+        attr(box, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float,
+             _CONTACT_OFFSET)
+        attr(box, "physxCollision:restOffset", Sdf.ValueTypeNames.Float,
+             _REST_OFFSET)
 
-    # The palm's collision box, placed by the transform merge_fixed_joints folds.
-    t = _mat_from_seg(flange_to_palm())
-    centre = np.asarray([float(v) for v in P.palm_center(hand.palm_extents)])
-    pos, quat = _mat_to_pos_quat(t)
-    box_path = f"{palm_path}/palm_collision"
-    box = UsdGeom.Cube.Define(stage, box_path)
-    ex, ey, ez = (float(v) for v in hand.palm_extents)
-    box.GetSizeAttr().Set(1.0)
-    offset = (t @ np.append(centre, 1.0))[:3]
-    xf = UsdGeom.Xformable(box.GetPrim())
-    xf.AddTranslateOp().Set(Gf.Vec3d(*[float(v) for v in offset]))
-    # AddOrientOp defaults to a FLOAT-precision quaternion, so it rejects a
-    # Gf.Quatd; ask for double precision explicitly rather than downcasting.
-    xf.AddOrientOp(UsdGeom.XformOp.PrecisionDouble).Set(
-        Gf.Quatd(float(quat[0]), Gf.Vec3d(*[float(v) for v in quat[1:]])))
-    xf.AddScaleOp().Set(Gf.Vec3d(ex, ey, ez))
-    UsdPhysics.CollisionAPI.Apply(box.GetPrim())
+        # --- what _bake_usd would apply to the HAND's bodies ---------------
+        for i in range(P.N_FINGER_SLOTS):
+            for part, _tier in LINK_PARTS:
+                body = Sdf.CreatePrimInLayer(
+                    layer, Sdf.Path(f"{ROBOT_ROOT}/gen_f{i}_{part}"))
+                _add_api(body, "PhysxRigidBodyAPI")
+                attr(body, "physxRigidBody:disableGravity",
+                     Sdf.ValueTypeNames.Bool, True)
+                attr(body, "physxRigidBody:maxDepenetrationVelocity",
+                     Sdf.ValueTypeNames.Float, _MAX_DEPEN_VELOCITY)
+                cap = Sdf.CreatePrimInLayer(layer, Sdf.Path(
+                    f"{ROBOT_ROOT}/gen_f{i}_{part}/collisions/mesh_0/capsule"))
+                if cap.specifier == Sdf.SpecifierDef:
+                    _add_api(cap, "PhysxCollisionAPI")
+                    attr(cap, "physxCollision:contactOffset",
+                         Sdf.ValueTypeNames.Float, _CONTACT_OFFSET)
+                    attr(cap, "physxCollision:restOffset",
+                         Sdf.ValueTypeNames.Float, _REST_OFFSET)
+
+        # --- self-collision filters, authored here instead of in a 2nd pass --
+        if adjacency:
+            body_path = {}
+            for i in range(P.N_FINGER_SLOTS):
+                for part, _t in LINK_PARTS:
+                    body_path[f"gen_f{i}_{part}"] = f"{ROBOT_ROOT}/gen_f{i}_{part}"
+            body_path[PALM_BODY] = palm_path
+            for n in range(8):
+                body_path[f"iiwa14_link_{n}"] = f"{ROBOT_ROOT}{ARM_PRIM}/iiwa14_link_{n}"
+            for link, neighbours in adjacency.items():
+                a = body_path.get(link)
+                if a is None:
+                    continue
+                targets = [body_path[b] for b in neighbours if b in body_path]
+                if not targets:
+                    continue
+                spec_a = Sdf.CreatePrimInLayer(layer, Sdf.Path(a))
+                _add_api(spec_a, "PhysicsFilteredPairsAPI")
+                r = Sdf.RelationshipSpec(spec_a, "physics:filteredPairs", False)
+                for tgt in targets:
+                    r.targetPathList.explicitItems.append(Sdf.Path(tgt))
 
     # Isaac Lab references this file WITHOUT a prim path, so it resolves
     # <defaultPrim>. Without one the reference composes to nothing and the spawn
@@ -186,11 +278,40 @@ def flatten_arm_usd(arm_usd: str, out_path: Path) -> str:
     Flattening resolves every reference once, here, instead of at each of the
     24,576 designs that reference it.
     """
-    from pxr import Usd
+    from pxr import PhysxSchema, Sdf, Usd, UsdPhysics
 
     stage = Usd.Stage.Open(arm_usd, Usd.Stage.LoadAll)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     stage.Flatten().Export(str(out_path))
+
+    # Apply the arm's physics properties ONCE, here. Every design references
+    # this file, so they inherit them -- there is no reason to set the same
+    # eight bodies' gravity flag 24,576 times.
+    flat = Usd.Stage.Open(str(out_path))
+    root = flat.GetDefaultPrim() or next(
+        p for p in flat.GetPseudoRoot().GetChildren() if p.IsValid())
+    for prim in Usd.PrimRange(root):
+        if prim.HasAPI(UsdPhysics.RigidBodyAPI):
+            PhysxSchema.PhysxRigidBodyAPI.Apply(prim)
+            prim.CreateAttribute("physxRigidBody:disableGravity",
+                                 Sdf.ValueTypeNames.Bool).Set(True)
+            prim.CreateAttribute("physxRigidBody:maxDepenetrationVelocity",
+                                 Sdf.ValueTypeNames.Float).Set(_MAX_DEPEN_VELOCITY)
+        if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
+            PhysxSchema.PhysxArticulationAPI.Apply(prim)
+            prim.CreateAttribute("physxArticulation:enabledSelfCollisions",
+                                 Sdf.ValueTypeNames.Bool).Set(True)
+            prim.CreateAttribute("physxArticulation:solverPositionIterationCount",
+                                 Sdf.ValueTypeNames.Int).Set(8)
+            prim.CreateAttribute("physxArticulation:solverVelocityIterationCount",
+                                 Sdf.ValueTypeNames.Int).Set(0)
+        if prim.HasAPI(UsdPhysics.CollisionAPI):
+            PhysxSchema.PhysxCollisionAPI.Apply(prim)
+            prim.CreateAttribute("physxCollision:contactOffset",
+                                 Sdf.ValueTypeNames.Float).Set(_CONTACT_OFFSET)
+            prim.CreateAttribute("physxCollision:restOffset",
+                                 Sdf.ValueTypeNames.Float).Set(_REST_OFFSET)
+    flat.GetRootLayer().Save()
     return str(out_path)
 
 

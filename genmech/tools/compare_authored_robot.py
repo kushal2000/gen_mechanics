@@ -123,11 +123,15 @@ def main() -> None:
     link7_world = np.asarray(UsdGeom.XformCache().GetLocalToWorldTransform(
         st.GetPrimAtPath(f"{arm_root}/iiwa14_link_7"))).T
     auth_spec = synth_spec(hand, ensure_urdf=False)
-    auth_raw = author_robot_usd(hand, auth_spec,
+    # NO external finish: the authored path now writes the self-collision
+    # filters and the physics properties in its single pass, which is the
+    # optimisation under test. If that inlining is wrong, this comparison is
+    # what catches it.
+    auth_usd = author_robot_usd(hand, auth_spec,
                                 work / "auth" / f"{hand.name}.usd",
                                 arm_usd=arm_usd, arm_root_prim=arm_root,
-                                link7_world=link7_world)
-    auth_usd = finish(auth_raw, "auth", auth_spec.adjacent_links)
+                                link7_world=link7_world,
+                                adjacency=auth_spec.adjacent_links)
 
     # --- spawn both, side by side ------------------------------------------
     import omni.usd
