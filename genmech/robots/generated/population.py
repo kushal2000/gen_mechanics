@@ -151,10 +151,12 @@ def build_population(
     seed: int,
     count: int,
     *,
-    max_tries_per_hand: int = 400,
+    max_tries_per_hand: int = 4000,
     force: bool = False,
     align_flexion: bool = True,
     gate: str = "analytic",
+    shard: int | None = None,
+    num_shards: int = 1,
     **sample_kwargs,
 ) -> list[P.HandParams]:
     """Sample ``count`` collision-free hands and cache them with their URDFs.
@@ -168,7 +170,20 @@ def build_population(
     from genmech.tools.check_self_collision import sample_collision_free
 
     out_dir = population_dir(seed)
-    if not force:
+    # A shard builds its own slice and writes a partial manifest; the cache
+    # check reads the MERGED manifest, which does not exist yet.
+    sharded = shard is not None
+    if sharded:
+        if not 0 <= shard < num_shards:
+            raise ValueError(f"shard {shard} outside 0..{num_shards - 1}")
+        lo = (count * shard) // num_shards
+        hi = (count * (shard + 1)) // num_shards
+        count, name_offset = hi - lo, lo
+        print(f"[population] shard {shard}/{num_shards}: hands "
+              f"{lo}..{hi - 1} ({count})")
+    else:
+        name_offset = 0
+    if not force and not sharded:
         try:
             cached = load_population(seed)
             if len(cached) >= count:
@@ -188,7 +203,9 @@ def build_population(
         from genmech.tools.capsule_collision import sample_collision_free_fast
 
         hands = sample_collision_free_fast(
-            seed, count, max_tries_per_hand=max_tries_per_hand, **sample_kwargs)
+            seed, count, max_tries_per_hand=max_tries_per_hand,
+            stream_key=None if not sharded else f"shard{shard:03d}",
+            name_offset=name_offset, **sample_kwargs)
     elif gate == "mesh":
         with tempfile.TemporaryDirectory(prefix="genmech_population_") as tmp:
             hands = sample_collision_free(seed, count, Path(tmp),
@@ -259,9 +276,52 @@ def build_population(
                           for k, v in sample_kwargs.items()},
         "hands": entries,
     }
-    manifest_path(seed).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    print(f"[population] wrote {len(entries)} hands + URDFs -> {out_dir}")
+    manifest["shard"] = shard
+    manifest["num_shards"] = num_shards
+    out = (manifest_path(seed) if not sharded
+           else out_dir / f"shard_{shard:03d}.json")
+    out.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"[population] wrote {len(entries)} hands + URDFs -> {out}")
     return hands
+
+
+def merge_population_shards(seed: int, num_shards: int) -> int:
+    """Concatenate shard_*.json into the manifest load_population() reads.
+
+    Shards are joined IN SHARD ORDER, which is the order their name indices were
+    assigned, so hand i of the merged manifest is gen_<seed>_<i:05d>. env i holds
+    design i % k, and _build_robot_design_tensor checks that assignment against
+    per-design joint limits, so a mis-ordered merge would surface there -- but
+    getting it right here is cheaper than debugging it there.
+    """
+    out_dir = population_dir(seed)
+    entries, missing = [], []
+    for i in range(num_shards):
+        f = out_dir / f"shard_{i:03d}.json"
+        if not f.exists():
+            missing.append(i)
+            continue
+        entries.extend(json.loads(f.read_text(encoding="utf-8"))["hands"])
+    if missing:
+        raise FileNotFoundError(
+            f"population seed {seed}: shards {missing} did not produce output; "
+            f"refusing to merge a population with holes in it")
+    names = [e["name"] for e in entries]
+    if len(set(names)) != len(names):
+        raise RuntimeError("duplicate hand names across shards")
+    expect = [f"gen_{seed:04d}_{i:05d}" for i in range(len(entries))]
+    if names != expect:
+        bad = next(i for i, (a, b) in enumerate(zip(names, expect)) if a != b)
+        raise RuntimeError(
+            f"merged hands are not contiguously named from 0: index {bad} is "
+            f"{names[bad]}, expected {expect[bad]}")
+    first = json.loads((out_dir / "shard_000.json").read_text(encoding="utf-8"))
+    manifest = {**first, "count": len(entries), "hands": entries,
+                "shard": None, "num_shards": num_shards}
+    manifest_path(seed).write_text(json.dumps(manifest, indent=2),
+                                   encoding="utf-8")
+    print(f"[population] merged {num_shards} shards -> {len(entries)} hands")
+    return len(entries)
 
 
 def load_population(seed: int) -> list[P.HandParams]:

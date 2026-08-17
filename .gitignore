@@ -44,3 +44,10 @@ bench_dir/
 # URL, so it must exist in the repo.
 assets/urdf/generated/gen_[0-9]*.urdf
 assets/urdf/generated/population/**/*.urdf
+# ...and the manifests themselves. A 24,576-hand manifest is 266 MB of JSON and
+# each of its 10 shards is another 25 MB; `git add -A` swept 509 MB into a
+# commit. They are REGENERABLE: seed + gate + shard count + the code at that
+# revision reproduce the population, which is why the manifest records all
+# three. Rebuild with 00_build_population_sharded.sub rather than cloning them.
+assets/urdf/generated/population/**/manifest.json
+assets/urdf/generated/population/**/shard_*.json

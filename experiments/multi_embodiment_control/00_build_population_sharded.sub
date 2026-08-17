@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=4
+#SBATCH --get-user-env
+#SBATCH --mem=32000
+#SBATCH -t 4:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Build a hand population in PARALLEL shards.
+#
+# The single-process build is ~25 min for 24,576 designs at ~2% acceptance, and
+# it is pure CPU rejection sampling -- embarrassingly parallel. Each shard draws
+# its slice from its OWN rng stream, because the sequential build consumes one
+# stream continuously and shard N cannot know where shard N-1 stopped.
+#
+# That means a sharded population is NOT the same draw as a sequential one. It
+# is the same distribution through the same gate, so it is equally valid, but a
+# population is identified by seed AND gate AND shard count. The merged manifest
+# records num_shards.
+#
+# No GPU: the gate is closed-form capsule/box distances (capsule_collision.py).
+#
+#   COUNT=24576 SEED=3 SHARDS=10 \
+#       sbatch --array=0-9 experiments/multi_embodiment_control/00_build_population_sharded.sub
+#
+# then, once the array finishes, merge (00_merge_population.sub does this with
+# an afterok dependency).
+
+set -uo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+SEED="${SEED:-3}"
+COUNT="${COUNT:-24576}"
+SHARDS="${SHARDS:-10}"
+SHARD="${SLURM_ARRAY_TASK_ID:?run this with --array=0-$((SHARDS - 1))}"
+
+OUT_DIR="${REPO_ROOT}/bench_dir/population"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="${SLURM_JOB_ID}" \
+    JobName="build_pop_${SEED}_s${SHARD}" || true
+exec > "${OUT_DIR}/seed${SEED}_n${COUNT}_shard${SHARD}.log" 2>&1
+
+cd "$REPO_ROOT"
+echo "building population seed=$SEED count=$COUNT shard=$SHARD/$SHARDS"
+date
+
+OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python -c "
+from genmech.robots.generated.population import build_population
+build_population(${SEED}, ${COUNT}, force=True, shard=${SHARD}, num_shards=${SHARDS})
+"
+echo "exit: $?"
+date

@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=2
+#SBATCH --get-user-env
+#SBATCH --mem=32000
+#SBATCH -t 0:30:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Concatenate the shards from 00_build_population_sharded.sub into the manifest
+# load_population() reads. Submit with an afterok dependency on the array so it
+# cannot merge a population with holes in it (it also checks, and refuses).
+#
+#   SEED=3 SHARDS=10 sbatch --dependency=afterok:<array_job_id> \
+#       experiments/multi_embodiment_control/00_merge_population.sub
+
+set -uo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+SEED="${SEED:-3}"
+SHARDS="${SHARDS:-10}"
+OUT_DIR="${REPO_ROOT}/bench_dir/population"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="${SLURM_JOB_ID}" \
+    JobName="merge_pop_${SEED}" || true
+exec > "${OUT_DIR}/seed${SEED}_merge.log" 2>&1
+
+cd "$REPO_ROOT"
+date
+OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python -c "
+from genmech.robots.generated.population import merge_population_shards, load_population
+n = merge_population_shards(${SEED}, ${SHARDS})
+hands = load_population(${SEED})
+assert len(hands) == n, f'merged {n} but load_population sees {len(hands)}'
+print(f'[merge] load_population(${SEED}) returns {len(hands)} hands')
+print(f'[merge] first={hands[0].name} last={hands[-1].name}')
+"
+echo "exit: $?"
+date

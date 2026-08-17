@@ -343,8 +343,20 @@ def is_collision_free(hand: P.HandParams) -> bool:
 
 
 def sample_collision_free_fast(seed: int, count: int, *,
-                               max_tries_per_hand: int = 400,
+                               # 400 was tuned when the sampler accepted 2.79%
+                               # of draws: expected ~51 draws per hand then, and
+                               # (1-0.0279)^400 gave ~0.3 expected failures over
+                               # 24,576 designs -- it squeaked through. Excluding
+                               # the degenerate-capsule band dropped acceptance to
+                               # 1.97%, which makes it ~9 expected failures, and
+                               # the build died at index 14,740. 4000 puts the
+                               # expectation at e^-79, i.e. never, and costs
+                               # nothing: the budget is only consumed on the rare
+                               # hand that needs it.
+                               max_tries_per_hand: int = 4000,
                                verbose: bool = True,
+                               stream_key: str | None = None,
+                               name_offset: int = 0,
                                **sample_kwargs) -> list[P.HandParams]:
     """Rejection-sample ``count`` collision-free hands, analytically.
 
@@ -361,7 +373,14 @@ def sample_collision_free_fast(seed: int, count: int, *,
     """
     import random as _random
 
-    rng = _random.Random(seed)
+    # stream_key gives a SHARD its own independent stream. The default stream is
+    # seeded by `seed` alone and consumed sequentially, so shard N cannot know
+    # where shard N-1 stopped -- there is no way to split one stream across
+    # processes. Independent streams per shard sample the same distribution
+    # through the same gate, so the population is equally valid; it is simply
+    # not the same draw a single-process build would make. Populations are
+    # identified by seed AND gate AND shard count.
+    rng = _random.Random(seed if stream_key is None else f"{seed}:{stream_key}")
     hands: list[P.HandParams] = []
     drawn = rejected_invalid = rejected_collision = 0
 
@@ -371,7 +390,9 @@ def sample_collision_free_fast(seed: int, count: int, *,
             tries += 1
             drawn += 1
             try:
-                hand = P.sample(rng, name=f"gen_{seed:04d}_{len(hands):05d}",
+                hand = P.sample(rng,
+                                name=f"gen_{seed:04d}_"
+                                     f"{name_offset + len(hands):05d}",
                                 **sample_kwargs)
             except P.InvalidHand:
                 rejected_invalid += 1
