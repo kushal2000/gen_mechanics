@@ -110,10 +110,66 @@ class RobotSpec:
     so the mesh-based hands convert exactly as before and SHARPA stays
     bit-identical to simtoolreal (docs/methodology.md §2)."""
 
+    # --- cross-embodiment padding -------------------------------------------
+    fingertip_slot_names: tuple[str, ...] = ()
+    """ALL fingertip slots the morphology template defines, active or not.
+
+    A cross-embodied policy needs one observation layout for every design it may
+    see, but designs differ in how many fingers they actually use: the generated
+    population runs 2, 3 or 4 active fingertips against a 5-slot template. The
+    slot list is the padded, template-constant axis the observation is built on,
+    and ``fingertip_slot_active`` says which entries are real.
+
+    This works because ghosting removes a finger's ACTUATION and GEOMETRY, not
+    its links -- every generated design carries all 5 distal links, so the body
+    indices are the same in every env and only the mask varies. Verified across
+    the 64-hand population: 0 designs missing any of the 5 slots.
+
+    Empty means "no padding": slots are exactly ``fingertip_body_names`` and the
+    mask is all-true, so single-robot specs keep their existing observation
+    layout byte for byte. Do not populate this for a fixed hand."""
+
+    fingertip_slot_active: tuple[bool, ...] = ()
+    """Per-slot validity mask, parallel to ``fingertip_slot_names``.
+
+    Masked-out slots must not reach a reward, a termination test or a running
+    minimum -- a ghosted finger's distal link still has a pose, and it is
+    meaningless. Empty means all slots are active."""
+
+    fingertip_slot_offsets: tuple[Vec3, ...] = ()
+    """Pad-center offsets for ALL slots, parallel to ``fingertip_slot_names``.
+
+    Separate from ``fingertip_offsets`` because these are per-design even for the
+    same slot index -- the distal phalanx length varies across the population --
+    so the env carries them per env rather than as one shared table."""
+
     notes: str = field(default="", compare=False)
     """Provenance: where gains, offsets, and mount transforms came from."""
 
     # --- derived -------------------------------------------------------------
+    @property
+    def fingertip_slots(self) -> tuple[str, ...]:
+        """Padded slot names, falling back to the active fingertips."""
+        return self.fingertip_slot_names or self.fingertip_body_names
+
+    @property
+    def num_fingertip_slots(self) -> int:
+        """Observation width for fingertip fields. Equals ``num_fingertips``
+        for an unpadded spec, so obs dims are unchanged for fixed hands."""
+        return len(self.fingertip_slots)
+
+    @property
+    def fingertip_slot_mask(self) -> tuple[bool, ...]:
+        """Validity mask over the padded slots; all-true when unpadded."""
+        if self.fingertip_slot_active:
+            return self.fingertip_slot_active
+        return (True,) * self.num_fingertip_slots
+
+    @property
+    def fingertip_slot_offsets_padded(self) -> tuple[Vec3, ...]:
+        """Offsets over the padded slots; the active table when unpadded."""
+        return self.fingertip_slot_offsets or self.fingertip_offsets
+
     @property
     def joint_names_canonical(self) -> tuple[str, ...]:
         """Canonical policy joint order: arm joints first, then hand joints."""
@@ -185,6 +241,46 @@ class RobotSpec:
         for i, off in enumerate(self.fingertip_offsets):
             if len(off) != 3:
                 raise ValueError(f"{who}: fingertip_offsets[{i}] is not a 3-vector: {off}")
+
+        # Padded slots: either all three tables are supplied and agree, or none
+        # are. A half-populated padding is the failure mode that would silently
+        # mask the wrong finger.
+        pad = (self.fingertip_slot_names, self.fingertip_slot_active,
+               self.fingertip_slot_offsets)
+        if any(pad) and not all(pad):
+            supplied = [n for n, v in zip(
+                ("fingertip_slot_names", "fingertip_slot_active",
+                 "fingertip_slot_offsets"), pad) if v]
+            raise ValueError(
+                f"{who}: padded fingertip slots are partially specified "
+                f"(got {supplied}); supply all three or none")
+        if self.fingertip_slot_names:
+            n_slots = len(self.fingertip_slot_names)
+            if len(self.fingertip_slot_active) != n_slots:
+                raise ValueError(
+                    f"{who}: fingertip_slot_active has "
+                    f"{len(self.fingertip_slot_active)} entries for "
+                    f"{n_slots} slots")
+            if len(self.fingertip_slot_offsets) != n_slots:
+                raise ValueError(
+                    f"{who}: fingertip_slot_offsets has "
+                    f"{len(self.fingertip_slot_offsets)} entries for "
+                    f"{n_slots} slots")
+            if len(set(self.fingertip_slot_names)) != n_slots:
+                raise ValueError(f"{who}: duplicate fingertip_slot_names")
+            # The active slots must be exactly the declared fingertips, in the
+            # same order -- otherwise the mask and the offsets describe
+            # different fingers than fingertip_body_names does.
+            active = tuple(n for n, ok in zip(self.fingertip_slot_names,
+                                              self.fingertip_slot_active) if ok)
+            if active != tuple(self.fingertip_body_names):
+                raise ValueError(
+                    f"{who}: active slots {list(active)} do not match "
+                    f"fingertip_body_names {list(self.fingertip_body_names)}")
+            for i, off in enumerate(self.fingertip_slot_offsets):
+                if len(off) != 3:
+                    raise ValueError(
+                        f"{who}: fingertip_slot_offsets[{i}] is not a 3-vector: {off}")
         if len(self.palm_center_offset) != 3:
             raise ValueError(f"{who}: palm_center_offset is not a 3-vector")
 

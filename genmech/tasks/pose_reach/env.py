@@ -41,7 +41,7 @@ class PoseReachEnv(DirectRLEnv):
         # Resolve the robot BEFORE super().__init__: DirectRLEnv and rl_games
         # read action_space / observation_space off the configclass, and all
         # three are derived from the spec. _setup_scene also needs self.robot_spec.
-        spec = get_robot_spec(cfg.assets.robot_spec)
+        spec = self._resolve_spec(cfg)
         self.robot_spec = spec
 
         # action_space defaults to 0 ("derive"). A non-zero value is a caller
@@ -62,6 +62,21 @@ class PoseReachEnv(DirectRLEnv):
         super().__init__(cfg, render_mode, **kwargs)  # runs _setup_scene
         apply_physx_material_properties(self)
         allocate_state_buffers(self)
+        self._post_init_hook()
+
+    # --- extension points for PoseReachMultiEnv -----------------------------
+    # Two hooks rather than `if population is not None` scattered through this
+    # class: the single-embodiment env is the one the pretrained policy, the
+    # parity test and the running training jobs depend on, and it should not
+    # carry branches for a mode it never takes.
+
+    def _resolve_spec(self, cfg: PoseReachEnvCfg):
+        """The RobotSpec defining the action and observation layout."""
+        return get_robot_spec(cfg.assets.robot_spec)
+
+    def _post_init_hook(self) -> None:
+        """Runs after the scene, materials and state buffers exist."""
+        return None
 
     def _setup_scene(self) -> None:
         setup_scene(self)

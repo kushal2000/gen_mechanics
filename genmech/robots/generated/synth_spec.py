@@ -194,17 +194,31 @@ def synth_spec(hand: P.HandParams, *, ensure_urdf: bool = True) -> RobotSpec:
         # it be pushed through its own limit.
         return {n: src[_slot_of(n)] for n in names}
 
-    # Fingertips: active fingers only (see module docstring). The tip link is
-    # fixed-jointed onto DP, so post-merge the fingertip BODY is DP itself.
+    # Fingertips: active fingers only. The tip link is fixed-jointed onto DP, so
+    # post-merge the fingertip BODY is DP itself.
+    #
+    # The SLOT tables below carry all N_FINGER_SLOTS entries, ghosted included,
+    # and are what a cross-embodied policy observes: designs in one population
+    # differ in active finger count (2, 3 or 4 against a 5-slot template), and a
+    # single scene needs one observation width for all of them. Ghosting takes a
+    # finger's actuation and geometry but NOT its links, so every design carries
+    # all 5 distal links at the same body indices -- only the mask differs.
     tip_bodies: list[str] = []
     tip_offsets: list[tuple[float, float, float]] = []
+    slot_bodies: list[str] = []
+    slot_offsets: list[tuple[float, float, float]] = []
+    slot_active: list[bool] = []
     for i, fp in enumerate(hand.fingers):
-        if not fp.active:
-            continue
-        tip_bodies.append(link_name(i, "DP"))
         # The capsule runs along +x from the link origin, so its distal cap --
         # the part that actually touches the object -- is one segment length out.
-        tip_offsets.append((fp.dp_length, 0.0, 0.0))
+        body, offset = link_name(i, "DP"), (fp.dp_length, 0.0, 0.0)
+        slot_bodies.append(body)
+        slot_offsets.append(offset)
+        slot_active.append(bool(fp.active))
+        if not fp.active:
+            continue
+        tip_bodies.append(body)
+        tip_offsets.append(offset)
 
     adjacency = {**ARM_ADJACENT_LINKS, **template_adjacent_links(hand)}
     # The palm key exists in both; the arm's entry must not be dropped.
@@ -241,6 +255,10 @@ def synth_spec(hand: P.HandParams, *, ensure_urdf: bool = True) -> RobotSpec:
 
         palm_center_offset=PALM_CENTER_OFFSET,
         fingertip_offsets=tuple(tip_offsets),
+
+        fingertip_slot_names=tuple(slot_bodies),
+        fingertip_slot_active=tuple(slot_active),
+        fingertip_slot_offsets=tuple(slot_offsets),
 
         adjacent_links=adjacency,
         link_prim_regexes=("iiwa14_link_.*", "gen_.*"),

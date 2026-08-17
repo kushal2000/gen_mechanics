@@ -59,16 +59,27 @@ _PHYSICS_SPECS: dict[str, tuple[str, str, str]] = {
 
 
 def build_robot_articulation_usd_cfg(
-    usd_path: str, spec, *, start_arm_higher: bool = False
+    usd_path: str | list[str], spec, *, start_arm_higher: bool = False
 ) -> ArticulationCfg:
-    """Build the robot articulation for ``spec`` from its baked USD.
+    """Build the robot articulation for ``spec`` from its baked USD(s).
 
     Actuator groups are keyed by exact joint name rather than a regex, so a hand
     whose joints do not share a common prefix still gets its gains applied.
+
+    A LIST of USDs spawns one design per env, round-robin, exactly as the object
+    pool does -- env i gets ``usds[i % len(usds)]``. All of them must share the
+    joint names and count the actuator tables and ``spec`` describe, which is
+    what ghosting guarantees for a generated population: every design is padded
+    to the same 37-joint template, so an arbitrary number of morphologies costs
+    one articulation view. Designs with different joint COUNTS cannot share a
+    view at all -- PhysX reads ``shared_metatype.dof_count`` once per view.
     """
+    many = not isinstance(usd_path, str)
+    spawn = (MultiUsdFileCfg(usd_path=list(usd_path), random_choice=False)
+             if many else UsdFileCfg(usd_path=usd_path))
     return ArticulationCfg(
         prim_path="/World/envs/env_.*/Robot",
-        spawn=UsdFileCfg(usd_path=usd_path),
+        spawn=spawn,
         init_state=ArticulationCfg.InitialStateCfg(
             pos=spec.base_pos,
             rot=spec.base_rot,
@@ -1486,27 +1497,66 @@ def apply_physx_material_properties(env) -> None:
     robot_materials[:] = default
 
     fingertip_link_names = set(env.robot_spec.fingertip_body_names)
-    fingertip_mask = torch.zeros(robot_view.max_shapes, dtype=torch.bool, device="cpu")
-    shape_start = 0
-    for link_name, link_path in zip(robot_view.shared_metatype.link_names, robot_view.link_paths[0]):
-        link_view = env.robot._physics_sim_view.create_rigid_body_view(link_path)
-        shape_end = shape_start + link_view.max_shapes
-        if link_name in fingertip_link_names:
-            robot_materials[:, shape_start:shape_end] = fingertip
-            fingertip_mask[shape_start:shape_end] = True
-        shape_start = shape_end
-    if shape_start != robot_view.max_shapes:
-        raise RuntimeError(
-            f"Robot shape count mismatch while assigning materials: "
-            f"computed {shape_start}, view reports {robot_view.max_shapes}."
-        )
+
+    # The shape layout is derived PER DESIGN, not once from env 0.
+    #
+    # A ghosted finger keeps its links but carries no collision geometry, so two
+    # designs in one population have different shape counts and different shape
+    # ORDERING within the flattened per-env shape array. Deriving the fingertip
+    # slice from env 0 and applying it to every env would paint fingertip
+    # friction onto whatever shape happened to occupy that index in another
+    # design -- silently, since the values are all plausible frictions.
+    #
+    # Grouping by design keeps this O(k x links) rather than O(n x links). With
+    # a single robot there is one group represented by env 0, which is exactly
+    # the previous behaviour on exactly the same values.
+    pop_specs = getattr(env, "_robot_population_specs", None)
+    if pop_specs is None:
+        groups = {0: torch.arange(env.num_envs, dtype=torch.int64)}
+        tips_of = {0: fingertip_link_names}
+    else:
+        design_idx = env._robot_design_index_per_env.detach().cpu()
+        groups = {int(d): (design_idx == int(d)).nonzero(as_tuple=True)[0]
+                  for d in design_idx.unique()}
+        tips_of = {d: set(pop_specs[d].fingertip_body_names) for d in groups}
+
+    # (N, max_shapes): which shapes are fingertips, for THIS env's design.
+    ft_shape_mask = torch.zeros(
+        (env.num_envs, robot_view.max_shapes), dtype=torch.bool, device="cpu")
+    for design, group_env_ids in groups.items():
+        rep = int(group_env_ids[0])
+        shape_start = 0
+        for link_name, link_path in zip(robot_view.shared_metatype.link_names,
+                                        robot_view.link_paths[rep]):
+            link_view = env.robot._physics_sim_view.create_rigid_body_view(link_path)
+            shape_end = shape_start + link_view.max_shapes
+            if link_name in tips_of[design]:
+                robot_materials[group_env_ids, shape_start:shape_end] = fingertip
+                ft_shape_mask[group_env_ids, shape_start:shape_end] = True
+            shape_start = shape_end
+        # Designs with ghosted fingers legitimately carry FEWER shapes than the
+        # view's maximum; only overrunning it is a bug.
+        if shape_start > robot_view.max_shapes:
+            raise RuntimeError(
+                f"Robot shape count mismatch while assigning materials for "
+                f"design {design}: computed {shape_start}, view reports "
+                f"{robot_view.max_shapes}."
+            )
+        if pop_specs is None and shape_start != robot_view.max_shapes:
+            raise RuntimeError(
+                f"Robot shape count mismatch while assigning materials: "
+                f"computed {shape_start}, view reports {robot_view.max_shapes}."
+            )
     # A name mismatch here is silent and consequential: every fingertip would
     # quietly fall back to the robot's base friction, changing grasp behavior
     # with no error.
-    if not bool(fingertip_mask.any()):
+    unmatched = [d for d in groups if not bool(ft_shape_mask[groups[d]].any())]
+    if unmatched:
+        who = (env.robot_spec.name if pop_specs is None
+               else f"designs {sorted(unmatched)[:5]}")
         raise RuntimeError(
-            f"{env.robot_spec.name}: no collision shapes matched "
-            f"fingertip_body_names={sorted(fingertip_link_names)}. "
+            f"{who}: no collision shapes matched "
+            f"fingertip_body_names={sorted(tips_of[unmatched[0]])}. "
             f"Robot links: {sorted(robot_view.shared_metatype.link_names)}"
         )
 
@@ -1518,10 +1568,14 @@ def apply_physx_material_properties(env) -> None:
         bucket_vals = torch.linspace(ft_lo, ft_hi, n_buckets) * ft_base  # (B,)
         bucket_idx = torch.randint(0, n_buckets, (env.num_envs,))
         per_env_ft = bucket_vals[bucket_idx]  # (N_envs,)
-        ft_indices = fingertip_mask.nonzero(as_tuple=True)[0]
-        if ft_indices.numel() > 0:
-            robot_materials[:, ft_indices, 0] = per_env_ft.unsqueeze(-1)
-            robot_materials[:, ft_indices, 1] = per_env_ft.unsqueeze(-1)
+        # Applied through the per-env fingertip mask so each design's own
+        # fingertip shapes are the ones scaled. A shared index list would be the
+        # union across designs, which for a heterogeneous population scales
+        # shapes that are not fingertips in most envs.
+        scaled = per_env_ft.unsqueeze(-1).expand(-1, robot_view.max_shapes)
+        for channel in (0, 1):
+            robot_materials[..., channel] = torch.where(
+                ft_shape_mask, scaled, robot_materials[..., channel])
 
     robot_view.set_material_properties(robot_materials, env_ids)
 
@@ -1653,6 +1707,112 @@ def _author_objects_into_envs(env, object_params, n_pool: int,
     _log_scene_step(
         t0, f"authored {env.num_envs} Object + GoalViz prims from a "
             f"{n_pool}-entry pool")
+
+
+def _resolve_robot_population(assets_cfg) -> list | None:
+    """Specs for a cached hand population, or None for the single-robot env."""
+    seed = getattr(assets_cfg, "robot_population_seed", None)
+    if seed is None:
+        return None
+    from genmech.robots.generated.population import load_population
+    from genmech.robots.generated.synth_spec import synth_spec
+
+    hands = load_population(int(seed))
+    count = int(getattr(assets_cfg, "robot_population_count", 0) or 0)
+    if count:
+        if count > len(hands):
+            raise ValueError(
+                f"robot_population_count={count} exceeds the cached population "
+                f"for seed {seed} ({len(hands)} hands). Build a larger one with "
+                f"genmech.robots.generated.population.build_population.")
+        hands = hands[:count]
+    specs = [synth_spec(h) for h in hands]
+
+    # Every design must present the same joint vector: one articulation view has
+    # one dof_count, and the actuator tables are keyed by name. Ghosting is what
+    # makes this hold; check it rather than trust it, because a mismatch here
+    # surfaces as an opaque PhysX view error much later.
+    ref = specs[0]
+    for s in specs[1:]:
+        if s.joint_names_canonical != ref.joint_names_canonical:
+            raise RuntimeError(
+                f"design {s.name} does not share the joint template with "
+                f"{ref.name}: a population must be padded to one joint set "
+                f"before it can share an articulation view")
+        if s.num_fingertip_slots != ref.num_fingertip_slots:
+            raise RuntimeError(
+                f"design {s.name} has {s.num_fingertip_slots} fingertip slots, "
+                f"{ref.name} has {ref.num_fingertip_slots}: the observation "
+                f"layout must be identical across a population")
+    return specs
+
+
+def _build_robot_design_tensor(env, num_designs: int) -> None:
+    """Record which design each env holds, and CHECK it against the sim.
+
+    MultiUsdFileCfg assigns proto i to the i-th Robot prim that
+    ``find_matching_prim_paths`` returns, so env i holds design i % k. That is an
+    assumption about someone else's iteration order, and the identical
+    assumption about the object pool silently gave 510 of 512 envs the wrong
+    asset -- costing a 5.07 -> 3.00 goals/episode regression that every
+    asset-level comparison passed (docs/multi_embodiment.md §4).
+
+    So this does not merely record the map; it verifies it against a quantity
+    that actually differs per design and is read back out of PhysX. Joint limits
+    are that quantity: the sampler draws each design's abduction range
+    independently, so the limit vector is effectively a fingerprint.
+    """
+    num_envs = env.num_envs
+    robot_prim_paths = find_matching_prim_paths("/World/envs/env_.*/Robot")
+    if len(robot_prim_paths) != num_envs:
+        raise RuntimeError(
+            f"Expected {num_envs} Robot prims, got {len(robot_prim_paths)}.")
+    observed = [_env_id_of(p) for p in robot_prim_paths]
+    if observed != sorted(observed):
+        raise RuntimeError(
+            "find_matching_prim_paths no longer returns Robot prims in numeric "
+            f"env order (first 12: {observed[:12]}); the design assignment "
+            "below assumes it does.")
+
+    env._robot_design_index_per_env = torch.tensor(
+        [i % num_designs for i in range(num_envs)],
+        device=env.device, dtype=torch.long,
+    )
+
+
+def _verify_robot_design_assignment(env, specs) -> None:
+    """Confirm env i really holds design i % k, using per-design joint limits.
+
+    Runs after the sim exists, so it reads what PhysX loaded rather than what
+    the config asked for. Cheap, and it closes the exact hole that produced the
+    object-assignment regression.
+    """
+    import numpy as np
+
+    limits = env.robot.data.joint_pos_limits.detach().cpu().numpy()  # (N, J, 2)
+    idx = env._robot_design_index_per_env.detach().cpu().numpy()
+    # Designs whose limit vectors are identical cannot distinguish an assignment
+    # error, so report how much signal the check actually has.
+    sigs = {}
+    for e in range(env.num_envs):
+        sigs.setdefault(idx[e], []).append(limits[e])
+    distinct = {d: np.round(v[0], 9).tobytes() for d, v in sigs.items()}
+    n_unique = len(set(distinct.values()))
+
+    bad = []
+    for d, mats in sigs.items():
+        ref = mats[0]
+        for m in mats[1:]:
+            if not np.allclose(ref, m, atol=1e-9):
+                bad.append(d)
+                break
+    if bad:
+        raise RuntimeError(
+            f"robot design assignment is inconsistent: envs sharing design "
+            f"{sorted(bad)[:5]} do not share joint limits. env i is supposed to "
+            f"hold design i % {len(specs)}.")
+    print(f"[scene] robot design assignment verified: {len(sigs)} designs over "
+          f"{env.num_envs} envs, {n_unique} distinguishable by joint limits")
 
 
 def _build_object_scale_tensor(env, object_scales_normalized, num_object_usds: int) -> None:
@@ -1789,27 +1949,53 @@ def setup_scene(env) -> None:
     ]
 
     spec = env.robot_spec
-    robot_urdf = assets_cfg.robot_urdf or spec.urdf_path
-    robot_converted_usd = _convert_urdf_to_usd(
-        robot_urdf, usd_work_dir,
-        fix_base=True, self_collision=True,
-        joint_drive=_robot_joint_drive_cfg(),
-        replace_cylinders_with_capsules=spec.replace_cylinders_with_capsules,
-    )
-    # Isaac Gym enables all robot self-collisions then masks adjacent links; mirror
-    # that by authoring FilteredPairsAPI for the spec's adjacency pairs before the
-    # bake (PhysX additionally auto-filters directly-jointed parent/child links).
-    _apply_self_collision_filters(robot_converted_usd, spec.adjacent_links)
-    robot_usd_path = _bake_usd(
-        robot_converted_usd,
-        bake_root, "robot",
-        props=dict(
-            disable_gravity=True, max_depenetration_velocity=1000.0,
-            enabled_self_collisions=True,
-            solver_position_iterations=8, solver_velocity_iterations=0,
-        ),
-        apply_physx_articulation=True,
-    )
+
+    def _prepare_robot_usd(design_spec, tag: str) -> str:
+        """URDF -> USD -> self-collision filters -> baked USD, for one design."""
+        converted = _convert_urdf_to_usd(
+            assets_cfg.robot_urdf or design_spec.urdf_path, usd_work_dir,
+            fix_base=True, self_collision=True,
+            joint_drive=_robot_joint_drive_cfg(),
+            replace_cylinders_with_capsules=design_spec.replace_cylinders_with_capsules,
+        )
+        # Isaac Gym enables all robot self-collisions then masks adjacent links;
+        # mirror that by authoring FilteredPairsAPI for the spec's adjacency
+        # pairs before the bake (PhysX additionally auto-filters directly-jointed
+        # parent/child links). The adjacency is PER DESIGN -- geometry-less
+        # ghosted links are transparent, so which pairs need filtering differs.
+        _apply_self_collision_filters(converted, design_spec.adjacent_links)
+        return _bake_usd(
+            converted, bake_root, tag,
+            props=dict(
+                disable_gravity=True, max_depenetration_velocity=1000.0,
+                enabled_self_collisions=True,
+                solver_position_iterations=8, solver_velocity_iterations=0,
+            ),
+            apply_physx_articulation=True,
+        )
+
+    # Resolved by the env before super().__init__ (the observation spaces are
+    # derived from it); re-resolve only when setup_scene is driven directly, as
+    # the benchmarking tools do.
+    population_specs = getattr(env, "_robot_population_specs", None)
+    if population_specs is None and getattr(
+            assets_cfg, "robot_population_seed", None) is not None:
+        population_specs = _resolve_robot_population(assets_cfg)
+    if population_specs is None:
+        robot_usd_arg: str | list[str] = _prepare_robot_usd(spec, "robot")
+        env._robot_population_specs = None
+    else:
+        # One conversion per DESIGN, not per env: n envs share k designs, and
+        # converting per env is what turned a 24,576-env build into hours
+        # (docs/multi_embodiment.md §3).
+        robot_usd_arg = [
+            _prepare_robot_usd(s, f"robot_{i:05d}")
+            for i, s in enumerate(population_specs)
+        ]
+        env._robot_population_specs = population_specs
+        _log_scene_step(
+            setup_t0, f"prepared {len(robot_usd_arg)} distinct robot USDs")
+    robot_usd_path = robot_usd_arg
     # Table USD(s). When table_scale_range_x/y are non-trivial and
     # table_scale_num_variants > 1, pre-bake N scaled URDF variants and pass
     # them as a list to RigidObject — Isaac Lab's MultiUsdFileCfg cycles
@@ -1904,6 +2090,8 @@ def setup_scene(env) -> None:
     _build_object_scale_tensor(
         env, object_scales_normalized,
         len(object_params) if author_objects else len(object_usd_paths))
+    if env._robot_population_specs is not None:
+        _build_robot_design_tensor(env, len(env._robot_population_specs))
 
     # 7. Register with scene so DirectRLEnv refreshes their tensors each step.
     env.scene.articulations["robot"] = env.robot

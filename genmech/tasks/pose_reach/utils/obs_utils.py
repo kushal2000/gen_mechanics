@@ -17,6 +17,10 @@ from isaaclab.utils.math import convert_quat, quat_apply, quat_from_angle_axis, 
 # Task constants — hand-independent.
 NUM_KEYPOINTS: int = 4
 
+# Width of the morphology descriptor (utils/morphology.py). Imported rather than
+# duplicated so the two cannot disagree; that module is Kit-free.
+from .morphology import DESCRIPTOR_DIM as MORPHOLOGY_DIM  # noqa: E402
+
 # Object-frame keypoint corners before scaling.
 KEYPOINT_CORNERS: tuple[tuple[int, int, int], ...] = (
     (1, 1, 1),
@@ -38,7 +42,9 @@ def obs_field_sizes(spec) -> dict[str, int]:
     fields — come from the spec; the rest are task-fixed.
     """
     n_joints = spec.num_joints
-    n_tips = spec.num_fingertips
+    # Padded slot count, so every design in a population shares one layout. For
+    # a fixed hand this equals num_fingertips and the widths are unchanged.
+    n_tips = spec.num_fingertip_slots
     return {
         "joint_pos": n_joints,
         "joint_vel": n_joints,
@@ -54,6 +60,12 @@ def obs_field_sizes(spec) -> dict[str, int]:
         "object_scales": 3,
         "closest_keypoint_max_dist": 1,
         "closest_fingertip_dist": n_tips,
+        # Constant-per-env description of the mechanism the policy commands:
+        # mount poses, link lengths and radii, which joints exist, and the
+        # abduction range that joint_pos normalization hides. Only the
+        # multi-embodiment env requests it; listed here so compute_obs_dim can
+        # size it. See utils/morphology.py.
+        "morphology": MORPHOLOGY_DIM,
         "lifted_object": 1,
         "progress": 1,
         "successes": 1,
@@ -187,7 +199,18 @@ def compute_intermediate_values(env) -> None:
     ft_pos = ft_state[:, :, 0:3] - env_origins.unsqueeze(1)
     env._curr_fingertip_distances = torch.norm(
         ft_pos - obj_pos.unsqueeze(1), dim=-1
-    )  # (N, 5)
+    )  # (N, S)
+    # Ghosted slots carry a real link pose and a meaningless distance. Zeroing
+    # here, at the single point where the distance is produced, makes every
+    # downstream reduction inert for them at once: the reward sums deltas (0),
+    # termination takes a max against 1.5 m (0 never trips), the running minimum
+    # stays 0, and the observation shows a constant. Masking at each consumer
+    # instead would leave whichever one gets forgotten reading ghost geometry.
+    # For an unpadded spec the mask is all-true and this is a no-op.
+    env._curr_fingertip_distances = torch.where(
+        env._fingertip_mask, env._curr_fingertip_distances,
+        torch.zeros_like(env._curr_fingertip_distances),
+    )
 
     if rew_cfg.fixed_size_keypoint_reward:
         kp_offsets = env._keypoint_offsets_fixed
@@ -316,7 +339,12 @@ def build_observations(env) -> dict[str, torch.Tensor]:
 
     fingertip_pos_rel_palm = (
         (ft_pos_w - env_origins.unsqueeze(1)) - palm_pos.unsqueeze(1)
-    )  # (N, 5, 3)
+    )  # (N, S, 3)
+    # Ghosted slots would otherwise feed the policy the pose of a finger that is
+    # not there. Zero is the "absent" value, consistent with the distance field.
+    fingertip_pos_rel_palm = fingertip_pos_rel_palm * (
+        env._fingertip_mask.unsqueeze(-1).to(fingertip_pos_rel_palm.dtype)
+    )
 
     object_scales_obs = env._object_scale_per_env * env._object_scale_multiplier
 
@@ -340,6 +368,10 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "object_scales": object_scales_obs,
         "closest_keypoint_max_dist": env._closest_keypoint_max_dist.unsqueeze(-1),
         "closest_fingertip_dist": env._closest_fingertip_dist,
+        # Only present on the multi-embodiment env; a single-hand scene has no
+        # morphology to describe and never lists the field.
+        **({"morphology": env._morphology_per_env}
+           if getattr(env, "_morphology_per_env", None) is not None else {}),
         "lifted_object": env._lifted_object.float().unsqueeze(-1),
         "progress": torch.log(env.episode_length_buf.float() / 10.0 + 1.0).unsqueeze(-1),
         "successes": torch.log(env._successes.float() + 1.0).unsqueeze(-1),
