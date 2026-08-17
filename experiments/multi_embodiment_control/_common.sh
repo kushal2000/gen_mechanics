@@ -77,7 +77,23 @@ SYMMETRIC_OBS=(
     'env.obs.obs_list=${env.obs.state_list}'
 )
 
-COMMON_OVERRIDES=("${DR_OFF[@]}" "${ACTION_RAW[@]}" "${SYMMETRIC_OBS[@]}")
+# --- 4. Object assets: converted (default) or authored ----------------------
+#
+# AUTHOR_OBJECTS=1 authors the 1,200-object pool instead of converting it,
+# removing ~184 s of setup (measured). The two paths are verified equivalent at
+# the level that matters: the pretrained policy scores 5.01 +/- 0.09 goals on
+# BOTH at 2048 envs, with bit-identical rollout dynamics.
+#
+# Set it the SAME WAY FOR EVERY ARM IN A COMPARISON. Mixing paths across arms
+# would put an asset difference between conditions whose only difference is
+# meant to be the embodiment.
+OBJECT_ASSETS=()
+if [ -n "${AUTHOR_OBJECTS:-}" ]; then
+    OBJECT_ASSETS=( env.assets.author_object_usds=true )
+fi
+
+COMMON_OVERRIDES=("${DR_OFF[@]}" "${ACTION_RAW[@]}" "${SYMMETRIC_OBS[@]}"
+                  ${OBJECT_ASSETS[@]+"${OBJECT_ASSETS[@]}"})
 
 # --- shared launcher ---------------------------------------------------------
 # Expects: TASK ROBOT_OVERRIDES(array) NUM_ENVS SEED MAX_EPOCHS EXPERIMENT_TAG
@@ -122,7 +138,9 @@ launch_training() {
         return 1
     fi
 
-    local EXPERIMENT_NAME="${EXPERIMENT_TAG}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)"
+    # TAG_SUFFIX keeps a parallel variant's runs from colliding with the
+    # baseline set's, in both the run directory and the wandb name.
+    local EXPERIMENT_NAME="${EXPERIMENT_TAG}${TAG_SUFFIX:-}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)"
     [ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
         JobName="$EXPERIMENT_NAME" || true
 
