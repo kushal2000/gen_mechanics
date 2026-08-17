@@ -1559,7 +1559,16 @@ def _materialize_env_prims(env) -> None:
             stage.DefinePrim(env_path, "Xform")
 
 
-def _author_objects_into_envs(env, object_params, n_pool: int) -> None:
+def _env_id_of(prim_path: str) -> int:
+    """Numeric env id from a `/World/envs/env_<i>` path or any child of one."""
+    for token in prim_path.split("/"):
+        if token.startswith("env_"):
+            return int(token.removeprefix("env_"))
+    raise ValueError(f"no env_<i> component in {prim_path!r}")
+
+
+def _author_objects_into_envs(env, object_params, n_pool: int,
+                              which=("object", "goalviz")) -> None:
     """Author Object and GoalViz prims directly into every env.
 
     Env i takes pool entry ``i % n_pool`` -- the same assignment MultiUsdFileCfg
@@ -1571,6 +1580,7 @@ def _author_objects_into_envs(env, object_params, n_pool: int) -> None:
     """
     from pxr import Sdf
 
+    from genmech.robots.generated.author_usd import define
     from genmech.tasks.pose_reach.utils.author_objects import (
         author_handle_head,
         author_physics_material,
@@ -1588,15 +1598,43 @@ def _author_objects_into_envs(env, object_params, n_pool: int) -> None:
             static_friction=float(env.cfg.assets.object_friction),
             dynamic_friction=float(env.cfg.assets.object_friction),
             restitution=float(env.cfg.assets.object_restitution))
-        for env_id, env_path in enumerate(env.scene.env_prim_paths):
+        # Assign pool entries by NUMERIC env id, and record the map so that
+        # _build_object_scale_tensor can consume it rather than re-deriving it.
+        #
+        # Re-deriving is what went wrong before. That function reads
+        # find_matching_prim_paths("/World/envs/env_.*/Object") and takes
+        # asset_index = position % pool, and this loop used to walk
+        # sorted(env_prim_paths) on the belief that the two orders agree.
+        # They do not: find_matching_prim_paths returns NUMERIC order
+        # (env_0, env_1, env_2, ...) while sorted() returns lexicographic
+        # (env_0, env_1, env_10, env_100, ...). Measured on 512 envs, the two
+        # disagreed in 510 of them -- so nearly every env held an object whose
+        # geometry did not match the object_scales in its own observation, and
+        # the policy scored 3.00 goals against 5.07 for the converted path.
+        #
+        # Note the assignment is deliberately identical to MultiUsdFileCfg's,
+        # which walks that same numeric list: env i takes pool entry i % n_pool.
+        # Recording the map means a future change to either ordering cannot
+        # silently desynchronise the two again.
+        env._authored_asset_index = {}
+        for env_path in sorted(env.scene.env_prim_paths, key=_env_id_of):
+            source_idx = _env_id_of(env_path)
+            env._authored_asset_index[source_idx] = source_idx % n_pool
             handle_scale, head_scale, handle_density, head_density = \
-                object_params[env_id % n_pool]
-            for name, collision in (("Object", True), ("GoalViz", False)):
+                object_params[source_idx % n_pool]
+            # GoalViz: no collider AND no motion. The converted path bakes it
+            # kinematic with gravity disabled; both are required.
+            for name, collision, kinematic in (("Object", True, False),
+                                               ("GoalViz", False, True)):
+                if name.lower() not in which:
+                    continue
+                # The parent Xform the converter's USD root maps onto.
+                define(layer, f"{env_path}/{name}", "Xform")
                 author_handle_head(
                     layer, f"{env_path}/{name}",
                     handle_scale, head_scale, handle_density, head_density,
-                    body_at_root=True, collision=collision,
-                    material_path=mat_path)
+                    body_at_root=False, collision=collision,
+                    material_path=mat_path, kinematic=kinematic)
     # Bind the physics material AFTER the ChangeBlock, with Isaac Lab's helper
     # rather than a hand-authored relationship: it applies MaterialBindingAPI
     # correctly and is decorated with apply_nested, so one call per env covers
@@ -1606,6 +1644,10 @@ def _author_objects_into_envs(env, object_params, n_pool: int) -> None:
 
     for env_path in env.scene.env_prim_paths:
         for name in ("Object", "GoalViz"):
+            # Only bind what was actually authored: in bisect mode the other
+            # asset comes from the converted path and has no prim here yet.
+            if name.lower() not in which:
+                continue
             bind_physics_material(f"{env_path}/{name}", mat_path)
 
     _log_scene_step(
@@ -1624,9 +1666,29 @@ def _build_object_scale_tensor(env, object_scales_normalized, num_object_usds: i
 
     env._object_scale_per_env = torch.zeros(num_envs, 3, device=env.device, dtype=torch.float32)
     env._object_asset_index_per_env = torch.zeros(num_envs, device=env.device, dtype=torch.long)
+    # When the objects were authored, that pass already decided which pool entry
+    # each env holds; take its map rather than re-deriving one here. Two
+    # independent derivations of the same mapping is exactly how the paths
+    # desynchronised before -- see the note in _author_objects_into_envs.
+    authored_map = getattr(env, "_authored_asset_index", None)
+    if authored_map is None:
+        # The converted path pairs env i with the i-th spawned proto by relying
+        # on MultiUsdFileCfg walking this same list in this same order. That
+        # holds only while the order is numeric; if Isaac Lab ever returns
+        # lexicographic order instead, every env past env_9 silently gets an
+        # object its observation does not describe. Fail loudly instead.
+        observed = [_env_id_of(p) for p in object_prim_paths]
+        if observed != sorted(observed):
+            raise RuntimeError(
+                "find_matching_prim_paths no longer returns Object prims in "
+                f"numeric env order (first 12: {observed[:12]}). "
+                "_build_object_scale_tensor's asset assignment assumes it does; "
+                "fix the assignment before training on this."
+            )
     for source_idx, obj_path in enumerate(object_prim_paths):
-        env_id = int(obj_path.rsplit("/", 2)[-2].removeprefix("env_"))
-        asset_index = source_idx % num_object_usds
+        env_id = _env_id_of(obj_path)
+        asset_index = (authored_map[env_id] if authored_map is not None
+                       else source_idx % num_object_usds)
         env._object_scale_per_env[env_id] = torch.tensor(
             object_scales_normalized[asset_index], device=env.device, dtype=torch.float32,
         )
@@ -1693,7 +1755,12 @@ def setup_scene(env) -> None:
     # detail matters and is handled in author_objects: this conversion passes
     # replace_cylinders_with_capsules=True, so a URDF cylinder becomes a CAPSULE
     # whose height is the cylindrical section.
+    # "object" / "goalviz" author just one of the pair; used to bisect which
+    # asset carries a behavioural difference rather than guessing attributes.
     author_objects = bool(getattr(assets_cfg, "author_object_usds", False))
+    _which_cfg = str(getattr(assets_cfg, "author_which", "both")).lower()
+    _author_which = ({"object", "goalviz"} if _which_cfg == "both"
+                     else {_which_cfg}) if author_objects else set()
     if author_objects and object_params is None:
         raise ValueError(
             "assets.author_object_usds=True requires the procedural object pool; "
@@ -1706,7 +1773,7 @@ def setup_scene(env) -> None:
             str(urdf), usd_work_dir, fix_base=False, replace_cylinders_with_capsules=True,
         )
         for urdf in urdf_paths
-    ] if not author_objects else []
+    ] if not (author_objects and _author_which == {"object", "goalviz"}) else []
     object_usd_paths = [
         _bake_usd(usd, bake_root, "object", props=dict(
             kinematic_enabled=False, disable_gravity=False,
@@ -1812,11 +1879,17 @@ def setup_scene(env) -> None:
         # conversion (~0.2 s x 1200) and the proto/copy spawn machinery: there is
         # no USD file, no template prim, and no Sdf.CopySpec.
         n_pool = len(object_params)
-        _author_objects_into_envs(env, object_params, n_pool)
-        env.object = RigidObject(RigidObjectCfg(
+        _author_objects_into_envs(env, object_params, n_pool, which=_author_which)
+        env.object = (RigidObject(RigidObjectCfg(
             prim_path="/World/envs/env_.*/Object", spawn=None))
-        env.goal_viz = RigidObject(RigidObjectCfg(
+            if "object" in _author_which
+            else RigidObject(build_rigid_object_cfg(
+                "/World/envs/env_.*/Object", object_usd_paths)))
+        env.goal_viz = (RigidObject(RigidObjectCfg(
             prim_path="/World/envs/env_.*/GoalViz", spawn=None))
+            if "goalviz" in _author_which
+            else RigidObject(build_rigid_object_cfg(
+                "/World/envs/env_.*/GoalViz", goalviz_usd_paths)))
     else:
         env.object = RigidObject(build_rigid_object_cfg("/World/envs/env_.*/Object", object_usd_paths))
         env.goal_viz = RigidObject(build_rigid_object_cfg("/World/envs/env_.*/GoalViz", goalviz_usd_paths))

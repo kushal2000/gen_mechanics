@@ -31,13 +31,16 @@ SUITE="${SUITE:-smoke}"
 # run_eval needs the training config (network shape, obs layout) and ONE
 # condition per invocation; nominal is the like-for-like comparison point.
 CONDITION="${CONDITION:-nominal/nominal}"
-POLICY_CONFIG="${POLICY_CONFIG:-$(dirname "$(dirname "$CKPT")")/../.hydra/config.yaml}"
+# The player reads cfg["train"]; a training run's .hydra/config.yaml has only
+# env/agent and fails with KeyError: 'train'. pretrained_policy/config.yaml is
+# the shipped pairing for pretrained_policy/model.pth.
+POLICY_CONFIG="${POLICY_CONFIG:-${REPO_ROOT}/pretrained_policy/config.yaml}"
 
 OUT_DIR="${REPO_ROOT}/bench_dir/eval_baseline"
 mkdir -p "$OUT_DIR"
 [ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
-    JobName="eval_base_${ROBOT}" || true
-exec > "${OUT_DIR}/${ROBOT}_${SUITE}.log" 2> "${OUT_DIR}/${ROBOT}_${SUITE}.err"
+    JobName="eval_${TAG:-base}_${ROBOT}" || true
+exec > "${OUT_DIR}/${ROBOT}_${TAG:-base}.log" 2> "${OUT_DIR}/${ROBOT}_${TAG:-base}.err"
 
 cd "$REPO_ROOT"
 source .venv_isaacsim/bin/activate
@@ -53,4 +56,6 @@ python -u -m genmech.eval.run_eval \
     --num_envs "$NUM_ENVS" --suite "$SUITE" \
     --policy_config "$POLICY_CONFIG" \
     --condition "$CONDITION" \
-    --out "${OUT_DIR}/${ROBOT}_${SUITE}"
+    --out "${OUT_DIR}/${ROBOT}_${TAG:-base}" \
+    ${AUTHOR_OBJECTS:+--override assets.author_object_usds=true} \
+    ${AUTHOR_WHICH:+--override assets.author_which=$AUTHOR_WHICH}

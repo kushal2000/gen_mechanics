@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 2:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Sanity check behind the authored-object regression (3.00 vs 5.07 goals).
+#
+# The assets are provably identical -- mass, inertia, 36 physics attributes and
+# composed collider geometry in the object frame all match exactly. So this
+# stops comparing assets and asks instead whether each env holds the object its
+# OBSERVATION describes, and whether the two paths agree env by env.
+#
+#   AUTHOR=1 TAG=auth sbatch experiments/check_object_identity.sub
+#   TAG=conv sbatch experiments/check_object_identity.sub
+
+set -euo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+NUM_ENVS="${NUM_ENVS:-512}"
+NUM_ASSETS="${NUM_ASSETS:-100}"
+TAG="${TAG:-conv}"
+OUT_DIR="${REPO_ROOT}/bench_dir/object_identity"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="ident_${TAG}" || true
+exec > "${OUT_DIR}/${TAG}.log" 2> "${OUT_DIR}/${TAG}.err"
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_ident_${TAG}"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+python -u -m genmech.tools.check_object_identity \
+    --num_envs "$NUM_ENVS" \
+    --num_assets_per_type "$NUM_ASSETS" \
+    --out "${OUT_DIR}/${TAG}.npz" \
+    ${AUTHOR:+--author} \
+    ${COMPARE:+--compare "$COMPARE"}
