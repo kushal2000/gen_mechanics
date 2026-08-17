@@ -115,12 +115,23 @@ class AssetsCfg:
     # and inertia generate_objects already computes in closed form, so the URDF
     # round-trip recovers numbers we started with.
     #
-    # Verified equivalent before being offered: mass, inertia and centre of mass
-    # to ~1e-8, dropped-object resting poses to ~2e-7 m (compare_object_assets,
-    # compare_object_physics). Defaults OFF until a pretrained policy is shown to
-    # hold its goals/episode through this path -- faster assets that change the
-    # physics are a silent regression, not a win.
-    author_object_usds: bool = False
+    # DEFAULT ON. The acceptance test it was gated behind has been met, three
+    # independent ways:
+    #   * pretrained policy scores 5.01 +/- 0.09 goals on BOTH paths at 2048
+    #     envs, matching on lift (79%), complete (31%) and zero (26%);
+    #   * a 120-step rollout over 256 envs is bit-identical -- peak and settled
+    #     velocity and robot joint_vel std agree to every printed digit;
+    #   * per-env mass, inertia, object_scales and asset index are bit-exact
+    #     across all 512 envs (check_object_identity).
+    # Plus mass/inertia/centre of mass to ~1e-8 and resting poses to ~2e-7 m
+    # (compare_object_assets, compare_object_physics).
+    #
+    # Note what the eval alone did NOT catch: an env->pool assignment bug that
+    # cost 5.07 -> 3.00 goals while every asset comparison passed. The identity
+    # check above is the one that closes that hole, and it is why this default
+    # moved only after per-env identity was verified, not merely per-asset
+    # equivalence.
+    author_object_usds: bool = True
     # Diagnostic: author only one of the pair, to bisect which asset carries a
     # behavioural difference. "both" in normal use.
     author_which: str = "both"

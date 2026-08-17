@@ -390,12 +390,14 @@ and one design per env extrapolates to tens of hours. Here — and only here —
 * Author the generated hand (not just objects) — needed for large-k sweeps, and
   it must reproduce masses, drive gains, self-collision filters and the arm
   reference before it is trusted.
-* Decide whether `assets.author_object_usds` should default ON. It is wired into
-  `scene_utils` and the policy now holds its score through it (§4), but flipping
-  the default changes physics assets for every future training run, so it is a
-  deliberate call rather than a cleanup. **Faster assets that change the physics
-  are a silent regression, not a win** — the acceptance test is the policy's
-  score, not the clock.
+* ~~Decide whether `assets.author_object_usds` should default ON.~~ **Done — it
+  now defaults ON.** The policy holds its score through it (5.01 ± 0.09 both
+  paths at 2048 envs), a 120-step rollout is bit-identical, and per-env asset
+  identity is bit-exact across 512 envs. That last check is the one that
+  mattered: the policy eval alone passed while an env→pool assignment bug cost
+  5.07 → 3.00 (§4). **Faster assets that change the physics are a silent
+  regression, not a win** — the acceptance test is the policy's score, not the
+  clock.
 * Prototype grouped `replicate_physics` per design block.
 * The sampler rejects ~93% of draws on self-collision, stable across seeds. An
   analytic capsule-capsule gate inside `params.validate()` would avoid a URDF

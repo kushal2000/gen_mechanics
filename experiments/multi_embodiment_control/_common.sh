@@ -87,9 +87,14 @@ SYMMETRIC_OBS=(
 # Set it the SAME WAY FOR EVERY ARM IN A COMPARISON. Mixing paths across arms
 # would put an asset difference between conditions whose only difference is
 # meant to be the embodiment.
-OBJECT_ASSETS=()
+# PINNED EXPLICITLY IN BOTH DIRECTIONS, never left to the default. The default
+# is now True, so an arm relaunched from this folder would silently switch asset
+# path and stop matching the siblings it is being compared against. An
+# experiment has to state what it ran, not inherit it.
 if [ -n "${AUTHOR_OBJECTS:-}" ]; then
     OBJECT_ASSETS=( env.assets.author_object_usds=true )
+else
+    OBJECT_ASSETS=( env.assets.author_object_usds=false )
 fi
 
 COMMON_OVERRIDES=("${DR_OFF[@]}" "${ACTION_RAW[@]}" "${SYMMETRIC_OBS[@]}"
