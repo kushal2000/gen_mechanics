@@ -42,13 +42,10 @@
 #    (docs/multi_embodiment.md §4). At 24,576 designs that is ROUGHLY SIX HOURS
 #    of setup before the first gradient step, inside the 7-day walltime.
 #
-#    The fix is authored hand USDs (~8 ms each, 207 s for the whole population),
-#    but genmech/robots/generated/author_usd.py is still a stub -- it stops at
-#    MCP_VL, has no fingertip links, no collision geometry and no joint body
-#    targets. Until that lands and is validated against the converter, this arm
-#    pays the six hours. Set DESIGN_COUNT lower to trade diversity for setup
-#    time; the env cycles designs over envs, so DESIGN_COUNT=4096 gives 6 envs
-#    per design and ~1 hour of prep.
+#    THIS IS NOW FIXED and on by default: env.assets.author_robot_usds converts
+#    the shared arm ONCE and authors each hand directly, ~29 ms per design, so
+#    setup is ~12 min. Set AUTHOR_ROBOTS=0 to fall back to the converter, which
+#    remains the reference the authored path is validated against.
 #
 #   sbatch experiments/multi_embodiment_control/03_population_24k.sub
 #   DESIGN_COUNT=4096 sbatch experiments/multi_embodiment_control/03_population_24k.sub
@@ -87,6 +84,11 @@ echo "population OK: $HAVE hands cached, using $DESIGN_COUNT"
 ROBOT_OVERRIDES=(
     env.assets.robot_population_seed="$POPULATION_SEED"
     env.assets.robot_population_count="$DESIGN_COUNT"
+    # Author each design instead of converting it: ~29 ms vs ~1.17 s, so setup
+    # is ~12 min rather than ~8 h. Verified equivalent to the converted asset
+    # by genmech.tools.compare_authored_robot (0 mismatches; fingertips within
+    # 0.0013 mm driven identically). AUTHOR_ROBOTS=0 falls back to converting.
+    env.assets.author_robot_usds="${AUTHOR_ROBOTS:-true}"
 )
 
 launch_training

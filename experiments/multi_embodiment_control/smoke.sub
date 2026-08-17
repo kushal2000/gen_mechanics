@@ -67,6 +67,7 @@ case "$ARM" in
     ROBOT_OVERRIDES=(
         env.assets.robot_population_seed="${POPULATION_SEED:-0}"
         env.assets.robot_population_count="${DESIGN_COUNT:-8}"
+        env.assets.author_robot_usds="${AUTHOR_ROBOTS:-false}"
     )
     ;;
   *) echo "ARM must be 1, 2 or 3" >&2; exit 1 ;;

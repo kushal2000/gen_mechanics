@@ -63,6 +63,22 @@ class AssetsCfg:
     # spec.urdf_path. Useful for sweeping a mount transform without editing the
     # spec; the joint set must still match, which the env asserts.
     robot_urdf: str = ""
+
+    # Author each design's robot USD instead of converting its URDF.
+    #
+    # Only meaningful with a robot population. Kit's UrdfConverter takes ~1.17 s
+    # per generated design on this cluster, ~90% of it re-importing the SAME
+    # iiwa14 arm's 16 STL meshes -- about 8 hours for 24,576 designs before the
+    # first gradient step. Authoring converts the arm ONCE, references it, and
+    # writes the hand directly: ~29 ms per design, ~12 min for the population.
+    #
+    # Verified equivalent to the converted asset by
+    # genmech.tools.compare_authored_robot: masses, inertias, joint limits,
+    # colliders and every actuation property agree exactly, and driven
+    # identically the fingertips land within 0.0013 mm and the joints within
+    # 1.6e-05 rad. Defaults OFF so the conversion path stays the reference.
+    author_robot_usds: bool = False
+
     table_urdf: str = "assets/urdf/table_narrow.urdf"
     # Per-env scale ranges applied to the table mesh at scene-build time.
     # Sampled independently per env: sx ~ U(table_scale_range_x), sy ~ U(table_scale_range_y).

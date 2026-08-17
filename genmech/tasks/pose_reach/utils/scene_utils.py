@@ -1977,6 +1977,66 @@ def setup_scene(env) -> None:
     # Resolved by the env before super().__init__ (the observation spaces are
     # derived from it); re-resolve only when setup_scene is driven directly, as
     # the benchmarking tools do.
+    def _author_population_usds(specs) -> list[str]:
+        """Author one USD per design, with the arm converted ONCE and referenced.
+
+        Measured against the converter on this cluster: 1.17 s per design (~8 h
+        for 24,576) becomes ~29 ms (~12 min), because ~90% of a conversion is
+        re-importing the SAME arm's 16 STL meshes.
+
+        The authored asset is verified equivalent to the converted one by
+        genmech.tools.compare_authored_robot: masses, inertias, joint limits,
+        colliders and every actuation property agree exactly, and driven
+        identically the fingertips land within 0.0013 mm.
+        """
+        import numpy as np
+
+        from genmech.robots.generated.author_robot import (
+            arm_only_urdf, author_robot_usd, flatten_arm_usd,
+        )
+        from genmech.robots.generated.population import load_population
+        from pxr import Usd, UsdGeom
+
+        arm_dir = Path(env._tmp_asset_dir) / "arm"
+        arm_urdf = arm_only_urdf(arm_dir / "iiwa14_arm_only.urdf")
+        arm_raw = _convert_urdf_to_usd(
+            str(arm_urdf), arm_dir, fix_base=True, self_collision=True,
+            joint_drive=_robot_joint_drive_cfg())
+        # Flatten: the converter's output references configuration/*_base.usd,
+        # and those do NOT resolve through a second level of nesting -- a
+        # referenced arm otherwise composes with NO collision geometry.
+        arm_usd = flatten_arm_usd(arm_raw, arm_dir / "arm_flat.usd")
+        arm_stage = Usd.Stage.Open(arm_usd)
+        arm_root = str(next(c for c in arm_stage.GetPseudoRoot().GetChildren()).GetPath())
+        link7_world = np.asarray(UsdGeom.XformCache().GetLocalToWorldTransform(
+            arm_stage.GetPrimAtPath(f"{arm_root}/iiwa14_link_7"))).T
+        _log_scene_step(setup_t0, "converted the shared arm once")
+
+        hands = load_population(int(assets_cfg.robot_population_seed))
+        count = int(getattr(assets_cfg, "robot_population_count", 0) or 0)
+        if count:
+            hands = hands[:count]
+        if len(hands) != len(specs):
+            raise RuntimeError(
+                f"population/spec mismatch: {len(hands)} hands, {len(specs)} specs")
+
+        out = []
+        design_dir = Path(env._tmp_asset_dir) / "designs"
+        for i, (hand, design_spec) in enumerate(zip(hands, specs)):
+            raw = author_robot_usd(
+                hand, design_spec, design_dir / f"{hand.name}.usd",
+                arm_usd=arm_usd, arm_root_prim=arm_root, link7_world=link7_world)
+            # The same finish the converted path gets, so self-collision
+            # filtering and the articulation/solver properties are identical.
+            _apply_self_collision_filters(raw, design_spec.adjacent_links)
+            out.append(_bake_usd(
+                raw, bake_root, f"robot_{i:05d}",
+                props=dict(disable_gravity=True, max_depenetration_velocity=1000.0,
+                           enabled_self_collisions=True,
+                           solver_position_iterations=8, solver_velocity_iterations=0),
+                apply_physx_articulation=True))
+        return out
+
     population_specs = getattr(env, "_robot_population_specs", None)
     if population_specs is None and getattr(
             assets_cfg, "robot_population_seed", None) is not None:
@@ -1985,13 +2045,16 @@ def setup_scene(env) -> None:
         robot_usd_arg: str | list[str] = _prepare_robot_usd(spec, "robot")
         env._robot_population_specs = None
     else:
-        # One conversion per DESIGN, not per env: n envs share k designs, and
-        # converting per env is what turned a 24,576-env build into hours
+        # One asset per DESIGN, not per env: n envs share k designs, and
+        # preparing per env is what turned a 24,576-env build into hours
         # (docs/multi_embodiment.md §3).
-        robot_usd_arg = [
-            _prepare_robot_usd(s, f"robot_{i:05d}")
-            for i, s in enumerate(population_specs)
-        ]
+        if bool(getattr(assets_cfg, "author_robot_usds", False)):
+            robot_usd_arg = _author_population_usds(population_specs)
+        else:
+            robot_usd_arg = [
+                _prepare_robot_usd(s, f"robot_{i:05d}")
+                for i, s in enumerate(population_specs)
+            ]
         env._robot_population_specs = population_specs
         _log_scene_step(
             setup_t0, f"prepared {len(robot_usd_arg)} distinct robot USDs")
