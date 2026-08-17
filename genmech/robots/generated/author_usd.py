@@ -473,7 +473,13 @@ def author_hand(layer, root_path: str, hand: P.HandParams, spec,
         for slot, part, parent_part, seg in finger_chain(fp):
             jname = f"gen_f{i}_{slot}"
             j = define(layer, f"{root_path}/joints/{jname}",
-                       "PhysicsRevoluteJoint", ["PhysicsDriveAPI:angular"])
+                       "PhysicsRevoluteJoint",
+                       # PhysxJointAPI is REQUIRED for the physxJoint:* attributes
+                       # below to be read at all. Authoring maxJointVelocity
+                       # without it leaves the joint unlimited, and both Isaac
+                       # Lab and PhysX report it as unlimited -- the attribute is
+                       # present in the USD and simply never parsed.
+                       ["PhysicsDriveAPI:angular", "PhysxJointAPI"])
             parent_path = (palm_path if parent_part is None
                            else f"{root_path}/gen_f{i}_{parent_part}")
             rel(j, "physics:body0", parent_path)
@@ -528,8 +534,11 @@ def author_hand(layer, root_path: str, hand: P.HandParams, spec,
             # comparison (masses, inertias, limits, colliders, gains all exact)
             # while its joints could move arbitrarily fast, and the reaction
             # torque that produced settled the ARM into a different pose.
+            # DEGREES per second, like the joint limits above -- the converter
+            # writes 678.426 for an 11.8408 rad/s limit. Writing rad/s here is a
+            # 57x underestimate that silently throttles every hand joint.
             attr(j, "physxJoint:maxJointVelocity", Sdf.ValueTypeNames.Float,
-                 float(A.SLOT_VELOCITY_RAD_S[slot]))
+                 float(math.degrees(A.SLOT_VELOCITY_RAD_S[slot])))
 
     return {"bodies": n_bodies, "capsules": n_caps,
             "joints": len(hand.fingers) * P.N_JOINT_SLOTS}
