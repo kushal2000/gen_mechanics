@@ -2023,8 +2023,14 @@ def setup_scene(env) -> None:
         out = []
         design_dir = Path(env._tmp_asset_dir) / "designs"
         for i, (hand, design_spec) in enumerate(zip(hands, specs)):
+            # ONE DIRECTORY PER DESIGN. _bake_usd copies the source file's
+            # sibling directories (shutil.copytree over the parent's children),
+            # so putting every authored design in one folder makes baking design
+            # i copy the i-1 designs before it -- O(n^2), and measured at 39
+            # designs/min falling, i.e. SLOWER than the 51/min converter this
+            # path exists to beat.
             raw = author_robot_usd(
-                hand, design_spec, design_dir / f"{hand.name}.usd",
+                hand, design_spec, design_dir / hand.name / f"{hand.name}.usd",
                 arm_usd=arm_usd, arm_root_prim=arm_root, link7_world=link7_world)
             # The same finish the converted path gets, so self-collision
             # filtering and the articulation/solver properties are identical.
