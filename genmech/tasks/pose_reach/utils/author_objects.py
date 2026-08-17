@@ -158,6 +158,18 @@ def _shape_prim(layer, path: str, scale, xyz, rpy, collision: bool = True,
     # friction pass dies with "Failed to get rigid body material properties".
     # The converter does the same -- goalviz keeps its colliders, disabled.
     apis = ["PhysicsCollisionAPI", "PhysxCollisionAPI"]
+    # Bind the physics material HERE, on the shape prim, inside the caller's
+    # ChangeBlock.
+    #
+    # This used to be done afterwards by isaaclab's bind_physics_material, two
+    # calls per env, outside the ChangeBlock. That helper is decorated with
+    # apply_nested, so each call traverses the subtree, and each authors into a
+    # live stage -- at 24,576 envs that is 49,152 traversals of a stage the
+    # authored population has grown to ~5.8M prims. We author these shapes
+    # ourselves and know exactly which prims need the binding, so there is
+    # nothing to discover by traversal.
+    if material_path:
+        apis.append("MaterialBindingAPI")
     if is_box:
         shape = define(layer, f"{path}/box", "Cube", apis)
         attr(shape, "size", Sdf.ValueTypeNames.Double, 1.0)
@@ -181,6 +193,14 @@ def _shape_prim(layer, path: str, scale, xyz, rpy, collision: bool = True,
         attr(shape, "physxCollision:minTorsionalPatchRadius", Sdf.ValueTypeNames.Float, 0.0)
     else:
         attr(shape, "physics:collisionEnabled", Sdf.ValueTypeNames.Bool, False)
+
+    # material:binding:physics is the relationship UsdShade's MaterialBindingAPI
+    # writes for materialPurpose="physics" -- the same one bind_physics_material
+    # produces, authored directly instead of through a stage-level helper.
+    if material_path:
+        rel = Sdf.RelationshipSpec(shape, "material:binding:physics",
+                                   custom=False)
+        rel.targetPathList.explicitItems.append(Sdf.Path(material_path))
     return shape
 
 

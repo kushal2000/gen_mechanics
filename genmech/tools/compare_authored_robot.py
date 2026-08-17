@@ -247,17 +247,28 @@ def main() -> None:
 
     def colliders_by_body(root_path):
         out = {}
-        for prim in stage.Traverse():
+        # TraverseInstanceProxies: the ARM's collision meshes live in flattened
+        # instancing prototypes (/Flattened_Prototype_N/link_N/...), and a bare
+        # Traverse walks past every one of them. Both sides then report zero arm
+        # colliders, the sets compare equal, and the check passes -- which is
+        # what it did while the authored arm genuinely had NO geometry at all
+        # (0.01 MB vs 10.57 MB, 0 meshes vs 16), because the arm-only URDF wrote
+        # mesh paths relative to a directory it does not live in.
+        for prim in stage.Traverse(Usd.TraverseInstanceProxies(
+                Usd.PrimAllPrimsPredicate)):
             if not str(prim.GetPath()).startswith(root_path):
                 continue
-            t = str(prim.GetTypeName())
-            if t not in ("Capsule", "Cube", "Sphere", "Cylinder", "Mesh"):
-                continue
-            # COLLIDERS only. The converted asset also carries visual
-            # cylinders and spheres making up the same capsule, and
-            # counting those reports a difference that physics never sees.
+            # COLLIDERS only -- and CollisionAPI alone is the test. There used
+            # to be a type allow-list here (Capsule/Cube/Sphere/Cylinder/Mesh)
+            # to skip the converted asset's visual prims, but CollisionAPI
+            # already does that, and the allow-list silently dropped the arm:
+            # its collision prims are the importer's node_STL_BINARY_, whose
+            # type is not in the list. Both sides lost their arm colliders
+            # identically, so the census compared equal and reported agreement
+            # on geometry neither side was being checked for.
             if not prim.HasAPI(UsdPhysics.CollisionAPI):
                 continue
+            t = str(prim.GetTypeName())
             body = prim
             while body and body.GetPath().pathString != root_path:
                 nm = body.GetPath().name
@@ -291,6 +302,16 @@ def main() -> None:
             check(False, f"colliders differ on {name}")
             print(f"[robotcmp]     conv {cc2[name]}")
             print(f"[robotcmp]     auth {ac2[name]}")
+
+    # An ABSOLUTE floor, not just agreement. Every check above is a comparison,
+    # and a comparison cannot distinguish "both correct" from "both empty" --
+    # that is exactly how an arm with no collision geometry passed. So assert
+    # the arm actually carries colliders, on each side independently.
+    for tag, census in (("conv", cc2), ("auth", ac2)):
+        arm = sorted(b for b in census if b.startswith("iiwa14_link"))
+        check(len(arm) >= 7,
+              f"{tag} arm carries colliders on {len(arm)} links "
+              f"(expect >=7 of iiwa14_link_0..7): {arm}")
 
     # Runtime actuation, as Isaac Lab resolved it. Everything above is USD-level;
     # these are what PhysX actually drives with, and a mismatch here explains a

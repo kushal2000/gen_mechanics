@@ -107,6 +107,40 @@ setup_seconds  ~=  1.1*k  +  0.017*n  +  0.00018*k*n
 Predicts within ~20% everywhere measured (k=512: predicted 2360 s, measured
 1929 s).
 
+### The `k*n` term is gone — author into the env prims
+
+That quadratic term is not a property of the simulator. It is the cost of
+*spawning from files*: `MultiUsdFileCfg` references one of k design USDs into
+each env, so USD composes a distinct layer stack per env instead of reusing one
+cached prim index. Holding n fixed at 2,048 and varying k alone shows it
+directly:
+
+| k | n | setup |
+|---|---|---|
+| 1 | 2,048 | 26 s |
+| 512 | 2,048 | 137 s |
+| 2,048 | 2,048 | 552 s |
+
+Same envs, same physics, 21x the setup — because the assets are distinct, not
+because the work is.
+
+Authoring the robot prims **straight into `/World/envs/env_N/Robot`** with
+`spawn=None` removes the composition entirely: no files, no references, nothing
+for k to multiply against. It is the same thing `_author_objects_into_envs`
+already does for objects. At k = n = 2,048:
+
+| phase | from files | authored in-env |
+|---|---|---|
+| spawn | 427 s | 8.4 s |
+| whole scene build | 552 s | 58.6 s |
+
+Authoring costs ~16.5 ms per design and is linear in n, so k = n = 24,576
+projects to ~7 min rather than the ~30 h the file path was on track for. One
+implementation serves both: `author_robot_prims(layer, root, ...)` does the
+layer-level work and `author_robot_usd(...)` wraps it to write a file, so the
+two routes cannot drift. `genmech/tools/check_inenv_robot.py` diffs them prim
+by prim (0 differences over 3 designs).
+
 ### What does NOT help, all measured
 
 | lever | effect |
@@ -148,6 +182,40 @@ Authoring the prims directly with Sdf specs inside a `ChangeBlock`:
 
 Linear in k, verified at 4,096 and 24,576. All instances resolve into one
 articulation view with joints that track their targets.
+
+### The arm that had no colliders, and why every check said it was fine
+
+The authored path builds an arm-only URDF and converts it once. It rewrote mesh
+paths to `../kuka_sharpa_description/`, which is correct for `build_hand_urdf`
+— that writes into `assets/urdf/generated/`, a genuine sibling — but this URDF
+is written to a **temp dir**, where the prefix resolves to nothing. The importer
+logged 16 `Failed to resolve mesh` warnings and built the arm anyway:
+
+| arm mesh paths | file | colliders | meshes |
+|---|---|---|---|
+| relative (`../kuka_sharpa_description/`) | 0.01 MB | 0 | 0 |
+| absolute | 10.57 MB | 8 | 16 |
+
+So every authored-robot run trained an arm that could not touch the table, the
+object, or itself. The fix is one line — absolute mesh paths — but the reason it
+survived this long is the interesting part, and it is the same shape as the
+object-ordering regression in §4:
+
+* `compare_authored_robot` compared the two robots' collider censuses and found
+  them **equal**. They were: both were empty. A comparison cannot distinguish
+  "both correct" from "both missing", and every check in that tool was a
+  comparison. It now also asserts an absolute floor — each side independently
+  must carry colliders on ≥7 arm links — so "both zero" fails instead of
+  passing.
+* Two separate traversal bugs hid the geometry even once it was there. The arm's
+  collision prims live in flattened **instancing prototypes**, so a bare
+  `stage.Traverse()` walks past all of them; and they are the importer's
+  `node_STL_BINARY_`, whose type is not in the `Capsule/Cube/Sphere/Cylinder/Mesh`
+  allow-list the census filtered on. `Usd.TraverseInstanceProxies` plus keying
+  on `CollisionAPI` alone fixes both.
+
+The 16 importer warnings said this plainly from the start, in a log where
+warnings are routine. Worth remembering next time a converter is noisy.
 
 ### Objects: equivalent assets, and the acceptance test that mattered
 
@@ -200,6 +268,28 @@ index are now bit-identical across all 512 envs.
   0.00 → 2.92 recovery that the kinematic goal-marker fix in the same run had
   actually earned. That conflation is what let a change in the wrong direction
   look like progress.
+
+**Training settles it, and it took a second attempt.** A pretrained-policy eval
+is in-distribution: it makes smooth contacts and few resets, so it cannot see
+what exploration reaches. TRAINING on the two paths appeared to diverge ~16x by
+epoch 3000 while every asset comparison stayed green -- including rollouts under
+identical random actions, which were bit-identical.
+
+That divergence was an artefact of the comparison, not of the objects. The two
+runs had been launched ~45 min apart across an edit to `scene_utils.py`, so they
+were not the same code. Re-run on identical code at 24,576 envs, the authored
+path tracks the converted one:
+
+| | authored | converted, same point |
+|---|---|---|
+| sharpa | 273.9 | 283.1 |
+| gen_sharpa_like | 321.8 | 297.4 |
+
+Within a few percent and in BOTH directions -- noise, not a systematic gap.
+**Conclusion: authored objects are equivalent to converted ones, and the
+authored path is the default.** The lesson is about method rather than physics:
+two training runs are only a comparison if they ran the same code, and "launched
+from the same folder" does not establish that.
 
 **One trap worth recording.** The env converts objects with
 `replace_cylinders_with_capsules=True`, which reads a URDF cylinder's `length` as
@@ -373,6 +463,9 @@ Setup grows as `0.00018*k*n`, so distinct designs are genuinely expensive:
 64 designs at 4,096 envs costs 122 s, 512 designs at 24,576 envs costs 2,286 s,
 and one design per env extrapolates to tens of hours. Here — and only here — the
 `k designs x n/k envs` shape is worth arranging deliberately.
+
+This applies to the **convert** path only. On the authored path the term does
+not exist (§3), so k = n needs no such arrangement.
 
 ### Independent of path
 

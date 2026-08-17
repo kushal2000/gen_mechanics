@@ -115,11 +115,21 @@ def arm_only_urdf(out_path: Path) -> Path:
         "     The iiwa14 arm alone, converted once and REFERENCED by every\n"
         "     authored design. Re-importing its 16 STL meshes per design is\n"
         "     ~90% of the conversion cost this path exists to remove.\n"))
+    # ABSOLUTE mesh paths, not ARM_MESH_PREFIX_TO's "../kuka_sharpa_description/".
+    #
+    # That relative prefix is correct for build_hand_urdf, which writes into
+    # assets/urdf/generated/ -- a SIBLING of kuka_sharpa_description. This URDF
+    # goes to a temp dir, where the prefix resolves to nothing, and the importer
+    # only WARNS: "Failed to resolve mesh .../collision/link_0.stl", 16 of them,
+    # then builds the arm anyway with no collision or visual geometry on links
+    # 0..6. The robot loads, steps and trains -- with an arm that cannot touch
+    # the table, the object, or itself, while the converted path's arm can.
+    mesh_root = str(resolve_repo_path(SHARPA_URDF).parent) + "/"
     for mat in sharpa.findall("material"):
         root.append(mat)
     for link in sharpa.findall("link"):
         if link.get("name") in ARM_LINKS:
-            _rewrite_meshes(link, "", ARM_MESH_PREFIX_TO)
+            _rewrite_meshes(link, "", mesh_root)
             root.append(link)
     for joint in sharpa.findall("joint"):
         if joint.get("name") in ARM_JOINTS:
@@ -144,25 +154,34 @@ _REST_OFFSET = 0.0
 _MAX_DEPEN_VELOCITY = 1000.0
 
 
-def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
-                     arm_usd: str, arm_root_prim: str, link7_world,
-                     adjacency: dict | None = None) -> str:
-    """Author one design to ``out_path`` and return the path.
+def author_robot_prims(layer, root: str, hand: P.HandParams, spec, *,
+                       arm_usd: str, arm_root_prim: str, link7_world,
+                       adjacency: dict | None = None,
+                       in_change_block: bool = False) -> tuple[str, dict]:
+    """Author a design into ``layer``. Returns ``(root, {link: n_colliders})``.
 
-    ``link7_world`` is iiwa14_link_7's world transform in the converted arm; it
-    is the same for every design (the arm is identical) and is read once.
+    Split out of author_robot_usd so the same authoring can go EITHER into its
+    own USD file (for MultiUsdFileCfg) or straight into an env prim (for
+    spawn=None). The second avoids the per-design USD composition that
+    MultiUsdFileCfg performs at spawn -- the 0.00018*k*n term in
+    docs/multi_embodiment.md 3, which is ~30 h at k = n = 24,576 and is why a
+    24k run spends hours in the scene build after authoring finishes in 28 min.
 
-    ``adjacency`` is the design's self-collision map. When given, FilteredPairsAPI
-    is authored here rather than by a second pass over the finished file.
+    ``in_change_block`` says a ChangeBlock is already open, so this must not
+    open its own (they do not nest).
     """
+    import contextlib
+
     import numpy as np
-    from pxr import Gf, Sdf, Usd
+    from pxr import Gf, Sdf
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    stage = Usd.Stage.CreateNew(str(out_path))
-    layer = stage.GetRootLayer()
-
-    with Sdf.ChangeBlock():
+    ROBOT_ROOT = root
+    # link name -> number of collision shapes, recorded as they are authored.
+    # The env's friction pass needs this and otherwise rediscovers it with one
+    # create_rigid_body_view per link per design (~96 min at 24,576 designs).
+    collider_links: dict[str, int] = {}
+    block = contextlib.nullcontext() if in_change_block else Sdf.ChangeBlock()
+    with block:
         # NO ArticulationRootAPI here. The referenced arm brings its own
         # root_joint carrying it, and PhysX requires exactly one articulation
         # root in a prim tree -- applying it here too makes the spawn fail with
@@ -176,8 +195,10 @@ def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
             Sdf.Reference(str(arm_usd), Sdf.Path(arm_root_prim)))
 
         palm_path = f"{ROBOT_ROOT}{ARM_PRIM}/{PALM_BODY}"
-        author_hand(layer, ROBOT_ROOT, hand, spec,
-                    palm_body_path=palm_path, link7_world=link7_world)
+        hand_summary = author_hand(layer, ROBOT_ROOT, hand, spec,
+                                   palm_body_path=palm_path,
+                                   link7_world=link7_world)
+        collider_links.update(hand_summary.get("collider_links", {}))
 
         # --- the merged palm, as an Sdf OVER on the referenced link ---------
         # An over is a pure LAYER edit, so it needs no composed stage and works
@@ -201,6 +222,7 @@ def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
         _, quat = _mat_to_pos_quat(t)
         offset = (t @ np.append(centre, 1.0))[:3]
         ex, ey, ez = (float(v) for v in hand.palm_extents)
+        collider_links[PALM_BODY] = collider_links.get(PALM_BODY, 0) + 1
         box = define(layer, f"{palm_path}/palm_collision", "Cube",
                      ["PhysicsCollisionAPI", "PhysxCollisionAPI"])
         attr(box, "size", Sdf.ValueTypeNames.Double, 1.0)
@@ -255,6 +277,26 @@ def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
     # <defaultPrim>. Without one the reference composes to nothing and the spawn
     # fails with "Failed to find an articulation", pointing at ArticulationRootAPI
     # -- which is present; the reference simply never resolved.
+    return ROBOT_ROOT, collider_links
+
+
+def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
+                     arm_usd: str, arm_root_prim: str, link7_world,
+                     adjacency: dict | None = None) -> str:
+    """Author one design into its OWN USD file, and return the path.
+
+    Kept for the file-based path (MultiUsdFileCfg) and for the equivalence
+    tools, which compare a converted asset against an authored one.
+    """
+    from pxr import Usd
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    stage = Usd.Stage.CreateNew(str(out_path))
+    author_robot_prims(stage.GetRootLayer(), ROBOT_ROOT, hand, spec,  # noqa: F841
+                       arm_usd=arm_usd, arm_root_prim=arm_root_prim,
+                       link7_world=link7_world, adjacency=adjacency)
+    # Isaac Lab references this file WITHOUT a prim path, so it resolves
+    # <defaultPrim>; without one the reference composes to nothing.
     stage.SetDefaultPrim(stage.GetPrimAtPath(ROBOT_ROOT))
     stage.GetRootLayer().Save()
     return str(out_path)
@@ -315,5 +357,6 @@ def flatten_arm_usd(arm_usd: str, out_path: Path) -> str:
     return str(out_path)
 
 
-__all__ = ["arm_only_urdf", "author_robot_usd", "flatten_arm_usd",
+__all__ = ["arm_only_urdf", "author_robot_usd", "author_robot_prims",
+           "flatten_arm_usd",
            "ARM_PRIM", "ROBOT_ROOT"]

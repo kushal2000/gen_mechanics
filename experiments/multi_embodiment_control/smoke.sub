@@ -74,6 +74,9 @@ case "$ARM" in
 esac
 
 # Fewer objects to convert; the object pool is not what is under test here.
-EXTRA_OVERRIDES=( env.assets.num_assets_per_type=2 )
+# Override it when the OBJECT side is what is under test -- diagnosing the
+# spawn/authoring block needs the production 100-per-type pool, because that
+# phase's cost depends on how much is authored onto the stage.
+EXTRA_OVERRIDES=( env.assets.num_assets_per_type="${NUM_ASSETS_PER_TYPE:-2}" )
 
 launch_training

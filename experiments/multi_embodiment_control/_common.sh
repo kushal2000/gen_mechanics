@@ -91,10 +91,19 @@ SYMMETRIC_OBS=(
 # is now True, so an arm relaunched from this folder would silently switch asset
 # path and stop matching the siblings it is being compared against. An
 # experiment has to state what it ran, not inherit it.
-if [ -n "${AUTHOR_OBJECTS:-}" ]; then
-    OBJECT_ASSETS=( env.assets.author_object_usds=true )
-else
+# AUTHORED by default now. The authored path was pinned off while a ~16x
+# training divergence was open against it; that turned out to be a comparison
+# across two different revisions of scene_utils.py, not an object difference.
+# Re-run on identical code the two paths track within a few percent in both
+# directions (docs/multi_embodiment.md 4). Authoring also removes the object
+# spawn's k*n cost: 825 s -> 46 s at 24,576 envs.
+#
+# Still pinned EXPLICITLY in both directions, so an experiment states what it
+# ran rather than inheriting a default that may change again.
+if [ "${AUTHOR_OBJECTS:-1}" = "0" ]; then
     OBJECT_ASSETS=( env.assets.author_object_usds=false )
+else
+    OBJECT_ASSETS=( env.assets.author_object_usds=true )
 fi
 
 COMMON_OVERRIDES=("${DR_OFF[@]}" "${ACTION_RAW[@]}" "${SYMMETRIC_OBS[@]}"

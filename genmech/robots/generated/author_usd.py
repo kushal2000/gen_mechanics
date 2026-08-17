@@ -425,6 +425,7 @@ def author_hand(layer, root_path: str, hand: P.HandParams, spec,
     # Gains come from CONVERTER_DRIVE_* below, not the spec -- see the note there.
 
     n_bodies = n_caps = 0
+    collider_links: dict[str, int] = {}
     define(layer, f"{root_path}/joints", "Scope")
 
     for i, fp in enumerate(hand.fingers):
@@ -468,6 +469,17 @@ def author_hand(layer, root_path: str, hand: P.HandParams, spec,
                  float(A.cylinder_part(length, radius)))
             attr(cap, "axis", Sdf.ValueTypeNames.Token, "Z")
             n_caps += 1
+            # Record WHICH link got a collider, not just how many.
+            #
+            # The env's friction pass needs each link's shape-index range, and
+            # rediscovering that afterwards is what costs ~96 min at 24,576
+            # designs -- one create_rigid_body_view per link per design. Here it
+            # is free: this line runs exactly when a collider is created, so the
+            # map cannot disagree with the geometry. Note the condition above
+            # depends on segment LENGTH (via _link_shape), not just fp.active --
+            # inferring this map from the active-finger mask alone is precisely
+            # the bug that mis-assigned design 5120's fingertips.
+            collider_links[name] = collider_links.get(name, 0) + 1
 
         # --- joints ---
         for slot, part, parent_part, seg in finger_chain(fp):
@@ -541,7 +553,8 @@ def author_hand(layer, root_path: str, hand: P.HandParams, spec,
                  float(math.degrees(A.SLOT_VELOCITY_RAD_S[slot])))
 
     return {"bodies": n_bodies, "capsules": n_caps,
-            "joints": len(hand.fingers) * P.N_JOINT_SLOTS}
+            "joints": len(hand.fingers) * P.N_JOINT_SLOTS,
+            "collider_links": dict(collider_links)}
 
 
 __all__ = ["author_hand", "define", "attr", "rel", "finger_chain",
