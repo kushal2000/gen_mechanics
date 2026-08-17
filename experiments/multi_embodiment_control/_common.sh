@@ -90,6 +90,8 @@ launch_training() {
     # wandb on by default; a smoke run sets WANDB_ACTIVATE= to skip it, so
     # throwaway config checks do not litter the project with runs.
     : "${WANDB_ACTIVATE=1}"
+    # On by default for training; the smoke runs turn it off with the wandb run.
+    : "${CAPTURE_VIEWER=1}"
     local REPO_ROOT="/share/portal/kk837/gen_mechanics"
     local HORIZON_LENGTH=16
     # Overridable so a smoke run can use a small env count: SAPG requires
@@ -98,6 +100,13 @@ launch_training() {
     local EXPL_COEF_BLOCK_SIZE="${EXPL_COEF_BLOCK_SIZE:-4096}"
     local WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
     local WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
+    # The wandb pose viewer. experiments/train.sub passes these; this launcher
+    # was written from scratch and dropped them, so the first three arms logged
+    # no viewer. The viewer fetches robot meshes over raw.githubusercontent, so
+    # it only renders for a robot whose URDF is COMMITTED -- true for
+    # sharpa_iiwa14 and gen_sharpa_like, NOT for a 24k generated population
+    # (those URDFs are generated per run and are not in git).
+    local VIEWER_RAW_BASE="${VIEWER_RAW_BASE:-https://raw.githubusercontent.com/kushal2000/gen_mechanics/master/}"
 
     # SAPG requires num_envs % expl_coef_block_size == 0.
     if (( NUM_ENVS % EXPL_COEF_BLOCK_SIZE != 0 )); then
@@ -138,6 +147,8 @@ launch_training() {
         --task "$TASK" \
         --agent rl_games_sapg_cfg_entry_point \
         --headless \
+        ${CAPTURE_VIEWER:+--capture_viewer} \
+        ${CAPTURE_VIEWER:+--capture_viewer_github_raw_base "$VIEWER_RAW_BASE"} \
         ${WANDB_ACTIVATE:+--wandb_activate} \
         --wandb_project "$WANDB_PROJECT" \
         --wandb_group "$WANDB_GROUP" \
