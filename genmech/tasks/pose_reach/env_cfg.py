@@ -115,8 +115,22 @@ class AssetsCfg:
     # and inertia generate_objects already computes in closed form, so the URDF
     # round-trip recovers numbers we started with.
     #
-    # DEFAULT ON. The acceptance test it was gated behind has been met, three
-    # independent ways:
+    # REVERTED TO OFF. Training diverges on this path even though every
+    # equivalence check passes:
+    #
+    #   at epoch 3000, converted vs authored objects
+    #     sharpa_iiwa14   rew 4000.09  vs   251.45
+    #     gen_sharpa_like rew 5738.24  vs   220.49
+    #
+    #   -- 16-26x worse, sitting near the not-learning floor, with the two runs
+    #   differing ONLY in this flag. Cause not yet found.
+    #
+    # Everything below is still true, and was still not sufficient. A pretrained
+    # policy exercises a converged behaviour on a fixed distribution; training
+    # explores, resets constantly and learns, and it is the only test that has
+    # ever caught this. Do not re-enable without a training curve.
+    #
+    # The evidence that was mistaken for sufficient:
     #   * pretrained policy scores 5.01 +/- 0.09 goals on BOTH paths at 2048
     #     envs, matching on lift (79%), complete (31%) and zero (26%);
     #   * a 120-step rollout over 256 envs is bit-identical -- peak and settled
@@ -131,7 +145,7 @@ class AssetsCfg:
     # check above is the one that closes that hole, and it is why this default
     # moved only after per-env identity was verified, not merely per-asset
     # equivalence.
-    author_object_usds: bool = True
+    author_object_usds: bool = False
     # Diagnostic: author only one of the pair, to bisect which asset carries a
     # behavioural difference. "both" in normal use.
     author_which: str = "both"
