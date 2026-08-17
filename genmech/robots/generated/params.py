@@ -450,6 +450,50 @@ def _u(rng: random.Random, lo_hi: tuple[float, float]) -> float:
     return rng.uniform(*lo_hi)
 
 
+def _u_segment(rng: random.Random, lo_hi: tuple[float, float], tier: str,
+               radius_scale: float) -> float:
+    """Uniform length for `tier`, skipping the band no capsule can express.
+
+    A capsule is a cylinder with a hemisphere on each end, so a segment between
+    MIN_SEGMENT_M and its own diameter has no cylinder left.
+    build_hand_urdf._is_degenerate detects that and drops the collider entirely
+    -- the link keeps its mass and still moves, but nothing can touch it and
+    objects pass straight through. 1.7% of a 24,576 population had at least one
+    such segment, and design 5120 had NO fingertip collider on any active
+    finger: a hand that cannot grasp.
+
+    THREE regions, and only the middle one is a defect:
+
+        [lo, MIN_SEGMENT_M)  virtual link, no geometry INTENDED. A metacarpal of
+                             ~0 means "this finger has no metacarpal", which is
+                             a real design choice and must stay reachable.
+        [MIN_SEGMENT_M, 2r)  degenerate: geometry intended, none produced.
+        [2r, hi]             a buildable capsule.
+
+    So the middle band is removed and the other two keep their original uniform
+    density. Clamping the low end to 2r instead -- the first attempt -- also
+    swallowed the virtual-link region, which for the mc tier (19.35 mm radius)
+    meant every metacarpal that existed became >= 38.7 mm rather than anywhere
+    in 0-110 mm. Fingers stuck out, the self-collision gate rejected 98% of
+    draws, and the population build died at index 1628.
+    """
+    from genmech.tools.build_hand_urdf import MIN_SEGMENT_M
+
+    lo, hi = lo_hi
+    min_len = 2.0 * anchors.TIER_RADIUS_M[tier] * radius_scale
+    virtual_w = max(0.0, min(MIN_SEGMENT_M, hi) - lo)   # [lo, MIN_SEGMENT_M)
+    solid_lo = max(lo, min_len)
+    solid_w = max(0.0, hi - solid_lo)                   # [2r, hi]
+    if virtual_w + solid_w <= 0.0:
+        raise ValueError(
+            f"{tier}: no length in {lo_hi} is either virtual or a buildable "
+            f"capsule at radius_scale {radius_scale:.3f} (needs < "
+            f"{MIN_SEGMENT_M} m or >= {min_len:.4f} m)")
+    if rng.uniform(0.0, virtual_w + solid_w) < virtual_w:
+        return rng.uniform(lo, min(MIN_SEGMENT_M, hi))
+    return rng.uniform(solid_lo, hi)
+
+
 def _mat_to_rpy(R) -> Vec3:
     """Rotation matrix -> URDF roll-pitch-yaw (R = Rz(y) Ry(p) Rx(r))."""
     import numpy as np
@@ -574,7 +618,12 @@ def sample(rng: random.Random, *, name: str, n_fingers: int | None = None,
 
         # Only give the finger a metacarpal if a joint can actually move it;
         # otherwise the length duplicates the mount (see MIN_JOINTS_FOR_METACARPAL).
-        mc_length = (_u(rng, MC_LENGTH_RANGE)
+        # radius_scale is drawn FIRST: it sets the minimum buildable length for
+        # every segment below, so the lengths are conditioned on it.
+        radius_scale = _u(rng, RADIUS_SCALE_RANGE)
+        # A metacarpal of 0 is a real choice (no metacarpal at all), so keep
+        # that branch; only a metacarpal that exists has to be buildable.
+        mc_length = (_u_segment(rng, MC_LENGTH_RANGE, "mc", radius_scale)
                      if n_joints >= MIN_JOINTS_FOR_METACARPAL else 0.0)
 
         mp = (
@@ -613,10 +662,10 @@ def sample(rng: random.Random, *, name: str, n_fingers: int | None = None,
             # fingers not meeting the palm.
             cmc=IDENTITY,
             mc=Segment(xyz=(mc_length, 0.0, 0.0)),
-            pp_length=_u(rng, PP_LENGTH_RANGE),
-            mp_length=_u(rng, MP_LENGTH_RANGE),
-            dp_length=_u(rng, DP_LENGTH_RANGE),
-            radius_scale=_u(rng, RADIUS_SCALE_RANGE),
+            pp_length=_u_segment(rng, PP_LENGTH_RANGE, "pp", radius_scale),
+            mp_length=_u_segment(rng, MP_LENGTH_RANGE, "mp", radius_scale),
+            dp_length=_u_segment(rng, DP_LENGTH_RANGE, "dp", radius_scale),
+            radius_scale=radius_scale,
             limits=_limits(limits),
         ))
 

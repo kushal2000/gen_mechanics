@@ -79,6 +79,22 @@ def main() -> None:
           f"(expected {args.population_count})")
 
     robot_prims = find_matching_prim_paths("/World/envs/env_.*/Robot")
+    # BASE PLACEMENT. The arm is fixed-base, so its root_joint pins it wherever
+    # the prim sits and init_state cannot move it afterwards. Authoring prims
+    # with spawn=None meant nothing applied the spawner's translation: the robot
+    # sat at the env origin, on top of the table instead of 0.8 m behind it, and
+    # the whole task geometry was wrong. It reached a 24k training run, and
+    # nothing in this suite would have caught it.
+    import torch as _torch
+
+    _origins = env.scene.env_origins
+    _base = (env.robot.data.root_pos_w - _origins)[0]
+    _want = _torch.tensor(env.robot_spec.base_pos, device=_base.device,
+                          dtype=_base.dtype)
+    check(bool(_torch.allclose(_base, _want, atol=1e-3)),
+          f"robot base at {[round(v, 4) for v in _base.tolist()]}, "
+          f"spec.base_pos says {list(env.robot_spec.base_pos)}")
+
     check(len(robot_prims) == args.num_envs,
           f"{len(robot_prims)} Robot prims (expected {args.num_envs})")
 

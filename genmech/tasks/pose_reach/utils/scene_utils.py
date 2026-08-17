@@ -2188,11 +2188,16 @@ def setup_scene(env) -> None:
             # what bench_authored_sps measured at 362 s for k = n = 24,576, and
             # is exactly the pattern _author_objects_into_envs already uses.
             from genmech.robots.generated.author_robot import author_robot_prims
+            from genmech.robots.generated.author_usd import _set_xform
 
             env._robot_design_index_per_env = torch.tensor(
                 [i % len(specs) for i in range(env.num_envs)],
                 device=env.device, dtype=torch.long)
             env._robot_collider_links = {}
+            # The same pose build_robot_articulation_usd_cfg puts in init_state,
+            # applied to the prim instead because a fixed base ignores the other.
+            base_pos = env.robot_spec.base_pos
+            base_rot = env.robot_spec.base_rot
             t_auth = time.perf_counter()
             with Sdf.ChangeBlock():
                 for env_path in sorted(env.scene.env_prim_paths, key=_env_id_of):
@@ -2206,6 +2211,18 @@ def setup_scene(env) -> None:
                     # Recorded HERE, where the geometry is created, so the
                     # friction pass does not have to rediscover it per link.
                     env._robot_collider_links[idx] = _cl
+                    # PLACE THE BASE. The arm is FIXED-BASE: its root_joint pins
+                    # it to the world wherever the prim sits, so init_state.pos
+                    # cannot move it afterwards -- writing a root pose to a
+                    # fixed articulation does nothing. Isaac Lab's spawner
+                    # normally applies translation/orientation when it CREATES
+                    # the prim, but spawn=None means nothing creates it, so
+                    # nothing applied it: the robot sat at the env origin, on
+                    # top of the table instead of 0.8 m behind it, with link_7
+                    # reaching to y = -0.575 instead of +0.181.
+                    _root_spec = layer_for_envs.GetPrimAtPath(f"{env_path}/Robot")
+                    _set_xform(_root_spec, tuple(float(v) for v in base_pos),
+                               tuple(float(v) for v in base_rot))
             _log_scene_step(
                 setup_t0,
                 f"authored {env.num_envs} robots into env prims from "
