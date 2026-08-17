@@ -1,0 +1,68 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=16
+#SBATCH --get-user-env
+#SBATCH --mem=120000
+#SBATCH -t 7-00:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# PREREQUISITE for 03_population_24k.sub -- not one of the three training arms.
+#
+# Samples and caches a hand population. 03 refuses to start without it, rather
+# than building one inside the training job: the build is CPU-only rejection
+# sampling (no GPU), it is reusable across seeds and reruns, and burning
+# training walltime on it would make the epoch budget mean different things for
+# different arms.
+#
+# MEASURED RATE: 113 ms per accepted hand end-to-end -- ~46 min for 24,576.
+#
+# It was 6.02 s/hand (41 HOURS) until the self-collision gate stopped answering
+# a capsule question with mesh machinery. The old gate wrote a URDF per
+# candidate, re-parsed it with yourdfpy, tessellated 30 links into trimesh
+# capsules and ran BVH signed-distance queries over ~400 link pairs -- roughly
+# 13 times per accepted hand, at 92% rejection. The analytic gate
+# (genmech.tools.capsule_collision) computes the same predicate in closed form
+# and agreed with the mesh gate on 60/60 candidates
+# (genmech.tools.compare_collision_gates). Sampling is now ~30 ms/hand; the
+# remaining ~83 ms is the URDF writes and the flexion alignment pass.
+#
+# SEED defaults to 2, NOT 0. Seed 0 already holds the cached 64-hand population
+# that the test suite, the benchmarks and the multi-embodiment test all read;
+# rebuilding it in place would leave that directory half-written for ~41 hours.
+# A fresh seed is a new population, which is all arm 3 needs.
+#
+#   COUNT=24576 SEED=2 sbatch experiments/multi_embodiment_control/00_build_population.sub
+#
+# Writes assets/urdf/generated/population/seed_<SEED>/manifest.json plus one
+# canonical URDF per accepted hand.
+
+set -euo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+SEED="${SEED:-2}"
+COUNT="${COUNT:-24576}"
+OUT_DIR="${REPO_ROOT}/bench_dir/population"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="build_pop_${SEED}_${COUNT}" || true
+exec > "${OUT_DIR}/seed${SEED}_n${COUNT}.log" 2>&1
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+
+echo "building population seed=$SEED count=$COUNT"
+date
+
+# force=True so a smaller cached population for this seed is replaced rather
+# than silently reused at the wrong size.
+python -u -c "
+from genmech.robots.generated.population import build_population
+hands = build_population(seed=$SEED, count=$COUNT, force=True)
+print(f'built {len(hands)} hands for seed $SEED')
+"
+date
+echo "done"

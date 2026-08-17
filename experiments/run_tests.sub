@@ -1,0 +1,39 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 4:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# The repo test suite, on a GPU node rather than the login node.
+#
+# run_all.sh needs a GPU and boots one Kit per test, so it must not share a GPU
+# with a training job -- hence its own allocation.
+#
+#   sbatch experiments/run_tests.sub            # everything
+#   MODE=fast sbatch experiments/run_tests.sub  # skip parity + pretrained rollout
+
+set -uo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+MODE="${MODE:-all}"
+TAG="${TAG:-$MODE}"
+OUT_DIR="${REPO_ROOT}/bench_dir/tests"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="tests_${TAG}" || true
+exec > "${OUT_DIR}/${TAG}.log" 2>&1
+
+cd "$REPO_ROOT"
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_tests_${TAG}"
+export LOG_DIR="/tmp/${USER}_genmech_tests_${TAG}"
+mkdir -p "$OMNI_KIT_CACHE_PATH" "$LOG_DIR"
+
+bash tests/run_all.sh "$MODE"
+echo "run_all.sh exit: $?"

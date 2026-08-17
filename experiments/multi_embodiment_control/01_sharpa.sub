@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 7-00:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# ARM 1 of the multi-embodiment control comparison: ONE FIXED HAND.
+#
+# SHARPA, 29 joints, mesh collision geometry. This is the reference point --
+# the hand the task, the reward and the pretrained policy were built around, so
+# it is the ceiling a cross-embodied policy is measured against.
+#
+# Single-embodiment env (GenMech-PoseReach-Direct-v0). Same DR-off, raw-action,
+# symmetric-privileged-observation settings as the other two arms; see
+# _common.sh for why each is set.
+#
+#   sbatch experiments/multi_embodiment_control/01_sharpa.sub
+#   SEED=1 sbatch experiments/multi_embodiment_control/01_sharpa.sub
+
+set -euo pipefail
+source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+
+TASK="GenMech-PoseReach-Direct-v0"
+EXPERIMENT_TAG="mec_sharpa"
+WANDB_GROUP="${WANDB_GROUP:-multi_embodiment_control}"
+SEED="${SEED:-0}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+MAX_EPOCHS="${MAX_EPOCHS:-120000}"
+
+ROBOT_OVERRIDES=(
+    env.assets.robot_spec=sharpa_iiwa14
+)
+
+launch_training

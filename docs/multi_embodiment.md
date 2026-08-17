@@ -212,7 +212,134 @@ reference hide exactly this class of error.
 
 ---
 
-## 5. Practical guidance
+## 5. The multi-embodiment env
+
+`genmech/tasks/pose_reach/env_multi.py`, `GenMech-PoseReachMulti-Direct-v0`
+
+Sections 1–4 establish that a population *can* be simulated. This is the task env
+that does it: one distinct hand per environment, one articulation view, one
+policy, with the procedural objects and goals unchanged.
+
+### Two env classes, not one flag
+
+`PoseReachEnv` stays exactly what it was. The multi-embodiment env is a separate
+class in a separate file that subclasses it and overrides two hooks
+(`_resolve_spec`, `_post_init_hook`).
+
+The split is not stylistic. The single-embodiment env is what the pretrained
+policy, the SHARPA parity golden files and the running training jobs are defined
+against, and every `if population is not None` added to it is a branch that can
+regress that baseline. Everything genuinely shared — task, reward, reset, action
+pipeline, object pipeline — already lives in `utils/` and is imported by both, so
+the two cannot drift apart on the things that matter.
+
+One consequence worth stating: `robot_spec` does **not** select the robot in the
+multi env. The population supplies the specs, and a fixed hand and a generated
+one do not share a joint set (29 vs 37), so honouring `robot_spec` would build
+the observation and action spaces for a robot the scene does not contain.
+
+### Fingertip padding: how designs with different finger counts share a scene
+
+The cached population is uniformly five *slots* but not uniformly five *fingers*:
+ghosting leaves 2 active tips on 51 of 64 designs, 3 on 11, and 4 on 2. The
+observation width came from `spec.num_fingertips`, so those designs could not
+share a layout — and therefore could not share a policy or a scene.
+
+They now share a padded axis. `RobotSpec` carries `fingertip_slot_names`,
+`_active` and `_offsets`; when they are empty everything falls back to the active
+fingertips, so **a fixed hand is unchanged by construction** — SHARPA stays
+5-of-5, Allegro 4-of-4, and the 140-dim observation the pretrained checkpoint
+expects is untouched.
+
+This works only because of a property of ghosting worth recording: **it removes a
+finger's actuation and geometry, not its links.** Every generated design carries
+all five distal links at the same body indices (verified across the 64-hand
+population: 0 designs missing any slot), so the padded index set is a template
+constant and only the mask varies per design.
+
+The mask is applied at ONE point — where `_curr_fingertip_distances` is produced.
+Zeroing there makes every downstream reduction inert at once: the reward sums
+deltas (0), termination takes a max against 1.5 m (0 never trips), the running
+minimum stays 0, and the observation reads a constant. Masking at each consumer
+instead would leave whichever one gets forgotten reading the pose of a finger
+that is not there.
+
+### The morphology descriptor: why proprioception is not enough
+
+A cross-embodied policy commands per-joint position targets on a hand it has
+never seen. Joint angles and fingertip positions describe the mechanism's STATE
+and nothing about its STRUCTURE. Two designs can present identical joint angles
+and identical normalized limits while their fingers point in completely different
+directions, because all of that lives in the mount transform — which never
+entered the observation. Normalization makes it worse: a `joint_pos` of 0.5 is
+1° of travel on a ±2° abduction joint and 12.5° on a ±25° one, and the sampler
+varies exactly that range.
+
+`utils/morphology.py` emits a fixed-width **143-dim** descriptor, constant per env
+(computed once at scene build, indexed per env, never recomputed). Per finger
+slot, ghosted slots included so the width cannot depend on finger count:
+
+| block | dims | note |
+|---|---|---|
+| mount position | 3 | palm frame |
+| mount orientation | 6 | 6D rotation representation |
+| link lengths | 4 | mc, pp, mp, dp |
+| link radii | 4 | mc, pp, mp, dp |
+| fingertip pad offset | 3 | the distal cap, where contact happens |
+| per-joint enabled mask | 6 | a locked joint is still in the action vector |
+| AA half-range | 1 | the one limit the sampler varies |
+| active flag | 1 | |
+| | **28 × 5 = 140** | plus palm extents (3) → **143** |
+
+Three choices in there are load-bearing:
+
+* **The mount is a pose, not the sampled parameters.** `face`, `u_frac`,
+  `v_frac`, `roll`, `tilt` and `tilt_azimuth` only mean something after
+  `mount_on_face()` composes them into a transform. Emitting the composed
+  palm-frame pose is the same information without spending network capacity
+  relearning that arithmetic.
+* **6D rotation, not Euler or quaternion.** Mount roll is sampled `U(0, 2π)`, so
+  it visits every wrap point. Euler wraps and quaternions double-cover; both put
+  a discontinuity in the middle of the sampled distribution.
+* **Four radii, not one.** `radius_scale` is a single sampled knob, but it
+  multiplies per-tier nominals spanning 2.6× (19.3 / 10.2 / 8.9 / 7.3 mm), and
+  `dp` is the radius the fingertip actually grasps with. One degree of freedom,
+  four distinct physical numbers.
+
+Deliberately excluded: per-joint axes and origins (template constants here — the
+FE/AA perpendicularity is carried entirely by fixed `ROLL_FE_TO_AA` segments, so
+mount orientation determines them), and gains, armature and densities (fixed per
+tier across the population, so they distinguish nothing). Per-joint axes are the
+extension point if one policy ever has to span the fixed *and* generated
+families, since they are what would describe SHARPA or Allegro.
+
+The existing fields are untouched — `fingertip_pos_rel_palm` keeps its meaning
+and position, and the descriptor is appended.
+
+### What is checked, and why those checks
+
+`tests/test_multi_embodiment_env.py` asserts, against the live sim rather than
+the config:
+
+* one articulation view holding every env — a second view means the joint
+  template broke and designs stopped sharing `dof_count`
+* joint limits **differ** across envs, so a collapsed pool cannot pass
+* each env's fingertip mask matches the design it was assigned
+* each env's descriptor matches its design: envs sharing a design share a
+  descriptor, envs with different designs do not
+* ghosted slots read exactly zero in both fingertip fields
+* the descriptor does not move across a reset and 10 steps
+
+Plus `_verify_robot_design_assignment`, which reads joint limits back out of
+PhysX at startup and confirms envs sharing a design share limits. That check
+exists because the identical assumption about the object pool, left unchecked,
+gave 510 of 512 envs the wrong asset (§4). The rule is now explicit: **an
+assignment made by someone else's iteration order gets verified against the
+simulator, not trusted.**
+
+---
+
+## 6. Practical guidance
 
 **Which asset path you use decides everything below.** The two have different
 economics, and advice written for one is wrong for the other.
@@ -258,7 +385,7 @@ and one design per env extrapolates to tens of hours. Here — and only here —
 * **Watch articulation depth, not joint count.** A 43-joint serial chain runs 3x
   slower than a 37-joint hand+arm, because the solve tracks chain depth.
 
-## 6. Open
+## 7. Open
 
 * Author the generated hand (not just objects) — needed for large-k sweeps, and
   it must reproduce masses, drive gains, self-collision filters and the arm

@@ -114,8 +114,20 @@ def main() -> None:
     print(f"[test] arm_joint_ids (Lab order) = {arm_ids}")
     print(f"[test] hand_joint_ids (Lab order) = {hand_ids}")
 
-    lower_canon = inner._joint_lower_canon.detach().cpu().numpy().astype(np.float64)
-    upper_canon = inner._joint_upper_canon.detach().cpu().numpy().astype(np.float64)
+    # The canonical limit tables are PER ENV -- (N, J), not (J,) -- because a
+    # multi-embodiment scene gives each env its own design and its own joint
+    # ranges. This test runs a single robot, so every row is the same; assert
+    # that rather than assume it, then reduce to one row for the reference
+    # computation below (which is a per-joint calculation, not a per-env one).
+    lower_all = inner._joint_lower_canon.detach().cpu().numpy().astype(np.float64)
+    upper_all = inner._joint_upper_canon.detach().cpu().numpy().astype(np.float64)
+    assert lower_all.ndim == 2 and lower_all.shape[0] == args.num_envs, (
+        f"_joint_lower_canon should be (N, J), got {lower_all.shape}"
+    )
+    assert np.allclose(lower_all, lower_all[0]) and np.allclose(upper_all, upper_all[0]), (
+        "single-robot scene has differing per-env joint limits"
+    )
+    lower_canon, upper_canon = lower_all[0], upper_all[0]
     mid_canon = 0.5 * (lower_canon + upper_canon)
 
     rng = np.random.default_rng(args.seed)

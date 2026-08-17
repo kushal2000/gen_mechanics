@@ -47,6 +47,7 @@ TESTS=(
     "tests/test_obs_action_spec.py :: obs/action spec test OK"
     "tests/test_action_pipeline.py --num_envs 4 --num_assets_per_type 1 :: action pipeline test OK"
     "tests/test_robot_spec_invariants.py :: robot spec invariants OK"
+    "tests/test_multi_embodiment_env.py --num_envs 16 --population_count 8 --num_assets_per_type 2 --steps 10 :: multi-embodiment env test OK"
 )
 SLOW=(
     "tests/test_sharpa_parity.py :: SHARPA parity test OK"

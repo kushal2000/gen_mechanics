@@ -1,0 +1,48 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 1:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# ONE test, one GPU allocation.
+#
+# run_all.sh is serial, so a single slow or wedged test blocks every test after
+# it -- which is exactly what happened with test_robot_spec_invariants (it
+# builds two envs in ONE process, and run_all.sh's own docstring warns that Kit
+# does not survive being torn down and re-created in-process). Running each test
+# as its own job means a stall costs that test, not the suite.
+#
+# It also keeps these off the login node, where they contend with whatever else
+# is using the GPU -- one Kit per GPU is a hard constraint, not a preference.
+#
+#   TEST="tests/test_sharpa_parity.py" TAG=parity \
+#       sbatch experiments/run_one_test.sub
+
+set -uo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+TEST="${TEST:?set TEST to a test script + args}"
+TAG="${TAG:-$(basename "${TEST%% *}" .py)}"
+OUT_DIR="${REPO_ROOT}/bench_dir/tests"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="t_${TAG}" || true
+exec > "${OUT_DIR}/one_${TAG}.log" 2>&1
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_t_${TAG}"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+echo "=== $TEST ==="
+date
+timeout 2700 python -u $TEST
+echo "exit=$?"
+date

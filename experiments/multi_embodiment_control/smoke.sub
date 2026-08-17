@@ -1,0 +1,78 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 1:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Does each arm's config actually build and take a gradient step?
+#
+# Run this before committing three 7-day jobs. It is a CONFIG check, not a
+# training run: tiny scene, a couple of epochs, wandb off. What it proves:
+#
+#   * the hydra overrides parse and resolve -- in particular
+#     `env.obs.obs_list=${env.obs.state_list}`, which relies on OmegaConf
+#     resolving an interpolation between two config nodes;
+#   * the env builds for that embodiment (for arm 3, that the population
+#     resolves and every design shares the joint template);
+#   * observation and action spaces agree with what rl_games builds;
+#   * one optimiser step runs without shape errors.
+#
+#   ARM=1 sbatch experiments/multi_embodiment_control/smoke.sub
+#   ARM=2 sbatch experiments/multi_embodiment_control/smoke.sub
+#   ARM=3 sbatch experiments/multi_embodiment_control/smoke.sub
+
+set -uo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+ARM="${ARM:?set ARM to 1, 2 or 3}"
+OUT_DIR="${REPO_ROOT}/bench_dir/mec_smoke"
+mkdir -p "$OUT_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="smoke_arm${ARM}" || true
+exec > "${OUT_DIR}/arm${ARM}.log" 2>&1
+
+source "${REPO_ROOT}/experiments/multi_embodiment_control/_common.sh"
+
+# Small scene. expl_coef_block_size is lowered with it: SAPG needs
+# num_envs % block == 0, and the production 4096 would force a 4096-env smoke.
+export EXPL_COEF_BLOCK_SIZE=64
+export WANDB_ACTIVATE=          # empty: no wandb run for a throwaway check
+NUM_ENVS="${NUM_ENVS:-128}"
+MAX_EPOCHS="${MAX_EPOCHS:-3}"
+SEED="${SEED:-0}"
+WANDB_GROUP="mec_smoke"
+
+case "$ARM" in
+  1)
+    TASK="GenMech-PoseReach-Direct-v0"
+    EXPERIMENT_TAG="smoke_sharpa"
+    ROBOT_OVERRIDES=( env.assets.robot_spec=sharpa_iiwa14 )
+    ;;
+  2)
+    TASK="GenMech-PoseReach-Direct-v0"
+    EXPERIMENT_TAG="smoke_gen_sharpa_like"
+    ROBOT_OVERRIDES=( env.assets.robot_spec=gen_sharpa_like )
+    ;;
+  3)
+    TASK="GenMech-PoseReachMulti-Direct-v0"
+    EXPERIMENT_TAG="smoke_population"
+    # The CACHED 64-hand population, not the 24k one: this checks the config,
+    # and converting 24,576 designs would take hours before the first step.
+    ROBOT_OVERRIDES=(
+        env.assets.robot_population_seed="${POPULATION_SEED:-0}"
+        env.assets.robot_population_count="${DESIGN_COUNT:-8}"
+    )
+    ;;
+  *) echo "ARM must be 1, 2 or 3" >&2; exit 1 ;;
+esac
+
+# Fewer objects to convert; the object pool is not what is under test here.
+EXTRA_OVERRIDES=( env.assets.num_assets_per_type=2 )
+
+launch_training

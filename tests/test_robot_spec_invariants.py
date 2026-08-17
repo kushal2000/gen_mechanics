@@ -78,6 +78,37 @@ def main() -> None:
     names = [args.robot_spec] if args.robot_spec else sorted(REGISTRY)
     for n in names:
         get_robot_spec(n)  # fail early on a bad --robot_spec
+
+    # ONE ENV PER PROCESS. Building a second env in this process wedges: the
+    # first spec passes all its checks, then the run stops producing output
+    # while still burning CPU, and never finishes. Reproduced in isolation on a
+    # dedicated GPU, so it is neither contention nor a specific robot -- each
+    # spec passes on its own (sharpa OK, allegro OK), and only the pair hangs.
+    # It is the same constraint run_all.sh is built around: "Kit cannot be torn
+    # down and re-created in-process."
+    #
+    # So when several specs are requested, re-exec this script once per spec
+    # instead of looping in-process. Doing it here rather than in run_all.sh
+    # keeps the runner generic and fixes every caller.
+    if len(names) > 1:
+        import subprocess
+
+        passthrough = [a for a in sys.argv[1:] if a != "--robot_spec"]
+        failures = []
+        for n in names:
+            print(f"\n[spec] === subprocess for {n} ===", flush=True)
+            rc = subprocess.run(
+                [sys.executable, "-u", os.path.abspath(__file__),
+                 "--robot_spec", n, *passthrough],
+            ).returncode
+            if rc != 0:
+                failures.append((n, rc))
+        if failures:
+            raise AssertionError(f"spec checks failed: {failures}")
+        print(f"\n[spec] all {len(names)} specs checked in separate processes")
+        print("robot spec invariants OK")
+        return
+
     print(f"[spec] checking in sim: {names}")
 
     app = AppLauncher(args).app
@@ -169,13 +200,26 @@ def main() -> None:
 
         # 5. Fingertip bodies: right count, and in spec order (index i must be
         #    the same finger as fingertip_offsets[i] and obs column i).
+        #    The ids address SLOTS, not active fingers: a generated hand pads to
+        #    the template's 5 finger slots and marks the ghosted ones invalid, so
+        #    designs with different finger counts share one observation layout.
+        #    For a fixed hand the two lists are identical and this is the same
+        #    assertion as before.
         body_names = list(inner.robot.data.body_names)
         got_tips = [body_names[i] for i in inner._fingertip_body_ids]
-        assert got_tips == list(spec.fingertip_body_names), (
-            f"{name}: fingertip bodies {got_tips} != spec order "
+        assert got_tips == list(spec.fingertip_slots), (
+            f"{name}: fingertip bodies {got_tips} != spec slot order "
+            f"{list(spec.fingertip_slots)}"
+        )
+        # ...and the mask must select exactly the ACTIVE fingertips, in order.
+        mask = inner._fingertip_mask[0].tolist()
+        active = [b for b, ok in zip(got_tips, mask) if ok]
+        assert active == list(spec.fingertip_body_names), (
+            f"{name}: mask selects {active}, spec declares "
             f"{list(spec.fingertip_body_names)}"
         )
-        print(f"  [5] {len(got_tips)} fingertip bodies in spec order")
+        print(f"  [5] {len(got_tips)} fingertip slots in spec order, "
+              f"{len(active)} active")
 
         # 6. Derived dims.
         assert int(inner.cfg.action_space) == spec.num_joints

@@ -1,0 +1,92 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=400000
+#SBATCH -t 7-00:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# ARM 3 of the multi-embodiment control comparison: 24,576 DISTINCT HANDS,
+# ONE PER ENVIRONMENT.
+#
+# k = n. Every environment holds a different morphology, so each design gets
+# exactly one rollout per epoch and the policy never sees the same body twice in
+# a batch. This is the cross-embodied setting the co-design loop needs.
+#
+# Uses the multi-embodiment env (GenMech-PoseReachMulti-Direct-v0), which adds
+# the 143-dim morphology descriptor to the observation -- mount poses, link
+# lengths and radii, which joints exist, and the abduction range that joint_pos
+# normalization hides. Without it the policy cannot know what its per-joint
+# commands do on a hand it has never seen.
+#
+# ---------------------------------------------------------------------------
+# READ THIS BEFORE LAUNCHING -- two costs that are not obvious
+# ---------------------------------------------------------------------------
+#
+# 1. POPULATION. Requires a cached 24,576-hand population. Build it first:
+#
+#        COUNT=24576 SEED=2 sbatch \
+#            experiments/multi_embodiment_control/00_build_population.sub
+#
+#    This job refuses to start without it rather than silently training on a
+#    64-hand population cycled 384 times, which would look like a k=n run in
+#    every log line and be nothing of the sort.
+#
+# 2. ASSET PREP. Every distinct design goes through Kit's UrdfConverter at
+#    ~876 ms, ~90% of it re-importing the SAME arm's 16 STL meshes
+#    (docs/multi_embodiment.md §4). At 24,576 designs that is ROUGHLY SIX HOURS
+#    of setup before the first gradient step, inside the 7-day walltime.
+#
+#    The fix is authored hand USDs (~8 ms each, 207 s for the whole population),
+#    but genmech/robots/generated/author_usd.py is still a stub -- it stops at
+#    MCP_VL, has no fingertip links, no collision geometry and no joint body
+#    targets. Until that lands and is validated against the converter, this arm
+#    pays the six hours. Set DESIGN_COUNT lower to trade diversity for setup
+#    time; the env cycles designs over envs, so DESIGN_COUNT=4096 gives 6 envs
+#    per design and ~1 hour of prep.
+#
+#   sbatch experiments/multi_embodiment_control/03_population_24k.sub
+#   DESIGN_COUNT=4096 sbatch experiments/multi_embodiment_control/03_population_24k.sub
+
+set -euo pipefail
+source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+TASK="GenMech-PoseReachMulti-Direct-v0"
+EXPERIMENT_TAG="mec_population24k"
+WANDB_GROUP="${WANDB_GROUP:-multi_embodiment_control}"
+SEED="${SEED:-0}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+MAX_EPOCHS="${MAX_EPOCHS:-120000}"
+POPULATION_SEED="${POPULATION_SEED:-2}"
+DESIGN_COUNT="${DESIGN_COUNT:-24576}"
+
+# --- prerequisite check, before burning a GPU allocation --------------------
+MANIFEST="${REPO_ROOT}/assets/urdf/generated/population/seed_$(printf '%04d' "$POPULATION_SEED")/manifest.json"
+if [ ! -f "$MANIFEST" ]; then
+    echo "MISSING population manifest: $MANIFEST" >&2
+    echo "Build it first:  COUNT=$DESIGN_COUNT SEED=$POPULATION_SEED sbatch \\" >&2
+    echo "    experiments/multi_embodiment_control/00_build_population.sub" >&2
+    exit 1
+fi
+HAVE=$(python3 -c "import json,sys; print(len(json.load(open('$MANIFEST'))['hands']))")
+if (( HAVE < DESIGN_COUNT )); then
+    echo "population seed $POPULATION_SEED has $HAVE hands, need $DESIGN_COUNT." >&2
+    echo "Rebuild larger:  COUNT=$DESIGN_COUNT SEED=$POPULATION_SEED sbatch \\" >&2
+    echo "    experiments/multi_embodiment_control/00_build_population.sub" >&2
+    echo "(or set DESIGN_COUNT=$HAVE to use what is cached)" >&2
+    exit 1
+fi
+echo "population OK: $HAVE hands cached, using $DESIGN_COUNT"
+
+ROBOT_OVERRIDES=(
+    env.assets.robot_population_seed="$POPULATION_SEED"
+    env.assets.robot_population_count="$DESIGN_COUNT"
+)
+
+launch_training

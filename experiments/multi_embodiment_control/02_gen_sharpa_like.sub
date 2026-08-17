@@ -1,0 +1,45 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 7-00:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# ARM 2 of the multi-embodiment control comparison: ONE GENERATED HAND.
+#
+# gen_sharpa_like -- SHARPA's kinematics expressed inside the generated design
+# space: 37-joint template, analytic capsule collision geometry, five active
+# fingers. It is the generator's regression target, built to reproduce SHARPA's
+# fingertip positions and phalanx masses.
+#
+# This arm exists to SEPARATE TWO CONFOUNDS that arm 1 vs arm 3 would otherwise
+# mix together. A gap between SHARPA and a 24k population could come from
+# morphology diversity (the thing under study) or from the representation change
+# alone -- capsules instead of meshes, 37 ghosted joints instead of 29 real ones,
+# the padded fingertip observation. This arm holds morphology fixed at SHARPA's
+# and changes only the representation, so arm1 -> arm2 measures the
+# representation cost and arm2 -> arm3 measures the diversity cost.
+#
+#   sbatch experiments/multi_embodiment_control/02_gen_sharpa_like.sub
+
+set -euo pipefail
+source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+
+TASK="GenMech-PoseReach-Direct-v0"
+EXPERIMENT_TAG="mec_gen_sharpa_like"
+WANDB_GROUP="${WANDB_GROUP:-multi_embodiment_control}"
+SEED="${SEED:-0}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+MAX_EPOCHS="${MAX_EPOCHS:-120000}"
+
+ROBOT_OVERRIDES=(
+    env.assets.robot_spec=gen_sharpa_like
+)
+
+launch_training
