@@ -299,45 +299,16 @@ def _scale_to_3d(scale: np.ndarray) -> tuple[float, float, float]:
     raise ValueError(f"Invalid scale shape: {scale.shape}")
 
 
-def generate_handle_head_urdfs(
-    handle_head_types: tuple[str, ...],
-    num_per_type: int = _NUM_OBJECTS_PER_TYPE_DEFAULT,
-    out_dir: Union[str, Path] = "/tmp/genmech_assets",
-    object_base_size: float = _OBJECT_BASE_SIZE,
-    seed: int = _SEED,
-    shuffle: bool = True,
-    density_scale: float = 1.0,
-) -> tuple[list[str], list[tuple[float, float, float]]]:
-    """Generate a pool of URDFs across the requested handle-head types.
+def matching_distributions(handle_head_types: tuple[str, ...]):
+    """The ObjectSizeDistributions a pool of these types draws from, in draw order.
 
-    Mirrors legacy ``_handle_head_primitives`` at
-    isaacgymenvs/tasks/simtoolreal/env.py:1706-1840:
-      1. Seed NumPy with ``seed`` (deterministic pool per run).
-      2. For each matching ``ObjectSizeDistribution``, sample ``num_per_type``
-         (handle_scale, head_scale, handle_density, head_density) tuples.
-      3. Emit one URDF per sample; return file paths paired with object scales
-         normalized by ``object_base_size``.
-      4. Shuffle (paths, scales) in lockstep so env ``i`` gets pool entry
-         ``i % len(pool)`` with uniform coverage over types.
-
-    Returns
-    -------
-    urdf_paths : list[str]
-        Absolute paths to generated URDFs. Length = ``num_per_type × len(matching types)``.
-    object_scales_normalized : list[tuple[float, float, float]]
-        Per-pool-entry 3-tuple scales, normalized by ``object_base_size`` (reward
-        math uses these directly; see env.py:1814-1821).
+    There are more distributions than types -- twelve for the six handle-head
+    types -- because a type can have several shape variants (hammer and
+    screwdriver have cuboid and cylinder handles, brush has two head shapes).
+    Pool size is therefore ``num_per_type * len(matching_distributions(types))``,
+    not ``num_per_type * len(types)``, which is the arithmetic every caller
+    sizing a pool against an env count gets wrong first.
     """
-    out_dir = Path(out_dir)
-    if out_dir.exists():
-        for p in out_dir.iterdir():
-            if p.suffix == ".urdf":
-                p.unlink()
-    else:
-        os.makedirs(out_dir)
-
-    np.random.seed(seed)
-
     type_set = set(handle_head_types)
     matching = [d for d in OBJECT_SIZE_DISTRIBUTIONS if d.type in type_set]
     if not matching:
@@ -345,13 +316,46 @@ def generate_handle_head_urdfs(
             f"No matching ObjectSizeDistribution for handle_head_types={handle_head_types}. "
             f"Valid types: {sorted({d.type for d in OBJECT_SIZE_DISTRIBUTIONS})}"
         )
+    return matching
 
-    paths: list[str] = []
-    scales_raw: list[tuple[float, ...]] = []
-    params_raw: list[tuple] = []
-    for dist in matching:
+
+def sample_pool_params(
+    handle_head_types: tuple[str, ...],
+    num_per_type: int = _NUM_OBJECTS_PER_TYPE_DEFAULT,
+    object_base_size: float = _OBJECT_BASE_SIZE,
+    seed: int = _SEED,
+    shuffle: bool = True,
+    density_scale: float = 1.0,
+) -> tuple[list[dict], list[int]]:
+    """Replay a pool's RNG draws without writing anything to disk.
+
+    This is the sampling half of :func:`generate_handle_head_urdfs`, split out so
+    that reconstructing a past run's pool -- which needs the parameters but not
+    the URDFs -- runs the SAME draws rather than a copy of them. A copy is how
+    the two silently drift, and the copy would be the one nobody notices is
+    wrong: it produces a plausible pool of the right size for the wrong run.
+
+    Everything that consumes randomness lives here (``np.random.seed``, the four
+    ``sample_*`` uniforms per distribution, the final shuffle); writing a URDF
+    draws nothing. So a caller that replays this function with a run's
+    ``(handle_head_types, num_per_type, seed, shuffle, density_scale)`` gets that
+    run's pool exactly.
+
+    Returns
+    -------
+    entries : list[dict]
+        One dict per pool member in **pre-shuffle** order.
+    permutation : list[int]
+        ``permutation[k]`` is the pre-shuffle index of final pool entry ``k``.
+        Identity when ``shuffle`` is False.
+    """
+    np.random.seed(seed)
+    matching = matching_distributions(handle_head_types)
+
+    entries: list[dict] = []
+    for dist_index, dist in enumerate(matching):
         # Sample order MUST match legacy env.py:1758-1772 (densities first,
-        # scales second) — the two pools share seed=42 so first-asset URDFs
+        # scales second) -- the two pools share seed=42 so first-asset URDFs
         # come out byte-identical across backends only when the np.random
         # draws line up step for step.
         handle_densities = dist.sample_handle_densities(num_per_type)
@@ -371,47 +375,134 @@ def generate_handle_head_urdfs(
                 float(head_densities[idx]) * density_scale
                 if head_densities is not None else None
             )
+            # Normalized by object_base_size to match env.py:1814-1821; the
+            # reward and the object_scales observation read these directly.
+            x, y, z = _scale_to_3d(np.asarray(h_scale))
+            entries.append({
+                "type": dist.type,
+                "shape": dist.shape,
+                "distribution_index": dist_index,
+                "sample_index": idx,
+                "handle_scale": h_scale,
+                "head_scale": head,
+                "handle_density": h_d,
+                "head_density": head_d,
+                "scale_normalized": (
+                    x / object_base_size, y / object_base_size, z / object_base_size,
+                ),
+            })
 
-            fname = (
-                f"{idx:03d}_{dist.type}_handle_{h_scale}_head_{head}_d{h_d:.1f}_{head_d}"
-                .replace(".", "-")
-                + ".urdf"
-            )
-            urdf_path = out_dir / fname
-            generate_handle_head_urdf(
-                path=urdf_path,
-                handle_scale=h_scale,
-                head_scale=head,
-                handle_density=h_d,
-                head_density=head_d,
-            )
-            paths.append(str(urdf_path))
-            scales_raw.append(h_scale)
-            # The exact arguments this URDF was written from. Direct USD
-            # authoring needs them, and recovering them by parsing the URDF back
-            # would be a second source of truth that could drift from this one.
-            params_raw.append((h_scale, head, h_d, head_d))
-
-    # Convert to 3-tuples and normalize by object_base_size (matches env.py:1814-1821).
-    scales_3d = [_scale_to_3d(np.asarray(s)) for s in scales_raw]
-    scales_norm = [
-        (x / object_base_size, y / object_base_size, z / object_base_size)
-        for (x, y, z) in scales_3d
-    ]
-
-    # Shuffle (paths, scales) in lockstep so the per-type ordering doesn't bias
-    # env-i-gets-asset-i%N. Matches legacy env.py:1824-1830. Disabled for
-    # debug-parity runs (debug_differences/policy_rollout_isaacsim.py) where
-    # we want pool[0] = first matching ObjectSizeDistribution.
+    # Shuffle so the per-type ordering doesn't bias env-i-gets-asset-i%N.
+    # Matches legacy env.py:1824-1830. Disabled for debug-parity runs
+    # (debug_differences/policy_rollout_isaacsim.py) where we want
+    # pool[0] = first matching ObjectSizeDistribution.
     if shuffle:
-        indices = np.arange(len(paths))
+        indices = np.arange(len(entries))
         np.random.shuffle(indices)
-        paths = [paths[i] for i in indices]
-        scales_norm = [scales_norm[i] for i in indices]
-        # params must ride the SAME permutation: env i takes pool entry i, and
-        # a params list left in the original order would author a different
-        # object than the one whose scale the reward and observations use.
-        params_raw = [params_raw[i] for i in indices]
+        permutation = [int(i) for i in indices]
+    else:
+        permutation = list(range(len(entries)))
+
+    return entries, permutation
+
+
+def pool_urdf_filename(entry: dict) -> str:
+    """The URDF filename a pool entry is written to.
+
+    Derived from the sampled parameters alone, so it is stable regardless of the
+    order entries are written in.
+    """
+    return (
+        f"{entry['sample_index']:03d}_{entry['type']}"
+        f"_handle_{entry['handle_scale']}_head_{entry['head_scale']}"
+        f"_d{entry['handle_density']:.1f}_{entry['head_density']}"
+        .replace(".", "-")
+        + ".urdf"
+    )
+
+
+def generate_handle_head_urdfs(
+    handle_head_types: tuple[str, ...],
+    num_per_type: int = _NUM_OBJECTS_PER_TYPE_DEFAULT,
+    out_dir: Union[str, Path] = "/tmp/genmech_assets",
+    object_base_size: float = _OBJECT_BASE_SIZE,
+    seed: int = _SEED,
+    shuffle: bool = True,
+    density_scale: float = 1.0,
+) -> tuple[list[str], list[tuple[float, float, float]], list[tuple]]:
+    """Generate a pool of URDFs across the requested handle-head types.
+
+    Mirrors legacy ``_handle_head_primitives`` at
+    isaacgymenvs/tasks/simtoolreal/env.py:1706-1840:
+      1. Seed NumPy with ``seed`` (deterministic pool per run).
+      2. For each matching ``ObjectSizeDistribution``, sample ``num_per_type``
+         (handle_scale, head_scale, handle_density, head_density) tuples.
+      3. Emit one URDF per sample; return file paths paired with object scales
+         normalized by ``object_base_size``.
+      4. Shuffle (paths, scales) in lockstep so env ``i`` gets pool entry
+         ``i % len(pool)`` with uniform coverage over types.
+
+    Steps 1, 2 and the step-4 permutation live in :func:`sample_pool_params`;
+    this function only writes the URDFs and applies the permutation.
+
+    Returns
+    -------
+    urdf_paths : list[str]
+        Absolute paths to generated URDFs. Length = ``num_per_type × len(matching distributions)``.
+    object_scales_normalized : list[tuple[float, float, float]]
+        Per-pool-entry 3-tuple scales, normalized by ``object_base_size`` (reward
+        math uses these directly; see env.py:1814-1821).
+    object_params : list[tuple]
+        Per-pool-entry ``(handle_scale, head_scale, handle_density, head_density)``.
+    """
+    out_dir = Path(out_dir)
+    if out_dir.exists():
+        for p in out_dir.iterdir():
+            if p.suffix == ".urdf":
+                p.unlink()
+    else:
+        os.makedirs(out_dir)
+
+    entries, permutation = sample_pool_params(
+        handle_head_types=handle_head_types,
+        num_per_type=num_per_type,
+        object_base_size=object_base_size,
+        seed=seed,
+        shuffle=shuffle,
+        density_scale=density_scale,
+    )
+
+    paths: list[str] = []
+    scales_norm: list[tuple[float, float, float]] = []
+    params_raw: list[tuple] = []
+    # Written in pre-shuffle order, exactly as before the split: the filename is
+    # a pure function of the parameters, so write order does not affect the
+    # result, but keeping it makes this a behaviour-preserving refactor.
+    for entry in entries:
+        urdf_path = out_dir / pool_urdf_filename(entry)
+        generate_handle_head_urdf(
+            path=urdf_path,
+            handle_scale=entry["handle_scale"],
+            head_scale=entry["head_scale"],
+            handle_density=entry["handle_density"],
+            head_density=entry["head_density"],
+        )
+        paths.append(str(urdf_path))
+        scales_norm.append(entry["scale_normalized"])
+        # The exact arguments this URDF was written from. Direct USD
+        # authoring needs them, and recovering them by parsing the URDF back
+        # would be a second source of truth that could drift from this one.
+        params_raw.append((
+            entry["handle_scale"], entry["head_scale"],
+            entry["handle_density"], entry["head_density"],
+        ))
+
+    paths = [paths[i] for i in permutation]
+    scales_norm = [scales_norm[i] for i in permutation]
+    # params must ride the SAME permutation: env i takes pool entry i, and
+    # a params list left in the original order would author a different
+    # object than the one whose scale the reward and observations use.
+    params_raw = [params_raw[i] for i in permutation]
 
     # Returned as a third element rather than a new function: any caller that
     # unpacks two values keeps working, and the params cannot drift out of step
@@ -423,4 +514,7 @@ __all__ = [
     "generate_handle_urdf",
     "generate_handle_head_urdf",
     "generate_handle_head_urdfs",
+    "matching_distributions",
+    "sample_pool_params",
+    "pool_urdf_filename",
 ]

@@ -51,3 +51,8 @@ assets/urdf/generated/population/**/*.urdf
 # three. Rebuild with 00_build_population_sharded.sub rather than cloning them.
 assets/urdf/generated/population/**/manifest.json
 assets/urdf/generated/population/**/shard_*.json
+
+# Reconstructed run->object assignments. Regenerate with
+# `python -m genmech.eval.embodiments.dump_assignment --run_dir ...`;
+# multi-MB and derived entirely from a run's config, so not worth versioning.
+genmech/eval/embodiments/assignments/*.json
