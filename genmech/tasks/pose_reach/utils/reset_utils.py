@@ -212,7 +212,21 @@ def allocate_state_buffers(env) -> None:
     )
 
     # --- Tolerance curriculum state ---
-    env._current_success_tolerance: float = env.cfg.termination.success_tolerance
+    # resume_success_tolerance continues a curriculum mid-flight; without it the
+    # curriculum restarts at its beginning, which on a resumed run trains an
+    # easier task on a different reward scale than the checkpoint was written
+    # under (the tolerance also scales the keypoint reward).
+    _term = env.cfg.termination
+    env._current_success_tolerance: float = float(
+        _term.resume_success_tolerance
+        if getattr(_term, "resume_success_tolerance", None) is not None
+        else _term.success_tolerance
+    )
+    if getattr(_term, "resume_success_tolerance", None) is not None:
+        print(f"[curriculum] resuming success tolerance at "
+              f"{env._current_success_tolerance:.6f} "
+              f"(curriculum start {_term.success_tolerance}, "
+              f"floor {_term.target_success_tolerance})", flush=True)
     env._prev_episode_successes = torch.zeros(
         env.num_envs, dtype=torch.long, device=env.device
     )

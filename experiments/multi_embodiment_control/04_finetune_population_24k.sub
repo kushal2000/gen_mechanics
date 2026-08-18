@@ -147,6 +147,49 @@ ROBOT_OVERRIDES=(
     env.assets.author_robot_usds="${AUTHOR_ROBOTS:-true}"
 )
 
+# --- the success-tolerance curriculum does NOT ride in the checkpoint --------
+#
+# _current_success_tolerance lives on the ENV, and rl_games only persists env
+# state through vec_env.get_env_state(). Isaac Lab's RlGamesVecEnvWrapper does
+# not override it, so it inherits IVecEnv's stub that returns None -- the
+# checkpoint's env_state field is literally None. A resume therefore restores
+# the network, the optimizer, the rollout buffers and the RNN states perfectly,
+# and silently re-initialises the tolerance to termination.success_tolerance,
+# the curriculum START.
+#
+# That is not a cosmetic reset. The tolerance also scales the REWARD
+# (obs_utils.py: tol = _current_success_tolerance * keypoint_scale), so the
+# resumed run is easier AND on a different reward scale than the run it claims
+# to continue -- and the curve jumps in a way that reads as the fine-tune
+# working well.
+#
+# So it is passed in. Find the value the source run actually reached:
+#
+#   python -c "import wandb; r=wandb.Api().run('<entity>/<project>/<wandb run id>'); #              print(r.summary['current_success_tolerance'])"
+#
+# This sets termination.resume_success_tolerance, which moves ONLY the live
+# value. success_tolerance stays as written, so the config still records what
+# the curriculum was and its upper clamp keeps its meaning; the curriculum
+# carries on tightening from here toward target_success_tolerance.
+# eval_success_tolerance is the wrong knob: it PINS the value every step and
+# disables the curriculum entirely.
+if [ -n "${START_SUCCESS_TOLERANCE:-}" ]; then
+    ROBOT_OVERRIDES+=( env.termination.resume_success_tolerance="$START_SUCCESS_TOLERANCE" )
+    echo "  tolerance:  resuming curriculum at $START_SUCCESS_TOLERANCE"
+elif [ "$CHECKPOINT_LOAD_MODE" = "resume" ] && [ -z "${ALLOW_TOLERANCE_RESET:-}" ]; then
+    echo "" >&2
+    echo "REFUSING: START_SUCCESS_TOLERANCE not set." >&2
+    echo "  A resume would restart the tolerance curriculum from" >&2
+    echo "  termination.success_tolerance and quietly train an easier task on a" >&2
+    echo "  different reward scale than the checkpoint was written under." >&2
+    echo "  Read the source run's last value from wandb:" >&2
+    echo "    summary key 'current_success_tolerance'" >&2
+    echo "  then:  START_SUCCESS_TOLERANCE=<value> sbatch ..." >&2
+    echo "  Set ALLOW_TOLERANCE_RESET=1 to resume from the curriculum start on" >&2
+    echo "  purpose." >&2
+    exit 1
+fi
+
 # DRY_RUN=1 stops here, after every check has run and before a GPU is touched.
 # The checks are the substance of this file, and they are worth being able to
 # run on their own -- verifying that a continuation is pointed at the right

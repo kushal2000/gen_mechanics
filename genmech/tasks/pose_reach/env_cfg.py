@@ -531,6 +531,24 @@ class TerminationCfg:
     target_success_tolerance: float = 0.01  # curriculum floor
     eval_success_tolerance: float | None = None
 
+    resume_success_tolerance: float | None = None
+    """Where the curriculum PICKS UP, when continuing a run. None starts at
+    ``success_tolerance``.
+
+    Separate from ``success_tolerance`` on purpose. That field is the
+    curriculum's definition -- its start AND its upper clamp -- so overloading
+    it to resume a run would rewrite the record of what the curriculum was:
+    ``.hydra/config.yaml`` would claim this run's curriculum began at 2.35 cm
+    when it began at 7.5 cm, and the clamp would silently tighten with it. This
+    field states the one thing that is actually different about a continuation,
+    and leaves the curriculum itself as written.
+
+    It exists because the tolerance does NOT survive a checkpoint: it lives on
+    the env, and rl_games persists env state only through
+    ``vec_env.get_env_state()``, which Isaac Lab's wrapper leaves as IVecEnv's
+    stub returning None. Distinct from ``eval_success_tolerance``, which PINS
+    the value every step and disables the curriculum."""
+
     success_steps: int = 10
     max_consecutive_successes: int = 50
     force_consecutive_near_goal_steps: bool = False
