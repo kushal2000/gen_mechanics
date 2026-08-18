@@ -1,0 +1,120 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=400000
+#SBATCH -t 7-00:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# ABLATION of arm 3: 24,576 distinct hands, one per env, and NO morphology
+# descriptor in the observation.
+#
+#   sbatch experiments/multi_embodiment_control/05_population_24k_no_morphology.sub
+#
+# ---------------------------------------------------------------------------
+# THE QUESTION
+# ---------------------------------------------------------------------------
+#
+# 03 gives the policy a 143-dim descriptor of the hand it is driving: mount
+# poses, link lengths and radii, which joints exist, and the abduction range
+# that joint_pos normalization hides. The premise is that a cross-embodied
+# policy needs it -- joint angles describe the mechanism's STATE and nothing
+# about its STRUCTURE, and two designs can present identical joint angles while
+# their fingers point in completely different directions.
+#
+# That premise has never been tested. The policy may be reading the descriptor,
+# or it may be ignoring it and learning one averaged controller that happens to
+# work on the designs it works on. Those two worlds look identical from a
+# training curve.
+#
+# This run removes the descriptor and changes NOTHING else. Same population
+# (seed 3 by default, matching the 2026-08-17 run), same objects, same DR-off
+# settings, same optimizer, same seed. Observation goes 329 -> 186 wide.
+#
+# ---------------------------------------------------------------------------
+# HOW TO READ THE RESULT
+# ---------------------------------------------------------------------------
+#
+# The comparison is against 03's curve at equal EPOCHS, not equal walltime, and
+# the honest measurement is per-design rather than aggregate:
+#
+#   .venv_isaacsim/bin/python -m genmech.eval.embodiments.run_population_eval \
+#       --run_dir <this run> --checkpoint <this run>/0_pose_reach_sapg/nn/*.pth \
+#       --episodes 10 --success_tolerance 0.03 --out results/population_eval/<tag>
+#
+# Interpretation, stated in advance so the result is not read backwards:
+#
+#   * NO GAP -> the descriptor is not being used. Either the task does not need
+#     structure, or 143 dims of it are not reaching the policy in a usable form.
+#     Both are findings; neither is a reason to keep paying for the field.
+#   * A GAP that widens with training -> the descriptor is doing work, and the
+#     size of the gap is the value of conditioning on morphology.
+#   * A GAP only in the SPREAD across designs, with a similar mean -> the
+#     descriptor is not raising average competence, it is letting the policy
+#     specialise. That is the more interesting outcome for co-design and is
+#     invisible in an aggregate reward curve, which is why the per-design eval
+#     above matters more than the wandb plot.
+#
+# NOTE the checkpoints of this run are NOT interchangeable with 03's: the
+# observation widths differ, so neither can restore the other. 04's fine-tune
+# path will refuse them for the same reason.
+
+set -euo pipefail
+source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+TASK="GenMech-PoseReachMulti-Direct-v0"
+EXPERIMENT_TAG="mec_population24k_nomorph"
+WANDB_GROUP="${WANDB_GROUP:-multi_embodiment_control}"
+SEED="${SEED:-0}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+MAX_EPOCHS="${MAX_EPOCHS:-120000}"
+# Default 3, NOT 03's default of 2: the run this ablates used seed 3, and an
+# ablation on a different population compares two things at once.
+POPULATION_SEED="${POPULATION_SEED:-3}"
+DESIGN_COUNT="${DESIGN_COUNT:-24576}"
+
+MANIFEST="${REPO_ROOT}/assets/urdf/generated/population/seed_$(printf '%04d' "$POPULATION_SEED")/manifest.json"
+if [ ! -f "$MANIFEST" ]; then
+    echo "MISSING population manifest: $MANIFEST" >&2
+    echo "Build it first:  COUNT=$DESIGN_COUNT SEED=$POPULATION_SEED sbatch \\" >&2
+    echo "    experiments/multi_embodiment_control/00_build_population.sub" >&2
+    exit 1
+fi
+HAVE=$("${REPO_ROOT}/.venv_isaacsim/bin/python" -c \
+    "import json;print(len(json.load(open('$MANIFEST'))['hands']))")
+if (( HAVE < DESIGN_COUNT )); then
+    echo "population seed $POPULATION_SEED has $HAVE hands, need $DESIGN_COUNT." >&2
+    exit 1
+fi
+echo "population OK: $HAVE hands cached, using $DESIGN_COUNT (seed $POPULATION_SEED)"
+echo "ABLATION: morphology descriptor removed from obs and state"
+
+ROBOT_OVERRIDES=(
+    env.assets.robot_population_seed="$POPULATION_SEED"
+    env.assets.robot_population_count="$DESIGN_COUNT"
+    env.assets.author_robot_usds="${AUTHOR_ROBOTS:-true}"
+)
+
+# The whole ablation. PoseReachMultiEnv normally ENFORCES the descriptor's
+# presence -- appending it if a config dropped it, because a YAML overlay
+# silently removed it once -- so an override on obs_list alone would be undone
+# at env construction. This flag is the only thing that strips it, and it does
+# so after every other config source has had its say.
+EXTRA_OVERRIDES=(
+    env.include_morphology_obs=false
+)
+
+if [ -n "${DRY_RUN:-}" ]; then
+    echo "DRY_RUN: checks passed, not launching"
+    echo "  robot overrides: ${ROBOT_OVERRIDES[*]}"
+    echo "  extra overrides: ${EXTRA_OVERRIDES[*]}"
+    exit 0
+fi
+
+launch_training

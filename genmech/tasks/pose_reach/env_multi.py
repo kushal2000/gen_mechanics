@@ -88,10 +88,26 @@ class PoseReachMultiEnv(PoseReachEnv):
         #
         # Without the descriptor this env trains a cross-embodied policy that
         # cannot tell its hands apart, which is the one thing it exists to do.
+        # cfg.include_morphology_obs is the ONLY way to turn this off, and it
+        # strips the field rather than merely declining to add it -- otherwise
+        # MultiObsCfg's default, the YAML overlay, or
+        # `obs.obs_list=${env.obs.state_list}` would each put it back.
+        include = bool(getattr(cfg, "include_morphology_obs", True))
         for field in ("obs_list", "state_list"):
             current = tuple(getattr(cfg.obs, field))
-            if "morphology" not in current:
+            if include and "morphology" not in current:
                 setattr(cfg.obs, field, current + ("morphology",))
+            elif not include and "morphology" in current:
+                setattr(cfg.obs, field,
+                        tuple(f for f in current if f != "morphology"))
+        if not include:
+            # Loud, because every other signal in this run looks normal: the
+            # population resolves, the design assignment verifies, the curves
+            # have the same shape. Only the observation width differs.
+            print("[multi] ABLATION: morphology descriptor REMOVED from "
+                  "obs_list and state_list. The policy cannot distinguish the "
+                  f"{len(self._robot_population_specs)} designs it is driving.",
+                  flush=True)
 
         return self._robot_population_specs[0]
 

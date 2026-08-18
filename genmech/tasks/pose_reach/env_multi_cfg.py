@@ -66,5 +66,21 @@ class PoseReachMultiEnvCfg(PoseReachEnvCfg):
     """Print the descriptor's field map at startup. Useful when debugging an
     observation vector; noisy otherwise."""
 
+    include_morphology_obs: bool = True
+    """Whether the morphology descriptor is in the observation at all.
+
+    True is the only setting that trains the env for its purpose, and the env
+    ENFORCES it -- appending the field if a config dropped it -- because a YAML
+    overlay silently removed it once and the only symptom was an observation 186
+    wide instead of 329.
+
+    False exists for one experiment: the ablation that asks whether the policy
+    is using the descriptor or ignoring it. Without it a cross-embodied policy
+    has proprioception and fingertip positions but nothing describing the
+    mechanism, so it must control 24,576 different hands from one set of
+    weights and no way to tell them apart. Setting this False strips the field
+    rather than merely not adding it, so the task YAML overlay and
+    ``obs_list=${env.obs.state_list}`` cannot put it back."""
+
 
 __all__ = ["PoseReachMultiEnvCfg", "MultiAssetsCfg", "MultiObsCfg"]
