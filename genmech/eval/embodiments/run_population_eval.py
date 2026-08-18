@@ -49,64 +49,6 @@ from isaaclab.app import AppLauncher
 
 CONTROL_HZ = 60.0
 
-# Asset / actuation / observation fields copied from the training run, so the
-# embodiment, its object and the control pipeline are exactly what trained.
-# Everything about GOALS and TERMINATION deliberately comes from the eval
-# protocol instead -- see the module docstring.
-RUN_FIELDS = (
-    "assets.handle_head_types",
-    "assets.num_assets_per_type",
-    "assets.object_seed",
-    "assets.shuffle_assets",
-    "assets.object_density_scale",
-    "assets.object_friction",
-    "assets.object_restitution",
-    "assets.modify_asset_frictions",
-    "assets.author_object_usds",
-    "assets.author_which",
-    "assets.author_robot_usds",
-    "assets.robot_population_seed",
-    "assets.robot_population_count",
-    "assets.robot_friction",
-    "assets.finger_tip_friction",
-    "action.arm_moving_average",
-    "action.hand_moving_average",
-    "action.dof_speed_scale",
-    "obs.state_list",
-    "obs.obs_list",
-    "obs.clamp_abs_observations",
-    "reward.keypoint_rew_scale",
-    "reward.keypoint_scale",
-    "reward.object_base_size",
-    "termination.episode_length",
-    "termination.success_tolerance",
-)
-
-
-def _set_by_path(cfg, dotted: str, value) -> None:
-    """Set a nested configclass field, failing loudly on a typo."""
-    node = cfg
-    parts = dotted.split(".")
-    for part in parts[:-1]:
-        if not hasattr(node, part):
-            raise KeyError(f"no config section {part!r} in {dotted!r}")
-        node = getattr(node, part)
-    if not hasattr(node, parts[-1]):
-        raise KeyError(f"no config field {dotted!r}")
-    setattr(node, parts[-1], value)
-
-
-def _get_by_path(node, dotted: str):
-    for part in dotted.split("."):
-        if isinstance(node, dict):
-            if part not in node:
-                raise KeyError(dotted)
-            node = node[part]
-        else:
-            node = getattr(node, part)
-    return node
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--run_dir", required=True,
@@ -127,6 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--goals_per_episode", type=int, default=10)
     p.add_argument("--max_steps", type=int, default=0,
                    help="0 = derived: 300 * goals * episodes")
+    p.add_argument("--success_tolerance", type=float, default=None,
+                   help="Pins termination.eval_success_tolerance in metres. Default "
+                        "is the suite's 0.01 (the curriculum FLOOR); a mid-training "
+                        "checkpoint usually needs looser to give a readable ranking")
     p.add_argument("--dr", default="off", choices=("off", "train", "hard"),
                    help="Domain randomization profile (default off, matching the "
                         "population runs)")
@@ -150,18 +96,20 @@ def main() -> None:
 
     # Read the run's config BEFORE booting Kit -- a typo here should cost a
     # second, not a two-minute Isaac Sim startup.
-    from genmech.eval import rl_player_utils  # noqa: F401  registers OmegaConf resolvers
-    from omegaconf import OmegaConf
+    from genmech.eval.embodiments.run_config import (
+        apply_run_fields, eval_protocol, get_by_path, load_run_config,
+        run_env_dict, set_by_path, synthesise_policy_config,
+    )
 
-    run_cfg = OmegaConf.load(run_dir / ".hydra" / "config.yaml")
-    run_env = OmegaConf.to_container(run_cfg.env, resolve=True)
+    run_cfg = load_run_config(run_dir)
+    run_env = run_env_dict(run_cfg)
 
-    if _get_by_path(run_env, "assets.robot_population_seed") is None:
+    if get_by_path(run_env, "assets.robot_population_seed") is None:
         raise SystemExit(
             f"{run_dir.name} is not a population run (robot_population_seed is None)."
         )
 
-    run_count = int(_get_by_path(run_env, "assets.robot_population_count"))
+    run_count = int(get_by_path(run_env, "assets.robot_population_count"))
     num_envs_hint = args.num_envs or args.population_count or run_count
 
     # RlPlayer reads cfg["train"], but a run's .hydra/config.yaml stores the same
@@ -170,26 +118,12 @@ def main() -> None:
     # synthesise it from the run that produced the checkpoint.
     policy_config = args.policy_config
     if policy_config is None:
-        # Resolve against the WHOLE run config, not the agent block alone: the
-        # rl_games config interpolates back out to env (num_actors is
-        # ${....env.scene.num_envs}), so an agent-only save leaves a dangling key
-        # that only fails once RlPlayer reads it, minutes into a Kit boot.
-        resolved = OmegaConf.to_container(run_cfg, resolve=True)
-        agent = resolved["agent"]
-        # num_actors came from the training env count; this eval may use fewer.
-        agent["params"]["config"]["num_actors"] = num_envs_hint
-        policy_config = str(out_dir / "policy_config.yaml")
-        OmegaConf.save(OmegaConf.create({"train": agent}), policy_config)
+        policy_config = synthesise_policy_config(
+            run_cfg, out_dir / "policy_config.yaml", num_envs_hint)
         print(f"[pop] synthesised policy config from {run_dir.name}/.hydra -> "
               f"{policy_config}")
 
-    from genmech.eval.suites import DR_PROFILES, NOMINAL, resolve_overrides
-
-    # The eval protocol, minus its DR block, plus the requested profile.
-    protocol = {k: v for k, v in resolve_overrides(NOMINAL).items()
-                if not k.startswith("domain_randomization.")}
-    protocol.update(DR_PROFILES[args.dr])
-    protocol["termination.max_consecutive_successes"] = args.goals_per_episode
+    protocol = eval_protocol(args.dr, args.goals_per_episode, args.success_tolerance)
 
     checkpoint = Path(args.checkpoint)
     if not checkpoint.is_file():
@@ -214,15 +148,7 @@ def main() -> None:
     from genmech.tasks.pose_reach.env_multi_cfg import PoseReachMultiEnvCfg
 
     cfg = PoseReachMultiEnvCfg()
-    for field in RUN_FIELDS:
-        try:
-            value = _get_by_path(run_env, field)
-        except (KeyError, AttributeError):
-            print(f"[pop] run config has no {field}; keeping the default")
-            continue
-        if isinstance(value, list):
-            value = tuple(value)
-        _set_by_path(cfg, field, value)
+    apply_run_fields(cfg, run_env)
 
     count = args.population_count or int(cfg.assets.robot_population_count)
     num_envs = args.num_envs or count
@@ -237,10 +163,12 @@ def main() -> None:
     cfg.scene.num_envs = num_envs
 
     for key, value in protocol.items():
-        _set_by_path(cfg, key, value)
+        set_by_path(cfg, key, value)
 
+    tol = protocol["termination.eval_success_tolerance"]
     print(f"[pop] {count} designs, {num_envs} envs, {args.episodes} episodes each, "
-          f"{args.goals_per_episode} goals/episode, DR={args.dr}", flush=True)
+          f"{args.goals_per_episode} goals/episode, DR={args.dr}, "
+          f"success tolerance {tol * 100:.1f} cm", flush=True)
 
     env = PoseReachMultiEnv(cfg=cfg)
     inner = env
@@ -423,6 +351,7 @@ def main() -> None:
             "episodes": E,
             "goals_per_episode": n_goals,
             "dr_profile": args.dr,
+            "eval_success_tolerance": protocol["termination.eval_success_tolerance"],
             "max_steps": max_steps,
             "steps_taken": steps_taken,
             "designs_short_of_target_episodes": incomplete,

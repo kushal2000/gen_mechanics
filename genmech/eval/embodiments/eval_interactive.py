@@ -89,10 +89,15 @@ def build_parser() -> argparse.ArgumentParser:
                    help="How many population members to list (default 64)")
     p.add_argument("--num_envs", type=int, default=64,
                    help="Envs = distinct objects shown (default 64)")
+    p.add_argument("--author_object_usds", type=int, default=1,
+                   help="1 authors object USDs (seconds); 0 converts (minutes)")
     p.add_argument("--num_assets_per_type", type=int, default=100,
                    help="100 reproduces the training pool's object identities")
     p.add_argument("--object_seed", type=int, default=42)
     p.add_argument("--goals_per_episode", type=int, default=10)
+    p.add_argument("--success_tolerance", type=float, default=None,
+                   help="Pins termination.eval_success_tolerance in metres "
+                        "(default: the suite's 0.01, the curriculum floor)")
     p.add_argument("--dr", default="off", choices=("off", "train", "hard"))
     p.add_argument("--sapg_expl_coef", type=float, default=50.0)
     p.add_argument("--rl_device", default="cuda:0")
@@ -100,6 +105,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--python", default=DEFAULT_PYTHON)
     p.add_argument("--hz", type=float, default=60.0,
                    help="Parent redraw rate; the worker paces the sim")
+    p.add_argument("--no_autoload", action="store_true",
+                   help="Start with no embodiment loaded")
+    p.add_argument("--selftest", default=None,
+                   help="Headless check: load the initial design, then SWITCH to "
+                        "this one, then exit 0. Switching is the path that is easy "
+                        "to get wrong and impossible to check by starting the "
+                        "server, so it gets its own test")
     return p
 
 
@@ -112,6 +124,7 @@ class EmbodimentViewer:
         self.policy_config = policy_config
         self._proc = None
         self._conn = None
+        self._pending_load = False
         self._ready = None
         self._snapshot = None
         self._urdf_handle = None
@@ -151,7 +164,13 @@ class EmbodimentViewer:
                 "design", tuple(self.designs),
                 initial_value=self.args.initial_design or self.designs[0])
             self.btn_load = g.add_button("Load embodiment  (restarts sim, ~1 min)")
-            self.btn_load.on_click(lambda _: self._load())
+            # Flag only. viser runs GUI callbacks on its OWN thread, and _load()
+            # tears down the scene graph the main thread is drawing from -- it
+            # nulls _urdf_handle mid-frame, and the main loop dies inside
+            # ViserUrdf.update_cfg on nodes that were just removed. It also
+            # blocks on listener.accept() for the whole Kit boot, freezing every
+            # other control. The main loop owns all of it.
+            self.btn_load.on_click(lambda _: setattr(self, "_pending_load", True))
             self.md_design = g.add_markdown("_no embodiment loaded_")
 
         with g.add_folder("Object", expand_by_default=True):
@@ -234,11 +253,16 @@ class EmbodimentViewer:
             "--num_envs", str(self.args.num_envs),
             "--num_assets_per_type", str(self.args.num_assets_per_type),
             "--object_seed", str(self.args.object_seed),
+            "--author_object_usds", str(self.args.author_object_usds),
             "--sapg_expl_coef", str(self.args.sapg_expl_coef),
             "--rl_device", self.args.rl_device,
             "--dr", self.args.dr,
             "--goals_per_episode", str(self.args.goals_per_episode),
         ]
+        if self.args.run_dir:
+            cmd += ["--run_dir", str(self.args.run_dir)]
+        if self.args.success_tolerance is not None:
+            cmd += ["--success_tolerance", str(self.args.success_tolerance)]
         env = os.environ.copy()
         env.setdefault("OMNI_KIT_ACCEPT_EULA", "YES")
         try:
@@ -364,17 +388,19 @@ class EmbodimentViewer:
     def _draw(self) -> None:
         import numpy as np
 
-        if self._snapshot is None or self._ready is None:
+        # Bound locally, all of them: a load can land between any two of these
+        # lines and the frame must either use one consistent set or skip.
+        snap, ready, urdf = self._snapshot, self._ready, self._urdf_handle
+        if snap is None or ready is None or urdf is None or self._joint_order is None:
             return
         e = int(self.sl_env.value)
-        snap = self._snapshot
 
         t = snap["table"][e]
         self.table.position = tuple(float(v) for v in t[:3])
         self.table.wxyz = tuple(float(v) for v in t[3:])
 
         q = snap["joint_pos"][e]
-        self._urdf_handle.update_cfg(
+        urdf.update_cfg(
             np.array([q[i] if i >= 0 else 0.0 for i in self._joint_order]))
 
         o = snap["object"][e]
@@ -389,11 +415,11 @@ class EmbodimentViewer:
         for idx, h in self._goal_handles.items():
             h.visible = (idx == e)
 
-        pool_idx = self._ready["object_pool_index"][e]
-        is_training = (pool_idx == self._ready.get("training_pool_index"))
+        pool_idx = ready["object_pool_index"][e]
+        is_training = (pool_idx == ready.get("training_pool_index"))
         self.md_object.content = (
             f"env **{e}** — pool #{pool_idx}\n\n"
-            f"{self._ready['object_labels'][e]}"
+            f"{ready['object_labels'][e]}"
             + ("\n\n**this is the design's training object**" if is_training else ""))
 
     def _handle(self, msg) -> None:
@@ -423,21 +449,86 @@ class EmbodimentViewer:
     def _poll(self) -> None:
         if self._conn is None:
             return
+        conn = self._conn
         try:
-            while self._conn.poll(0):
-                self._handle(self._conn.recv())
+            # Bound to a local: handling an "error" message calls _kill_worker(),
+            # which sets self._conn to None, and re-reading it in the loop
+            # condition then raises AttributeError instead of reporting the
+            # worker's actual failure.
+            while conn.poll(0):
+                self._handle(conn.recv())
+                if self._conn is not conn:
+                    break
         except (EOFError, OSError) as exc:
             self.md_status.content = f"**Status:** worker exited — {exc}"
             self._kill_worker()
 
-    def run(self) -> None:
+    def selftest(self, second_design: str, timeout_s: float = 900.0) -> int:
+        """Load, switch, and confirm both reach ready. Returns a process exit code.
+
+        The first load is exercised by simply starting the viewer. The SWITCH is
+        not, and it is where the thread race lived: the button callback used to
+        tear down the scene graph under the drawing thread. Reproducing that by
+        hand means clicking a browser button at the wrong moment; here it is one
+        command.
+        """
+        deadline = time.time() + timeout_s
+        stages = [(self.dd_design.value, "initial"), (second_design, "switch")]
+        for design, label in stages:
+            self.dd_design.value = design
+            self._pending_load = True
+            seen = None
+            while time.time() < deadline:
+                if self._pending_load:
+                    self._pending_load = False
+                    self._load()
+                self._poll()
+                self._draw()          # must survive teardown mid-flight
+                if self._ready is not None and self._ready["design"] == design:
+                    seen = self._ready
+                    break
+                if self._conn is None and self._ready is None and seen is None:
+                    time.sleep(0.05)
+                time.sleep(0.02)
+            if seen is None:
+                print(f"[selftest] FAILED at {label} load of {design}", flush=True)
+                self._kill_worker()
+                return 1
+            # Draw a few frames so a stale-handle crash has a chance to fire.
+            for _ in range(120):
+                self._poll()
+                self._draw()
+                time.sleep(1.0 / 120.0)
+            print(f"[selftest] {label} OK: {design}, "
+                  f"{len(set(seen['object_pool_index']))} distinct objects",
+                  flush=True)
+        self._kill_worker()
+        print("[selftest] embodiment switch test OK", flush=True)
+        return 0
+
+    def run(self, autoload: bool = True) -> None:
         print(f"\n  Embodiment viewer  http://localhost:{self.args.port}\n")
+        # Boot straight into a design. Landing on an empty scene with a Load
+        # button reads as a broken viewer, and the first load costs a Kit boot
+        # either way.
+        if autoload:
+            self._pending_load = True
         period = 1.0 / max(self.args.hz, 1e-3)
         try:
             while True:
                 t0 = time.time()
-                self._poll()
-                self._draw()
+                if self._pending_load:
+                    self._pending_load = False
+                    self._load()
+                try:
+                    self._poll()
+                    self._draw()
+                except Exception as exc:  # noqa: BLE001
+                    # A viewer that dies on one bad frame takes the whole server
+                    # with it and loses the loaded embodiment, which costs a Kit
+                    # boot to get back. Report and keep serving.
+                    self.md_status.content = f"**Status:** draw error — {exc}"
+                    print(f"[viz] draw error: {traceback.format_exc()}", flush=True)
                 dt = time.time() - t0
                 if dt < period:
                     time.sleep(period - dt)
@@ -453,18 +544,18 @@ def main() -> int:
     if policy_config is None:
         if not args.run_dir:
             raise SystemExit("pass --policy_config, or --run_dir to synthesise one")
-        from genmech.eval import rl_player_utils  # noqa: F401  registers resolvers
-        from omegaconf import OmegaConf
+        import tempfile
 
-        run_cfg = OmegaConf.load(Path(args.run_dir) / ".hydra" / "config.yaml")
-        # Resolved against the whole config: the rl_games block interpolates back
-        # out to env (num_actors is ${....env.scene.num_envs}), so saving the
-        # agent block alone leaves a key that only fails inside the worker.
-        resolved = OmegaConf.to_container(run_cfg, resolve=True)
-        agent = resolved["agent"]
-        agent["params"]["config"]["num_actors"] = args.num_envs
-        policy_config = str(Path(args.run_dir) / "policy_config_viewer.yaml")
-        OmegaConf.save(OmegaConf.create({"train": agent}), policy_config)
+        from genmech.eval.embodiments.run_config import (
+            load_run_config, synthesise_policy_config,
+        )
+
+        # Into a temp dir, not --run_dir: that directory may belong to a job that
+        # is still running, and a viewer should leave nothing in it.
+        policy_config = synthesise_policy_config(
+            load_run_config(args.run_dir),
+            Path(tempfile.mkdtemp(prefix="genmech_viewer_")) / "policy_config.yaml",
+            args.num_envs)
         print(f"[viz] synthesised policy config -> {policy_config}")
 
     extra = [d.strip() for d in args.designs.split(",") if d.strip()]
@@ -474,7 +565,10 @@ def main() -> int:
     print(f"[viz] {len(designs)} designs listed "
           f"(first {args.design_limit} of the population + fixed hands)")
 
-    EmbodimentViewer(args, designs, policy_config).run()
+    viewer = EmbodimentViewer(args, designs, policy_config)
+    if args.selftest:
+        return viewer.selftest(args.selftest)
+    viewer.run(autoload=not args.no_autoload)
     return 0
 
 

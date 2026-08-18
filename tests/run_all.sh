@@ -50,6 +50,7 @@ TESTS=(
     "tests/test_robot_spec_invariants.py :: robot spec invariants OK"
     "tests/test_multi_embodiment_env.py --num_envs 16 --population_count 8 --num_assets_per_type 2 --steps 10 :: multi-embodiment env test OK"
     "tests/test_shape_layout_record.py --population_count 256 :: shape layout record test OK"
+    "tests/test_embodiment_viewer_switch.py :: embodiment switch test OK"
 )
 SLOW=(
     "tests/test_sharpa_parity.py :: SHARPA parity test OK"
