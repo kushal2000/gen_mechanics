@@ -210,8 +210,10 @@ def main() -> None:
                         help="Output JSON (default: assignments/<run_name>.json)")
     parser.add_argument("--no_sanity_check", action="store_true",
                         help="Skip the env%%n assertions (not recommended)")
-    parser.add_argument("--indent", type=int, default=None,
-                        help="Pretty-print with this indent; default is compact")
+    parser.add_argument("--indent", type=int, default=2,
+                        help="Pretty-print indent (default 2)")
+    parser.add_argument("--compact", action="store_true",
+                        help="Write one long line instead; ~25%% smaller, unreadable")
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir).resolve()
@@ -220,7 +222,7 @@ def main() -> None:
     out = Path(args.out) if args.out else DEFAULT_ASSIGNMENT_DIR / f"{run_dir.name}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w") as f:
-        json.dump(record, f, indent=args.indent)
+        json.dump(record, f, indent=None if args.compact else args.indent)
 
     pop, pool_meta = record["population"], record["object_pool"]
     size_mb = out.stat().st_size / 1e6
