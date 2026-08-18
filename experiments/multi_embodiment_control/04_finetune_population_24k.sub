@@ -1,0 +1,162 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=400000
+#SBATCH -t 7-00:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# CONTINUE arm 3 (24,576 distinct hands, one per env) from an existing
+# checkpoint, instead of starting over.
+#
+#   SOURCE_RUN=train_dir/gen_mechanics/multi_embodiment_control/mec_population24k_seed0_2026-08-17_15-13-28 \
+#       sbatch experiments/multi_embodiment_control/04_finetune_population_24k.sub
+#
+# Everything about the environment comes from 03_population_24k.sub via
+# _common.sh. The only thing this file adds is the checkpoint and the checks
+# that the checkpoint actually belongs to the run being launched.
+#
+# ---------------------------------------------------------------------------
+# WHY THE CONFIG IS READ FROM THE SOURCE RUN, NOT DEFAULTED
+# ---------------------------------------------------------------------------
+#
+# 03_population_24k.sub defaults POPULATION_SEED=2. The 2026-08-17 population
+# run was launched with seed 3. Copying 03 and bolting a --checkpoint onto it
+# would therefore fine-tune seed-3 weights on a seed-2 population: 24,576
+# DIFFERENT hands, at an identical observation width, with an identical action
+# space, logging identical-looking curves. Nothing would raise.
+#
+# So the embodiment settings are read out of the source run's own
+# .hydra/config.yaml and the launch refuses if they disagree with what is about
+# to run. A continuation has to continue the same experiment, and the only
+# authority on what that experiment was is the run directory itself.
+#
+# LOAD MODE. `resume` (default) restores optimizer state, the rollout buffers,
+# the RNN states and the epoch counter, so training picks up where it stopped.
+# `weights` takes the network only and starts a fresh optimizer at epoch 0 --
+# use that when deliberately re-training from a warm start, e.g. against a
+# different population, and set POPULATION_SEED explicitly to say so.
+#
+# MAX_EPOCHS is the ABSOLUTE target, not an increment: a checkpoint at epoch
+# 16,600 resuming with MAX_EPOCHS=120000 runs 103,400 more epochs.
+
+set -euo pipefail
+source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+PY="${REPO_ROOT}/.venv_isaacsim/bin/python"
+TASK="GenMech-PoseReachMulti-Direct-v0"
+EXPERIMENT_TAG="mec_population24k_ft"
+WANDB_GROUP="${WANDB_GROUP:-multi_embodiment_control}"
+MAX_EPOCHS="${MAX_EPOCHS:-120000}"
+CHECKPOINT_LOAD_MODE="${CHECKPOINT_LOAD_MODE:-resume}"
+
+# --- locate the source run and its checkpoint -------------------------------
+SOURCE_RUN="${SOURCE_RUN:?set SOURCE_RUN to the training run directory to continue}"
+case "$SOURCE_RUN" in /*) ;; *) SOURCE_RUN="${REPO_ROOT}/${SOURCE_RUN}" ;; esac
+SOURCE_CFG="${SOURCE_RUN}/.hydra/config.yaml"
+if [ ! -f "$SOURCE_CFG" ]; then
+    echo "no $SOURCE_CFG -- is SOURCE_RUN a hydra run directory?" >&2
+    exit 1
+fi
+
+# last/model.pth is the rolling autosave and is normally the freshest thing on
+# disk; the nn/ files are periodic named snapshots. Prefer the autosave, but let
+# CHECKPOINT name any file.
+CHECKPOINT="${CHECKPOINT:-${SOURCE_RUN}/0_pose_reach_sapg/last/model.pth}"
+if [ ! -f "$CHECKPOINT" ]; then
+    echo "checkpoint not found: $CHECKPOINT" >&2
+    echo "available:" >&2
+    ls -1 "${SOURCE_RUN}/0_pose_reach_sapg/nn/" 2>/dev/null | sed 's/^/  /' >&2
+    exit 1
+fi
+
+# --- derive the embodiment from the source run, then pin it -----------------
+# One interpreter, four values: this venv takes seconds just to start, so four
+# separate `python -c` calls made the pre-flight slower than the checks are
+# worth.
+read -r SRC_POP_SEED SRC_POP_COUNT SRC_NUM_ENVS SRC_SEED <<<"$("$PY" - "$SOURCE_CFG" <<'PYEOF'
+import sys, yaml
+c = yaml.safe_load(open(sys.argv[1]))
+a, s = c["env"]["assets"], c["env"]["scene"]
+print(a["robot_population_seed"], a["robot_population_count"],
+      s["num_envs"], c["agent"]["params"]["seed"])
+PYEOF
+)"
+
+POPULATION_SEED="${POPULATION_SEED:-$SRC_POP_SEED}"
+DESIGN_COUNT="${DESIGN_COUNT:-$SRC_POP_COUNT}"
+NUM_ENVS="${NUM_ENVS:-$SRC_NUM_ENVS}"
+SEED="${SEED:-$SRC_SEED}"
+
+# A `resume` restores an optimizer and rollout buffers shaped by the run that
+# wrote them, so a mismatch here is not a different experiment, it is a corrupt
+# one. `weights` only carries the network, so an intentional change of
+# population is allowed there -- stated, not inferred.
+if [ "$CHECKPOINT_LOAD_MODE" = "resume" ]; then
+    MISMATCH=0
+    [ "$POPULATION_SEED" = "$SRC_POP_SEED" ] || { echo "population seed $POPULATION_SEED != source $SRC_POP_SEED" >&2; MISMATCH=1; }
+    [ "$DESIGN_COUNT" = "$SRC_POP_COUNT" ]   || { echo "design count $DESIGN_COUNT != source $SRC_POP_COUNT" >&2; MISMATCH=1; }
+    [ "$NUM_ENVS" = "$SRC_NUM_ENVS" ]        || { echo "num_envs $NUM_ENVS != source $SRC_NUM_ENVS" >&2; MISMATCH=1; }
+    if (( MISMATCH )); then
+        echo "refusing to resume onto a different embodiment. Use" >&2
+        echo "CHECKPOINT_LOAD_MODE=weights to warm-start deliberately." >&2
+        exit 1
+    fi
+fi
+
+MANIFEST="${REPO_ROOT}/assets/urdf/generated/population/seed_$(printf '%04d' "$POPULATION_SEED")/manifest.json"
+if [ ! -f "$MANIFEST" ]; then
+    echo "MISSING population manifest: $MANIFEST" >&2
+    echo "Build it:  COUNT=$DESIGN_COUNT SEED=$POPULATION_SEED sbatch \\" >&2
+    echo "    experiments/multi_embodiment_control/00_build_population.sub" >&2
+    exit 1
+fi
+HAVE=$("$PY" -c "import json;print(len(json.load(open('$MANIFEST'))['hands']))")
+if (( HAVE < DESIGN_COUNT )); then
+    echo "population seed $POPULATION_SEED has $HAVE hands, need $DESIGN_COUNT." >&2
+    exit 1
+fi
+
+# Where the checkpoint actually is, so the log records the resume point rather
+# than leaving it to be inferred from the first epoch printed.
+CKPT_INFO=$("$PY" - "$CHECKPOINT" <<'PYEOF'
+import sys, torch
+ck = torch.load(sys.argv[1], map_location="cpu", weights_only=False)
+# SAPG writes one block per policy, keyed by index.
+blk = ck[0] if isinstance(ck, dict) and 0 in ck else ck
+print(f"epoch={blk.get('epoch','?')} frame={blk.get('frame','?')} "
+      f"reward={blk.get('last_mean_rewards','?')}")
+PYEOF
+)
+
+echo "continuing $(basename "$SOURCE_RUN")"
+echo "  checkpoint: $CHECKPOINT"
+echo "  at:         $CKPT_INFO"
+echo "  mode:       $CHECKPOINT_LOAD_MODE  (target max_epochs=$MAX_EPOCHS)"
+echo "  population: seed $POPULATION_SEED, $DESIGN_COUNT of $HAVE cached, $NUM_ENVS envs"
+
+ROBOT_OVERRIDES=(
+    env.assets.robot_population_seed="$POPULATION_SEED"
+    env.assets.robot_population_count="$DESIGN_COUNT"
+    env.assets.author_robot_usds="${AUTHOR_ROBOTS:-true}"
+)
+
+# DRY_RUN=1 stops here, after every check has run and before a GPU is touched.
+# The checks are the substance of this file, and they are worth being able to
+# run on their own -- verifying that a continuation is pointed at the right
+# population should not cost a scene build.
+if [ -n "${DRY_RUN:-}" ]; then
+    echo "DRY_RUN: checks passed, not launching"
+    echo "  robot overrides: ${ROBOT_OVERRIDES[*]}"
+    echo "  common overrides: ${COMMON_OVERRIDES[*]}"
+    exit 0
+fi
+
+export CHECKPOINT CHECKPOINT_LOAD_MODE
+launch_training

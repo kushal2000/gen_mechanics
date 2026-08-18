@@ -113,6 +113,12 @@ COMMON_OVERRIDES=("${DR_OFF[@]}" "${ACTION_RAW[@]}" "${SYMMETRIC_OBS[@]}"
 # Expects: TASK ROBOT_OVERRIDES(array) NUM_ENVS SEED MAX_EPOCHS EXPERIMENT_TAG
 # WANDB_GROUP, and optionally EXTRA_OVERRIDES(array).
 #
+# Optionally CHECKPOINT (a .pth to restore) and CHECKPOINT_LOAD_MODE
+# (resume|weights, default resume). Passed through here rather than given its
+# own launcher, so a fine-tune run inherits the identical DR / action / obs
+# settings as the run it continues -- a second copy of this launcher would drift
+# from this one and turn a continuation into a different experiment.
+#
 # EXTRA_OVERRIDES is expanded with the ${arr[@]+...} idiom rather than
 # "${arr[@]:-}": under `set -u` the latter expands an UNSET array to a single
 # empty string, which hydra then rejects as a malformed override.
@@ -170,6 +176,8 @@ launch_training() {
 
     echo "=== multi-embodiment control: ${EXPERIMENT_TAG} ==="
     echo "task=$TASK num_envs=$NUM_ENVS seed=$SEED max_epochs=$MAX_EPOCHS"
+    [ -n "${CHECKPOINT:-}" ] && echo \
+        "resuming from: $CHECKPOINT (mode ${CHECKPOINT_LOAD_MODE:-resume})"
     echo "batch=$BATCH minibatch=$MINIBATCH_SIZE"
     echo "embodiment overrides: ${ROBOT_OVERRIDES[*]}"
     echo "common overrides:     ${COMMON_OVERRIDES[*]}"
@@ -179,6 +187,8 @@ launch_training() {
         --task "$TASK" \
         --agent rl_games_sapg_cfg_entry_point \
         --headless \
+        ${CHECKPOINT:+--checkpoint "$CHECKPOINT"} \
+        ${CHECKPOINT:+--checkpoint_load_mode "${CHECKPOINT_LOAD_MODE:-resume}"} \
         ${CAPTURE_VIEWER:+--capture_viewer} \
         ${CAPTURE_VIEWER:+--capture_viewer_github_raw_base "$VIEWER_RAW_BASE"} \
         ${WANDB_ACTIVATE:+--wandb_activate} \
