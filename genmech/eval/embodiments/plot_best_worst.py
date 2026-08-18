@@ -52,6 +52,11 @@ PALM_FACE = "#c9c6bd"
 PALM_EDGE = "#8a8880"
 FINGER_FACE = "#8f9aa6"
 FINGER_EDGE = "#4a5560"
+# Active joints are marked in near-black ink with a light ring, NOT in a third
+# hue: the figure already spends blue and orange on best/worst, and a coloured
+# joint dot would read as a third category rather than as an annotation.
+JOINT_FACE = "#14181d"
+JOINT_RING = "#f7f6f2"
 
 
 def load_rows(results_dir: Path) -> list[dict]:
@@ -90,7 +95,7 @@ def pick(rows: list[dict], n: int) -> tuple[list[int], list[int]]:
     return best, worst
 
 
-def draw_hand(ax, link_hulls, half_extent: float) -> None:
+def draw_hand(ax, hand, half_extent: float) -> None:
     """Draw one top-down hand into an existing axes, at a SHARED scale.
 
     Drawn straight into a figure axes rather than rasterised and pasted with
@@ -100,6 +105,7 @@ def draw_hand(ax, link_hulls, half_extent: float) -> None:
     """
     from matplotlib.patches import Polygon
 
+    link_hulls = hand["hulls"]
     for is_palm, hull in link_hulls:
         ax.add_patch(Polygon(
             hull, closed=True,
@@ -107,6 +113,21 @@ def draw_hand(ax, link_hulls, half_extent: float) -> None:
             edgecolor=PALM_EDGE if is_palm else FINGER_EDGE,
             linewidth=1.1 if is_palm else 0.8,
             zorder=2 if is_palm else 3))
+    # Joint marks encode which axes actually move at each knuckle:
+    #   filled black          flexion only
+    #   filled black + white  flexion AND abduction
+    #   white                 abduction only (flexion ghosted)
+    # Shape and fill rather than a third hue -- the figure already spends blue
+    # and orange on best/worst, and this is a property of a mark, not a category.
+    for pts, face, edge, width in (
+        (hand["fe_only"], JOINT_FACE, JOINT_FACE, 0.0),
+        (hand["fe_and_aa"], JOINT_FACE, JOINT_RING, 1.6),
+        (hand["aa_only"], JOINT_RING, JOINT_FACE, 1.1),
+    ):
+        if not len(pts):
+            continue
+        ax.scatter(pts[:, 0], pts[:, 1], s=34, facecolor=face, edgecolor=edge,
+                   linewidths=width, zorder=6)
     ax.set_xlim(-half_extent, half_extent)
     ax.set_ylim(-half_extent, half_extent)
     ax.set_aspect("equal")
@@ -173,6 +194,39 @@ def hand_hulls(design: str):
 
     palm_inv = np.linalg.inv(urdf.get_transform("gen_palm"))
 
+    # An ACTIVE joint is one that can actually move. Ghosting pins a joint's
+    # limits to a ~0 range rather than deleting it, so the joint list alone
+    # over-counts; the range is what distinguishes them, and it reproduces
+    # spec.n_active_joints exactly.
+    # An ACTIVE joint can actually move; ghosting pins limits to a ~0 range
+    # rather than deleting the joint, so the joint list alone over-counts.
+    #
+    # AA and FE at the same knuckle are EXACTLY co-located -- same child origin
+    # to the last decimal -- so plotting one dot per joint silently draws 12
+    # joints as 8 dots. Group by position instead and mark the knuckle once,
+    # ringed when it also abducts. The dot count then matches the "Nj" label.
+    knuckles: dict = {}
+    for joint in urdf.robot.joints:
+        if joint.type == "fixed" or not joint.child.startswith("gen_"):
+            continue
+        lim = joint.limit
+        if lim is None or lim.lower is None or lim.upper is None:
+            continue
+        if (lim.upper - lim.lower) <= 1e-4:
+            continue
+        pos = (palm_inv @ urdf.get_transform(joint.child))[:3, 3]
+        key = tuple(np.round(pos, 6))
+        entry = knuckles.setdefault(key, {"pos": pos, "aa": False, "fe": False,
+                                          "n": 0})
+        entry["n"] += 1
+        # Both CMC and MCP come in FE/AA pairs; PIP and DIP are flexion only.
+        # Either half can be ghosted independently, so a knuckle can end up with
+        # abduction and no flexion.
+        if joint.name.endswith("_AA"):
+            entry["aa"] = True
+        else:
+            entry["fe"] = True
+
     meshes = []
     for name, link in urdf.link_map.items():
         if not name.startswith("gen_"):
@@ -212,7 +266,21 @@ def hand_hulls(design: str):
             out.append((is_palm, pts[ConvexHull(pts).vertices]))
         except Exception:                        # degenerate (edge-on) link
             continue
-    return out or None
+    if not out:
+        return None
+    def project(entries):
+        if not entries:
+            return np.empty((0, 2))
+        return (np.array([e["pos"] for e in entries]) - centre) @ basis
+
+    vals = list(knuckles.values())
+    return {
+        "hulls": out,
+        "fe_only": project([e for e in vals if e["fe"] and not e["aa"]]),
+        "fe_and_aa": project([e for e in vals if e["fe"] and e["aa"]]),
+        "aa_only": project([e for e in vals if e["aa"] and not e["fe"]]),
+        "n_active": sum(e["n"] for e in vals),
+    }
 
 
 def main() -> int:
@@ -225,6 +293,7 @@ def main() -> int:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
     results = Path(args.results)
@@ -241,7 +310,7 @@ def main() -> int:
     # One half-extent for all ten, so a hand that reaches twice as far is drawn
     # twice as large. Per-hand autoscaling would make every hand look the same
     # size, which is the opposite of what this figure is for.
-    half = max((np.abs(np.vstack([h for _, h in hs])).max()
+    half = max((np.abs(np.vstack([h for _, h in hs["hulls"]])).max()
                 for hs in hulls.values() if hs), default=0.05) * 1.06
     print(f"[plot] hand pictograms at shared half-extent {half * 100:.1f} cm")
 
@@ -317,8 +386,19 @@ def main() -> int:
 
     fig.legend(handles=[Patch(facecolor=PALM_FACE, edgecolor=PALM_EDGE, label="palm"),
                         Patch(facecolor=FINGER_FACE, edgecolor=FINGER_EDGE,
-                              label="finger links")],
-               loc="lower right", bbox_to_anchor=(0.978, 0.012), ncol=2,
+                              label="finger links"),
+                        Line2D([], [], marker="o", linestyle="none",
+                               markerfacecolor=JOINT_FACE, markeredgecolor=JOINT_FACE,
+                               markersize=6, label="flexion"),
+                        Line2D([], [], marker="o", linestyle="none",
+                               markerfacecolor=JOINT_FACE, markeredgecolor=JOINT_RING,
+                               markeredgewidth=1.6, markersize=7,
+                               label="flexion + abduction"),
+                        Line2D([], [], marker="o", linestyle="none",
+                               markerfacecolor=JOINT_RING, markeredgecolor=JOINT_FACE,
+                               markeredgewidth=1.1, markersize=6,
+                               label="abduction only")],
+               loc="lower right", bbox_to_anchor=(0.978, 0.012), ncol=5,
                frameon=False, fontsize=9, labelcolor=INK_MUTED)
     fig.text(0.075, 0.022, f"scale: each icon spans {2 * half * 100:.0f} cm",
              fontsize=9, color=INK_MUTED, ha="left")
