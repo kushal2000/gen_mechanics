@@ -294,9 +294,44 @@ def register_rlgames_env(
         wrapper_cls = _DAggerRlGamesVecEnvWrapper
 
     wrapped = wrapper_cls(env, rl_device, clip_obs, clip_actions)
+
+    class _GenMechRlGamesGpuEnv(RlGamesGpuEnv):
+        """RlGamesGpuEnv that actually carries env state into the checkpoint.
+
+        rl_games asks ``vec_env.get_env_state()`` when it saves and calls
+        ``set_env_state()`` when it restores -- the hook exists precisely for
+        "stateful training sessions, i.e. with adaptive curriculums". Neither
+        RlGamesGpuEnv nor RlGamesVecEnvWrapper overrides it, so both inherit
+        IVecEnv's stubs (return None / do nothing) and every checkpoint this
+        repo wrote had env_state=None.
+
+        The consequence was silent: a resumed run restored the network, the
+        optimizer, the rollout buffers and the RNN states exactly, then reset
+        the tolerance curriculum to its start. Since the tolerance also scales
+        the keypoint reward, the continuation trained an easier task on a
+        different reward scale, and the reward curve jumped in a way that read
+        as the fine-tune going well.
+
+        This subclass only ferries; the state itself is defined on the env.
+        """
+
+        def _genmech_env(self):
+            inner = getattr(self.env, "unwrapped", self.env)
+            return inner if hasattr(inner, "get_curriculum_state") else None
+
+        def get_env_state(self):
+            inner = self._genmech_env()
+            return None if inner is None else inner.get_curriculum_state()
+
+        def set_env_state(self, env_state):
+            inner = self._genmech_env()
+            if inner is not None:
+                inner.set_curriculum_state(env_state)
+
     vecenv.register(
         "IsaacRlgWrapper",
-        lambda config_name, num_actors, **kw: RlGamesGpuEnv(config_name, num_actors, **kw),
+        lambda config_name, num_actors, **kw: _GenMechRlGamesGpuEnv(
+            config_name, num_actors, **kw),
     )
     env_configurations.register(
         name,

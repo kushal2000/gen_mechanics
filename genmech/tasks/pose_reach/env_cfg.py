@@ -531,9 +531,16 @@ class TerminationCfg:
     target_success_tolerance: float = 0.01  # curriculum floor
     eval_success_tolerance: float | None = None
 
-    resume_success_tolerance: float | None = None
-    """Where the curriculum PICKS UP, when continuing a run. None starts at
+    resume_success_tolerance: float = 0.0
+    """Where the curriculum PICKS UP, when continuing a run. 0 starts at
     ``success_tolerance``.
+
+    0.0 rather than None as the "unset" value, deliberately. Isaac Lab's
+    ``update_class_from_dict`` type-checks an override against the CURRENT
+    value's type, so a field defaulting to None rejects a float from the CLI
+    with "Expected: <class 'NoneType'>" -- a hydra override of it cannot work at
+    all. ``assets.robot_population_seed`` and ``assets.object_urdf`` use
+    non-None sentinels for the same reason.
 
     Separate from ``success_tolerance`` on purpose. That field is the
     curriculum's definition -- its start AND its upper clamp -- so overloading

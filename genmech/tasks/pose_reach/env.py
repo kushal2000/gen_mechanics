@@ -78,6 +78,25 @@ class PoseReachEnv(DirectRLEnv):
         """Runs after the scene, materials and state buffers exist."""
         return None
 
+    # --- checkpointable env state -------------------------------------------
+    # rl_games saves whatever vec_env.get_env_state() returns into the
+    # checkpoint and hands it back on resume. Nothing implemented it, so
+    # env_state was None in every checkpoint and a resumed run silently
+    # restarted its curriculum -- an easier task on a different reward scale
+    # than the checkpoint was written under, since the tolerance also scales the
+    # keypoint reward. The state is defined HERE, on the env that owns it,
+    # rather than in the rl_games adapter that merely ferries it.
+
+    def get_curriculum_state(self) -> dict:
+        """Curriculum state for the checkpoint. See utils/curriculum.py."""
+        from .utils.curriculum import get_curriculum_state
+        return get_curriculum_state(self)
+
+    def set_curriculum_state(self, state: dict | None) -> None:
+        """Restore curriculum state from a checkpoint."""
+        from .utils.curriculum import set_curriculum_state
+        set_curriculum_state(self, state)
+
     def _setup_scene(self) -> None:
         setup_scene(self)
 

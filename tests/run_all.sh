@@ -42,6 +42,7 @@ TESTS=(
     "tests/test_load_isaacsim.py :: Isaac Sim load OK"
     "tests/test_imports.py :: module import test OK"
     "tests/test_object_pool_reconstruct.py :: object pool reconstruction test OK"
+    "tests/test_curriculum_checkpoint_state.py :: curriculum checkpoint state test OK"
     "tests/test_pose_viewer.py :: pose viewer test OK"
     "tests/test_gym_register.py :: registration smoke test OK"
     "tests/test_env_smoke.py --num_envs 8 --num_assets_per_type 2 --steps 10 :: [smoke] OK"

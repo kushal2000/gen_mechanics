@@ -216,13 +216,12 @@ def allocate_state_buffers(env) -> None:
     # curriculum restarts at its beginning, which on a resumed run trains an
     # easier task on a different reward scale than the checkpoint was written
     # under (the tolerance also scales the keypoint reward).
+    from .curriculum import initial_success_tolerance
+
     _term = env.cfg.termination
-    env._current_success_tolerance: float = float(
-        _term.resume_success_tolerance
-        if getattr(_term, "resume_success_tolerance", None) is not None
-        else _term.success_tolerance
-    )
-    if getattr(_term, "resume_success_tolerance", None) is not None:
+    _resume_tol = float(getattr(_term, "resume_success_tolerance", 0.0) or 0.0)
+    env._current_success_tolerance: float = initial_success_tolerance(env)
+    if _resume_tol > 0.0:
         print(f"[curriculum] resuming success tolerance at "
               f"{env._current_success_tolerance:.6f} "
               f"(curriculum start {_term.success_tolerance}, "
