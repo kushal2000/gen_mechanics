@@ -1,0 +1,512 @@
+"""Score every embodiment in a population on the object it trained against.
+
+One Kit boot, one articulation view, ``num_envs`` designs stepping together.
+Environment ``i`` holds design ``i`` and object ``i % pool_size``, which is
+exactly the pairing training used -- so reproducing "what each design was
+trained on" needs no lookup table, only the same asset config. The assignment is
+verified against PhysX at startup by ``_verify_robot_design_assignment``.
+
+    OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python \\
+        -m genmech.eval.embodiments.run_population_eval \\
+        --run_dir train_dir/.../mec_population24k_seed0_2026-08-17_15-13-28 \\
+        --checkpoint train_dir/.../nn/0_pose_reach_sapg.pth \\
+        --episodes 10 --out results/pop_eval
+
+``--policy_config`` is optional: the run's own ``agent`` block IS the rl_games
+config RlPlayer wants under the key ``train``, so it is synthesised from
+``--run_dir`` unless given.
+
+**Why each design needs more than one episode.** At the k = n operating point a
+design gets a single environment, so a one-episode score carries the full
+variance of one goal sequence. Worse, the object is *fixed* per environment for
+the whole run, so a design's score is confounded with its one object draw --
+designs sharing a pool index are the only fair direct comparison
+(``dump_assignment.py`` emits those groups). Averaging over episodes removes the
+goal-sequence noise; it does not remove the object confound, and nothing here
+can. Read the per-object-type breakdown before ranking designs against each
+other.
+
+**On the protocol.** Assets, actuation and observations come from the training
+run's own config, so the embodiment and its object are exactly what trained.
+Goals and termination come from the frozen eval protocol in
+``genmech/eval/suites.py`` (deterministic-ish reset, success_steps=10,
+eval_success_tolerance=0.01), so numbers are comparable with the rest of
+``results/``. Training's own ``max_consecutive_successes`` (50) is NOT used --
+``--goals_per_episode`` sets it, default 10, matching the suite.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+from isaaclab.app import AppLauncher
+
+CONTROL_HZ = 60.0
+
+# Asset / actuation / observation fields copied from the training run, so the
+# embodiment, its object and the control pipeline are exactly what trained.
+# Everything about GOALS and TERMINATION deliberately comes from the eval
+# protocol instead -- see the module docstring.
+RUN_FIELDS = (
+    "assets.handle_head_types",
+    "assets.num_assets_per_type",
+    "assets.object_seed",
+    "assets.shuffle_assets",
+    "assets.object_density_scale",
+    "assets.object_friction",
+    "assets.object_restitution",
+    "assets.modify_asset_frictions",
+    "assets.author_object_usds",
+    "assets.author_which",
+    "assets.author_robot_usds",
+    "assets.robot_population_seed",
+    "assets.robot_population_count",
+    "assets.robot_friction",
+    "assets.finger_tip_friction",
+    "action.arm_moving_average",
+    "action.hand_moving_average",
+    "action.dof_speed_scale",
+    "obs.state_list",
+    "obs.obs_list",
+    "obs.clamp_abs_observations",
+    "reward.keypoint_rew_scale",
+    "reward.keypoint_scale",
+    "reward.object_base_size",
+    "termination.episode_length",
+    "termination.success_tolerance",
+)
+
+
+def _set_by_path(cfg, dotted: str, value) -> None:
+    """Set a nested configclass field, failing loudly on a typo."""
+    node = cfg
+    parts = dotted.split(".")
+    for part in parts[:-1]:
+        if not hasattr(node, part):
+            raise KeyError(f"no config section {part!r} in {dotted!r}")
+        node = getattr(node, part)
+    if not hasattr(node, parts[-1]):
+        raise KeyError(f"no config field {dotted!r}")
+    setattr(node, parts[-1], value)
+
+
+def _get_by_path(node, dotted: str):
+    for part in dotted.split("."):
+        if isinstance(node, dict):
+            if part not in node:
+                raise KeyError(dotted)
+            node = node[part]
+        else:
+            node = getattr(node, part)
+    return node
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("--run_dir", required=True,
+                   help="Training run whose asset/actuation config to reproduce")
+    p.add_argument("--checkpoint", required=True)
+    p.add_argument("--policy_config", default=None,
+                   help="YAML with a top-level 'train:' key. Default: synthesised "
+                        "from the run's own agent block, which is exactly that block "
+                        "under a different name")
+    p.add_argument("--out", required=True, help="Output directory")
+    p.add_argument("--episodes", type=int, default=10,
+                   help="Episodes to average per design (default 10)")
+    p.add_argument("--num_envs", type=int, default=0,
+                   help="0 = the run's population count (one env per design)")
+    p.add_argument("--population_count", type=int, default=0,
+                   help="0 = the run's value. Must equal num_envs for a 1:1 "
+                        "design-to-env mapping")
+    p.add_argument("--goals_per_episode", type=int, default=10)
+    p.add_argument("--max_steps", type=int, default=0,
+                   help="0 = derived: 300 * goals * episodes")
+    p.add_argument("--dr", default="off", choices=("off", "train", "hard"),
+                   help="Domain randomization profile (default off, matching the "
+                        "population runs)")
+    p.add_argument("--rl_device", default="cuda")
+    p.add_argument("--sapg_expl_coef", type=float, default=50.0,
+                   help="50.0 for SAPG checkpoints; negative means plain PPO. Wrong "
+                        "value shifts the obs vector by one slot, silently")
+    p.add_argument("--progress_every", type=int, default=250)
+    return p
+
+
+def main() -> None:
+    parser = build_parser()
+    AppLauncher.add_app_launcher_args(parser)
+    args = parser.parse_args()
+    args.headless = True
+
+    run_dir = Path(args.run_dir).resolve()
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Read the run's config BEFORE booting Kit -- a typo here should cost a
+    # second, not a two-minute Isaac Sim startup.
+    from genmech.eval import rl_player_utils  # noqa: F401  registers OmegaConf resolvers
+    from omegaconf import OmegaConf
+
+    run_cfg = OmegaConf.load(run_dir / ".hydra" / "config.yaml")
+    run_env = OmegaConf.to_container(run_cfg.env, resolve=True)
+
+    if _get_by_path(run_env, "assets.robot_population_seed") is None:
+        raise SystemExit(
+            f"{run_dir.name} is not a population run (robot_population_seed is None)."
+        )
+
+    run_count = int(_get_by_path(run_env, "assets.robot_population_count"))
+    num_envs_hint = args.num_envs or args.population_count or run_count
+
+    # RlPlayer reads cfg["train"], but a run's .hydra/config.yaml stores the same
+    # rl_games block under "agent". Rather than make the caller hand-assemble a
+    # file (and risk pairing a checkpoint with someone else's network shape),
+    # synthesise it from the run that produced the checkpoint.
+    policy_config = args.policy_config
+    if policy_config is None:
+        # Resolve against the WHOLE run config, not the agent block alone: the
+        # rl_games config interpolates back out to env (num_actors is
+        # ${....env.scene.num_envs}), so an agent-only save leaves a dangling key
+        # that only fails once RlPlayer reads it, minutes into a Kit boot.
+        resolved = OmegaConf.to_container(run_cfg, resolve=True)
+        agent = resolved["agent"]
+        # num_actors came from the training env count; this eval may use fewer.
+        agent["params"]["config"]["num_actors"] = num_envs_hint
+        policy_config = str(out_dir / "policy_config.yaml")
+        OmegaConf.save(OmegaConf.create({"train": agent}), policy_config)
+        print(f"[pop] synthesised policy config from {run_dir.name}/.hydra -> "
+              f"{policy_config}")
+
+    from genmech.eval.suites import DR_PROFILES, NOMINAL, resolve_overrides
+
+    # The eval protocol, minus its DR block, plus the requested profile.
+    protocol = {k: v for k, v in resolve_overrides(NOMINAL).items()
+                if not k.startswith("domain_randomization.")}
+    protocol.update(DR_PROFILES[args.dr])
+    protocol["termination.max_consecutive_successes"] = args.goals_per_episode
+
+    checkpoint = Path(args.checkpoint)
+    if not checkpoint.is_file():
+        raise SystemExit(f"checkpoint not found: {checkpoint}")
+    # Hashed now, not at the end: the training job that wrote it rotates
+    # checkpoints, and losing a finished eval to a deleted file is a bad trade.
+    checkpoint_sha = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+
+    t_boot = time.perf_counter()
+    app = AppLauncher(args).app
+
+    import numpy as np
+    import torch
+
+    import genmech.tasks  # noqa: F401
+    from genmech.eval.embodiments.object_pool import (
+        pool_index_for_env, reconstruct_pool,
+    )
+    from genmech.eval.rl_player import RlPlayer
+    from genmech.robots.generated.population import load_population
+    from genmech.tasks.pose_reach.env_multi import PoseReachMultiEnv
+    from genmech.tasks.pose_reach.env_multi_cfg import PoseReachMultiEnvCfg
+
+    cfg = PoseReachMultiEnvCfg()
+    for field in RUN_FIELDS:
+        try:
+            value = _get_by_path(run_env, field)
+        except (KeyError, AttributeError):
+            print(f"[pop] run config has no {field}; keeping the default")
+            continue
+        if isinstance(value, list):
+            value = tuple(value)
+        _set_by_path(cfg, field, value)
+
+    count = args.population_count or int(cfg.assets.robot_population_count)
+    num_envs = args.num_envs or count
+    if num_envs != count:
+        # Not fatal, but it breaks "env i is design i": designs would repeat or
+        # be dropped, and every per-design score below would be mislabelled.
+        raise SystemExit(
+            f"num_envs ({num_envs}) must equal population_count ({count}) so each "
+            "design gets exactly one env. Pass both to run a smaller subset."
+        )
+    cfg.assets.robot_population_count = count
+    cfg.scene.num_envs = num_envs
+
+    for key, value in protocol.items():
+        _set_by_path(cfg, key, value)
+
+    print(f"[pop] {count} designs, {num_envs} envs, {args.episodes} episodes each, "
+          f"{args.goals_per_episode} goals/episode, DR={args.dr}", flush=True)
+
+    env = PoseReachMultiEnv(cfg=cfg)
+    inner = env
+    inner._replay_target_lab_order = None
+    spec = inner.robot_spec
+    n_act = int(cfg.action_space)
+
+    player = RlPlayer(
+        num_observations=int(cfg.observation_space), num_actions=n_act,
+        config_path=policy_config, checkpoint_path=args.checkpoint,
+        device=args.rl_device,
+        sapg_expl_coef=args.sapg_expl_coef if args.sapg_expl_coef >= 0 else None,
+        num_envs=num_envs,
+    )
+    player.player.init_rnn()
+    boot_sec = time.perf_counter() - t_boot
+    print(f"[pop] obs {cfg.observation_space}, act {n_act}, boot {boot_sec:.0f}s",
+          flush=True)
+
+    # --- rollout ----------------------------------------------------------
+    dev = inner.device
+    N, E = num_envs, args.episodes
+    n_goals = args.goals_per_episode
+    max_steps = args.max_steps or (300 * n_goals * E)
+
+    obs, _ = env.reset()
+    obs, _, _, _, _ = env.step(torch.zeros((N, n_act), device=dev))
+
+    # Isaac Lab auto-resets a done env, so unlike run_eval (one trajectory per
+    # env) this keeps stepping and banks each episode as it lands. Envs that
+    # reach `episodes` are frozen out of the accounting but keep stepping --
+    # they share a physics scene and cannot be removed from it.
+    episodes_done = torch.zeros(N, dtype=torch.long, device=dev)
+    goals_per_ep = torch.zeros(N, E, dtype=torch.float32, device=dev)
+    lifted_eps = torch.zeros(N, dtype=torch.long, device=dev)
+    ever_lifted = torch.zeros(N, dtype=torch.bool, device=dev)
+    steps_per_ep = torch.zeros(N, E, dtype=torch.long, device=dev)
+    ep_step = torch.zeros(N, dtype=torch.long, device=dev)
+    term_complete = torch.zeros(N, dtype=torch.long, device=dev)
+    term_fall = torch.zeros(N, dtype=torch.long, device=dev)
+    term_timeout = torch.zeros(N, dtype=torch.long, device=dev)
+
+    t_roll = time.perf_counter()
+    steps_taken = 0
+    for step in range(max_steps):
+        policy_obs = obs["policy"].to(args.rl_device)
+        action = player.get_normalized_action(policy_obs, deterministic_actions=True)
+        obs, _rew, terminated, truncated, _ = env.step(action.to(dev))
+        steps_taken = step + 1
+
+        active = episodes_done < E
+        if not bool(active.any()):
+            break
+
+        ep_step = torch.where(active, ep_step + 1, ep_step)
+        ever_lifted |= active & inner._lifted_object.bool()
+
+        done_now = active & (terminated | truncated)
+        if bool(done_now.any()):
+            # step() has already reset those envs, so the episode's final count
+            # is in _prev_episode_successes, not _successes.
+            final = inner._prev_episode_successes.float()
+            idx = episodes_done.clamp(max=E - 1)
+            rows = done_now.nonzero(as_tuple=True)[0]
+            goals_per_ep[rows, idx[rows]] = final[rows]
+            steps_per_ep[rows, idx[rows]] = ep_step[rows]
+
+            complete = done_now & (final >= n_goals)
+            term_complete += complete.long()
+            term_fall += (done_now & ~complete & terminated).long()
+            term_timeout += (done_now & ~complete & truncated).long()
+
+            lifted_eps += (done_now & ever_lifted).long()
+            ever_lifted &= ~done_now
+            ep_step = torch.where(done_now, torch.zeros_like(ep_step), ep_step)
+            episodes_done += done_now.long()
+
+        if (step + 1) % args.progress_every == 0:
+            finished = int((episodes_done >= E).sum())
+            banked = episodes_done.clamp(max=E)
+            mean_so_far = float(
+                (goals_per_ep.sum(dim=1) / banked.clamp(min=1).float()).mean())
+            print(f"[pop] step {step + 1}/{max_steps}: {finished}/{N} designs done, "
+                  f"mean episodes {float(banked.float().mean()):.2f}/{E}, "
+                  f"running mean goals {mean_so_far:.2f}/{n_goals}", flush=True)
+
+    roll_sec = time.perf_counter() - t_roll
+    incomplete = int((episodes_done < E).sum())
+    if incomplete:
+        print(f"[pop] WARNING: {incomplete}/{N} designs banked fewer than {E} "
+              f"episodes within the {max_steps}-step cap; their means average "
+              f"fewer episodes and are noisier, not biased.", flush=True)
+
+    # --- per-design results ------------------------------------------------
+    banked = episodes_done.clamp(max=E)
+    ep_sum = goals_per_ep.sum(dim=1)
+    mean_goals = ep_sum / banked.clamp(min=1).float()
+    # Population std over the banked episodes, per design.
+    sq = (goals_per_ep ** 2).sum(dim=1)
+    var = (sq / banked.clamp(min=1).float()) - mean_goals ** 2
+    std_goals = var.clamp(min=0).sqrt()
+
+    ep_mask = (torch.arange(E, device=dev)[None, :] < banked[:, None])
+    full_rate = ((goals_per_ep >= n_goals) & ep_mask).sum(dim=1).float() / banked.clamp(min=1).float()
+    zero_rate = ((goals_per_ep <= 0) & ep_mask).sum(dim=1).float() / banked.clamp(min=1).float()
+
+    hands = load_population(int(cfg.assets.robot_population_seed))[:count]
+    pool = reconstruct_pool(
+        handle_head_types=tuple(cfg.assets.handle_head_types),
+        num_assets_per_type=int(cfg.assets.num_assets_per_type),
+        object_seed=int(cfg.assets.object_seed),
+        shuffle=bool(cfg.assets.shuffle_assets),
+        density_scale=float(cfg.assets.object_density_scale),
+    )
+    pool_size = len(pool)
+
+    design_index = inner._robot_design_index_per_env.cpu().numpy()
+    live_pool_index = inner._object_asset_index_per_env.cpu().numpy()
+
+    mg = mean_goals.cpu().numpy()
+    sg = std_goals.cpu().numpy()
+    bk = banked.cpu().numpy()
+    fr = full_rate.cpu().numpy()
+    zr = zero_rate.cpu().numpy()
+    le = lifted_eps.cpu().numpy()
+    gpe = goals_per_ep.cpu().numpy()
+    tc, tf, tt = (term_complete.cpu().numpy(), term_fall.cpu().numpy(),
+                  term_timeout.cpu().numpy())
+
+    rows = []
+    for e in range(N):
+        d_idx = int(design_index[e])
+        p_idx = int(live_pool_index[e])
+        expected = pool_index_for_env(e, pool_size)
+        if p_idx != expected:
+            raise RuntimeError(
+                f"env {e}: live object index {p_idx} != expected {expected}. The "
+                "env->pool rule changed; per-design object labels would be wrong.")
+        entry = pool[p_idx]
+        hand = hands[d_idx]
+        rows.append({
+            "env": e,
+            "design_index": d_idx,
+            "design": hand.name,
+            "n_active_fingers": hand.n_active_fingers,
+            "n_active_joints": hand.n_active_joints,
+            "pool_index": p_idx,
+            "object_type": entry.type,
+            "object_shape": entry.shape,
+            "episodes": int(bk[e]),
+            "mean_goals": float(mg[e]),
+            "std_goals": float(sg[e]),
+            "full_completion_rate": float(fr[e]),
+            "zero_goal_rate": float(zr[e]),
+            "lift_rate": float(le[e]) / max(1, int(bk[e])),
+            "goals_per_episode": [float(v) for v in gpe[e][:int(bk[e])]],
+            "term_complete": int(tc[e]),
+            "term_fall": int(tf[e]),
+            "term_timeout": int(tt[e]),
+        })
+
+    record = {
+        "schema_version": 1,
+        "kind": "population_eval",
+        "run_dir": str(run_dir),
+        "run_name": run_dir.name,
+        "population": {
+            "seed": int(cfg.assets.robot_population_seed),
+            "count": count,
+            "num_envs": num_envs,
+        },
+        "object_pool": {
+            "handle_head_types": list(cfg.assets.handle_head_types),
+            "num_assets_per_type": int(cfg.assets.num_assets_per_type),
+            "object_seed": int(cfg.assets.object_seed),
+            "pool_size": pool_size,
+            "assignment": "training pairing reproduced: env i holds design i, object i % pool_size",
+        },
+        "protocol": {
+            "episodes": E,
+            "goals_per_episode": n_goals,
+            "dr_profile": args.dr,
+            "max_steps": max_steps,
+            "steps_taken": steps_taken,
+            "designs_short_of_target_episodes": incomplete,
+            "overrides": {k: (list(v) if isinstance(v, tuple) else v)
+                          for k, v in protocol.items()},
+        },
+        "policy": {
+            "checkpoint": str(args.checkpoint),
+            "checkpoint_sha256": checkpoint_sha,
+            "config": str(policy_config),
+            "sapg_expl_coef": (args.sapg_expl_coef if args.sapg_expl_coef >= 0 else None),
+            "robot_spec_layout": spec.name,
+        },
+        "summary": {
+            "mean_goals": float(mg.mean()),
+            "median_goals": float(np.median(mg)),
+            "std_across_designs": float(mg.std()),
+            "best": max(rows, key=lambda r: r["mean_goals"])["design"],
+            "best_mean_goals": float(mg.max()),
+            "worst_mean_goals": float(mg.min()),
+            "designs_scoring_zero": int((mg <= 0).sum()),
+        },
+        "wall_clock": {"boot_sec": boot_sec, "rollout_sec": roll_sec},
+        "per_design": rows,
+    }
+
+    json_path = out_dir / "population_eval.json"
+    with open(json_path, "w") as f:
+        json.dump(record, f, indent=2)
+
+    csv_path = out_dir / "per_design.csv"
+    cols = ["design", "design_index", "n_active_fingers", "n_active_joints",
+            "pool_index", "object_type", "object_shape", "episodes", "mean_goals",
+            "std_goals", "full_completion_rate", "zero_goal_rate", "lift_rate"]
+    import csv as _csv
+    with open(csv_path, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+
+    _print_summary(record, rows, np)
+    print(f"\n[pop] wrote {json_path}")
+    print(f"[pop] wrote {csv_path}")
+
+    env.close()
+    del app
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
+
+
+def _print_summary(record, rows, np) -> None:
+    s = record["summary"]
+    n_goals = record["protocol"]["goals_per_episode"]
+    print(f"\n=== population eval: {len(rows)} designs x "
+          f"{record['protocol']['episodes']} episodes ===")
+    print(f"  mean goals across designs : {s['mean_goals']:.3f} / {n_goals}")
+    print(f"  median                    : {s['median_goals']:.3f}")
+    print(f"  spread across designs (sd): {s['std_across_designs']:.3f}")
+    print(f"  best / worst design mean  : {s['best_mean_goals']:.3f} / "
+          f"{s['worst_mean_goals']:.3f}")
+    print(f"  designs scoring exactly 0 : {s['designs_scoring_zero']}")
+
+    def _group(key):
+        buckets = {}
+        for r in rows:
+            buckets.setdefault(r[key], []).append(r["mean_goals"])
+        return {k: (len(v), float(np.mean(v))) for k, v in sorted(buckets.items())}
+
+    # The object confound, made visible: a design's score is partly its object's.
+    print("\n  by object type (score is partly the object's, not the design's):")
+    for k, (n, m) in sorted(_group("object_type").items(), key=lambda kv: -kv[1][1]):
+        print(f"    {k:12s} {n:6d} designs   mean {m:.3f}")
+    print("\n  by active finger count:")
+    for k, (n, m) in _group("n_active_fingers").items():
+        print(f"    {k} fingers    {n:6d} designs   mean {m:.3f}")
+
+    top = sorted(rows, key=lambda r: -r["mean_goals"])[:5]
+    print("\n  top 5 designs:")
+    for r in top:
+        print(f"    {r['design']}  {r['mean_goals']:6.3f} +- {r['std_goals']:.2f}  "
+              f"({r['n_active_fingers']}f/{r['n_active_joints']}j, "
+              f"{r['object_type']})")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,68 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=200000
+#SBATCH -t 12:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Score EVERY embodiment in a population on the object it trained against.
+#
+#   RUN_DIR=train_dir/gen_mechanics/multi_embodiment_control/mec_population24k_seed0_2026-08-17_15-13-28 \
+#   CKPT=$RUN_DIR/0_pose_reach_sapg/nn/0_pose_reach_sapg.pth \
+#   EPISODES=10 \
+#   sbatch experiments/eval_population.sub
+#
+# One Kit boot holds all 24,576 designs at once -- env i is design i with object
+# i % 1200, the training pairing exactly. That is why this is a single job and
+# not an array: splitting it would cost one ~6 min scene build per shard and
+# gain nothing, since diversity is free per step (docs/multi_embodiment.md §2).
+#
+# Budget: ~6 min setup, then up to 300 * goals * episodes steps at roughly 8
+# steps/s at 24,576 envs -- about an hour at the defaults, less because most
+# envs terminate before the per-episode cap.
+#
+# NOTE the checkpoint path includes the RUN NAME twice: <run>/0_pose_reach_sapg/nn/.
+# Pointing at <run>/nn/ silently ran a RANDOM policy before rl_player.py grew a
+# guard, because rl_games' restore is `if os.path.exists(fn)`.
+
+set -euo pipefail
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+RUN_DIR="${RUN_DIR:?set RUN_DIR to a population training run directory}"
+CKPT="${CKPT:?set CKPT to a checkpoint .pth}"
+EPISODES="${EPISODES:-10}"
+GOALS="${GOALS:-10}"
+DR="${DR:-off}"
+SAPG_EXPL_COEF="${SAPG_EXPL_COEF:-50.0}"
+TAG="${TAG:-$(date +%Y-%m-%d_%H-%M-%S)}"
+OUT_DIR="${OUT_DIR:-${REPO_ROOT}/results/population_eval/$(basename "$RUN_DIR")_${TAG}}"
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_popeval"
+mkdir -p "$OMNI_KIT_CACHE_PATH" "$OUT_DIR"
+
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
+    JobName="popeval_$(basename "$RUN_DIR")" || true
+exec > "${OUT_DIR}/eval.log" 2> "${OUT_DIR}/eval.err"
+
+echo "run_dir=$RUN_DIR"
+echo "ckpt=$CKPT"
+echo "episodes=$EPISODES goals=$GOALS dr=$DR out=$OUT_DIR"
+ls -la "$CKPT"
+
+python -u -m genmech.eval.embodiments.run_population_eval \
+    --run_dir "$RUN_DIR" \
+    --checkpoint "$CKPT" \
+    --episodes "$EPISODES" \
+    --goals_per_episode "$GOALS" \
+    --dr "$DR" \
+    --sapg_expl_coef "$SAPG_EXPL_COEF" \
+    --out "$OUT_DIR"

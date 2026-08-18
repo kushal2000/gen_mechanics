@@ -92,6 +92,15 @@ class RlPlayer:
             config["params"]["config"]["device"] = "cpu"
 
         if checkpoint_path is not None:
+            # rl_games' PpoPlayerContinuous.restore is `if os.path.exists(fn):`
+            # -- a path that does not exist is skipped in silence and the player
+            # keeps its RANDOM initialisation. Every downstream number then looks
+            # like a policy that cannot do the task, which is indistinguishable
+            # from a real result and has already cost one eval run. Fail here.
+            if not os.path.isfile(checkpoint_path):
+                raise FileNotFoundError(
+                    f"checkpoint not found: {checkpoint_path}. rl_games would "
+                    "silently run with random weights, so this is fatal.")
             config["load_path"] = checkpoint_path
         runner = Runner()
         runner.load(config)
