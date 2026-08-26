@@ -1,0 +1,21 @@
+PER-FINGER FACTORS
+    kinematics (lengths x dofs)           86     6.4 bits
+    x couplings (avg per kin)           15.7     4.0 bits
+    x splay values                         3     1.6 bits
+    = distinct finger designs          4,047    12.0 bits
+
+TOTAL HANDS  (3 choose 2)*N^2 + N^3 = 66,331,746,450
+    2-finger              49,134,627
+    3-finger          66,282,611,823   <- dominates
+
+The exponent is the story: independent fingers cube the per-finger count.
+Shrinking a per-finger factor by k shrinks the total by ~k^3.
+
+OPTION                                                 total hands    vs now
+(current)                                           66,331,746,450      1.0x
+splay 30 deg steps (3 values)                       66,331,746,450      1.0x
+splay fixed at 0 (1 value)                           2,460,370,952     27.0x
+max 2 actuators per finger                           8,767,296,144      7.6x
+at most 1 rigid pair per finger                     43,391,550,204      1.5x
+no cross-DOF rigid pairs (FE-FE, AA-AA only)        16,367,709,204      4.1x
+max 2 links per finger                                 342,997,902    193.4x

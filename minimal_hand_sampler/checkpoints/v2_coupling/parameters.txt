@@ -1,0 +1,10 @@
+palm             (25, 60, 60) mm
+faces            ('+z', '+y', '-y')
+finger length    100 mm, min link 30 mm, quantum 10 mm
+capsule radius   10 mm
+splay            [-30, 0, 30] deg
+FE limit         [-10, 120] deg
+AA limit         [-20, 20] deg
+max actuators    3
+max passive      3
+passive home     mid-range (FE +55, AA 0)
