@@ -1,0 +1,72 @@
+4000 hands / 10012 fingers, seed 0
+
+n_fingers per hand
+  sampler: uniform over (2, 3). Uniform-over-designs would be ~99.97% 3-finger,
+  since 3-finger hands outnumber 2-finger by ~3,000x. Balance is the deliberate choice here.
+    value                    sampled
+    2                          49.7%
+    3                          50.3%
+
+faces used
+  should be uniform over the 3 pairs when n=2, and the single triple when n=3
+    value                    sampled
+    ('+y', '+z')               16.1%
+    ('+y', '+z', '-y')         50.3%
+    ('+y', '-y')               15.9%
+    ('+z', '-y')               17.6%
+
+n_links per finger
+  sampler: rng.randint(1, 3), i.e. uniform over COMPLEXITY LEVEL
+    value                    sampled  of space    ratio
+    1                          33.4%      0.2%   150.14
+    2                          33.3%     17.0%     1.95
+    3                          33.3%     82.7%     0.40
+
+n_joints per finger
+    value                    sampled  of space    ratio
+    1                          16.8%      0.1%   226.76
+    2                          27.9%      2.4%    11.74
+    3                          24.0%     14.0%     1.71
+    4                          20.3%     34.2%     0.59
+    5                           9.2%     36.0%     0.25
+    6                           1.8%     13.3%     0.14
+
+n_actuators per finger
+    value                    sampled
+    1                          43.1%
+    2                          39.2%
+    3                          17.6%
+
+passive joints per finger
+  sampler draws the COUNT uniformly (capped at 3); the space is Binomial-shaped
+    value                    sampled  of space    ratio
+    0                          57.8%     20.5%     2.82
+    1                          31.9%     43.9%     0.73
+    2                           8.7%     29.4%     0.30
+    3                           1.6%      6.2%     0.26
+
+rigid pairs per finger
+  sampler: uniform over matchings
+    value                    sampled  of space    ratio
+    0                          52.3%     29.9%     1.75
+    1                          41.4%     56.9%     0.73
+    2                           6.4%     13.2%     0.48
+
+joint role mix
+    value                    sampled
+    independent                42.6%
+    passive                    19.1%
+    rigid                      38.3%
+
+splay, 15-degree buckets
+  uniform on [-45, 45) by construction
+    value                    sampled
+    -30                        33.7%
+    0                          33.7%
+    15                         32.6%
+
+SUMMARY
+    mean joints per finger    sampled 2.83   of space 4.44
+    mean actuators per finger sampled 1.75
+    The sampler leans SIMPLE on every axis at once: fewer joints,
+    fewer passive, fewer rigid pairs. Those biases compound.
