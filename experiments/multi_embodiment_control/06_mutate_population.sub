@@ -1,0 +1,72 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=2
+#SBATCH --get-user-env
+#SBATCH --mem=24000
+#SBATCH -t 2:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Mutate a parent population, one operator per child, INDEX ALIGNED.
+#
+# Child i of every operator manifest is the mutant of parent i, so when a mutant
+# manifest is evaluated child i lands in env i and holds object i % pool_size --
+# the SAME object parent i held. child_i - parent_i is therefore paired
+# within-parent AND within-object, which cancels the largest confound in the
+# population study rather than averaging over it.
+#
+# No GPU: mutation is parameter arithmetic plus the analytic capsule gate, and
+# the flexion re-alignment which parses a URDF with yourdfpy. ~95 ms/child.
+#
+#   sbatch --array=0-49 experiments/multi_embodiment_control/06_mutate_population.sub
+#
+# Task t -> operator t/10, shard t%10. Then merge each operator:
+#   OPERATOR=palm MODE=merge sbatch experiments/multi_embodiment_control/06_mutate_population.sub
+
+set -uo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+PY="${REPO_ROOT}/.venv_isaacsim/bin/python"
+
+PARENTS="${PARENTS:-${REPO_ROOT}/assets/urdf/generated/population/seed_0003/manifest.json}"
+OUT_ROOT="${OUT_ROOT:-${REPO_ROOT}/assets/urdf/generated/population/seed_0003/mutants}"
+ALPHA="${ALPHA:-0.1}"
+SEED="${SEED:-1}"
+NUM_SHARDS="${NUM_SHARDS:-10}"
+MODE="${MODE:-mutate}"
+
+OPS=(palm scale mounting num_joints_up num_joints_down)
+
+if [ "$MODE" = "merge" ]; then
+    OP="${OPERATOR:?set OPERATOR to merge}"
+    OUT="${OUT_ROOT}/${OP}"
+    mkdir -p "$OUT"
+    exec > "${OUT}/merge.log" 2>&1
+    cd "$REPO_ROOT"
+    "$PY" -m genmech.robots.generated.mutate --parents "$PARENTS" \
+        --operator merge --out "$OUT" --num_shards "$NUM_SHARDS"
+    echo "exit: $?"
+    exit 0
+fi
+
+TASK="${SLURM_ARRAY_TASK_ID:?run with --array=0-$(( ${#OPS[@]} * NUM_SHARDS - 1 ))}"
+OP="${OPS[$(( TASK / NUM_SHARDS ))]}"
+SHARD=$(( TASK % NUM_SHARDS ))
+OUT="${OUT_ROOT}/${OP}"
+mkdir -p "$OUT"
+
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="${SLURM_JOB_ID}" \
+    JobName="mut_${OP}_s${SHARD}" || true
+exec > "${OUT}/shard_${SHARD}.log" 2>&1
+
+cd "$REPO_ROOT"
+echo "operator=$OP shard=$SHARD/$NUM_SHARDS alpha=$ALPHA seed=$SEED"
+echo "parents=$PARENTS"
+date
+OMNI_KIT_ACCEPT_EULA=YES "$PY" -m genmech.robots.generated.mutate \
+    --parents "$PARENTS" --operator "$OP" --alpha "$ALPHA" \
+    --out "$OUT" --seed "$SEED" --shard "$SHARD" --num_shards "$NUM_SHARDS"
+echo "exit: $?"
+date
