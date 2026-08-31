@@ -1,4 +1,4 @@
-# minimal_hand_sampler
+# hand_sampler.minimal
 
 A small, fully-enumerable design space of multi-fingered hands, plus a browser
 viewer and a PNG renderer.
@@ -11,32 +11,39 @@ produces kinematics, joint roles and geometry; physics is somebody else's job.
 Standalone: numpy, trimesh, viser, matplotlib. No Isaac Sim, no URDF build, no
 yourdfpy.
 
+Runs in the repo venv like the rest of `hand_sampler` — numpy, trimesh, viser
+and matplotlib are all it needs, and it imports no simulator.
+
 ```bash
-PY=/opt/homebrew/Caskroom/miniforge/base/envs/handdim/bin/python
+PY=.venv_isaacsim/bin/python
 ```
+
+Not a drop-in replacement for `hand_sampler/params.py`: it emits no URDF and no
+`RobotSpec`, so nothing on the Isaac path reads it yet. See `__init__.py` for
+what a swap would additionally require.
 
 Interactive viewer on http://localhost:8080 :
 
 ```bash
-$PY viewer.py
+$PY hand_sampler/minimal/viewer.py
 ```
 
 Still PNGs, no browser needed:
 
 ```bash
-$PY preview.py --seed 0 --count 6 --flex 55 --out preview.png
+$PY hand_sampler/minimal/preview.py --seed 0 --count 6 --flex 55 --out preview.png
 ```
 
 Design-space size and what would shrink it:
 
 ```bash
-$PY space_size.py
+$PY hand_sampler/minimal/space_size.py
 ```
 
 What the sampler favours, dimension by dimension:
 
 ```bash
-$PY audit_sampling.py --count 4000
+$PY hand_sampler/minimal/audit_sampling.py --count 4000
 ```
 
 ---

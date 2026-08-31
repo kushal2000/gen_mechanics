@@ -29,7 +29,7 @@ import numpy as np
 import trimesh
 import viser
 
-import sampler as S
+from hand_sampler.minimal import sampler as S
 
 PALM_COLOR = (205, 209, 216)
 LINK_COLOR = (168, 176, 188)

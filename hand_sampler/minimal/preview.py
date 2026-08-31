@@ -15,7 +15,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-import sampler as S  # noqa: E402
+from hand_sampler.minimal import sampler as S  # noqa: E402
 
 FACE_COLOR = {"+z": "#e87a54", "+y": "#56a0d6", "-y": "#96c86e"}
 

@@ -21,7 +21,7 @@ import math
 import random
 from collections import Counter
 
-import sampler as S
+from hand_sampler.minimal import sampler as S
 
 
 def pct(c: Counter) -> dict:

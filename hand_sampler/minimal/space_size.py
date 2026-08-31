@@ -6,7 +6,7 @@ The space is now fully discrete, so every number here is exact.
 """
 from math import comb, log2
 
-import sampler as S
+from hand_sampler.minimal import sampler as S
 
 kin = S.enumerate_fingers()
 n_kin = len(kin)

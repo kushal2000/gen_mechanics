@@ -44,6 +44,7 @@ hand_sampler/        the generated-hand design space -- PURE PYTHON, no Isaac
   synth_spec.py        hand params -> RobotSpec, mounted on the iiwa14
   urdf.py              the URDF backend; inertia.py, flexion.py, spec.py
   gates/               capsule.py (analytic) and mesh.py self-collision gates
+  minimal/             a discrete, fully-enumerable successor design space
   workspace.py         table + goal-volume geometry shared by the viewers
   *_viewer.py          design-space, grammar and mutation viser viewers
 isaacsimenvs/        everything that touches Isaac Sim
