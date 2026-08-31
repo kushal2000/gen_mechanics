@@ -7,7 +7,7 @@ default, so a variant is a prefix rather than an edited file.
 
 ```bash
 sbatch experiments/train_single_embodiment_sharpa.sub
-SEED=1 MAX_EPOCHS=20000 sbatch experiments/train_single_embodiment_sharpa.sub
+SEED=1 NUM_ENVS=8192 sbatch experiments/train_single_embodiment_sharpa.sub
 ```
 
 ## Ask for the minimum you need
@@ -43,13 +43,20 @@ A6000s are plentiful *outside* `portal` (many nodes on `default_partition`
 carry 8-10 of them). If `portal` is congested, that is where the short queue
 is — at the cost of the slower card.
 
-## Make the run end on epochs, not on the clock
+## Runs are time-bound
 
-`MAX_EPOCHS` ends the run; SBATCH `-t` is only a safety ceiling. This is the
-one mistake here that fails *silently*: a hand that simulates faster collects
-more gradient steps inside the same wall clock, which is indistinguishable in
-the results from it being better hardware. Everything else in a bad submit
-script fails loudly.
+`SBATCH -t` is the budget — the reference script sets no `max_epochs`, and the
+config's default of 1,000,000 never fires. The run trains until SLURM stops it.
+
+`save_frequency: 3000` means a kill costs at most one checkpoint interval
+(~2.3 h at the measured ~2.8 s/epoch), so pick `-t` for how long you want to
+train, not for when you expect convergence.
+
+One case still needs an epoch cap: comparing *two different hands* head to
+head. The hand that simulates faster collects more gradient steps in the same
+wall clock, which is indistinguishable in the results from it being better
+hardware. That does not apply to a single morphology-conditioned policy, where
+every design shares one run.
 
 ---
 
