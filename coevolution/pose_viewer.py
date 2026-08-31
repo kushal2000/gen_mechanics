@@ -386,13 +386,6 @@ class PoseViewerWrapper(gym.Wrapper):
         self._step = 0
         self._capture_index = 0
         self._frames: list[dict[str, Any]] | None = []
-        # Per-capture buffers of (C, H, W) student-camera frames (numpy, [0, 1] floats).
-        # _depth_frames is the policy's actual input (noise-on path).
-        # _depth_frames_clean is the same view without depth augmentation,
-        # useful for A/B-comparing the noise pipeline on the same camera pose.
-        # Both stay empty when the env doesn't expose `get_student_obs`.
-        self._depth_frames: list = []
-        self._depth_frames_clean: list = []
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         print(
@@ -408,59 +401,14 @@ class PoseViewerWrapper(gym.Wrapper):
 
         if self._frames is None and self.capture_interval > 0 and self._step % self.capture_interval == 0:
             self._frames = []
-            self._depth_frames = []
-            self._depth_frames_clean = []
 
         if self._frames is not None:
             self._frames.append(capture_pose_viewer_frame(self.env.unwrapped, self.env_id))
-            depth_frame = self._capture_student_image()
-            if depth_frame is not None:
-                self._depth_frames.append(depth_frame)
-            clean_frame = self._capture_student_image_clean()
-            if clean_frame is not None:
-                self._depth_frames_clean.append(clean_frame)
             if len(self._frames) >= self.capture_len:
                 self._finalize_capture()
 
         return result
 
-    def _capture_student_image(self):
-        """Pull the env_id slice of the student's input image, if the env exposes one.
-
-        Returns a (C, H, W) numpy array in [0, 1] (depth after env-side
-        ``window_normalize`` preproc), or ``None`` when student_obs isn't
-        configured. Called once per pose-viewer-captured step, so cost is
-        capped at one extra `get_student_obs()` per (capture_len * frequency).
-        """
-        inner = self.env.unwrapped
-        if not hasattr(inner, "get_student_obs"):
-            return None
-        try:
-            student_obs = inner.get_student_obs()
-        except Exception as exc:
-            print(f"[pose_viewer] get_student_obs failed: {exc}", flush=True)
-            return None
-        image = student_obs.get("image") if isinstance(student_obs, dict) else None
-        if image is None:
-            return None
-        return image[self.env_id].detach().cpu().numpy()
-
-    def _capture_student_image_clean(self):
-        """Same env_id slice as the noisy capture, but with depth noise bypassed.
-
-        Reads the post-preprocess, post-crop tensor stashed by
-        `scene_utils.read_student_camera_image` so the two videos differ
-        ONLY in whether `_apply_depth_noise` was applied. When
-        `use_depth_aug=False` this equals the noisy capture.
-
-        Returns a (1, H, W) numpy array in [0, 1], or `None` when the env
-        hasn't run a depth read yet.
-        """
-        inner = self.env.unwrapped
-        clean = getattr(inner, "_last_student_image_clean", None)
-        if clean is None:
-            return None
-        return clean[self.env_id].detach().cpu().numpy()
 
     def close(self) -> None:
         if self._frames:
@@ -494,8 +442,6 @@ class PoseViewerWrapper(gym.Wrapper):
 
         self._capture_index += 1
         self._frames = None
-        self._depth_frames = []
-        self._depth_frames_clean = []
 
     def _log_wandb(self, html_text: str) -> None:
         try:
@@ -512,26 +458,3 @@ class PoseViewerWrapper(gym.Wrapper):
         except Exception as exc:
             print(f"[pose_viewer] WandB log failed: {exc}", flush=True)
 
-        if not self._depth_frames and not self._depth_frames_clean:
-            return
-
-        import numpy as np
-
-        def _to_uint8_grayscale_rgb(frames: list) -> np.ndarray:
-            video = np.stack(frames, axis=0)                        # (T, C, H, W) float in [0, 1]
-            video = (np.clip(video, 0.0, 1.0) * 255.0).astype(np.uint8)
-            if video.shape[1] == 1:
-                video = np.repeat(video, 3, axis=1)                 # (T, 3, H, W) for wandb.Video single-video tiling
-            return video
-
-        for label, frames in (("depth", self._depth_frames), ("depth_clean", self._depth_frames_clean)):
-            if not frames:
-                continue
-            try:
-                video = _to_uint8_grayscale_rgb(frames)
-                key = f"{self.wandb_key}_{label}"
-                wandb.log({key: wandb.Video(video, fps=30, format="mp4")})
-                print(f"[pose_viewer] logged WandB Video key={key} "
-                      f"shape={video.shape} dtype={video.dtype}", flush=True)
-            except Exception as exc:
-                print(f"[pose_viewer] WandB {label} video log failed: {exc}", flush=True)

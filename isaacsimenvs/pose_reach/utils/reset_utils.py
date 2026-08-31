@@ -520,9 +520,6 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     env._action_queue[env_ids] = 0.0
     env._obs_queue[env_ids] = 0.0
     env._object_state_queue[env_ids] = 0.0
-    for queue_name in ("_student_camera_queue", "_student_obs_queue"):
-        if hasattr(env, queue_name):
-            getattr(env, queue_name)[env_ids] = 0.0
     env._object_forces[env_ids] = 0.0
     env._object_torques[env_ids] = 0.0
 
@@ -537,10 +534,6 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     env._object_scale_multiplier[env_ids] = torch.empty(
         n, 3, device=env.device
     ).uniform_(lo, hi)
-
-    # Camera pose randomization (no-op when cfg.student_obs.use_camera_pose_rand is False).
-    from .scene_utils import _apply_camera_pose_rand_at_reset
-    _apply_camera_pose_rand_at_reset(env, env_ids)
 
 
 __all__ = [

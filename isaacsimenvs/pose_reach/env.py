@@ -19,7 +19,6 @@ from .utils.action_utils import apply_action_pipeline, apply_wrench_dr
 from .utils.logging_utils import log_step_metrics
 from .utils.obs_utils import (
     build_observations,
-    build_student_observations,
     compute_intermediate_values,
     compute_obs_dim,
 )
@@ -130,6 +129,3 @@ class PoseReachEnv(DirectRLEnv):
     def _get_observations(self) -> dict[str, torch.Tensor]:
         return build_observations(self)
 
-    def get_student_obs(self) -> dict[str, torch.Tensor]:
-        """Return opt-in student observations for distillation code."""
-        return build_student_observations(self)
