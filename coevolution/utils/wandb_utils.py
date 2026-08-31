@@ -35,6 +35,19 @@ def _retry(times: int, exceptions: tuple):
     return decorator
 
 
+# Directories log_code must not walk: build outputs, vendored code and assets.
+# wandb 0.28 accepts exclude_fn as (path) or (path, root); accept both.
+_LOGCODE_SKIP = frozenset({
+    "train_dir", "wandb", "third_party", "assets", "debug_outputs",
+    "outputs", "results", ".venv_isaacsim", "__pycache__", ".git", ".claude",
+})
+
+
+def _logcode_exclude(path: str, root: str = "") -> bool:
+    rel = os.path.relpath(path, root) if root else path
+    return any(part in _LOGCODE_SKIP for part in rel.split(os.sep))
+
+
 class WandbAlgoObserver(AlgoObserver):
     """Initialize wandb before rl_games' summary writer so sync_tensorboard works."""
 
@@ -57,10 +70,14 @@ class WandbAlgoObserver(AlgoObserver):
 
         cfg = self.cfg
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        # Default log_code scope is the genmech package; the full repo is
-        # 19 GB and `wandb.run.log_code` walks every file (slow init). Override
-        # via `wandb_logcode_dir=<path>` to point elsewhere, or `=''` unchanged.
-        default_logcode_dir = os.path.join(repo_root, "genmech")
+        # Default log_code scope is the repo root minus the heavy directories.
+        # It used to be the genmech package, which the three-way split deleted --
+        # log_code was then pointed at a path that does not exist. The source now
+        # spans hand_sampler/, isaacsimenvs/ and coevolution/, and log_code takes
+        # a single root, so the root is the repo with an exclude list: train_dir
+        # alone is 45 GB and walking it dominated init. Override via
+        # `wandb_logcode_dir=<path>`.
+        default_logcode_dir = repo_root
         logcode_dir = cfg.wandb_logcode_dir if cfg.wandb_logcode_dir else default_logcode_dir
 
         @_retry(3, (Exception,))
@@ -77,7 +94,7 @@ class WandbAlgoObserver(AlgoObserver):
                 resume=True,
                 settings=wandb.Settings(start_method="fork"),
             )
-            wandb.run.log_code(root=logcode_dir)
+            wandb.run.log_code(root=logcode_dir, exclude_fn=_logcode_exclude)
             print(f"[Wandb] run dir: {wandb.run.dir} (log_code root: {logcode_dir})")
 
         print("[Wandb] initializing...")
