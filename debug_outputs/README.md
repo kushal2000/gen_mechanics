@@ -22,10 +22,10 @@ train_dir/<project>/<group>/<run>/
   nn/  summaries/             checkpoints and tensorboard
 ```
 
-`train_logs/` holds only the bootstrap logs. SLURM evaluates `#SBATCH -o`
-before the job runs, so it cannot expand a run directory built from a
-timestamp; those first lines have to land at a fixed path. The script
-re-points stdout/stderr into the run directory as soon as it exists, so a
-bootstrap file with more than a couple of lines in it means the job died
-early — a rejected `NUM_ENVS`, a failed venv activate — and that file is where
-the error is.
+`train_logs/` holds only `bootstrap_<jobid>.{out,err}`, and those are worth
+keeping despite being empty on a healthy run. `#SBATCH -o` is evaluated before
+the job starts, so it cannot name a run directory built from a timestamp — and
+`slurmstepd` keeps writing to it after the script exits. **An OOM kill or a
+time-limit cancellation is reported only there.** Of 35 runs logged under the
+previous scheme, which pointed `-o` at `/dev/null`, not one recorded why it
+ended.
