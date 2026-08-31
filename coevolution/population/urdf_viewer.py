@@ -29,7 +29,7 @@ import time
 import traceback
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 NAMED_SPECS = ("sharpa_iiwa14", "allegro_iiwa14", "gen_sharpa_like")
 

@@ -42,7 +42,7 @@ from coevolution.population.object_pool import (
     type_counts,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ASSIGNMENT_DIR = REPO_ROOT / "genmech" / "eval" / "embodiments" / "assignments"
 
 SCHEMA_VERSION = 1

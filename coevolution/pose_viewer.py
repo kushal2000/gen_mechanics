@@ -21,7 +21,7 @@ from coevolution.interactive_viewer import create_html, make_embedded_robot, mak
 
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 # Must serve THIS repo's assets: the generated Allegro URDF and its mirrored
 # meshes exist nowhere upstream, so pointing at simtoolreal renders a non-SHARPA
 # robot as nothing at all.

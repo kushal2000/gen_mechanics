@@ -29,7 +29,7 @@ import gymnasium as gym
 __all__ = ["PoseReachEnv", "PoseReachEnvCfg",
            "PoseReachMultiEnv", "PoseReachMultiEnvCfg"]
 
-_CFG_DIR = Path(__file__).resolve().parents[2] / "cfg"
+_CFG_DIR = Path(__file__).resolve().parents[2] / "coevolution" / "cfg"
 
 gym.register(
     id="GenMech-PoseReach-Direct-v0",

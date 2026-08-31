@@ -39,7 +39,7 @@ import traceback
 from multiprocessing.connection import Listener
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PYTHON = str(REPO_ROOT / ".venv_isaacsim" / "bin" / "python")
 
 TABLE_DIMS = (0.475, 0.4, 0.3)
