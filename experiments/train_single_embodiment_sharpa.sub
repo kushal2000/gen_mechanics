@@ -11,8 +11,9 @@
 # SLURM expands only its own tokens here (%j = job id) -- it cannot see $RUN_DIR,
 # which is built from a timestamp inside the script. So this is a BOOTSTRAP log
 # that catches anything failing before the run is named; the script re-points
-# stdout/stderr into RUN_DIR as soon as it exists. A bootstrap file with content
-# past the first few lines means the job died early.
+# stdout/stderr into RUN_DIR as soon as it exists. Nothing above that redirect
+# prints on success, so an EMPTY bootstrap file is the healthy case and any
+# content in one is the error that killed the job before it was named.
 #SBATCH -o /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/bootstrap_%j.out
 #SBATCH -e /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/bootstrap_%j.err
 
