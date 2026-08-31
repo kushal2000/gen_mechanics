@@ -80,6 +80,52 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sapg_expl_coef", type=float, default=50.0,
                    help="50.0 for SAPG checkpoints; negative means plain PPO. Wrong "
                         "value shifts the obs vector by one slot, silently")
+    p.add_argument("--population_path", default=None,
+                   help="Evaluate a DIFFERENT population under this run's policy "
+                        "and protocol: a directory holding manifest.json. Takes "
+                        "precedence over the run's robot_population_seed. Used to "
+                        "score mutant populations, whose designs are index-aligned "
+                        "to the parents' -- child i sits in env i and therefore "
+                        "holds object i % pool_size, the same object parent i had, "
+                        "so child-minus-parent is paired within-object.")
+    p.add_argument("--condition", default=None,
+                   help="A committed EvalCondition id, 'axis/name' (see "
+                        "genmech/eval/suites.py). Its overrides are applied ON TOP "
+                        "of --dr, so the condition wins on any field it names. Use "
+                        "with --dr off: the dr_knob conditions pin every DR field "
+                        "explicitly, so nothing falls back to a configclass "
+                        "default that the training run never used.")
+    p.add_argument("--record_value", action="store_true",
+                   help="Also record the critic's mean V(s) per design. Free: the "
+                        "action forward pass already computes it. Lets us ask "
+                        "whether the value function agrees with measured "
+                        "performance -- i.e. whether the policy KNOWS which "
+                        "designs are good, which would be a fitness estimate "
+                        "costing one forward pass instead of a rollout.")
+    p.add_argument("--snapshot_every", type=int, default=0,
+                   help="Record cumulative goals every N steps (0 = off). Turns "
+                        "one run into a measurement at EVERY budget up to "
+                        "step_budget: two runs differing only in --env_seed then "
+                        "give the reliability-vs-budget curve from one pair of "
+                        "jobs, instead of one job per budget.")
+    p.add_argument("--env_seed", type=int, default=None,
+                   help="Pins DirectRLEnvCfg.seed, which seeds the ROLLOUT: the "
+                        "object's random spawn orientation and the goal sequences. "
+                        "Everything else is unaffected -- the object pool carries "
+                        "its own np.random.seed(object_seed), and the design->env "
+                        "map is index arithmetic. So two runs differing only in "
+                        "this are independent replicates of the same measurement, "
+                        "which is how you measure the reliability ceiling instead "
+                        "of modelling it.")
+    p.add_argument("--step_budget", type=int, default=0,
+                   help="THROUGHPUT MODE. >0 runs exactly this many steps and "
+                        "scores each design by TOTAL goals hit in them, across "
+                        "however many episodes it gets. No design is frozen out "
+                        "early, so every design receives an identical step "
+                        "budget and the number is a rate, not a per-episode "
+                        "average. Also splits the budget in half and records "
+                        "each half, so split-half reliability of the metric is "
+                        "computable without a second run.")
     p.add_argument("--progress_every", type=int, default=250)
     return p
 
@@ -124,6 +170,15 @@ def main() -> None:
               f"{policy_config}")
 
     protocol = eval_protocol(args.dr, args.goals_per_episode, args.success_tolerance)
+    condition_note = None
+    if args.condition:
+        from genmech.eval.suites import condition_by_id
+        cond = condition_by_id(args.condition)
+        condition_note = cond.note
+        # After the DR profile, so the condition is authoritative on every field
+        # it names and merely inherits the rest.
+        protocol.update(cond.overrides)
+        print(f"[pop] condition {cond.id}: {cond.note}")
 
     checkpoint = Path(args.checkpoint)
     if not checkpoint.is_file():
@@ -161,6 +216,13 @@ def main() -> None:
         )
     cfg.assets.robot_population_count = count
     cfg.scene.num_envs = num_envs
+    if args.env_seed is not None:
+        cfg.seed = int(args.env_seed)
+        print(f"[pop] env seed pinned to {cfg.seed}")
+    if args.population_path:
+        # Set AFTER apply_run_fields so it wins over whatever the run carried.
+        cfg.assets.robot_population_path = str(Path(args.population_path).resolve())
+        print(f"[pop] population overridden: {cfg.assets.robot_population_path}")
 
     for key, value in protocol.items():
         set_by_path(cfg, key, value)
@@ -193,6 +255,14 @@ def main() -> None:
     N, E = num_envs, args.episodes
     n_goals = args.goals_per_episode
     max_steps = args.max_steps or (300 * n_goals * E)
+    budget_mode = args.step_budget > 0
+    if budget_mode:
+        max_steps = int(args.step_budget)
+        # The per-episode matrices are sized for a target episode count that
+        # throughput mode does not have. A design that fails instantly banks
+        # many short episodes, so size generously and say so if it overflows --
+        # the scalar totals below are unaffected either way.
+        E = max(E, 256)
 
     obs, _ = env.reset()
     obs, _, _, _, _ = env.step(torch.zeros((N, n_act), device=dev))
@@ -207,6 +277,16 @@ def main() -> None:
     ever_lifted = torch.zeros(N, dtype=torch.bool, device=dev)
     steps_per_ep = torch.zeros(N, E, dtype=torch.long, device=dev)
     ep_step = torch.zeros(N, dtype=torch.long, device=dev)
+    # Throughput accounting, independent of the per-episode matrices: goals from
+    # episodes that have ENDED. The in-flight episode's goals live in
+    # inner._successes and are added when the budget runs out.
+    banked_goals = torch.zeros(N, dtype=torch.float32, device=dev)
+    value_sum = torch.zeros(N, dtype=torch.float64, device=dev)
+    value_n = 0
+    half_goals = torch.zeros(N, dtype=torch.float32, device=dev)
+    half_step = max_steps // 2
+    snap_every = int(args.snapshot_every)
+    snaps: list[tuple[int, "torch.Tensor"]] = []
     term_complete = torch.zeros(N, dtype=torch.long, device=dev)
     term_fall = torch.zeros(N, dtype=torch.long, device=dev)
     term_timeout = torch.zeros(N, dtype=torch.long, device=dev)
@@ -215,11 +295,21 @@ def main() -> None:
     steps_taken = 0
     for step in range(max_steps):
         policy_obs = obs["policy"].to(args.rl_device)
-        action = player.get_normalized_action(policy_obs, deterministic_actions=True)
+        if args.record_value:
+            action, values = player.get_action_and_value(
+                policy_obs, deterministic_actions=True)
+            value_sum += values.double().to(dev)
+            value_n += 1
+        else:
+            action = player.get_normalized_action(policy_obs, deterministic_actions=True)
         obs, _rew, terminated, truncated, _ = env.step(action.to(dev))
         steps_taken = step + 1
 
-        active = episodes_done < E
+        # Throughput mode gives every design the same step budget, so nothing
+        # is frozen out: a design that finishes its episodes early keeps going
+        # and keeps scoring, which is the whole point of a rate.
+        active = (torch.ones_like(episodes_done, dtype=torch.bool) if budget_mode
+                  else episodes_done < E)
         if not bool(active.any()):
             break
 
@@ -233,6 +323,7 @@ def main() -> None:
             final = inner._prev_episode_successes.float()
             idx = episodes_done.clamp(max=E - 1)
             rows = done_now.nonzero(as_tuple=True)[0]
+            banked_goals[rows] += final[rows]
             goals_per_ep[rows, idx[rows]] = final[rows]
             steps_per_ep[rows, idx[rows]] = ep_step[rows]
 
@@ -246,6 +337,16 @@ def main() -> None:
             ep_step = torch.where(done_now, torch.zeros_like(ep_step), ep_step)
             episodes_done += done_now.long()
 
+        if budget_mode and (step + 1) == half_step:
+            half_goals = banked_goals + inner._successes.float()
+
+        if snap_every and (step + 1) % snap_every == 0:
+            # Cumulative, including the in-flight episode -- those goals were
+            # really scored inside the budget, and dropping them would penalise
+            # exactly the designs still going when the snapshot lands.
+            snaps.append((step + 1,
+                          (banked_goals + inner._successes.float()).cpu().clone()))
+
         if (step + 1) % args.progress_every == 0:
             finished = int((episodes_done >= E).sum())
             banked = episodes_done.clamp(max=E)
@@ -256,7 +357,18 @@ def main() -> None:
                   f"running mean goals {mean_so_far:.2f}/{n_goals}", flush=True)
 
     roll_sec = time.perf_counter() - t_roll
-    incomplete = int((episodes_done < E).sum())
+    # The final, unfinished episode counts: its goals were really hit inside the
+    # budget, and dropping them would penalise exactly the designs that were
+    # still going when time ran out.
+    total_goals = banked_goals + inner._successes.float()
+    second_half_goals = total_goals - half_goals
+    if budget_mode:
+        over = int((episodes_done > E).sum())
+        if over:
+            print(f"[pop] NOTE: {over}/{N} designs banked more than {E} episodes; "
+                  f"their per-episode columns saturate. Totals are exact.",
+                  flush=True)
+    incomplete = 0 if budget_mode else int((episodes_done < E).sum())
     if incomplete:
         print(f"[pop] WARNING: {incomplete}/{N} designs banked fewer than {E} "
               f"episodes within the {max_steps}-step cap; their means average "
@@ -297,6 +409,12 @@ def main() -> None:
     gpe = goals_per_ep.cpu().numpy()
     tc, tf, tt = (term_complete.cpu().numpy(), term_fall.cpu().numpy(),
                   term_timeout.cpu().numpy())
+    snap_np = [(st, v.numpy()) for st, v in snaps]
+    mean_value = (value_sum / max(value_n, 1)).float().cpu().numpy()
+    tg = total_goals.cpu().numpy()
+    hg = half_goals.cpu().numpy()
+    sh = second_half_goals.cpu().numpy()
+    ed = episodes_done.cpu().numpy()
 
     rows = []
     for e in range(N):
@@ -319,6 +437,12 @@ def main() -> None:
             "object_type": entry.type,
             "object_shape": entry.shape,
             "episodes": int(bk[e]),
+            "episodes_completed": int(ed[e]),
+            "total_goals": float(tg[e]),
+            **({"mean_value": float(mean_value[e])} if args.record_value else {}),
+            **{f"goals_at_{st}": float(v[e]) for st, v in snap_np},
+            "goals_first_half": float(hg[e]),
+            "goals_second_half": float(sh[e]),
             "mean_goals": float(mg[e]),
             "std_goals": float(sg[e]),
             "full_completion_rate": float(fr[e]),
@@ -336,6 +460,7 @@ def main() -> None:
         "run_dir": str(run_dir),
         "run_name": run_dir.name,
         "population": {
+            "path": getattr(cfg.assets, "robot_population_path", None),
             "seed": int(cfg.assets.robot_population_seed),
             "count": count,
             "num_envs": num_envs,
@@ -351,7 +476,15 @@ def main() -> None:
             "episodes": E,
             "goals_per_episode": n_goals,
             "dr_profile": args.dr,
+            "env_seed": args.env_seed,
+            "condition": args.condition,
+            "condition_note": condition_note,
             "eval_success_tolerance": protocol["termination.eval_success_tolerance"],
+            "step_budget": (int(args.step_budget) if budget_mode else None),
+            "snapshot_every": (snap_every or None),
+            "snapshot_steps": [st for st, _ in snap_np],
+            "metric": ("total goals in step_budget steps" if budget_mode
+                       else "mean goals per episode"),
             "max_steps": max_steps,
             "steps_taken": steps_taken,
             "designs_short_of_target_episodes": incomplete,
@@ -373,6 +506,14 @@ def main() -> None:
             "best_mean_goals": float(mg.max()),
             "worst_mean_goals": float(mg.min()),
             "designs_scoring_zero": int((mg <= 0).sum()),
+            "mean_total_goals": float(tg.mean()),
+            "median_total_goals": float(np.median(tg)),
+            "std_total_goals_across_designs": float(tg.std()),
+            "max_total_goals": float(tg.max()),
+            "designs_with_zero_total": int((tg <= 0).sum()),
+            "split_half_r": (float(np.corrcoef(hg, sh)[0, 1])
+                             if budget_mode and hg.std() > 0 and sh.std() > 0
+                             else None),
         },
         "wall_clock": {"boot_sec": boot_sec, "rollout_sec": roll_sec},
         "per_design": rows,
@@ -384,8 +525,13 @@ def main() -> None:
 
     csv_path = out_dir / "per_design.csv"
     cols = ["design", "design_index", "n_active_fingers", "n_active_joints",
-            "pool_index", "object_type", "object_shape", "episodes", "mean_goals",
-            "std_goals", "full_completion_rate", "zero_goal_rate", "lift_rate"]
+            "pool_index", "object_type", "object_shape", "total_goals",
+            *(["mean_value"] if args.record_value else []),
+            *[f"goals_at_{st}" for st, _ in snap_np],
+            "goals_first_half", "goals_second_half", "episodes_completed",
+            "episodes", "mean_goals", "std_goals", "full_completion_rate",
+            "zero_goal_rate", "lift_rate", "term_complete", "term_fall",
+            "term_timeout"]
     import csv as _csv
     with open(csv_path, "w", newline="") as f:
         w = _csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
@@ -414,6 +560,23 @@ def _print_summary(record, rows, np) -> None:
     print(f"  best / worst design mean  : {s['best_mean_goals']:.3f} / "
           f"{s['worst_mean_goals']:.3f}")
     print(f"  designs scoring exactly 0 : {s['designs_scoring_zero']}")
+    if record["protocol"].get("step_budget"):
+        b = record["protocol"]["step_budget"]
+        print(f"\n  --- throughput: total goals in {b} steps ---")
+        print(f"  mean total goals          : {s['mean_total_goals']:.3f}")
+        print(f"  median                    : {s['median_total_goals']:.3f}")
+        print(f"  spread across designs (sd): {s['std_total_goals_across_designs']:.3f}")
+        print(f"  best design               : {s['max_total_goals']:.3f}")
+        print(f"  designs with zero total   : {s['designs_with_zero_total']}")
+        r = s.get("split_half_r")
+        if r is not None:
+            # Spearman-Brown: the halves each carry half the budget, so their
+            # correlation understates the full-budget metric's reliability.
+            sb = 2 * r / (1 + r) if r > -1 else float("nan")
+            print(f"  split-half r (3k vs 3k)   : {r:.3f}  "
+                  f"-> full-budget reliability {sb:.3f}")
+            print("    (how much of the between-design spread is real signal; "
+                  "near 0 means read only grouped statistics)")
 
     def _group(key):
         buckets = {}

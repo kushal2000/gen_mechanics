@@ -133,6 +133,47 @@ class RlPlayer:
         assert_equals(normalized_action.shape, (batch_size, self.num_actions))
         return normalized_action
 
+    def get_action_and_value(
+        self, obs: torch.Tensor, deterministic_actions: bool = True
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Action plus the critic's V(s), from ONE forward pass.
+
+        rl_games' get_action computes ``values`` and throws them away, so
+        recording the value function during a rollout is free -- no second
+        forward, no extra sim. This mirrors PpoPlayerContinuous.get_action
+        exactly, INCLUDING advancing self.states, because the actor's recurrent
+        state must evolve identically to a normal rollout or the trajectory
+        being scored is not the one the policy would have produced.
+
+        What V means here: the critic was trained on the TRAINING reward, which
+        carries two morphology-dependent shaping terms -- fingertip approach
+        sums over fingertips, and the hand action penalty sums over hand DoF
+        (docs/proposal_codesign.md 1 measures these at ~20% and ~27%). So V is
+        NOT a clean stand-in for goals achieved: it systematically favours more
+        fingers and more joints for reasons that are about reward shaping rather
+        than the task. Use it as a predictor to be validated, never as a fitness
+        to select on, until that bias is measured.
+        """
+        batch_size = obs.shape[0]
+        assert_equals(obs.shape, (batch_size, self.num_observations))
+        if self.sapg_expl_coef is not None:
+            coef = torch.full(
+                (batch_size, 1), self.sapg_expl_coef, device=self.device, dtype=obs.dtype
+            )
+            obs = torch.cat([obs, coef], dim=1)
+
+        p = self.player
+        x = p._preproc_obs(obs)
+        input_dict = {"is_train": False, "prev_actions": None,
+                      "obs": x, "rnn_states": p.states}
+        with torch.no_grad():
+            res = p.model(input_dict)
+        p.states = res["rnn_states"]
+        action = res["mus"] if deterministic_actions else res["actions"]
+        action = action.reshape(-1, self.num_actions)
+        assert_equals(action.shape, (batch_size, self.num_actions))
+        return action, res["values"].reshape(-1)
+
     def reset(self) -> None:
         self.player.reset()
 

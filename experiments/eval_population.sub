@@ -1,9 +1,17 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --cpus-per-task=12
+#SBATCH --cpus-per-task=8
 #SBATCH --get-user-env
-#SBATCH --mem=200000
+#SBATCH --mem=96000
+# 8 CPUs / 96 GB, down from 12 / 200 GB. MEMORY was what capped concurrency, not
+# CPUs: job 712165 peaked at 32.7 GB against a 200 GB request, and 200 GB against
+# a 1,547 GB node allowed only 7 evals where the 8 GPUs would allow 8. Nodes 03/04
+# sit on 304 idle cores, so CPUs were never the constraint.
+#
+# Cutting to 1 CPU was tried and measured: scene build 476 s -> 598 s and boot
+# 733 s -> 916 s, +26%, for no gain in how many fit per node. 8 recovers that
+# while staying irrelevant to packing.
 #SBATCH -t 12:00:00
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01
@@ -37,8 +45,40 @@ REPO_ROOT="/share/portal/kk837/gen_mechanics"
 RUN_DIR="${RUN_DIR:?set RUN_DIR to a population training run directory}"
 CKPT="${CKPT:?set CKPT to a checkpoint .pth}"
 EPISODES="${EPISODES:-10}"
+# THROUGHPUT MODE. When set, the run is a fixed step budget and each design is
+# scored by the TOTAL goals it hits inside it, over however many episodes it
+# gets. Every design receives the same budget -- nothing is frozen out early --
+# so the number is a rate, and a design that drops the object is charged for the
+# time it wastes rather than being handed a fresh episode for free.
+#
+# 6000 steps is ~10 per-goal timeouts (episode_length is 600 policy steps, and
+# termination_utils zeroes episode_length_buf on every goal hit, so 600 is a
+# per-GOAL clock, not a per-episode one).
+STEP_BUDGET="${STEP_BUDGET:-0}"
+# Sets termination.max_consecutive_successes -- the goal count that ENDS an
+# episode. In throughput mode this should be high enough that it rarely fires,
+# or the best designs are forced through a reset they are then charged for.
+# Training used 50 and averaged 7.1, so 50 costs almost nothing here.
 GOALS="${GOALS:-10}"
 DR="${DR:-off}"
+# A committed EvalCondition id from genmech/eval/suites.py, e.g.
+# "dr_knob/object_friction". Applied ON TOP of DR, so it wins on every field it
+# names. The dr_knob conditions pin every DR field explicitly -- pass DR=off
+# with them so the baseline underneath is the population runs' own setting.
+CONDITION="${CONDITION:-}"
+# Score a DIFFERENT population under this run's policy: a directory holding
+# manifest.json. Mutant populations are index-aligned to their parents, so child
+# i lands in env i with object i % pool_size -- the same object parent i held.
+POPULATION_PATH="${POPULATION_PATH:-}"
+# Pins the ROLLOUT rng (object spawn tumble, goal sequences). Two runs differing
+# only in this are independent replicates of one measurement.
+ENV_SEED="${ENV_SEED:-}"
+# Cumulative goals recorded every N steps, so one run measures every budget up
+# to STEP_BUDGET at once.
+SNAPSHOT_EVERY="${SNAPSHOT_EVERY:-0}"
+# Record the critic's mean V(s) per design alongside goals. Free -- the action
+# forward pass already computes it.
+RECORD_VALUE="${RECORD_VALUE:-0}"
 # Metres. The suite default (0.01) is the curriculum FLOOR -- the tightest bar
 # training ever sets. A mid-training checkpoint has usually not tightened that
 # far, so scoring it there collapses most designs to zero and leaves the
@@ -60,7 +100,8 @@ exec > "${OUT_DIR}/eval.log" 2> "${OUT_DIR}/eval.err"
 
 echo "run_dir=$RUN_DIR"
 echo "ckpt=$CKPT"
-echo "episodes=$EPISODES goals=$GOALS dr=$DR tol=${SUCCESS_TOLERANCE:-suite-default} out=$OUT_DIR"
+echo "condition=${CONDITION:-none}"
+echo "episodes=$EPISODES goals=$GOALS dr=$DR tol=${SUCCESS_TOLERANCE:-suite-default} step_budget=$STEP_BUDGET out=$OUT_DIR"
 ls -la "$CKPT"
 
 python -u -m genmech.eval.embodiments.run_population_eval \
@@ -69,6 +110,12 @@ python -u -m genmech.eval.embodiments.run_population_eval \
     --episodes "$EPISODES" \
     --goals_per_episode "$GOALS" \
     --dr "$DR" \
+    ${CONDITION:+--condition "$CONDITION"} \
+    ${POPULATION_PATH:+--population_path "$POPULATION_PATH"} \
+    ${ENV_SEED:+--env_seed "$ENV_SEED"} \
+    $( [ "$SNAPSHOT_EVERY" -gt 0 ] && echo "--snapshot_every $SNAPSHOT_EVERY" ) \
+    $( [ "$RECORD_VALUE" -gt 0 ] && echo "--record_value" ) \
     --sapg_expl_coef "$SAPG_EXPL_COEF" \
     ${SUCCESS_TOLERANCE:+--success_tolerance "$SUCCESS_TOLERANCE"} \
+    $( [ "$STEP_BUDGET" -gt 0 ] && echo "--step_budget $STEP_BUDGET" ) \
     --out "$OUT_DIR"
