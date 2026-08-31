@@ -54,7 +54,7 @@ cd "$REPO_ROOT"
 source .venv_isaacsim/bin/activate
 export OMNI_KIT_ACCEPT_EULA=YES
 export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"        # local disk, never NFS
-export WANDB_DIR="$LOG_DIR"                                # else wandb/ lands in the repo root
+export WANDB_DIR="$RUN_DIR"                                # per-run provenance, beside the checkpoints
 mkdir -p "$OMNI_KIT_CACHE_PATH"
 
 echo "robot=$ROBOT seed=$SEED envs=$NUM_ENVS minibatch=$MINIBATCH_SIZE"
