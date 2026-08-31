@@ -62,8 +62,9 @@ python -u coevolution/train.py \
     --wandb_project "$WANDB_PROJECT" \
     --wandb_group "$WANDB_GROUP" \
     --wandb_entity "$WANDB_ENTITY" \
-    --wandb_name "$EXPERIMENT_NAME" \
     --wandb_tags "$ROBOT" "seed$SEED" \
+    `# --wandb_tags is nargs=+; the --flag below stops it eating the overrides` \
+    --wandb_name "$EXPERIMENT_NAME" \
     env.assets.robot_spec="$ROBOT" \
     env.scene.num_envs="$NUM_ENVS" \
     agent.params.seed="$SEED" \
