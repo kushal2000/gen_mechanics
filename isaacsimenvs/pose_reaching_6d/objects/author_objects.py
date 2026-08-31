@@ -218,7 +218,7 @@ def author_handle_head(layer, prim_path: str, handle_scale, head_scale,
     from pxr import Gf, Sdf
 
     from isaacsimenvs.authoring.author_usd import attr, define
-    from isaacsimenvs.pose_reach.utils.objects.generate_objects import (
+    from isaacsimenvs.pose_reaching_6d.utils.objects.generate_objects import (
         _compute_mass_and_inertia,
     )
 

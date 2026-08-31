@@ -63,7 +63,7 @@ def main() -> None:
     import gymnasium as gym
     import isaacsimenvs  # noqa: F401
     from coevolution.eval.rl_player import RlPlayer
-    from isaacsimenvs.pose_reach.env_cfg import PoseReachEnvCfg
+    from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
     from hand_sampler.gates.mesh import _geometry_to_mesh
     from hand_sampler.paths import resolve as resolve_repo_path
 
@@ -84,7 +84,7 @@ def main() -> None:
     if args.policy_spec and args.policy_spec != args.robot_spec:
         from coevolution.eval.crossbody import CrossBodyAdapter
         from isaacsimenvs.robots import get_robot_spec
-        from isaacsimenvs.pose_reach.utils.obs_utils import compute_obs_dim
+        from isaacsimenvs.pose_reaching_6d.utils.obs_utils import compute_obs_dim
 
         pol = get_robot_spec(args.policy_spec)
         adapter = CrossBodyAdapter(pol, spec, cfg.obs.obs_list, args.rl_device)

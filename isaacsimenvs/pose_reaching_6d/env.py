@@ -15,17 +15,17 @@ from isaaclab.envs import DirectRLEnv
 from isaacsimenvs.robots import get_robot_spec
 
 from .env_cfg import PoseReachEnvCfg
-from .utils.action_utils import apply_action_pipeline, apply_wrench_dr
-from .utils.logging_utils import log_step_metrics
-from .utils.obs_utils import (
+from .action_utils import apply_action_pipeline, apply_wrench_dr
+from .logging_utils import log_step_metrics
+from .obs_utils import (
     build_observations,
     compute_intermediate_values,
     compute_obs_dim,
 )
-from .utils.reset_utils import allocate_state_buffers, reset_env_state
-from .utils.reward_utils import compute_rewards
-from .utils.scene_utils import apply_physx_material_properties, setup_scene
-from .utils.termination_utils import compute_terminations, update_tolerance_curriculum
+from .reset_utils import allocate_state_buffers, reset_env_state
+from .reward_utils import compute_rewards
+from .scene_utils import apply_physx_material_properties, setup_scene
+from .termination_utils import compute_terminations, update_tolerance_curriculum
 
 
 __all__ = ["PoseReachEnv", "PoseReachEnvCfg"]
@@ -88,12 +88,12 @@ class PoseReachEnv(DirectRLEnv):
 
     def get_curriculum_state(self) -> dict:
         """Curriculum state for the checkpoint. See utils/curriculum.py."""
-        from .utils.curriculum import get_curriculum_state
+        from .curriculum import get_curriculum_state
         return get_curriculum_state(self)
 
     def set_curriculum_state(self, state: dict | None) -> None:
         """Restore curriculum state from a checkpoint."""
-        from .utils.curriculum import set_curriculum_state
+        from .curriculum import set_curriculum_state
         set_curriculum_state(self, state)
 
     def _setup_scene(self) -> None:

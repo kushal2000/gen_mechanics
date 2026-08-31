@@ -199,8 +199,8 @@ def main() -> None:
     )
     from coevolution.eval.rl_player import RlPlayer
     from hand_sampler.population import load_population
-    from isaacsimenvs.pose_reach.env_multi import PoseReachMultiEnv
-    from isaacsimenvs.pose_reach.env_multi_cfg import PoseReachMultiEnvCfg
+    from isaacsimenvs.pose_reaching_6d.env_multi import PoseReachMultiEnv
+    from isaacsimenvs.pose_reaching_6d.env_multi_cfg import PoseReachMultiEnvCfg
 
     cfg = PoseReachMultiEnvCfg()
     apply_run_fields(cfg, run_env)

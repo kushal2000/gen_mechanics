@@ -13,7 +13,7 @@ from dataclasses import field
 from isaaclab.utils import configclass
 
 from .env_cfg import AssetsCfg, ObsCfg, PoseReachEnvCfg
-from .utils.morphology import DESCRIPTOR_DIM  # noqa: F401  (documented width)
+from .morphology import DESCRIPTOR_DIM  # noqa: F401  (documented width)
 
 # The single-embodiment defaults, to append to rather than restate. Restating
 # them would let the two observation layouts drift silently.

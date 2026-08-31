@@ -33,11 +33,11 @@ _CFG_DIR = Path(__file__).resolve().parents[2] / "coevolution" / "cfg"
 
 gym.register(
     id="GenMech-PoseReach-Direct-v0",
-    entry_point="isaacsimenvs.pose_reach.env:PoseReachEnv",
+    entry_point="isaacsimenvs.pose_reaching_6d.env:PoseReachEnv",
     order_enforce=False,
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": "isaacsimenvs.pose_reach.env_cfg:PoseReachEnvCfg",
+        "env_cfg_entry_point": "isaacsimenvs.pose_reaching_6d.env_cfg:PoseReachEnvCfg",
         "env_cfg_yaml_entry_point": str(_CFG_DIR / "task" / "PoseReach.yaml"),
         "rl_games_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachPPO.yaml"),
         "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachSAPG.yaml"),
@@ -50,12 +50,12 @@ gym.register(
 # test were built against.
 gym.register(
     id="GenMech-PoseReachMulti-Direct-v0",
-    entry_point="isaacsimenvs.pose_reach.env_multi:PoseReachMultiEnv",
+    entry_point="isaacsimenvs.pose_reaching_6d.env_multi:PoseReachMultiEnv",
     order_enforce=False,
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point":
-            "isaacsimenvs.pose_reach.env_multi_cfg:PoseReachMultiEnvCfg",
+            "isaacsimenvs.pose_reaching_6d.env_multi_cfg:PoseReachMultiEnvCfg",
         "env_cfg_yaml_entry_point": str(_CFG_DIR / "task" / "PoseReach.yaml"),
         "rl_games_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachPPO.yaml"),
         "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachSAPG.yaml"),

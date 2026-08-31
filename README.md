@@ -47,9 +47,14 @@ hand_sampler/        the generated-hand design space -- PURE PYTHON, no Isaac
   minimal/             a discrete, fully-enumerable successor design space
   workspace.py         table + goal-volume geometry shared by the viewers
   *_viewer.py          design-space, grammar and mutation viser viewers
-isaacsimenvs/        everything that touches Isaac Sim
-  pose_reach/          the DirectRLEnv task; all task math in utils/
-  authoring/           designs -> USD prims, without the URDF converter
+isaacsimenvs/        everything that touches Isaac
+  __init__.py          the task registry; one subpackage per task
+  pose_reaching_6d/    the DirectRLEnv task
+    env*.py              env + cfg, single and multi embodiment
+    scene_utils/         assembly, usd_conversion, materials
+    objects/             procedural object generation and authoring
+    *_utils.py           obs, reset, action, reward, termination
+  authoring/           design -> USD prims, without the URDF converter
   robots/              RobotSpec registry: one spec per (hand, arm)
 coevolution/         searching over designs and control together
   train.py, cfg/       entry point + hydra task / train (PPO, SAPG) configs
@@ -93,7 +98,7 @@ The follow-on: instead of comparing two fixed hands, *search* over hand morpholo
 a morphology-conditioned policy. It covers the two target results (co-design as
 a training curriculum; co-design for generalization and sim-to-real), the
 Thompson-sampling outer loop. Heterogeneous morphology per environment was
-measured to be feasible in this stack, and is what `isaacsimenvs/pose_reach/`
+measured to be feasible in this stack, and is what `isaacsimenvs/pose_reaching_6d/`
 now does: 24,576 distinct hands share one articulation view.
 
 ## Installation
@@ -159,7 +164,7 @@ the SAPG additions this project trains with (`expl_coef_block_size`,
 **Keep the pins exact.** The validated set is `isaaclab==2.3.2.post1`,
 `isaacsim==5.1.0.0`, `torch==2.7.0+cu126`, `numpy==1.26.0` — copied from
 simtoolreal's working environment. Newer Isaac Lab releases change the
-`DirectRLEnv` and `UrdfConverter` APIs that `isaacsimenvs/pose_reach/` depends
+`DirectRLEnv` and `UrdfConverter` APIs that `isaacsimenvs/pose_reaching_6d/` depends
 on, and an unpinned `torch` resolves far past what the isaacsim wheels support.
 
 ### Running

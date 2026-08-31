@@ -2,7 +2,7 @@
 
 A run's object pool is never written anywhere durable: ``setup_scene`` builds it
 into ``tempfile.mkdtemp(prefix="genmech_assets_")`` and it dies with the process
-(``isaacsimenvs/pose_reach/utils/scene_utils.py``). So after the fact there is
+(``isaacsimenvs/pose_reaching_6d/scene_utils.py``). So after the fact there is
 no file that says which object environment 4,211 was holding.
 
 It is recoverable anyway, because the pool is a pure function of five config
@@ -29,7 +29,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Optional, Sequence
 
-from isaacsimenvs.pose_reach.utils.objects.generate_objects import (
+from isaacsimenvs.pose_reaching_6d.utils.objects.generate_objects import (
     matching_distributions,
     pool_urdf_filename,
     sample_pool_params,
