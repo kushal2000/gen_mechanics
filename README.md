@@ -51,7 +51,7 @@ isaacsimenvs/        everything that touches Isaac
   __init__.py          the task registry; one subpackage per task
   pose_reaching_6d/    the only task today, holding everything it needs
     env*.py              env + cfg, single and multi embodiment
-    scene_utils/         assembly, usd_conversion, materials, authoring/
+    scene_utils/         assembly, usd_conversion, materials, authoring
     objects/             procedural object generation and authoring
     robots/              RobotSpec registry: one spec per (hand, arm)
     *_utils.py           obs, reset, action, reward, termination

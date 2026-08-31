@@ -1,7 +1,7 @@
 """URDF to USD: preparation, conversion and baking.
 
 Isaac Lab's UrdfConverter costs ~876 ms per hand, which is why the authored
-path in ``isaacsimenvs.pose_reaching_6d.scene_utils.authoring`` exists. This is the other backend: it
+path in ``isaacsimenvs.pose_reaching_6d.scene_utils`` exists. This is the other backend: it
 rewrites a URDF into something the converter accepts, converts it, applies
 the SDF collision markers and self-collision filters the URDF declares, and
 bakes the result into a per-asset USD.

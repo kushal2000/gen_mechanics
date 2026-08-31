@@ -117,7 +117,7 @@ def _author_objects_into_envs(env, object_params, n_pool: int,
     """
     from pxr import Sdf
 
-    from isaacsimenvs.pose_reaching_6d.scene_utils.authoring.author_usd import define
+    from isaacsimenvs.pose_reaching_6d.scene_utils.author_usd import define
     from isaacsimenvs.pose_reaching_6d.objects.author_objects import (
         author_handle_head,
         author_physics_material,
@@ -479,7 +479,7 @@ def setup_scene(env) -> None:
         """
         import numpy as np
 
-        from isaacsimenvs.pose_reaching_6d.scene_utils.authoring.author_robot import (
+        from isaacsimenvs.pose_reaching_6d.scene_utils.author_robot import (
             arm_only_urdf, author_robot_usd, flatten_arm_usd,
         )
         from hand_sampler.population import load_population_any
@@ -521,8 +521,8 @@ def setup_scene(env) -> None:
             # authoring completed in 28 min. Authoring into the env prims is
             # what bench_authored_sps measured at 362 s for k = n = 24,576, and
             # is exactly the pattern _author_objects_into_envs already uses.
-            from isaacsimenvs.pose_reaching_6d.scene_utils.authoring.author_robot import author_robot_prims
-            from isaacsimenvs.pose_reaching_6d.scene_utils.authoring.author_usd import _set_xform
+            from isaacsimenvs.pose_reaching_6d.scene_utils.author_robot import author_robot_prims
+            from isaacsimenvs.pose_reaching_6d.scene_utils.author_usd import _set_xform
 
             env._robot_design_index_per_env = torch.tensor(
                 [i % len(specs) for i in range(env.num_envs)],
