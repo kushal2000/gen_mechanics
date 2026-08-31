@@ -152,7 +152,7 @@ class UrdfBrowser:
 
     # --- model ------------------------------------------------------------
     def _urdf_path_for(self, name: str) -> Path:
-        from isaacsimenvs.robots import REGISTRY
+        from isaacsimenvs.pose_reaching_6d.robots import REGISTRY
         from hand_sampler.urdf import urdf_path_for
         from hand_sampler.paths import resolve as resolve_repo_path
 
@@ -247,7 +247,7 @@ class UrdfBrowser:
         return np.array(out)
 
     def _spec_for(self, name: str):
-        from isaacsimenvs.robots import REGISTRY
+        from isaacsimenvs.pose_reaching_6d.robots import REGISTRY
 
         if name in REGISTRY:
             return REGISTRY[name]

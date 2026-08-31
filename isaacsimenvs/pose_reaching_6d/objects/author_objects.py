@@ -65,7 +65,7 @@ def _rigid_body_defaults(body_spec) -> None:
     """
     from pxr import Gf, Sdf
 
-    from isaacsimenvs.authoring.author_usd import attr
+    from isaacsimenvs.pose_reaching_6d.scene_utils.authoring.author_usd import attr
 
     attr(body_spec, "physics:principalAxes", Sdf.ValueTypeNames.Quatf,
          Gf.Quatf(1.0, 0.0, 0.0, 0.0))
@@ -87,7 +87,7 @@ def _hold_in_place(body_spec, kinematic: bool) -> None:
     """
     from pxr import Sdf
 
-    from isaacsimenvs.authoring.author_usd import attr
+    from isaacsimenvs.pose_reaching_6d.scene_utils.authoring.author_usd import attr
 
     if not kinematic:
         return
@@ -101,7 +101,7 @@ def author_physics_material(layer, path: str, static_friction: float = 0.5,
     """One physics material for authored colliders to bind against."""
     from pxr import Sdf
 
-    from isaacsimenvs.authoring.author_usd import attr, define
+    from isaacsimenvs.pose_reaching_6d.scene_utils.authoring.author_usd import attr, define
 
     mat = define(layer, path, "Material", ["PhysicsMaterialAPI"])
     attr(mat, "physics:staticFriction", Sdf.ValueTypeNames.Float, float(static_friction))
@@ -125,7 +125,7 @@ def _shape_prim(layer, path: str, scale, xyz, rpy, collision: bool = True,
 
     from pxr import Gf, Sdf
 
-    from isaacsimenvs.authoring.author_usd import attr, define
+    from isaacsimenvs.pose_reaching_6d.scene_utils.authoring.author_usd import attr, define
 
     is_box = len(scale) == 3
 
@@ -217,8 +217,8 @@ def author_handle_head(layer, prim_path: str, handle_scale, head_scale,
     """
     from pxr import Gf, Sdf
 
-    from isaacsimenvs.authoring.author_usd import attr, define
-    from isaacsimenvs.pose_reaching_6d.utils.objects.generate_objects import (
+    from isaacsimenvs.pose_reaching_6d.scene_utils.authoring.author_usd import attr, define
+    from isaacsimenvs.pose_reaching_6d.objects.generate_objects import (
         _compute_mass_and_inertia,
     )
 

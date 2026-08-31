@@ -86,12 +86,12 @@ def run(conn, args) -> None:
         apply_run_fields, eval_protocol, load_run_config, run_env_dict, set_by_path,
     )
     from coevolution.eval.rl_player import RlPlayer
-    from isaacsimenvs.robots import REGISTRY
+    from isaacsimenvs.pose_reaching_6d.robots import REGISTRY
     from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
     from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
     from isaacsimenvs.pose_reaching_6d.env_multi import PoseReachMultiEnv
     from isaacsimenvs.pose_reaching_6d.env_multi_cfg import PoseReachMultiEnvCfg
-    from isaacsimenvs.pose_reaching_6d.utils.morphology import population_descriptors
+    from isaacsimenvs.pose_reaching_6d.morphology import population_descriptors
     from hand_sampler.paths import resolve as resolve_repo_path
 
     is_population_design = args.design not in REGISTRY and args.design.startswith("gen_") \

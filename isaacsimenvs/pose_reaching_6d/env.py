@@ -2,7 +2,7 @@
 
 The env owns Isaac Lab hook wiring and state buffers. Task math lives in the
 utility modules called from each hook, and everything hardware-specific comes
-from ``self.robot_spec`` (see isaacsimenvs/robots/), so swapping hands is a config
+from ``self.robot_spec`` (see isaacsimenvs/pose_reaching_6d/robots/), so swapping hands is a config
 change rather than an edit here.
 """
 
@@ -12,7 +12,7 @@ import torch
 
 from isaaclab.envs import DirectRLEnv
 
-from isaacsimenvs.robots import get_robot_spec
+from isaacsimenvs.pose_reaching_6d.robots import get_robot_spec
 
 from .env_cfg import PoseReachEnvCfg
 from .action_utils import apply_action_pipeline, apply_wrench_dr

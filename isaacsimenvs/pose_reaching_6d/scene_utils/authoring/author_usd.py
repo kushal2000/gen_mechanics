@@ -161,9 +161,7 @@ def _link_mass_props(fp: P.FingerParams, tier: str | None):
     own diameter, is handled by the callers exactly as build_hand_urdf does:
     the first is virtual, the second keeps its mass but drops its geometry.
     """
-    from isaacsimenvs.pose_reaching_6d.utils.objects.generate_objects import (
-        _compute_mass_and_inertia,
-    )
+    from hand_sampler.inertia import compute_mass_and_inertia as _compute_mass_and_inertia
 
     virtual = (A.VIRTUAL_LINK_MASS_KG,
                (A.VIRTUAL_LINK_INERTIA,) * 3,

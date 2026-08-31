@@ -29,7 +29,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Optional, Sequence
 
-from isaacsimenvs.pose_reaching_6d.utils.objects.generate_objects import (
+from isaacsimenvs.pose_reaching_6d.objects.generate_objects import (
     matching_distributions,
     pool_urdf_filename,
     sample_pool_params,

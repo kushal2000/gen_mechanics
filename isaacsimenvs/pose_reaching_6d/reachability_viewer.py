@@ -9,8 +9,8 @@ of the goal box looks worse at *generalizing* for a purely kinematic reason
 Pure kinematics: ``yourdfpy`` for FK, ``viser`` for display, no Isaac Sim. It
 starts in seconds and holds no GPU, so it runs happily alongside training.
 
-    .venv_isaacsim/bin/python -m isaacsimenvs.reachability_viewer
-    .venv_isaacsim/bin/python -m isaacsimenvs.reachability_viewer \\
+    .venv_isaacsim/bin/python -m isaacsimenvs.pose_reaching_6d.reachability_viewer
+    .venv_isaacsim/bin/python -m isaacsimenvs.pose_reaching_6d.reachability_viewer \\
         --robot_spec sharpa_iiwa14,allegro_iiwa14
 
 Each robot gets its **own complete scene clone** — its own table, goal volume,
@@ -36,7 +36,7 @@ import time
 
 import numpy as np
 
-from isaacsimenvs.robots import REGISTRY, get_robot_spec
+from isaacsimenvs.pose_reaching_6d.robots import REGISTRY, get_robot_spec
 from hand_sampler.paths import resolve as resolve_repo_path
 
 

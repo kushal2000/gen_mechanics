@@ -11,7 +11,7 @@ simulator path reads it yet:
 
 * it emits kinematics, joint roles and geometry, but no URDF and no
   ``RobotSpec``, so it cannot reach Isaac;
-* ``isaacsimenvs.pose_reaching_6d.utils.morphology`` derives DESCRIPTOR_DIM (143)
+* ``isaacsimenvs.pose_reaching_6d.morphology`` derives DESCRIPTOR_DIM (143)
   from ``params.N_FINGER_SLOTS``, and that width is baked into the trained
   policy's 329-wide observation. A different grammar means a different
   descriptor and a retrained policy.

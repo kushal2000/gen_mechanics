@@ -100,7 +100,7 @@ def obs_index_map(policy_spec, env_spec, field_list) -> torch.Tensor:
     field's width differs for any other reason -- a silent mismatch here would
     feed the policy scrambled observations that still have the right shape.
     """
-    from isaacsimenvs.pose_reaching_6d.utils.obs_utils import obs_field_sizes
+    from isaacsimenvs.pose_reaching_6d.obs_utils import obs_field_sizes
 
     jmap = joint_index_map(policy_spec, env_spec)
     env_sizes = obs_field_sizes(env_spec)

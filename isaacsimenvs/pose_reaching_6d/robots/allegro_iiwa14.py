@@ -16,7 +16,7 @@ verified to 1 micron against the right-hand FK.
 
 Unlike SHARPA, this robot has **no pretrained checkpoint to validate against**.
 Its correctness rests on ``tests/test_robot_spec_invariants.py``, on visual
-inspection in ``isaacsimenvs/reachability_viewer.py``, and on the values below
+inspection in ``isaacsimenvs/pose_reaching_6d/reachability_viewer.py``, and on the values below
 being traceable. So each one says where it came from.
 
 Provenance:
@@ -77,7 +77,7 @@ Geometry offsets, measured with yourdfpy FK against the generated URDF:
 
 from __future__ import annotations
 
-from isaacsimenvs.robots.adjacency.allegro_iiwa14 import ALLEGRO_IIWA14_ADJACENT_LINKS
+from isaacsimenvs.pose_reaching_6d.robots.adjacency.allegro_iiwa14 import ALLEGRO_IIWA14_ADJACENT_LINKS
 from hand_sampler.iiwa14_arm import (
     ARM_DAMPING,
     ARM_DEFAULT_JOINT_POS,

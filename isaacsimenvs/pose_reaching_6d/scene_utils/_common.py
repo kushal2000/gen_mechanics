@@ -8,7 +8,7 @@ import time
 # Joint names, regexes, PD-gain tables, the arm home pose, and the palm and
 # fingertip body names all used to live here as module constants pinned to the
 # left SHARPA hand. They are now fields on the selected RobotSpec
-# (isaacsimenvs/robots/), so the scene follows the configured hand.
+# (isaacsimenvs/pose_reaching_6d/robots/), so the scene follows the configured hand.
 #
 # HAND_JOINT_FRICTION was dropped rather than moved: it was defined and
 # length-asserted but never read -- joint friction reaches PhysX from the URDF's

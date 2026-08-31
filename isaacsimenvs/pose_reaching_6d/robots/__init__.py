@@ -16,8 +16,8 @@ registry without booting Kit.
 from __future__ import annotations
 
 from hand_sampler.spec import RobotSpec
-from isaacsimenvs.robots.allegro_iiwa14 import ALLEGRO_IIWA14
-from isaacsimenvs.robots.sharpa_iiwa14 import SHARPA_IIWA14
+from isaacsimenvs.pose_reaching_6d.robots.allegro_iiwa14 import ALLEGRO_IIWA14
+from isaacsimenvs.pose_reaching_6d.robots.sharpa_iiwa14 import SHARPA_IIWA14
 
 
 REGISTRY: dict[str, RobotSpec] = {

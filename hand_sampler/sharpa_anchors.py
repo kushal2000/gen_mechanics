@@ -132,7 +132,7 @@ SLOT_VELOCITY_RAD_S: dict[str, float] = {
 }
 
 # Per-slot PD gains, damping and armature, from the SHARPA spec's per-tier
-# values (isaacsimenvs/robots/sharpa_iiwa14.py). Same reasoning: controller and motor
+# values (isaacsimenvs/pose_reaching_6d/robots/sharpa_iiwa14.py). Same reasoning: controller and motor
 # properties, held fixed so the search sees geometry only.
 SLOT_STIFFNESS: dict[str, float] = {
     "CMC_FE": 1.38, "CMC_AA": 1.38,

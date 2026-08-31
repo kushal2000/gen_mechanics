@@ -54,7 +54,7 @@ def discover_designs(population_seed: int, limit: int, extra: list[str]) -> list
     prefix. ``--designs`` names specific ones to append, which is how you reach
     an interesting design found by an offline sweep.
     """
-    from isaacsimenvs.robots import REGISTRY
+    from isaacsimenvs.pose_reaching_6d.robots import REGISTRY
 
     names = sorted(REGISTRY)
     names.append("gen_sharpa_like")
