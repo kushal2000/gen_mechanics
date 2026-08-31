@@ -14,8 +14,6 @@ import time
 # length-asserted but never read -- joint friction reaches PhysX from the URDF's
 # <dynamics friction> via UrdfConverter.
 
-_CONTACT_OFFSET = 0.002
-_REST_OFFSET = 0.0
 
 # group: "rb" (RigidBodyAPI) or "art" (ArticulationRootAPI).
 # attr_name: USD attribute path. vtype_str: matched against pxr.Sdf.ValueTypeNames.

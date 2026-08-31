@@ -149,13 +149,12 @@ def arm_only_urdf(out_path: Path) -> Path:
 #
 # The ARM's properties are not here: they are baked once into the shared arm
 # USD, and every design inherits them through the reference.
-_CONTACT_OFFSET = 0.002
-_REST_OFFSET = 0.0
 _MAX_DEPEN_VELOCITY = 1000.0
 
 
 def author_robot_prims(layer, root: str, hand: P.HandParams, spec, *,
                        arm_usd: str, arm_root_prim: str, link7_world,
+                       contact_offset: float, rest_offset: float,
                        adjacency: dict | None = None,
                        in_change_block: bool = False) -> tuple[str, dict]:
     """Author a design into ``layer``. Returns ``(root, {link: n_colliders})``.
@@ -228,9 +227,9 @@ def author_robot_prims(layer, root: str, hand: P.HandParams, spec, *,
         attr(box, "size", Sdf.ValueTypeNames.Double, 1.0)
         _set_xform(box, offset, quat, scale=(ex, ey, ez))
         attr(box, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float,
-             _CONTACT_OFFSET)
+             contact_offset)
         attr(box, "physxCollision:restOffset", Sdf.ValueTypeNames.Float,
-             _REST_OFFSET)
+             rest_offset)
 
         # --- what _bake_usd would apply to the HAND's bodies ---------------
         for i in range(P.N_FINGER_SLOTS):
@@ -247,9 +246,9 @@ def author_robot_prims(layer, root: str, hand: P.HandParams, spec, *,
                 if cap.specifier == Sdf.SpecifierDef:
                     _add_api(cap, "PhysxCollisionAPI")
                     attr(cap, "physxCollision:contactOffset",
-                         Sdf.ValueTypeNames.Float, _CONTACT_OFFSET)
+                         Sdf.ValueTypeNames.Float, contact_offset)
                     attr(cap, "physxCollision:restOffset",
-                         Sdf.ValueTypeNames.Float, _REST_OFFSET)
+                         Sdf.ValueTypeNames.Float, rest_offset)
 
         # --- self-collision filters, authored here instead of in a 2nd pass --
         if adjacency:
@@ -282,6 +281,7 @@ def author_robot_prims(layer, root: str, hand: P.HandParams, spec, *,
 
 def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
                      arm_usd: str, arm_root_prim: str, link7_world,
+                     contact_offset: float, rest_offset: float,
                      adjacency: dict | None = None) -> str:
     """Author one design into its OWN USD file, and return the path.
 
@@ -293,6 +293,7 @@ def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
     out_path.parent.mkdir(parents=True, exist_ok=True)
     stage = Usd.Stage.CreateNew(str(out_path))
     author_robot_prims(stage.GetRootLayer(), ROBOT_ROOT, hand, spec,  # noqa: F841
+                       contact_offset=contact_offset, rest_offset=rest_offset,
                        arm_usd=arm_usd, arm_root_prim=arm_root_prim,
                        link7_world=link7_world, adjacency=adjacency)
     # Isaac Lab references this file WITHOUT a prim path, so it resolves
@@ -350,9 +351,9 @@ def flatten_arm_usd(arm_usd: str, out_path: Path) -> str:
         if prim.HasAPI(UsdPhysics.CollisionAPI):
             PhysxSchema.PhysxCollisionAPI.Apply(prim)
             prim.CreateAttribute("physxCollision:contactOffset",
-                                 Sdf.ValueTypeNames.Float).Set(_CONTACT_OFFSET)
+                                 Sdf.ValueTypeNames.Float).Set(contact_offset)
             prim.CreateAttribute("physxCollision:restOffset",
-                                 Sdf.ValueTypeNames.Float).Set(_REST_OFFSET)
+                                 Sdf.ValueTypeNames.Float).Set(rest_offset)
     flat.GetRootLayer().Save()
     return str(out_path)
 

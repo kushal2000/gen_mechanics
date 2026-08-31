@@ -12,7 +12,7 @@ import time
 import torch
 
 
-from isaacsimenvs.isaacsim_utils.physx import _log_scene_step
+from isaacsimenvs.pose_reaching_6d.utils.physx import _log_scene_step
 
 
 def shape_layouts_from_record(link_names, recorded: dict, arm_counts: dict):

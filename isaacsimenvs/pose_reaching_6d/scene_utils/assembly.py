@@ -25,8 +25,8 @@ from isaaclab.sim.utils import find_matching_prim_paths, get_current_stage
 from hand_sampler.paths import resolve as resolve_repo_path
 
 from .objects.generate_objects import generate_handle_head_urdfs
-from isaacsimenvs.isaacsim_utils.physx import _log_scene_step
-from isaacsimenvs.isaacsim_utils.urdf_to_usd import (
+from isaacsimenvs.pose_reaching_6d.utils.physx import _log_scene_step
+from isaacsimenvs.pose_reaching_6d.utils.urdf_to_usd import (
     _apply_self_collision_filters,
     _bake_usd,
     _convert_urdf_to_usd,
@@ -352,6 +352,11 @@ def _build_object_scale_tensor(env, object_scales_normalized, num_object_usds: i
 
 def setup_scene(env) -> None:
     """Build and register robot, table, object, goal, ground, and light."""
+
+    # One source for both asset backends: the converter path bakes these onto
+    # every collision prim, the authoring path writes them directly.
+    contact_offset = env.cfg.physics.contact_offset
+    rest_offset = env.cfg.physics.rest_offset
     assets_cfg = env.cfg.assets
     setup_t0 = time.perf_counter()
     _log_scene_step(
@@ -433,13 +438,13 @@ def setup_scene(env) -> None:
         _bake_usd(usd, bake_root, "object", props=dict(
             kinematic_enabled=False, disable_gravity=False,
             max_depenetration_velocity=1000.0, articulation_enabled=False,
-        ))
+        ), contact_offset=contact_offset, rest_offset=rest_offset)
         for usd in object_raw_usds
     ]
     goalviz_usd_paths = [
         _bake_usd(usd, bake_root, "goalviz", props=dict(
             kinematic_enabled=True, disable_gravity=True, articulation_enabled=False,
-        ), collision_enabled=False)
+        ), collision_enabled=False, contact_offset=contact_offset, rest_offset=rest_offset)
         for usd in object_raw_usds
     ]
 
@@ -467,6 +472,7 @@ def setup_scene(env) -> None:
                 solver_position_iterations=8, solver_velocity_iterations=0,
             ),
             apply_physx_articulation=True,
+            contact_offset=contact_offset, rest_offset=rest_offset,
         )
 
     # Resolved by the env before super().__init__ (the observation spaces are
@@ -548,7 +554,7 @@ def setup_scene(env) -> None:
                         specs[idx], arm_usd=arm_usd, arm_root_prim=arm_root,
                         link7_world=link7_world,
                         adjacency=specs[idx].adjacent_links,
-                        in_change_block=True)
+                        in_change_block=True, contact_offset=contact_offset, rest_offset=rest_offset)
                     # Recorded HERE, where the geometry is created, so the
                     # friction pass does not have to rediscover it per link.
                     env._robot_collider_links[idx] = _cl
@@ -582,7 +588,7 @@ def setup_scene(env) -> None:
             # path exists to beat.
             raw = author_robot_usd(
                 hand, design_spec, design_dir / hand.name / f"{hand.name}.usd",
-                arm_usd=arm_usd, arm_root_prim=arm_root, link7_world=link7_world)
+                arm_usd=arm_usd, arm_root_prim=arm_root, link7_world=link7_world, contact_offset=contact_offset, rest_offset=rest_offset)
             # The same finish the converted path gets, so self-collision
             # filtering and the articulation/solver properties are identical.
             _apply_self_collision_filters(raw, design_spec.adjacent_links)
@@ -591,7 +597,7 @@ def setup_scene(env) -> None:
                 props=dict(disable_gravity=True, max_depenetration_velocity=1000.0,
                            enabled_self_collisions=True,
                            solver_position_iterations=8, solver_velocity_iterations=0),
-                apply_physx_articulation=True))
+                apply_physx_articulation=True, contact_offset=contact_offset, rest_offset=rest_offset))
         return out
 
     population_specs = getattr(env, "_robot_population_specs", None)
@@ -644,6 +650,7 @@ def setup_scene(env) -> None:
             props=dict(
                 kinematic_enabled=True, disable_gravity=True, articulation_enabled=False,
             ),
+            contact_offset=contact_offset, rest_offset=rest_offset,
         )]
         # Single (sx, sy) = (1.0, 1.0) for downstream consumers (eval viz).
         env._table_variant_scales = [(1.0, 1.0)]
@@ -668,6 +675,7 @@ def setup_scene(env) -> None:
                 props=dict(
                     kinematic_enabled=True, disable_gravity=True, articulation_enabled=False,
                 ),
+                contact_offset=contact_offset, rest_offset=rest_offset,
             )
             for idx, p in enumerate(variant_urdf_paths)
         ]

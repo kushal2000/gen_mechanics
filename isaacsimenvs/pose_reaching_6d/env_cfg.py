@@ -229,6 +229,25 @@ class ObsCfg:
 # ----------------------------------------------------------------------------
 
 
+# ----------------------------------------------------------------------------
+# physics
+# ----------------------------------------------------------------------------
+
+
+@configclass
+class PhysicsCfg:
+    """PhysX collider offsets, authored onto every collision prim.
+
+    contact_offset is the distance at which PhysX starts generating contacts,
+    rest_offset the separation it settles at. They were module constants in two
+    places -- the converter path and the authoring path -- which had to agree by
+    hand. They are one config value now, so the two backends cannot drift.
+    """
+
+    contact_offset: float = 0.002
+    rest_offset: float = 0.0
+
+
 @configclass
 class ActionCfg:
     """Joint-position-target control with moving-average smoothing."""
@@ -551,6 +570,7 @@ class PoseReachEnvCfg(DirectRLEnvCfg):
     obs: ObsCfg = ObsCfg()
     action: ActionCfg = ActionCfg()
     reward: RewardCfg = RewardCfg()
+    physics: PhysicsCfg = PhysicsCfg()
     reset: ResetCfg = ResetCfg()
     termination: TerminationCfg = TerminationCfg()
     domain_randomization: DomainRandomizationCfg = DomainRandomizationCfg()
@@ -562,6 +582,7 @@ __all__ = [
     "ObsCfg",
     "ActionCfg",
     "RewardCfg",
+    "PhysicsCfg",
     "ResetCfg",
     "TerminationCfg",
     "DomainRandomizationCfg",

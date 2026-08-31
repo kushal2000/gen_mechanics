@@ -19,7 +19,7 @@ from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
 from hand_sampler.paths import resolve as resolve_repo_path
 
-from isaacsimenvs.isaacsim_utils.physx import _CONTACT_OFFSET, _PHYSICS_SPECS, _REST_OFFSET
+from isaacsimenvs.pose_reaching_6d.utils.physx import _PHYSICS_SPECS
 
 
 def _set_usd_attr(prim, name: str, value, value_type) -> None:
@@ -417,6 +417,8 @@ def _bake_usd(
     props: dict | None = None,
     apply_physx_articulation: bool = False,
     collision_enabled: bool | None = None,
+    contact_offset: float,
+    rest_offset: float,
 ) -> str:
     """Copy raw USD into bake_root/baked_subdir and pre-author physics props.
 
@@ -478,8 +480,8 @@ def _bake_usd(
             _set_usd_attr(prim, attr_name, val, vtypes[vtype_str])
         if prim.HasAPI(UsdPhysics.CollisionAPI):
             px = PhysxSchema.PhysxCollisionAPI(prim) or PhysxSchema.PhysxCollisionAPI.Apply(prim)
-            px.CreateContactOffsetAttr().Set(_CONTACT_OFFSET)
-            px.CreateRestOffsetAttr().Set(_REST_OFFSET)
+            px.CreateContactOffsetAttr().Set(contact_offset)
+            px.CreateRestOffsetAttr().Set(rest_offset)
             if collision_enabled is not None:
                 ce = UsdPhysics.CollisionAPI(prim)
                 (ce.GetCollisionEnabledAttr() or ce.CreateCollisionEnabledAttr()).Set(

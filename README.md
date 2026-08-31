@@ -49,9 +49,9 @@ hand_sampler/        the generated-hand design space -- PURE PYTHON, no Isaac
   *_viewer.py          design-space, grammar and mutation viser viewers
 isaacsimenvs/        everything that touches Isaac
   __init__.py          the task registry; one subpackage per task
-  isaacsim_utils/      urdf->usd conversion and PhysX defaults, task-agnostic
   pose_reaching_6d/    the only task today, holding everything it needs
     env*.py              env + cfg
+    utils/               shared helpers: urdf->usd conversion, PhysX defaults
     obs_utils/           observations, morphology descriptor, actions
     reset_utils/         reset, goal sampling, step logging
     reward_utils/        rewards, termination, tolerance curriculum
