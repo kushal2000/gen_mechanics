@@ -77,7 +77,7 @@ PY=.venv_isaacsim/bin/python
 $PY -m hand_sampler.population --seed 0 --count 64
 
 # Train
-sbatch experiments/train.sub          # ROBOT=sharpa_iiwa14 SEED=0
+sbatch experiments/train_single_embodiment_sharpa.sub
 ```
 
 ## Methodology
