@@ -62,7 +62,7 @@ MOUNT_Z = IIWA7_FLANGE_TO_EE_Z - IIWA14_FLANGE_TO_EE_Z  # 0.026
 # Rotation of the hand about the flange axis. Unlike MOUNT_Z this is not derived
 # from anything -- it sets where the thumb points relative to the arm, and the
 # right value is a judgement about how the hand presents itself to the table.
-# Chosen by eye in viewers/reachability_viewer.py, on the LEFT (mirrored)
+# Chosen by eye in isaacsimenvs/reachability_viewer.py, on the LEFT (mirrored)
 # hand. Note the two interact: mirroring the hand inverts the sense of this
 # rotation, so a yaw picked on the right-hand asset does not carry over. Always
 # re-check it visually after changing handedness.

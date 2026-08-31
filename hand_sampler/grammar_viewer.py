@@ -1,6 +1,6 @@
 """Step through the hand-design grammar one random draw at a time, in viser.
 
-    .venv_isaacsim/bin/python -m viewers.grammar_viewer --port 8089
+    .venv_isaacsim/bin/python -m hand_sampler.grammar_viewer --port 8089
 
 Pure kinematics: no Isaac Sim, no GPU, starts in seconds.
 
@@ -39,7 +39,7 @@ import traceback
 import numpy as np
 
 from hand_sampler import params as P
-from genmech.tools import capsule_collision as CC
+from hand_sampler.gates import capsule as CC
 
 PALM_COLOR = (201, 198, 189)
 FINGER_COLORS = [(58, 122, 214), (232, 122, 63), (36, 168, 128),

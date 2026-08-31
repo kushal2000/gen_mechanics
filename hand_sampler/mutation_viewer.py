@@ -1,6 +1,6 @@
 """See what a mutation operator actually does, in viser, with no simulator.
 
-    .venv_isaacsim/bin/python -m viewers.mutation_viewer --port 8089
+    .venv_isaacsim/bin/python -m hand_sampler.mutation_viewer --port 8089
 
 Pick one of the 24,576 seed-3 designs, pick an operator, hit **Mutate**. The
 parent stays where it is and the mutant is stood up at its OWN station -- its own
@@ -107,7 +107,7 @@ class MutationViewer:
         same height and an arm at the same base pose, which is the only way a
         3 mm difference is legible.
         """
-        from viewers.reachability_viewer import TABLE_Z, table_extents
+        from hand_sampler.workspace import TABLE_Z, table_extents
 
         tx, ty, tz = table_extents()
         for which, dx in (("parent", 0.0), ("child", STATION_DX)):
@@ -196,7 +196,7 @@ class MutationViewer:
         from hand_sampler.synth_spec import synth_spec
         from hand_sampler.iiwa14_arm import BASE_POS, BASE_ROT
         from hand_sampler.urdf import write_urdf
-        from viewers.reachability_viewer import _hull_collision_scene
+        from hand_sampler.workspace import _hull_collision_scene
 
         path = self._preview_path(f"{PREVIEW_STEM}_{which}")
         write_urdf(hand, path)

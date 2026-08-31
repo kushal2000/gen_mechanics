@@ -17,7 +17,7 @@ from urllib.parse import quote
 import gymnasium as gym
 import numpy as np
 
-from viewers.interactive_viewer import create_html, make_embedded_robot, make_url_robot
+from coevolution.interactive_viewer import create_html, make_embedded_robot, make_url_robot
 
 
 

@@ -44,6 +44,8 @@ hand_sampler/        the generated-hand design space -- PURE PYTHON, no Isaac
   synth_spec.py        hand params -> RobotSpec, mounted on the iiwa14
   urdf.py              the URDF backend; inertia.py, flexion.py, spec.py
   gates/               capsule.py (analytic) and mesh.py self-collision gates
+  workspace.py         table + goal-volume geometry shared by the viewers
+  *_viewer.py          design-space, grammar and mutation viser viewers
 isaacsimenvs/        everything that touches Isaac Sim
   pose_reach/          the DirectRLEnv task; all task math in utils/
   authoring/           designs -> USD prims, without the URDF converter
@@ -52,8 +54,8 @@ coevolution/         searching over designs and control together
   train.py, cfg/       entry point + hydra task / train (PPO, SAPG) configs
   eval/                DR suites, checkpoint player, cross-body eval
   population/          population eval: 24,576 designs, one per env
-  loop/                the training-free design-evolution loop
-viewers/             viser design/evolution viewers + the wandb pose viewer
+  loop/                the training-free design-evolution loop + its viewer
+  pose_viewer.py       the wandb interactive pose viewer
 assets/urdf/         robot + table URDFs and meshes; generated hands land here
 third_party/rl_games/  vendored SAPG fork (NOT the PyPI package)
 experiments/         SLURM job scripts (+ old_experiments/ archive)

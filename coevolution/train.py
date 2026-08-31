@@ -171,7 +171,7 @@ def main() -> None:
         if args_cli.capture_viewer:
             from pathlib import Path
 
-            from viewers.pose_viewer import PoseViewerWrapper
+            from coevolution.pose_viewer import PoseViewerWrapper
 
             env = PoseViewerWrapper(
                 env,

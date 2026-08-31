@@ -1,6 +1,6 @@
 """Browse any design from any iteration of the training-free design loop, in viser.
 
-    .venv_isaacsim/bin/python -m viewers.evolution_viewer --port 8090
+    .venv_isaacsim/bin/python -m coevolution.loop.evolution_viewer --port 8090
 
 Pick an arm (nominal / wrench), an iteration (0..10), and a design; the arm and
 hand are drawn from that design's own parameters. Designs can be ordered BY
@@ -91,7 +91,7 @@ class EvolutionViewer:
 
     # --- scene ------------------------------------------------------------
     def _draw_scene(self) -> None:
-        from viewers.reachability_viewer import TABLE_Z, table_extents
+        from hand_sampler.workspace import TABLE_Z, table_extents
 
         tx, ty, tz = table_extents()
         self.server.scene.add_box("/scene/table", dimensions=(tx, ty, tz),
@@ -209,7 +209,7 @@ class EvolutionViewer:
         from hand_sampler.synth_spec import synth_spec
         from hand_sampler.iiwa14_arm import BASE_POS, BASE_ROT
         from hand_sampler.urdf import OUT_DIR, write_urdf
-        from viewers.reachability_viewer import _hull_collision_scene
+        from hand_sampler.workspace import _hull_collision_scene
         from hand_sampler.paths import resolve as resolve_repo_path
 
         entry = self._hands[slot]

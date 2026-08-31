@@ -7,9 +7,9 @@ sampler's validity gates are geometric proxies (mount separation, reach) and the
 widened space showed they do not hold: every hand in a six-sample batch
 overlapped itself at the home pose.
 
-    .venv_isaacsim/bin/python -m viewers.design_space_viewer
-    .venv_isaacsim/bin/python -m viewers.design_space_viewer --port 8081
-    .venv_isaacsim/bin/python -m viewers.design_space_viewer --params sharpa_like
+    .venv_isaacsim/bin/python -m hand_sampler.design_space_viewer
+    .venv_isaacsim/bin/python -m hand_sampler.design_space_viewer --port 8081
+    .venv_isaacsim/bin/python -m hand_sampler.design_space_viewer --params sharpa_like
 
 **The arm and table are drawn once.** They are identical across every design by
 construction (docs/methodology.md §1), so their meshes load at startup and are
@@ -67,7 +67,7 @@ ARM_LINK_COLORS = {
 }
 TABLE_COLOR = (0.55, 0.47, 0.38)
 
-from viewers.reachability_viewer import (          # noqa: E402
+from hand_sampler.workspace import (          # noqa: E402
     GOAL_VOLUME_MAXS, GOAL_VOLUME_MINS, TABLE_Z,
 )
 

@@ -45,7 +45,7 @@ dependencies = [
 dev = ["ipykernel", "ruff", "pytest"]
 
 [tool.setuptools.packages.find]
-include = ["hand_sampler*", "isaacsimenvs*", "coevolution*", "viewers*"]
+include = ["hand_sampler*", "isaacsimenvs*", "coevolution*"]
 
 [tool.ruff]
 line-length = 100

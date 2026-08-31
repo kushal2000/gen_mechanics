@@ -6,7 +6,7 @@ table and object drawn in place, and a default camera set on client connect so
 you land looking at the robot instead of at empty space.
 
     OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python \\
-        -m viewers.interactive_eval_viewer \\
+        -m coevolution.population.interactive_eval_viewer \\
         --robot_spec gen_sharpa_like \\
         --checkpoint train_dir/.../nn/0_pose_reach_sapg.pth \\
         --policy_config /tmp/gen_policy_config.yaml --port 8084
