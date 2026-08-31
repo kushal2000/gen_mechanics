@@ -73,9 +73,9 @@ reward — and the residual confounds that remain.
 instead of comparing two fixed hands, *search* over hand morphology jointly with
 a morphology-conditioned policy. It covers the two target results (co-design as
 a training curriculum; co-design for generalization and sim-to-real), the
-Thompson-sampling outer loop, and the feasibility measurements from
-`genmech/tools/probe_heterogeneous_envs.py` and `probe_multi_articulation.py`
-that say heterogeneous morphology per environment is possible in this stack.
+Thompson-sampling outer loop. Heterogeneous morphology per environment was
+measured to be feasible in this stack, and is what `genmech/tasks/pose_reach/`
+now does: 24,576 distinct hands share one articulation view.
 
 ## License
 
