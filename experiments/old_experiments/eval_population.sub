@@ -61,7 +61,7 @@ STEP_BUDGET="${STEP_BUDGET:-0}"
 # Training used 50 and averaged 7.1, so 50 costs almost nothing here.
 GOALS="${GOALS:-10}"
 DR="${DR:-off}"
-# A committed EvalCondition id from genmech/eval/suites.py, e.g.
+# A committed EvalCondition id from coevolution/eval/suites.py, e.g.
 # "dr_knob/object_friction". Applied ON TOP of DR, so it wins on every field it
 # names. The dr_knob conditions pin every DR field explicitly -- pass DR=off
 # with them so the baseline underneath is the population runs' own setting.
@@ -104,7 +104,7 @@ echo "condition=${CONDITION:-none}"
 echo "episodes=$EPISODES goals=$GOALS dr=$DR tol=${SUCCESS_TOLERANCE:-suite-default} step_budget=$STEP_BUDGET out=$OUT_DIR"
 ls -la "$CKPT"
 
-python -u -m genmech.eval.embodiments.run_population_eval \
+python -u -m coevolution.population.run_population_eval \
     --run_dir "$RUN_DIR" \
     --checkpoint "$CKPT" \
     --episodes "$EPISODES" \

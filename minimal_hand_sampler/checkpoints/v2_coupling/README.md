@@ -3,7 +3,7 @@
 A small, fully-enumerable design space of multi-fingered hands, plus a browser
 viewer and a PNG renderer.
 
-Rewritten from `gen_mechanics/genmech/robots/generated/params.py` (branch
+Rewritten from `gen_mechanics/hand_sampler/params.py` (branch
 `2026-08-18-analyze_embodiments`), stripped down to a space where every
 parameter is discrete and every rule is deliberate. Nothing here simulates — it
 produces kinematics, joint roles and geometry; physics is somebody else's job.

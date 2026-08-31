@@ -45,7 +45,7 @@ dependencies = [
 dev = ["ipykernel", "ruff", "pytest"]
 
 [tool.setuptools.packages.find]
-include = ["genmech*"]
+include = ["hand_sampler*", "isaacsimenvs*", "coevolution*", "viewers*"]
 
 [tool.ruff]
 line-length = 100

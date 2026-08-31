@@ -83,7 +83,7 @@ echo "robot=$ROBOT seed=$SEED max_epochs=$MAX_EPOCHS num_envs=$NUM_ENVS"
 echo "batch=$BATCH minibatch=$MINIBATCH_SIZE (=$(( BATCH / MINIBATCH_SIZE )) minibatches)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-python -u genmech/train.py \
+python -u coevolution/train.py \
     --task GenMech-PoseReach-Direct-v0 \
     --agent rl_games_sapg_cfg_entry_point \
     --headless \

@@ -48,7 +48,7 @@ echo "building population seed=$SEED count=$COUNT shard=$SHARD/$SHARDS"
 date
 
 OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python -c "
-from genmech.robots.generated.population import build_population
+from hand_sampler.population import build_population
 build_population(${SEED}, ${COUNT}, force=True, shard=${SHARD}, num_shards=${SHARDS})
 "
 echo "exit: $?"

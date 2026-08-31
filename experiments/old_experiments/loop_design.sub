@@ -31,7 +31,7 @@ cd "$REPO_ROOT"
 echo "design loop: iters=$ITERS seeds=$SEEDS start=$START"
 date
 OMNI_KIT_ACCEPT_EULA=YES "${REPO_ROOT}/.venv_isaacsim/bin/python" -u \
-    -m genmech.eval.embodiments.design_loop \
+    -m coevolution.loop.design_loop \
     --iters "$ITERS" --seeds "$SEEDS" --start "$START" --workers 16
 echo "exit: $?"
 date

@@ -51,7 +51,7 @@ mkdir -p "$OMNI_KIT_CACHE_PATH"
 echo "robot=$ROBOT ckpt=$CKPT num_envs=$NUM_ENVS suite=$SUITE"
 echo "policy_config=$POLICY_CONFIG condition=$CONDITION"
 ls -la "$POLICY_CONFIG"
-python -u -m genmech.eval.run_eval \
+python -u -m coevolution.eval.run_eval \
     --robot_spec "$ROBOT" --checkpoint "$CKPT" \
     --num_envs "$NUM_ENVS" --suite "$SUITE" \
     --policy_config "$POLICY_CONFIG" \

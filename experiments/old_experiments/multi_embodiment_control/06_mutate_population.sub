@@ -45,7 +45,7 @@ if [ "$MODE" = "merge" ]; then
     mkdir -p "$OUT"
     exec > "${OUT}/merge.log" 2>&1
     cd "$REPO_ROOT"
-    "$PY" -m genmech.robots.generated.mutate --parents "$PARENTS" \
+    "$PY" -m hand_sampler.mutate --parents "$PARENTS" \
         --operator merge --out "$OUT" --num_shards "$NUM_SHARDS"
     echo "exit: $?"
     exit 0
@@ -65,7 +65,7 @@ cd "$REPO_ROOT"
 echo "operator=$OP shard=$SHARD/$NUM_SHARDS alpha=$ALPHA seed=$SEED"
 echo "parents=$PARENTS"
 date
-OMNI_KIT_ACCEPT_EULA=YES "$PY" -m genmech.robots.generated.mutate \
+OMNI_KIT_ACCEPT_EULA=YES "$PY" -m hand_sampler.mutate \
     --parents "$PARENTS" --operator "$OP" --alpha "$ALPHA" \
     --out "$OUT" --seed "$SEED" --shard "$SHARD" --num_shards "$NUM_SHARDS"
 echo "exit: $?"

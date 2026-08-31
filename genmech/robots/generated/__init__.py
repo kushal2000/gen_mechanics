@@ -1,1 +1,0 @@
-"""Procedurally generated hand embodiments."""

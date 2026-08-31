@@ -43,7 +43,7 @@
 # The comparison is against 03's curve at equal EPOCHS, not equal walltime, and
 # the honest measurement is per-design rather than aggregate:
 #
-#   .venv_isaacsim/bin/python -m genmech.eval.embodiments.run_population_eval \
+#   .venv_isaacsim/bin/python -m coevolution.population.run_population_eval \
 #       --run_dir <this run> --checkpoint <this run>/0_pose_reach_sapg/nn/*.pth \
 #       --episodes 10 --success_tolerance 0.03 --out results/population_eval/<tag>
 #

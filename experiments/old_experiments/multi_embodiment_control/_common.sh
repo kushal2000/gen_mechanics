@@ -183,7 +183,7 @@ launch_training() {
     echo "common overrides:     ${COMMON_OVERRIDES[*]}"
     nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-    python -u genmech/train.py \
+    python -u coevolution/train.py \
         --task "$TASK" \
         --agent rl_games_sapg_cfg_entry_point \
         --headless \

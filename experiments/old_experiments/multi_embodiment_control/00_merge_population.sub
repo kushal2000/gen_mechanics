@@ -30,7 +30,7 @@ exec > "${OUT_DIR}/seed${SEED}_merge.log" 2>&1
 cd "$REPO_ROOT"
 date
 OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python -c "
-from genmech.robots.generated.population import merge_population_shards, load_population
+from hand_sampler.population import merge_population_shards, load_population
 n = merge_population_shards(${SEED}, ${SHARDS})
 hands = load_population(${SEED})
 assert len(hands) == n, f'merged {n} but load_population sees {len(hands)}'

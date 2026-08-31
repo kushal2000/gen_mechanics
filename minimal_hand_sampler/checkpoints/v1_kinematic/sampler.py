@@ -1,6 +1,6 @@
 """A minimal hand design space.
 
-Rewritten from gen_mechanics' ``genmech/robots/generated/params.py`` (branch
+Rewritten from gen_mechanics' ``hand_sampler/params.py`` (branch
 2026-08-18-analyze_embodiments), stripped to a small, fully-enumerable space.
 
 What changed from the original sampler

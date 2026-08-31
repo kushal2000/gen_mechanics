@@ -1,7 +1,7 @@
 # minimal_hand_sampler
 
 A small, fully-enumerable hand design space. Rewritten from
-`gen_mechanics/genmech/robots/generated/params.py` (branch
+`gen_mechanics/hand_sampler/params.py` (branch
 `2026-08-18-analyze_embodiments`, the later of the two — Aug 18, +25 files,
 `params.py` 29.5k → 32.3k).
 

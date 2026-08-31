@@ -22,7 +22,7 @@
 #
 # Array size must equal the condition count (21 for the full suite):
 #   .venv_isaacsim/bin/python -c \
-#     "from genmech.eval.suites import get_suite; print(len(get_suite('full')))"
+#     "from coevolution.eval.suites import get_suite; print(len(get_suite('full')))"
 #
 # One Kit process per GPU -- never run two array tasks on the same device.
 
@@ -35,7 +35,7 @@ SUITE="${SUITE:-full}"
 SWEEP_ID="${SWEEP_ID:-$(date +%Y-%m-%d_%H-%M-%S)}"
 NUM_ENVS="${NUM_ENVS:-512}"
 # 50.0 for SAPG checkpoints, negative for plain PPO. Wrong value = silently
-# shifted observations, not an error. See genmech/eval/rl_player.py.
+# shifted observations, not an error. See coevolution/eval/rl_player.py.
 SAPG_EXPL_COEF="${SAPG_EXPL_COEF:-50.0}"
 
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
@@ -47,7 +47,7 @@ mkdir -p "$OMNI_KIT_CACHE_PATH"
 
 IDX="${SLURM_ARRAY_TASK_ID:-0}"
 CONDITION=$(python -c "
-from genmech.eval.suites import get_suite
+from coevolution.eval.suites import get_suite
 print(get_suite('$SUITE')[$IDX].id)
 ")
 
@@ -60,7 +60,7 @@ exec > "${OUT_DIR}/eval.log" 2> "${OUT_DIR}/eval.err"
 
 echo "robot=$ROBOT condition=$CONDITION suite=$SUITE num_envs=$NUM_ENVS"
 
-python -u -m genmech.eval.run_eval \
+python -u -m coevolution.eval.run_eval \
     --robot_spec "$ROBOT" \
     --checkpoint "$CHECKPOINT" \
     --policy_config "$POLICY_CONFIG" \
