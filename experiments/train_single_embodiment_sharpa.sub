@@ -52,8 +52,6 @@ echo "robot=$ROBOT seed=$SEED envs=$NUM_ENVS minibatch=$MINIBATCH_SIZE"
 # Sample RAM/CPU/GPU for the life of the run; the GPU csv also records which
 # card this landed on, which sacct does not.
 experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
-MONITOR_PID=$!
-trap 'kill "$MONITOR_PID" 2>/dev/null || true' EXIT
 
 python -u coevolution/train.py \
     --task GenMech-PoseReach-Direct-v0 \
