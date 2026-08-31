@@ -44,6 +44,18 @@ bench_dir/
 # URL, so it must exist in the repo.
 assets/urdf/generated/gen_[0-9]*.urdf
 assets/urdf/generated/population/**/*.urdf
+assets/urdf/generated/mut_*.urdf
+assets/urdf/generated/loop_*.urdf
+assets/urdf/generated/_*preview*.urdf
+# Mutant and loop-generation hands, and the viewers' preview files. Same rule as
+# the sampled URDFs above -- every one is regenerable from its manifest's
+# parameter vector -- but the scale is different: one mutation pass over a 24,576
+# population writes 122,880 files, which would bury every real diff in the repo.
+# The viewers write their preview HERE rather than /tmp on purpose: build_hand_urdf
+# emits arm mesh references as ../kuka_sharpa_description/, which resolves only
+# from this directory, and a preview written elsewhere renders an arm with no
+# meshes and no colliders (docs/multi_embodiment.md 4).
+
 # ...and the manifests themselves. A 24,576-hand manifest is 266 MB of JSON and
 # each of its 10 shards is another 25 MB; `git add -A` swept 509 MB into a
 # commit. They are REGENERABLE: seed + gate + shard count + the code at that
