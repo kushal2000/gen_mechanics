@@ -36,8 +36,9 @@ MINIBATCH_SIZE="${MINIBATCH_SIZE:-$(( BATCH / 4 ))}"
 EXPERIMENT_NAME="${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)"
 [ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
 RUN_DIR="${REPO_ROOT}/train_dir/${WANDB_PROJECT}/${WANDB_GROUP}/${EXPERIMENT_NAME}"
-mkdir -p "$RUN_DIR"
-exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
+LOG_DIR="${REPO_ROOT}/debug_outputs/train_logs/${EXPERIMENT_NAME}"
+mkdir -p "$RUN_DIR" "$LOG_DIR"
+exec > "${LOG_DIR}/slurm.out" 2> "${LOG_DIR}/slurm.err"
 
 # After the redirect, so the message lands in slurm.err rather than /dev/null.
 (( NUM_ENVS % EXPL_COEF_BLOCK_SIZE == 0 )) || { echo "NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE" >&2; exit 1; }
@@ -52,7 +53,7 @@ mkdir -p "$OMNI_KIT_CACHE_PATH"
 
 echo "robot=$ROBOT seed=$SEED envs=$NUM_ENVS minibatch=$MINIBATCH_SIZE"
 # Sample RAM/CPU/GPU for the life of the run
-experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
+experiments/monitor_usage.sh "${LOG_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
 
 python -u coevolution/train.py \
     --task GenMech-PoseReach-Direct-v0 \

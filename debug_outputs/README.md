@@ -6,20 +6,17 @@ placeholders — nothing in it should ever be an input to anything.
 
 | | |
 |---|---|
-| `train_logs/` | logs pulled off a run for reading |
+| `train_logs/<run>/` | `slurm.out`, `slurm.err`, `usage.ram_usage.csv`, `usage.gpu_usage.csv` |
 | `videos/` | rollout captures |
 | `smoke_tests/` | output from one-off checks: a rendered URDF, a stage dump, a printed observation |
 
-Everything a training run produces goes to its run directory instead, because
-it is per-run provenance rather than scratch:
+A run's durable output stays out of here, under the same name:
 
 ```
 train_dir/<project>/<group>/<run>/
-  slurm.out  slurm.err        stdout/stderr
-  usage.ram_usage.csv         RSS + CPU% over the process group, every 30 s
-  usage.gpu_usage.csv         GPU util, memory, SM clock, power
   wandb/                      config.yaml + the diff.patch for reproducing HEAD
   nn/  summaries/             checkpoints and tensorboard
+  .hydra/                     the resolved config
 ```
 
 How a job ended comes from SLURM, not from a log file:
