@@ -1,0 +1,37 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=16
+#SBATCH --get-user-env
+#SBATCH --mem=64000
+#SBATCH -t 1-12:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Driver for the training-free design loop. Runs as its own (CPU-only) SLURM
+# job rather than from an interactive shell so it survives the session that
+# started it; it submits the GPU eval jobs itself and waits on them.
+#
+#   ITERS=10 SEEDS=3 sbatch experiments/loop_design.sub
+#
+# Mutation runs in-process on the 16 CPUs (20,480 children ~ 2 min); only the
+# evals go to the GPU queue, 3 seeds x 2 fitness arms = 6 jobs per iteration.
+
+set -uo pipefail
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+ITERS="${ITERS:-10}"; SEEDS="${SEEDS:-3}"; START="${START:-0}"
+OUT="${REPO_ROOT}/results/loop"
+mkdir -p "$OUT"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="design_loop" || true
+exec > "${OUT}/driver.log" 2>&1
+
+cd "$REPO_ROOT"
+echo "design loop: iters=$ITERS seeds=$SEEDS start=$START"
+date
+OMNI_KIT_ACCEPT_EULA=YES "${REPO_ROOT}/.venv_isaacsim/bin/python" -u \
+    -m genmech.eval.embodiments.design_loop \
+    --iters "$ITERS" --seeds "$SEEDS" --start "$START" --workers 16
+echo "exit: $?"
+date
