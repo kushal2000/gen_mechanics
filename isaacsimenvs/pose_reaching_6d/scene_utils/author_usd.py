@@ -61,6 +61,10 @@ from __future__ import annotations
 import math
 
 from hand_sampler import params as P
+from hand_sampler.rotations import (
+    mat_to_pos_quat as _mat_to_pos_quat,
+    rpy_to_quat_wxyz as _quat_from_rpy,
+)
 from hand_sampler import sharpa_anchors as A
 
 # Post-merge palm body: gen_palm is fixed-jointed to the flange, so the importer
@@ -107,17 +111,6 @@ def rel(spec, name: str, target: str):
     r.targetPathList.explicitItems.append(Sdf.Path(target))
     return r
 
-
-def _quat_from_rpy(rpy) -> tuple[float, float, float, float]:
-    """URDF RPY -> (w, x, y, z). Rz(yaw) @ Ry(pitch) @ Rx(roll)."""
-    r, p, y = (float(v) / 2.0 for v in rpy)
-    cr, sr = math.cos(r), math.sin(r)
-    cp, sp = math.cos(p), math.sin(p)
-    cy, sy = math.cos(y), math.sin(y)
-    return (cr * cp * cy + sr * sp * sy,
-            sr * cp * cy - cr * sp * sy,
-            cr * sp * cy + sr * cp * sy,
-            cr * cp * sy - sr * sp * cy)
 
 
 def _set_xform(spec, xyz, quat_wxyz=None, scale=(1.0, 1.0, 1.0)):
@@ -229,30 +222,6 @@ def _mat_from_seg(seg: P.Segment):
     m[:3, 3] = [float(v) for v in seg.xyz]
     return m
 
-
-def _mat_to_pos_quat(m):
-    """4x4 -> (translation, (w,x,y,z))."""
-    import numpy as np
-
-    r = np.asarray(m[:3, :3], dtype=float)
-    tr = float(np.trace(r))
-    if tr > 0.0:
-        s = math.sqrt(tr + 1.0) * 2.0
-        w, x = 0.25 * s, (r[2, 1] - r[1, 2]) / s
-        y, z = (r[0, 2] - r[2, 0]) / s, (r[1, 0] - r[0, 1]) / s
-    elif r[0, 0] > r[1, 1] and r[0, 0] > r[2, 2]:
-        s = math.sqrt(1.0 + r[0, 0] - r[1, 1] - r[2, 2]) * 2.0
-        w, x = (r[2, 1] - r[1, 2]) / s, 0.25 * s
-        y, z = (r[0, 1] + r[1, 0]) / s, (r[0, 2] + r[2, 0]) / s
-    elif r[1, 1] > r[2, 2]:
-        s = math.sqrt(1.0 + r[1, 1] - r[0, 0] - r[2, 2]) * 2.0
-        w, x = (r[0, 2] - r[2, 0]) / s, (r[0, 1] + r[1, 0]) / s
-        y, z = 0.25 * s, (r[1, 2] + r[2, 1]) / s
-    else:
-        s = math.sqrt(1.0 + r[2, 2] - r[0, 0] - r[1, 1]) * 2.0
-        w, x = (r[1, 0] - r[0, 1]) / s, (r[0, 2] + r[2, 0]) / s
-        y, z = (r[1, 2] + r[2, 1]) / s, 0.25 * s
-    return tuple(float(v) for v in m[:3, 3]), (w, x, y, z)
 
 
 def finger_chain(fp: P.FingerParams):

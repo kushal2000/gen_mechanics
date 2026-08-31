@@ -42,6 +42,7 @@ from dataclasses import dataclass, field, replace
 from typing import Sequence
 
 from hand_sampler import sharpa_anchors as anchors
+from hand_sampler.rotations import mat_to_rpy as _mat_to_rpy
 
 
 Vec3 = tuple[float, float, float]
@@ -493,16 +494,6 @@ def _u_segment(rng: random.Random, lo_hi: tuple[float, float], tier: str,
         return rng.uniform(lo, min(MIN_SEGMENT_M, hi))
     return rng.uniform(solid_lo, hi)
 
-
-def _mat_to_rpy(R) -> Vec3:
-    """Rotation matrix -> URDF roll-pitch-yaw (R = Rz(y) Ry(p) Rx(r))."""
-    import numpy as np
-
-    sp = float(np.clip(-R[2, 0], -1.0, 1.0))
-    p = math.asin(sp)
-    if abs(abs(sp) - 1.0) < 1e-9:          # gimbal lock
-        return (math.atan2(-R[1, 2], R[1, 1]), p, 0.0)
-    return (math.atan2(R[2, 1], R[2, 2]), p, math.atan2(R[1, 0], R[0, 0]))
 
 
 def face_frame(face: str, extents: Vec3 = anchors.PALM_EXTENTS_M

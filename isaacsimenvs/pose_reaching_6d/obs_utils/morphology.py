@@ -66,6 +66,7 @@ import numpy as np
 
 from hand_sampler import params as P
 from hand_sampler import sharpa_anchors as anchors
+from hand_sampler.rotations import rpy_to_rot6d as _rpy_to_rot6d
 
 # Tier order used by every per-link block below.
 TIERS: tuple[str, ...] = ("mc", "pp", "mp", "dp")
@@ -84,24 +85,6 @@ FIELD_LAYOUT: tuple[tuple[str, int], ...] = (
     ("active", 1),
 )
 
-
-def _rpy_to_rot6d(rpy) -> list[float]:
-    """First two columns of the rotation matrix for an RPY triple.
-
-    The 6D representation rather than Euler angles or a quaternion: it is
-    continuous over SO(3), so nearby orientations map to nearby vectors. Euler
-    angles wrap and quaternions double-cover, and both put a discontinuity
-    somewhere in a space the sampler draws uniformly over (mount roll is
-    U(0, 2*pi), so it visits every wrap point).
-    """
-    r, p, y = (float(v) for v in rpy)
-    cr, sr = math.cos(r), math.sin(r)
-    cp, sp = math.cos(p), math.sin(p)
-    cy, sy = math.cos(y), math.sin(y)
-    # URDF RPY: R = Rz(y) @ Ry(p) @ Rx(r).
-    col0 = (cy * cp, sy * cp, -sp)
-    col1 = (cy * sp * sr - sy * cr, sy * sp * sr + cy * cr, cp * sr)
-    return [*col0, *col1]
 
 
 def finger_descriptor(f: P.FingerParams) -> list[float]:

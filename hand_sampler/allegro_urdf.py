@@ -33,6 +33,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from hand_sampler.paths import resolve as resolve_repo_path
+from hand_sampler.rotations import mat_to_rpy, rpy_to_mat
 
 
 SHARPA_URDF = "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
@@ -81,29 +82,6 @@ MESH_PREFIX_TO = "allegro_meshes/"
 ARM_MESH_PREFIX_TO = "../kuka_sharpa_description/"
 
 
-def _rpy_to_mat(r: float, p: float, y: float):
-    import numpy as np
-
-    cr, sr, cp, sp, cy, sy = (math.cos(r), math.sin(r), math.cos(p),
-                              math.sin(p), math.cos(y), math.sin(y))
-    return np.array([
-        [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
-        [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
-        [-sp,     cp * sr,                cp * cr],
-    ])
-
-
-def _mat_to_rpy(R):
-    import numpy as np
-
-    sy = -R[2, 0]
-    sy = float(np.clip(sy, -1.0, 1.0))
-    p = math.asin(sy)
-    if abs(abs(sy) - 1.0) < 1e-9:  # gimbal lock
-        r, y = math.atan2(-R[1, 2], R[1, 1]), 0.0
-    else:
-        r, y = math.atan2(R[2, 1], R[2, 2]), math.atan2(R[1, 0], R[0, 0])
-    return r, p, y
 
 
 def _mirror_hand(root: ET.Element, hand_links, hand_joints, mesh_map: dict) -> None:
@@ -131,7 +109,7 @@ def _mirror_hand(root: ET.Element, hand_links, hand_joints, mesh_map: dict) -> N
         xyz = [float(v) for v in el.get("xyz", "0 0 0").split()]
         rpy = [float(v) for v in el.get("rpy", "0 0 0").split()]
         el.set("xyz", " ".join(f"{v:.9g}" for v in (M @ np.array(xyz))))
-        el.set("rpy", " ".join(f"{v:.9g}" for v in _mat_to_rpy(M @ _rpy_to_mat(*rpy) @ M)))
+        el.set("rpy", " ".join(f"{v:.9g}" for v in mat_to_rpy(M @ rpy_to_mat(rpy) @ M)))
 
     for joint in root.findall("joint"):
         if joint.get("name") not in hand_joints:
