@@ -41,7 +41,7 @@ import torch
 
 from .env import PoseReachEnv
 from .env_multi_cfg import PoseReachMultiEnvCfg
-from .morphology import DESCRIPTOR_DIM, describe_layout, population_descriptors
+from .obs_utils import DESCRIPTOR_DIM, describe_layout, population_descriptors
 from .scene_utils import (
     _resolve_robot_population,
     _verify_robot_design_assignment,

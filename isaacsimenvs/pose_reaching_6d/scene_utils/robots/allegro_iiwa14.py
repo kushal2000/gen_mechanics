@@ -77,7 +77,7 @@ Geometry offsets, measured with yourdfpy FK against the generated URDF:
 
 from __future__ import annotations
 
-from isaacsimenvs.pose_reaching_6d.robots.adjacency.allegro_iiwa14 import ALLEGRO_IIWA14_ADJACENT_LINKS
+from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.allegro_iiwa14 import ALLEGRO_IIWA14_ADJACENT_LINKS
 from hand_sampler.iiwa14_arm import (
     ARM_DAMPING,
     ARM_DEFAULT_JOINT_POS,

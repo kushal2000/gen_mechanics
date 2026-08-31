@@ -292,7 +292,7 @@ def check(spec_name: str, *, verbose: bool) -> int:
 
     # Imported lazily: the registry lives in isaacsimenvs, and hand_sampler must
     # stay importable without it. Only this CLI path needs a named robot spec.
-    from isaacsimenvs.pose_reaching_6d.robots import get_robot_spec
+    from isaacsimenvs.pose_reaching_6d.scene_utils.robots import get_robot_spec
 
     spec = get_robot_spec(spec_name)
     urdf_path = resolve_repo_path(spec.urdf_path)

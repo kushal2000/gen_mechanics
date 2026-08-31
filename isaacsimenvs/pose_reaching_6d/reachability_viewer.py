@@ -36,7 +36,7 @@ import time
 
 import numpy as np
 
-from isaacsimenvs.pose_reaching_6d.robots import REGISTRY, get_robot_spec
+from isaacsimenvs.pose_reaching_6d.scene_utils.robots import REGISTRY, get_robot_spec
 from hand_sampler.paths import resolve as resolve_repo_path
 
 

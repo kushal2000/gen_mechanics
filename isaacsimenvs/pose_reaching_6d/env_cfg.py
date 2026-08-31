@@ -53,7 +53,7 @@ from isaaclab.utils import configclass
 
 @configclass
 class AssetsCfg:
-    # The robot knob. Selects a RobotSpec from isaacsimenvs.pose_reaching_6d.robots.REGISTRY, which
+    # The robot knob. Selects a RobotSpec from isaacsimenvs.pose_reaching_6d.scene_utils.robots.REGISTRY, which
     # carries the joint names and order, PD gains, home pose, palm and fingertip
     # geometry, and self-collision adjacency. action_space and the observation
     # dims are derived from it, so this is the only field a hand swap needs.

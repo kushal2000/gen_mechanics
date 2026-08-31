@@ -24,9 +24,9 @@ from isaaclab.sim.utils import find_matching_prim_paths, get_current_stage
 
 from hand_sampler.paths import resolve as resolve_repo_path
 
-from ..objects.generate_objects import generate_handle_head_urdfs
-from ._common import _log_scene_step
-from .usd_conversion import (
+from .objects.generate_objects import generate_handle_head_urdfs
+from isaacsimenvs.isaacsim_utils.physx import _log_scene_step
+from isaacsimenvs.isaacsim_utils.urdf_to_usd import (
     _apply_self_collision_filters,
     _bake_usd,
     _convert_urdf_to_usd,
@@ -96,6 +96,13 @@ def build_rigid_object_cfg(prim_path: str, usd_paths: list[str]) -> RigidObjectC
     )
 
 
+def _materialize_env_prims(env) -> None:
+    stage = get_current_stage()
+    for env_path in env.scene.env_prim_paths:
+        if not stage.GetPrimAtPath(env_path).IsValid():
+            stage.DefinePrim(env_path, "Xform")
+
+
 def _env_id_of(prim_path: str) -> int:
     """Numeric env id from a `/World/envs/env_<i>` path or any child of one."""
     for token in prim_path.split("/"):
@@ -118,7 +125,7 @@ def _author_objects_into_envs(env, object_params, n_pool: int,
     from pxr import Sdf
 
     from isaacsimenvs.pose_reaching_6d.scene_utils.author_usd import define
-    from isaacsimenvs.pose_reaching_6d.objects.author_objects import (
+    from isaacsimenvs.pose_reaching_6d.scene_utils.author_objects import (
         author_handle_head,
         author_physics_material,
     )

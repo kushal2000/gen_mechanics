@@ -19,7 +19,7 @@ from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
 from hand_sampler.paths import resolve as resolve_repo_path
 
-from ._common import _CONTACT_OFFSET, _PHYSICS_SPECS, _REST_OFFSET
+from isaacsimenvs.isaacsim_utils.physx import _CONTACT_OFFSET, _PHYSICS_SPECS, _REST_OFFSET
 
 
 def _set_usd_attr(prim, name: str, value, value_type) -> None:

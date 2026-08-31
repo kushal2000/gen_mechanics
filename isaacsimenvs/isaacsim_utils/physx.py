@@ -1,4 +1,4 @@
-"""Constants and helpers shared by the three scene modules."""
+"""PhysX defaults and scene-step timing, shared across tasks."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import time
 # Joint names, regexes, PD-gain tables, the arm home pose, and the palm and
 # fingertip body names all used to live here as module constants pinned to the
 # left SHARPA hand. They are now fields on the selected RobotSpec
-# (isaacsimenvs/pose_reaching_6d/robots/), so the scene follows the configured hand.
+# (isaacsimenvs/pose_reaching_6d/scene_utils/robots/), so the scene follows the configured hand.
 #
 # HAND_JOINT_FRICTION was dropped rather than moved: it was defined and
 # length-asserted but never read -- joint friction reaches PhysX from the URDF's
@@ -34,9 +34,3 @@ _PHYSICS_SPECS: dict[str, tuple[str, str, str]] = {
 
 def _log_scene_step(start_time: float, message: str) -> None:
     print(f"[scene_utils][+{time.perf_counter() - start_time:.2f}s] {message}", flush=True)
-
-def _materialize_env_prims(env) -> None:
-    stage = get_current_stage()
-    for env_path in env.scene.env_prim_paths:
-        if not stage.GetPrimAtPath(env_path).IsValid():
-            stage.DefinePrim(env_path, "Xform")

@@ -49,12 +49,13 @@ hand_sampler/        the generated-hand design space -- PURE PYTHON, no Isaac
   *_viewer.py          design-space, grammar and mutation viser viewers
 isaacsimenvs/        everything that touches Isaac
   __init__.py          the task registry; one subpackage per task
+  isaacsim_utils/      urdf->usd conversion and PhysX defaults, task-agnostic
   pose_reaching_6d/    the only task today, holding everything it needs
-    env*.py              env + cfg, single and multi embodiment
-    scene_utils/         assembly, usd_conversion, materials, authoring
-    objects/             procedural object generation and authoring
-    robots/              RobotSpec registry: one spec per (hand, arm)
-    *_utils.py           obs, reset, action, reward, termination
+    env*.py              env + cfg
+    obs_utils/           observations, morphology descriptor, actions
+    reset_utils/         reset, goal sampling, step logging
+    reward_utils/        rewards, termination, tolerance curriculum
+    scene_utils/         assembly, materials, authoring, objects/, robots/
     reachability_viewer.py
 coevolution/         searching over designs and control together
   train.py, cfg/       entry point + hydra task / train (PPO, SAPG) configs

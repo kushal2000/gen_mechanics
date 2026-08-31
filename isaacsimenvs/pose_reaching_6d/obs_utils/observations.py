@@ -184,7 +184,7 @@ def _canonical_joint_obs(env) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]
 
 def compute_intermediate_values(env) -> None:
     """Update shared geometric state for rewards and terminations."""
-    from .reward_utils import update_near_goal_steps  # local import to avoid cycle
+    from ..reward_utils import update_near_goal_steps  # local import to avoid cycle
 
     rew_cfg = env.cfg.reward
     term_cfg = env.cfg.termination

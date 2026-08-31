@@ -2,7 +2,7 @@
 
 The env owns Isaac Lab hook wiring and state buffers. Task math lives in the
 utility modules called from each hook, and everything hardware-specific comes
-from ``self.robot_spec`` (see isaacsimenvs/pose_reaching_6d/robots/), so swapping hands is a config
+from ``self.robot_spec`` (see isaacsimenvs/pose_reaching_6d/scene_utils/robots/), so swapping hands is a config
 change rather than an edit here.
 """
 
@@ -12,11 +12,11 @@ import torch
 
 from isaaclab.envs import DirectRLEnv
 
-from isaacsimenvs.pose_reaching_6d.robots import get_robot_spec
+from isaacsimenvs.pose_reaching_6d.scene_utils.robots import get_robot_spec
 
 from .env_cfg import PoseReachEnvCfg
-from .action_utils import apply_action_pipeline, apply_wrench_dr
-from .logging_utils import log_step_metrics
+from .obs_utils import apply_action_pipeline, apply_wrench_dr
+from .reset_utils import log_step_metrics
 from .obs_utils import (
     build_observations,
     compute_intermediate_values,
@@ -25,7 +25,7 @@ from .obs_utils import (
 from .reset_utils import allocate_state_buffers, reset_env_state
 from .reward_utils import compute_rewards
 from .scene_utils import apply_physx_material_properties, setup_scene
-from .termination_utils import compute_terminations, update_tolerance_curriculum
+from .reward_utils import compute_terminations, update_tolerance_curriculum
 
 
 __all__ = ["PoseReachEnv", "PoseReachEnvCfg"]
@@ -88,12 +88,12 @@ class PoseReachEnv(DirectRLEnv):
 
     def get_curriculum_state(self) -> dict:
         """Curriculum state for the checkpoint. See utils/curriculum.py."""
-        from .curriculum import get_curriculum_state
+        from .reward_utils import get_curriculum_state
         return get_curriculum_state(self)
 
     def set_curriculum_state(self, state: dict | None) -> None:
         """Restore curriculum state from a checkpoint."""
-        from .curriculum import set_curriculum_state
+        from .reward_utils import set_curriculum_state
         set_curriculum_state(self, state)
 
     def _setup_scene(self) -> None:

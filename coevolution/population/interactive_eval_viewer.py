@@ -83,7 +83,7 @@ def main() -> None:
     p_obs, p_act = inner.cfg.observation_space, n_act
     if args.policy_spec and args.policy_spec != args.robot_spec:
         from coevolution.eval.crossbody import CrossBodyAdapter
-        from isaacsimenvs.pose_reaching_6d.robots import get_robot_spec
+        from isaacsimenvs.pose_reaching_6d.scene_utils.robots import get_robot_spec
         from isaacsimenvs.pose_reaching_6d.obs_utils import compute_obs_dim
 
         pol = get_robot_spec(args.policy_spec)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from .reset_utils import reset_goal_trackers
+from ..reset_utils import reset_goal_trackers
 
 
 def update_tolerance_curriculum(env) -> None:
