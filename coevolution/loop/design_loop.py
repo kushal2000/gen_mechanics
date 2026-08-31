@@ -50,7 +50,7 @@ from pathlib import Path
 
 REPO = Path("/share/portal/kk837/gen_mechanics")
 SUB = REPO / "experiments/old_experiments/eval_population.sub"
-SOURCE_RUN = REPO / "train_dir/gen_mechanics/multi_embodiment_control/mec_population24k_ft_seed0_2026-08-18_16-06-04"
+SOURCE_RUN = REPO / "debug_outputs/deprecated/gen_mechanics/multi_embodiment_control/mec_population24k_ft_seed0_2026-08-18_16-06-04"
 CKPT = SOURCE_RUN / "0_pose_reach_sapg/nn/last_0_pose_reach_sapg_ep_120000_rew__6439.6465_.pth"
 BASE_POP = REPO / "assets/urdf/generated/population/seed_0003/manifest.json"
 OPERATORS = ("palm", "scale", "mounting", "num_joints_up", "num_joints_down")

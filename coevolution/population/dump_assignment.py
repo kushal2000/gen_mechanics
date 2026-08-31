@@ -6,7 +6,7 @@ run's own ``.hydra/config.yaml`` and the population manifest, and writes them to
 ``coevolution/population/assignments/<run_name>.json``.
 
     .venv_isaacsim/bin/python -m coevolution.population.dump_assignment \\
-        --run_dir train_dir/gen_mechanics/multi_embodiment_control/mec_population24k_seed0_2026-08-17_15-13-28
+        --run_dir debug_outputs/deprecated/gen_mechanics/multi_embodiment_control/mec_population24k_seed0_2026-08-17_15-13-28
 
 No Isaac Sim needed -- this reads a config and replays a numpy RNG.
 
