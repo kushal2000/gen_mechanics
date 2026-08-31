@@ -18,7 +18,7 @@
 #   CHECKPOINT=train_dir/.../nn/0_pose_reach_sapg.pth \
 #   POLICY_CONFIG=train_dir/.../config.yaml \
 #   SWEEP_ID=sweep01 \
-#   sbatch --array=0-20 experiments/eval.sub
+#   sbatch --array=0-20 experiments/old_experiments/eval.sub
 #
 # Array size must equal the condition count (21 for the full suite):
 #   .venv_isaacsim/bin/python -c \

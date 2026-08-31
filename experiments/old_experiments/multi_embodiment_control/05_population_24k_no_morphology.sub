@@ -14,7 +14,7 @@
 # ABLATION of arm 3: 24,576 distinct hands, one per env, and NO morphology
 # descriptor in the observation.
 #
-#   sbatch experiments/multi_embodiment_control/05_population_24k_no_morphology.sub
+#   sbatch experiments/old_experiments/multi_embodiment_control/05_population_24k_no_morphology.sub
 #
 # ---------------------------------------------------------------------------
 # THE QUESTION
@@ -65,7 +65,7 @@
 # path will refuse them for the same reason.
 
 set -euo pipefail
-source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/multi_embodiment_control/_common.sh
 
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
 TASK="GenMech-PoseReachMulti-Direct-v0"
@@ -83,7 +83,7 @@ MANIFEST="${REPO_ROOT}/assets/urdf/generated/population/seed_$(printf '%04d' "$P
 if [ ! -f "$MANIFEST" ]; then
     echo "MISSING population manifest: $MANIFEST" >&2
     echo "Build it first:  COUNT=$DESIGN_COUNT SEED=$POPULATION_SEED sbatch \\" >&2
-    echo "    experiments/multi_embodiment_control/00_build_population.sub" >&2
+    echo "    experiments/old_experiments/multi_embodiment_control/00_build_population.sub" >&2
     exit 1
 fi
 HAVE=$("${REPO_ROOT}/.venv_isaacsim/bin/python" -c \

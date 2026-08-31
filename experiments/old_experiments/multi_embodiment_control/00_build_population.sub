@@ -35,7 +35,7 @@
 # rebuilding it in place would leave that directory half-written for ~41 hours.
 # A fresh seed is a new population, which is all arm 3 needs.
 #
-#   COUNT=24576 SEED=2 sbatch experiments/multi_embodiment_control/00_build_population.sub
+#   COUNT=24576 SEED=2 sbatch experiments/old_experiments/multi_embodiment_control/00_build_population.sub
 #
 # Writes assets/urdf/generated/population/seed_<SEED>/manifest.json plus one
 # canonical URDF per accepted hand.

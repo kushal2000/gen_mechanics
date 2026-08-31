@@ -24,7 +24,7 @@
 #   RUN_DIR=train_dir/gen_mechanics/multi_embodiment_control/mec_population24k_seed0_2026-08-17_15-13-28 \
 #   CKPT=$RUN_DIR/0_pose_reach_sapg/nn/0_pose_reach_sapg.pth \
 #   EPISODES=10 \
-#   sbatch experiments/eval_population.sub
+#   sbatch experiments/old_experiments/eval_population.sub
 #
 # One Kit boot holds all 24,576 designs at once -- env i is design i with object
 # i % 1200, the training pairing exactly. That is why this is a single job and

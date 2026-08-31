@@ -15,7 +15,7 @@
 # checkpoint, instead of starting over.
 #
 #   SOURCE_RUN=train_dir/gen_mechanics/multi_embodiment_control/mec_population24k_seed0_2026-08-17_15-13-28 \
-#       sbatch experiments/multi_embodiment_control/04_finetune_population_24k.sub
+#       sbatch experiments/old_experiments/multi_embodiment_control/04_finetune_population_24k.sub
 #
 # Everything about the environment comes from 03_population_24k.sub via
 # _common.sh. The only thing this file adds is the checkpoint and the checks
@@ -46,7 +46,7 @@
 # 16,600 resuming with MAX_EPOCHS=120000 runs 103,400 more epochs.
 
 set -euo pipefail
-source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/multi_embodiment_control/_common.sh
 
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
 PY="${REPO_ROOT}/.venv_isaacsim/bin/python"
@@ -114,7 +114,7 @@ MANIFEST="${REPO_ROOT}/assets/urdf/generated/population/seed_$(printf '%04d' "$P
 if [ ! -f "$MANIFEST" ]; then
     echo "MISSING population manifest: $MANIFEST" >&2
     echo "Build it:  COUNT=$DESIGN_COUNT SEED=$POPULATION_SEED sbatch \\" >&2
-    echo "    experiments/multi_embodiment_control/00_build_population.sub" >&2
+    echo "    experiments/old_experiments/multi_embodiment_control/00_build_population.sub" >&2
     exit 1
 fi
 HAVE=$("$PY" -c "import json;print(len(json.load(open('$MANIFEST'))['hands']))")

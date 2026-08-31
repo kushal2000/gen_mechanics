@@ -13,7 +13,7 @@
 # comparison of settings instead of a comparison of embodiments.
 #
 # Not sourced by anything else in the repo; the production training path
-# (experiments/train.sub) keeps its own defaults.
+# (experiments/old_experiments/train.sub) keeps its own defaults.
 
 # --- 1. Domain randomization: OFF -------------------------------------------
 #
@@ -136,7 +136,7 @@ launch_training() {
     local EXPL_COEF_BLOCK_SIZE="${EXPL_COEF_BLOCK_SIZE:-4096}"
     local WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
     local WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
-    # The wandb pose viewer. experiments/train.sub passes these; this launcher
+    # The wandb pose viewer. experiments/old_experiments/train.sub passes these; this launcher
     # was written from scratch and dropped them, so the first three arms logged
     # no viewer. The viewer fetches robot meshes over raw.githubusercontent, so
     # it only renders for a robot whose URDF is COMMITTED -- true for

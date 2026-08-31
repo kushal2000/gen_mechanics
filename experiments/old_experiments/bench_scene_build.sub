@@ -13,9 +13,9 @@
 
 # Why is scene construction so expensive?
 #
-#   sbatch experiments/bench_scene_build.sub
+#   sbatch experiments/old_experiments/bench_scene_build.sub
 #
-# Measured at 24,576 envs by experiments/bench_sps.sub: scene build takes
+# Measured at 24,576 envs by experiments/old_experiments/bench_sps.sub: scene build takes
 # 634s (SHARPA), 418s and 387s (capsule hands) against ~8s of timed physics,
 # and the 64-distinct-USD case ran over two hours. Stepping is not the problem;
 # building is. This sweep isolates which factor drives it.

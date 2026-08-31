@@ -16,8 +16,8 @@
 # run_all.sh needs a GPU and boots one Kit per test, so it must not share a GPU
 # with a training job -- hence its own allocation.
 #
-#   sbatch experiments/run_tests.sub            # everything
-#   MODE=fast sbatch experiments/run_tests.sub  # skip parity + pretrained rollout
+#   sbatch experiments/old_experiments/run_tests.sub            # everything
+#   MODE=fast sbatch experiments/old_experiments/run_tests.sub  # skip parity + pretrained rollout
 
 set -uo pipefail
 REPO_ROOT="/share/portal/kk837/gen_mechanics"

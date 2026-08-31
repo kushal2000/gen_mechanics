@@ -24,9 +24,9 @@
 #   * observation and action spaces agree with what rl_games builds;
 #   * one optimiser step runs without shape errors.
 #
-#   ARM=1 sbatch experiments/multi_embodiment_control/smoke.sub
-#   ARM=2 sbatch experiments/multi_embodiment_control/smoke.sub
-#   ARM=3 sbatch experiments/multi_embodiment_control/smoke.sub
+#   ARM=1 sbatch experiments/old_experiments/multi_embodiment_control/smoke.sub
+#   ARM=2 sbatch experiments/old_experiments/multi_embodiment_control/smoke.sub
+#   ARM=3 sbatch experiments/old_experiments/multi_embodiment_control/smoke.sub
 
 set -uo pipefail
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
@@ -37,7 +37,7 @@ mkdir -p "$OUT_DIR"
     JobName="smoke_arm${ARM}" || true
 exec > "${OUT_DIR}/arm${ARM}.log" 2>&1
 
-source "${REPO_ROOT}/experiments/multi_embodiment_control/_common.sh"
+source "${REPO_ROOT}/experiments/old_experiments/multi_embodiment_control/_common.sh"
 
 # Small scene. expl_coef_block_size is lowered with it: SAPG needs
 # num_envs % block == 0, and the production 4096 would force a 4096-env smoke.

@@ -14,7 +14,7 @@
 # Step-rate benchmark at TRAINING scale: what does morphological diversity cost
 # when the scene holds 24,576 envs rather than a toy 64?
 #
-#   NUM_ENVS=24576 sbatch experiments/bench_sps.sub
+#   NUM_ENVS=24576 sbatch experiments/old_experiments/bench_sps.sub
 #
 # At 64 envs the answer was -7.6% step rate for 64 distinct hands vs one hand
 # replicated. That number is not safe to extrapolate. Two things change at

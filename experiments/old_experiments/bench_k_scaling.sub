@@ -14,7 +14,7 @@
 # How does cost scale with the NUMBER OF DISTINCT EMBODIMENTS?
 #
 #   for k in 1 8 64 256 512; do
-#       N_USDS=$k NUM_ENVS=24576 sbatch experiments/bench_k_scaling.sub
+#       N_USDS=$k NUM_ENVS=24576 sbatch experiments/old_experiments/bench_k_scaling.sub
 #   done
 #
 # One job per k, deliberately. Timing several configurations in one process is

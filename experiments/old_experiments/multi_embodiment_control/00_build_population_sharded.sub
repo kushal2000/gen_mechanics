@@ -25,7 +25,7 @@
 # No GPU: the gate is closed-form capsule/box distances (capsule_collision.py).
 #
 #   COUNT=24576 SEED=3 SHARDS=10 \
-#       sbatch --array=0-9 experiments/multi_embodiment_control/00_build_population_sharded.sub
+#       sbatch --array=0-9 experiments/old_experiments/multi_embodiment_control/00_build_population_sharded.sub
 #
 # then, once the array finishes, merge (00_merge_population.sub does this with
 # an afterok dependency).

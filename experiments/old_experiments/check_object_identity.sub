@@ -18,27 +18,29 @@
 # stops comparing assets and asks instead whether each env holds the object its
 # OBSERVATION describes, and whether the two paths agree env by env.
 #
-#   AUTHOR=1 TAG=auth sbatch experiments/check_object_rollout.sub
-#   TAG=conv sbatch experiments/check_object_rollout.sub
+#   AUTHOR=1 TAG=auth sbatch experiments/old_experiments/check_object_identity.sub
+#   TAG=conv sbatch experiments/old_experiments/check_object_identity.sub
 
 set -euo pipefail
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
-NUM_ENVS="${NUM_ENVS:-256}"
+NUM_ENVS="${NUM_ENVS:-512}"
+NUM_ASSETS="${NUM_ASSETS:-100}"
 TAG="${TAG:-conv}"
-OUT_DIR="${REPO_ROOT}/bench_dir/object_rollout"
+OUT_DIR="${REPO_ROOT}/bench_dir/object_identity"
 mkdir -p "$OUT_DIR"
 [ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" \
-    JobName="roll_${TAG}" || true
+    JobName="ident_${TAG}" || true
 exec > "${OUT_DIR}/${TAG}.log" 2> "${OUT_DIR}/${TAG}.err"
 
 cd "$REPO_ROOT"
 source .venv_isaacsim/bin/activate
 export OMNI_KIT_ACCEPT_EULA=YES
-export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_roll_${TAG}"
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_ident_${TAG}"
 mkdir -p "$OMNI_KIT_CACHE_PATH"
 
-python -u -m genmech.tools.check_object_rollout \
+python -u -m genmech.tools.check_object_identity \
     --num_envs "$NUM_ENVS" \
+    --num_assets_per_type "$NUM_ASSETS" \
     --out "${OUT_DIR}/${TAG}.npz" \
     ${AUTHOR:+--author} \
     ${COMPARE:+--compare "$COMPARE"}

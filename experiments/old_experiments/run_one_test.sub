@@ -23,7 +23,7 @@
 # is using the GPU -- one Kit per GPU is a hard constraint, not a preference.
 #
 #   TEST="tests/test_sharpa_parity.py" TAG=parity \
-#       sbatch experiments/run_one_test.sub
+#       sbatch experiments/old_experiments/run_one_test.sub
 
 set -uo pipefail
 REPO_ROOT="/share/portal/kk837/gen_mechanics"

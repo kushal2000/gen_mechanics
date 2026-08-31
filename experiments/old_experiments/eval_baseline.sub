@@ -14,7 +14,7 @@
 # BASELINE for the authoring work: what does the pretrained SHARPA policy score
 # on the training task, through the CURRENT (URDF->USD converter) asset path?
 #
-#   CKPT=... sbatch experiments/eval_baseline.sub
+#   CKPT=... sbatch experiments/old_experiments/eval_baseline.sub
 #
 # Direct authoring is only acceptable if it reproduces this. Faster asset
 # preparation that changes the physics is not a win -- it is a silent

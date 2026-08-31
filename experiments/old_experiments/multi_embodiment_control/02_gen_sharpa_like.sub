@@ -26,10 +26,10 @@
 # and changes only the representation, so arm1 -> arm2 measures the
 # representation cost and arm2 -> arm3 measures the diversity cost.
 #
-#   sbatch experiments/multi_embodiment_control/02_gen_sharpa_like.sub
+#   sbatch experiments/old_experiments/multi_embodiment_control/02_gen_sharpa_like.sub
 
 set -euo pipefail
-source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/multi_embodiment_control/_common.sh
 
 TASK="GenMech-PoseReach-Direct-v0"
 EXPERIMENT_TAG="mec_gen_sharpa_like"

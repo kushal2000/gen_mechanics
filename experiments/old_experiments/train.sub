@@ -13,8 +13,8 @@
 
 # Pose-reaching training, parameterized by hand.
 #
-#   ROBOT=sharpa_iiwa14  SEED=0 sbatch experiments/train.sub
-#   ROBOT=allegro_iiwa14 SEED=0 sbatch experiments/train.sub
+#   ROBOT=sharpa_iiwa14  SEED=0 sbatch experiments/old_experiments/train.sub
+#   ROBOT=allegro_iiwa14 SEED=0 sbatch experiments/old_experiments/train.sub
 #
 # MAX_EPOCHS is a HARD requirement for the hand comparison, not a convenience.
 # Allegro (16 hand DoF, 4 fingers) simulates faster than SHARPA (22 DoF, 5

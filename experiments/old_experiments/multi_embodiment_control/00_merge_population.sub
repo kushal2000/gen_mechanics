@@ -15,7 +15,7 @@
 # cannot merge a population with holes in it (it also checks, and refuses).
 #
 #   SEED=3 SHARDS=10 sbatch --dependency=afterok:<array_job_id> \
-#       experiments/multi_embodiment_control/00_merge_population.sub
+#       experiments/old_experiments/multi_embodiment_control/00_merge_population.sub
 
 set -uo pipefail
 REPO_ROOT="/share/portal/kk837/gen_mechanics"

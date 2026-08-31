@@ -14,7 +14,7 @@
 # job rather than from an interactive shell so it survives the session that
 # started it; it submits the GPU eval jobs itself and waits on them.
 #
-#   ITERS=10 SEEDS=3 sbatch experiments/loop_design.sub
+#   ITERS=10 SEEDS=3 sbatch experiments/old_experiments/loop_design.sub
 #
 # Mutation runs in-process on the 16 CPUs (20,480 children ~ 2 min); only the
 # evals go to the GPU queue, 3 seeds x 2 fitness arms = 6 jobs per iteration.

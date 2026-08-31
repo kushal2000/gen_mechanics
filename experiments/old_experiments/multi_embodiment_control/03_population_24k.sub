@@ -31,7 +31,7 @@
 # 1. POPULATION. Requires a cached 24,576-hand population. Build it first:
 #
 #        COUNT=24576 SEED=2 sbatch \
-#            experiments/multi_embodiment_control/00_build_population.sub
+#            experiments/old_experiments/multi_embodiment_control/00_build_population.sub
 #
 #    This job refuses to start without it rather than silently training on a
 #    64-hand population cycled 384 times, which would look like a k=n run in
@@ -47,11 +47,11 @@
 #    setup is ~12 min. Set AUTHOR_ROBOTS=0 to fall back to the converter, which
 #    remains the reference the authored path is validated against.
 #
-#   sbatch experiments/multi_embodiment_control/03_population_24k.sub
-#   DESIGN_COUNT=4096 sbatch experiments/multi_embodiment_control/03_population_24k.sub
+#   sbatch experiments/old_experiments/multi_embodiment_control/03_population_24k.sub
+#   DESIGN_COUNT=4096 sbatch experiments/old_experiments/multi_embodiment_control/03_population_24k.sub
 
 set -euo pipefail
-source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/multi_embodiment_control/_common.sh
 
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
 TASK="GenMech-PoseReachMulti-Direct-v0"
@@ -68,14 +68,14 @@ MANIFEST="${REPO_ROOT}/assets/urdf/generated/population/seed_$(printf '%04d' "$P
 if [ ! -f "$MANIFEST" ]; then
     echo "MISSING population manifest: $MANIFEST" >&2
     echo "Build it first:  COUNT=$DESIGN_COUNT SEED=$POPULATION_SEED sbatch \\" >&2
-    echo "    experiments/multi_embodiment_control/00_build_population.sub" >&2
+    echo "    experiments/old_experiments/multi_embodiment_control/00_build_population.sub" >&2
     exit 1
 fi
 HAVE=$(python3 -c "import json,sys; print(len(json.load(open('$MANIFEST'))['hands']))")
 if (( HAVE < DESIGN_COUNT )); then
     echo "population seed $POPULATION_SEED has $HAVE hands, need $DESIGN_COUNT." >&2
     echo "Rebuild larger:  COUNT=$DESIGN_COUNT SEED=$POPULATION_SEED sbatch \\" >&2
-    echo "    experiments/multi_embodiment_control/00_build_population.sub" >&2
+    echo "    experiments/old_experiments/multi_embodiment_control/00_build_population.sub" >&2
     echo "(or set DESIGN_COUNT=$HAVE to use what is cached)" >&2
     exit 1
 fi

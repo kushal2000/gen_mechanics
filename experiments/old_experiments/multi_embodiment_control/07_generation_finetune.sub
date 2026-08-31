@@ -15,7 +15,7 @@
 #
 #   POPULATION_PATH=assets/urdf/generated/population/generations/gen1_nom_mutate \
 #   EXPERIMENT_TAG=mec_gen1_nom_mutate \
-#   sbatch experiments/multi_embodiment_control/07_generation_finetune.sub
+#   sbatch experiments/old_experiments/multi_embodiment_control/07_generation_finetune.sub
 #
 # Omit POPULATION_PATH for the unselected-baseline arm, which trains on the
 # original seed-3 population and is the control every other arm is read against.
@@ -42,7 +42,7 @@
 # 0.01 floor, confirmed from its tfevents `current_success_tolerance`.
 
 set -euo pipefail
-source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/multi_embodiment_control/_common.sh
 
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
 PY="${REPO_ROOT}/.venv_isaacsim/bin/python"

@@ -14,7 +14,7 @@
 # Which loop inside spawn_multi_asset carries the cost?
 #
 #   for k in 8 64 256; do
-#       N_USDS=$k NUM_ENVS=24576 sbatch experiments/probe_spawn_profile.sub
+#       N_USDS=$k NUM_ENVS=24576 sbatch experiments/old_experiments/probe_spawn_profile.sub
 #   done
 #
 # One job per k so the timings are not distorted by neighbours on the same node.

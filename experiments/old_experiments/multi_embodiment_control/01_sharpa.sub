@@ -21,11 +21,11 @@
 # symmetric-privileged-observation settings as the other two arms; see
 # _common.sh for why each is set.
 #
-#   sbatch experiments/multi_embodiment_control/01_sharpa.sub
-#   SEED=1 sbatch experiments/multi_embodiment_control/01_sharpa.sub
+#   sbatch experiments/old_experiments/multi_embodiment_control/01_sharpa.sub
+#   SEED=1 sbatch experiments/old_experiments/multi_embodiment_control/01_sharpa.sub
 
 set -euo pipefail
-source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/multi_embodiment_control/_common.sh
 
 TASK="GenMech-PoseReach-Direct-v0"
 EXPERIMENT_TAG="mec_sharpa"

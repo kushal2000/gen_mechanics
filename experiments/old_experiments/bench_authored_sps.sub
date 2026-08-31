@@ -13,7 +13,7 @@
 
 # k = n: every env a distinct robot, authored directly onto the stage.
 #
-#   ROBOTS=24576 LINKS=44 sbatch experiments/bench_authored_sps.sub
+#   ROBOTS=24576 LINKS=44 sbatch experiments/old_experiments/bench_authored_sps.sub
 #
 # Memory is raised to 300G: 24,576 robots x 44 links is ~3.2M prims on the USD
 # stage, which the convert path never had to hold because it shared protos.

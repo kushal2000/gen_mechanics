@@ -41,7 +41,7 @@ genmech/
 assets/urdf/       robot + table + object URDFs and meshes
 third_party/rl_games/  vendored SAPG fork (NOT the PyPI package)
 tests/             standalone Kit-booting smoke and invariant tests
-experiments/       SLURM job scripts
+experiments/old_experiments/  SLURM job scripts (pre-refactor)
 docs/              installation, methodology, proposals
 ```
 
@@ -57,7 +57,7 @@ $PY tests/test_load_isaacsim.py
 $PY tests/test_gym_register.py
 $PY tests/test_env_smoke.py --num_envs 8 --num_assets_per_type 2 --steps 10
 
-sbatch experiments/train.sub          # ROBOT=sharpa_iiwa14 SEED=0
+sbatch experiments/old_experiments/train.sub          # ROBOT=sharpa_iiwa14 SEED=0
 ```
 
 ## Methodology

@@ -41,7 +41,7 @@ while true; do
         N=$(python3 -c "import json;print(len(json.load(open('$MANIFEST'))['hands']))" 2>/dev/null || echo 0)
         if [ "${N:-0}" -ge 24576 ]; then
             say "population ready: $N hands -- submitting arm 3"
-            ARM3_JOB=$(sbatch --parsable experiments/multi_embodiment_control/03_population_24k.sub 2>&1)
+            ARM3_JOB=$(sbatch --parsable experiments/old_experiments/multi_embodiment_control/03_population_24k.sub 2>&1)
             say "arm 3 submitted: job $ARM3_JOB"
         else
             say "population manifest has only $N hands (<24576) -- NOT submitting arm 3"
@@ -98,7 +98,7 @@ while [ "$(date +%s)" -lt "$END" ]; do
                 else
                     say "$tag DIED with no traceback (looks like infrastructure) -- retrying once"
                     say "$(tail -8 "$d/slurm.err" 2>/dev/null)"
-                    sbatch "experiments/multi_embodiment_control/${SUBFILE[$tag]}" >> "$REPORT" 2>&1
+                    sbatch "experiments/old_experiments/multi_embodiment_control/${SUBFILE[$tag]}" >> "$REPORT" 2>&1
                     RETRIED[$tag]=1
                 fi
             fi
