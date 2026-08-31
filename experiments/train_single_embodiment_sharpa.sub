@@ -8,10 +8,9 @@
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:1
-# Keep these. slurmstepd writes OOM and time-limit kills HERE after the script
-# exits, not to the redirected log. Empty = healthy.
-#SBATCH -o /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/bootstrap_%j.out
-#SBATCH -e /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/bootstrap_%j.err
+# Redirected into RUN_DIR below; `sacct -j <jobid>` has the kill reason.
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
 
 # SHARPA on the iiwa14. The reference run -- copy this file for variants.
 #   sbatch experiments/train_single_embodiment_sharpa.sub

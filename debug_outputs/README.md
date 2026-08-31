@@ -6,7 +6,7 @@ placeholders — nothing in it should ever be an input to anything.
 
 | | |
 |---|---|
-| `train_logs/` | `bootstrap_<jobid>.{out,err}` — see below |
+| `train_logs/` | logs pulled off a run for reading |
 | `videos/` | rollout captures |
 | `smoke_tests/` | output from one-off checks: a rendered URDF, a stage dump, a printed observation |
 
@@ -22,10 +22,11 @@ train_dir/<project>/<group>/<run>/
   nn/  summaries/             checkpoints and tensorboard
 ```
 
-`train_logs/` holds only `bootstrap_<jobid>.{out,err}`, and those are worth
-keeping despite being empty on a healthy run. `#SBATCH -o` is evaluated before
-the job starts, so it cannot name a run directory built from a timestamp — and
-`slurmstepd` keeps writing to it after the script exits. **An OOM kill or a
-time-limit cancellation is reported only there.** Of 35 runs logged under the
-previous scheme, which pointed `-o` at `/dev/null`, not one recorded why it
-ended.
+How a job ended comes from SLURM, not from a log file:
+
+```bash
+sacct -j <jobid> --format=JobID,JobName%30,State,ExitCode,MaxRSS,Elapsed
+```
+
+That gives `TIMEOUT` / `OUT_OF_MEMORY` / `FAILED` plus peak RSS — which is also
+the quickest check that a `--mem` request was sized right.
