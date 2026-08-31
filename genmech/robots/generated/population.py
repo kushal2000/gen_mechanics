@@ -336,6 +336,35 @@ def load_population(seed: int) -> list[P.HandParams]:
     return [hand_from_json(e["params"]) for e in manifest["hands"]]
 
 
+def load_population_at(path) -> list[P.HandParams]:
+    """Read any manifest.json, wherever it lives.
+
+    Populations that were SAMPLED are identified by a seed, and load_population
+    maps that seed to seed_<NNNN>/manifest.json. A population produced by
+    MUTATION has no seed -- it is a function of (parent population, operator,
+    alpha, rng) -- so filing it under a seed directory would misstate its
+    provenance. Those are addressed by path instead, and this is the reader.
+    """
+    path = Path(path)
+    if path.is_dir():
+        path = path / MANIFEST_NAME
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    if manifest.get("version") != MANIFEST_VERSION:
+        raise KeyError(f"{path}: manifest version {manifest.get('version')} != "
+                       f"{MANIFEST_VERSION}")
+    return [hand_from_json(e["params"]) for e in manifest["hands"]]
+
+
+def load_population_any(seed=None, path=None) -> list[P.HandParams]:
+    """Path wins over seed. One resolver, so the load sites cannot disagree."""
+    if path:
+        from genmech.utils.paths import resolve as _r
+        return load_population_at(_r(str(path)))
+    if seed is None:
+        raise ValueError("neither robot_population_path nor robot_population_seed is set")
+    return load_population(int(seed))
+
+
 def population_specs(seed: int, count: int | None = None) -> list:
     """Specs for a cached population, building URDFs only if they are missing."""
 

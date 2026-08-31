@@ -122,9 +122,11 @@ class PoseReachMultiEnv(PoseReachEnv):
 
     def _build_morphology_obs(self) -> None:
         """Per-env morphology descriptor, computed once."""
-        from genmech.robots.generated.population import load_population
+        from genmech.robots.generated.population import load_population, load_population_any
 
-        hands = load_population(int(self.cfg.assets.robot_population_seed))
+        hands = load_population_any(
+            getattr(self.cfg.assets, "robot_population_seed", None),
+            getattr(self.cfg.assets, "robot_population_path", None))
         count = int(self.cfg.assets.robot_population_count or 0)
         if count:
             hands = hands[:count]

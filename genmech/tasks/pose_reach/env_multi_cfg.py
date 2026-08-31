@@ -31,6 +31,17 @@ class MultiAssetsCfg(AssetsCfg):
     # i % len(population), the same rule the object pool uses. All of them run in
     # ONE articulation view because ghosting pads each design to the same
     # 37-joint template -- view count tracks joint COUNT, not population size.
+    # A population directory holding manifest.json. Takes precedence over
+    # robot_population_seed. Mutated generations have no seed to be named by, so
+    # they are addressed by path -- see population.load_population_at.
+    #
+    # EMPTY STRING, NOT None, and the type is bare `str`. isaaclab's
+    # update_class_from_dict type-checks a hydra override against the default's
+    # RUNTIME type, so `str | None = None` rejects every string override with
+    # "Incorrect type under namespace ... Expected: <class 'NoneType'>". Same
+    # reason reset.fixed_trajectory_file defaults to "". Every reader tests
+    # truthiness, so "" and None behave alike downstream.
+    robot_population_path: str = ""
     robot_population_seed: int | None = 0
     robot_population_count: int = 0
     """0 means the whole cached population for that seed."""

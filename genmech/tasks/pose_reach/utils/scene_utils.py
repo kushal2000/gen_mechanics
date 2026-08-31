@@ -1868,12 +1868,20 @@ def _author_objects_into_envs(env, object_params, n_pool: int,
 def _resolve_robot_population(assets_cfg) -> list | None:
     """Specs for a cached hand population, or None for the single-robot env."""
     seed = getattr(assets_cfg, "robot_population_seed", None)
-    if seed is None:
+    path = getattr(assets_cfg, "robot_population_path", None)
+    if seed is None and not path:
         return None
-    from genmech.robots.generated.population import load_population
+    from genmech.robots.generated.population import load_population_any
     from genmech.robots.generated.synth_spec import synth_spec
 
-    hands = load_population(int(seed))
+    hands = load_population_any(seed, path)
+    # The AUTHORED path builds every robot's physics from HandParams and never
+    # opens a design URDF -- only the converter branch reads design_spec.urdf_path
+    # (see _build_robot_usds below). So writing one URDF per design costs 13 min
+    # of every scene build and 24,576 files into a directory already holding 172k,
+    # for artifacts nothing reads. It is also a race: five concurrent seed-jobs on
+    # one population all find the files absent and all write the same paths.
+    authored = bool(getattr(assets_cfg, "author_robot_usds", False))
     count = int(getattr(assets_cfg, "robot_population_count", 0) or 0)
     if count:
         if count > len(hands):
@@ -1882,7 +1890,7 @@ def _resolve_robot_population(assets_cfg) -> list | None:
                 f"for seed {seed} ({len(hands)} hands). Build a larger one with "
                 f"genmech.robots.generated.population.build_population.")
         hands = hands[:count]
-    specs = [synth_spec(h) for h in hands]
+    specs = [synth_spec(h, ensure_urdf=not authored) for h in hands]
 
     # Every design must present the same joint vector: one articulation view has
     # one dof_count, and the actuator tables are keyed by name. Ghosting is what
@@ -2150,7 +2158,7 @@ def setup_scene(env) -> None:
         from genmech.robots.generated.author_robot import (
             arm_only_urdf, author_robot_usd, flatten_arm_usd,
         )
-        from genmech.robots.generated.population import load_population
+        from genmech.robots.generated.population import load_population, load_population_any
         from pxr import Sdf, Usd, UsdGeom
 
         arm_dir = Path(env._tmp_asset_dir) / "arm"
@@ -2169,7 +2177,9 @@ def setup_scene(env) -> None:
         _log_scene_step(setup_t0, "converted the shared arm once")
 
         layer_for_envs = get_current_stage().GetRootLayer()
-        hands = load_population(int(assets_cfg.robot_population_seed))
+        hands = load_population_any(
+            getattr(assets_cfg, "robot_population_seed", None),
+            getattr(assets_cfg, "robot_population_path", None))
         count = int(getattr(assets_cfg, "robot_population_count", 0) or 0)
         if count:
             hands = hands[:count]

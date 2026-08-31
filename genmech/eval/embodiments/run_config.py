@@ -42,6 +42,7 @@ RUN_FIELDS = (
     "assets.author_object_usds",
     "assets.author_which",
     "assets.author_robot_usds",
+    "assets.robot_population_path",
     "assets.robot_population_seed",
     "assets.robot_population_count",
     "assets.robot_friction",
