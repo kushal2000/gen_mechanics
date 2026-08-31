@@ -27,9 +27,17 @@ CPUs: 1 CPU regressed Kit boot from 733 s to 916 s.
 #SBATCH --exclude=portal-compute-01
 ```
 
-`portal` has four nodes. `portal-compute-01` is the odd one out — 8x RTX A6000,
-where `portal-compute-02/03/04` are RTX 6000 Ada. Exclude it; the Ada cards are
-meaningfully faster and the run's epoch budget was characterised on them.
+`portal` has four nodes, and `portal-compute-01` is the odd one out:
+
+| node | GPU | generation |
+|---|---|---|
+| `portal-compute-01` | 8x RTX **A6000** | Ampere, 2020 |
+| `portal-compute-02/03/04` | 8x RTX **6000 Ada** | Ada Lovelace, 2022 |
+
+Exclude 01. The naming misleads — NVIDIA dropped the `A` prefix for the Ada
+generation, so "A6000" reads as the newer card when it is a generation older
+and roughly half the FP32 throughput. The epoch budget in the reference script
+was characterised on the Ada cards.
 
 A6000s are plentiful *outside* `portal` (many nodes on `default_partition`
 carry 8-10 of them). If `portal` is congested, that is where the short queue

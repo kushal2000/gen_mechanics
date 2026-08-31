@@ -12,7 +12,7 @@ outputs/
 train_dir/
 results/
 wandb/
-videos/
+/videos/
 viser_viz_data/
 *.log
 
@@ -65,6 +65,13 @@ assets/urdf/generated/population/**/manifest.json
 assets/urdf/generated/population/**/shard_*.json
 
 # Reconstructed run->object assignments. Regenerate with
-# `python -m genmech.eval.embodiments.dump_assignment --run_dir ...`;
+# `python -m coevolution.population.dump_assignment --run_dir ...`;
 # multi-MB and derived entirely from a run's config, so not worth versioning.
-genmech/eval/embodiments/assignments/*.json
+coevolution/population/assignments/*.json
+
+# Scratch space for diagnosing a run. The tree is versioned (README + .gitkeep
+# per directory) so the paths exist on a fresh clone; the contents never are.
+debug_outputs/**
+!debug_outputs/README.md
+!debug_outputs/*/
+!debug_outputs/*/.gitkeep
