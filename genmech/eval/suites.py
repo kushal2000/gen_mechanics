@@ -297,6 +297,274 @@ DR_AXIS: list[EvalCondition] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# SINGLE-KNOB DR CONDITIONS (24k population study, 2026-08-27)
+#
+# The three DR_PROFILES above move seven-plus knobs at once, so they can say
+# THAT a design is fragile but never TO WHAT. These conditions move exactly one
+# knob each, which is what an interaction question ("do some designs generalize
+# better?") actually needs.
+#
+# EVERY DR FIELD IS PINNED EXPLICITLY. RUN_FIELDS carries no
+# domain_randomization.*, so anything a condition leaves unset silently takes
+# the configclass default rather than the training run's value -- and the
+# defaults are NOT no-ops: object_state_xyz_noise_std defaults to 0.01,
+# force_prob_range to (0.001, 0.1). Enabling a flag without setting its group
+# would therefore import magnitudes nobody chose.
+#
+# EVERY RANGE IS DEGENERATE. Each knob is sampled at a different cadence --
+# friction once at scene init (scene_utils.py:1727), the wrench probability once
+# per episode (reset_utils.py:530), object-state noise and the action-delay
+# index every step (obs_utils.py:260, action_utils.py:44). A degenerate (x, x)
+# makes all of them deterministic and identical across envs, so no design's
+# score carries its own DR lottery and the cadence stops mattering. That is the
+# difference between measuring morphology and measuring luck.
+# ---------------------------------------------------------------------------
+
+# The population runs' own DR: everything off. Behaviourally identical to
+# DR_PROFILES["off"], but written out in full so no field is left to a default.
+_DR_OFF_EXPLICIT: dict[str, Any] = {
+    "domain_randomization.use_obs_delay": False,
+    "domain_randomization.obs_delay_max": 3,
+    "domain_randomization.use_action_delay": False,
+    "domain_randomization.action_delay_max": 3,
+    "domain_randomization.use_object_state_delay_noise": False,
+    "domain_randomization.object_state_delay_max": 10,
+    "domain_randomization.object_state_xyz_noise_std": 0.0,
+    "domain_randomization.object_state_rotation_noise_degrees": 0.0,
+    "domain_randomization.object_scale_noise_multiplier_range": (1.0, 1.0),
+    "domain_randomization.joint_velocity_obs_noise_std": 0.0,
+    "domain_randomization.force_scale": 0.0,
+    "domain_randomization.force_prob_range": (0.0, 0.0),
+    "domain_randomization.force_decay": 0.0,
+    "domain_randomization.force_decay_interval": 0.08,
+    "domain_randomization.force_only_when_lifted": True,
+    "domain_randomization.torque_scale": 0.0,
+    "domain_randomization.torque_prob_range": (0.0, 0.0),
+    "domain_randomization.torque_decay": 0.0,
+    "domain_randomization.torque_decay_interval": 0.08,
+    "domain_randomization.torque_only_when_lifted": True,
+    "domain_randomization.object_friction_scale_range": (1.0, 1.0),
+    "domain_randomization.fingertip_friction_scale_range": (1.0, 1.0),
+    "domain_randomization.friction_n_buckets": 16,
+}
+
+# The friction ranges are MULTIPLIERS on AssetsCfg base values, not absolute
+# frictions. The population runs use finger_tip_friction=1.5 and
+# object_friction=0.5, so these scales resolve to the absolute mu named.
+# scene_utils.py builds `linspace(lo, hi, n_buckets) * base`, so a degenerate
+# range gives every env exactly `lo * base`.
+POP_FINGERTIP_FRICTION_BASE = 1.5
+POP_OBJECT_FRICTION_BASE = 0.5
+_FINGERTIP_FRICTION_TARGET = 1.0   # mu 1.5 -> 1.0, a less sticky robot
+_OBJECT_FRICTION_TARGET = 0.3      # mu 0.5 -> 0.3, a less sticky object
+_FT_SCALE = _FINGERTIP_FRICTION_TARGET / POP_FINGERTIP_FRICTION_BASE
+_OBJ_SCALE = _OBJECT_FRICTION_TARGET / POP_OBJECT_FRICTION_BASE
+
+# Wrench magnitudes are DR_PROFILES["train"]'s. Only the probability differs:
+# train leaves it at the (0.001, 0.1) default, drawn log-uniform PER EPISODE
+# across a 100x span, so under that profile a design's exposure is mostly its
+# own draw. Pinned here so every env is struck at the same rate.
+_WRENCH_PROB = 0.01
+
+DR_KNOBS: dict[str, dict[str, Any]] = {
+    "fingertip_friction": {
+        "domain_randomization.fingertip_friction_scale_range": (_FT_SCALE, _FT_SCALE),
+    },
+    "object_friction": {
+        "domain_randomization.object_friction_scale_range": (_OBJ_SCALE, _OBJ_SCALE),
+    },
+    "wrench": {
+        "domain_randomization.force_scale": 20.0,
+        "domain_randomization.force_prob_range": (_WRENCH_PROB, _WRENCH_PROB),
+        "domain_randomization.torque_scale": 2.0,
+        "domain_randomization.torque_prob_range": (_WRENCH_PROB, _WRENCH_PROB),
+    },
+    "object_state_noise": {
+        "domain_randomization.use_object_state_delay_noise": True,
+        "domain_randomization.object_state_delay_max": 10,
+        "domain_randomization.object_state_xyz_noise_std": 0.01,
+        "domain_randomization.object_state_rotation_noise_degrees": 5.0,
+    },
+    "action_delay": {
+        "domain_randomization.use_action_delay": True,
+        "domain_randomization.action_delay_max": 3,
+    },
+}
+
+_DR_KNOB_NOTES: dict[str, str] = {
+    "fingertip_friction":
+        "Fingertip mu 1.5 -> 1.0 on every env. A less sticky robot. Tests whether "
+        "a design's grasp survives on geometry rather than on skin friction.",
+    "object_friction":
+        "Object mu 0.5 -> 0.3 on every env. A less sticky object. The force-closure "
+        "stress case: predicts the mount-separation optimum sharpens.",
+    "wrench":
+        "Disturbance force 20 N / torque 2 Nm on the object, applied only once "
+        "lifted, at a pinned 1% per-step probability. Tests grasp RETENTION, not "
+        "acquisition; predicts finger count and separation buy moment arm.",
+    "object_state_noise":
+        "Observed object pose delayed up to 10 steps and corrupted by 1 cm / 5 deg. "
+        "A perception-error proxy; predicts tight pinches suffer more than wraps.",
+    "action_delay":
+        "Actions drawn uniformly from the last 3 policy steps, re-drawn every step "
+        "(~0-50 ms at 60 Hz). Tests tolerance to actuation latency.",
+}
+
+# Nominal for THIS axis is DR-off, not DR_PROFILES["train"]. The 24k population
+# runs trained with every DR knob disabled, so the suite's NOMINAL would itself
+# be a held-out shift for them and retention against it would be meaningless.
+NOMINAL_DR_OFF = EvalCondition(
+    axis="nominal", name="dr_off", overrides=dict(_DR_OFF_EXPLICIT), seed=SEED,
+    note=("The 24k population runs' own training distribution: all DR disabled. "
+          "The baseline every dr_knob condition is scored against."),
+)
+
+DR_KNOB_AXIS: list[EvalCondition] = [
+    EvalCondition(axis="dr_knob", name=name,
+                  overrides={**_DR_OFF_EXPLICIT, **knob},
+                  seed=SEED, note=_DR_KNOB_NOTES[name])
+    for name, knob in DR_KNOBS.items()
+] + [
+    # All five at once. Not a substitute for the singles: it says whether the
+    # damage compounds, and the singles say what it is made of.
+    EvalCondition(
+        axis="dr_knob", name="all_knobs",
+        overrides={**_DR_OFF_EXPLICIT,
+                   **{k: v for knob in DR_KNOBS.values() for k, v in knob.items()}},
+        seed=SEED,
+        note="All five single knobs simultaneously, at the same magnitudes.",
+    )
+]
+
+
+# ---------------------------------------------------------------------------
+# MAGNITUDE SWEEP (2026-08-27, second round)
+#
+# Round 1 measured: the three contact/physics knobs moved performance by ~1% and
+# did not re-rank designs at all (disattenuated r vs nominal 0.965-0.977), while
+# object-state noise took the population to -78% with 9.6% of designs at zero.
+# Both ends are useless as a fitness signal. Target band, taking action_delay
+# (-41%, 0.8% zeros, reliability 0.57) as the reference: a 30-50% mean drop with
+# under 2% of designs at zero.
+#
+# WHY THE PHYSICS KNOBS READ NULL. Nothing in the repo authors a friction
+# combine mode, so PhysX's default -- average -- applies, and effective
+# fingertip-object friction is (mu_ft + mu_obj)/2 = (1.5 + 0.5)/2 = 1.0. Round
+# 1 therefore moved effective friction by 25% (fingertip) and 10% (object), not
+# the 33% and 40% the scales suggest. Scaling BOTH surfaces by k gives
+# mu_eff = k exactly, which is why the ladder below is expressed that way.
+#
+# Note object friction alone is capped: even at mu_obj = 0 it only reaches
+# mu_eff = 0.75. There is no magnitude that makes it a strong knob, which is why
+# it is not swept on its own.
+#
+# WHY THE WRENCH LADDER MOVES PROBABILITY, NOT SCALE. force_scale is an
+# ACCELERATION -- action_utils computes `randn * mass * force_scale`, so mass
+# cancels -- and force_decay = 0 zeroes the wrench every step, so each fire is a
+# one-step impulse of force_scale/60 ~ 0.33 m/s per axis. Fires are independent,
+# so sustained disturbance amplitude grows as sqrt(rate): 0.01 -> 1.0 is 100x the
+# events and ~10x the amplitude. At prob 1.0 the perturbation stops being
+# discrete kicks and becomes white-noise buffeting -- same energy scale,
+# different phenomenon, and the ceiling of the knob.
+# ---------------------------------------------------------------------------
+
+# delay_max = 0 gives a length-1 queue (allocated as max(1, delay_max)), so
+# _sample_delay's randint(0, 1) always returns the value pushed this step: zero
+# delay, noise intact. The only gate on the block is use_object_state_delay_noise,
+# so the flag must stay True or the noise goes too.
+_OBJ_NOISE_NO_DELAY = {
+    "domain_randomization.use_object_state_delay_noise": True,
+    "domain_randomization.object_state_delay_max": 0,
+}
+
+
+def _friction_k(k: float) -> dict[str, Any]:
+    """Scale BOTH contact surfaces by k, so mu_eff = k under average combine."""
+    return {
+        "domain_randomization.fingertip_friction_scale_range": (k, k),
+        "domain_randomization.object_friction_scale_range": (k, k),
+    }
+
+
+def _wrench_at(prob: float) -> dict[str, Any]:
+    """Round 1's magnitudes; only the fire rate moves."""
+    return {
+        "domain_randomization.force_scale": 20.0,
+        "domain_randomization.force_prob_range": (prob, prob),
+        "domain_randomization.torque_scale": 2.0,
+        "domain_randomization.torque_prob_range": (prob, prob),
+    }
+
+
+DR_SWEEP: dict[str, tuple[dict[str, Any], str]] = {
+    "obj_noise_1cm": (
+        {**_OBJ_NOISE_NO_DELAY,
+         "domain_randomization.object_state_xyz_noise_std": 0.01,
+         "domain_randomization.object_state_rotation_noise_degrees": 5.0},
+        "Round 1's noise magnitude with the 10-step (167 ms) delay removed. "
+        "Perturbs observed object POSE only -- velocities are read from the "
+        "delayed state and never get noise added.",
+    ),
+    "obj_noise_0.5cm": (
+        {**_OBJ_NOISE_NO_DELAY,
+         "domain_randomization.object_state_xyz_noise_std": 0.005,
+         "domain_randomization.object_state_rotation_noise_degrees": 2.5},
+        "Half magnitude. Brackets the target band from below, since removing "
+        "the delay could leave the damage anywhere from -70% to -20%.",
+    ),
+    "friction_k0.5":   (_friction_k(0.5),   "mu_ft 0.75, mu_obj 0.25 -> mu_eff 0.50."),
+    "friction_k0.25":  (_friction_k(0.25),  "mu_ft 0.375, mu_obj 0.125 -> mu_eff 0.25."),
+    "friction_k0.125": (_friction_k(0.125), "mu_ft 0.1875, mu_obj 0.0625 -> mu_eff 0.125."),
+    "friction_ft_zero": (
+        {"domain_randomization.fingertip_friction_scale_range": (0.0, 0.0),
+         "domain_randomization.object_friction_scale_range": (1.0, 1.0)},
+        "Frictionless fingertips, object untouched: mu_eff = (0 + 0.5)/2 = 0.25, "
+        "the SAME effective friction as friction_k0.25 but split differently "
+        "between the surfaces. If the two score alike the average-combine model "
+        "holds and friction is one knob; if not, the combine mode is not average "
+        "and every friction number needs rereading.",
+    ),
+    "wrench_p0.025": (_wrench_at(0.025),
+                      "1.5 fires/s, ~1.6x round 1's disturbance amplitude. Fills "
+                      "the gap between the measured null at 0.01 and 0.1."),
+    "wrench_p0.05": (_wrench_at(0.05), "3 fires/s, ~2.2x."),
+    "wrench_p0.1": (_wrench_at(0.1), "6 fires/s, ~3.2x round 1's disturbance amplitude."),
+    "wrench_p0.3": (_wrench_at(0.3), "18 fires/s, ~5.5x."),
+    "wrench_p1.0": (_wrench_at(1.0),
+                    "A fresh wrench every step: 60 fires/s, ~10x, and the "
+                    "ceiling of this knob at these scales. If this does not "
+                    "reach the target band, the wrench axis is dead at "
+                    "force_scale 20 and no intermediate point matters."),
+}
+
+DR_SWEEP_AXIS: list[EvalCondition] = [
+    EvalCondition(axis="dr_sweep", name=name,
+                  overrides={**_DR_OFF_EXPLICIT, **knob}, seed=SEED, note=note)
+    for name, (knob, note) in DR_SWEEP.items()
+]
+
+
+def dr_sweep_suite() -> list[EvalCondition]:
+    """DR-off baseline plus the round-2 magnitude sweep."""
+    return [NOMINAL_DR_OFF, *DR_SWEEP_AXIS]
+
+
+def dr_knobs_suite() -> list[EvalCondition]:
+    """DR-off baseline plus one condition per knob, plus all knobs together."""
+    return [NOMINAL_DR_OFF, *DR_KNOB_AXIS]
+
+
+def condition_by_id(cond_id: str) -> EvalCondition:
+    """Look up any committed condition by ``axis/name``."""
+    known = {c.id: c for c in (*full_suite(), *dr_knobs_suite(), *dr_sweep_suite())}
+    try:
+        return known[cond_id]
+    except KeyError:
+        raise KeyError(
+            f"unknown condition {cond_id!r}; available: {sorted(known)}") from None
+
+
 def full_suite() -> list[EvalCondition]:
     """Every condition, nominal first."""
     return [NOMINAL, *DR_AXIS, *OBJECT_PHYSICS, *OBJECT_GEOM, *GOALS]
@@ -313,7 +581,8 @@ def smoke_suite() -> list[EvalCondition]:
     ]
 
 
-SUITES = {"full": full_suite, "smoke": smoke_suite}
+SUITES = {"full": full_suite, "smoke": smoke_suite, "dr_knobs": dr_knobs_suite,
+          "dr_sweep": dr_sweep_suite}
 
 
 def get_suite(name: str) -> list[EvalCondition]:
@@ -360,6 +629,12 @@ __all__ = [
     "ALL_CATEGORIES",
     "full_suite",
     "smoke_suite",
+    "dr_knobs_suite",
+    "dr_sweep_suite",
+    "DR_SWEEP",
+    "condition_by_id",
+    "DR_KNOBS",
+    "NOMINAL_DR_OFF",
     "get_suite",
     "validate_suite",
     "resolve_overrides",
