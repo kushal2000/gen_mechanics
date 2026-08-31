@@ -9,10 +9,12 @@
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:1
 # SLURM expands only its own tokens here (%j = job id) -- it cannot see $RUN_DIR,
-# which is built from a timestamp inside the script. Writing to a fixed path by
-# job id means a failure BEFORE the run is named still lands somewhere.
-#SBATCH -o /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/%j.out
-#SBATCH -e /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/%j.err
+# which is built from a timestamp inside the script. So this is a BOOTSTRAP log
+# that catches anything failing before the run is named; the script re-points
+# stdout/stderr into RUN_DIR as soon as it exists. A bootstrap file with content
+# past the first few lines means the job died early.
+#SBATCH -o /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/bootstrap_%j.out
+#SBATCH -e /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/bootstrap_%j.err
 
 # SHARPA on the iiwa14. The reference run -- copy this file for variants.
 #   sbatch experiments/train_single_embodiment_sharpa.sub
@@ -40,15 +42,8 @@ MINIBATCH_SIZE="${MINIBATCH_SIZE:-$(( BATCH / 4 ))}"
 EXPERIMENT_NAME="${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)"
 [ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
 RUN_DIR="${REPO_ROOT}/train_dir/${WANDB_PROJECT}/${WANDB_GROUP}/${EXPERIMENT_NAME}"
-LOG_DIR="${REPO_ROOT}/debug_outputs/train_logs"
 mkdir -p "$RUN_DIR"
-# Checkpoints and hydra config live in RUN_DIR; logs are scratch. Symlink the
-# job-id logs under the run name so either name finds them.
-if [ -n "${SLURM_JOB_ID:-}" ]; then
-    ln -sfn "${SLURM_JOB_ID}.out" "${LOG_DIR}/${EXPERIMENT_NAME}.out"
-    ln -sfn "${SLURM_JOB_ID}.err" "${LOG_DIR}/${EXPERIMENT_NAME}.err"
-    ln -sfn "${LOG_DIR}/${EXPERIMENT_NAME}.out" "${RUN_DIR}/slurm.log"
-fi
+exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
 
 cd "$REPO_ROOT"
 source .venv_isaacsim/bin/activate
@@ -62,7 +57,7 @@ nvidia-smi --query-gpu=name --format=csv,noheader   # which card this landed on
 
 # Sample RAM/CPU/GPU for the life of the run -- this is the evidence for what
 # --mem and --cpus-per-task should actually be next time.
-experiments/monitor_usage.sh "${LOG_DIR}/${EXPERIMENT_NAME}" "${MONITOR_INTERVAL:-30}" &
+experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
 MONITOR_PID=$!
 trap 'kill "$MONITOR_PID" 2>/dev/null || true' EXIT
 
