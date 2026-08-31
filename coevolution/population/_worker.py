@@ -89,7 +89,6 @@ def run(conn, args) -> None:
     from isaacsimenvs.pose_reaching_6d.scene_utils.robots import REGISTRY
     from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
     from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
-    from isaacsimenvs.pose_reaching_6d.obs_utils.morphology import population_descriptors
     from hand_sampler.paths import resolve as resolve_repo_path
 
     is_population_design = args.design not in REGISTRY and args.design.startswith("gen_") \
@@ -124,18 +123,19 @@ def run(conn, args) -> None:
             """
 
             def _resolve_spec(self, cfg):
+                from isaacsimenvs.pose_reaching_6d.scene_utils import RobotPopulation
+
+                # Inject rather than load: one design, already in hand. Setting
+                # both is what stops _ensure_robot_population resolving from the
+                # manifest, and gives the base _build_morphology_obs its hands.
+                self._robot_population = RobotPopulation(
+                    hands=[hand], specs=[design_spec])
                 self._robot_population_specs = [design_spec]
                 for field in ("obs_list", "state_list"):
                     current = tuple(getattr(cfg.obs, field))
                     if "morphology" not in current:
                         setattr(cfg.obs, field, current + ("morphology",))
                 return design_spec
-
-            def _build_morphology_obs(self) -> None:
-                table = torch.as_tensor(
-                    population_descriptors([hand]), device=self.device,
-                    dtype=torch.float32)
-                self._morphology_per_env = table[self._robot_design_index_per_env]
 
         cfg = PoseReachEnvCfg()
         cfg.assets.robot_population_seed = args.population_seed

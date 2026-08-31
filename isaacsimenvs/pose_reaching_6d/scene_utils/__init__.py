@@ -13,7 +13,9 @@ from .assembly import (  # noqa: F401
     _author_objects_into_envs,
     _build_object_scale_tensor,
     _build_robot_design_tensor,
+    _ensure_robot_population,
     _resolve_robot_population,
+    RobotPopulation,
     _verify_robot_design_assignment,
 )
 from .materials import (  # noqa: F401

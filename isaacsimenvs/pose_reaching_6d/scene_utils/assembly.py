@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import torch
@@ -196,8 +197,26 @@ def _author_objects_into_envs(env, object_params, n_pool: int,
             f"{n_pool}-entry pool")
 
 
-def _resolve_robot_population(assets_cfg) -> list | None:
-    """Specs for a cached hand population, or None for the single-robot env."""
+@dataclass(frozen=True)
+class RobotPopulation:
+    """A resolved hand population: the parameter vectors and the specs built
+    from them, loaded together.
+
+    Both halves are kept because both are needed and the manifest is expensive:
+    a 24,576-hand manifest is 266 MB of JSON. Four call sites used to load it
+    independently -- the spec build, the USD build, the morphology descriptor,
+    and setup_scene's own fallback -- each re-deriving the -1 sentinel and the
+    robot_population_count truncation. Four copies of that logic is four chances
+    for the descriptor to describe a different hand than the env holds, which is
+    the failure _verify_robot_design_assignment exists to catch.
+    """
+
+    hands: list
+    specs: list
+
+
+def _resolve_robot_population(assets_cfg) -> RobotPopulation | None:
+    """Load a cached hand population, or None for the single-robot env."""
     seed = getattr(assets_cfg, "robot_population_seed", None)
     path = getattr(assets_cfg, "robot_population_path", None)
     if seed is not None and int(seed) < 0:
@@ -241,7 +260,16 @@ def _resolve_robot_population(assets_cfg) -> list | None:
                 f"design {s.name} has {s.num_fingertip_slots} fingertip slots, "
                 f"{ref.name} has {ref.num_fingertip_slots}: the observation "
                 f"layout must be identical across a population")
-    return specs
+    return RobotPopulation(hands=hands, specs=specs)
+
+
+def _ensure_robot_population(env, assets_cfg) -> RobotPopulation | None:
+    """Resolve the population once per env, then hand back the same object."""
+    if not hasattr(env, "_robot_population"):
+        env._robot_population = _resolve_robot_population(assets_cfg)
+        env._robot_population_specs = (
+            env._robot_population.specs if env._robot_population else None)
+    return env._robot_population
 
 
 def _build_robot_design_tensor(env, num_designs: int) -> None:
@@ -497,7 +525,6 @@ def setup_scene(env) -> None:
         from isaacsimenvs.pose_reaching_6d.scene_utils.author_robot import (
             arm_only_urdf, author_robot_usd, flatten_arm_usd,
         )
-        from hand_sampler.population import load_population_any
         from pxr import Sdf, Usd, UsdGeom
 
         arm_dir = Path(env._tmp_asset_dir) / "arm"
@@ -516,15 +543,7 @@ def setup_scene(env) -> None:
         _log_scene_step(setup_t0, "converted the shared arm once")
 
         layer_for_envs = get_current_stage().GetRootLayer()
-        hands = load_population_any(
-            getattr(assets_cfg, "robot_population_seed", None),
-            getattr(assets_cfg, "robot_population_path", None))
-        count = int(getattr(assets_cfg, "robot_population_count", 0) or 0)
-        if count:
-            hands = hands[:count]
-        if len(hands) != len(specs):
-            raise RuntimeError(
-                f"population/spec mismatch: {len(hands)} hands, {len(specs)} specs")
+        hands = _ensure_robot_population(env, assets_cfg).hands
 
         if bool(getattr(assets_cfg, "author_robots_into_envs", True)):
             # DIRECTLY INTO THE ENV PRIMS, no files and no MultiUsdFileCfg.
@@ -602,13 +621,10 @@ def setup_scene(env) -> None:
                 apply_physx_articulation=True, contact_offset=contact_offset, rest_offset=rest_offset))
         return out
 
-    population_specs = getattr(env, "_robot_population_specs", None)
-    if population_specs is None and getattr(
-            assets_cfg, "robot_population_seed", None) is not None:
-        population_specs = _resolve_robot_population(assets_cfg)
+    population = _ensure_robot_population(env, assets_cfg)
+    population_specs = population.specs if population is not None else None
     if population_specs is None:
         robot_usd_arg: str | list[str] = _prepare_robot_usd(spec, "robot")
-        env._robot_population_specs = None
     else:
         # One asset per DESIGN, not per env: n envs share k designs, and
         # preparing per env is what turned a 24,576-env build into hours
@@ -623,7 +639,6 @@ def setup_scene(env) -> None:
                 _prepare_robot_usd(s, f"robot_{i:05d}")
                 for i, s in enumerate(population_specs)
             ]
-        env._robot_population_specs = population_specs
         if isinstance(robot_usd_arg, str):
             # The sentinel, not a path list. len() on it reported "21 distinct
             # robot USDs" -- the length of "__authored_in_place__" -- for a run

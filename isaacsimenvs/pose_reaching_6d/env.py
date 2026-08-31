@@ -31,7 +31,7 @@ from .reset_utils import allocate_state_buffers, reset_env_state
 from .reward_utils import compute_rewards
 from .obs_utils import DESCRIPTOR_DIM, describe_layout, population_descriptors
 from .scene_utils import (
-    _resolve_robot_population,
+    _ensure_robot_population,
     _verify_robot_design_assignment,
     apply_physx_material_properties,
     setup_scene,
@@ -83,8 +83,8 @@ class PoseReachEnv(DirectRLEnv):
         them. Resolved before ``super().__init__`` because ``_setup_scene`` needs
         the population and the spaces are derived from it.
         """
-        self._robot_population_specs = _resolve_robot_population(cfg.assets)
-        if self._robot_population_specs is None:
+        population = _ensure_robot_population(self, cfg.assets)
+        if population is None:
             return get_robot_spec(cfg.assets.robot_spec)
 
         # The morphology descriptor is REQUIRED with a population, so enforce it
@@ -108,9 +108,9 @@ class PoseReachEnv(DirectRLEnv):
             # same shape. Only the observation width differs.
             print("[pose_reach] ABLATION: morphology descriptor REMOVED from "
                   "obs_list and state_list. The policy cannot distinguish the "
-                  f"{len(self._robot_population_specs)} designs it is driving.",
+                  f"{len(population.specs)} designs it is driving.",
                   flush=True)
-        return self._robot_population_specs[0]
+        return population.specs[0]
 
     def _post_init_hook(self) -> None:
         """Runs after the scene, materials and state buffers exist."""
@@ -125,22 +125,13 @@ class PoseReachEnv(DirectRLEnv):
         self._build_morphology_obs()
 
     def _build_morphology_obs(self) -> None:
-        """Per-env morphology descriptor, computed once and indexed."""
-        from hand_sampler.population import load_population_any
+        """Per-env morphology descriptor, computed once and indexed.
 
-        seed = getattr(self.cfg.assets, "robot_population_seed", None)
-        if seed is not None and int(seed) < 0:
-            seed = None                  # -1 is the "no population" sentinel
-        hands = load_population_any(
-            seed, getattr(self.cfg.assets, "robot_population_path", None))
-        count = int(self.cfg.assets.robot_population_count or 0)
-        if count:
-            hands = hands[:count]
-        if len(hands) != len(self._robot_population_specs):
-            raise RuntimeError(
-                f"population/spec mismatch: {len(hands)} hands, "
-                f"{len(self._robot_population_specs)} specs")
-
+        Reads the hands the population already loaded rather than re-parsing the
+        manifest, so the descriptor and the specs cannot come from two reads of
+        a file that changed in between.
+        """
+        hands = self._robot_population.hands
         table = torch.as_tensor(
             population_descriptors(hands), device=self.device, dtype=torch.float32
         )  # (k, D)
