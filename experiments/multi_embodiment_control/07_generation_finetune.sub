@@ -1,0 +1,96 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=12
+#SBATCH --get-user-env
+#SBATCH --mem=400000
+#SBATCH -t 1-00:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# GENERATION-1 fine-tune: warm-start the 120k-epoch policy on a NEW population.
+#
+#   POPULATION_PATH=assets/urdf/generated/population/generations/gen1_nom_mutate \
+#   EXPERIMENT_TAG=mec_gen1_nom_mutate \
+#   sbatch experiments/multi_embodiment_control/07_generation_finetune.sub
+#
+# Omit POPULATION_PATH for the unselected-baseline arm, which trains on the
+# original seed-3 population and is the control every other arm is read against.
+#
+# WHY THIS IS NOT 04_finetune_population_24k.sub. That script guards a `resume`:
+# it reads the embodiment out of the source run and refuses if it disagrees,
+# because a resume restores an optimizer, rollout buffers and RNN states shaped
+# by the population that wrote them. Generation 1 deliberately changes the
+# population, so a resume is not merely mismatched, it is meaningless. This
+# launcher therefore forces CHECKPOINT_LOAD_MODE=weights -- network only, fresh
+# optimizer, epoch counter back to 0 -- which is exactly the case 04's own
+# documentation reserves that mode for.
+#
+# MAX_EPOCHS is consequently the LENGTH of the fine-tune, not an absolute target
+# as it is under `resume` -- but it is set past what the time limit allows, so
+# what actually bounds these runs is the SBATCH wall clock.
+#
+# THE TOLERANCE CURRICULUM DOES NOT RIDE IN THE CHECKPOINT. _current_success_
+# tolerance lives on the env and rl_games only persists env state through
+# get_env_state(), which Isaac Lab leaves as a stub returning None. Left unset it
+# silently restarts from termination.success_tolerance -- an easier task on a
+# different reward scale (the tolerance also scales the keypoint reward), which
+# reads on the curve as the fine-tune working. The source run finished at the
+# 0.01 floor, confirmed from its tfevents `current_success_tolerance`.
+
+set -euo pipefail
+source /share/portal/kk837/gen_mechanics/experiments/multi_embodiment_control/_common.sh
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+PY="${REPO_ROOT}/.venv_isaacsim/bin/python"
+TASK="GenMech-PoseReachMulti-Direct-v0"
+WANDB_GROUP="${WANDB_GROUP:-generation1}"
+SEED="${SEED:-0}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+# Deliberately out of reach: the WALL CLOCK is the budget, not the epoch count.
+# At ~4.1 s/epoch and 24 h that is ~21k epochs, so every arm stops at the same
+# amount of compute rather than at a number guessed in advance. rl_games keeps a
+# rolling autosave (last/model.pth plus a .old), so the SLURM kill at the limit
+# still leaves a usable checkpoint.
+MAX_EPOCHS="${MAX_EPOCHS:-120000}"
+DESIGN_COUNT="${DESIGN_COUNT:-24576}"
+START_SUCCESS_TOLERANCE="${START_SUCCESS_TOLERANCE:-0.01}"
+CHECKPOINT_LOAD_MODE="weights"          # not overridable; see the note above
+EXPERIMENT_TAG="${EXPERIMENT_TAG:?set EXPERIMENT_TAG, e.g. mec_gen1_nom_mutate}"
+
+SOURCE_RUN="${SOURCE_RUN:-${REPO_ROOT}/train_dir/gen_mechanics/multi_embodiment_control/mec_population24k_ft_seed0_2026-08-18_16-06-04}"
+CHECKPOINT="${CHECKPOINT:-${SOURCE_RUN}/0_pose_reach_sapg/nn/last_0_pose_reach_sapg_ep_120000_rew__6439.6465_.pth}"
+[ -f "$CHECKPOINT" ] || { echo "checkpoint not found: $CHECKPOINT" >&2; exit 1; }
+
+ROBOT_OVERRIDES=(
+    env.assets.robot_population_seed=3
+    env.assets.robot_population_count="$DESIGN_COUNT"
+    env.assets.author_robot_usds="${AUTHOR_ROBOTS:-true}"
+    env.termination.resume_success_tolerance="$START_SUCCESS_TOLERANCE"
+)
+
+if [ -n "${POPULATION_PATH:-}" ]; then
+    case "$POPULATION_PATH" in /*) ;; *) POPULATION_PATH="${REPO_ROOT}/${POPULATION_PATH}" ;; esac
+    MANIFEST="${POPULATION_PATH}/manifest.json"
+    [ -f "$MANIFEST" ] || { echo "no manifest at $MANIFEST" >&2; exit 1; }
+    HAVE=$("$PY" -c "import json;print(len(json.load(open('$MANIFEST'))['hands']))")
+    if [ "$HAVE" -ne "$DESIGN_COUNT" ]; then
+        echo "population has $HAVE designs, need exactly $DESIGN_COUNT" >&2
+        echo "(num_envs must equal population_count so env i holds design i)" >&2
+        exit 1
+    fi
+    # Wins over robot_population_seed at every load site.
+    ROBOT_OVERRIDES+=( env.assets.robot_population_path="$POPULATION_PATH" )
+    echo "population: $POPULATION_PATH ($HAVE designs)"
+else
+    echo "population: seed 3, the original unselected 24k (BASELINE arm)"
+fi
+
+echo "warm start: $CHECKPOINT"
+echo "mode: weights (fresh optimizer, epoch 0) for $MAX_EPOCHS epochs"
+echo "tolerance: curriculum resumes at $START_SUCCESS_TOLERANCE"
+
+launch_training
