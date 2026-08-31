@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Tuple
-import time
-import urllib.request
 
 import numpy as np
 
@@ -13,8 +11,6 @@ from .viewer_common import DEFAULT_TEMPLATE_PATH, render_template
 Vec3 = Tuple[float, float, float]
 Quat = Tuple[float, float, float, float]
 ColorRGB = Tuple[float, float, float]
-DEFAULT_GITHUB_RAW_BASE = "https://raw.githubusercontent.com/tylerlum/simtoolreal/6809a978753e950913a7588bbeaef07d16f10b56/"
-
 
 def _as_2d_float_array(values, *, name: str, width: int | None = None) -> np.ndarray:
     array = np.asarray(values, dtype=float)
@@ -210,76 +206,3 @@ def make_url_robot(
     if color_override is not None:
         robot["color_override"] = list(color_override)
     return robot
-
-
-def _read_table_urdf() -> str:
-    table_path = Path(__file__).resolve().parents[2] / "assets" / "urdf" / "table_narrow.urdf"
-    return table_path.read_text(encoding="utf-8")
-
-
-def _check_viewer_urls(urls: list[str], url_check: str) -> set[str]:
-    if url_check == "skip":
-        print("[viewer] URL check skipped; browser mesh loading may fail silently.")
-        return set()
-    failed: set[str] = set()
-    for url in dict.fromkeys(urls):
-        print(f"[viewer] URL check ({url_check}) -> {url}")
-        t0 = time.monotonic()
-        try:
-            req = urllib.request.Request(url, method="HEAD")
-            urllib.request.urlopen(req, timeout=10)
-            print(f"[viewer]   PASSED ({time.monotonic() - t0:.2f}s)")
-        except Exception as exc:
-            failed.add(url)
-            msg = f"[viewer]   FAILED ({time.monotonic() - t0:.2f}s): {exc}"
-            if url_check == "error":
-                raise ValueError(msg) from exc
-            print(msg)
-    return failed
-
-
-def write_pose_viewer_html(path: Path, payload: dict, *, title: str) -> str:
-    """Write a mesh-based HTML viewer for Isaac Sim distillation rollout payloads."""
-    del title  # The PoseReach template reads the title from embedded trajectory data.
-    github_raw_base = payload.get("github_raw_base", DEFAULT_GITHUB_RAW_BASE)
-    if not github_raw_base.endswith("/"):
-        github_raw_base += "/"
-    url_check = payload.get("url_check", "warn")
-    print(f"[viewer] GitHub raw base: {github_raw_base}")
-
-    robot_urdf_url = (
-        github_raw_base
-        + "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
-    )
-    object_urdf_url = (
-        github_raw_base
-        + "assets/urdf/dextoolbench/hammer/claw_hammer/claw_hammer.urdf"
-    )
-    _check_viewer_urls([robot_urdf_url, object_urdf_url], url_check)
-
-    robots = [
-        make_url_robot(name="robot", urdf_url=robot_urdf_url, animated=True),
-        make_embedded_robot(name="table", urdf_text=_read_table_urdf()),
-        make_url_robot(name="object", urdf_url=object_urdf_url),
-        make_url_robot(
-            name="goal",
-            urdf_url=object_urdf_url,
-            color_override=(0.20, 0.72, 0.31),
-        ),
-    ]
-
-    html_text = create_html(
-        joint_names=payload["robot_joint_names"],
-        robot_joint_positions=payload["robot_joint_positions"],
-        robots=robots,
-        object_poses={
-            "table": np.asarray(payload["table_poses"], dtype=float),
-            "object": np.asarray(payload["object_poses"], dtype=float),
-            "goal": np.asarray(payload["goal_poses"], dtype=float),
-        },
-        robot_base_poses=np.asarray(payload["robot_base_poses"], dtype=float),
-        timestamps=np.asarray(payload["timestamps"], dtype=float),
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(html_text, encoding="utf-8")
-    return html_text
