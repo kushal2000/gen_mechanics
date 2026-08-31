@@ -50,13 +50,12 @@ hand_sampler/        the generated-hand design space -- PURE PYTHON, no Isaac
 isaacsimenvs/        everything that touches Isaac
   __init__.py          the task registry; one subpackage per task
   pose_reaching_6d/    the only task today, holding everything it needs
-    env*.py              env + cfg
-    utils/               shared helpers: urdf->usd conversion, PhysX defaults
+    env.py  env_cfg.py   one env; a population is what makes it multi-embodiment
+    common_utils/        shared helpers: urdf->usd conversion, PhysX defaults
     obs_utils/           observations, morphology descriptor, actions
     reset_utils/         reset, goal sampling, step logging
     reward_utils/        rewards, termination, tolerance curriculum
     scene_utils/         assembly, materials, authoring, objects/, robots/
-    reachability_viewer.py
 coevolution/         searching over designs and control together
   train.py, cfg/       entry point + hydra task / train (PPO, SAPG) configs
   eval/                DR suites, checkpoint player, cross-body eval

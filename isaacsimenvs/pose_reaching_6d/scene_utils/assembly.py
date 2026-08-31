@@ -25,8 +25,8 @@ from isaaclab.sim.utils import find_matching_prim_paths, get_current_stage
 from hand_sampler.paths import resolve as resolve_repo_path
 
 from .objects.generate_objects import generate_handle_head_urdfs
-from isaacsimenvs.pose_reaching_6d.utils.physx import _log_scene_step
-from isaacsimenvs.pose_reaching_6d.utils.urdf_to_usd import (
+from isaacsimenvs.pose_reaching_6d.common_utils.physx import _log_scene_step
+from isaacsimenvs.pose_reaching_6d.common_utils.urdf_to_usd import (
     _apply_self_collision_filters,
     _bake_usd,
     _convert_urdf_to_usd,
@@ -200,6 +200,8 @@ def _resolve_robot_population(assets_cfg) -> list | None:
     """Specs for a cached hand population, or None for the single-robot env."""
     seed = getattr(assets_cfg, "robot_population_seed", None)
     path = getattr(assets_cfg, "robot_population_path", None)
+    if seed is not None and int(seed) < 0:
+        seed = None                      # -1 is the "no population" sentinel
     if seed is None and not path:
         return None
     from hand_sampler.population import load_population_any

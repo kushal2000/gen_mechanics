@@ -16,7 +16,7 @@ verified to 1 micron against the right-hand FK.
 
 Unlike SHARPA, this robot has **no pretrained checkpoint to validate against**.
 Its correctness rests on ``tests/test_robot_spec_invariants.py``, on visual
-inspection in ``isaacsimenvs/pose_reaching_6d/reachability_viewer.py``, and on the values below
+inspection in a kinematics viewer, and on the values below
 being traceable. So each one says where it came from.
 
 Provenance:

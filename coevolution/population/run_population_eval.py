@@ -199,10 +199,14 @@ def main() -> None:
     )
     from coevolution.eval.rl_player import RlPlayer
     from hand_sampler.population import load_population
-    from isaacsimenvs.pose_reaching_6d.env_multi import PoseReachMultiEnv
-    from isaacsimenvs.pose_reaching_6d.env_multi_cfg import PoseReachMultiEnvCfg
+    from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
+    from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
 
-    cfg = PoseReachMultiEnvCfg()
+    cfg = PoseReachEnvCfg()
+    # One env class now; a population is what makes it multi-embodiment. The
+    # merged cfg defaults to no population (seed -1), so ask for one before the
+    # run's own config gets a chance to override it.
+    cfg.assets.robot_population_seed = 0
     apply_run_fields(cfg, run_env)
 
     count = args.population_count or int(cfg.assets.robot_population_count)
@@ -232,7 +236,7 @@ def main() -> None:
           f"{args.goals_per_episode} goals/episode, DR={args.dr}, "
           f"success tolerance {tol * 100:.1f} cm", flush=True)
 
-    env = PoseReachMultiEnv(cfg=cfg)
+    env = PoseReachEnv(cfg=cfg)
     inner = env
     inner._replay_target_lab_order = None
     spec = inner.robot_spec

@@ -19,7 +19,7 @@ from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
 from hand_sampler.paths import resolve as resolve_repo_path
 
-from isaacsimenvs.pose_reaching_6d.utils.physx import _PHYSICS_SPECS
+from isaacsimenvs.pose_reaching_6d.common_utils.physx import _PHYSICS_SPECS
 
 
 def _set_usd_attr(prim, name: str, value, value_type) -> None:

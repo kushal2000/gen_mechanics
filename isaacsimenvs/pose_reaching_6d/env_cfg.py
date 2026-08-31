@@ -183,6 +183,33 @@ class AssetsCfg:
 # obs
 # ----------------------------------------------------------------------------
 
+    # --- hand population (leave the seed at -1 for a single hand) ------------
+    #
+    # With a population set, every env gets its own design, round-robin: env i
+    # holds design i % len(population), the same rule the object pool uses. They
+    # all run in ONE articulation view because ghosting pads each design to the
+    # same 37-joint template -- view count tracks joint COUNT, not population
+    # size. robot_spec is then ignored: a fixed hand and a generated one do not
+    # share a joint set (29 vs 37), so it would build the spaces for a robot the
+    # scene does not contain.
+    #
+    # EMPTY STRING / -1, NOT None. isaaclab's update_class_from_dict type-checks
+    # a hydra override against the default's RUNTIME type, so `str | None = None`
+    # rejects every string override with "Incorrect type under namespace ...
+    # Expected: <class 'NoneType'>". Same reason reset.fixed_trajectory_file
+    # defaults to "". -1 rather than None for the seed keeps 0 a usable seed.
+    robot_population_path: str = ""
+    """A population directory holding manifest.json. Takes precedence over the
+    seed. Mutated generations have no seed to be named by, so they are addressed
+    by path -- see hand_sampler.population.load_population_at."""
+
+    robot_population_seed: int = -1
+    """Cached population to draw from; -1 means no population, one hand."""
+
+    robot_population_count: int = 0
+    """0 means the whole cached population."""
+
+
 @configclass
 class ObsCfg:
     """Asymmetric actor-critic obs layout + clamping."""
@@ -574,6 +601,23 @@ class PoseReachEnvCfg(DirectRLEnvCfg):
     reset: ResetCfg = ResetCfg()
     termination: TerminationCfg = TerminationCfg()
     domain_randomization: DomainRandomizationCfg = DomainRandomizationCfg()
+
+    log_morphology_layout: bool = False
+    """Print the descriptor's field map at startup. Noisy otherwise."""
+
+    include_morphology_obs: bool = True
+    """Whether the morphology descriptor is in the observation at all.
+
+    Only meaningful with a population. True is the only setting that trains a
+    cross-embodied policy for its purpose, and the env ENFORCES it -- appending
+    the field if a config dropped it -- because a YAML overlay silently removed
+    it once and the only symptom was an observation 186 wide instead of 329.
+
+    False exists for one experiment: the ablation asking whether the policy uses
+    the descriptor or ignores it. It STRIPS the field rather than merely not
+    adding it, so the task YAML overlay and ``obs_list=${env.obs.state_list}``
+    cannot put it back."""
+
 
 
 __all__ = [

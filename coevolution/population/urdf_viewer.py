@@ -86,7 +86,7 @@ class UrdfBrowser:
     def _draw_scene(self) -> None:
         """Table, grid and world frame -- deliberately no goal volume.
 
-        reachability_viewer draws the goal box because its question is "can this
+        A kinematics viewer draws the goal box because its question is "can this
         hand reach the workspace". The question here is what the mechanism looks
         like, and a translucent box spanning the whole scene sits directly in
         front of the hand and washes out its geometry.

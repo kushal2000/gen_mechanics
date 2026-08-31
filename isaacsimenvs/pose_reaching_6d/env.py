@@ -1,4 +1,9 @@
-"""Thin DirectRLEnv wrapper for the PoseReach task.
+"""DirectRLEnv for the 6D pose-reaching task, one hand or many.
+
+One env class, not two. Which mode it runs is a property of the config, not of
+the class: set ``assets.robot_population_seed`` or ``assets.robot_population_path``
+and every env gets its own design, sharing one articulation view; leave them
+unset and ``assets.robot_spec`` names a single hand for every env.
 
 The env owns Isaac Lab hook wiring and state buffers. Task math lives in the
 utility modules called from each hook, and everything hardware-specific comes
@@ -24,7 +29,13 @@ from .obs_utils import (
 )
 from .reset_utils import allocate_state_buffers, reset_env_state
 from .reward_utils import compute_rewards
-from .scene_utils import apply_physx_material_properties, setup_scene
+from .obs_utils import DESCRIPTOR_DIM, describe_layout, population_descriptors
+from .scene_utils import (
+    _resolve_robot_population,
+    _verify_robot_design_assignment,
+    apply_physx_material_properties,
+    setup_scene,
+)
 from .reward_utils import compute_terminations, update_tolerance_curriculum
 
 
@@ -63,19 +74,84 @@ class PoseReachEnv(DirectRLEnv):
         allocate_state_buffers(self)
         self._post_init_hook()
 
-    # --- extension points for PoseReachMultiEnv -----------------------------
-    # Two hooks rather than `if population is not None` scattered through this
-    # class: the single-embodiment env is the one the pretrained policy, the
-    # parity test and the running training jobs depend on, and it should not
-    # carry branches for a mode it never takes.
-
     def _resolve_spec(self, cfg: PoseReachEnvCfg):
-        """The RobotSpec defining the action and observation layout."""
-        return get_robot_spec(cfg.assets.robot_spec)
+        """The RobotSpec defining the action and observation layout.
+
+        With a population, the layout comes from the population rather than
+        ``robot_spec``: every design shares the joint template, gain tables,
+        home pose and fingertip-slot count, so any member defines it for all of
+        them. Resolved before ``super().__init__`` because ``_setup_scene`` needs
+        the population and the spaces are derived from it.
+        """
+        self._robot_population_specs = _resolve_robot_population(cfg.assets)
+        if self._robot_population_specs is None:
+            return get_robot_spec(cfg.assets.robot_spec)
+
+        # The morphology descriptor is REQUIRED with a population, so enforce it
+        # rather than trusting the config to carry it. The task YAML overlay
+        # lists both field lists explicitly and is applied AFTER the configclass
+        # defaults, so it silently dropped `morphology` once. A smoke run caught
+        # it only because the observation came out 186 wide instead of 329;
+        # every other signal, including the population resolving and the design
+        # assignment verifying, looked correct.
+        include = bool(getattr(cfg, "include_morphology_obs", True))
+        for field_name in ("obs_list", "state_list"):
+            current = tuple(getattr(cfg.obs, field_name))
+            if include and "morphology" not in current:
+                setattr(cfg.obs, field_name, current + ("morphology",))
+            elif not include and "morphology" in current:
+                setattr(cfg.obs, field_name,
+                        tuple(f for f in current if f != "morphology"))
+        if not include:
+            # Loud, because every other signal in the run looks normal: the
+            # population resolves, the assignment verifies, the curves have the
+            # same shape. Only the observation width differs.
+            print("[pose_reach] ABLATION: morphology descriptor REMOVED from "
+                  "obs_list and state_list. The policy cannot distinguish the "
+                  f"{len(self._robot_population_specs)} designs it is driving.",
+                  flush=True)
+        return self._robot_population_specs[0]
 
     def _post_init_hook(self) -> None:
         """Runs after the scene, materials and state buffers exist."""
-        return None
+        if self._robot_population_specs is None:
+            return
+        # Confirm against the LIVE SIM that env i holds the design its
+        # observation buffers were built for. The identical assumption about the
+        # object pool, left unchecked, gave 510 of 512 envs the wrong asset and
+        # cost 5.07 -> 3.00 goals/episode while every asset-level comparison
+        # passed.
+        _verify_robot_design_assignment(self, self._robot_population_specs)
+        self._build_morphology_obs()
+
+    def _build_morphology_obs(self) -> None:
+        """Per-env morphology descriptor, computed once and indexed."""
+        from hand_sampler.population import load_population_any
+
+        seed = getattr(self.cfg.assets, "robot_population_seed", None)
+        if seed is not None and int(seed) < 0:
+            seed = None                  # -1 is the "no population" sentinel
+        hands = load_population_any(
+            seed, getattr(self.cfg.assets, "robot_population_path", None))
+        count = int(self.cfg.assets.robot_population_count or 0)
+        if count:
+            hands = hands[:count]
+        if len(hands) != len(self._robot_population_specs):
+            raise RuntimeError(
+                f"population/spec mismatch: {len(hands)} hands, "
+                f"{len(self._robot_population_specs)} specs")
+
+        table = torch.as_tensor(
+            population_descriptors(hands), device=self.device, dtype=torch.float32
+        )  # (k, D)
+        # Indexed by the SAME design tensor the scene build recorded, so the
+        # descriptor and the robot in the env cannot describe different designs.
+        self._morphology_per_env = table[self._robot_design_index_per_env]  # (N, D)
+
+        if self.cfg.log_morphology_layout:
+            print(f"[pose_reach] morphology descriptor {DESCRIPTOR_DIM} dims, "
+                  f"{len(hands)} designs -> {tuple(self._morphology_per_env.shape)}")
+            print(describe_layout())
 
     # --- checkpointable env state -------------------------------------------
     # rl_games saves whatever vec_env.get_env_state() returns into the

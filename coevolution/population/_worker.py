@@ -89,8 +89,6 @@ def run(conn, args) -> None:
     from isaacsimenvs.pose_reaching_6d.scene_utils.robots import REGISTRY
     from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
     from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
-    from isaacsimenvs.pose_reaching_6d.env_multi import PoseReachMultiEnv
-    from isaacsimenvs.pose_reaching_6d.env_multi_cfg import PoseReachMultiEnvCfg
     from isaacsimenvs.pose_reaching_6d.obs_utils.morphology import population_descriptors
     from hand_sampler.paths import resolve as resolve_repo_path
 
@@ -115,15 +113,14 @@ def run(conn, args) -> None:
         hand = by_name[args.design]
         design_spec = synth_spec(hand)
 
-        class _SingleDesignEnv(PoseReachMultiEnv):
-            """The multi-embodiment env holding ONE design in every env.
+        class _SingleDesignEnv(PoseReachEnv):
+            """Every env holds the SAME one injected design.
 
-            Subclassing the multi env rather than the single one is what carries
-            the morphology descriptor: a population policy conditions on it, and
-            PoseReachEnv neither builds nor exposes it. The population here is a
-            one-element list injected before _setup_scene reads it, which is why
-            an arbitrary design index costs one design rather than a prefix of
-            index+1 designs.
+            Overriding _resolve_spec is what carries the morphology descriptor:
+            a population policy conditions on it, and the env only builds it when
+            a population resolved. The population here is a one-element list
+            injected before _setup_scene reads it, which is why an arbitrary
+            design index costs one design rather than a prefix of index+1.
             """
 
             def _resolve_spec(self, cfg):
@@ -140,7 +137,7 @@ def run(conn, args) -> None:
                     dtype=torch.float32)
                 self._morphology_per_env = table[self._robot_design_index_per_env]
 
-        cfg = PoseReachMultiEnvCfg()
+        cfg = PoseReachEnvCfg()
         cfg.assets.robot_population_seed = args.population_seed
         env_class = _SingleDesignEnv
         design_meta = {

@@ -77,7 +77,7 @@ TABLE_URDF = "assets/urdf/table_narrow.urdf"
 def table_extents() -> tuple[float, float, float]:
     """Box dimensions read from the actual table asset.
 
-    Not taken from reachability_viewer's TABLE_SIZE, which is a display
+    Not taken from a viewer's TABLE_SIZE, which is a display
     constant: at (1.2, 0.8) it is 2.5x too wide in x and 2x in y against the
     asset's 0.475 x 0.4 x 0.3, and an oversized table swallows the arm's link_3
     and link_4 -- which looks exactly like the robot colliding with the table

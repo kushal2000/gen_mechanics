@@ -6,7 +6,7 @@ changes and the checkpoint refuses to load, or -- worse -- it loads and the
 policy reads a differently-shaped world.
 
 One field list, imported by every consumer, because the failure this prevents
-already happened. The viewer built its config from ``PoseReachMultiEnvCfg``
+already happened. The viewer built its config from ``PoseReachEnvCfg``
 defaults while the population eval copied the run's, and the two disagreed by 22
 observation dimensions (307 vs 329); the checkpoint's state_dict simply would
 not load. Two places deciding what "the run's config" means is one place too

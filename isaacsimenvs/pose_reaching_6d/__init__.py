@@ -26,8 +26,7 @@ from typing import Any
 
 import gymnasium as gym
 
-__all__ = ["PoseReachEnv", "PoseReachEnvCfg",
-           "PoseReachMultiEnv", "PoseReachMultiEnvCfg"]
+__all__ = ["PoseReachEnv", "PoseReachEnvCfg"]
 
 _CFG_DIR = Path(__file__).resolve().parents[2] / "coevolution" / "cfg"
 
@@ -44,18 +43,18 @@ gym.register(
     },
 )
 
-# Multi-embodiment variant: one distinct hand per env, one articulation view,
-# one policy. Separate id (and separate env class) rather than a flag, so the
-# single-embodiment path stays exactly what the pretrained policy and the parity
-# test were built against.
+# The multi-embodiment id is an ALIAS, kept so archived submit scripts and the
+# 24k run configs still resolve. There is one env class and one config now:
+# whether a run drives one hand or 24,576 is decided by
+# assets.robot_population_seed / robot_population_path, not by which id you ask
+# for.
 gym.register(
     id="GenMech-PoseReachMulti-Direct-v0",
-    entry_point="isaacsimenvs.pose_reaching_6d.env_multi:PoseReachMultiEnv",
+    entry_point="isaacsimenvs.pose_reaching_6d.env:PoseReachEnv",
     order_enforce=False,
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point":
-            "isaacsimenvs.pose_reaching_6d.env_multi_cfg:PoseReachMultiEnvCfg",
+        "env_cfg_entry_point": "isaacsimenvs.pose_reaching_6d.env_cfg:PoseReachEnvCfg",
         "env_cfg_yaml_entry_point": str(_CFG_DIR / "task" / "PoseReach.yaml"),
         "rl_games_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachPPO.yaml"),
         "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachSAPG.yaml"),
@@ -73,12 +72,4 @@ def __getattr__(name: str) -> Any:
         from .env_cfg import PoseReachEnvCfg
 
         return PoseReachEnvCfg
-    if name == "PoseReachMultiEnv":
-        from .env_multi import PoseReachMultiEnv
-
-        return PoseReachMultiEnv
-    if name == "PoseReachMultiEnvCfg":
-        from .env_multi_cfg import PoseReachMultiEnvCfg
-
-        return PoseReachMultiEnvCfg
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
