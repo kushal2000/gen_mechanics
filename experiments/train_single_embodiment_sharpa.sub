@@ -49,10 +49,8 @@ export WANDB_DIR="$RUN_DIR"                                # per-run provenance,
 mkdir -p "$OMNI_KIT_CACHE_PATH"
 
 echo "robot=$ROBOT seed=$SEED envs=$NUM_ENVS minibatch=$MINIBATCH_SIZE"
-nvidia-smi --query-gpu=name --format=csv,noheader   # which card this landed on
-
-# Sample RAM/CPU/GPU for the life of the run -- this is the evidence for what
-# --mem and --cpus-per-task should actually be next time.
+# Sample RAM/CPU/GPU for the life of the run; the GPU csv also records which
+# card this landed on, which sacct does not.
 experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
 MONITOR_PID=$!
 trap 'kill "$MONITOR_PID" 2>/dev/null || true' EXIT

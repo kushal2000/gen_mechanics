@@ -18,7 +18,7 @@ PARENT=$PPID
 PGID=$(ps -o pgid= -p "$PARENT" 2>/dev/null | tr -d ' ')
 
 echo "timestamp,rss_gb,cpu_pct,nprocs" > "${PREFIX}.ram_usage.csv"
-echo "timestamp,gpu,util_gpu_pct,util_mem_pct,mem_used_mib,mem_total_mib,sm_clock_mhz,power_w" \
+echo "timestamp,gpu,name,util_gpu_pct,util_mem_pct,mem_used_mib,mem_total_mib,sm_clock_mhz,power_w" \
     > "${PREFIX}.gpu_usage.csv"
 
 while kill -0 "$PARENT" 2>/dev/null; do
@@ -30,9 +30,9 @@ while kill -0 "$PARENT" 2>/dev/null; do
         $1 == pg {rss += $2; cpu += $3; n++}
         END {printf "%s,%.2f,%.1f,%d\n", ts, rss/1048576, cpu, n}' >> "${PREFIX}.ram_usage.csv"
 
-    nvidia-smi --query-gpu=index,utilization.gpu,utilization.memory,memory.used,memory.total,clocks.sm,power.draw \
+    nvidia-smi --query-gpu=index,name,utilization.gpu,utilization.memory,memory.used,memory.total,clocks.sm,power.draw \
                --format=csv,noheader,nounits 2>/dev/null \
-        | tr -d ' ' | sed "s/^/${ts},/" >> "${PREFIX}.gpu_usage.csv"
+        | sed 's/, /,/g' | sed "s|^|${ts},|" >> "${PREFIX}.gpu_usage.csv"
 
     sleep "$INTERVAL"
 done
