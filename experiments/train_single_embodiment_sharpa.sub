@@ -33,7 +33,9 @@ REPO_ROOT="/share/portal/kk837/gen_mechanics"
 BATCH=$(( HORIZON_LENGTH * NUM_ENVS ))
 MINIBATCH_SIZE="${MINIBATCH_SIZE:-$(( BATCH / 4 ))}"
 
-EXPERIMENT_NAME="${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)"
+# Names the log folder, the checkpoint folder and the wandb run. Override it
+# with something that says what the run is FOR: RUN_NAME=debug_sharpa_aug31
+EXPERIMENT_NAME="${RUN_NAME:-${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)}"
 [ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
 RUN_DIR="${REPO_ROOT}/train_dir/${WANDB_PROJECT}/${WANDB_GROUP}/${EXPERIMENT_NAME}"
 LOG_DIR="${REPO_ROOT}/debug_outputs/train_logs/${EXPERIMENT_NAME}"

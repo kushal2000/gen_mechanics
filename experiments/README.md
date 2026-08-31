@@ -10,6 +10,27 @@ sbatch experiments/train_single_embodiment_sharpa.sub
 SEED=1 NUM_ENVS=8192 sbatch experiments/train_single_embodiment_sharpa.sub
 ```
 
+## Name the run for what it is
+
+`RUN_NAME` sets the folder under `debug_outputs/train_logs/` and
+`train_dir/`, and the wandb run name — one label for all three.
+
+```bash
+RUN_NAME=debug_single_embodiment_sharpa_aug31 sbatch experiments/train_single_embodiment_sharpa.sub
+```
+
+These folders accumulate fast, and the point of the name is a directory
+listing you can read. The default `sharpa_iiwa14_seed0_2026-08-31_12-40-59`
+is unique but every run looks alike; purpose plus date both groups and sorts:
+
+```
+debug_single_embodiment_sharpa_aug31
+sweep_friction_aug31
+finetune_population24k_sep02
+```
+
+Keep the date in it — reusing a name writes two runs into the same folder.
+
 ## Ask for the minimum you need
 
 Queue time is dominated by the size of the request, not by how busy the
