@@ -1,23 +1,27 @@
 # debug_outputs
 
-Scratch space for things you look at once while diagnosing, then throw away.
-Everything here is ignored by git except this file and the directory
-placeholders — nothing in it should ever be an input to anything.
+Where runs write. Everything here is ignored by git except this file and the
+directory placeholders.
 
 | | |
 |---|---|
-| `train_logs/<run>/` | `slurm.out`, `slurm.err`, `usage.ram_usage.csv`, `usage.gpu_usage.csv` |
+| `train_logs/<run>/` | everything one run produces — see below |
 | `videos/` | rollout captures |
 | `smoke_tests/` | output from one-off checks: a rendered URDF, a stage dump, a printed observation |
 
-A run's durable output stays out of here, under the same name:
+One directory per run, holding all of it:
 
 ```
-train_dir/<project>/<group>/<run>/
-  wandb/                      config.yaml + the diff.patch for reproducing HEAD
+debug_outputs/train_logs/<run>/
+  slurm.out  slurm.err        stdout/stderr
+  usage.ram_usage.csv         RSS + CPU% over the process group, every 30 s
+  usage.gpu_usage.csv         GPU name, util, memory, SM clock, power
   nn/  summaries/             checkpoints and tensorboard
+  wandb/                      config.yaml + the diff.patch for reproducing HEAD
   .hydra/                     the resolved config
 ```
+
+`deprecated/` holds finished runs in the same shape.
 
 How a job ended comes from SLURM, not from a log file:
 

@@ -9,7 +9,6 @@ __pycache__/
 
 # run outputs
 outputs/
-train_dir/
 results/
 wandb/
 /videos/
