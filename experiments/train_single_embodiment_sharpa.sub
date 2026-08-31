@@ -11,89 +11,45 @@
 #SBATCH -o /dev/null
 #SBATCH -e /dev/null
 
-# Train one policy on one hand: SHARPA on the iiwa14.
-#
+# SHARPA on the iiwa14. The reference run -- copy this file for variants.
 #   sbatch experiments/train_single_embodiment_sharpa.sub
 #   SEED=1 MAX_EPOCHS=20000 sbatch experiments/train_single_embodiment_sharpa.sub
-#
-# This is the reference single-embodiment run and the template to copy. Every
-# knob is an environment variable with a default, so a variant is a `VAR=...`
-# prefix rather than an edited file.
 
 set -euo pipefail
 
-# ---------------------------------------------------------------------------
-# knobs
-# ---------------------------------------------------------------------------
 ROBOT="${ROBOT:-sharpa_iiwa14}"
 SEED="${SEED:-0}"
 NUM_ENVS="${NUM_ENVS:-24576}"
-
-# Epoch-bound, never walltime-bound. A hand that simulates faster would
-# otherwise collect more gradient steps inside the same wall clock, which is a
-# confound indistinguishable from "this hand is better hardware". The SBATCH
-# -t above is a safety ceiling; MAX_EPOCHS is what ends the run.
-MAX_EPOCHS="${MAX_EPOCHS:-120000}"
-
-HORIZON_LENGTH=16          # must match coevolution/cfg/train/PoseReachSAPG.yaml
+MAX_EPOCHS="${MAX_EPOCHS:-120000}"    # ends the run; SBATCH -t is only a ceiling
+HORIZON_LENGTH=16                     # must match coevolution/cfg/train/PoseReachSAPG.yaml
 EXPL_COEF_BLOCK_SIZE=4096
-
 WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
-WANDB_GROUP="${WANDB_GROUP:-${ROBOT}}"
+WANDB_GROUP="${WANDB_GROUP:-$ROBOT}"
 WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
-
 REPO_ROOT="/share/portal/kk837/gen_mechanics"
 
-# ---------------------------------------------------------------------------
-# guards -- both of these fail deep inside rl_games with unhelpful errors
-# ---------------------------------------------------------------------------
-# SAPG partitions envs into exploration blocks and requires an exact division.
-if (( NUM_ENVS % EXPL_COEF_BLOCK_SIZE != 0 )); then
-    echo "NUM_ENVS=$NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE" >&2
-    exit 1
-fi
-
-# rl_games computes num_minibatches = (horizon_length * num_envs) //
-# minibatch_size and then divides by it. The YAML's value is sized for 24576
-# envs; at a smaller NUM_ENVS the batch is smaller than one minibatch,
-# num_minibatches floors to 0, and init_tensors dies on ZeroDivisionError.
+# Scale the minibatch with NUM_ENVS: the YAML's value is sized for 24576, and a
+# smaller run floors num_minibatches to 0 and dies inside rl_games init_tensors.
 BATCH=$(( HORIZON_LENGTH * NUM_ENVS ))
 MINIBATCH_SIZE="${MINIBATCH_SIZE:-$(( BATCH / 4 ))}"
-if (( BATCH % MINIBATCH_SIZE != 0 )); then
-    echo "minibatch_size=$MINIBATCH_SIZE must divide horizon*num_envs=$BATCH" >&2
-    exit 1
-fi
+(( NUM_ENVS % EXPL_COEF_BLOCK_SIZE == 0 )) || { echo "NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE" >&2; exit 1; }
+(( BATCH % MINIBATCH_SIZE == 0 ))          || { echo "MINIBATCH_SIZE must divide $BATCH" >&2; exit 1; }
 
-# ---------------------------------------------------------------------------
-# run directory -- named before launch so the log path is knowable
-# ---------------------------------------------------------------------------
 EXPERIMENT_NAME="${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)"
 [ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
-
 RUN_DIR="${REPO_ROOT}/train_dir/${WANDB_PROJECT}/${WANDB_GROUP}/${EXPERIMENT_NAME}"
 mkdir -p "$RUN_DIR"
-# SBATCH -o/-e go to /dev/null; redirect here instead so logs land beside the
-# checkpoints rather than in whatever directory sbatch was called from.
-exec > "${RUN_DIR}/slurm.log" 2> "${RUN_DIR}/slurm.err"
+exec > "${RUN_DIR}/slurm.log" 2> "${RUN_DIR}/slurm.err"   # SBATCH -o/-e are /dev/null
 
-# ---------------------------------------------------------------------------
-# environment
-# ---------------------------------------------------------------------------
 cd "$REPO_ROOT"
 source .venv_isaacsim/bin/activate
 export OMNI_KIT_ACCEPT_EULA=YES
-# Shader cache on local disk. On NFS the first Kit boot takes minutes longer
-# and concurrent jobs corrupt each other's cache.
-export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"        # local disk, never NFS
 mkdir -p "$OMNI_KIT_CACHE_PATH"
 
-echo "robot=$ROBOT seed=$SEED max_epochs=$MAX_EPOCHS num_envs=$NUM_ENVS"
-echo "batch=$BATCH minibatch=$MINIBATCH_SIZE (=$(( BATCH / MINIBATCH_SIZE )) minibatches)"
-nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+echo "robot=$ROBOT seed=$SEED epochs=$MAX_EPOCHS envs=$NUM_ENVS minibatch=$MINIBATCH_SIZE"
+nvidia-smi --query-gpu=name --format=csv,noheader
 
-# ---------------------------------------------------------------------------
-# launch. Flags before the bare KEY=VALUE hydra overrides.
-# ---------------------------------------------------------------------------
 python -u coevolution/train.py \
     --task GenMech-PoseReach-Direct-v0 \
     --agent rl_games_sapg_cfg_entry_point \
@@ -102,8 +58,8 @@ python -u coevolution/train.py \
     --wandb_project "$WANDB_PROJECT" \
     --wandb_group "$WANDB_GROUP" \
     --wandb_entity "$WANDB_ENTITY" \
-    --wandb_tags "$ROBOT" "seed$SEED" "epochs$MAX_EPOCHS" \
     --wandb_name "$EXPERIMENT_NAME" \
+    --wandb_tags "$ROBOT" "seed$SEED" \
     env.assets.robot_spec="$ROBOT" \
     env.scene.num_envs="$NUM_ENVS" \
     agent.params.seed="$SEED" \
