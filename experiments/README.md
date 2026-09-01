@@ -44,7 +44,7 @@ cluster is, so size it from what runs actually use:
 | 24,576-env population run | ~34.5 GB |
 | single-hand run | ~17 GB |
 
-`--cpus-per-task=8 --mem=48000` is the current default — about 40% headroom
+`--cpus-per-task=8 --mem=50000` is the current default — about 45% headroom
 over the worst case observed. Do not go lower on CPUs: 1 CPU regressed Kit boot
 from 733 s to 916 s.
 
