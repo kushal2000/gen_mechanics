@@ -416,3 +416,22 @@ def derive_spaces(cfg, spec) -> None:
     cfg.action_space = spec.num_joints
     cfg.observation_space = compute_obs_dim(cfg.obs.obs_list, spec)
     cfg.state_space = compute_obs_dim(cfg.obs.state_list, spec)
+
+
+def force_morphology_field(cfg, n_designs: int) -> None:
+    """Put ``morphology`` in both obs lists, or strip it for the ablation.
+
+    Forced, not trusted: the YAML overlay is applied after the configclass
+    defaults and dropped it once, showing up only as obs 186 wide, not 329.
+    """
+    include = cfg.include_morphology_obs
+    for name in ("obs_list", "state_list"):
+        fields = tuple(getattr(cfg.obs, name))
+        if include and "morphology" not in fields:
+            fields += ("morphology",)
+        elif not include:
+            fields = tuple(f for f in fields if f != "morphology")
+        setattr(cfg.obs, name, fields)
+    if not include:
+        print(f"[pose_reach] ABLATION: no morphology descriptor; the policy "
+              f"cannot tell its {n_designs} designs apart.", flush=True)

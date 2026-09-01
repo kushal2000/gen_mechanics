@@ -15,6 +15,7 @@ from .env_cfg import PoseReachEnvCfg
 from .obs_utils import (
     DESCRIPTOR_DIM, apply_action_pipeline, apply_wrench_dr, build_observations,
     compute_intermediate_values, derive_spaces, describe_layout,
+    force_morphology_field,
     population_descriptors,
 )
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
@@ -59,27 +60,8 @@ class PoseReachEnv(DirectRLEnv):
         population = _ensure_robot_population(self, cfg.assets)
         if population is None:
             return get_robot_spec(cfg.assets.robot_spec)
-        self._force_morphology_field(cfg, len(population.specs))
+        force_morphology_field(cfg, len(population.specs))
         return population.specs[0]
-
-    @staticmethod
-    def _force_morphology_field(cfg: PoseReachEnvCfg, n_designs: int) -> None:
-        """Put ``morphology`` in both obs lists, or strip it for the ablation.
-
-        Forced, not trusted: the YAML overlay is applied after the configclass
-        defaults and dropped it once, showing up only as obs 186 wide, not 329.
-        """
-        include = cfg.include_morphology_obs
-        for name in ("obs_list", "state_list"):
-            fields = tuple(getattr(cfg.obs, name))
-            if include and "morphology" not in fields:
-                fields += ("morphology",)
-            elif not include:
-                fields = tuple(f for f in fields if f != "morphology")
-            setattr(cfg.obs, name, fields)
-        if not include:
-            print(f"[pose_reach] ABLATION: no morphology descriptor; the policy "
-                  f"cannot tell its {n_designs} designs apart.", flush=True)
 
     def _post_init_hook(self) -> None:
         if self._robot_population is None:

@@ -11,7 +11,7 @@ from .morphology import (  # noqa: F401
 )
 from .observations import (  # noqa: F401
     KEYPOINT_CORNERS, build_observations, compute_intermediate_values,
-    compute_obs_dim, derive_spaces, obs_field_sizes,
+    compute_obs_dim, derive_spaces, force_morphology_field, obs_field_sizes,
 )
 from .actions import (  # noqa: F401
     apply_action_pipeline, apply_wrench_dr, sample_log_uniform,
