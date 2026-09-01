@@ -14,7 +14,7 @@ from isaaclab.envs import DirectRLEnv
 from .env_cfg import PoseReachEnvCfg
 from .obs_utils import (
     DESCRIPTOR_DIM, apply_action_pipeline, apply_wrench_dr, build_observations,
-    compute_intermediate_values, compute_obs_dim, describe_layout,
+    compute_intermediate_values, derive_spaces, describe_layout,
     population_descriptors,
 )
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
@@ -42,7 +42,7 @@ class PoseReachEnv(DirectRLEnv):
     ) -> None:
         # cfg is IN/OUT: callers read the derived spaces back to size the policy.
         self.robot_spec = spec = self._resolve_spec(cfg)
-        self._derive_spaces(cfg, spec)
+        derive_spaces(cfg, spec)
         super().__init__(cfg, render_mode, **kwargs)   # runs _setup_scene
         apply_physx_material_properties(self)          # needs the built stage
         allocate_state_buffers(self)
@@ -61,19 +61,6 @@ class PoseReachEnv(DirectRLEnv):
             return get_robot_spec(cfg.assets.robot_spec)
         self._force_morphology_field(cfg, len(population.specs))
         return population.specs[0]
-
-    @staticmethod
-    def _derive_spaces(cfg: PoseReachEnvCfg, spec) -> None:
-        """Widths read off the configclass by rl_games, so set before super()."""
-        if cfg.action_space not in (0, spec.num_joints):
-            # 0 means derive; a stale non-zero would truncate the action vector.
-            raise ValueError(
-                f"cfg.action_space={cfg.action_space} disagrees with robot_spec "
-                f"{spec.name!r} ({spec.num_joints} joints). Leave it 0, or build "
-                "a fresh cfg -- this one may have been used for another robot.")
-        cfg.action_space = spec.num_joints
-        cfg.observation_space = compute_obs_dim(cfg.obs.obs_list, spec)
-        cfg.state_space = compute_obs_dim(cfg.obs.state_list, spec)
 
     @staticmethod
     def _force_morphology_field(cfg: PoseReachEnvCfg, n_designs: int) -> None:

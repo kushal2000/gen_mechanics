@@ -400,3 +400,19 @@ def build_observations(env) -> dict[str, torch.Tensor]:
 
     return {"policy": policy_tensor, "critic": state_tensor}
 
+
+def derive_spaces(cfg, spec) -> None:
+    """Write the action/observation/state widths onto ``cfg``.
+
+    Mutates: rl_games and DirectRLEnv read these off the configclass, so the env
+    must set them before ``super().__init__``. ``action_space`` 0 means derive;
+    a stale non-zero would truncate the action vector.
+    """
+    if cfg.action_space not in (0, spec.num_joints):
+        raise ValueError(
+            f"cfg.action_space={cfg.action_space} disagrees with robot_spec "
+            f"{spec.name!r} ({spec.num_joints} joints). Leave it 0, or build a "
+            "fresh cfg -- this one may have been used for another robot.")
+    cfg.action_space = spec.num_joints
+    cfg.observation_space = compute_obs_dim(cfg.obs.obs_list, spec)
+    cfg.state_space = compute_obs_dim(cfg.obs.state_list, spec)
