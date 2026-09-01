@@ -7,7 +7,7 @@ directory placeholders.
 |---|---|
 | `train_logs/<run>/` | everything one run produces — see below |
 | `videos/` | rollout captures |
-| `smoke_tests/` | output from one-off checks: a rendered URDF, a stage dump, a printed observation |
+| `smoke_tests/` | short verification runs (`LOG_GROUP=smoke_tests`) and one-off checks |
 
 One directory per run, holding all of it:
 

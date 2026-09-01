@@ -19,6 +19,9 @@ SEED=1 NUM_ENVS=8192 sbatch experiments/train_single_embodiment_sharpa.sub
 RUN_NAME=debug_single_embodiment_sharpa_aug31 sbatch experiments/train_single_embodiment_sharpa.sub
 ```
 
+`LOG_GROUP` picks the directory under `debug_outputs/` — `train_logs` by
+default, `smoke_tests` for a short verification run.
+
 These folders accumulate fast, and the point of the name is a directory
 listing you can read. The default `sharpa_iiwa14_seed0_2026-08-31_12-40-59`
 is unique but every run looks alike; purpose plus date both groups and sorts:

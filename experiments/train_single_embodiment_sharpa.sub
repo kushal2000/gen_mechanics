@@ -15,6 +15,7 @@
 # SHARPA on the iiwa14. The reference run -- copy this file for variants.
 #   sbatch experiments/train_single_embodiment_sharpa.sub
 #   SEED=1 NUM_ENVS=8192 sbatch experiments/train_single_embodiment_sharpa.sub
+#   LOG_GROUP=smoke_tests RUN_NAME=smoke_sep01 NUM_ENVS=4096 sbatch ...
 
 set -euo pipefail
 
@@ -39,7 +40,7 @@ EXPERIMENT_NAME="${RUN_NAME:-${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)}"
 [ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
 # One directory per run holding everything: logs, usage csvs, checkpoints,
 # tensorboard, wandb and the resolved hydra config.
-RUN_DIR="${REPO_ROOT}/debug_outputs/train_logs/${EXPERIMENT_NAME}"
+RUN_DIR="${REPO_ROOT}/debug_outputs/${LOG_GROUP:-train_logs}/${EXPERIMENT_NAME}"
 mkdir -p "$RUN_DIR"
 exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
 
