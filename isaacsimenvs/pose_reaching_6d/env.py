@@ -14,15 +14,14 @@ from isaaclab.envs import DirectRLEnv
 from .env_cfg import PoseReachEnvCfg
 from .obs_utils import (
     apply_action_pipeline, apply_wrench_dr, build_observations,
-    compute_intermediate_values, derive_spaces,
+    compute_intermediate_values,
 )
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
 from .reward_utils import (
     compute_rewards, compute_terminations, update_tolerance_curriculum,
 )
 from .scene_utils import (
-    apply_physx_material_properties, finalize_population, resolve_spec,
-    setup_scene,
+    apply_physx_material_properties, finalize_population, setup_scene,
 )
 
 __all__ = ["PoseReachEnv", "PoseReachEnvCfg"]
@@ -36,9 +35,9 @@ class PoseReachEnv(DirectRLEnv):
     def __init__(
         self, cfg: PoseReachEnvCfg, render_mode: str | None = None, **kwargs
     ) -> None:
-        """cfg is IN/OUT: callers read the derived spaces back to size the policy."""
-        self.robot_spec = spec = resolve_spec(self, cfg)
-        derive_spaces(cfg, spec)
+        """cfg is IN/OUT: setup_scene writes the derived spaces onto it, and
+        callers read them back to size the policy.
+        """
         super().__init__(cfg, render_mode, **kwargs)   # runs _setup_scene
         apply_physx_material_properties(self)          # needs the built stage
         allocate_state_buffers(self)
