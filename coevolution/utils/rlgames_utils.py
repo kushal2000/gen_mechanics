@@ -315,18 +315,25 @@ def register_rlgames_env(
         This subclass only ferries; the state itself is defined on the env.
         """
 
-        def _genmech_env(self):
+        def _pose_reach_env(self):
+            """The inner env, or None when wrapping something that is not ours."""
+            from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
+
             inner = getattr(self.env, "unwrapped", self.env)
-            return inner if hasattr(inner, "get_curriculum_state") else None
+            return inner if isinstance(inner, PoseReachEnv) else None
 
         def get_env_state(self):
-            inner = self._genmech_env()
-            return None if inner is None else inner.get_curriculum_state()
+            from isaacsimenvs.pose_reaching_6d.reward_utils import get_curriculum_state
+
+            inner = self._pose_reach_env()
+            return None if inner is None else get_curriculum_state(inner)
 
         def set_env_state(self, env_state):
-            inner = self._genmech_env()
+            from isaacsimenvs.pose_reaching_6d.reward_utils import set_curriculum_state
+
+            inner = self._pose_reach_env()
             if inner is not None:
-                inner.set_curriculum_state(env_state)
+                set_curriculum_state(inner, env_state)
 
     vecenv.register(
         "IsaacRlgWrapper",

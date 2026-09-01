@@ -20,8 +20,6 @@ from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_sta
 from .reward_utils import (
     compute_rewards, compute_terminations, update_tolerance_curriculum,
 )
-from .reward_utils import get_curriculum_state as _curriculum_state
-from .reward_utils import set_curriculum_state as _restore_curriculum_state
 from .scene_utils import (
     apply_physx_material_properties, finalize_population, resolve_spec,
     setup_scene,
@@ -49,16 +47,6 @@ class PoseReachEnv(DirectRLEnv):
         apply_physx_material_properties(self)          # needs the built stage
         allocate_state_buffers(self)
         finalize_population(self)                      # needs both of the above
-
-    # --- checkpointable state ------------------------------------------------
-    # Unimplemented, env_state was None in every checkpoint and resumed runs
-    # silently restarted the curriculum, on a different reward scale.
-
-    def get_curriculum_state(self) -> dict:
-        return _curriculum_state(self)
-
-    def set_curriculum_state(self, state: dict | None) -> None:
-        _restore_curriculum_state(self, state)
 
     # --- Isaac Lab hooks -----------------------------------------------------
 
