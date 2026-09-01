@@ -26,6 +26,7 @@ from isaaclab.sim.utils import find_matching_prim_paths, get_current_stage
 from hand_sampler.paths import resolve as resolve_repo_path
 
 from .objects.generate_objects import generate_handle_head_urdfs
+from ..obs_utils import derive_spaces
 from .robots import get_robot_spec
 from isaacsimenvs.pose_reaching_6d.common_utils.physx import _log_scene_step
 from isaacsimenvs.pose_reaching_6d.common_utils.urdf_to_usd import (
@@ -421,6 +422,12 @@ def _build_object_scale_tensor(env, object_scales_normalized, num_object_usds: i
 
 def setup_scene(env) -> None:
     """Build and register robot, table, object, goal, ground, and light."""
+    # Both before anything reads them: setup_scene needs robot_spec, and
+    # DirectRLEnv reads the widths in _configure_gym_env_spaces, which runs
+    # after this hook.
+    env.robot_spec = resolve_spec(env, env.cfg)
+    derive_spaces(env.cfg, env.robot_spec)
+
 
     # One source for both asset backends: the converter path bakes these onto
     # every collision prim, the authoring path writes them directly.

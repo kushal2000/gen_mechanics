@@ -42,7 +42,6 @@ from isaacsimenvs.pose_reaching_6d.scene_utils.author_usd import (
     merged_palm_body_props,
     _mat_from_seg,
     _mat_to_pos_quat,
-    _quat_from_rpy,
     _set_xform,
 )
 

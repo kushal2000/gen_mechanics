@@ -6,7 +6,7 @@ material properties to the built stage, and ``assembly`` builds the scene
 and assigns a design and object to every env.
 """
 
-from .assembly import (  # noqa: F401
+from .assembly import (  # noqa: F401  # noqa: F401
     build_rigid_object_cfg,
     build_robot_articulation_usd_cfg,
     setup_scene,
@@ -20,7 +20,7 @@ from .assembly import (  # noqa: F401
     RobotPopulation,
     _verify_robot_design_assignment,
 )
-from .materials import (  # noqa: F401
+from .materials import (  # noqa: F401  # noqa: F401
     apply_physx_material_properties,
     arm_counts_from,
     shape_layouts_from_record,
