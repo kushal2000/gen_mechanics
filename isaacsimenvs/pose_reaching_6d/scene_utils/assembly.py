@@ -26,6 +26,7 @@ from isaaclab.sim.utils import find_matching_prim_paths, get_current_stage
 from hand_sampler.paths import resolve as resolve_repo_path
 
 from .objects.generate_objects import generate_handle_head_urdfs
+from .robots import get_robot_spec
 from isaacsimenvs.pose_reaching_6d.common_utils.physx import _log_scene_step
 from isaacsimenvs.pose_reaching_6d.common_utils.urdf_to_usd import (
     _apply_self_collision_filters,
@@ -573,7 +574,9 @@ def setup_scene(env) -> None:
         # Flatten: the converter's output references configuration/*_base.usd,
         # and those do NOT resolve through a second level of nesting -- a
         # referenced arm otherwise composes with NO collision geometry.
-        arm_usd = flatten_arm_usd(arm_raw, arm_dir / "arm_flat.usd")
+        arm_usd = flatten_arm_usd(arm_raw, arm_dir / "arm_flat.usd",
+                                  contact_offset=contact_offset,
+                                  rest_offset=rest_offset)
         arm_stage = Usd.Stage.Open(arm_usd)
         arm_root = str(next(c for c in arm_stage.GetPseudoRoot().GetChildren()).GetPath())
         link7_world = np.asarray(UsdGeom.XformCache().GetLocalToWorldTransform(

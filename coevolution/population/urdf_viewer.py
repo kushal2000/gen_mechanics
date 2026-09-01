@@ -218,7 +218,7 @@ class UrdfBrowser:
         self.md_info.content = "\n\n".join(bits)
         print(f"[urdf] {name}: {len(limits)} joints, {path.name}", flush=True)
 
-    def _home_pose(self, name: str, limits) -> "np.ndarray":
+    def _home_pose(self, name: str, limits):
         """The spec's home pose, in ViserUrdf's actuated-joint order.
 
         Zero is not the home pose: SHARPA's arm sits at joint_1 = -90 deg and

@@ -303,7 +303,8 @@ def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
     return str(out_path)
 
 
-def flatten_arm_usd(arm_usd: str, out_path: Path) -> str:
+def flatten_arm_usd(arm_usd: str, out_path: Path, *,
+                    contact_offset: float, rest_offset: float) -> str:
     """Inline the arm's sub-layers into ONE file, and return its path.
 
     Kit's converter does not write a self-contained asset: the geometry lives in
