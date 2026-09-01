@@ -14,6 +14,8 @@ from .assembly import (  # noqa: F401
     _build_object_scale_tensor,
     _build_robot_design_tensor,
     _ensure_robot_population,
+    finalize_population,
+    resolve_spec,
     _resolve_robot_population,
     RobotPopulation,
     _verify_robot_design_assignment,

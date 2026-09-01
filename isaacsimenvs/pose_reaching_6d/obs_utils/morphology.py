@@ -60,9 +60,9 @@ the whole population, so they carry no information that distinguishes designs.
 
 from __future__ import annotations
 
-import math
 
 import numpy as np
+import torch
 
 from hand_sampler import params as P
 from hand_sampler import sharpa_anchors as anchors
@@ -164,3 +164,15 @@ __all__ = [
     "finger_descriptor",
     "describe_layout",
 ]
+
+
+def build_morphology_obs(env) -> None:
+    """Per-env descriptor, from the hands the specs were built from."""
+    hands = env._robot_population.hands
+    table = torch.as_tensor(population_descriptors(hands),
+                            device=env.device, dtype=torch.float32)
+    env._morphology_per_env = table[env._robot_design_index_per_env]
+    if env.cfg.log_morphology_layout:
+        print(f"[pose_reach] descriptor {DESCRIPTOR_DIM} dims, {len(hands)} "
+              f"designs -> {tuple(env._morphology_per_env.shape)}")
+        print(describe_layout())

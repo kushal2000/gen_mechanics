@@ -13,10 +13,8 @@ from isaaclab.envs import DirectRLEnv
 
 from .env_cfg import PoseReachEnvCfg
 from .obs_utils import (
-    DESCRIPTOR_DIM, apply_action_pipeline, apply_wrench_dr, build_observations,
-    compute_intermediate_values, derive_spaces, describe_layout,
-    force_morphology_field,
-    population_descriptors,
+    apply_action_pipeline, apply_wrench_dr, build_observations,
+    compute_intermediate_values, derive_spaces,
 )
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
 from .reward_utils import (
@@ -25,10 +23,9 @@ from .reward_utils import (
 from .reward_utils import get_curriculum_state as _curriculum_state
 from .reward_utils import set_curriculum_state as _restore_curriculum_state
 from .scene_utils import (
-    _ensure_robot_population, _verify_robot_design_assignment,
-    apply_physx_material_properties, setup_scene,
+    apply_physx_material_properties, finalize_population, resolve_spec,
+    setup_scene,
 )
-from .scene_utils.robots import get_robot_spec
 
 __all__ = ["PoseReachEnv", "PoseReachEnvCfg"]
 
@@ -39,48 +36,19 @@ class PoseReachEnv(DirectRLEnv):
     cfg: PoseReachEnvCfg
 
     def __init__(
-        self, cfg: PoseReachEnvCfg, render_mode: str | None = None, **kwargs
+        self, cfg: PoseReachEnvCfg, render_mode: str | None = None, *,
+        population=None, **kwargs
     ) -> None:
-        # cfg is IN/OUT: callers read the derived spaces back to size the policy.
-        self.robot_spec = spec = self._resolve_spec(cfg)
+        """``population`` injects designs instead of loading the manifest.
+
+        cfg is IN/OUT: callers read the derived spaces back to size the policy.
+        """
+        self.robot_spec = spec = resolve_spec(self, cfg, population)
         derive_spaces(cfg, spec)
         super().__init__(cfg, render_mode, **kwargs)   # runs _setup_scene
         apply_physx_material_properties(self)          # needs the built stage
         allocate_state_buffers(self)
-        self._post_init_hook()                         # needs both of the above
-
-    # --- construction --------------------------------------------------------
-
-    def _resolve_spec(self, cfg: PoseReachEnvCfg):
-        """RobotSpec defining the action and observation layout.
-
-        A population's designs share one joint template, so any member defines
-        it and ``robot_spec`` is ignored. _worker overrides this to inject one.
-        """
-        population = _ensure_robot_population(self, cfg.assets)
-        if population is None:
-            return get_robot_spec(cfg.assets.robot_spec)
-        force_morphology_field(cfg, len(population.specs))
-        return population.specs[0]
-
-    def _post_init_hook(self) -> None:
-        if self._robot_population is None:
-            return
-        # Against the live sim: unchecked, the same assumption put 510 of 512
-        # envs on the wrong object.
-        _verify_robot_design_assignment(self, self._robot_population.specs)
-        self._build_morphology_obs()
-
-    def _build_morphology_obs(self) -> None:
-        """Per-env descriptor, from the hands the specs were built from."""
-        hands = self._robot_population.hands
-        table = torch.as_tensor(population_descriptors(hands),
-                                device=self.device, dtype=torch.float32)
-        self._morphology_per_env = table[self._robot_design_index_per_env]
-        if self.cfg.log_morphology_layout:
-            print(f"[pose_reach] descriptor {DESCRIPTOR_DIM} dims, {len(hands)} "
-                  f"designs -> {tuple(self._morphology_per_env.shape)}")
-            print(describe_layout())
+        finalize_population(self)                      # needs both of the above
 
     # --- checkpointable state ------------------------------------------------
     # Unimplemented, env_state was None in every checkpoint and resumed runs

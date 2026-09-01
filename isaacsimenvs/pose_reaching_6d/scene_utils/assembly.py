@@ -263,6 +263,38 @@ def _resolve_robot_population(assets_cfg) -> RobotPopulation | None:
     return RobotPopulation(hands=hands, specs=specs)
 
 
+def finalize_population(env) -> None:
+    """After the scene, materials and buffers exist: check the sim matches."""
+    if env._robot_population is None:
+        return
+    from ..obs_utils import build_morphology_obs
+
+    # Against the live sim: unchecked, the same assumption put 510 of 512 envs
+    # on the wrong object.
+    _verify_robot_design_assignment(env, env._robot_population.specs)
+    build_morphology_obs(env)
+
+
+def resolve_spec(env, cfg, population=None):
+    """The RobotSpec defining the action and observation layout.
+
+    A population's designs share one joint template, so any member defines it
+    and ``robot_spec`` is ignored. Pass ``population`` to inject one design
+    instead of loading the manifest.
+    """
+    from ..obs_utils import force_morphology_field
+
+    if population is not None:
+        env._robot_population = population
+        env._robot_population_specs = population.specs
+    else:
+        population = _ensure_robot_population(env, cfg.assets)
+    if population is None:
+        return get_robot_spec(cfg.assets.robot_spec)
+    force_morphology_field(cfg, len(population.specs))
+    return population.specs[0]
+
+
 def _ensure_robot_population(env, assets_cfg) -> RobotPopulation | None:
     """Resolve the population once per env, then hand back the same object."""
     if not hasattr(env, "_robot_population"):

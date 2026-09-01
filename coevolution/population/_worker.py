@@ -19,7 +19,6 @@ Not meant to be run by hand; see ``eval_interactive.py``.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import traceback
@@ -112,34 +111,15 @@ def run(conn, args) -> None:
         hand = by_name[args.design]
         design_spec = synth_spec(hand)
 
-        class _SingleDesignEnv(PoseReachEnv):
-            """Every env holds the SAME one injected design.
-
-            Overriding _resolve_spec is what carries the morphology descriptor:
-            a population policy conditions on it, and the env only builds it when
-            a population resolved. The population here is a one-element list
-            injected before _setup_scene reads it, which is why an arbitrary
-            design index costs one design rather than a prefix of index+1.
-            """
-
-            def _resolve_spec(self, cfg):
-                from isaacsimenvs.pose_reaching_6d.scene_utils import RobotPopulation
-
-                # Inject rather than load: one design, already in hand. Setting
-                # both is what stops _ensure_robot_population resolving from the
-                # manifest, and gives the base _build_morphology_obs its hands.
-                self._robot_population = RobotPopulation(
-                    hands=[hand], specs=[design_spec])
-                self._robot_population_specs = [design_spec]
-                for field in ("obs_list", "state_list"):
-                    current = tuple(getattr(cfg.obs, field))
-                    if "morphology" not in current:
-                        setattr(cfg.obs, field, current + ("morphology",))
-                return design_spec
+        # Inject the one design rather than let the env load a manifest: an
+        # arbitrary index then costs one design, not a prefix of index+1. The
+        # env builds the morphology descriptor from it, which a population
+        # policy conditions on.
+        from isaacsimenvs.pose_reaching_6d.scene_utils import RobotPopulation
 
         cfg = PoseReachEnvCfg()
         cfg.assets.robot_population_seed = args.population_seed
-        env_class = _SingleDesignEnv
+        env_kwargs = {"population": RobotPopulation(hands=[hand], specs=[design_spec])}
         design_meta = {
             "n_active_fingers": hand.n_active_fingers,
             "n_active_joints": hand.n_active_joints,
@@ -147,7 +127,7 @@ def run(conn, args) -> None:
     else:
         cfg = PoseReachEnvCfg()
         cfg.assets.robot_spec = args.design
-        env_class = PoseReachEnv
+        env_kwargs = {}
         design_meta = {}
 
     # The run's config first: the observation LAYOUT lives there, and cfg
@@ -198,7 +178,7 @@ def run(conn, args) -> None:
             f"repeat. Raise --num_assets_per_type to at least "
             f"{-(-args.num_envs // (pool_size // args.num_assets_per_type))}.")
 
-    env = env_class(cfg=cfg)
+    env = PoseReachEnv(cfg=cfg, **env_kwargs)
     env._replay_target_lab_order = None
     spec = env.robot_spec
     n_act = int(cfg.action_space)

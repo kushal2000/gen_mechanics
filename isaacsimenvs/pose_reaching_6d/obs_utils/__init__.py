@@ -7,7 +7,8 @@ different hands -- and ``actions`` turns the policy's output into joint targets.
 
 from .morphology import (  # noqa: F401
     DESCRIPTOR_DIM, FIELD_LAYOUT, PER_FINGER_DIM,
-    describe_layout, finger_descriptor, hand_descriptor, population_descriptors,
+    build_morphology_obs, describe_layout, finger_descriptor, hand_descriptor,
+    population_descriptors,
 )
 from .observations import (  # noqa: F401
     KEYPOINT_CORNERS, build_observations, compute_intermediate_values,
