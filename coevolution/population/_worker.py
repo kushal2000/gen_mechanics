@@ -119,7 +119,7 @@ def run(conn, args) -> None:
 
         cfg = PoseReachEnvCfg()
         cfg.assets.robot_population_seed = args.population_seed
-        env_kwargs = {"population": RobotPopulation(hands=[hand], specs=[design_spec])}
+        cfg.assets.robot_population = RobotPopulation(hands=[hand], specs=[design_spec])
         design_meta = {
             "n_active_fingers": hand.n_active_fingers,
             "n_active_joints": hand.n_active_joints,
@@ -127,7 +127,6 @@ def run(conn, args) -> None:
     else:
         cfg = PoseReachEnvCfg()
         cfg.assets.robot_spec = args.design
-        env_kwargs = {}
         design_meta = {}
 
     # The run's config first: the observation LAYOUT lives there, and cfg
@@ -178,7 +177,7 @@ def run(conn, args) -> None:
             f"repeat. Raise --num_assets_per_type to at least "
             f"{-(-args.num_envs // (pool_size // args.num_assets_per_type))}.")
 
-    env = PoseReachEnv(cfg=cfg, **env_kwargs)
+    env = PoseReachEnv(cfg=cfg)
     env._replay_target_lab_order = None
     spec = env.robot_spec
     n_act = int(cfg.action_space)

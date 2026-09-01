@@ -275,12 +275,12 @@ def finalize_population(env) -> None:
     build_morphology_obs(env)
 
 
-def resolve_spec(env, cfg, population=None):
+def resolve_spec(env, cfg):
     """The RobotSpec defining the action and observation layout.
 
     A population's designs share one joint template, so any member defines it
-    and ``robot_spec`` is ignored. Pass ``population`` to inject one design
-    instead of loading the manifest.
+    and ``robot_spec`` is ignored. ``assets.robot_population`` injects designs
+    directly; otherwise they come from the manifest.
 
     Called before ``super().__init__`` so ``derive_spaces`` can write the widths
     DirectRLEnv reads in ``_configure_gym_env_spaces``. That happens after
@@ -289,6 +289,7 @@ def resolve_spec(env, cfg, population=None):
     """
     from ..obs_utils import force_morphology_field
 
+    population = cfg.assets.robot_population
     if population is not None:
         env._robot_population = population
         env._robot_population_specs = population.specs

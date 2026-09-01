@@ -34,14 +34,10 @@ class PoseReachEnv(DirectRLEnv):
     cfg: PoseReachEnvCfg
 
     def __init__(
-        self, cfg: PoseReachEnvCfg, render_mode: str | None = None, *,
-        population=None, **kwargs
+        self, cfg: PoseReachEnvCfg, render_mode: str | None = None, **kwargs
     ) -> None:
-        """``population`` injects designs instead of loading the manifest.
-
-        cfg is IN/OUT: callers read the derived spaces back to size the policy.
-        """
-        self.robot_spec = spec = resolve_spec(self, cfg, population)
+        """cfg is IN/OUT: callers read the derived spaces back to size the policy."""
+        self.robot_spec = spec = resolve_spec(self, cfg)
         derive_spaces(cfg, spec)
         super().__init__(cfg, render_mode, **kwargs)   # runs _setup_scene
         apply_physx_material_properties(self)          # needs the built stage

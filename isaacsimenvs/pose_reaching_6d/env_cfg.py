@@ -209,6 +209,15 @@ class AssetsCfg:
     robot_population_count: int = 0
     """0 means the whole cached population."""
 
+    robot_population: object | None = None
+    """A materialized RobotPopulation, injected in code instead of loaded.
+
+    Set by callers that already hold the designs -- _worker evaluates one member
+    of a population, and designs are addressed positionally, so loading it would
+    cost a prefix of index+1 designs to reach one. Not settable from hydra (the
+    default's runtime type is NoneType, which rejects overrides) and left None
+    by every config-driven run, so ``to_dict`` never has to serialize it."""
+
 
 @configclass
 class ObsCfg:
