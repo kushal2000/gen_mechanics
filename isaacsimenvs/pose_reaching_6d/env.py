@@ -39,9 +39,12 @@ class PoseReachEnv(DirectRLEnv):
         callers read them back to size the policy.
         """
         super().__init__(cfg, render_mode, **kwargs)   # runs _setup_scene
-        apply_physx_material_properties(self)          # needs the built stage
+        # All three need the started simulator and nothing else. DirectRLEnv has
+        # no post-sim hook, so this is the only place they can run; they are
+        # independent of each other, so the order is free.
+        apply_physx_material_properties(self)
         allocate_state_buffers(self)
-        finalize_population(self)                      # needs both of the above
+        finalize_population(self)
 
     # --- Isaac Lab hooks -----------------------------------------------------
 
