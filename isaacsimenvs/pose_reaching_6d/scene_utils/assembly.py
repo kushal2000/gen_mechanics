@@ -265,12 +265,20 @@ def _resolve_robot_population(assets_cfg) -> RobotPopulation | None:
     return RobotPopulation(hands=hands, specs=specs)
 
 
-def finalize_population(env) -> None:
-    """After the scene, materials and buffers exist: check the sim matches."""
-    if env._robot_population is None:
-        return
+def finalize_scene(env) -> None:
+    """Everything that needs the STARTED simulator, before the first reset.
+
+    Materials bind through PhysX tensor views and the design check queries the
+    live articulation, so neither can run in setup_scene: sim.reset() has not
+    happened yet there. Both must be done before the first _reset_idx.
+    """
     from ..obs_utils import build_morphology_obs
 
+    from .materials import apply_physx_material_properties
+
+    apply_physx_material_properties(env)
+    if env._robot_population is None:
+        return
     # Against the live sim: unchecked, the same assumption put 510 of 512 envs
     # on the wrong object.
     _verify_robot_design_assignment(env, env._robot_population.specs)

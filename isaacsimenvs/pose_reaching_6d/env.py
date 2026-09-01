@@ -21,7 +21,7 @@ from .reward_utils import (
     compute_rewards, compute_terminations, update_tolerance_curriculum,
 )
 from .scene_utils import (
-    apply_physx_material_properties, finalize_population, setup_scene,
+    finalize_scene, setup_scene,
 )
 
 __all__ = ["PoseReachEnv", "PoseReachEnvCfg"]
@@ -39,12 +39,9 @@ class PoseReachEnv(DirectRLEnv):
         callers read them back to size the policy.
         """
         super().__init__(cfg, render_mode, **kwargs)   # runs _setup_scene
-        # All three need the started simulator and nothing else. DirectRLEnv has
-        # no post-sim hook, so this is the only place they can run; they are
-        # independent of each other, so the order is free.
-        apply_physx_material_properties(self)
+        # Need the started sim; must land before the first _reset_idx.
         allocate_state_buffers(self)
-        finalize_population(self)
+        finalize_scene(self)
 
     # --- Isaac Lab hooks -----------------------------------------------------
 
