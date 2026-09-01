@@ -3,7 +3,7 @@
 #SBATCH -n 1
 #SBATCH --cpus-per-task=8
 #SBATCH --get-user-env
-#SBATCH --mem=96000
+#SBATCH --mem=48000
 #SBATCH -t 3-00:00:00           # the budget: the run trains until this expires
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01

@@ -37,12 +37,21 @@ Keep the date in it — reusing a name writes two runs into the same folder.
 ## Ask for the minimum you need
 
 Queue time is dominated by the size of the request, not by how busy the
-cluster is. A 24,576-env training run measured **32.7 GB MaxRSS against a
-200 GB request** — so the memory ask was ~6x the actual use, and the CPU count
-was what kept the job pending.
+cluster is, so size it from what runs actually use:
 
-`--cpus-per-task=8 --mem=96000` is the current default. Do not go lower on
-CPUs: 1 CPU regressed Kit boot from 733 s to 916 s.
+| | peak RSS |
+|---|---|
+| 24,576-env population run | ~34.5 GB |
+| single-hand run | ~17 GB |
+
+`--cpus-per-task=8 --mem=48000` is the current default — about 40% headroom
+over the worst case observed. Do not go lower on CPUs: 1 CPU regressed Kit boot
+from 733 s to 916 s.
+
+Check a finished run with `sacct -j <jobid> --format=MaxRSS`, or watch it live
+in the run's `usage.ram_usage.csv`. Both sample on an interval, so a spike
+between samples is invisible — which is why the headroom is not trimmed
+further.
 
 ## Pick the right GPU
 
