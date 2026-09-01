@@ -281,6 +281,11 @@ def resolve_spec(env, cfg, population=None):
     A population's designs share one joint template, so any member defines it
     and ``robot_spec`` is ignored. Pass ``population`` to inject one design
     instead of loading the manifest.
+
+    Called before ``super().__init__`` so ``derive_spaces`` can write the widths
+    DirectRLEnv reads in ``_configure_gym_env_spaces``. That happens after
+    ``_setup_scene``, so this could equally run there; it is here so the spec is
+    settled before the scene starts using it.
     """
     from ..obs_utils import force_morphology_field
 
