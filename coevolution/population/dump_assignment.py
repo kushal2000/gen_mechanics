@@ -19,9 +19,9 @@ object, and designs ``i``, ``i + pool_size``, ``i + 2*pool_size``, ... share an
 object exactly. ``shared_object_groups`` in the output is that grouping, which
 is what you need to compare designs without the object confounding the result.
 
-Verify against the simulator before trusting it for anything that matters --
-``genmech/tools/check_object_identity.py`` reads the live
-``_object_asset_index_per_env``. An env->pool assignment bug once gave 510 of 512
+Verify against the simulator before trusting it for anything that matters:
+the live ``env.scene_record.object_pool_index`` is the truth. An env->pool
+assignment bug once gave 510 of 512
 environments the wrong asset while every offline check passed
 (``docs/multi_embodiment.md`` section 4).
 """
@@ -109,7 +109,7 @@ def build_assignment(run_dir: Path, sanity_check: bool = True) -> dict:
     from hand_sampler.population import load_population
 
     hands = load_population(int(population_seed))
-    # 0 means "the whole cached population" -- scene_utils._resolve_robot_population.
+    # 0 means "the whole cached population", as scene_utils loads it.
     resolved_count = len(hands) if population_count == 0 else population_count
     if resolved_count > len(hands):
         raise ValueError(

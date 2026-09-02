@@ -46,6 +46,7 @@ def apply_physx_material_properties(env) -> None:
     if not assets_cfg.modify_asset_frictions:
         return
     t0 = time.perf_counter()
+    record = env.scene_record
     dr = env.cfg.domain_randomization
     n_buckets = int(dr.friction_n_buckets)
     ft_lo, ft_hi = (float(v) for v in dr.fingertip_friction_scale_range)
@@ -73,19 +74,19 @@ def apply_physx_material_properties(env) -> None:
         return out, start
 
     # Layouts are per design: a ghosted finger keeps its links but no shapes.
-    population = env._robot_population
+    population = record.population
     if population is None:
         groups = {0: env_ids}
-        tips_of = {0: set(env.robot_spec.fingertip_body_names)}
+        tips_of = {0: set(record.robot_spec.fingertip_body_names)}
         layouts = {0: measure_layout(0)}
     else:
-        design_idx = env._robot_design_index_per_env.detach().cpu()
+        design_idx = record.robot_design_index.detach().cpu()
         groups = {int(d): (design_idx == int(d)).nonzero(as_tuple=True)[0]
                   for d in design_idx.unique()}
         tips_of = {d: set(population.specs[d].fingertip_body_names) for d in groups}
         # From the authoring record, with the shared arm measured once;
         # measuring every design is ~96 min at 24,576.
-        recorded = env._robot_collider_links
+        recorded = record.robot_collider_links
         ref = next(iter(groups))
         arm_layout, _ = measure_layout(int(groups[ref][0]))
         layouts = shape_layouts_from_record(
@@ -122,7 +123,7 @@ def apply_physx_material_properties(env) -> None:
     unmatched = [d for d in groups if not bool(ft_shape_mask[groups[d]].any())]
     misnamed = [d for d in unmatched if not (tips_of[d] & set(link_names))]
     if misnamed:
-        who = (env.robot_spec.name if population is None
+        who = (record.robot_spec.name if population is None
                else f"designs {sorted(misnamed)[:5]}")
         raise RuntimeError(
             f"{who}: fingertip_body_names={sorted(tips_of[misnamed[0]])} are not "

@@ -60,6 +60,20 @@ class RobotPopulation:
     specs: list
 
 
+@dataclass(frozen=True)
+class SceneRecord:
+    """What setup_scene decided, stored as ``env.scene_record``."""
+
+    robot_spec: object  # defines the joint and observation layout
+    population: RobotPopulation | None  # None for one fixed hand
+    object_urdf_paths: list[str]  # the pool in final order; viewers read meshes from these
+    object_scale: torch.Tensor  # (N, 3) dimensions / object_base_size
+    object_pool_index: torch.Tensor  # (N,) long
+    robot_design_index: torch.Tensor | None  # (N,) long, population only
+    robot_collider_links: dict[int, dict[str, int]] | None  # per design, population only
+    asset_dir: str  # temp dir holding the URDFs and converted USDs
+
+
 def _load_robot_population(assets_cfg) -> RobotPopulation | None:
     """The configured population, or None for one fixed hand."""
     seed = assets_cfg.robot_population_seed
@@ -91,21 +105,17 @@ def _load_robot_population(assets_cfg) -> RobotPopulation | None:
     return RobotPopulation(hands=hands, specs=specs)
 
 
-def resolve_spec(env, cfg):
-    """The RobotSpec defining the action and observation layout.
-
-    Sets ``env._robot_population`` (injected via ``assets.robot_population``
-    or loaded). A population shares one joint template, so its first member
-    defines the layout and ``robot_spec`` is ignored.
-    """
+def _resolve_population_and_spec(cfg):
+    """The population (injected via ``assets.robot_population`` or loaded) and
+    the spec defining the action and observation layout. A population shares
+    one joint template, so its first member defines it and ``robot_spec`` is ignored."""
     population = cfg.assets.robot_population
     if population is None:
         population = _load_robot_population(cfg.assets)
-    env._robot_population = population
     if population is None:
-        return get_robot_spec(cfg.assets.robot_spec)
+        return None, get_robot_spec(cfg.assets.robot_spec)
     force_morphology_field(cfg, len(population.specs))
-    return population.specs[0]
+    return population, population.specs[0]
 
 
 # --- spawn configs ------------------------------------------------------------
@@ -229,16 +239,15 @@ def _author_objects_into_envs(env, object_params) -> dict[int, int]:
     return asset_index
 
 
-def _build_object_scale_tensor(env, object_scales_normalized, authored_map) -> None:
-    """Per-env object scale and pool index, from the authoring record."""
+def _object_tensors(env, object_scales_normalized, authored_map) -> tuple[torch.Tensor, torch.Tensor]:
+    """Per-env ``(scale (N, 3), pool index (N,))`` from the authoring record."""
     _check_numeric_env_order(env, find_matching_prim_paths(OBJECT_PATH), "Object")
-    env._object_scale_per_env = torch.zeros(env.num_envs, 3, device=env.device)
-    env._object_asset_index_per_env = torch.zeros(
-        env.num_envs, device=env.device, dtype=torch.long)
+    scale = torch.zeros(env.num_envs, 3, device=env.device)
+    pool_index = torch.zeros(env.num_envs, device=env.device, dtype=torch.long)
     for env_id, asset_index in authored_map.items():
-        env._object_scale_per_env[env_id] = torch.tensor(
-            object_scales_normalized[asset_index], device=env.device)
-        env._object_asset_index_per_env[env_id] = asset_index
+        scale[env_id] = torch.tensor(object_scales_normalized[asset_index], device=env.device)
+        pool_index[env_id] = asset_index
+    return scale, pool_index
 
 
 # --- robots ---------------------------------------------------------------------
@@ -267,27 +276,26 @@ def _convert_arm(tmp_dir: str, offsets: dict):
     return arm_usd, arm_root, link7_world
 
 
-def _author_robots_into_envs(env, usd_work_dir: Path, offsets: dict, t0: float) -> None:
+def _author_robots_into_envs(env, spec, population, asset_dir: Path, offsets: dict,
+                             t0: float) -> dict[int, dict[str, int]] | None:
     """One Robot prim per env, no spawner clone. A fixed hand is one reference
     to its converted file; a population design references the shared arm and
     authors its hand. Spawning through Isaac Lab instead copies the prim tree
-    into every env, ~110 s for a fixed hand and hours for a population."""
-    population = env._robot_population
-    assets_cfg = env.cfg.assets
+    into every env, ~110 s for a fixed hand and hours for a population.
+    Returns each design's collider record, for the friction pass."""
     if population is None:
         robot_usd, robot_root = _convert_fixed_robot(
-            env.robot_spec, assets_cfg.robot_urdf or env.robot_spec.urdf_path,
-            usd_work_dir, offsets)
+            spec, env.cfg.assets.robot_urdf or spec.urdf_path, asset_dir / "usd", offsets)
         _log_scene_step(t0, "converted the robot")
     else:
-        arm_usd, arm_root, link7_world = _convert_arm(env._tmp_asset_dir, offsets)
+        arm_usd, arm_root, link7_world = _convert_arm(asset_dir, offsets)
         hands, specs = population.hands, population.specs
         _log_scene_step(t0, "converted the shared arm once")
 
-    base_pos = tuple(float(v) for v in env.robot_spec.base_pos)
-    base_rot = tuple(float(v) for v in env.robot_spec.base_rot)
+    base_pos = tuple(float(v) for v in spec.base_pos)
+    base_rot = tuple(float(v) for v in spec.base_rot)
     layer = get_current_stage().GetRootLayer()
-    env._robot_collider_links = None if population is None else {}
+    collider_links = None if population is None else {}
     t_auth = time.perf_counter()
     with Sdf.ChangeBlock():
         for env_path in _env_paths_in_order(env):
@@ -302,27 +310,27 @@ def _author_robots_into_envs(env, usd_work_dir: Path, offsets: dict, t0: float) 
                     layer, root, hands[idx],
                     arm_usd=arm_usd, arm_root_prim=arm_root, link7_world=link7_world,
                     adjacency=specs[idx].adjacent_links, **offsets)
-                env._robot_collider_links[idx] = colliders  # for the friction pass
+                collider_links[idx] = colliders
             # spawn=None places nothing and a fixed base ignores init_state.pos.
             set_xform(layer.GetPrimAtPath(root), base_pos, base_rot)
     per_robot_ms = (time.perf_counter() - t_auth) / max(env.num_envs, 1) * 1000
     _log_scene_step(t0, f"authored {env.num_envs} robots into env prims "
                         f"({per_robot_ms:.2f} ms each)")
+    return collider_links
 
 
-def _build_robot_design_tensor(env, num_designs: int) -> None:
-    """Record design_index[i] = i % num_designs, the assignment the authoring made."""
+def _robot_design_index(env, num_designs: int) -> torch.Tensor:
+    """design_index[i] = i % num_designs, the assignment the authoring made."""
     _check_numeric_env_order(env, find_matching_prim_paths(ROBOT_PATH), "Robot")
-    env._robot_design_index_per_env = torch.tensor(
-        [i % num_designs for i in range(env.num_envs)],
-        device=env.device, dtype=torch.long)
+    return torch.tensor([i % num_designs for i in range(env.num_envs)],
+                        device=env.device, dtype=torch.long)
 
 
-def _verify_robot_design_assignment(env, specs) -> None:
+def _verify_robot_design_assignment(env, record: SceneRecord) -> None:
     """Envs sharing a design must share joint limits read back from PhysX.
     Limits are drawn per design, so they fingerprint what was actually loaded."""
     limits = env.robot.data.joint_pos_limits.detach().cpu().numpy()  # (N, J, 2)
-    idx = env._robot_design_index_per_env.detach().cpu().numpy()
+    idx = record.robot_design_index.detach().cpu().numpy()
     by_design: dict[int, list] = {}
     for e in range(env.num_envs):
         by_design.setdefault(int(idx[e]), []).append(limits[e])
@@ -332,7 +340,7 @@ def _verify_robot_design_assignment(env, specs) -> None:
     if bad:
         raise RuntimeError(
             f"envs sharing design {bad[:5]} do not share joint limits; "
-            f"env i should hold design i % {len(specs)}")
+            f"env i should hold design i % {len(record.population.specs)}")
     n_unique = len({np.round(mats[0], 9).tobytes() for mats in by_design.values()})
     print(f"[scene] robot design assignment verified: {len(by_design)} designs over "
           f"{env.num_envs} envs, {n_unique} distinguishable by joint limits")
@@ -341,39 +349,36 @@ def _verify_robot_design_assignment(env, specs) -> None:
 # --- entry points ---------------------------------------------------------------
 
 def setup_scene(env) -> None:
-    """Build and register robot, table, object, goal, ground, and light."""
+    """Build and register robot, table, object, goal, ground, and light;
+    leaves the decisions in ``env.scene_record``."""
     # Spaces first: DirectRLEnv reads them in _configure_gym_env_spaces, after this hook.
-    env.robot_spec = resolve_spec(env, env.cfg)
-    derive_spaces(env.cfg, env.robot_spec)
+    population, spec = _resolve_population_and_spec(env.cfg)
+    derive_spaces(env.cfg, spec)
 
     assets_cfg = env.cfg.assets
-    population = env._robot_population
     offsets = dict(contact_offset=env.cfg.physics.contact_offset,
                    rest_offset=env.cfg.physics.rest_offset)
     t0 = time.perf_counter()
     _log_scene_step(t0, f"setup start num_envs={env.num_envs} "
                         f"num_assets_per_type={assets_cfg.num_assets_per_type}")
 
-    env._tmp_asset_dir = tempfile.mkdtemp(prefix="genmech_assets_")
-    usd_work_dir = Path(env._tmp_asset_dir) / "usd"
-    usd_work_dir.mkdir(parents=True, exist_ok=True)
+    asset_dir = Path(tempfile.mkdtemp(prefix="genmech_assets_"))
+    (asset_dir / "usd").mkdir()
     _materialize_env_prims(env)
 
     # 1. Object pool.
-    urdf_paths, object_scales, object_params = _resolve_object_pool(
-        assets_cfg, env._tmp_asset_dir)
-    env._object_urdf_paths = [str(p) for p in urdf_paths]  # viewers read these for meshes
+    urdf_paths, object_scales, object_params = _resolve_object_pool(assets_cfg, str(asset_dir))
     _log_scene_step(t0, f"generated {len(urdf_paths)} object URDFs")
 
     # 2. Robots, authored into every env.
-    _author_robots_into_envs(env, usd_work_dir, offsets, t0)
+    collider_links = _author_robots_into_envs(env, spec, population, asset_dir, offsets, t0)
 
     # 3. Table, converted and spawned.
-    table_usd = _convert_urdf_to_usd(assets_cfg.table_urdf, usd_work_dir, fix_base=False)
+    table_usd = _convert_urdf_to_usd(assets_cfg.table_urdf, asset_dir / "usd", fix_base=False)
 
     # 4. Spawn.
     env.robot = Articulation(build_robot_articulation_cfg(
-        env.robot_spec, start_arm_higher=env.cfg.reset.start_arm_higher))
+        spec, start_arm_higher=env.cfg.reset.start_arm_higher))
     env.table = RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
     authored_map = _author_objects_into_envs(env, object_params)
     env.object = RigidObject(RigidObjectCfg(prim_path=OBJECT_PATH, spawn=None))
@@ -386,9 +391,14 @@ def setup_scene(env) -> None:
     light_cfg.func("/World/Light", light_cfg)
 
     # 6. Which pool entry and which design each env holds.
-    _build_object_scale_tensor(env, object_scales, authored_map)
-    if population is not None:
-        _build_robot_design_tensor(env, len(population.specs))
+    object_scale, object_pool_index = _object_tensors(env, object_scales, authored_map)
+    env.scene_record = SceneRecord(
+        robot_spec=spec, population=population,
+        object_urdf_paths=[str(p) for p in urdf_paths],
+        object_scale=object_scale, object_pool_index=object_pool_index,
+        robot_design_index=(None if population is None
+                            else _robot_design_index(env, len(population.specs))),
+        robot_collider_links=collider_links, asset_dir=str(asset_dir))
 
     # 7. Register so DirectRLEnv refreshes their tensors each step.
     env.scene.articulations["robot"] = env.robot
@@ -402,10 +412,10 @@ def finalize_scene(env) -> None:
     """Needs the started sim: materials bind through PhysX views and the
     design check reads the live articulation. Runs before the first reset."""
     apply_physx_material_properties(env)
-    if env._robot_population is None:
+    if env.scene_record.population is None:
         return
-    _verify_robot_design_assignment(env, env._robot_population.specs)
+    _verify_robot_design_assignment(env, env.scene_record)
     build_morphology_obs(env)
 
 
-__all__ = ["RobotPopulation", "finalize_scene", "setup_scene"]
+__all__ = ["RobotPopulation", "SceneRecord", "finalize_scene", "setup_scene"]

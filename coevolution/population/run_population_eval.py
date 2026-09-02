@@ -239,7 +239,7 @@ def main() -> None:
     env = PoseReachEnv(cfg=cfg)
     inner = env
     inner._replay_target_lab_order = None
-    spec = inner.robot_spec
+    spec = inner.scene_record.robot_spec
     n_act = int(cfg.action_space)
 
     player = RlPlayer(
@@ -401,8 +401,8 @@ def main() -> None:
     )
     pool_size = len(pool)
 
-    design_index = inner._robot_design_index_per_env.cpu().numpy()
-    live_pool_index = inner._object_asset_index_per_env.cpu().numpy()
+    design_index = inner.scene_record.robot_design_index.cpu().numpy()
+    live_pool_index = inner.scene_record.object_pool_index.cpu().numpy()
 
     mg = mean_goals.cpu().numpy()
     sg = std_goals.cpu().numpy()

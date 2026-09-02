@@ -346,7 +346,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         env._fingertip_mask.unsqueeze(-1).to(fingertip_pos_rel_palm.dtype)
     )
 
-    object_scales_obs = env._object_scale_per_env * env._object_scale_multiplier
+    object_scales_obs = env.scene_record.object_scale * env._object_scale_multiplier
 
     # Policy obs use legacy Isaac Gym xyzw; internal math stays wxyz.
     palm_rot_xyzw = convert_quat(palm_rot, to="xyzw")

@@ -168,10 +168,10 @@ __all__ = [
 
 def build_morphology_obs(env) -> None:
     """Per-env descriptor, from the hands the specs were built from."""
-    hands = env._robot_population.hands
+    hands = env.scene_record.population.hands
     table = torch.as_tensor(population_descriptors(hands),
                             device=env.device, dtype=torch.float32)
-    env._morphology_per_env = table[env._robot_design_index_per_env]
+    env._morphology_per_env = table[env.scene_record.robot_design_index]
     if env.cfg.log_morphology_layout:
         print(f"[pose_reach] descriptor {DESCRIPTOR_DIM} dims, {len(hands)} "
               f"designs -> {tuple(env._morphology_per_env.shape)}")

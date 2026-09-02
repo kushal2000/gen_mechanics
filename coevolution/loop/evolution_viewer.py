@@ -8,7 +8,7 @@ FITNESS rather than by slot index, which is usually what you want -- "show me
 the best hand in wrench iteration 7" is a question the index cannot answer.
 
 MUTANTS HAVE NO URDF ON DISK. mutate.py writes parameters, not files, and
-_resolve_robot_population stopped emitting a URDF per design on the authored
+the scene build stopped emitting a URDF per design on the authored
 path (nothing reads them there, and concurrent seed-jobs raced to write the same
 paths). So this viewer builds the URDF from the manifest's params on demand.
 

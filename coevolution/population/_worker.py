@@ -158,7 +158,7 @@ def run(conn, args) -> None:
 
     env = PoseReachEnv(cfg=cfg)
     env._replay_target_lab_order = None
-    spec = env.robot_spec
+    spec = env.scene_record.robot_spec
     n_act = int(cfg.action_space)
 
     player = RlPlayer(
@@ -182,7 +182,7 @@ def run(conn, args) -> None:
         shuffle=bool(cfg.assets.shuffle_assets),
         density_scale=float(cfg.assets.object_density_scale),
     )
-    live_pool_index = env._object_asset_index_per_env.cpu().numpy().tolist()
+    live_pool_index = env.scene_record.object_pool_index.cpu().numpy().tolist()
     for e, idx in enumerate(live_pool_index):
         if idx != pool_index_for_env(e, len(pool)):
             raise RuntimeError(
@@ -208,7 +208,7 @@ def run(conn, args) -> None:
         "num_joints": spec.num_joints,
         "obs_dim": int(cfg.observation_space),
         "pool_size": len(pool),
-        "object_urdf_paths": [env._object_urdf_paths[i] for i in live_pool_index],
+        "object_urdf_paths": [env.scene_record.object_urdf_paths[i] for i in live_pool_index],
         "object_pool_index": live_pool_index,
         "object_labels": [pool[i].label() for i in live_pool_index],
         "object_types": [pool[i].type for i in live_pool_index],

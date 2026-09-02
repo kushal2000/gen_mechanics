@@ -75,7 +75,7 @@ def main() -> None:
     env = gym.make("GenMech-PoseReach-Direct-v0", cfg=cfg)
     inner = env.unwrapped
     inner._replay_target_lab_order = None
-    spec = inner.robot_spec
+    spec = inner.scene_record.robot_spec
 
     # --- policy -----------------------------------------------------------
     adapter = None
@@ -149,7 +149,7 @@ def main() -> None:
 
     # --- object -----------------------------------------------------------
     # One mesh per pool asset, since each env draws a different one. Their
-    # geometry is used AS WRITTEN: _object_scale_per_env holds
+    # geometry is used AS WRITTEN: scene_record.object_scale holds
     # object_scales_normalized, which is dimensions divided by object_base_size
     # for the reward and observation, NOT a mesh multiplier. Applying it stretches
     # the tool several-fold -- the URDF already carries the true dimensions.
@@ -173,10 +173,10 @@ def main() -> None:
     asset_meshes = {}
     asset_local = {}
     for e in range(args.num_envs):
-        idx = int(inner._object_asset_index_per_env[e].item())
+        idx = int(inner.scene_record.object_pool_index[e].item())
         if idx in asset_meshes:
             continue
-        m = _asset_mesh(inner._object_urdf_paths[idx])
+        m = _asset_mesh(inner.scene_record.object_urdf_paths[idx])
         if m is None:
             continue
         asset_local[idx] = m
@@ -188,7 +188,7 @@ def main() -> None:
     goal_frame = server.scene.add_frame("/goal", show_axes=False)
     goal_meshes = {}
     for idx, _h in list(asset_meshes.items()):
-        gm = _asset_mesh(inner._object_urdf_paths[idx])
+        gm = _asset_mesh(inner.scene_record.object_urdf_paths[idx])
         if gm is None:
             continue
         goal_meshes[idx] = server.scene.add_mesh_simple(
@@ -246,7 +246,7 @@ def main() -> None:
 
         out = []
         for e in range(args.num_envs):
-            om = asset_local.get(int(inner._object_asset_index_per_env[e].item()))
+            om = asset_local.get(int(inner.scene_record.object_pool_index[e].item()))
             if om is None:
                 continue
             obj = om.copy()
@@ -372,7 +372,7 @@ def main() -> None:
         oq = inner.object.data.root_quat_w[e].cpu().numpy()
         obj_frame.position = tuple(float(v) for v in op)
         obj_frame.wxyz = tuple(float(v) for v in oq)
-        shown = int(inner._object_asset_index_per_env[e].item())
+        shown = int(inner.scene_record.object_pool_index[e].item())
         for idx, h in asset_meshes.items():
             h.visible = (idx == shown)
         # The goal is carried by the goal_viz RigidObject, not by a pair of

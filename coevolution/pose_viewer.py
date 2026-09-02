@@ -132,16 +132,12 @@ def _rewrite_embedded_urdf_mesh_urls(
 def object_urdf_for_env(env, env_id: int) -> tuple[str, Path]:
     """Return the procedural object URDF text assigned to one env."""
 
-    urdf_paths = getattr(env, "_object_urdf_paths", None)
-    asset_indices = getattr(env, "_object_asset_index_per_env", None)
-    if not urdf_paths or asset_indices is None:
-        raise RuntimeError(
-            "PoseReach env does not expose object URDF mapping. "
-            "Expected _object_urdf_paths and _object_asset_index_per_env."
-        )
+    record = getattr(env, "scene_record", None)
+    if record is None:
+        raise RuntimeError("PoseReach env has no scene_record; object URDF mapping unknown.")
 
-    asset_index = int(asset_indices[env_id].detach().cpu().item())
-    urdf_path = Path(urdf_paths[asset_index])
+    asset_index = int(record.object_pool_index[env_id].detach().cpu().item())
+    urdf_path = Path(record.object_urdf_paths[asset_index])
     return urdf_path.read_text(encoding="utf-8"), urdf_path
 
 
@@ -227,9 +223,9 @@ def capture_pose_viewer_frame(env, env_id: int) -> dict[str, Any]:
     # Canonical policy order when the env exposes it, so the viewer's joint
     # columns line up with the policy's. Names come from the robot spec rather
     # than a module constant, so this follows whichever hand is mounted.
-    if hasattr(env, "_perm_lab_to_canon") and hasattr(env, "robot_spec"):
+    if hasattr(env, "_perm_lab_to_canon") and hasattr(env, "scene_record"):
         joint_pos = env.robot.data.joint_pos[env_id, env._perm_lab_to_canon]
-        joint_names = list(env.robot_spec.joint_names_canonical)
+        joint_names = list(env.scene_record.robot_spec.joint_names_canonical)
     else:
         joint_pos = env.robot.data.joint_pos[env_id]
         joint_names = list(env.robot.data.joint_names)
@@ -378,7 +374,7 @@ class PoseViewerWrapper(gym.Wrapper):
         # The robot URDF must be the one these frames were captured from. Taking
         # it from the spec rather than a module constant is what keeps the
         # viewer's joint names and its URDF in agreement for every hand.
-        spec = getattr(inner, "robot_spec", None)
+        spec = getattr(getattr(inner, "scene_record", None), "robot_spec", None)
         self._robot_urdf_relpath = (
             spec.urdf_path if spec is not None else DEFAULT_ROBOT_URDF_RELATIVE_PATH
         )

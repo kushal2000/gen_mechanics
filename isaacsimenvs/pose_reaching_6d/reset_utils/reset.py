@@ -25,7 +25,7 @@ def allocate_state_buffers(env) -> None:
     """
     dr = env.cfg.domain_randomization
     rew = env.cfg.reward
-    spec = env.robot_spec
+    spec = env.scene_record.robot_spec
 
     # --- Joint/body id caches ---
     # Joints are *selected* by exact name from the spec (not by a regex like
@@ -108,9 +108,10 @@ def allocate_state_buffers(env) -> None:
     # With one distinct hand per env, the mask and the pad offsets stop being
     # scene constants: which fingers are active, and how long each distal
     # phalanx is, are properties of the design that env holds.
-    pop_specs = env._robot_population.specs if env._robot_population is not None else None
-    if pop_specs is not None:
-        design_idx = env._robot_design_index_per_env  # (N,)
+    population = env.scene_record.population
+    if population is not None:
+        pop_specs = population.specs
+        design_idx = env.scene_record.robot_design_index  # (N,)
         masks = torch.tensor(
             [list(s.fingertip_slot_mask) for s in pop_specs],
             device=env.device, dtype=torch.bool,
@@ -172,7 +173,7 @@ def allocate_state_buffers(env) -> None:
 
     env._keypoint_offsets = (
         corners.unsqueeze(0)
-        * (env._object_scale_per_env * rew.object_base_size * rew.keypoint_scale * 0.5).unsqueeze(1)
+        * (env.scene_record.object_scale * rew.object_base_size * rew.keypoint_scale * 0.5).unsqueeze(1)
     )  # (N, 4, 3)
 
     # Fixed-size reward keypoints follow legacy: fixed_size * keypoint_scale / 2.
