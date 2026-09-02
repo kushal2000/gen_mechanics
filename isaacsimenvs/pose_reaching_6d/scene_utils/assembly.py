@@ -313,9 +313,13 @@ def _author_robots_into_envs(env, spec, population, asset_dir: Path, offsets: di
                 collider_links[idx] = colliders
             # spawn=None places nothing and a fixed base ignores init_state.pos.
             set_xform(layer.GetPrimAtPath(root), base_pos, base_rot)
-    per_robot_ms = (time.perf_counter() - t_auth) / max(env.num_envs, 1) * 1000
+        # Inside the block only specs are written; the stage recomposes on exit.
+        t_written = time.perf_counter()
+    t_composed = time.perf_counter()
+    per_robot_ms = (t_composed - t_auth) / max(env.num_envs, 1) * 1000
     _log_scene_step(t0, f"authored {env.num_envs} robots into env prims "
-                        f"({per_robot_ms:.2f} ms each)")
+                        f"({per_robot_ms:.2f} ms each = {t_written - t_auth:.1f}s writing "
+                        f"specs + {t_composed - t_written:.1f}s recomposing)")
     return collider_links
 
 
@@ -408,9 +412,29 @@ def setup_scene(env) -> None:
     _log_scene_step(t0, "registered assets with scene")
 
 
+def _verify_articulation_view(env) -> None:
+    """The articulation view must cover every env with a full joint set.
+    Instancing is the reason this can silently come up short."""
+    data = env.robot.data
+    if data.joint_pos.shape[0] != env.num_envs:
+        raise RuntimeError(
+            f"articulation view has {data.joint_pos.shape[0]} envs, expected {env.num_envs}")
+    n_joints = len(env.scene_record.robot_spec.joint_names_canonical)
+    if data.joint_pos.shape[1] != n_joints:
+        raise RuntimeError(
+            f"articulation view has {data.joint_pos.shape[1]} joints, "
+            f"the spec has {n_joints}")
+    shapes = env.robot.root_physx_view.max_shapes
+    if shapes < 1:
+        raise RuntimeError("articulation view reports no collision shapes")
+    print(f"[scene] articulation view: {data.joint_pos.shape[0]} envs x "
+          f"{data.joint_pos.shape[1]} joints, {shapes} shapes", flush=True)
+
+
 def finalize_scene(env) -> None:
     """Needs the started sim: materials bind through PhysX views and the
     design check reads the live articulation. Runs before the first reset."""
+    _verify_articulation_view(env)
     apply_physx_material_properties(env)
     if env.scene_record.population is None:
         return

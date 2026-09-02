@@ -407,12 +407,55 @@ def author_robot_prims(layer, root: str, hand: P.HandParams, *,
     return collider_links
 
 
+def _strip_render_only(stage, root) -> tuple[int, int]:
+    """Drop the render-only subtrees (per-link ``visuals``, the ``Looks`` scope).
+
+    Every env references this file, and composition costs ~1.5 us per prim per
+    env, so the visual meshes and their shaders cost minutes at 24k envs and
+    PhysX never reads them. A subtree goes only if nothing under it carries
+    physics, which keeps collision geometry and physics materials. The robot
+    is invisible to a camera or the GUI afterwards.
+    """
+    from pxr import Usd, UsdPhysics
+
+    def walk(prim):
+        # The converter puts geometry behind instance proxies; a plain PrimRange
+        # stops at the instance root and reports a subtree as empty.
+        return Usd.PrimRange(prim, Usd.TraverseInstanceProxies(Usd.PrimDefaultPredicate))
+
+    def physical(prim) -> bool:
+        return any(p.HasAPI(UsdPhysics.CollisionAPI) or p.HasAPI(UsdPhysics.RigidBodyAPI)
+                   or p.HasAPI(UsdPhysics.ArticulationRootAPI)
+                   or p.HasAPI(UsdPhysics.MaterialAPI) or p.IsA(UsdPhysics.Joint)
+                   for p in walk(prim))
+
+    def colliders() -> int:
+        return sum(1 for p in walk(root) if p.HasAPI(UsdPhysics.CollisionAPI))
+
+    before, colliders_before = sum(1 for _ in walk(root)), colliders()
+    doomed, it = [], iter(walk(root))
+    for prim in it:
+        if prim.GetName() in ("visuals", "Looks") and not physical(prim):
+            doomed.append(prim.GetPath())
+            it.PruneChildren()
+    for path in doomed:
+        stage.RemovePrim(path)
+    # The whole point is that only rendering is lost. A collider going with it
+    # would be silent: the robot still loads, it just stops touching anything.
+    if colliders() != colliders_before:
+        raise RuntimeError(
+            f"stripping render-only prims changed the collider count "
+            f"({colliders_before} -> {colliders()}); refusing to build the scene")
+    return before - sum(1 for _ in walk(root)), before
+
+
 def flatten_robot_usd(usd_path: str, out_path: Path, *,
                       contact_offset: float, rest_offset: float) -> tuple[str, str]:
     """Inline the converter's sub-layers into one file with the robot PhysX
-    props set once; returns ``(path, root_prim_path)``. Nested references do
-    not resolve a second level down, so an unflattened file composes with no
-    colliders when an env prim references it."""
+    props set once and the render-only prims dropped; returns
+    ``(path, root_prim_path)``. Nested references do not resolve a second level
+    down, so an unflattened file composes with no colliders when an env prim
+    references it."""
     from pxr import PhysxSchema, Sdf, Usd, UsdPhysics
 
     stage = Usd.Stage.Open(usd_path, Usd.Stage.LoadAll)
@@ -422,6 +465,22 @@ def flatten_robot_usd(usd_path: str, out_path: Path, *,
     flat = Usd.Stage.Open(str(out_path))
     root = flat.GetDefaultPrim() or next(
         p for p in flat.GetPseudoRoot().GetChildren() if p.IsValid())
+    removed, before = _strip_render_only(flat, root)
+    # Every remaining prim is composed once per env, so the breakdown says
+    # where the next cut is: wrapper Xforms, colliders, joints.
+    # Only prims outside a prototype are composed per env; instanced geometry
+    # is shared, so it is free however many envs reference it.
+    kinds: dict[str, int] = {}
+    shared = 0
+    for prim in Usd.PrimRange(root, Usd.TraverseInstanceProxies(Usd.PrimDefaultPredicate)):
+        if prim.IsInstanceProxy():
+            shared += 1
+            continue
+        kinds[prim.GetTypeName() or "(none)"] = kinds.get(prim.GetTypeName() or "(none)", 0) + 1
+    breakdown = ", ".join(f"{k} x{v}" for k, v in sorted(kinds.items(), key=lambda kv: -kv[1]))
+    print(f"[scene_utils] {out_path.name}: dropped {removed} render-only prims; "
+          f"{sum(kinds.values())} composed per env ({breakdown}), "
+          f"{shared} more shared in prototypes", flush=True)
     for prim in Usd.PrimRange(root):
         if prim.HasAPI(UsdPhysics.RigidBodyAPI):
             PhysxSchema.PhysxRigidBodyAPI.Apply(prim)
