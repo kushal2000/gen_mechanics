@@ -15,6 +15,17 @@ def sample_log_uniform(lo_hi: tuple[float, float], n: int) -> torch.Tensor:
     )
 
 
+def pre_physics_step(env, actions: torch.Tensor) -> None:
+    """Turn the policy's actions into joint targets and perturb the object.
+
+    One call per policy step, before the decimation loop: the targets it writes
+    to ``_cur_targets`` are what ``_apply_action`` sends on every substep, and
+    the wrench it sets on the object persists across the same substeps.
+    """
+    apply_action_pipeline(env, actions)
+    apply_wrench_dr(env)
+
+
 def apply_action_pipeline(env, actions: torch.Tensor) -> None:
     """Apply delay, canonical-to-Lab mapping, smoothing, and target clamps."""
     # Debug replay path accepts an already Lab-order target.
@@ -138,4 +149,7 @@ def apply_wrench_dr(env) -> None:
     )
 
 
-__all__ = ["apply_action_pipeline", "apply_wrench_dr", "sample_log_uniform"]
+__all__ = [
+    "apply_action_pipeline", "apply_wrench_dr", "pre_physics_step",
+    "sample_log_uniform",
+]

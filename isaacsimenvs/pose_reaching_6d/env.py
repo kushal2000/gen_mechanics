@@ -13,8 +13,7 @@ from isaaclab.envs import DirectRLEnv
 
 from .env_cfg import PoseReachEnvCfg
 from .obs_utils import (
-    apply_action_pipeline, apply_wrench_dr, build_observations,
-    compute_intermediate_values,
+    build_observations, compute_intermediate_values, pre_physics_step,
 )
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
 from .reward_utils import (
@@ -47,15 +46,12 @@ class PoseReachEnv(DirectRLEnv):
         setup_scene(self)
 
     def _reset_idx(self, env_ids) -> None:
-        # isaaclab always passes an int64 tensor; the reference tasks' None
-        # guard is unreachable.
         assert env_ids is not None and env_ids.dtype == torch.long, f"env_ids={env_ids}"
         super()._reset_idx(env_ids)
         reset_env_state(self, env_ids)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
-        apply_action_pipeline(self, actions)
-        apply_wrench_dr(self)
+        pre_physics_step(self, actions)
 
     def _apply_action(self) -> None:
         self.robot.set_joint_position_target(self._cur_targets)  # decimation x / step

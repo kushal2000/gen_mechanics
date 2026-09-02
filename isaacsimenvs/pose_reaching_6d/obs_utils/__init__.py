@@ -15,7 +15,7 @@ from .observations import (
     compute_obs_dim, derive_spaces, force_morphology_field, obs_field_sizes,
 )
 from .actions import (
-    apply_action_pipeline, apply_wrench_dr, sample_log_uniform,
+    apply_action_pipeline, apply_wrench_dr, pre_physics_step, sample_log_uniform,
 )
 
 __all__ = [
@@ -36,5 +36,6 @@ __all__ = [
     "hand_descriptor",
     "obs_field_sizes",
     "population_descriptors",
+    "pre_physics_step",
     "sample_log_uniform",
 ]
