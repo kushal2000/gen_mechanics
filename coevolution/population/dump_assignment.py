@@ -79,14 +79,6 @@ def build_assignment(run_dir: Path, sanity_check: bool = True) -> dict:
     """The full assignment record for a population run."""
     cfg = load_run_config(run_dir)
 
-    object_urdf = _get(cfg, "env.assets.object_urdf")
-    if object_urdf:
-        raise ValueError(
-            f"{run_dir.name} sets assets.object_urdf={object_urdf!r}, so it used a "
-            "single fixed object rather than the procedural pool. There is no "
-            "pool to reconstruct -- every env held that one URDF."
-        )
-
     population_seed = _get(cfg, "env.assets.robot_population_seed")
     if population_seed is None:
         raise ValueError(

@@ -54,7 +54,6 @@ assets:
   robot_urdf: ""
   table_urdf: "assets/urdf/table_narrow.urdf"
 
-  object_name: "handle_head_primitives"
   handle_head_types: ["hammer", "screwdriver", "marker", "spatula", "eraser", "brush"]
   num_assets_per_type: 100
 

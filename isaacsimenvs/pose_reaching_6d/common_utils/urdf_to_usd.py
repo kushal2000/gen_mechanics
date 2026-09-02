@@ -1,10 +1,6 @@
-"""URDF to USD: preparation, conversion and baking.
-
-Isaac Lab's UrdfConverter costs ~876 ms per hand, which is why the authored
-path in ``isaacsimenvs.pose_reaching_6d.scene_utils`` exists. This is the other backend: it
-rewrites a URDF into something the converter accepts, converts it, applies
-the SDF collision markers and self-collision filters the URDF declares, and
-bakes the result into a per-asset USD.
+"""URDF to USD for mesh assets: rewrite a URDF into what Kit's converter
+accepts, convert it, and apply the SDF collision markers and self-collision
+filters it declares. PhysX properties are applied by the spawner, not here.
 """
 
 from __future__ import annotations
@@ -19,17 +15,7 @@ from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
 from hand_sampler.paths import resolve as resolve_repo_path
 
-from isaacsimenvs.pose_reaching_6d.common_utils.physx import _PHYSICS_SPECS
 
-
-def _set_usd_attr(prim, name: str, value, value_type) -> None:
-    # The URDF converter occasionally emits attributes with malformed type
-    # names; in that case remove and recreate so the typed Set lands.
-    attr = prim.GetAttribute(name)
-    if attr and (not attr.GetTypeName() or not str(attr.GetTypeName())):
-        prim.RemoveProperty(name)
-        attr = None
-    (attr or prim.CreateAttribute(name, value_type, False)).Set(value)
 
 
 @dataclass(frozen=True)
@@ -308,60 +294,6 @@ def _apply_self_collision_filters(
         )
 
 
-def _generate_scaled_table_urdfs(
-    base_urdf_path: str,
-    num_variants: int,
-    scale_range_x: tuple[float, float],
-    scale_range_y: tuple[float, float],
-    out_dir: Path,
-    seed: int = 0,
-) -> tuple[list[str], list[tuple[float, float]]]:
-    """Write `num_variants` scaled copies of a single-box table URDF.
-
-    Each variant samples (sx, sy) independently from the configured ranges
-    (Z scale held at 1.0 so the table surface height matches what the policy
-    was trained on). The base URDF must have a single `<box size="X Y Z"/>`
-    in both the `<visual>` and `<collision>` blocks (matches the bundled
-    `assets/urdf/table_narrow.urdf`).
-
-    Returns the list of written URDF paths, in deterministic order.
-    """
-    import re
-    import numpy as np
-
-    base_text = resolve_repo_path(base_urdf_path).read_text()
-    match = re.search(r'<box\s+size="([\d.\-+eE\s]+)"\s*/>', base_text)
-    if match is None:
-        raise ValueError(
-            f"table URDF {base_urdf_path!r} has no <box size=\"...\"/> element; "
-            "scaling helper only supports the simple single-box table."
-        )
-    base_dims = tuple(float(v) for v in match.group(1).split())
-    if len(base_dims) != 3:
-        raise ValueError(
-            f"expected 3-element <box size>, got {base_dims!r} from {base_urdf_path}"
-        )
-
-    rng = np.random.default_rng(seed)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    paths: list[str] = []
-    scales: list[tuple[float, float]] = []
-    for i in range(int(num_variants)):
-        sx = float(rng.uniform(*scale_range_x))
-        sy = float(rng.uniform(*scale_range_y))
-        new_size = f"{base_dims[0] * sx:.6f} {base_dims[1] * sy:.6f} {base_dims[2]:.6f}"
-        new_text = re.sub(
-            r'<box\s+size="[\d.\-+eE\s]+"\s*/>',
-            f'<box size="{new_size}"/>',
-            base_text,
-        )
-        path = out_dir / f"table_variant_{i:03d}.urdf"
-        path.write_text(new_text)
-        paths.append(str(path))
-        scales.append((sx, sy))
-    return paths, scales
-
-
 def _convert_urdf_to_usd(
     asset_path: str,
     usd_work_dir: Path,
@@ -407,91 +339,3 @@ def _robot_joint_drive_cfg():
         drive_type="force", target_type="position",
         gains=UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0.0, damping=0.0),
     )
-
-
-def _bake_usd(
-    raw_usd_path: str,
-    bake_root: Path,
-    baked_subdir: str,
-    *,
-    props: dict | None = None,
-    apply_physx_articulation: bool = False,
-    collision_enabled: bool | None = None,
-    contact_offset: float,
-    rest_offset: float,
-) -> str:
-    """Copy raw USD into bake_root/baked_subdir and pre-author physics props.
-
-    ``props`` keys come from ``_PHYSICS_SPECS``; ``None`` values are skipped,
-    and keys whose group doesn't match a prim's APIs are skipped per-prim.
-    """
-    from pxr import PhysxSchema, Sdf, Usd, UsdPhysics
-
-    vtypes = {
-        "Bool": Sdf.ValueTypeNames.Bool,
-        "Float": Sdf.ValueTypeNames.Float,
-        "Int": Sdf.ValueTypeNames.Int,
-    }
-    props = props or {}
-
-    raw = Path(raw_usd_path)
-    baked_usd_path = bake_root / baked_subdir / raw.parent.name / raw.name
-    baked_usd_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(raw, baked_usd_path)
-    for child in raw.parent.iterdir():
-        if child.name.startswith(".") or child.name in (raw.name, "config.yaml"):
-            continue
-        dst = baked_usd_path.parent / child.name
-        if child.is_dir():
-            if dst.exists():
-                shutil.rmtree(dst)
-            shutil.copytree(child, dst)
-        elif child.is_file():
-            shutil.copy2(child, dst)
-
-    stage = Usd.Stage.Open(str(baked_usd_path))
-    if stage is None:
-        raise RuntimeError(f"Failed to open baked USD: {baked_usd_path}")
-    root = stage.GetDefaultPrim()
-    if not (root and root.IsValid()):
-        root = next((p for p in stage.GetPseudoRoot().GetChildren() if p.IsValid()), None)
-    if root is None:
-        raise RuntimeError(f"No root prim in USD: {baked_usd_path}")
-
-    for prim in Usd.PrimRange(root, Usd.TraverseInstanceProxies()):
-        if prim.IsInstance():
-            prim.SetInstanceable(False)
-
-    for prim in Usd.PrimRange(root):
-        is_rb = prim.HasAPI(UsdPhysics.RigidBodyAPI)
-        is_art = prim.HasAPI(UsdPhysics.ArticulationRootAPI)
-        if is_rb:
-            PhysxSchema.PhysxRigidBodyAPI.Apply(prim)
-        if is_art and apply_physx_articulation:
-            PhysxSchema.PhysxArticulationAPI.Apply(prim)
-        for key, val in props.items():
-            if val is None:
-                continue
-            group, attr_name, vtype_str = _PHYSICS_SPECS[key]
-            if group == "rb" and not is_rb:
-                continue
-            if group == "art" and not is_art:
-                continue
-            _set_usd_attr(prim, attr_name, val, vtypes[vtype_str])
-        if prim.HasAPI(UsdPhysics.CollisionAPI):
-            px = PhysxSchema.PhysxCollisionAPI(prim) or PhysxSchema.PhysxCollisionAPI.Apply(prim)
-            px.CreateContactOffsetAttr().Set(contact_offset)
-            px.CreateRestOffsetAttr().Set(rest_offset)
-            if collision_enabled is not None:
-                ce = UsdPhysics.CollisionAPI(prim)
-                (ce.GetCollisionEnabledAttr() or ce.CreateCollisionEnabledAttr()).Set(
-                    collision_enabled
-                )
-
-    stage.GetRootLayer().Save()
-    return str(baked_usd_path)
-
-
-# ----------------------------------------------------------------------------
-# Runtime material setup (post-launch, via PhysX views)
-# ----------------------------------------------------------------------------

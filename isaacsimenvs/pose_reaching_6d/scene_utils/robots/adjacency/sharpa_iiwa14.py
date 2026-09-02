@@ -10,7 +10,7 @@ Names are POST-``merge_fixed_joints``. That is why the palm appears as
 collapses link_ee -> sharpa_mount -> left_hand_C_MC into the arm's last link.
 
 The arm chain is imported from ``iiwa14_arm`` rather than restated, so it stays
-identical across hands along with the rest of the arm (docs/methodology.md §1).
+identical across hands along with the rest of the arm.
 
 Ported from simtoolreal ``isaacgymenvs/tasks/simtoolreal/adjacent_links.py``.
 Only its LEFT map is used: simtoolreal merged LEFT+RIGHT defensively, but the

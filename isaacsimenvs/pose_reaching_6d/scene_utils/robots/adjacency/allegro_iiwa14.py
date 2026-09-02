@@ -12,7 +12,7 @@ kinematic child in a way PhysX filters. The per-finger chain is listed anyway to
 mirror the SHARPA map's shape.
 
 The arm chain is imported from ``iiwa14_arm`` rather than restated, so it stays
-identical across hands (docs/methodology.md §1).
+identical across hands.
 
 Authored by hand — unlike SHARPA's, which was ported from simtoolreal. The
 ``strict`` check in ``_apply_self_collision_filters`` is what catches a typo

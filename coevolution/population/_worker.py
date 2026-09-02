@@ -45,9 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--num_envs", type=int, default=64)
     p.add_argument("--num_assets_per_type", type=int, default=100)
     p.add_argument("--object_seed", type=int, default=42)
-    p.add_argument("--author_object_usds", type=int, default=1,
-                   help="1 authors object USDs directly (seconds); 0 converts them "
-                        "from URDF, which is minutes at a 1200-entry pool")
     p.add_argument("--sapg_expl_coef", type=float, default=50.0)
     p.add_argument("--rl_device", default="cuda:0")
     p.add_argument("--dr", default="off", choices=("off", "train", "hard"))
@@ -138,29 +135,11 @@ def run(conn, args) -> None:
     cfg.scene.num_envs = args.num_envs
     cfg.assets.num_assets_per_type = args.num_assets_per_type
     cfg.assets.object_seed = args.object_seed
-    # Default ON, unlike the env cfg: a 1200-entry pool takes minutes to convert
-    # from URDF and seconds to author, and a viewer that appears to hang for
-    # minutes on every embodiment switch is not usable. The population runs
-    # author too, so this also matches what trained.
-    cfg.assets.author_object_usds = bool(args.author_object_usds)
 
     if is_population_design:
-        # Two things the run config must NOT decide for a single injected design.
-        #
-        # robot_population_count: apply_run_fields copies the run's 24576, but the
-        # injected population is one spec, and _author_population_usds compares
-        # the two lengths and dies.
-        #
-        # author_robot_usds: this is the trap. The authored path re-derives the
-        # hand list from the config -- load_population(seed)[:count] -- and calls
-        # author_robot_prims(hands[idx], specs[idx]). Geometry comes from `hands`,
-        # metadata from `specs`. With count=1 the length check PASSES and it
-        # silently authors design 0's geometry under design 49's spec. The
-        # convert path builds its USD from `specs` alone, so it cannot disagree
-        # with itself, and at one design it costs one conversion -- the k*n
-        # blow-up that motivated authoring does not exist at k=1.
+        # apply_run_fields copies the run's population count; the injected
+        # population is one design.
         cfg.assets.robot_population_count = 1
-        cfg.assets.author_robot_usds = False
 
     protocol = eval_protocol(args.dr, args.goals_per_episode, args.success_tolerance)
     for key, value in protocol.items():

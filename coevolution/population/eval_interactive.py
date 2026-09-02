@@ -89,8 +89,6 @@ def build_parser() -> argparse.ArgumentParser:
                    help="How many population members to list (default 64)")
     p.add_argument("--num_envs", type=int, default=64,
                    help="Envs = distinct objects shown (default 64)")
-    p.add_argument("--author_object_usds", type=int, default=1,
-                   help="1 authors object USDs (seconds); 0 converts (minutes)")
     p.add_argument("--num_assets_per_type", type=int, default=100,
                    help="100 reproduces the training pool's object identities")
     p.add_argument("--object_seed", type=int, default=42)
@@ -253,7 +251,6 @@ class EmbodimentViewer:
             "--num_envs", str(self.args.num_envs),
             "--num_assets_per_type", str(self.args.num_assets_per_type),
             "--object_seed", str(self.args.object_seed),
-            "--author_object_usds", str(self.args.author_object_usds),
             "--sapg_expl_coef", str(self.args.sapg_expl_coef),
             "--rl_device", self.args.rl_device,
             "--dr", self.args.dr,

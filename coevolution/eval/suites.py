@@ -40,10 +40,6 @@ from typing import Any
 # 1/sqrt(num_envs). Run with enough envs that the reported SEM is small relative
 # to the effect being measured, and compare `goal_pct_sem` across conditions
 # before trusting a difference.
-#
-# coevolution/eval/make_trajectory_pool.py can freeze a distribution into a
-# replayable pool if a condition ever needs the variance eliminated; it is not
-# used by default.
 TRAIN_GOAL_MODE = "delta"
 TRAIN_DELTA_DISTANCE = 0.1
 TRAIN_DELTA_ROTATION_DEG = 90.0
@@ -120,7 +116,6 @@ _EVAL_PROTOCOL: dict[str, Any] = {
     "reset.reset_dof_vel_random_interval": 0.0,
     "reset.table_reset_z_range": 0.0,
     # Live goal sampling, identical to training.
-    "reset.fixed_trajectory_file": "",
     "reset.goal_sampling_type": TRAIN_GOAL_MODE,
     "reset.delta_goal_distance": TRAIN_DELTA_DISTANCE,
     "reset.delta_rotation_degrees": TRAIN_DELTA_ROTATION_DEG,

@@ -1,18 +1,10 @@
 """Left SHARPA hand (22 DoF, 5 fingers) on a KUKA iiwa14.
 
-The reference robot: this is what simtoolreal trained, validated, and shipped a
-checkpoint for, so every value here is transcribed from that working setup
-rather than chosen. ``tests/test_sharpa_parity.py`` holds the transcription
-honest — it replays a rollout against a baseline captured from simtoolreal and
-demands bitwise equality.
-
-Provenance:
-- joint order, gains, armature, home pose: simtoolreal
-  ``isaacsimenvs/tasks/simtoolreal/utils/scene_utils.py`` module constants,
-  confirmed against the live articulation by ``tests/test_env_smoke.py``
-- palm and fingertip offsets: ``obs_utils.PALM_CENTER_OFFSET`` /
-  ``FINGERTIP_OFFSET`` (one shared value, repeated per fingertip here)
-- adjacency: ``isaacgymenvs/tasks/simtoolreal/adjacent_links.py``, LEFT map
+The reference robot: simtoolreal trained and shipped a checkpoint for it, so
+every value here is transcribed from that setup rather than chosen (joint
+order, gains, armature and home pose from its scene constants; one shared
+palm and fingertip offset; adjacency from its LEFT map), and the transcription
+was checked by a bitwise rollout parity test against it.
 """
 
 from __future__ import annotations
@@ -138,8 +130,7 @@ SHARPA_IIWA14 = RobotSpec(
 
     notes=(
         "Reference robot. All values transcribed from simtoolreal's validated "
-        "Isaac Sim setup; tests/test_sharpa_parity.py enforces bitwise equality "
-        "against a rollout captured from it."
+        "Isaac Sim setup and checked by bitwise rollout parity against it."
     ),
 )
 

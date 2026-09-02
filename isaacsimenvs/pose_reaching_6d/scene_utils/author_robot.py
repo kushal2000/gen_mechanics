@@ -1,75 +1,35 @@
-"""Write one USD per generated design, with the arm brought in BY REFERENCE.
+"""Author one generated design's robot, with the arm brought in by reference.
 
-This is the piece that turns the authoring in ``author_usd`` into something the
-env can actually spawn. ``author_usd.author_hand`` fills a layer; the scene needs
-a FILE per design, because MultiUsdFileCfg round-robins over paths.
-
-WHY THIS EXISTS. Kit's UrdfConverter takes ~1.17 s per generated design on this
-cluster, and ~90% of that is re-importing the SAME iiwa14 arm's 16 STL meshes.
-Measured on the 24,576-design population: 51 designs/min, about EIGHT HOURS
-before the first gradient step. The hand is capsules and a box; there is nothing
-to import. Converting the arm once and referencing it makes the per-design cost
-the authoring cost.
-
-WHAT IS SHARED, AND WHAT IS PER DESIGN:
-
-  arm    converted ONCE from an arm-only URDF and referenced by every design, so
-         PhysX sees one arm definition and the meshes are imported one time
-  palm   merged into iiwa14_link_7 exactly as merge_fixed_joints does -- an
-         OVER on the referenced link carrying the merged mass and inertia plus
-         the palm's collision box. The palm is 37% of the merged mass and sits
-         95 mm off the link_7 origin, so dropping it is not a rounding error.
-  hand   authored per design (author_usd.author_hand)
-
-The merged palm properties are validated against a converted asset: mass to
-1.4e-08 relative, centre of mass exact, and the full inertia tensor to 1.2e-06
-relative (the eigenvector basis differs from the converter's, which is only a
-labelling of the same tensor).
+The arm is converted once from an arm-only URDF and referenced by every
+design; the palm is merged into ``iiwa14_link_7`` as an OVER on the referenced
+link (mass, inertia and collision box), as ``merge_fixed_joints`` does; the
+hand is authored per design by ``author_usd.author_hand``.
 """
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import numpy as np
+
 from hand_sampler import params as P
-from isaacsimenvs.pose_reaching_6d.scene_utils.author_usd import (
-    LINK_PARTS,
-    PALM_BODY,
-    attr,
-    author_hand,
-    define,
-    flange_to_palm,
-    merged_palm_body_props,
-    _mat_from_seg,
-    _mat_to_pos_quat,
-    _set_xform,
+from hand_sampler.allegro_urdf import ARM_JOINTS, ARM_LINKS, SHARPA_URDF, _rewrite_meshes
+from hand_sampler.paths import resolve as resolve_repo_path
+from hand_sampler.rotations import mat_to_pos_quat
+
+from .author_usd import (
+    LINK_PARTS, PALM_BODY, _mat_from_seg, _set_xform, attr, author_hand, define,
+    flange_to_palm, merged_palm_body_props,
 )
 
 ARM_PRIM = "/arm"
-ROBOT_ROOT = "/robot"
-
+# The PhysX props a converted robot gets at spawn, authored inline.
+_MAX_DEPEN_VELOCITY = 1000.0
 
 
 def _add_api(spec, name: str) -> None:
-    """Add an API schema to a prim spec WITHOUT destroying what is already there.
-
-    This is subtle enough that getting it wrong cost three separate failures,
-    each with a different symptom and none of them mentioning apiSchemas:
-
-      * on an OVER of a referenced prim the local spec has no apiSchemas of its
-        own, so writing an EXPLICIT list replaces what the reference composes in
-        -- the arm links lost RigidBodyAPI and ArticulationRootAPI and PhysX
-        reported "Failed to create articulation at .../root_joint";
-      * on a LOCALLY DEFINED prim, writing a listOp with only appendedItems
-        replaces the explicit list, so the hand bodies lost RigidBodyAPI, their
-        joints had nothing to attach to, and the articulation came up with the
-        7 arm joints and none of the 30 hand joints;
-      * doing both correctly but in two separate places let the second write
-        clobber the first.
-
-    So: explicit lists are extended explicitly, everything else appends, and the
-    operation is idempotent.
-    """
+    """Append an API schema without clobbering what the spec or its reference has."""
     from pxr import Sdf
 
     op = spec.GetInfo("apiSchemas") if spec.HasInfo("apiSchemas") else None
@@ -87,42 +47,13 @@ def _add_api(spec, name: str) -> None:
 
 
 def arm_only_urdf(out_path: Path) -> Path:
-    """The iiwa14 arm with no hand, for the one conversion every design shares.
-
-    Links and joints are copied verbatim from the SHARPA URDF by the same
-    extraction ``build_allegro_urdf`` and ``build_hand_urdf`` use, so the arm
-    here is the arm everywhere else (docs/methodology.md 1).
-    """
-    import xml.etree.ElementTree as ET
-
-    from hand_sampler.allegro_urdf import (
-        ARM_JOINTS,
-        ARM_LINKS,
-        ARM_MESH_PREFIX_TO,
-        SHARPA_URDF,
-        _rewrite_meshes,
-    )
-    from hand_sampler.paths import resolve as resolve_repo_path
-
+    """The iiwa14 arm with no hand, copied verbatim from the SHARPA URDF."""
     sharpa = ET.parse(resolve_repo_path(SHARPA_URDF)).getroot()
     root = ET.Element("robot", {"name": "iiwa14_arm_only"})
-    # No "--" anywhere in this comment: it is illegal inside an XML comment and
-    # ElementTree writes it out happily, so the file only fails when something
-    # later tries to PARSE it.
-    root.append(ET.Comment(
-        " GENERATED by isaacsimenvs/pose_reaching_6d/scene_utils/author_robot.py.\n"
-        "     The iiwa14 arm alone, converted once and REFERENCED by every\n"
-        "     authored design. Re-importing its 16 STL meshes per design is\n"
-        "     ~90% of the conversion cost this path exists to remove.\n"))
-    # ABSOLUTE mesh paths, not ARM_MESH_PREFIX_TO's "../kuka_sharpa_description/".
-    #
-    # That relative prefix is correct for build_hand_urdf, which writes into
-    # assets/urdf/generated/ -- a SIBLING of kuka_sharpa_description. This URDF
-    # goes to a temp dir, where the prefix resolves to nothing, and the importer
-    # only WARNS: "Failed to resolve mesh .../collision/link_0.stl", 16 of them,
-    # then builds the arm anyway with no collision or visual geometry on links
-    # 0..6. The robot loads, steps and trains -- with an arm that cannot touch
-    # the table, the object, or itself, while the converted path's arm can.
+    root.append(ET.Comment(" GENERATED by scene_utils/author_robot.py: the iiwa14 arm "
+                           "alone, converted once and referenced by every authored design. "))
+    # Absolute mesh paths: from a temp dir the URDF's relative prefix resolves to
+    # nothing, and the importer only warns, leaving the arm with no colliders.
     mesh_root = str(resolve_repo_path(SHARPA_URDF).parent) + "/"
     for mat in sharpa.findall("material"):
         root.append(mat)
@@ -133,22 +64,9 @@ def arm_only_urdf(out_path: Path) -> Path:
     for joint in sharpa.findall("joint"):
         if joint.get("name") in ARM_JOINTS:
             root.append(joint)
-
     out_path.parent.mkdir(parents=True, exist_ok=True)
     ET.ElementTree(root).write(out_path, encoding="utf-8", xml_declaration=True)
     return out_path
-
-
-# What _bake_usd would set on the hand's bodies and colliders. Authored inline
-# instead: baking re-opens and re-saves a file we just wrote, and
-# _apply_self_collision_filters re-opens it a second time. Three stage
-# open/saves per design over 24,576 designs is ~74,000 file operations on a
-# shared filesystem, and it was HALF the per-design cost (58 ms, of which ~29 ms
-# was the authoring itself).
-#
-# The ARM's properties are not here: they are baked once into the shared arm
-# USD, and every design inherits them through the reference.
-_MAX_DEPEN_VELOCITY = 1000.0
 
 
 def author_robot_prims(layer, root: str, hand: P.HandParams, spec, *,
@@ -156,53 +74,28 @@ def author_robot_prims(layer, root: str, hand: P.HandParams, spec, *,
                        contact_offset: float, rest_offset: float,
                        adjacency: dict | None = None,
                        in_change_block: bool = False) -> tuple[str, dict]:
-    """Author a design into ``layer``. Returns ``(root, {link: n_colliders})``.
+    """Author one design under ``root``. Returns ``(root, {link: n_colliders})``.
 
-    Split out of author_robot_usd so the same authoring can go EITHER into its
-    own USD file (for MultiUsdFileCfg) or straight into an env prim (for
-    spawn=None). The second avoids the per-design USD composition that
-    MultiUsdFileCfg performs at spawn -- the 0.00018*k*n term in
-    docs/multi_embodiment.md 3, which is ~30 h at k = n = 24,576 and is why a
-    24k run spends hours in the scene build after authoring finishes in 28 min.
-
-    ``in_change_block`` says a ChangeBlock is already open, so this must not
-    open its own (they do not nest).
+    ``in_change_block`` says the caller already holds a ChangeBlock (they do not nest).
     """
     import contextlib
 
-    import numpy as np
     from pxr import Gf, Sdf
 
-    ROBOT_ROOT = root
-    # link name -> number of collision shapes, recorded as they are authored.
-    # The env's friction pass needs this and otherwise rediscovers it with one
-    # create_rigid_body_view per link per design (~96 min at 24,576 designs).
     collider_links: dict[str, int] = {}
-    block = contextlib.nullcontext() if in_change_block else Sdf.ChangeBlock()
-    with block:
-        # NO ArticulationRootAPI here. The referenced arm brings its own
-        # root_joint carrying it, and PhysX requires exactly one articulation
-        # root in a prim tree -- applying it here too makes the spawn fail with
-        # "Found multiple". The hand joints attach to iiwa14_link_7, which is
-        # inside the arm's articulation, so they join it.
-        define(layer, ROBOT_ROOT, "Xform")
-        # The arm, by reference. Its links and joints compose in underneath, so
-        # the authored joints below can target iiwa14_link_7 directly.
-        arm = define(layer, f"{ROBOT_ROOT}{ARM_PRIM}", "Xform")
-        arm.referenceList.explicitItems.append(
-            Sdf.Reference(str(arm_usd), Sdf.Path(arm_root_prim)))
+    with (contextlib.nullcontext() if in_change_block else Sdf.ChangeBlock()):
+        # No ArticulationRootAPI here: the referenced arm brings its own root_joint
+        # and PhysX allows one per tree. The hand joints attach to iiwa14_link_7.
+        define(layer, root, "Xform")
+        arm = define(layer, f"{root}{ARM_PRIM}", "Xform")
+        arm.referenceList.explicitItems.append(Sdf.Reference(str(arm_usd), Sdf.Path(arm_root_prim)))
 
-        palm_path = f"{ROBOT_ROOT}{ARM_PRIM}/{PALM_BODY}"
-        hand_summary = author_hand(layer, ROBOT_ROOT, hand, spec,
-                                   palm_body_path=palm_path,
-                                   link7_world=link7_world)
-        collider_links.update(hand_summary.get("collider_links", {}))
+        palm_path = f"{root}{ARM_PRIM}/{PALM_BODY}"
+        summary = author_hand(layer, root, hand, spec, palm_body_path=palm_path,
+                              link7_world=link7_world)
+        collider_links.update(summary["collider_links"])
 
-        # --- the merged palm, as an Sdf OVER on the referenced link ---------
-        # An over is a pure LAYER edit, so it needs no composed stage and works
-        # inside the ChangeBlock. (Sdf.CreatePrimInLayer creates an over by
-        # default -- here that is exactly what we want, unlike every defining
-        # spec above which must be flipped to SpecifierDef.)
+        # The merged palm, as an OVER on the referenced link.
         mass, inertia, com, axes = merged_palm_body_props(hand)
         palm = Sdf.CreatePrimInLayer(layer, Sdf.Path(palm_path))
         attr(palm, "physics:mass", Sdf.ValueTypeNames.Float, float(mass))
@@ -213,123 +106,68 @@ def author_robot_prims(layer, root: str, hand: P.HandParams, spec, *,
         attr(palm, "physics:principalAxes", Sdf.ValueTypeNames.Quatf,
              Gf.Quatf(float(axes[0]), Gf.Vec3f(*[float(v) for v in axes[1:]])))
 
-        # The palm's collision box, placed by the transform merge_fixed_joints
-        # folds away.
+        # The palm's collision box, placed by the transform merge_fixed_joints folds away.
         t = _mat_from_seg(flange_to_palm())
         centre = np.asarray([float(v) for v in P.palm_center(hand.palm_extents)])
-        _, quat = _mat_to_pos_quat(t)
+        _, quat = mat_to_pos_quat(t)
         offset = (t @ np.append(centre, 1.0))[:3]
-        ex, ey, ez = (float(v) for v in hand.palm_extents)
         collider_links[PALM_BODY] = collider_links.get(PALM_BODY, 0) + 1
         box = define(layer, f"{palm_path}/palm_collision", "Cube",
                      ["PhysicsCollisionAPI", "PhysxCollisionAPI"])
         attr(box, "size", Sdf.ValueTypeNames.Double, 1.0)
-        _set_xform(box, offset, quat, scale=(ex, ey, ez))
-        attr(box, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float,
-             contact_offset)
-        attr(box, "physxCollision:restOffset", Sdf.ValueTypeNames.Float,
-             rest_offset)
+        _set_xform(box, offset, quat, scale=tuple(float(v) for v in hand.palm_extents))
+        attr(box, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float, contact_offset)
+        attr(box, "physxCollision:restOffset", Sdf.ValueTypeNames.Float, rest_offset)
 
-        # --- what _bake_usd would apply to the HAND's bodies ---------------
+        # PhysX props on the hand's bodies and capsules.
         for i in range(P.N_FINGER_SLOTS):
             for part, _tier in LINK_PARTS:
-                body = Sdf.CreatePrimInLayer(
-                    layer, Sdf.Path(f"{ROBOT_ROOT}/gen_f{i}_{part}"))
+                body = Sdf.CreatePrimInLayer(layer, Sdf.Path(f"{root}/gen_f{i}_{part}"))
                 _add_api(body, "PhysxRigidBodyAPI")
-                attr(body, "physxRigidBody:disableGravity",
-                     Sdf.ValueTypeNames.Bool, True)
+                attr(body, "physxRigidBody:disableGravity", Sdf.ValueTypeNames.Bool, True)
                 attr(body, "physxRigidBody:maxDepenetrationVelocity",
                      Sdf.ValueTypeNames.Float, _MAX_DEPEN_VELOCITY)
-                cap = Sdf.CreatePrimInLayer(layer, Sdf.Path(
-                    f"{ROBOT_ROOT}/gen_f{i}_{part}/collisions/mesh_0/capsule"))
+                cap = Sdf.CreatePrimInLayer(
+                    layer, Sdf.Path(f"{root}/gen_f{i}_{part}/collisions/mesh_0/capsule"))
                 if cap.specifier == Sdf.SpecifierDef:
                     _add_api(cap, "PhysxCollisionAPI")
-                    attr(cap, "physxCollision:contactOffset",
-                         Sdf.ValueTypeNames.Float, contact_offset)
-                    attr(cap, "physxCollision:restOffset",
-                         Sdf.ValueTypeNames.Float, rest_offset)
+                    attr(cap, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float,
+                         contact_offset)
+                    attr(cap, "physxCollision:restOffset", Sdf.ValueTypeNames.Float,
+                         rest_offset)
 
-        # --- self-collision filters, authored here instead of in a 2nd pass --
+        # Self-collision filters for the spec's adjacency, in this same pass.
         if adjacency:
-            body_path = {}
-            for i in range(P.N_FINGER_SLOTS):
-                for part, _t in LINK_PARTS:
-                    body_path[f"gen_f{i}_{part}"] = f"{ROBOT_ROOT}/gen_f{i}_{part}"
+            body_path = {f"gen_f{i}_{part}": f"{root}/gen_f{i}_{part}"
+                         for i in range(P.N_FINGER_SLOTS) for part, _t in LINK_PARTS}
             body_path[PALM_BODY] = palm_path
             for n in range(8):
-                body_path[f"iiwa14_link_{n}"] = f"{ROBOT_ROOT}{ARM_PRIM}/iiwa14_link_{n}"
+                body_path[f"iiwa14_link_{n}"] = f"{root}{ARM_PRIM}/iiwa14_link_{n}"
             for link, neighbours in adjacency.items():
                 a = body_path.get(link)
-                if a is None:
-                    continue
                 targets = [body_path[b] for b in neighbours if b in body_path]
-                if not targets:
+                if a is None or not targets:
                     continue
                 spec_a = Sdf.CreatePrimInLayer(layer, Sdf.Path(a))
                 _add_api(spec_a, "PhysicsFilteredPairsAPI")
                 r = Sdf.RelationshipSpec(spec_a, "physics:filteredPairs", False)
                 for tgt in targets:
                     r.targetPathList.explicitItems.append(Sdf.Path(tgt))
-
-    # Isaac Lab references this file WITHOUT a prim path, so it resolves
-    # <defaultPrim>. Without one the reference composes to nothing and the spawn
-    # fails with "Failed to find an articulation", pointing at ArticulationRootAPI
-    # -- which is present; the reference simply never resolved.
-    return ROBOT_ROOT, collider_links
+    return root, collider_links
 
 
-def author_robot_usd(hand: P.HandParams, spec, out_path: Path, *,
-                     arm_usd: str, arm_root_prim: str, link7_world,
-                     contact_offset: float, rest_offset: float,
-                     adjacency: dict | None = None) -> str:
-    """Author one design into its OWN USD file, and return the path.
-
-    Kept for the file-based path (MultiUsdFileCfg) and for the equivalence
-    tools, which compare a converted asset against an authored one.
-    """
-    from pxr import Usd
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    stage = Usd.Stage.CreateNew(str(out_path))
-    author_robot_prims(stage.GetRootLayer(), ROBOT_ROOT, hand, spec,  # noqa: F841
-                       contact_offset=contact_offset, rest_offset=rest_offset,
-                       arm_usd=arm_usd, arm_root_prim=arm_root_prim,
-                       link7_world=link7_world, adjacency=adjacency)
-    # Isaac Lab references this file WITHOUT a prim path, so it resolves
-    # <defaultPrim>; without one the reference composes to nothing.
-    stage.SetDefaultPrim(stage.GetPrimAtPath(ROBOT_ROOT))
-    stage.GetRootLayer().Save()
-    return str(out_path)
-
-
-def flatten_arm_usd(arm_usd: str, out_path: Path, *,
-                    contact_offset: float, rest_offset: float) -> str:
-    """Inline the arm's sub-layers into ONE file, and return its path.
-
-    Kit's converter does not write a self-contained asset: the geometry lives in
-    configuration/<name>_base.usd and the top file merely REFERENCES it. Those
-    references resolve when that file is opened directly, and do NOT resolve
-    through a second level of nesting -- which is what happens the moment a
-    design references the arm.
-
-    The symptom is silent and specific: the arm composes with its links, joints,
-    masses and inertias intact but with NO COLLISION GEOMETRY, so the robot
-    loads, articulates and simulates while the arm cannot touch anything.
-    Measured: 23 bodies carried colliders in the converted robot against 16 in
-    the authored one, the missing seven being iiwa14_link_0..7.
-
-    Flattening resolves every reference once, here, instead of at each of the
-    24,576 designs that reference it.
-    """
+def flatten_robot_usd(usd_path: str, out_path: Path, *,
+                      contact_offset: float, rest_offset: float) -> tuple[str, str]:
+    """Inline the converter's sub-layers into one file with the robot PhysX
+    props set once; returns ``(path, root_prim_path)``. Nested references do
+    not resolve a second level down, so an unflattened file composes with no
+    colliders when an env prim references it."""
     from pxr import PhysxSchema, Sdf, Usd, UsdPhysics
 
-    stage = Usd.Stage.Open(arm_usd, Usd.Stage.LoadAll)
+    stage = Usd.Stage.Open(usd_path, Usd.Stage.LoadAll)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     stage.Flatten().Export(str(out_path))
 
-    # Apply the arm's physics properties ONCE, here. Every design references
-    # this file, so they inherit them -- there is no reason to set the same
-    # eight bodies' gravity flag 24,576 times.
     flat = Usd.Stage.Open(str(out_path))
     root = flat.GetDefaultPrim() or next(
         p for p in flat.GetPseudoRoot().GetChildren() if p.IsValid())
@@ -355,9 +193,7 @@ def flatten_arm_usd(arm_usd: str, out_path: Path, *,
             prim.CreateAttribute("physxCollision:restOffset",
                                  Sdf.ValueTypeNames.Float).Set(rest_offset)
     flat.GetRootLayer().Save()
-    return str(out_path)
+    return str(out_path), str(root.GetPath())
 
 
-__all__ = ["arm_only_urdf", "author_robot_usd", "author_robot_prims",
-           "flatten_arm_usd",
-           "ARM_PRIM", "ROBOT_ROOT"]
+__all__ = ["ARM_PRIM", "arm_only_urdf", "author_robot_prims", "flatten_robot_usd"]
