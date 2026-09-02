@@ -35,9 +35,7 @@ class PoseReachEnv(DirectRLEnv):
     def __init__(
         self, cfg: PoseReachEnvCfg, render_mode: str | None = None, **kwargs
     ) -> None:
-        """cfg is IN/OUT: setup_scene writes the derived spaces onto it, and
-        callers read them back to size the policy.
-        """
+        """cfg is IN/OUT: setup_scene writes the derived spaces onto it."""
         super().__init__(cfg, render_mode, **kwargs)   # runs _setup_scene
         # Need the started sim; must land before the first _reset_idx.
         allocate_state_buffers(self)
