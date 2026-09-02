@@ -47,11 +47,12 @@ class PoseReachEnv(DirectRLEnv):
         setup_scene(self)
 
     def _reset_idx(self, env_ids) -> None:
-        if env_ids is None:
-            env_ids = torch.arange(self.num_envs, device=self.device)
+        # isaaclab always passes an int64 tensor on device: reset() sends
+        # arange(num_envs), step() sends reset_buf.nonzero(). The None guard
+        # every reference task carries is unreachable.
+        assert env_ids is not None and env_ids.dtype == torch.long, f"env_ids={env_ids}"
         super()._reset_idx(env_ids)
-        reset_env_state(
-            self, torch.as_tensor(env_ids, device=self.device, dtype=torch.long))
+        reset_env_state(self, env_ids)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         apply_action_pipeline(self, actions)
