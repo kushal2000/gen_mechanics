@@ -31,8 +31,8 @@ from ..common_utils.urdf_to_usd import (
 from ..obs_utils import build_morphology_obs, derive_spaces, force_morphology_field
 from .author_objects import author_handle_head, author_physics_material
 from .author_robot import arm_only_urdf, author_robot_prims, flatten_robot_usd
-from .author_usd import _set_xform, define
 from .materials import apply_physx_material_properties
+from .sdf import define, set_xform
 from .objects.generate_objects import generate_handle_head_urdfs
 from .robots import get_robot_spec
 
@@ -298,13 +298,13 @@ def _author_robots_into_envs(env, usd_work_dir: Path, offsets: dict, t0: float) 
                     Sdf.Reference(robot_usd, Sdf.Path(robot_root)))
             else:
                 idx = _env_id_of(env_path) % len(specs)
-                _, colliders = author_robot_prims(
-                    layer, root, hands[idx], specs[idx],
+                colliders = author_robot_prims(
+                    layer, root, hands[idx],
                     arm_usd=arm_usd, arm_root_prim=arm_root, link7_world=link7_world,
                     adjacency=specs[idx].adjacent_links, **offsets)
                 env._robot_collider_links[idx] = colliders  # for the friction pass
             # spawn=None places nothing and a fixed base ignores init_state.pos.
-            _set_xform(layer.GetPrimAtPath(root), base_pos, base_rot)
+            set_xform(layer.GetPrimAtPath(root), base_pos, base_rot)
     per_robot_ms = (time.perf_counter() - t_auth) / max(env.num_envs, 1) * 1000
     _log_scene_step(t0, f"authored {env.num_envs} robots into env prims "
                         f"({per_robot_ms:.2f} ms each)")
