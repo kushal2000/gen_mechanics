@@ -19,9 +19,8 @@ import math
 from hand_sampler.inertia import compute_mass_and_inertia
 from hand_sampler.rotations import rpy_to_quat_wxyz
 
-from .author_usd import attr, define
-
-OBJECT_ROOT_LINK = "object_root"  # mirrors generate_objects._OBJECT_ROOT_LINK
+from .author_usd import MAX_DEPEN_VELOCITY, attr, define
+from .objects.generate_objects import OBJECT_ROOT_LINK
 
 
 def _rigid_body_defaults(body_spec) -> None:
@@ -30,7 +29,8 @@ def _rigid_body_defaults(body_spec) -> None:
     from pxr import Gf, Sdf
 
     attr(body_spec, "physics:principalAxes", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, 0.0, 0.0, 0.0))
-    attr(body_spec, "physxRigidBody:maxDepenetrationVelocity", Sdf.ValueTypeNames.Float, 1000.0)
+    attr(body_spec, "physxRigidBody:maxDepenetrationVelocity", Sdf.ValueTypeNames.Float,
+         MAX_DEPEN_VELOCITY)
 
 
 def _hold_in_place(body_spec, kinematic: bool) -> None:
@@ -107,13 +107,10 @@ def _shape_prim(layer, path: str, scale, xyz, rpy, collision: bool = True,
 
 def author_handle_head(layer, prim_path: str, handle_scale, head_scale,
                        handle_density: float, head_density: float,
-                       body_at_root: bool = False, collision: bool = True,
-                       material_path: str | None = None, kinematic: bool = False):
-    """Author one handle(+head) object as a single rigid body.
-
-    ``head_scale`` None is a handle-only type; ``body_at_root`` puts the body on
-    ``prim_path`` itself. Returns the authored ``(mass, ixx, iyy, izz, com_x)``.
-    """
+                       collision: bool = True, material_path: str | None = None,
+                       kinematic: bool = False) -> None:
+    """Author one handle(+head) object as a single rigid body under ``prim_path``.
+    ``head_scale`` None is a handle-only type."""
     from pxr import Gf, Sdf
 
     if len(handle_scale) == 3:
@@ -125,7 +122,7 @@ def author_handle_head(layer, prim_path: str, handle_scale, head_scale,
         handle_mass, handle_izz, handle_iyy, handle_ixx = compute_mass_and_inertia(
             handle_scale, handle_density)
 
-    body_path = prim_path if body_at_root else f"{prim_path}/{OBJECT_ROOT_LINK}"
+    body_path = f"{prim_path}/{OBJECT_ROOT_LINK}"
     body = define(layer, body_path, "Xform",
                   ["PhysicsRigidBodyAPI", "PhysicsMassAPI", "PhysxRigidBodyAPI"])
     _rigid_body_defaults(body)
@@ -138,8 +135,7 @@ def author_handle_head(layer, prim_path: str, handle_scale, head_scale,
         define(layer, f"{body_path}/collisions", "Xform")
         _shape_prim(layer, f"{body_path}/collisions/mesh_0", handle_scale, (0.0, 0.0, 0.0),
                     handle_rpy, collision=collision, material_path=material_path)
-        return (float(handle_mass), float(handle_ixx), float(handle_iyy),
-                float(handle_izz), 0.0)
+        return
 
     if len(head_scale) == 3:
         x_offset = float(handle_scale[0]) / 2.0 + float(head_scale[0]) / 2.0
@@ -169,7 +165,6 @@ def author_handle_head(layer, prim_path: str, handle_scale, head_scale,
                 handle_rpy, collision=collision, material_path=material_path)
     _shape_prim(layer, f"{body_path}/collisions/mesh_1", head_scale, (x_offset, 0.0, 0.0),
                 head_rpy, collision=collision, material_path=material_path)
-    return float(total_mass), float(ixx), float(iyy), float(izz), float(com_x)
 
 
-__all__ = ["OBJECT_ROOT_LINK", "author_handle_head", "author_physics_material"]
+__all__ = ["author_handle_head", "author_physics_material"]

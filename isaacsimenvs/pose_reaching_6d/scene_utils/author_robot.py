@@ -19,13 +19,11 @@ from hand_sampler.paths import resolve as resolve_repo_path
 from hand_sampler.rotations import mat_to_pos_quat
 
 from .author_usd import (
-    LINK_PARTS, PALM_BODY, _mat_from_seg, _set_xform, attr, author_hand, define,
-    flange_to_palm, merged_palm_body_props,
+    LINK_PARTS, MAX_DEPEN_VELOCITY, PALM_BODY, _mat_from_seg, _set_xform, attr,
+    author_hand, define, flange_to_palm, merged_palm_body_props,
 )
 
 ARM_PRIM = "/arm"
-# The PhysX props a converted robot gets at spawn, authored inline.
-_MAX_DEPEN_VELOCITY = 1000.0
 
 
 def _add_api(spec, name: str) -> None:
@@ -72,87 +70,80 @@ def arm_only_urdf(out_path: Path) -> Path:
 def author_robot_prims(layer, root: str, hand: P.HandParams, spec, *,
                        arm_usd: str, arm_root_prim: str, link7_world,
                        contact_offset: float, rest_offset: float,
-                       adjacency: dict | None = None,
-                       in_change_block: bool = False) -> tuple[str, dict]:
-    """Author one design under ``root``. Returns ``(root, {link: n_colliders})``.
-
-    ``in_change_block`` says the caller already holds a ChangeBlock (they do not nest).
-    """
-    import contextlib
-
+                       adjacency: dict) -> tuple[str, dict]:
+    """Author one design under ``root``, inside the caller's ChangeBlock.
+    Returns ``(root, {link: n_colliders})``."""
     from pxr import Gf, Sdf
 
     collider_links: dict[str, int] = {}
-    with (contextlib.nullcontext() if in_change_block else Sdf.ChangeBlock()):
-        # No ArticulationRootAPI here: the referenced arm brings its own root_joint
-        # and PhysX allows one per tree. The hand joints attach to iiwa14_link_7.
-        define(layer, root, "Xform")
-        arm = define(layer, f"{root}{ARM_PRIM}", "Xform")
-        arm.referenceList.explicitItems.append(Sdf.Reference(str(arm_usd), Sdf.Path(arm_root_prim)))
+    # No ArticulationRootAPI here: the referenced arm brings its own root_joint
+    # and PhysX allows one per tree. The hand joints attach to iiwa14_link_7.
+    define(layer, root, "Xform")
+    arm = define(layer, f"{root}{ARM_PRIM}", "Xform")
+    arm.referenceList.explicitItems.append(Sdf.Reference(str(arm_usd), Sdf.Path(arm_root_prim)))
 
-        palm_path = f"{root}{ARM_PRIM}/{PALM_BODY}"
-        summary = author_hand(layer, root, hand, spec, palm_body_path=palm_path,
-                              link7_world=link7_world)
-        collider_links.update(summary["collider_links"])
+    palm_path = f"{root}{ARM_PRIM}/{PALM_BODY}"
+    summary = author_hand(layer, root, hand, spec, palm_body_path=palm_path,
+                          link7_world=link7_world)
+    collider_links.update(summary["collider_links"])
 
-        # The merged palm, as an OVER on the referenced link.
-        mass, inertia, com, axes = merged_palm_body_props(hand)
-        palm = Sdf.CreatePrimInLayer(layer, Sdf.Path(palm_path))
-        attr(palm, "physics:mass", Sdf.ValueTypeNames.Float, float(mass))
-        attr(palm, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
-             Gf.Vec3f(*[float(v) for v in inertia]))
-        attr(palm, "physics:centerOfMass", Sdf.ValueTypeNames.Float3,
-             Gf.Vec3f(*[float(v) for v in com]))
-        attr(palm, "physics:principalAxes", Sdf.ValueTypeNames.Quatf,
-             Gf.Quatf(float(axes[0]), Gf.Vec3f(*[float(v) for v in axes[1:]])))
+    # The merged palm, as an OVER on the referenced link.
+    mass, inertia, com, axes = merged_palm_body_props(hand)
+    palm = Sdf.CreatePrimInLayer(layer, Sdf.Path(palm_path))
+    attr(palm, "physics:mass", Sdf.ValueTypeNames.Float, float(mass))
+    attr(palm, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
+         Gf.Vec3f(*[float(v) for v in inertia]))
+    attr(palm, "physics:centerOfMass", Sdf.ValueTypeNames.Float3,
+         Gf.Vec3f(*[float(v) for v in com]))
+    attr(palm, "physics:principalAxes", Sdf.ValueTypeNames.Quatf,
+         Gf.Quatf(float(axes[0]), Gf.Vec3f(*[float(v) for v in axes[1:]])))
 
-        # The palm's collision box, placed by the transform merge_fixed_joints folds away.
-        t = _mat_from_seg(flange_to_palm())
-        centre = np.asarray([float(v) for v in P.palm_center(hand.palm_extents)])
-        _, quat = mat_to_pos_quat(t)
-        offset = (t @ np.append(centre, 1.0))[:3]
-        collider_links[PALM_BODY] = collider_links.get(PALM_BODY, 0) + 1
-        box = define(layer, f"{palm_path}/palm_collision", "Cube",
-                     ["PhysicsCollisionAPI", "PhysxCollisionAPI"])
-        attr(box, "size", Sdf.ValueTypeNames.Double, 1.0)
-        _set_xform(box, offset, quat, scale=tuple(float(v) for v in hand.palm_extents))
-        attr(box, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float, contact_offset)
-        attr(box, "physxCollision:restOffset", Sdf.ValueTypeNames.Float, rest_offset)
+    # The palm's collision box, placed by the transform merge_fixed_joints folds away.
+    t = _mat_from_seg(flange_to_palm())
+    centre = np.asarray([float(v) for v in P.palm_center(hand.palm_extents)])
+    _, quat = mat_to_pos_quat(t)
+    offset = (t @ np.append(centre, 1.0))[:3]
+    collider_links[PALM_BODY] = collider_links.get(PALM_BODY, 0) + 1
+    box = define(layer, f"{palm_path}/palm_collision", "Cube",
+                 ["PhysicsCollisionAPI", "PhysxCollisionAPI"])
+    attr(box, "size", Sdf.ValueTypeNames.Double, 1.0)
+    _set_xform(box, offset, quat, scale=tuple(float(v) for v in hand.palm_extents))
+    attr(box, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float, contact_offset)
+    attr(box, "physxCollision:restOffset", Sdf.ValueTypeNames.Float, rest_offset)
 
-        # PhysX props on the hand's bodies and capsules.
-        for i in range(P.N_FINGER_SLOTS):
-            for part, _tier in LINK_PARTS:
-                body = Sdf.CreatePrimInLayer(layer, Sdf.Path(f"{root}/gen_f{i}_{part}"))
-                _add_api(body, "PhysxRigidBodyAPI")
-                attr(body, "physxRigidBody:disableGravity", Sdf.ValueTypeNames.Bool, True)
-                attr(body, "physxRigidBody:maxDepenetrationVelocity",
-                     Sdf.ValueTypeNames.Float, _MAX_DEPEN_VELOCITY)
-                cap = Sdf.CreatePrimInLayer(
-                    layer, Sdf.Path(f"{root}/gen_f{i}_{part}/collisions/mesh_0/capsule"))
-                if cap.specifier == Sdf.SpecifierDef:
-                    _add_api(cap, "PhysxCollisionAPI")
-                    attr(cap, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float,
-                         contact_offset)
-                    attr(cap, "physxCollision:restOffset", Sdf.ValueTypeNames.Float,
-                         rest_offset)
+    # PhysX props on the hand's bodies and capsules.
+    for i in range(P.N_FINGER_SLOTS):
+        for part, _tier in LINK_PARTS:
+            body = Sdf.CreatePrimInLayer(layer, Sdf.Path(f"{root}/gen_f{i}_{part}"))
+            _add_api(body, "PhysxRigidBodyAPI")
+            attr(body, "physxRigidBody:disableGravity", Sdf.ValueTypeNames.Bool, True)
+            attr(body, "physxRigidBody:maxDepenetrationVelocity",
+                 Sdf.ValueTypeNames.Float, MAX_DEPEN_VELOCITY)
+            cap = Sdf.CreatePrimInLayer(
+                layer, Sdf.Path(f"{root}/gen_f{i}_{part}/collisions/mesh_0/capsule"))
+            if cap.specifier == Sdf.SpecifierDef:
+                _add_api(cap, "PhysxCollisionAPI")
+                attr(cap, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float,
+                     contact_offset)
+                attr(cap, "physxCollision:restOffset", Sdf.ValueTypeNames.Float,
+                     rest_offset)
 
-        # Self-collision filters for the spec's adjacency, in this same pass.
-        if adjacency:
-            body_path = {f"gen_f{i}_{part}": f"{root}/gen_f{i}_{part}"
-                         for i in range(P.N_FINGER_SLOTS) for part, _t in LINK_PARTS}
-            body_path[PALM_BODY] = palm_path
-            for n in range(8):
-                body_path[f"iiwa14_link_{n}"] = f"{root}{ARM_PRIM}/iiwa14_link_{n}"
-            for link, neighbours in adjacency.items():
-                a = body_path.get(link)
-                targets = [body_path[b] for b in neighbours if b in body_path]
-                if a is None or not targets:
-                    continue
-                spec_a = Sdf.CreatePrimInLayer(layer, Sdf.Path(a))
-                _add_api(spec_a, "PhysicsFilteredPairsAPI")
-                r = Sdf.RelationshipSpec(spec_a, "physics:filteredPairs", False)
-                for tgt in targets:
-                    r.targetPathList.explicitItems.append(Sdf.Path(tgt))
+    # Self-collision filters for the spec's adjacency, in this same pass.
+    body_path = {f"gen_f{i}_{part}": f"{root}/gen_f{i}_{part}"
+                 for i in range(P.N_FINGER_SLOTS) for part, _t in LINK_PARTS}
+    body_path[PALM_BODY] = palm_path
+    for n in range(8):
+        body_path[f"iiwa14_link_{n}"] = f"{root}{ARM_PRIM}/iiwa14_link_{n}"
+    for link, neighbours in adjacency.items():
+        a = body_path.get(link)
+        targets = [body_path[b] for b in neighbours if b in body_path]
+        if a is None or not targets:
+            continue
+        spec_a = Sdf.CreatePrimInLayer(layer, Sdf.Path(a))
+        _add_api(spec_a, "PhysicsFilteredPairsAPI")
+        r = Sdf.RelationshipSpec(spec_a, "physics:filteredPairs", False)
+        for tgt in targets:
+            r.targetPathList.explicitItems.append(Sdf.Path(tgt))
     return root, collider_links
 
 
@@ -177,7 +168,7 @@ def flatten_robot_usd(usd_path: str, out_path: Path, *,
             prim.CreateAttribute("physxRigidBody:disableGravity",
                                  Sdf.ValueTypeNames.Bool).Set(True)
             prim.CreateAttribute("physxRigidBody:maxDepenetrationVelocity",
-                                 Sdf.ValueTypeNames.Float).Set(_MAX_DEPEN_VELOCITY)
+                                 Sdf.ValueTypeNames.Float).Set(MAX_DEPEN_VELOCITY)
         if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
             PhysxSchema.PhysxArticulationAPI.Apply(prim)
             prim.CreateAttribute("physxArticulation:enabledSelfCollisions",

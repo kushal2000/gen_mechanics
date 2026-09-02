@@ -158,4 +158,4 @@ def apply_physx_material_properties(env) -> None:
     _log_scene_step(t0, "applied PhysX material properties")
 
 
-__all__ = ["apply_physx_material_properties", "arm_counts_from", "shape_layouts_from_record"]
+__all__ = ["apply_physx_material_properties"]

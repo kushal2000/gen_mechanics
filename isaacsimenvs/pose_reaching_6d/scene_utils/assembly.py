@@ -22,7 +22,6 @@ import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import Articulation, ArticulationCfg, RigidObject, RigidObjectCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from isaaclab.sim.spawners.wrappers import MultiUsdFileCfg
 from isaaclab.sim.utils import find_matching_prim_paths, get_current_stage
 
 from ..common_utils.physx import _log_scene_step
@@ -142,12 +141,9 @@ def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False) -> Art
     )
 
 
-def build_rigid_object_cfg(prim_path: str, usd_paths: list[str], props: dict) -> RigidObjectCfg:
-    """RigidObject from converted USDs; env i gets ``usds[i % k]``."""
-    return RigidObjectCfg(
-        prim_path=prim_path,
-        spawn=MultiUsdFileCfg(usd_path=list(usd_paths), random_choice=False, **props),
-    )
+def build_rigid_object_cfg(prim_path: str, usd_path: str, props: dict) -> RigidObjectCfg:
+    """RigidObject spawned from one converted USD."""
+    return RigidObjectCfg(prim_path=prim_path, spawn=sim_utils.UsdFileCfg(usd_path=usd_path, **props))
 
 
 # --- env prims ------------------------------------------------------------------
@@ -172,8 +168,7 @@ def _env_paths_in_order(env) -> list[str]:
 
 
 def _check_numeric_env_order(env, prim_paths: list[str], what: str) -> None:
-    """Round-robin spawns pair proto i with the i-th prim returned, so env i
-    holds entry i % k only while that order is numeric, not lexicographic."""
+    """View row i is env i only if the prims come back in numeric env order."""
     if len(prim_paths) != env.num_envs:
         raise RuntimeError(f"Expected {env.num_envs} {what} prims, got {len(prim_paths)}.")
     observed = [_env_id_of(p) for p in prim_paths]
@@ -201,7 +196,7 @@ def _resolve_object_pool(assets_cfg, out_dir: str):
 
 def _author_objects_into_envs(env, object_params) -> dict[int, int]:
     """Author Object and GoalViz into every env; returns ``{env_id: pool_index}``
-    with env i on entry ``i % pool``, the same assignment a round-robin spawn makes."""
+    with env i on entry ``i % pool``."""
     n_pool = len(object_params)
     assets_cfg = env.cfg.assets
     layer = get_current_stage().GetRootLayer()
@@ -227,7 +222,7 @@ def _author_objects_into_envs(env, object_params) -> dict[int, int]:
                 author_handle_head(
                     layer, f"{env_path}/{name}",
                     handle_scale, head_scale, handle_density, head_density,
-                    body_at_root=False, collision=collision,
+                    collision=collision,
                     material_path=mat_path, kinematic=kinematic)
     _log_scene_step(
         t0, f"authored {env.num_envs} Object + GoalViz prims from a {n_pool}-entry pool")
@@ -306,7 +301,7 @@ def _author_robots_into_envs(env, usd_work_dir: Path, offsets: dict, t0: float) 
                 _, colliders = author_robot_prims(
                     layer, root, hands[idx], specs[idx],
                     arm_usd=arm_usd, arm_root_prim=arm_root, link7_world=link7_world,
-                    adjacency=specs[idx].adjacent_links, in_change_block=True, **offsets)
+                    adjacency=specs[idx].adjacent_links, **offsets)
                 env._robot_collider_links[idx] = colliders  # for the friction pass
             # spawn=None places nothing and a fixed base ignores init_state.pos.
             _set_xform(layer.GetPrimAtPath(root), base_pos, base_rot)
@@ -379,7 +374,7 @@ def setup_scene(env) -> None:
     # 4. Spawn.
     env.robot = Articulation(build_robot_articulation_cfg(
         env.robot_spec, start_arm_higher=env.cfg.reset.start_arm_higher))
-    env.table = RigidObject(build_rigid_object_cfg(TABLE_PATH, [table_usd], _table_props(offsets)))
+    env.table = RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
     authored_map = _author_objects_into_envs(env, object_params)
     env.object = RigidObject(RigidObjectCfg(prim_path=OBJECT_PATH, spawn=None))
     env.goal_viz = RigidObject(RigidObjectCfg(prim_path=GOALVIZ_PATH, spawn=None))
@@ -413,4 +408,4 @@ def finalize_scene(env) -> None:
     build_morphology_obs(env)
 
 
-__all__ = ["RobotPopulation", "finalize_scene", "resolve_spec", "setup_scene"]
+__all__ = ["RobotPopulation", "finalize_scene", "setup_scene"]

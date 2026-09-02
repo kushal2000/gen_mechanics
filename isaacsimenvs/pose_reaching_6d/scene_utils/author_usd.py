@@ -55,6 +55,8 @@ LINK7_TO_FLANGE_Z_M: float = 0.045
 # overwrites them at runtime; matching keeps authored and converted assets comparable.
 CONVERTER_DRIVE_STIFFNESS: float = 625.0
 CONVERTER_DRIVE_DAMPING: float = 0.0
+# What the converter sets at spawn (PhysX default is 3.0).
+MAX_DEPEN_VELOCITY: float = 1000.0
 
 
 # --- Sdf helpers -----------------------------------------------------------------
@@ -339,5 +341,5 @@ def author_hand(layer, root_path: str, hand: P.HandParams, spec, *,
             "collider_links": dict(collider_links)}
 
 
-__all__ = ["author_hand", "define", "attr", "rel", "finger_chain",
-           "flange_to_palm", "PALM_BODY", "LINK_PARTS"]
+__all__ = ["author_hand", "define", "attr", "rel", "flange_to_palm",
+           "PALM_BODY", "LINK_PARTS", "MAX_DEPEN_VELOCITY"]

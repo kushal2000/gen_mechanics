@@ -21,7 +21,7 @@ _SEED = 42
 _NUM_OBJECTS_PER_TYPE_DEFAULT = 100
 _OBJECT_BASE_SIZE = 0.04  # reward-space normalisation, the env's object_base_size
 # One link name for every object: RigidObject derives its view regex from env_0.
-_OBJECT_ROOT_LINK = "object_root"
+OBJECT_ROOT_LINK = "object_root"
 _BROWN = '<material name="brown"><color rgba="0.55 0.27 0.07 1.0"/></material>'
 _GRAY = '<material name="gray"><color rgba="0.5 0.5 0.5 1.0"/></material>'
 _AXIS_X = "0 -1.5707963267948966 0"  # rpy putting a cylinder's axis along link x
@@ -48,7 +48,7 @@ def _write_urdf(path: Path, name: str, parts, mass, ixx, iyy, izz, inertial_orig
         f"    <collision>\n      {geom}\n    </collision>\n"
         for geom, material in parts)
     path.write_text(
-        f'<?xml version="1.0"?>\n<robot name="{name}">\n  <link name="{_OBJECT_ROOT_LINK}">\n'
+        f'<?xml version="1.0"?>\n<robot name="{name}">\n  <link name="{OBJECT_ROOT_LINK}">\n'
         f"{body}    <inertial>\n      <origin {inertial_origin}/>\n      <mass value=\"{mass}\"/>\n"
         f'      <inertia ixx="{ixx}" iyy="{iyy}" izz="{izz}" ixy="0" ixz="0" iyz="0"/>\n'
         f"    </inertial>\n  </link>\n</robot>\n")
@@ -241,8 +241,7 @@ def generate_handle_head_urdfs(
 
 
 __all__ = [
-    "generate_handle_urdf",
-    "generate_handle_head_urdf",
+    "OBJECT_ROOT_LINK",
     "generate_handle_head_urdfs",
     "matching_distributions",
     "sample_pool_params",
