@@ -24,6 +24,8 @@ SEED="${SEED:-0}"
 NUM_ENVS="${NUM_ENVS:-24576}"
 HORIZON_LENGTH=16                     # must match coevolution/cfg/train/PoseReachSAPG.yaml
 EXPL_COEF_BLOCK_SIZE=4096
+# Pose-only interactive HTML viewer; CAPTURE_VIEWER=0 turns it off.
+CAPTURE_VIEWER="${CAPTURE_VIEWER:-1}"
 WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
 WANDB_GROUP="${WANDB_GROUP:-$ROBOT}"
 WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
@@ -59,10 +61,13 @@ echo "robot=$ROBOT seed=$SEED envs=$NUM_ENVS minibatch=$MINIBATCH_SIZE"
 # Sample RAM/CPU/GPU for the life of the run
 experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
 
+[ "$CAPTURE_VIEWER" = "1" ] && VIEWER_ARGS=(--capture_viewer) || VIEWER_ARGS=()
+
 python -u coevolution/train.py \
     --task GenMech-PoseReach-Direct-v0 \
     --agent rl_games_sapg_cfg_entry_point \
     --headless \
+    "${VIEWER_ARGS[@]}" \
     --wandb_activate \
     --wandb_project "$WANDB_PROJECT" \
     --wandb_group "$WANDB_GROUP" \
