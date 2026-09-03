@@ -74,8 +74,17 @@ exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
 [[ "$ROBOT" == "sharpa_iiwa14" ]] || { echo "This launcher supports only ROBOT=sharpa_iiwa14" >&2; exit 1; }
 [[ "$TRANSFORMER_LAYERS" == "1" || "$TRANSFORMER_LAYERS" == "4" ]] || { echo "TRANSFORMER_LAYERS must be 1 or 4" >&2; exit 1; }
 (( NUM_ENVS % EXPL_COEF_BLOCK_SIZE == 0 )) || { echo "NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE" >&2; exit 1; }
-(( BATCH % MINIBATCH_SIZE == 0 ))          || { echo "MINIBATCH_SIZE must divide $BATCH" >&2; exit 1; }
-(( AUG_BATCH % MINIBATCH_SIZE == 0 ))      || { echo "MINIBATCH_SIZE must divide the SAPG-augmented $AUG_BATCH" >&2; exit 1; }
+# Not fatal. rl_games has its divisibility assert commented out
+# (a2c_common.py:251) and PPODataset recomputes length = len(returns) //
+# minibatch_size, handing the remainder to the LAST minibatch. The 98304
+# reference run relied on exactly that: 458752/98304 = 4 actor minibatches of
+# which the last is 163840 wide. That is legal and it is how the run we are
+# comparing against was trained -- so warn, do not refuse.
+#   The critic is batched differently: central_value.py:80 uses the
+#   UNAUGMENTED horizon*num_envs, so the two nets split the same configured
+#   size into different minibatch counts.
+(( BATCH % MINIBATCH_SIZE == 0 )) || echo "NOTE: MINIBATCH_SIZE does not divide the critic's $BATCH; its last minibatch absorbs $(( BATCH % MINIBATCH_SIZE )) extra samples" >&2
+(( AUG_BATCH % MINIBATCH_SIZE == 0 )) || echo "NOTE: MINIBATCH_SIZE does not divide the SAPG-augmented $AUG_BATCH; the actor's last minibatch absorbs $(( AUG_BATCH % MINIBATCH_SIZE )) extra samples" >&2
 # rl_games' PpoPlayerContinuous hardcodes 6 exploration blocks (players.py:48),
 # and the per-block sigma / extra_params are in the state_dict -- so a run with
 # any other block count trains fine and then cannot be replayed by RlPlayer.
@@ -135,5 +144,10 @@ python -u coevolution/train.py \
     agent.params.config.central_value_config.minibatch_size="$MINIBATCH_SIZE" \
     agent.params.config.expl_coef_block_size="$EXPL_COEF_BLOCK_SIZE" \
     agent.params.network.n_layers="$TRANSFORMER_LAYERS" \
+    `# The asymmetric critic is its own joint_transformer and its depth is NOT` \
+    `# interpolated from the actor's. Without this line TRANSFORMER_LAYERS=1` \
+    `# trained a 1-layer actor against the YAML's 4-layer critic: the depth` \
+    `# A/B was not an A/B, and the run paid 4-layer backward cost anyway.` \
+    agent.params.config.central_value_config.network.n_layers="$TRANSFORMER_LAYERS" \
     hydra.run.dir="$RUN_DIR" \
     ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
