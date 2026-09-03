@@ -89,12 +89,6 @@ def wrap_theta(theta: float) -> float:
     return theta % math.pi
 
 
-def fold_phi(phi: float) -> float:
-    """phi lives in (0, pi/2]; reflect at both ends, never land on 0."""
-    p = reflect(phi, 0.0, math.pi / 2)
-    return G.ANGLE_QUANTUM if p < G.ANGLE_QUANTUM / 2 else p
-
-
 def _canonical_mount(face: str, u: float, v: float,
                      alpha: float, beta: float) -> G.Mount:
     """One spelling per physical mount.
@@ -302,24 +296,23 @@ def _free_mount_sites(hand: G.Hand) -> list[tuple[str, float, float]]:
 # --- parametric -------------------------------------------------------------
 
 def perturb_axis(rng: random.Random, hand: G.Hand) -> G.Hand:
-    """Step one joint's theta, or -- 1 in 4 -- its phi.
+    """Step one joint's theta by one angle quantum.
 
-    phi is rarer because it is the assumption-testing parameter rather than a
-    working one: it is here so the search can leave perpendicular-to-bone, not
-    because off-perpendicular hinges are expected to be common.
+    Only theta. ``phi`` is PINNED at pi/2 -- every hinge perpendicular to its
+    link -- and is the first entry on the held-back list in DESIGN.md 11. An
+    off-perpendicular hinge is a real mechanism (the link sweeps a cone of
+    half-angle phi rather than a flat fan) but it reads as a joint with two axes
+    unless you already know what you are looking at, so it is held back until the
+    space needs the complexity.
     """
     fi = rng.randrange(hand.n_fingers)
     finger = hand.fingers[fi]
     si = rng.randrange(finger.n_joints)
     seg = finger.segments[si]
-    step = G.ANGLE_QUANTUM * rng.choice((-1, 1))
 
-    if rng.random() < 0.25:
-        joint = G.Joint(seg.joint.theta, snap(fold_phi(seg.joint.phi + step),
-                                              G.ANGLE_QUANTUM))
-    else:
-        joint = G.Joint(snap(wrap_theta(seg.joint.theta + step), G.ANGLE_QUANTUM)
-                        % math.pi, seg.joint.phi)
+    step = G.ANGLE_QUANTUM * rng.choice((-1, 1))
+    theta = snap(wrap_theta(seg.joint.theta + step), G.ANGLE_QUANTUM) % math.pi
+    joint = G.Joint(theta, seg.joint.phi)
 
     finger = G.with_segment(finger, si, G.Segment(joint, seg.length))
     return _accept(G.with_finger(hand, fi, finger), "perturb_axis")

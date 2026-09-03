@@ -8,7 +8,8 @@ by eye than by reading enumerations.
 
 Joints are coloured by ``theta``, which replaced the old FE/AA enum: blue is pure
 flexion, orange pure abduction, everything between is a design the old space
-could not name. A joint whose ``phi`` has left perpendicular-to-bone is ringed.
+could not name. A joint whose ``phi`` has left perpendicular-to-bone is ringed,
+which cannot happen while phi is pinned but is ready for when it is not.
 Undo replays the lineage rather than storing snapshots, so a broken inverse shows
 up as the history and the scene disagreeing.
 """

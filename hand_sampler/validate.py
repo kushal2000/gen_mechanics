@@ -64,8 +64,12 @@ def check_segment(seg: G.Segment, where: str) -> list[str]:
     # design identity (kinematics.axis_of).
     if not 0.0 - _TOL <= seg.joint.theta < math.pi:
         out.append(f"{where}.theta = {seg.joint.theta:.4f} outside [0, pi)")
-    if not _TOL < seg.joint.phi <= math.pi / 2 + _TOL:
-        out.append(f"{where}.phi = {seg.joint.phi:.4f} outside (0, pi/2]")
+    # phi is PINNED at pi/2 for now (DESIGN.md 11), so this is an equality
+    # rather than a range. The parameter stays in the genotype because
+    # re-enabling it is then one line in perturb_axis.
+    if abs(seg.joint.phi - math.pi / 2) > _TOL:
+        out.append(f"{where}.phi = {seg.joint.phi:.4f}; phi is pinned at pi/2 "
+                   f"(perpendicular hinges) until off-axis joints are enabled")
     for name, value in (("theta", seg.joint.theta), ("phi", seg.joint.phi)):
         if not _on_grid(value, G.ANGLE_QUANTUM):
             out.append(f"{where}.{name} = {value:.4f} off the angle grid")

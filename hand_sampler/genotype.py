@@ -61,7 +61,7 @@ three links at 80 mm puts it inside the space with room either side."""
 # --- joints -----------------------------------------------------------------
 
 ANGLE_QUANTUM = math.radians(15.0)
-"""Grid for every angle: joint theta and phi, mount alpha and beta.
+"""Grid for every angle: joint theta, and mount alpha and beta.
 
 The reason is EXACT INVERSES (DESIGN.md 6), not tidiness -- continuous parameters
 cannot give them, so add/remove pairs would leak on every step. It also makes a
@@ -127,8 +127,10 @@ class Joint:
 
     theta rotates the hinge within the plane perpendicular to its link (0 flexion,
     pi/2 abduction); phi is the polar angle from the link, so pi/2 is
-    perpendicular-to-bone and phi -> 0 is a roll joint. phi exists so that
-    assumption is testable rather than unstated.
+    perpendicular-to-bone and phi -> 0 is a roll joint.
+
+    phi is PINNED at pi/2 -- no operator moves it and the validator requires it
+    (DESIGN.md 11). It stays a field so re-enabling is one line in perturb_axis.
     """
 
     theta: float

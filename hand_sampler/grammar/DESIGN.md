@@ -80,11 +80,12 @@ axis(theta, phi) = [cos phi, sin phi sin theta, sin phi cos theta]
 * **theta** ∈ [0, π) rotates the hinge within the plane perpendicular to the
   link. 0 is flexion, π/2 abduction — these stop being categories and become
   ends of one continuum.
-* **phi** ∈ (0, π/2] is the polar angle from the link. π/2 is
-  perpendicular-to-bone, the conventional assumption; φ→0 is a roll joint.
-
-`phi` exists so *"joint axes are perpendicular to the links"* is a testable
-choice rather than an unstated one. Seeds draw π/2; mutation may leave it.
+* **phi** is the polar angle from the link, and is **pinned at π/2** — every
+  hinge perpendicular to its bone. Below π/2 the link sweeps a *cone* of
+  half-angle `phi` rather than a flat fan: still one revolute axis, but it reads
+  as a two-axis joint, so it is held back (§11.4) until the space needs the
+  complexity. The field stays in the genotype, and the validator enforces the
+  pin, so re-enabling is one line in `perturb_axis`.
 
 **Joint limits are symmetric ±90° for every joint.** Anatomical asymmetric ranges
 stop meaning anything once the axis is a continuum — there is no principled way
@@ -216,7 +217,7 @@ all.
 
 | operator | step |
 |---|---|
-| `perturb_axis` | ±15° in theta, or 1-in-4 in phi |
+| `perturb_axis` | ±15° in theta |
 | `perturb_length` | ±1 quantum |
 | `move_mount` | ±5 mm across the surface, crossing face edges |
 | `perturb_direction` | ±15°, jittered in the tangent plane |
@@ -242,10 +243,12 @@ rest pose.
 
 ### Deferred
 
-`branch` — chains attached to non-leaf links, giving forked fingers. The operator
-most likely to produce genuinely novel morphologies. Crossover (`swap_finger`) is
-free from the tree, but crossover is the specific mechanism behind bloat in the
-GP literature, so add it with the joint-count instrumentation running.
+**Crossover** (`swap_finger`) is free from the tree structure, but crossover is
+the specific mechanism behind bloat in the GP literature, so it should be added
+only with the joint-count instrumentation of §9.3 already running.
+
+Design *parameters* the operator set does not yet reach — branching chains,
+off-perpendicular axes, coupled and passive joints — are listed in §11.
 
 ## 7. Validity, in two tiers
 
@@ -378,10 +381,10 @@ Independent of selection: record `(performance, n_motors)`. The headline claims
 are slices through it, it costs one integer per design, and it commits the
 selection scheme to nothing.
 
-## 10. Deferred
+## 10. Deferred: the integration layer
 
-**The integration layer**, in dependency order, and belonging with whoever owns
-the simulator side:
+Not built here, and belonging with whoever owns the simulator side. In dependency
+order:
 
 1. `build.py` — genotype → URDF, ghosting into the envelope (§2). Needs the
    envelope number; should follow `rotations.py` for rpy and `inertia.py` for
@@ -390,25 +393,104 @@ the simulator side:
    template names (§7). The closed-form capsule test itself is reusable verbatim.
 3. `features.py` — node/edge emission per §8.
 
-**Couplings** (passive joints, rigid pairs). `minimal/` has a worked-out version.
-Deferred because mutation over coupled topologies is much harder — a mutation
-removing a joint must decide what happens to its partner. The cost is worth
-naming: real anthropomorphic hands are heavily underactuated, and that is how
-they buy dexterity per motor. If the claim is "matches a market hand at equal
-motor count" while the baseline is underactuated and this is not, that comparison
-is uphill. Known debt, not a free simplification.
+Deferred *design parameters*, as opposed to deferred plumbing, are §11.
 
-**`branch`, crossover, per-design joint limits, actuator properties.** The node
-schema has room for the last of these; every joint currently gets the same motor.
+## 11. Held back, for later complexity
 
-## 11. Open
+Everything below is deliberately absent so the space stays small enough to reason
+about. Each entry is a way to buy design complexity when the search needs it, and
+each is reversible — the genotype carries the field or the shape already, so
+re-enabling is closer to a flag than a rewrite. Roughly ordered by value against
+cost.
+
+**1. Fingers on the two large palm faces.** Currently `+z` and `±y` only. `+x` —
+the surface fingers close toward — gives an opposition post rising from the palm,
+the most thumb-like arrangement this space can express, and it measured the
+closest fingertip approach of any pair. Excluded because a finger growing out of
+the gripping surface is awkward to build and to mount an arm behind. One tuple in
+`FINGER_FACES`; the crossing logic already handles arbitrary faces.
+
+**2. Joint types beyond independent revolute.** The largest missing capability,
+and three separable steps:
+
+* *rigid / mimic coupling* — two joints driven as one, so a finger has more
+  joints than motors;
+* *fully passive, spring-loaded* — no input at all, a return spring and contact
+  decide the angle;
+* *differential coupling* — one motor driving several joints through a
+  differential, which is how most underactuated hands actually work.
+
+`minimal/` has a worked version of the first two, including adjacency rules,
+mid-range rest poses and per-joint stiffness. The cost is that mutation over
+coupled topologies is much harder: a mutation removing a joint must decide what
+happens to its partner. The cost of *not* having it is worth naming — real
+anthropomorphic hands are heavily underactuated, and that is precisely how they
+buy dexterity per motor. A claim of "matches a market hand at equal motor count"
+against an underactuated baseline is uphill while every joint here has its own
+motor.
+
+**3. Branching chains.** A finger splitting into two beyond some joint. The
+operator most likely to produce genuinely novel morphologies rather than
+variations on hands we can already picture — the tree representation already
+permits it, since `Chain` carries a list of children. Deferred because it roughly
+doubles validator work.
+
+**4. Off-perpendicular joint axes (`phi`).** Pinned at π/2. An oblique hinge is a
+real mechanism — the link sweeps a cone of half-angle `phi` rather than a flat
+fan — and it is a genuine single revolute, but it reads as a two-axis joint
+unless you know what you are looking at. Held back until the space needs the
+complexity. One line in `perturb_axis`, plus relaxing the validator's equality
+back to a range.
+
+**5. Coincident joints.** Two joints sharing a point, which is how an MCP knuckle
+combining flexion and abduction is normally modelled, and what `params.py` did
+with zero-length virtual links. Dropped for the same reason `MIN_LINK_LENGTH`
+exists: coincident axes need a gimbal, where two axes 20 mm apart are ordinary
+revolutes in series. Re-adding means allowing zero-length segments again and
+restoring the special cases they carry through the builder and the renderers.
+
+**6. Palm thickness.** Seeded and never mutated — the dimension geometry cares
+least about, where width and length move separation and reach directly. One entry
+in `MUTABLE_PALM_DIMS`.
+
+**7. Per-design joint limits.** Currently a global ±90°. Range of motion is a
+real design variable; there is simply no evidence yet that searching over it
+pays.
+
+**8. Link radius.** Fixed at 10 mm, and the *least* promising entry here despite
+being trivial to enable: it is the one parameter measured to do nothing, at
+Spearman −0.005 across a 2× range. Listed for completeness, not as a candidate.
+
+**9. Actuator properties** — gear ratio, reflected inertia, torque limits. Every
+joint currently gets the same motor. The node feature schema (§8) already has
+room, and this is where reflected inertia would enter if the search should care
+about it.
+
+**10. A larger envelope, or a non-box palm.** `MAX_FINGERS` × `MAX_JOINTS_PER_FINGER`
+is a hard simulator cost paid by every design (§2), and the palm is a box because
+face frames are then trivial. Both are relaxable; both are expensive.
+
+### Not on this list, deliberately
+
+Three things were *consolidated* rather than removed, and re-adding them would
+restore redundancy rather than capability:
+
+* **mount roll** — gauge. Rotating the mount by *r* about the finger axis while
+  subtracting *r* from the first joint's `theta` gives an identical hand, so
+  carrying it would give one hand two spellings.
+* **`remount`** — a step that overflows a face now carries onto the next, so a
+  separate teleport reaches nothing new.
+* **`add_finger` / `remove_finger`** — in a tree, attaching to a joint and to the
+  palm are the same operation; `add_node` covers both.
+
+## 12. Open
 
 1. What articulation envelope is affordable, against the current 5 × 6 = 30?
 2. Did the morphology-descriptor ablation ever run (§8)?
 3. Does the design loop stay training-free (§9.1)?
 4. Is the object resampled per evaluation (§9.3)?
 
-## 12. Evidence
+## 13. Evidence
 
 Numbers above come from `docs/analysis.md` — all 24,576 seed-3 designs at 3 cm
 tolerance against the epoch-16,600 checkpoint (14% of training), mean 1.893 / 10
