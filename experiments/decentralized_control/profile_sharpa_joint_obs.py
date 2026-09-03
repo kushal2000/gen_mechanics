@@ -32,6 +32,10 @@ def main() -> None:
         "--policy", choices=("mlp", "transformer", "both"), default="both",
         help="Policy forward path(s) to benchmark alongside the environment.",
     )
+    parser.add_argument(
+        "--transformer_layers", default="1,4",
+        help="Comma-separated transformer depths to benchmark (default: 1,4).",
+    )
     parser.add_argument("--num_assets_per_type", type=int, default=2)
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
@@ -135,6 +139,11 @@ def main() -> None:
     )
 
     # ---- real policy backbones used by the matched experiments ------------
+    transformer_layers = tuple(
+        int(value.strip()) for value in args.transformer_layers.split(",") if value.strip()
+    )
+    if any(value < 1 for value in transformer_layers):
+        raise ValueError("--transformer_layers must contain positive integers")
     net_params = {
         "robot_spec": "sharpa_iiwa14",
         "obs_list": list(cfg.obs.obs_list),
@@ -152,13 +161,15 @@ def main() -> None:
             "fixed_sigma": "fixed",
         }},
     }
-    transformer_net = None
+    transformer_nets = {}
     if args.policy in ("transformer", "both"):
-        transformer_net = JointTransformerNet(
-            net_params, actions_num=inner.cfg.action_space,
-            input_shape=(inner.cfg.observation_space,), value_size=1,
-            num_seqs=1, type="simple",
-        ).to(inner.device).eval()
+        for n_layers in transformer_layers:
+            layer_params = dict(net_params, n_layers=n_layers)
+            transformer_nets[n_layers] = JointTransformerNet(
+                layer_params, actions_num=inner.cfg.action_space,
+                input_shape=(inner.cfg.observation_space,), value_size=1,
+                num_seqs=1, type="simple",
+            ).to(inner.device).eval()
 
     mlp_net = None
     if args.policy in ("mlp", "both"):
@@ -191,7 +202,8 @@ def main() -> None:
 
     with torch.inference_mode():
         for policy_name, policy_net in (
-            ("transformer", transformer_net), ("mlp", mlp_net),
+            *[(f"transformer_L{n}", net) for n, net in transformer_nets.items()],
+            ("mlp", mlp_net),
         ):
             if policy_net is None:
                 continue
@@ -314,9 +326,9 @@ def main() -> None:
             policy_ms["MLP"] = wall_ms(
                 lambda: mlp_net({"obs": latest}), args.steps
             )
-        if transformer_net is not None:
-            policy_ms["transformer"] = wall_ms(
-                lambda: transformer_net({"obs": latest}), args.steps
+        for n_layers, transformer_net in transformer_nets.items():
+            policy_ms[f"transformer_L{n_layers}"] = wall_ms(
+                lambda net=transformer_net: net({"obs": latest}), args.steps
             )
         step_ms = wall_ms(lambda: env.step(actions), args.steps)
         detail, reset_count = detailed_step_timing(args.detail_steps)
