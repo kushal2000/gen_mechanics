@@ -125,9 +125,14 @@ class EnvStatsAlgoObserver(AlgoObserver):
             infos = _remove_env_boundary_from_info(copy.deepcopy(infos), ignore_env_boundary)
             done_indices = done_indices[done_indices >= ignore_env_boundary] - ignore_env_boundary
 
-        done_indices = done_indices.reshape(-1).detach().cpu().tolist()
-        self._process_episode_cumulative(infos.get("episode_cumulative"), done_indices)
-        self._process_episode_final(infos.get("episode_final"), done_indices)
+        done_index_tensor = done_indices.reshape(-1).detach()
+        done_indices = done_index_tensor.cpu().tolist()
+        self._process_episode_cumulative(
+            infos.get("episode_cumulative"), done_indices, done_index_tensor
+        )
+        self._process_episode_final(
+            infos.get("episode_final"), done_indices, done_index_tensor
+        )
 
         self.direct_info = {
             key: value
@@ -136,7 +141,37 @@ class EnvStatsAlgoObserver(AlgoObserver):
         }
         self._process_vector_summaries(infos, tag="successes")
 
-    def _process_episode_cumulative(self, terms, done_indices: list[int]) -> None:
+    def _gather_done_rows(self, values: dict, keys, done_index_tensor, done_indices):
+        """Read one row per finished episode for every key, in ONE D2H copy.
+
+        The obvious loop -- ``float(t[i].cpu().item())`` per key per done env --
+        is a separate device synchronization each time. At 24k envs that is
+        ~14 keys x ~40 finished episodes x 16 rollout steps of stall per epoch,
+        all of it on the critical path between the env step and the next
+        policy forward. Stacking first turns the whole thing into one copy.
+
+        Returns ``{key: [value per done env, in done order]}``; falls back to
+        the per-element path for anything that is not a device tensor.
+        """
+        rows: dict[str, list[float]] = {}
+        stackable = [
+            key for key in keys
+            if isinstance(values[key], torch.Tensor) and values[key].ndim == 1
+        ]
+        if stackable:
+            gathered = torch.stack(
+                [values[key].float()[done_index_tensor] for key in stackable]
+            )  # (len(stackable), n_done)
+            for key, row in zip(stackable, gathered.cpu().tolist()):
+                rows[key] = row
+        for key in keys:
+            if key not in rows:
+                rows[key] = [_value_at(values[key], idx) for idx in done_indices]
+        return rows
+
+    def _process_episode_cumulative(
+        self, terms, done_indices: list[int], done_index_tensor
+    ) -> None:
         if not terms:
             return
 
@@ -147,24 +182,31 @@ class EnvStatsAlgoObserver(AlgoObserver):
                 self.episode_cumulative_avg[key] = deque([], maxlen=self.algo.games_to_track)
             self.episode_cumulative[key] += value
 
-        for done_idx in done_indices:
-            self.new_finished_episodes = True
-            for key in terms:
-                self.episode_cumulative_avg[key].append(
-                    _value_at(self.episode_cumulative[key], done_idx)
-                )
-                self.episode_cumulative[key][done_idx] = 0
+        if not done_indices:
+            return
 
-    def _process_episode_final(self, values, done_indices: list[int]) -> None:
+        self.new_finished_episodes = True
+        keys = list(terms)
+        rows = self._gather_done_rows(
+            self.episode_cumulative, keys, done_index_tensor, done_indices
+        )
+        for key in keys:
+            self.episode_cumulative_avg[key].extend(rows[key])
+            self.episode_cumulative[key][done_index_tensor] = 0
+
+    def _process_episode_final(
+        self, values, done_indices: list[int], done_index_tensor
+    ) -> None:
         if not values or not done_indices:
             return
 
         self.new_finished_episodes = True
-        for key, value in values.items():
+        keys = list(values)
+        rows = self._gather_done_rows(values, keys, done_index_tensor, done_indices)
+        for key in keys:
             if key not in self.episode_final_avg:
                 self.episode_final_avg[key] = deque([], maxlen=self.algo.games_to_track)
-            for done_idx in done_indices:
-                self.episode_final_avg[key].append(_value_at(value, done_idx))
+            self.episode_final_avg[key].extend(rows[key])
 
     def _process_vector_summaries(self, infos, *, tag: str) -> None:
         if tag not in infos:

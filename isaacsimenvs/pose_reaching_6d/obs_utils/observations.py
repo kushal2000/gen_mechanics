@@ -308,17 +308,25 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     goal_pos = env.goal_viz.data.root_pos_w - env_origins
     goal_rot = env.goal_viz.data.root_quat_w  # wxyz
 
+    kp_offsets = env._keypoint_offsets * env._object_scale_multiplier.unsqueeze(1)
+    obj_kp = _keypoints_world(obj_pos, obj_rot, kp_offsets)
+    goal_kp = _keypoints_world(goal_pos, goal_rot, kp_offsets)
+
+    # With object-state DR off the "noisy" object IS the clean one, so every
+    # tensor derived from it is the clean tensor. Aliasing rather than
+    # recomputing is bit-for-bit identical and skips a second pass over the
+    # (N, 22, 4, 3) per-joint keypoint transform -- the widest tensor the
+    # observation builds. Identity (`is`) is the test throughout: it is true
+    # exactly when the inputs came from the same object, which is the only
+    # case where reuse is sound.
     if dr.use_object_state_delay_noise:
         noisy_obj_pos, noisy_obj_rot, noisy_obj_vel = _apply_object_state_dr(
             env, obj_pos, obj_rot, obj_linvel, obj_angvel
         )
+        noisy_obj_kp = _keypoints_world(noisy_obj_pos, noisy_obj_rot, kp_offsets)
     else:
         noisy_obj_pos, noisy_obj_rot, noisy_obj_vel = obj_pos, obj_rot, obj_vel
-
-    kp_offsets = env._keypoint_offsets * env._object_scale_multiplier.unsqueeze(1)
-    obj_kp = _keypoints_world(obj_pos, obj_rot, kp_offsets)
-    goal_kp = _keypoints_world(goal_pos, goal_rot, kp_offsets)
-    noisy_obj_kp = _keypoints_world(noisy_obj_pos, noisy_obj_rot, kp_offsets)
+        noisy_obj_kp = obj_kp
 
     # Optional per-env yaw noise on the observed goal (world +Z about goal_pos).
     goal_yaw_obs_noise = getattr(env, "goal_yaw_obs_noise", None)
@@ -332,10 +340,18 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     else:
         noisy_goal_kp = goal_kp
 
+    object_is_clean = noisy_obj_kp is obj_kp
     keypoints_rel_palm_clean = obj_kp - palm_pos.unsqueeze(1)
-    keypoints_rel_palm_noisy = noisy_obj_kp - palm_pos.unsqueeze(1)
+    keypoints_rel_palm_noisy = (
+        keypoints_rel_palm_clean if object_is_clean
+        else noisy_obj_kp - palm_pos.unsqueeze(1)
+    )
     keypoints_rel_goal_clean = obj_kp - goal_kp
-    keypoints_rel_goal_noisy = noisy_obj_kp - noisy_goal_kp
+    keypoints_rel_goal_noisy = (
+        keypoints_rel_goal_clean
+        if object_is_clean and noisy_goal_kp is goal_kp
+        else noisy_obj_kp - noisy_goal_kp
+    )
 
     joint_link_bbox, joint_origins, joint_geometry_valid = (
         _joint_link_geometry_obs(env, palm_center_pos_w, palm_rot, env_origins)
@@ -343,9 +359,12 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     object_keypoints_rel_joint_clean = _object_keypoints_rel_joint(
         obj_kp, joint_origins, palm_rot, env._hand_scale, joint_geometry_valid
     )
-    object_keypoints_rel_joint_noisy = _object_keypoints_rel_joint(
-        noisy_obj_kp, joint_origins, palm_rot, env._hand_scale,
-        joint_geometry_valid,
+    object_keypoints_rel_joint_noisy = (
+        object_keypoints_rel_joint_clean if object_is_clean
+        else _object_keypoints_rel_joint(
+            noisy_obj_kp, joint_origins, palm_rot, env._hand_scale,
+            joint_geometry_valid,
+        )
     )
 
     object_scales_obs = env.scene_record.object_scale * env._object_scale_multiplier
@@ -353,7 +372,10 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     # Policy obs use legacy Isaac Gym xyzw; internal math stays wxyz.
     palm_rot_xyzw = convert_quat(palm_rot, to="xyzw")
     obj_rot_xyzw = convert_quat(obj_rot, to="xyzw")
-    noisy_obj_rot_xyzw = convert_quat(noisy_obj_rot, to="xyzw")
+    noisy_obj_rot_xyzw = (
+        obj_rot_xyzw if noisy_obj_rot is obj_rot
+        else convert_quat(noisy_obj_rot, to="xyzw")
+    )
 
     obs_clean: dict[str, torch.Tensor] = {
         "joint_pos": joint_pos,

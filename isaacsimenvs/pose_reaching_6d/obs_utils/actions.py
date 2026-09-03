@@ -99,10 +99,28 @@ def apply_action_pipeline(env, actions: torch.Tensor) -> None:
     env._prev_targets = env._cur_targets.clone()
 
 
+def wrench_dr_enabled(env) -> bool:
+    """Whether the wrench DR can ever produce a non-zero impulse.
+
+    Both scales zero is the architecture-comparison setting, and it makes the
+    whole block a no-op: the sampled force is ``randn * mass * 0``. Skipping it
+    is not just the sampling. ``set_external_force_and_torque`` latches
+    ``has_external_wrench`` on the object, and Isaac Lab then re-uploads the
+    (all-zero) wrench to PhysX on every one of the ``decimation`` substeps.
+    """
+    dr = env.cfg.domain_randomization
+    return dr.force_scale != 0.0 or dr.torque_scale != 0.0
+
+
 def apply_wrench_dr(env) -> None:
     """Apply decayed random force/torque impulses to the object."""
     dr = env.cfg.domain_randomization
     dt_pol = env.step_dt
+
+    if not wrench_dr_enabled(env):
+        # The buffers are already zero and nothing can make them non-zero, so
+        # the results below are unchanged -- only the PhysX upload is skipped.
+        return
 
     # Decay previous wrench.
     if dr.force_decay > 0.0:
@@ -157,5 +175,5 @@ def apply_wrench_dr(env) -> None:
 
 __all__ = [
     "apply_action_pipeline", "apply_wrench_dr", "pre_physics_step",
-    "sample_log_uniform",
+    "sample_log_uniform", "wrench_dr_enabled",
 ]
