@@ -1,0 +1,42 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=4
+#SBATCH --get-user-env
+#SBATCH --mem=24000
+#SBATCH -t 0-00:30:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# Run a pure-torch benchmark (no Isaac Sim) on its own GPU, so the numbers are
+# not contended by a training job sharing the card. The network-only profilers
+# need an uncontended GPU far more than they need a simulator.
+#
+#   BENCH_TAG=smoke SCRIPT=smoke_transformer_sanity.py \
+#     sbatch experiments/decentralized_control/bench_torch_only.sub
+#   BENCH_TAG=variants SCRIPT=profile_transformer_variants.py \
+#     sbatch experiments/decentralized_control/bench_torch_only.sub
+
+set -uo pipefail
+
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+BENCH_TAG="${BENCH_TAG:?set BENCH_TAG}"
+SCRIPT="${SCRIPT:?set SCRIPT}"
+SCRIPT_ARGS="${SCRIPT_ARGS:-}"
+
+RUN_DIR="${REPO_ROOT}/debug_outputs/bench_logs/${BENCH_TAG}"
+rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="bench_${BENCH_TAG}" || true
+exec > "${RUN_DIR}/out.log" 2>&1
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+
+echo "bench=$BENCH_TAG script=$SCRIPT args=$SCRIPT_ARGS"
+nvidia-smi --query-gpu=name,memory.total,power.limit --format=csv,noheader
+read -r -a EXTRA <<< "$SCRIPT_ARGS"
+python -u "experiments/decentralized_control/${SCRIPT}" ${EXTRA[@]+"${EXTRA[@]}"}
+echo "exit=$?"
