@@ -50,7 +50,7 @@ Not every one-joint seed can reach the object -- a one-joint fingertip traces an
 ARC and two arcs often miss, where two joints trace an annulus that reliably
 overlaps. Measured closure: 74% at 2 motors, 84% at 3, 100% at 4. That is a
 gradient, not the sparse-fitness trap: the trap is every seed scoring zero, and
-here ``add_node`` is the one-step path from the failures to the successes."""
+here ``split_link`` is the one-step path from the failures to the successes."""
 
 SEED_THETAS = (0.0, math.pi / 2)   # pure flexion, pure abduction
 SEED_LENGTHS = (0.030, 0.035, 0.040, 0.045, 0.050)

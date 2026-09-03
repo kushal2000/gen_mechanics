@@ -184,62 +184,79 @@ complexity is a genotype-level integer, readable without simulating.
 
 ## 6. Mutation operators
 
-Seven, and the count is a design goal. **An operator reachable by chaining others
+Nine, and the count follows two rules. **An operator reachable by chaining others
 earns nothing** — it adds surface for a bug and a second place the same rule can
-drift. Taking more iterations to get somewhere is an acceptable price.
+drift. But **operators that differ only in where they attach are kept apart**,
+even where a tree makes them formally one operation, because that is what makes
+the mutation mix controllable.
 
 ### Structural — ±1 joint each
 
-| operator | effect |
-|---|---|
-| `add_node` | split a link, or start a new finger from the palm |
-| `remove_node` | detach a joint, merging its link; a finger's last joint takes the finger with it |
+| operator | effect | inverse |
+|---|---|---|
+| `split_link` | divide a link, inserting a joint | `merge_links` |
+| `merge_links` | join two links, removing the joint between | `split_link` |
+| `add_finger` | attach a new single-joint finger to the palm | `remove_finger` |
+| `remove_finger` | delete a single-joint finger | `add_finger` |
 
-Two, not four: attaching to a joint and attaching to the palm are the same
-operation in a tree. Keeping them apart also built a wall, and that wall is what
-froze finger count in the previous design space — permanently, for any population
-descended from it, because no operator touched it.
+`merge_links` acts only on fingers with two or more joints; emptying a finger is
+`remove_finger`'s job. Both removals are correctly impossible at the floor —
+`MIN_FINGERS` single-joint fingers.
 
-*Unit steps* keep the performance-versus-motors front dense; if the only
-structural move added a whole 3-joint finger, complexity would jump in threes and
-the headline plot would have holes. *Exact inverses* are load-bearing for §9.3 —
-measured 150/150 recovery, and per-move balance 51% at 6 joints, 42% at 10.
-Balance falls further in, which is the §5 geometry pushing back rather than
-operator bias.
+These were briefly one `add_node`/`remove_node` pair, since attaching to a joint
+and to the palm are the same operation in a tree. Separating them again matters
+for two measured reasons: pooled uniformly, a new finger competed against every
+splittable link and so was rare; and once the palm filled, splits kept succeeding
+under the same operator name, **masking that palm capacity had run out**.
+
+*Unit steps* keep the performance-versus-motors front dense. *Exact inverses* are
+load-bearing for §9.3 and hold for both pairs.
+
+Balance falls with depth, and with four operators the cause is visible:
+
+| n | split | merge | add_finger | remove_finger | P(up) |
+|---|---|---|---|---|---|
+| 4 | 83% | 84% | 100% | 62% | 55.8% |
+| 6 | 96% | 97% | 74% | 92% | 47.2% |
+| 10 | 78% | 100% | 34% | 84% | 38.3% |
+| 14 | 77% | 100% | 4% | 34% | 38.2% |
+
+`add_finger` collapses as the palm fills while `merge_links` stays near 100%, so
+a deep hand drifts down. That is palm **capacity**, not operator bias, and
+`perturb_palm` is what relieves it.
 
 A removed link folds into the proximal neighbour (the exact inverse of a split),
 else the distal one, else the proximal merge clamped to the ceiling. The clamp is
-unreachable from `add_node`, so it costs nothing in exactness — without it, a
-finger whose adjacent links summed past the ceiling could not shed that joint at
-all.
+unreachable from `split_link`, so it costs nothing in exactness — without it, a
+finger whose adjacent links summed past the ceiling could not shed that joint.
 
 ### Parametric
 
-| operator | step |
-|---|---|
-| `perturb_axis` | ±15° in theta |
-| `perturb_length` | ±1 quantum |
-| `move_mount` | ±5 mm across the surface, crossing face edges |
-| `perturb_direction` | ±15°, jittered in the tangent plane |
-| `perturb_palm` | ±10 mm in width or length |
+| operator | step | scope |
+|---|---|---|
+| `perturb_axis` | ±15° in theta | **every joint** |
+| `perturb_length` | ±1 quantum | **every link** |
+| `move_mount` | ±5 mm across the surface, crossing face edges | one finger |
+| `perturb_direction` | ±15°, jittered in the tangent plane | one finger |
+| `perturb_palm` | ±10 mm in width or length | one dimension |
+
+`perturb_axis` and `perturb_length` are **whole-hand** moves: each joint or link
+steps independently up or down, so a 20-joint hand has all 20 changed at once.
+That trades locality for exploration rate, and it matters most for
+`perturb_length`, which is the only operator that changes total reach —
+`split_link` divides and `merge_links` rejoins, both reach-preserving. One link
+per mutation would grow a hand 5 mm at a time against a reach optimum band tens
+of millimetres wide. Each value reflects into range on its own, so only the
+whole-hand rules can reject a draw, and a few independent redraws are tried
+before the operator reports failure.
 
 `move_mount` absorbs what a separate `remount` would do, since a step that
-overflows a face carries onto the face across that edge. On an axis-aligned box a
-face's tangent directions are its neighbours' normals, so no cube net is needed.
-All three faces are reachable from any seed.
-
-Two details it needs. **`(alpha, beta)` are preserved across an edge**, so the
-world direction rotates by the angle between the normals — a finger pointing
-straight out of one face points straight out of the next. Preserving the world
-direction instead lays it flat along the surface it is bolted to. And when a step
-overflows toward a face that hosts no finger, it **clamps** rather than refusing:
-the thin axis has a 5 mm band against a 5 mm step, so refusing froze that axis
-entirely.
-
-**`perturb_axis` and `perturb_direction` are not redundant**, though they look
-it. A joint axis decides which way a joint *sweeps*; a mount direction decides
-which way the finger *points at rest*, and no sequence of axis changes tilts a
-rest pose.
+overflows a face carries onto the face across that edge; on an axis-aligned box a
+face's tangents are its neighbours' normals, so no cube net is needed. Two
+details: `(alpha, beta)` are **preserved** across an edge, so the world direction
+rotates by the angle between normals rather than laying the finger flat; and when
+a step overflows toward a face that hosts no finger it **clamps** rather than
+refusing, since the thin axis has a 5 mm band against a 5 mm step.
 
 ### Deferred
 
@@ -333,7 +350,7 @@ The design loop is deliberately training-free and names the same risk: a gain ca
 be the population learning to suit this controller rather than becoming better
 hardware, and *the compounding is invisible to seed averaging, because it is bias
 not variance*. Its stated mitigation — read the arms against each other — does
-not cover the topology direction. **Adding `add_node` to a fixed-policy loop
+not cover the topology direction. **Adding `add_finger` to a fixed-policy loop
 makes complexity reachable but not selectable.**
 
 Options, increasing in cost: protect young topology classes from culling for some
@@ -350,7 +367,7 @@ seeds can touch it, 84% at 3, 100% at 4.
 That is a **gradient, not a trap**. The trap is *every* seed scoring zero — hit
 for real once, when an earlier seed set paired fingers on opposite faces and 58%
 of the population could not reach the object at any joint angles. Here the seeds
-that close outscore those that do not and `add_node` is the one-step path
+that close outscore those that do not and `split_link` is the one-step path
 between them.
 
 Forcing two joints per finger would remove the failures and cost more than it is
@@ -480,8 +497,11 @@ restore redundancy rather than capability:
   carrying it would give one hand two spellings.
 * **`remount`** — a step that overflows a face now carries onto the next, so a
   separate teleport reaches nothing new.
-* **`add_finger` / `remove_finger`** — in a tree, attaching to a joint and to the
-  palm are the same operation; `add_node` covers both.
+Note this list is about *redundancy*, not about size. `add_finger` /
+`remove_finger` were briefly folded in on the same argument — in a tree,
+attaching to a joint and to the palm are formally one operation — and have been
+separated again (§6), because the argument was wrong in practice: pooling them
+made a new finger rare and hid palm exhaustion behind a still-succeeding split.
 
 ## 12. Open
 

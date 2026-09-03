@@ -65,8 +65,12 @@ def test_seeds_are_simple(pop):
 
 def test_every_operator_can_act(pop):
     rng = random.Random(1)
+    # remove_finger needs a hand above MIN_FINGERS carrying a single-joint
+    # finger; a seed is at the floor, so it is given one that has grown.
+    grown = [c for h in pop[:40] if (c := M.mutate(rng, h, "add_finger"))]
     for op in M.OPERATORS:
-        assert any(M.mutate(rng, h, op) for h in pop[:40]), op
+        source = grown if op == "remove_finger" else pop[:40]
+        assert any(M.mutate(rng, h, op) for h in source), op
 
 
 def test_mutation_is_closed(pop):
@@ -81,18 +85,20 @@ def test_mutation_is_closed(pop):
             h = c
 
 
-def test_add_node_preserves_reach(pop):
+def test_split_link_preserves_reach(pop):
     """Splitting divides a link and merging restores it, so reach is unchanged --
-    which is what makes remove_node an exact inverse rather than a shortening."""
+    which is what makes merge_links an exact inverse rather than a shortening."""
     rng = random.Random(3)
     for h in pop[:60]:
-        c = M.mutate(rng, h, "add_node")
-        if c is not None and c.n_fingers == h.n_fingers:   # not the new-finger case
+        c = M.mutate(rng, h, "split_link")
+        if c is not None:
             assert sum(f.reach for f in c.fingers) == pytest.approx(
                 sum(f.reach for f in h.fingers), abs=1e-12)
 
 
-def test_exact_inverse(pop, add="add_node", remove="remove_node"):
+@pytest.mark.parametrize("add,remove", [("split_link", "merge_links"),
+                                        ("add_finger", "remove_finger")])
+def test_exact_inverse(pop, add, remove):
     """Add then remove must return the ORIGINAL hand, not a nearby one. That is
     what the angle and length grids buy; continuous parameters would leak."""
     rng = random.Random(4)
@@ -112,37 +118,39 @@ def test_exact_inverse(pop, add="add_node", remove="remove_node"):
 def test_operators_are_unbiased(pop):
     """Per move, complexity must be as likely to fall as to rise.
 
-    MEASURED PER MOVE, NOT AS ENDPOINT DRIFT. Two earlier attempts measured where
-    an unselected walk ends up and both were artifacts: from the floor a walk
-    diffuses upward into an empty envelope, and from a greedily-grown hand it
-    inherits that hand's packed corner.
+    MEASURED PER MOVE, NOT AS ENDPOINT DRIFT -- earlier attempts measured where an
+    unselected walk ends up, and both were artifacts of the starting hand.
 
-    Tested where the space is interior. Balance genuinely falls at high joint
-    counts -- 52% up at 6, 46% at 10, 29% at 14, 19% at 18 -- and that is
-    GEOMETRY: with one joint per link, k joints need k x MIN_LINK_LENGTH of
-    reach and a split needs a link of twice that, so a hand near the envelope has
-    short links and few legal splits while removal stays available.
+    Tested where the space is interior. Balance falls with depth, and with four
+    structural operators the reason is visible per-operator:
+
+        n    split  merge  add_finger  remove_finger   P(up)
+        4     83%    84%      100%          62%        55.8%
+        6     96%    97%       74%          92%        47.2%
+       10     78%   100%       34%          84%        38.3%
+       14     77%   100%        4%          34%        38.2%
+
+    ``add_finger`` collapses as the palm fills while ``merge_links`` stays near
+    100%, so a deep hand drifts down. That is palm CAPACITY, not operator bias --
+    ``perturb_palm`` is what relieves it. A single pooled add operator hid this,
+    because splits kept succeeding under the same name once the palm was full.
     """
     def at_least(h, target, seed):
-        """Grow by a RANDOM structural walk, not greedily -- greedy growth packs
-        fingers to the cap and lands in a corner where only the palm is free."""
-        r = random.Random(seed)
+        rng = random.Random(seed)
         for _ in range(8000):
             if h.n_joints >= target:
                 return h
-            c = M.mutate(r, h, M.STRUCTURAL[r.randrange(len(M.STRUCTURAL))])
+            c = M.mutate(rng, h, M.STRUCTURAL[rng.randrange(len(M.STRUCTURAL))])
             if c:
                 h = c
         return h
 
     rng = random.Random(0)
-    for target in (6, 10):
+    for target in (4, 6):
         up = down = 0
         for s in range(25):
             h = at_least(pop[s], target, s)
-            assert h.n_joints >= target, (
-                f"could not reach n={target} (got {h.n_joints}); the test would "
-                f"otherwise silently measure somewhere else")
+            assert h.n_joints >= target, f"could not reach n={target}"
             for _ in range(80):
                 c = M.mutate(rng, h, M.STRUCTURAL[rng.randrange(len(M.STRUCTURAL))])
                 if c is None:
@@ -162,7 +170,7 @@ def test_deep_fingers_are_reachable(pop):
     for s in range(12):
         h = pop[s]
         for _ in range(4000):
-            c = M.mutate(rng, h, "add_node") or M.mutate(rng, h, "perturb_length")
+            c = M.mutate(rng, h, "split_link") or M.mutate(rng, h, "perturb_length")
             if c:
                 h = c
         best = max(best, max(f.n_joints for f in h.fingers))
@@ -261,7 +269,7 @@ def _finger(face, lengths, v=0.7):
     ([0.045, 0.045, 0.030], "interior overflow -- distal neighbour fits"),
     ([0.080, 0.080, 0.080], "every merge overflows; the clamp is the only path"),
 ])
-def test_remove_node_handles_every_merge_case(lengths, note):
+def test_merge_links_handles_every_merge_case(lengths, note):
     """A joint must be removable whatever the link lengths around it.
 
     The overflow rows are regressions: folding a link only into its proximal
@@ -275,31 +283,35 @@ def test_remove_node_handles_every_merge_case(lengths, note):
     rng = random.Random(0)
     seen = set()
     for _ in range(200):
-        child = M.apply(rng, hand, "remove_node")       # must never raise
+        child = M.apply(rng, hand, "merge_links")       # must never raise
         assert child.n_joints == hand.n_joints - 1, "not a unit step"
         assert V.is_valid(child), V.check(child)
         seen.add(tuple(f.segments for f in child.fingers))
     assert len(seen) >= 2, "every joint in the finger should be removable"
 
 
-def test_remove_node_refuses_at_the_floor():
-    """MIN_FINGERS single-joint fingers is the floor: nothing can go."""
+def test_structural_removal_refuses_at_the_floor():
+    """MIN_FINGERS single-joint fingers is the floor: neither removal can act.
+
+    merge_links needs a finger with two joints; remove_finger needs more than
+    MIN_FINGERS. At the floor both are correctly impossible."""
     hand = _hand(_finger("+y", [0.050]), _finger("+z", [0.050]))
     assert hand.n_fingers == G.MIN_FINGERS
     rng = random.Random(0)
-    for _ in range(50):
-        with pytest.raises(M.MutationImpossible):
-            M.apply(rng, hand, "remove_node")
+    for op in ("merge_links", "remove_finger"):
+        for _ in range(25):
+            with pytest.raises(M.MutationImpossible):
+                M.apply(rng, hand, op)
 
 
-def test_remove_node_preserves_reach_unless_it_must_clamp():
-    """Reach is preserved on every path add_node can produce; the clamp is
+def test_merge_links_preserves_reach_unless_it_must_clamp():
+    """Reach is preserved on every path split_link can produce; the clamp is
     unreachable from a split, which is why it costs nothing in exactness."""
     hand = _hand(_finger("+y", [0.040, 0.040]), _finger("+z", [0.050]))
     rng = random.Random(0)
     before = sum(f.reach for f in hand.fingers)
     for _ in range(100):
-        child = M.apply(rng, hand, "remove_node")
+        child = M.apply(rng, hand, "merge_links")
         assert sum(f.reach for f in child.fingers) == pytest.approx(before, abs=1e-12)
 
 
@@ -381,14 +393,14 @@ def test_same_face_mounts_keep_their_distance(pop):
 
 def test_crowding_does_not_block_new_fingers(pop):
     """The envelope must stay reachable as the palm fills. Placement by rejection
-    sampling made ``add_node`` quietly stop being able to add fingers as space
+    sampling made ``add_finger`` quietly stop being able to add fingers as space
     ran out -- a reachability hole wearing a timeout's clothing."""
     rng = random.Random(0)
     best = 0
     for s in range(10):
         hand = pop[s]
         for _ in range(2000):
-            child = (M.mutate(rng, hand, "add_node")
+            child = (M.mutate(rng, hand, "add_finger")
                      or M.mutate(rng, hand, "perturb_length")
                      or M.mutate(rng, hand, "perturb_palm"))
             if child:
