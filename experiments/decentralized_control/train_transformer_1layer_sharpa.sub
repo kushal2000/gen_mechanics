@@ -19,5 +19,6 @@
 
 set -euo pipefail
 export TRANSFORMER_LAYERS=1
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/train_joint_transformer_sharpa.sub"
+# Slurm executes a spooled copy of this wrapper, so dirname "$0" is not the
+# repository directory on compute nodes. Keep the target path explicit.
+exec /share/portal/kk837/gen_mechanics/experiments/decentralized_control/train_joint_transformer_sharpa.sub
