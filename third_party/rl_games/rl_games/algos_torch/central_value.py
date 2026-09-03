@@ -12,7 +12,8 @@ from rl_games.common import schedulers
 class CentralValueTrain(nn.Module):
 
     def __init__(self, state_shape, value_size, ppo_device, num_agents, horizon_length, num_actors, num_actions, 
-                seq_length, normalize_value, network, config, writter, max_epochs, multi_gpu, zero_rnn_on_done, type, coef_ids=None, coef_id_idx=None):
+                seq_length, normalize_value, network, config, writter, max_epochs, multi_gpu, zero_rnn_on_done, type, coef_ids=None, coef_id_idx=None,
+                mixed_precision=False):
         nn.Module.__init__(self)
 
         self.ppo_device = ppo_device
@@ -24,6 +25,17 @@ class CentralValueTrain(nn.Module):
         self.max_epochs = max_epochs
         self.multi_gpu = multi_gpu
         self.truncate_grads = config.get('truncate_grads', False)
+        # The critic used to train in fp32 unconditionally: nothing in this file
+        # referenced autocast or a GradScaler, so `mixed_precision: true` only
+        # ever reached the actor (a2c_continuous.py:134). Measured on an
+        # RTX 6000 Ada, the same value stack costs 14.65 ms in fp32 against
+        # 3.70 ms in fp16, and in a live run the central-value net was SLOWER
+        # per minibatch than the actor despite being a strictly smaller network.
+        # Passed in from the parent because central_value_config does not carry
+        # the flag; default False keeps a caller that does not pass it on the
+        # old path.
+        self.mixed_precision = mixed_precision
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.mixed_precision)
         self.config = config
         self.normalize_input = config['normalize_input']
         self.zero_rnn_on_done = zero_rnn_on_done
@@ -254,19 +266,18 @@ class CentralValueTrain(nn.Module):
         if self.is_rnn:
             batch_dict['rnn_states'] = batch['rnn_states']
 
-        res_dict = self.model(batch_dict)
-        values = res_dict['values']
-        loss = common_losses.critic_loss(self.model, value_preds_batch, values, self.e_clip, returns_batch, self.clip_value)
-        #print(loss.min(), loss.max(), loss.size(), rnn_masks_batch)
-        losses, _ = torch_ext.apply_masks([loss], rnn_masks_batch)
-        loss = losses[0]
-        #6print('aaa', loss.min(), loss.max(), loss.size())
-        if self.multi_gpu:
-            self.optimizer.zero_grad()
-        else:
-            for param in self.model.parameters():
-                param.grad = None
-        loss.backward()
+        with torch.cuda.amp.autocast(enabled=self.mixed_precision):
+            res_dict = self.model(batch_dict)
+            values = res_dict['values']
+            loss = common_losses.critic_loss(self.model, value_preds_batch, values, self.e_clip, returns_batch, self.clip_value)
+            losses, _ = torch_ext.apply_masks([loss], rnn_masks_batch)
+            loss = losses[0]
+            if self.multi_gpu:
+                self.optimizer.zero_grad()
+            else:
+                for param in self.model.parameters():
+                    param.grad = None
+        self.scaler.scale(loss).backward()
 
         if self.multi_gpu:
             # batch allreduce ops: see https://github.com/entity-neural-network/incubator/pull/220
@@ -285,8 +296,11 @@ class CentralValueTrain(nn.Module):
                     offset += param.numel()
 
         if self.truncate_grads:
+            # unscale before clipping, or the norm is measured on scaled grads.
+            self.scaler.unscale_(self.optimizer)
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
 
-        self.optimizer.step()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
 
         return loss

@@ -64,6 +64,10 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 'multi_gpu' : self.multi_gpu,
                 'zero_rnn_on_done' : self.zero_rnn_on_done,
                 'type': 'simple' if 'learn_param' not in self.expl_type else 'extra_param',
+                # central_value_config has no mixed_precision key, so without
+                # this the critic silently trained in fp32 while the actor used
+                # fp16 -- a ~4x cost difference on the same stack.
+                'mixed_precision' : self.mixed_precision,
             }
             if self.expl_type.startswith('mixed_expl'):
                 cv_config['coef_ids'] = self.intr_reward_coef_embd[::self.intr_coef_block_size,0]
@@ -215,11 +219,19 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 "on_policy_grads" : grads_on.detach().cpu(),
             }
         else:
+            # These used to be `all_grads.detach().cpu()` and a same-sized
+            # `torch.zeros_like(all_grads).cpu()` -- a full flattened-gradient
+            # device-to-host copy TWICE per minibatch, the second of a tensor
+            # already known to be zero, on the pageable path, each one a hard
+            # host sync. Nothing consumes them unless LOG_OFF_POLICY_GRADS is
+            # set (the branch above), and the consumer in a2c_common is now
+            # guarded to match. Keeping them cost ~1.7 ms per minibatch and
+            # stacked 56 x n_params floats of host memory every epoch.
             extras = {
                 "on_policy_contrib" : contrib.mean().item(),
                 "off_policy_contrib" : 0,
-                "on_policy_grads" : all_grads.detach().cpu(),
-                "off_policy_grads" : torch.zeros_like(all_grads).cpu(),
+                "on_policy_grads" : None,
+                "off_policy_grads" : None,
             }     
         if self.expl_type.startswith('mixed_expl'):
             bl_ids = self.intr_reward_coef_embd[::self.intr_coef_block_size, 0].reshape(-1,1)

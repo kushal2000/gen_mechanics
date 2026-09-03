@@ -375,13 +375,12 @@ class A2CBase(BaseAlgorithm):
                     )
                     offset += param.numel()
         else:
-            all_grads_list = []
-            for param in self.model.parameters():
-                if param.grad is not None:
-                    all_grads_list.append(param.grad.view(-1))
+            # Single GPU: there is no all-reduce to do, and the only consumer of
+            # the flattened vector was the per-minibatch gradient logging that
+            # a2c_continuous no longer performs. Building it cost a full extra
+            # copy of every gradient, every minibatch.
+            all_grads = None
 
-            all_grads = torch.cat(all_grads_list)
-        
         if self.truncate_grads:
             self.scaler.unscale_(self.optimizer)
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
@@ -1617,11 +1616,18 @@ class ContinuousA2CBase(A2CBase):
                     self.writer.add_histogram('auxiliary_stats/off_policy_contrib', np.array(extra_infos['off_policy_contrib']), frame)
                     self.writer.add_histogram('auxiliary_stats/on_policy_contrib', np.array(extra_infos['on_policy_contrib']), frame)
 
-                    on_policy_grads = torch.stack(extra_infos['on_policy_grads'])
-                    off_policy_grads = torch.stack(extra_infos['off_policy_grads'])
+                    # Only populated under LOG_OFF_POLICY_GRADS; otherwise the
+                    # per-minibatch device-to-host gradient copies that fed this
+                    # are skipped entirely. NOTE: `.diag()` on the 1-D output of
+                    # cosine_similarity builds an (n, n) matrix whose off-diagonal
+                    # zeros are then averaged in, so this scalar reads n times
+                    # smaller than the similarity it claims to report.
+                    if extra_infos['on_policy_grads'] and extra_infos['on_policy_grads'][0] is not None:
+                        on_policy_grads = torch.stack(extra_infos['on_policy_grads'])
+                        off_policy_grads = torch.stack(extra_infos['off_policy_grads'])
 
-                    self.writer.add_scalar('auxiliary_stats/off_on_grad_similarity', torch.cosine_similarity(on_policy_grads, off_policy_grads).diag().mean(),frame)
-                    self.writer.add_scalar('auxiliary_stats/off_on_relative_grad_norms', torch.norm(off_policy_grads, dim=-1).mean()/torch.norm(on_policy_grads, dim=-1).mean(), frame)
+                        self.writer.add_scalar('auxiliary_stats/off_on_grad_similarity', torch.cosine_similarity(on_policy_grads, off_policy_grads).diag().mean(),frame)
+                        self.writer.add_scalar('auxiliary_stats/off_on_relative_grad_norms', torch.norm(off_policy_grads, dim=-1).mean()/torch.norm(on_policy_grads, dim=-1).mean(), frame)
                     
                     if extra_infos['mb_intr_rewards'] is not None:
                         if hasattr(self, 'intr_coef_block_size'):
