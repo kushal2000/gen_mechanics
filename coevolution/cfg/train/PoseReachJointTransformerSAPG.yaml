@@ -46,6 +46,16 @@ params:
     n_heads: 4
     ff_mult: 4
     dropout: 0.0
+    # torch.compile the WHOLE network (not just the encoder stack):
+    # Inductor then fuses across the token gather, token_proj, the cat,
+    # ln_out and the heads -- where the profile shows the time going.
+    # Measured at d_model 64, batch 16384: eager 21.66 ms, layer-scope
+    # 15.42, whole-net 10.94, whole-net max-autotune 9.83. Numerically
+    # equivalent; opt-in because it moves startup cost and failure modes.
+    compile_net: false
+    # "" = default mode. "max-autotune" is worth a further ~1.12x at
+    # d_model 64 but nothing at 128, and costs minutes at startup.
+    compile_mode: ""
     # The arm carries the 6D pose task -- once the object is grasped, driving it
     # through SE(3) goals is mostly arm motion. Run 1 used [256,128] off the
     # d_model=128 global token alone and reached/lifted as well as the MLP
@@ -143,6 +153,16 @@ params:
         n_heads: 4
         ff_mult: 4
         dropout: 0.0
+        # torch.compile the WHOLE network (not just the encoder stack):
+        # Inductor then fuses across the token gather, token_proj, the cat,
+        # ln_out and the heads -- where the profile shows the time going.
+        # Measured at d_model 64, batch 16384: eager 21.66 ms, layer-scope
+        # 15.42, whole-net 10.94, whole-net max-autotune 9.83. Numerically
+        # equivalent; opt-in because it moves startup cost and failure modes.
+        compile_net: false
+        # "" = default mode. "max-autotune" is worth a further ~1.12x at
+        # d_model 64 but nothing at 128, and costs minutes at startup.
+        compile_mode: ""
         value_head_units: [512, 256]
 
     # === SAPG ===
