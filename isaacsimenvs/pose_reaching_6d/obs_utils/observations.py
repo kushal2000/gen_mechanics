@@ -14,12 +14,11 @@ from isaaclab.utils.math import convert_quat, quat_apply, quat_from_angle_axis, 
 # ----------------------------------------------------------------------------
 
 
-# Task constants — hand-independent.
-NUM_KEYPOINTS: int = 4
-
-# Width of the morphology descriptor (utils/morphology.py). Imported rather than
-# duplicated so the two cannot disagree; that module is Kit-free.
-from .morphology import DESCRIPTOR_DIM as MORPHOLOGY_DIM  # noqa: E402
+# The field-size table and keypoint count live in Kit-free ``layout.py`` so the
+# network can build exact gather indices without booting the simulator.
+from .layout import (  # noqa: E402
+    NUM_KEYPOINTS, compute_obs_dim, obs_field_sizes,
+)
 
 # Object-frame keypoint corners before scaling.
 KEYPOINT_CORNERS: tuple[tuple[int, int, int], ...] = (
@@ -33,55 +32,6 @@ KEYPOINT_CORNERS: tuple[tuple[int, int, int], ...] = (
 # be module constants here (29 / 5 / two fixed 3-vectors). They are now read
 # from the RobotSpec, so obs dims follow the selected hand instead of being
 # pinned to SHARPA. See hand_sampler/spec.py.
-
-
-def obs_field_sizes(spec) -> dict[str, int]:
-    """Per-field observation widths for a given robot.
-
-    Sizes that scale with hardware — joint vectors and the two fingertip
-    fields — come from the spec; the rest are task-fixed.
-    """
-    n_joints = spec.num_joints
-    # Padded slot count, so every design in a population shares one layout. For
-    # a fixed hand this equals num_fingertips and the widths are unchanged.
-    n_tips = spec.num_fingertip_slots
-    return {
-        "joint_pos": n_joints,
-        "joint_vel": n_joints,
-        "prev_action_targets": n_joints,
-        "palm_pos": 3,
-        "palm_rot": 4,
-        "palm_vel": 6,
-        "object_rot": 4,
-        "object_vel": 6,
-        "fingertip_pos_rel_palm": 3 * n_tips,
-        "keypoints_rel_palm": 3 * NUM_KEYPOINTS,
-        "keypoints_rel_goal": 3 * NUM_KEYPOINTS,
-        "object_scales": 3,
-        "closest_keypoint_max_dist": 1,
-        "closest_fingertip_dist": n_tips,
-        # Constant-per-env description of the mechanism the policy commands:
-        # mount poses, link lengths and radii, which joints exist, and the
-        # abduction range that joint_pos normalization hides. Only the
-        # multi-embodiment env requests it; listed here so compute_obs_dim can
-        # size it. See utils/morphology.py.
-        "morphology": MORPHOLOGY_DIM,
-        "lifted_object": 1,
-        "progress": 1,
-        "successes": 1,
-        "reward": 1,
-    }
-
-
-def compute_obs_dim(field_list, spec) -> int:
-    """Total tensor dim for an ordered list of obs field names, for this robot."""
-    sizes = obs_field_sizes(spec)
-    unknown = [f for f in field_list if f not in sizes]
-    if unknown:
-        raise KeyError(
-            f"unknown observation field(s) {unknown}; valid: {sorted(sizes)}"
-        )
-    return sum(sizes[f] for f in field_list)
 
 
 def _stack_obs_dict(obs_dict: dict[str, torch.Tensor], field_list) -> torch.Tensor:
@@ -165,16 +115,71 @@ def _sample_delay(
     return queue, delayed
 
 
-def _canonical_joint_obs(env) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Return policy-order joint pos, vel, and previous targets."""
+def _normalize_joint_pos(raw, lower, upper) -> torch.Tensor:
+    return 2.0 * (raw - lower) / (upper - lower) - 1.0
+
+
+def _quat_apply_broadcast(quat: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
+    """Quaternion rotation with broadcast views, avoiding flattened copies."""
+    xyz = quat[..., 1:].expand_as(vec)
+    t = torch.cross(xyz, vec, dim=-1) * 2.0
+    return vec + quat[..., 0:1] * t + torch.cross(xyz, t, dim=-1)
+
+
+def _canonical_joint_obs(env) -> tuple[torch.Tensor, ...]:
+    """Return current/history proprioception and applied targets in policy order."""
     perm = env._perm_lab_to_canon
     joint_pos_raw = env.robot.data.joint_pos[:, perm]
-    joint_pos = (
-        2.0 * (joint_pos_raw - env._joint_lower_canon)
-        / (env._joint_upper_canon - env._joint_lower_canon)
-        - 1.0
+    joint_pos = _normalize_joint_pos(
+        joint_pos_raw, env._joint_lower_canon, env._joint_upper_canon
     )
-    return joint_pos, env.robot.data.joint_vel[:, perm], env._prev_targets[:, perm]
+    prev_joint_pos = _normalize_joint_pos(
+        env._prev_joint_pos_canon, env._joint_lower_canon, env._joint_upper_canon
+    )
+    return (
+        joint_pos,
+        env.robot.data.joint_vel[:, perm],
+        prev_joint_pos,
+        env._prev_joint_vel_canon,
+        env._prev_targets[:, perm],
+    )
+
+
+def _joint_link_geometry_obs(env, palm_center_pos_w, palm_rot, env_origins):
+    """Batched SHARPA link boxes in the normalized palm frame plus joint origins."""
+    state = env.robot.data.body_state_w[:, env._joint_link_body_ids, :]
+    body_pos = state[:, :, 0:3]
+    body_rot = state[:, :, 3:7]
+    n, joints, points, _ = env._joint_link_bbox_local.shape
+
+    box_world = body_pos.unsqueeze(2) + _quat_apply_broadcast(
+        body_rot.unsqueeze(2), env._joint_link_bbox_local
+    )
+
+    palm_inv = palm_rot.clone()
+    palm_inv[:, 1:] *= -1.0
+    box_palm = _quat_apply_broadcast(
+        palm_inv[:, None, None, :],
+        box_world - palm_center_pos_w[:, None, None, :],
+    )
+    box_palm = box_palm / env._hand_scale[:, None, None, :]
+
+    valid = env._joint_geometry_valid
+    box_palm = box_palm * valid[:, :, None, None].to(box_palm.dtype)
+    joint_origins = body_pos - env_origins.unsqueeze(1)
+    return box_palm, joint_origins, valid
+
+
+def _object_keypoints_rel_joint(
+    object_keypoints, joint_origins, palm_rot, hand_scale, valid
+) -> torch.Tensor:
+    """Object keypoints from every joint, in normalized palm-frame vectors."""
+    rel_world = object_keypoints[:, None, :, :] - joint_origins[:, :, None, :]
+    palm_inv = palm_rot.clone()
+    palm_inv[:, 1:] *= -1.0
+    rel_palm = _quat_apply_broadcast(palm_inv[:, None, None, :], rel_world)
+    rel_palm = rel_palm / hand_scale[:, None, None, :]
+    return rel_palm * valid[:, :, None, None].to(rel_palm.dtype)
 
 
 # ----------------------------------------------------------------------------
@@ -276,7 +281,13 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     dr = env.cfg.domain_randomization
     env_origins = env.scene.env_origins
 
-    joint_pos, joint_vel, prev_targets_canon = _canonical_joint_obs(env)
+    (
+        joint_pos,
+        joint_vel,
+        prev_joint_pos,
+        prev_joint_vel,
+        prev_targets_canon,
+    ) = _canonical_joint_obs(env)
 
     palm_state = env.robot.data.body_state_w[:, env._palm_body_id, :]  # (N, 13)
     palm_pos_w = palm_state[:, 0:3]
@@ -287,17 +298,6 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         palm_pos_w, palm_rot, env._palm_center_offset, (env.num_envs,)
     )
     palm_pos = palm_center_pos_w - env_origins
-
-    ft_state = env.robot.data.body_state_w[:, env._fingertip_body_ids, :]  # (N, 5, 13)
-    ft_body_pos_w = ft_state[:, :, 0:3]
-    ft_body_rot_w = ft_state[:, :, 3:7]  # wxyz
-
-    ft_pos_w = _apply_local_offset(
-        ft_body_pos_w,
-        ft_body_rot_w,
-        env._fingertip_offsets,
-        (env.num_envs, env._num_fingertips),
-    )
 
     obj_pos = env.object.data.root_pos_w - env_origins
     obj_rot = env.object.data.root_quat_w  # wxyz
@@ -337,13 +337,15 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     keypoints_rel_goal_clean = obj_kp - goal_kp
     keypoints_rel_goal_noisy = noisy_obj_kp - noisy_goal_kp
 
-    fingertip_pos_rel_palm = (
-        (ft_pos_w - env_origins.unsqueeze(1)) - palm_pos.unsqueeze(1)
-    )  # (N, S, 3)
-    # Ghosted slots would otherwise feed the policy the pose of a finger that is
-    # not there. Zero is the "absent" value, consistent with the distance field.
-    fingertip_pos_rel_palm = fingertip_pos_rel_palm * (
-        env._fingertip_mask.unsqueeze(-1).to(fingertip_pos_rel_palm.dtype)
+    joint_link_bbox, joint_origins, joint_geometry_valid = (
+        _joint_link_geometry_obs(env, palm_center_pos_w, palm_rot, env_origins)
+    )
+    object_keypoints_rel_joint_clean = _object_keypoints_rel_joint(
+        obj_kp, joint_origins, palm_rot, env._hand_scale, joint_geometry_valid
+    )
+    object_keypoints_rel_joint_noisy = _object_keypoints_rel_joint(
+        noisy_obj_kp, joint_origins, palm_rot, env._hand_scale,
+        joint_geometry_valid,
     )
 
     object_scales_obs = env.scene_record.object_scale * env._object_scale_multiplier
@@ -356,13 +358,20 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     obs_clean: dict[str, torch.Tensor] = {
         "joint_pos": joint_pos,
         "joint_vel": joint_vel,
+        "prev_joint_pos": prev_joint_pos,
+        "prev_joint_vel": prev_joint_vel,
         "prev_action_targets": prev_targets_canon,
+        "joint_link_bbox": joint_link_bbox,
+        "joint_lower": env._joint_lower_hand,
+        "joint_upper": env._joint_upper_hand,
+        "joint_enabled": env._joint_enabled,
+        "object_keypoints_rel_joint": object_keypoints_rel_joint_clean,
+        "hand_scale": env._hand_scale,
         "palm_pos": palm_pos,
         "palm_rot": palm_rot_xyzw,
         "palm_vel": palm_vel,
         "object_rot": obj_rot_xyzw,
         "object_vel": obj_vel,
-        "fingertip_pos_rel_palm": fingertip_pos_rel_palm,
         "keypoints_rel_palm": keypoints_rel_palm_clean,
         "keypoints_rel_goal": keypoints_rel_goal_clean,
         "object_scales": object_scales_obs,
@@ -383,9 +392,14 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     obs_noisy["object_vel"] = noisy_obj_vel
     obs_noisy["keypoints_rel_palm"] = keypoints_rel_palm_noisy
     obs_noisy["keypoints_rel_goal"] = keypoints_rel_goal_noisy
+    obs_noisy["object_keypoints_rel_joint"] = object_keypoints_rel_joint_noisy
     if dr.joint_velocity_obs_noise_std > 0:
         obs_noisy["joint_vel"] = (
             joint_vel + torch.randn_like(joint_vel) * dr.joint_velocity_obs_noise_std
+        )
+        obs_noisy["prev_joint_vel"] = (
+            prev_joint_vel
+            + torch.randn_like(prev_joint_vel) * dr.joint_velocity_obs_noise_std
         )
 
     state_tensor = _stack_obs_dict(obs_clean, env.cfg.obs.state_list)

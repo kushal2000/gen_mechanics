@@ -10,6 +10,7 @@ from isaaclab.utils.math import random_orientation
 from ..obs_utils import sample_log_uniform
 from .goal_sampling import sample_absolute_goal_pose, sample_delta_goal_pose
 from ..obs_utils import KEYPOINT_CORNERS
+from ..obs_utils.joint_geometry import joint_link_boxes
 
 
 def allocate_state_buffers(env) -> None:
@@ -142,6 +143,37 @@ def allocate_state_buffers(env) -> None:
         device=env.device, dtype=torch.long,
     )
 
+    # --- Explicit SHARPA hand-token geometry --------------------------------
+    # Parsed once on the CPU, then held on the simulation device.  The rollout
+    # path only gathers these 22 body poses and applies one batched transform.
+    # Population geometry is deliberately out of scope for this architecture
+    # pass: a population needs one box table per authored design.
+    if env.scene_record.population is not None:
+        raise NotImplementedError(
+            "joint-link token observations currently support one fixed robot; "
+            "the generated-hand population path still uses its legacy morphology"
+        )
+    child_bodies, link_boxes, geometry_valid, hand_scale = joint_link_boxes(
+        spec.urdf_path, spec.hand_joint_names
+    )
+    env._joint_link_body_ids = env.robot.find_bodies(
+        child_bodies, preserve_order=True
+    )[0]
+    if len(env._joint_link_body_ids) != spec.num_hand_joints:
+        raise RuntimeError(
+            f"{spec.name}: found {len(env._joint_link_body_ids)} controlled-link "
+            f"bodies, expected {spec.num_hand_joints}"
+        )
+    env._joint_link_bbox_local = torch.as_tensor(
+        link_boxes, device=env.device, dtype=torch.float32
+    ).unsqueeze(0).expand(env.num_envs, -1, -1, -1)
+    env._joint_geometry_valid = torch.as_tensor(
+        geometry_valid, device=env.device, dtype=torch.bool
+    ).unsqueeze(0).expand(env.num_envs, -1)
+    env._hand_scale = torch.full(
+        (env.num_envs, 1), hand_scale, device=env.device, dtype=torch.float32
+    )
+
     limits = env.robot.data.joint_pos_limits  # (N, num_joints, 2), Lab order
 
     # Canonical-order limits for normalizing joint_pos observations.
@@ -154,6 +186,12 @@ def allocate_state_buffers(env) -> None:
     # are identical, so this is the same arithmetic on the same values.
     env._joint_lower_canon = limits[:, :, 0][:, env._perm_lab_to_canon]  # (N, J)
     env._joint_upper_canon = limits[:, :, 1][:, env._perm_lab_to_canon]
+    hand_slice = slice(spec.num_arm_joints, spec.num_joints)
+    env._joint_lower_hand = env._joint_lower_canon[:, hand_slice]
+    env._joint_upper_hand = env._joint_upper_canon[:, hand_slice]
+    env._joint_enabled = (
+        env._joint_upper_hand - env._joint_lower_hand > 1e-6
+    ).to(torch.float32)
 
     # Lab-order limits for action target clamping.
     env._arm_lower = limits[:, env._arm_joint_ids, 0]
@@ -165,6 +203,12 @@ def allocate_state_buffers(env) -> None:
     action_space = env.cfg.action_space
     env._cur_targets = torch.zeros(env.num_envs, action_space, device=env.device)
     env._prev_targets = torch.zeros(env.num_envs, action_space, device=env.device)
+    env._prev_joint_pos_canon = env.robot.data.joint_pos[
+        :, env._perm_lab_to_canon
+    ].clone()
+    env._prev_joint_vel_canon = env.robot.data.joint_vel[
+        :, env._perm_lab_to_canon
+    ].clone()
 
     # --- Keypoint offsets in object local frame ---
     corners = torch.tensor(
@@ -310,6 +354,8 @@ def _randomize_robot_dof_state(env, env_ids: torch.Tensor) -> None:
     env.robot.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
     env._prev_targets[env_ids] = joint_pos
     env._cur_targets[env_ids] = joint_pos
+    env._prev_joint_pos_canon[env_ids] = joint_pos[:, env._perm_lab_to_canon]
+    env._prev_joint_vel_canon[env_ids] = joint_vel[:, env._perm_lab_to_canon]
 
 
 def _reset_table_pose(env, env_ids: torch.Tensor) -> None:

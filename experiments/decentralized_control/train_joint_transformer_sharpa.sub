@@ -1,0 +1,126 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=8
+#SBATCH --get-user-env
+#SBATCH --mem=50000
+#SBATCH -t 3-00:00:00           # the budget: the run trains until this expires
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+# Redirected into RUN_DIR below; `sacct -j <jobid>` has the kill reason.
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# DECENTRALIZED per-joint transformer on SHARPA + iiwa14.
+#   sbatch experiments/decentralized_control/train_joint_transformer_sharpa.sub
+#   SEED=1 sbatch experiments/decentralized_control/train_joint_transformer_sharpa.sub
+#
+# The matched control is train_mlp_nolstm_sharpa.sub in this folder: same
+# minibatch, same SAPG block, same DR-off regime, centralized MLP instead of
+# 22 joint tokens. Run both or the number means nothing.
+
+set -euo pipefail
+
+ROBOT="${ROBOT:-sharpa_iiwa14}"
+SEED="${SEED:-0}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+AGENT="${AGENT:-rl_games_joint_transformer_cfg_entry_point}"
+ARCH_TAG="${ARCH_TAG:-joint_transformer}"
+HORIZON_LENGTH=16                     # must match the train YAML
+EXPL_COEF_BLOCK_SIZE=4096
+# Pose-only interactive HTML viewer; CAPTURE_VIEWER=0 turns it off.
+CAPTURE_VIEWER="${CAPTURE_VIEWER:-1}"
+WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
+WANDB_GROUP="${WANDB_GROUP:-decentralized_control}"
+WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+
+# 16384, not the 98304 the single-embodiment reference uses: a 22-token
+# transformer at 98304 does not fit. See the note in the train YAML.
+BATCH=$(( HORIZON_LENGTH * NUM_ENVS ))
+MINIBATCH_SIZE="${MINIBATCH_SIZE:-16384}"
+
+# SAPG grows the batch before the dataset is built: with off_policy_ratio 1.0
+# and use_others_experience=lf it appends one block's worth of another policy's
+# experience (a2c_common.augment_batch_for_mixed_expl -> filter_leader), and
+# PPODataset gives the remainder to the LAST minibatch. So the divisor that
+# actually matters is the AUGMENTED length, not BATCH. One block means
+# num_repeat=1 and no augmentation at all.
+NUM_BLOCKS=$(( NUM_ENVS / EXPL_COEF_BLOCK_SIZE ))
+if (( NUM_BLOCKS > 1 )); then
+  AUG_BATCH=$(( BATCH + BATCH / NUM_BLOCKS ))
+else
+  AUG_BATCH=$BATCH
+fi
+
+# Names the log folder, the checkpoint folder and the wandb run. Override it
+# with something that says what the run is FOR: RUN_NAME=jt_d128_sep02
+EXPERIMENT_NAME="${RUN_NAME:-${ARCH_TAG}_${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)}"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
+# One directory per run holding everything: logs, usage csvs, checkpoints,
+# tensorboard, wandb and the resolved hydra config.
+RUN_DIR="${REPO_ROOT}/debug_outputs/${LOG_GROUP:-train_logs}/${EXPERIMENT_NAME}"
+mkdir -p "$RUN_DIR"
+exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
+
+# After the redirect, so the message lands in slurm.err rather than /dev/null.
+(( NUM_ENVS % EXPL_COEF_BLOCK_SIZE == 0 )) || { echo "NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE" >&2; exit 1; }
+(( BATCH % MINIBATCH_SIZE == 0 ))          || { echo "MINIBATCH_SIZE must divide $BATCH" >&2; exit 1; }
+(( AUG_BATCH % MINIBATCH_SIZE == 0 ))      || { echo "MINIBATCH_SIZE must divide the SAPG-augmented $AUG_BATCH" >&2; exit 1; }
+# rl_games' PpoPlayerContinuous hardcodes 6 exploration blocks (players.py:48),
+# and the per-block sigma / extra_params are in the state_dict -- so a run with
+# any other block count trains fine and then cannot be replayed by RlPlayer.
+(( NUM_BLOCKS == 6 )) || echo "WARNING: $NUM_BLOCKS SAPG blocks, not 6 -- this checkpoint will not restore in eval" >&2
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"        # local disk, never NFS
+export WANDB_DIR="$RUN_DIR"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+echo "arch=$ARCH_TAG robot=$ROBOT seed=$SEED envs=$NUM_ENVS minibatch=$MINIBATCH_SIZE blocks=$NUM_BLOCKS aug_batch=$AUG_BATCH"
+# Sample RAM/CPU/GPU for the life of the run
+experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
+
+[ "$CAPTURE_VIEWER" = "1" ] && VIEWER_ARGS=(--capture_viewer) || VIEWER_ARGS=()
+
+# Extra Hydra overrides, whitespace-separated. For a smoke run:
+#   EXTRA_OVERRIDES="agent.params.config.max_epochs=30"
+read -r -a EXTRA_ARGS <<< "${EXTRA_OVERRIDES:-}"
+
+# DR off and no action smoothing: these runs are an architecture comparison, and
+# the delays, sensor noise and random wrenches are sim2real machinery that only
+# slows the signal down. moving_average 1.0 means the commanded target IS the
+# policy's output, with no 0.1 EMA lag between them.
+#   force_prob_range / torque_prob_range are deliberately left alone -- they are
+#   sampled log-uniformly and 0.0 would be -inf; zeroing the scales is enough.
+python -u coevolution/train.py \
+    --task GenMech-PoseReach-Direct-v0 \
+    --agent "$AGENT" \
+    --headless \
+    "${VIEWER_ARGS[@]}" \
+    --wandb_activate \
+    --wandb_project "$WANDB_PROJECT" \
+    --wandb_group "$WANDB_GROUP" \
+    --wandb_entity "$WANDB_ENTITY" \
+    --wandb_tags "$ROBOT" "seed$SEED" "$ARCH_TAG" "dr_off" \
+    `# --wandb_tags is nargs=+; the --flag below stops it eating the overrides` \
+    --wandb_name "$EXPERIMENT_NAME" \
+    env.assets.robot_spec="$ROBOT" \
+    env.scene.num_envs="$NUM_ENVS" \
+    env.action.arm_moving_average=1.0 \
+    env.action.hand_moving_average=1.0 \
+    env.domain_randomization.use_obs_delay=false \
+    env.domain_randomization.use_action_delay=false \
+    env.domain_randomization.use_object_state_delay_noise=false \
+    env.domain_randomization.joint_velocity_obs_noise_std=0.0 \
+    env.domain_randomization.force_scale=0.0 \
+    env.domain_randomization.torque_scale=0.0 \
+    agent.params.seed="$SEED" \
+    agent.params.config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.central_value_config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.expl_coef_block_size="$EXPL_COEF_BLOCK_SIZE" \
+    hydra.run.dir="$RUN_DIR" \
+    ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}

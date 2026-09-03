@@ -22,6 +22,12 @@ def pre_physics_step(env, actions: torch.Tensor) -> None:
     to ``_cur_targets`` are what ``_apply_action`` sends on every substep, and
     the wrench it sets on the object persists across the same substeps.
     """
+    # State now is the frame that produced ``actions``.  Preserve it before the
+    # physics step so the next observation contains a real one-step history.
+    perm = env._perm_lab_to_canon
+    env._prev_joint_pos_canon.copy_(env.robot.data.joint_pos[:, perm])
+    env._prev_joint_vel_canon.copy_(env.robot.data.joint_vel[:, perm])
+
     apply_action_pipeline(env, actions)
     apply_wrench_dr(env)
 

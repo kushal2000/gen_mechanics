@@ -8,6 +8,9 @@ Entry points:
 - ``env_cfg_yaml_entry_point``      → cfg/task/PoseReach.yaml overlay
 - ``rl_games_cfg_entry_point``      → cfg/train/PoseReachPPO.yaml (baseline)
 - ``rl_games_sapg_cfg_entry_point`` → cfg/train/PoseReachSAPG.yaml (default)
+- ``rl_games_sapg_nolstm_cfg_entry_point`` → cfg/train/PoseReachSAPGNoLSTM.yaml
+- ``rl_games_joint_transformer_cfg_entry_point``
+  → cfg/train/PoseReachJointTransformerSAPG.yaml (decentralized per-joint policy)
 
 ``PoseReachEnv`` and ``PoseReachEnvCfg`` are re-exported **lazily**. Importing
 them eagerly would pull in ``isaaclab.envs`` at package-import time, which only
@@ -15,7 +18,7 @@ resolves after ``AppLauncher`` has booted Kit — that would make every Kit-free
 module under ``utils/`` (reward math, goal sampling, object generation) require
 a Kit boot to import, and with it the offline tools in ``genmech.tools``.
 
-All four registry entry points are strings, so gym resolves them at
+All registry entry points are strings, so gym resolves them at
 ``gym.make`` time; nothing here needs the env class up front.
 """
 
@@ -40,6 +43,12 @@ gym.register(
         "env_cfg_yaml_entry_point": str(_CFG_DIR / "task" / "PoseReach.yaml"),
         "rl_games_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachPPO.yaml"),
         "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachSAPG.yaml"),
+        "rl_games_sapg_nolstm_cfg_entry_point": str(
+            _CFG_DIR / "train" / "PoseReachSAPGNoLSTM.yaml"
+        ),
+        "rl_games_joint_transformer_cfg_entry_point": str(
+            _CFG_DIR / "train" / "PoseReachJointTransformerSAPG.yaml"
+        ),
     },
 )
 
@@ -58,6 +67,12 @@ gym.register(
         "env_cfg_yaml_entry_point": str(_CFG_DIR / "task" / "PoseReach.yaml"),
         "rl_games_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachPPO.yaml"),
         "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "PoseReachSAPG.yaml"),
+        "rl_games_sapg_nolstm_cfg_entry_point": str(
+            _CFG_DIR / "train" / "PoseReachSAPGNoLSTM.yaml"
+        ),
+        "rl_games_joint_transformer_cfg_entry_point": str(
+            _CFG_DIR / "train" / "PoseReachJointTransformerSAPG.yaml"
+        ),
     },
 )
 

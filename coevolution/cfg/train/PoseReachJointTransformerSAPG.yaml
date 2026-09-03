@@ -1,0 +1,160 @@
+# gen_mechanics rl_games SAPG config — DECENTRALIZED per-joint transformer.
+#
+# One token per SHARPA hand joint (22) plus one global token, full self-attention,
+# and a single shared head that produces every hand joint's command. The 7 arm
+# joints are not tokenized: their observations go into the global token and a
+# separate MLP head produces their actions, because arm actions are velocity
+# deltas and hand actions are absolute positions (obs_utils/actions.py).
+# Implementation: coevolution/networks/joint_transformer.py.
+#
+# Differences from PoseReachSAPG.yaml, and only these:
+#   - network.name: joint_transformer (mlp: and rnn: blocks dropped)
+#   - the same network for the asymmetric critic
+#   - minibatch_size 98304 -> 16384 (see the note on it below)
+# Everything else — the SAPG block, gamma/tau/lr/clip, horizon — is byte-identical,
+# so a run against PoseReachSAPGNoLSTM.yaml isolates the architecture.
+#
+# NO RECURRENCE. The baseline's LSTM(1024) is gone and nothing replaces it: the
+# policy sees one frame. PoseReachSAPGNoLSTM.yaml is the matched MLP control, so
+# the comparison is not confounded by the loss of memory.
+
+params:
+  seed: 42
+
+  env:
+    clip_observations: 10.0   # matches env.obs.clamp_abs_observations
+    clip_actions: 1.0
+
+  algo:
+    name: a2c_continuous
+
+  model:
+    name: continuous_a2c_logstd
+
+  network:
+    name: joint_transformer
+    separate: False
+    # The network is handed only a flat width by rl_games, so it reads the
+    # robot and the field list across the config tree — four dots to the root,
+    # exactly as params.config.num_actors does. Hydra resolves these before
+    # saving .hydra/config.yaml, and synthesise_policy_config resolves against
+    # the whole config, so the eval path gets them too.
+    robot_spec: ${....env.assets.robot_spec}
+    obs_list: ${....env.obs.obs_list}
+    d_model: 128
+    n_layers: 4
+    n_heads: 4
+    ff_mult: 4
+    dropout: 0.0
+    # The arm carries the 6D pose task -- once the object is grasped, driving it
+    # through SE(3) goals is mostly arm motion. Run 1 used [256,128] off the
+    # d_model=128 global token alone and reached/lifted as well as the MLP
+    # baseline while scoring ~0 on the post-lift keypoint term. Both heads now
+    # also read the raw global observation directly (see joint_transformer.py),
+    # so palm/object/keypoint/goal no longer bottleneck through one token.
+    #
+    # d_model stays 128. Trunk activations are minibatch x 23 tokens x d_model
+    # x layers, so 256 measured 46.0 GiB of 48.0 and DOUBLED the epoch (26.9s
+    # -> 55.6s). The heads below run on B rows rather than B x 23 tokens, so
+    # they cost ~0.1 GiB -- and they are the part that addresses the diagnosis.
+    # Widening the trunk only bought less headroom and half the frames.
+    arm_head_units: [1024, 512]
+    value_head_units: [512, 256]
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: 0
+        fixed_sigma: coef_cond    # SAPG requires coef_cond (not 'fixed')
+
+  load_checkpoint: False
+  load_path: ''
+
+  config:
+    # Must start with `<int>_` — our vendored rl_games parses policy_idx from the prefix.
+    name: 0_pose_reach_jt_sapg
+    full_experiment_name: ${.name}
+    env_name: rlgpu
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    multi_gpu: False
+    ppo: True
+    mixed_precision: True
+    normalize_input: True
+    normalize_value: True
+    value_bootstrap: True
+    normalize_advantage: True
+    reward_shaper:
+      scale_value: 0.01
+    num_actors: ${....env.scene.num_envs}
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 1e-4
+    lr_schedule: adaptive
+    schedule_type: standard
+    kl_threshold: 0.016
+    score_to_win: 1000000
+    max_epochs: 1000000
+    save_best_after: 100
+    save_frequency: 3000
+    print_stats: True
+    grad_norm: 1.0
+    entropy_coef: 0.0
+    truncate_grads: True
+    e_clip: 0.1
+    # 16384, not the baseline's 98304. SAPG augments the batch before the
+    # dataset is built (a2c_common.augment_batch_for_mixed_expl + filter_leader):
+    # at 24576 envs the 393216 rows become 393216 + 393216/6 = 458752, and
+    # PPODataset._get_item hands the remainder to the LAST minibatch — so 98304
+    # actually peaks at 163840 rows. A 22-token transformer at that width does
+    # not fit the ~13 GB left on a 48 GB card after the sim's 35 GB. 16384
+    # divides both 393216 and 458752 exactly.
+    minibatch_size: 16384
+    mini_epochs: 2
+    critic_coef: 4.0
+    clip_value: True
+    horizon_length: 16
+    # Still load-bearing without an RNN: a2c_common calls shuffle_batch(seq_length)
+    # for mixed_expl, which shuffles in contiguous 16-step chunks.
+    seq_length: 16
+    bounds_loss_coef: 0.0001
+
+    # Asymmetric critic (stateList > obsList), same tokenizer over the 800-d state.
+    central_value_config:
+      minibatch_size: 16384
+      mini_epochs: 2
+      learning_rate: 1e-4
+      kl_threshold: 0.016
+      clip_value: True
+      normalize_input: True
+      truncate_grads: True
+      network:
+        name: joint_transformer
+        central_value: True
+        # Six dots: this node is two levels deeper than params.network.
+        robot_spec: ${......env.assets.robot_spec}
+        state_list: ${......env.obs.state_list}
+        d_model: 128
+        n_layers: 4
+        n_heads: 4
+        ff_mult: 4
+        dropout: 0.0
+        value_head_units: [512, 256]
+
+    # === SAPG ===
+    use_others_experience: lf
+    off_policy_ratio: 1.0
+    expl_type: mixed_expl_learn_param
+    expl_reward_type: entropy
+    expl_reward_coef_embd_size: 32
+    expl_reward_coef_scale: 0.002
+    expl_coef_block_size: 4096
+
+    player:
+      deterministic: False
+      games_num: 100000
+      print_stats: False

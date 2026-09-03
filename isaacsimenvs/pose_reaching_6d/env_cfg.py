@@ -63,18 +63,20 @@ class ObsCfg:
     """Asymmetric actor-critic: the critic sees state_list, the actor obs_list."""
 
     state_list: tuple[str, ...] = (
-        "joint_pos", "joint_vel", "prev_action_targets",
-        "palm_pos", "palm_rot", "palm_vel",
-        "object_rot", "object_vel",
-        "fingertip_pos_rel_palm", "keypoints_rel_palm", "keypoints_rel_goal",
-        "object_scales", "closest_keypoint_max_dist", "closest_fingertip_dist",
+        "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel",
+        "prev_action_targets", "joint_link_bbox", "joint_lower", "joint_upper",
+        "joint_enabled", "object_keypoints_rel_joint", "hand_scale",
+        "palm_pos", "palm_rot", "palm_vel", "object_rot", "object_vel",
+        "keypoints_rel_palm", "keypoints_rel_goal", "object_scales",
+        "closest_keypoint_max_dist", "closest_fingertip_dist",
         "lifted_object", "progress", "successes", "reward",
     )
     obs_list: tuple[str, ...] = (
-        "joint_pos", "joint_vel", "prev_action_targets",
-        "palm_pos", "palm_rot", "object_rot",
-        "fingertip_pos_rel_palm", "keypoints_rel_palm", "keypoints_rel_goal",
-        "object_scales",
+        "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel",
+        "prev_action_targets", "joint_link_bbox", "joint_lower", "joint_upper",
+        "joint_enabled", "object_keypoints_rel_joint", "hand_scale",
+        "palm_pos", "palm_rot", "object_rot", "keypoints_rel_palm",
+        "keypoints_rel_goal", "object_scales",
     )
     clamp_abs_observations: float = 10.0
 
@@ -244,8 +246,8 @@ class PoseReachEnvCfg(DirectRLEnvCfg):
     # 0 = derive from the robot spec in setup_scene; a stale non-zero value raises.
     action_space: int = 0
     # Placeholders; setup_scene derives the real widths from obs.obs_list / state_list.
-    observation_space: int = 140
-    state_space: int = 140
+    observation_space: int = 778
+    state_space: int = 800
 
     sim: SimulationCfg = _default_sim_cfg()
     # Camera for render('rgb_array'), world frame, framed on the central env.

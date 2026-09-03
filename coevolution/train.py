@@ -127,6 +127,7 @@ def main() -> None:
     from rl_games.torch_runner import Runner
 
     import isaacsimenvs  # noqa: F401  registers GenMech-PoseReach-Direct-v0
+    import coevolution.networks  # noqa: F401  registers the joint_transformer net
     from coevolution.utils.hydra_utils import hydra_task_config_with_yaml
     from coevolution.utils.rlgames_utils import (
         EnvStatsAlgoObserver,

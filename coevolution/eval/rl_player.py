@@ -28,6 +28,7 @@ import torch
 from gym import spaces  # rl_games speaks old-gym spaces, not gymnasium
 from rl_games.torch_runner import Runner, players
 
+import coevolution.networks  # noqa: F401  registers the joint_transformer net
 from coevolution.eval.rl_player_utils import read_cfg
 
 
