@@ -1,0 +1,127 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=8
+#SBATCH --get-user-env
+#SBATCH --mem=50000
+#SBATCH -t 3-00:00:00           # the budget: the run trains until this expires
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# CONTROL arm, throughput-tuned. Same science as train_mlp_nolstm_sharpa.sub --
+# centralized no-LSTM MLP on the 778-wide actor observation with the 800-wide
+# asymmetric critic -- and the same hyperparameters. Everything that changed is
+# in the code, not here:
+#
+#   * the central-value network now honours mixed_precision. It had no autocast
+#     and no GradScaler at all, so it trained in fp32 while the actor used fp16.
+#     Measured: 12.22 -> 6.19 ms per critic minibatch.
+#   * calc_gradients no longer copies the full flattened gradient to the host
+#     twice per minibatch (once of a tensor known to be all zeros), and
+#     trancate_gradients_and_step no longer builds that flattened vector on the
+#     single-GPU path where nothing consumes it.
+#
+# End-to-end on this launcher's settings: 71,323 -> 79,422 fps, update time
+# 1.49 -> 0.74 s/epoch. Nothing about the learning problem changed.
+#
+#   sbatch experiments/decentralized_control/train_mlp_nolstm_tuned.sub
+#   SEED=1 sbatch experiments/decentralized_control/train_mlp_nolstm_tuned.sub
+#
+# Pair with train_transformer_l1_tuned.sub. Run both or the number means
+# nothing.
+
+set -euo pipefail
+
+ROBOT="${ROBOT:-sharpa_iiwa14}"
+SEED="${SEED:-0}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+NUM_ASSETS_PER_TYPE="${NUM_ASSETS_PER_TYPE:-100}"
+AGENT="rl_games_sapg_nolstm_cfg_entry_point"
+ARCH_TAG="${ARCH_TAG:-mlp_nolstm_tuned}"
+HORIZON_LENGTH=16                     # must match the train YAML
+EXPL_COEF_BLOCK_SIZE=4096
+CAPTURE_VIEWER="${CAPTURE_VIEWER:-0}"
+WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
+WANDB_GROUP="${WANDB_GROUP:-decentralized_control}"
+WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+
+# 16384 stays. Measured end-to-end, raising it does NOT help: 16384 gives
+# 77,369 fps and 98304 gives 74,966, because the GPU is already saturated at
+# 16384 (the per-minibatch network cost is flat from 16384 to 114688) and the
+# oversized ragged last minibatch is a less efficient shape.
+BATCH=$(( HORIZON_LENGTH * NUM_ENVS ))
+MINIBATCH_SIZE="${MINIBATCH_SIZE:-16384}"
+
+NUM_BLOCKS=$(( NUM_ENVS / EXPL_COEF_BLOCK_SIZE ))
+if (( NUM_BLOCKS > 1 )); then
+  AUG_BATCH=$(( BATCH + BATCH / NUM_BLOCKS ))
+else
+  AUG_BATCH=$BATCH
+fi
+
+EXPERIMENT_NAME="${RUN_NAME:-${ARCH_TAG}_${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)}"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
+RUN_DIR="${REPO_ROOT}/debug_outputs/${LOG_GROUP:-train_logs}/${EXPERIMENT_NAME}"
+mkdir -p "$RUN_DIR"
+exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
+
+[[ "$ROBOT" == "sharpa_iiwa14" ]] || { echo "This launcher supports only ROBOT=sharpa_iiwa14" >&2; exit 1; }
+(( NUM_ENVS % EXPL_COEF_BLOCK_SIZE == 0 )) || { echo "NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE" >&2; exit 1; }
+# Warnings, not errors: rl_games' divisibility assert is commented out
+# (a2c_common.py:251) and PPODataset hands the remainder to the last minibatch.
+(( BATCH % MINIBATCH_SIZE == 0 )) || echo "NOTE: MINIBATCH_SIZE does not divide the critic's $BATCH; its last minibatch absorbs $(( BATCH % MINIBATCH_SIZE )) extra samples" >&2
+(( AUG_BATCH % MINIBATCH_SIZE == 0 )) || echo "NOTE: MINIBATCH_SIZE does not divide the SAPG-augmented $AUG_BATCH; the actor's last minibatch absorbs $(( AUG_BATCH % MINIBATCH_SIZE )) extra samples" >&2
+(( NUM_BLOCKS == 6 )) || echo "WARNING: $NUM_BLOCKS SAPG blocks, not 6 -- this checkpoint will not restore in eval" >&2
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
+export WANDB_DIR="$RUN_DIR"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+
+echo "path=mlp_tuned agent=$AGENT obs=778 critic=800 robot=$ROBOT seed=$SEED envs=$NUM_ENVS assets_per_type=$NUM_ASSETS_PER_TYPE minibatch=$MINIBATCH_SIZE blocks=$NUM_BLOCKS aug_batch=$AUG_BATCH"
+experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
+
+[ "$CAPTURE_VIEWER" = "1" ] && VIEWER_ARGS=(--capture_viewer) || VIEWER_ARGS=()
+read -r -a EXTRA_ARGS <<< "${EXTRA_OVERRIDES:-}"
+
+# arm/hand_moving_average 1.0 is kept for parity with the transformer arm, but
+# be aware it is expensive: 0.1 halves the PhysX cost (237.7 -> 108.4 ms/step
+# at 24576 envs, fps step 93,021 -> 135,559). It is a dynamics change, not a
+# free win, which is why it is not applied here.
+python -u coevolution/train.py \
+    --task GenMech-PoseReach-Direct-v0 \
+    --agent "$AGENT" \
+    --headless \
+    "${VIEWER_ARGS[@]}" \
+    --wandb_activate \
+    --wandb_project "$WANDB_PROJECT" \
+    --wandb_group "$WANDB_GROUP" \
+    --wandb_entity "$WANDB_ENTITY" \
+    --wandb_tags "$ROBOT" "seed$SEED" "$ARCH_TAG" "dr_off" "tuned" \
+    --wandb_name "$EXPERIMENT_NAME" \
+    env.assets.robot_spec="$ROBOT" \
+    env.assets.robot_population_path="" \
+    env.assets.robot_population_seed=-1 \
+    env.assets.robot_population_count=0 \
+    env.assets.num_assets_per_type="$NUM_ASSETS_PER_TYPE" \
+    env.scene.num_envs="$NUM_ENVS" \
+    env.action.arm_moving_average=1.0 \
+    env.action.hand_moving_average=1.0 \
+    env.domain_randomization.use_obs_delay=false \
+    env.domain_randomization.use_action_delay=false \
+    env.domain_randomization.use_object_state_delay_noise=false \
+    env.domain_randomization.joint_velocity_obs_noise_std=0.0 \
+    env.domain_randomization.force_scale=0.0 \
+    env.domain_randomization.torque_scale=0.0 \
+    agent.params.seed="$SEED" \
+    agent.params.config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.central_value_config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.expl_coef_block_size="$EXPL_COEF_BLOCK_SIZE" \
+    hydra.run.dir="$RUN_DIR" \
+    ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}

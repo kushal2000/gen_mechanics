@@ -1,0 +1,156 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=8
+#SBATCH --get-user-env
+#SBATCH --mem=50000
+#SBATCH -t 3-00:00:00           # the budget: the run trains until this expires
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# DECENTRALIZED per-joint transformer, 1 encoder layer, throughput-tuned.
+# Matched control: train_mlp_nolstm_tuned.sub. Run both or the number means
+# nothing.
+#
+#   sbatch experiments/decentralized_control/train_transformer_l1_tuned.sub
+#   SEED=1 sbatch experiments/decentralized_control/train_transformer_l1_tuned.sub
+#
+# EVERY HYPERPARAMETER HERE IS STANDARD: 1 pre-LN encoder block, 4 heads,
+# ff_mult 4, final LayerNorm. The speed comes from three fixes and one config
+# choice, none of which change the architecture:
+#
+#   1. CRITIC DEPTH. train_joint_transformer_sharpa.sub overrode only
+#      agent.params.network.n_layers, leaving central_value_config.network at
+#      the YAML's 4 -- so the "1-layer" run trained a 1-layer actor against a
+#      4-LAYER CRITIC, which also runs a forward on every rollout step. Fixing
+#      it alone was 15,632 -> 33,064 fps (+112%), and dropped peak memory
+#      44.4 -> 39.6 GB, which sped up PhysX as a side effect.
+#   2. d_model 64 rather than 128. 22 tokens x 64 = 1408 wide, close to the
+#      MLP's 1024 hidden, and measured +27% end-to-end (33,064 -> 41,958).
+#      64 is divisible by 8, which keeps LayerNorm on torch's vectorized
+#      kernel -- 46 would fall onto the RowwiseMoments path and cost 4.5x
+#      (pytorch#145145).
+#   3. compile_net. torch.compile over the WHOLE module, not just the encoder
+#      stack, so Inductor fuses across the token gather, token_proj, the cat,
+#      ln_out and the heads. At d_model 64, batch 16384, one train step:
+#      eager 21.57 ms, layer-scope 15.42, whole-net 10.94. Numerically
+#      equivalent. Costs one compilation per batch shape at startup.
+#
+# Set COMPILE_MODE=max-autotune for a further ~1.12x (9.83 ms) at the cost of
+# minutes of startup compilation -- worth it for a multi-day run, annoying for
+# a smoke test. It gave nothing at d_model 128.
+
+set -euo pipefail
+
+ROBOT="${ROBOT:-sharpa_iiwa14}"
+SEED="${SEED:-0}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+NUM_ASSETS_PER_TYPE="${NUM_ASSETS_PER_TYPE:-100}"
+TRANSFORMER_LAYERS="${TRANSFORMER_LAYERS:-1}"
+D_MODEL="${D_MODEL:-64}"
+N_HEADS="${N_HEADS:-4}"
+COMPILE_NET="${COMPILE_NET:-true}"
+COMPILE_MODE="${COMPILE_MODE:-}"
+AGENT="rl_games_joint_transformer_cfg_entry_point"
+ARCH_TAG="${ARCH_TAG:-jt_l${TRANSFORMER_LAYERS}_d${D_MODEL}_tuned}"
+HORIZON_LENGTH=16                     # must match the train YAML
+EXPL_COEF_BLOCK_SIZE=4096
+CAPTURE_VIEWER="${CAPTURE_VIEWER:-0}"
+WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
+WANDB_GROUP="${WANDB_GROUP:-decentralized_control}"
+WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+
+# 16384, matched to the MLP arm. Raising it does not help -- measured flat to
+# slightly worse end-to-end -- and 16384 divides both 458752 and 393216
+# exactly, so torch.compile sees only TWO batch shapes (num_envs for the
+# rollout, minibatch for the gradient steps) and never recompiles mid-run.
+BATCH=$(( HORIZON_LENGTH * NUM_ENVS ))
+MINIBATCH_SIZE="${MINIBATCH_SIZE:-16384}"
+
+NUM_BLOCKS=$(( NUM_ENVS / EXPL_COEF_BLOCK_SIZE ))
+if (( NUM_BLOCKS > 1 )); then
+  AUG_BATCH=$(( BATCH + BATCH / NUM_BLOCKS ))
+else
+  AUG_BATCH=$BATCH
+fi
+
+EXPERIMENT_NAME="${RUN_NAME:-${ARCH_TAG}_${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)}"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
+RUN_DIR="${REPO_ROOT}/debug_outputs/${LOG_GROUP:-train_logs}/${EXPERIMENT_NAME}"
+mkdir -p "$RUN_DIR"
+exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
+
+[[ "$ROBOT" == "sharpa_iiwa14" ]] || { echo "This launcher supports only ROBOT=sharpa_iiwa14" >&2; exit 1; }
+(( NUM_ENVS % EXPL_COEF_BLOCK_SIZE == 0 )) || { echo "NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE" >&2; exit 1; }
+(( D_MODEL % N_HEADS == 0 )) || { echo "d_model $D_MODEL must be divisible by n_heads $N_HEADS" >&2; exit 1; }
+# Not fatal, but it costs 4.5x on every LayerNorm: torch takes its vectorized
+# layer_norm path only when the normalized dim is a multiple of 4.
+(( D_MODEL % 8 == 0 )) || echo "WARNING: d_model $D_MODEL is not a multiple of 8; LayerNorm falls onto the slow RowwiseMoments kernel" >&2
+(( BATCH % MINIBATCH_SIZE == 0 )) || echo "NOTE: MINIBATCH_SIZE does not divide the critic's $BATCH; its last minibatch absorbs $(( BATCH % MINIBATCH_SIZE )) extra samples (and adds a torch.compile shape)" >&2
+(( AUG_BATCH % MINIBATCH_SIZE == 0 )) || echo "NOTE: MINIBATCH_SIZE does not divide the SAPG-augmented $AUG_BATCH; the actor's last minibatch absorbs $(( AUG_BATCH % MINIBATCH_SIZE )) extra samples (and adds a torch.compile shape)" >&2
+(( NUM_BLOCKS == 6 )) || echo "WARNING: $NUM_BLOCKS SAPG blocks, not 6 -- this checkpoint will not restore in eval" >&2
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
+export WANDB_DIR="$RUN_DIR"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+# Inductor caches compiled kernels; keep it off NFS and out of $HOME.
+export TORCHINDUCTOR_CACHE_DIR="/tmp/${USER}_inductor_cache"
+mkdir -p "$TORCHINDUCTOR_CACHE_DIR"
+
+echo "path=transformer_l${TRANSFORMER_LAYERS} agent=$AGENT obs=778 critic=800 tokens=22x32 d_model=$D_MODEL heads=$N_HEADS compile=$COMPILE_NET/${COMPILE_MODE:-default} robot=$ROBOT seed=$SEED envs=$NUM_ENVS assets_per_type=$NUM_ASSETS_PER_TYPE minibatch=$MINIBATCH_SIZE blocks=$NUM_BLOCKS aug_batch=$AUG_BATCH"
+experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
+
+[ "$CAPTURE_VIEWER" = "1" ] && VIEWER_ARGS=(--capture_viewer) || VIEWER_ARGS=()
+read -r -a EXTRA_ARGS <<< "${EXTRA_OVERRIDES:-}"
+
+python -u coevolution/train.py \
+    --task GenMech-PoseReach-Direct-v0 \
+    --agent "$AGENT" \
+    --headless \
+    "${VIEWER_ARGS[@]}" \
+    --wandb_activate \
+    --wandb_project "$WANDB_PROJECT" \
+    --wandb_group "$WANDB_GROUP" \
+    --wandb_entity "$WANDB_ENTITY" \
+    --wandb_tags "$ROBOT" "seed$SEED" "$ARCH_TAG" "dr_off" "tuned" \
+    --wandb_name "$EXPERIMENT_NAME" \
+    env.assets.robot_spec="$ROBOT" \
+    env.assets.robot_population_path="" \
+    env.assets.robot_population_seed=-1 \
+    env.assets.robot_population_count=0 \
+    env.assets.num_assets_per_type="$NUM_ASSETS_PER_TYPE" \
+    env.scene.num_envs="$NUM_ENVS" \
+    env.action.arm_moving_average=1.0 \
+    env.action.hand_moving_average=1.0 \
+    env.domain_randomization.use_obs_delay=false \
+    env.domain_randomization.use_action_delay=false \
+    env.domain_randomization.use_object_state_delay_noise=false \
+    env.domain_randomization.joint_velocity_obs_noise_std=0.0 \
+    env.domain_randomization.force_scale=0.0 \
+    env.domain_randomization.torque_scale=0.0 \
+    agent.params.seed="$SEED" \
+    agent.params.config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.central_value_config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.expl_coef_block_size="$EXPL_COEF_BLOCK_SIZE" \
+    agent.params.network.n_layers="$TRANSFORMER_LAYERS" \
+    agent.params.network.d_model="$D_MODEL" \
+    agent.params.network.n_heads="$N_HEADS" \
+    agent.params.network.compile_net="$COMPILE_NET" \
+    agent.params.network.compile_mode="$COMPILE_MODE" \
+    `# The asymmetric critic is its own joint_transformer and inherits NOTHING` \
+    `# from the actor's block. Every one of these must be set or it silently` \
+    `# trains a different, deeper, uncompiled network.` \
+    agent.params.config.central_value_config.network.n_layers="$TRANSFORMER_LAYERS" \
+    agent.params.config.central_value_config.network.d_model="$D_MODEL" \
+    agent.params.config.central_value_config.network.n_heads="$N_HEADS" \
+    agent.params.config.central_value_config.network.compile_net="$COMPILE_NET" \
+    agent.params.config.central_value_config.network.compile_mode="$COMPILE_MODE" \
+    hydra.run.dir="$RUN_DIR" \
+    ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
