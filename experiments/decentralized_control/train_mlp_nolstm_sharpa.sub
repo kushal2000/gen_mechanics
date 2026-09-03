@@ -13,6 +13,9 @@
 #SBATCH -e /dev/null
 
 # No-LSTM centralized MLP on SHARPA + iiwa14 -- the CONTROL for the transformer.
+# It consumes the new 778-wide flat actor observation directly; the asymmetric
+# critic consumes the corresponding 800-wide state.  This is the same data the
+# transformer sees, without the 22 x 32 joint-token gather.
 #   sbatch experiments/decentralized_control/train_mlp_nolstm_sharpa.sub
 #   SEED=1 sbatch experiments/decentralized_control/train_mlp_nolstm_sharpa.sub
 #
@@ -26,12 +29,14 @@ set -euo pipefail
 ROBOT="${ROBOT:-sharpa_iiwa14}"
 SEED="${SEED:-0}"
 NUM_ENVS="${NUM_ENVS:-24576}"
-AGENT="${AGENT:-rl_games_sapg_nolstm_cfg_entry_point}"
+NUM_ASSETS_PER_TYPE="${NUM_ASSETS_PER_TYPE:-100}"
+# Deliberately not overridable: this file is the matched MLP path.
+AGENT="rl_games_sapg_nolstm_cfg_entry_point"
 ARCH_TAG="${ARCH_TAG:-mlp_nolstm}"
 HORIZON_LENGTH=16                     # must match the train YAML
 EXPL_COEF_BLOCK_SIZE=4096
-# Pose-only interactive HTML viewer; CAPTURE_VIEWER=0 turns it off.
-CAPTURE_VIEWER="${CAPTURE_VIEWER:-1}"
+# Keep throughput comparisons clean by default; opt in with CAPTURE_VIEWER=1.
+CAPTURE_VIEWER="${CAPTURE_VIEWER:-0}"
 WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
 WANDB_GROUP="${WANDB_GROUP:-decentralized_control}"
 WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
@@ -66,6 +71,7 @@ mkdir -p "$RUN_DIR"
 exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
 
 # After the redirect, so the message lands in slurm.err rather than /dev/null.
+[[ "$ROBOT" == "sharpa_iiwa14" ]] || { echo "This launcher supports only ROBOT=sharpa_iiwa14" >&2; exit 1; }
 (( NUM_ENVS % EXPL_COEF_BLOCK_SIZE == 0 )) || { echo "NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE" >&2; exit 1; }
 (( BATCH % MINIBATCH_SIZE == 0 ))          || { echo "MINIBATCH_SIZE must divide $BATCH" >&2; exit 1; }
 (( AUG_BATCH % MINIBATCH_SIZE == 0 ))      || { echo "MINIBATCH_SIZE must divide the SAPG-augmented $AUG_BATCH" >&2; exit 1; }
@@ -81,7 +87,7 @@ export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"        # local disk, never NF
 export WANDB_DIR="$RUN_DIR"
 mkdir -p "$OMNI_KIT_CACHE_PATH"
 
-echo "arch=$ARCH_TAG robot=$ROBOT seed=$SEED envs=$NUM_ENVS minibatch=$MINIBATCH_SIZE blocks=$NUM_BLOCKS aug_batch=$AUG_BATCH"
+echo "path=mlp agent=$AGENT obs=778 critic=800 robot=$ROBOT seed=$SEED envs=$NUM_ENVS assets_per_type=$NUM_ASSETS_PER_TYPE minibatch=$MINIBATCH_SIZE blocks=$NUM_BLOCKS aug_batch=$AUG_BATCH"
 # Sample RAM/CPU/GPU for the life of the run
 experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
 
@@ -110,6 +116,10 @@ python -u coevolution/train.py \
     `# --wandb_tags is nargs=+; the --flag below stops it eating the overrides` \
     --wandb_name "$EXPERIMENT_NAME" \
     env.assets.robot_spec="$ROBOT" \
+    env.assets.robot_population_path="" \
+    env.assets.robot_population_seed=-1 \
+    env.assets.robot_population_count=0 \
+    env.assets.num_assets_per_type="$NUM_ASSETS_PER_TYPE" \
     env.scene.num_envs="$NUM_ENVS" \
     env.action.arm_moving_average=1.0 \
     env.action.hand_moving_average=1.0 \
