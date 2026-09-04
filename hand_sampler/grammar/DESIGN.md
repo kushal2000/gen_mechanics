@@ -38,7 +38,7 @@ Ghosting is still how a design reaches the simulator: one Isaac Lab
 present the same joint count. It is no longer how a design is *represented*.
 
 The genotype is variable-topology; the builder ghosts on the way out into a
-**fixed envelope** (`MAX_FINGERS` × `MAX_JOINTS_PER_FINGER` = 6 × 6 = 36, against
+**fixed envelope** (`MAX_FINGERS` × `MAX_JOINTS_PER_FINGER` = 7 × 6 = 42, against
 the old 5 × 6 = 30). Every design pays for the envelope whether it uses it or
 not. That number is the one place the simulator reaches back into the genotype,
 and it wants a per-ghosted-joint cost measurement it does not yet have.
@@ -98,16 +98,13 @@ way that joint *sweeps*, not where its child sits at zero angle — verified:
 identical joint positions and link directions, different swept paths. That is
 correct revolute behaviour.
 
-It leaves one thing for `build.py` to decide. A URDF can carry the axis two ways:
-`axis = axis_of(theta)` with zero origin rpy, or SHARPA's convention — which
-`params.py` follows — of `axis = [0 0 1]` with the orientation in the origin rpy.
-The kinematics are identical; they differ only in whether the **child link's own
-frame rolls about its long axis** by `theta`. With capsule links that is
-unobservable, since a capsule is rotationally symmetric about its axis and its
-oriented bounding box is a square-section box invariant under that roll. It
-becomes observable the moment a link is not symmetric, so the convention should
-be picked deliberately rather than inherited, and §8's "hinge axis in the
-parent's frame" should name the same one.
+One thing for `build.py`: a URDF can carry the axis as `axis = axis_of(theta)`
+with zero origin rpy, or as SHARPA's `axis = [0 0 1]` with the orientation in the
+rpy. Identical kinematics; they differ only in whether the **child link's frame
+rolls about its long axis**. With capsules that is unobservable — a capsule is
+symmetric about its axis and its OBB is a square-section box invariant under the
+roll — but it becomes observable for any non-symmetric link, so pick the
+convention deliberately and have §8 name the same one.
 
 `theta` spans **[0°, 180°) in 15° steps — 12 values**, and that is already
 minimal. An axis and its negation are the same hinge, so `theta` and
@@ -184,24 +181,50 @@ which is the behaviour that had to be coded explicitly before.
 | quantity | value |
 |---|---|
 | quantum | 5 mm |
-| floor | 20 mm = 2 × radius, and a fabrication limit |
+| floor | 15 mm |
 | ceiling | 80 mm |
 
 Total finger length is not fixed. **One joint per link** — every segment is at
 least the floor, so no two joints share a point.
 
-An earlier version allowed zero-length segments, expressing a multi-DOF knuckle
-as coincident joints. Dropped for the same reason the floor exists: coincident
-axes need a gimbal, whereas two axes 20 mm apart are ordinary revolutes in
-series. It cost a true MCP-style knuckle and bought no zero-length special case
-anywhere downstream.
+The floor sits **below** `2 × CAPSULE_RADIUS`, and both facts follow from one
+decision: truly co-located axes need a gimbal, so they are excluded, and the
+nearest this space gets to a compact knuckle is two ordinary revolutes a 15 mm
+spacer apart. (An earlier version allowed zero-length segments for exactly the
+MCP-style knuckle that costs.) A link shorter than its own diameter is
+geometrically a **sphere** — the cylinder vanishes and both joints sit in one
+ball, a fair model of a knuckle housing. `urdf.py` drops the collider for such a
+segment, so **`build.py` must emit that sphere** or short-linked fingers go
+transparent to contact. About 9% of links sit in the `[15, 20) mm` band.
 
-**Depth is coupled to length, by geometry**: *k* joints need ≥ *k* × 20 mm of
-reach, and a link must reach 40 mm before it can split. Measured over an
-unselected walk — 1 joint / 52 mm, 2 / 65, 3 / 79, 4 / 102, 5 / 123, 6 / 134.
-Since the measured reach optimum is 145–160 mm and one link cannot exceed 80 mm,
-**selecting for the reach optimum selects for at least two joints per finger**;
-the two effects cannot be cleanly separated here.
+**Depth is coupled to length**: *k* joints need ≥ *k* × 15 mm of reach, and a
+link must reach 30 mm before it can split. That makes the floor a far bigger
+lever than its size suggests — dropping it from 20 mm moved the unselected
+distribution from shallow to deep:
+
+| joints | share (15 mm) | mean reach | share (20 mm) |
+|---|---|---|---|
+| 1 | 11.5% | 49 mm | 32.5% |
+| 2 | 9.9% | 77 mm | 39.5% |
+| 3 | 9.9% | 117 mm | 22.9% |
+| 4 | 12.9% | 159 mm | 4.2% |
+| 5 | 19.2% | 198 mm | 0.7% |
+| 6 | 36.5% | 224 mm | 0.1% |
+
+A neutral walk now sits near the joint cap rather than the floor, and above the
+measured 145–160 mm reach optimum rather than below it. Since one link cannot
+exceed 80 mm, **selecting for that optimum selects for at least two joints per
+finger**; the two effects cannot be cleanly separated here.
+
+### Fingers
+
+Between `MIN_FINGERS` (2) and `MAX_FINGERS` (7). The intent is that **mount
+packing decides how many fit** — measured, a 50 mm palm packs 4 and a 60 mm palm
+5, both short of the cap, while an 80 mm palm reaches it. The cap exists only so
+a runaway search cannot hand the simulator an arbitrarily wide articulation; per
+§2 it is a hard cost every design pays.
+
+Joints per finger are capped at 6 by the same envelope.
 
 ### Fixed
 
@@ -247,10 +270,10 @@ Balance falls with depth, and with four operators the cause is visible:
 
 | n | split | merge | add_finger | remove_finger | P(up) |
 |---|---|---|---|---|---|
-| 4 | 83% | 84% | 100% | 62% | 55.8% |
-| 6 | 96% | 97% | 74% | 92% | 47.2% |
-| 10 | 78% | 100% | 34% | 84% | 38.3% |
-| 14 | 77% | 100% | 4% | 34% | 38.2% |
+| 4 | 97% | 89% | 100% | 62% | 56.1% |
+| 6 | 96% | 92% | 73% | 83% | 48.3% |
+| 10 | 100% | 100% | 52% | 80% | 45.5% |
+| 14 | 93% | 100% | 16% | 70% | 38.7% |
 
 `add_finger` collapses as the palm fills while `merge_links` stays near 100%, so
 a deep hand drifts down. That is palm **capacity**, not operator bias, and
@@ -331,6 +354,38 @@ check. Use `gates/capsule.py`; it already replaces a 6.02 s/hand mesh check.
 Its skip set is computed once from template link and joint *names*, which were
 constants only because the old space had fixed topology — that needs deriving
 structurally.
+
+### Joints that point into the palm
+
+Offsets let part of a joint's commanded range put its link inside the palm. This
+is left alone, on measurement:
+
+* **A base link can never rest inside the palm** — exhaustive over every
+  `(face, theta, offset)` with a maximum-length link, deepest rest penetration is
+  −0.0 mm. A link leaves from a point *on* the face and `offset` caps at 90°,
+  which only reaches the tangent plane. Nothing starts broken, so a rest-pose
+  palm check would be dead code rather than a guard.
+* **Commanding adds another ±90° and that is what reaches in**, up to 12.5 mm —
+  costing **3.2%** of a base joint's range on average, median 0%, worst 36.6%.
+* **Distal links never enter** (0%), and they are not collision-filtered against
+  the palm, so contact would stop them anyway.
+
+Collision-derived joint limits would be the obvious fix and are **ill-posed for a
+chain**: joint *k*'s free range depends on joints 1…*k*−1, so there is no single
+correct limit, only a pose-dependent approximation. Against 3.2% that is a bad
+trade, and motion into the palm is not useful motion, so selection pays for it.
+
+**A hazard for `build.py`.** The palm must be collision-filtered against each
+finger's *first* solid link — its cap sits inside the palm shell by construction.
+The hand-written SHARPA and Allegro maps filter palm against **link_0 and
+link_1**, and copying that would let the second link through too, turning a
+measured 0% into a real problem. Filter the first solid link and no more.
+
+If it ever must go, the route is not per-joint collision limits but **absolute
+limits on the base joint** — bound it to ±90° from the face normal regardless of
+offset, so `offset` picks where zero sits inside a fixed range. More physical (a
+hard stop does not move because a link was assembled at an angle), at the cost of
+offset-dependent travel, and it applies only to the base joint.
 
 ## 8. Policy interface
 
@@ -449,78 +504,30 @@ Deferred *design parameters*, as opposed to deferred plumbing, are §11.
 
 ## 11. Held back, for later complexity
 
-Everything below is deliberately absent so the space stays small enough to reason
-about. Each entry is a way to buy design complexity when the search needs it, and
-each is reversible — the genotype carries the field or the shape already, so
-re-enabling is closer to a flag than a rewrite. Roughly ordered by value against
-cost.
+Deliberately absent so the space stays small enough to reason about. Each is
+reversible — the genotype already carries the field or the shape — and roughly
+ordered by value against cost.
 
-**1. Fingers on the two large palm faces.** Currently `+z` and `±y` only. `+x` —
-the surface fingers close toward — gives an opposition post rising from the palm,
-the most thumb-like arrangement this space can express, and it measured the
-closest fingertip approach of any pair. Excluded because a finger growing out of
-the gripping surface is awkward to build and to mount an arm behind. One tuple in
-`FINGER_FACES`; the crossing logic already handles arbitrary faces.
+| | what it adds | cost to enable |
+|---|---|---|
+| 1 | **fingers on the two large palm faces** — `+x` gives an opposition post rising from the palm, the most thumb-like arrangement here and the closest-closing pair measured | one tuple; the crossing logic already handles any face |
+| 2 | **joint types beyond independent revolute** — rigid/mimic coupling, fully passive spring-loaded, differential | large; see below |
+| 3 | **branching chains** — a finger splitting beyond some joint | `Chain` already carries children; roughly doubles validator work |
+| 4 | **off-perpendicular axes (`phi`)** — the link sweeps a cone rather than a flat fan | one line in `perturb_axis`, and relax the validator's equality to a range |
+| 5 | **coincident joints** — two axes sharing a point, an MCP-style knuckle | re-allow zero-length segments, and the special cases they carry through builder and renderers |
+| 6 | **palm thickness** | one entry in `MUTABLE_PALM_DIMS` |
+| 7 | **per-design joint limits** — currently a global ±90° | no evidence yet that searching over it pays |
+| 8 | **link radius** — the one parameter *measured* to do nothing (Spearman −0.005) | trivial, and listed for completeness rather than as a candidate |
+| 9 | **actuator properties** — gear ratio, reflected inertia, torque limits | the node schema (§8) already has room |
+| 10 | **a larger envelope, or a non-box palm** | both real simulator cost (§2) |
 
-**2. Joint types beyond independent revolute.** The largest missing capability,
-and three separable steps:
-
-* *rigid / mimic coupling* — two joints driven as one, so a finger has more
-  joints than motors;
-* *fully passive, spring-loaded* — no input at all, a return spring and contact
-  decide the angle;
-* *differential coupling* — one motor driving several joints through a
-  differential, which is how most underactuated hands actually work.
-
-`minimal/` has a worked version of the first two, including adjacency rules,
-mid-range rest poses and per-joint stiffness. The cost is that mutation over
-coupled topologies is much harder: a mutation removing a joint must decide what
-happens to its partner. The cost of *not* having it is worth naming — real
-anthropomorphic hands are heavily underactuated, and that is precisely how they
-buy dexterity per motor. A claim of "matches a market hand at equal motor count"
-against an underactuated baseline is uphill while every joint here has its own
-motor.
-
-**3. Branching chains.** A finger splitting into two beyond some joint. The
-operator most likely to produce genuinely novel morphologies rather than
-variations on hands we can already picture — the tree representation already
-permits it, since `Chain` carries a list of children. Deferred because it roughly
-doubles validator work.
-
-**4. Off-perpendicular joint axes (`phi`).** Pinned at π/2. An oblique hinge is a
-real mechanism — the link sweeps a cone of half-angle `phi` rather than a flat
-fan — and it is a genuine single revolute, but it reads as a two-axis joint
-unless you know what you are looking at. Held back until the space needs the
-complexity. One line in `perturb_axis`, plus relaxing the validator's equality
-back to a range.
-
-**5. Coincident joints.** Two joints sharing a point, which is how an MCP knuckle
-combining flexion and abduction is normally modelled, and what `params.py` did
-with zero-length virtual links. Dropped for the same reason `MIN_LINK_LENGTH`
-exists: coincident axes need a gimbal, where two axes 20 mm apart are ordinary
-revolutes in series. Re-adding means allowing zero-length segments again and
-restoring the special cases they carry through the builder and the renderers.
-
-**6. Palm thickness.** Seeded and never mutated — the dimension geometry cares
-least about, where width and length move separation and reach directly. One entry
-in `MUTABLE_PALM_DIMS`.
-
-**7. Per-design joint limits.** Currently a global ±90°. Range of motion is a
-real design variable; there is simply no evidence yet that searching over it
-pays.
-
-**8. Link radius.** Fixed at 10 mm, and the *least* promising entry here despite
-being trivial to enable: it is the one parameter measured to do nothing, at
-Spearman −0.005 across a 2× range. Listed for completeness, not as a candidate.
-
-**9. Actuator properties** — gear ratio, reflected inertia, torque limits. Every
-joint currently gets the same motor. The node feature schema (§8) already has
-room, and this is where reflected inertia would enter if the search should care
-about it.
-
-**10. A larger envelope, or a non-box palm.** `MAX_FINGERS` × `MAX_JOINTS_PER_FINGER`
-is a hard simulator cost paid by every design (§2), and the palm is a box because
-face frames are then trivial. Both are relaxable; both are expensive.
+Only #2 needs more than a line. `minimal/` has a worked version of coupling and
+passive joints — adjacency rules, mid-range rest poses, per-joint stiffness — and
+the hard part is not representing them but mutating them: removing a joint must
+decide what happens to its partner. The cost of *not* having it is worth naming.
+Real anthropomorphic hands are heavily underactuated, and that is precisely how
+they buy dexterity per motor, so "matches a market hand at equal motor count" is
+uphill while every joint here has its own motor.
 
 ### Not on this list, deliberately
 
@@ -542,7 +549,8 @@ made a new finger rare and hid palm exhaustion behind a still-succeeding split.
 
 ## 12. Open
 
-1. What articulation envelope is affordable, against the current 5 × 6 = 30?
+1. What articulation envelope is affordable? This asks for 7 × 6 = 42 against
+   the previous 5 × 6 = 30, and wants a per-ghosted-joint cost to justify it.
 2. Did the morphology-descriptor ablation ever run (§8)?
 3. Does the design loop stay training-free (§9.1)?
 4. Is the object resampled per evaluation (§9.3)?

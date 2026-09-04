@@ -125,10 +125,10 @@ def test_operators_are_unbiased(pop):
     structural operators the reason is visible per-operator:
 
         n    split  merge  add_finger  remove_finger   P(up)
-        4     83%    84%      100%          62%        55.8%
-        6     96%    97%       74%          92%        47.2%
-       10     78%   100%       34%          84%        38.3%
-       14     77%   100%        4%          34%        38.2%
+        4     97%    89%      100%          62%        56.1%
+        6     96%    92%       73%          83%        48.3%
+       10    100%   100%       52%          80%        45.5%
+       14     93%   100%       16%          70%        38.7%
 
     ``add_finger`` collapses as the palm fills while ``merge_links`` stays near
     100%, so a deep hand drifts down. That is palm CAPACITY, not operator bias --
@@ -379,23 +379,58 @@ def test_same_face_mounts_keep_their_distance(pop):
                     f"two mounts {d * 1000:.1f} mm apart on {fa}")
 
 
-def test_crowding_does_not_block_new_fingers(pop):
-    """The envelope must stay reachable as the palm fills. Placement by rejection
-    sampling made ``add_finger`` quietly stop being able to add fingers as space
-    ran out -- a reachability hole wearing a timeout's clothing."""
-    rng = random.Random(0)
-    best = 0
-    for s in range(10):
-        hand = pop[s]
-        for _ in range(2000):
-            child = (M.mutate(rng, hand, "add_finger")
-                     or M.mutate(rng, hand, "perturb_length")
-                     or M.mutate(rng, hand, "perturb_palm"))
-            if child:
-                hand = child
-        best = max(best, hand.n_fingers)
-    assert best == G.MAX_FINGERS, f"only reached {best} fingers"
+def test_crowding_does_not_block_new_fingers():
+    """Adding fingers must stop because the palm is FULL, not because placement
+    gave up looking.
 
+    ``_new_finger`` used to place by rejection sampling. Once the same-face
+    separation floor tightened, nearly every random draw on a crowded palm
+    failed, so ``add_finger`` quietly stopped being able to act while space
+    remained -- a reachability hole wearing a timeout's clothing. Sites are
+    enumerated now.
+
+    Given a palm big enough, the cap should be reachable; given a small one,
+    packing should bind well before it.
+    """
+    def pack(palm):
+        hand = G.Hand(palm, S.seed_population(0, 1)[0].fingers)
+        for k in range(30):
+            out = M._new_finger(random.Random(k), hand)
+            if out is None or hand.n_fingers >= G.MAX_FINGERS:
+                break
+            hand = out
+        return hand.n_fingers
+
+    assert pack(G.Palm(0.025, 0.100, 0.100)) == G.MAX_FINGERS, \
+        "a large palm should reach the cap"
+
+    small = pack(G.Palm(0.025, 0.050, 0.050))
+    assert 2 <= small < G.MAX_FINGERS, \
+        f"a small palm packed {small}; separation should bind before the cap"
+
+
+def test_min_link_length_allows_a_compact_knuckle():
+    """Two axes may sit closer than a link's own diameter.
+
+    Truly co-located axes need a gimbal and are excluded, so the nearest this
+    space gets to a compact knuckle is two ordinary revolutes a short spacer
+    apart. At MIN_LINK_LENGTH the capsule's cylindrical section has vanished and
+    the link is a sphere holding both joints -- a fair model of a knuckle
+    housing, and the reason build.py must emit that sphere rather than treating
+    the segment as geometry-less.
+    """
+    assert G.MIN_LINK_LENGTH < 2 * G.CAPSULE_RADIUS
+
+    palm = G.Palm(0.025, 0.060, 0.060)
+    finger = G.Finger(G.Mount("+y", 0.5, 0.7), (
+        G.Segment(G.Joint(0.0), G.MIN_LINK_LENGTH),
+        G.Segment(G.Joint(math.pi / 2), 0.040)))
+    assert not V.check_finger(finger, 0, palm), V.check_finger(finger, 0, palm)
+
+    joints, _ = K.forward_kinematics(finger, palm)
+    gap = float(np.linalg.norm(joints[1] - joints[0]))
+    assert gap == pytest.approx(G.MIN_LINK_LENGTH)
+    assert gap < 2 * G.CAPSULE_RADIUS, "axes are not closer than the link is wide"
 
 def test_mounts_stay_clear_of_face_edges(pop):
     """A mount within one capsule radius of an edge hangs the finger off the

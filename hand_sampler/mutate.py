@@ -78,7 +78,6 @@ _GROWS: tuple[tuple[str, str], ...] = (("split_link", "merge_links"),
 ``Stats.ratchet``; naming them once here is what stopped a filter on "add"
 silently dropping the split/merge pair when it was added."""
 
-_INVERSE = {a: b for a, b in _GROWS} | {b: a for a, b in _GROWS}
 
 
 class MutationImpossible(ValueError):

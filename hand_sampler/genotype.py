@@ -50,9 +50,19 @@ CAPSULE_RADIUS = 0.010
 """Fixed, on evidence: `radius_scale` scored Spearman -0.005 across a 2x range in
 the 24k eval, and every link-volume measure -0.006 to -0.018 across 7-20x."""
 
-MIN_LINK_LENGTH = 0.020
-"""= 2 x CAPSULE_RADIUS, a fabrication floor, and the closest two joint axes can
-sit -- there is exactly one joint per link (see Segment)."""
+MIN_LINK_LENGTH = 0.015
+"""The closest two joint axes can sit -- there is exactly one joint per link.
+
+Set BELOW 2 x CAPSULE_RADIUS on purpose. Truly co-located axes need a gimbal and
+are excluded (see Segment), so the nearest this space gets to a compact knuckle
+is two ordinary revolutes a short spacer apart, and 15 mm is that spacer.
+
+A link shorter than its own diameter is geometrically a SPHERE: the capsule's
+cylindrical section vanishes and both joints sit inside one ball of radius
+CAPSULE_RADIUS. That is a fair model of a compact knuckle housing, and the
+renderers already draw it. ``urdf.py`` drops the collider for such a segment --
+build.py should emit the sphere instead of nothing, or short-linked fingers
+become transparent to contact."""
 
 MAX_LINK_LENGTH = 0.080
 """Deliberately loose. The measured fingertip-reach optimum is 14.5-16 cm, so
@@ -80,7 +90,7 @@ MIN_FINGERS = 2
 for selection to discover at the cost of an evaluation. The only floor on
 complexity; every other pressure toward simplicity is left to evolution."""
 
-MAX_FINGERS = 6
+MAX_FINGERS = 7
 MAX_JOINTS_PER_FINGER = 6
 """The articulation envelope: a HARD cap, not a rail.
 
@@ -158,7 +168,8 @@ class Segment:
     ONE JOINT PER LINK: ``length`` is always at least MIN_LINK_LENGTH, so every
     joint sits at its own point. Zero-length segments used to express a multi-DOF
     knuckle as coincident joints; dropped because coincident axes need a gimbal
-    where two axes 20 mm apart are ordinary revolutes in series.
+    where two axes a MIN_LINK_LENGTH spacer apart are ordinary revolutes
+    in series.
     """
 
     joint: Joint
@@ -270,9 +281,3 @@ def with_finger(hand: Hand, i: int, finger: Finger) -> Hand:
     fingers = list(hand.fingers)
     fingers[i] = finger
     return replace(hand, fingers=tuple(fingers))
-
-
-def with_segment(finger: Finger, i: int, segment: Segment) -> Finger:
-    segments = list(finger.segments)
-    segments[i] = segment
-    return replace(finger, segments=tuple(segments))
