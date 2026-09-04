@@ -55,6 +55,21 @@ def parse_args():
     p.add_argument("--sapg_expl_coef", type=float, default=50.0,
                    help="trailing exploration column a SAPG checkpoint expects; "
                         "pass a negative value for a plain PPO checkpoint")
+    p.add_argument("--success_tolerance", type=float, default=0.03,
+                   help="pins termination.eval_success_tolerance, which "
+                        "DISABLES the curriculum for the run. Without it the "
+                        "env starts at the curriculum's loosest bar (0.075) "
+                        "AND keeps tightening during evaluation, so the bar "
+                        "differs between variants by how well each does.")
+    p.add_argument("--pin_hand_scale", type=int, default=1,
+                   help="1 pins hand_scale to the INTACT hand's value. It is "
+                        "the longest link edge in the hand, so removing the "
+                        "thumb drops it 24% (0.0717 -> 0.0542) -- and it "
+                        "divides joint_link_bbox and object_keypoints_rel_joint, "
+                        "528 of the 778 columns. It was also 100%% "
+                        "zero-variance during training, so the policy has no "
+                        "capacity to interpret a changed value. It is a "
+                        "normalization constant, not a property to re-derive.")
     p.add_argument("--sampled", action="store_true",
                    help="sample actions instead of using mu")
     p.add_argument("--out", default="debug_outputs/eval_logs/finger_dropout.json")
@@ -122,6 +137,15 @@ def main() -> None:
     # and differently-ordered observation with no error anywhere -- the widths
     # are only checked against the network. Take the lists from the run that
     # produced the checkpoint.
+    # The intact hand's characteristic scale, read from its own URDF rather
+    # than hardcoded so it tracks the asset.
+    from isaacsimenvs.pose_reaching_6d.obs_utils.joint_geometry import joint_link_boxes
+    intact_scale = float(joint_link_boxes(
+        SHARPA_IIWA14.urdf_path, SHARPA_IIWA14.hand_joint_names)[3])
+    print(f"intact hand_scale = {intact_scale:.6f}"
+          f"{' (pinned for every variant)' if args.pin_hand_scale else ''}",
+          flush=True)
+
     import yaml as _yaml
     _run = _yaml.safe_load(open(run_config))["env"]["obs"]
     ckpt_obs_list = tuple(_run["obs_list"])
@@ -154,10 +178,29 @@ def main() -> None:
         dr.use_obs_delay = dr.use_action_delay = dr.use_object_state_delay_noise = False
         dr.joint_velocity_obs_noise_std = dr.force_scale = dr.torque_scale = 0.0
         cfg.seed = args.seed
+        # Pin the success criterion. termination_utils: "Eval pins the success
+        # criterion" -- eval_success_tolerance overwrites
+        # _current_success_tolerance every step, so the curriculum cannot move
+        # it. Leaving it None would start every variant at 0.075 (the
+        # curriculum START, looser than the 0.0443 this checkpoint trained to)
+        # and let each variant tighten its own bar as it succeeds, which makes
+        # the six numbers incomparable.
+        cfg.termination.eval_success_tolerance = args.success_tolerance
 
         boot = time.perf_counter()
         env = gym.make("GenMech-PoseReach-Direct-v0", cfg=cfg)
         inner = env.unwrapped
+        if args.pin_hand_scale:
+            # Written after construction: _joint_link_bbox_local holds RAW
+            # link-frame metres and the division happens per step in
+            # _joint_link_geometry_obs / _object_keypoints_rel_joint, both
+            # reading env._hand_scale. So overwriting it here fixes both
+            # divisions and the hand_scale observation column at once.
+            before = float(inner._hand_scale[0, 0])
+            inner._hand_scale = torch.full_like(inner._hand_scale, intact_scale)
+            if abs(before - intact_scale) > 1e-9:
+                print(f"  pinned hand_scale {before:.6f} -> {intact_scale:.6f} "
+                      f"(the value the policy trained under)", flush=True)
         obs, _ = env.reset()
         n_obs = obs["policy"].shape[1]
         print(f"  booted in {time.perf_counter() - boot:.0f} s; "
@@ -252,7 +295,8 @@ def rollout(env, inner, player, args, spec) -> dict:
 def report(results, args, config_path) -> None:
     print(f"\n{'=' * 88}")
     print(f"ZERO-SHOT FINGER DROPOUT   {args.num_envs} envs x {args.steps} steps, "
-          f"{'sampled' if args.sampled else 'deterministic'}")
+          f"{'sampled' if args.sampled else 'deterministic'}, "
+          f"success_tolerance {args.success_tolerance} m")
     print(f"  checkpoint {args.checkpoint}")
     print(f"  config     {config_path}")
     print(f"{'=' * 88}")
@@ -272,7 +316,10 @@ def report(results, args, config_path) -> None:
     out.write_text(json.dumps(
         {"checkpoint": args.checkpoint, "config": config_path,
          "num_envs": args.num_envs, "steps": args.steps,
-         "deterministic": not args.sampled, "results": results}, indent=2))
+         "deterministic": not args.sampled,
+         "success_tolerance": args.success_tolerance,
+         "pinned_hand_scale": bool(args.pin_hand_scale),
+         "results": results}, indent=2))
     print(f"\nwrote {out}")
 
 
