@@ -27,7 +27,10 @@ from hand_sampler import genotype as G                             # noqa: E402
 from hand_sampler import kinematics as K                           # noqa: E402
 from hand_sampler import mutate as M                               # noqa: E402
 from hand_sampler import sample as S                               # noqa: E402
-from hand_sampler.viewer import theta_colour                       # noqa: E402
+from hand_sampler.viewer import (                                  # noqa: E402
+    JOINT_MARKER_LENGTH,
+    theta_colour,
+)
 
 
 def _palm_faces(palm: G.Palm) -> list[np.ndarray]:
@@ -54,13 +57,16 @@ def draw(ax, hand: G.Hand, title: str = "", flex: float = 0.0) -> None:
             col = np.array(theta_colour(finger.segments[si].joint.theta)) / 255.0
             ax.plot(*zip(p0, p1), color=col, linewidth=6.0, solid_capstyle="round")
 
-        # a joint is a dot; an off-perpendicular hinge (phi != 90) is a red ring,
-        # because that is the assumption the parameter exists to test
-        for si, p in enumerate(joints[:-1]):
-            ax.scatter(*p, s=30, c="#1e1e23", depthshade=False, zorder=5)
-            if abs(finger.segments[si].joint.phi - math.pi / 2) > 1e-9:
-                ax.scatter(*p, s=80, facecolors="none", edgecolors="#d02828",
-                           linewidths=1.8, depthshade=False, zorder=6)
+        # a joint is a stub along its own hinge axis, so which way it turns is
+        # visible; an off-perpendicular hinge (phi != 90) goes red, because that
+        # is the assumption the parameter exists to test
+        axes = K.joint_axes(finger, hand.palm, angles)
+        half = JOINT_MARKER_LENGTH / 2.0
+        for si, (p, a) in enumerate(zip(joints[:-1], axes)):
+            perp = abs(finger.segments[si].joint.phi - math.pi / 2) < 1e-9
+            ax.plot(*zip(p - half * a, p + half * a),
+                    color="#1e1e23" if perp else "#d02828",
+                    linewidth=3.0, solid_capstyle="round", zorder=5)
         ax.scatter(*joints[-1], s=34, c="#f5d93c", depthshade=False, zorder=6)
 
     span = 0.16

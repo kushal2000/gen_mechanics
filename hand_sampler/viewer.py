@@ -6,12 +6,15 @@ The point is to make the GRAMMAR inspectable. A mutation operator set is a claim
 about which designs are adjacent to which, and that claim is far easier to check
 by eye than by reading enumerations.
 
-Joints are coloured by ``theta``, which replaced the old FE/AA enum: blue is pure
-flexion, orange pure abduction, everything between is a design the old space
-could not name. A joint's zero offset shows in the readout as ``+30o``, and in
-the scene as its link resting away from the grey face-normal stub. A joint
-whose ``phi`` has left perpendicular-to-bone is ringed -- which cannot happen
-while phi is pinned, but is ready for when it is not.
+Links are coloured by their joint's ``theta``, which replaced the old FE/AA
+enum: blue is pure flexion, orange pure abduction, everything between is a
+design the old space could not name. Each joint is drawn as a short cylinder
+lying along its hinge axis, so which way it turns is readable directly rather
+than decoded from the colour -- a marker only, no collision geometry is built
+from it. A joint's zero offset shows in the readout as ``+30o``, and in the
+scene as its link resting away from the grey face-normal stub. A joint whose
+``phi`` has left perpendicular-to-bone turns red -- which cannot happen while
+phi is pinned, but is ready for when it is not.
 Undo replays the lineage rather than storing snapshots, so a broken inverse shows
 up as the history and the scene disagreeing.
 """
@@ -35,6 +38,31 @@ from hand_sampler.kinematics import face_frame
 FLEXION_RGB = (0.25, 0.45, 0.95)
 ABDUCTION_RGB = (0.98, 0.60, 0.10)
 
+# a joint marker: half the link's radius, so it reads as a hinge pin rather than
+# a bulge, and exactly as long as the link is thick, so its ends sit flush with
+# the link surface instead of overhanging it
+JOINT_MARKER_RADIUS = 0.5 * G.CAPSULE_RADIUS
+JOINT_MARKER_LENGTH = 2.0 * G.CAPSULE_RADIUS
+
+
+def _align_z(v: np.ndarray) -> np.ndarray:
+    """Rotation carrying +z onto ``v``.
+
+    Both trimesh primitives used here are built along +z and centred on the
+    origin. The spin about ``v`` is left unconstrained -- neither a capsule nor
+    a cylinder shows it.
+    """
+    d = np.asarray(v, float)
+    d = d / (np.linalg.norm(d) + 1e-12)
+    z = np.array([0.0, 0.0, 1.0])
+    axis = np.cross(z, d)
+    s, c = float(np.linalg.norm(axis)), float(z @ d)
+    if s < 1e-9:
+        return np.eye(3) if c > 0 else np.diag([1.0, -1.0, -1.0])
+    a = axis / s
+    Kx = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
+    return np.eye(3) + s * Kx + (1 - c) * (Kx @ Kx)
+
 
 def capsule_mesh(p0: np.ndarray, p1: np.ndarray, radius: float) -> trimesh.Trimesh:
     """A capsule whose TOTAL tip-to-tip extent spans p0 -> p1 exactly.
@@ -53,18 +81,24 @@ def capsule_mesh(p0: np.ndarray, p1: np.ndarray, radius: float) -> trimesh.Trime
     h = max(L - 2.0 * radius, 1e-6)
     mesh = trimesh.creation.capsule(height=h, radius=radius, count=(16, 16))
 
-    v = d / (L + 1e-12)
-    z = np.array([0.0, 0.0, 1.0])
-    axis = np.cross(z, v)
-    s, c = float(np.linalg.norm(axis)), float(z @ v)
     T = np.eye(4)
-    if s < 1e-9:
-        T[:3, :3] = np.eye(3) if c > 0 else np.diag([1.0, -1.0, -1.0])
-    else:
-        a = axis / s
-        Kx = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
-        T[:3, :3] = np.eye(3) + s * Kx + (1 - c) * (Kx @ Kx)
+    T[:3, :3] = _align_z(d)
     T[:3, 3] = (np.asarray(p0, float) + np.asarray(p1, float)) / 2.0
+    mesh.apply_transform(T)
+    return mesh
+
+
+def axis_mesh(centre: np.ndarray, axis: np.ndarray) -> trimesh.Trimesh:
+    """A stub cylinder centred on a joint, lying along its hinge axis.
+
+    The axis is a direction, not a ray -- the joint turns both ways about it --
+    so the cylinder is centred on the joint and symmetric, rather than an arrow.
+    """
+    mesh = trimesh.creation.cylinder(radius=JOINT_MARKER_RADIUS,
+                                     height=JOINT_MARKER_LENGTH, sections=16)
+    T = np.eye(4)
+    T[:3, :3] = _align_z(axis)
+    T[:3, 3] = np.asarray(centre, float)
     mesh.apply_transform(T)
     return mesh
 
@@ -147,6 +181,7 @@ def main() -> None:
         for fi, finger in enumerate(hand.fingers):
             angles = state["angles"].get(fi, {})
             joints, capsules = K.forward_kinematics(finger, hand.palm, angles)
+            axes = K.joint_axes(finger, hand.palm, angles)
 
             # the capsule carries the segment it belongs to; indexing by the
             # capsule's own position would silently read the wrong joint.
@@ -156,12 +191,11 @@ def main() -> None:
                     f"/f{fi}/link{n}", mesh.vertices, mesh.faces,
                     color=theta_colour(finger.segments[si].joint.theta))
 
-            for si, p in enumerate(joints[:-1]):
+            for si, (p, a) in enumerate(zip(joints[:-1], axes)):
                 perp = abs(finger.segments[si].joint.phi - math.pi / 2) < 1e-9
-                server.scene.add_icosphere(
-                    f"/f{fi}/j{si}",
-                    radius=G.CAPSULE_RADIUS * (0.55 if perp else 0.75),
-                    position=tuple(p),
+                mesh = axis_mesh(p, a)
+                server.scene.add_mesh_simple(
+                    f"/f{fi}/j{si}", mesh.vertices, mesh.faces,
                     color=(30, 30, 35) if perp else (220, 40, 40))
             server.scene.add_icosphere(f"/f{fi}/tip", radius=G.CAPSULE_RADIUS * 0.45,
                                        position=tuple(joints[-1]),

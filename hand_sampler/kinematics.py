@@ -182,6 +182,26 @@ def forward_kinematics(finger: Finger, palm: Palm,
     return joints, capsules
 
 
+def joint_axes(finger: Finger, palm: Palm,
+               angles: dict[int, float] | None = None) -> list[np.ndarray]:
+    """Each joint's hinge axis as a unit vector in the palm frame.
+
+    ``axis_of`` gives the axis in the joint's own frame; this carries it out to
+    the palm frame by the same chain ``forward_kinematics`` walks. A rotation
+    leaves its own axis fixed, so it makes no difference whether the joint's own
+    offset has been applied yet -- but the joints PROXIMAL to it move the axis,
+    which is why this takes the pose.
+    """
+    angles = angles or {}
+    _, R = mount_frame(finger.mount, palm)
+    out: list[np.ndarray] = []
+    for i, seg in enumerate(finger.segments):
+        a = axis_of(seg.joint)
+        out.append(R @ a)
+        R = R @ rodrigues(a, seg.joint.offset + angles.get(i, 0.0))
+    return out
+
+
 def fingertip(finger: Finger, palm: Palm,
               angles: dict[int, float] | None = None) -> np.ndarray:
     return forward_kinematics(finger, palm, angles)[0][-1]

@@ -340,6 +340,30 @@ def test_capsules_carry_their_segment_index():
     assert [c[3] for c in capsules] == [0, 1, 2]
 
 
+def test_joint_axes_are_the_axes_the_joints_turn_about():
+    """The viewer draws each joint as a cylinder along its reported axis, so the
+    axis has to be the one the joint really turns about: commanding joint k must
+    move everything distal to it by exactly that rotation, about that line."""
+    palm = G.Palm(0.025, 0.070, 0.070)
+    finger = G.Finger(G.Mount("+y", 0.5, 0.6),
+                      (G.Segment(G.Joint(0.0, offset=0.3), 0.035),
+                       G.Segment(G.Joint(math.pi / 3), 0.030),
+                       G.Segment(G.Joint(math.pi / 2, offset=-0.2), 0.025)))
+    rest, _ = K.forward_kinematics(finger, palm)
+    axes = K.joint_axes(finger, palm)
+    assert len(axes) == finger.n_joints
+    assert all(abs(np.linalg.norm(a) - 1.0) < 1e-12 for a in axes)
+
+    delta = 0.4
+    for k, a in enumerate(axes):
+        moved, _ = K.forward_kinematics(finger, palm, {k: delta})
+        R = K.rodrigues(a, delta)
+        for j in range(k + 1, len(rest)):
+            assert np.allclose(moved[j], rest[k] + R @ (rest[j] - rest[k]), atol=1e-12)
+        # a rotation fixes its own axis, so the marker is stable under its slider
+        assert np.allclose(K.joint_axes(finger, palm, {k: delta})[k], a, atol=1e-12)
+
+
 def test_fingers_do_not_overlap_at_the_base(pop):
     """No two proximal links may intersect at rest.
 
