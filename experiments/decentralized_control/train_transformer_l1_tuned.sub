@@ -58,7 +58,10 @@ AGENT="rl_games_joint_transformer_cfg_entry_point"
 ARCH_TAG="${ARCH_TAG:-jt_l${TRANSFORMER_LAYERS}_d${D_MODEL}_tuned}"
 HORIZON_LENGTH=16                     # must match the train YAML
 EXPL_COEF_BLOCK_SIZE=4096
-CAPTURE_VIEWER="${CAPTURE_VIEWER:-0}"
+# On by default: these are training runs, and the rollout video in wandb is
+# worth more than the capture costs. Set CAPTURE_VIEWER=0 when the run
+# exists to produce a throughput number rather than a policy.
+CAPTURE_VIEWER="${CAPTURE_VIEWER:-1}"
 WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
 WANDB_GROUP="${WANDB_GROUP:-decentralized_control}"
 WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
