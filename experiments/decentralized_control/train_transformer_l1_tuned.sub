@@ -99,6 +99,14 @@ exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
 
 cd "$REPO_ROOT"
 source .venv_isaacsim/bin/activate
+# shuffle_batch gathers a fresh full-size copy of every batch tensor (a
+# 1.37 GiB block for the SAPG-augmented 458,752 x 779 observations), and this
+# config leaves under a GiB free on a 48 GB card. The default allocator holds
+# its cache in fixed segments, so it can be sitting on GiBs it cannot hand out
+# for one contiguous request -- which is how run 255357 died at epoch 631 with
+# 7.8 GiB reserved-but-unallocated. Expandable segments remove that failure
+# mode. Allocation strategy only; results are unchanged.
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMNI_KIT_ACCEPT_EULA=YES
 export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
 export WANDB_DIR="$RUN_DIR"
