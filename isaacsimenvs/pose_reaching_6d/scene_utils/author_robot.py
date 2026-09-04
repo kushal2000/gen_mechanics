@@ -449,14 +449,40 @@ def _strip_render_only(stage, root) -> tuple[int, int]:
     return before - sum(1 for _ in walk(root)), before
 
 
+def keep_visuals_requested() -> bool:
+    """``GENMECH_KEEP_VISUALS=1`` keeps the robot renderable.
+
+    Stripping the render-only prims is a 24k-env throughput measure and it
+    makes the robot invisible to any camera. A handful of envs being recorded
+    to video wants the opposite trade, and at that scale the composition cost
+    it buys back is irrelevant.
+    """
+    import os
+    return os.environ.get("GENMECH_KEEP_VISUALS", "0") not in ("0", "", "false")
+
+
 def flatten_robot_usd(usd_path: str, out_path: Path, *,
-                      contact_offset: float, rest_offset: float) -> tuple[str, str]:
+                      contact_offset: float, rest_offset: float,
+                      strip_render_only: bool | None = None) -> tuple[str, str]:
     """Inline the converter's sub-layers into one file with the robot PhysX
     props set once and the render-only prims dropped; returns
     ``(path, root_prim_path)``. Nested references do not resolve a second level
     down, so an unflattened file composes with no colliders when an env prim
-    references it."""
+    references it.
+
+    ``strip_render_only=False`` (or ``GENMECH_KEEP_VISUALS=1``) keeps the
+    visual meshes so the robot can be rendered. The output then goes to a
+    DIFFERENT filename, because a stripped and an unstripped flatten are not
+    interchangeable and silently reusing one for the other would either cost
+    throughput or produce an empty video.
+    """
     from pxr import PhysxSchema, Sdf, Usd, UsdPhysics
+
+    if strip_render_only is None:
+        strip_render_only = not keep_visuals_requested()
+    if not strip_render_only:
+        out_path = out_path.with_name(
+            out_path.stem + "_vis" + out_path.suffix)
 
     stage = Usd.Stage.Open(usd_path, Usd.Stage.LoadAll)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -465,7 +491,7 @@ def flatten_robot_usd(usd_path: str, out_path: Path, *,
     flat = Usd.Stage.Open(str(out_path))
     root = flat.GetDefaultPrim() or next(
         p for p in flat.GetPseudoRoot().GetChildren() if p.IsValid())
-    removed, before = _strip_render_only(flat, root)
+    removed = _strip_render_only(flat, root)[0] if strip_render_only else 0
     # Every remaining prim is composed once per env, so the breakdown says
     # where the next cut is: wrapper Xforms, colliders, joints.
     # Only prims outside a prototype are composed per env; instanced geometry
@@ -478,7 +504,8 @@ def flatten_robot_usd(usd_path: str, out_path: Path, *,
             continue
         kinds[prim.GetTypeName() or "(none)"] = kinds.get(prim.GetTypeName() or "(none)", 0) + 1
     breakdown = ", ".join(f"{k} x{v}" for k, v in sorted(kinds.items(), key=lambda kv: -kv[1]))
-    print(f"[scene_utils] {out_path.name}: dropped {removed} render-only prims; "
+    print(f"[scene_utils] {out_path.name}: "
+          f"{'dropped %d render-only prims' % removed if strip_render_only else 'KEPT render-only prims (renderable)'}; "
           f"{sum(kinds.values())} composed per env ({breakdown}), "
           f"{shared} more shared in prototypes", flush=True)
     for prim in Usd.PrimRange(root):
@@ -506,4 +533,5 @@ def flatten_robot_usd(usd_path: str, out_path: Path, *,
     return str(out_path), str(root.GetPath())
 
 
-__all__ = ["ARM_PRIM", "arm_only_urdf", "author_robot_prims", "flatten_robot_usd"]
+__all__ = ["ARM_PRIM", "arm_only_urdf", "author_robot_prims", "flatten_robot_usd",
+           "keep_visuals_requested"]

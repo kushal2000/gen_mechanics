@@ -35,6 +35,10 @@ NUM_ASSETS_PER_TYPE="${NUM_ASSETS_PER_TYPE:-100}"
 SEED="${SEED:-0}"
 SAPG_EXPL_COEF="${SAPG_EXPL_COEF:-50.0}"
 TAG="${TAG:-dropout}"
+# 1 keeps the robot's visual meshes so it can be rendered. Off by default:
+# stripping them is what makes 24k-env scene composition affordable, and it
+# leaves the robot invisible to any camera.
+KEEP_VISUALS="${KEEP_VISUALS:-0}"
 
 OUT_DIR="${REPO_ROOT}/debug_outputs/eval_logs/${TAG}"
 mkdir -p "$OUT_DIR"
@@ -43,6 +47,7 @@ exec > "${OUT_DIR}/${VARIANT}.log" 2>&1
 
 cd "$REPO_ROOT"
 source .venv_isaacsim/bin/activate
+export GENMECH_KEEP_VISUALS="$KEEP_VISUALS"
 export OMNI_KIT_ACCEPT_EULA=YES
 # Per-variant Kit cache: six jobs converting six different URDFs into one
 # shared cache directory is a race, and a corrupted cache fails minutes into

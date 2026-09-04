@@ -70,6 +70,25 @@ def parse_args():
                         "zero-variance during training, so the policy has no "
                         "capacity to interpret a changed value. It is a "
                         "normalization constant, not a property to re-derive.")
+    p.add_argument("--video", type=int, default=0,
+                   help="Record one mp4 PER ENV from a single rollout.")
+    p.add_argument("--video_dir", default="debug_outputs/videos/finger_dropout")
+    p.add_argument("--video_res", default="640,480",
+                   help="WxH per view. Render cost scales with pixels and every "
+                        "step pays it num_envs times.")
+    p.add_argument("--cam_eye", default="",
+                   help="'x,y,z' camera offset from an env origin. Default: "
+                        "the value cfg.viewer already carries.")
+    p.add_argument("--cam_lookat", default="",
+                   help="'x,y,z' aim point offset from an env origin.")
+    p.add_argument("--cam_sweep", type=int, default=0,
+                   help="With --video_probe, also render a set of candidate "
+                        "framings around the MEASURED palm/object position and "
+                        "dump them as sweep_*.png, so the framing is chosen "
+                        "from the scene rather than guessed.")
+    p.add_argument("--video_probe", type=int, default=0,
+                   help="Render N steps, dump the last frame of each env as PNG, "
+                        "then exit. Use to check framing before a long run.")
     p.add_argument("--sampled", action="store_true",
                    help="sample actions instead of using mu")
     p.add_argument("--out", default="debug_outputs/eval_logs/finger_dropout.json")
@@ -106,6 +125,10 @@ def main() -> None:
     AppLauncher.add_app_launcher_args(app_parser)
     app_args = app_parser.parse_args([])
     app_args.headless = True
+    # rgb_array rendering needs the RTX renderer up; without this the sim runs
+    # in NO_RENDERING and render() raises rather than returning frames.
+    if args.video or args.video_probe:
+        app_args.enable_cameras = True
     app = AppLauncher(app_args).app
 
     import gymnasium as gym
@@ -186,9 +209,14 @@ def main() -> None:
         # and let each variant tighten its own bar as it succeeds, which makes
         # the six numbers incomparable.
         cfg.termination.eval_success_tolerance = args.success_tolerance
+        if args.video or args.video_probe:
+            w, h = (int(x) for x in args.video_res.split(","))
+            cfg.viewer.resolution = (w, h)
 
         boot = time.perf_counter()
-        env = gym.make("GenMech-PoseReach-Direct-v0", cfg=cfg)
+        env = gym.make(
+            "GenMech-PoseReach-Direct-v0", cfg=cfg,
+            render_mode="rgb_array" if (args.video or args.video_probe) else None)
         inner = env.unwrapped
         if args.pin_hand_scale:
             # Written after construction: _joint_link_bbox_local holds RAW
@@ -216,7 +244,68 @@ def main() -> None:
         _load_remapped(player, args.checkpoint, SHARPA_IIWA14, spec,
                        list(cfg.obs.obs_list), finger_specs)
 
-        results[variant] = rollout(env, inner, player, args, spec)
+        recorder = None
+        if args.video or args.video_probe:
+            # env step is decimation * sim.dt seconds, so this fps plays back
+            # at wall-clock speed.
+            fps = round(1.0 / (cfg.sim.dt * cfg.decimation))
+            vdir = pathlib.Path(args.video_dir) / variant
+            eye = (tuple(float(x) for x in args.cam_eye.split(","))
+                   if args.cam_eye else tuple(cfg.viewer.eye))
+            look = (tuple(float(x) for x in args.cam_lookat.split(","))
+                    if args.cam_lookat else tuple(cfg.viewer.lookat))
+            recorder = PerEnvRecorder(inner, vdir, eye, look, fps)
+            print(f"  recording {recorder.n} views -> {vdir} "
+                  f"@ {fps} fps, {cfg.viewer.resolution}", flush=True)
+
+        if args.video_probe:
+            t = time.perf_counter()
+            for _ in range(args.video_probe):
+                a = player.get_normalized_action(
+                    obs=obs["policy"], deterministic_actions=not args.sampled)
+                obs, _, _, _, _ = env.step(a)
+                recorder.capture()
+            dt = time.perf_counter() - t
+            # Where the interesting things actually ARE, in env-local metres.
+            org = inner.scene.env_origins
+            palm = (inner.robot.data.body_state_w[:, inner._palm_body_id, 0:3]
+                    - org).mean(0).tolist()
+            objp = (inner.object.data.root_pos_w - org).mean(0).tolist()
+            print(f"  scene (env-local m): palm {[round(v,3) for v in palm]}  "
+                  f"object {[round(v,3) for v in objp]}", flush=True)
+            out = recorder.dump_pngs(pathlib.Path(args.video_dir) / f"probe_{variant}")
+            if args.cam_sweep:
+                aim = [(palm[i] + objp[i]) / 2 for i in range(3)]
+                offs = [(0.6, -0.6, 0.35), (0.9, -0.9, 0.50), (0.35, -0.45, 0.25),
+                        (0.0, -0.80, 0.40), (0.7, -0.40, 0.20), (0.0, -0.50, 0.80)]
+                sdir = pathlib.Path(args.video_dir) / f"sweep_{variant}"
+                sdir.mkdir(parents=True, exist_ok=True)
+                import imageio.v2 as _iio
+                o = recorder.origins[0]
+                for i, d in enumerate(offs):
+                    inner.sim.set_camera_view(
+                        tuple(o[k] + aim[k] + d[k] for k in range(3)),
+                        tuple(o[k] + aim[k] for k in range(3)))
+                    inner.render()
+                    _iio.imwrite(str(sdir / f"sweep{i}_eye{d[0]}_{d[1]}_{d[2]}.png"),
+                                 inner.render()[..., :3])
+                print(f"  aim (env-local) {[round(v,3) for v in aim]}; "
+                      f"sweep in {sdir}", flush=True)
+            recorder.close()
+            print(f"  probe: {args.video_probe} steps x {recorder.n} views in "
+                  f"{dt:.1f}s -> {args.video_probe / dt:.2f} steps/s; "
+                  f"{args.steps} steps would take "
+                  f"{args.steps / (args.video_probe / dt) / 60:.0f} min\n"
+                  f"  frames in {out}", flush=True)
+            env.close(); del env, player; torch.cuda.empty_cache()
+            continue
+
+        results[variant] = rollout(env, inner, player, args, spec, recorder)
+        if recorder is not None:
+            paths = recorder.close()
+            mb = sum(pth.stat().st_size for pth in paths) / 1e6
+            print(f"  wrote {len(paths)} videos ({mb:.0f} MB) to {paths[0].parent}",
+                  flush=True)
         env.close()
         del env, player
         torch.cuda.empty_cache()
@@ -250,7 +339,68 @@ def _load_remapped(player, checkpoint, full_spec, spec, obs_list, finger_specs):
             ckpt["running_mean_std"])
 
 
-def rollout(env, inner, player, args, spec) -> dict:
+class PerEnvRecorder:
+    """One mp4 per env, from a single shared rollout.
+
+    DirectRLEnv owns exactly ONE render product, bound to
+    cfg.viewer.cam_prim_path (/OmniverseKit_Persp). So N views cost N
+    (move camera, render) pairs per step -- there is no batched path without
+    adding TiledCamera sensors to the scene cfg, and a sensor attached after
+    env init is exactly the pattern that OOM'd this repo before (see the note
+    in coevolution/train.py about attach_record_camera).
+
+    The per-view framing reuses cfg.viewer's tuned eye/lookat verbatim, read as
+    offsets from an env origin -- which is what they already are, since that
+    viewer was authored to frame the central env of a grid centred on the
+    world origin.
+    """
+
+    def __init__(self, inner, out_dir, eye, lookat, fps):
+        import imageio.v2 as imageio
+        self.inner = inner
+        self.sim = inner.sim
+        self.origins = inner.scene.env_origins.detach().cpu().numpy()
+        self.n = self.origins.shape[0]
+        self.eye = eye
+        self.lookat = lookat
+        out_dir.mkdir(parents=True, exist_ok=True)
+        self.paths = [out_dir / f"env{i:02d}.mp4" for i in range(self.n)]
+        self.writers = [
+            imageio.get_writer(str(pth), fps=fps, codec="libx264",
+                               quality=7, macro_block_size=8)
+            for pth in self.paths]
+        # The renderer returns empty data until it has warmed up; burn a couple
+        # of frames so frame 0 of every video is real.
+        for _ in range(2):
+            self._view(0)
+
+    def _view(self, i):
+        o = self.origins[i]
+        self.sim.set_camera_view(
+            (o[0] + self.eye[0], o[1] + self.eye[1], o[2] + self.eye[2]),
+            (o[0] + self.lookat[0], o[1] + self.lookat[1], o[2] + self.lookat[2]))
+        return self.inner.render()
+
+    def capture(self):
+        for i in range(self.n):
+            frame = self._view(i)
+            if frame is not None and getattr(frame, "size", 0):
+                self.writers[i].append_data(frame[..., :3])
+
+    def dump_pngs(self, out_dir):
+        import imageio.v2 as imageio
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for i in range(self.n):
+            frame = self._view(i)
+            imageio.imwrite(str(out_dir / f"env{i:02d}.png"), frame[..., :3])
+        return out_dir
+
+    def close(self):
+        for w in self.writers:
+            w.close()
+        return self.paths
+
+def rollout(env, inner, player, args, spec, recorder=None) -> dict:
     import torch
 
     device = inner.device
@@ -265,6 +415,8 @@ def rollout(env, inner, player, args, spec) -> dict:
         action = player.get_normalized_action(
             obs=obs["policy"], deterministic_actions=not args.sampled)
         obs, _, terminated, truncated, _ = env.step(action)
+        if recorder is not None:
+            recorder.capture()
         done = terminated | truncated
         if bool(done.any()):
             banked += torch.where(done, prev, torch.zeros_like(prev))
