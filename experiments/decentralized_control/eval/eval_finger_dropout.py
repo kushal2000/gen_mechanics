@@ -116,6 +116,17 @@ def main() -> None:
     print(f"synthesised policy config from {run_config} -> {config_path}",
           flush=True)
 
+    # PoseReachEnvCfg() carries the CURRENT default obs/state lists, which
+    # happen to match the joint_transformer runs. A checkpoint trained on any
+    # other list (the 140-d MLP, say) would then be fed a differently-shaped
+    # and differently-ordered observation with no error anywhere -- the widths
+    # are only checked against the network. Take the lists from the run that
+    # produced the checkpoint.
+    import yaml as _yaml
+    _run = _yaml.safe_load(open(run_config))["env"]["obs"]
+    ckpt_obs_list = tuple(_run["obs_list"])
+    ckpt_state_list = tuple(_run.get("state_list", ()))
+
     coef = None if args.sapg_expl_coef < 0 else args.sapg_expl_coef
     results = {}
 
@@ -128,6 +139,9 @@ def main() -> None:
         # A fresh cfg per variant: derive_spaces refuses to overwrite a
         # non-zero action_space, so a reused cfg carries the previous hand's.
         cfg = PoseReachEnvCfg()
+        cfg.obs.obs_list = ckpt_obs_list
+        if ckpt_state_list:
+            cfg.obs.state_list = ckpt_state_list
         cfg.scene.num_envs = args.num_envs
         cfg.assets.num_assets_per_type = args.num_assets_per_type
         cfg.assets.robot_spec = spec.name
