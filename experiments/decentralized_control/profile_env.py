@@ -315,6 +315,35 @@ def cmd_obs(args) -> None:
 
     print(f"\nPASS: aliased noisy fields match recomputation exactly over "
           f"{args.steps} steps at {args.num_envs} envs", flush=True)
+
+    # ---- per-field statistics ------------------------------------------
+    # A field pinned against clamp_abs_observations carries no gradient and
+    # no information. joint_link_bbox and object_keypoints_rel_joint are both
+    # divided by hand_scale and together are 528 of the 778 columns, so a bad
+    # scale there silently blanks two thirds of the observation.
+    clip = inner.cfg.obs.clamp_abs_observations
+    print(f"\nper-field statistics over {args.steps} steps "
+          f"(clamp +/-{clip}, hand_scale={float(inner._hand_scale[0, 0]):.4f})",
+          flush=True)
+    print(f"  {'field':<30} {'cols':>5} {'mean':>9} {'std':>9} {'min':>9} "
+          f"{'max':>9} {'%|x|>=clip':>11} {'%zero-var':>10}", flush=True)
+    acc = []
+    for _ in range(args.steps):
+        o, *_ = env.step(actions.uniform_(-1.0, 1.0))
+        acc.append(o["policy"].clone())
+    allobs = torch.cat(acc, dim=0)
+    for field, (start, end) in offsets.items():
+        block = allobs[:, start:end]
+        pinned = (block.abs() >= clip - 1e-4).float().mean().item() * 100
+        percol = block.std(dim=0)
+        deadcol = (percol < 1e-6).float().mean().item() * 100
+        print(f"  {field:<30} {end-start:>5} {block.mean():>9.3f} "
+              f"{block.std():>9.3f} {block.min():>9.3f} {block.max():>9.3f} "
+              f"{pinned:>10.1f}% {deadcol:>9.1f}%", flush=True)
+    pinned_all = (allobs.abs() >= clip - 1e-4).float().mean().item() * 100
+    dead_all = (allobs.std(dim=0) < 1e-6).float().mean().item() * 100
+    print(f"  {'-- WHOLE OBSERVATION':<30} {allobs.shape[1]:>5} "
+          f"{'':>39} {pinned_all:>10.1f}% {dead_all:>9.1f}%", flush=True)
     env.close()
 
 
