@@ -34,11 +34,17 @@ STEPS="${STEPS:-6000}"
 NUM_ASSETS_PER_TYPE="${NUM_ASSETS_PER_TYPE:-100}"
 SEED="${SEED:-0}"
 SAPG_EXPL_COEF="${SAPG_EXPL_COEF:-50.0}"
+SUCCESS_TOLERANCE="${SUCCESS_TOLERANCE:-0.03}"
 TAG="${TAG:-dropout}"
+# Explicit config for a checkpoint whose run dir is not the default one
+# find_config() locates (e.g. the MLP control).
+CONFIG="${CONFIG:-}"
 # 1 keeps the robot's visual meshes so it can be rendered. Off by default:
 # stripping them is what makes 24k-env scene composition affordable, and it
 # leaves the robot invisible to any camera.
 KEEP_VISUALS="${KEEP_VISUALS:-0}"
+# Anything else, verbatim: --policy_mode padded --pad_fill mean, --video 1, ...
+EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 OUT_DIR="${REPO_ROOT}/debug_outputs/eval_logs/${TAG}"
 mkdir -p "$OUT_DIR"
@@ -47,8 +53,8 @@ exec > "${OUT_DIR}/${VARIANT}.log" 2>&1
 
 cd "$REPO_ROOT"
 source .venv_isaacsim/bin/activate
-export GENMECH_KEEP_VISUALS="$KEEP_VISUALS"
 export OMNI_KIT_ACCEPT_EULA=YES
+export GENMECH_KEEP_VISUALS="$KEEP_VISUALS"
 # Per-variant Kit cache: six jobs converting six different URDFs into one
 # shared cache directory is a race, and a corrupted cache fails minutes into
 # a boot with an error that does not name the cause.
@@ -56,8 +62,9 @@ export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache_${VARIANT}"
 export TORCHINDUCTOR_CACHE_DIR="/tmp/${USER}_inductor_cache"
 mkdir -p "$OMNI_KIT_CACHE_PATH" "$TORCHINDUCTOR_CACHE_DIR"
 
-echo "variant=$VARIANT envs=$NUM_ENVS steps=$STEPS assets=$NUM_ASSETS_PER_TYPE seed=$SEED coef=$SAPG_EXPL_COEF"
+echo "variant=$VARIANT envs=$NUM_ENVS steps=$STEPS assets=$NUM_ASSETS_PER_TYPE seed=$SEED coef=$SAPG_EXPL_COEF tol=$SUCCESS_TOLERANCE"
 echo "checkpoint=$CHECKPOINT"
+echo "config=${CONFIG:-<auto>} extra=${EXTRA_ARGS:-<none>}"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 python -u experiments/decentralized_control/eval/eval_finger_dropout.py \
@@ -68,5 +75,8 @@ python -u experiments/decentralized_control/eval/eval_finger_dropout.py \
     --num_assets_per_type "$NUM_ASSETS_PER_TYPE" \
     --seed "$SEED" \
     --sapg_expl_coef "$SAPG_EXPL_COEF" \
+    --success_tolerance "$SUCCESS_TOLERANCE" \
+    ${CONFIG:+--config "$CONFIG"} \
+    $EXTRA_ARGS \
     --out "${OUT_DIR}/${VARIANT}.json"
 echo "exit=$?"

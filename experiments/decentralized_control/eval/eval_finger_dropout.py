@@ -70,6 +70,23 @@ def parse_args():
                         "zero-variance during training, so the policy has no "
                         "capacity to interpret a changed value. It is a "
                         "normalization constant, not a property to re-derive.")
+    p.add_argument("--policy_mode", default="native",
+                   choices=["native", "padded"],
+                   help="native: slice the checkpoint down to the reduced hand "
+                        "(joint_transformer -- every weight is joint-count "
+                        "independent, so this is lossless). padded: keep the "
+                        "full-width weights and adapt at runtime, scattering "
+                        "the reduced observation back into a full-width vector "
+                        "and slicing the actions. An MLP has one weight per "
+                        "input column, so padded is the ONLY option for it.")
+    p.add_argument("--pad_fill", default="mean", choices=["mean", "zero"],
+                   help="What a dropped column carries under --policy_mode "
+                        "padded. 'mean' writes the checkpoint's own "
+                        "running_mean, which is exactly zero AFTER rl_games "
+                        "normalises -- i.e. 'no information', and the most "
+                        "charitable control. 'zero' writes a literal 0, which "
+                        "post-normalisation is (0 - mean)/std, a value the "
+                        "policy may never have seen. Report which you used.")
     p.add_argument("--video", type=int, default=0,
                    help="Record one mp4 PER ENV from a single rollout.")
     p.add_argument("--video_dir", default="debug_outputs/videos/finger_dropout")
@@ -148,18 +165,12 @@ def main() -> None:
     # resolves against the WHOLE config because num_actors interpolates out to
     # env.scene.num_envs -- an agent-only save leaves a dangling key that fails
     # minutes later, inside a Kit boot.
-    config_path = synthesise_policy_config(
+    base_policy_config = synthesise_policy_config(
         load_run_config(pathlib.Path(run_config).parent.parent),
         pathlib.Path(args.out).parent / "policy_config.yaml", args.num_envs)
-    print(f"synthesised policy config from {run_config} -> {config_path}",
+    print(f"synthesised policy config from {run_config} -> {base_policy_config}",
           flush=True)
 
-    # PoseReachEnvCfg() carries the CURRENT default obs/state lists, which
-    # happen to match the joint_transformer runs. A checkpoint trained on any
-    # other list (the 140-d MLP, say) would then be fed a differently-shaped
-    # and differently-ordered observation with no error anywhere -- the widths
-    # are only checked against the network. Take the lists from the run that
-    # produced the checkpoint.
     # The intact hand's characteristic scale, read from its own URDF rather
     # than hardcoded so it tracks the asset.
     from isaacsimenvs.pose_reaching_6d.obs_utils.joint_geometry import joint_link_boxes
@@ -169,6 +180,13 @@ def main() -> None:
           f"{' (pinned for every variant)' if args.pin_hand_scale else ''}",
           flush=True)
 
+    # PoseReachEnvCfg() carries the CURRENT default obs/state lists, which
+    # happen to match the joint_transformer runs. A checkpoint trained on any
+    # other list (the 140-d MLP, say) would then be fed a differently-shaped
+    # and differently-ordered observation with no error anywhere -- the widths
+    # are only checked against the network, and the padded adapter would
+    # cheerfully scatter the wrong columns. Take the lists from the run that
+    # produced the checkpoint.
     import yaml as _yaml
     _run = _yaml.safe_load(open(run_config))["env"]["obs"]
     ckpt_obs_list = tuple(_run["obs_list"])
@@ -236,13 +254,56 @@ def main() -> None:
 
         # Built with no checkpoint, then loaded through the remap: rl_games'
         # restore is a strict load and would reject the resized sigma.
-        player = RlPlayer(
-            num_observations=n_obs, num_actions=inner.cfg.action_space,
-            config_path=config_path, checkpoint_path=None,
-            device=str(inner.device), sapg_expl_coef=coef,
-            num_envs=args.num_envs)
-        _load_remapped(player, args.checkpoint, SHARPA_IIWA14, spec,
-                       list(cfg.obs.obs_list), finger_specs)
+        # The synthesised config carries the TRAINING run's robot_spec, and
+        # joint_transformer builds its token layout from that spec -- so
+        # without this the network builds 22 tokens (778-d) for a hand the env
+        # reports as 618-d, and _build_layout raises.
+        if args.policy_mode == "padded":
+            # The network keeps the intact hand's widths; only the adapter
+            # knows a finger is gone. robot_spec therefore stays the FULL spec.
+            import torch as _t
+            cols = finger_specs.obs_column_map(
+                SHARPA_IIWA14, spec, list(cfg.obs.obs_list))
+            full_obs = len(finger_specs.obs_column_map(
+                SHARPA_IIWA14, SHARPA_IIWA14, list(cfg.obs.obs_list)))
+            keep_act = ([i for i in range(SHARPA_IIWA14.num_arm_joints)]
+                        + [SHARPA_IIWA14.num_arm_joints
+                           + SHARPA_IIWA14.hand_joint_names.index(j)
+                           for j in spec.hand_joint_names])
+            if len(cols) != n_obs:
+                raise RuntimeError(
+                    f"{variant}: env reports {n_obs} obs but the column map "
+                    f"keeps {len(cols)} of {full_obs}")
+            # The training config already names the intact hand and the
+            # network keeps its training widths, so it is used verbatim -- no
+            # repointing, and nothing injected into an actor_critic block that
+            # never had a robot_spec key.
+            player = RlPlayer(
+                num_observations=full_obs, num_actions=SHARPA_IIWA14.num_joints,
+                config_path=base_policy_config, checkpoint_path=args.checkpoint,
+                device=str(inner.device), sapg_expl_coef=coef,
+                num_envs=args.num_envs)
+            if args.pad_fill == "mean":
+                rms = player.player.model.running_mean_std.running_mean
+                fill = rms.detach().clone().float()
+            else:
+                fill = _t.zeros(full_obs, dtype=_t.float32)
+            player = PaddedPolicy(player, cols, keep_act, full_obs, fill,
+                                  args.num_envs, inner.device)
+            print(f"  padded policy: {full_obs} obs in "
+                  f"({player.n_dropped} columns filled with {args.pad_fill}), "
+                  f"{SHARPA_IIWA14.num_joints} actions out -> "
+                  f"{len(keep_act)} used", flush=True)
+        else:
+            variant_config = _policy_config_for(base_policy_config, spec.name,
+                                                list(cfg.obs.obs_list))
+            player = RlPlayer(
+                num_observations=n_obs, num_actions=inner.cfg.action_space,
+                config_path=variant_config, checkpoint_path=None,
+                device=str(inner.device), sapg_expl_coef=coef,
+                num_envs=args.num_envs)
+            _load_remapped(player, args.checkpoint, SHARPA_IIWA14, spec,
+                           list(cfg.obs.obs_list), finger_specs)
 
         recorder = None
         if args.video or args.video_probe:
@@ -313,6 +374,31 @@ def main() -> None:
     report(results, args, run_config)
     app.close()
     os._exit(0)
+
+
+def _policy_config_for(base_path: str, spec_name: str, obs_list) -> str:
+    """Copy the policy config with robot_spec repointed at this variant.
+
+    joint_transformer resolves its token layout from params.network.robot_spec,
+    NOT from the env, so a config still naming the training hand builds 22
+    tokens for a 17- or 18-joint hand and _build_layout raises. The asymmetric
+    critic has its own network block and inherits nothing, so both are set.
+    """
+    from omegaconf import OmegaConf
+
+    cfg = OmegaConf.load(base_path)
+    nodes = [cfg.train.params.network]
+    cv = cfg.train.params.config.get("central_value_config")
+    if cv is not None and "network" in cv:
+        nodes.append(cv.network)
+    for node in nodes:
+        node.robot_spec = spec_name
+        for key in ("obs_list", "state_list"):
+            if key in node:
+                node[key] = list(obs_list)
+    out = pathlib.Path(base_path).with_name(f"policy_config_{spec_name}.yaml")
+    OmegaConf.save(cfg, str(out))
+    return str(out)
 
 
 def _load_remapped(player, checkpoint, full_spec, spec, obs_list, finger_specs):
@@ -400,6 +486,40 @@ class PerEnvRecorder:
             w.close()
         return self.paths
 
+
+class PaddedPolicy:
+    """Runs a FULL-hand policy on a reduced-hand env.
+
+    An MLP's first layer has one weight column per observation element and its
+    mu head one row per action, so neither can be sliced the way
+    JointTransformerNet can -- there is no joint-count-independent weight to
+    reuse. The honest control is therefore to keep the trained network exactly
+    as it is and adapt around it: scatter the reduced observation back into the
+    full-width vector it was trained on, mark the missing finger's columns as
+    carrying no information, and drop the actions for joints the robot no
+    longer has.
+    """
+
+    def __init__(self, player, cols, keep_act, full_obs, fill, num_envs, device):
+        import torch
+        self.player = player
+        self.cols = torch.as_tensor(cols, dtype=torch.long, device=device)
+        self.keep_act = torch.as_tensor(keep_act, dtype=torch.long, device=device)
+        # One persistent buffer: the dropped columns keep their fill value for
+        # the whole rollout and only the live columns are overwritten per step.
+        self.buf = fill.to(device).view(1, full_obs).repeat(num_envs, 1)
+        self.n_dropped = full_obs - len(cols)
+
+    def reset(self):
+        self.player.reset()
+
+    def get_normalized_action(self, obs, deterministic_actions=True):
+        self.buf[:, self.cols] = obs
+        full = self.player.get_normalized_action(
+            obs=self.buf, deterministic_actions=deterministic_actions)
+        return full[:, self.keep_act]
+
+
 def rollout(env, inner, player, args, spec, recorder=None) -> dict:
     import torch
 
@@ -471,6 +591,8 @@ def report(results, args, config_path) -> None:
          "deterministic": not args.sampled,
          "success_tolerance": args.success_tolerance,
          "pinned_hand_scale": bool(args.pin_hand_scale),
+         "policy_mode": args.policy_mode,
+         "pad_fill": args.pad_fill if args.policy_mode == "padded" else None,
          "results": results}, indent=2))
     print(f"\nwrote {out}")
 
