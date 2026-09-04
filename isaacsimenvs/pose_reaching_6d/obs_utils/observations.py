@@ -299,6 +299,26 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     )
     palm_pos = palm_center_pos_w - env_origins
 
+    # Fingertip pad centres. Restored verbatim from 7a8a98c: dropping this
+    # field when the per-joint token fields landed is what the MLP control
+    # arm regressed on. The joint_link_bbox block does carry the distal links'
+    # geometry, but only implicitly, and a dense first layer evidently cannot
+    # recover it -- done_hand_far went from 1.3% of episodes to 54%, while the
+    # transformer on the SAME observation stayed at 1.6%.
+    ft_state = env.robot.data.body_state_w[:, env._fingertip_body_ids, :]
+    ft_pos_w = _apply_local_offset(
+        ft_state[:, :, 0:3], ft_state[:, :, 3:7], env._fingertip_offsets,
+        (env.num_envs, env._num_fingertips),
+    )
+    fingertip_pos_rel_palm = (
+        (ft_pos_w - env_origins.unsqueeze(1)) - palm_pos.unsqueeze(1)
+    )  # (N, S, 3)
+    # Ghosted slots would otherwise feed the policy the pose of a finger that
+    # is not there. Zero is the "absent" value, matching the distance field.
+    fingertip_pos_rel_palm = fingertip_pos_rel_palm * (
+        env._fingertip_mask.unsqueeze(-1).to(fingertip_pos_rel_palm.dtype)
+    )
+
     obj_pos = env.object.data.root_pos_w - env_origins
     obj_rot = env.object.data.root_quat_w  # wxyz
     obj_linvel = env.object.data.root_lin_vel_w
@@ -391,6 +411,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "hand_scale": env._hand_scale,
         "palm_pos": palm_pos,
         "palm_rot": palm_rot_xyzw,
+        "fingertip_pos_rel_palm": fingertip_pos_rel_palm,
         "palm_vel": palm_vel,
         "object_rot": obj_rot_xyzw,
         "object_vel": obj_vel,
