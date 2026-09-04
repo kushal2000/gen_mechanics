@@ -111,16 +111,11 @@ def mount_position(mount: Mount, palm: Palm) -> np.ndarray:
 
 
 def mount_direction(mount: Mount, palm: Palm) -> np.ndarray:
-    """Which way the finger points, as a unit vector in the palm frame.
+    """The face normal: a finger leaves perpendicular to the face it sits on.
 
-    ``(alpha, beta)`` are polar about the face normal, so beta names nothing at
-    alpha = 0 -- which is why ``mutate.perturb_direction`` jitters the direction
-    in the tangent plane rather than stepping the two independently.
+    Aiming it elsewhere is the base joint's ``offset``, not a mount property.
     """
-    _, n, t_u, t_v, _, _ = face_frame(mount.face, palm)
-    tangential = math.cos(mount.beta) * t_u + math.sin(mount.beta) * t_v
-    d = math.cos(mount.alpha) * n + math.sin(mount.alpha) * tangential
-    return d / np.linalg.norm(d)
+    return face_frame(mount.face, palm)[1]
 
 
 def _frame_from_axis(axis: np.ndarray) -> np.ndarray:
@@ -159,7 +154,9 @@ def forward_kinematics(finger: Finger, palm: Palm,
                        ) -> tuple[list[np.ndarray], list[tuple]]:
     """``(joint_positions, capsules)`` for one finger, in the palm frame.
 
-    ``angles`` maps segment index to radians; missing entries are 0.
+    ``angles`` maps segment index to radians and is COMMANDED angle, added to
+    each joint's ``offset``; missing entries are 0, so the default pose is every
+    joint sitting at its own offset.
     ``joint_positions`` has one entry per segment plus the fingertip.
 
     Each capsule is ``(start, end, radius, segment_index)``. The index is carried
@@ -174,7 +171,8 @@ def forward_kinematics(finger: Finger, palm: Palm,
 
     for i, seg in enumerate(finger.segments):
         joints.append(p.copy())
-        R = R @ rodrigues(axis_of(seg.joint), angles.get(i, 0.0))
+        R = R @ rodrigues(axis_of(seg.joint),
+                          seg.joint.offset + angles.get(i, 0.0))
         nxt = p + R[:, 0] * seg.length
         if seg.length > _EPS:
             capsules.append((p.copy(), nxt.copy(), CAPSULE_RADIUS, i))
@@ -253,9 +251,10 @@ def base_capsules(hand: Hand) -> list[tuple[np.ndarray, np.ndarray]]:
     """
     out = []
     for f in hand.fingers:
-        p0 = mount_position(f.mount, hand.palm)
-        p1 = p0 + mount_direction(f.mount, hand.palm) * f.segments[0].length
-        out.append((p0, p1))
+        p0, R = mount_frame(f.mount, hand.palm)
+        seg = f.segments[0]
+        R = R @ rodrigues(axis_of(seg.joint), seg.joint.offset)
+        out.append((p0, p0 + R[:, 0] * seg.length))
     return out
 
 

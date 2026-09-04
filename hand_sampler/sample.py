@@ -2,7 +2,8 @@
 
 Deliberately simple and deliberately CONVENTIONAL -- two fingers on adjacent
 faces, one or two joints each, hinges perpendicular to their links, axes at pure
-flexion or pure abduction. Starting at the conventional corner and letting the
+flexion or pure abduction, every joint at zero offset. Starting at the
+conventional corner and letting the
 search leave it is what makes a result legible; seeding at the unconventional
 corner would conflate "evolution found this" with "we put it there".
 
@@ -68,7 +69,7 @@ def seed_finger(rng: random.Random, face: str, palm: G.Palm) -> G.Finger:
                   length=rng.choice(SEED_LENGTHS))
         for _ in range(n)
     )
-    return G.Finger(mount=G.Mount(face, *_seed_uv(rng, face, palm), alpha=0.0),
+    return G.Finger(mount=G.Mount(face, *_seed_uv(rng, face, palm)),
                     segments=segments)
 
 

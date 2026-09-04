@@ -61,7 +61,7 @@ three links at 80 mm puts it inside the space with room either side."""
 # --- joints -----------------------------------------------------------------
 
 ANGLE_QUANTUM = math.radians(15.0)
-"""Grid for every angle: joint theta, and mount alpha and beta.
+"""Grid for every angle in the genotype: joint theta and offset.
 
 The reason is EXACT INVERSES (DESIGN.md 6), not tidiness -- continuous parameters
 cannot give them, so add/remove pairs would leak on every step. It also makes a
@@ -131,12 +131,22 @@ class Joint:
 
     phi is PINNED at pi/2 -- no operator moves it and the validator requires it
     (DESIGN.md 11). It stays a field so re-enabling is one line in perturb_axis.
+
+    ``offset`` is the joint's ZERO ANGLE: where the link sits when the actuator is
+    at neutral, i.e. the angle the link is assembled at. It is structural, costs
+    no motor, and shifts the joint's travel with it. A base joint's offset aims
+    the whole finger -- which is what the mount used to carry as (alpha, beta) --
+    and an offset further out gives the finger a resting curl, which no mount
+    orientation could express.
     """
 
     theta: float
     phi: float = math.pi / 2
+    offset: float = 0.0
 
     def __post_init__(self) -> None:
+        if not math.isfinite(self.offset):
+            raise ValueError(f"non-finite joint offset {self.offset}")
         if not math.isfinite(self.theta) or not math.isfinite(self.phi):
             raise ValueError(f"non-finite joint angles ({self.theta}, {self.phi})")
 
@@ -161,29 +171,27 @@ class Segment:
 
 @dataclass(frozen=True)
 class Mount:
-    """Where a finger attaches to the palm, and which way it points.
+    """Where a finger attaches to the palm. Position only -- no orientation.
 
     ``(u, v)`` are NORMALISED face coordinates, so a palm resize carries every
     mount with it. Mutation still steps in METRES, because faces differ 2-4x in
     span and the spans shrink with the palm.
 
-    ``(alpha, beta)`` are polar about the face normal: alpha tilts away from it,
-    beta is the azimuth of that tilt. There is no roll, for two independent
-    reasons -- it is gauge (rotating the mount while subtracting the same angle
-    from the first joint's theta gives an identical hand), and the previous design
-    space derived it from the rest of the geometry.
+    A finger leaves along its face normal, and aiming it elsewhere is the base
+    joint's ``offset`` (see Joint). The mount used to carry a pointing direction
+    (alpha, beta); it was exactly reproducible by (base theta, base offset) and
+    strictly less expressive, since it could only aim a whole finger and never
+    give one a resting curl.
     """
 
     face: str
     u: float
     v: float
-    alpha: float = 0.0
-    beta: float = 0.0
 
     def __post_init__(self) -> None:
         if self.face not in FINGER_FACES:
             raise ValueError(f"{self.face!r} is not a finger face; use {FINGER_FACES}")
-        for name in ("u", "v", "alpha", "beta"):
+        for name in ("u", "v"):
             if not math.isfinite(getattr(self, name)):
                 raise ValueError(f"non-finite mount {name}")
 

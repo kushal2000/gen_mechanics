@@ -8,8 +8,10 @@ by eye than by reading enumerations.
 
 Joints are coloured by ``theta``, which replaced the old FE/AA enum: blue is pure
 flexion, orange pure abduction, everything between is a design the old space
-could not name. A joint whose ``phi`` has left perpendicular-to-bone is ringed,
-which cannot happen while phi is pinned but is ready for when it is not.
+could not name. A joint's zero offset shows in the readout as ``+30o``, and in
+the scene as its link resting away from the grey face-normal stub. A joint
+whose ``phi`` has left perpendicular-to-bone is ringed -- which cannot happen
+while phi is pinned, but is ready for when it is not.
 Undo replays the lineage rather than storing snapshots, so a broken inverse shows
 up as the history and the scene disagreeing.
 """
@@ -91,11 +93,12 @@ def describe(hand: G.Hand, last_op: str | None) -> str:
         off = "" if all(abs(s.joint.phi - math.pi / 2) < 1e-9 for s in f.segments) \
               else "  **phi off-perpendicular**"
         lines.append(
-            f"`{i}` {f.mount.face} u={f.mount.u:.2f} v={f.mount.v:.2f} "
-            f"tilt={math.degrees(f.mount.alpha):.0f}deg | "
+            f"`{i}` {f.mount.face} u={f.mount.u:.2f} v={f.mount.v:.2f} | "
             f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm{off}")
         lines.append("   " + "  ".join(
-            f"[{math.degrees(s.joint.theta):.0f}d/{s.length*1000:.0f}mm]"
+            f"[{math.degrees(s.joint.theta):.0f}d"
+            + (f"{math.degrees(s.joint.offset):+.0f}o" if s.joint.offset else "")
+            + f"/{s.length*1000:.0f}mm]"
             for s in f.segments))
     if last_op:
         lines += ["", f"last operator: **{last_op}**"]
@@ -164,7 +167,7 @@ def main() -> None:
                                        position=tuple(joints[-1]),
                                        color=(250, 220, 60))
 
-            # the mount normal, so a tilted finger reads as tilted
+            # the face normal, so a finger offset away from it reads as offset
             p0 = K.mount_position(finger.mount, hand.palm)
             d = K.mount_direction(finger.mount, hand.palm)
             server.scene.add_spline_catmull_rom(

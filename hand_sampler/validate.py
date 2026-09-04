@@ -70,7 +70,15 @@ def check_segment(seg: G.Segment, where: str) -> list[str]:
     if abs(seg.joint.phi - math.pi / 2) > _TOL:
         out.append(f"{where}.phi = {seg.joint.phi:.4f}; phi is pinned at pi/2 "
                    f"(perpendicular hinges) until off-axis joints are enabled")
-    for name, value in (("theta", seg.joint.theta), ("phi", seg.joint.phi)):
+    # The zero offset is where the link sits at neutral, so it must be an angle
+    # the joint could actually be assembled at.
+    lo, hi = G.JOINT_LIMIT
+    if not lo - _TOL <= seg.joint.offset <= hi + _TOL:
+        out.append(f"{where}.offset = {seg.joint.offset:.4f} outside "
+                   f"the joint's own travel [{lo:.4f}, {hi:.4f}]")
+
+    for name, value in (("theta", seg.joint.theta), ("phi", seg.joint.phi),
+                        ("offset", seg.joint.offset)):
         if not _on_grid(value, G.ANGLE_QUANTUM):
             out.append(f"{where}.{name} = {value:.4f} off the angle grid")
     return out
@@ -96,16 +104,6 @@ def check_finger(finger: G.Finger, i: int, palm: G.Palm) -> list[str]:
                        f"[{lo:.3f}, {hi:.3f}]; a mount must stay "
                        f"{G.MOUNT_EDGE_MARGIN * 1000:.0f} mm from the face edge "
                        f"or its capsule hangs off the palm")
-
-    for name, value in (("alpha", finger.mount.alpha), ("beta", finger.mount.beta)):
-        if not _on_grid(value, G.ANGLE_QUANTUM):
-            out.append(f"{where}.mount.{name} = {value:.4f} off the angle grid")
-
-    # beta is the azimuth of a tilt, so at alpha = 0 every value names the same
-    # finger. One spelling, so identical hands compare and hash identically.
-    if abs(finger.mount.alpha) < _TOL and abs(finger.mount.beta) > _TOL:
-        out.append(f"{where}.mount has alpha = 0 with beta = "
-                   f"{finger.mount.beta:.4f}; use beta = 0")
 
     for j, seg in enumerate(finger.segments):
         out.extend(check_segment(seg, f"{where}.segment[{j}]"))

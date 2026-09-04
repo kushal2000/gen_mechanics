@@ -21,9 +21,9 @@ available, which is not automatic. ``Stats`` exists to catch a drift.
 NINE OPERATORS. Two rules decide the count. An operator REACHABLE BY CHAINING
 others earns nothing and adds a second place the same rule can drift -- which is
 why ``remount`` is gone, folded into ``move_mount`` once a step overflowing a
-face carries onto the next, and why ``perturb_axis`` and ``perturb_direction``
-both stay (a joint axis decides which way a joint SWEEPS, a mount direction which
-way the finger POINTS AT REST, and no sequence of axis changes tilts a rest pose).
+face carries onto the next, and why a mount-orientation operator is gone: a
+joint's ZERO OFFSET reproduces exactly what it did from the base joint, and does
+more from any other joint.
 
 But operators that differ only in WHERE they attach are kept apart, even though a
 tree makes them one operation. Splitting a link and growing a new finger were
@@ -33,10 +33,10 @@ and once the palm filled, splits kept succeeding under the same name, masking
 that palm capacity had run out. Separate operators make the mutation mix
 controllable and the failure modes legible.
 
-Reflection rather than clipping when a step leaves a range, mount steps in METRES
-rather than u/v fractions, and direction jittered in the tangent plane rather
-than by stepping alpha and beta -- all three because the alternative biases the
-step distribution by position. Roll does not exist here; it is gauge.
+Reflection rather than clipping when a step leaves a range, and mount steps in
+METRES rather than u/v fractions -- both because the alternative biases the step
+distribution by position. The mount carries no orientation at all: a finger
+leaves along its face normal, and aiming it is the base joint's offset.
 """
 
 from __future__ import annotations
@@ -58,8 +58,8 @@ OPERATORS: tuple[str, ...] = (
     # structural -- these move complexity, +-1 joint each
     "split_link", "merge_links", "add_finger", "remove_finger",
     # parametric -- complexity fixed
-    "perturb_axis", "perturb_length", "move_mount",
-    "perturb_direction", "perturb_palm",
+    "perturb_axis", "perturb_offset", "perturb_length", "move_mount",
+    "perturb_palm",
 )
 
 STRUCTURAL: tuple[str, ...] = OPERATORS[:4]
@@ -104,21 +104,6 @@ def snap(x: float, quantum: float) -> float:
 def wrap_theta(theta: float) -> float:
     """theta is periodic with period pi -- a hinge and its negation coincide."""
     return theta % math.pi
-
-
-def _canonical_mount(face: str, u: float, v: float,
-                     alpha: float, beta: float) -> G.Mount:
-    """One spelling per physical mount.
-
-    alpha folds into [0, pi/2] rather than wrapping: a tilt of -a about azimuth b
-    is a tilt of +a about b + pi. At alpha = 0 the azimuth names nothing, so beta
-    is zeroed.
-    """
-    alpha = snap(reflect(alpha, 0.0, math.pi / 2), G.ANGLE_QUANTUM)
-    beta = snap(beta % (2.0 * math.pi), G.ANGLE_QUANTUM)
-    if alpha < 1e-9:
-        beta = 0.0
-    return G.Mount(face=face, u=u, v=v, alpha=alpha, beta=beta)
 
 
 # --- structural -------------------------------------------------------------
@@ -267,7 +252,7 @@ def _new_finger(rng: random.Random, hand: G.Hand) -> G.Hand | None:
     rng.shuffle(sites)
     for face, u, v in sites:
         finger = G.Finger(
-            mount=_canonical_mount(face, u, v, alpha=0.0, beta=0.0),
+            mount=G.Mount(face, u, v),
             segments=(G.Segment(
                 G.Joint(theta=_draw_theta(rng), phi=math.pi / 2),
                 length=G.MIN_LINK_LENGTH + rng.randint(0, n_len) * G.LINK_QUANTUM),),
@@ -347,7 +332,7 @@ def perturb_axis(rng: random.Random, hand: G.Hand) -> G.Hand:
                     G.Joint(snap(wrap_theta(sg.joint.theta
                                             + G.ANGLE_QUANTUM * rng.choice((-1, 1))),
                                  G.ANGLE_QUANTUM) % math.pi,
-                            sg.joint.phi),
+                            sg.joint.phi, sg.joint.offset),
                     sg.length)
                 for sg in f.segments)
             fingers.append(replace(f, segments=segments))
@@ -415,16 +400,18 @@ def _step_mount(mount: G.Mount, palm: G.Palm, du_m: float, dv_m: float
                 ) -> G.Mount | None:
     """One step on the palm surface, wrapping onto a neighbouring face if needed.
 
-    Bounded by MOUNT_EDGE_MARGIN, and a crossing JUMPS that band rather than
-    walking through it -- the margin forbids a mount being within a capsule
-    radius of an edge, so there is no legal position AT one to pass through.
+    Movement is bounded by MOUNT_EDGE_MARGIN, and a crossing JUMPS that band
+    rather than walking through it: the margin forbids a mount being within a
+    capsule radius of an edge, so there is no legal position AT one to pass
+    through.
 
-    ``(alpha, beta)`` are PRESERVED across an edge, so the finger keeps its
-    relationship to its face and its world direction rotates with the normal.
-    Preserving the world direction instead turns alpha = 0 into alpha = 90,
-    laying the finger flat along the surface it is bolted to.
+    A crossing needs nothing done to the finger's aim. A finger leaves along its
+    face normal and its tilt is the base joint's offset, so moving to a new face
+    rotates the world direction by the angle between normals while leaving the
+    tilt relative to the face untouched -- which is what a mount orientation had
+    to be carried across by hand.
     """
-    _, n, t_u, t_v, span_u, span_v = face_frame(mount.face, palm)
+    _, _, t_u, t_v, span_u, span_v = face_frame(mount.face, palm)
     lo_u, hi_u, lo_v, hi_v = mount_uv_bounds(mount.face, palm)
     u, v = mount.u + du_m / span_u, mount.v + dv_m / span_v
 
@@ -442,59 +429,54 @@ def _step_mount(mount: G.Mount, palm: G.Palm, du_m: float, dv_m: float
 
     face = face_from_normal(cross)
     if face is None:
-        # Nowhere to cross to. CLAMP rather than refuse: the thin axis has a
-        # 5 mm band against a 5 mm step, so refusing froze that axis entirely.
+        # The step points at the wrist or a large face. CLAMP rather than refuse:
+        # the thin axis has a 5 mm band against a 5 mm step, so refusing froze it.
         clamped = replace(mount, u=u, v=v)
         return None if clamped == mount else clamped
 
     landing = mount_position(replace(mount, u=u, v=v), palm)
-
     centre, _, t_u2, t_v2, span_u2, span_v2 = face_frame(face, palm)
     d = landing - centre
     lo_u2, hi_u2, lo_v2, hi_v2 = mount_uv_bounds(face, palm)
     u2 = min(max(0.5 + float(np.dot(d, t_u2)) / span_u2, lo_u2), hi_u2)
     v2 = min(max(0.5 + float(np.dot(d, t_v2)) / span_v2, lo_v2), hi_v2)
-
-    # (alpha, beta) carry over UNCHANGED, so the finger keeps its relationship to
-    # the face it is on and its world direction rotates with the face normal.
-    return _canonical_mount(face, u2, v2, mount.alpha, mount.beta)
+    return G.Mount(face, u2, v2)
 
 
-def perturb_direction(rng: random.Random, hand: G.Hand) -> G.Hand:
-    """Tilt one finger, by jittering its direction IN THE TANGENT PLANE.
+def perturb_offset(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Step EVERY joint's zero offset by one quantum, independently up or down.
 
-    Not by stepping alpha and beta: they are polar about the face normal, so beta
-    names nothing at alpha = 0 and a fixed beta step is a vanishing angular move
-    near it. Perturbing the vector gives a step of uniform angular size wherever
-    the finger already points.
+    A joint's offset is where its link sits when the actuator is at neutral --
+    the angle it is assembled at. Structural, costing no motor, and it carries
+    the joint's travel with it.
+
+    This replaces a mount-orientation operator that could only aim a whole finger
+    from its base. An offset on the base joint reproduces exactly what that did
+    (verified to 2e-12 over every reachable rest direction), and an offset
+    further out gives a finger a resting curl, which no mount orientation could
+    express. One primitive covering both, applied at every joint rather than only
+    the first.
+
+    Whole-hand, matching ``perturb_axis``: offset and theta are the same kind of
+    per-joint angle on the same grid, so they explore at the same rate.
     """
-    order = list(range(hand.n_fingers))
-    rng.shuffle(order)
-    for fi in order:
-        finger = hand.fingers[fi]
-        _, n, t_u, t_v, _, _ = face_frame(finger.mount.face, hand.palm)
-        d = mount_direction(finger.mount, hand.palm)
-
-        psi = rng.uniform(0.0, 2.0 * math.pi)
-        d_new = d + math.tan(G.ANGLE_QUANTUM) * (math.cos(psi) * t_u
-                                                 + math.sin(psi) * t_v)
-        d_new /= np.linalg.norm(d_new)
-
-        # back to polar about the face normal
-        alpha = math.acos(float(np.clip(np.dot(d_new, n), -1.0, 1.0)))
-        tangential = d_new - float(np.dot(d_new, n)) * n
-        beta = (math.atan2(float(np.dot(tangential, t_v)),
-                           float(np.dot(tangential, t_u)))
-                if np.linalg.norm(tangential) > 1e-9 else 0.0)
-
-        mount = _canonical_mount(finger.mount.face, finger.mount.u,
-                                 finger.mount.v, alpha, beta)
-        if mount == finger.mount:
-            continue
-        out = G.with_finger(hand, fi, replace(finger, mount=mount))
+    lo, hi = G.JOINT_LIMIT
+    for _ in range(_REDRAWS):
+        fingers = []
+        for f in hand.fingers:
+            segments = tuple(
+                G.Segment(
+                    G.Joint(sg.joint.theta, sg.joint.phi,
+                            snap(reflect(sg.joint.offset
+                                         + G.ANGLE_QUANTUM * rng.choice((-1, 1)),
+                                         lo, hi), G.ANGLE_QUANTUM)),
+                    sg.length)
+                for sg in f.segments)
+            fingers.append(replace(f, segments=segments))
+        out = replace(hand, fingers=tuple(fingers))
         if V.is_valid(out):
             return out
-    raise MutationImpossible("no finger direction could be perturbed")
+    raise MutationImpossible("no whole-hand offset perturbation validated")
 
 
 def perturb_palm(rng: random.Random, hand: G.Hand) -> G.Hand:
@@ -526,8 +508,8 @@ _FUNCS = {
     "split_link": split_link, "merge_links": merge_links,
     "add_finger": add_finger, "remove_finger": remove_finger,
     "perturb_axis": perturb_axis, "perturb_length": perturb_length,
-    "move_mount": move_mount, "perturb_direction": perturb_direction,
-    "perturb_palm": perturb_palm,
+    "perturb_offset": perturb_offset,
+    "move_mount": move_mount, "perturb_palm": perturb_palm,
 }
 
 

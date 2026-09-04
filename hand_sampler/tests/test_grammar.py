@@ -46,7 +46,7 @@ def test_mount_frame_orthonormal_on_every_face():
     tilt can reach even though no face normal does."""
     palm = G.Palm(0.025, 0.060, 0.060)
     for face in G.FINGER_FACES:
-        _, R = K.mount_frame(G.Mount(face, 0.5, 0.5, 0.0), palm)
+        _, R = K.mount_frame(G.Mount(face, 0.5, 0.5), palm)
         assert np.allclose(R.T @ R, np.eye(3), atol=1e-9), face
         assert abs(np.linalg.det(R) - 1.0) < 1e-9, face
 def test_seeds_valid(pop):
@@ -181,18 +181,6 @@ def test_identical_hands_compare_equal(pop):
     a = pop[0]
     b = G.Hand(palm=G.Palm(*a.palm.extents), fingers=a.fingers)
     assert a == b and hash(a) == hash(b)
-
-
-def test_alpha_zero_forces_beta_zero():
-    """At alpha = 0 every beta names the same finger; two spellings of one hand
-    would break identity."""
-    palm = G.Palm(0.025, 0.060, 0.060)
-    reasons = V.check_finger(
-        G.Finger(G.Mount("+z", 0.5, 0.5, alpha=0.0, beta=G.ANGLE_QUANTUM),
-                 (G.Segment(G.Joint(0.0), 0.04),)), 0, palm)
-    assert any("beta" in r for r in reasons)
-
-
 def _closest_approach(hand, starts=4):
     """How near two fingertips can be brought, over all joint angles.
 
@@ -255,7 +243,7 @@ def _hand(*fingers):
 
 def _finger(face, lengths, v=0.7):
     return G.Finger(
-        G.Mount(face, 0.5, v, 0.0),
+        G.Mount(face, 0.5, v),
         tuple(G.Segment(G.Joint((i * G.ANGLE_QUANTUM) % math.pi, math.pi / 2), L)
               for i, L in enumerate(lengths)))
 
@@ -320,7 +308,7 @@ def test_one_joint_per_link():
     zero-length case in the builder, and no way for capsule and segment indices
     to diverge in a renderer."""
     palm = G.Palm(0.025, 0.060, 0.060)
-    bad = G.Finger(G.Mount("+y", 0.5, 0.7, 0.0),
+    bad = G.Finger(G.Mount("+y", 0.5, 0.7),
                    (G.Segment(G.Joint(0.0), 0.0), G.Segment(G.Joint(0.0), 0.040)))
     assert V.check_finger(bad, 0, palm), "a zero-length link must be rejected"
 
@@ -345,7 +333,7 @@ def test_capsules_carry_their_segment_index():
     position today, and is carried because ``build.py`` will skip geometry for
     ghosted joints -- at which point a positional zip reads the wrong joint."""
     palm = G.Palm(0.025, 0.060, 0.060)
-    finger = G.Finger(G.Mount("+y", 0.5, 0.7, 0.0),
+    finger = G.Finger(G.Mount("+y", 0.5, 0.7),
                       tuple(G.Segment(G.Joint(i * G.ANGLE_QUANTUM % math.pi), 0.030)
                             for i in range(3)))
     _, capsules = K.forward_kinematics(finger, palm)
@@ -469,7 +457,7 @@ def test_perturb_palm_leaves_thickness_alone(pop):
 def test_check_finger_needs_the_real_palm():
     """Mount bounds depend on the face spans, so the palm cannot be defaulted:
     the same mount is illegal on a 60 mm face and legal on a 100 mm one."""
-    finger = G.Finger(G.Mount("+y", 0.5, 0.90, 0.0),
+    finger = G.Finger(G.Mount("+y", 0.5, 0.90),
                       (G.Segment(G.Joint(0.0), 0.040),))
     assert V.check_finger(finger, 0, G.Palm(0.025, 0.060, 0.060))
     assert not V.check_finger(finger, 0, G.Palm(0.025, 0.100, 0.100))
@@ -483,7 +471,7 @@ def test_require_valid_reports_every_reason():
     good = S.seed_population(0, 1)[0]
     assert V.require_valid(good) is good
 
-    bad = G.Hand(palm, (G.Finger(G.Mount("+y", 0.5, 0.99, 0.0),
+    bad = G.Hand(palm, (G.Finger(G.Mount("+y", 0.5, 0.99),
                                  (G.Segment(G.Joint(0.0), 0.5),)),))
     with pytest.raises(ValueError) as e:
         V.require_valid(bad)
@@ -557,6 +545,8 @@ def test_every_genotype_field_is_validated():
             seg = _replace(seg, joint=_replace(seg.joint, theta=kw["s_theta"]))
         if "s_phi" in kw:
             seg = _replace(seg, joint=_replace(seg.joint, phi=kw["s_phi"]))
+        if "s_offset" in kw:
+            seg = _replace(seg, joint=_replace(seg.joint, offset=kw["s_offset"]))
         new_palm = _replace(palm, **{k[2:]: v for k, v in kw.items()
                                      if k.startswith("p_")})
         return G.Hand(new_palm,
@@ -576,8 +566,8 @@ def test_every_genotype_field_is_validated():
         "phi off grid": variant(s_phi=0.1),
         "mount u past the margin": variant(m_u=0.99),
         "mount v past the margin": variant(m_v=0.99),
-        "mount alpha off grid": variant(m_alpha=0.1),
-        "alpha zero with beta set": variant(m_alpha=0.0, m_beta=G.ANGLE_QUANTUM),
+        "offset outside joint travel": variant(s_offset=math.radians(120)),
+        "offset off grid": variant(s_offset=0.1),
         "too many fingers": G.Hand(palm, hand.fingers * 4),
         "too few fingers": G.Hand(palm, hand.fingers[:1]),
     }
@@ -603,13 +593,67 @@ def test_the_grammar_is_deterministic():
     assert walk(3) != walk(4)
 
 
-def test_crossing_a_face_rotates_the_finger_with_it():
-    """A finger keeps its relationship to the face it is on, so crossing an edge
-    rotates its world direction by the angle between the normals. Preserving the
-    world direction instead lays the finger flat along the surface it is bolted
-    to."""
+def test_offset_subsumes_a_mount_pointing_direction():
+    """A base-joint offset reproduces every rest direction a mount tilt could,
+    and a non-base offset does something no mount tilt can.
+
+    That is why the mount carries no orientation: one primitive covering both,
+    applied at every joint rather than only the first.
+    """
     palm = G.Palm(0.025, 0.060, 0.060)
-    mount = G.Mount("+y", 0.5, 0.80, alpha=0.0, beta=0.0)
+    face = "+y"
+    _, normal, t_u, t_v, _, _ = K.face_frame(face, palm)
+    _, R = K.mount_frame(G.Mount(face, 0.5, 0.5), palm)
+
+    reachable = np.array([
+        K.rodrigues(R @ K.axis_of(G.Joint(float(th), math.pi / 2)), float(d)) @ normal
+        for th in np.arange(0, math.pi, G.ANGLE_QUANTUM)
+        for d in np.arange(-math.pi / 2, math.pi / 2 + 1e-9, G.ANGLE_QUANTUM)])
+
+    for a in np.arange(0, math.pi / 2 + 1e-9, G.ANGLE_QUANTUM):
+        for b in np.arange(0, 2 * math.pi, G.ANGLE_QUANTUM):
+            want = (math.cos(a) * normal
+                    + math.sin(a) * (math.cos(b) * t_u + math.sin(b) * t_v))
+            gap = float(np.min(np.linalg.norm(reachable - want, axis=1)))
+            assert gap < 1e-9, f"alpha={math.degrees(a):.0f} deg uncovered"
+
+    curled = G.Finger(G.Mount(face, 0.5, 0.7), (
+        G.Segment(G.Joint(0.0, math.pi / 2), 0.04),
+        G.Segment(G.Joint(0.0, math.pi / 2, math.radians(60)), 0.04)))
+    straight = G.Finger(curled.mount, (curled.segments[0],
+                                       G.Segment(G.Joint(0.0), 0.04)))
+    assert float(np.linalg.norm(K.fingertip(curled, palm)
+                                - K.fingertip(straight, palm))) > 0.03
+
+
+def test_offset_moves_the_link_but_theta_does_not():
+    """The two per-joint angles do different things, which is why both exist.
+
+    theta re-aims the axis a joint sweeps about and moves nothing at rest;
+    offset is where the link sits at rest and moves it directly.
+    """
+    palm = G.Palm(0.025, 0.060, 0.060)
+
+    def tip(theta_deg, offset_deg):
+        f = G.Finger(G.Mount("+y", 0.5, 0.7),
+                     (G.Segment(G.Joint(math.radians(theta_deg), math.pi / 2,
+                                        math.radians(offset_deg)), 0.05),))
+        return K.fingertip(f, palm)
+
+    assert np.allclose(tip(0, 0), tip(60, 0)), "theta moved the link at rest"
+    assert not np.allclose(tip(0, 0), tip(0, 45)), "offset did not move the link"
+
+
+def test_crossing_a_face_rotates_the_finger_with_it():
+    """A finger leaves along its face normal, so crossing an edge rotates its
+    world direction by the angle between normals -- with nothing to carry over.
+
+    The mount used to hold a pointing direction that had to be preserved by hand,
+    and preserving the WORLD direction instead laid the finger flat along the
+    surface it was bolted to. Neither is expressible now.
+    """
+    palm = G.Palm(0.025, 0.060, 0.060)
+    mount = G.Mount("+y", 0.5, 0.80)
     before = K.mount_direction(mount, palm)
 
     for _ in range(8):
@@ -620,27 +664,7 @@ def test_crossing_a_face_rotates_the_finger_with_it():
         if mount.face != "+y":
             break
     assert mount.face == "+z", "the walk never crossed"
-    assert mount.alpha == pytest.approx(0.0), "tilt relative to the face changed"
 
     after = K.mount_direction(mount, palm)
     angle = math.degrees(math.acos(float(np.clip(before @ after, -1, 1))))
-    assert angle == pytest.approx(90.0, abs=1e-6), (
-        f"world direction rotated {angle:.1f} deg, expected the 90 deg between "
-        f"the two face normals")
-
-
-def test_no_crossing_changes_the_tilt(pop):
-    rng = random.Random(0)
-    crossings = 0
-    for hand in pop[:60]:
-        for _ in range(60):
-            child = M.mutate(rng, hand, "move_mount")
-            if child is None:
-                continue
-            for a, b in zip(hand.fingers, child.fingers):
-                if a.mount.face != b.mount.face:
-                    crossings += 1
-                    assert a.mount.alpha == pytest.approx(b.mount.alpha)
-                    assert a.mount.beta == pytest.approx(b.mount.beta)
-            hand = child
-    assert crossings > 20, f"only {crossings} crossings seen; test is not exercising"
+    assert angle == pytest.approx(90.0, abs=1e-6)

@@ -53,9 +53,9 @@ joints, edges are links.
 Hand   := Palm, [Finger]
 Palm   := box(w, l, t)
 Finger := Mount, Chain
-Mount  := face, (u, v), direction(alpha, beta)
+Mount  := face, (u, v)
 Chain  := Joint, link(length), [Chain]
-Joint  := axis(theta, phi)
+Joint  := axis(theta, phi), offset
 ```
 
 Grammar-guided GP normally separates genotype from phenotype, and the standard
@@ -93,6 +93,41 @@ to interpolate an asymmetric flexion range into a symmetric abduction one.
 Practical range of motion comes from **contact** instead: a finger that bends
 backwards hits the palm and stops, in simulation, for free.
 
+**`theta` does not move the link at rest.** Changing a joint's axis changes which
+way that joint *sweeps*, not where its child sits at zero angle — verified:
+identical joint positions and link directions, different swept paths. That is
+correct revolute behaviour.
+
+It leaves one thing for `build.py` to decide. A URDF can carry the axis two ways:
+`axis = axis_of(theta)` with zero origin rpy, or SHARPA's convention — which
+`params.py` follows — of `axis = [0 0 1]` with the orientation in the origin rpy.
+The kinematics are identical; they differ only in whether the **child link's own
+frame rolls about its long axis** by `theta`. With capsule links that is
+unobservable, since a capsule is rotationally symmetric about its axis and its
+oriented bounding box is a square-section box invariant under that roll. It
+becomes observable the moment a link is not symmetric, so the convention should
+be picked deliberately rather than inherited, and §8's "hinge axis in the
+parent's frame" should name the same one.
+
+`theta` spans **[0°, 180°) in 15° steps — 12 values**, and that is already
+minimal. An axis and its negation are the same hinge, so `theta` and
+`theta + 180°` describe one joint differing only in which sign of rotation swings
+which way; with symmetric joint limits the reachable set is identical, and
+`wrap_theta` collapses them (measured: the tip sweeps the same set of points, to
+0.00 mm). It cannot be narrowed further — `theta` and `theta + 90°` are
+*perpendicular* hinges, and their tip paths differ by 70.7 mm.
+
+**`offset` is the joint's zero angle** — where its link sits when the actuator
+is at neutral, i.e. the angle it is assembled at. Structural, costing no motor,
+and it carries the joint's travel with it.
+
+It is what aims a finger. A base joint's offset reproduces exactly what a mount
+pointing direction used to do (verified: every reachable rest direction matched
+to 2e-12), and an offset further out gives the finger a **resting curl**, which
+no mount orientation could express at all. One primitive doing both, available at
+every joint rather than only the first — so `theta` and `offset` are the pair
+that between them decide which way a joint sweeps and where it starts.
+
 All angles lie on a **15° grid**. The reason is exact inverses (§6), not
 tidiness: continuous parameters cannot give them, so add/remove pairs would leak
 a little on every step. It also makes a design hashable, so fitness can be
@@ -120,7 +155,7 @@ palm surface fingers close toward, `-z` the wrist.
 
 ### Mount
 
-`(face, u, v, alpha, beta)`.
+`(face, u, v)` — **position only, no orientation**.
 
 Fingers mount on the **three thin faces** — `+z` and `±y`. The large faces are
 excluded: a finger growing out of the gripping surface is awkward to build and to
@@ -137,16 +172,12 @@ or half the base capsule hangs off the palm. The margin is tight on the thin
 axis — a 25 mm palm carrying a 20 mm finger leaves 5 mm of play — and that is
 what a 20 mm finger on a 25 mm palm looks like.
 
-Orientation is a pointing direction `(alpha, beta)` — two angles, not three. The
-third would be roll about the finger's own axis, and that is **not a free
-parameter** for two independent reasons: it is gauge (rotating the mount by *r*
-while subtracting *r* from the first joint's theta gives an identical hand), and
-the previous design space derived it from the rest of the geometry.
-
-**Mount orientation stays structural rather than folding into the first joint's
-axis.** A base abduction joint reaches the same configurations, but it costs a
-motor where mount tilt is free. On a performance-versus-motors axis those are not
-the same design.
+The mount used to carry a pointing direction `(alpha, beta)`, plus a roll that
+was dropped as gauge. Both are gone: a finger leaves along its face normal and
+aiming it is the base joint's `offset` (§4). That also removes work a crossing
+had to do by hand — moving to a new face now rotates the world direction by the
+angle between normals while leaving the tilt relative to the face untouched,
+which is the behaviour that had to be coded explicitly before.
 
 ### Links
 
@@ -235,12 +266,17 @@ finger whose adjacent links summed past the ceiling could not shed that joint.
 | operator | step | scope |
 |---|---|---|
 | `perturb_axis` | ±15° in theta | **every joint** |
+| `perturb_offset` | ±15° in the zero angle | **every joint** |
 | `perturb_length` | ±1 quantum | **every link** |
 | `move_mount` | ±5 mm across the surface, crossing face edges | one finger |
-| `perturb_direction` | ±15°, jittered in the tangent plane | one finger |
 | `perturb_palm` | ±10 mm in width or length | one dimension |
 
-`perturb_axis` and `perturb_length` are **whole-hand** moves: each joint or link
+`perturb_offset` replaces a mount-orientation operator that could only aim a
+whole finger from its base (§4). It is whole-hand for the same reason
+`perturb_axis` is: offset and theta are the same kind of per-joint angle on the
+same grid, so they should explore at the same rate.
+
+`perturb_axis`, `perturb_offset` and `perturb_length` are **whole-hand** moves: each joint or link
 steps independently up or down, so a 20-joint hand has all 20 changed at once.
 That trades locality for exploration rate, and it matters most for
 `perturb_length`, which is the only operator that changes total reach —
@@ -252,11 +288,10 @@ before the operator reports failure.
 
 `move_mount` absorbs what a separate `remount` would do, since a step that
 overflows a face carries onto the face across that edge; on an axis-aligned box a
-face's tangents are its neighbours' normals, so no cube net is needed. Two
-details: `(alpha, beta)` are **preserved** across an edge, so the world direction
-rotates by the angle between normals rather than laying the finger flat; and when
-a step overflows toward a face that hosts no finger it **clamps** rather than
-refusing, since the thin axis has a 5 mm band against a 5 mm step.
+face's tangents are its neighbours' normals, so no cube net is needed.
+
+When a step overflows toward a face that hosts no finger it **clamps** rather
+than refusing, since the thin axis has a 5 mm band against a 5 mm step.
 
 ### Deferred
 
@@ -495,6 +530,8 @@ restore redundancy rather than capability:
 * **mount roll** — gauge. Rotating the mount by *r* about the finger axis while
   subtracting *r* from the first joint's `theta` gives an identical hand, so
   carrying it would give one hand two spellings.
+* **mount pointing direction** — reproduced exactly by the base joint's `offset`,
+  which also does strictly more (§4).
 * **`remount`** — a step that overflows a face now carries onto the next, so a
   separate teleport reaches nothing new.
 Note this list is about *redundancy*, not about size. `add_finger` /
