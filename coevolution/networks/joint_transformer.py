@@ -62,16 +62,17 @@ class _EncoderLayer(nn.Module):
     (28.2 vs 30.4 ms fwd+bwd per layer) and agrees with it to 1e-6.
     """
 
-    def __init__(self, d_model: int, n_heads: int, ff_mult: int, dropout: float):
+    def __init__(self, d_model: int, n_heads: int, ff_mult: int, dropout: float,
+                 affine_norm: bool = True):
         super().__init__()
         if d_model % n_heads:
             raise ValueError(f"d_model {d_model} not divisible by n_heads {n_heads}")
         self.n_heads = n_heads
         self.dropout = dropout
-        self.ln_attn = nn.LayerNorm(d_model)
+        self.ln_attn = nn.LayerNorm(d_model, elementwise_affine=affine_norm)
         self.qkv = nn.Linear(d_model, 3 * d_model)
         self.proj = nn.Linear(d_model, d_model)
-        self.ln_ff = nn.LayerNorm(d_model)
+        self.ln_ff = nn.LayerNorm(d_model, elementwise_affine=affine_norm)
         self.ff = nn.Sequential(
             nn.Linear(d_model, ff_mult * d_model),
             nn.GELU(),
@@ -93,6 +94,62 @@ class _EncoderLayer(nn.Module):
         attn = weights @ v
         x = x + self.proj(attn.transpose(1, 2).reshape(batch, tokens, dim))
         return x + self.ff(self.ln_ff(x))
+
+
+class _ParallelEncoderLayer(nn.Module):
+    """PaLM-style parallel block: attention and FF read the SAME normalized x.
+
+        x + Wout( concat[ attn(LN(x)), gelu(ff_up(LN(x))) ] )
+
+    rather than the serial ``x = x + attn(LN(x)); x = x + ff(LN(x))``. The two
+    branches no longer depend on each other, which collapses six ops into
+    three: one LayerNorm instead of two, qkv AND ff-up as a single
+    Linear(d, 3d + ff_mult*d), proj AND ff-down as a single
+    Linear(d + ff_mult*d, d), and one residual add instead of two.
+
+    That matters here because this block is memory-bound, not compute-bound --
+    at d_model 32 the arithmetic intensity is ~16 FLOP/byte against a machine
+    balance of 190, so time tracks the number of intermediates written and
+    re-read, not the number of multiplies. Measured at minibatch 16384, 2
+    layers, bf16 + compile: 4.65 -> 4.19 ms (1.11x), with identical parameter
+    count and unchanged attention.
+
+    PaLM reports ~15% faster training from this and no quality degradation at
+    62B, though a small degradation at 8B -- so it is not free in principle and
+    this network is far smaller than either. It is a deliberate flag.
+
+    Permutation equivariance over tokens is untouched: every weight here is
+    applied per token, exactly as in the serial block.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, ff_mult: int, dropout: float,
+                 affine_norm: bool = True):
+        super().__init__()
+        if d_model % n_heads:
+            raise ValueError(f"d_model {d_model} not divisible by n_heads {n_heads}")
+        self.n_heads = n_heads
+        self.dropout = dropout
+        self.d_model = d_model
+        self.ff_dim = ff_mult * d_model
+        self.ln = nn.LayerNorm(d_model, elementwise_affine=affine_norm)
+        self.w_in = nn.Linear(d_model, 3 * d_model + self.ff_dim)
+        self.w_out = nn.Linear(d_model + self.ff_dim, d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch, tokens, dim = x.shape
+        heads, d = self.n_heads, self.d_model
+        h = self.w_in(self.ln(x))
+        q, k, v, u = h[..., :d], h[..., d:2 * d], h[..., 2 * d:3 * d], h[..., 3 * d:]
+        q, k, v = (
+            t.view(batch, tokens, heads, dim // heads).transpose(1, 2)
+            for t in (q, k, v)
+        )
+        scores = (q @ k.transpose(-2, -1)) * (q.shape[-1] ** -0.5)
+        weights = scores.softmax(dim=-1)
+        if self.dropout and self.training:
+            weights = F.dropout(weights, p=self.dropout)
+        attn = (weights @ v).transpose(1, 2).reshape(batch, tokens, dim)
+        return x + self.w_out(torch.cat([attn, F.gelu(u)], dim=-1))
 
 
 class JointTransformerNet(NetworkBuilder.BaseNetwork):
@@ -157,11 +214,13 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         self.global_raw_dim = layout["global_dim"] + coef_dim
         self.token_proj = nn.Linear(layout["token_dim"], d_model)
         self.global_proj = nn.Linear(self.global_raw_dim, d_model)
+        block = _ParallelEncoderLayer if self.parallel_block else _EncoderLayer
         self.layers = nn.ModuleList(
-            _EncoderLayer(d_model, self.n_heads, self.ff_mult, self.dropout)
+            block(d_model, self.n_heads, self.ff_mult, self.dropout,
+                  affine_norm=self.affine_norm)
             for _ in range(self.n_layers)
         )
-        self.ln_out = nn.LayerNorm(d_model)
+        self.ln_out = nn.LayerNorm(d_model, elementwise_affine=self.affine_norm)
 
         # Mean-pooled joint tokens, the global token, and the raw global vector.
         # The value must see the whole hand, not one joint's view of it.
@@ -284,6 +343,19 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # normalization anywhere. Setting it False CHANGES the model, so it is
         # a deliberate flag rather than an automatic optimization.
         self.final_norm = bool(params.get("final_norm", True))
+        # PaLM-style parallel block: attention and FF read the same LayerNorm
+        # and their input/output projections fuse into one GEMM each. 1.11x at
+        # d_model 32 with 2 layers, same parameter count, attention unchanged.
+        # See _ParallelEncoderLayer -- it is a different model, not just a
+        # faster one, so it is off by default.
+        self.parallel_block = bool(params.get("parallel_block", False))
+        # Every LayerNorm in this network is immediately followed by a Linear,
+        # which can absorb any per-channel scale and shift -- so gamma/beta are
+        # mathematically redundant here. Dropping them deletes the
+        # GammaBetaBackward reduction (376832 rows down to d_model elements,
+        # pure memory traffic) for ~7% and a little activation memory. Left on
+        # by default so existing checkpoints keep loading.
+        self.affine_norm = bool(params.get("affine_norm", True))
         self.value_head_units = list(params.get("value_head_units", [256, 128]))
         self.robot_spec_name = params["robot_spec"]
         key = "state_list" if self.central_value else "obs_list"

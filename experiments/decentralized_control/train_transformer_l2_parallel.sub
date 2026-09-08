@@ -1,0 +1,221 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --cpus-per-task=8
+#SBATCH --get-user-env
+#SBATCH --mem=50000
+#SBATCH -t 3-00:00:00           # the budget: the run trains until this expires
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH -o /dev/null
+#SBATCH -e /dev/null
+
+# DECENTRALIZED per-joint transformer, TWO encoder layers, at roughly the cost
+# of the dense MLP. Matched control: train_mlp_nolstm_tuned.sub. Run both or
+# the number means nothing.
+#
+#   sbatch experiments/decentralized_control/train_transformer_l2_parallel.sub
+#   SEED=1 sbatch experiments/decentralized_control/train_transformer_l2_parallel.sub
+#
+# Measured at minibatch 16384, bf16 + compile, forward+backward, ONE network
+# (training runs an actor and an asymmetric critic, so double it):
+#
+#   dense MLP 778-1024-1024-512-512-29        2.43 ms   1.00x
+#   jt_l1_d64_tuned (what we ran before)      9.63 ms   3.96x
+#   THIS: L2 d32 h1 ff1 parallel, no-affine   ~4.2 ms   1.72x
+#
+# Two layers for less than half the cost of the single layer we were running.
+# Not parity with the MLP -- see WHY NOT FASTER below.
+#
+# WHAT CHANGED, and why each is safe:
+#
+#   1. PARALLEL BLOCK (parallel_block=true). PaLM-style: attention and the
+#      feed-forward read the SAME LayerNorm, so qkv and ff-up fuse into one
+#      GEMM, proj and ff-down into another, and there is one residual add
+#      instead of two. 1.30x on the encoder stack alone, 1.11x on the whole
+#      net. Parameter count unchanged, attention untouched, and permutation
+#      equivariance over tokens is preserved and unit-tested
+#      (max|f(Px) - Pf(x)| = 2.4e-07, identical to the serial block).
+#      PaLM reports ~15% faster training and no quality loss at 62B but a
+#      small loss at 8B; this network is far smaller than either, so treat it
+#      as an architecture change to ablate, not a free win.
+#   2. d_model 32, n_heads 1, ff_mult 1. n_heads is the cheapest cut: it adds
+#      ZERO parameters (qkv is Linear(d,3d) regardless) and 4 heads measured
+#      2.2x slower than 1, because the (B,heads,23,23) tensors scale with head
+#      count. At 23 tokens multi-head buys little.
+#   3. mu_head_units [32]. The per-joint head was a bare Linear(d,1) with no
+#      activation, which left the feed-forward GELU as the ONLY pointwise
+#      nonlinearity on the hand-action path. This gives each joint a real
+#      2-layer MLP, shared across all 22, for ~1k parameters.
+#   4. arm_head_units [128,64], down from [256,128]. The arm head is a dense
+#      MLP and was the largest single component of the step (+1.18 ms, 30%).
+#      Note [64,32] measured SLOWER than [128,64] despite less arithmetic --
+#      below the roofline, narrower is not faster.
+#   5. affine_norm=false. Every LayerNorm here is immediately followed by a
+#      Linear, which absorbs any per-channel scale and shift, so gamma and
+#      beta are mathematically redundant. Dropping them deletes the
+#      GammaBetaBackward reduction (376832 rows down to 32 elements, pure
+#      memory traffic) for ~7%.
+#   6. compile_net, inherited. 2.1x on every transformer config measured and
+#      only 1.08x on the MLP, which is already ~90% GEMM with nothing to fuse.
+#      Compilation costs 1.3-2.0 s, once. Not optional here.
+#
+# WHY NOT FASTER -- read before optimizing the block further. With n_layers=0
+# this network still costs 2.03 ms: token embedding, ln_out, the shared
+# mu_head, arm_head, and the two cats. That is 84% of the entire dense MLP, so
+# a hypothetical zero-cost encoder block would still cap the net at 2.03 ms.
+# The remaining time is in the heads and the embedding, not the block.
+#
+# Measured and rejected, so they are not retried: CUDA graphs via compile
+# mode=reduce-overhead (1.01x -- the GPU is already ~97% busy), max-autotune
+# (does not converge, Triton shared-memory OOM), multiple CUDA streams (2.7x
+# WORSE), RMSNorm (0.99x), model.to(bfloat16) instead of autocast (7.22 vs
+# 5.06 ms), tokenizing the arm as 7 extra tokens (6.12 vs 4.96 ms -- 1.3x more
+# tokens through both layers costs more than the arm_head it deletes), and
+# raising d_model (d64 is 1.9x slower than d32).
+#
+# CHECKPOINTS FROM THIS RUN DO NOT LOAD INTO THE SERIAL BLOCK, or vice versa:
+# parallel_block changes the state_dict keys (w_in/w_out rather than
+# qkv/proj/ff) and affine_norm=false removes the LayerNorm weight/bias
+# entries. Evaluate a run with the flags it was trained with.
+
+set -euo pipefail
+
+ROBOT="${ROBOT:-sharpa_iiwa14}"
+SEED="${SEED:-0}"
+NUM_ENVS="${NUM_ENVS:-24576}"
+NUM_ASSETS_PER_TYPE="${NUM_ASSETS_PER_TYPE:-100}"
+TRANSFORMER_LAYERS="${TRANSFORMER_LAYERS:-2}"
+D_MODEL="${D_MODEL:-32}"
+N_HEADS="${N_HEADS:-1}"
+FF_MULT="${FF_MULT:-1}"
+MU_HEAD_UNITS="${MU_HEAD_UNITS:-[32]}"
+ARM_HEAD_UNITS="${ARM_HEAD_UNITS:-[128,64]}"
+# PaLM-style parallel block and affine-free LayerNorms. See the header.
+PARALLEL_BLOCK="${PARALLEL_BLOCK:-true}"
+AFFINE_NORM="${AFFINE_NORM:-false}"
+COMPILE_NET="${COMPILE_NET:-true}"
+COMPILE_MODE="${COMPILE_MODE:-}"
+AGENT="rl_games_joint_transformer_cfg_entry_point"
+ARCH_TAG="${ARCH_TAG:-jt_l${TRANSFORMER_LAYERS}_d${D_MODEL}_par}"
+HORIZON_LENGTH=16                     # must match the train YAML
+EXPL_COEF_BLOCK_SIZE=4096
+# On by default: these are training runs, and the rollout video in wandb is
+# worth more than the capture costs. Set CAPTURE_VIEWER=0 when the run
+# exists to produce a throughput number rather than a policy.
+CAPTURE_VIEWER="${CAPTURE_VIEWER:-1}"
+WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
+WANDB_GROUP="${WANDB_GROUP:-decentralized_control}"
+WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
+REPO_ROOT="/share/portal/kk837/gen_mechanics"
+
+# 16384, matched to the MLP arm. Raising it does not help -- measured flat to
+# slightly worse end-to-end -- and 16384 divides both 458752 and 393216
+# exactly, so torch.compile sees only TWO batch shapes (num_envs for the
+# rollout, minibatch for the gradient steps) and never recompiles mid-run.
+BATCH=$(( HORIZON_LENGTH * NUM_ENVS ))
+MINIBATCH_SIZE="${MINIBATCH_SIZE:-16384}"
+
+NUM_BLOCKS=$(( NUM_ENVS / EXPL_COEF_BLOCK_SIZE ))
+if (( NUM_BLOCKS > 1 )); then
+  AUG_BATCH=$(( BATCH + BATCH / NUM_BLOCKS ))
+else
+  AUG_BATCH=$BATCH
+fi
+
+EXPERIMENT_NAME="${RUN_NAME:-${ARCH_TAG}_${ROBOT}_seed${SEED}_$(date +%Y-%m-%d_%H-%M-%S)}"
+[ -n "${SLURM_JOB_ID:-}" ] && scontrol update JobId="$SLURM_JOB_ID" JobName="$EXPERIMENT_NAME" || true
+RUN_DIR="${REPO_ROOT}/debug_outputs/${LOG_GROUP:-train_logs}/${EXPERIMENT_NAME}"
+mkdir -p "$RUN_DIR"
+exec > "${RUN_DIR}/slurm.out" 2> "${RUN_DIR}/slurm.err"
+
+[[ "$ROBOT" == "sharpa_iiwa14" ]] || { echo "This launcher supports only ROBOT=sharpa_iiwa14" >&2; exit 1; }
+(( NUM_ENVS % EXPL_COEF_BLOCK_SIZE == 0 )) || { echo "NUM_ENVS must be a multiple of $EXPL_COEF_BLOCK_SIZE" >&2; exit 1; }
+(( D_MODEL % N_HEADS == 0 )) || { echo "d_model $D_MODEL must be divisible by n_heads $N_HEADS" >&2; exit 1; }
+# Not fatal, but it costs 4.5x on every LayerNorm: torch takes its vectorized
+# layer_norm path only when the normalized dim is a multiple of 4.
+(( D_MODEL % 8 == 0 )) || echo "WARNING: d_model $D_MODEL is not a multiple of 8; LayerNorm falls onto the slow RowwiseMoments kernel" >&2
+(( BATCH % MINIBATCH_SIZE == 0 )) || echo "NOTE: MINIBATCH_SIZE does not divide the critic's $BATCH; its last minibatch absorbs $(( BATCH % MINIBATCH_SIZE )) extra samples (and adds a torch.compile shape)" >&2
+(( AUG_BATCH % MINIBATCH_SIZE == 0 )) || echo "NOTE: MINIBATCH_SIZE does not divide the SAPG-augmented $AUG_BATCH; the actor's last minibatch absorbs $(( AUG_BATCH % MINIBATCH_SIZE )) extra samples (and adds a torch.compile shape)" >&2
+(( NUM_BLOCKS == 6 )) || echo "WARNING: $NUM_BLOCKS SAPG blocks, not 6 -- this checkpoint will not restore in eval" >&2
+
+cd "$REPO_ROOT"
+source .venv_isaacsim/bin/activate
+# shuffle_batch gathers a fresh full-size copy of every batch tensor (a
+# 1.37 GiB block for the SAPG-augmented 458,752 x 779 observations), and this
+# config leaves under a GiB free on a 48 GB card. The default allocator holds
+# its cache in fixed segments, so it can be sitting on GiBs it cannot hand out
+# for one contiguous request -- which is how run 255357 died at epoch 631 with
+# 7.8 GiB reserved-but-unallocated. Expandable segments remove that failure
+# mode. Allocation strategy only; results are unchanged.
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OMNI_KIT_ACCEPT_EULA=YES
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_ov_cache"
+export WANDB_DIR="$RUN_DIR"
+mkdir -p "$OMNI_KIT_CACHE_PATH"
+# Inductor caches compiled kernels; keep it off NFS and out of $HOME.
+export TORCHINDUCTOR_CACHE_DIR="/tmp/${USER}_inductor_cache"
+mkdir -p "$TORCHINDUCTOR_CACHE_DIR"
+
+echo "block=$([ "$PARALLEL_BLOCK" = true ] && echo parallel || echo serial) ff_mult=$FF_MULT mu_head=$MU_HEAD_UNITS arm_head=$ARM_HEAD_UNITS affine_norm=$AFFINE_NORM"
+echo "path=transformer_l${TRANSFORMER_LAYERS} agent=$AGENT obs=778 critic=800 tokens=22x32 d_model=$D_MODEL heads=$N_HEADS compile=$COMPILE_NET/${COMPILE_MODE:-default} robot=$ROBOT seed=$SEED envs=$NUM_ENVS assets_per_type=$NUM_ASSETS_PER_TYPE minibatch=$MINIBATCH_SIZE blocks=$NUM_BLOCKS aug_batch=$AUG_BATCH"
+experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
+
+[ "$CAPTURE_VIEWER" = "1" ] && VIEWER_ARGS=(--capture_viewer) || VIEWER_ARGS=()
+read -r -a EXTRA_ARGS <<< "${EXTRA_OVERRIDES:-}"
+
+python -u coevolution/train.py \
+    --task GenMech-PoseReach-Direct-v0 \
+    --agent "$AGENT" \
+    --headless \
+    "${VIEWER_ARGS[@]}" \
+    --wandb_activate \
+    --wandb_project "$WANDB_PROJECT" \
+    --wandb_group "$WANDB_GROUP" \
+    --wandb_entity "$WANDB_ENTITY" \
+    --wandb_tags "$ROBOT" "seed$SEED" "$ARCH_TAG" "dr_off" "tuned" \
+    --wandb_name "$EXPERIMENT_NAME" \
+    env.assets.robot_spec="$ROBOT" \
+    env.assets.robot_population_path="" \
+    env.assets.robot_population_seed=-1 \
+    env.assets.robot_population_count=0 \
+    env.assets.num_assets_per_type="$NUM_ASSETS_PER_TYPE" \
+    env.scene.num_envs="$NUM_ENVS" \
+    env.action.arm_moving_average=1.0 \
+    env.action.hand_moving_average=1.0 \
+    env.domain_randomization.use_obs_delay=false \
+    env.domain_randomization.use_action_delay=false \
+    env.domain_randomization.use_object_state_delay_noise=false \
+    env.domain_randomization.joint_velocity_obs_noise_std=0.0 \
+    env.domain_randomization.force_scale=0.0 \
+    env.domain_randomization.torque_scale=0.0 \
+    agent.params.seed="$SEED" \
+    agent.params.config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.central_value_config.minibatch_size="$MINIBATCH_SIZE" \
+    agent.params.config.expl_coef_block_size="$EXPL_COEF_BLOCK_SIZE" \
+    agent.params.network.n_layers="$TRANSFORMER_LAYERS" \
+    agent.params.network.d_model="$D_MODEL" \
+    agent.params.network.n_heads="$N_HEADS" \
+    agent.params.network.ff_mult="$FF_MULT" \
+    agent.params.network.mu_head_units="$MU_HEAD_UNITS" \
+    agent.params.network.arm_head_units="$ARM_HEAD_UNITS" \
+    agent.params.network.parallel_block="$PARALLEL_BLOCK" \
+    agent.params.network.affine_norm="$AFFINE_NORM" \
+    agent.params.network.compile_net="$COMPILE_NET" \
+    agent.params.network.compile_mode="$COMPILE_MODE" \
+    `# The asymmetric critic is its own joint_transformer and inherits NOTHING` \
+    `# from the actor's block. Every one of these must be set or it silently` \
+    `# trains a different, deeper, uncompiled network.` \
+    agent.params.config.central_value_config.network.n_layers="$TRANSFORMER_LAYERS" \
+    agent.params.config.central_value_config.network.d_model="$D_MODEL" \
+    agent.params.config.central_value_config.network.n_heads="$N_HEADS" \
+    agent.params.config.central_value_config.network.ff_mult="$FF_MULT" \
+    agent.params.config.central_value_config.network.mu_head_units="$MU_HEAD_UNITS" \
+    agent.params.config.central_value_config.network.arm_head_units="$ARM_HEAD_UNITS" \
+    agent.params.config.central_value_config.network.parallel_block="$PARALLEL_BLOCK" \
+    agent.params.config.central_value_config.network.affine_norm="$AFFINE_NORM" \
+    agent.params.config.central_value_config.network.compile_net="$COMPILE_NET" \
+    agent.params.config.central_value_config.network.compile_mode="$COMPILE_MODE" \
+    hydra.run.dir="$RUN_DIR" \
+    ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
