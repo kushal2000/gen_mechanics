@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 
+import numpy as np
 import torch
 
 from isaaclab.utils.math import random_orientation
@@ -10,7 +11,6 @@ from isaaclab.utils.math import random_orientation
 from ..obs_utils import sample_log_uniform
 from .goal_sampling import sample_absolute_goal_pose, sample_delta_goal_pose
 from ..obs_utils import KEYPOINT_CORNERS
-from hand_sampler.design_space import joint_link_boxes
 
 
 def allocate_state_buffers(env) -> None:
@@ -112,14 +112,17 @@ def allocate_state_buffers(env) -> None:
         device=env.device, dtype=torch.long,
     )
 
-    # --- Explicit SHARPA hand-token geometry --------------------------------
-    # Parsed once on the CPU, then held on the simulation device.  The rollout
-    # path only gathers these 22 body poses and applies one batched transform.
-    child_bodies, link_boxes, geometry_valid, hand_scale = joint_link_boxes(
-        spec.urdf_path, spec.hand_joint_names
-    )
+    # --- hand-token geometry ------------------------------------------------
+    # From the spec, so this path is identical for an imported hand and a
+    # generated one. The rollout only gathers these body poses and applies one
+    # batched transform.
+    if not spec.joint_link_bodies:
+        raise RuntimeError(f"{spec.name}: spec carries no joint tokens")
+    link_boxes = np.asarray(spec.joint_link_boxes, dtype=np.float32)
+    geometry_valid = np.asarray(spec.joint_geometry_valid, dtype=bool)
+    hand_scale = spec.hand_scale
     env._joint_link_body_ids = env.robot.find_bodies(
-        child_bodies, preserve_order=True
+        list(spec.joint_link_bodies), preserve_order=True
     )[0]
     if len(env._joint_link_body_ids) != spec.num_hand_joints:
         raise RuntimeError(

@@ -17,6 +17,7 @@ from hand_sampler.robot_param_constants import (
     HAND_FRICTION,
     HAND_JOINT_NAMES,
     HAND_STIFFNESS,
+    SHARPA_URDF,
     ARM_DAMPING,
     ARM_DEFAULT_JOINT_POS,
     ARM_JOINT_NAMES,
@@ -28,7 +29,12 @@ from hand_sampler.robot_param_constants import (
     BASE_ROT,
     START_ARM_HIGHER_DELTAS,
 )
+from hand_sampler.design_space import joint_link_boxes
 from hand_sampler.robot_spec import RobotSpec, Vec3
+
+# Read once, here, rather than at every run start: the env takes its tokens from
+# the spec and never learns that this hand happens to have a URDF.
+_BODIES, _BOXES, _VALID, _SCALE = joint_link_boxes(SHARPA_URDF, HAND_JOINT_NAMES)
 
 
 # Thumb has 5 DoF, index/middle/ring 4 each, pinky 5 => 22.
@@ -64,6 +70,10 @@ SHARPA_IIWA14 = RobotSpec(
     hand_damping=HAND_DAMPING,
     hand_armature=HAND_ARMATURE,
     hand_friction=HAND_FRICTION,
+    joint_link_bodies=tuple(_BODIES),
+    joint_link_boxes=tuple(tuple(map(tuple, b)) for b in _BOXES),
+    joint_geometry_valid=tuple(bool(v) for v in _VALID),
+    hand_scale=float(_SCALE),
 
     arm_default_joint_pos=ARM_DEFAULT_JOINT_POS,
     hand_default_joint_pos={name: 0.0 for name in HAND_JOINT_NAMES},

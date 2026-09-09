@@ -69,6 +69,19 @@ class RobotSpec:
 
 
 
+    # --- joint tokens -------------------------------------------------------
+    # The policy's whole view of the hand: four points per joint in its child
+    # link's frame. Carried here rather than derived at run start, so the env
+    # never asks where a hand came from -- SHARPA imports them from its URDF
+    # once, a generated hand computes them from its tree.
+    joint_link_bodies: tuple[str, ...] = ()
+    """Child body of each hand joint, in hand_joint_names order."""
+    joint_link_boxes: tuple = ()
+    """(J, 4, 3) nested tuples: p0, and its three adjacent corners."""
+    joint_geometry_valid: tuple[bool, ...] = ()
+    hand_scale: float = 0.0
+    """Longest encoded edge, in metres. Also given to the policy."""
+
     # Coulomb friction at the joint. simtoolreal set this and the first port
     # dropped it, so SHARPA ran frictionless here where the reference did not.
     hand_friction: Mapping[str, float] = field(default_factory=dict)
@@ -136,6 +149,16 @@ class RobotSpec:
         if len(set(self.fingertip_body_names)) != len(self.fingertip_body_names):
             raise ValueError(f"{who}: duplicate fingertip_body_names")
 
+        if self.joint_link_bodies:
+            n = self.num_hand_joints
+            for name, got in (("joint_link_bodies", len(self.joint_link_bodies)),
+                              ("joint_link_boxes", len(self.joint_link_boxes)),
+                              ("joint_geometry_valid", len(self.joint_geometry_valid))):
+                if got != n:
+                    raise ValueError(f"{who}: {name} has {got} entries for {n} hand joints")
+            if self.hand_scale <= 0.0:
+                raise ValueError(f"{who}: hand_scale must be positive, got {self.hand_scale}")
+
         if len(self.palm_center_offset) != 3:
             raise ValueError(f"{who}: palm_center_offset is not a 3-vector")
 
@@ -193,6 +216,8 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
     from hand_sampler import design_space
     from hand_sampler import robot_param_constants as rpc
 
+    boxes, valid, scale = design_space.joint_boxes(hand)
+
     names, stiffness, damping, armature, friction, tips = [], {}, {}, {}, {}, []
     for f, finger in enumerate(hand.fingers):
         for d, seg in enumerate(finger.segments):
@@ -209,6 +234,9 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
         arm_stiffness=rpc.ARM_STIFFNESS, arm_damping=rpc.ARM_DAMPING,
         hand_stiffness=stiffness, hand_damping=damping, hand_armature=armature,
         hand_friction=friction,
+        joint_link_bodies=tuple(f"{n.split('_j')[0]}_link{n.split('_j')[1]}" for n in names),
+        joint_link_boxes=tuple(tuple(map(tuple, b)) for b in boxes),
+        joint_geometry_valid=tuple(bool(v) for v in valid), hand_scale=float(scale),
         arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
         hand_default_joint_pos={n: 0.0 for n in names},
         start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
