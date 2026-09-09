@@ -26,6 +26,10 @@ class AssetsCfg:
     # action_space and the observation dims derive from it.
     robot_spec: str = "sharpa_iiwa14"
     robot_urdf: str = ""  # overrides spec.urdf_path; the joint set must still match
+    # A hand_sampler.HandPopulation injected in code: every env holds one of its
+    # designs, and its template spec replaces robot_spec. Not settable from
+    # hydra -- a population is built, not named.
+    robot_population: object | None = None
     table_urdf: str = "assets/urdf/table_narrow.urdf"
 
     handle_head_types: tuple[str, ...] = (

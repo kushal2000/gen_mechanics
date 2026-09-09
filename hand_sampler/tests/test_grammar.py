@@ -708,3 +708,24 @@ def test_sharpa_fits_the_generated_envelope():
     pop = population_spec([hand])
     assert pop.joint_valid.sum() == hand.n_joints == 22
     assert sorted(f.n_joints for f in hand.fingers) == [4, 4, 4, 5, 5]
+
+
+def test_per_env_gather_is_consistent_with_the_design_index():
+    from hand_sampler.robot_spec import design_index, population_spec
+    pop = population_spec(gen_init_pop.seed_population(seed=3, count=7))
+    idx = design_index(20, pop.n_designs)
+    d = pop.per_env(idx)
+    J = design_space.MAX_FINGERS * design_space.MAX_JOINTS_PER_FINGER
+    assert d["joint_link_bbox_local"].shape == (20, J, 4, 3)
+    assert d["hand_scale"].shape == (20, 1)
+    # envs holding the same design get the same rows, and the wrap is i % n
+    assert np.array_equal(d["joint_link_bbox_local"][0], d["joint_link_bbox_local"][7])
+    enabled = d["joint_limits"][..., 1] - d["joint_limits"][..., 0] > 1e-6
+    assert np.array_equal(enabled, d["joint_geometry_valid"])
+
+
+def test_per_env_rejects_an_out_of_range_design():
+    from hand_sampler.robot_spec import population_spec
+    pop = population_spec(gen_init_pop.seed_population(seed=0, count=3))
+    with pytest.raises(ValueError, match="out of range"):
+        pop.per_env(np.array([0, 1, 3]))

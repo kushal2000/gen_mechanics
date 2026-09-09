@@ -205,6 +205,15 @@ def compute_intermediate_values(env) -> None:
     env._curr_fingertip_distances = torch.norm(
         ft_pos - obj_pos.unsqueeze(1), dim=-1
     )  # (N, S)
+    # A padded design's ghost fingers have a template tip body sitting at the
+    # palm, and its distance means nothing. Zeroing here, where the distance is
+    # produced, makes every downstream reduction inert for them at once: the
+    # reward sums deltas (0), termination takes a max against 1.5 m (0 never
+    # trips), the running minimum stays 0, and the observation shows a constant.
+    env._curr_fingertip_distances = torch.where(
+        env._fingertip_mask, env._curr_fingertip_distances,
+        torch.zeros_like(env._curr_fingertip_distances),
+    )
     if rew_cfg.fixed_size_keypoint_reward:
         kp_offsets = env._keypoint_offsets_fixed
     else:

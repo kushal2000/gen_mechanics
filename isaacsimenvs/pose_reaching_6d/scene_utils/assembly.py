@@ -30,6 +30,7 @@ from ..common_utils.urdf_to_usd import (
 )
 from ..obs_utils import derive_spaces
 from .author_objects import author_handle_head, author_physics_material
+from hand_sampler.robot_spec import design_index
 from .author_robot import flatten_robot_usd
 from .materials import apply_physx_material_properties
 from .sdf import define, set_xform
@@ -58,6 +59,9 @@ class SceneRecord:
     """What setup_scene decided, stored as ``env.scene_record``."""
 
     robot_spec: object  # defines the joint and observation layout
+    # None for one fixed hand; a HandPopulation when every env holds a design.
+    population: object | None
+    robot_design_index: torch.Tensor | None  # (N,) long, population only
     object_urdf_paths: list[str]  # the pool in final order; viewers read meshes from these
     object_scale: torch.Tensor  # (N, 3) dimensions / object_base_size
     object_pool_index: torch.Tensor  # (N,) long
@@ -67,8 +71,12 @@ class SceneRecord:
 
 
 def _resolve_spec(cfg):
-    """The spec defining the action and observation layout."""
-    return get_robot_spec(cfg.assets.robot_spec)
+    """``(population, spec)``. A population defines the layout through its
+    template, so ``assets.robot_spec`` is ignored when one is supplied."""
+    population = getattr(cfg.assets, "robot_population", None)
+    if population is None:
+        return None, get_robot_spec(cfg.assets.robot_spec)
+    return population, population.spec
 
 
 # --- spawn configs ------------------------------------------------------------
@@ -259,7 +267,7 @@ def setup_scene(env) -> None:
     """Build and register robot, table, object, goal, ground, and light;
     leaves the decisions in ``env.scene_record``."""
     # Spaces first: DirectRLEnv reads them in _configure_gym_env_spaces, after this hook.
-    spec = _resolve_spec(env.cfg)
+    population, spec = _resolve_spec(env.cfg)
     derive_spaces(env.cfg, spec)
 
     assets_cfg = env.cfg.assets
@@ -300,7 +308,9 @@ def setup_scene(env) -> None:
     # 6. Which pool entry and which design each env holds.
     object_scale, object_pool_index = _object_tensors(env, object_scales, authored_map)
     env.scene_record = SceneRecord(
-        robot_spec=spec,
+        robot_spec=spec, population=population,
+        robot_design_index=(None if population is None else torch.as_tensor(
+            design_index(env.num_envs, population.n_designs), device=env.device)),
         object_urdf_paths=[str(p) for p in urdf_paths],
         object_scale=object_scale, object_pool_index=object_pool_index,
         asset_dir=str(asset_dir))

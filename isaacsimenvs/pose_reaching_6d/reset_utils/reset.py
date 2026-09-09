@@ -118,9 +118,6 @@ def allocate_state_buffers(env) -> None:
     # batched transform.
     if not spec.joint_link_bodies:
         raise RuntimeError(f"{spec.name}: spec carries no joint tokens")
-    link_boxes = np.asarray(spec.joint_link_boxes, dtype=np.float32)
-    geometry_valid = np.asarray(spec.joint_geometry_valid, dtype=bool)
-    hand_scale = spec.hand_scale
     env._joint_link_body_ids = env.robot.find_bodies(
         list(spec.joint_link_bodies), preserve_order=True
     )[0]
@@ -129,15 +126,32 @@ def allocate_state_buffers(env) -> None:
             f"{spec.name}: found {len(env._joint_link_body_ids)} controlled-link "
             f"bodies, expected {spec.num_hand_joints}"
         )
-    env._joint_link_bbox_local = torch.as_tensor(
-        link_boxes, device=env.device, dtype=torch.float32
-    ).unsqueeze(0).expand(env.num_envs, -1, -1, -1)
-    env._joint_geometry_valid = torch.as_tensor(
-        geometry_valid, device=env.device, dtype=torch.bool
-    ).unsqueeze(0).expand(env.num_envs, -1)
-    env._hand_scale = torch.full(
-        (env.num_envs, 1), hand_scale, device=env.device, dtype=torch.float32
-    )
+    # One design or many: a population gathers per env, a fixed hand broadcasts
+    # the spec's own row. Both end up (N, ...) so nothing downstream branches.
+    population = env.scene_record.population
+    if population is None:
+        per_env = {
+            "joint_link_bbox_local": np.asarray(spec.joint_link_boxes, np.float32)[None],
+            "joint_geometry_valid": np.asarray(spec.joint_geometry_valid, bool)[None],
+            "hand_scale": np.full((1, 1), spec.hand_scale, np.float32),
+            "fingertip_valid": np.ones((1, spec.num_fingertips), bool),
+        }
+        expand = True
+    else:
+        per_env = population.per_env(env.scene_record.robot_design_index)
+        expand = False
+
+    def _to(name, dtype):
+        t = torch.as_tensor(per_env[name], device=env.device, dtype=dtype)
+        return t.expand(env.num_envs, *t.shape[1:]) if expand else t
+
+    env._joint_link_bbox_local = _to("joint_link_bbox_local", torch.float32)
+    env._joint_geometry_valid = _to("joint_geometry_valid", torch.bool)
+    env._hand_scale = _to("hand_scale", torch.float32)
+    # A ghost FINGER's template tip body sits at the palm, so its distance is
+    # meaningless; zeroing at the single point the distance is produced makes
+    # every reduction over the fingertip axis inert for it at once.
+    env._fingertip_mask = _to("fingertip_valid", torch.bool)
 
     limits = env.robot.data.joint_pos_limits  # (N, num_joints, 2), Lab order
 

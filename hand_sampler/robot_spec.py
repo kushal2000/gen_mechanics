@@ -275,6 +275,29 @@ class HandPopulation:
     def n_designs(self) -> int:
         return len(self.hands)
 
+    def per_env(self, index) -> dict:
+        """Gather the per-design tables onto ``(N, ...)``, one row per env.
+
+        ``index`` is ``(N,)`` design ids. Kept here rather than in the env so it
+        can be checked without booting a simulator: the shapes and the masking
+        are where a padded population goes silently wrong.
+        """
+        import numpy as np
+        idx = np.asarray(index, dtype=np.int64)
+        if idx.ndim != 1:
+            raise ValueError(f"design index must be 1-D, got shape {idx.shape}")
+        if idx.size and (idx.min() < 0 or idx.max() >= self.n_designs):
+            raise ValueError(
+                f"design index out of range for {self.n_designs} designs: "
+                f"[{idx.min()}, {idx.max()}]")
+        return {
+            "joint_link_bbox_local": self.joint_link_boxes[idx],   # (N, J, 4, 3)
+            "joint_geometry_valid": self.joint_valid[idx],         # (N, J)
+            "joint_limits": self.joint_limits[idx],                # (N, J, 2)
+            "hand_scale": self.hand_scale[idx][:, None],           # (N, 1)
+            "fingertip_valid": self.fingertip_valid[idx],          # (N, F)
+        }
+
 
 def population_spec(hands, *, name: str = "generated_population") -> HandPopulation:
     """Project many ``Hand`` trees onto one template plus per-design tables."""
@@ -339,3 +362,14 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
     return HandPopulation(spec=spec, hands=tuple(hands), joint_link_boxes=boxes,
                           joint_valid=valid, joint_limits=limits, hand_scale=scale,
                           fingertip_valid=ft_valid)
+
+
+def design_index(n_envs: int, n_designs: int) -> "np.ndarray":
+    """Which design each env holds: ``i % n_designs``, so every design appears
+    an equal number of times up to the remainder, and env 0 always holds
+    design 0. Deterministic, because a run has to be reproducible and a
+    scrambled assignment would also scramble the reward attribution."""
+    import numpy as np
+    if n_designs <= 0:
+        raise ValueError("a population needs at least one design")
+    return np.arange(n_envs, dtype=np.int64) % n_designs
