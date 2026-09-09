@@ -1,0 +1,34 @@
+#!/bin/bash
+#SBATCH --job-name=depth_d64_mlp
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/depth_d64_mlp-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/depth_d64_mlp-%j.err
+
+# Centralized MLP control for the d64 depth sweep. Same symmetric shared
+# actor-critic as l1-l4: one [1024,1024,512,512] trunk (separate=false)
+# feeding both the action and value heads, central_value_config=null, and
+# the same privileged observations, so the value function reads exactly
+# what the policy does. Only the backbone differs from the transformers.
+#
+# Env, PPO and SAPG settings are identical to l1-l4 by construction --
+# run.sh and run_rank.sh apply them to both families. The MLP launcher's
+# own note says 16384 is its throughput-best minibatch on one GPU; that is
+# deliberately NOT used here, because a matched comparison is worth more
+# than the MLP's best wall-clock.
+set -euo pipefail
+export ARCH=mlp MODEL_TAG=mlp1024
+export PHASE=train STUDY_ID=depth_d64_shared_v1
+export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED=100
+export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1
+export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
+export WANDB_GROUP=depth_d64_shared_v1
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
+export MAX_EPOCHS=1000000
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh

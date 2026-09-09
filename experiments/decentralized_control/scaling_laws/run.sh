@@ -12,6 +12,13 @@ export OMNI_KIT_ACCEPT_EULA=YES
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export PHASE="${PHASE:-tune}"
 export STUDY_ID="${STUDY_ID:-scaling_laws_shared_privileged_v1}"
+# ARCH selects the network family. The transformer is described by its
+# width and depth; the MLP is not, so MODEL_TAG names the run instead and
+# D_MODEL/TRANSFORMER_LAYERS stay unset for it.
+export ARCH="${ARCH:-transformer}"
+export D_MODEL="${D_MODEL:-0}"
+export TRANSFORMER_LAYERS="${TRANSFORMER_LAYERS:-0}"
+export MODEL_TAG="${MODEL_TAG:-d${D_MODEL}_l${TRANSFORMER_LAYERS}}"
 STUDY_SCRIPT=experiments/decentralized_control/scaling_laws/study.py
 if [[ "$PHASE" == tune ]]; then
     PAIR=$(python "$STUDY_SCRIPT" trial "${SLURM_ARRAY_TASK_ID:-0}")
@@ -35,7 +42,7 @@ export WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
 export WANDB_GROUP="${WANDB_GROUP:-$STUDY_ID}"
 export WANDB_ACTIVATE="${WANDB_ACTIVATE:-0}"
 export LEARNING_RATE="${LEARNING_RATE:-0.0001}"
-export RUN_NAME="0_scale_${PHASE}_d${D_MODEL}_l${TRANSFORMER_LAYERS}_e${NUM_ENVS_PER_GPU}_b${GLOBAL_MINIBATCH}_s${SEED}_${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-local}}_${SLURM_ARRAY_TASK_ID:-0}"
+export RUN_NAME="0_scale_${PHASE}_${MODEL_TAG}_e${NUM_ENVS_PER_GPU}_b${GLOBAL_MINIBATCH}_s${SEED}_${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-local}}_${SLURM_ARRAY_TASK_ID:-0}"
 
 (( GLOBAL_MINIBATCH % 2 == 0 )) || { echo 'GLOBAL_MINIBATCH must divide across 2 GPUs'; exit 1; }
 (( NUM_ENVS_PER_GPU == 6 * EXPL_BLOCK_SIZE )) || { echo 'Keep six SAPG blocks per rank for evaluation compatibility'; exit 1; }
@@ -65,7 +72,7 @@ export TORCHINDUCTOR_CACHE_DIR="${SLURM_TMPDIR:-/tmp}/${USER}_scale_${SLURM_JOB_
 export OMNI_KIT_CACHE_PATH="${SLURM_TMPDIR:-/tmp}/${USER}_scale_kit_${SLURM_JOB_ID:-local}"
 mkdir -p "$TORCHINDUCTOR_CACHE_DIR" "$OMNI_KIT_CACHE_PATH"
 echo "Run: $SCALING_RUN_DIR"
-echo "shared_actor_critic=d${D_MODEL}/L${TRANSFORMER_LAYERS} heads=1 ff=2 seed=$SEED"
+echo "shared_actor_critic=$ARCH/$MODEL_TAG seed=$SEED"
 echo "global_envs=$((2 * NUM_ENVS_PER_GPU)) global_minibatch=$GLOBAL_MINIBATCH local_minibatch=$LOCAL_BATCH"
 # Slurm resolves --output before the job starts, so it cannot be pointed
 # inside a directory mktemp has not created yet. Link the job's streams in

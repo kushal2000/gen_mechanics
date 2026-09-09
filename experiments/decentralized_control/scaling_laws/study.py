@@ -53,7 +53,8 @@ def main():
         path = root / 'result.json'
         result = json.loads(path.read_text()) if path.exists() else {}
         result.update(status=args.status, phase=os.environ['PHASE'], study=os.environ['STUDY_ID'],
-                      model=f"d{os.environ['D_MODEL']}_l{os.environ['TRANSFORMER_LAYERS']}",
+                      model=os.environ.get('MODEL_TAG') or f"d{os.environ['D_MODEL']}_l{os.environ['TRANSFORMER_LAYERS']}",
+                      arch=os.environ.get('ARCH', 'transformer'),
                       envs_per_gpu=int(os.environ['NUM_ENVS_PER_GPU']),
                       global_minibatch=int(os.environ['GLOBAL_MINIBATCH']),
                       seed=int(os.environ['SEED']), world_size=2,

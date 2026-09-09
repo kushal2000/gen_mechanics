@@ -1,6 +1,6 @@
 {
   "study": "depth_d64_shared_v1",
-  "question": "Does trunk depth help at fixed width d_model=64?",
+  "question": "Does trunk depth help at fixed width d_model=64, and does any of it beat a centralized MLP?",
   "fixed": {
     "d_model": 64,
     "n_heads": 1,
@@ -41,6 +41,18 @@
       "model": "d64_l4",
       "layers": 4,
       "job": "638439"
+    },
+    {
+      "model": "mlp1024",
+      "arch": "mlp",
+      "units": [
+        1024,
+        1024,
+        512,
+        512
+      ],
+      "job": "640371",
+      "note": "centralized MLP control, same symmetric shared actor-critic and same env/PPO settings"
     }
   ],
   "node": "portal-compute-02 (all four, 8/8 GPUs; they contend only with each other)",
