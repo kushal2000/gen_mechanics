@@ -323,7 +323,7 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         self.central_value = params.get("central_value", False)
         self.d_model = params.get("d_model", 128)
         self.n_layers = params.get("n_layers", 4)
-        self.n_heads = params.get("n_heads", 4)
+        self.n_heads = params.get("n_heads", 1)
         self.ff_mult = params.get("ff_mult", 4)
         self.dropout = params.get("dropout", 0.0)
         # Off by default: torch.compile changes nothing numerically but it does

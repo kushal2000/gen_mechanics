@@ -43,7 +43,7 @@ params:
     obs_list: ${....env.obs.obs_list}
     d_model: 128
     n_layers: 4
-    n_heads: 4
+    n_heads: 1
     ff_mult: 4
     dropout: 0.0
     # torch.compile the WHOLE network (not just the encoder stack):
@@ -150,7 +150,7 @@ params:
         state_list: ${......env.obs.state_list}
         d_model: 128
         n_layers: 4
-        n_heads: 4
+        n_heads: 1
         ff_mult: 4
         dropout: 0.0
         # torch.compile the WHOLE network (not just the encoder stack):
