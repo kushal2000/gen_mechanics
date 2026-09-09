@@ -170,6 +170,26 @@ def allocate_state_buffers(env) -> None:
         env._joint_upper_hand - env._joint_lower_hand > 1e-6
     ).to(torch.float32)
 
+    # The authored limits, read back from PhysX, must agree with the tables the
+    # observation is built from. They are produced by different code --
+    # build.author_hand writes the joint prims, population_spec fills the
+    # tables -- and a disagreement is invisible at runtime: the policy would be
+    # told a joint exists where the simulator has locked it, or the reverse, and
+    # train perfectly happily on a body that is not the one it is driving.
+    if population is not None:
+        expected = torch.as_tensor(
+            per_env["joint_geometry_valid"], device=env.device, dtype=torch.bool)
+        got = env._joint_enabled > 0.5
+        if not torch.equal(got, expected):
+            bad = (got != expected).any(dim=1).nonzero(as_tuple=True)[0]
+            e = int(bad[0])
+            raise RuntimeError(
+                f"authored joint limits disagree with the design tables in "
+                f"{bad.numel()} of {env.num_envs} envs; env {e} (design "
+                f"{int(env.scene_record.robot_design_index[e])}) has PhysX "
+                f"enabled={got[e].int().tolist()} but the table says "
+                f"{expected[e].int().tolist()}")
+
     # Lab-order limits for action target clamping.
     env._arm_lower = limits[:, env._arm_joint_ids, 0]
     env._arm_upper = limits[:, env._arm_joint_ids, 1]
