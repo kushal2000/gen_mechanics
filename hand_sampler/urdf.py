@@ -43,7 +43,7 @@ from xml.dom import minidom
 
 from hand_sampler import params
 from hand_sampler import robot_spec
-from hand_sampler.geometry import compute_mass_and_inertia as _compute_mass_and_inertia
+from hand_sampler.design_space import compute_mass_and_inertia as _compute_mass_and_inertia
 from hand_sampler.robot_spec import (
     ARM_JOINTS,
     ARM_LINKS,

@@ -42,7 +42,7 @@ from dataclasses import dataclass, field, replace
 from typing import Sequence
 
 from hand_sampler import robot_spec as anchors
-from hand_sampler.geometry import mat_to_rpy as _mat_to_rpy
+from hand_sampler.design_space import mat_to_rpy as _mat_to_rpy
 
 
 Vec3 = tuple[float, float, float]

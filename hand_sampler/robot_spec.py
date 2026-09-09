@@ -531,7 +531,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from hand_sampler import resolve as resolve_repo_path
-from hand_sampler.geometry import mat_to_rpy, rpy_to_mat
+from hand_sampler.design_space import mat_to_rpy, rpy_to_mat
 
 
 SHARPA_URDF = "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"

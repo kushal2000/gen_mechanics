@@ -10,7 +10,7 @@ from isaaclab.utils.math import random_orientation
 from ..obs_utils import sample_log_uniform
 from .goal_sampling import sample_absolute_goal_pose, sample_delta_goal_pose
 from ..obs_utils import KEYPOINT_CORNERS
-from ..obs_utils.joint_geometry import joint_link_boxes
+from hand_sampler.design_space import joint_link_boxes
 
 
 def allocate_state_buffers(env) -> None:

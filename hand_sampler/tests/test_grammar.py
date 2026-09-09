@@ -725,3 +725,52 @@ def test_crossing_a_face_rotates_the_finger_with_it():
     after = design_space.mount_direction(mount, palm)
     angle = math.degrees(math.acos(float(np.clip(before @ after, -1, 1))))
     assert angle == pytest.approx(90.0, abs=1e-6)
+
+
+# --- one representation for generated and measured hands --------------------
+
+SHARPA_URDF = ("assets/urdf/kuka_sharpa_description/"
+               "iiwa14_left_sharpa_adjusted_restricted.urdf")
+
+
+def _sharpa_joint_names():
+    """SHARPA's controlled hand joints, in spec order, read from the URDF."""
+    import xml.etree.ElementTree as ET
+    from hand_sampler import resolve
+    root = ET.parse(resolve(SHARPA_URDF)).getroot()
+    return [j.get("name") for j in root.findall("joint")
+            if j.get("type") == "revolute" and "iiwa" not in j.get("name")]
+
+
+def test_sharpa_imports_as_a_hand():
+    names = _sharpa_joint_names()
+    hand = design_space.hand_from_urdf(SHARPA_URDF, names)
+    assert hand.n_joints == len(names)
+    assert hand.n_fingers == 5
+    # thumb and pinky carry five controlled joints, the middle three carry four
+    assert sorted(f.n_joints for f in hand.fingers) == [4, 4, 4, 5, 5]
+
+
+def test_sharpa_tokens_match_its_urdf_exactly():
+    """The tree is not an approximation of the asset: it reproduces it."""
+    names = _sharpa_joint_names()
+    _bodies, truth, _valid, scale = design_space.joint_link_boxes(SHARPA_URDF, names)
+    boxes, valid, tree_scale = design_space.joint_boxes(
+        design_space.hand_from_urdf(SHARPA_URDF, names))
+    assert boxes.shape == truth.shape
+    assert np.abs(boxes - truth).max() == 0.0
+    assert tree_scale == pytest.approx(scale)
+    assert valid.all()
+
+
+def test_a_measured_hand_is_structural_but_not_in_the_design_space():
+    """Why bounds live in validate_design and not in __post_init__."""
+    hand = design_space.hand_from_urdf(SHARPA_URDF, _sharpa_joint_names())
+    assert not validate_design.is_valid(hand)
+
+
+def test_generated_hands_use_the_same_token_function():
+    hand = gen_init_pop.seed_hand(random.Random(0))
+    boxes, valid, scale = design_space.joint_boxes(hand)
+    assert boxes.shape == (hand.n_joints, 4, 3)
+    assert valid.all() and scale > 0.0

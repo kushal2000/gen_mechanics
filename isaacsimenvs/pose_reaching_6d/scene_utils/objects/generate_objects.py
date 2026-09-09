@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from hand_sampler.geometry import compute_mass_and_inertia
+from hand_sampler.design_space import compute_mass_and_inertia
 
 from .object_size_distributions import OBJECT_SIZE_DISTRIBUTIONS, Scale, Scale3
 
