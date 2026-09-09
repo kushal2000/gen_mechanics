@@ -1,0 +1,49 @@
+{
+  "study": "scaling_laws_shared_privileged_v1",
+  "smoke_job": "616033",
+  "replaced_smoke_job": "614907",
+  "nccl_p2p_disable": 1,
+  "supersedes": "submitted_20260909.json",
+  "jobs": [
+    {
+      "model": "d32_l1",
+      "tuning_job": "615174",
+      "training_job": "615175"
+    },
+    {
+      "model": "d32_l4",
+      "tuning_job": "615176",
+      "training_job": "615177"
+    },
+    {
+      "model": "d64_l1",
+      "tuning_job": "615178",
+      "training_job": "615179"
+    },
+    {
+      "model": "d64_l4",
+      "tuning_job": "615180",
+      "training_job": "615181"
+    },
+    {
+      "model": "d128_l1",
+      "tuning_job": "615182",
+      "training_job": "615183"
+    },
+    {
+      "model": "d128_l2",
+      "tuning_job": "615184",
+      "training_job": "615185"
+    },
+    {
+      "model": "d256_l1",
+      "tuning_job": "615186",
+      "training_job": "615187"
+    },
+    {
+      "model": "d256_l4",
+      "tuning_job": "615188",
+      "training_job": "615189"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "study": "scaling_laws_20260909",
+  "smoke_job": "614297",
+  "tuning_trials_per_model": 8,
+  "training_seeds": [
+    100,
+    200,
+    300
+  ],
+  "jobs": [
+    {
+      "model": "d32_l1",
+      "tuning_job": "614558",
+      "training_job": "614566"
+    },
+    {
+      "model": "d32_l4",
+      "tuning_job": "614559",
+      "training_job": "614597"
+    },
+    {
+      "model": "d64_l1",
+      "tuning_job": "614560",
+      "training_job": "614598"
+    },
+    {
+      "model": "d64_l4",
+      "tuning_job": "614561",
+      "training_job": "614599"
+    },
+    {
+      "model": "d128_l1",
+      "tuning_job": "614562",
+      "training_job": "614600"
+    },
+    {
+      "model": "d128_l2",
+      "tuning_job": "614563",
+      "training_job": "614601"
+    },
+    {
+      "model": "d256_l1",
+      "tuning_job": "614564",
+      "training_job": "614602"
+    },
+    {
+      "model": "d256_l4",
+      "tuning_job": "614565",
+      "training_job": "614603"
+    }
+  ]
+}

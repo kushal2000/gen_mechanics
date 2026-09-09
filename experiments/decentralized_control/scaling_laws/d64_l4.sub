@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --job-name=scale_d64_l4
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --array=1,3,4,6,7%1
+#SBATCH --output=scale_d64_l4-%A_%a.log
+#SBATCH --error=scale_d64_l4-%A_%a.err
+
+set -euo pipefail
+export D_MODEL=64
+export TRANSFORMER_LAYERS=4
+export PHASE="${PHASE:-tune}"
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh

@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --job-name=depth_d64_l3
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64_l3-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64_l3-%j.err
+
+# Depth sweep at fixed width d_model=64: L1/L2/L3/L4, one seed each.
+# Every run uses the SAME env count and minibatch, so epochs are directly
+# comparable in transitions and only depth varies.
+#   12288 envs/GPU -> 24576 global envs, 196608 rollout rows/rank,
+#   229376 after the SAPG 6-block augmentation.
+#   global minibatch 114688 -> 57344/rank -> exactly 4 equal minibatches.
+# 98304 (the pre-tuning YAML value) would leave a remainder that
+# PPODataset dumps into the last minibatch: 3x49152 then 1x81920.
+set -euo pipefail
+export D_MODEL=64 TRANSFORMER_LAYERS=3
+export PHASE=train STUDY_ID=depth_d64_shared_v1
+export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED=100
+export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1
+export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
+export WANDB_GROUP=depth_d64_shared_v1
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs
+export MAX_EPOCHS=1000000
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh

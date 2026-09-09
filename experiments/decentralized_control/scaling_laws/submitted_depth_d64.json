@@ -1,0 +1,22 @@
+{
+  "study": "depth_d64_shared_v1",
+  "question": "Does trunk depth help at fixed width d_model=64?",
+  "fixed": {
+    "d_model": 64, "n_heads": 1, "ff_mult": 2, "seed": 100,
+    "envs_per_gpu": 12288, "global_envs": 24576,
+    "global_minibatch": 114688, "minibatch_per_rank": 57344,
+    "sapg_blocks": 6, "expl_coef_block_size": 2048,
+    "horizon": 16, "mini_epochs": 2, "learning_rate": 1e-4,
+    "actor_critic": "shared", "central_value_config": null,
+    "gpus": 2, "time_limit_h": 24
+  },
+  "minibatch_note": "229376 augmented rows/rank / 57344 = 4 equal minibatches. Global 98304 would give 3x49152 + 1x81920 because PPODataset gives the remainder to the last minibatch.",
+  "jobs": [
+    {"model": "d64_l1", "layers": 1, "job": "637618"},
+    {"model": "d64_l2", "layers": 2, "job": "637619"},
+    {"model": "d64_l3", "layers": 3, "job": "637620"},
+    {"model": "d64_l4", "layers": 4, "job": "637621"}
+  ],
+  "node": "portal-compute-02 (all four, 8/8 GPUs; they contend only with each other)",
+  "supersedes_settings": "depth_d64 drafts at 6144 env / 32768 mb, never submitted"
+}

@@ -1,0 +1,13 @@
+{
+  "study": "scaling_laws_shared_privileged_v1",
+  "trial": 8,
+  "envs_per_gpu": 24576,
+  "global_minibatch": 131072,
+  "resources": {"gpus": 2, "cpus": 4, "mem_mb": 128000},
+  "jobs": [
+    {"model": "d32_l1", "pilot_job": "618333", "pilot_dependency": "afterany:615174", "training_job": "615175", "training_dependency": "afterany:615174:618333"},
+    {"model": "d128_l1", "pilot_job": "618336", "pilot_dependency": "afterany:615182:618333", "training_job": "615183", "training_dependency": "afterany:615182:618336"}
+  ],
+  "prepared_but_not_submitted": [9, 10],
+  "next_gate": "Inspect pilot memory, errors, and steady SPS before submitting higher-env trials. Add new probe dependencies before training starts."
+}
