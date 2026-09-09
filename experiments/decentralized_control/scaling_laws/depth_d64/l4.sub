@@ -8,8 +8,8 @@
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:2
-#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64_l4-%j.log
-#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64_l4-%j.err
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/depth_d64_l4-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/depth_d64_l4-%j.err
 
 # Depth sweep at fixed width d_model=64: L1/L2/L3/L4, one seed each.
 # Every run uses the SAME env count and minibatch, so epochs are directly
@@ -26,6 +26,6 @@ export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED=100
 export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1
 export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
 export WANDB_GROUP=depth_d64_shared_v1
-export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
 export MAX_EPOCHS=1000000
 bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh
