@@ -29,10 +29,9 @@ class AssetsCfg:
     # A hand_sampler.HandPopulation injected in code: every env holds one of its
     # designs, and its template spec replaces robot_spec.
     robot_population: object | None = None
-    # Or name one from hydra: seed >= 0 draws robot_population_count designs
-    # from the grammar. An object, if given, wins.
-    robot_population_seed: int = -1
-    robot_population_count: int = 0
+    # Or name one: robot_spec = "gen_s<seed>_n<count>" builds it from the
+    # grammar. One knob, because the agent YAML interpolates the network's spec
+    # from robot_spec and a second would let the two disagree.
     table_urdf: str = "assets/urdf/table_narrow.urdf"
 
     handle_head_types: tuple[str, ...] = (

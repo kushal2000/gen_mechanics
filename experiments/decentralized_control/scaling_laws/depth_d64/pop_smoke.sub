@@ -27,7 +27,7 @@
 set -euo pipefail
 export D_MODEL=64 TRANSFORMER_LAYERS=4
 export PHASE=train STUDY_ID=pop_smoke_v1 MODEL_TAG=pop_d64_l4
-export POP_SEED=0 POP_COUNT=8
+export ROBOT_SPEC=gen_s0_n8
 export NUM_ENVS_PER_GPU=384 GLOBAL_MINIBATCH=2048 SEED=100
 export WANDB_ACTIVATE=0 CAPTURE_VIEWER=0
 export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64

@@ -3,13 +3,11 @@ set -euo pipefail
 LOCAL_BATCH=$((GLOBAL_MINIBATCH / 2))
 WANDB_ARGS=()
 VIEWER_ARGS=()
-# A generated population: seed >= 0 draws POP_COUNT designs from the grammar and
-# every env holds one. Unset means the fixed robot named by robot_spec.
-POP_ARGS=()
-if [[ -n "${POP_SEED:-}" ]]; then
-    POP_ARGS=("env.assets.robot_population_seed=$POP_SEED"
-              "env.assets.robot_population_count=${POP_COUNT:?POP_COUNT required with POP_SEED}")
-fi
+# ROBOT_SPEC selects the hand: a registered name, or gen_s<seed>_n<count> for a
+# generated population, in which case every env holds one of its designs. It has
+# to be ONE name -- the agent YAML interpolates the network's copy from it, so a
+# second knob would let the two disagree.
+ROBOT_SPEC="${ROBOT_SPEC:-sharpa_iiwa14}"
 if [[ "$LOCAL_RANK" == 0 && "${CAPTURE_VIEWER:-0}" == 1 ]]; then
     VIEWER_ARGS=(--capture_viewer)
 fi
@@ -46,9 +44,8 @@ ARGS=(
     --agent "$AGENT_ENTRY" --headless
     "${WANDB_ARGS[@]}"
     "${VIEWER_ARGS[@]}"
-    env.assets.robot_spec=sharpa_iiwa14
+    "env.assets.robot_spec=$ROBOT_SPEC"
     env.assets.num_assets_per_type=100
-    "${POP_ARGS[@]}"
     "env.scene.num_envs=$NUM_ENVS_PER_GPU"
     'env.obs.obs_list=${env.obs.state_list}'
     env.action.arm_moving_average=1.0 env.action.hand_moving_average=1.0

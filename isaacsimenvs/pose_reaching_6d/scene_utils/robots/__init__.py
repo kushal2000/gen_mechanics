@@ -25,7 +25,15 @@ def get_robot_spec(name: str) -> RobotSpec:
     """Look up a spec by name, or fail with the list of valid names."""
     if name in REGISTRY:
         return REGISTRY[name]
-    raise KeyError(f"unknown robot_spec {name!r}; registered: {sorted(REGISTRY)}")
+    # gen_s<seed>_n<count> is a generated population's shared template. Resolved
+    # here so everything that asks by name -- the env AND the network, which
+    # interpolates its own copy from the config -- gets the same answer.
+    from hand_sampler.robot_spec import is_population_name, population_from_name
+    if is_population_name(name):
+        return population_from_name(name).spec
+    raise KeyError(
+        f"unknown robot_spec {name!r}; registered: {sorted(REGISTRY)}, "
+        "or a generated population gen_s<seed>_n<count>")
 
 
 __all__ = ["RobotSpec", "REGISTRY", "get_robot_spec", "SHARPA_IIWA14"]

@@ -380,3 +380,35 @@ def design_index(n_envs: int, n_designs: int) -> "np.ndarray":
     if n_designs <= 0:
         raise ValueError("a population needs at least one design")
     return np.arange(n_envs, dtype=np.int64) % n_designs
+
+
+_POPULATION_CACHE: dict = {}
+POPULATION_NAME = r"gen_s(\d+)_n(\d+)"
+"""``gen_s<seed>_n<count>``: a population named rather than injected.
+
+The agent YAML interpolates the network's spec from ``env.assets.robot_spec``,
+and that resolves before the scene is built -- so a population has to be
+reachable BY NAME or the network builds its layout against a different robot
+than the env does. Memoised because both sides resolve the same name.
+"""
+
+
+def is_population_name(name: str) -> bool:
+    import re
+    return re.fullmatch(POPULATION_NAME, name or "") is not None
+
+
+def population_from_name(name: str) -> "HandPopulation":
+    """Build (once) the population a ``gen_s<seed>_n<count>`` name denotes."""
+    import re
+
+    if name in _POPULATION_CACHE:
+        return _POPULATION_CACHE[name]
+    m = re.fullmatch(POPULATION_NAME, name or "")
+    if m is None:
+        raise KeyError(f"not a population name: {name!r}")
+    from hand_sampler import gen_init_pop
+    seed, count = int(m.group(1)), int(m.group(2))
+    pop = population_spec(gen_init_pop.seed_population(seed, count), name=name)
+    _POPULATION_CACHE[name] = pop
+    return pop

@@ -141,6 +141,22 @@ def object_urdf_for_env(env, env_id: int) -> tuple[str, Path]:
     return urdf_path.read_text(encoding="utf-8"), urdf_path
 
 
+def _generated_robot_urdf_text(env) -> str | None:
+    """The viewing geometry of this env's design, or None for a fixed robot."""
+    record = getattr(env, "scene_record", None)
+    population = getattr(record, "population", None)
+    if population is None:
+        return None
+    import tempfile
+
+    from hand_sampler import build
+    idx = int(record.robot_design_index[0].item())
+    with tempfile.TemporaryDirectory() as tmp:
+        return build.urdf_for_viewing(
+            population.hands[idx], pathlib.Path(tmp) / "d.urdf"
+        ).read_text(encoding="utf-8")
+
+
 def object_urdf_text_for_env(env, env_id: int) -> str:
     return object_urdf_for_env(env, env_id)[0]
 
@@ -258,6 +274,7 @@ def build_pose_viewer_html(
     frames: list[dict[str, Any]],
     object_urdf_text: str,
     table_urdf_text: str,
+    robot_urdf_text: str | None = None,
     hole_urdf_text: str | None = None,
     object_urdf_path: Path | None = None,
     table_urdf_path: Path | None = None,
@@ -304,6 +321,8 @@ def build_pose_viewer_html(
 
     timestamps = np.arange(len(frames), dtype=np.float32) / 60.0
     robots = [
+        make_embedded_robot(name="robot", urdf_text=robot_urdf_text, animated=True)
+        if robot_urdf_text else
         make_url_robot(name="robot", urdf_url=robot_urdf_url, animated=True),
         make_embedded_robot(name="table", urdf_text=table_urdf_text),
         make_embedded_robot(name="object", urdf_text=object_urdf_text),
@@ -375,29 +394,16 @@ class PoseViewerWrapper(gym.Wrapper):
         # it from the spec rather than a module constant is what keeps the
         # viewer's joint names and its URDF in agreement for every hand.
         spec = getattr(getattr(inner, "scene_record", None), "robot_spec", None)
-        # A generated hand has no URDF -- it is authored straight into USD. Falling
-        # through to the default here would draw SHARPA while the sim runs
-        # something else, so write one from the design instead. Viewing only.
-        urdf_relpath = spec.urdf_path if spec is not None else None
-        if not urdf_relpath:
-            urdf_relpath = self._write_generated_urdf(env)
-        self._robot_urdf_relpath = urdf_relpath or DEFAULT_ROBOT_URDF_RELATIVE_PATH
-
-    @staticmethod
-    def _write_generated_urdf(env) -> str | None:
-        """A viewing URDF for this env's design, returned repo-relative."""
-        record = getattr(env, "scene_record", None)
-        population = getattr(record, "population", None)
-        if population is None:
-            return None
-        from hand_sampler import build
-        idx = int(record.robot_design_index[0].item())
-        out = pathlib.Path(record.asset_dir) / "view" / f"design_{idx}.urdf"
-        build.urdf_for_viewing(population.hands[idx], out)
-        try:
-            return str(out.relative_to(REPO_ROOT))
-        except ValueError:
-            return str(out)
+        self._robot_urdf_relpath = (
+            spec.urdf_path if spec is not None else DEFAULT_ROBOT_URDF_RELATIVE_PATH
+        )
+        # A generated hand has no URDF and never will -- it is authored straight
+        # into USD. The fixed-robot path fetches its URDF from a raw URL, which a
+        # design has no entry on, and falling through to the default would draw
+        # SHARPA while the sim runs something else. So build the geometry from
+        # the design and EMBED it, the way the table and object already are:
+        # capsules as cylinders, no mesh references, nothing to fetch.
+        self._robot_urdf_text = _generated_robot_urdf_text(env)
 
         self._step = 0
         self._capture_index = 0
@@ -449,6 +455,7 @@ class PoseViewerWrapper(gym.Wrapper):
             table_urdf_path=self._table_urdf_path,
             hole_urdf_path=self._hole_urdf_path,
             robot_urdf_relpath=self._robot_urdf_relpath,
+            robot_urdf_text=self._robot_urdf_text,
             github_raw_base=self.github_raw_base,
             url_check=self.url_check,
         )
