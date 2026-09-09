@@ -22,7 +22,7 @@ from coevolution.interactive_viewer import create_html, make_embedded_robot, mak
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# Must serve THIS repo's assets: the generated Allegro URDF and its mirrored
+# Must serve THIS repo's assets: the SHARPA URDF and its
 # meshes exist nowhere upstream, so pointing at simtoolreal renders a non-SHARPA
 # robot as nothing at all.
 GITHUB_RAW_BASE_MAIN = "https://raw.githubusercontent.com/kushal2000/gen_mechanics/master/"
@@ -272,7 +272,7 @@ def build_pose_viewer_html(
     it references mesh files the browser must fetch.
 
     ``robot_urdf_relpath`` MUST match the robot the frames were captured from.
-    It used to be hardcoded to SHARPA's, so an Allegro run published Allegro's
+    It used to be hardcoded, so a run published the wrong hand's
     23 joint names against SHARPA's 29-joint URDF and the viewer failed with
     'Joint "index_joint_0" not found in URDF'.
     """

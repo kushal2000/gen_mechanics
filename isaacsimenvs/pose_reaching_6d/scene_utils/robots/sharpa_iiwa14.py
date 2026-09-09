@@ -10,7 +10,7 @@ was checked by a bitwise rollout parity test against it.
 from __future__ import annotations
 
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.sharpa_iiwa14 import SHARPA_IIWA14_ADJACENT_LINKS
-from hand_sampler.robot_spec import (
+from hand_sampler.robot_param_constants import (
     ARM_DAMPING,
     ARM_DEFAULT_JOINT_POS,
     ARM_JOINT_NAMES,

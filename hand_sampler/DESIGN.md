@@ -377,7 +377,7 @@ trade, and motion into the palm is not useful motion, so selection pays for it.
 
 **A hazard for `build.py`.** The palm must be collision-filtered against each
 finger's *first* solid link — its cap sits inside the palm shell by construction.
-The hand-written SHARPA and Allegro maps filter palm against **link_0 and
+The hand-written SHARPA map filters palm against **link_0 and
 link_1**, and copying that would let the second link through too, turning a
 measured 0% into a real problem. Filter the first solid link and no more.
 

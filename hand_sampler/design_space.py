@@ -754,7 +754,7 @@ __all__ = ["joint_link_boxes"]
 
 
 def hand_from_urdf(urdf, joint_names, *, base_dir=None, palm=None) -> "Hand":
-    """Import a measured hand -- SHARPA, Allegro -- as a ``Hand``."""
+    """Import a measured hand -- SHARPA -- as a ``Hand``."""
     if isinstance(urdf, ET.Element):
         root, meshes = urdf, base_dir or "."
     else:

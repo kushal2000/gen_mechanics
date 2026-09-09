@@ -33,7 +33,6 @@ from pathlib import Path
 
 import numpy as np
 
-from hand_sampler import robot_spec as A
 from hand_sampler import resolve as resolve_repo_path
 from hand_sampler.design_space import mat_to_pos_quat, rpy_to_mat, rpy_to_quat_wxyz
 

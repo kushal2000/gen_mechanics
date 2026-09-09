@@ -24,8 +24,7 @@ carried over.
 | M2 — `RobotSpec` registry (swappable hands) | pending |
 | M3 — SHARPA training run | pending |
 | M4 — generalization eval harness | pending |
-| M5 — iiwa14 + Allegro robot | pending |
-| M6/M7 — Allegro training, full sweep, analysis | pending |
+| M5 — iiwa14 + SHARPA robot | done |
 
 ## Layout
 
