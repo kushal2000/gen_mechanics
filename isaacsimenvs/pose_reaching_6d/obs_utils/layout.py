@@ -17,7 +17,7 @@ def obs_field_sizes(spec) -> dict[str, int]:
     """Per-field widths for ``spec``."""
     n_joints = spec.num_joints
     n_hand = spec.num_hand_joints
-    n_tips = spec.num_fingertip_slots
+    n_tips = spec.num_fingertips
     return {
         # Current and one-step-old proprioception, in canonical arm+hand order.
         "joint_pos": n_joints,
@@ -48,10 +48,6 @@ def obs_field_sizes(spec) -> dict[str, int]:
         "progress": 1,
         "successes": 1,
         "reward": 1,
-        # Legacy fields remain sizeable so old saved configs fail at checkpoint
-        # width rather than at config parsing; nothing can produce them now.
-        "fingertip_pos_rel_palm": 3 * n_tips,
-        "morphology": 143,
     }
 
 

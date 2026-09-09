@@ -226,6 +226,32 @@ HAND_ARMATURE: dict[str, float] = {
     "left_pinky_MCP_AA": 0.00265, "left_pinky_PIP": 0.0006, "left_pinky_DIP": 0.00042,
 }
 
+# Coulomb friction at the joint, which the port had dropped entirely.
+HAND_FRICTION: dict[str, float] = {
+    "left_1_thumb_CMC_FE": 0.132,
+    "left_thumb_CMC_AA": 0.132,
+    "left_thumb_MCP_FE": 0.07456,
+    "left_thumb_MCP_AA": 0.07456,
+    "left_thumb_IP": 0.01276,
+    "left_2_index_MCP_FE": 0.07456,
+    "left_index_MCP_AA": 0.07456,
+    "left_index_PIP": 0.01276,
+    "left_index_DIP": 0.00378738,
+    "left_3_middle_MCP_FE": 0.07456,
+    "left_middle_MCP_AA": 0.07456,
+    "left_middle_PIP": 0.01276,
+    "left_middle_DIP": 0.00378738,
+    "left_4_ring_MCP_FE": 0.07456,
+    "left_ring_MCP_AA": 0.07456,
+    "left_ring_PIP": 0.01276,
+    "left_ring_DIP": 0.00378738,
+    "left_5_pinky_CMC": 0.012,
+    "left_pinky_MCP_FE": 0.07456,
+    "left_pinky_MCP_AA": 0.07456,
+    "left_pinky_PIP": 0.01276,
+    "left_pinky_DIP": 0.00378738,
+}
+
 # --- fingertips ----------------------------------------------------------------
 FINGERTIP_BODY_NAMES: tuple[str, ...] = (
     "left_index_DP", "left_middle_DP", "left_ring_DP", "left_thumb_DP", "left_pinky_DP",
@@ -304,21 +330,27 @@ GEN_JOINT_VELOCITY_RAD_S: float = 10.0
 # range without sitting permanently clipped. kd keeps SHARPA's damping ratio,
 # which is kd/kp ~ 0.045 at every one of its joints.
 GEN_JOINT_STIFFNESS: float = 1.0
-GEN_JOINT_DAMPING: float = 0.05
 
-# Hardware again: rotor inertia through the gearbox, added to the joint's own.
-# One actuator means one rotor. SHARPA spans 0.00012 to 0.0032.
-GEN_JOINT_ARMATURE: float = 0.001
+# Hardware again, and both scale with the actuator's torque in SHARPA:
+# armature/effort averages 0.00116 across its five tiers, and friction/effort is
+# exactly 4% on the two proximal tiers and 2% on PIP and DIP. 3% splits that.
+GEN_JOINT_ARMATURE: float = 0.00116 * GEN_JOINT_EFFORT_NM
+GEN_JOINT_FRICTION: float = 0.03 * GEN_JOINT_EFFORT_NM
+
+
+# Critically damped against the joint's own inertia, which is what SHARPA is:
+# kd/(2*sqrt(kp*armature)) is 0.90 to 1.08 across all 22 of its joints.
+GEN_JOINT_DAMPING: float = 2 * 0.929 * math.sqrt(GEN_JOINT_STIFFNESS * GEN_JOINT_ARMATURE)
 
 
 def gen_joint_drive(depth: int = 0, theta: float = 0.0):
-    """``(effort, velocity, stiffness, damping, armature)`` for a generated joint.
+    """``(effort, velocity, stiffness, damping, armature, friction)`` for a joint.
 
     Takes depth and theta so a caller need not know they are ignored; the whole
     point is that every generated joint is identical.
     """
-    return (GEN_JOINT_EFFORT_NM, GEN_JOINT_VELOCITY_RAD_S,
-            GEN_JOINT_STIFFNESS, GEN_JOINT_DAMPING, GEN_JOINT_ARMATURE)
+    return (GEN_JOINT_EFFORT_NM, GEN_JOINT_VELOCITY_RAD_S, GEN_JOINT_STIFFNESS,
+            GEN_JOINT_DAMPING, GEN_JOINT_ARMATURE, GEN_JOINT_FRICTION)
 
 
 # --- palm ----------------------------------------------------------------------

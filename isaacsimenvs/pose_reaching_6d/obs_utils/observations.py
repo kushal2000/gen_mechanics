@@ -205,18 +205,6 @@ def compute_intermediate_values(env) -> None:
     env._curr_fingertip_distances = torch.norm(
         ft_pos - obj_pos.unsqueeze(1), dim=-1
     )  # (N, S)
-    # Ghosted slots carry a real link pose and a meaningless distance. Zeroing
-    # here, at the single point where the distance is produced, makes every
-    # downstream reduction inert for them at once: the reward sums deltas (0),
-    # termination takes a max against 1.5 m (0 never trips), the running minimum
-    # stays 0, and the observation shows a constant. Masking at each consumer
-    # instead would leave whichever one gets forgotten reading ghost geometry.
-    # For an unpadded spec the mask is all-true and this is a no-op.
-    env._curr_fingertip_distances = torch.where(
-        env._fingertip_mask, env._curr_fingertip_distances,
-        torch.zeros_like(env._curr_fingertip_distances),
-    )
-
     if rew_cfg.fixed_size_keypoint_reward:
         kp_offsets = env._keypoint_offsets_fixed
     else:
@@ -298,26 +286,6 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         palm_pos_w, palm_rot, env._palm_center_offset, (env.num_envs,)
     )
     palm_pos = palm_center_pos_w - env_origins
-
-    # Fingertip pad centres. Restored verbatim from 7a8a98c: dropping this
-    # field when the per-joint token fields landed is what the MLP control
-    # arm regressed on. The joint_link_bbox block does carry the distal links'
-    # geometry, but only implicitly, and a dense first layer evidently cannot
-    # recover it -- done_hand_far went from 1.3% of episodes to 54%, while the
-    # transformer on the SAME observation stayed at 1.6%.
-    ft_state = env.robot.data.body_state_w[:, env._fingertip_body_ids, :]
-    ft_pos_w = _apply_local_offset(
-        ft_state[:, :, 0:3], ft_state[:, :, 3:7], env._fingertip_offsets,
-        (env.num_envs, env._num_fingertips),
-    )
-    fingertip_pos_rel_palm = (
-        (ft_pos_w - env_origins.unsqueeze(1)) - palm_pos.unsqueeze(1)
-    )  # (N, S, 3)
-    # Ghosted slots would otherwise feed the policy the pose of a finger that
-    # is not there. Zero is the "absent" value, matching the distance field.
-    fingertip_pos_rel_palm = fingertip_pos_rel_palm * (
-        env._fingertip_mask.unsqueeze(-1).to(fingertip_pos_rel_palm.dtype)
-    )
 
     obj_pos = env.object.data.root_pos_w - env_origins
     obj_rot = env.object.data.root_quat_w  # wxyz
@@ -411,7 +379,6 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "hand_scale": env._hand_scale,
         "palm_pos": palm_pos,
         "palm_rot": palm_rot_xyzw,
-        "fingertip_pos_rel_palm": fingertip_pos_rel_palm,
         "palm_vel": palm_vel,
         "object_rot": obj_rot_xyzw,
         "object_vel": obj_vel,

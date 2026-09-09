@@ -49,9 +49,6 @@ class RobotSpec:
 
     # --- observation geometry ----------------------------------------------
     palm_center_offset: Vec3
-    """Offset from the palm body origin to the grasp center, in the palm frame."""
-    fingertip_offsets: tuple[Vec3, ...]
-    """Per-fingertip offset from body origin to pad center."""
 
     # --- physics ------------------------------------------------------------
     adjacent_links: Mapping[str, list[str]]
@@ -69,41 +66,19 @@ class RobotSpec:
     replace_cylinders_with_capsules: bool = False
     """Convert ``<cylinder>`` collision geometry to PhysX capsules on import."""
 
-    # --- cross-embodiment padding -------------------------------------------
-    fingertip_slot_names: tuple[str, ...] = ()
-    """ALL fingertip slots the morphology template defines, active or not."""
 
-    fingertip_slot_active: tuple[bool, ...] = ()
-    """Per-slot validity mask, parallel to ``fingertip_slot_names``."""
 
-    fingertip_slot_offsets: tuple[Vec3, ...] = ()
-    """Pad-center offsets for ALL slots, parallel to ``fingertip_slot_names``."""
 
+    # Coulomb friction at the joint. simtoolreal set this and the first port
+    # dropped it, so SHARPA ran frictionless here where the reference did not.
+    hand_friction: Mapping[str, float] = field(default_factory=dict)
     notes: str = field(default="", compare=False)
     """Provenance: where gains, offsets, and mount transforms came from."""
 
     # --- derived -------------------------------------------------------------
-    @property
-    def fingertip_slots(self) -> tuple[str, ...]:
-        """Padded slot names, falling back to the active fingertips."""
-        return self.fingertip_slot_names or self.fingertip_body_names
 
-    @property
-    def num_fingertip_slots(self) -> int:
-        """Observation width for fingertip fields."""
-        return len(self.fingertip_slots)
 
-    @property
-    def fingertip_slot_mask(self) -> tuple[bool, ...]:
-        """Validity mask over the padded slots; all-true when unpadded."""
-        if self.fingertip_slot_active:
-            return self.fingertip_slot_active
-        return (True,) * self.num_fingertip_slots
 
-    @property
-    def fingertip_slot_offsets_padded(self) -> tuple[Vec3, ...]:
-        """Offsets over the padded slots; the active table when unpadded."""
-        return self.fingertip_slot_offsets or self.fingertip_offsets
 
     @property
     def joint_names_canonical(self) -> tuple[str, ...]:
@@ -161,50 +136,6 @@ class RobotSpec:
         if len(set(self.fingertip_body_names)) != len(self.fingertip_body_names):
             raise ValueError(f"{who}: duplicate fingertip_body_names")
 
-        if len(self.fingertip_offsets) != self.num_fingertips:
-            raise ValueError(
-                f"{who}: fingertip_offsets has {len(self.fingertip_offsets)} entries "
-                f"but there are {self.num_fingertips} fingertips"
-            )
-        for i, off in enumerate(self.fingertip_offsets):
-            if len(off) != 3:
-                raise ValueError(f"{who}: fingertip_offsets[{i}] is not a 3-vector: {off}")
-
-        # Padded slots: either all three tables are supplied and agree, or none are.
-        pad = (self.fingertip_slot_names, self.fingertip_slot_active,
-               self.fingertip_slot_offsets)
-        if any(pad) and not all(pad):
-            supplied = [n for n, v in zip(
-                ("fingertip_slot_names", "fingertip_slot_active",
-                 "fingertip_slot_offsets"), pad) if v]
-            raise ValueError(
-                f"{who}: padded fingertip slots are partially specified "
-                f"(got {supplied}); supply all three or none")
-        if self.fingertip_slot_names:
-            n_slots = len(self.fingertip_slot_names)
-            if len(self.fingertip_slot_active) != n_slots:
-                raise ValueError(
-                    f"{who}: fingertip_slot_active has "
-                    f"{len(self.fingertip_slot_active)} entries for "
-                    f"{n_slots} slots")
-            if len(self.fingertip_slot_offsets) != n_slots:
-                raise ValueError(
-                    f"{who}: fingertip_slot_offsets has "
-                    f"{len(self.fingertip_slot_offsets)} entries for "
-                    f"{n_slots} slots")
-            if len(set(self.fingertip_slot_names)) != n_slots:
-                raise ValueError(f"{who}: duplicate fingertip_slot_names")
-            # The active slots must be exactly the declared fingertips, in the same order -- otherwise the...
-            active = tuple(n for n, ok in zip(self.fingertip_slot_names,
-                                              self.fingertip_slot_active) if ok)
-            if active != tuple(self.fingertip_body_names):
-                raise ValueError(
-                    f"{who}: active slots {list(active)} do not match "
-                    f"fingertip_body_names {list(self.fingertip_body_names)}")
-            for i, off in enumerate(self.fingertip_slot_offsets):
-                if len(off) != 3:
-                    raise ValueError(
-                        f"{who}: fingertip_slot_offsets[{i}] is not a 3-vector: {off}")
         if len(self.palm_center_offset) != 3:
             raise ValueError(f"{who}: palm_center_offset is not a 3-vector")
 
@@ -262,13 +193,13 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
     from hand_sampler import design_space
     from hand_sampler import robot_param_constants as rpc
 
-    names, stiffness, damping, armature, tips = [], {}, {}, {}, []
+    names, stiffness, damping, armature, friction, tips = [], {}, {}, {}, {}, []
     for f, finger in enumerate(hand.fingers):
         for d, seg in enumerate(finger.segments):
             jn = f"f{f}_j{d}"
             names.append(jn)
-            _e, _v, k, b, a = seg.joint.drive or rpc.gen_joint_drive(d, seg.joint.theta)
-            stiffness[jn], damping[jn], armature[jn] = k, b, a
+            _e, _v, k, b, a, fr = seg.joint.drive or rpc.gen_joint_drive(d, seg.joint.theta)
+            stiffness[jn], damping[jn], armature[jn], friction[jn] = k, b, a, fr
         tips.append(f"f{f}_link{finger.n_joints - 1}")
 
     return RobotSpec(
@@ -277,11 +208,11 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
         palm_body_name=rpc.ARM_TIP_LINK, fingertip_body_names=tuple(tips),
         arm_stiffness=rpc.ARM_STIFFNESS, arm_damping=rpc.ARM_DAMPING,
         hand_stiffness=stiffness, hand_damping=damping, hand_armature=armature,
+        hand_friction=friction,
         arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
         hand_default_joint_pos={n: 0.0 for n in names},
         start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
         palm_center_offset=(0.0, 0.0, 0.0),
-        fingertip_offsets=tuple((0.0, 0.0, 0.0) for _ in tips),
         adjacent_links=dict(rpc.ARM_ADJACENT_LINKS),
         link_prim_regexes=(".*",),
         base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT,

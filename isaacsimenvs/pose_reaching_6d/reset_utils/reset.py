@@ -57,34 +57,24 @@ def allocate_state_buffers(env) -> None:
     #
     # Addressed by SLOT, not by active finger. For a fixed hand the two are the
     # same list and nothing here changes. For a generated hand they differ: the
-    # template defines 5 finger slots and ghosting deactivates some, so the spec
-    # carries all 5 with a validity mask. Observing the padded axis is what lets
-    # designs with 2, 3 and 4 active fingers share one observation layout, and
-    # therefore one scene -- see RobotSpec.fingertip_slot_names.
-    slot_names = list(spec.fingertip_slots)
-    env._fingertip_body_ids = env.robot.find_bodies(
-        slot_names, preserve_order=True
-    )[0]
+    tips = list(spec.fingertip_body_names)
+    env._fingertip_body_ids = env.robot.find_bodies(tips, preserve_order=True)[0]
 
     env._num_joints = spec.num_joints
     env._num_hand_joints = spec.num_hand_joints
-    # Width of every fingertip-shaped buffer and observation field. Equal to
-    # spec.num_fingertips whenever the spec is unpadded.
-    env._num_fingertips = spec.num_fingertip_slots
+    # Width of every fingertip-shaped buffer and observation field.
+    env._num_fingertips = spec.num_fingertips
 
-    if len(env._fingertip_body_ids) != spec.num_fingertip_slots:
+    if len(env._fingertip_body_ids) != spec.num_fingertips:
         raise RuntimeError(
             f"{spec.name}: found {len(env._fingertip_body_ids)} fingertip bodies, "
-            f"spec declares {spec.num_fingertip_slots} slots ({slot_names})"
+            f"spec declares {spec.num_fingertips} ({tips})"
         )
 
     # (1, S) so it broadcasts over envs; the per-env robot path replaces this
     # with a genuine (N, S) mask, one row per design. A ghosted finger's distal
     # link still exists and still has a pose, and that pose is meaningless --
     # every reduction over the fingertip axis has to exclude it.
-    env._fingertip_mask = torch.tensor(
-        spec.fingertip_slot_mask, device=env.device, dtype=torch.bool
-    ).unsqueeze(0)
     # Everything downstream — action routing, the arm/hand reward penalties, the
     # limit tables — assumes these two id sets tile the joint vector exactly.
     if sorted(env._arm_joint_ids + env._hand_joint_ids) != list(range(spec.num_joints)):
@@ -101,9 +91,6 @@ def allocate_state_buffers(env) -> None:
     # replaces this with (N, S, 3) -- distal phalanx length varies by design, so
     # the same slot index means a different offset in different envs. Both
     # shapes broadcast identically through _apply_local_offset.
-    env._fingertip_offsets = torch.tensor(
-        spec.fingertip_slot_offsets_padded, device=env.device, dtype=torch.float32
-    )
 
 
     # Convert between Lab parser order and canonical policy order.
@@ -218,7 +205,7 @@ def allocate_state_buffers(env) -> None:
     )
     # the minimum distance between a fingertip and the object since the last goal reset
     env._closest_fingertip_dist = torch.full(
-        (env.num_envs, spec.num_fingertip_slots), -1.0, device=env.device
+        (env.num_envs, spec.num_fingertips), -1.0, device=env.device
     )
     # the number of succeesses in the current episode
     env._successes = torch.zeros(
@@ -295,7 +282,7 @@ def allocate_state_buffers(env) -> None:
     # --- Step-shared caches populated by compute_intermediate_values (Phase F) ---
     env._keypoints_max_dist = torch.zeros(env.num_envs, device=env.device)
     env._curr_fingertip_distances = torch.zeros(
-        env.num_envs, spec.num_fingertip_slots, device=env.device
+        env.num_envs, spec.num_fingertips, device=env.device
     )
     env._near_goal = torch.zeros(
         env.num_envs, dtype=torch.bool, device=env.device

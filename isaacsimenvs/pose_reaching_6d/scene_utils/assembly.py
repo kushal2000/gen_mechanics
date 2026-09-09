@@ -99,6 +99,7 @@ def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False) -> Art
                 stiffness=dict(spec.hand_stiffness),
                 damping=dict(spec.hand_damping),
                 armature=dict(spec.hand_armature),
+                friction=dict(spec.hand_friction),
             ),
         },
     )

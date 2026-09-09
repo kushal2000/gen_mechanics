@@ -12,9 +12,9 @@ from __future__ import annotations
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.sharpa_iiwa14 import SHARPA_IIWA14_ADJACENT_LINKS
 from hand_sampler.robot_param_constants import (
     FINGERTIP_BODY_NAMES,
-    FINGERTIP_OFFSET,
     HAND_ARMATURE,
     HAND_DAMPING,
+    HAND_FRICTION,
     HAND_JOINT_NAMES,
     HAND_STIFFNESS,
     ARM_DAMPING,
@@ -63,6 +63,7 @@ SHARPA_IIWA14 = RobotSpec(
     hand_stiffness=HAND_STIFFNESS,
     hand_damping=HAND_DAMPING,
     hand_armature=HAND_ARMATURE,
+    hand_friction=HAND_FRICTION,
 
     arm_default_joint_pos=ARM_DEFAULT_JOINT_POS,
     hand_default_joint_pos={name: 0.0 for name in HAND_JOINT_NAMES},
@@ -70,7 +71,6 @@ SHARPA_IIWA14 = RobotSpec(
 
     # Grasp center, ~16 cm out along the flange axis from iiwa14_link_7.
     palm_center_offset=(-0.0, -0.02, 0.16),
-    fingertip_offsets=tuple(FINGERTIP_OFFSET for _ in FINGERTIP_BODY_NAMES),
 
     adjacent_links=SHARPA_IIWA14_ADJACENT_LINKS,
     link_prim_regexes=(
