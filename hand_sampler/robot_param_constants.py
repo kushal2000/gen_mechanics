@@ -21,7 +21,6 @@ import math
 # =============================================================================
 
 
-
 ARM_NAME = "iiwa14"
 
 # --- joints --------------------------------------------------------------------
@@ -163,7 +162,69 @@ PALM_DENSITY_KG_M3: float = 1961.9482523719728
 # Where the palm box sits in the palm link frame.
 PALM_BOX_CENTER_M: tuple[float, float, float] = (0.00034, -0.00109, 0.04320)
 
-# --- actuation, per joint slot -------------------------------------------------
+# --- controlled joints ---------------------------------------------------------
+HAND_JOINT_NAMES: tuple[str, ...] = (
+    "left_1_thumb_CMC_FE", "left_thumb_CMC_AA", "left_thumb_MCP_FE",
+    "left_thumb_MCP_AA", "left_thumb_IP",
+    "left_2_index_MCP_FE", "left_index_MCP_AA", "left_index_PIP", "left_index_DIP",
+    "left_3_middle_MCP_FE", "left_middle_MCP_AA", "left_middle_PIP", "left_middle_DIP",
+    "left_4_ring_MCP_FE", "left_ring_MCP_AA", "left_ring_PIP", "left_ring_DIP",
+    "left_5_pinky_CMC", "left_pinky_MCP_FE", "left_pinky_MCP_AA",
+    "left_pinky_PIP", "left_pinky_DIP",
+)
+
+# --- per-joint gains, damping and armature -------------------------------------
+# Authoritative: what the articulation is actually driven with.
+HAND_STIFFNESS: dict[str, float] = {
+    "left_1_thumb_CMC_FE": 6.95, "left_thumb_CMC_AA": 13.2, "left_thumb_MCP_FE": 4.76,
+    "left_thumb_MCP_AA": 6.62, "left_thumb_IP": 0.9,
+    "left_2_index_MCP_FE": 4.76, "left_index_MCP_AA": 6.62,
+    "left_index_PIP": 0.9, "left_index_DIP": 0.9,
+    "left_3_middle_MCP_FE": 4.76, "left_middle_MCP_AA": 6.62,
+    "left_middle_PIP": 0.9, "left_middle_DIP": 0.9,
+    "left_4_ring_MCP_FE": 4.76, "left_ring_MCP_AA": 6.62,
+    "left_ring_PIP": 0.9, "left_ring_DIP": 0.9,
+    "left_5_pinky_CMC": 1.38, "left_pinky_MCP_FE": 4.76, "left_pinky_MCP_AA": 6.62,
+    "left_pinky_PIP": 0.9, "left_pinky_DIP": 0.9,
+}
+
+HAND_DAMPING: dict[str, float] = {
+    "left_1_thumb_CMC_FE": 0.28676845, "left_thumb_CMC_AA": 0.40845109,
+    "left_thumb_MCP_FE": 0.20394083, "left_thumb_MCP_AA": 0.24044435,
+    "left_thumb_IP": 0.04190723,
+    "left_2_index_MCP_FE": 0.20859232, "left_index_MCP_AA": 0.24595532,
+    "left_index_PIP": 0.04243185, "left_index_DIP": 0.03504461,
+    "left_3_middle_MCP_FE": 0.2085923, "left_middle_MCP_AA": 0.24595532,
+    "left_middle_PIP": 0.04243185, "left_middle_DIP": 0.03504461,
+    "left_4_ring_MCP_FE": 0.20859226, "left_ring_MCP_AA": 0.24595528,
+    "left_ring_PIP": 0.04243183, "left_ring_DIP": 0.0350446,
+    "left_5_pinky_CMC": 0.02782345, "left_pinky_MCP_FE": 0.20859229,
+    "left_pinky_MCP_AA": 0.24595528, "left_pinky_PIP": 0.04243183,
+    "left_pinky_DIP": 0.0350446,
+}
+
+HAND_ARMATURE: dict[str, float] = {
+    "left_1_thumb_CMC_FE": 0.0032, "left_thumb_CMC_AA": 0.0032,
+    "left_thumb_MCP_FE": 0.00265, "left_thumb_MCP_AA": 0.00265, "left_thumb_IP": 0.0006,
+    "left_2_index_MCP_FE": 0.00265, "left_index_MCP_AA": 0.00265,
+    "left_index_PIP": 0.0006, "left_index_DIP": 0.00042,
+    "left_3_middle_MCP_FE": 0.00265, "left_middle_MCP_AA": 0.00265,
+    "left_middle_PIP": 0.0006, "left_middle_DIP": 0.00042,
+    "left_4_ring_MCP_FE": 0.00265, "left_ring_MCP_AA": 0.00265,
+    "left_ring_PIP": 0.0006, "left_ring_DIP": 0.00042,
+    "left_5_pinky_CMC": 0.00012, "left_pinky_MCP_FE": 0.00265,
+    "left_pinky_MCP_AA": 0.00265, "left_pinky_PIP": 0.0006, "left_pinky_DIP": 0.00042,
+}
+
+# --- fingertips ----------------------------------------------------------------
+FINGERTIP_BODY_NAMES: tuple[str, ...] = (
+    "left_index_DP", "left_middle_DP", "left_ring_DP", "left_thumb_DP", "left_pinky_DP",
+)
+
+FINGERTIP_OFFSET: Vec3 = (0.02, 0.002, 0.0)
+
+
+# --- actuation limits, per joint slot ------------------------------------------
 # Effort and velocity ceilings as the URDF declares them.
 SLOT_EFFORT_NM: dict[str, float] = {
     "CMC_FE": 3.3,
@@ -182,22 +243,6 @@ SLOT_VELOCITY_RAD_S: dict[str, float] = {
     "DIP": 14.66594768,
 }
 
-# Per-slot PD gains, damping and armature, from the SHARPA spec's per-tier values.
-SLOT_STIFFNESS: dict[str, float] = {
-    "CMC_FE": 1.38, "CMC_AA": 1.38,
-    "MCP_FE": 4.76, "MCP_AA": 6.62,
-    "PIP": 0.9, "DIP": 0.9,
-}
-SLOT_DAMPING: dict[str, float] = {
-    "CMC_FE": 0.02782345, "CMC_AA": 0.02782345,
-    "MCP_FE": 0.20859232, "MCP_AA": 0.24595532,
-    "PIP": 0.04243185, "DIP": 0.03504461,
-}
-SLOT_ARMATURE: dict[str, float] = {
-    "CMC_FE": 0.0032, "CMC_AA": 0.0032,
-    "MCP_FE": 0.00265, "MCP_AA": 0.00265,
-    "PIP": 0.0006, "DIP": 0.00042,
-}
 
 # --- virtual / ghost links -----------------------------------------------------
 # Near-zero so a disabled slot keeps its link without adding mass.
@@ -233,12 +278,12 @@ GEN_LINK_DENSITY_KG_M3: float = TIER_MASS_KG["pp"] / (
     math.pi * TIER_RADIUS_M["pp"] ** 2 * TIER_NOMINAL_LENGTH_M["pp"])
 
 # --- actuation -----------------------------------------------------------------
-# One actuator type for every generated joint: SHARPA's PIP, its middle joint.
+# One actuator type for every generated joint: SHARPA's index PIP.
 GEN_JOINT_EFFORT_NM: float = SLOT_EFFORT_NM["PIP"]
 GEN_JOINT_VELOCITY_RAD_S: float = SLOT_VELOCITY_RAD_S["PIP"]
-GEN_JOINT_STIFFNESS: float = SLOT_STIFFNESS["PIP"]
-GEN_JOINT_DAMPING: float = SLOT_DAMPING["PIP"]
-GEN_JOINT_ARMATURE: float = SLOT_ARMATURE["PIP"]
+GEN_JOINT_STIFFNESS: float = HAND_STIFFNESS["left_index_PIP"]
+GEN_JOINT_DAMPING: float = HAND_DAMPING["left_index_PIP"]
+GEN_JOINT_ARMATURE: float = HAND_ARMATURE["left_index_PIP"]
 
 # --- palm ----------------------------------------------------------------------
 # A box at SHARPA's density, so a bigger palm weighs more.

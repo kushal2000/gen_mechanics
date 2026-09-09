@@ -11,6 +11,12 @@ from __future__ import annotations
 
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.sharpa_iiwa14 import SHARPA_IIWA14_ADJACENT_LINKS
 from hand_sampler.robot_param_constants import (
+    FINGERTIP_BODY_NAMES,
+    FINGERTIP_OFFSET,
+    HAND_ARMATURE,
+    HAND_DAMPING,
+    HAND_JOINT_NAMES,
+    HAND_STIFFNESS,
     ARM_DAMPING,
     ARM_DEFAULT_JOINT_POS,
     ARM_JOINT_NAMES,
@@ -30,66 +36,13 @@ from hand_sampler.robot_spec import RobotSpec, Vec3
 # The left_1_ / left_2_ / ... numeric infixes are not cosmetic: they force Isaac
 # Gym's alphabetical-within-depth joint sort into this order. They are preserved
 # because the pretrained checkpoint's action layout depends on it.
-HAND_JOINT_NAMES: tuple[str, ...] = (
-    "left_1_thumb_CMC_FE", "left_thumb_CMC_AA", "left_thumb_MCP_FE",
-    "left_thumb_MCP_AA", "left_thumb_IP",
-    "left_2_index_MCP_FE", "left_index_MCP_AA", "left_index_PIP", "left_index_DIP",
-    "left_3_middle_MCP_FE", "left_middle_MCP_AA", "left_middle_PIP", "left_middle_DIP",
-    "left_4_ring_MCP_FE", "left_ring_MCP_AA", "left_ring_PIP", "left_ring_DIP",
-    "left_5_pinky_CMC", "left_pinky_MCP_FE", "left_pinky_MCP_AA",
-    "left_pinky_PIP", "left_pinky_DIP",
-)
 
-HAND_STIFFNESS: dict[str, float] = {
-    "left_1_thumb_CMC_FE": 6.95, "left_thumb_CMC_AA": 13.2, "left_thumb_MCP_FE": 4.76,
-    "left_thumb_MCP_AA": 6.62, "left_thumb_IP": 0.9,
-    "left_2_index_MCP_FE": 4.76, "left_index_MCP_AA": 6.62,
-    "left_index_PIP": 0.9, "left_index_DIP": 0.9,
-    "left_3_middle_MCP_FE": 4.76, "left_middle_MCP_AA": 6.62,
-    "left_middle_PIP": 0.9, "left_middle_DIP": 0.9,
-    "left_4_ring_MCP_FE": 4.76, "left_ring_MCP_AA": 6.62,
-    "left_ring_PIP": 0.9, "left_ring_DIP": 0.9,
-    "left_5_pinky_CMC": 1.38, "left_pinky_MCP_FE": 4.76, "left_pinky_MCP_AA": 6.62,
-    "left_pinky_PIP": 0.9, "left_pinky_DIP": 0.9,
-}
-
-HAND_DAMPING: dict[str, float] = {
-    "left_1_thumb_CMC_FE": 0.28676845, "left_thumb_CMC_AA": 0.40845109,
-    "left_thumb_MCP_FE": 0.20394083, "left_thumb_MCP_AA": 0.24044435,
-    "left_thumb_IP": 0.04190723,
-    "left_2_index_MCP_FE": 0.20859232, "left_index_MCP_AA": 0.24595532,
-    "left_index_PIP": 0.04243185, "left_index_DIP": 0.03504461,
-    "left_3_middle_MCP_FE": 0.2085923, "left_middle_MCP_AA": 0.24595532,
-    "left_middle_PIP": 0.04243185, "left_middle_DIP": 0.03504461,
-    "left_4_ring_MCP_FE": 0.20859226, "left_ring_MCP_AA": 0.24595528,
-    "left_ring_PIP": 0.04243183, "left_ring_DIP": 0.0350446,
-    "left_5_pinky_CMC": 0.02782345, "left_pinky_MCP_FE": 0.20859229,
-    "left_pinky_MCP_AA": 0.24595528, "left_pinky_PIP": 0.04243183,
-    "left_pinky_DIP": 0.0350446,
-}
-
-HAND_ARMATURE: dict[str, float] = {
-    "left_1_thumb_CMC_FE": 0.0032, "left_thumb_CMC_AA": 0.0032,
-    "left_thumb_MCP_FE": 0.00265, "left_thumb_MCP_AA": 0.00265, "left_thumb_IP": 0.0006,
-    "left_2_index_MCP_FE": 0.00265, "left_index_MCP_AA": 0.00265,
-    "left_index_PIP": 0.0006, "left_index_DIP": 0.00042,
-    "left_3_middle_MCP_FE": 0.00265, "left_middle_MCP_AA": 0.00265,
-    "left_middle_PIP": 0.0006, "left_middle_DIP": 0.00042,
-    "left_4_ring_MCP_FE": 0.00265, "left_ring_MCP_AA": 0.00265,
-    "left_ring_PIP": 0.0006, "left_ring_DIP": 0.00042,
-    "left_5_pinky_CMC": 0.00012, "left_pinky_MCP_FE": 0.00265,
-    "left_pinky_MCP_AA": 0.00265, "left_pinky_PIP": 0.0006, "left_pinky_DIP": 0.00042,
-}
 
 # Fingertip bodies, post-merge: the *_elastomer and *_fingertip links are
 # fixed-jointed onto the distal phalanges, so they collapse into the DP links.
-FINGERTIP_BODY_NAMES: tuple[str, ...] = (
-    "left_index_DP", "left_middle_DP", "left_ring_DP", "left_thumb_DP", "left_pinky_DP",
-)
 
 # simtoolreal used one shared offset for all five pads. Kept identical here;
 # the per-fingertip field exists for hands with asymmetric distal geometry.
-_SHARPA_FINGERTIP_OFFSET: Vec3 = (0.02, 0.002, 0.0)
 
 
 SHARPA_IIWA14 = RobotSpec(
@@ -117,7 +70,7 @@ SHARPA_IIWA14 = RobotSpec(
 
     # Grasp center, ~16 cm out along the flange axis from iiwa14_link_7.
     palm_center_offset=(-0.0, -0.02, 0.16),
-    fingertip_offsets=tuple(_SHARPA_FINGERTIP_OFFSET for _ in FINGERTIP_BODY_NAMES),
+    fingertip_offsets=tuple(FINGERTIP_OFFSET for _ in FINGERTIP_BODY_NAMES),
 
     adjacent_links=SHARPA_IIWA14_ADJACENT_LINKS,
     link_prim_regexes=(
