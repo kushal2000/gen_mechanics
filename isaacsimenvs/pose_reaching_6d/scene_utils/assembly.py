@@ -10,6 +10,7 @@ live sim.
 from __future__ import annotations
 
 import tempfile
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -343,7 +344,10 @@ def setup_scene(env) -> None:
     env.scene_record = SceneRecord(
         robot_spec=spec, population=population,
         robot_design_index=(None if population is None else torch.as_tensor(
-            design_index(env.num_envs, population.n_designs), device=env.device)),
+            design_index(env.num_envs, population.n_designs,
+                         rank=int(os.environ.get("RANK", "0")),
+                         world_size=int(os.environ.get("WORLD_SIZE", "1"))),
+            device=env.device)),
         robot_collider_links=collider_links,
         object_urdf_paths=[str(p) for p in urdf_paths],
         object_scale=object_scale, object_pool_index=object_pool_index,

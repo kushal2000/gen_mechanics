@@ -732,3 +732,19 @@ def test_per_env_rejects_an_out_of_range_design():
     pop = population_spec(gen_init_pop.seed_population(seed=0, count=3))
     with pytest.raises(ValueError, match="out of range"):
         pop.per_env(np.array([0, 1, 3]))
+
+
+def test_ranks_do_not_author_the_same_designs():
+    """A 2-GPU run must instantiate its whole population, not half of it twice."""
+    from hand_sampler.robot_spec import design_index
+    n_envs, n_designs = 12288, 24576
+    r0 = design_index(n_envs, n_designs, rank=0, world_size=2)
+    r1 = design_index(n_envs, n_designs, rank=1, world_size=2)
+    assert not set(r0.tolist()) & set(r1.tolist())
+    assert len(set(r0.tolist()) | set(r1.tolist())) == n_designs
+
+
+def test_a_population_smaller_than_the_scene_wraps():
+    from hand_sampler.robot_spec import design_index
+    idx = design_index(10, 4, rank=1, world_size=2)
+    assert idx.tolist() == [(10 + i) % 4 for i in range(10)]

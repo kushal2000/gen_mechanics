@@ -371,15 +371,26 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
                           fingertip_valid=ft_valid, palm_center_offset=palm_off)
 
 
-def design_index(n_envs: int, n_designs: int) -> "np.ndarray":
-    """Which design each env holds: ``i % n_designs``, so every design appears
-    an equal number of times up to the remainder, and env 0 always holds
-    design 0. Deterministic, because a run has to be reproducible and a
-    scrambled assignment would also scramble the reward attribution."""
+def design_index(n_envs: int, n_designs: int, *, rank: int = 0,
+                 world_size: int = 1) -> "np.ndarray":
+    """Which design each env holds, for ONE rank's ``n_envs`` envs.
+
+    ``rank`` offsets into the population. Every rank builds its own scene with
+    its own env count, so without the offset each would author designs
+    ``0..n_envs-1`` and a 2-GPU run would instantiate half its population twice
+    -- looking like one design per env in every log line and being nothing of
+    the sort.
+
+    Deterministic: a run has to be reproducible, and a scrambled assignment
+    would scramble the reward attribution with it.
+    """
     import numpy as np
     if n_designs <= 0:
         raise ValueError("a population needs at least one design")
-    return np.arange(n_envs, dtype=np.int64) % n_designs
+    if not 0 <= rank < max(world_size, 1):
+        raise ValueError(f"rank {rank} outside world_size {world_size}")
+    start = rank * n_envs
+    return (start + np.arange(n_envs, dtype=np.int64)) % n_designs
 
 
 _POPULATION_CACHE: dict = {}
