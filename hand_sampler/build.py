@@ -53,12 +53,13 @@ def palm_center_offset(hand: design_space.Hand) -> tuple[float, float, float]:
     return tuple(float(v) for v in (flange_to_palm() @ centre)[:3])
 
 
-def adjacent_links(hand: design_space.Hand) -> dict[str, list[str]]:
+def adjacent_links() -> dict[str, list[str]]:
     """Link pairs to exclude from self-collision: a joint's own two bodies.
 
     Consecutive links touch by construction, so leaving them in makes a hand
     start every episode in self-contact and be pushed apart by the solver
-    instead of reaching. Ghost slots are included: their bodies exist.
+    instead of reaching. Depends on the ENVELOPE, not on any one design: every
+    slot's body exists in every env, ghost or not, so the map is shared.
     """
     F, D = design_space.MAX_FINGERS, design_space.MAX_JOINTS_PER_FINGER
     out: dict[str, list[str]] = {rpc.ARM_TIP_LINK: []}

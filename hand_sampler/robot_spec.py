@@ -213,7 +213,7 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
     design has no anatomy to name them after. Order is finger by finger,
     proximal to distal, matching ``design_space.joint_boxes``.
     """
-    from hand_sampler import design_space
+    from hand_sampler import build, design_space
     from hand_sampler import robot_param_constants as rpc
 
     boxes, valid, scale = design_space.joint_boxes(hand)
@@ -240,8 +240,8 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
         arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
         hand_default_joint_pos={n: 0.0 for n in names},
         start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
-        palm_center_offset=(0.0, 0.0, 0.0),
-        adjacent_links=dict(rpc.ARM_ADJACENT_LINKS),
+        palm_center_offset=build.palm_center_offset(hand),
+        adjacent_links={**dict(rpc.ARM_ADJACENT_LINKS), **build.adjacent_links()},
         link_prim_regexes=(".*",),
         base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT,
         notes=f"derived from a Hand: {hand.n_fingers} fingers, {hand.n_joints} joints",
@@ -270,6 +270,7 @@ class HandPopulation:
     joint_limits: "np.ndarray"       # (n, J, 2)
     hand_scale: "np.ndarray"         # (n,)
     fingertip_valid: "np.ndarray"    # (n, F) bool
+    palm_center_offset: "np.ndarray"  # (n, 3), link_7 -> palm centre
 
     @property
     def n_designs(self) -> int:
@@ -296,6 +297,7 @@ class HandPopulation:
             "joint_limits": self.joint_limits[idx],                # (N, J, 2)
             "hand_scale": self.hand_scale[idx][:, None],           # (N, 1)
             "fingertip_valid": self.fingertip_valid[idx],          # (N, F)
+            "palm_center_offset": self.palm_center_offset[idx],    # (N, 3)
         }
 
 
@@ -303,7 +305,7 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
     """Project many ``Hand`` trees onto one template plus per-design tables."""
     import numpy as np
 
-    from hand_sampler import design_space
+    from hand_sampler import build, design_space
     from hand_sampler import robot_param_constants as rpc
 
     F, D = design_space.MAX_FINGERS, design_space.MAX_JOINTS_PER_FINGER
@@ -325,8 +327,10 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
         arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
         hand_default_joint_pos={n: 0.0 for n in names},
         start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
+        # The template's own offset is a placeholder: the palm centre depends on
+        # palm.length, so it is per design and lives in the tables below.
         palm_center_offset=(0.0, 0.0, 0.0),
-        adjacent_links=dict(rpc.ARM_ADJACENT_LINKS),
+        adjacent_links={**dict(rpc.ARM_ADJACENT_LINKS), **build.adjacent_links()},
         link_prim_regexes=(".*",),
         base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT,
         joint_link_bodies=tuple(f"f{f}_link{d}" for f in range(F) for d in range(D)),
@@ -342,12 +346,14 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
     limits[..., 1] = 1e-8   # ghosts: locked, and not exactly coincident
     scale = np.zeros((n,), dtype=np.float32)
     ft_valid = np.zeros((n, F), dtype=bool)
+    palm_off = np.zeros((n, 3), dtype=np.float32)
 
     for i, hand in enumerate(hands):
         if hand.n_fingers > F:
             raise ValueError(f"design {i} has {hand.n_fingers} fingers, envelope allows {F}")
         b_i, v_i, s_i = design_space.joint_boxes(hand)
         scale[i] = s_i
+        palm_off[i] = build.palm_center_offset(hand)
         seen = 0
         for f, finger in enumerate(hand.fingers):
             if finger.n_joints > D:
@@ -362,7 +368,7 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
                 seen += 1
     return HandPopulation(spec=spec, hands=tuple(hands), joint_link_boxes=boxes,
                           joint_valid=valid, joint_limits=limits, hand_scale=scale,
-                          fingertip_valid=ft_valid)
+                          fingertip_valid=ft_valid, palm_center_offset=palm_off)
 
 
 def design_index(n_envs: int, n_designs: int) -> "np.ndarray":

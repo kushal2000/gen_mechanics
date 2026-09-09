@@ -52,11 +52,9 @@ def allocate_state_buffers(env) -> None:
         env.robot.find_joints(list(spec.hand_joint_names), preserve_order=True)[0]
     )
     env._palm_body_id = env.robot.find_bodies(spec.palm_body_name)[0][0]
-    # Fingertips DO keep spec order: index i must be the same finger as
-    # fingertip_offsets[i], and as column i of the fingertip observations.
-    #
-    # Addressed by SLOT, not by active finger. For a fixed hand the two are the
-    # same list and nothing here changes. For a generated hand they differ: the
+    # Fingertips keep spec order: column i of the fingertip observations is
+    # finger i. Addressed by SLOT, so a padded design's ghost fingers occupy
+    # their own columns and fingertip_valid masks them.
     tips = list(spec.fingertip_body_names)
     env._fingertip_body_ids = env.robot.find_bodies(tips, preserve_order=True)[0]
 
@@ -83,14 +81,9 @@ def allocate_state_buffers(env) -> None:
             f"{env._hand_joint_ids} do not partition range({spec.num_joints})"
         )
 
-    # Geometry offsets, spec-provided so they follow the hand.
-    env._palm_center_offset = torch.tensor(
-        spec.palm_center_offset, device=env.device, dtype=torch.float32
-    )  # (3,)
-    # (S, 3), padded to match _fingertip_body_ids. The per-env robot path
-    # replaces this with (N, S, 3) -- distal phalanx length varies by design, so
-    # the same slot index means a different offset in different envs. Both
-    # shapes broadcast identically through _apply_local_offset.
+    # Geometry offsets, spec-provided so they follow the hand. Set below, with
+    # the rest of the per-design tables: the palm centre depends on palm length,
+    # so a population carries one per design and a fixed hand one for all.
 
 
     # Convert between Lab parser order and canonical policy order.
@@ -135,6 +128,7 @@ def allocate_state_buffers(env) -> None:
             "joint_geometry_valid": np.asarray(spec.joint_geometry_valid, bool)[None],
             "hand_scale": np.full((1, 1), spec.hand_scale, np.float32),
             "fingertip_valid": np.ones((1, spec.num_fingertips), bool),
+            "palm_center_offset": np.asarray(spec.palm_center_offset, np.float32)[None],
         }
         expand = True
     else:
@@ -152,6 +146,7 @@ def allocate_state_buffers(env) -> None:
     # meaningless; zeroing at the single point the distance is produced makes
     # every reduction over the fingertip axis inert for it at once.
     env._fingertip_mask = _to("fingertip_valid", torch.bool)
+    env._palm_center_offset = _to("palm_center_offset", torch.float32)  # (N, 3)
 
     limits = env.robot.data.joint_pos_limits  # (N, num_joints, 2), Lab order
 
