@@ -286,8 +286,16 @@ VIRTUAL_LINK_MASS_KG: float = 1e-6
 VIRTUAL_LINK_INERTIA: float = 1e-6
 
 
+# --- drive gains the URDF converter writes onto every joint prim ---
+# Not the actuator's gains: Isaac Lab's ImplicitActuator overrides these at
+# runtime. They exist so the DriveAPI prim is there for it to write into.
+CONVERTER_DRIVE_STIFFNESS: float = 625.0
+CONVERTER_DRIVE_DAMPING: float = 0.0
+
 # --- flange -> palm ------------------------------------------------------------
 # Where the hand attaches to the arm's last link.
+# link_7 -> flange, the piece merge_fixed_joints collapses along with the next.
+LINK7_TO_FLANGE_Z_M: float = 0.045
 FLANGE_TO_PALM_Z_M: float = 0.05
 FLANGE_TO_PALM_YAW_RAD: float = -1.3089969389957472   # -75 deg
 

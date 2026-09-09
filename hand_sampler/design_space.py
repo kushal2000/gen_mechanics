@@ -216,6 +216,17 @@ def with_finger(hand: Hand, i: int, finger: Finger) -> Hand:
     return replace(hand, fingers=tuple(fingers))
 
 
+def palm_center(palm: "Palm") -> tuple[float, float, float]:
+    """Centre of the palm box, in the palm frame.
+
+    The wrist face is at z = 0 and the box grows outward, so the centre tracks
+    half the length. Unlike SHARPA's measured PALM_BOX_CENTER_M this is exactly
+    centred in x and y: a generated palm is a box we author, with no asymmetry
+    to record.
+    """
+    return (0.0, 0.0, palm.length / 2.0)
+
+
 # --- geometry --------------------------------------------------------------- Joint axes,...
 
 _EPS = 1e-9

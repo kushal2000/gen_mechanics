@@ -338,7 +338,8 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
     n = len(hands)
     boxes = np.zeros((n, J, 4, 3), dtype=np.float32)
     valid = np.zeros((n, J), dtype=bool)
-    limits = np.zeros((n, J, 2), dtype=np.float32)   # ghosts stay (0, 0): locked
+    limits = np.zeros((n, J, 2), dtype=np.float32)
+    limits[..., 1] = 1e-8   # ghosts: locked, and not exactly coincident
     scale = np.zeros((n,), dtype=np.float32)
     ft_valid = np.zeros((n, F), dtype=bool)
 

@@ -696,7 +696,10 @@ def test_ghost_joints_are_locked_so_joint_enabled_reads_zero():
     from hand_sampler.robot_spec import population_spec
     pop = population_spec(gen_init_pop.seed_population(seed=1, count=8))
     ghosts = ~pop.joint_valid
-    assert np.all(pop.joint_limits[ghosts] == 0.0)
+    # (0, 1e-8), the convention the old multi-embodiment path used: locked, but
+    # not an exactly coincident (degenerate) constraint.
+    assert np.all(pop.joint_limits[ghosts][:, 0] == 0.0)
+    assert np.all(pop.joint_limits[ghosts][:, 1] == np.float32(1e-8))
     enabled = pop.joint_limits[..., 1] - pop.joint_limits[..., 0] > 1e-6
     assert np.array_equal(enabled, pop.joint_valid)
 
