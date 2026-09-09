@@ -81,8 +81,17 @@ class Joint:
     offset: float = 0.0
     # Set only by an imported hand, whose hinge is measured rather than drawn.
     axis_override: tuple[float, float, float] | None = None
+    # Travel, in radians. None means the design space's JOINT_LIMIT.
+    limits: tuple[float, float] | None = None
+    # (effort N.m, velocity rad/s, stiffness, damping, armature). None means the
+    # depth-indexed default, which is what a generated joint gets.
+    drive: tuple[float, float, float, float, float] | None = None
 
     def __post_init__(self) -> None:
+        if self.limits is not None and self.limits[0] > self.limits[1]:
+            raise ValueError(f"joint limits out of order: {self.limits}")
+        if self.drive is not None and len(self.drive) != 5:
+            raise ValueError(f"drive must be 5 numbers, got {self.drive}")
         if self.axis_override is not None and len(self.axis_override) != 3:
             raise ValueError(f"axis_override must be 3 numbers, got {self.axis_override}")
         if not math.isfinite(self.offset):
@@ -100,6 +109,8 @@ class Segment:
     # (bend, axis) extents of the link box. None means the capsule a generated
     # design gets; an imported hand carries its measured cross-section instead.
     cross_section: tuple[float, float] | None = None
+    # Collision/visual meshes, for a measured link. None authors a capsule.
+    meshes: tuple[str, ...] | None = None
     # An imported hand's box, verbatim, in ITS child-link frame. A generated
     # hand has none: we author its USD, so its links lie along +x by
     # construction, and the box is derived. A measured hand's frames come from

@@ -245,3 +245,45 @@ class RobotSpec:
 __all__ = ["RobotSpec", "Vec3", "Quat"]
 
 
+
+
+def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
+                         hand_name: str = "generated") -> RobotSpec:
+    """Project a ``design_space.Hand`` onto the flat description the env reads.
+
+    The Hand is the single source: structure, geometry, joint travel and drive.
+    This derives the joint-name-keyed view Isaac Lab wants, so a generated hand
+    needs no URDF -- which is the point, since we do not maintain one for it.
+
+    Joint names are positional, ``f{finger}_j{segment}``, because a generated
+    design has no anatomy to name them after. Order is finger by finger,
+    proximal to distal, matching ``design_space.joint_boxes``.
+    """
+    from hand_sampler import design_space
+    from hand_sampler import robot_param_constants as rpc
+
+    names, stiffness, damping, armature, tips = [], {}, {}, {}, []
+    for f, finger in enumerate(hand.fingers):
+        for d, seg in enumerate(finger.segments):
+            jn = f"f{f}_j{d}"
+            names.append(jn)
+            _e, _v, k, b, a = seg.joint.drive or rpc.gen_joint_drive(d, seg.joint.theta)
+            stiffness[jn], damping[jn], armature[jn] = k, b, a
+        tips.append(f"f{f}_link{finger.n_joints - 1}")
+
+    return RobotSpec(
+        name=name, arm_name=rpc.ARM_NAME, hand_name=hand_name, urdf_path=urdf_path,
+        arm_joint_names=rpc.ARM_JOINT_NAMES, hand_joint_names=tuple(names),
+        palm_body_name=rpc.ARM_TIP_LINK, fingertip_body_names=tuple(tips),
+        arm_stiffness=rpc.ARM_STIFFNESS, arm_damping=rpc.ARM_DAMPING,
+        hand_stiffness=stiffness, hand_damping=damping, hand_armature=armature,
+        arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
+        hand_default_joint_pos={n: 0.0 for n in names},
+        start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
+        palm_center_offset=(0.0, 0.0, 0.0),
+        fingertip_offsets=tuple((0.0, 0.0, 0.0) for _ in tips),
+        adjacent_links=dict(rpc.ARM_ADJACENT_LINKS),
+        link_prim_regexes=(".*",),
+        base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT,
+        notes=f"derived from a Hand: {hand.n_fingers} fingers, {hand.n_joints} joints",
+    )

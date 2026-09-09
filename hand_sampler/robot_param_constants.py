@@ -162,6 +162,16 @@ PALM_DENSITY_KG_M3: float = 1961.9482523719728
 # Where the palm box sits in the palm link frame.
 PALM_BOX_CENTER_M: tuple[float, float, float] = (0.00034, -0.00109, 0.04320)
 
+# PROVENANCE: simtoolreal trained and shipped a checkpoint for this robot, so
+# the joint order, gains, armature and home pose below are TRANSCRIBED from its
+# scene constants rather than chosen or derived -- the URDF carries no gains and
+# no armature at all. The transcription was checked by a bitwise rollout parity
+# test against that setup.
+#
+# The left_1_ / left_2_ / ... numeric infixes are NOT cosmetic: they force Isaac
+# Gym's alphabetical-within-depth joint sort into this order, and the pretrained
+# checkpoint's action layout depends on it. Do not tidy them away.
+
 # --- controlled joints ---------------------------------------------------------
 HAND_JOINT_NAMES: tuple[str, ...] = (
     "left_1_thumb_CMC_FE", "left_thumb_CMC_AA", "left_thumb_MCP_FE",
@@ -277,13 +287,39 @@ GEN_LINK_RADIUS_M: float = TIER_RADIUS_M["pp"]
 GEN_LINK_DENSITY_KG_M3: float = TIER_MASS_KG["pp"] / (
     math.pi * TIER_RADIUS_M["pp"] ** 2 * TIER_NOMINAL_LENGTH_M["pp"])
 
-# --- actuation -----------------------------------------------------------------
-# One actuator type for every generated joint: SHARPA's index PIP.
-GEN_JOINT_EFFORT_NM: float = SLOT_EFFORT_NM["PIP"]
-GEN_JOINT_VELOCITY_RAD_S: float = SLOT_VELOCITY_RAD_S["PIP"]
-GEN_JOINT_STIFFNESS: float = HAND_STIFFNESS["left_index_PIP"]
-GEN_JOINT_DAMPING: float = HAND_DAMPING["left_index_PIP"]
-GEN_JOINT_ARMATURE: float = HAND_ARMATURE["left_index_PIP"]
+# --- actuation ----------------------------------------------------------------
+# ONE ACTUATOR EVERYWHERE, so a morphology comparison is not also a comparison
+# of who was given the stronger motors. SHARPA does the opposite -- 3.3 N.m at
+# the thumb base down to 0.189 at a DIP, a 17x fall-off matching how humanoids
+# are actuated (Unitree G1: knee 120, hip 88, ankle 50, wrist 8) -- so a
+# generated hand is NOT actuated like SHARPA, deliberately.
+
+# Hardware ceilings. 1.0 N.m sits between SHARPA's PIP (0.638) and MCP (1.864).
+GEN_JOINT_EFFORT_NM: float = 1.0
+GEN_JOINT_VELOCITY_RAD_S: float = 10.0
+
+# Control, not hardware: these say how the joint tracks a target, and are ours
+# to tune. kp = 1.0 is matched to the torque ceiling -- the actuator saturates
+# at ~1 rad of error, about the joint's full travel, so it can use its whole
+# range without sitting permanently clipped. kd keeps SHARPA's damping ratio,
+# which is kd/kp ~ 0.045 at every one of its joints.
+GEN_JOINT_STIFFNESS: float = 1.0
+GEN_JOINT_DAMPING: float = 0.05
+
+# Hardware again: rotor inertia through the gearbox, added to the joint's own.
+# One actuator means one rotor. SHARPA spans 0.00012 to 0.0032.
+GEN_JOINT_ARMATURE: float = 0.001
+
+
+def gen_joint_drive(depth: int = 0, theta: float = 0.0):
+    """``(effort, velocity, stiffness, damping, armature)`` for a generated joint.
+
+    Takes depth and theta so a caller need not know they are ignored; the whole
+    point is that every generated joint is identical.
+    """
+    return (GEN_JOINT_EFFORT_NM, GEN_JOINT_VELOCITY_RAD_S,
+            GEN_JOINT_STIFFNESS, GEN_JOINT_DAMPING, GEN_JOINT_ARMATURE)
+
 
 # --- palm ----------------------------------------------------------------------
 # A box at SHARPA's density, so a bigger palm weighs more.
