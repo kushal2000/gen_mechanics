@@ -110,7 +110,7 @@ def run(conn, args) -> None:
 
         # Inject the one design rather than let the env load a manifest: an
         # arbitrary index then costs one design, not a prefix of index+1. The
-        # env builds the morphology descriptor from it, which a population
+        # env reads per-joint link geometry from it, which a population
         # policy conditions on.
         from isaacsimenvs.pose_reaching_6d.scene_utils import RobotPopulation
 

@@ -49,7 +49,7 @@ def obs_field_sizes(spec) -> dict[str, int]:
         "successes": 1,
         "reward": 1,
         # Legacy fields remain sizeable so old saved configs fail at checkpoint
-        # width rather than at config parsing.  New configs do not request them.
+        # width rather than at config parsing; nothing can produce them now.
         "fingertip_pos_rel_palm": 3 * n_tips,
         "morphology": 143,
     }

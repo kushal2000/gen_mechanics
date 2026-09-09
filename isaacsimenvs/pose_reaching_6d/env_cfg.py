@@ -272,10 +272,8 @@ class PoseReachEnvCfg(DirectRLEnvCfg):
     termination: TerminationCfg = TerminationCfg()
     domain_randomization: DomainRandomizationCfg = DomainRandomizationCfg()
 
-    log_morphology_layout: bool = False  # print the descriptor's field map at startup
     # Only meaningful with a population. The env enforces True (a YAML overlay
     # once dropped it silently); False is the ablation and strips the field.
-    include_morphology_obs: bool = True
 
 
 __all__ = [

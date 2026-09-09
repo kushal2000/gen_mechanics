@@ -28,7 +28,7 @@ from ..common_utils.physx import _log_scene_step
 from ..common_utils.urdf_to_usd import (
     _apply_self_collision_filters, _convert_urdf_to_usd, _robot_joint_drive_cfg,
 )
-from ..obs_utils import build_morphology_obs, derive_spaces, force_morphology_field
+from ..obs_utils import derive_spaces
 from .author_objects import author_handle_head, author_physics_material
 from .author_robot import arm_only_urdf, author_robot_prims, flatten_robot_usd
 from .materials import apply_physx_material_properties
@@ -114,7 +114,6 @@ def _resolve_population_and_spec(cfg):
         population = _load_robot_population(cfg.assets)
     if population is None:
         return None, get_robot_spec(cfg.assets.robot_spec)
-    force_morphology_field(cfg, len(population.specs))
     return population, population.specs[0]
 
 
@@ -439,7 +438,6 @@ def finalize_scene(env) -> None:
     if env.scene_record.population is None:
         return
     _verify_robot_design_assignment(env, env.scene_record)
-    build_morphology_obs(env)
 
 
 __all__ = ["RobotPopulation", "SceneRecord", "finalize_scene", "setup_scene"]

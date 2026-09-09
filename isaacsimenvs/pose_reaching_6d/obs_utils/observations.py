@@ -421,9 +421,6 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "closest_keypoint_max_dist": env._closest_keypoint_max_dist.unsqueeze(-1),
         "closest_fingertip_dist": env._closest_fingertip_dist,
         # Only present on the multi-embodiment env; a single-hand scene has no
-        # morphology to describe and never lists the field.
-        **({"morphology": env._morphology_per_env}
-           if getattr(env, "_morphology_per_env", None) is not None else {}),
         "lifted_object": env._lifted_object.float().unsqueeze(-1),
         "progress": torch.log(env.episode_length_buf.float() / 10.0 + 1.0).unsqueeze(-1),
         "successes": torch.log(env._successes.float() + 1.0).unsqueeze(-1),
@@ -475,20 +472,3 @@ def derive_spaces(cfg, spec) -> None:
     cfg.state_space = compute_obs_dim(cfg.obs.state_list, spec)
 
 
-def force_morphology_field(cfg, n_designs: int) -> None:
-    """Put ``morphology`` in both obs lists, or strip it for the ablation.
-
-    Forced, not trusted: the YAML overlay is applied after the configclass
-    defaults and dropped it once, showing up only as obs 186 wide, not 329.
-    """
-    include = cfg.include_morphology_obs
-    for name in ("obs_list", "state_list"):
-        fields = tuple(getattr(cfg.obs, name))
-        if include and "morphology" not in fields:
-            fields += ("morphology",)
-        elif not include:
-            fields = tuple(f for f in fields if f != "morphology")
-        setattr(cfg.obs, name, fields)
-    if not include:
-        print(f"[pose_reach] ABLATION: no morphology descriptor; the policy "
-              f"cannot tell its {n_designs} designs apart.", flush=True)
