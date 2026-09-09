@@ -1,126 +1,94 @@
-"""Mutation operators for evolving a cached hand population.
+"""Mutation operators: the neighbourhood structure local search walks.
 
-One operator per call, one child per parent, INDEX ALIGNED: child ``i`` of every
-operator manifest is the mutant of parent ``i``. That alignment is the whole
-point. Env ``i`` holds design ``i`` and object ``i % pool_size``, so evaluating a
-mutant manifest puts each child on the SAME OBJECT its parent held, and
+A sampler answers "draw me a hand"; evolution needs "given this hand, which hands
+are one step away", and the answer to the second defines the search topology.
 
-    delta_i = child_i - parent_i
+THREE PROPERTIES, ALL DELIBERATE.
 
-is paired within-parent and within-object. The object is the largest confound in
-the population study (docs/analysis.md 5); this cancels it outright rather than
-averaging over it, and it costs nothing but keeping the order.
+*Closure.* Every operator returns a hand passing ``validate.check`` or raises.
 
-WHAT THE GENOTYPE ACTUALLY IS. Not the dataclass fields. ``FingerParams.mount``
-is DERIVED -- ``mount_on_face(face, u_frac, v_frac, roll, tilt, azimuth,
-palm_extents)`` -- and cached beside its provenance in ``mount_params``. Every
-operator here edits ``mount_params`` and recomputes; editing the Segment
-directly would desync the two and lose the face decomposition that ``mounting``
-exists to explore.
+*Unit steps.* Every structural operator changes joint count by exactly +-1. If
+the only structural move added a whole 3-joint finger, complexity would jump in
+threes and the performance-vs-motors front -- the headline plot -- would have
+holes in it.
 
-WHY NO OPERATOR MUTATES ROLL. ``population.build_population`` runs
-``align_flexion_downward`` on every accepted hand, which sets
-``new_roll = roll + optimal_roll_offset(...)`` -- driving roll to the value that
-curls the finger toward the workspace. So roll is not a free parameter in the
-parent population; it is a function of the rest of the geometry. Mutating it and
-re-aligning would erase the mutation, and mutating it without re-aligning would
-just mis-point the finger. Instead every operator perturbs the geometry and then
-RE-ALIGNS, which is also what keeps mutants on the same manifold the parents
-live on: change a palm dimension or a segment length and the optimal roll moves,
-so a mutant that skipped alignment would differ from its parent in two ways
-rather than one.
+*Exact inverses.* Add-then-remove returns the ORIGINAL hand, not a nearby one.
+That is what the angle and length grids buy, and it is load-bearing for
+proceeding without an explicit parsimony penalty: the argument that added
+complexity must pay for itself assumes additions and removals are equally
+available, which is not automatic. ``Stats`` exists to catch a drift.
 
-Operators:
+NINE OPERATORS. Two rules decide the count. An operator REACHABLE BY CHAINING
+others earns nothing and adds a second place the same rule can drift -- which is
+why ``remount`` is gone, folded into ``move_mount`` once a step overflowing a
+face carries onto the next, and why a mount-orientation operator is gone: a
+joint's ZERO OFFSET reproduces exactly what it did from the base joint, and does
+more from any other joint.
 
-    palm            palm_extents; every mount recomputed on the new faces
-    scale           segment lengths + radius_scale, multiplicative
-    mounting        one finger's position and lean (NOT roll -- see above)
-    num_joints_up   one finger's ladder position +1
-    num_joints_down one finger's ladder position -1
+But operators that differ only in WHERE they attach are kept apart, even though a
+tree makes them one operation. Splitting a link and growing a new finger were
+briefly a single ``add_node`` drawing uniformly over pooled sites, and that hid
+two things: a new finger competed against every splittable link, so it was rare;
+and once the palm filled, splits kept succeeding under the same name, masking
+that palm capacity had run out. Separate operators make the mutation mix
+controllable and the failure modes legible.
 
-MEASURED ON 60 SEED-3 PARENTS AT alpha = 0.1, because the numbers are not what
-the parameter names suggest:
-
-    operator          fail    median |d reach|  median |d separation|
-    palm               0%          2.5 mm             3.2 mm
-    scale              0%          3.2 mm             0.0 mm
-    mounting           0%          0.4 mm             1.2 mm
-    num_joints_up     18%          0.0 mm             0.0 mm
-    num_joints_down   13%          0.0 mm             0.0 mm
-
-`mounting` moves the MOUNT 5.6 mm -- exactly its 5 mm/axis sigma -- but moves
-separation by only 1.2 mm, because the two fingers usually sit on DIFFERENT
-faces (-y 45, +z 42, +y 41 over 60 parents) and an in-face step is largely
-perpendicular to the inter-mount vector. It is a where-on-the-face-and-lean
-operator; `palm` is the separation lever, because it scales every face at once.
-37% of mutated mounts also land exactly on the wrist keep-out plane, where part
-of the step is absorbed -- hence `keepout_clamped` on every entry.
-
-`num_joints_up` fails only when every active finger is already at 6 joints,
-which is deterministic. `num_joints_down` fails by SELF-COLLISION (340
-rejections over 60 parents): 5->4 zeroes the metacarpal, pulling the proximal
-capsule back against the palm and its neighbour, and MIN_MOUNT_SEPARATION is
-only 15 mm. The metacarpal is part of what holds fingers apart.
-
-``finger_count`` is deliberately absent, and its absence is permanent for any
-population descended from these: none of the five changes how many fingers are
-active, so a topology class that dies in one generation cannot come back.
+Reflection rather than clipping when a step leaves a range, and mount steps in
+METRES rather than u/v fractions -- both because the alternative biases the step
+distribution by position. The mount carries no orientation at all: a finger
+leaves along its face normal, and aiming it is the base joint's offset.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
 import math
 import random
-import tempfile
-from dataclasses import replace
-from pathlib import Path
+from dataclasses import dataclass, field, replace
 
-from hand_sampler import params as P
-from hand_sampler import sharpa_anchors as anchors
-# Private by convention, not by intent: this module is part of the same package
-# and must reproduce sample()'s construction rules exactly. Re-deriving them
-# here is how a mutant silently stops being drawn from the parents' space.
-from hand_sampler.params import _LIM_FINGER, _LIM_THUMB, _limits
-from hand_sampler.population import (
-    _hits, _roundtrip_ok, hand_from_json, hand_to_json,
+import numpy as np
+
+from hand_sampler import genotype as G
+from hand_sampler import validate as V
+from hand_sampler.kinematics import (
+    face_frame, face_from_normal, mount_direction, mount_position,
+    mount_uv_bounds,
 )
-from hand_sampler.paths import resolve as resolve_repo_path
 
-OPERATORS = ("palm", "scale", "mounting", "num_joints_up", "num_joints_down")
+OPERATORS: tuple[str, ...] = (
+    # structural -- these move complexity, +-1 joint each
+    "split_link", "merge_links", "add_finger", "remove_finger",
+    # parametric -- complexity fixed
+    "perturb_axis", "perturb_offset", "perturb_length", "move_mount",
+    "perturb_palm",
+)
 
-# `mounting` steps in METRES on the palm face, not in u_frac/v_frac. The faces
-# differ 2-4x in span (+z spans palm_x by palm_y; +-y span palm_x by palm_z) and
-# the spans shrink with the palm, so a fixed fractional step is a different
-# physical move on every hand -- while the axis that matters, mount separation,
-# is measured in metres with an optimum at 4-5 cm.
-MOUNT_POS_REF_M = 0.050
+STRUCTURAL: tuple[str, ...] = OPERATORS[:4]
 
-# Tilt is jittered in the tangent plane, so this is the reference for the
-# finger's POINTING DIRECTION, not for the tilt scalar. (tilt, azimuth) are polar
-# coordinates: azimuth does nothing at tilt = 0 and a fixed azimuth step is a
-# vanishing angular move near it, so perturbing them independently gives a step
-# size that depends on where the finger already points.
-MOUNT_TILT_REF_RAD = P.MOUNT_TILT_RANGE[1] - P.MOUNT_TILT_RANGE[0]
+_REDRAWS = 8
+"""How many independent draws a whole-hand operator tries before giving up.
+Each joint or link reflects into range on its own, so a rejection means a
+whole-hand rule caught it and a different draw is likely to pass."""
 
-_PALM_RANGES = (P.PALM_X_RANGE, P.PALM_Y_RANGE, P.PALM_Z_RANGE)
-_TIER_RANGE = {"mc": P.MC_LENGTH_RANGE, "pp": P.PP_LENGTH_RANGE,
-               "mp": P.MP_LENGTH_RANGE, "dp": P.DP_LENGTH_RANGE}
+MOUNT_STEP_M = 0.005
+"""One step across a palm face, in metres. See the module docstring."""
+
+_GROWS: tuple[tuple[str, str], ...] = (("split_link", "merge_links"),
+                                       ("add_finger", "remove_finger"))
+"""Structural pairs, growing operator first. Every entry must appear in
+``Stats.ratchet``; naming them once here is what stopped a filter on "add"
+silently dropping the split/merge pair when it was added."""
+
 
 
 class MutationImpossible(ValueError):
-    """This operator cannot act on this hand (e.g. every finger is at the ladder end)."""
+    """This operator cannot act on this hand. Distinct from "acted and produced
+    something invalid", which is a bug rather than a state of the world."""
 
 
-# ---------------------------------------------------------------------------
-# numeric helpers
-# ---------------------------------------------------------------------------
+# --- numeric helpers --------------------------------------------------------
 
-def _reflect(x: float, lo: float, hi: float) -> float:
-    """Fold x back into [lo, hi]. Reflection rather than clipping, because
-    clipping piles probability mass on the boundary -- the same reason
-    params.sample rejects instead of clamping."""
+def reflect(x: float, lo: float, hi: float) -> float:
+    """Fold ``x`` back into ``[lo, hi]``. Reflection, not clipping."""
     if hi <= lo:
         return lo
     span = hi - lo
@@ -128,473 +96,493 @@ def _reflect(x: float, lo: float, hi: float) -> float:
     return lo + (y if y <= span else 2.0 * span - y)
 
 
-def _wrap(x: float, period: float = 2.0 * math.pi) -> float:
-    return x % period
+def snap(x: float, quantum: float) -> float:
+    return round(x / quantum) * quantum
 
 
-def _reproject_length(new: float, old: float, tier: str, radius_scale: float,
-                      ) -> float:
-    """Keep a segment out of the band where a capsule cannot be built.
+def wrap_theta(theta: float) -> float:
+    """theta is periodic with period pi -- a hinge and its negation coincide."""
+    return theta % math.pi
 
-    build_hand_urdf._is_degenerate drops the collider for any segment in
-    [MIN_SEGMENT_M, 2*r), where r = TIER_RADIUS_M[tier] * radius_scale: the link
-    keeps its mass and still moves, but nothing can touch it. 1.7% of the seed-3
-    population carries such a segment and design 5120 has NO fingertip collider
-    on any active finger -- a hand that cannot grasp.
 
-    Two regions are legitimate and must both stay reachable:
-    [lo, MIN_SEGMENT_M) is a virtual link ("this finger has no metacarpal"), and
-    [2r, hi] is a buildable capsule. A segment that was virtual stays virtual; a
-    segment that was real is pushed UP to the first buildable length rather than
-    collapsed into a virtual one, because deleting a link is a far larger change
-    than the mutation intended.
+# --- structural -------------------------------------------------------------
 
-    Note radius_scale MOVES this band, so this must run over every segment after
-    a radius change -- including segments the operator did not touch.
+def split_link(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Divide one link in two, inserting a joint. +1 joint, within a finger.
+
+    Needs a link of at least 2 x MIN_LINK_LENGTH to divide, so a finger of short
+    links cannot deepen until ``perturb_length`` grows one. That coupling between
+    depth and length is geometry, not a limitation (DESIGN.md 5).
     """
-    from hand_sampler.urdf import MIN_SEGMENT_M
+    moves = []
+    for fi, finger in enumerate(hand.fingers):
+        if finger.n_joints >= G.MAX_JOINTS_PER_FINGER:
+            continue
+        for si, seg in enumerate(finger.segments):
+            n_lo = round(G.MIN_LINK_LENGTH / G.LINK_QUANTUM)
+            n_tot = round(seg.length / G.LINK_QUANTUM)
+            for n_a in range(n_lo, n_tot - n_lo + 1):
+                moves.append((fi, si, n_a * G.LINK_QUANTUM))
+    if not moves:
+        raise MutationImpossible("no link is long enough to divide")
 
-    lo, hi = _TIER_RANGE[tier]
-    min_len = 2.0 * anchors.TIER_RADIUS_M[tier] * radius_scale
-    new = _reflect(new, lo, hi)
-    if old < MIN_SEGMENT_M:                      # was virtual -> stays virtual
-        return min(new, max(lo, MIN_SEGMENT_M * 0.5))
-    if new < MIN_SEGMENT_M:                      # was real -> do not delete it
-        return min(max(min_len, lo), hi)
-    if new < min_len:                            # landed in the degenerate band
-        return min(max(min_len, lo), hi)
-    return new
+    rng.shuffle(moves)
+    for fi, si, a in moves:
+        finger = hand.fingers[fi]
+        segments = list(finger.segments)
+        old = segments[si]
+        segments[si] = G.Segment(old.joint, a)
+        segments.insert(si + 1, G.Segment(
+            G.Joint(theta=_draw_theta(rng), phi=math.pi / 2), old.length - a))
+        out = G.with_finger(hand, fi, replace(finger, segments=tuple(segments)))
+        if V.is_valid(out):
+            return out
+    raise MutationImpossible("no split produced a valid hand")
 
 
-def _finger_n_joints(f: P.FingerParams) -> int:
-    return sum(f.enabled)
+def merge_links(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Join two links, removing the joint between them. -1 joint, within a
+    finger, and the exact inverse of ``split_link``.
 
-
-def _active_indices(hand: P.HandParams) -> list[int]:
-    return [i for i, f in enumerate(hand.fingers) if f.active]
-
-
-# ---------------------------------------------------------------------------
-# operators
-# ---------------------------------------------------------------------------
-
-def op_palm(hand: P.HandParams, alpha: float, rng: random.Random) -> P.HandParams:
-    """Resize the palm, then put every finger back on the new faces.
-
-    Recomputing the mounts is not optional. face_frame reads the hand's own
-    extents, so a mount left alone would float off a bigger palm or sink into a
-    smaller one. Fingers keep their FRACTIONAL position on the face, so absolute
-    mount separation scales with the palm -- which is what makes this the
-    coherent-separation operator rather than a per-finger nudge.
+    Only acts on fingers with at least two joints: emptying a finger is
+    ``remove_finger``'s job. The merge preserves reach, so split-then-merge
+    returns the original link rather than a shorter finger.
     """
-    extents = tuple(
-        _reflect(e + rng.gauss(0.0, alpha * (hi - lo)), lo, hi)
-        for e, (lo, hi) in zip(hand.palm_extents, _PALM_RANGES)
-    )
-    fingers = [
-        replace(f, mount=P.mount_on_face(*f.mount_params, extents=extents))
-        if (f.active and f.mount_params) else f
-        for f in hand.fingers
-    ]
-    return replace(hand, fingers=tuple(fingers), palm_extents=extents)
+    moves = [(fi, si) for fi, f in enumerate(hand.fingers) if f.n_joints >= 2
+             for si in range(f.n_joints)]
+    if not moves:
+        raise MutationImpossible("every finger has a single joint")
+
+    rng.shuffle(moves)
+    for fi, si in moves:
+        out = G.with_finger(hand, fi, _merge_out(hand.fingers[fi], si))
+        if V.is_valid(out):
+            return out
+    raise MutationImpossible("no merge stayed within bounds")
 
 
-def op_scale(hand: P.HandParams, alpha: float, rng: random.Random) -> P.HandParams:
-    """Perturb every active finger's segment lengths and radius, multiplicatively.
+def add_finger(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Attach a new SINGLE-JOINT finger to the palm. +1 joint.
 
-    MULTIPLICATIVE, not a fraction of each tier's range. The ranges are wildly
-    uneven -- mc spans 0-110 mm against dp's 16-36 mm -- so a range-fraction step
-    puts ~83% of its variance into the metacarpal alone, and then behaves
-    completely differently on fingers with fewer than MIN_JOINTS_FOR_METACARPAL
-    joints, where mc is pinned at 0. Scaling by current value gives every tier a
-    step proportional to its own size and makes the operator behave the same way
-    on every finger.
-
-    radius_scale is drawn FIRST because it defines the degenerate band that every
-    length is then re-projected out of.
+    Single-joint so the step stays at one joint and pairs exactly with
+    ``remove_finger``. This operator is why the package exists: the previous
+    design space had no finger-count operator and recorded that absence as
+    permanent for any descended population, so a topology class that died could
+    not come back.
     """
-    fingers = list(hand.fingers)
-    for i in _active_indices(hand):
-        f = fingers[i]
-        rs = _reflect(f.radius_scale * (1.0 + rng.gauss(0.0, alpha)),
-                      *P.RADIUS_SCALE_RANGE)
+    if hand.n_fingers >= G.MAX_FINGERS:
+        raise MutationImpossible(f"already at {G.MAX_FINGERS} fingers")
+    out = _new_finger(rng, hand)
+    if out is None:
+        raise MutationImpossible("no room on the palm for another mount")
+    return _accept(out, "add_finger")
 
-        def jitter(v: float, tier: str) -> float:
-            return _reproject_length(v * (1.0 + rng.gauss(0.0, alpha)), v, tier, rs)
 
-        # A metacarpal only exists once a CMC joint can move it. If this finger
-        # has none, mc stays exactly 0 -- a nonzero length there duplicates the
-        # mount and makes the two non-identifiable (MIN_JOINTS_FOR_METACARPAL).
-        mc_len = f.mc.length
-        if mc_len > 0.0:
-            mc_len = jitter(mc_len, "mc")
+def remove_finger(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Delete a SINGLE-JOINT finger. -1 joint, the exact inverse of ``add_finger``.
 
-        fingers[i] = replace(
-            f,
-            mc=P.Segment(xyz=(mc_len, 0.0, 0.0), rpy=f.mc.rpy),
-            pp_length=jitter(f.pp_length, "pp"),
-            mp_length=jitter(f.mp_length, "mp"),
-            dp_length=jitter(f.dp_length, "dp"),
-            radius_scale=rs,
+    Restricted to one-joint fingers so the step stays at one joint and stays
+    invertible. A deeper finger is removed by merging it down first, which is
+    more local and reversible at every intermediate step.
+    """
+    if hand.n_fingers <= G.MIN_FINGERS:
+        raise MutationImpossible(f"already at the minimum of {G.MIN_FINGERS}")
+    candidates = [i for i, f in enumerate(hand.fingers) if f.n_joints == 1]
+    if not candidates:
+        raise MutationImpossible("no single-joint finger; merge one down first")
+
+    rng.shuffle(candidates)
+    for i in candidates:
+        out = replace(hand, fingers=tuple(f for k, f in enumerate(hand.fingers)
+                                          if k != i))
+        if V.is_valid(out):
+            return out
+    raise MutationImpossible("no finger could be removed")
+
+
+def _merge_out(finger: G.Finger, si: int) -> G.Finger:
+    """Drop segment ``si``, folding its link into a neighbour.
+
+    Proximal first (the exact inverse of a split), else distal, else the proximal
+    merge CLAMPED to the ceiling. The clamp is unreachable from ``split_link`` -- a
+    split needs its original within the ceiling, so the parts always merge back
+    inside it -- so it costs nothing in exactness. Without it, a finger whose
+    adjacent links summed past the ceiling could not shed that joint at all,
+    making removal unavailable exactly where links are long.
+    """
+    segments = list(finger.segments)
+    freed = segments.pop(si).length
+
+    proximal = si - 1 if si > 0 else 0
+    candidates = [proximal]
+    distal = si if si < len(segments) else None      # post-pop index of si + 1
+    if distal is not None and distal != proximal:
+        candidates.append(distal)
+
+    for into in candidates:
+        merged = segments[into].length + freed
+        if merged <= G.MAX_LINK_LENGTH + 1e-9:
+            segments[into] = G.Segment(segments[into].joint, merged)
+            return replace(finger, segments=tuple(segments))
+
+    segments[proximal] = G.Segment(segments[proximal].joint, G.MAX_LINK_LENGTH)
+    return replace(finger, segments=tuple(segments))
+
+
+def _draw_theta(rng: random.Random) -> float:
+    n = round(math.pi / G.ANGLE_QUANTUM)
+    return (rng.randrange(n) * G.ANGLE_QUANTUM) % math.pi
+
+
+def _new_finger(rng: random.Random, hand: G.Hand) -> G.Hand | None:
+    """A fresh single-joint finger where there is room, or None if nowhere.
+
+    Single-joint so the step stays at one joint and stays invertible. Placement
+    is ENUMERATED, not rejection-sampled: on a crowded palm nearly every random
+    draw violates separation, and a retry budget makes ``add_finger`` quietly stop
+    being able to add fingers as space runs out -- a reachability hole wearing a
+    timeout's clothing. Enumeration also treats every legal site alike.
+    """
+    sites = _free_mount_sites(hand)
+    if not sites:
+        return None
+
+    n_len = round((G.MAX_LINK_LENGTH - G.MIN_LINK_LENGTH) / G.LINK_QUANTUM)
+    rng.shuffle(sites)
+    for face, u, v in sites:
+        finger = G.Finger(
+            mount=G.Mount(face, u, v),
+            segments=(G.Segment(
+                G.Joint(theta=_draw_theta(rng), phi=math.pi / 2),
+                length=G.MIN_LINK_LENGTH + rng.randint(0, n_len) * G.LINK_QUANTUM),),
         )
-        # The radius moved, so lengths this operator did NOT resample may now sit
-        # in the new degenerate band. Re-project them against the final radius.
-        g = fingers[i]
-        fingers[i] = replace(
-            g,
-            pp_length=_reproject_length(g.pp_length, f.pp_length, "pp", rs),
-            mp_length=_reproject_length(g.mp_length, f.mp_length, "mp", rs),
-            dp_length=_reproject_length(g.dp_length, f.dp_length, "dp", rs),
-        )
-    return replace(hand, fingers=tuple(fingers))
+        out = replace(hand, fingers=hand.fingers + (finger,))
+        if V.is_valid(out):
+            return out
+    return None
 
 
-def op_mounting(hand: P.HandParams, alpha: float, rng: random.Random) -> P.HandParams:
-    """Shift ONE finger's base position and lean on its own face.
+MOUNT_GRID_M = 0.005
+"""Spacing of candidate mount sites, in metres on the face. Fine enough that a
+gap large enough to hold a finger is not missed, coarse enough that enumerating
+every face is cheap."""
 
-    The face is held fixed -- this is a local move, not a relocation -- and roll
-    is left alone because align_flexion_downward overwrites it (see module
-    docstring).
 
-    Position steps in metres and converts through the face's usable span, so the
-    same alpha is the same physical shift on every face and every palm size.
-    Lean is perturbed in the TANGENT PLANE: (tilt, azimuth) are polar, so
-    Cartesian jitter gives a uniform angular step and removes the degeneracy at
-    tilt = 0, where azimuth means nothing.
+def _free_mount_sites(hand: G.Hand) -> list[tuple[str, float, float]]:
+    """Every grid site on the palm with room for another mount.
+
+    Laid out inside the edge margin, so a candidate never sits where a finger
+    would hang off the palm. Only the separation floors are checked here, those
+    being the constraints that depend on the other fingers; the chosen site still
+    goes through the full validator. Vectorised per face because ``add_finger``
+    runs on every mutation attempt.
     """
-    cand = [i for i in _active_indices(hand) if hand.fingers[i].mount_params]
-    if not cand:
-        raise MutationImpossible("no face-mounted active finger")
-    i = rng.choice(cand)
-    f = hand.fingers[i]
-    face, u_frac, v_frac, roll, tilt, azimuth = f.mount_params
+    if not hand.fingers:
+        return []
+    existing = np.array([mount_position(f.mount, hand.palm) for f in hand.fingers])
+    same_face = np.array([f.mount.face for f in hand.fingers])
+    sites: list[tuple[str, float, float]] = []
 
-    _, _, _, _, (span_u, span_v) = P.face_frame(face, hand.palm_extents)
-    usable_u = max(span_u - 2 * P.FACE_MARGIN, 0.0) / 2.0
-    usable_v = max(span_v - 2 * P.FACE_MARGIN, 0.0) / 2.0
-    sigma_m = alpha * MOUNT_POS_REF_M
-    if usable_u > 1e-9:
-        u_frac = _reflect(u_frac + rng.gauss(0.0, sigma_m) / usable_u, -1.0, 1.0)
-    if usable_v > 1e-9:
-        v_frac = _reflect(v_frac + rng.gauss(0.0, sigma_m) / usable_v, -1.0, 1.0)
+    for face in G.FINGER_FACES:
+        centre, _, t_u, t_v, span_u, span_v = face_frame(face, hand.palm)
+        lo_u, hi_u, lo_v, hi_v = mount_uv_bounds(face, hand.palm)
+        n_u = max(1, int((hi_u - lo_u) * span_u / MOUNT_GRID_M))
+        n_v = max(1, int((hi_v - lo_v) * span_v / MOUNT_GRID_M))
 
-    sigma_t = alpha * MOUNT_TILT_REF_RAD
-    tx = tilt * math.cos(azimuth) + rng.gauss(0.0, sigma_t)
-    ty = tilt * math.sin(azimuth) + rng.gauss(0.0, sigma_t)
-    tilt = min(math.hypot(tx, ty), P.MOUNT_TILT_RANGE[1])
-    azimuth = _wrap(math.atan2(ty, tx))
+        us = np.linspace(lo_u, hi_u, n_u + 1)
+        vs = np.linspace(lo_v, hi_v, n_v + 1)
+        uu, vv = np.meshgrid(us, vs, indexing="ij")
+        flat_u, flat_v = uu.ravel(), vv.ravel()
 
-    mp = (face, u_frac, v_frac, _wrap(roll), tilt, azimuth)
-    fingers = list(hand.fingers)
-    fingers[i] = replace(
-        f, mount=P.mount_on_face(*mp, extents=hand.palm_extents), mount_params=mp)
-    return replace(hand, fingers=tuple(fingers))
+        # positions[k] = centre + (u-0.5) span_u t_u + (v-0.5) span_v t_v
+        pos = (centre
+               + np.outer((flat_u - 0.5) * span_u, t_u)
+               + np.outer((flat_v - 0.5) * span_v, t_v))
+
+        d = np.linalg.norm(pos[:, None, :] - existing[None, :, :], axis=2)
+        floors = np.where(same_face == face,
+                          G.MIN_SAME_FACE_SEPARATION, G.MIN_MOUNT_SEPARATION)
+        ok = (d >= floors[None, :]).all(axis=1)
+
+        sites.extend((face, float(u), float(v))
+                     for u, v in zip(flat_u[ok], flat_v[ok]))
+    return sites
 
 
-def _op_num_joints(hand: P.HandParams, delta: int, rng: random.Random,
-                   ) -> P.HandParams:
-    """Move ONE finger up or down the ACTIVATION_ORDER ladder by one rung.
+# --- parametric -------------------------------------------------------------
 
-    Two things ride along and are silent if missed:
+def perturb_axis(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Step EVERY joint's theta by one quantum, each independently up or down.
 
-    NEWLY LIVE SLOTS NEED REAL TRAVEL. A slot SHARPA ghosts carries
-    _GHOST_LIMIT = (0, 1e-8), so promoting it without fixing its limits yields a
-    joint that exists, consumes an action dimension, and cannot move. sample()
-    does this; so must this.
+    A whole-hand move rather than a single-joint one, so it explores orientation
+    far faster than one joint at a time -- at the cost of locality, since a
+    20-joint hand has all 20 axes changed at once. Redrawn a few times if the
+    result does not validate, which is cheap because theta reflects into range
+    per joint and only the whole-hand rules can fail.
 
-    THE 4<->5 BOUNDARY IS DISCONTINUOUS. MIN_JOINTS_FOR_METACARPAL = 5, so 4->5
-    turns on CMC_FE *and* unlocks a metacarpal that has to be drawn, while 5->4
-    forces it back to 0. Either direction moves reach by up to 110 mm alongside
-    the joint change.
+    Only theta. ``phi`` is pinned at pi/2, first on the held-back list
+    (DESIGN.md 11.4).
     """
-    lo_j, hi_j = P.JOINTS_PER_FINGER_RANGE
-    cand = [i for i in _active_indices(hand)
-            if lo_j <= _finger_n_joints(hand.fingers[i]) + delta <= hi_j]
-    if not cand:
-        raise MutationImpossible(f"no active finger can move {delta:+d} on the ladder")
-    i = rng.choice(cand)
-    f = hand.fingers[i]
-    n_new = _finger_n_joints(f) + delta
-    enabled = P.enabled_for(n_new)
-
-    limits = dict(zip(P.JOINT_SLOTS, f.limits))
-    for slot, live in zip(P.JOINT_SLOTS, enabled):
-        if live and (limits[slot][1] - limits[slot][0]) < 1e-6:
-            limits[slot] = _LIM_THUMB[slot] if slot.startswith("CMC") else _LIM_FINGER[slot]
-
-    mc_len = f.mc.length
-    if n_new >= P.MIN_JOINTS_FOR_METACARPAL and mc_len <= 0.0:
-        mc_len = P._u_segment(rng, P.MC_LENGTH_RANGE, "mc", f.radius_scale)
-    elif n_new < P.MIN_JOINTS_FOR_METACARPAL:
-        mc_len = 0.0
-
-    fingers = list(hand.fingers)
-    fingers[i] = replace(f, enabled=enabled, limits=_limits(limits),
-                         mc=P.Segment(xyz=(mc_len, 0.0, 0.0), rpy=f.mc.rpy))
-    return replace(hand, fingers=tuple(fingers))
+    for _ in range(_REDRAWS):
+        fingers = []
+        for f in hand.fingers:
+            segments = tuple(
+                G.Segment(
+                    G.Joint(snap(wrap_theta(sg.joint.theta
+                                            + G.ANGLE_QUANTUM * rng.choice((-1, 1))),
+                                 G.ANGLE_QUANTUM) % math.pi,
+                            sg.joint.phi, sg.joint.offset),
+                    sg.length)
+                for sg in f.segments)
+            fingers.append(replace(f, segments=segments))
+        out = replace(hand, fingers=tuple(fingers))
+        if V.is_valid(out):
+            return out
+    raise MutationImpossible("no whole-hand axis perturbation validated")
 
 
-def op_num_joints_up(hand, alpha, rng):    return _op_num_joints(hand, +1, rng)
-def op_num_joints_down(hand, alpha, rng):  return _op_num_joints(hand, -1, rng)
+def perturb_length(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Step EVERY link by one quantum, each independently up or down.
 
+    A whole-hand move, like ``perturb_axis``. The only operator that changes
+    total reach -- ``split_link`` divides and ``merge_links`` rejoins, both
+    reach-preserving -- so making it act on every link is what lets a hand grow
+    or shrink at a useful rate rather than one 5 mm step per mutation.
 
-_OPS = {"palm": op_palm, "scale": op_scale, "mounting": op_mounting,
-        "num_joints_up": op_num_joints_up, "num_joints_down": op_num_joints_down}
-
-
-# ---------------------------------------------------------------------------
-# phenotype, for comparing operators in a common currency
-# ---------------------------------------------------------------------------
-
-def keepout_clamped(hand: P.HandParams) -> int:
-    """Active face-mounted fingers sitting exactly on the wrist keep-out plane.
-
-    mount_on_face lifts any side-face mount below WRIST_KEEPOUT_M up to it, so in
-    that band different v_frac values map to the SAME mount and part of a
-    mounting step is silently absorbed. Measured at 22/60 on seed-3 parents, so
-    it is common enough that the analysis has to be able to condition on it.
+    Each length reflects into ``[MIN_LINK_LENGTH, MAX_LINK_LENGTH]`` on its own,
+    so only the whole-hand rules (base clearance, packing) can reject a draw.
     """
-    n = 0
-    for f in hand.fingers:
-        if not (f.active and f.mount_params):
+    for _ in range(_REDRAWS):
+        fingers = []
+        for f in hand.fingers:
+            segments = tuple(
+                G.Segment(sg.joint,
+                          snap(reflect(sg.length
+                                       + G.LINK_QUANTUM * rng.choice((-1, 1)),
+                                       G.MIN_LINK_LENGTH, G.MAX_LINK_LENGTH),
+                               G.LINK_QUANTUM))
+                for sg in f.segments)
+            fingers.append(replace(f, segments=segments))
+        out = replace(hand, fingers=tuple(fingers))
+        if V.is_valid(out):
+            return out
+    raise MutationImpossible("no whole-hand length perturbation validated")
+
+
+def move_mount(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Slide one mount across the palm surface, CROSSING FACE EDGES.
+
+    Steps in metres, not u/v fractions. A step that overflows a face carries onto
+    the face across that edge, which is what lets this one operator do the work a
+    separate ``remount`` would: on an axis-aligned box a face's tangents are its
+    neighbours' normals, so no cube net is needed.
+    """
+    order = list(range(hand.n_fingers))
+    rng.shuffle(order)
+    for fi in order:
+        finger = hand.fingers[fi]
+        du_m = MOUNT_STEP_M * rng.choice((-1, 0, 1))
+        dv_m = MOUNT_STEP_M * rng.choice((-1, 0, 1))
+        if du_m == 0.0 and dv_m == 0.0:
             continue
-        if f.mount_params[0][1] != "z" and abs(f.mount.xyz[2] - P.WRIST_KEEPOUT_M) < 1e-9:
-            n += 1
-    return n
 
-
-def phenotype(hand: P.HandParams) -> dict:
-    """The quantities the population study found predictive, plus palm volume.
-
-    alpha is normalised in PARAMETER space, so it is not comparable across
-    operators: the same alpha moves reach by one amount and mount separation by
-    another. Recording realised displacement puts every operator on one axis --
-    fitness change per millimetre of phenotype moved.
-    """
-    act = hand.active_fingers
-    # FingerParams.reach() sums mount.length + cmc + mc + pp + mp + dp, so it
-    # conflates two mechanically distinct things: WHERE the finger attaches on
-    # the palm, and HOW LONG the finger is. They are also cleanly separated by
-    # operator -- `palm` moves the mount by ~3 mm and the finger by exactly 0,
-    # `scale` the reverse -- so a single "reach" number attributes palm mutations
-    # to a finger-length change that never happened. Measured separately here;
-    # `finger_length` (extension beyond the palm) is the one that carries the
-    # measured fitness effect.
-    reaches = [f.reach() for f in act]
-    mounts_len = [f.mount.length for f in act]
-    finger_len = [f.reach() - f.mount.length for f in act]
-    mounts = [f.mount.xyz for f in act]
-    seps = [math.dist(a, b) for i, a in enumerate(mounts) for b in mounts[i + 1:]]
-    return {
-        "mean_reach": sum(reaches) / len(reaches) if reaches else 0.0,
-        "mean_finger_length": sum(finger_len) / len(finger_len) if finger_len else 0.0,
-        "mean_mount_offset": sum(mounts_len) / len(mounts_len) if mounts_len else 0.0,
-        "min_separation": min(seps) if seps else 0.0,
-        "mean_separation": sum(seps) / len(seps) if seps else 0.0,
-        "palm_volume": hand.palm_extents[0] * hand.palm_extents[1] * hand.palm_extents[2],
-        "n_active_joints": hand.n_active_joints,
-        "n_active_fingers": hand.n_active_fingers,
-    }
-
-
-def _displacement(parent: P.HandParams, child: P.HandParams) -> dict:
-    a, b = phenotype(parent), phenotype(child)
-    return {f"d_{k}": b[k] - a[k] for k in a}
-
-
-# ---------------------------------------------------------------------------
-# one child
-# ---------------------------------------------------------------------------
-
-def mutate_one(parent: P.HandParams, operator: str, alpha: float,
-               rng: random.Random, *, name: str, gate: str = "analytic",
-               align: bool = True, max_tries: int = 40,
-               tmpdir: Path | None = None) -> tuple[P.HandParams, bool, int]:
-    """Return ``(child, mutation_failed, attempts)``.
-
-    On exhaustion the PARENT is returned with ``mutation_failed=True`` rather
-    than a hole, because child i must stay the mutant of parent i for the paired
-    delta to hold. Those children must then be excluded from the operator's
-    statistics -- counting them would drag every low-acceptance operator toward
-    its parents' scores and make it look harmless rather than infeasible.
-
-    The accept pipeline mirrors build_population exactly: validate, self-collision
-    gate, then flexion alignment with a re-check that reverts the alignment if the
-    new roll made the hand overlap itself.
-    """
-    from hand_sampler.flexion import align_flexion_downward
-    from hand_sampler.urdf import write_urdf
-
-    fn = _OPS[operator]
-    attempt = 0
-    for attempt in range(1, max_tries + 1):
-        try:
-            child = replace(fn(parent, alpha, rng), name=name)
-            P.validate(child)
-        except MutationImpossible:
-            # Deterministic: no finger CAN move this way (every one is already at
-            # a ladder end). Retrying redraws nothing that would change that, so
-            # 40 attempts would just burn the gate 40 times.
-            break
-        except (P.InvalidHand, ValueError):
+        mount = _step_mount(finger.mount, hand.palm, du_m, dv_m)
+        if mount is None or mount == finger.mount:
             continue
-        if _hits(child, gate):
-            continue
-        if align:
-            # curl_directions parses a URDF off disk. Write it to a temp file:
-            # the canonical path is a flat directory already holding ~50k files,
-            # and nothing downstream reads a mutant's URDF anyway.
-            td = tmpdir or Path(tempfile.gettempdir())
-            up = td / f"{name}.urdf"
-            up.parent.mkdir(parents=True, exist_ok=True)
-            write_urdf(child, up)
-            aligned = align_flexion_downward(child, urdf_path=up)
-            if aligned is not child and not _hits(aligned, gate):
-                child = aligned
-            up.unlink(missing_ok=True)
-        if not _roundtrip_ok(child):
-            raise RuntimeError(f"{name}: parameters do not survive a JSON round-trip")
-        return child, False, attempt
-    # The REAL attempt count, not max_tries: a MutationImpossible break costs one
-    # gate call and a collision-bound operator costs forty, and telling them
-    # apart is the point of recording it.
-    return replace(parent, name=name), True, attempt
+        out = G.with_finger(hand, fi, replace(finger, mount=mount))
+        if V.is_valid(out):
+            return out
+    raise MutationImpossible("no mount could move without violating a bound")
 
 
-# ---------------------------------------------------------------------------
-# a whole operator manifest
-# ---------------------------------------------------------------------------
+def _step_mount(mount: G.Mount, palm: G.Palm, du_m: float, dv_m: float
+                ) -> G.Mount | None:
+    """One step on the palm surface, wrapping onto a neighbouring face if needed.
 
-def mutate_population(parents: list[P.HandParams], operator: str, alpha: float,
-                      *, seed: int, prefix: str, gate: str = "analytic",
-                      align: bool = True, max_tries: int = 40,
-                      lo: int = 0, hi: int | None = None,
-                      progress_every: int = 500) -> dict:
-    """Mutate ``parents[lo:hi]`` and return a manifest dict.
+    Movement is bounded by MOUNT_EDGE_MARGIN, and a crossing JUMPS that band
+    rather than walking through it: the margin forbids a mount being within a
+    capsule radius of an edge, so there is no legal position AT one to pass
+    through.
 
-    Each child's RNG is seeded from (seed, operator, parent index), NOT from a
-    stream walked in order, so a shard produces byte-identical children whatever
-    slice it is given and shards can be merged without the caveat that dogs the
-    sharded population build (see 00_build_population_sharded.sub).
+    A crossing needs nothing done to the finger's aim. A finger leaves along its
+    face normal and its tilt is the base joint's offset, so moving to a new face
+    rotates the world direction by the angle between normals while leaving the
+    tilt relative to the face untouched -- which is what a mount orientation had
+    to be carried across by hand.
     """
-    hi = len(parents) if hi is None else hi
-    entries, failed, attempts_total = [], 0, 0
-    with tempfile.TemporaryDirectory(prefix="genmech_mutate_") as td:
-        for i in range(lo, hi):
-            parent = parents[i]
-            rng = random.Random(f"{seed}:{operator}:{i}")
-            name = f"{prefix}_{i:05d}"
-            child, bad, tries = mutate_one(
-                parent, operator, alpha, rng, name=name, gate=gate,
-                align=align, max_tries=max_tries, tmpdir=Path(td))
-            failed += bad
-            attempts_total += tries
-            entries.append({
-                "name": name,
-                "params": hand_to_json(child),
-                "parent": parent.name,
-                "parent_index": i,
-                "operator": operator,
-                "alpha": alpha,
-                "mutation_failed": bad,
-                "attempts": tries,
-                "displacement": _displacement(parent, child),
-                "keepout_clamped": keepout_clamped(child),
-            })
-            if progress_every and (i - lo + 1) % progress_every == 0:
-                print(f"[mutate] {operator} {i - lo + 1}/{hi - lo}  "
-                      f"failed {failed}  mean tries {attempts_total / (i - lo + 1):.2f}",
-                      flush=True)
-    return {
-        "version": 1,
-        "kind": "mutant_population",
-        "operator": operator,
-        "alpha": alpha,
-        "seed": seed,
-        "gate": gate,
-        "align_flexion": align,
-        "max_tries": max_tries,
-        "count": len(entries),
-        "lo": lo, "hi": hi,
-        "n_mutation_failed": failed,
-        "mean_attempts": attempts_total / max(1, len(entries)),
-        "hands": entries,
-    }
+    _, _, t_u, t_v, span_u, span_v = face_frame(mount.face, palm)
+    lo_u, hi_u, lo_v, hi_v = mount_uv_bounds(mount.face, palm)
+    u, v = mount.u + du_m / span_u, mount.v + dv_m / span_v
+
+    if lo_u <= u <= hi_u and lo_v <= v <= hi_v:
+        return replace(mount, u=u, v=v)
+
+    if u > hi_u:
+        cross, u = t_u, hi_u
+    elif u < lo_u:
+        cross, u = -t_u, lo_u
+    elif v > hi_v:
+        cross, v = t_v, hi_v
+    else:
+        cross, v = -t_v, lo_v
+
+    face = face_from_normal(cross)
+    if face is None:
+        # The step points at the wrist or a large face. CLAMP rather than refuse:
+        # the thin axis has a 5 mm band against a 5 mm step, so refusing froze it.
+        clamped = replace(mount, u=u, v=v)
+        return None if clamped == mount else clamped
+
+    landing = mount_position(replace(mount, u=u, v=v), palm)
+    centre, _, t_u2, t_v2, span_u2, span_v2 = face_frame(face, palm)
+    d = landing - centre
+    lo_u2, hi_u2, lo_v2, hi_v2 = mount_uv_bounds(face, palm)
+    u2 = min(max(0.5 + float(np.dot(d, t_u2)) / span_u2, lo_u2), hi_u2)
+    v2 = min(max(0.5 + float(np.dot(d, t_v2)) / span_v2, lo_v2), hi_v2)
+    return G.Mount(face, u2, v2)
 
 
-def merge_shards(out_dir: Path, num_shards: int) -> dict:
-    """Concatenate shard files in index order into manifest.json.
+def perturb_offset(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Step EVERY joint's zero offset by one quantum, independently up or down.
 
-    Strict about order for the same reason merge_population_shards is: env i
-    holds design i, so a mis-ordered merge would break the pairing this whole
-    layout exists to provide.
+    A joint's offset is where its link sits when the actuator is at neutral --
+    the angle it is assembled at. Structural, costing no motor, and it carries
+    the joint's travel with it.
+
+    This replaces a mount-orientation operator that could only aim a whole finger
+    from its base. An offset on the base joint reproduces exactly what that did
+    (verified to 2e-12 over every reachable rest direction), and an offset
+    further out gives a finger a resting curl, which no mount orientation could
+    express. One primitive covering both, applied at every joint rather than only
+    the first.
+
+    Whole-hand, matching ``perturb_axis``: offset and theta are the same kind of
+    per-joint angle on the same grid, so they explore at the same rate.
     """
-    entries, meta = [], None
-    for s in range(num_shards):
-        f = out_dir / f"shard_{s:03d}.json"
-        if not f.exists():
-            raise FileNotFoundError(f"{f} missing; refusing to merge a population with holes")
-        d = json.loads(f.read_text(encoding="utf-8"))
-        meta = meta or d
-        entries.extend(d["hands"])
-    idx = [e["parent_index"] for e in entries]
-    if idx != list(range(len(entries))):
-        raise RuntimeError("shards do not concatenate to a contiguous parent index range")
-    out = {**{k: v for k, v in meta.items() if k != "hands"},
-           "count": len(entries), "lo": 0, "hi": len(entries),
-           "n_mutation_failed": sum(e["mutation_failed"] for e in entries),
-           "mean_attempts": sum(e["attempts"] for e in entries) / max(1, len(entries)),
-           "num_shards": num_shards, "hands": entries}
-    (out_dir / "manifest.json").write_text(json.dumps(out), encoding="utf-8")
-    return out
+    lo, hi = G.JOINT_LIMIT
+    for _ in range(_REDRAWS):
+        fingers = []
+        for f in hand.fingers:
+            segments = tuple(
+                G.Segment(
+                    G.Joint(sg.joint.theta, sg.joint.phi,
+                            snap(reflect(sg.joint.offset
+                                         + G.ANGLE_QUANTUM * rng.choice((-1, 1)),
+                                         lo, hi), G.ANGLE_QUANTUM)),
+                    sg.length)
+                for sg in f.segments)
+            fingers.append(replace(f, segments=segments))
+        out = replace(hand, fingers=tuple(fingers))
+        if V.is_valid(out):
+            return out
+    raise MutationImpossible("no whole-hand offset perturbation validated")
 
 
-def load_parents(manifest: Path) -> list[P.HandParams]:
-    d = json.loads(Path(manifest).read_text(encoding="utf-8"))
-    return [hand_from_json(e["params"]) for e in d["hands"]]
+def perturb_palm(rng: random.Random, hand: G.Hand) -> G.Hand:
+    """Step one palm dimension. The palm is the SEPARATION LEVER: the previous
+    operator set measured it moving separation 3.2 mm against an in-face mount
+    step's 1.2 mm, because fingers usually sit on different faces and an in-face
+    step is largely perpendicular to the inter-mount vector.
+
+    Thickness is not mutated. Mounts are normalised precisely so a resize does
+    not invalidate them -- every mount rides it.
+    """
+    ranges = {"width": G.PALM_WIDTH_RANGE, "length": G.PALM_LENGTH_RANGE,
+              "thickness": G.PALM_THICKNESS_RANGE}
+    dims = list(G.MUTABLE_PALM_DIMS)
+    rng.shuffle(dims)
+    for name in dims:
+        lo, hi = ranges[name]
+        step = G.PALM_STEP * rng.choice((-1, 1))
+        value = snap(reflect(getattr(hand.palm, name) + step, lo, hi), G.PALM_QUANTUM)
+        out = replace(hand, palm=replace(hand.palm, **{name: value}))
+        if V.is_valid(out):
+            return out
+    raise MutationImpossible("no palm dimension could be stepped")
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    p.add_argument("--parents", required=True, help="Parent manifest.json")
-    p.add_argument("--operator", required=True, choices=OPERATORS + ("merge",))
-    p.add_argument("--alpha", type=float, default=0.1)
-    p.add_argument("--out", required=True, help="Output directory for this operator")
-    p.add_argument("--seed", type=int, default=1)
-    p.add_argument("--prefix", default=None, help="Child name prefix; default mut_<operator>")
-    p.add_argument("--shard", type=int, default=None)
-    p.add_argument("--num_shards", type=int, default=1)
-    p.add_argument("--no_align", action="store_true")
-    p.add_argument("--max_tries", type=int, default=40)
-    a = p.parse_args()
+# --- dispatch and instrumentation -------------------------------------------
 
-    out_dir = resolve_repo_path(a.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    if a.operator == "merge":
-        m = merge_shards(out_dir, a.num_shards)
-        print(f"[mutate] merged {m['count']} children; "
-              f"{m['n_mutation_failed']} mutation_failed; "
-              f"mean attempts {m['mean_attempts']:.2f}")
-        return
-
-    parents = load_parents(resolve_repo_path(a.parents))
-    n = len(parents)
-    lo, hi = 0, n
-    if a.shard is not None:
-        per = (n + a.num_shards - 1) // a.num_shards
-        lo, hi = a.shard * per, min(n, (a.shard + 1) * per)
-    prefix = a.prefix or f"mut_{a.operator}"
-    print(f"[mutate] {a.operator} alpha={a.alpha} parents[{lo}:{hi}] of {n}", flush=True)
-
-    man = mutate_population(parents, a.operator, a.alpha, seed=a.seed,
-                            prefix=prefix, align=not a.no_align,
-                            max_tries=a.max_tries, lo=lo, hi=hi)
-    name = "manifest.json" if a.shard is None else f"shard_{a.shard:03d}.json"
-    (out_dir / name).write_text(json.dumps(man), encoding="utf-8")
-    print(f"[mutate] wrote {out_dir / name}: {man['count']} children, "
-          f"{man['n_mutation_failed']} failed, "
-          f"mean attempts {man['mean_attempts']:.2f}")
+_FUNCS = {
+    "split_link": split_link, "merge_links": merge_links,
+    "add_finger": add_finger, "remove_finger": remove_finger,
+    "perturb_axis": perturb_axis, "perturb_length": perturb_length,
+    "perturb_offset": perturb_offset,
+    "move_mount": move_mount, "perturb_palm": perturb_palm,
+}
 
 
-if __name__ == "__main__":
-    main()
+def _accept(hand: G.Hand, op: str) -> G.Hand:
+    """Closure check. An operator building something illegal is a bug here."""
+    reasons = V.check(hand)
+    if reasons:
+        raise MutationImpossible(f"{op} produced an invalid hand: {reasons[0]}")
+    return hand
+
+
+@dataclass
+class Stats:
+    """Per-operator attempt and success counts.
+
+    A raw rate gap is NOT evidence of a ratchet: several operators are
+    structurally gated in ways that are the design working -- ``merge_links``
+    cannot act on single-joint fingers, ``remove_finger`` cannot act at
+    MIN_FINGERS, ``add_finger`` cannot act on a full palm. Near a boundary the gap looks alarming
+    and is arithmetic.
+
+    The honest instrument is PER-MOVE BALANCE: from a hand at a given joint
+    count, does one structural operator raise complexity as often as it lowers
+    it? See ``tests/test_grammar.py::test_operators_are_unbiased``. These counts
+    are still worth logging, because what they catch is a CHANGE.
+    """
+
+    attempts: dict[str, int] = field(default_factory=dict)
+    successes: dict[str, int] = field(default_factory=dict)
+
+    def record(self, op: str, ok: bool) -> None:
+        self.attempts[op] = self.attempts.get(op, 0) + 1
+        self.successes[op] = self.successes.get(op, 0) + int(ok)
+
+    def rate(self, op: str) -> float:
+        n = self.attempts.get(op, 0)
+        return self.successes.get(op, 0) / n if n else float("nan")
+
+    def ratchet(self) -> dict[str, float]:
+        """Success-rate gap per add/remove pair. Diagnostic only -- what matters
+        is whether it MOVES between runs, not its value near a boundary."""
+        return {f"{a} - {b}": self.rate(a) - self.rate(b) for a, b in _GROWS}
+
+    def report(self) -> str:
+        rows = [f"  {op:<20s} {self.successes.get(op,0):>6d}/"
+                f"{self.attempts.get(op,0):<6d} {self.rate(op):6.1%}"
+                for op in OPERATORS if self.attempts.get(op)]
+        gaps = "".join(f"\n  {k:<28s} {v:+.1%}" for k, v in self.ratchet().items())
+        return ("operator            success/attempts   rate\n"
+                + "\n".join(rows) + "\n\nratchet (add - remove):" + gaps)
+
+
+def apply(rng: random.Random, hand: G.Hand, op: str) -> G.Hand:
+    """One operator, once. Raises ``MutationImpossible`` if it cannot act."""
+    if op not in _FUNCS:
+        raise KeyError(f"{op!r} is not an operator; use {OPERATORS}")
+    return _FUNCS[op](rng, hand)
+
+
+def mutate(rng: random.Random, hand: G.Hand, op: str | None = None,
+           stats: Stats | None = None) -> G.Hand | None:
+    """One child, or ``None`` if the operator could not act.
+
+    Returning None rather than retrying a different operator is deliberate: a
+    silent retry would reweight toward whichever operators are easy to apply,
+    which is the bias ``Stats`` exists to measure.
+    """
+    op = op or OPERATORS[rng.randrange(len(OPERATORS))]
+    try:
+        child = apply(rng, hand, op)
+    except MutationImpossible:
+        if stats is not None:
+            stats.record(op, False)
+        return None
+    if stats is not None:
+        stats.record(op, True)
+    return child
