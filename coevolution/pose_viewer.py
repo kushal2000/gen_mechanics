@@ -153,7 +153,7 @@ def _generated_robot_urdf_text(env) -> str | None:
     idx = int(record.robot_design_index[0].item())
     with tempfile.TemporaryDirectory() as tmp:
         return build.urdf_for_viewing(
-            population.hands[idx], pathlib.Path(tmp) / "d.urdf"
+            population.hands[idx], Path(tmp) / "d.urdf"
         ).read_text(encoding="utf-8")
 
 

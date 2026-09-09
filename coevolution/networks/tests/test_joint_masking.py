@@ -83,3 +83,39 @@ def test_a_reconstructed_layout_matches_a_measured_one():
     layout, total = ns["shape_layouts_from_record"](links, {0: record}, arm)[0]
     assert layout == measured
     assert total == 6
+
+
+# --- the generated hand's viewer geometry ------------------------------------
+
+def test_generated_hand_embeds_its_own_geometry():
+    """Job 661118 died here: the smoke ran with CAPTURE_VIEWER=0, the real run
+    with 1, so this path first executed at 12k envs after 12 minutes of setup."""
+    import types
+
+    src = open("coevolution/pose_viewer.py").read()
+    head = src[:src.index("def _generated_robot_urdf_text")]
+    head = "\n".join(l for l in head.splitlines()
+                     if not l.startswith("from coevolution.interactive_viewer"))
+    head = head.replace("__file__", '"coevolution/pose_viewer.py"')
+    ns: dict = {"__name__": "pose_viewer_probe"}
+    exec(compile(head + src[src.index("def _generated_robot_urdf_text"):
+                            src.index("def object_urdf_text_for_env")],
+                 "pose_viewer_probe", "exec"), ns)
+
+    from hand_sampler import gen_init_pop
+    from hand_sampler.robot_spec import population_spec
+
+    pop = population_spec(gen_init_pop.seed_population(0, 4))
+
+    class Index(list):
+        def __getitem__(self, i):
+            return types.SimpleNamespace(item=lambda: list.__getitem__(self, i))
+
+    env = types.SimpleNamespace(scene_record=types.SimpleNamespace(
+        population=pop, robot_design_index=Index([2, 0, 1, 3])))
+    text = ns["_generated_robot_urdf_text"](env)
+    # Nothing to fetch: the browser gets the geometry, not a URL to it.
+    assert "<mesh" not in text
+    assert text.count("<cylinder") == 2 * pop.hands[2].n_joints   # visual + collision
+    fixed = types.SimpleNamespace(scene_record=types.SimpleNamespace(population=None))
+    assert ns["_generated_robot_urdf_text"](fixed) is None
