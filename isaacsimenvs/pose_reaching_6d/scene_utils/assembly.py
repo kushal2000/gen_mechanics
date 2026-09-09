@@ -30,8 +30,10 @@ from ..common_utils.urdf_to_usd import (
 )
 from ..obs_utils import derive_spaces
 from .author_objects import author_handle_head, author_physics_material
+from hand_sampler import build
+from hand_sampler.robot_param_constants import ARM_TIP_LINK
 from hand_sampler.robot_spec import design_index
-from .author_robot import flatten_robot_usd
+from .author_robot import ARM_PRIM, arm_only_urdf, flatten_robot_usd
 from .materials import apply_physx_material_properties
 from .sdf import define, set_xform
 from .objects.generate_objects import generate_handle_head_urdfs
@@ -51,9 +53,6 @@ def _table_props(offsets: dict) -> dict:
     )
 
 
-
-
-
 @dataclass(frozen=True)
 class SceneRecord:
     """What setup_scene decided, stored as ``env.scene_record``."""
@@ -62,12 +61,11 @@ class SceneRecord:
     # None for one fixed hand; a HandPopulation when every env holds a design.
     population: object | None
     robot_design_index: torch.Tensor | None  # (N,) long, population only
+    robot_collider_links: dict | None  # per design {link: n_colliders}
     object_urdf_paths: list[str]  # the pool in final order; viewers read meshes from these
     object_scale: torch.Tensor  # (N, 3) dimensions / object_base_size
     object_pool_index: torch.Tensor  # (N,) long
     asset_dir: str  # temp dir holding the URDFs and converted USDs
-
-
 
 
 def _resolve_spec(cfg):
@@ -225,27 +223,60 @@ def _convert_fixed_robot(spec, urdf: str, usd_work_dir: Path, offsets: dict) -> 
     return flatten_robot_usd(converted, usd_work_dir / "robot_flat.usd", **offsets)
 
 
+def _convert_arm(tmp_dir, offsets: dict):
+    """The shared iiwa14 arm every authored design attaches to.
+
+    ``(usd, root, link7_world)``. Converted ONCE: a population references this
+    one file and authors only its own hand bodies on top.
+    """
+    arm_dir = Path(tmp_dir) / "arm"
+    raw = _convert_urdf_to_usd(
+        str(arm_only_urdf(arm_dir / "iiwa14_arm_only.urdf")), arm_dir,
+        fix_base=True, self_collision=True, joint_drive=_robot_joint_drive_cfg())
+    arm_usd, arm_root = flatten_robot_usd(raw, arm_dir / "arm_flat.usd", **offsets)
+    stage = Usd.Stage.Open(arm_usd)
+    link7_world = np.asarray(UsdGeom.XformCache().GetLocalToWorldTransform(
+        stage.GetPrimAtPath(f"{arm_root}/{ARM_TIP_LINK}"))).T
+    return arm_usd, arm_root, link7_world
 
 
-def _author_robots_into_envs(env, spec, asset_dir: Path, offsets: dict,
-                             t0: float) -> None:
-    """One Robot prim per env, no spawner clone: one reference to the converted
-    file. Spawning through Isaac Lab instead copies the prim tree into every
-    env, ~110 s."""
-    robot_usd, robot_root = _convert_fixed_robot(
-        spec, env.cfg.assets.robot_urdf or spec.urdf_path, asset_dir / "usd", offsets)
-    _log_scene_step(t0, "converted the robot")
+def _author_robots_into_envs(env, spec, population, asset_dir: Path, offsets: dict,
+                             t0: float) -> dict[int, dict[str, int]] | None:
+    """One Robot prim per env, no spawner clone. A fixed hand is one reference
+    to its converted file; a design references the shared arm and authors its
+    own hand. Spawning through Isaac Lab instead copies the prim tree into every
+    env, ~110 s for a fixed hand and hours for a population.
+    Returns each design's collider record, for the friction pass."""
+    if population is None:
+        robot_usd, robot_root = _convert_fixed_robot(
+            spec, env.cfg.assets.robot_urdf or spec.urdf_path, asset_dir / "usd", offsets)
+        _log_scene_step(t0, "converted the robot")
+    else:
+        arm_usd, arm_root, link7_world = _convert_arm(asset_dir, offsets)
+        _log_scene_step(t0, "converted the shared arm once")
 
     base_pos = tuple(float(v) for v in spec.base_pos)
     base_rot = tuple(float(v) for v in spec.base_rot)
     layer = get_current_stage().GetRootLayer()
+    collider_links = None if population is None else {}
     t_auth = time.perf_counter()
     with Sdf.ChangeBlock():
         for env_path in _env_paths_in_order(env):
             root = f"{env_path}/Robot"
-            prim = define(layer, root, "Xform")
-            prim.referenceList.explicitItems.append(
-                Sdf.Reference(robot_usd, Sdf.Path(robot_root)))
+            if population is None:
+                prim = define(layer, root, "Xform")
+                prim.referenceList.explicitItems.append(
+                    Sdf.Reference(robot_usd, Sdf.Path(robot_root)))
+            else:
+                idx = _env_id_of(env_path) % population.n_designs
+                define(layer, root, "Xform")
+                arm = define(layer, f"{root}{ARM_PRIM}", "Xform")
+                arm.referenceList.explicitItems.append(
+                    Sdf.Reference(str(arm_usd), Sdf.Path(arm_root)))
+                collider_links[idx] = build.author_hand(
+                    layer, root, population.hands[idx],
+                    palm_body_path=f"{root}{ARM_PRIM}/{ARM_TIP_LINK}",
+                    link7_world=link7_world)
             # spawn=None places nothing and a fixed base ignores init_state.pos.
             set_xform(layer.GetPrimAtPath(root), base_pos, base_rot)
         # Inside the block only specs are written; the stage recomposes on exit.
@@ -255,10 +286,7 @@ def _author_robots_into_envs(env, spec, asset_dir: Path, offsets: dict,
     _log_scene_step(t0, f"authored {env.num_envs} robots into env prims "
                         f"({per_robot_ms:.2f} ms each = {t_written - t_auth:.1f}s writing "
                         f"specs + {t_composed - t_written:.1f}s recomposing)")
-
-
-
-
+    return collider_links
 
 
 # --- entry points ---------------------------------------------------------------
@@ -286,7 +314,8 @@ def setup_scene(env) -> None:
     _log_scene_step(t0, f"generated {len(urdf_paths)} object URDFs")
 
     # 2. Robots, authored into every env.
-    _author_robots_into_envs(env, spec, asset_dir, offsets, t0)
+    collider_links = _author_robots_into_envs(
+        env, spec, population, asset_dir, offsets, t0)
 
     # 3. Table, converted and spawned.
     table_usd = _convert_urdf_to_usd(assets_cfg.table_urdf, asset_dir / "usd", fix_base=False)
@@ -311,6 +340,7 @@ def setup_scene(env) -> None:
         robot_spec=spec, population=population,
         robot_design_index=(None if population is None else torch.as_tensor(
             design_index(env.num_envs, population.n_designs), device=env.device)),
+        robot_collider_links=collider_links,
         object_urdf_paths=[str(p) for p in urdf_paths],
         object_scale=object_scale, object_pool_index=object_pool_index,
         asset_dir=str(asset_dir))
