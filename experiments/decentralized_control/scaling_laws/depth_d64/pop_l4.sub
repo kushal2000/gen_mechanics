@@ -1,0 +1,38 @@
+#!/bin/bash
+#SBATCH --job-name=pop_d64_l4
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop_d64_l4-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop_d64_l4-%j.err
+
+# MULTI-EMBODIMENT: one generated hand per env, 24576 designs over 24576 envs.
+#
+# Everything controlled is identical to depth_d64/l4.sub -- d64/L4, 12288
+# envs/GPU, global minibatch 114688, seed 100 -- so this is that run with the
+# hand replaced. What differs is the hand and only the hand:
+#   * 30 joint slots instead of 22, of which a design uses ~2-8 at generation 0
+#   * one uniform actuator everywhere, not SHARPA's 17x proximal-to-distal fall
+#   * capsule links, not meshes
+# So a reward gap against l4.sub is NOT evidence about morphology: it is those
+# three things plus the morphology. The comparison this run is for is against
+# LATER generations of the same population, not against SHARPA.
+#
+# Scene setup costs ~12 min: 24576 robots authored at 29.5 ms each. Sampling the
+# population is 8 s and its tables are 35 MB.
+set -euo pipefail
+export D_MODEL=64 TRANSFORMER_LAYERS=4
+export PHASE=train STUDY_ID=multi_embodiment_v1 MODEL_TAG=pop_d64_l4
+export ROBOT_SPEC=gen_s0_n24576
+export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED="${SEED:-100}"
+export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1
+export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
+export WANDB_GROUP=multi_embodiment_v1
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
+export MAX_EPOCHS=1000000
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh
