@@ -23,7 +23,7 @@ set -euo pipefail
 export D_MODEL=64 TRANSFORMER_LAYERS=1
 export PHASE=train STUDY_ID=depth_d64_shared_v1
 # Slurm will not create a missing --output directory; make it before submitting.
-export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED=100
+export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED="${SEED:-100}"
 export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1
 export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
 export WANDB_GROUP=depth_d64_shared_v1
