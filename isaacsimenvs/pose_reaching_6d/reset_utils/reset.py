@@ -132,7 +132,10 @@ def allocate_state_buffers(env) -> None:
         }
         expand = True
     else:
-        per_env = population.per_env(env.scene_record.robot_design_index)
+        # hand_sampler is numpy-only and must stay importable without torch,
+        # so the device round-trip happens here, not in per_env.
+        per_env = population.per_env(
+            env.scene_record.robot_design_index.detach().cpu().numpy())
         expand = False
 
     def _to(name, dtype):

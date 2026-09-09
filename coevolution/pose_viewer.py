@@ -375,9 +375,29 @@ class PoseViewerWrapper(gym.Wrapper):
         # it from the spec rather than a module constant is what keeps the
         # viewer's joint names and its URDF in agreement for every hand.
         spec = getattr(getattr(inner, "scene_record", None), "robot_spec", None)
-        self._robot_urdf_relpath = (
-            spec.urdf_path if spec is not None else DEFAULT_ROBOT_URDF_RELATIVE_PATH
-        )
+        # A generated hand has no URDF -- it is authored straight into USD. Falling
+        # through to the default here would draw SHARPA while the sim runs
+        # something else, so write one from the design instead. Viewing only.
+        urdf_relpath = spec.urdf_path if spec is not None else None
+        if not urdf_relpath:
+            urdf_relpath = self._write_generated_urdf(env)
+        self._robot_urdf_relpath = urdf_relpath or DEFAULT_ROBOT_URDF_RELATIVE_PATH
+
+    @staticmethod
+    def _write_generated_urdf(env) -> str | None:
+        """A viewing URDF for this env's design, returned repo-relative."""
+        record = getattr(env, "scene_record", None)
+        population = getattr(record, "population", None)
+        if population is None:
+            return None
+        from hand_sampler import build
+        idx = int(record.robot_design_index[0].item())
+        out = pathlib.Path(record.asset_dir) / "view" / f"design_{idx}.urdf"
+        build.urdf_for_viewing(population.hands[idx], out)
+        try:
+            return str(out.relative_to(REPO_ROOT))
+        except ValueError:
+            return str(out)
 
         self._step = 0
         self._capture_index = 0
