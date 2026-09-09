@@ -79,7 +79,7 @@ class _EncoderLayer(nn.Module):
             nn.Linear(ff_mult * d_model, d_model),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, key_mask: torch.Tensor | None = None) -> torch.Tensor:
         batch, tokens, dim = x.shape
         heads = self.n_heads
         q, k, v = self.qkv(self.ln_attn(x)).chunk(3, dim=-1)
@@ -88,6 +88,11 @@ class _EncoderLayer(nn.Module):
             for t in (q, k, v)
         )
         scores = (q @ k.transpose(-2, -1)) * (q.shape[-1] ** -0.5)
+        if key_mask is not None:
+            # A ghost joint is a token the design does not have. Masking the KEY
+            # only: its own row still attends (to the global token at minimum,
+            # which is never masked), so no row is all -inf and no softmax NaNs.
+            scores = scores.masked_fill(~key_mask[:, None, None, :], float("-inf"))
         weights = scores.softmax(dim=-1)
         if self.dropout and self.training:
             weights = F.dropout(weights, p=self.dropout)
@@ -135,7 +140,7 @@ class _ParallelEncoderLayer(nn.Module):
         self.w_in = nn.Linear(d_model, 3 * d_model + self.ff_dim)
         self.w_out = nn.Linear(d_model + self.ff_dim, d_model)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, key_mask: torch.Tensor | None = None) -> torch.Tensor:
         batch, tokens, dim = x.shape
         heads, d = self.n_heads, self.d_model
         h = self.w_in(self.ln(x))
@@ -145,6 +150,8 @@ class _ParallelEncoderLayer(nn.Module):
             for t in (q, k, v)
         )
         scores = (q @ k.transpose(-2, -1)) * (q.shape[-1] ** -0.5)
+        if key_mask is not None:
+            scores = scores.masked_fill(~key_mask[:, None, None, :], float("-inf"))
         weights = scores.softmax(dim=-1)
         if self.dropout and self.training:
             weights = F.dropout(weights, p=self.dropout)
@@ -407,6 +414,7 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # it (0.30 ms). The reshape back to (B, n_hand, token_dim) is free.
         token_columns = layout["token_columns"]
         self.token_dim = layout["token_dim"]
+        self.enabled_col = layout["enabled_col"]
         self.register_buffer(
             "token_gather",
             torch.tensor(token_columns, dtype=torch.long).reshape(-1).contiguous(),
@@ -435,10 +443,15 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
             coef = None
             env_obs = obs
 
-        tokens = self.token_proj(
+        raw_tokens = (
             torch.index_select(env_obs, 1, self.token_gather)
             .view(env_obs.shape[0], self.n_hand, self.token_dim)
         )
+        # A padded design's ghost joints are locked, so their limits coincide and
+        # joint_enabled is 0. That column is the mask: it costs nothing to read
+        # and needs no second input path.
+        valid = raw_tokens[:, :, self.enabled_col] > 0.5
+        tokens = self.token_proj(raw_tokens)
 
         glob = torch.index_select(env_obs, 1, self.global_index)
         if coef is not None:
@@ -448,11 +461,14 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         if self.layers:
             # Attention needs all n_hand + 1 tokens as one sequence.
             x = torch.cat([tokens, global_token.unsqueeze(1)], dim=1)
+            # The global token is always present, so every query keeps one key.
+            key_mask = torch.cat(
+                [valid, torch.ones_like(valid[:, :1])], dim=1)
             for layer in self.layers:
-                x = layer(x)
+                x = layer(x, key_mask)
             if self.final_norm:
                 x = self.ln_out(x)
-            return x[:, : self.n_hand], x[:, self.n_hand], glob
+            return x[:, : self.n_hand], x[:, self.n_hand], glob, valid
 
         # No blocks: the concatenation would be undone by the split on the very
         # next line with nothing in between, and LayerNorm reduces only over the
@@ -462,14 +478,17 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         if self.final_norm:
             tokens = self.ln_out(tokens)
             global_token = self.ln_out(global_token)
-        return tokens, global_token, glob
+        return tokens, global_token, glob, valid
 
     def forward(self, obs_dict):
         obs = obs_dict["obs"]
-        joints, glob, glob_raw = self._trunk(obs)
-        value = self.value_head(
-            torch.cat([joints.mean(dim=1), glob, glob_raw], dim=-1)
-        )
+        joints, glob, glob_raw, valid = self._trunk(obs)
+        # Mean over the joints this design HAS. An unmasked mean would be mostly
+        # ghosts for a small hand, and diluted by a design-dependent amount --
+        # exactly the variable a co-design run is trying to measure.
+        w = valid.unsqueeze(-1).to(joints.dtype)
+        pooled = (joints * w).sum(dim=1) / w.sum(dim=1).clamp(min=1.0)
+        value = self.value_head(torch.cat([pooled, glob, glob_raw], dim=-1))
         if self.central_value:
             return value, None
 

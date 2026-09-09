@@ -139,8 +139,17 @@ def build_token_layout(spec, field_list) -> dict:
         raise RuntimeError(f"ragged token columns: {sorted(widths)}")
     token_dim = widths.pop() if widths else 0
 
+    # Which column of a token says the joint exists. A padded design carries
+    # ghost tokens, and the network has to drop them from attention and from
+    # the value head's pooling -- so it needs this index, not just the field.
+    enabled_col = len(JOINT_WIDTH_FIELDS) + sum(
+        w for f, w in HAND_TOKEN_FIELDS.items()
+        if list(HAND_TOKEN_FIELDS).index(f) < list(HAND_TOKEN_FIELDS).index("joint_enabled")
+    )
+
     return {
         "obs_dim": compute_obs_dim(field_list, spec),
+        "enabled_col": enabled_col,
         "n_arm": n_arm,
         "n_hand": n_hand,
         "n_joints": spec.num_joints,
