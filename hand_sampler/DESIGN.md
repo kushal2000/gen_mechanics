@@ -38,9 +38,9 @@ Ghosting is still how a design reaches the simulator: one Isaac Lab
 present the same joint count. It is no longer how a design is *represented*.
 
 The genotype is variable-topology; the builder ghosts on the way out into a
-**fixed envelope** (`MAX_FINGERS` × `MAX_JOINTS_PER_FINGER` = 7 × 6 = 42, against
-the old 5 × 6 = 30). Every design pays for the envelope whether it uses it or
-not. That number is the one place the simulator reaches back into the genotype,
+**fixed envelope** (`MAX_FINGERS` × `MAX_JOINTS_PER_FINGER` = 5 × 6 = 30). Every
+design pays for the envelope whether it uses it or not: 30 is the token budget
+the policy attends over, and attention is quadratic in it. That number is the one place the simulator reaches back into the genotype,
 and it wants a per-ghosted-joint cost measurement it does not yet have.
 
 ## 3. Representation
@@ -218,7 +218,7 @@ finger**; the two effects cannot be cleanly separated here.
 
 ### Fingers
 
-Between `MIN_FINGERS` (2) and `MAX_FINGERS` (7). The intent is that **mount
+Between `MIN_FINGERS` (2) and `MAX_FINGERS` (5). The intent is that **mount
 packing decides how many fit** — measured, a 50 mm palm packs 4 and a 60 mm palm
 5, both short of the cap, while an 80 mm palm reaches it. The cap exists only so
 a runaway search cannot hand the simulator an arbitrarily wide articulation; per

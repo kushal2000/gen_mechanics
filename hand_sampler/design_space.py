@@ -50,7 +50,7 @@ JOINT_LIMIT = (math.radians(-90.0), math.radians(90.0))
 MIN_FINGERS = 2
 """A one-finger hand cannot oppose anything, so it is excluded rather than left for..."""
 
-MAX_FINGERS = 7
+MAX_FINGERS = 5
 MAX_JOINTS_PER_FINGER = 6
 """The articulation envelope: a HARD cap, not a rail."""
 
