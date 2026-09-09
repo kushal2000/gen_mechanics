@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=hybrid_profile_4gpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=128000
+#SBATCH --time=01:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:4
+#SBATCH --output=hybrid_profile_4gpu-%j.log
+#SBATCH --error=hybrid_profile_4gpu-%j.err
+
+set -euo pipefail
+export PROFILE_GPUS=4
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/multi_gpu/run_profile.sh

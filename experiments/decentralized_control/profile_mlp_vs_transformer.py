@@ -18,7 +18,7 @@ each joint's torque off its own token with a head shared by all 22.
 THE CLAIM THIS FILE TESTS. "Dense is strictly more expensive than modular."
 On parameters and FLOPs that is simply true, and by a wide margin. On
 activation memory and on wall-clock it is false. Measured at batch 16384,
-bf16 + torch.compile, forward+backward:
+bf16 + torch.compile, forward+backward (historical measurements):
 
   dense MLP 778-1024-1024-512-512-29   2.650M params  86.72 GFLOP   2.43 ms
   JT d32 h1 ff1 mu=[32]                0.072M params   9.31 GFLOP   3.18 ms
@@ -41,13 +41,16 @@ file's history were reversed by measuring the wrong thing:
   fp32 vs bf16        the MLP gains 4.10x from bf16, the transformer only
                       2.52x -- fat matmuls saturate tensor cores, skinny ones
                       do not. In fp32 the transformer appears to WIN; in bf16
-                      it loses. The launchers run mixed_precision: True.
+                      it loses. These are historical BF16 measurements;
+                      the launchers actually use FP16 autocast.
   attention's share   at 23 tokens it is not the bottleneck in eager, where
                       LayerNorm's dgamma/dbeta reduction is 40%. Compiled,
                       Inductor fuses that away and attention becomes 19%.
 
-So: --compile 1 (the default) and bf16 are the only numbers that describe how
-this actually trains.
+Use --compile 1 and --precision fp16 (the defaults) to match training's
+forward precision. The historical BF16 timings above must be remeasured in
+FP16 before drawing conclusions about training throughput. This benchmark
+does not include training's GradScaler or optimizer step.
 
 WHAT THIS COMPARISON DOES NOT CONTROL FOR. It measures cost, not quality, and
 the two networks are not matched on either of the things that would make a
@@ -76,6 +79,7 @@ profiler, so every number here can be checked by hand against the shapes.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import time
 
 import torch
@@ -207,10 +211,17 @@ class JointTransformer(nn.Module):
 # measurement
 # --------------------------------------------------------------------------
 
-def measure(net, batch, device, iters=20, compile_net=False, precision="bf16"):
-    """Peak activation memory and wall-clock, forward and forward+backward."""
-    import contextlib
+def precision_context(device, precision):
+    torch.backends.cuda.matmul.allow_tf32 = (precision == "tf32")
+    torch.set_float32_matmul_precision("high" if precision == "tf32" else "highest")
+    if precision in ("fp16", "bf16") and torch.device(device).type == "cuda":
+        dtype = torch.float16 if precision == "fp16" else torch.bfloat16
+        return torch.autocast("cuda", dtype=dtype)
+    return contextlib.nullcontext()
 
+
+def measure(net, batch, device, iters=20, compile_net=False, precision="fp16"):
+    """Peak activation memory and wall-clock, forward and forward+backward."""
     net = net.to(device)
     if compile_net:
         net = torch.compile(net, dynamic=False)
@@ -218,10 +229,7 @@ def measure(net, batch, device, iters=20, compile_net=False, precision="bf16"):
 
     # TF32 is a global flag, autocast is a context. Set both explicitly rather
     # than inheriting whatever the process happened to leave them at.
-    torch.backends.cuda.matmul.allow_tf32 = (precision == "tf32")
-    torch.set_float32_matmul_precision("high" if precision == "tf32" else "highest")
-    amp = (torch.autocast(device, dtype=torch.bfloat16)
-           if precision == "bf16" and device == "cuda" else contextlib.nullcontext())
+    amp = precision_context(device, precision)
 
     def fwd():
         with amp:
@@ -273,7 +281,7 @@ def measure(net, batch, device, iters=20, compile_net=False, precision="bf16"):
     return act, t_fwd, t_both
 
 
-def row(name, net, batch, device, compile_net=False, precision="bf16"):
+def row(name, net, batch, device, compile_net=False, precision="fp16"):
     params = sum(p.numel() for p in net.parameters())
     fl = net.flops(batch)
     act, t_fwd, t_both = measure(net, batch, device, compile_net=compile_net,
@@ -308,8 +316,8 @@ CATS = [("GEMM", ("sgemm", "cutlass", "gemm", "Kernel2")),
         ("reduce", ("reduce",)), ("softmax", ("softmax", "Softmax"))]
 
 
-def breakdown(nets, batch, device, compile_net):
-    """Where the CUDA time actually goes. The answer is not attention."""
+def breakdown(nets, batch, device, compile_net, precision="fp16"):
+    """Where the CUDA time goes, using the selected forward precision."""
     from torch.profiler import ProfilerActivity, profile as tprofile
 
     def bucket(key):
@@ -326,20 +334,25 @@ def breakdown(nets, batch, device, compile_net):
         if compile_net:
             net = torch.compile(net, dynamic=False)
         x = torch.randn(batch, OBS_DIM, device=device)
-        for _ in range(12):
+        amp = precision_context(device, precision)
+
+        def step():
             net.zero_grad(set_to_none=True)
-            net(x).float().pow(2).mean().backward()
+            with amp:
+                output = net(x)
+            output.float().pow(2).mean().backward()
+
+        for _ in range(12):
+            step()
         torch.cuda.synchronize()
         t0 = time.perf_counter()
         for _ in range(20):
-            net.zero_grad(set_to_none=True)
-            net(x).float().pow(2).mean().backward()
+            step()
         torch.cuda.synchronize()
         ms = (time.perf_counter() - t0) / 20 * 1e3
         with tprofile(activities=[ProfilerActivity.CUDA]) as pr:
             for _ in range(10):
-                net.zero_grad(set_to_none=True)
-                net(x).float().pow(2).mean().backward()
+                step()
             torch.cuda.synchronize()
         evs = [e for e in pr.key_averages() if e.self_device_time_total > 0]
         tot = sum(e.self_device_time_total for e in evs)
@@ -359,20 +372,16 @@ def main():
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--mlp_units", type=int, nargs="+", default=[1024, 1024, 512, 512])
     p.add_argument("--d_model", type=int, default=64)
-    p.add_argument("--n_heads", type=int, default=4)
+    p.add_argument("--n_heads", type=int, default=1)
     p.add_argument("--ff_mult", type=int, default=4)
     p.add_argument("--n_layers", type=int, default=1)
     p.add_argument("--mu_head_units", type=int, nargs="*", default=[])
     p.add_argument("--arm_head_units", type=int, nargs="*", default=[256, 128])
-    p.add_argument("--precision", default="bf16",
-                   choices=["bf16", "tf32", "fp32"],
-                   help="bf16 runs the forward under torch.autocast, which is "
-                        "what the launchers do (mixed_precision: True). It is "
-                        "the default because it CHANGES THE ANSWER: the dense "
-                        "MLP gains 4.10x from bf16 and the transformer only "
-                        "2.52x, so in fp32 the transformer appears to win and "
-                        "in bf16 it loses. fp32 numbers describe no run that "
-                        "exists.")
+    p.add_argument("--precision", default="fp16",
+                   choices=["fp16", "bf16", "tf32", "fp32"],
+                   help="fp16 (default) uses CUDA autocast to match training's "
+                        "mixed_precision: True. bf16 is available for comparison; "
+                        "tf32 and fp32 disable autocast.")
     p.add_argument("--compile", type=int, default=1,
                    help="1 wraps each net in torch.compile(dynamic=False), which "
                         "is what the launchers actually run. Eager numbers "
@@ -414,11 +423,12 @@ def main():
                 jt(), args.batch, args.device, c, args.precision)]
     if args.sweep:
         rows += [
-            row("JT d32 h4 ff1 mu=[32]", jt(d_model=32, ff_mult=1, mu_units=[32]),
+            row("JT d32 h4 ff1 mu=[32]", jt(d_model=32, n_heads=4, ff_mult=1, mu_units=[32]),
                 args.batch, args.device, c, args.precision),
             row("JT d32 h1 ff1 mu=[32]", jt(d_model=32, n_heads=1, ff_mult=1,
                                             mu_units=[32]), args.batch, args.device, c, args.precision),
-            row("JT d64 h4 ff0 (no FF)", jt(ff_mult=0), args.batch, args.device, c, args.precision),
+            row("JT d64 h1 ff0 (no FF)", jt(d_model=64, n_heads=1, ff_mult=0),
+                args.batch, args.device, c, args.precision),
         ]
     report(rows)
 
@@ -427,9 +437,8 @@ def main():
     print("                   across 22 joints instead of unrolled into dense layers.")
     print("  act MiB          modularity loses -- every intermediate carries a token")
     print("                   axis, and attention saves (B, heads, T, T) on top.")
-    print("  ms               depends on compile. Eager: the transformer loses, 40%")
-    print("                   of it is LayerNorm's dgamma/dbeta reduction. Compiled:")
-    print("                   Inductor fuses that away and the transformer wins.")
+    print("  ms               compare the measured times for the selected precision")
+    print("                   and compile setting; historical BF16 results may differ.")
     print("  TFLOP/s          how far each is from the hardware's peak. A low number")
     print("                   means the shape, not the arithmetic, is the limit.")
 

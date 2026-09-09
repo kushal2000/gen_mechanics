@@ -1,0 +1,174 @@
+{
+  "date": "2026-09-09",
+  "scope": "Synthetic actor only; no simulator, critic, PPO, optimizer or GradScaler. Extra peak memory is not total VRAM. Timings are 50-iteration means, not confidence intervals.",
+  "runs": [
+    {
+      "metadata": {
+        "batch": 16384,
+        "local_batch": 16384,
+        "world_size": 1,
+        "precision": "fp16",
+        "compile": true,
+        "attention": "explicit",
+        "device": "NVIDIA RTX 6000 Ada Generation",
+        "torch_version": "2.7.0+cu126"
+      },
+      "rows": [
+        {
+          "name": "MLP",
+          "params": 2649629,
+          "context_params": 0,
+          "flops": 86721429504,
+          "act": 218.79638671875,
+          "t_fwd": 0.7870646240189672,
+          "t_both": 2.6040124986320734,
+          "tflops": 110.18336596196721
+        },
+        {
+          "name": "JT d64 h1 ff2 L2",
+          "params": 147592,
+          "context_params": 0,
+          "flops": 60720939008,
+          "act": 1488.15283203125,
+          "t_fwd": 3.771930644288659,
+          "t_both": 11.699811657890677,
+          "tflops": 16.098105912933942
+        },
+        {
+          "name": "JT d128 h1 ff2 L2",
+          "params": 373128,
+          "context_params": 0,
+          "flops": 218456129536,
+          "act": 2866.65625,
+          "t_fwd": 7.6395873399451375,
+          "t_both": 24.325779201462865,
+          "tflops": 28.595278752002432
+        },
+        {
+          "name": "JT d256 h1 ff2 L2",
+          "params": 1217416,
+          "context_params": 0,
+          "flops": 830279254016,
+          "act": 5620.8662109375,
+          "t_fwd": 17.50349366106093,
+          "t_both": 49.691942599602044,
+          "tflops": 47.43505897128851
+        },
+        {
+          "name": "JT d384 h1 ff2 L2",
+          "params": 2585992,
+          "context_params": 0,
+          "flops": 1837239369728,
+          "act": 8372.240234375,
+          "t_fwd": 33.18122929893434,
+          "t_both": 89.04255677945912,
+          "tflops": 55.36984037499193
+        },
+        {
+          "name": "Hybrid d64 h1 ff2 L2",
+          "params": 2573064,
+          "context_params": 2372736,
+          "flops": 137564782592,
+          "act": 1641.63671875,
+          "t_fwd": 4.93051643949002,
+          "t_both": 13.253922378644347,
+          "tflops": 27.90068429550329
+        },
+        {
+          "name": "Hybrid d128 h1 ff2 L2",
+          "params": 2884104,
+          "context_params": 2438272,
+          "flops": 291277635584,
+          "act": 2872.68994140625,
+          "t_fwd": 8.426041337661445,
+          "t_both": 25.454011759720743,
+          "tflops": 34.56874039794835
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "batch": 16384,
+        "local_batch": 16384,
+        "world_size": 1,
+        "precision": "fp16",
+        "compile": true,
+        "attention": "sdpa",
+        "device": "NVIDIA RTX 6000 Ada Generation",
+        "torch_version": "2.7.0+cu126"
+      },
+      "rows": [
+        {
+          "name": "MLP",
+          "params": 2649629,
+          "context_params": 0,
+          "flops": 86721429504,
+          "act": 218.79638671875,
+          "t_fwd": 0.7958239177241921,
+          "t_both": 2.50522016081959,
+          "tflops": 108.97062474824357
+        },
+        {
+          "name": "JT d64 h1 ff2 L2",
+          "params": 147592,
+          "context_params": 0,
+          "flops": 60720939008,
+          "act": 1752.7119140625,
+          "t_fwd": 3.7685463996604085,
+          "t_both": 14.346878798678517,
+          "tflops": 16.11256239633183
+        },
+        {
+          "name": "JT d128 h1 ff2 L2",
+          "params": 373128,
+          "context_params": 0,
+          "flops": 218456129536,
+          "act": 3458.6611328125,
+          "t_fwd": 7.634883318096399,
+          "t_both": 29.123344160616398,
+          "tflops": 28.612896940835967
+        },
+        {
+          "name": "JT d256 h1 ff2 L2",
+          "params": 1217416,
+          "context_params": 0,
+          "flops": 830279254016,
+          "act": 6869.9833984375,
+          "t_fwd": 17.230206644162536,
+          "t_both": 59.21931460034102,
+          "tflops": 48.18742288835476
+        },
+        {
+          "name": "JT d384 h1 ff2 L2",
+          "params": 2585992,
+          "context_params": 0,
+          "flops": 1837239369728,
+          "act": 13347.2177734375,
+          "t_fwd": 32.83323151990771,
+          "t_both": 120.34877821803093,
+          "tflops": 55.95670254431185
+        },
+        {
+          "name": "Hybrid d64 h1 ff2 L2",
+          "params": 2573064,
+          "context_params": 2372736,
+          "flops": 137564782592,
+          "act": 1906.91650390625,
+          "t_fwd": 4.900446836836636,
+          "t_both": 15.948040140792727,
+          "tflops": 28.07188551826053
+        },
+        {
+          "name": "Hybrid d128 h1 ff2 L2",
+          "params": 2884104,
+          "context_params": 2438272,
+          "flops": 291277635584,
+          "act": 3566.6884765625,
+          "t_fwd": 8.386692823842168,
+          "t_both": 30.35297844093293,
+          "tflops": 34.73092930695391
+        }
+      ]
+    }
+  ]
+}
