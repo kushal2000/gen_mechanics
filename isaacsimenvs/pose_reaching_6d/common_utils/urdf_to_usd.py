@@ -13,7 +13,7 @@ from pathlib import Path
 
 from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
-from hand_sampler.paths import resolve as resolve_repo_path
+from hand_sampler import resolve as resolve_repo_path
 
 
 

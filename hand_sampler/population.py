@@ -37,8 +37,8 @@ import dataclasses
 import json
 from pathlib import Path
 
-from hand_sampler import params as P
-from hand_sampler.paths import resolve as resolve_repo_path
+from hand_sampler import params
+from hand_sampler import resolve as resolve_repo_path
 
 POPULATION_DIR = "assets/urdf/generated/population"
 MANIFEST_NAME = "manifest.json"
@@ -55,15 +55,15 @@ def manifest_path(seed: int) -> Path:
     return population_dir(seed) / MANIFEST_NAME
 
 
-def _segment_to_json(seg: P.Segment) -> dict:
+def _segment_to_json(seg: params.Segment) -> dict:
     return {"xyz": list(seg.xyz), "rpy": list(seg.rpy)}
 
 
-def _segment_from_json(d: dict) -> P.Segment:
-    return P.Segment(xyz=tuple(d["xyz"]), rpy=tuple(d["rpy"]))
+def _segment_from_json(d: dict) -> params.Segment:
+    return params.Segment(xyz=tuple(d["xyz"]), rpy=tuple(d["rpy"]))
 
 
-def hand_to_json(hand: P.HandParams) -> dict:
+def hand_to_json(hand: params.HandParams) -> dict:
     """Serialize a parameter vector losslessly.
 
     Written field by field rather than via ``dataclasses.asdict`` so that a
@@ -95,9 +95,9 @@ def hand_to_json(hand: P.HandParams) -> dict:
     }
 
 
-def hand_from_json(d: dict) -> P.HandParams:
+def hand_from_json(d: dict) -> params.HandParams:
     fingers = tuple(
-        P.FingerParams(
+        params.FingerParams(
             name=f["name"],
             active=f["active"],
             enabled=tuple(f["enabled"]),
@@ -115,7 +115,7 @@ def hand_from_json(d: dict) -> P.HandParams:
         )
         for f in d["fingers"]
     )
-    return P.HandParams(
+    return params.HandParams(
         name=d["name"],
         fingers=fingers,
         palm_extents=tuple(d["palm_extents"]),
@@ -123,7 +123,7 @@ def hand_from_json(d: dict) -> P.HandParams:
     )
 
 
-def _roundtrip_ok(hand: P.HandParams) -> bool:
+def _roundtrip_ok(hand: params.HandParams) -> bool:
     """Does the serialized form rebuild the same parameter vector?
 
     Checked at write time on every hand. A cache that silently loses a field is
@@ -133,15 +133,15 @@ def _roundtrip_ok(hand: P.HandParams) -> bool:
     return hand_from_json(hand_to_json(hand)) == hand
 
 
-def _hits(hand: P.HandParams, gate: str) -> bool:
+def _hits(hand: params.HandParams, gate: str) -> bool:
     """Does this hand self-collide, under the requested gate?"""
     if gate == "analytic":
-        from hand_sampler.gates.capsule import analytic_hand_hits
+        from hand_sampler.self_collision import analytic_hand_hits
 
         return bool(analytic_hand_hits(hand))
     import tempfile
 
-    from hand_sampler.gates.mesh import generated_hand_hits
+    from hand_sampler.self_collision import generated_hand_hits
 
     with tempfile.TemporaryDirectory(prefix="genmech_align_") as t:
         return bool(generated_hand_hits(hand, Path(t), hand.name))
@@ -158,7 +158,7 @@ def build_population(
     shard: int | None = None,
     num_shards: int = 1,
     **sample_kwargs,
-) -> list[P.HandParams]:
+) -> list[params.HandParams]:
     """Sample ``count`` collision-free hands and cache them with their URDFs.
 
     Returns the population. Re-run with ``force=True`` to regenerate; otherwise
@@ -167,11 +167,10 @@ def build_population(
     import tempfile
 
     from hand_sampler.urdf import write_urdf
-    from hand_sampler.gates.mesh import sample_collision_free
+    from hand_sampler.self_collision import sample_collision_free
 
     out_dir = population_dir(seed)
-    # A shard builds its own slice and writes a partial manifest; the cache
-    # check reads the MERGED manifest, which does not exist yet.
+    # A shard builds its own slice and writes a partial manifest; the cache check reads the MERGED...
     sharded = shard is not None
     if sharded:
         if not 0 <= shard < num_shards:
@@ -194,13 +193,8 @@ def build_population(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     if gate == "analytic":
-        # Closed-form capsule/box distances. The mesh gate answers the same
-        # question with trimesh BVH queries over ~400 link pairs per candidate,
-        # after writing and re-parsing a URDF -- measured 6.02 s per accepted
-        # hand, which is 41 hours for 24,576. This is ~30 ms per hand, and
-        # agreed with the mesh gate on 60/60 candidates
-        # (genmech.tools.compare_collision_gates).
-        from hand_sampler.gates.capsule import sample_collision_free_fast
+        # Closed-form capsule/box distances.
+        from hand_sampler.self_collision import sample_collision_free_fast
 
         hands = sample_collision_free_fast(
             seed, count, max_tries_per_hand=max_tries_per_hand,
@@ -214,18 +208,12 @@ def build_population(
     else:
         raise ValueError(f"gate must be 'analytic' or 'mesh', got {gate!r}")
 
-    from hand_sampler.flexion import align_flexion_downward
     from hand_sampler.urdf import urdf_path_for
-    from hand_sampler.gates.mesh import generated_hand_hits
+    from hand_sampler.self_collision import generated_hand_hits
 
     entries, realigned, reverted = [], 0, 0
     for hand in hands:
-        # Write the CANONICAL path -- the one synth_spec resolves and therefore
-        # the one that actually gets simulated. Keeping a second copy under the
-        # population directory made the cache a lie: synth_spec only writes when
-        # the file is ABSENT, so a rebuilt population left the canonical file
-        # stale and the simulator ran hands from a previous design space while
-        # every check read the fresh ones.
+        # Write the CANONICAL path -- the one synth_spec resolves and therefore the one that actually...
         urdf = urdf_path_for(hand)
         urdf.parent.mkdir(parents=True, exist_ok=True)
         write_urdf(hand, urdf)
@@ -234,15 +222,7 @@ def build_population(
             aligned = align_flexion_downward(hand, urdf_path=urdf)
             if aligned is not hand:
                 write_urdf(aligned, urdf)
-                # Re-rolling moves the fingers, so the collision-free guarantee
-                # established during sampling no longer covers this geometry.
-                # Re-check rather than assume; keep the original if the new roll
-                # made the hand overlap itself.
-                #
-                # Uses the SAME gate the sampling used. Leaving this on the mesh
-                # gate would have quietly put the 41 hours back: 0.6 s per hand
-                # over 24,576 hands is another four hours, in a loop that runs
-                # after the fast sampler has already finished.
+                # Re-rolling moves the fingers, so the collision-free guarantee established during sampling no...
                 if _hits(aligned, gate):
                     write_urdf(hand, urdf)
                     reverted += 1
@@ -266,9 +246,7 @@ def build_population(
         "version": MANIFEST_VERSION,
         "seed": seed,
         "count": len(entries),
-        # The acceptance rule this population was built under. A later change to
-        # validate() or to the collision gate does not retroactively alter these
-        # hands, but it does mean a fresh build would differ -- so record it.
+        # The acceptance rule this population was built under.
         "gate": "check_self_collision.sample_collision_free",
         "align_flexion": align_flexion,
         "max_tries_per_hand": max_tries_per_hand,
@@ -324,7 +302,7 @@ def merge_population_shards(seed: int, num_shards: int) -> int:
     return len(entries)
 
 
-def load_population(seed: int) -> list[P.HandParams]:
+def load_population(seed: int) -> list[params.HandParams]:
     """Read a cached population. Raises FileNotFoundError if absent."""
 
     path = manifest_path(seed)
@@ -336,7 +314,7 @@ def load_population(seed: int) -> list[P.HandParams]:
     return [hand_from_json(e["params"]) for e in manifest["hands"]]
 
 
-def load_population_at(path) -> list[P.HandParams]:
+def load_population_at(path) -> list[params.HandParams]:
     """Read any manifest.json, wherever it lives.
 
     Populations that were SAMPLED are identified by a seed, and load_population
@@ -355,10 +333,10 @@ def load_population_at(path) -> list[P.HandParams]:
     return [hand_from_json(e["params"]) for e in manifest["hands"]]
 
 
-def load_population_any(seed=None, path=None) -> list[P.HandParams]:
+def load_population_any(seed=None, path=None) -> list[params.HandParams]:
     """Path wins over seed. One resolver, so the load sites cannot disagree."""
     if path:
-        from hand_sampler.paths import resolve as _r
+        from hand_sampler import resolve as _r
         return load_population_at(_r(str(path)))
     if seed is None:
         raise ValueError("neither robot_population_path nor robot_population_seed is set")
@@ -375,10 +353,7 @@ def population_specs(seed: int, count: int | None = None) -> list:
     hands = load_population(seed)
     if count is not None:
         hands = hands[:count]
-    # Rewrite unconditionally. synth_spec(ensure_urdf=True) only writes when the
-    # file is missing, so a stale file from an earlier population silently wins
-    # -- which is exactly how a rebuilt design space ended up not being the one
-    # simulated.
+    # Rewrite unconditionally.
     for h in hands:
         write_urdf(h, urdf_path_for(h))
     return [synth_spec(h) for h in hands]
@@ -395,3 +370,131 @@ __all__ = [
     "hand_to_json",
     "hand_from_json",
 ]
+
+
+# --- flexion alignment: point every finger at the workspace ---
+
+import math
+from dataclasses import replace
+
+import numpy as np
+
+from hand_sampler import params
+
+# The palm's +x points down at the table when the arm is in its home pose (the -x face is the...
+CURL_TARGET = np.array([1.0, 0.0, 0.0])
+
+# Flexion joints.
+_FLEX_SUFFIXES = ("FE", "PIP", "DIP")
+
+
+def _finger_axis(mount: params.Segment) -> np.ndarray:
+    """The finger's own axis (mount-frame +x) in palm coordinates."""
+
+    r, p, y = mount.rpy
+    cr, sr, cp, sp, cy, sy = (math.cos(r), math.sin(r), math.cos(p),
+                              math.sin(p), math.cos(y), math.sin(y))
+    # First column of Rz(y) Ry(p) Rx(r) -- the image of local +x.
+    return np.array([cy * cp, sy * cp, -sp])
+
+
+def curl_directions(hand: params.HandParams, urdf_path=None) -> dict[int, np.ndarray]:
+    """Unit curl direction per active finger index, in the palm frame."""
+
+    import yourdfpy
+
+    from hand_sampler.urdf import urdf_path_for, write_urdf
+    from hand_sampler import resolve as resolve_repo_path
+
+    if urdf_path is None:
+        urdf_path = urdf_path_for(hand)
+        if not urdf_path.exists():
+            write_urdf(hand, urdf_path)
+    urdf = yourdfpy.URDF.load(str(resolve_repo_path(urdf_path)), load_meshes=False,
+                              load_collision_meshes=False, build_scene_graph=True)
+
+    out: dict[int, np.ndarray] = {}
+    palm_inv = None
+    for i, finger in enumerate(hand.fingers):
+        if not finger.active:
+            continue
+        tip = f"gen_f{i}_DP"
+        if tip not in urdf.link_map:
+            continue
+        flex = [j for j in urdf.joint_map
+                if j.startswith(f"gen_f{i}_")
+                and j.rsplit("_", 1)[-1] in _FLEX_SUFFIXES]
+        if not flex:
+            continue
+
+        def tip_in_palm(angle: float) -> np.ndarray:
+            urdf.update_cfg({j: angle for j in flex})
+            palm = urdf.get_transform("gen_palm")
+            return (np.linalg.inv(palm) @ urdf.get_transform(tip))[:3, 3]
+
+        # A finite flexion rather than a derivative: the whole point is where the fingertip ends up...
+        delta = tip_in_palm(0.6) - tip_in_palm(0.0)
+        norm = float(np.linalg.norm(delta))
+        if norm < 1e-9:
+            continue
+        out[i] = delta / norm
+    return out
+
+
+def optimal_roll_offset(curl: np.ndarray, axis: np.ndarray,
+                        target: np.ndarray = CURL_TARGET) -> float:
+    """Extra roll that best aligns ``curl`` with ``target``, about ``axis``."""
+
+    k = axis / (np.linalg.norm(axis) + 1e-12)
+    A = float(np.dot(target, curl) - np.dot(target, k) * np.dot(k, curl))
+    B = float(np.dot(target, np.cross(k, curl)))
+    return math.atan2(B, A)
+
+
+def align_flexion_downward(hand: params.HandParams, urdf_path=None) -> params.HandParams:
+    """Re-roll every face-mounted finger so it flexes toward the workspace.
+
+    Fingers whose mount did not come from :func:`params.mount_on_face` are left
+    alone: their transforms are measured values (SHARPA's, for the reference
+    hand) and re-rolling them would silently stop reproducing the robot they
+    were taken from.
+    """
+
+    curls = curl_directions(hand, urdf_path=urdf_path)
+    if not curls:
+        return hand
+
+    fingers = list(hand.fingers)
+    changed = False
+    for i, finger in enumerate(fingers):
+        if i not in curls or not finger.mount_params:
+            continue
+        face, u_frac, v_frac, roll, tilt, tilt_azimuth = finger.mount_params
+        d_roll = optimal_roll_offset(curls[i], _finger_axis(finger.mount))
+        new_roll = roll + d_roll
+        fingers[i] = replace(
+            finger,
+            mount=params.mount_on_face(face, u_frac, v_frac, new_roll, tilt,
+                                  tilt_azimuth, hand.palm_extents),
+            mount_params=(face, u_frac, v_frac, new_roll, tilt, tilt_azimuth),
+        )
+        changed = True
+
+    if not changed:
+        return hand
+    return replace(hand, fingers=tuple(fingers))
+
+
+def report(hand: params.HandParams) -> list[tuple[int, str, float]]:
+    """(finger index, face, curl component toward the table) per active finger."""
+
+    rows = []
+    for i, c in curl_directions(hand).items():
+        f = hand.fingers[i]
+        face = f.mount_params[0] if f.mount_params else "-"
+        rows.append((i, face, float(np.dot(c, CURL_TARGET))))
+    return rows
+
+
+__all__ = ["CURL_TARGET", "align_flexion_downward", "curl_directions",
+           "optimal_roll_offset", "report"]

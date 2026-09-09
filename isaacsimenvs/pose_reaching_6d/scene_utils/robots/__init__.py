@@ -1,6 +1,6 @@
 """Robot hardware registry.
 
-Each entry is a :class:`~hand_sampler.spec.RobotSpec` — a frozen description
+Each entry is a :class:`~hand_sampler.robot_spec.RobotSpec` — a frozen description
 of one arm+hand combination. The task reads everything hardware-specific from
 the selected spec, so adding a hand is a new module plus a line here.
 
@@ -14,7 +14,7 @@ registry without booting Kit.
 
 from __future__ import annotations
 
-from hand_sampler.spec import RobotSpec
+from hand_sampler.robot_spec import RobotSpec
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.allegro_iiwa14 import ALLEGRO_IIWA14
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_iiwa14 import SHARPA_IIWA14
 

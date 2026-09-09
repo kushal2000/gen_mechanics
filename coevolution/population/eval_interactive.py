@@ -308,7 +308,7 @@ class EmbodimentViewer:
         import yourdfpy
         from viser.extras import ViserUrdf
 
-        from hand_sampler.gates.mesh import _geometry_to_mesh
+        from hand_sampler.self_collision import _geometry_to_mesh
 
         self._ready = ready
         urdf_path = Path(ready["robot_urdf"])

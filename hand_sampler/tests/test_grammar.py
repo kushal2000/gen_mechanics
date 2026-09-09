@@ -14,43 +14,42 @@ import random
 import numpy as np
 import pytest
 
-from hand_sampler import genotype as G
-from hand_sampler import kinematics as K
-from hand_sampler import mutate as M
-from hand_sampler import sample as S
-from hand_sampler import validate as V
+from hand_sampler import design_space
+from hand_sampler import mutate_design
+from hand_sampler import gen_init_pop
+from hand_sampler import validate_design
 
 
 @pytest.fixture(scope="module")
 def pop():
-    return S.seed_population(0, 120)
+    return gen_init_pop.seed_population(0, 120)
 
 
 # --- kinematics -------------------------------------------------------------
 
 def test_axis_endpoints():
     h = math.pi / 2
-    assert np.allclose(K.axis_of(G.Joint(0.0, h)), [0, 0, 1])      # flexion
-    assert np.allclose(K.axis_of(G.Joint(h, h)), [0, 1, 0])        # abduction
-    assert np.allclose(K.axis_of(G.Joint(0.0, 1e-12)), [1, 0, 0])  # twist
+    assert np.allclose(design_space.axis_of(design_space.Joint(0.0, h)), [0, 0, 1])      # flexion
+    assert np.allclose(design_space.axis_of(design_space.Joint(h, h)), [0, 1, 0])        # abduction
+    assert np.allclose(design_space.axis_of(design_space.Joint(0.0, 1e-12)), [1, 0, 0])  # twist
 
 
 def test_axis_is_unit():
     for t in np.linspace(0, math.pi, 13):
         for p in np.linspace(0.05, math.pi / 2, 7):
-            assert abs(np.linalg.norm(K.axis_of(G.Joint(t, p))) - 1) < 1e-12
+            assert abs(np.linalg.norm(design_space.axis_of(design_space.Joint(t, p))) - 1) < 1e-12
 
 
 def test_mount_frame_orthonormal_on_every_face():
     """The frame degenerates when a finger points along GRASP_DIR, which a mount
     tilt can reach even though no face normal does."""
-    palm = G.Palm(0.025, 0.060, 0.060)
-    for face in G.FINGER_FACES:
-        _, R = K.mount_frame(G.Mount(face, 0.5, 0.5), palm)
+    palm = design_space.Palm(0.025, 0.060, 0.060)
+    for face in design_space.FINGER_FACES:
+        _, R = design_space.mount_frame(design_space.Mount(face, 0.5, 0.5), palm)
         assert np.allclose(R.T @ R, np.eye(3), atol=1e-9), face
         assert abs(np.linalg.det(R) - 1.0) < 1e-9, face
 def test_seeds_valid(pop):
-    assert all(V.is_valid(h) for h in pop)
+    assert all(validate_design.is_valid(h) for h in pop)
 
 
 def test_seeds_are_simple(pop):
@@ -65,12 +64,11 @@ def test_seeds_are_simple(pop):
 
 def test_every_operator_can_act(pop):
     rng = random.Random(1)
-    # remove_finger needs a hand above MIN_FINGERS carrying a single-joint
-    # finger; a seed is at the floor, so it is given one that has grown.
-    grown = [c for h in pop[:40] if (c := M.mutate(rng, h, "add_finger"))]
-    for op in M.OPERATORS:
+    # remove_finger needs a hand above MIN_FINGERS carrying a single-joint finger; a seed is at...
+    grown = [c for h in pop[:40] if (c := mutate_design.mutate(rng, h, "add_finger"))]
+    for op in mutate_design.OPERATORS:
         source = grown if op == "remove_finger" else pop[:40]
-        assert any(M.mutate(rng, h, op) for h in source), op
+        assert any(mutate_design.mutate(rng, h, op) for h in source), op
 
 
 def test_mutation_is_closed(pop):
@@ -79,9 +77,9 @@ def test_mutation_is_closed(pop):
     rng = random.Random(2)
     h = pop[0]
     for _ in range(3000):
-        c = M.mutate(rng, h)
+        c = mutate_design.mutate(rng, h)
         if c is not None:
-            assert V.is_valid(c), V.check(c)
+            assert validate_design.is_valid(c), validate_design.check(c)
             h = c
 
 
@@ -90,7 +88,7 @@ def test_split_link_preserves_reach(pop):
     which is what makes merge_links an exact inverse rather than a shortening."""
     rng = random.Random(3)
     for h in pop[:60]:
-        c = M.mutate(rng, h, "split_link")
+        c = mutate_design.mutate(rng, h, "split_link")
         if c is not None:
             assert sum(f.reach for f in c.fingers) == pytest.approx(
                 sum(f.reach for f in h.fingers), abs=1e-12)
@@ -104,12 +102,12 @@ def test_exact_inverse(pop, add, remove):
     rng = random.Random(4)
     tried = recovered = 0
     for h in pop[:60]:
-        child = M.mutate(rng, h, add)
+        child = mutate_design.mutate(rng, h, add)
         if child is None:
             continue
         tried += 1
         back = random.Random(99)
-        if any(M.mutate(back, child, remove) == h for _ in range(60)):
+        if any(mutate_design.mutate(back, child, remove) == h for _ in range(60)):
             recovered += 1
     assert tried > 0
     assert recovered == tried, f"{recovered}/{tried} recovered"
@@ -140,7 +138,7 @@ def test_operators_are_unbiased(pop):
         for _ in range(8000):
             if h.n_joints >= target:
                 return h
-            c = M.mutate(rng, h, M.STRUCTURAL[rng.randrange(len(M.STRUCTURAL))])
+            c = mutate_design.mutate(rng, h, mutate_design.STRUCTURAL[rng.randrange(len(mutate_design.STRUCTURAL))])
             if c:
                 h = c
         return h
@@ -152,7 +150,7 @@ def test_operators_are_unbiased(pop):
             h = at_least(pop[s], target, s)
             assert h.n_joints >= target, f"could not reach n={target}"
             for _ in range(80):
-                c = M.mutate(rng, h, M.STRUCTURAL[rng.randrange(len(M.STRUCTURAL))])
+                c = mutate_design.mutate(rng, h, mutate_design.STRUCTURAL[rng.randrange(len(mutate_design.STRUCTURAL))])
                 if c is None:
                     continue
                 up, down = (up + 1, down) if c.n_joints > h.n_joints else (up, down + 1)
@@ -170,16 +168,16 @@ def test_deep_fingers_are_reachable(pop):
     for s in range(12):
         h = pop[s]
         for _ in range(4000):
-            c = M.mutate(rng, h, "split_link") or M.mutate(rng, h, "perturb_length")
+            c = mutate_design.mutate(rng, h, "split_link") or mutate_design.mutate(rng, h, "perturb_length")
             if c:
                 h = c
         best = max(best, max(f.n_joints for f in h.fingers))
-    assert best == G.MAX_JOINTS_PER_FINGER, f"deepest finger reached was {best}"
+    assert best == design_space.MAX_JOINTS_PER_FINGER, f"deepest finger reached was {best}"
 
 def test_identical_hands_compare_equal(pop):
     """Fitness memoisation and exact inverses both depend on this."""
     a = pop[0]
-    b = G.Hand(palm=G.Palm(*a.palm.extents), fingers=a.fingers)
+    b = design_space.Hand(palm=design_space.Palm(*a.palm.extents), fingers=a.fingers)
     assert a == b and hash(a) == hash(b)
 def _closest_approach(hand, starts=4):
     """How near two fingertips can be brought, over all joint angles.
@@ -189,14 +187,14 @@ def _closest_approach(hand, starts=4):
     """
     from scipy.optimize import minimize
 
-    lo, hi = G.JOINT_LIMIT
+    lo, hi = design_space.JOINT_LIMIT
     counts = [f.n_joints for f in hand.fingers]
     total = sum(counts)
 
     def separation(x):
         tips, k = [], 0
         for f, n in zip(hand.fingers, counts):
-            tips.append(K.fingertip(f, hand.palm, {i: x[k + i] for i in range(n)}))
+            tips.append(design_space.fingertip(f, hand.palm, {i: x[k + i] for i in range(n)}))
             k += n
         return min(float(np.linalg.norm(p - q))
                    for p, q in itertools.combinations(tips, 2))
@@ -238,13 +236,13 @@ def test_seeds_give_a_gradient_to_select_on(pop):
             f"{cheap:.0%}; closure should improve with motors, not worsen")
 
 def _hand(*fingers):
-    return G.Hand(G.Palm(0.025, 0.060, 0.060), tuple(fingers))
+    return design_space.Hand(design_space.Palm(0.025, 0.060, 0.060), tuple(fingers))
 
 
 def _finger(face, lengths, v=0.7):
-    return G.Finger(
-        G.Mount(face, 0.5, v),
-        tuple(G.Segment(G.Joint((i * G.ANGLE_QUANTUM) % math.pi, math.pi / 2), L)
+    return design_space.Finger(
+        design_space.Mount(face, 0.5, v),
+        tuple(design_space.Segment(design_space.Joint((i * design_space.ANGLE_QUANTUM) % math.pi, math.pi / 2), L)
               for i, L in enumerate(lengths)))
 
 
@@ -266,14 +264,14 @@ def test_merge_links_handles_every_merge_case(lengths, note):
     state routinely.
     """
     hand = _hand(_finger("+y", lengths), _finger("+z", [0.050]))
-    assert V.is_valid(hand), V.check(hand)
+    assert validate_design.is_valid(hand), validate_design.check(hand)
 
     rng = random.Random(0)
     seen = set()
     for _ in range(200):
-        child = M.apply(rng, hand, "merge_links")       # must never raise
+        child = mutate_design.apply(rng, hand, "merge_links")       # must never raise
         assert child.n_joints == hand.n_joints - 1, "not a unit step"
-        assert V.is_valid(child), V.check(child)
+        assert validate_design.is_valid(child), validate_design.check(child)
         seen.add(tuple(f.segments for f in child.fingers))
     assert len(seen) >= 2, "every joint in the finger should be removable"
 
@@ -284,12 +282,12 @@ def test_structural_removal_refuses_at_the_floor():
     merge_links needs a finger with two joints; remove_finger needs more than
     MIN_FINGERS. At the floor both are correctly impossible."""
     hand = _hand(_finger("+y", [0.050]), _finger("+z", [0.050]))
-    assert hand.n_fingers == G.MIN_FINGERS
+    assert hand.n_fingers == design_space.MIN_FINGERS
     rng = random.Random(0)
     for op in ("merge_links", "remove_finger"):
         for _ in range(25):
-            with pytest.raises(M.MutationImpossible):
-                M.apply(rng, hand, op)
+            with pytest.raises(mutate_design.MutationImpossible):
+                mutate_design.apply(rng, hand, op)
 
 
 def test_merge_links_preserves_reach_unless_it_must_clamp():
@@ -299,7 +297,7 @@ def test_merge_links_preserves_reach_unless_it_must_clamp():
     rng = random.Random(0)
     before = sum(f.reach for f in hand.fingers)
     for _ in range(100):
-        child = M.apply(rng, hand, "merge_links")
+        child = mutate_design.apply(rng, hand, "merge_links")
         assert sum(f.reach for f in child.fingers) == pytest.approx(before, abs=1e-12)
 
 
@@ -307,36 +305,36 @@ def test_one_joint_per_link():
     """No two joints share a point. Everything downstream depends on it: no
     zero-length case in the builder, and no way for capsule and segment indices
     to diverge in a renderer."""
-    palm = G.Palm(0.025, 0.060, 0.060)
-    bad = G.Finger(G.Mount("+y", 0.5, 0.7),
-                   (G.Segment(G.Joint(0.0), 0.0), G.Segment(G.Joint(0.0), 0.040)))
-    assert V.check_finger(bad, 0, palm), "a zero-length link must be rejected"
+    palm = design_space.Palm(0.025, 0.060, 0.060)
+    bad = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
+                   (design_space.Segment(design_space.Joint(0.0), 0.0), design_space.Segment(design_space.Joint(0.0), 0.040)))
+    assert validate_design.check_finger(bad, 0, palm), "a zero-length link must be rejected"
 
     rng = random.Random(1)
-    hand = S.seed_population(0, 1)[0]
+    hand = gen_init_pop.seed_population(0, 1)[0]
     for _ in range(4000):
-        child = M.mutate(rng, hand)
+        child = mutate_design.mutate(rng, hand)
         if child:
             hand = child
         for f in hand.fingers:
-            assert all(s.length >= G.MIN_LINK_LENGTH - 1e-9 for s in f.segments)
+            assert all(s.length >= design_space.MIN_LINK_LENGTH - 1e-9 for s in f.segments)
 
     # distinct joint positions, which is the geometric statement of the rule
     for f in hand.fingers:
-        joints, _ = K.forward_kinematics(f, hand.palm)
+        joints, _ = design_space.forward_kinematics(f, hand.palm)
         for a, b in zip(joints, joints[1:]):
-            assert np.linalg.norm(a - b) >= G.MIN_LINK_LENGTH - 1e-9
+            assert np.linalg.norm(a - b) >= design_space.MIN_LINK_LENGTH - 1e-9
 
 
 def test_capsules_carry_their_segment_index():
     """Each capsule reports which segment it belongs to. The index equals its own
     position today, and is carried because ``build.py`` will skip geometry for
     ghosted joints -- at which point a positional zip reads the wrong joint."""
-    palm = G.Palm(0.025, 0.060, 0.060)
-    finger = G.Finger(G.Mount("+y", 0.5, 0.7),
-                      tuple(G.Segment(G.Joint(i * G.ANGLE_QUANTUM % math.pi), 0.030)
+    palm = design_space.Palm(0.025, 0.060, 0.060)
+    finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
+                      tuple(design_space.Segment(design_space.Joint(i * design_space.ANGLE_QUANTUM % math.pi), 0.030)
                             for i in range(3)))
-    _, capsules = K.forward_kinematics(finger, palm)
+    _, capsules = design_space.forward_kinematics(finger, palm)
     assert [c[3] for c in capsules] == [0, 1, 2]
 
 
@@ -344,24 +342,24 @@ def test_joint_axes_are_the_axes_the_joints_turn_about():
     """The viewer draws each joint as a cylinder along its reported axis, so the
     axis has to be the one the joint really turns about: commanding joint k must
     move everything distal to it by exactly that rotation, about that line."""
-    palm = G.Palm(0.025, 0.070, 0.070)
-    finger = G.Finger(G.Mount("+y", 0.5, 0.6),
-                      (G.Segment(G.Joint(0.0, offset=0.3), 0.035),
-                       G.Segment(G.Joint(math.pi / 3), 0.030),
-                       G.Segment(G.Joint(math.pi / 2, offset=-0.2), 0.025)))
-    rest, _ = K.forward_kinematics(finger, palm)
-    axes = K.joint_axes(finger, palm)
+    palm = design_space.Palm(0.025, 0.070, 0.070)
+    finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.6),
+                      (design_space.Segment(design_space.Joint(0.0, offset=0.3), 0.035),
+                       design_space.Segment(design_space.Joint(math.pi / 3), 0.030),
+                       design_space.Segment(design_space.Joint(math.pi / 2, offset=-0.2), 0.025)))
+    rest, _ = design_space.forward_kinematics(finger, palm)
+    axes = design_space.joint_axes(finger, palm)
     assert len(axes) == finger.n_joints
     assert all(abs(np.linalg.norm(a) - 1.0) < 1e-12 for a in axes)
 
     delta = 0.4
     for k, a in enumerate(axes):
-        moved, _ = K.forward_kinematics(finger, palm, {k: delta})
-        R = K.rodrigues(a, delta)
+        moved, _ = design_space.forward_kinematics(finger, palm, {k: delta})
+        R = design_space.rodrigues(a, delta)
         for j in range(k + 1, len(rest)):
             assert np.allclose(moved[j], rest[k] + R @ (rest[j] - rest[k]), atol=1e-12)
         # a rotation fixes its own axis, so the marker is stable under its slider
-        assert np.allclose(K.joint_axes(finger, palm, {k: delta})[k], a, atol=1e-12)
+        assert np.allclose(design_space.joint_axes(finger, palm, {k: delta})[k], a, atol=1e-12)
 
 
 def test_fingers_do_not_overlap_at_the_base(pop):
@@ -376,30 +374,30 @@ def test_fingers_do_not_overlap_at_the_base(pop):
     hand = pop[0]
     worst = float("inf")
     for _ in range(4000):
-        child = M.mutate(rng, hand)
+        child = mutate_design.mutate(rng, hand)
         if child:
             hand = child
-        caps = K.base_capsules(hand)
+        caps = design_space.base_capsules(hand)
         for (p0, p1), (q0, q1) in itertools.combinations(caps, 2):
-            worst = min(worst, K.segment_distance(p0, p1, q0, q1))
-    assert worst >= 2 * G.CAPSULE_RADIUS - 1e-9, (
+            worst = min(worst, design_space.segment_distance(p0, p1, q0, q1))
+    assert worst >= 2 * design_space.CAPSULE_RADIUS - 1e-9, (
         f"base links came within {worst * 1000:.1f} mm; capsules intersect below "
-        f"{2 * G.CAPSULE_RADIUS * 1000:.0f} mm")
+        f"{2 * design_space.CAPSULE_RADIUS * 1000:.0f} mm")
 
 
 def test_same_face_mounts_keep_their_distance(pop):
     rng = random.Random(7)
     hand = pop[0]
     for _ in range(3000):
-        child = M.mutate(rng, hand)
+        child = mutate_design.mutate(rng, hand)
         if child:
             hand = child
-        pos = [(f.mount.face, K.mount_position(f.mount, hand.palm))
+        pos = [(f.mount.face, design_space.mount_position(f.mount, hand.palm))
                for f in hand.fingers]
         for (fa, pa), (fb, pb) in itertools.combinations(pos, 2):
             if fa == fb:
                 d = float(np.linalg.norm(pa - pb))
-                assert d >= G.MIN_SAME_FACE_SEPARATION - 1e-9, (
+                assert d >= design_space.MIN_SAME_FACE_SEPARATION - 1e-9, (
                     f"two mounts {d * 1000:.1f} mm apart on {fa}")
 
 
@@ -417,19 +415,19 @@ def test_crowding_does_not_block_new_fingers():
     packing should bind well before it.
     """
     def pack(palm):
-        hand = G.Hand(palm, S.seed_population(0, 1)[0].fingers)
+        hand = design_space.Hand(palm, gen_init_pop.seed_population(0, 1)[0].fingers)
         for k in range(30):
-            out = M._new_finger(random.Random(k), hand)
-            if out is None or hand.n_fingers >= G.MAX_FINGERS:
+            out = mutate_design._new_finger(random.Random(k), hand)
+            if out is None or hand.n_fingers >= design_space.MAX_FINGERS:
                 break
             hand = out
         return hand.n_fingers
 
-    assert pack(G.Palm(0.025, 0.100, 0.100)) == G.MAX_FINGERS, \
+    assert pack(design_space.Palm(0.025, 0.100, 0.100)) == design_space.MAX_FINGERS, \
         "a large palm should reach the cap"
 
-    small = pack(G.Palm(0.025, 0.050, 0.050))
-    assert 2 <= small < G.MAX_FINGERS, \
+    small = pack(design_space.Palm(0.025, 0.050, 0.050))
+    assert 2 <= small < design_space.MAX_FINGERS, \
         f"a small palm packed {small}; separation should bind before the cap"
 
 
@@ -443,18 +441,18 @@ def test_min_link_length_allows_a_compact_knuckle():
     housing, and the reason build.py must emit that sphere rather than treating
     the segment as geometry-less.
     """
-    assert G.MIN_LINK_LENGTH < 2 * G.CAPSULE_RADIUS
+    assert design_space.MIN_LINK_LENGTH < 2 * design_space.CAPSULE_RADIUS
 
-    palm = G.Palm(0.025, 0.060, 0.060)
-    finger = G.Finger(G.Mount("+y", 0.5, 0.7), (
-        G.Segment(G.Joint(0.0), G.MIN_LINK_LENGTH),
-        G.Segment(G.Joint(math.pi / 2), 0.040)))
-    assert not V.check_finger(finger, 0, palm), V.check_finger(finger, 0, palm)
+    palm = design_space.Palm(0.025, 0.060, 0.060)
+    finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.7), (
+        design_space.Segment(design_space.Joint(0.0), design_space.MIN_LINK_LENGTH),
+        design_space.Segment(design_space.Joint(math.pi / 2), 0.040)))
+    assert not validate_design.check_finger(finger, 0, palm), validate_design.check_finger(finger, 0, palm)
 
-    joints, _ = K.forward_kinematics(finger, palm)
+    joints, _ = design_space.forward_kinematics(finger, palm)
     gap = float(np.linalg.norm(joints[1] - joints[0]))
-    assert gap == pytest.approx(G.MIN_LINK_LENGTH)
-    assert gap < 2 * G.CAPSULE_RADIUS, "axes are not closer than the link is wide"
+    assert gap == pytest.approx(design_space.MIN_LINK_LENGTH)
+    assert gap < 2 * design_space.CAPSULE_RADIUS, "axes are not closer than the link is wide"
 
 def test_mounts_stay_clear_of_face_edges(pop):
     """A mount within one capsule radius of an edge hangs the finger off the
@@ -464,17 +462,17 @@ def test_mounts_stay_clear_of_face_edges(pop):
     hand = pop[0]
     worst = float("inf")
     for _ in range(4000):
-        child = M.mutate(rng, hand)
+        child = mutate_design.mutate(rng, hand)
         if child:
             hand = child
         for f in hand.fingers:
-            _, _, _, _, span_u, span_v = K.face_frame(f.mount.face, hand.palm)
+            _, _, _, _, span_u, span_v = design_space.face_frame(f.mount.face, hand.palm)
             worst = min(worst,
                         min(f.mount.u, 1.0 - f.mount.u) * span_u,
                         min(f.mount.v, 1.0 - f.mount.v) * span_v)
-    assert worst >= G.MOUNT_EDGE_MARGIN - 1e-9, (
+    assert worst >= design_space.MOUNT_EDGE_MARGIN - 1e-9, (
         f"a mount came {worst * 1000:.1f} mm from a face edge, margin is "
-        f"{G.MOUNT_EDGE_MARGIN * 1000:.0f} mm")
+        f"{design_space.MOUNT_EDGE_MARGIN * 1000:.0f} mm")
 
 
 def test_move_mount_still_crosses_faces_with_a_margin(pop):
@@ -486,11 +484,11 @@ def test_move_mount_still_crosses_faces_with_a_margin(pop):
         rng = random.Random(seed)
         seen = {f.mount.face for f in hand.fingers}
         for _ in range(3000):
-            child = M.mutate(rng, hand, "move_mount")
+            child = mutate_design.mutate(rng, hand, "move_mount")
             if child:
                 hand = child
                 seen |= {f.mount.face for f in hand.fingers}
-        assert seen == set(G.FINGER_FACES), f"only reached {sorted(seen)}"
+        assert seen == set(design_space.FINGER_FACES), f"only reached {sorted(seen)}"
 
 
 def test_perturb_palm_leaves_thickness_alone(pop):
@@ -500,40 +498,40 @@ def test_perturb_palm_leaves_thickness_alone(pop):
     hand = pop[0]
     seen_steps = set()
     for _ in range(2000):
-        child = M.mutate(rng, hand, "perturb_palm")
+        child = mutate_design.mutate(rng, hand, "perturb_palm")
         if child is None:
             continue
         assert child.palm.thickness == hand.palm.thickness, "thickness moved"
-        for dim in G.MUTABLE_PALM_DIMS:
+        for dim in design_space.MUTABLE_PALM_DIMS:
             delta = getattr(child.palm, dim) - getattr(hand.palm, dim)
             if abs(delta) > 1e-9:
                 seen_steps.add(round(abs(delta), 6))
         hand = child
-    assert seen_steps == {round(G.PALM_STEP, 6)}, (
-        f"steps seen: {sorted(seen_steps)}, expected only {G.PALM_STEP}")
+    assert seen_steps == {round(design_space.PALM_STEP, 6)}, (
+        f"steps seen: {sorted(seen_steps)}, expected only {design_space.PALM_STEP}")
 
 
 def test_check_finger_needs_the_real_palm():
     """Mount bounds depend on the face spans, so the palm cannot be defaulted:
     the same mount is illegal on a 60 mm face and legal on a 100 mm one."""
-    finger = G.Finger(G.Mount("+y", 0.5, 0.90),
-                      (G.Segment(G.Joint(0.0), 0.040),))
-    assert V.check_finger(finger, 0, G.Palm(0.025, 0.060, 0.060))
-    assert not V.check_finger(finger, 0, G.Palm(0.025, 0.100, 0.100))
+    finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.90),
+                      (design_space.Segment(design_space.Joint(0.0), 0.040),))
+    assert validate_design.check_finger(finger, 0, design_space.Palm(0.025, 0.060, 0.060))
+    assert not validate_design.check_finger(finger, 0, design_space.Palm(0.025, 0.100, 0.100))
     with pytest.raises(TypeError):
-        V.check_finger(finger, 0)
+        validate_design.check_finger(finger, 0)
 
 
 def test_require_valid_reports_every_reason():
     """The loud counterpart to is_valid."""
-    palm = G.Palm(0.025, 0.060, 0.060)
-    good = S.seed_population(0, 1)[0]
-    assert V.require_valid(good) is good
+    palm = design_space.Palm(0.025, 0.060, 0.060)
+    good = gen_init_pop.seed_population(0, 1)[0]
+    assert validate_design.require_valid(good) is good
 
-    bad = G.Hand(palm, (G.Finger(G.Mount("+y", 0.5, 0.99),
-                                 (G.Segment(G.Joint(0.0), 0.5),)),))
+    bad = design_space.Hand(palm, (design_space.Finger(design_space.Mount("+y", 0.5, 0.99),
+                                 (design_space.Segment(design_space.Joint(0.0), 0.5),)),))
     with pytest.raises(ValueError) as e:
-        V.require_valid(bad)
+        validate_design.require_valid(bad)
     assert "length" in str(e.value) and "mount" in str(e.value)
 
 
@@ -545,7 +543,7 @@ def test_segment_distance_matches_brute_force():
     rng = np.random.default_rng(0)
     for _ in range(400):
         p0, p1, q0, q1 = (rng.normal(size=3) for _ in range(4))
-        closed = K.segment_distance(p0, p1, q0, q1)
+        closed = design_space.segment_distance(p0, p1, q0, q1)
         ts = np.linspace(0, 1, 160)
         a = p0 + np.outer(ts, p1 - p0)
         b = q0 + np.outer(ts, q1 - q0)
@@ -563,7 +561,7 @@ def test_segment_distance_matches_brute_force():
     ((0, 0, 0), (1, 0, 0), (0.5, -1, 1), (0.5, 1, 1), 1.0),       # crossing, offset
 ])
 def test_segment_distance_degenerate_cases(p0, p1, q0, q1, want):
-    got = K.segment_distance(*(np.array(x, float) for x in (p0, p1, q0, q1)))
+    got = design_space.segment_distance(*(np.array(x, float) for x in (p0, p1, q0, q1)))
     assert got == pytest.approx(want, abs=1e-9)
 
 
@@ -575,7 +573,7 @@ def test_move_mount_moves_both_axes(pop):
     moved_u = moved_v = 0
     for hand in pop[:40]:
         for _ in range(40):
-            child = M.mutate(rng, hand, "move_mount")
+            child = mutate_design.mutate(rng, hand, "move_mount")
             if child is None:
                 continue
             for a, b in zip(hand.fingers, child.fingers):
@@ -591,7 +589,7 @@ def test_every_genotype_field_is_validated():
     a genotype field without a rule shows up here."""
     from dataclasses import replace as _replace
 
-    hand = S.seed_population(0, 1)[0]
+    hand = gen_init_pop.seed_population(0, 1)[0]
     f0, palm = hand.fingers[0], hand.palm
 
     def variant(**kw):
@@ -608,7 +606,7 @@ def test_every_genotype_field_is_validated():
             seg = _replace(seg, joint=_replace(seg.joint, offset=kw["s_offset"]))
         new_palm = _replace(palm, **{k[2:]: v for k, v in kw.items()
                                      if k.startswith("p_")})
-        return G.Hand(new_palm,
+        return design_space.Hand(new_palm,
                       (_replace(f0, mount=mount, segments=(seg,) + f0.segments[1:]),)
                       + hand.fingers[1:])
 
@@ -627,23 +625,23 @@ def test_every_genotype_field_is_validated():
         "mount v past the margin": variant(m_v=0.99),
         "offset outside joint travel": variant(s_offset=math.radians(120)),
         "offset off grid": variant(s_offset=0.1),
-        "too many fingers": G.Hand(palm, hand.fingers * 4),
-        "too few fingers": G.Hand(palm, hand.fingers[:1]),
+        "too many fingers": design_space.Hand(palm, hand.fingers * 4),
+        "too few fingers": design_space.Hand(palm, hand.fingers[:1]),
     }
-    missed = [name for name, bad in cases.items() if not V.check(bad)]
+    missed = [name for name, bad in cases.items() if not validate_design.check(bad)]
     assert not missed, f"validator missed: {missed}"
 
 
 def test_the_grammar_is_deterministic():
     """Same seed, same population and same walk -- the basis for a design being
     identifiable, memoisable and re-evaluatable."""
-    assert S.seed_population(7, 20) == S.seed_population(7, 20)
+    assert gen_init_pop.seed_population(7, 20) == gen_init_pop.seed_population(7, 20)
 
     def walk(seed):
         rng = random.Random(seed)
-        hand = S.seed_population(0, 1)[0]
+        hand = gen_init_pop.seed_population(0, 1)[0]
         for _ in range(400):
-            child = M.mutate(rng, hand)
+            child = mutate_design.mutate(rng, hand)
             if child:
                 hand = child
         return hand
@@ -659,30 +657,30 @@ def test_offset_subsumes_a_mount_pointing_direction():
     That is why the mount carries no orientation: one primitive covering both,
     applied at every joint rather than only the first.
     """
-    palm = G.Palm(0.025, 0.060, 0.060)
+    palm = design_space.Palm(0.025, 0.060, 0.060)
     face = "+y"
-    _, normal, t_u, t_v, _, _ = K.face_frame(face, palm)
-    _, R = K.mount_frame(G.Mount(face, 0.5, 0.5), palm)
+    _, normal, t_u, t_v, _, _ = design_space.face_frame(face, palm)
+    _, R = design_space.mount_frame(design_space.Mount(face, 0.5, 0.5), palm)
 
     reachable = np.array([
-        K.rodrigues(R @ K.axis_of(G.Joint(float(th), math.pi / 2)), float(d)) @ normal
-        for th in np.arange(0, math.pi, G.ANGLE_QUANTUM)
-        for d in np.arange(-math.pi / 2, math.pi / 2 + 1e-9, G.ANGLE_QUANTUM)])
+        design_space.rodrigues(R @ design_space.axis_of(design_space.Joint(float(th), math.pi / 2)), float(d)) @ normal
+        for th in np.arange(0, math.pi, design_space.ANGLE_QUANTUM)
+        for d in np.arange(-math.pi / 2, math.pi / 2 + 1e-9, design_space.ANGLE_QUANTUM)])
 
-    for a in np.arange(0, math.pi / 2 + 1e-9, G.ANGLE_QUANTUM):
-        for b in np.arange(0, 2 * math.pi, G.ANGLE_QUANTUM):
+    for a in np.arange(0, math.pi / 2 + 1e-9, design_space.ANGLE_QUANTUM):
+        for b in np.arange(0, 2 * math.pi, design_space.ANGLE_QUANTUM):
             want = (math.cos(a) * normal
                     + math.sin(a) * (math.cos(b) * t_u + math.sin(b) * t_v))
             gap = float(np.min(np.linalg.norm(reachable - want, axis=1)))
             assert gap < 1e-9, f"alpha={math.degrees(a):.0f} deg uncovered"
 
-    curled = G.Finger(G.Mount(face, 0.5, 0.7), (
-        G.Segment(G.Joint(0.0, math.pi / 2), 0.04),
-        G.Segment(G.Joint(0.0, math.pi / 2, math.radians(60)), 0.04)))
-    straight = G.Finger(curled.mount, (curled.segments[0],
-                                       G.Segment(G.Joint(0.0), 0.04)))
-    assert float(np.linalg.norm(K.fingertip(curled, palm)
-                                - K.fingertip(straight, palm))) > 0.03
+    curled = design_space.Finger(design_space.Mount(face, 0.5, 0.7), (
+        design_space.Segment(design_space.Joint(0.0, math.pi / 2), 0.04),
+        design_space.Segment(design_space.Joint(0.0, math.pi / 2, math.radians(60)), 0.04)))
+    straight = design_space.Finger(curled.mount, (curled.segments[0],
+                                       design_space.Segment(design_space.Joint(0.0), 0.04)))
+    assert float(np.linalg.norm(design_space.fingertip(curled, palm)
+                                - design_space.fingertip(straight, palm))) > 0.03
 
 
 def test_offset_moves_the_link_but_theta_does_not():
@@ -691,13 +689,13 @@ def test_offset_moves_the_link_but_theta_does_not():
     theta re-aims the axis a joint sweeps about and moves nothing at rest;
     offset is where the link sits at rest and moves it directly.
     """
-    palm = G.Palm(0.025, 0.060, 0.060)
+    palm = design_space.Palm(0.025, 0.060, 0.060)
 
     def tip(theta_deg, offset_deg):
-        f = G.Finger(G.Mount("+y", 0.5, 0.7),
-                     (G.Segment(G.Joint(math.radians(theta_deg), math.pi / 2,
+        f = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
+                     (design_space.Segment(design_space.Joint(math.radians(theta_deg), math.pi / 2,
                                         math.radians(offset_deg)), 0.05),))
-        return K.fingertip(f, palm)
+        return design_space.fingertip(f, palm)
 
     assert np.allclose(tip(0, 0), tip(60, 0)), "theta moved the link at rest"
     assert not np.allclose(tip(0, 0), tip(0, 45)), "offset did not move the link"
@@ -711,12 +709,12 @@ def test_crossing_a_face_rotates_the_finger_with_it():
     and preserving the WORLD direction instead laid the finger flat along the
     surface it was bolted to. Neither is expressible now.
     """
-    palm = G.Palm(0.025, 0.060, 0.060)
-    mount = G.Mount("+y", 0.5, 0.80)
-    before = K.mount_direction(mount, palm)
+    palm = design_space.Palm(0.025, 0.060, 0.060)
+    mount = design_space.Mount("+y", 0.5, 0.80)
+    before = design_space.mount_direction(mount, palm)
 
     for _ in range(8):
-        nxt = M._step_mount(mount, palm, 0.0, +M.MOUNT_STEP_M)
+        nxt = mutate_design._step_mount(mount, palm, 0.0, +mutate_design.MOUNT_STEP_M)
         if nxt is None or nxt == mount:
             break
         mount = nxt
@@ -724,6 +722,6 @@ def test_crossing_a_face_rotates_the_finger_with_it():
             break
     assert mount.face == "+z", "the walk never crossed"
 
-    after = K.mount_direction(mount, palm)
+    after = design_space.mount_direction(mount, palm)
     angle = math.degrees(math.acos(float(np.clip(before @ after, -1, 1))))
     assert angle == pytest.approx(90.0, abs=1e-6)

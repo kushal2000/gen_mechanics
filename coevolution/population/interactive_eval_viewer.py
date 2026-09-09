@@ -64,8 +64,8 @@ def main() -> None:
     import isaacsimenvs  # noqa: F401
     from coevolution.eval.rl_player import RlPlayer
     from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
-    from hand_sampler.gates.mesh import _geometry_to_mesh
-    from hand_sampler.paths import resolve as resolve_repo_path
+    from hand_sampler.self_collision import _geometry_to_mesh
+    from hand_sampler import resolve as resolve_repo_path
 
     cfg = PoseReachEnvCfg()
     cfg.scene.num_envs = args.num_envs

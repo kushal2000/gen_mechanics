@@ -24,15 +24,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt                                    # noqa: E402
 import matplotlib.patheffects as pe                                # noqa: E402
 
-from hand_sampler import genotype as G                             # noqa: E402
+from hand_sampler import design_space                                  # noqa: E402
 
 # Validated categorical slots 1-3 (safe for all pairs), plus chart chrome.
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 SURFACE, GRID, AXIS, INK, MUTED = "#fcfcfb", "#e1e0d9", "#c3c2b7", "#0b0b0b", "#898781"
 ORD = ("#86b6ef", "#5598e7", "#2a78d6", "#256abf", "#184f95", "#0d366b")
 
-JOINT_FLOOR = G.MIN_FINGERS
-JOINT_CEIL = G.MAX_FINGERS * G.MAX_JOINTS_PER_FINGER
+JOINT_FLOOR = design_space.MIN_FINGERS
+JOINT_CEIL = design_space.MAX_FINGERS * design_space.MAX_JOINTS_PER_FINGER
 
 
 # --- loading ----------------------------------------------------------------
@@ -144,7 +144,7 @@ def fig_single(runs, out):
 
     frame(ax[0][0], "Mean fingers per hand", ylab="fingers")
     band(ax[0][0], g, [r], lambda x: x["n_fingers"], BLUE)
-    ref(ax[0][0], G.MAX_FINGERS, "MAX_FINGERS", g, above=False)
+    ref(ax[0][0], design_space.MAX_FINGERS, "MAX_FINGERS", g, above=False)
 
     frame(ax[0][1], "Mean joints per hand", "band: p10-p90 of the population")
     ax[0][1].fill_between(g, [x["joints_p10"] for x in r], [x["joints_p90"] for x in r],
@@ -153,8 +153,8 @@ def fig_single(runs, out):
 
     frame(ax[0][2], "Mean link length (mm)")
     band(ax[0][2], g, [r], lambda x: x["link_mm"], BLUE)
-    ref(ax[0][2], 1000 * G.MIN_LINK_LENGTH, "MIN_LINK_LENGTH", g)
-    ref(ax[0][2], 1000 * G.MAX_LINK_LENGTH, "MAX_LINK_LENGTH", g, above=False)
+    ref(ax[0][2], 1000 * design_space.MIN_LINK_LENGTH, "MIN_LINK_LENGTH", g)
+    ref(ax[0][2], 1000 * design_space.MAX_LINK_LENGTH, "MAX_LINK_LENGTH", g, above=False)
 
     a = ax[1][0]
     frame(a, "Finger-count composition", "share of population", "share")
@@ -197,15 +197,15 @@ def fig_envelope(runs, out):
 
     frame(ax[0][0], "Mean fingers per hand", sub, "fingers")
     band(ax[0][0], g, runs, lambda x: x["n_fingers"], BLUE)
-    ref(ax[0][0], G.MAX_FINGERS, "MAX_FINGERS", g, above=False)
+    ref(ax[0][0], design_space.MAX_FINGERS, "MAX_FINGERS", g, above=False)
 
     frame(ax[0][1], "Mean joints per hand", sub, "joints")
     band(ax[0][1], g, runs, lambda x: x["n_joints"], BLUE)
 
     frame(ax[0][2], "Mean link length (mm)", sub)
     band(ax[0][2], g, runs, lambda x: x["link_mm"], BLUE)
-    ref(ax[0][2], 1000 * G.MIN_LINK_LENGTH, "MIN_LINK_LENGTH", g)
-    ref(ax[0][2], 1000 * G.MAX_LINK_LENGTH, "MAX_LINK_LENGTH", g, above=False)
+    ref(ax[0][2], 1000 * design_space.MIN_LINK_LENGTH, "MIN_LINK_LENGTH", g)
+    ref(ax[0][2], 1000 * design_space.MAX_LINK_LENGTH, "MAX_LINK_LENGTH", g, above=False)
 
     frame(ax[1][0], "Topology diversity", "distinct skeletons / population", "share")
     if recorded(runs, "topology_diversity"):
@@ -245,18 +245,17 @@ def fig_starvation(runs, out):
         a1.text(g[j], y[j] + 0.9, lab, color=BLUE, alpha=al, fontsize=8, ha="center",
                 path_effects=[pe.withStroke(linewidth=2.5, foreground=SURFACE)])
     a1.axhline(JOINT_FLOOR, color=ORANGE, linewidth=1.2, linestyle=(0, (4, 3)))
-    # short, because on a run whose p10 is still at the floor a long label
-    # lies straight across the line it is annotating
+    # short, because on a run whose p10 is still at the floor a long label lies straight across...
     a1.text(g[-1], JOINT_FLOOR, f"floor = {JOINT_FLOOR} motors ", color=ORANGE,
             fontsize=8, ha="right", va="bottom")
 
     frame(a2, "The low-motor population empties out",
           "band = min-max across runs", "share of population")
-    band(a2, g, runs, lambda x: share(x, "fingers_hist", [G.MIN_FINGERS]), BLUE,
-         f"exactly {G.MIN_FINGERS} fingers", 0.30, +0.05)
+    band(a2, g, runs, lambda x: share(x, "fingers_hist", [design_space.MIN_FINGERS]), BLUE,
+         f"exactly {design_space.MIN_FINGERS} fingers", 0.30, +0.05)
     band(a2, g, runs, lambda x: share(x, "fingers_hist",
-                                      [G.MIN_FINGERS, G.MIN_FINGERS + 1]), ORANGE,
-         f"{G.MIN_FINGERS} or {G.MIN_FINGERS + 1} fingers", 0.55, +0.05)
+                                      [design_space.MIN_FINGERS, design_space.MIN_FINGERS + 1]), ORANGE,
+         f"{design_space.MIN_FINGERS} or {design_space.MIN_FINGERS + 1} fingers", 0.55, +0.05)
     if recorded(runs, "joints_hist"):        # the motor axis of the headline plot
         lo = list(range(JOINT_FLOOR, JOINT_FLOOR + 3))
         band(a2, g, runs, lambda x: share(x, "joints_hist", lo), AQUA,
@@ -272,8 +271,7 @@ def fig_arms(null, mx, mn, out):
     n = min(len(r) for _, rs, _, _ in arms for r in rs)
     g = [arms[0][1][0][i]["gen"] for i in range(n)]
 
-    # Computed, never asserted in a literal: this number is a property of the
-    # data being plotted, and a hardcoded one lies the first time it is rerun.
+    # Computed, never asserted in a literal: this number is a property of the data being plotted,...
     k = min(50, n - 1)
     rate = lambda rs: sum((r[k]["n_joints"] - r[0]["n_joints"]) / k for r in rs) / len(rs)
     ratio = abs(rate(mx) / rate(null)) if null and mx and rate(null) else None
@@ -290,9 +288,9 @@ def fig_arms(null, mx, mn, out):
     a1.set_ylim(0, JOINT_CEIL * 1.1)
 
     frame(a2, "and it holds the cheap end that drift vacates",
-          f"share of hands with exactly {G.MIN_FINGERS} fingers", "share of population")
+          f"share of hands with exactly {design_space.MIN_FINGERS} fingers", "share of population")
     for lab, runs, c, at in arms:
-        band(a2, g, runs, lambda x: share(x, "fingers_hist", [G.MIN_FINGERS]),
+        band(a2, g, runs, lambda x: share(x, "fingers_hist", [design_space.MIN_FINGERS]),
              c, lab, at, +0.05)
     a2.set_ylim(0, 1)
     finish(fig, out, "Selection strength against the grammar's drift, at matched truncation")

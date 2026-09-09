@@ -78,7 +78,7 @@ Geometry offsets, measured with yourdfpy FK against the generated URDF:
 from __future__ import annotations
 
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.allegro_iiwa14 import ALLEGRO_IIWA14_ADJACENT_LINKS
-from hand_sampler.iiwa14_arm import (
+from hand_sampler.robot_spec import (
     ARM_DAMPING,
     ARM_DEFAULT_JOINT_POS,
     ARM_JOINT_NAMES,
@@ -90,7 +90,7 @@ from hand_sampler.iiwa14_arm import (
     BASE_ROT,
     START_ARM_HIGHER_DELTAS,
 )
-from hand_sampler.spec import RobotSpec, Vec3
+from hand_sampler.robot_spec import RobotSpec, Vec3
 
 
 FINGERS: tuple[str, ...] = ("index", "middle", "ring", "thumb")

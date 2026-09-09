@@ -10,7 +10,7 @@ was checked by a bitwise rollout parity test against it.
 from __future__ import annotations
 
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.sharpa_iiwa14 import SHARPA_IIWA14_ADJACENT_LINKS
-from hand_sampler.iiwa14_arm import (
+from hand_sampler.robot_spec import (
     ARM_DAMPING,
     ARM_DEFAULT_JOINT_POS,
     ARM_JOINT_NAMES,
@@ -22,7 +22,7 @@ from hand_sampler.iiwa14_arm import (
     BASE_ROT,
     START_ARM_HIGHER_DELTAS,
 )
-from hand_sampler.spec import RobotSpec, Vec3
+from hand_sampler.robot_spec import RobotSpec, Vec3
 
 
 # Thumb has 5 DoF, index/middle/ring 4 each, pinky 5 => 22.

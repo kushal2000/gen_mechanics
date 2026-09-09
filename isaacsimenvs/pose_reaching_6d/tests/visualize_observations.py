@@ -51,8 +51,8 @@ def main() -> None:
 
     import gymnasium as gym
     import isaacsimenvs  # noqa: F401
-    from hand_sampler.gates.mesh import _geometry_to_mesh
-    from hand_sampler.paths import resolve
+    from hand_sampler.self_collision import _geometry_to_mesh
+    from hand_sampler import resolve
     from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
     from isaacsimenvs.pose_reaching_6d.obs_utils.layout import field_offsets
 

@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import math
 
-from hand_sampler.inertia import compute_mass_and_inertia
-from hand_sampler.rotations import rpy_to_quat_wxyz
+from hand_sampler.geometry import compute_mass_and_inertia
+from hand_sampler.geometry import rpy_to_quat_wxyz
 
 from .sdf import MAX_DEPEN_VELOCITY, attr, define
 from .objects.generate_objects import OBJECT_ROOT_LINK

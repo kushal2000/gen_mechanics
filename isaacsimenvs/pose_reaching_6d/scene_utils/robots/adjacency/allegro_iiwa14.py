@@ -22,7 +22,7 @@ self-collisions enabled and no masking, which explodes at reset.
 
 from __future__ import annotations
 
-from hand_sampler.iiwa14_arm import ARM_ADJACENT_LINKS, ARM_TIP_LINK
+from hand_sampler.robot_spec import ARM_ADJACENT_LINKS, ARM_TIP_LINK
 
 
 _FINGERS = ("index", "middle", "ring", "thumb")

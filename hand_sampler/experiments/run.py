@@ -32,9 +32,9 @@ import pickle
 import random
 import time
 
-from hand_sampler import mutate as M
-from hand_sampler import sample as S
-from hand_sampler.experiments import stats as ST
+from hand_sampler import mutate_design
+from hand_sampler import gen_init_pop
+from hand_sampler.experiments import stats
 
 MODES = ("random", "min_joints", "max_joints")
 CHECKPOINT = "checkpoint.pkl.gz"
@@ -46,21 +46,19 @@ def select(rng: random.Random, pop: list, n: int, mode: str) -> list:
     """The ``n`` parents of the next generation."""
     if mode == "random":
         return rng.sample(pop, n)
-    # Random tiebreak. Without it ties resolve by list position, which is
-    # lineage order -- a selection pressure nobody asked for, and one that
-    # would bite hardest exactly at a floor or ceiling where ties are the rule.
+    # Random tiebreak.
     ranked = sorted(pop, key=lambda h: (h.n_joints, rng.random()),
                     reverse=(mode == "max_joints"))
     return ranked[:n]
 
 
 def step(rng: random.Random, pop: list, parents_n: int, children_n: int,
-         mode: str) -> tuple[list, M.Stats, int]:
+         mode: str) -> tuple[list, mutate_design.Stats, int]:
     """One generation: select, then mutate each parent ``children_n`` times."""
-    stats, nulls, children = M.Stats(), 0, []
+    stats, nulls, children = mutate_design.Stats(), 0, []
     for parent in select(rng, pop, parents_n, mode):
         for _ in range(children_n):
-            child = M.mutate(rng, parent, stats=stats)
+            child = mutate_design.mutate(rng, parent, stats=stats)
             if child is None:            # operator could not act on this hand
                 nulls += 1
                 child = parent
@@ -99,9 +97,7 @@ def main() -> None:
     if os.path.exists(ckpt):
         old = json.load(open(cfg_path))
         if old != cfg:
-            # Resuming under a different shape would splice two different
-            # experiments into one statistics file, with nothing in the output
-            # to show where the seam is.
+            # Resuming under a different shape would splice two different experiments into one statistics...
             raise SystemExit(
                 f"{args.out} was created with {old}, but this run asks for "
                 f"{cfg}. Use a new --out, or match the original settings.")
@@ -114,7 +110,7 @@ def main() -> None:
     else:
         json.dump(cfg, open(cfg_path, "w"), indent=2)
         rng = random.Random(args.seed)
-        pop = S.seed_population(args.seed, args.parents * args.children)
+        pop = gen_init_pop.seed_population(args.seed, args.parents * args.children)
         gen0 = 0
         print(f"seeded {len(pop)} hands, mode={args.mode}", flush=True)
 
@@ -123,7 +119,7 @@ def main() -> None:
         for i in range(args.gens):
             gen = gen0 + i
             pop, st, nulls = step(rng, pop, args.parents, args.children, args.mode)
-            row = ST.record(gen, pop, st, nulls)
+            row = stats.record(gen, pop, st, nulls)
             fh.write(json.dumps(row) + "\n")
             fh.flush()               # a killed run keeps every generation it finished
             if i % args.every == 0 or i == args.gens - 1:

@@ -41,17 +41,17 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from xml.dom import minidom
 
-from hand_sampler import params as P
-from hand_sampler import sharpa_anchors as A
-from hand_sampler.inertia import compute_mass_and_inertia as _compute_mass_and_inertia
-from hand_sampler.allegro_urdf import (
+from hand_sampler import params
+from hand_sampler import robot_spec
+from hand_sampler.geometry import compute_mass_and_inertia as _compute_mass_and_inertia
+from hand_sampler.robot_spec import (
     ARM_JOINTS,
     ARM_LINKS,
     ARM_MESH_PREFIX_TO,
     SHARPA_URDF,
     _rewrite_meshes,
 )
-from hand_sampler.paths import resolve as resolve_repo_path
+from hand_sampler import resolve as resolve_repo_path
 
 
 OUT_DIR = "assets/urdf/generated"
@@ -59,10 +59,8 @@ OUT_DIR = "assets/urdf/generated"
 PALM_LINK = "gen_palm"
 FLANGE_LINK = "iiwa14_link_ee"
 
-# A segment shorter than this gets no geometry: below roughly one radius a
-# capsule stops being a model of a segment and becomes a sphere whose volume
-# barely responds to length (see MC_MIN_LENGTH_M in sharpa_anchors).
-MIN_SEGMENT_M = A.MC_MIN_LENGTH_M
+# A segment shorter than this gets no geometry: below roughly one radius a capsule stops being...
+MIN_SEGMENT_M = robot_spec.MC_MIN_LENGTH_M
 
 GHOST_LIMIT = (0.0, 1e-8)
 
@@ -99,8 +97,8 @@ def _virtual_link(root: ET.Element, name: str) -> ET.Element:
     represents its own virtual links this way (mass 1e-6).
     """
     link = ET.SubElement(root, "link", {"name": name})
-    _add_inertial(link, A.VIRTUAL_LINK_MASS_KG,
-                  (A.VIRTUAL_LINK_INERTIA,) * 3)
+    _add_inertial(link, robot_spec.VIRTUAL_LINK_MASS_KG,
+                  (robot_spec.VIRTUAL_LINK_INERTIA,) * 3)
     return link
 
 
@@ -116,7 +114,7 @@ def has_collision_geometry(fp, tier: str) -> bool:
     length = fp.segment_length(tier)
     if length < MIN_SEGMENT_M:
         return False
-    return not _is_degenerate(length, A.TIER_RADIUS_M[tier] * fp.radius_scale)
+    return not _is_degenerate(length, robot_spec.TIER_RADIUS_M[tier] * fp.radius_scale)
 
 
 def _is_degenerate(length: float, radius: float) -> bool:
@@ -152,7 +150,7 @@ def _degenerate_link(root: ET.Element, name: str, *, length: float, radius: floa
     """Mass but no geometry -- see :func:`_is_degenerate`."""
     link = ET.SubElement(root, "link", {"name": name})
     mass, ixx, iyy, izz = _compute_mass_and_inertia(
-        (A.cylinder_part(length, radius), 2.0 * radius), density)
+        (robot_spec.cylinder_part(length, radius), 2.0 * radius), density)
     _add_inertial(link, mass, (ixx, iyy, izz),
                   (length / 2.0, 0.0, 0.0), (0.0, math.pi / 2.0, 0.0))
     return link
@@ -171,13 +169,8 @@ def _capsule_link(root: ET.Element, name: str, *, length: float, radius: float,
     """
     link = ET.SubElement(root, "link", {"name": name})
 
-    # The COLLISION cylinder carries only the capsule's cylindrical section:
-    # replace_cylinders_with_capsules adds a hemisphere of `radius` at each end,
-    # so emitting `length` here would give a shape 2r longer than the joint
-    # spacing (67.3 mm for a 47.0 mm phalanx) that overhangs both its joints.
-    # The VISUAL stays a full-length cylinder, since it is not converted -- both
-    # then span exactly `length`.
-    cyl = A.cylinder_part(length, radius)
+    # The COLLISION cylinder carries only the capsule's cylindrical section:...
+    cyl = robot_spec.cylinder_part(length, radius)
     mass, ixx, iyy, izz = _compute_mass_and_inertia((cyl, 2.0 * radius), density)
 
     geom_xyz = (length / 2.0, 0.0, 0.0)
@@ -189,12 +182,7 @@ def _capsule_link(root: ET.Element, name: str, *, length: float, radius: float,
     g = ET.SubElement(el, "geometry")
     ET.SubElement(g, "cylinder", {"length": _f(cyl), "radius": _f(radius)})
 
-    # Visual: the same capsule built by hand. URDF has no capsule primitive and
-    # replace_cylinders_with_capsules only touches COLLISION geometry, so a lone
-    # visual cylinder would render with flat ends while the thing being
-    # simulated has round ones. Spheres at both ends of the cylindrical section
-    # reproduce the collision shape exactly, so renders and videos show the hand
-    # that is actually in contact with the object.
+    # Visual: the same capsule built by hand.
     if cyl > 0.0:
         el = ET.SubElement(link, "visual")
         _origin(el, geom_xyz, geom_rpy)
@@ -223,7 +211,7 @@ def _box_link(root: ET.Element, name: str, *, extents, center, density: float) -
 
 
 def _joint(root: ET.Element, name: str, *, parent: str, child: str,
-           seg: P.Segment, limits: tuple[float, float], slot: str,
+           seg: params.Segment, limits: tuple[float, float], slot: str,
            ghost: bool) -> ET.Element:
     """One revolute joint. Axis is always [0 0 1], following SHARPA.
 
@@ -237,14 +225,11 @@ def _joint(root: ET.Element, name: str, *, parent: str, child: str,
     _origin(j, seg.xyz, seg.rpy)
     ET.SubElement(j, "axis", {"xyz": "0 0 1"})
     lo, hi = GHOST_LIMIT if ghost else limits
-    # Do NOT throttle a ghost joint's effort. It has to hold against grasp
-    # forces, and 1e-3 N.m could not -- ghosted joints were being pushed 21 deg
-    # open in training. The limit is compliant in PhysX; the actuator is what
-    # holds the joint shut.
-    effort = A.SLOT_EFFORT_NM[slot]
+    # Do NOT throttle a ghost joint's effort.
+    effort = robot_spec.SLOT_EFFORT_NM[slot]
     ET.SubElement(j, "limit", {
         "lower": _f(lo), "upper": _f(hi),
-        "effort": _f(effort), "velocity": _f(A.SLOT_VELOCITY_RAD_S[slot]),
+        "effort": _f(effort), "velocity": _f(robot_spec.SLOT_VELOCITY_RAD_S[slot]),
     })
     return j
 
@@ -269,7 +254,7 @@ LINK_PARTS: tuple[tuple[str, str | None], ...] = (
 )
 
 
-def _build_finger(root: ET.Element, index: int, fp: P.FingerParams) -> None:
+def _build_finger(root: ET.Element, index: int, fp: params.FingerParams) -> None:
     parts = [link_name(index, p) for p, _ in LINK_PARTS]
 
     # --- links ---
@@ -279,8 +264,8 @@ def _build_finger(root: ET.Element, index: int, fp: P.FingerParams) -> None:
             _virtual_link(root, name)
             continue
         length = fp.segment_length(tier)
-        radius = A.TIER_RADIUS_M[tier] * fp.radius_scale
-        density = A.TIER_DENSITY_KG_M3[tier]
+        radius = robot_spec.TIER_RADIUS_M[tier] * fp.radius_scale
+        density = robot_spec.TIER_DENSITY_KG_M3[tier]
         if length < MIN_SEGMENT_M:
             _virtual_link(root, name)
         elif _is_degenerate(length, radius):
@@ -291,29 +276,28 @@ def _build_finger(root: ET.Element, index: int, fp: P.FingerParams) -> None:
                           density=density)
 
     # --- joints ---
-    limits = dict(zip(P.JOINT_SLOTS, fp.limits))
-    enabled = dict(zip(P.JOINT_SLOTS, fp.enabled))
+    limits = dict(zip(params.JOINT_SLOTS, fp.limits))
+    enabled = dict(zip(params.JOINT_SLOTS, fp.enabled))
 
     def ghost(slot: str) -> bool:
         return (not fp.active) or (not enabled[slot])
 
-    chain: tuple[tuple[str, str, str, P.Segment], ...] = (
+    chain: tuple[tuple[str, str, str, params.Segment], ...] = (
         # slot,      parent,        child,       origin
         ("CMC_FE", PALM_LINK, parts[0], fp.mount),
         ("CMC_AA", parts[0], parts[1], fp.cmc),
         ("MCP_FE", parts[1], parts[2], fp.mc),
         ("MCP_AA", parts[2], parts[3], fp.mcp),
         ("PIP", parts[3], parts[4],
-         P.Segment(xyz=(fp.pp_length, 0.0, 0.0), rpy=P.ROLL_AA_TO_FE.rpy)),
+         params.Segment(xyz=(fp.pp_length, 0.0, 0.0), rpy=params.ROLL_AA_TO_FE.rpy)),
         ("DIP", parts[4], parts[5],
-         P.Segment(xyz=(fp.mp_length, 0.0, 0.0))),
+         params.Segment(xyz=(fp.mp_length, 0.0, 0.0))),
     )
     for slot, parent, child, seg in chain:
         _joint(root, joint_name(index, slot), parent=parent, child=child,
                seg=seg, limits=limits[slot], slot=slot, ghost=ghost(slot))
 
-    # Fingertip frame: fixed, so merge_fixed_joints folds it into DP and the
-    # fingertip *body* the task tracks is gen_f{i}_DP.
+    # Fingertip frame: fixed, so merge_fixed_joints folds it into DP and the fingertip *body* the...
     tip = ET.SubElement(root, "joint",
                         {"name": f"gen_f{index}_tip_fix", "type": "fixed"})
     ET.SubElement(tip, "parent", {"link": parts[5]})
@@ -321,9 +305,9 @@ def _build_finger(root: ET.Element, index: int, fp: P.FingerParams) -> None:
     _origin(tip, (fp.dp_length if fp.active else 0.0, 0.0, 0.0))
 
 
-def build_urdf(hand: P.HandParams, *, mount_yaw: float | None = None) -> ET.Element:
+def build_urdf(hand: params.HandParams, *, mount_yaw: float | None = None) -> ET.Element:
     """Assemble the complete robot: iiwa14 arm + generated hand."""
-    yaw = A.FLANGE_TO_PALM_YAW_RAD if mount_yaw is None else mount_yaw
+    yaw = robot_spec.FLANGE_TO_PALM_YAW_RAD if mount_yaw is None else mount_yaw
     sharpa = ET.parse(resolve_repo_path(SHARPA_URDF)).getroot()
 
     root = ET.Element("robot", {"name": f"iiwa14_{hand.name}"})
@@ -334,9 +318,9 @@ def build_urdf(hand: P.HandParams, *, mount_yaw: float | None = None) -> ET.Elem
         f"             arm is identical across every robot (docs/methodology.md 1).\n"
         f"     hand:   {hand.n_active_fingers} active finger(s), "
         f"{hand.n_active_joints} active joint(s) of "
-        f"{P.N_FINGER_SLOTS * P.N_JOINT_SLOTS} emitted;\n"
+        f"{params.N_FINGER_SLOTS * params.N_JOINT_SLOTS} emitted;\n"
         f"             the rest are ghosted so the articulation shape is fixed.\n"
-        f"     mount:  {FLANGE_LINK} -> {PALM_LINK} at z={A.FLANGE_TO_PALM_Z_M},\n"
+        f"     mount:  {FLANGE_LINK} -> {PALM_LINK} at z={robot_spec.FLANGE_TO_PALM_Z_M},\n"
         f"             yaw={yaw:.6f} rad ({math.degrees(yaw):.1f} deg), which is\n"
         f"             SHARPA's composed flange-to-palm transform.\n"
         f"     geometry: capsules; densities calibrated against SHARPA's measured\n"
@@ -355,18 +339,15 @@ def build_urdf(hand: P.HandParams, *, mount_yaw: float | None = None) -> ET.Elem
         if joint.get("name") in ARM_JOINTS:
             root.append(joint)
 
-    # --- palm ---
-    # The box centre tracks the palm's own height so it always starts at the
-    # flange and grows outward; a fixed centre would bury a taller palm in the
-    # wrist. At SHARPA's extents this is exactly the measured centre.
+    # --- palm --- The box centre tracks the palm's own height so it always starts at the flange...
     _box_link(root, PALM_LINK, extents=hand.palm_extents,
-              center=P.palm_center(hand.palm_extents),
-              density=A.PALM_DENSITY_KG_M3)
+              center=params.palm_center(hand.palm_extents),
+              density=robot_spec.PALM_DENSITY_KG_M3)
     mount = ET.SubElement(root, "joint",
                           {"name": "iiwa14_gen_palm", "type": "fixed"})
     ET.SubElement(mount, "parent", {"link": FLANGE_LINK})
     ET.SubElement(mount, "child", {"link": PALM_LINK})
-    _origin(mount, (0.0, 0.0, A.FLANGE_TO_PALM_Z_M), (0.0, 0.0, yaw))
+    _origin(mount, (0.0, 0.0, robot_spec.FLANGE_TO_PALM_Z_M), (0.0, 0.0, yaw))
 
     # --- fingers ---
     for i, fp in enumerate(hand.fingers):
@@ -375,7 +356,7 @@ def build_urdf(hand: P.HandParams, *, mount_yaw: float | None = None) -> ET.Elem
     return root
 
 
-def write_urdf(hand: P.HandParams, out_path: Path, *,
+def write_urdf(hand: params.HandParams, out_path: Path, *,
                mount_yaw: float | None = None) -> Path:
     root = build_urdf(hand, mount_yaw=mount_yaw)
     xml = minidom.parseString(ET.tostring(root, encoding="utf-8")).toprettyxml(
@@ -385,7 +366,7 @@ def write_urdf(hand: P.HandParams, out_path: Path, *,
     return out_path
 
 
-def urdf_path_for(hand: P.HandParams) -> Path:
+def urdf_path_for(hand: params.HandParams) -> Path:
     return resolve_repo_path(OUT_DIR) / f"{hand.name}.urdf"
 
 
@@ -405,23 +386,23 @@ def main() -> None:
     if args.population is not None:
         if args.seed is None:
             raise SystemExit("--population requires --seed")
-        hands = P.sample_population(args.seed, args.population,
+        hands = params.sample_population(args.seed, args.population,
                                     n_fingers=args.n_fingers)
     elif args.seed is not None:
         rng = random.Random(args.seed)
-        hands = [P.sample_valid(rng, name=f"gen_{args.seed:04d}_000",
+        hands = [params.sample_valid(rng, name=f"gen_{args.seed:04d}_000",
                                 n_fingers=args.n_fingers)]
     else:
         if args.params not in (None, "sharpa_like"):
             raise SystemExit(f"unknown --params {args.params!r}")
-        hands = [P.SHARPA_LIKE]
+        hands = [params.SHARPA_LIKE]
 
     for hand in hands:
         out = Path(args.out) if (args.out and len(hands) == 1) else urdf_path_for(hand)
         write_urdf(hand, out, mount_yaw=args.mount_yaw)
         print(f"[build_hand_urdf] {hand.name}: "
               f"{hand.n_active_fingers} fingers, "
-              f"{hand.n_active_joints}/{P.N_FINGER_SLOTS * P.N_JOINT_SLOTS} "
+              f"{hand.n_active_joints}/{params.N_FINGER_SLOTS * params.N_JOINT_SLOTS} "
               f"active joints -> {out}")
 
 

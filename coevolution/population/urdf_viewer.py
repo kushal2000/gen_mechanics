@@ -91,7 +91,7 @@ class UrdfBrowser:
         like, and a translucent box spanning the whole scene sits directly in
         front of the hand and washes out its geometry.
         """
-        from hand_sampler.workspace import TABLE_Z, table_extents
+        from hand_sampler.geometry import TABLE_Z, table_extents
 
         tx, ty, tz = table_extents()
         self.server.scene.add_box("/scene/table", dimensions=(tx, ty, tz),
@@ -154,7 +154,7 @@ class UrdfBrowser:
     def _urdf_path_for(self, name: str) -> Path:
         from isaacsimenvs.pose_reaching_6d.scene_utils.robots import REGISTRY
         from hand_sampler.urdf import urdf_path_for
-        from hand_sampler.paths import resolve as resolve_repo_path
+        from hand_sampler import resolve as resolve_repo_path
 
         if name in REGISTRY:
             return resolve_repo_path(REGISTRY[name].urdf_path)
@@ -170,8 +170,8 @@ class UrdfBrowser:
         import yourdfpy
         from viser.extras import ViserUrdf
 
-        from hand_sampler.iiwa14_arm import BASE_POS, BASE_ROT
-        from hand_sampler.workspace import _hull_collision_scene
+        from hand_sampler.robot_spec import BASE_POS, BASE_ROT
+        from hand_sampler.geometry import _hull_collision_scene
 
         path = self._urdf_path_for(name)
         if not path.is_file():

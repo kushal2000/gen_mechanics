@@ -113,7 +113,7 @@ _MUT = None
 
 def _init_worker():
     global _MUT
-    from hand_sampler import mutate as M
+    from hand_sampler import mutate_design as M
     _MUT = M
 
 

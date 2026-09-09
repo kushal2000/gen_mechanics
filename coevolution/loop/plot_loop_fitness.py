@@ -33,7 +33,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hand_sampler.paths import resolve as resolve_repo_path
+from hand_sampler import resolve as resolve_repo_path
 
 PER_10S = 10.0                      # 6,000 steps @ 60 Hz = 100 s
 OUT_DIR = "figures/frozen_controller_design_evolution"

@@ -20,7 +20,7 @@ Pairs are listed in both directions, matching the original.
 
 from __future__ import annotations
 
-from hand_sampler.iiwa14_arm import ARM_ADJACENT_LINKS
+from hand_sampler.robot_spec import ARM_ADJACENT_LINKS
 
 
 _HAND_ADJACENT_LINKS: dict[str, list[str]] = {

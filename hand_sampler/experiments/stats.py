@@ -12,11 +12,11 @@ from __future__ import annotations
 import math
 from collections import Counter
 
-from hand_sampler import genotype as G
-from hand_sampler import mutate as M
+from hand_sampler import design_space
+from hand_sampler import mutate_design
 
 
-def topology(hand: G.Hand) -> tuple:
+def topology(hand: design_space.Hand) -> tuple:
     """The discrete skeleton of a design -- what is left after forgetting every
     length and angle.
 
@@ -33,7 +33,7 @@ def _q(sorted_xs: list, q: float):
     return sorted_xs[min(len(sorted_xs) - 1, int(q * len(sorted_xs)))]
 
 
-def record(gen: int, pop: list, stats: M.Stats, nulls: int) -> dict:
+def record(gen: int, pop: list, stats: mutate_design.Stats, nulls: int) -> dict:
     """Summarise one generation.
 
     The joint HISTOGRAM is recorded, not just percentiles: the question of
@@ -59,8 +59,8 @@ def record(gen: int, pop: list, stats: M.Stats, nulls: int) -> dict:
         offset_deg=math.degrees(mean([abs(s.joint.offset) for s in segs])),
         palm_w_mm=1000 * mean([h.palm.width for h in pop]),
         palm_l_mm=1000 * mean([h.palm.length for h in pop]),
-        face_share={f: faces.get(f, 0) / n_faces for f in G.FINGER_FACES},
+        face_share={f: faces.get(f, 0) / n_faces for f in design_space.FINGER_FACES},
         topology_diversity=len({topology(h) for h in pop}) / len(pop),
         null_rate=nulls / len(pop),
-        rates={op: stats.rate(op) for op in M.OPERATORS},
+        rates={op: stats.rate(op) for op in mutate_design.OPERATORS},
     )

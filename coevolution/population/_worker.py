@@ -85,7 +85,7 @@ def run(conn, args) -> None:
     from isaacsimenvs.pose_reaching_6d.scene_utils.robots import REGISTRY
     from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
     from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
-    from hand_sampler.paths import resolve as resolve_repo_path
+    from hand_sampler import resolve as resolve_repo_path
 
     is_population_design = args.design not in REGISTRY and args.design.startswith("gen_") \
         and args.design.count("_") == 2 and args.design.split("_")[-1].isdigit() \

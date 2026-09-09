@@ -34,11 +34,11 @@ from pathlib import Path
 import numpy as np
 
 from hand_sampler import params as P
-from hand_sampler import sharpa_anchors as A
-from hand_sampler.allegro_urdf import ARM_JOINTS, ARM_LINKS, SHARPA_URDF, _rewrite_meshes
-from hand_sampler.inertia import compute_mass_and_inertia
-from hand_sampler.paths import resolve as resolve_repo_path
-from hand_sampler.rotations import mat_to_pos_quat, rpy_to_mat, rpy_to_quat_wxyz
+from hand_sampler import robot_spec as A
+from hand_sampler.robot_spec import ARM_JOINTS, ARM_LINKS, SHARPA_URDF, _rewrite_meshes
+from hand_sampler.geometry import compute_mass_and_inertia
+from hand_sampler import resolve as resolve_repo_path
+from hand_sampler.geometry import mat_to_pos_quat, rpy_to_mat, rpy_to_quat_wxyz
 from hand_sampler.urdf import has_collision_geometry
 
 from .sdf import MAX_DEPEN_VELOCITY, attr, define, rel, set_xform

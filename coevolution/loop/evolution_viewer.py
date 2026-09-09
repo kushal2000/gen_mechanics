@@ -57,7 +57,7 @@ class EvolutionViewer:
     def __init__(self, args) -> None:
         import viser
 
-        from hand_sampler.paths import resolve as resolve_repo_path
+        from hand_sampler import resolve as resolve_repo_path
 
         self.args = args
         self.root = resolve_repo_path(LOOP_DIR)
@@ -91,7 +91,7 @@ class EvolutionViewer:
 
     # --- scene ------------------------------------------------------------
     def _draw_scene(self) -> None:
-        from hand_sampler.workspace import TABLE_Z, table_extents
+        from hand_sampler.geometry import TABLE_Z, table_extents
 
         tx, ty, tz = table_extents()
         self.server.scene.add_box("/scene/table", dimensions=(tx, ty, tz),
@@ -102,7 +102,7 @@ class EvolutionViewer:
     # --- data -------------------------------------------------------------
     def _load(self, arm: str, it: int) -> tuple[list[dict], list[float] | None]:
         """Manifest entries plus per-slot fitness, LRU-cached."""
-        from hand_sampler.paths import resolve as resolve_repo_path
+        from hand_sampler import resolve as resolve_repo_path
 
         key = (arm, it)
         if key in self._cache:
@@ -207,10 +207,10 @@ class EvolutionViewer:
 
         from hand_sampler.population import hand_from_json
         from hand_sampler.synth_spec import synth_spec
-        from hand_sampler.iiwa14_arm import BASE_POS, BASE_ROT
+        from hand_sampler.robot_spec import BASE_POS, BASE_ROT
         from hand_sampler.urdf import OUT_DIR, write_urdf
-        from hand_sampler.workspace import _hull_collision_scene
-        from hand_sampler.paths import resolve as resolve_repo_path
+        from hand_sampler.geometry import _hull_collision_scene
+        from hand_sampler import resolve as resolve_repo_path
 
         entry = self._hands[slot]
         hand = hand_from_json(entry["params"])
@@ -244,7 +244,7 @@ class EvolutionViewer:
         self._cur_slot = slot
 
     def _describe(self, slot: int, hand) -> str:
-        from hand_sampler.mutate import phenotype
+        from hand_sampler.mutate_design import phenotype
 
         e = self._hands[slot]
         ph = phenotype(hand)

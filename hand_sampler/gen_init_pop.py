@@ -17,9 +17,9 @@ from __future__ import annotations
 import math
 import random
 
-from hand_sampler import genotype as G
-from hand_sampler import validate as V
-from hand_sampler.kinematics import mount_uv_bounds
+from hand_sampler import design_space
+from hand_sampler import validate_design
+from hand_sampler.design_space import mount_uv_bounds
 
 SEED_FACE_PAIRS: tuple[tuple[str, str], ...] = (
     ("+y", "+z"),
@@ -62,18 +62,18 @@ SEED_PALM = (
 )
 
 
-def seed_finger(rng: random.Random, face: str, palm: G.Palm) -> G.Finger:
+def seed_finger(rng: random.Random, face: str, palm: design_space.Palm) -> design_space.Finger:
     n = rng.choice(SEED_JOINTS)
     segments = tuple(
-        G.Segment(G.Joint(theta=rng.choice(SEED_THETAS), phi=math.pi / 2),
+        design_space.Segment(design_space.Joint(theta=rng.choice(SEED_THETAS), phi=math.pi / 2),
                   length=rng.choice(SEED_LENGTHS))
         for _ in range(n)
     )
-    return G.Finger(mount=G.Mount(face, *_seed_uv(rng, face, palm)),
+    return design_space.Finger(mount=design_space.Mount(face, *_seed_uv(rng, face, palm)),
                     segments=segments)
 
 
-def _seed_uv(rng: random.Random, face: str, palm: G.Palm) -> tuple[float, float]:
+def _seed_uv(rng: random.Random, face: str, palm: design_space.Palm) -> tuple[float, float]:
     """Where on a face a seed finger mounts -- NOT the same rule on every face.
 
     Normalised (u, v) mean different physical directions per face: on `+-y` the v
@@ -90,22 +90,22 @@ def _seed_uv(rng: random.Random, face: str, palm: G.Palm) -> tuple[float, float]
     return u, min(max(v, lo_v), hi_v)
 
 
-def seed_hand(rng: random.Random) -> G.Hand:
+def seed_hand(rng: random.Random) -> design_space.Hand:
     """One seed. Retries rather than repairs -- see `seed_population`."""
     faces = SEED_FACE_PAIRS[rng.randrange(len(SEED_FACE_PAIRS))]
-    palm = G.Palm(*SEED_PALM[rng.randrange(len(SEED_PALM))])
-    return G.Hand(palm=palm,
+    palm = design_space.Palm(*SEED_PALM[rng.randrange(len(SEED_PALM))])
+    return design_space.Hand(palm=palm,
                   fingers=tuple(seed_finger(rng, f, palm) for f in faces))
 
 
-def seed_population(seed: int, count: int, max_tries: int = 50) -> list[G.Hand]:
+def seed_population(seed: int, count: int, max_tries: int = 50) -> list[design_space.Hand]:
     """``count`` valid seeds, by rejection rather than repair."""
     rng = random.Random(seed)
-    out: list[G.Hand] = []
+    out: list[design_space.Hand] = []
     while len(out) < count:
         for _ in range(max_tries):
             hand = seed_hand(rng)
-            if V.is_valid(hand):
+            if validate_design.is_valid(hand):
                 out.append(hand)
                 break
         else:

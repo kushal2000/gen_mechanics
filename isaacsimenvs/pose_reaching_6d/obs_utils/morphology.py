@@ -65,8 +65,8 @@ import numpy as np
 import torch
 
 from hand_sampler import params as P
-from hand_sampler import sharpa_anchors as anchors
-from hand_sampler.rotations import rpy_to_rot6d as _rpy_to_rot6d
+from hand_sampler import robot_spec as anchors
+from hand_sampler.geometry import rpy_to_rot6d as _rpy_to_rot6d
 
 # Tier order used by every per-link block below.
 TIERS: tuple[str, ...] = ("mc", "pp", "mp", "dp")

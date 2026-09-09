@@ -20,7 +20,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-from hand_sampler.paths import resolve
+from hand_sampler import resolve
 
 
 def _values(node: ET.Element | None, key: str, default) -> np.ndarray:
