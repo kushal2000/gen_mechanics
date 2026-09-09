@@ -662,3 +662,49 @@ def test_generated_hands_use_the_same_token_function():
     boxes, valid, scale = design_space.joint_boxes(hand)
     assert boxes.shape == (hand.n_joints, 4, 3)
     assert valid.all() and scale > 0.0
+
+
+# --- many designs, one articulation ------------------------------------------
+
+def test_population_projects_onto_one_template():
+    from hand_sampler.robot_spec import population_spec
+    hands = gen_init_pop.seed_population(seed=0, count=16)
+    pop = population_spec(hands)
+    J = design_space.MAX_FINGERS * design_space.MAX_JOINTS_PER_FINGER
+    assert pop.spec.num_hand_joints == J
+    assert pop.joint_link_boxes.shape == (16, J, 4, 3)
+    assert pop.joint_valid.shape == (16, J)
+    assert pop.joint_limits.shape == (16, J, 2)
+    assert pop.fingertip_valid.shape == (16, design_space.MAX_FINGERS)
+
+
+def test_a_designs_real_joints_land_in_its_own_finger_slots():
+    from hand_sampler.robot_spec import population_spec
+    hands = gen_init_pop.seed_population(seed=0, count=8)
+    pop = population_spec(hands)
+    D = design_space.MAX_JOINTS_PER_FINGER
+    for i, hand in enumerate(hands):
+        expected = [f * D + d for f, finger in enumerate(hand.fingers)
+                    for d in range(finger.n_joints)]
+        assert np.flatnonzero(pop.joint_valid[i]).tolist() == expected
+        boxes, _valid, _scale = design_space.joint_boxes(hand)
+        assert np.abs(pop.joint_link_boxes[i][pop.joint_valid[i]] - boxes).max() == 0.0
+
+
+def test_ghost_joints_are_locked_so_joint_enabled_reads_zero():
+    """reset.py derives joint_enabled as upper - lower > 1e-6."""
+    from hand_sampler.robot_spec import population_spec
+    pop = population_spec(gen_init_pop.seed_population(seed=1, count=8))
+    ghosts = ~pop.joint_valid
+    assert np.all(pop.joint_limits[ghosts] == 0.0)
+    enabled = pop.joint_limits[..., 1] - pop.joint_limits[..., 0] > 1e-6
+    assert np.array_equal(enabled, pop.joint_valid)
+
+
+def test_sharpa_fits_the_generated_envelope():
+    """The reference hand is a point the template can hold: 5 fingers, <= 6 each."""
+    from hand_sampler.robot_spec import population_spec
+    hand = design_space.hand_from_urdf(SHARPA_URDF, _sharpa_joint_names())
+    pop = population_spec([hand])
+    assert pop.joint_valid.sum() == hand.n_joints == 22
+    assert sorted(f.n_joints for f in hand.fingers) == [4, 4, 4, 5, 5]

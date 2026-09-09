@@ -246,3 +246,96 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
         base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT,
         notes=f"derived from a Hand: {hand.n_fingers} fingers, {hand.n_joints} joints",
     )
+
+
+@dataclass(frozen=True)
+class HandPopulation:
+    """Many designs sharing one articulation template.
+
+    A scene is one articulation with one DOF count, so every design is authored
+    into the same ``MAX_FINGERS x MAX_JOINTS_PER_FINGER`` envelope and the ones
+    it does not use are locked: equal limits, zero-length links. ``spec`` is that
+    template, identical for every env; the arrays are per design, gathered by
+    env at reset.
+
+    Ghost links are zero length, so finger ``i``'s template tip body sits exactly
+    where its real tip does -- but a ghost FINGER's tip sits at the palm, which
+    is why ``fingertip_valid`` exists.
+    """
+
+    spec: RobotSpec
+    hands: tuple
+    joint_link_boxes: "np.ndarray"   # (n, J, 4, 3)
+    joint_valid: "np.ndarray"        # (n, J) bool
+    joint_limits: "np.ndarray"       # (n, J, 2)
+    hand_scale: "np.ndarray"         # (n,)
+    fingertip_valid: "np.ndarray"    # (n, F) bool
+
+    @property
+    def n_designs(self) -> int:
+        return len(self.hands)
+
+
+def population_spec(hands, *, name: str = "generated_population") -> HandPopulation:
+    """Project many ``Hand`` trees onto one template plus per-design tables."""
+    import numpy as np
+
+    from hand_sampler import design_space
+    from hand_sampler import robot_param_constants as rpc
+
+    F, D = design_space.MAX_FINGERS, design_space.MAX_JOINTS_PER_FINGER
+    J = F * D
+    slot = lambda f, d: f * D + d
+
+    names = tuple(f"f{f}_j{d}" for f in range(F) for d in range(D))
+    tips = tuple(f"f{f}_link{D - 1}" for f in range(F))
+    # Every generated joint has the same actuator, so the template carries the
+    # gains and no per-design override is needed -- only geometry and limits.
+    e, v, k, b, a, fr = rpc.gen_joint_drive()
+    spec = RobotSpec(
+        name=name, arm_name=rpc.ARM_NAME, hand_name="generated", urdf_path="",
+        arm_joint_names=rpc.ARM_JOINT_NAMES, hand_joint_names=names,
+        palm_body_name=rpc.ARM_TIP_LINK, fingertip_body_names=tips,
+        arm_stiffness=rpc.ARM_STIFFNESS, arm_damping=rpc.ARM_DAMPING,
+        hand_stiffness={n: k for n in names}, hand_damping={n: b for n in names},
+        hand_armature={n: a for n in names}, hand_friction={n: fr for n in names},
+        arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
+        hand_default_joint_pos={n: 0.0 for n in names},
+        start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
+        palm_center_offset=(0.0, 0.0, 0.0),
+        adjacent_links=dict(rpc.ARM_ADJACENT_LINKS),
+        link_prim_regexes=(".*",),
+        base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT,
+        joint_link_bodies=tuple(f"f{f}_link{d}" for f in range(F) for d in range(D)),
+        joint_link_boxes=tuple(((0.0,) * 3,) * 4 for _ in range(J)),
+        joint_geometry_valid=(False,) * J, hand_scale=1.0,
+        notes=f"template for {len(hands)} designs, envelope {F}x{D}={J}",
+    )
+
+    n = len(hands)
+    boxes = np.zeros((n, J, 4, 3), dtype=np.float32)
+    valid = np.zeros((n, J), dtype=bool)
+    limits = np.zeros((n, J, 2), dtype=np.float32)   # ghosts stay (0, 0): locked
+    scale = np.zeros((n,), dtype=np.float32)
+    ft_valid = np.zeros((n, F), dtype=bool)
+
+    for i, hand in enumerate(hands):
+        if hand.n_fingers > F:
+            raise ValueError(f"design {i} has {hand.n_fingers} fingers, envelope allows {F}")
+        b_i, v_i, s_i = design_space.joint_boxes(hand)
+        scale[i] = s_i
+        seen = 0
+        for f, finger in enumerate(hand.fingers):
+            if finger.n_joints > D:
+                raise ValueError(
+                    f"design {i} finger {f} has {finger.n_joints} joints, envelope allows {D}")
+            ft_valid[i, f] = True
+            for d, seg in enumerate(finger.segments):
+                s = slot(f, d)
+                boxes[i, s] = b_i[seen]
+                valid[i, s] = bool(v_i[seen])
+                limits[i, s] = seg.joint.limits or design_space.JOINT_LIMIT
+                seen += 1
+    return HandPopulation(spec=spec, hands=tuple(hands), joint_link_boxes=boxes,
+                          joint_valid=valid, joint_limits=limits, hand_scale=scale,
+                          fingertip_valid=ft_valid)
