@@ -72,6 +72,15 @@ def _resolve_spec(cfg):
     """``(population, spec)``. A population defines the layout through its
     template, so ``assets.robot_spec`` is ignored when one is supplied."""
     population = getattr(cfg.assets, "robot_population", None)
+    if population is None and getattr(cfg.assets, "robot_population_seed", -1) >= 0:
+        from hand_sampler import gen_init_pop
+        from hand_sampler.robot_spec import population_spec
+        count = int(cfg.assets.robot_population_count)
+        if count <= 0:
+            raise ValueError("robot_population_seed is set but robot_population_count is 0")
+        population = population_spec(
+            gen_init_pop.seed_population(int(cfg.assets.robot_population_seed), count),
+            name=f"gen_s{cfg.assets.robot_population_seed}_n{count}")
     if population is None:
         return None, get_robot_spec(cfg.assets.robot_spec)
     return population, population.spec

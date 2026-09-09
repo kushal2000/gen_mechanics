@@ -1,0 +1,35 @@
+#!/bin/bash
+#SBATCH --job-name=pop_smoke
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=00:40:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop_smoke-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop_smoke-%j.err
+
+# FIRST EXECUTION of the generated-hand path. Nothing below the data layer has
+# ever run: author_hand writes USD prims, and pxr does not import outside Kit,
+# so none of it could be tested offline.
+#
+# What this is checking, in the order it will fail:
+#   1. the articulation builds at all -- 30 DOFs, 30 hand bodies per env
+#   2. find_bodies resolves all 30 f{f}_link{d} names and 5 fingertips
+#   3. materials' reconstructed shape layout matches PhysX (it spot-checks 8)
+#   4. joint_enabled is 0 exactly on the slots a design does not use
+#   5. three epochs of rollout without NaN
+#
+# Small on purpose: 8 designs over 768 envs, so a failure is legible and the
+# whole thing fits in a 40 minute window.
+set -euo pipefail
+export D_MODEL=64 TRANSFORMER_LAYERS=4
+export PHASE=train STUDY_ID=pop_smoke_v1 MODEL_TAG=pop_d64_l4
+export POP_SEED=0 POP_COUNT=8
+export NUM_ENVS_PER_GPU=384 GLOBAL_MINIBATCH=2048 SEED=100
+export WANDB_ACTIVATE=0 CAPTURE_VIEWER=0
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
+export MAX_EPOCHS=3
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh

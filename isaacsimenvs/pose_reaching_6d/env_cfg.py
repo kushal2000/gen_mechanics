@@ -27,9 +27,12 @@ class AssetsCfg:
     robot_spec: str = "sharpa_iiwa14"
     robot_urdf: str = ""  # overrides spec.urdf_path; the joint set must still match
     # A hand_sampler.HandPopulation injected in code: every env holds one of its
-    # designs, and its template spec replaces robot_spec. Not settable from
-    # hydra -- a population is built, not named.
+    # designs, and its template spec replaces robot_spec.
     robot_population: object | None = None
+    # Or name one from hydra: seed >= 0 draws robot_population_count designs
+    # from the grammar. An object, if given, wins.
+    robot_population_seed: int = -1
+    robot_population_count: int = 0
     table_urdf: str = "assets/urdf/table_narrow.urdf"
 
     handle_head_types: tuple[str, ...] = (
