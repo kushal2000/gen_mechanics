@@ -67,6 +67,16 @@ mkdir -p "$TORCHINDUCTOR_CACHE_DIR" "$OMNI_KIT_CACHE_PATH"
 echo "Run: $SCALING_RUN_DIR"
 echo "shared_actor_critic=d${D_MODEL}/L${TRANSFORMER_LAYERS} heads=1 ff=2 seed=$SEED"
 echo "global_envs=$((2 * NUM_ENVS_PER_GPU)) global_minibatch=$GLOBAL_MINIBATCH local_minibatch=$LOCAL_BATCH"
+# Slurm resolves --output before the job starts, so it cannot be pointed
+# inside a directory mktemp has not created yet. Link the job's streams in
+# after the fact: everything for a run is then reachable from its own
+# directory, while an early failure still lands in a file that exists.
+if [[ -n "${SLURM_JOB_ID:-}" ]]; then
+    while read -r stream path; do
+        [[ -n "$path" && "$path" != /dev/null ]] && ln -sfn "$path" "$SCALING_RUN_DIR/slurm.$stream"
+    done < <(scontrol show job "$SLURM_JOB_ID" 2>/dev/null \
+             | tr ' ' '\n' | sed -n 's|^StdOut=|out |p; s|^StdErr=|err |p')
+fi
 git rev-parse HEAD > "$SCALING_RUN_DIR/git_commit.txt"
 git diff > "$SCALING_RUN_DIR/worktree.patch"
 nvidia-smi > "$SCALING_RUN_DIR/gpus.txt"
