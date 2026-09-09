@@ -24,6 +24,7 @@ import math
 
 ARM_NAME = "iiwa14"
 
+# --- joints --------------------------------------------------------------------
 ARM_JOINT_NAMES: tuple[str, ...] = (
     "iiwa14_joint_1",
     "iiwa14_joint_2",
@@ -34,6 +35,7 @@ ARM_JOINT_NAMES: tuple[str, ...] = (
     "iiwa14_joint_7",
 )
 
+# --- gains and home pose -------------------------------------------------------
 ARM_STIFFNESS: dict[str, float] = {
     "iiwa14_joint_1": 600.0,
     "iiwa14_joint_2": 600.0,
@@ -64,12 +66,13 @@ ARM_DEFAULT_JOINT_POS: dict[str, float] = {
     "iiwa14_joint_7": 1.308,
 }
 
-# Applied on top of the home pose when reset.start_arm_higher is set, which the DexToolBench...
+# Applied on top of the home pose when reset.start_arm_higher is set.
 START_ARM_HIGHER_DELTAS: dict[str, float] = {
     "iiwa14_joint_2": -math.radians(10.0),
     "iiwa14_joint_4": +math.radians(10.0),
 }
 
+# --- placement and self-collision ----------------------------------------------
 # Base placement on the table.
 BASE_POS: tuple[float, float, float] = (0.0, 0.8, 0.0)
 BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
@@ -105,12 +108,14 @@ assert set(ARM_DEFAULT_JOINT_POS) == set(ARM_JOINT_NAMES)
 # flange and virtual-link scalars are representation-neutral.
 # =============================================================================
 
+# --- the asset -----------------------------------------------------------------
 SHARPA_URDF = "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
 ARM_LINKS = tuple(f"iiwa14_link_{i}" for i in range(8)) + ("iiwa14_link_ee",)
 ARM_JOINTS = tuple(f"iiwa14_joint_{i}" for i in range(1, 8)) + ("iiwa14_joint_ee",)
 
 
-# --- capsule tiers --------------------------------------------------------- Radius is half...
+# --- capsule tiers -------------------------------------------------------------
+# Radius is half the measured cross-section; one capsule per phalanx tier.
 TIER_RADIUS_M: dict[str, float] = {
     "mc": 0.019348576781339943,
     "pp": 0.010165722109377384,
@@ -134,7 +139,7 @@ TIER_MASS_KG: dict[str, float] = {
     "dp": 0.004103,   # left_index_DP + _elastomer + _fingertip
 }
 
-# rho = mass / capsule_volume(nominal_length, radius), where the capsule's TOTAL length --...
+# rho = mass / capsule_volume(nominal_length, radius), on the TOTAL capsule length.
 TIER_DENSITY_KG_M3: dict[str, float] = {
     "mc": 1853.918713613545,
     "pp": 3168.7741471413146,
@@ -142,10 +147,11 @@ TIER_DENSITY_KG_M3: dict[str, float] = {
     "dp": 1149.0599166926079,
 }
 
-# The metacarpal density comes from the THUMB, not the pinky.
+# Below this a metacarpal is a virtual link rather than a capsule.
 MC_MIN_LENGTH_M: float = 0.005
 
-# --- palm ------------------------------------------------------------------ Modelled as a...
+# --- palm ----------------------------------------------------------------------
+# Modelled as a box, not a mesh.
 PALM_EXTENTS_M: tuple[float, float, float] = (
     0.04989549145102501,
     0.08517111465334892,
@@ -157,7 +163,8 @@ PALM_DENSITY_KG_M3: float = 1961.9482523719728
 # Where the palm box sits in the palm link frame.
 PALM_BOX_CENTER_M: tuple[float, float, float] = (0.00034, -0.00109, 0.04320)
 
-# --- actuation, per joint slot --------------------------------------------- URDF...
+# --- actuation, per joint slot -------------------------------------------------
+# Effort and velocity ceilings as the URDF declares them.
 SLOT_EFFORT_NM: dict[str, float] = {
     "CMC_FE": 3.3,
     "CMC_AA": 3.3,
@@ -175,7 +182,7 @@ SLOT_VELOCITY_RAD_S: dict[str, float] = {
     "DIP": 14.66594768,
 }
 
-# Per-slot PD gains, damping and armature, from the SHARPA spec's per-tier values...
+# Per-slot PD gains, damping and armature, from the SHARPA spec's per-tier values.
 SLOT_STIFFNESS: dict[str, float] = {
     "CMC_FE": 1.38, "CMC_AA": 1.38,
     "MCP_FE": 4.76, "MCP_AA": 6.62,
@@ -192,12 +199,14 @@ SLOT_ARMATURE: dict[str, float] = {
     "PIP": 0.0006, "DIP": 0.00042,
 }
 
-# --- virtual / ghost links ------------------------------------------------- SHARPA already...
+# --- virtual / ghost links -----------------------------------------------------
+# Near-zero so a disabled slot keeps its link without adding mass.
 VIRTUAL_LINK_MASS_KG: float = 1e-6
 VIRTUAL_LINK_INERTIA: float = 1e-6
 
 
-# --- flange -> palm -------------------------------------------------------- SHARPA reaches...
+# --- flange -> palm ------------------------------------------------------------
+# Where the hand attaches to the arm's last link.
 FLANGE_TO_PALM_Z_M: float = 0.05
 FLANGE_TO_PALM_YAW_RAD: float = -1.3089969389957472   # -75 deg
 
@@ -215,6 +224,7 @@ def cylinder_part(total_length: float, radius: float) -> float:
 # generated hand is heavier or lighter than SHARPA for a reason we can name.
 # =============================================================================
 
+# --- links ---------------------------------------------------------------------
 # The proximal tier: a generated link is one capsule, not a three-tier chain.
 GEN_LINK_RADIUS_M: float = TIER_RADIUS_M["pp"]
 
@@ -222,6 +232,7 @@ GEN_LINK_RADIUS_M: float = TIER_RADIUS_M["pp"]
 GEN_LINK_DENSITY_KG_M3: float = TIER_MASS_KG["pp"] / (
     math.pi * TIER_RADIUS_M["pp"] ** 2 * TIER_NOMINAL_LENGTH_M["pp"])
 
+# --- actuation -----------------------------------------------------------------
 # One actuator type for every generated joint: SHARPA's PIP, its middle joint.
 GEN_JOINT_EFFORT_NM: float = SLOT_EFFORT_NM["PIP"]
 GEN_JOINT_VELOCITY_RAD_S: float = SLOT_VELOCITY_RAD_S["PIP"]
@@ -229,6 +240,7 @@ GEN_JOINT_STIFFNESS: float = SLOT_STIFFNESS["PIP"]
 GEN_JOINT_DAMPING: float = SLOT_DAMPING["PIP"]
 GEN_JOINT_ARMATURE: float = SLOT_ARMATURE["PIP"]
 
-# The palm is a box; SHARPA's density, so a bigger palm weighs more.
+# --- palm ----------------------------------------------------------------------
+# A box at SHARPA's density, so a bigger palm weighs more.
 GEN_PALM_DENSITY_KG_M3: float = PALM_MASS_KG / (
     PALM_EXTENTS_M[0] * PALM_EXTENTS_M[1] * PALM_EXTENTS_M[2])
