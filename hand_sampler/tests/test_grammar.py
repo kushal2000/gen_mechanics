@@ -1,9 +1,4 @@
-"""Properties the grammar must hold, not examples of it working.
-
-The load-bearing ones are ``test_operators_are_unbiased`` (the no-parsimony-
-penalty position depends on additions and removals being equally available) and
-``test_exact_inverse`` (which is what makes that measurable at all).
-"""
+"""Properties the grammar must hold, not examples of it working."""
 
 from __future__ import annotations
 
@@ -41,8 +36,7 @@ def test_axis_is_unit():
 
 
 def test_mount_frame_orthonormal_on_every_face():
-    """The frame degenerates when a finger points along GRASP_DIR, which a mount
-    tilt can reach even though no face normal does."""
+    """The frame degenerates when a finger points along GRASP_DIR, which a mount tilt can..."""
     palm = design_space.Palm(0.025, 0.060, 0.060)
     for face in design_space.FINGER_FACES:
         _, R = design_space.mount_frame(design_space.Mount(face, 0.5, 0.5), palm)
@@ -72,8 +66,7 @@ def test_every_operator_can_act(pop):
 
 
 def test_mutation_is_closed(pop):
-    """Every operator returns a valid hand or raises. Nothing downstream
-    re-checks, so a leak here becomes an invalid design in a population file."""
+    """Every operator returns a valid hand or raises."""
     rng = random.Random(2)
     h = pop[0]
     for _ in range(3000):
@@ -84,8 +77,7 @@ def test_mutation_is_closed(pop):
 
 
 def test_split_link_preserves_reach(pop):
-    """Splitting divides a link and merging restores it, so reach is unchanged --
-    which is what makes merge_links an exact inverse rather than a shortening."""
+    """Splitting divides a link and merging restores it, so reach is unchanged -- which is..."""
     rng = random.Random(3)
     for h in pop[:60]:
         c = mutate_design.mutate(rng, h, "split_link")
@@ -97,8 +89,7 @@ def test_split_link_preserves_reach(pop):
 @pytest.mark.parametrize("add,remove", [("split_link", "merge_links"),
                                         ("add_finger", "remove_finger")])
 def test_exact_inverse(pop, add, remove):
-    """Add then remove must return the ORIGINAL hand, not a nearby one. That is
-    what the angle and length grids buy; continuous parameters would leak."""
+    """Add then remove must return the ORIGINAL hand, not a nearby one."""
     rng = random.Random(4)
     tried = recovered = 0
     for h in pop[:60]:
@@ -114,25 +105,7 @@ def test_exact_inverse(pop, add, remove):
 
 
 def test_operators_are_unbiased(pop):
-    """Per move, complexity must be as likely to fall as to rise.
-
-    MEASURED PER MOVE, NOT AS ENDPOINT DRIFT -- earlier attempts measured where an
-    unselected walk ends up, and both were artifacts of the starting hand.
-
-    Tested where the space is interior. Balance falls with depth, and with four
-    structural operators the reason is visible per-operator:
-
-        n    split  merge  add_finger  remove_finger   P(up)
-        4     97%    89%      100%          62%        56.1%
-        6     96%    92%       73%          83%        48.3%
-       10    100%   100%       52%          80%        45.5%
-       14     93%   100%       16%          70%        38.7%
-
-    ``add_finger`` collapses as the palm fills while ``merge_links`` stays near
-    100%, so a deep hand drifts down. That is palm CAPACITY, not operator bias --
-    ``perturb_palm`` is what relieves it. A single pooled add operator hid this,
-    because splits kept succeeding under the same name once the palm was full.
-    """
+    """Per move, complexity must be as likely to fall as to rise."""
     def at_least(h, target, seed):
         rng = random.Random(seed)
         for _ in range(8000):
@@ -160,9 +133,7 @@ def test_operators_are_unbiased(pop):
 
 
 def test_deep_fingers_are_reachable(pop):
-    """Depth must be reachable, not merely slower. Removing the coincident-joint
-    attach point left only 'split a long enough link' and 'start a new finger',
-    which makes depth depend on length."""
+    """Depth must be reachable, not merely slower."""
     rng = random.Random(0)
     best = 0
     for s in range(12):
@@ -180,11 +151,7 @@ def test_identical_hands_compare_equal(pop):
     b = design_space.Hand(palm=design_space.Palm(*a.palm.extents), fingers=a.fingers)
     assert a == b and hash(a) == hash(b)
 def _closest_approach(hand, starts=4):
-    """How near two fingertips can be brought, over all joint angles.
-
-    By local optimisation, not random sampling: uniform sampling of a 4-D joint
-    space is sparse enough to report false failures.
-    """
+    """How near two fingertips can be brought, over all joint angles."""
     from scipy.optimize import minimize
 
     lo, hi = design_space.JOINT_LIMIT
@@ -207,17 +174,7 @@ def _closest_approach(hand, starts=4):
 
 
 def test_seeds_give_a_gradient_to_select_on(pop):
-    """Most of generation 0 must be able to touch the object -- not all of it.
-
-    The failure guarded is every seed scoring zero, leaving nothing to select on.
-    Hit once for real: an earlier seed set paired fingers on opposite faces and
-    58% of the population could not reach the object at any joint angles.
-
-    It deliberately does NOT require that every seed closes. One-joint fingers
-    often cannot, and forcing two joints everywhere would put the whole
-    population at four motors -- deleting the cheap end of the
-    performance-vs-motors curve, which is a result rather than a defect.
-    """
+    """Most of generation 0 must be able to touch the object -- not all of it."""
     closes = [_closest_approach(h) < 0.040 for h in pop[:60]]
     rate = sum(closes) / len(closes)
     assert rate > 0.60, (
@@ -256,13 +213,7 @@ def _finger(face, lengths, v=0.7):
     ([0.080, 0.080, 0.080], "every merge overflows; the clamp is the only path"),
 ])
 def test_merge_links_handles_every_merge_case(lengths, note):
-    """A joint must be removable whatever the link lengths around it.
-
-    The overflow rows are regressions: folding a link only into its proximal
-    neighbour left a finger whose adjacent links summed past the ceiling unable
-    to shed that joint at all, and ``perturb_length`` walks fingers into that
-    state routinely.
-    """
+    """A joint must be removable whatever the link lengths around it."""
     hand = _hand(_finger("+y", lengths), _finger("+z", [0.050]))
     assert validate_design.is_valid(hand), validate_design.check(hand)
 
@@ -277,10 +228,7 @@ def test_merge_links_handles_every_merge_case(lengths, note):
 
 
 def test_structural_removal_refuses_at_the_floor():
-    """MIN_FINGERS single-joint fingers is the floor: neither removal can act.
-
-    merge_links needs a finger with two joints; remove_finger needs more than
-    MIN_FINGERS. At the floor both are correctly impossible."""
+    """MIN_FINGERS single-joint fingers is the floor: neither removal can act."""
     hand = _hand(_finger("+y", [0.050]), _finger("+z", [0.050]))
     assert hand.n_fingers == design_space.MIN_FINGERS
     rng = random.Random(0)
@@ -291,8 +239,7 @@ def test_structural_removal_refuses_at_the_floor():
 
 
 def test_merge_links_preserves_reach_unless_it_must_clamp():
-    """Reach is preserved on every path split_link can produce; the clamp is
-    unreachable from a split, which is why it costs nothing in exactness."""
+    """Reach is preserved on every path split_link can produce; the clamp is unreachable..."""
     hand = _hand(_finger("+y", [0.040, 0.040]), _finger("+z", [0.050]))
     rng = random.Random(0)
     before = sum(f.reach for f in hand.fingers)
@@ -302,9 +249,7 @@ def test_merge_links_preserves_reach_unless_it_must_clamp():
 
 
 def test_one_joint_per_link():
-    """No two joints share a point. Everything downstream depends on it: no
-    zero-length case in the builder, and no way for capsule and segment indices
-    to diverge in a renderer."""
+    """No two joints share a point."""
     palm = design_space.Palm(0.025, 0.060, 0.060)
     bad = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
                    (design_space.Segment(design_space.Joint(0.0), 0.0), design_space.Segment(design_space.Joint(0.0), 0.040)))
@@ -327,9 +272,7 @@ def test_one_joint_per_link():
 
 
 def test_capsules_carry_their_segment_index():
-    """Each capsule reports which segment it belongs to. The index equals its own
-    position today, and is carried because ``build.py`` will skip geometry for
-    ghosted joints -- at which point a positional zip reads the wrong joint."""
+    """Each capsule reports which segment it belongs to."""
     palm = design_space.Palm(0.025, 0.060, 0.060)
     finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
                       tuple(design_space.Segment(design_space.Joint(i * design_space.ANGLE_QUANTUM % math.pi), 0.030)
@@ -339,9 +282,7 @@ def test_capsules_carry_their_segment_index():
 
 
 def test_joint_axes_are_the_axes_the_joints_turn_about():
-    """The viewer draws each joint as a cylinder along its reported axis, so the
-    axis has to be the one the joint really turns about: commanding joint k must
-    move everything distal to it by exactly that rotation, about that line."""
+    """The viewer draws each joint as a cylinder along its reported axis, so the axis has..."""
     palm = design_space.Palm(0.025, 0.070, 0.070)
     finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.6),
                       (design_space.Segment(design_space.Joint(0.0, offset=0.3), 0.035),
@@ -363,13 +304,7 @@ def test_joint_axes_are_the_axes_the_joints_turn_about():
 
 
 def test_fingers_do_not_overlap_at_the_base(pop):
-    """No two proximal links may intersect at rest.
-
-    Two rules are needed. Capsules are tangent at 2 x CAPSULE_RADIUS, so a single
-    15 mm mount floor allowed 5 mm of interpenetration. And separation alone
-    constrains where a finger STARTS, not where it POINTS -- two rooted a legal
-    25 mm apart can lean together until their base links cross.
-    """
+    """No two proximal links may intersect at rest."""
     rng = random.Random(4)
     hand = pop[0]
     worst = float("inf")
@@ -402,18 +337,7 @@ def test_same_face_mounts_keep_their_distance(pop):
 
 
 def test_crowding_does_not_block_new_fingers():
-    """Adding fingers must stop because the palm is FULL, not because placement
-    gave up looking.
-
-    ``_new_finger`` used to place by rejection sampling. Once the same-face
-    separation floor tightened, nearly every random draw on a crowded palm
-    failed, so ``add_finger`` quietly stopped being able to act while space
-    remained -- a reachability hole wearing a timeout's clothing. Sites are
-    enumerated now.
-
-    Given a palm big enough, the cap should be reachable; given a small one,
-    packing should bind well before it.
-    """
+    """Adding fingers must stop because the palm is FULL, not because placement gave up..."""
     def pack(palm):
         hand = design_space.Hand(palm, gen_init_pop.seed_population(0, 1)[0].fingers)
         for k in range(30):
@@ -432,15 +356,7 @@ def test_crowding_does_not_block_new_fingers():
 
 
 def test_min_link_length_allows_a_compact_knuckle():
-    """Two axes may sit closer than a link's own diameter.
-
-    Truly co-located axes need a gimbal and are excluded, so the nearest this
-    space gets to a compact knuckle is two ordinary revolutes a short spacer
-    apart. At MIN_LINK_LENGTH the capsule's cylindrical section has vanished and
-    the link is a sphere holding both joints -- a fair model of a knuckle
-    housing, and the reason build.py must emit that sphere rather than treating
-    the segment as geometry-less.
-    """
+    """Two axes may sit closer than a link's own diameter."""
     assert design_space.MIN_LINK_LENGTH < 2 * design_space.CAPSULE_RADIUS
 
     palm = design_space.Palm(0.025, 0.060, 0.060)
@@ -455,9 +371,7 @@ def test_min_link_length_allows_a_compact_knuckle():
     assert gap < 2 * design_space.CAPSULE_RADIUS, "axes are not closer than the link is wide"
 
 def test_mounts_stay_clear_of_face_edges(pop):
-    """A mount within one capsule radius of an edge hangs the finger off the
-    palm. Tight on the thin axis -- a 25 mm palm carrying a 20 mm finger leaves
-    5 mm of play -- which is what that actually looks like."""
+    """A mount within one capsule radius of an edge hangs the finger off the palm."""
     rng = random.Random(4)
     hand = pop[0]
     worst = float("inf")
@@ -476,9 +390,7 @@ def test_mounts_stay_clear_of_face_edges(pop):
 
 
 def test_move_mount_still_crosses_faces_with_a_margin(pop):
-    """The margin must not disconnect the surface. Forbidding a mount NEAR an
-    edge forbids one AT it, so the crossing jumps the band; without that,
-    ``remount`` would have to come back as its own operator."""
+    """The margin must not disconnect the surface."""
     for seed in range(3):
         hand = pop[seed]
         rng = random.Random(seed)
@@ -492,8 +404,7 @@ def test_move_mount_still_crosses_faces_with_a_margin(pop):
 
 
 def test_perturb_palm_leaves_thickness_alone(pop):
-    """Thickness is seeded and never mutated; the step is twice the grid because
-    separation's optimum band is centimetres wide."""
+    """Thickness is seeded and never mutated; the step is twice the grid because..."""
     rng = random.Random(1)
     hand = pop[0]
     seen_steps = set()
@@ -512,8 +423,7 @@ def test_perturb_palm_leaves_thickness_alone(pop):
 
 
 def test_check_finger_needs_the_real_palm():
-    """Mount bounds depend on the face spans, so the palm cannot be defaulted:
-    the same mount is illegal on a 60 mm face and legal on a 100 mm one."""
+    """Mount bounds depend on the face spans, so the palm cannot be defaulted: the same..."""
     finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.90),
                       (design_space.Segment(design_space.Joint(0.0), 0.040),))
     assert validate_design.check_finger(finger, 0, design_space.Palm(0.025, 0.060, 0.060))
@@ -536,10 +446,7 @@ def test_require_valid_reports_every_reason():
 
 
 def test_segment_distance_matches_brute_force():
-    """The closed form must never OVERESTIMATE -- the dangerous direction, since
-    an overestimating clearance check reports parts as clear when they overlap.
-    Clamping both parameters independently does exactly that, while leaving every
-    degenerate case correct."""
+    """The closed form must never OVERESTIMATE -- the dangerous direction, since an..."""
     rng = np.random.default_rng(0)
     for _ in range(400):
         p0, p1, q0, q1 = (rng.normal(size=3) for _ in range(4))
@@ -566,9 +473,7 @@ def test_segment_distance_degenerate_cases(p0, p1, q0, q1, want):
 
 
 def test_move_mount_moves_both_axes(pop):
-    """Both face axes must move, not just the roomy one. The thin axis has a 5 mm
-    band against a 5 mm step, so every step overflows it toward a face that hosts
-    no finger; refusing those froze the axis completely."""
+    """Both face axes must move, not just the roomy one."""
     rng = random.Random(0)
     moved_u = moved_v = 0
     for hand in pop[:40]:
@@ -585,8 +490,7 @@ def test_move_mount_moves_both_axes(pop):
 
 
 def test_every_genotype_field_is_validated():
-    """No field may go out of bounds unnoticed. Written as a sweep so that adding
-    a genotype field without a rule shows up here."""
+    """No field may go out of bounds unnoticed."""
     from dataclasses import replace as _replace
 
     hand = gen_init_pop.seed_population(0, 1)[0]
@@ -633,8 +537,7 @@ def test_every_genotype_field_is_validated():
 
 
 def test_the_grammar_is_deterministic():
-    """Same seed, same population and same walk -- the basis for a design being
-    identifiable, memoisable and re-evaluatable."""
+    """Same seed, same population and same walk -- the basis for a design being..."""
     assert gen_init_pop.seed_population(7, 20) == gen_init_pop.seed_population(7, 20)
 
     def walk(seed):
@@ -651,12 +554,7 @@ def test_the_grammar_is_deterministic():
 
 
 def test_offset_subsumes_a_mount_pointing_direction():
-    """A base-joint offset reproduces every rest direction a mount tilt could,
-    and a non-base offset does something no mount tilt can.
-
-    That is why the mount carries no orientation: one primitive covering both,
-    applied at every joint rather than only the first.
-    """
+    """A base-joint offset reproduces every rest direction a mount tilt could, and a..."""
     palm = design_space.Palm(0.025, 0.060, 0.060)
     face = "+y"
     _, normal, t_u, t_v, _, _ = design_space.face_frame(face, palm)
@@ -684,11 +582,7 @@ def test_offset_subsumes_a_mount_pointing_direction():
 
 
 def test_offset_moves_the_link_but_theta_does_not():
-    """The two per-joint angles do different things, which is why both exist.
-
-    theta re-aims the axis a joint sweeps about and moves nothing at rest;
-    offset is where the link sits at rest and moves it directly.
-    """
+    """The two per-joint angles do different things, which is why both exist."""
     palm = design_space.Palm(0.025, 0.060, 0.060)
 
     def tip(theta_deg, offset_deg):
@@ -702,13 +596,7 @@ def test_offset_moves_the_link_but_theta_does_not():
 
 
 def test_crossing_a_face_rotates_the_finger_with_it():
-    """A finger leaves along its face normal, so crossing an edge rotates its
-    world direction by the angle between normals -- with nothing to carry over.
-
-    The mount used to hold a pointing direction that had to be preserved by hand,
-    and preserving the WORLD direction instead laid the finger flat along the
-    surface it was bolted to. Neither is expressible now.
-    """
+    """A finger leaves along its face normal, so crossing an edge rotates its world..."""
     palm = design_space.Palm(0.025, 0.060, 0.060)
     mount = design_space.Mount("+y", 0.5, 0.80)
     before = design_space.mount_direction(mount, palm)

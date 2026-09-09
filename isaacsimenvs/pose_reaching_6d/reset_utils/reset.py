@@ -105,24 +105,6 @@ def allocate_state_buffers(env) -> None:
         spec.fingertip_slot_offsets_padded, device=env.device, dtype=torch.float32
     )
 
-    # --- per-env morphology (multi-embodiment only) --------------------------
-    # With one distinct hand per env, the mask and the pad offsets stop being
-    # scene constants: which fingers are active, and how long each distal
-    # phalanx is, are properties of the design that env holds.
-    population = env.scene_record.population
-    if population is not None:
-        pop_specs = population.specs
-        design_idx = env.scene_record.robot_design_index  # (N,)
-        masks = torch.tensor(
-            [list(s.fingertip_slot_mask) for s in pop_specs],
-            device=env.device, dtype=torch.bool,
-        )  # (k, S)
-        offsets = torch.tensor(
-            [list(s.fingertip_slot_offsets_padded) for s in pop_specs],
-            device=env.device, dtype=torch.float32,
-        )  # (k, S, 3)
-        env._fingertip_mask = masks[design_idx]          # (N, S)
-        env._fingertip_offsets = offsets[design_idx]     # (N, S, 3)
 
     # Convert between Lab parser order and canonical policy order.
     canonical = spec.joint_names_canonical
@@ -146,13 +128,6 @@ def allocate_state_buffers(env) -> None:
     # --- Explicit SHARPA hand-token geometry --------------------------------
     # Parsed once on the CPU, then held on the simulation device.  The rollout
     # path only gathers these 22 body poses and applies one batched transform.
-    # Population geometry is deliberately out of scope for this architecture
-    # pass: a population needs one box table per authored design.
-    if env.scene_record.population is not None:
-        raise NotImplementedError(
-            "joint-link token observations currently support one fixed robot; "
-            "the generated-hand population path still uses its legacy morphology"
-        )
     child_bodies, link_boxes, geometry_valid, hand_scale = joint_link_boxes(
         spec.urdf_path, spec.hand_joint_names
     )

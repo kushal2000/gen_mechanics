@@ -13,24 +13,8 @@ import torch
 from ..common_utils.physx import _log_scene_step
 
 
-def shape_layouts_from_record(link_names, recorded: dict, arm_counts: dict):
-    """Per-design ``([(link, start, end)], total)`` from the authoring record.
-    The merged palm has both an arm mesh and an authored box, so the two sum."""
-    out = {}
-    for design, per_link in recorded.items():
-        start, layout = 0, []
-        for name in link_names:
-            n = arm_counts.get(name, 0) + per_link.get(name, 0)
-            layout.append((name, start, start + n))
-            start += n
-        out[design] = (layout, start)
-    return out
 
 
-def arm_counts_from(measured_layout, ref_record: dict) -> dict:
-    """The arm's own shape counts: one measured env minus its design's record."""
-    return {nm: (e - s) - ref_record.get(nm, 0)
-            for nm, s, e in measured_layout if nm.startswith("iiwa14_link")}
 
 
 def _bucketed(lo: float, hi: float, base: float, n_buckets: int, n: int) -> torch.Tensor:
@@ -73,35 +57,10 @@ def apply_physx_material_properties(env) -> None:
             start = end
         return out, start
 
-    # Layouts are per design: a ghosted finger keeps its links but no shapes.
-    population = record.population
-    if population is None:
-        groups = {0: env_ids}
-        tips_of = {0: set(record.robot_spec.fingertip_body_names)}
-        layouts = {0: measure_layout(0)}
-    else:
-        design_idx = record.robot_design_index.detach().cpu()
-        groups = {int(d): (design_idx == int(d)).nonzero(as_tuple=True)[0]
-                  for d in design_idx.unique()}
-        tips_of = {d: set(population.specs[d].fingertip_body_names) for d in groups}
-        # From the authoring record, with the shared arm measured once;
-        # measuring every design is ~96 min at 24,576.
-        recorded = record.robot_collider_links
-        ref = next(iter(groups))
-        arm_layout, _ = measure_layout(int(groups[ref][0]))
-        layouts = shape_layouts_from_record(
-            link_names, {d: recorded[d] for d in groups},
-            arm_counts_from(arm_layout, recorded[ref]))
-        _log_scene_step(t0, f"shape layouts for {len(groups)} designs from the authoring record")
-        # Spot-check against PhysX: a wrong layout is silent.
-        for design in sorted(groups)[::max(1, len(groups) // 8)][:8]:
-            physx, _ = measure_layout(int(groups[design][0]))
-            diff = [(a, b) for a, b in zip(physx, layouts[design][0]) if a != b]
-            if diff:
-                raise RuntimeError(
-                    f"recorded shape layout disagrees with PhysX for design {design}:\n"
-                    + "\n".join(f"  {a[0]}: physx={a[1:]} recorded={b[1:]}"
-                                for a, b in diff[:6]))
+    # One robot, so one layout.
+    groups = {0: env_ids}
+    tips_of = {0: set(record.robot_spec.fingertip_body_names)}
+    layouts = {0: measure_layout(0)}
 
     ft_shape_mask = torch.zeros(
         (env.num_envs, robot_view.max_shapes), dtype=torch.bool, device="cpu")
@@ -112,8 +71,7 @@ def apply_physx_material_properties(env) -> None:
                 robot_materials[group_env_ids, s0:s1] = fingertip
                 ft_shape_mask[group_env_ids, s0:s1] = True
         # Ghosted fingers leave a design short of the view's maximum; overrunning is a bug.
-        if n_shapes > robot_view.max_shapes or (
-                population is None and n_shapes != robot_view.max_shapes):
+        if n_shapes != robot_view.max_shapes:
             raise RuntimeError(
                 f"design {design}: computed {n_shapes} shapes, view reports "
                 f"{robot_view.max_shapes}")
@@ -123,8 +81,7 @@ def apply_physx_material_properties(env) -> None:
     unmatched = [d for d in groups if not bool(ft_shape_mask[groups[d]].any())]
     misnamed = [d for d in unmatched if not (tips_of[d] & set(link_names))]
     if misnamed:
-        who = (record.robot_spec.name if population is None
-               else f"designs {sorted(misnamed)[:5]}")
+        who = record.robot_spec.name
         raise RuntimeError(
             f"{who}: fingertip_body_names={sorted(tips_of[misnamed[0]])} are not "
             f"links of this robot: {sorted(link_names)}")

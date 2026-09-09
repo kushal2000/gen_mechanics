@@ -124,9 +124,6 @@ ENTRY=(python -u coevolution/train.py)
     --agent "$AGENT" \
     --headless \
     env.assets.robot_spec=sharpa_iiwa14 \
-    env.assets.robot_population_path="" \
-    env.assets.robot_population_seed=-1 \
-    env.assets.robot_population_count=0 \
     env.assets.num_assets_per_type="$NUM_ASSETS_PER_TYPE" \
     env.scene.num_envs="$NUM_ENVS" \
     env.action.arm_moving_average="$ARM_MA" \

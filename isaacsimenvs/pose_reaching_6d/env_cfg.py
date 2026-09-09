@@ -17,7 +17,7 @@ from isaaclab.utils import configclass
 
 @configclass
 class AssetsCfg:
-    """URDFs, the procedural object pool, the hand population, base frictions.
+    """URDFs, the procedural object pool, base frictions.
 
     Kept off the scene cfg because Isaac Lab rejects non-asset fields there.
     """
@@ -48,14 +48,6 @@ class AssetsCfg:
     table_friction: float = 0.5
     object_restitution: float = 0.0  # 0 in training; the object-physics eval axis raises it
 
-    # Hand population: env i holds design i % len(population), all in one
-    # articulation view (ghosting pads every design to one joint template), and
-    # robot_spec is ignored. Path wins over seed; -1 / "" mean one fixed hand.
-    robot_population_path: str = ""  # directory holding manifest.json
-    robot_population_seed: int = -1
-    robot_population_count: int = 0  # 0 = the whole population
-    # A RobotPopulation injected in code (coevolution evaluates one member); not settable from hydra.
-    robot_population: object | None = None
 
 
 @configclass
@@ -272,7 +264,7 @@ class PoseReachEnvCfg(DirectRLEnvCfg):
     termination: TerminationCfg = TerminationCfg()
     domain_randomization: DomainRandomizationCfg = DomainRandomizationCfg()
 
-    # Only meaningful with a population. The env enforces True (a YAML overlay
+    # The env enforces True (a YAML overlay
     # once dropped it silently); False is the ablation and strips the field.
 
 

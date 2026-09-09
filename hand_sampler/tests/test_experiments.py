@@ -1,10 +1,4 @@
-"""The experiment driver's one load-bearing property: staging is invisible.
-
-Long runs are grown 1k then 5-10k at a time. That only works if a stage
-boundary leaves no trace in the statistics -- and the failure mode is silent,
-because a run that restarts its RNG rather than restoring it produces a
-perfectly plausible chain that is simply a different one.
-"""
+"""The experiment driver's one load-bearing property: staging is invisible."""
 
 from __future__ import annotations
 
@@ -35,8 +29,7 @@ def test_a_staged_run_is_the_same_chain_as_one_long_run(tmp_path):
 
 
 def test_resuming_with_a_different_shape_is_refused(tmp_path):
-    """Otherwise two different experiments end up spliced into one statistics
-    file, with nothing in the output to show where the seam is."""
+    """Otherwise two different experiments end up spliced into one statistics file, with..."""
     out = tmp_path / "r"
     assert run("--out", str(out), "--gens", "3", *SCALE).returncode == 0
     bad = run("--out", str(out), "--gens", "3", "--parents", "16", "--children", "4",
@@ -47,8 +40,7 @@ def test_resuming_with_a_different_shape_is_refused(tmp_path):
 
 @pytest.mark.parametrize("mode", ("min_joints", "max_joints"))
 def test_selection_moves_joint_count_the_way_it_is_pointed(tmp_path, mode):
-    """The arms are a yardstick for how fast selection CAN move a statistic, so
-    a run whose direction is wrong makes every comparison against it wrong."""
+    """The arms are a yardstick for how fast selection CAN move a statistic, so a run whose..."""
     out = tmp_path / mode
     assert run("--out", str(out), "--gens", "25", "--mode", mode, *SCALE).returncode == 0
     rows = [json.loads(l) for l in (out / "stats.jsonl").read_text().splitlines()]

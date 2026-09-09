@@ -1,17 +1,4 @@
-"""The cheap validator: bounds, packing, and the articulation envelope.
-
-First of two tiers. This one is O(1) per design with no sampling and runs on
-EVERY mutation; ``gates/`` does configuration-dependent self-collision once,
-before evaluation. They are not substitutes -- collision cannot express a
-fabrication limit, and bounds cannot catch a self-intersection.
-
-Loosening the grammar did not delete the ``minimal/`` constraints, it moved them
-here, where they can be audited in one place.
-
-Every check returns a REASON, not a bool, so an operator can reflect the one
-offending value back into range rather than discarding the candidate -- which
-would pile probability mass wherever candidates are easy to generate.
-"""
+"""The cheap validator: bounds, packing, and the articulation envelope."""
 
 from __future__ import annotations
 
@@ -80,10 +67,7 @@ def check_segment(seg: design_space.Segment, where: str) -> list[str]:
 
 
 def check_finger(finger: design_space.Finger, i: int, palm: design_space.Palm) -> list[str]:
-    """Rules for one finger. ``palm`` is REQUIRED, not defaulted: mount bounds
-    depend on the face spans, so a default would validate against the wrong hand
-    -- the same mount is illegal on a 60 mm face and legal on a 100 mm one.
-    """
+    """Rules for one finger."""
     where = f"finger[{i}]"
     out: list[str] = []
 
@@ -106,16 +90,7 @@ def check_finger(finger: design_space.Finger, i: int, palm: design_space.Palm) -
 
 
 def check_packing(hand: design_space.Hand) -> list[str]:
-    """Mount separation -- two floors, because the geometry differs by face.
-
-    ACROSS faces the floor is loose: mounts either side of an edge leave along
-    different normals and can clear each other. WITHIN a face that fails
-    completely -- fingers run parallel, so their base capsules overlap whenever
-    the mounts are closer than the capsules are wide.
-
-    Both are NECESSARY conditions, not sufficient ones. Whether fingers intersect
-    along their length depends on configuration, which is the gate's job.
-    """
+    """Mount separation -- two floors, because the geometry differs by face."""
     out: list[str] = []
     pos = [(f.mount.face, mount_position(f.mount, hand.palm)) for f in hand.fingers]
     for (face_a, pa), (face_b, pb) in combinations(pos, 2):
@@ -136,15 +111,7 @@ def check_packing(hand: design_space.Hand) -> list[str]:
 
 
 def check_base_clearance(hand: design_space.Hand) -> list[str]:
-    """Proximal links must not intersect each other at the rest pose.
-
-    Separation constrains where a finger STARTS, not where it POINTS, and two
-    fingers rooted a legal distance apart can lean together until their base
-    links cross. One closed-form segment-segment distance per pair, no sampling.
-
-    Proximal links at rest only: collisions further out depend on flexion and
-    belong to the gate. This rules out designs broken before they move.
-    """
+    """Proximal links must not intersect each other at the rest pose."""
     out: list[str] = []
     caps = base_capsules(hand)
     floor = 2.0 * design_space.CAPSULE_RADIUS
@@ -158,10 +125,7 @@ def check_base_clearance(hand: design_space.Hand) -> list[str]:
 
 
 def check_envelope(hand: design_space.Hand) -> list[str]:
-    """The one constraint the simulator imposes back onto the genotype. Exceeding
-    it is not a design that scores badly, it is one that cannot be loaded
-    alongside the others in a single Articulation view.
-    """
+    """The one constraint the simulator imposes back onto the genotype."""
     out: list[str] = []
     if hand.n_fingers > design_space.MAX_FINGERS:
         out.append(f"{hand.n_fingers} fingers, envelope allows {design_space.MAX_FINGERS}")
@@ -187,8 +151,7 @@ def is_valid(hand: design_space.Hand) -> bool:
 
 
 def require_valid(hand: design_space.Hand) -> design_space.Hand:
-    """Raise with every reason at once. Operators reject silently and retry; this
-    is for callers that believe they built something legal."""
+    """Raise with every reason at once."""
     reasons = check(hand)
     if reasons:
         raise ValueError("invalid hand:\n  " + "\n  ".join(reasons))

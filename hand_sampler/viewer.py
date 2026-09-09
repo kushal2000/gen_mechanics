@@ -1,24 +1,4 @@
-"""Look at a hand: interactively in a browser, or as a PNG.
-
-    python -m hand_sampler.viewer --seed 0            # viser, localhost:8080
-    python -m hand_sampler.viewer png --seeds 6 --out seeds.png
-    python -m hand_sampler.viewer png --lineage --seed 0 --out lineage.png
-
-The point is to make the GRAMMAR inspectable. A mutation operator set is a claim
-about which designs are adjacent to which, and that claim is far easier to check
-by eye than by reading enumerations. ``--lineage`` renders a seed and each
-successive mutation, which is the view that makes an operator's effect obvious:
-everything holds still except the one thing it touched.
-
-Links are coloured by their joint's ``theta``, which replaced the old FE/AA
-enum: blue is pure flexion, orange pure abduction, everything between is a
-design the old space could not name. Each joint is drawn as a short cylinder
-lying along its hinge axis, so which way it turns is readable directly.
-
-Both renderers share one kinematics path, so the PNG shows what the browser
-would. The PNG half needs no browser and no server -- use it over a remote
-shell, or to put a population in a figure.
-"""
+"""Look at a hand: interactively in a browser, or as a PNG."""
 
 from __future__ import annotations
 
@@ -45,12 +25,7 @@ JOINT_MARKER_LENGTH = 2.0 * design_space.CAPSULE_RADIUS
 
 
 def _align_z(v: np.ndarray) -> np.ndarray:
-    """Rotation carrying +z onto ``v``.
-
-    Both trimesh primitives used here are built along +z and centred on the
-    origin. The spin about ``v`` is left unconstrained -- neither a capsule nor
-    a cylinder shows it.
-    """
+    """Rotation carrying +z onto ``v``."""
     d = np.asarray(v, float)
     d = d / (np.linalg.norm(d) + 1e-12)
     z = np.array([0.0, 0.0, 1.0])
@@ -64,17 +39,7 @@ def _align_z(v: np.ndarray) -> np.ndarray:
 
 
 def capsule_mesh(p0: np.ndarray, p1: np.ndarray, radius: float) -> trimesh.Trimesh:
-    """A capsule whose TOTAL tip-to-tip extent spans p0 -> p1 exactly.
-
-    Two things to get right, both of which were wrong in an earlier version:
-      * ``trimesh.creation.capsule`` is CENTRED on the origin, so the transform
-        has to put the segment MIDPOINT there, not p0. Placing p0 there shifts
-        every link back by half its length -- which is what put joints in the
-        middle of capsules and pushed base links through the palm.
-      * the cylinder section must be shortened by 2r so the hemispherical caps
-        land ON the joints rather than overhanging them. Then the tip of one link
-        meets the base of the next exactly at the shared joint centre.
-    """
+    """A capsule whose TOTAL tip-to-tip extent spans p0 -> p1 exactly."""
     d = np.asarray(p1, float) - np.asarray(p0, float)
     L = float(np.linalg.norm(d))
     h = max(L - 2.0 * radius, 1e-6)
@@ -88,11 +53,7 @@ def capsule_mesh(p0: np.ndarray, p1: np.ndarray, radius: float) -> trimesh.Trime
 
 
 def axis_mesh(centre: np.ndarray, axis: np.ndarray) -> trimesh.Trimesh:
-    """A stub cylinder centred on a joint, lying along its hinge axis.
-
-    The axis is a direction, not a ray -- the joint turns both ways about it --
-    so the cylinder is centred on the joint and symmetric, rather than an arrow.
-    """
+    """A stub cylinder centred on a joint, lying along its hinge axis."""
     mesh = trimesh.creation.cylinder(radius=JOINT_MARKER_RADIUS,
                                      height=JOINT_MARKER_LENGTH, sections=16)
     T = np.eye(4)

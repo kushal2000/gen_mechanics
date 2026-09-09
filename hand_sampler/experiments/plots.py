@@ -1,16 +1,4 @@
-"""Figures from one or more runs of ``experiments.run``.
-
-    python -m hand_sampler.experiments.plots single     --runs runs/null_s7        --out one.png
-    python -m hand_sampler.experiments.plots envelope   --runs runs/null_s*        --out env.png
-    python -m hand_sampler.experiments.plots starvation --runs runs/null_s*        --out cheap.png
-    python -m hand_sampler.experiments.plots arms       --runs runs/null_s* \
-        --max runs/max_s* --min runs/min_s*                                        --out arms.png
-
-Replicates of one experiment are ONE series with uncertainty, not N identities,
-so they are drawn as a median plus a min-max band rather than N coloured lines.
-Every reference line reads its value from ``genotype``: MAX_FINGERS has already
-moved once in this project, and a plot that hardcodes it mislabels silently.
-"""
+"""Figures from one or more runs of ``experiments.run``."""
 
 from __future__ import annotations
 
@@ -95,12 +83,7 @@ def band(ax, g, runs, f, colour, label=None, at=0.5, dy=0.0):
 
 
 def unavailable(ax, field):
-    """A figure is newer than the run it is drawing.
-
-    Rows are append-only history: a run recorded months ago will not have every
-    field a later figure wants. Say so on the panel rather than dying, so one
-    stale field cannot cost the whole figure.
-    """
+    """A figure is newer than the run it is drawing."""
     ax.text(0.5, 0.5, f"{field}\nnot recorded in these runs", color=MUTED,
             transform=ax.transAxes, fontsize=8.5, ha="center", va="center")
     ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)

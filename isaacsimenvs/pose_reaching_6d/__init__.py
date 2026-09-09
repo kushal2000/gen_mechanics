@@ -55,7 +55,6 @@ gym.register(
 # The multi-embodiment id is an ALIAS, kept so archived submit scripts and the
 # 24k run configs still resolve. There is one env class and one config now:
 # whether a run drives one hand or 24,576 is decided by
-# assets.robot_population_seed / robot_population_path, not by which id you ask
 # for.
 gym.register(
     id="GenMech-PoseReachMulti-Direct-v0",

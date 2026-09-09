@@ -1,43 +1,4 @@
-"""Mutation operators: the neighbourhood structure local search walks.
-
-A sampler answers "draw me a hand"; evolution needs "given this hand, which hands
-are one step away", and the answer to the second defines the search topology.
-
-THREE PROPERTIES, ALL DELIBERATE.
-
-*Closure.* Every operator returns a hand passing ``validate.check`` or raises.
-
-*Unit steps.* Every structural operator changes joint count by exactly +-1. If
-the only structural move added a whole 3-joint finger, complexity would jump in
-threes and the performance-vs-motors front -- the headline plot -- would have
-holes in it.
-
-*Exact inverses.* Add-then-remove returns the ORIGINAL hand, not a nearby one.
-That is what the angle and length grids buy, and it is load-bearing for
-proceeding without an explicit parsimony penalty: the argument that added
-complexity must pay for itself assumes additions and removals are equally
-available, which is not automatic. ``Stats`` exists to catch a drift.
-
-NINE OPERATORS. Two rules decide the count. An operator REACHABLE BY CHAINING
-others earns nothing and adds a second place the same rule can drift -- which is
-why ``remount`` is gone, folded into ``move_mount`` once a step overflowing a
-face carries onto the next, and why a mount-orientation operator is gone: a
-joint's ZERO OFFSET reproduces exactly what it did from the base joint, and does
-more from any other joint.
-
-But operators that differ only in WHERE they attach are kept apart, even though a
-tree makes them one operation. Splitting a link and growing a new finger were
-briefly a single ``add_node`` drawing uniformly over pooled sites, and that hid
-two things: a new finger competed against every splittable link, so it was rare;
-and once the palm filled, splits kept succeeding under the same name, masking
-that palm capacity had run out. Separate operators make the mutation mix
-controllable and the failure modes legible.
-
-Reflection rather than clipping when a step leaves a range, and mount steps in
-METRES rather than u/v fractions -- both because the alternative biases the step
-distribution by position. The mount carries no orientation at all: a finger
-leaves along its face normal, and aiming it is the base joint's offset.
-"""
+"""Mutation operators: the neighbourhood structure local search walks."""
 
 from __future__ import annotations
 
@@ -65,24 +26,19 @@ OPERATORS: tuple[str, ...] = (
 STRUCTURAL: tuple[str, ...] = OPERATORS[:4]
 
 _REDRAWS = 8
-"""How many independent draws a whole-hand operator tries before giving up.
-Each joint or link reflects into range on its own, so a rejection means a
-whole-hand rule caught it and a different draw is likely to pass."""
+"""How many independent draws a whole-hand operator tries before giving up."""
 
 MOUNT_STEP_M = 0.005
 """One step across a palm face, in metres. See the module docstring."""
 
 _GROWS: tuple[tuple[str, str], ...] = (("split_link", "merge_links"),
                                        ("add_finger", "remove_finger"))
-"""Structural pairs, growing operator first. Every entry must appear in
-``Stats.ratchet``; naming them once here is what stopped a filter on "add"
-silently dropping the split/merge pair when it was added."""
+"""Structural pairs, growing operator first."""
 
 
 
 class MutationImpossible(ValueError):
-    """This operator cannot act on this hand. Distinct from "acted and produced
-    something invalid", which is a bug rather than a state of the world."""
+    """This operator cannot act on this hand."""
 
 
 # --- numeric helpers --------------------------------------------------------
@@ -108,12 +64,7 @@ def wrap_theta(theta: float) -> float:
 # --- structural -------------------------------------------------------------
 
 def split_link(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Divide one link in two, inserting a joint. +1 joint, within a finger.
-
-    Needs a link of at least 2 x MIN_LINK_LENGTH to divide, so a finger of short
-    links cannot deepen until ``perturb_length`` grows one. That coupling between
-    depth and length is geometry, not a limitation (DESIGN.md 5).
-    """
+    """Divide one link in two, inserting a joint."""
     moves = []
     for fi, finger in enumerate(hand.fingers):
         if finger.n_joints >= design_space.MAX_JOINTS_PER_FINGER:
@@ -141,13 +92,7 @@ def split_link(rng: random.Random, hand: design_space.Hand) -> design_space.Hand
 
 
 def merge_links(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Join two links, removing the joint between them. -1 joint, within a
-    finger, and the exact inverse of ``split_link``.
-
-    Only acts on fingers with at least two joints: emptying a finger is
-    ``remove_finger``'s job. The merge preserves reach, so split-then-merge
-    returns the original link rather than a shorter finger.
-    """
+    """Join two links, removing the joint between them."""
     moves = [(fi, si) for fi, f in enumerate(hand.fingers) if f.n_joints >= 2
              for si in range(f.n_joints)]
     if not moves:
@@ -162,14 +107,7 @@ def merge_links(rng: random.Random, hand: design_space.Hand) -> design_space.Han
 
 
 def add_finger(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Attach a new SINGLE-JOINT finger to the palm. +1 joint.
-
-    Single-joint so the step stays at one joint and pairs exactly with
-    ``remove_finger``. This operator is why the package exists: the previous
-    design space had no finger-count operator and recorded that absence as
-    permanent for any descended population, so a topology class that died could
-    not come back.
-    """
+    """Attach a new SINGLE-JOINT finger to the palm."""
     if hand.n_fingers >= design_space.MAX_FINGERS:
         raise MutationImpossible(f"already at {design_space.MAX_FINGERS} fingers")
     out = _new_finger(rng, hand)
@@ -179,12 +117,7 @@ def add_finger(rng: random.Random, hand: design_space.Hand) -> design_space.Hand
 
 
 def remove_finger(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Delete a SINGLE-JOINT finger. -1 joint, the exact inverse of ``add_finger``.
-
-    Restricted to one-joint fingers so the step stays at one joint and stays
-    invertible. A deeper finger is removed by merging it down first, which is
-    more local and reversible at every intermediate step.
-    """
+    """Delete a SINGLE-JOINT finger."""
     if hand.n_fingers <= design_space.MIN_FINGERS:
         raise MutationImpossible(f"already at the minimum of {design_space.MIN_FINGERS}")
     candidates = [i for i, f in enumerate(hand.fingers) if f.n_joints == 1]
@@ -201,15 +134,7 @@ def remove_finger(rng: random.Random, hand: design_space.Hand) -> design_space.H
 
 
 def _merge_out(finger: design_space.Finger, si: int) -> design_space.Finger:
-    """Drop segment ``si``, folding its link into a neighbour.
-
-    Proximal first (the exact inverse of a split), else distal, else the proximal
-    merge CLAMPED to the ceiling. The clamp is unreachable from ``split_link`` -- a
-    split needs its original within the ceiling, so the parts always merge back
-    inside it -- so it costs nothing in exactness. Without it, a finger whose
-    adjacent links summed past the ceiling could not shed that joint at all,
-    making removal unavailable exactly where links are long.
-    """
+    """Drop segment ``si``, folding its link into a neighbour."""
     segments = list(finger.segments)
     freed = segments.pop(si).length
 
@@ -235,14 +160,7 @@ def _draw_theta(rng: random.Random) -> float:
 
 
 def _new_finger(rng: random.Random, hand: design_space.Hand) -> design_space.Hand | None:
-    """A fresh single-joint finger where there is room, or None if nowhere.
-
-    Single-joint so the step stays at one joint and stays invertible. Placement
-    is ENUMERATED, not rejection-sampled: on a crowded palm nearly every random
-    draw violates separation, and a retry budget makes ``add_finger`` quietly stop
-    being able to add fingers as space runs out -- a reachability hole wearing a
-    timeout's clothing. Enumeration also treats every legal site alike.
-    """
+    """A fresh single-joint finger where there is room, or None if nowhere."""
     sites = _free_mount_sites(hand)
     if not sites:
         return None
@@ -263,20 +181,11 @@ def _new_finger(rng: random.Random, hand: design_space.Hand) -> design_space.Han
 
 
 MOUNT_GRID_M = 0.005
-"""Spacing of candidate mount sites, in metres on the face. Fine enough that a
-gap large enough to hold a finger is not missed, coarse enough that enumerating
-every face is cheap."""
+"""Spacing of candidate mount sites, in metres on the face."""
 
 
 def _free_mount_sites(hand: design_space.Hand) -> list[tuple[str, float, float]]:
-    """Every grid site on the palm with room for another mount.
-
-    Laid out inside the edge margin, so a candidate never sits where a finger
-    would hang off the palm. Only the separation floors are checked here, those
-    being the constraints that depend on the other fingers; the chosen site still
-    goes through the full validator. Vectorised per face because ``add_finger``
-    runs on every mutation attempt.
-    """
+    """Every grid site on the palm with room for another mount."""
     if not hand.fingers:
         return []
     existing = np.array([mount_position(f.mount, hand.palm) for f in hand.fingers])
@@ -312,17 +221,7 @@ def _free_mount_sites(hand: design_space.Hand) -> list[tuple[str, float, float]]
 # --- parametric -------------------------------------------------------------
 
 def perturb_axis(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step EVERY joint's theta by one quantum, each independently up or down.
-
-    A whole-hand move rather than a single-joint one, so it explores orientation
-    far faster than one joint at a time -- at the cost of locality, since a
-    20-joint hand has all 20 axes changed at once. Redrawn a few times if the
-    result does not validate, which is cheap because theta reflects into range
-    per joint and only the whole-hand rules can fail.
-
-    Only theta. ``phi`` is pinned at pi/2, first on the held-back list
-    (DESIGN.md 11.4).
-    """
+    """Step EVERY joint's theta by one quantum, each independently up or down."""
     for _ in range(_REDRAWS):
         fingers = []
         for f in hand.fingers:
@@ -342,16 +241,7 @@ def perturb_axis(rng: random.Random, hand: design_space.Hand) -> design_space.Ha
 
 
 def perturb_length(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step EVERY link by one quantum, each independently up or down.
-
-    A whole-hand move, like ``perturb_axis``. The only operator that changes
-    total reach -- ``split_link`` divides and ``merge_links`` rejoins, both
-    reach-preserving -- so making it act on every link is what lets a hand grow
-    or shrink at a useful rate rather than one 5 mm step per mutation.
-
-    Each length reflects into ``[MIN_LINK_LENGTH, MAX_LINK_LENGTH]`` on its own,
-    so only the whole-hand rules (base clearance, packing) can reject a draw.
-    """
+    """Step EVERY link by one quantum, each independently up or down."""
     for _ in range(_REDRAWS):
         fingers = []
         for f in hand.fingers:
@@ -370,13 +260,7 @@ def perturb_length(rng: random.Random, hand: design_space.Hand) -> design_space.
 
 
 def move_mount(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Slide one mount across the palm surface, CROSSING FACE EDGES.
-
-    Steps in metres, not u/v fractions. A step that overflows a face carries onto
-    the face across that edge, which is what lets this one operator do the work a
-    separate ``remount`` would: on an axis-aligned box a face's tangents are its
-    neighbours' normals, so no cube net is needed.
-    """
+    """Slide one mount across the palm surface, CROSSING FACE EDGES."""
     order = list(range(hand.n_fingers))
     rng.shuffle(order)
     for fi in order:
@@ -397,19 +281,7 @@ def move_mount(rng: random.Random, hand: design_space.Hand) -> design_space.Hand
 
 def _step_mount(mount: design_space.Mount, palm: design_space.Palm, du_m: float, dv_m: float
                 ) -> design_space.Mount | None:
-    """One step on the palm surface, wrapping onto a neighbouring face if needed.
-
-    Movement is bounded by MOUNT_EDGE_MARGIN, and a crossing JUMPS that band
-    rather than walking through it: the margin forbids a mount being within a
-    capsule radius of an edge, so there is no legal position AT one to pass
-    through.
-
-    A crossing needs nothing done to the finger's aim. A finger leaves along its
-    face normal and its tilt is the base joint's offset, so moving to a new face
-    rotates the world direction by the angle between normals while leaving the
-    tilt relative to the face untouched -- which is what a mount orientation had
-    to be carried across by hand.
-    """
+    """One step on the palm surface, wrapping onto a neighbouring face if needed."""
     _, _, t_u, t_v, span_u, span_v = face_frame(mount.face, palm)
     lo_u, hi_u, lo_v, hi_v = mount_uv_bounds(mount.face, palm)
     u, v = mount.u + du_m / span_u, mount.v + dv_m / span_v
@@ -442,22 +314,7 @@ def _step_mount(mount: design_space.Mount, palm: design_space.Palm, du_m: float,
 
 
 def perturb_offset(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step EVERY joint's zero offset by one quantum, independently up or down.
-
-    A joint's offset is where its link sits when the actuator is at neutral --
-    the angle it is assembled at. Structural, costing no motor, and it carries
-    the joint's travel with it.
-
-    This replaces a mount-orientation operator that could only aim a whole finger
-    from its base. An offset on the base joint reproduces exactly what that did
-    (verified to 2e-12 over every reachable rest direction), and an offset
-    further out gives a finger a resting curl, which no mount orientation could
-    express. One primitive covering both, applied at every joint rather than only
-    the first.
-
-    Whole-hand, matching ``perturb_axis``: offset and theta are the same kind of
-    per-joint angle on the same grid, so they explore at the same rate.
-    """
+    """Step EVERY joint's zero offset by one quantum, independently up or down."""
     lo, hi = design_space.JOINT_LIMIT
     for _ in range(_REDRAWS):
         fingers = []
@@ -478,14 +335,7 @@ def perturb_offset(rng: random.Random, hand: design_space.Hand) -> design_space.
 
 
 def perturb_palm(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step one palm dimension. The palm is the SEPARATION LEVER: the previous
-    operator set measured it moving separation 3.2 mm against an in-face mount
-    step's 1.2 mm, because fingers usually sit on different faces and an in-face
-    step is largely perpendicular to the inter-mount vector.
-
-    Thickness is not mutated. Mounts are normalised precisely so a resize does
-    not invalidate them -- every mount rides it.
-    """
+    """Step one palm dimension."""
     ranges = {"width": design_space.PALM_WIDTH_RANGE, "length": design_space.PALM_LENGTH_RANGE,
               "thickness": design_space.PALM_THICKNESS_RANGE}
     dims = list(design_space.MUTABLE_PALM_DIMS)
@@ -521,19 +371,7 @@ def _accept(hand: design_space.Hand, op: str) -> design_space.Hand:
 
 @dataclass
 class Stats:
-    """Per-operator attempt and success counts.
-
-    A raw rate gap is NOT evidence of a ratchet: several operators are
-    structurally gated in ways that are the design working -- ``merge_links``
-    cannot act on single-joint fingers, ``remove_finger`` cannot act at
-    MIN_FINGERS, ``add_finger`` cannot act on a full palm. Near a boundary the gap looks alarming
-    and is arithmetic.
-
-    The honest instrument is PER-MOVE BALANCE: from a hand at a given joint
-    count, does one structural operator raise complexity as often as it lowers
-    it? See ``tests/test_grammar.py::test_operators_are_unbiased``. These counts
-    are still worth logging, because what they catch is a CHANGE.
-    """
+    """Per-operator attempt and success counts."""
 
     attempts: dict[str, int] = field(default_factory=dict)
     successes: dict[str, int] = field(default_factory=dict)
@@ -547,8 +385,7 @@ class Stats:
         return self.successes.get(op, 0) / n if n else float("nan")
 
     def ratchet(self) -> dict[str, float]:
-        """Success-rate gap per add/remove pair. Diagnostic only -- what matters
-        is whether it MOVES between runs, not its value near a boundary."""
+        """Success-rate gap per add/remove pair."""
         return {f"{a} - {b}": self.rate(a) - self.rate(b) for a, b in _GROWS}
 
     def report(self) -> str:
@@ -569,12 +406,7 @@ def apply(rng: random.Random, hand: design_space.Hand, op: str) -> design_space.
 
 def mutate(rng: random.Random, hand: design_space.Hand, op: str | None = None,
            stats: Stats | None = None) -> design_space.Hand | None:
-    """One child, or ``None`` if the operator could not act.
-
-    Returning None rather than retrying a different operator is deliberate: a
-    silent retry would reweight toward whichever operators are easy to apply,
-    which is the bias ``Stats`` exists to measure.
-    """
+    """One child, or ``None`` if the operator could not act."""
     op = op or OPERATORS[rng.randrange(len(OPERATORS))]
     try:
         child = apply(rng, hand, op)

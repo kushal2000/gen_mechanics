@@ -1,6 +1,6 @@
 """DirectRLEnv for 6D pose reaching, one hand or many.
 
-Set ``assets.robot_population_seed`` or ``robot_population_path`` and every env
+Every env holds one robot, named by ``assets.robot_spec``, and every env
 gets its own design sharing one articulation view; leave them unset and
 ``assets.robot_spec`` names one hand for all of them. Task math lives in the
 modules called from each hook.

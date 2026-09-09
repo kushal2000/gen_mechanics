@@ -1,31 +1,4 @@
-"""The hand design space: what a hand is, and where its parts are.
-
-A ``Hand`` is a palm with fingers; a finger is a chain of segments; a segment is
-one revolute joint plus the link that follows it. That tree is the genotype, the
-kinematic structure, and the graph a per-joint policy message-passes over -- the
-same object in three roles. ``DESIGN.md`` has the reasoning.
-
-This module is the vocabulary the rest of the package is written in, and it is
-the only one with no internal imports: ``gen_init_pop`` draws from the space,
-``mutate_design`` walks it, ``validate_design`` says which points are legal, and
-``build`` turns a point into a robot. None of them own the noun, so it lives
-here.
-
-Ghosting is how a design reaches the simulator but no longer how it is
-represented: ``params.HandParams`` tied joint count to joint identity by
-enabling a fixed ladder of slots, and a tree has no ladder.
-
-``__post_init__`` enforces only structural invariants. Design-space BOUNDS are
-checked in ``validate_design.py``, so a mutation can build a candidate and then
-ask whether it is legal -- a constructor that rejected out-of-range values would
-force every operator to pre-validate, which is where two copies of the rules
-drift apart.
-
-The geometry half is pure numpy -- nothing here writes a file or imports a
-simulator, which is what lets the validator, the operators and the viewers all
-run offline. ``rotations.py`` owns rpy/quaternion conventions; this owns the
-axis-angle construction those do not cover.
-"""
+"""The hand design space: what a hand is, and where its parts are."""
 
 from __future__ import annotations
 
@@ -44,11 +17,7 @@ PALM_QUANTUM = 0.005
 """Grid the palm dimensions must lie on."""
 
 PALM_STEP = 0.010
-"""How far one ``perturb_palm`` moves a dimension -- twice the grid.
-
-Separation's measured optimum band is centimetres wide, which a 5 mm step crawls
-across. Seed widths and lengths are multiples of 10 mm, so this keeps a palm on
-the coarser grid."""
+"""How far one ``perturb_palm`` moves a dimension -- twice the grid."""
 PALM_THICKNESS_RANGE = (0.015, 0.040)   # x -- NOT MUTATED, see below
 PALM_WIDTH_RANGE = (0.040, 0.100)       # y
 PALM_LENGTH_RANGE = (0.040, 0.100)      # z, wrist face at z = 0
@@ -60,83 +29,42 @@ MUTABLE_PALM_DIMS: tuple[str, ...] = ("width", "length")
 
 LINK_QUANTUM = 0.005
 CAPSULE_RADIUS = 0.010
-"""Fixed, on evidence: `radius_scale` scored Spearman -0.005 across a 2x range in
-the 24k eval, and every link-volume measure -0.006 to -0.018 across 7-20x."""
+"""Fixed, on evidence: `radius_scale` scored Spearman -0.005 across a 2x range in the..."""
 
 MIN_LINK_LENGTH = 0.015
-"""The closest two joint axes can sit -- there is exactly one joint per link.
-
-Set BELOW 2 x CAPSULE_RADIUS on purpose. Truly co-located axes need a gimbal and
-are excluded (see Segment), so the nearest this space gets to a compact knuckle
-is two ordinary revolutes a short spacer apart, and 15 mm is that spacer.
-
-A link shorter than its own diameter is geometrically a SPHERE: the capsule's
-cylindrical section vanishes and both joints sit inside one ball of radius
-CAPSULE_RADIUS. That is a fair model of a compact knuckle housing, and the
-renderers already draw it. ``urdf.py`` drops the collider for such a segment --
-build.py should emit the sphere instead of nothing, or short-linked fingers
-become transparent to contact."""
+"""The closest two joint axes can sit -- there is exactly one joint per link."""
 
 MAX_LINK_LENGTH = 0.080
-"""Deliberately loose. The measured fingertip-reach optimum is 14.5-16 cm, so
-three links at 80 mm puts it inside the space with room either side."""
+"""Deliberately loose."""
 
 # --- joints -----------------------------------------------------------------
 
 ANGLE_QUANTUM = math.radians(15.0)
-"""Grid for every angle in the genotype: joint theta and offset.
-
-The reason is EXACT INVERSES (DESIGN.md 6), not tidiness -- continuous parameters
-cannot give them, so add/remove pairs would leak on every step. It also makes a
-design hashable, so fitness can be memoised."""
+"""Grid for every angle in the genotype: joint theta and offset."""
 
 JOINT_LIMIT = (math.radians(-90.0), math.radians(90.0))
-"""Symmetric, for every joint regardless of axis. Anatomical asymmetric ranges
-stop meaning anything once the axis is a continuum: there is no principled
-interpolation from a flexion range to an abduction one. Range of motion comes
-from CONTACT instead -- a finger that bends backwards hits the palm and stops."""
+"""Symmetric, for every joint regardless of axis."""
 
 # --- the envelope -----------------------------------------------------------
 
 MIN_FINGERS = 2
-"""A one-finger hand cannot oppose anything, so it is excluded rather than left
-for selection to discover at the cost of an evaluation. The only floor on
-complexity; every other pressure toward simplicity is left to evolution."""
+"""A one-finger hand cannot oppose anything, so it is excluded rather than left for..."""
 
 MAX_FINGERS = 7
 MAX_JOINTS_PER_FINGER = 6
-"""The articulation envelope: a HARD cap, not a rail.
-
-Batched Isaac Lab needs one Articulation view to hold every design, so all of
-them must present the same joint count and ``build.py`` ghosts the difference.
-Every design pays for the envelope whether it uses it or not. These two numbers
-are the only place the simulator reaches back into the genotype."""
+"""The articulation envelope: a HARD cap, not a rail."""
 
 MIN_MOUNT_SEPARATION = 0.015
-"""Centre-to-centre floor between mounts on DIFFERENT faces. Loose on purpose:
-capsules there leave along different normals and diverge."""
+"""Centre-to-centre floor between mounts on DIFFERENT faces."""
 
 MOUNT_EDGE_MARGIN = CAPSULE_RADIUS
-"""How far a mount stays from its face boundary, or half the base capsule hangs
-off the palm. Tight on the thin axis -- a 25 mm palm carrying a 20 mm finger
-leaves 5 mm of play -- which is what a 20 mm finger on a 25 mm palm looks like.
-
-It is also why ``mutate.move_mount`` jumps the band when crossing an edge: a
-margin forbidding a mount NEAR an edge forbids one AT it."""
+"""How far a mount stays from its face boundary, or half the base capsule hangs off the..."""
 
 MIN_SAME_FACE_SEPARATION = 2.5 * CAPSULE_RADIUS
-"""Floor between mounts on the SAME face, where fingers run parallel and their
-base capsules overlap whenever the mounts are closer than the capsules are wide.
-Capsules are tangent at 2 x CAPSULE_RADIUS; the extra 0.5 r is clearance."""
+"""Floor between mounts on the SAME face, where fingers run parallel and their base..."""
 
 FINGER_FACES: tuple[str, ...] = ("+z", "+y", "-y")
-"""The three THIN faces. The large faces (`+x`, the palm surface, and `-x`, its
-back) are excluded -- a finger growing out of the gripping surface is awkward to
-build and to mount an arm behind. `-z` is the wrist.
-
-Opposition comes from `+-y` fingers curling toward `+x` to meet a `+z` finger,
-measured closing to 6 mm against a 40 mm object. The three stay connected under
-``move_mount``: `+-y` each border `+z`."""
+"""The three THIN faces."""
 
 GRASP_DIR = np.array([1.0, 0.0, 0.0])
 """Fingers curl toward the palm surface (+x)."""
@@ -146,22 +74,7 @@ GRASP_DIR = np.array([1.0, 0.0, 0.0])
 
 @dataclass(frozen=True)
 class Joint:
-    """One revolute DOF; ``theta`` and ``phi`` in radians, see kinematics.axis_of.
-
-    theta rotates the hinge within the plane perpendicular to its link (0 flexion,
-    pi/2 abduction); phi is the polar angle from the link, so pi/2 is
-    perpendicular-to-bone and phi -> 0 is a roll joint.
-
-    phi is PINNED at pi/2 -- no operator moves it and the validator requires it
-    (DESIGN.md 11). It stays a field so re-enabling is one line in perturb_axis.
-
-    ``offset`` is the joint's ZERO ANGLE: where the link sits when the actuator is
-    at neutral, i.e. the angle the link is assembled at. It is structural, costs
-    no motor, and shifts the joint's travel with it. A base joint's offset aims
-    the whole finger -- which is what the mount used to carry as (alpha, beta) --
-    and an offset further out gives the finger a resting curl, which no mount
-    orientation could express.
-    """
+    """One revolute DOF; ``theta`` and ``phi`` in radians, see kinematics.axis_of."""
 
     theta: float
     phi: float = math.pi / 2
@@ -180,14 +93,7 @@ class Joint:
 
 @dataclass(frozen=True)
 class Segment:
-    """A joint and the link distal to it. A finger is a tuple of these.
-
-    ONE JOINT PER LINK: ``length`` is always at least MIN_LINK_LENGTH, so every
-    joint sits at its own point. Zero-length segments used to express a multi-DOF
-    knuckle as coincident joints; dropped because coincident axes need a gimbal
-    where two axes a MIN_LINK_LENGTH spacer apart are ordinary revolutes
-    in series.
-    """
+    """A joint and the link distal to it."""
 
     joint: Joint
     length: float
@@ -216,18 +122,7 @@ class Segment:
 
 @dataclass(frozen=True)
 class Mount:
-    """Where a finger attaches to the palm. Position only -- no orientation.
-
-    ``(u, v)`` are NORMALISED face coordinates, so a palm resize carries every
-    mount with it. Mutation still steps in METRES, because faces differ 2-4x in
-    span and the spans shrink with the palm.
-
-    A finger leaves along its face normal, and aiming it elsewhere is the base
-    joint's ``offset`` (see Joint). The mount used to carry a pointing direction
-    (alpha, beta); it was exactly reproducible by (base theta, base offset) and
-    strictly less expressive, since it could only aim a whole finger and never
-    give one a resting curl.
-    """
+    """Where a finger attaches to the palm."""
 
     face: str
     u: float
@@ -290,21 +185,14 @@ class Hand:
 
     @property
     def n_motors(self) -> int:
-        """One motor per joint -- couplings are deferred.
-
-        Kept as its own name rather than an alias because it is what the headline
-        claim is plotted against, and re-adding underactuation changes this and
-        not ``n_joints``."""
+        """One motor per joint -- couplings are deferred."""
         return self.n_joints
 
 
 # --- complexity -------------------------------------------------------------
 
 def complexity(hand: Hand) -> tuple[int, int]:
-    """``(n_motors, n_joints)`` -- readable without touching a simulator.
-
-    The hook the evolution loop needs to age-layer or stratify selection by
-    complexity without this package owning that decision."""
+    """``(n_motors, n_joints)`` -- readable without touching a simulator."""
     return (hand.n_motors, hand.n_joints)
 
 
@@ -334,14 +222,7 @@ def rodrigues(axis: np.ndarray, angle: float) -> np.ndarray:
 # --- joint axes -------------------------------------------------------------
 
 def axis_of(joint: Joint) -> np.ndarray:
-    """The hinge axis in the joint's own frame, where the link runs along +x.
-
-        axis(theta, phi) = [cos phi, sin phi sin theta, sin phi cos theta]
-
-    (0, pi/2) is +z (flexion), (pi/2, pi/2) is +y (abduction), phi -> 0 collapses
-    onto the link itself. theta needs only [0, pi) and phi only (0, pi/2]: the
-    redundant halves would give a hand two spellings and break design identity.
-    """
+    """The hinge axis in the joint's own frame, where the link runs along +x."""
     if joint.axis_override is not None:
         a = np.asarray(joint.axis_override, dtype=float)
         return a / max(float(np.linalg.norm(a)), 1e-12)
@@ -354,12 +235,7 @@ def axis_of(joint: Joint) -> np.ndarray:
 
 def face_frame(face: str, palm: Palm) -> tuple[np.ndarray, np.ndarray, np.ndarray,
                                                np.ndarray, float, float]:
-    """``(centre, normal, t_u, t_v, span_u, span_v)`` for a palm face.
-
-    Palm frame: origin at the centre of the WRIST face, so the palm occupies
-    z in [0, length] and an arm attaches at the origin. A normalised mount (u, v)
-    places at ``centre + (u - 0.5) span_u t_u + (v - 0.5) span_v t_v``.
-    """
+    """``(centre, normal, t_u, t_v, span_u, span_v)`` for a palm face."""
     t, w, l = palm.thickness, palm.width, palm.length
     x = np.array([1.0, 0.0, 0.0])
     y = np.array([0.0, 1.0, 0.0])
@@ -375,12 +251,7 @@ def face_frame(face: str, palm: Palm) -> tuple[np.ndarray, np.ndarray, np.ndarra
 
 
 def face_from_normal(n: np.ndarray) -> str | None:
-    """Which finger face has this outward normal, if any.
-
-    On an axis-aligned box a face's tangents are exactly its neighbours' normals,
-    which is what lets ``mutate.move_mount`` walk between faces without a
-    hand-written cube net. None means no finger mounts that way.
-    """
+    """Which finger face has this outward normal, if any."""
     axis = int(np.argmax(np.abs(n)))
     sign = "+" if n[axis] > 0 else "-"
     face = f"{sign}{'xyz'[axis]}"
@@ -388,12 +259,7 @@ def face_from_normal(n: np.ndarray) -> str | None:
 
 
 def mount_uv_bounds(face: str, palm: Palm) -> tuple[float, float, float, float]:
-    """``(u_lo, u_hi, v_lo, v_hi)`` -- the normalised box a mount may occupy.
-
-    MOUNT_EDGE_MARGIN converted per face, since a face's two axes have different
-    spans. A face narrower than twice the margin centres the mount instead: the
-    finger overhangs either way, and centring overhangs symmetrically.
-    """
+    """``(u_lo, u_hi, v_lo, v_hi)`` -- the normalised box a mount may occupy."""
     _, _, _, _, span_u, span_v = face_frame(face, palm)
     m = MOUNT_EDGE_MARGIN
     lo_u, hi_u = ((m / span_u, 1.0 - m / span_u) if span_u > 2 * m else (0.5, 0.5))
@@ -409,23 +275,12 @@ def mount_position(mount: Mount, palm: Palm) -> np.ndarray:
 
 
 def mount_direction(mount: Mount, palm: Palm) -> np.ndarray:
-    """The face normal: a finger leaves perpendicular to the face it sits on.
-
-    Aiming it elsewhere is the base joint's ``offset``, not a mount property.
-    """
+    """The face normal: a finger leaves perpendicular to the face it sits on."""
     return face_frame(mount.face, palm)[1]
 
 
 def _frame_from_axis(axis: np.ndarray) -> np.ndarray:
-    """Orthonormal frame with ``axis`` as its first column.
-
-    The remaining rotation about ``axis`` is gauge -- exactly what a mount roll
-    would have carried, absorbed into each joint's theta -- so it only has to be
-    deterministic. It is still chosen to be meaningful: local +z is perpendicular
-    to both the finger and GRASP_DIR, so theta = 0 curls the tip toward the palm.
-    That degenerates when a finger points along GRASP_DIR, which a mount tilt can
-    reach, so the fallback picks the world axis least aligned with the finger.
-    """
+    """Orthonormal frame with ``axis`` as its first column."""
     a = axis / np.linalg.norm(axis)
     ref = GRASP_DIR
     if np.linalg.norm(np.cross(a, ref)) < 1e-6:
@@ -437,11 +292,7 @@ def _frame_from_axis(axis: np.ndarray) -> np.ndarray:
 
 
 def mount_frame(mount: Mount, palm: Palm) -> tuple[np.ndarray, np.ndarray]:
-    """``(position, R)`` for a finger's base, in the palm frame.
-
-    Columns of R are (finger axis, local +y, local +z). The link runs along the
-    first; a joint at theta = 0 rotates about the third.
-    """
+    """``(position, R)`` for a finger's base, in the palm frame."""
     return mount_position(mount, palm), _frame_from_axis(mount_direction(mount, palm))
 
 
@@ -450,18 +301,7 @@ def mount_frame(mount: Mount, palm: Palm) -> tuple[np.ndarray, np.ndarray]:
 def forward_kinematics(finger: Finger, palm: Palm,
                        angles: dict[int, float] | None = None,
                        ) -> tuple[list[np.ndarray], list[tuple]]:
-    """``(joint_positions, capsules)`` for one finger, in the palm frame.
-
-    ``angles`` maps segment index to radians and is COMMANDED angle, added to
-    each joint's ``offset``; missing entries are 0, so the default pose is every
-    joint sitting at its own offset.
-    ``joint_positions`` has one entry per segment plus the fingertip.
-
-    Each capsule is ``(start, end, radius, segment_index)``. The index is carried
-    even though it currently equals the capsule's own position, because
-    ``build.py`` will skip geometry for ghosted joints -- and a caller zipping
-    them positionally would then read the wrong joint SILENTLY.
-    """
+    """``(joint_positions, capsules)`` for one finger, in the palm frame."""
     angles = angles or {}
     p, R = mount_frame(finger.mount, palm)
     joints: list[np.ndarray] = []
@@ -482,14 +322,7 @@ def forward_kinematics(finger: Finger, palm: Palm,
 
 def joint_axes(finger: Finger, palm: Palm,
                angles: dict[int, float] | None = None) -> list[np.ndarray]:
-    """Each joint's hinge axis as a unit vector in the palm frame.
-
-    ``axis_of`` gives the axis in the joint's own frame; this carries it out to
-    the palm frame by the same chain ``forward_kinematics`` walks. A rotation
-    leaves its own axis fixed, so it makes no difference whether the joint's own
-    offset has been applied yet -- but the joints PROXIMAL to it move the axis,
-    which is why this takes the pose.
-    """
+    """Each joint's hinge axis as a unit vector in the palm frame."""
     angles = angles or {}
     _, R = mount_frame(finger.mount, palm)
     out: list[np.ndarray] = []
@@ -509,18 +342,7 @@ def fingertip(finger: Finger, palm: Palm,
 
 def segment_distance(p0: np.ndarray, p1: np.ndarray,
                      q0: np.ndarray, q1: np.ndarray) -> float:
-    """Closest distance between two 3-D line segments, closed form.
-
-    Two capsules of radius r intersect exactly when this drops below 2r, so this
-    is the whole of a capsule-capsule test -- no mesh, no solver.
-
-    THE CLAMPING IS NOT INDEPENDENT. Solving the unconstrained problem and
-    clipping each parameter into [0, 1] separately does not give the closest
-    pair: once one is clamped the other must be re-solved against it. Doing that
-    wrong overestimates, which in a clearance check reports parts as clear when
-    they overlap. Parameters are carried as numerator/denominator pairs so a
-    clamp applies before dividing (Ericson, *Real-Time Collision Detection*).
-    """
+    """Closest distance between two 3-D line segments, closed form."""
     u, v, w = p1 - p0, q1 - q0, p0 - q0
     a, b, c = float(u @ u), float(u @ v), float(v @ v)
     d, e = float(u @ w), float(v @ w)
@@ -560,13 +382,7 @@ def segment_distance(p0: np.ndarray, p1: np.ndarray,
 
 
 def base_capsules(hand: Hand) -> list[tuple[np.ndarray, np.ndarray]]:
-    """Each finger's proximal link at the rest pose, as a core segment.
-
-    Computed directly rather than through ``forward_kinematics``: at rest the
-    first link is just mount position plus mount direction times length. Running
-    the full chain for its first element made the validator 10x slower, and the
-    validator runs on every mutation.
-    """
+    """Each finger's proximal link at the rest pose, as a core segment."""
     out = []
     for f in hand.fingers:
         p0, R = mount_frame(f.mount, hand.palm)
@@ -577,12 +393,7 @@ def base_capsules(hand: Hand) -> list[tuple[np.ndarray, np.ndarray]]:
 
 
 def mount_separations(hand: Hand) -> list[float]:
-    """Pairwise distances between finger mounts, in metres.
-
-    First-class because the 24k eval found this one of only two geometry
-    parameters that predicted performance -- an inverted U peaking at 4-5 cm
-    against a 4 cm object. The other is reach, and the two were independent.
-    """
+    """Pairwise distances between finger mounts, in metres."""
     pos = [mount_position(f.mount, hand.palm) for f in hand.fingers]
     return [float(np.linalg.norm(pos[i] - pos[j]))
             for i in range(len(pos)) for j in range(i + 1, len(pos))]
@@ -599,12 +410,7 @@ def rpy_to_mat(rpy) -> np.ndarray:
 
 
 def mat_to_rpy(mat) -> tuple[float, float, float]:
-    """3x3 rotation matrix -> URDF RPY.
-
-    At gimbal lock scipy resolves the free angle differently from a hand-rolled
-    branch, but both decompose to the same rotation, which is all any caller
-    round-trips through.
-    """
+    """3x3 rotation matrix -> URDF RPY."""
     r, p, y = Rotation.from_matrix(np.asarray(mat, dtype=float)[:3, :3]).as_euler("xyz")
     return float(r), float(p), float(y)
 
@@ -616,14 +422,7 @@ def rpy_to_quat_wxyz(rpy) -> tuple[float, float, float, float]:
 
 
 def rpy_to_rot6d(rpy) -> list[float]:
-    """First two columns of the rotation matrix for an RPY triple.
-
-    The 6D representation rather than Euler angles or a quaternion: it is
-    continuous over SO(3), so nearby orientations map to nearby vectors. Euler
-    angles wrap and quaternions double-cover, and both put a discontinuity
-    somewhere in a space the sampler draws uniformly over (mount roll is
-    U(0, 2*pi), so it visits every wrap point).
-    """
+    """First two columns of the rotation matrix for an RPY triple."""
     m = rpy_to_mat(rpy)
     return [float(v) for v in m[:, 0]] + [float(v) for v in m[:, 1]]
 
@@ -644,11 +443,7 @@ __all__ = ["rpy_to_mat", "mat_to_rpy", "rpy_to_quat_wxyz", "rpy_to_rot6d",
 
 
 def compute_mass_and_inertia(scale, density: float):
-    """Capsule-approximation for cylinders; exact for cuboids.
-
-    ``scale`` is (lx, ly, lz) for a cuboid or (height, diameter) for a capsule.
-    Returns (m, ixx, iyy, izz) with scale-axis = z (caller flips if needed).
-    """
+    """Capsule-approximation for cylinders; exact for cuboids."""
     if len(scale) == 3:
         lx, ly, lz = scale
         v = lx * ly * lz
@@ -694,13 +489,7 @@ TABLE_URDF = "assets/urdf/table_narrow.urdf"
 
 
 def table_extents() -> tuple[float, float, float]:
-    """Box dimensions read from the actual table asset.
-
-    This used to be a hardcoded TABLE_SIZE = (1.2, 0.8), which is 2.5x too wide
-    in x and 2x in y against the asset's 0.475 x 0.4 x 0.3. An oversized table
-    swallows the arm's link_3 and link_4, which looks exactly like the robot
-    colliding with the table when nothing is wrong with the robot.
-    """
+    """Box dimensions read from the actual table asset."""
     import xml.etree.ElementTree as ET
 
     root = ET.parse(resolve_repo_path(TABLE_URDF)).getroot()
@@ -713,22 +502,7 @@ def table_extents() -> tuple[float, float, float]:
 
 
 def _hull_collision_scene(urdf) -> int:
-    """Replace each collision mesh with its convex hull, in place.
-
-    Isaac Lab stamps ``approximation="convexHull"`` on every mesh collider
-    (verified in the baked USD: 34/34 on SHARPA, 26/26 on Allegro), so PhysX
-    never resolves contacts against the triangle meshes the URDF declares -- it
-    uses their hulls, with every concavity between phalanges filled in.
-
-    Showing the declared mesh therefore overstates the fidelity of the
-    simulation. Hulling the collision scene before ViserUrdf reads it means the
-    "collision" view is the geometry that actually decides contacts, and it
-    still follows the joint sliders because only the geometry is swapped, not
-    the scene graph.
-
-    Generated hands are unaffected -- their capsules and palm box are analytic
-    primitives with approximation "None", i.e. simulated exactly as declared.
-    """
+    """Replace each collision mesh with its convex hull, in place."""
     import trimesh
 
     scene = getattr(urdf, "collision_scene", None)
@@ -752,27 +526,7 @@ __all__ = ["GOAL_VOLUME_MINS", "GOAL_VOLUME_MAXS", "TABLE_Z", "TABLE_URDF",
 # --- joint tokens: the one description a policy reads, for any hand ---------
 
 def joint_boxes(hand: "Hand") -> tuple[np.ndarray, np.ndarray, float]:
-    """``(boxes, valid, hand_scale)`` -- the per-joint link box of every joint.
-
-    ``boxes`` is ``(J, 4, 3)`` in each joint's child-link frame, ordered as one
-    corner and its three adjacent corners::
-
-        p0 -> p1   proximal-to-distal link direction
-        p0 -> p2   positive rotation (bending) direction
-        p0 -> p3   signed joint-axis direction
-
-    The centre of the proximal face is the joint origin, so the four points
-    encode link length, thickness, joint orientation and axis sign with no joint
-    name, no role one-hot and no learned identity embedding. That is what lets
-    one policy read a generated hand and a measured one as the same object: this
-    function is the ONLY place a design becomes an observation.
-
-    Joints are emitted finger by finger, proximal to distal -- the order a
-    ``RobotSpec`` lists its hand joints in.
-
-    ``hand_scale`` is the longest encoded edge in metres, used for deterministic
-    geometric normalization and also given to the policy explicitly.
-    """
+    """``(boxes, valid, hand_scale)`` -- the per-joint link box of every joint."""
     boxes, valid = [], []
     for finger in hand.fingers:
         for seg in finger.segments:
@@ -958,12 +712,7 @@ def joint_link_boxes(
     *,
     base_dir: str | Path | None = None,
 ) -> tuple[list[str], np.ndarray, np.ndarray, float]:
-    """Return child bodies, ordered boxes, validity, and characteristic scale.
-
-    ``boxes`` is ``(J, 4, 3)`` in each joint's child-link frame.  ``hand_scale``
-    is the longest encoded link edge in metres and is used only for deterministic
-    geometric normalization; it is also exposed to the policy explicitly.
-    """
+    """Return child bodies, ordered boxes, validity, and characteristic scale."""
     if isinstance(urdf, ET.Element):
         root = urdf
         mesh_base = Path(base_dir or ".")
@@ -1005,20 +754,7 @@ __all__ = ["joint_link_boxes"]
 
 
 def hand_from_urdf(urdf, joint_names, *, base_dir=None, palm=None) -> "Hand":
-    """Import a measured hand -- SHARPA, Allegro -- as a ``Hand``.
-
-    The point of this function is that there is no second representation. A
-    measured hand is a hand: a palm with fingers made of jointed segments. It
-    simply does not satisfy ``validate_design`` -- its geometry is not on the
-    design grid and never will be -- which is exactly why bounds live in the
-    validator rather than in ``__post_init__``.
-
-    Each segment carries its box verbatim in its own child-link frame, because
-    a measured asset's frames come from its own URDF and cannot be re-derived
-    from a length and an axis. Mounts and palm are placeholders: joint tokens
-    are per-joint and frame-local, so they do not depend on them. Scene
-    authoring does, and that is what ``build`` will need to fill in.
-    """
+    """Import a measured hand -- SHARPA, Allegro -- as a ``Hand``."""
     if isinstance(urdf, ET.Element):
         root, meshes = urdf, base_dir or "."
     else:

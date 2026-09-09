@@ -1,11 +1,4 @@
-"""One row of population statistics per generation.
-
-Rows are recorded on the CHILDREN, before the next selection step, so a row
-describes the population a fitness function would be handed.
-
-Everything here is a plain dict of JSON scalars: a run's output has to outlive
-the code that produced it, and a pickled numpy array does not.
-"""
+"""One row of population statistics per generation."""
 
 from __future__ import annotations
 
@@ -17,14 +10,7 @@ from hand_sampler import mutate_design
 
 
 def topology(hand: design_space.Hand) -> tuple:
-    """The discrete skeleton of a design -- what is left after forgetting every
-    length and angle.
-
-    Diversity has to be counted on THIS, not on genotype identity. A seed's
-    mount ``v`` is drawn from a continuous range, so essentially every hand is
-    unique no matter how morphologically converged the population is: counting
-    distinct genotypes measures the null-mutation copy rate and nothing else.
-    """
+    """The discrete skeleton of a design -- what is left after forgetting every length and..."""
     return (tuple(sorted(f.n_joints for f in hand.fingers)),
             tuple(sorted(f.mount.face for f in hand.fingers)))
 
@@ -34,12 +20,7 @@ def _q(sorted_xs: list, q: float):
 
 
 def record(gen: int, pop: list, stats: mutate_design.Stats, nulls: int) -> dict:
-    """Summarise one generation.
-
-    The joint HISTOGRAM is recorded, not just percentiles: the question of
-    whether the cheap end of the (performance, n_motors) front still gets
-    sampled is about the tail, and a p10 cannot answer it.
-    """
+    """Summarise one generation."""
     nf = [h.n_fingers for h in pop]
     nj = sorted(h.n_joints for h in pop)
     segs = [s for h in pop for f in h.fingers for s in f.segments]

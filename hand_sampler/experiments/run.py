@@ -1,26 +1,4 @@
-"""Run the evolution loop and record population statistics -- resumably.
-
-    python -m hand_sampler.experiments.run --out runs/null --gens 1000 --seed 7
-    python -m hand_sampler.experiments.run --out runs/null --gens 9000
-
-The second call CONTINUES the first. Both the population and the RNG state are
-checkpointed, so 1k + 9k is the SAME chain as 10k in one go -- restarting the
-RNG instead would give a statistically different run that looks identical from
-the outside. Long runs are meant to be grown in stages; that only works if a
-stage boundary leaves no trace in the statistics.
-
-Selection modes:
-  random      no selection at all. The grammar's own prior -- the null that any
-              fitness result has to be read against.
-  min_joints  / max_joints
-              select on joint count at the same truncation as the real loop.
-              Not a fitness function: a yardstick for how fast selection CAN
-              move a statistic, so a real run's rate can be read as a fraction
-              of it.
-
-Plug a real evaluator in by replacing ``select``; nothing else here knows what
-a fitness function is.
-"""
+"""Run the evolution loop and record population statistics -- resumably."""
 
 from __future__ import annotations
 

@@ -173,7 +173,7 @@ def main() -> None:
 
     # The intact hand's characteristic scale, read from its own URDF rather
     # than hardcoded so it tracks the asset.
-    from isaacsimenvs.pose_reaching_6d.obs_utils.joint_geometry import joint_link_boxes
+    from hand_sampler.design_space import joint_link_boxes
     intact_scale = float(joint_link_boxes(
         SHARPA_IIWA14.urdf_path, SHARPA_IIWA14.hand_joint_names)[3])
     print(f"intact hand_scale = {intact_scale:.6f}"
@@ -210,9 +210,6 @@ def main() -> None:
         cfg.scene.num_envs = args.num_envs
         cfg.assets.num_assets_per_type = args.num_assets_per_type
         cfg.assets.robot_spec = spec.name
-        cfg.assets.robot_population_path = ""
-        cfg.assets.robot_population_seed = -1
-        cfg.assets.robot_population_count = 0
         cfg.action.arm_moving_average = 1.0
         cfg.action.hand_moving_average = 1.0
         dr = cfg.domain_randomization

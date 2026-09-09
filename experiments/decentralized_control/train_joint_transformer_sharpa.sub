@@ -126,9 +126,6 @@ python -u coevolution/train.py \
     `# --wandb_tags is nargs=+; the --flag below stops it eating the overrides` \
     --wandb_name "$EXPERIMENT_NAME" \
     env.assets.robot_spec="$ROBOT" \
-    env.assets.robot_population_path="" \
-    env.assets.robot_population_seed=-1 \
-    env.assets.robot_population_count=0 \
     env.assets.num_assets_per_type="$NUM_ASSETS_PER_TYPE" \
     env.scene.num_envs="$NUM_ENVS" \
     env.action.arm_moving_average=1.0 \

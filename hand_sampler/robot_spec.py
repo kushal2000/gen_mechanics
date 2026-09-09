@@ -1,10 +1,4 @@
-"""Fixed robots: what the task needs to know about a specific arm+hand.
-
-A ``RobotSpec`` is joint names, PD gains, palm and fingertip geometry, the
-self-collision map and the action dimension. Before it existed, SHARPA was
-hardcoded across ~9 sites. The measured constants and the arm definition it is
-built from live here too, so one file answers "what robot is this".
-"""
+"""Fixed robots: what the task needs to know about a specific arm+hand."""
 
 from __future__ import annotations
 
@@ -39,8 +33,7 @@ class RobotSpec:
 
     # --- bodies -------------------------------------------------------------
     palm_body_name: str
-    """Palm body name AFTER merge_fixed_joints. The URDF's palm link is usually
-    merged into the arm's last link, so this is typically an arm link name."""
+    """Palm body name AFTER merge_fixed_joints."""
     fingertip_body_names: tuple[str, ...]
     """Ordered fingertip bodies, likewise post-merge."""
 
@@ -55,30 +48,21 @@ class RobotSpec:
     arm_default_joint_pos: Mapping[str, float]
     hand_default_joint_pos: Mapping[str, float]
     start_arm_higher_deltas: Mapping[str, float]
-    """Radian offsets applied to the arm home pose when reset.start_arm_higher is
-    set (the DexToolBench eval pose). Replaces a hardcoded joint_2/joint_4 nudge."""
+    """Radian offsets applied to the arm home pose when reset.start_arm_higher is set (the..."""
 
     # --- observation geometry ----------------------------------------------
     palm_center_offset: Vec3
-    """Offset from the palm body origin to the grasp center, in the palm frame.
-    Defines the frame that palm_pos, keypoints_rel_palm, and fingertip_pos_rel_palm
-    are expressed in, so it must mean the same physical thing for every hand or
-    the policies see semantically different observations of the same world."""
+    """Offset from the palm body origin to the grasp center, in the palm frame."""
     fingertip_offsets: tuple[Vec3, ...]
-    """Per-fingertip offset from body origin to pad center. Per-fingertip rather
-    than one shared constant because hands use different distal geometry per
-    finger (Allegro's thumb carries a different sensor mesh than its fingers)."""
+    """Per-fingertip offset from body origin to pad center."""
 
     # --- physics ------------------------------------------------------------
     adjacent_links: Mapping[str, list[str]]
-    """Link pairs whose self-collision is filtered out, in POST-merge body names.
-    PhysX already auto-filters directly-jointed parent/child pairs, so the value
-    here is the non-kinematic-neighbor pairs (palm-to-proximal-phalanx, etc.)."""
+    """Link pairs whose self-collision is filtered out, in POST-merge body names."""
 
     # --- scene prim patterns -------------------------------------------------
     link_prim_regexes: tuple[str, ...]
-    """Prim-path patterns matching this robot's visual meshes, for the depth
-    raycaster and viewers."""
+    """Prim-path patterns matching this robot's visual meshes, for the depth raycaster and..."""
 
     # --- base placement ------------------------------------------------------
     base_pos: Vec3 = (0.0, 0.8, 0.0)
@@ -86,46 +70,17 @@ class RobotSpec:
 
     # --- asset conversion ----------------------------------------------------
     replace_cylinders_with_capsules: bool = False
-    """Convert ``<cylinder>`` collision geometry to PhysX capsules on import.
-
-    URDF has no capsule primitive, so procedurally generated hands emit cylinders
-    and rely on this to get rounded ends — which matter for contact (a cylinder's
-    rim is a sharp edge) and are the cheapest shape PhysX has. Defaults to False
-    so the mesh-based hands convert exactly as before and SHARPA stays
-    bit-identical to simtoolreal (docs/methodology.md §2)."""
+    """Convert ``<cylinder>`` collision geometry to PhysX capsules on import."""
 
     # --- cross-embodiment padding -------------------------------------------
     fingertip_slot_names: tuple[str, ...] = ()
-    """ALL fingertip slots the morphology template defines, active or not.
-
-    A cross-embodied policy needs one observation layout for every design it may
-    see, but designs differ in how many fingers they actually use: the generated
-    population runs 2, 3 or 4 active fingertips against a 5-slot template. The
-    slot list is the padded, template-constant axis the observation is built on,
-    and ``fingertip_slot_active`` says which entries are real.
-
-    This works because ghosting removes a finger's ACTUATION and GEOMETRY, not
-    its links -- every generated design carries all 5 distal links, so the body
-    indices are the same in every env and only the mask varies. Verified across
-    the 64-hand population: 0 designs missing any of the 5 slots.
-
-    Empty means "no padding": slots are exactly ``fingertip_body_names`` and the
-    mask is all-true, so single-robot specs keep their existing observation
-    layout byte for byte. Do not populate this for a fixed hand."""
+    """ALL fingertip slots the morphology template defines, active or not."""
 
     fingertip_slot_active: tuple[bool, ...] = ()
-    """Per-slot validity mask, parallel to ``fingertip_slot_names``.
-
-    Masked-out slots must not reach a reward, a termination test or a running
-    minimum -- a ghosted finger's distal link still has a pose, and it is
-    meaningless. Empty means all slots are active."""
+    """Per-slot validity mask, parallel to ``fingertip_slot_names``."""
 
     fingertip_slot_offsets: tuple[Vec3, ...] = ()
-    """Pad-center offsets for ALL slots, parallel to ``fingertip_slot_names``.
-
-    Separate from ``fingertip_offsets`` because these are per-design even for the
-    same slot index -- the distal phalanx length varies across the population --
-    so the env carries them per env rather than as one shared table."""
+    """Pad-center offsets for ALL slots, parallel to ``fingertip_slot_names``."""
 
     notes: str = field(default="", compare=False)
     """Provenance: where gains, offsets, and mount transforms came from."""
@@ -138,8 +93,7 @@ class RobotSpec:
 
     @property
     def num_fingertip_slots(self) -> int:
-        """Observation width for fingertip fields. Equals ``num_fingertips``
-        for an unpadded spec, so obs dims are unchanged for fixed hands."""
+        """Observation width for fingertip fields."""
         return len(self.fingertip_slots)
 
     @property
@@ -188,14 +142,7 @@ class RobotSpec:
         self.validate()
 
     def validate(self) -> None:
-        """Fail loudly on a malformed spec.
-
-        These checks replace the module-level ``assert len(...) == 22`` lines
-        that used to sit in scene_utils. Each one guards a failure that is
-        otherwise silent: a joint missing from a gain table gets Isaac Lab's
-        default gains, a duplicate name corrupts the canonical permutation, and
-        an empty adjacency map leaves self-collisions unmasked.
-        """
+        """Fail loudly on a malformed spec."""
         who = f"RobotSpec({self.name!r})"
 
         if not self.arm_joint_names:
@@ -492,11 +439,7 @@ FLANGE_TO_PALM_YAW_RAD: float = -1.3089969389957472   # -75 deg
 
 
 def cylinder_part(total_length: float, radius: float) -> float:
-    """Cylindrical section of a capsule whose TOTAL length is ``total_length``.
-
-    One definition, shared by the URDF builder and the self-collision checker,
-    so the shape they assume cannot drift from the shape PhysX simulates.
-    """
+    """Cylindrical section of a capsule whose TOTAL length is ``total_length``."""
     return max(total_length - 2.0 * radius, 0.0)
 
 
@@ -571,22 +514,7 @@ ARM_MESH_PREFIX_TO = "../kuka_sharpa_description/"
 
 
 def _mirror_hand(root: ET.Element, hand_links, hand_joints, mesh_map: dict) -> None:
-    """Reflect the hand subtree about the y=0 plane of its mount frame.
-
-    The stock Allegro asset is a RIGHT hand. Its own comment says a left hand
-    only needs the sign of each finger's y offset and splay angle flipped, but
-    that is incomplete: the palm and thumb-base meshes are not mirror-symmetric
-    (34.8 mm and 30.3 mm maximum residual when reflected about y), so that
-    recipe yields left-hand kinematics wearing a right-hand palm. This applies
-    the full reflection M = diag(1, -1, 1) to origins, rotations, axes, and
-    geometry.
-
-    Under a reflection a rotation R maps to M R M -- still a rotation, since
-    det(M R M) = det(R) = 1. A revolute axis is a pseudovector, so it maps to
-    -M a rather than M a; that extra sign keeps a positive joint angle meaning
-    the same motion (flexion stays flexion), which matters because the limits
-    are asymmetric and are carried over unchanged.
-    """
+    """Reflect the hand subtree about the y=0 plane of its mount frame."""
     import numpy as np
 
     M = np.diag([1.0, -1.0, 1.0])

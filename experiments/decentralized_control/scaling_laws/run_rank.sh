@@ -40,8 +40,6 @@ ARGS=(
     "${WANDB_ARGS[@]}"
     "${VIEWER_ARGS[@]}"
     env.assets.robot_spec=sharpa_iiwa14
-    env.assets.robot_population_path= env.assets.robot_population_seed=-1
-    env.assets.robot_population_count=0 env.assets.num_assets_per_type=100
     "env.scene.num_envs=$NUM_ENVS_PER_GPU"
     'env.obs.obs_list=${env.obs.state_list}'
     env.action.arm_moving_average=1.0 env.action.hand_moving_average=1.0

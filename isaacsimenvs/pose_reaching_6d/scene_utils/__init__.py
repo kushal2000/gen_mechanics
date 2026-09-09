@@ -5,6 +5,6 @@
 ``author_*`` modules write USD directly instead of converting URDFs.
 """
 
-from .assembly import RobotPopulation, SceneRecord, finalize_scene, setup_scene
+from .assembly import SceneRecord, finalize_scene, setup_scene
 
-__all__ = ["RobotPopulation", "SceneRecord", "finalize_scene", "setup_scene"]
+__all__ = ["SceneRecord", "finalize_scene", "setup_scene"]
