@@ -49,6 +49,26 @@ file's history were reversed by measuring the wrong thing:
 So: --compile 1 (the default) and bf16 are the only numbers that describe how
 this actually trains.
 
+WHAT THIS COMPARISON DOES NOT CONTROL FOR. It measures cost, not quality, and
+the two networks are not matched on either of the things that would make a
+learning comparison fair:
+
+  capacity        2.650M parameters against 0.072M, a 37x gap. Any claim that
+                  one architecture "does the same job cheaper" is unsupported
+                  by this file -- it shows only what each costs to run.
+  global context  the MLP wires all 74 global dimensions (palm pose, object
+                  rotation, keypoints_rel_goal -- the actual task target)
+                  directly into every hidden unit. The transformer projects
+                  them to d_model first, so at d_model 32 a hand joint reaches
+                  the task through a 3.3x bottleneck, and only via attention
+                  with one global token. Per-joint object geometry
+                  (object_keypoints_rel_joint) IS in each token, so this is not
+                  a total loss of task information -- but the goal is global.
+                  Note arm_head takes a RAW skip of the global vector for
+                  exactly this reason (a version without it "scored ~0 on the
+                  post-lift keypoint term"); the hand path has no such skip and
+                  may be paying the same cost silently.
+
 FLOPs are counted analytically (2 per multiply-accumulate) rather than with a
 profiler, so every number here can be checked by hand against the shapes.
 """
@@ -187,18 +207,29 @@ class JointTransformer(nn.Module):
 # measurement
 # --------------------------------------------------------------------------
 
-def measure(net, batch, device, iters=20, compile_net=False):
+def measure(net, batch, device, iters=20, compile_net=False, precision="bf16"):
     """Peak activation memory and wall-clock, forward and forward+backward."""
+    import contextlib
+
     net = net.to(device)
     if compile_net:
         net = torch.compile(net, dynamic=False)
     obs = torch.randn(batch, OBS_DIM, device=device)
 
+    # TF32 is a global flag, autocast is a context. Set both explicitly rather
+    # than inheriting whatever the process happened to leave them at.
+    torch.backends.cuda.matmul.allow_tf32 = (precision == "tf32")
+    torch.set_float32_matmul_precision("high" if precision == "tf32" else "highest")
+    amp = (torch.autocast(device, dtype=torch.bfloat16)
+           if precision == "bf16" and device == "cuda" else contextlib.nullcontext())
+
     def fwd():
-        return net(obs)
+        with amp:
+            return net(obs)
 
     def fwd_bwd():
         net.zero_grad(set_to_none=True)
+        # The loss is computed in fp32 outside autocast, as rl_games does.
         fwd().float().pow(2).mean().backward()
 
     for _ in range(12 if compile_net else 5):            # compile needs more warmup
@@ -242,10 +273,11 @@ def measure(net, batch, device, iters=20, compile_net=False):
     return act, t_fwd, t_both
 
 
-def row(name, net, batch, device, compile_net=False):
+def row(name, net, batch, device, compile_net=False, precision="bf16"):
     params = sum(p.numel() for p in net.parameters())
     fl = net.flops(batch)
-    act, t_fwd, t_both = measure(net, batch, device, compile_net=compile_net)
+    act, t_fwd, t_both = measure(net, batch, device, compile_net=compile_net,
+                                 precision=precision)
     # Forward is ~1/3 of fwd+bwd FLOPs; report achieved rate on the fwd pass.
     tflops = fl / (t_fwd * 1e-3) / 1e12
     return dict(name=name, params=params, flops=fl, act=act,
@@ -332,6 +364,15 @@ def main():
     p.add_argument("--n_layers", type=int, default=1)
     p.add_argument("--mu_head_units", type=int, nargs="*", default=[])
     p.add_argument("--arm_head_units", type=int, nargs="*", default=[256, 128])
+    p.add_argument("--precision", default="bf16",
+                   choices=["bf16", "tf32", "fp32"],
+                   help="bf16 runs the forward under torch.autocast, which is "
+                        "what the launchers do (mixed_precision: True). It is "
+                        "the default because it CHANGES THE ANSWER: the dense "
+                        "MLP gains 4.10x from bf16 and the transformer only "
+                        "2.52x, so in fp32 the transformer appears to win and "
+                        "in bf16 it loses. fp32 numbers describe no run that "
+                        "exists.")
     p.add_argument("--compile", type=int, default=1,
                    help="1 wraps each net in torch.compile(dynamic=False), which "
                         "is what the launchers actually run. Eager numbers "
@@ -347,7 +388,7 @@ def main():
     torch.manual_seed(0)
     print(f"\ninput {OBS_DIM} ({N_HAND} joints x {TOKEN_DIM} + {GLOBAL_DIM} global)"
           f"  ->  output {ACT_DIM} ({N_HAND} hand + {N_ARM} arm)")
-    print(f"batch {args.batch}, {args.device}, "
+    print(f"batch {args.batch}, {args.device}, {args.precision}, "
           f"{'torch.compile' if args.compile else 'EAGER (understates the transformer ~2x)'}"
           + (f", {torch.cuda.get_device_name(0)}" if args.device == "cuda" else "") + "\n")
 
@@ -364,20 +405,20 @@ def main():
                    (f"JT d{args.d_model} h{args.n_heads} ff{args.ff_mult}", jt),
                    ("JT d32 h1 ff1 mu=[32]",
                     lambda: jt(d_model=32, n_heads=1, ff_mult=1, mu_units=[32]))],
-                  args.batch, args.device, c)
+                  args.batch, args.device, c, args.precision)
         return
 
     rows = [row(f"DENSE MLP {'-'.join(map(str, args.mlp_units))}",
-                DenseMLP(args.mlp_units), args.batch, args.device, c),
+                DenseMLP(args.mlp_units), args.batch, args.device, c, args.precision),
             row(f"JT d{args.d_model} h{args.n_heads} ff{args.ff_mult} L{args.n_layers}",
-                jt(), args.batch, args.device, c)]
+                jt(), args.batch, args.device, c, args.precision)]
     if args.sweep:
         rows += [
             row("JT d32 h4 ff1 mu=[32]", jt(d_model=32, ff_mult=1, mu_units=[32]),
-                args.batch, args.device, c),
+                args.batch, args.device, c, args.precision),
             row("JT d32 h1 ff1 mu=[32]", jt(d_model=32, n_heads=1, ff_mult=1,
-                                            mu_units=[32]), args.batch, args.device, c),
-            row("JT d64 h4 ff0 (no FF)", jt(ff_mult=0), args.batch, args.device, c),
+                                            mu_units=[32]), args.batch, args.device, c, args.precision),
+            row("JT d64 h4 ff0 (no FF)", jt(ff_mult=0), args.batch, args.device, c, args.precision),
         ]
     report(rows)
 
