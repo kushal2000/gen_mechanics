@@ -105,10 +105,14 @@ class A2CBase(BaseAlgorithm):
             # total number of GPUs across all nodes
             self.world_size = int(os.getenv("WORLD_SIZE", "1"))
 
-            import hashlib
-            dist.init_process_group("gloo", rank=self.global_rank, world_size=self.world_size, init_method=f'tcp://127.0.0.1:{23400 + int(hashlib.md5(self.experiment_name[3:].encode("utf-8")).hexdigest(), 16) % 500}')
-
-            self.device_name = 'cuda:0' # DEBUG
+            self.device_name = f'cuda:{self.local_rank}'
+            torch.cuda.set_device(self.local_rank)
+            if not dist.is_initialized():
+                if os.getenv('MASTER_ADDR') and os.getenv('MASTER_PORT'):
+                    dist.init_process_group('nccl', init_method='env://')
+                else:
+                    import hashlib
+                    dist.init_process_group("gloo", rank=self.global_rank, world_size=self.world_size, init_method=f'tcp://127.0.0.1:{23400 + int(hashlib.md5(self.experiment_name[3:].encode("utf-8")).hexdigest(), 16) % 500}')
             config['device'] = self.device_name
             if self.global_rank != 0:
                 config['print_stats'] = False
@@ -1225,9 +1229,11 @@ class DiscreteA2CBase(A2CBase):
         if self.multi_gpu:
             torch.cuda.set_device(self.local_rank)
             print("====================broadcasting parameters")
-            model_params = [self.model.state_dict()]
-            dist.broadcast_object_list(model_params, 0)
-            self.model.load_state_dict(model_params[0])
+            for tensor in self.model.state_dict().values():
+                dist.broadcast(tensor, 0)
+            if self.has_central_value:
+                for tensor in self.central_value_net.model.state_dict().values():
+                    dist.broadcast(tensor, 0)
 
         while True:
             epoch_num = self.update_epoch()
@@ -1543,9 +1549,11 @@ class ContinuousA2CBase(A2CBase):
 
         if self.multi_gpu:
             print("====================broadcasting parameters")
-            model_params = [self.model.state_dict()]
-            dist.broadcast_object_list(model_params, 0)
-            self.model.load_state_dict(model_params[0])
+            for tensor in self.model.state_dict().values():
+                dist.broadcast(tensor, 0)
+            if self.has_central_value:
+                for tensor in self.central_value_net.model.state_dict().values():
+                    dist.broadcast(tensor, 0)
             
         # for _ in range(0):
         #     self.play_steps()

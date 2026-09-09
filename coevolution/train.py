@@ -95,6 +95,18 @@ def main() -> None:
     # --- AppLauncher flags (--headless, --enable_cameras, etc.) ---
     AppLauncher.add_app_launcher_args(parser)
     args_cli, hydra_args = parser.parse_known_args()
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    global_rank = int(os.environ.get("RANK", "0"))
+    if world_size > 1:
+        # Kit and the environment must select the rank's GPU before startup.
+        args_cli.device = f"cuda:{local_rank}"
+        args_cli.rl_device = args_cli.device
+        args_cli.sim_device = args_cli.device
+        if global_rank != 0:
+            args_cli.wandb_activate = False
+            args_cli.capture_video = False
+            args_cli.capture_viewer = False
 
     # `--wandb_tags` takes nargs="*", so argparse greedily consumes every
     # following token that does not start with "-" -- including Hydra overrides
@@ -142,6 +154,9 @@ def main() -> None:
         # sim_device CLI flag still wins — it's a launcher-level concern, not
         # something we expect in the task YAML.
         env_cfg.sim.device = args_cli.sim_device
+        if world_size > 1:
+            agent_cfg["params"]["config"]["multi_gpu"] = True
+            env_cfg.seed = int(agent_cfg["params"]["seed"]) + global_rank
 
         # render_mode="rgb_array" makes DirectRLEnv.render() lazily create a
         # single omni.replicator render_product at cfg.viewer.cam_prim_path —
