@@ -52,6 +52,14 @@ def parse_args():
     p.add_argument("--steps", type=int, default=6000)
     p.add_argument("--num_assets_per_type", type=int, default=100)
     p.add_argument("--seed", type=int, default=0)
+    # The env a checkpoint TRAINED in, when it differs from this harness's
+    # defaults. simtoolreal's shipped policy used 0.1 smoothing with delays and
+    # noise on; evaluating it at 1.0 with them off is a different environment,
+    # and the policy would look worse for reasons that are not the policy.
+    p.add_argument("--moving_average", type=float, default=1.0,
+                   help="arm and hand action smoothing; 0.1 for the simtoolreal policy")
+    p.add_argument("--domain_randomization", type=int, default=0,
+                   help="1 restores obs/action/object delays and noise")
     p.add_argument("--sapg_expl_coef", type=float, default=50.0,
                    help="trailing exploration column a SAPG checkpoint expects; "
                         "pass a negative value for a plain PPO checkpoint")
@@ -198,7 +206,7 @@ def main() -> None:
     for variant in (v.strip() for v in args.variants.split(",") if v.strip()):
         spec = finger_specs.register(variant)
         print(f"\n{'=' * 74}\n{variant}: {spec.num_hand_joints} hand joints, "
-              f"{spec.num_joints} actions, {spec.num_fingertip_slots} fingertips"
+              f"{spec.num_joints} actions, {spec.num_fingertips} fingertips"
               f"\n  urdf {spec.urdf_path}\n{'=' * 74}", flush=True)
 
         # A fresh cfg per variant: derive_spaces refuses to overwrite a
@@ -210,11 +218,13 @@ def main() -> None:
         cfg.scene.num_envs = args.num_envs
         cfg.assets.num_assets_per_type = args.num_assets_per_type
         cfg.assets.robot_spec = spec.name
-        cfg.action.arm_moving_average = 1.0
-        cfg.action.hand_moving_average = 1.0
+        cfg.action.arm_moving_average = args.moving_average
+        cfg.action.hand_moving_average = args.moving_average
         dr = cfg.domain_randomization
-        dr.use_obs_delay = dr.use_action_delay = dr.use_object_state_delay_noise = False
-        dr.joint_velocity_obs_noise_std = dr.force_scale = dr.torque_scale = 0.0
+        on = bool(args.domain_randomization)
+        dr.use_obs_delay = dr.use_action_delay = dr.use_object_state_delay_noise = on
+        if not on:
+            dr.joint_velocity_obs_noise_std = dr.force_scale = dr.torque_scale = 0.0
         cfg.seed = args.seed
         # Pin the success criterion. termination_utils: "Eval pins the success
         # criterion" -- eval_success_tolerance overwrites
@@ -547,7 +557,7 @@ def rollout(env, inner, player, args, spec, recorder=None) -> dict:
     total = (banked + prev).float()
     out = {
         "hand_joints": spec.num_hand_joints, "actions": spec.num_joints,
-        "fingertips": spec.num_fingertip_slots,
+        "fingertips": spec.num_fingertips,
         "goals_per_env_mean": float(total.mean()),
         "goals_per_env_std": float(total.std()),
         "goals_total": float(total.sum()),

@@ -1,0 +1,50 @@
+#!/bin/bash
+#SBATCH --job-name=eval_pretrained
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=100000
+#SBATCH --time=01:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/eval_logs/eval_pretrained-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/eval_logs/eval_pretrained-%j.err
+
+# Does simtoolreal's shipped policy still work in this port?
+#
+# It is the only ground truth available: trained in ISAACGYM, weights and config
+# shipped together, and every physics question so far has been settled by
+# reading diffs. If it performs here as it did there, the port is faithful and
+# later questions have something to appeal to.
+#
+# Its env is NOT this harness's default, and the differences matter:
+#   * action smoothing 0.1, not 1.0 -- a policy trained with smoothing and run
+#     without it is being asked to do a different job
+#   * obs/action/object delays and noise ON
+#   * obsList is its own 10 fields (140-d), taken from its shipped config
+#   * SAPG exploration column at 50.0, which simtoolreal used
+#
+# Joint friction is applied here, which matches isaacgym (where this trained)
+# and not simtoolreal's own Isaac Sim port, which defines the table and never
+# passes it.
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_evalpre_${SLURM_JOB_ID:-local}"
+export TORCHINDUCTOR_CACHE_DIR="/tmp/${USER}_evalpre_ind_${SLURM_JOB_ID:-local}"
+mkdir -p "$OMNI_KIT_CACHE_PATH" "$TORCHINDUCTOR_CACHE_DIR" debug_outputs/eval_logs
+
+PRE=/share/portal/kk837/simtoolreal/pretrained_policy
+python -u experiments/decentralized_control/eval/eval_finger_dropout.py \
+    --checkpoint "$PRE/model.pth" \
+    --config "$PRE/config.yaml" \
+    --variants intact \
+    --num_envs "${NUM_ENVS:-2048}" \
+    --steps "${STEPS:-3000}" \
+    --seed 0 \
+    --sapg_expl_coef 50.0 \
+    --moving_average 0.1 \
+    --domain_randomization 1 \
+    --out debug_outputs/eval_logs/pretrained_intact_${SLURM_JOB_ID:-local}.json
