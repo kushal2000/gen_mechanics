@@ -43,15 +43,26 @@ RUNDIR=debug_outputs/eval_logs/pretrained_run
 mkdir -p "$RUNDIR/.hydra"
 python - <<'TRANSLATE'
 import pathlib, yaml
-src = yaml.safe_load(open("/share/portal/kk837/simtoolreal/pretrained_policy/config.yaml"))
+from coevolution.eval import rl_player_utils  # registers ${eval:} and friends
+from omegaconf import OmegaConf
+
+# Resolve against the ORIGINAL structure: train.params.seed and num_actors
+# interpolate to keys that only exist in the isaacgym layout, so flattening
+# first leaves them dangling.
+src = OmegaConf.to_container(
+    OmegaConf.load("/share/portal/kk837/simtoolreal/pretrained_policy/config.yaml"),
+    resolve=True)
 env = src["task"]["env"]
 out = {"env": {"obs": {"obs_list": list(env["obsList"]),
                        "state_list": list(env["stateList"])},
                "scene": {"num_envs": int(env["numEnvs"])}},
        "agent": src["train"]}
 out["agent"]["params"]["config"]["num_actors"] = "${....env.scene.num_envs}"
-yaml.safe_dump(out, open("debug_outputs/eval_logs/pretrained_run/.hydra/config.yaml", "w"),
-               sort_keys=False)
+p = pathlib.Path("debug_outputs/eval_logs/pretrained_run/.hydra/config.yaml")
+p.parent.mkdir(parents=True, exist_ok=True)
+yaml.safe_dump(out, open(p, "w"), sort_keys=False)
+print(f"translated -> {p}: {len(out['env']['obs']['obs_list'])}-field obsList, "
+      f"network {out['agent']['params']['network']['name']}", flush=True)
 TRANSLATE
 
 python -u experiments/decentralized_control/eval/eval_finger_dropout.py \
