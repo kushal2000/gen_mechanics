@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 import math
 import random
@@ -103,13 +104,19 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--port", type=int, default=8080)
+    ap.add_argument("--population", default=None,
+                    help="a population JSON (or name) to open a stored design from")
+    ap.add_argument("--design", type=int, default=0,
+                    help="which design of --population to open")
     args = ap.parse_args()
 
     server = viser.ViserServer(port=args.port)
     rng = random.Random(args.seed)
 
+    start = (_load_designs(args.population)[args.design] if args.population
+             else gen_init_pop.seed_population(args.seed, 1)[0])
     state: dict = {
-        "hand": gen_init_pop.seed_population(args.seed, 1)[0],
+        "hand": start,
         "lineage": [],          # (operator, rng_state) -- replayed, not snapshotted
         "seed": args.seed,
         "last_op": None,
@@ -314,6 +321,38 @@ def _grid(items, out: str, cols: int = 3, flex: float = 0.0) -> None:
     print(f"wrote {out}  ({len(items)} hands)")
 
 
+def _load_designs(population: str):
+    """Designs from a population file, given a path or a bare population name."""
+    from hand_sampler import population_io
+
+    path = pathlib.Path(population)
+    if not path.exists():
+        path = population_io.default_path(population)
+    if not path.exists():
+        raise SystemExit(
+            f"no population at {population!r}; write one with\n"
+            f"    python -m hand_sampler.population_io {population}")
+    return population_io.load_population(path)
+
+
+def _parse_indices(spec: str, count: int) -> list[int]:
+    """``0,5,17`` or ``8100-8105``, or any mix. Out of range is an error, not a wrap."""
+    out: list[int] = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part.lstrip("-"):
+            lo, hi = (int(v) for v in part.rsplit("-", 1))
+            out.extend(range(lo, hi + 1))
+        else:
+            out.append(int(part))
+    bad = [i for i in out if not 0 <= i < count]
+    if bad:
+        raise SystemExit(f"design index out of range for {count} designs: {bad}")
+    return out
+
+
 def _png_main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--seed", type=int, default=0)
@@ -326,7 +365,21 @@ def _png_main() -> None:
                          "pointing straight out of their face; opposition is what "
                          "FLEXION produces, so use this to see a hand close.")
     ap.add_argument("--out", default="preview.png")
+    ap.add_argument("--population", default=None,
+                    help="a population JSON written by hand_sampler.population_io, "
+                         "or a bare population name to resolve under assets/populations")
+    ap.add_argument("--designs", default=None,
+                    help="which designs to draw from --population: indices and ranges, "
+                         "e.g. 0,5,17 or 8100-8105")
     args = ap.parse_args()
+
+    if args.population:
+        hands = _load_designs(args.population)
+        picked = (_parse_indices(args.designs, len(hands)) if args.designs
+                  else list(range(min(args.seeds, len(hands)))))
+        _grid([(hands[i], f"design {i}  |  {hands[i].n_fingers}f  {hands[i].n_joints}j")
+               for i in picked], args.out, flex=math.radians(args.flex))
+        return
 
     if not args.lineage:
         pop = gen_init_pop.seed_population(args.seed, args.seeds)

@@ -193,9 +193,13 @@ def _graft_hand_onto_arm(hand_urdf_text: str, arm_urdf_path: Path) -> str:
     if ARM_TIP_LINK not in arm_links:
         raise RuntimeError(f"{arm_urdf_path} has no {ARM_TIP_LINK} to graft onto")
 
+    by_name = {l.get("name"): l for l in arm.findall("link")}
     for element in hand:
-        # The hand's root link IS the flange; the arm already declares it.
+        # The hand's root link IS the flange, which the arm already declares --
+        # so MERGE into it rather than skipping it. Skipping dropped the palm,
+        # which the design hangs on the flange exactly as author_hand does.
         if element.tag == "link" and element.get("name") in arm_links:
+            by_name[element.get("name")].extend(list(element))
             continue
         arm.append(element)
     arm.set("name", "generated_hand_on_" + (arm.get("name") or "arm"))

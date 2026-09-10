@@ -74,3 +74,9 @@ debug_outputs/**
 !debug_outputs/README.md
 !debug_outputs/*/
 !debug_outputs/*/.gitkeep
+
+# Stored populations: 18 MB for gen_s0_n24576 and regenerated in 10 s by
+#   python -m hand_sampler.population_io <name>
+# so the sampler stays the record and the file is a local convenience.
+# `--verify` proves a file on disk still matches the sampler that wrote it.
+assets/populations/

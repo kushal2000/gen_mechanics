@@ -31,12 +31,17 @@ def attr(spec, name: str, type_name, value):
     return a
 
 
-def rel(spec, name: str, target: str):
-    """A relationship (physics:body0/1 are relationships, not info keys)."""
+def rel(spec, name: str, target):
+    """A relationship (physics:body0/1 are relationships, not info keys).
+
+    ``target`` is one path or several: physics:filteredPairs takes a list.
+    """
     from pxr import Sdf
 
+    targets = [target] if isinstance(target, str) else list(target)
     r = Sdf.RelationshipSpec(spec, name, False)
-    r.targetPathList.explicitItems.append(Sdf.Path(target))
+    for path in targets:
+        r.targetPathList.explicitItems.append(Sdf.Path(path))
     return r
 
 

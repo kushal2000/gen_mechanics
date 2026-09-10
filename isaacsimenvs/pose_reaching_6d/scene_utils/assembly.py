@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from pxr import Sdf, Usd, UsdGeom
+from scipy.spatial.transform import Rotation
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
@@ -32,7 +33,7 @@ from ..common_utils.urdf_to_usd import (
 from ..obs_utils import derive_spaces
 from .author_objects import author_handle_head, author_physics_material
 from hand_sampler import build
-from hand_sampler.robot_param_constants import ARM_TIP_LINK
+from hand_sampler.robot_param_constants import ARM_ADJACENT_LINKS, ARM_TIP_LINK
 from hand_sampler.robot_spec import design_index
 from .author_robot import ARM_PRIM, arm_only_urdf, flatten_robot_usd
 from .materials import apply_physx_material_properties
@@ -241,11 +242,41 @@ def _convert_arm(tmp_dir, offsets: dict):
     raw = _convert_urdf_to_usd(
         str(arm_only_urdf(arm_dir / "iiwa14_arm_only.urdf")), arm_dir,
         fix_base=True, self_collision=True, joint_drive=_robot_joint_drive_cfg())
+    # The arm's OWN consecutive links, filtered here for the same reason the
+    # fixed robot filters its whole map: self_collision=True above turns the
+    # articulation's self-collisions on, and nothing else on this path masks
+    # anything. Convert -> filter -> flatten, the order _convert_fixed_robot
+    # uses; the hand's pairs are authored per env by build.author_hand, which
+    # has no file to edit.
+    _apply_self_collision_filters(raw, dict(ARM_ADJACENT_LINKS))
     arm_usd, arm_root = flatten_robot_usd(raw, arm_dir / "arm_flat.usd", **offsets)
     stage = Usd.Stage.Open(arm_usd)
-    link7_world = np.asarray(UsdGeom.XformCache().GetLocalToWorldTransform(
-        stage.GetPrimAtPath(f"{arm_root}/{ARM_TIP_LINK}"))).T
-    return arm_usd, arm_root, link7_world
+    link7 = stage.GetPrimAtPath(f"{arm_root}/{ARM_TIP_LINK}")
+    link7_world = np.asarray(UsdGeom.XformCache().GetLocalToWorldTransform(link7)).T
+    return arm_usd, arm_root, link7_world, _rigid_body_mass_props(link7)
+
+
+def _rigid_body_mass_props(prim):
+    """``(mass, centre of mass, 3x3 inertia)`` as the arm USD declares them.
+
+    The palm merges into this body, so its mass has to be ADDED to what is
+    already there rather than replacing it -- and the flange's own numbers are
+    only readable off the converted stage.
+    """
+    from pxr import Gf
+
+    def _get(name, default):
+        a = prim.GetAttribute(name)
+        return a.Get() if a and a.Get() is not None else default
+
+    mass = float(_get("physics:mass", 0.0))
+    com = np.asarray([float(v) for v in _get("physics:centerOfMass", Gf.Vec3f(0.0))], float)
+    diag = np.asarray([float(v) for v in _get("physics:diagonalInertia", Gf.Vec3f(0.0))], float)
+    axes = _get("physics:principalAxes", Gf.Quatf(1.0))
+    imag = axes.GetImaginary()
+    rot = Rotation.from_quat(
+        [float(imag[0]), float(imag[1]), float(imag[2]), float(axes.GetReal())]).as_matrix()
+    return mass, com, rot @ np.diag(diag) @ rot.T
 
 
 def _author_robots_into_envs(env, spec, population, design_idx, asset_dir: Path,
@@ -260,7 +291,7 @@ def _author_robots_into_envs(env, spec, population, design_idx, asset_dir: Path,
             spec, env.cfg.assets.robot_urdf or spec.urdf_path, asset_dir / "usd", offsets)
         _log_scene_step(t0, "converted the robot")
     else:
-        arm_usd, arm_root, link7_world = _convert_arm(asset_dir, offsets)
+        arm_usd, arm_root, link7_world, link7_mass = _convert_arm(asset_dir, offsets)
         _log_scene_step(t0, "converted the shared arm once")
 
     base_pos = tuple(float(v) for v in spec.base_pos)
@@ -287,7 +318,7 @@ def _author_robots_into_envs(env, spec, population, design_idx, asset_dir: Path,
                 collider_links[idx] = build.author_hand(
                     layer, root, population.hands[idx],
                     palm_body_path=f"{root}{ARM_PRIM}/{ARM_TIP_LINK}",
-                    link7_world=link7_world)
+                    link7_world=link7_world, link7_mass_props=link7_mass)
             # spawn=None places nothing and a fixed base ignores init_state.pos.
             set_xform(layer.GetPrimAtPath(root), base_pos, base_rot)
         # Inside the block only specs are written; the stage recomposes on exit.
