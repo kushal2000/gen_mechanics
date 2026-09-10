@@ -1,14 +1,30 @@
 #!/bin/bash
+# Assemble one rank's argv and exec it. torchrun runs this once per GPU.
+#
+# WHY THIS IS PER RANK AND NOT PART OF run.sh: exactly one line needs the rank.
+# Hydra resolves its run dir from argv at decorator time, and $LOCAL_RANK only
+# exists inside the process torchrun spawns, so `hydra.run.dir=.../rank_$LOCAL_RANK`
+# cannot be written before the spawn. Everything else here is per JOB.
+# (`rank_${oc.env:LOCAL_RANK,0}` would let run.sh own the whole command; untested
+# against hydra_task_config_with_yaml, so it stays as it is.)
+#
+# RANK-0 GATING IS NOT DONE HERE. train.py owns it -- it forces wandb_activate,
+# capture_video and capture_viewer off when RANK != 0, picks cuda:$LOCAL_RANK,
+# sets multi_gpu and offsets the seed by the rank. This file used to gate them a
+# second time, which was worse than redundant: it tested LOCAL_RANK where
+# train.py tests the GLOBAL rank, so on more than one node it would have enabled
+# the viewer on every node's rank 0 and relied on train.py to take it back. Two
+# predicates for one decision is how a change in one of them silently does
+# nothing.
 set -euo pipefail
 LOCAL_BATCH=$((GLOBAL_MINIBATCH / 2))
-WANDB_ARGS=()
-VIEWER_ARGS=()
 # ROBOT_SPEC selects the hand: a registered name, or gen_s<seed>_n<count> for a
 # generated population, in which case every env holds one of its designs. It has
 # to be ONE name -- the agent YAML interpolates the network's copy from it, so a
 # second knob would let the two disagree.
 ROBOT_SPEC="${ROBOT_SPEC:-sharpa_iiwa14}"
-if [[ "$LOCAL_RANK" == 0 && "${CAPTURE_VIEWER:-0}" == 1 ]]; then
+VIEWER_ARGS=()
+if [[ "${CAPTURE_VIEWER:-0}" == 1 ]]; then
     # LEN and INTERVAL are overridable so a short run can actually finish a
     # capture. The smoke ran the viewer at the real run's 600-frame length and
     # wrote nothing -- 3 epochs is 48 steps -- so the half of the path that
@@ -17,9 +33,26 @@ if [[ "$LOCAL_RANK" == 0 && "${CAPTURE_VIEWER:-0}" == 1 ]]; then
         --capture_viewer_len "${CAPTURE_VIEWER_LEN:-600}"
         --capture_viewer_interval "${CAPTURE_VIEWER_INTERVAL:-6000}")
 fi
-if [[ "$LOCAL_RANK" == 0 && "$WANDB_ACTIVATE" == 1 ]]; then
+VIDEO_ARGS=()
+if [[ "${CAPTURE_VIDEO:-0}" == 1 ]]; then
+    # Isaac's own RTX render, not the pose viewer: the pose viewer draws what
+    # the design SAYS, and this draws what the simulator actually built. The
+    # two disagreeing is the whole class of bug this path exists to catch.
+    VIDEO_ARGS=(--capture_video
+        --video_interval "${VIDEO_INTERVAL:-10000}"
+        --video_capture_frames "${VIDEO_FRAMES:-10}"
+        --video_fps "${VIDEO_FPS:-5}")
+fi
+WANDB_ARGS=()
+if [[ "$WANDB_ACTIVATE" == 1 ]]; then
     WANDB_ARGS=(--wandb_activate --wandb_project "$WANDB_PROJECT"
         --wandb_entity "$WANDB_ENTITY" --wandb_group "$WANDB_GROUP" --wandb_name "$RUN_NAME")
+fi
+# Split on whitespace deliberately -- several overrides must become several argv
+# entries -- but through an array, so an unset EXTRA_HYDRA is empty and not "".
+EXTRA_HYDRA_ARGS=()
+if [[ -n "${EXTRA_HYDRA:-}" ]]; then
+    read -r -a EXTRA_HYDRA_ARGS <<< "$EXTRA_HYDRA"
 fi
 # Both families share every env/PPO setting below; only the backbone and
 # its entry point differ, so the comparison is the network and nothing else.
@@ -50,6 +83,7 @@ ARGS=(
     --agent "$AGENT_ENTRY" --headless
     "${WANDB_ARGS[@]}"
     "${VIEWER_ARGS[@]}"
+    "${VIDEO_ARGS[@]}"
     "env.assets.robot_spec=$ROBOT_SPEC"
     env.assets.num_assets_per_type=100
     "env.scene.num_envs=$NUM_ENVS_PER_GPU"
@@ -60,6 +94,7 @@ ARGS=(
     env.domain_randomization.use_object_state_delay_noise=false
     env.domain_randomization.joint_velocity_obs_noise_std=0.0
     env.domain_randomization.force_scale=0.0 env.domain_randomization.torque_scale=0.0
+    ${EXTRA_HYDRA_ARGS[@]+"${EXTRA_HYDRA_ARGS[@]}"}
     "agent.params.seed=$SEED"
     "agent.params.config.name=$RUN_NAME"
     "agent.params.config.full_experiment_name=$RUN_NAME"

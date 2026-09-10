@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH --job-name=pop_render
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=00:30:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop_render-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop_render-%j.err
+
+# LOOK AT THE HAND THE SIMULATOR BUILT.
+#
+# Everything else checks the authoring against my own arithmetic: the tests
+# replay what author_hand writes, and the smoke proves it composes. Neither
+# shows the hinge turning the way the design says, because pxr does not import
+# outside Kit and the numbers agree with themselves either way.
+#
+# Isaac's RTX render does. 10 play steps of the real articulation -- palm,
+# capsules, filtered pairs and all -- so a wrong axis is something you can see
+# rather than something I assert.
+#
+set -euo pipefail
+export D_MODEL=64 TRANSFORMER_LAYERS=4
+export PHASE=train STUDY_ID=pop_render_v1 MODEL_TAG=pop_d64_l4
+export ROBOT_SPEC=gen_s0_n8
+# 6 envs, the SAPG minimum, so the default camera frames one robot instead of
+# a field of them: 6 = 6 x 1, rollout 96 + 16 augmented = 112, and 112/16 = 7.
+export NUM_ENVS_PER_GPU=6 GLOBAL_MINIBATCH=32 SEED=100
+export WANDB_ACTIVATE=0 CAPTURE_VIEWER=0
+# Without this the robot is invisible to a camera: flatten_robot_usd drops the
+# render-only prims because PhysX never reads them and they cost minutes at
+# 24k envs. The authored hand capsules survive either way -- they ARE colliders
+# -- which is why the first render showed fingers floating with no arm.
+export GENMECH_KEEP_VISUALS=1
+export CAPTURE_VIDEO=1 VIDEO_INTERVAL=10000 VIDEO_FRAMES=10 VIDEO_FPS=5
+# Aimed at the hand, not the table. The palm centre sits at (0, 0.098, 0.730) in
+# world coords with the default arm home pose -- chained from ARM_DEFAULT_JOINT_POS
+# through the arm URDF and out along palm_center_offset -- so guessing was never
+# necessary. 1280x960 because at 640x480 across six envs the hand is 40 px wide.
+export EXTRA_HYDRA="env.viewer.eye=[0.55,-0.35,0.95] env.viewer.lookat=[0.0,0.098,0.73] env.viewer.resolution=[1280,960]"
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
+export MAX_EPOCHS=2
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh
