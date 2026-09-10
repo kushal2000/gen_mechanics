@@ -33,10 +33,14 @@ class AssetsCfg:
     # simtoolreal's isaacgym env set a 22-entry hand table and its own Isaac Sim
     # port dropped it; measured here (jobs 735294/735437) the table moved the
     # pretrained checkpoint from 27.780 goals/env to 27.691, a 0.089 gap on a
-    # 0.24 standard error. It buys nothing, and its units do not survive the
-    # port: Isaac Sim 5.0+ applies this number as an effort in N.m while
-    # isaacgym's docs say only "DOF friction". Zero is the one value that means
-    # the same thing in both.
+    # 0.24 standard error. It simply buys nothing.
+    #
+    # The units, once suspected of mismatching, do not: isaacgym never documents
+    # them, but 21 of the 22 values are exactly 4% or 2% of that joint's URDF
+    # effort limit (0.00378738 against 0.189369, to six figures), so they were
+    # derived as a fraction of a torque and are torques. Isaac Sim 5.0+ applies
+    # this parameter as an effort in N.m, which is the same thing. The table was
+    # right; it just does not matter.
     # Or name one: robot_spec = "gen_s<seed>_n<count>" builds it from the
     # grammar. One knob, because the agent YAML interpolates the network's spec
     # from robot_spec and a second would let the two disagree.

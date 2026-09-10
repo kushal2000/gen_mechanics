@@ -228,8 +228,15 @@ HAND_ARMATURE: dict[str, float] = {
 
 # MEASURED, NOT APPLIED. simtoolreal's isaacgym env sets these; nothing here
 # does, because joint friction is zero on every robot. Kept as the record of
-# what the hardware transcription said -- the numbers are only meaningful in
-# isaacgym's units, which it never documents.
+# what the hardware transcription said.
+#
+# These are torques in N.m: 21 of the 22 are exactly 4% (proximal) or 2%
+# (distal) of that joint's effort limit in SHARPA_URDF, to six figures. The URDF
+# itself declares no friction for any hand joint -- no <dynamics> element at
+# all -- and no armature or transmission either, so these and HAND_ARMATURE
+# could only have come from simtoolreal's scene constants.
+# left_5_pinky_CMC is the exception at 2.27%, a round 0.012 where 2% of its
+# 0.5285 effort would be 0.01057; it is the armature outlier too.
 HAND_FRICTION: dict[str, float] = {
     "left_1_thumb_CMC_FE": 0.132,
     "left_thumb_CMC_AA": 0.132,
