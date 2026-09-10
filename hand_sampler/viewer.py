@@ -146,9 +146,12 @@ def main() -> None:
     round_picker = None
     if rounds:
         with server.gui.add_folder(f"mutation rounds ({len(rounds)} snapshots)"):
+            # Round numbers, not list indices. --snapshot-every 25 makes those
+            # differ -- index 3 is round 75 -- and a slider reading 0..20 for a
+            # 500-round walk is simply wrong.
             round_picker = server.gui.add_slider(
-                "round", min=0, max=len(rounds) - 1, step=1,
-                initial_value=len(rounds) - 1)
+                "round", min=rounds[0][0], max=rounds[-1][0], step=1,
+                initial_value=rounds[-1][0])
             round_info = server.gui.add_markdown("")
             btn_rescan = server.gui.add_button("rescan folder")
 
@@ -321,9 +324,15 @@ def main() -> None:
     rebuild_static()
 
     if round_picker is not None:
-        def show_round(i: int) -> None:
+        def nearest(round_number: int) -> int:
+            """Index of the snapshot closest to a round number; the walk only
+            stores every Nth, so a slider position lands between them."""
+            return min(range(len(rounds)),
+                       key=lambda i: abs(rounds[i][0] - int(round_number)))
+
+        def show_round(round_number: int) -> None:
             nonlocal designs
-            i = max(0, min(int(i), len(rounds) - 1))
+            i = nearest(round_number)
             designs = load_round(i)
             n_joints = sum(h.n_joints for h in designs) / len(designs)
             n_fing = sum(h.n_fingers for h in designs) / len(designs)
@@ -344,7 +353,7 @@ def main() -> None:
             nonlocal rounds, load_round
             rounds = _experiment_rounds(args.experiment)
             load_round = _round_loader(rounds)
-            round_picker.max = len(rounds) - 1
+            round_picker.max = rounds[-1][0]
             show_round(round_picker.value)
 
     if picker is not None:
@@ -373,7 +382,7 @@ def main() -> None:
             picker.value = rng.randrange(len(designs))
 
         if round_picker is not None:
-            show_round(len(rounds) - 1)
+            show_round(rounds[-1][0])
         else:
             show_design(args.design)
     else:
