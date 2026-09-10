@@ -75,9 +75,9 @@ def _resolve_spec(cfg):
     template, so ``assets.robot_spec`` is ignored when one is supplied."""
     population = getattr(cfg.assets, "robot_population", None)
     if population is None:
-        from hand_sampler.robot_spec import is_population_name, population_from_name
-        if is_population_name(cfg.assets.robot_spec):
-            population = population_from_name(cfg.assets.robot_spec)
+        from hand_sampler.robot_spec import is_population_ref, population_from_ref
+        if is_population_ref(cfg.assets.robot_spec):
+            population = population_from_ref(cfg.assets.robot_spec)
     if population is None:
         return None, get_robot_spec(cfg.assets.robot_spec)
     return population, population.spec

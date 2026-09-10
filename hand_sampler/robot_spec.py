@@ -416,6 +416,15 @@ def is_population_name(name: str) -> bool:
     return re.fullmatch(POPULATION_NAME, name or "") is not None
 
 
+def is_population_file(ref: str) -> bool:
+    """A reference that names a FILE rather than a seed and a count."""
+    return bool(ref) and ref.endswith(".json")
+
+
+def is_population_ref(ref: str) -> bool:
+    return is_population_name(ref) or is_population_file(ref)
+
+
 def population_from_name(name: str) -> "HandPopulation":
     """Build (once) the population a ``gen_s<seed>_n<count>`` name denotes."""
     import re
@@ -430,3 +439,37 @@ def population_from_name(name: str) -> "HandPopulation":
     pop = population_spec(gen_init_pop.seed_population(seed, count), name=name)
     _POPULATION_CACHE[name] = pop
     return pop
+
+
+def population_from_file(path) -> "HandPopulation":
+    """Build (once) the population stored at ``path``.
+
+    A NAME makes the population a function of the code: seed_population
+    rejection-samples, so a change to validate_design, the SEED_ constants or
+    the mount rule yields a different 24576 hands under the same name, and two
+    runs at different commits are different populations with nothing saying so.
+    A FILE makes it data -- it stops moving when the code moves, and it hashes.
+
+    Missing is fatal. Falling back to sampling would train the thing the file
+    was chosen to pin down, and say nothing.
+    """
+    from pathlib import Path
+
+    resolved = str(Path(path).expanduser().resolve())
+    if resolved in _POPULATION_CACHE:
+        return _POPULATION_CACHE[resolved]
+    if not Path(resolved).is_file():
+        raise FileNotFoundError(
+            f"no population file at {path!r}. Write one with\n"
+            f"    python -m hand_sampler.population_io <gen_s<seed>_n<count>> --out {path}")
+    from hand_sampler import population_io
+    hands = population_io.load_population(resolved)
+    pop = population_spec(hands, name=Path(resolved).stem)
+    _POPULATION_CACHE[resolved] = pop
+    return pop
+
+
+def population_from_ref(ref: str) -> "HandPopulation":
+    """A population from either form of reference."""
+    return (population_from_file(ref) if is_population_file(ref)
+            else population_from_name(ref))

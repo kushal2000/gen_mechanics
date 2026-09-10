@@ -86,6 +86,18 @@ if [[ -n "${SLURM_JOB_ID:-}" ]]; then
 fi
 git rev-parse HEAD > "$SCALING_RUN_DIR/git_commit.txt"
 git diff > "$SCALING_RUN_DIR/worktree.patch"
+# Which hands this run trained, provably. A population given as a FILE is data
+# and hashes; given as a gen_s<seed>_n<count> NAME it is a function of the code,
+# so the commit above is the only record and two runs sharing a name across a
+# sampler change are different populations with nothing saying so.
+if [[ "${ROBOT_SPEC:-}" == *.json ]]; then
+    [[ -f "$ROBOT_SPEC" ]] || { echo "ROBOT_SPEC file not found: $ROBOT_SPEC"; exit 1; }
+    sha256sum "$ROBOT_SPEC" > "$SCALING_RUN_DIR/population.sha256"
+    echo "Population: $ROBOT_SPEC ($(cut -c1-12 < "$SCALING_RUN_DIR/population.sha256"))"
+else
+    echo "Population: $ROBOT_SPEC (sampled from the name; pinned only by git_commit.txt)" \
+        > "$SCALING_RUN_DIR/population.sha256"
+fi
 nvidia-smi > "$SCALING_RUN_DIR/gpus.txt"
 python "$STUDY_SCRIPT" record --status running
 experiments/monitor_usage.sh "$SCALING_RUN_DIR/usage" 30 &

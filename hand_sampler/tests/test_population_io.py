@@ -89,3 +89,57 @@ def test_defaults_may_be_omitted_by_hand(hands):
     joint = hand.fingers[0].segments[0].joint
     assert (joint.phi, joint.offset, joint.limits, joint.drive) == (
         design_space.Joint(0.0).phi, 0.0, None, None)
+
+
+# --- a population as data, not as a function of the code ---------------------
+
+def test_a_file_and_its_name_give_the_same_population(hands, tmp_path):
+    from hand_sampler import robot_spec
+
+    path = population_io.save_population(hands, tmp_path / "gen_s0_n64.json", name="gen_s0_n64")
+    robot_spec._POPULATION_CACHE.clear()
+    from_file = robot_spec.population_from_ref(str(path))
+    from_name = robot_spec.population_from_ref("gen_s0_n64")
+    assert from_file.hands == from_name.hands
+    assert from_file.spec.joint_names_canonical == from_name.spec.joint_names_canonical
+    assert from_file.n_designs == from_name.n_designs
+
+
+def test_a_file_pins_the_population_against_the_sampler(tmp_path):
+    """The point of the file: it stops moving when the code moves.
+
+    seed_population rejection-samples, so a change to validate_design or the
+    SEED_ constants yields different hands under the same NAME. A file is data.
+    """
+    from hand_sampler import robot_spec
+
+    edited = list(gen_init_pop.seed_population(0, 8))
+    edited[3] = design_space.Hand(
+        palm=design_space.Palm(0.02, 0.05, 0.05),
+        fingers=(design_space.Finger(
+            mount=design_space.Mount("+z", 0.0, 0.0),
+            segments=(design_space.Segment(design_space.Joint(0.0), 0.031),)),))
+    path = population_io.save_population(edited, tmp_path / "pinned.json", name="pinned")
+
+    robot_spec._POPULATION_CACHE.clear()
+    loaded = robot_spec.population_from_ref(str(path))
+    assert loaded.hands[3] == edited[3]                      # the file wins
+    assert loaded.hands[3] != gen_init_pop.seed_population(0, 8)[3]
+
+
+def test_a_missing_file_is_fatal_not_a_silent_resample(tmp_path):
+    """Falling back to sampling would train the very thing the file pins."""
+    from hand_sampler import robot_spec
+
+    with pytest.raises(FileNotFoundError, match="population_io"):
+        robot_spec.population_from_ref(str(tmp_path / "absent.json"))
+
+
+def test_a_path_is_recognised_as_a_population_reference():
+    from hand_sampler import robot_spec
+
+    assert robot_spec.is_population_ref("gen_s0_n64")
+    assert robot_spec.is_population_ref("assets/populations/gen_s0_n64.json")
+    assert robot_spec.is_population_file("/abs/path/p.json")
+    assert not robot_spec.is_population_file("gen_s0_n64")
+    assert not robot_spec.is_population_ref("sharpa_iiwa14")
