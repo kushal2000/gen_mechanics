@@ -1,0 +1,76 @@
+#!/bin/bash
+#SBATCH --job-name=physics_parity
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=100000
+#SBATCH --time=00:40:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/eval_logs/physics_parity-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/eval_logs/physics_parity-%j.err
+
+# Did today's changes alter SHARPA's physics?
+#
+# One policy, one seed, two code trees. The checkpoint comes from 638439, which
+# trained BEFORE hand_friction was restored, so it is a frictionless policy.
+# Run it under the tree it was trained on and under the current one: a reward
+# difference is physics, because the observation, the network and the seed are
+# identical.
+#
+# Comparing the SPEC said only two fields differ -- hand_friction added,
+# fingertip_offsets removed (inert: it fed only a field no state_list requests).
+# This checks behaviour rather than my reading of a diff.
+#
+#   TREE=/path/to/worktree sbatch experiments/.../physics_parity.sub
+set -euo pipefail
+TREE="${TREE:-/share/portal/kk837/gen_mechanics}"
+CKPT="${CKPT:-/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/0_scale_train_d64_l4_e12288_b114688_s100_638439_0_6xE21F/rank_0/0_scale_train_d64_l4_e12288_b114688_s100_638439_0/nn/0_scale_train_d64_l4_e12288_b114688_s100_638439_0.pth}"
+TAG="${TAG:-parity}"
+
+cd "$TREE"
+source /share/portal/kk837/gen_mechanics/.venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_parity_${SLURM_JOB_ID:-local}"
+export TORCHINDUCTOR_CACHE_DIR="/tmp/${USER}_parity_ind_${SLURM_JOB_ID:-local}"
+mkdir -p "$OMNI_KIT_CACHE_PATH" "$TORCHINDUCTOR_CACHE_DIR"
+RUN_DIR="/share/portal/kk837/gen_mechanics/debug_outputs/eval_logs/parity_${TAG}_${SLURM_JOB_ID:-local}"
+mkdir -p "$RUN_DIR"
+echo "tree=$TREE  git=$(git rev-parse --short HEAD)  ckpt=$(basename "$CKPT")"
+
+python -u coevolution/train.py \
+    --task GenMech-PoseReach-Direct-v0 \
+    --agent rl_games_joint_transformer_cfg_entry_point --headless \
+    --checkpoint "$CKPT" --checkpoint_load_mode weights \
+    env.assets.robot_spec=sharpa_iiwa14 \
+    env.assets.num_assets_per_type=100 \
+    env.scene.num_envs=6144 \
+    'env.obs.obs_list=${env.obs.state_list}' \
+    env.action.arm_moving_average=1.0 env.action.hand_moving_average=1.0 \
+    env.domain_randomization.use_obs_delay=false \
+    env.domain_randomization.use_action_delay=false \
+    env.domain_randomization.use_object_state_delay_noise=false \
+    env.domain_randomization.joint_velocity_obs_noise_std=0.0 \
+    env.domain_randomization.force_scale=0.0 env.domain_randomization.torque_scale=0.0 \
+    agent.params.seed=7 \
+    "agent.params.config.name=parity_${TAG}" \
+    "agent.params.config.full_experiment_name=parity_${TAG}" \
+    agent.params.config.multi_gpu=false agent.params.config.mixed_precision=true \
+    agent.params.config.minibatch_size=16384 \
+    agent.params.config.central_value_config=null \
+    agent.params.network.separate=false \
+    agent.params.config.expl_coef_block_size=1024 \
+    agent.params.config.learning_rate=0.0001 agent.params.config.lr_schedule=adaptive \
+    agent.params.config.horizon_length=16 agent.params.config.mini_epochs=2 \
+    agent.params.config.max_epochs=5 \
+    agent.params.config.save_frequency=0 agent.params.config.save_best_after=100000 \
+    agent.params.network.d_model=64 agent.params.network.n_layers=4 \
+    agent.params.network.n_heads=1 agent.params.network.ff_mult=2 \
+    agent.params.network.compile_net=true \
+    '++agent.params.network.mu_head_units=[64]' \
+    'agent.params.network.arm_head_units=[256,128]' \
+    ++agent.params.network.parallel_block=false ++agent.params.network.affine_norm=true \
+    ++agent.params.network.final_norm=true \
+    'agent.params.network.value_head_units=[512,256]' \
+    "hydra.run.dir=$RUN_DIR"
