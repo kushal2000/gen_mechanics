@@ -168,6 +168,25 @@ PALM_BOX_CENTER_M: tuple[float, float, float] = (0.00034, -0.00109, 0.04320)
 # no armature at all. The transcription was checked by a bitwise rollout parity
 # test against that setup.
 #
+# The upstream source is the vendor's MJCF (Sharpa_HA4 ... V2.2.5,
+# left_sharpa_ha4_v2_1.xml). Its five joint-class defaults and 22 position
+# actuators reproduce HAND_ARMATURE, HAND_FRICTION and HAND_STIFFNESS exactly --
+# 66 of 66 values, pinky_CMC's odd 0.012 included. HAND_DAMPING is that file's
+# kv = 2*dampratio*sqrt(kp*M) at dampratio 0.9, with M the joint's full mass
+# matrix (armature plus link inertia, the latter up to 31% of it), so it could
+# only have been computed by loading that model.
+#
+# NOT in any of the vendor's three formats: gear ratios. The URDF declares no
+# <dynamics> for a single hand joint, and the USD sets no armature and no joint
+# friction -- the MJCF is the only source for either.
+#
+# Do NOT follow the vendor README's "use IdealPDActuator with stiffness and
+# damping set to None". Its USD drive gains are URDF-importer boilerplate, not a
+# calibration: stiffness/JointEquivalentInertia is 625.0000 and damping/stiffness
+# is 0.0004 at every joint, i.e. a uniform omega_n of 25 and a damping ratio of
+# 0.005. That 625 is CONVERTER_DRIVE_STIFFNESS below. Taking those values gives
+# an essentially undamped hand.
+#
 # The left_1_ / left_2_ / ... numeric infixes are NOT cosmetic: they force Isaac
 # Gym's alphabetical-within-depth joint sort into this order, and the pretrained
 # checkpoint's action layout depends on it. Do not tidy them away.
