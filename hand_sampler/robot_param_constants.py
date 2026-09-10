@@ -109,6 +109,11 @@ assert set(ARM_DEFAULT_JOINT_POS) == set(ARM_JOINT_NAMES)
 
 # --- the asset -----------------------------------------------------------------
 SHARPA_URDF = "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
+
+# Reference only, never loaded: the vendor MJCF every gain below was read from.
+# Its <mesh> paths dangle -- the package's meshes/ was not kept, and nothing
+# needs them, since what this file is for is the parameters.
+SHARPA_MJCF = "assets/mjcf/left_sharpa_ha4_v2_1.xml"
 ARM_LINKS = tuple(f"iiwa14_link_{i}" for i in range(8)) + ("iiwa14_link_ee",)
 ARM_JOINTS = tuple(f"iiwa14_joint_{i}" for i in range(1, 8)) + ("iiwa14_joint_ee",)
 
@@ -168,8 +173,8 @@ PALM_BOX_CENTER_M: tuple[float, float, float] = (0.00034, -0.00109, 0.04320)
 # no armature at all. The transcription was checked by a bitwise rollout parity
 # test against that setup.
 #
-# The upstream source is the vendor's MJCF (Sharpa_HA4 ... V2.2.5,
-# left_sharpa_ha4_v2_1.xml). Its five joint-class defaults and 22 position
+# The upstream source is the vendor's MJCF, kept at SHARPA_MJCF below (from the
+# Sharpa_HA4 ... V2.2.5 package). Its five joint-class defaults and 22 position
 # actuators reproduce HAND_ARMATURE, HAND_FRICTION and HAND_STIFFNESS exactly --
 # 66 of 66 values, pinky_CMC's odd 0.012 included. HAND_DAMPING is that file's
 # kv = 2*dampratio*sqrt(kp*M) at dampratio 0.9, with M the joint's full mass

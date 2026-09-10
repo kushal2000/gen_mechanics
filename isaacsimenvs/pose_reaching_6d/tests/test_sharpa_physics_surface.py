@@ -190,3 +190,37 @@ def test_no_undefined_names_in_the_package():
     for path in sorted(root.rglob("*.py")):
         pyflakes.api.checkPath(str(path), reporter)
     assert not reporter.hits, "\n".join(reporter.hits)
+
+
+def test_gains_still_match_the_vendor_mjcf(spec):
+    """Every hand gain here was read off assets/mjcf/left_sharpa_ha4_v2_1.xml.
+
+    Pinning it means the file is load-bearing rather than decorative: if someone
+    edits a constant, this says which document they are now disagreeing with.
+    Armature and stiffness only -- friction is deliberately not applied, and the
+    MJCF's passive <joint damping> is a different quantity from our PD d-gain.
+    """
+    import re
+    import xml.etree.ElementTree as ET
+
+    path = Path(__file__).resolve().parents[3] / "assets" / "mjcf" / "left_sharpa_ha4_v2_1.xml"
+    # The file ships with `joint="left_thumb_IP"kp="0.9"` -- no space, so it is
+    # not well-formed XML. Repair in memory; do not rewrite the vendor file.
+    raw = re.sub(r'"([A-Za-z_]+=")', r'" \1', path.read_text())
+    root = ET.fromstring(raw)
+
+    cls = {d.get("class"): float(d.find("joint").get("armature"))
+           for d in root.find("default").findall("default") if d.find("joint") is not None}
+    armature = {j.get("name"): cls[j.get("class")]
+                for b in root.iter("body") for j in b.findall("joint")}
+    kp = {a.get("joint"): float(a.get("kp")) for a in root.find("actuator").findall("position")}
+
+    def mjcf_name(n):  # ours carry left_1_/left_2_ infixes to force a sort order
+        parts = n.split("_")
+        return "_".join([parts[0]] + parts[2:]) if parts[1].isdigit() else n
+
+    assert len(kp) == len(spec.hand_joint_names) == 22
+    for n in spec.hand_joint_names:
+        m = mjcf_name(n)
+        assert spec.hand_armature[n] == armature[m], f"{n}: armature drifted from the MJCF"
+        assert spec.hand_stiffness[n] == kp[m], f"{n}: stiffness drifted from the MJCF"
