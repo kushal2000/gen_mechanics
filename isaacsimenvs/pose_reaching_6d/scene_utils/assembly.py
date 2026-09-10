@@ -84,7 +84,8 @@ def _resolve_spec(cfg):
 
 # --- spawn configs ------------------------------------------------------------
 
-def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False) -> ArticulationCfg:
+def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False,
+                                 apply_hand_joint_friction: bool = False) -> ArticulationCfg:
     """The robot articulation over prims already on the stage."""
     return ArticulationCfg(
         prim_path=ROBOT_PATH,
@@ -111,7 +112,7 @@ def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False) -> Art
                 damping=dict(spec.hand_damping),
                 armature=dict(spec.hand_armature),
                 friction=(dict(spec.hand_friction)
-                          if env.cfg.assets.apply_hand_joint_friction else None),
+                          if apply_hand_joint_friction else None),
             ),
         },
     )
@@ -335,7 +336,8 @@ def setup_scene(env) -> None:
 
     # 4. Spawn.
     env.robot = Articulation(build_robot_articulation_cfg(
-        spec, start_arm_higher=env.cfg.reset.start_arm_higher))
+        spec, start_arm_higher=env.cfg.reset.start_arm_higher,
+        apply_hand_joint_friction=env.cfg.assets.apply_hand_joint_friction))
     env.table = RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
     authored_map = _author_objects_into_envs(env, object_params)
     env.object = RigidObject(RigidObjectCfg(prim_path=OBJECT_PATH, spawn=None))

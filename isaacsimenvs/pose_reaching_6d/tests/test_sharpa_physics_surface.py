@@ -148,3 +148,35 @@ def test_current_state_list_is_unchanged_at_800(spec):
         "closest_fingertip_dist", "lifted_object", "progress", "successes", "reward",
     ]
     assert layout.compute_obs_dim(current, spec) == 800
+
+
+def test_no_undefined_names_in_the_package():
+    """Most of this package only executes under Kit, so a free name that resolves
+    to nothing is a NameError nobody sees until a job has booted the simulator.
+    (`build_robot_articulation_cfg` once read `env.cfg` with no `env` in scope.)"""
+    import pathlib
+    import pyflakes.api
+    import pyflakes.messages
+    import pyflakes.reporter
+
+    class _UndefinedOnly(pyflakes.reporter.Reporter):
+        def __init__(self):
+            self.hits: list[str] = []
+
+        def unexpectedError(self, filename, msg):
+            self.hits.append(f"{filename}: {msg}")
+
+        def syntaxError(self, filename, msg, lineno, offset, text):
+            self.hits.append(f"{filename}:{lineno}: {msg}")
+
+        def flake(self, message):
+            if isinstance(message, (pyflakes.messages.UndefinedName,
+                                    pyflakes.messages.UndefinedLocal,
+                                    pyflakes.messages.UndefinedExport)):
+                self.hits.append(str(message))
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    reporter = _UndefinedOnly()
+    for path in sorted(root.rglob("*.py")):
+        pyflakes.api.checkPath(str(path), reporter)
+    assert not reporter.hits, "\n".join(reporter.hits)
