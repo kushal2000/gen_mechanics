@@ -29,29 +29,14 @@ class AssetsCfg:
     # A hand_sampler.HandPopulation injected in code: every env holds one of its
     # designs, and its template spec replaces robot_spec.
     robot_population: object | None = None
-    # Coulomb friction on the hand joints. OFF by default, which matches
-    # simtoolreal's Isaac Sim port: it defines the 22-entry table and never
-    # passes it to the actuator.
-    #
-    # The values come from its ISAACGYM env, where they ARE applied -- but the
-    # units are not established. Isaac Lab documents that this parameter is a
-    # COEFFICIENT in Isaac Sim 4.5 and an EFFORT (N.m) in 5.0 and later, and
-    # isaacgym's own docs say only "DOF friction". Passing 0.132 as a torque
-    # when it was authored as a coefficient is a silent physics change, and the
-    # Isaac Sim port declining to pass them is consistent with someone hitting
-    # exactly that. Turn it on deliberately, as an experiment, not by default.
-    #
-    # MEASURED (jobs 735294/735437, 2048 envs x 3000 steps, the shipped isaacgym
-    # checkpoint): 27.780 goals/env off against 27.691 on -- a 0.089 gap on a
-    # 0.24 standard error, so the table does not move this task either way. The
-    # flag was verified to reach PhysX rather than merely being stored: job
-    # 739284 read get_dof_friction_properties() back and all 22 joints matched
-    # the spec, summing to 1.10054953 on and 0.0 off. Note the readback must use
-    # get_dof_friction_properties -- Isaac Sim 5.x made it (num_dofs, 3) for
-    # static/dynamic/viscous, and the older get_dof_friction_coefficients
-    # returns zeros whatever is set, which looks exactly like a flag doing
-    # nothing.
-    apply_hand_joint_friction: bool = False
+    # Joint friction is zero on every joint of every robot, arm and hand.
+    # simtoolreal's isaacgym env set a 22-entry hand table and its own Isaac Sim
+    # port dropped it; measured here (jobs 735294/735437) the table moved the
+    # pretrained checkpoint from 27.780 goals/env to 27.691, a 0.089 gap on a
+    # 0.24 standard error. It buys nothing, and its units do not survive the
+    # port: Isaac Sim 5.0+ applies this number as an effort in N.m while
+    # isaacgym's docs say only "DOF friction". Zero is the one value that means
+    # the same thing in both.
     # Or name one: robot_spec = "gen_s<seed>_n<count>" builds it from the
     # grammar. One knob, because the agent YAML interpolates the network's spec
     # from robot_spec and a second would let the two disagree.

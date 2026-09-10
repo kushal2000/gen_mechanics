@@ -226,7 +226,10 @@ HAND_ARMATURE: dict[str, float] = {
     "left_pinky_MCP_AA": 0.00265, "left_pinky_PIP": 0.0006, "left_pinky_DIP": 0.00042,
 }
 
-# Coulomb friction at the joint, which the port had dropped entirely.
+# MEASURED, NOT APPLIED. simtoolreal's isaacgym env sets these; nothing here
+# does, because joint friction is zero on every robot. Kept as the record of
+# what the hardware transcription said -- the numbers are only meaningful in
+# isaacgym's units, which it never documents.
 HAND_FRICTION: dict[str, float] = {
     "left_1_thumb_CMC_FE": 0.132,
     "left_thumb_CMC_AA": 0.132,
@@ -339,11 +342,10 @@ GEN_JOINT_VELOCITY_RAD_S: float = 10.0
 # which is kd/kp ~ 0.045 at every one of its joints.
 GEN_JOINT_STIFFNESS: float = 1.0
 
-# Hardware again, and both scale with the actuator's torque in SHARPA:
-# armature/effort averages 0.00116 across its five tiers, and friction/effort is
-# exactly 4% on the two proximal tiers and 2% on PIP and DIP. 3% splits that.
+# Hardware again, and it scales with the actuator's torque in SHARPA:
+# armature/effort averages 0.00116 across its five tiers. Joint friction is not
+# modelled at all -- see HAND_FRICTION below.
 GEN_JOINT_ARMATURE: float = 0.00116 * GEN_JOINT_EFFORT_NM
-GEN_JOINT_FRICTION: float = 0.03 * GEN_JOINT_EFFORT_NM
 
 
 # Critically damped against the joint's own inertia, which is what SHARPA is:
@@ -352,13 +354,13 @@ GEN_JOINT_DAMPING: float = 2 * 0.929 * math.sqrt(GEN_JOINT_STIFFNESS * GEN_JOINT
 
 
 def gen_joint_drive(depth: int = 0, theta: float = 0.0):
-    """``(effort, velocity, stiffness, damping, armature, friction)`` for a joint.
+    """``(effort, velocity, stiffness, damping, armature)`` for a joint.
 
     Takes depth and theta so a caller need not know they are ignored; the whole
     point is that every generated joint is identical.
     """
     return (GEN_JOINT_EFFORT_NM, GEN_JOINT_VELOCITY_RAD_S, GEN_JOINT_STIFFNESS,
-            GEN_JOINT_DAMPING, GEN_JOINT_ARMATURE, GEN_JOINT_FRICTION)
+            GEN_JOINT_DAMPING, GEN_JOINT_ARMATURE)
 
 
 # --- palm ----------------------------------------------------------------------

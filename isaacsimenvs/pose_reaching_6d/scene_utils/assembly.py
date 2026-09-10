@@ -84,8 +84,7 @@ def _resolve_spec(cfg):
 
 # --- spawn configs ------------------------------------------------------------
 
-def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False,
-                                 apply_hand_joint_friction: bool = False) -> ArticulationCfg:
+def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False) -> ArticulationCfg:
     """The robot articulation over prims already on the stage."""
     return ArticulationCfg(
         prim_path=ROBOT_PATH,
@@ -105,14 +104,16 @@ def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False,
                 joint_names_expr=list(spec.arm_joint_names),
                 stiffness=dict(spec.arm_stiffness),
                 damping=dict(spec.arm_damping),
+                friction=0.0,
             ),
             "hand": ImplicitActuatorCfg(
                 joint_names_expr=list(spec.hand_joint_names),
                 stiffness=dict(spec.hand_stiffness),
                 damping=dict(spec.hand_damping),
                 armature=dict(spec.hand_armature),
-                friction=(dict(spec.hand_friction)
-                          if apply_hand_joint_friction else None),
+                # Zero everywhere, deliberately. 0.0 rather than None: None
+                # takes whatever the USD carries, which is not uniformity.
+                friction=0.0,
             ),
         },
     )
@@ -336,8 +337,7 @@ def setup_scene(env) -> None:
 
     # 4. Spawn.
     env.robot = Articulation(build_robot_articulation_cfg(
-        spec, start_arm_higher=env.cfg.reset.start_arm_higher,
-        apply_hand_joint_friction=env.cfg.assets.apply_hand_joint_friction))
+        spec, start_arm_higher=env.cfg.reset.start_arm_higher))
     env.table = RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
     authored_map = _author_objects_into_envs(env, object_params)
     env.object = RigidObject(RigidObjectCfg(prim_path=OBJECT_PATH, spawn=None))

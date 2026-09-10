@@ -58,10 +58,6 @@ def parse_args():
     # and the policy would look worse for reasons that are not the policy.
     p.add_argument("--moving_average", type=float, default=1.0,
                    help="arm and hand action smoothing; 0.1 for the simtoolreal policy")
-    p.add_argument("--apply_hand_joint_friction", type=int, default=0,
-                   help="Pass the hand's joint friction table to PhysX. Off by "
-                        "default: the units are ambiguous across backends, so "
-                        "it is an experiment, not a setting.")
     p.add_argument("--domain_randomization", type=int, default=0,
                    help="1 restores obs/action/object delays and noise")
     p.add_argument("--sapg_expl_coef", type=float, default=50.0,
@@ -222,7 +218,6 @@ def main() -> None:
         cfg.scene.num_envs = args.num_envs
         cfg.assets.num_assets_per_type = args.num_assets_per_type
         cfg.assets.robot_spec = spec.name
-        cfg.assets.apply_hand_joint_friction = bool(args.apply_hand_joint_friction)
         cfg.action.arm_moving_average = args.moving_average
         cfg.action.hand_moving_average = args.moving_average
         dr = cfg.domain_randomization

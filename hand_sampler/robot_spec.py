@@ -88,10 +88,6 @@ class RobotSpec:
     # done_hand_far from 1.3% of episodes to 54% for the MLP arm, while the
     # transformer on the same observation stayed at 1.6%.
     fingertip_offsets: tuple = ()
-
-    # Coulomb friction at the joint. simtoolreal set this and the first port
-    # dropped it, so SHARPA ran frictionless here where the reference did not.
-    hand_friction: Mapping[str, float] = field(default_factory=dict)
     notes: str = field(default="", compare=False)
     """Provenance: where gains, offsets, and mount transforms came from."""
 
@@ -230,13 +226,13 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
 
     boxes, valid, scale = design_space.joint_boxes(hand)
 
-    names, stiffness, damping, armature, friction, tips = [], {}, {}, {}, {}, []
+    names, stiffness, damping, armature, tips = [], {}, {}, {}, []
     for f, finger in enumerate(hand.fingers):
         for d, seg in enumerate(finger.segments):
             jn = f"f{f}_j{d}"
             names.append(jn)
-            _e, _v, k, b, a, fr = seg.joint.drive or rpc.gen_joint_drive(d, seg.joint.theta)
-            stiffness[jn], damping[jn], armature[jn], friction[jn] = k, b, a, fr
+            _e, _v, k, b, a = seg.joint.drive or rpc.gen_joint_drive(d, seg.joint.theta)
+            stiffness[jn], damping[jn], armature[jn] = k, b, a
         tips.append(f"f{f}_link{finger.n_joints - 1}")
 
     return RobotSpec(
@@ -245,7 +241,6 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
         palm_body_name=rpc.ARM_TIP_LINK, fingertip_body_names=tuple(tips),
         arm_stiffness=rpc.ARM_STIFFNESS, arm_damping=rpc.ARM_DAMPING,
         hand_stiffness=stiffness, hand_damping=damping, hand_armature=armature,
-        hand_friction=friction,
         joint_link_bodies=tuple(f"{n.split('_j')[0]}_link{n.split('_j')[1]}" for n in names),
         joint_link_boxes=tuple(tuple(map(tuple, b)) for b in boxes),
         joint_geometry_valid=tuple(bool(v) for v in valid), hand_scale=float(scale),
@@ -328,14 +323,14 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
     tips = tuple(f"f{f}_link{D - 1}" for f in range(F))
     # Every generated joint has the same actuator, so the template carries the
     # gains and no per-design override is needed -- only geometry and limits.
-    e, v, k, b, a, fr = rpc.gen_joint_drive()
+    e, v, k, b, a = rpc.gen_joint_drive()
     spec = RobotSpec(
         name=name, arm_name=rpc.ARM_NAME, hand_name="generated", urdf_path="",
         arm_joint_names=rpc.ARM_JOINT_NAMES, hand_joint_names=names,
         palm_body_name=rpc.ARM_TIP_LINK, fingertip_body_names=tips,
         arm_stiffness=rpc.ARM_STIFFNESS, arm_damping=rpc.ARM_DAMPING,
         hand_stiffness={n: k for n in names}, hand_damping={n: b for n in names},
-        hand_armature={n: a for n in names}, hand_friction={n: fr for n in names},
+        hand_armature={n: a for n in names},
         arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
         hand_default_joint_pos={n: 0.0 for n in names},
         start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,

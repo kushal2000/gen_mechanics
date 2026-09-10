@@ -53,36 +53,46 @@ def test_joint_set_and_order(spec):
     assert spec.joint_names_canonical == (*spec.arm_joint_names, *spec.hand_joint_names)
 
 
-@pytest.mark.parametrize("joint,stiffness,damping,armature,friction", [
-    ("left_1_thumb_CMC_FE", 6.95, 0.28676845, 0.0032, 0.132),
-    ("left_thumb_CMC_AA", 13.2, 0.40845109, 0.0032, 0.132),
-    ("left_2_index_MCP_FE", 4.76, 0.20859232, 0.00265, 0.07456),
-    ("left_index_MCP_AA", 6.62, 0.24595532, 0.00265, 0.07456),
-    ("left_index_PIP", 0.9, 0.04243185, 0.0006, 0.01276),
-    ("left_index_DIP", 0.9, 0.03504461, 0.00042, 0.00378738),
-    ("left_5_pinky_CMC", 1.38, 0.02782345, 0.00012, 0.012),
+@pytest.mark.parametrize("joint,stiffness,damping,armature", [
+    ("left_1_thumb_CMC_FE", 6.95, 0.28676845, 0.0032),
+    ("left_thumb_CMC_AA", 13.2, 0.40845109, 0.0032),
+    ("left_2_index_MCP_FE", 4.76, 0.20859232, 0.00265),
+    ("left_index_MCP_AA", 6.62, 0.24595532, 0.00265),
+    ("left_index_PIP", 0.9, 0.04243185, 0.0006),
+    ("left_index_DIP", 0.9, 0.03504461, 0.00042),
+    ("left_5_pinky_CMC", 1.38, 0.02782345, 0.00012),
 ])
-def test_drive_parameters(spec, joint, stiffness, damping, armature, friction):
+def test_drive_parameters(spec, joint, stiffness, damping, armature):
     assert spec.hand_stiffness[joint] == stiffness
     assert spec.hand_damping[joint] == damping
     assert spec.hand_armature[joint] == armature
-    assert spec.hand_friction[joint] == friction
 
 
 def test_every_hand_joint_has_every_drive_parameter(spec):
     """A missing entry means Isaac Lab silently falls back to the USD value."""
-    for table in (spec.hand_stiffness, spec.hand_damping,
-                  spec.hand_armature, spec.hand_friction):
+    for table in (spec.hand_stiffness, spec.hand_damping, spec.hand_armature):
         assert set(table) == set(spec.hand_joint_names)
 
 
-def test_joint_friction_is_present_at_all(spec):
-    """simtoolreal set it; the first port dropped it and SHARPA ran frictionless.
+def test_no_spec_carries_joint_friction(spec):
+    """Joint friction is zero on every robot, so no spec may smuggle a table in.
 
-    Runs launched before it was restored are a different environment.
+    HAND_FRICTION survives in robot_param_constants as the record of what
+    simtoolreal measured, but nothing reads it: the values only mean anything in
+    isaacgym's units, which it never documents, and applied here they moved the
+    pretrained checkpoint by 0.089 goals/env against a 0.24 standard error.
     """
-    assert spec.hand_friction, "hand_friction is empty: the hand has no joint friction"
-    assert sum(spec.hand_friction.values()) == pytest.approx(1.10054952)
+    assert not hasattr(spec, "hand_friction")
+
+
+def test_the_actuator_cfg_pins_friction_to_zero():
+    """0.0, never None -- None takes the USD value, which is not uniformity."""
+    src = Path(__file__).resolve().parents[1] / "scene_utils" / "assembly.py"
+    body = src.read_text()
+    body = body[body.index("def build_robot_articulation_cfg"):]
+    body = body[:body.index("\ndef ")]
+    assert body.count("friction=0.0") == 2, "arm and hand must both pin friction"
+    assert "spec.hand_friction" not in body
 
 
 def test_geometry_the_observation_depends_on(spec):
