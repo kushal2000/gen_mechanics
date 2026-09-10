@@ -40,6 +40,17 @@ class AssetsCfg:
     # when it was authored as a coefficient is a silent physics change, and the
     # Isaac Sim port declining to pass them is consistent with someone hitting
     # exactly that. Turn it on deliberately, as an experiment, not by default.
+    #
+    # MEASURED (jobs 735294/735437, 2048 envs x 3000 steps, the shipped isaacgym
+    # checkpoint): 27.780 goals/env off against 27.691 on -- a 0.089 gap on a
+    # 0.24 standard error, so the table does not move this task either way. The
+    # flag was verified to reach PhysX rather than merely being stored: job
+    # 739284 read get_dof_friction_properties() back and all 22 joints matched
+    # the spec, summing to 1.10054953 on and 0.0 off. Note the readback must use
+    # get_dof_friction_properties -- Isaac Sim 5.x made it (num_dofs, 3) for
+    # static/dynamic/viscous, and the older get_dof_friction_coefficients
+    # returns zeros whatever is set, which looks exactly like a flag doing
+    # nothing.
     apply_hand_joint_friction: bool = False
     # Or name one: robot_spec = "gen_s<seed>_n<count>" builds it from the
     # grammar. One knob, because the agent YAML interpolates the network's spec

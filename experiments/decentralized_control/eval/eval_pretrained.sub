@@ -25,9 +25,10 @@
 #   * obsList is its own 10 fields (140-d), taken from its shipped config
 #   * SAPG exploration column at 50.0, which simtoolreal used
 #
-# Joint friction is applied here, which matches isaacgym (where this trained)
-# and not simtoolreal's own Isaac Sim port, which defines the table and never
-# passes it.
+# Joint friction is OFF unless FRICTION=1, matching simtoolreal's own Isaac Sim
+# port (which defines the table and never passes it) and the depth sweep. Run it
+# both ways: isaacgym, where this checkpoint trained, does apply the table, so
+# the gap between the two arms is what the units question is worth.
 set -euo pipefail
 cd /share/portal/kk837/gen_mechanics
 source .venv_isaacsim/bin/activate
@@ -75,4 +76,5 @@ python -u experiments/decentralized_control/eval/eval_finger_dropout.py \
     --sapg_expl_coef 50.0 \
     --moving_average 0.1 \
     --domain_randomization 1 \
-    --out debug_outputs/eval_logs/pretrained_intact_${SLURM_JOB_ID:-local}.json
+    --apply_hand_joint_friction "${FRICTION:-0}" \
+    --out debug_outputs/eval_logs/pretrained_intact_fr${FRICTION:-0}_${SLURM_JOB_ID:-local}.json
