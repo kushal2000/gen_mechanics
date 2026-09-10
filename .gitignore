@@ -79,4 +79,7 @@ debug_outputs/**
 #   python -m hand_sampler.population_io <name>
 # so the sampler stays the record and the file is a local convenience.
 # `--verify` proves a file on disk still matches the sampler that wrote it.
-assets/populations/
+# Ignore the CONTENTS, not the directory: git does not descend into an
+# ignored directory, so a negation inside one never matches.
+assets/populations/*
+!assets/populations/README.md

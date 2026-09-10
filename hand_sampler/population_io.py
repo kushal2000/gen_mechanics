@@ -113,7 +113,28 @@ def default_path(name: str) -> Path:
     return DEFAULT_DIR / f"{name}.json"
 
 
-def save_population(hands, path, *, name: str) -> Path:
+def provenance(**extra) -> dict:
+    """Where a population came from, recorded in the file itself.
+
+    A sampled population is disposable: ``gen_s<seed>_n<count>`` rebuilds it in
+    ten seconds. A DRIFTED one is not -- it is hundreds of rounds of a seeded
+    walk through mutate_design, so it is reproducible only while that code holds
+    still, which is the same fragility that made a name a poor way to pin a
+    population. The file is the artifact; this says how it was made.
+    """
+    import subprocess
+    from datetime import datetime, timezone
+
+    try:
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT,
+                                capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:
+        commit = ""
+    return {"created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "git_commit": commit, **extra}
+
+
+def save_population(hands, path, *, name: str, provenance: dict | None = None) -> Path:
     """Write ``hands`` as one JSON file. Returns the path written."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -121,6 +142,7 @@ def save_population(hands, path, *, name: str) -> Path:
         "format": FORMAT_VERSION,
         "name": name,
         "count": len(hands),
+        "provenance": provenance or {},
         "designs": [hand_to_dict(h) for h in hands],
     }
     # indent=1 rather than 0 or 2: a design stays greppable line by line without
@@ -186,7 +208,8 @@ def main() -> None:
         print(f"[population_io] {out} matches the sampler ({len(hands)} designs)")
         return
 
-    save_population(hands, out, name=args.name)
+    save_population(hands, out, name=args.name,
+                    provenance=provenance(source=args.name, method="seed_population"))
     joints = sum(h.n_joints for h in hands)
     print(f"[population_io] wrote {len(hands)} designs ({joints} joints, "
           f"{out.stat().st_size / 1e6:.1f} MB) to {out}")
