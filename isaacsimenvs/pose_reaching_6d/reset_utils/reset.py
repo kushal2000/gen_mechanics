@@ -150,6 +150,11 @@ def allocate_state_buffers(env) -> None:
     # every reduction over the fingertip axis inert for it at once.
     env._fingertip_mask = _to("fingertip_valid", torch.bool)
     env._palm_center_offset = _to("palm_center_offset", torch.float32)  # (N, 3)
+    # (S, 3), broadcast over envs. A generated design has none: its capsule tip
+    # IS the pad, so the offset is zero rather than a measured pad centre.
+    env._fingertip_offsets = torch.tensor(
+        spec.fingertip_offsets or ((0.0, 0.0, 0.0),) * spec.num_fingertips,
+        device=env.device, dtype=torch.float32)
 
     limits = env.robot.data.joint_pos_limits  # (N, num_joints, 2), Lab order
 

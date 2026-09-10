@@ -296,6 +296,21 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     )
     palm_pos = palm_center_pos_w - env_origins
 
+    # Fingertip pad centres. Dropping this field when the per-joint token fields
+    # landed is what the MLP control arm regressed on: done_hand_far went from
+    # 1.3% of episodes to 54%, while the transformer on the SAME observation
+    # stayed at 1.6%. joint_link_bbox carries the distal links' geometry, but
+    # only implicitly, and a dense first layer cannot recover it. It is also in
+    # the simtoolreal checkpoint's 140-d obsList.
+    ft_state_pad = env.robot.data.body_state_w[:, env._fingertip_body_ids, :]
+    ft_pos_pad_w = _apply_local_offset(
+        ft_state_pad[:, :, 0:3], ft_state_pad[:, :, 3:7], env._fingertip_offsets,
+        (env.num_envs, env._num_fingertips),
+    )
+    fingertip_pos_rel_palm = (
+        (ft_pos_pad_w - env_origins.unsqueeze(1)) - palm_pos.unsqueeze(1)
+    ).reshape(env.num_envs, -1)
+
     obj_pos = env.object.data.root_pos_w - env_origins
     obj_rot = env.object.data.root_quat_w  # wxyz
     obj_linvel = env.object.data.root_lin_vel_w
@@ -386,6 +401,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "joint_enabled": env._joint_enabled,
         "object_keypoints_rel_joint": object_keypoints_rel_joint_clean,
         "hand_scale": env._hand_scale,
+        "fingertip_pos_rel_palm": fingertip_pos_rel_palm,
         "palm_pos": palm_pos,
         "palm_rot": palm_rot_xyzw,
         "palm_vel": palm_vel,

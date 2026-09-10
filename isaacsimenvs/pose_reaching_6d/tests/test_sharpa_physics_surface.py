@@ -110,3 +110,41 @@ def test_joint_tokens_match_the_urdf(spec):
     assert np.abs(np.asarray(spec.joint_link_boxes, np.float32) - boxes).max() == 0.0
     assert spec.hand_scale == pytest.approx(scale)
     assert all(spec.joint_geometry_valid)
+
+
+# --- backwards compatibility with the simtoolreal checkpoint ------------------
+
+CHECKPOINT_OBS_LIST = (
+    "joint_pos", "joint_vel", "prev_action_targets", "palm_pos", "palm_rot",
+    "object_rot", "fingertip_pos_rel_palm", "keypoints_rel_palm",
+    "keypoints_rel_goal", "object_scales",
+)
+"""Verbatim from pretrained_policy/config.yaml, which ships with the weights."""
+
+
+def test_the_pretrained_checkpoints_observation_can_still_be_built(spec):
+    """Its running_mean_std is (140,); the env must be able to produce 140."""
+    layout = _load("layout", "isaacsimenvs/pose_reaching_6d/obs_utils/layout.py")
+    assert layout.compute_obs_dim(list(CHECKPOINT_OBS_LIST), spec) == 140
+
+
+def test_fingertip_pad_offsets_exist(spec):
+    """Deleted twice now. The first time, the MLP arm's done_hand_far went from
+    1.3% of episodes to 54% while the transformer on the same observation stayed
+    at 1.6% -- joint_link_bbox carries the distal geometry only implicitly."""
+    assert spec.fingertip_offsets
+    assert len(spec.fingertip_offsets) == spec.num_fingertips
+    assert spec.fingertip_offsets[0] == (0.02, 0.002, 0.0)
+
+
+def test_current_state_list_is_unchanged_at_800(spec):
+    layout = _load("layout", "isaacsimenvs/pose_reaching_6d/obs_utils/layout.py")
+    current = [
+        "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel",
+        "prev_action_targets", "joint_link_bbox", "joint_lower", "joint_upper",
+        "joint_enabled", "object_keypoints_rel_joint", "hand_scale", "palm_pos",
+        "palm_rot", "palm_vel", "object_rot", "object_vel", "keypoints_rel_palm",
+        "keypoints_rel_goal", "object_scales", "closest_keypoint_max_dist",
+        "closest_fingertip_dist", "lifted_object", "progress", "successes", "reward",
+    ]
+    assert layout.compute_obs_dim(current, spec) == 800

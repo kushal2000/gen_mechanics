@@ -82,6 +82,13 @@ class RobotSpec:
     hand_scale: float = 0.0
     """Longest encoded edge, in metres. Also given to the policy."""
 
+    # Pad centres, one per fingertip body. Feeds fingertip_pos_rel_palm, which
+    # the simtoolreal checkpoint's 140-d obsList requires -- and which a dense
+    # policy needs even when joint_link_bbox is present: dropping it once took
+    # done_hand_far from 1.3% of episodes to 54% for the MLP arm, while the
+    # transformer on the same observation stayed at 1.6%.
+    fingertip_offsets: tuple = ()
+
     # Coulomb friction at the joint. simtoolreal set this and the first port
     # dropped it, so SHARPA ran frictionless here where the reference did not.
     hand_friction: Mapping[str, float] = field(default_factory=dict)
@@ -158,6 +165,11 @@ class RobotSpec:
                     raise ValueError(f"{who}: {name} has {got} entries for {n} hand joints")
             if self.hand_scale <= 0.0:
                 raise ValueError(f"{who}: hand_scale must be positive, got {self.hand_scale}")
+
+        if self.fingertip_offsets and len(self.fingertip_offsets) != self.num_fingertips:
+            raise ValueError(
+                f"{who}: fingertip_offsets has {len(self.fingertip_offsets)} entries "
+                f"but there are {self.num_fingertips} fingertips")
 
         if len(self.palm_center_offset) != 3:
             raise ValueError(f"{who}: palm_center_offset is not a 3-vector")

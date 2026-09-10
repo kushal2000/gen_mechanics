@@ -48,6 +48,7 @@ def obs_field_sizes(spec) -> dict[str, int]:
         "progress": 1,
         "successes": 1,
         "reward": 1,
+        "fingertip_pos_rel_palm": 3 * n_tips,
     }
 
 
