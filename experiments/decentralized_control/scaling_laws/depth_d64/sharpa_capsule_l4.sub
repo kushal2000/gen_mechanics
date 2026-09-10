@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH --job-name=sharpa_capsule_d64_l4
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/sharpa_capsule_d64_l4-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/sharpa_capsule_d64_l4-%j.err
+
+# SHARPA THROUGH THE AUTHORED PATH. hand_sampler.sharpa_capsule rebuilds SHARPA
+# from the tokens the sampler produces -- 5 fingers, 21 joints, the same
+# flexion/abduction pattern, fingertips within 4-17 mm on the fingers -- and
+# every env holds that one hand. It is the only reference with a known-good
+# curve (depth_d64_l4 reaches ~2450), and it has only ever reached the sim as a
+# URDF. This is the same hand through author_hand, so:
+#   learns like SHARPA -> the authoring is right
+#   does not          -> the authoring is off, or one of the listed deviations
+#                        mattered, and the list in sharpa_capsule.py is short
+# Same d64/L4, 12288 envs/GPU, minibatch 114688, seed 100 as every other
+# multi_embodiment_v1 run, so it also slots into that grid as "21 joints, one
+# embodiment" between pop1 (3 joints) and pop1k_r500_1hand (6).
+set -euo pipefail
+export D_MODEL=64 TRANSFORMER_LAYERS=4
+export PHASE=train STUDY_ID=multi_embodiment_v1 MODEL_TAG=sharpa_capsule_d64_l4
+export ROBOT_SPEC=/share/portal/kk837/gen_mechanics/assets/populations/sharpa_capsule.json
+export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED="${SEED:-100}"
+export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1
+export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
+export WANDB_GROUP=multi_embodiment_v1
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
+export MAX_EPOCHS=1000000
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh

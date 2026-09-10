@@ -18,11 +18,12 @@
 # nothing.
 set -euo pipefail
 LOCAL_BATCH=$((GLOBAL_MINIBATCH / 2))
-# ROBOT_SPEC selects the hand: a registered name, or gen_s<seed>_n<count> for a
-# generated population, in which case every env holds one of its designs. It has
-# to be ONE name -- the agent YAML interpolates the network's copy from it, so a
-# second knob would let the two disagree.
-ROBOT_SPEC="${ROBOT_SPEC:-sharpa_iiwa14}"
+# ROBOT_SPEC selects the hand: a registered name, gen_s<seed>_n<count> for a
+# generated population, or a path to a population .json. It has to be ONE name
+# -- the agent YAML interpolates the network's copy from it, so a second knob
+# would let the two disagree. run.sh resolves the default and exports it; a
+# second default here is how the two drift apart.
+: "${ROBOT_SPEC:?run_rank.sh is launched by run.sh, which exports ROBOT_SPEC}"
 VIEWER_ARGS=()
 if [[ "${CAPTURE_VIEWER:-0}" == 1 ]]; then
     # LEN and INTERVAL are overridable so a short run can actually finish a

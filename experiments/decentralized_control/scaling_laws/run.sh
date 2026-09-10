@@ -37,6 +37,12 @@ else
 fi
 export NUM_ENVS_PER_GPU GLOBAL_MINIBATCH
 export EXPL_BLOCK_SIZE=$((NUM_ENVS_PER_GPU / 6))
+# THE default for the hand, resolved once and exported: run.sh is the only thing
+# that launches run_rank.sh, on both the DRY_RUN and torchrun paths. Job 785391
+# -- the SHARPA control, which does not set ROBOT_SPEC -- died in three seconds
+# on the population.sha256 block expanding it unguarded under set -u; every
+# population sub sets it, so none of them noticed.
+export ROBOT_SPEC="${ROBOT_SPEC:-sharpa_iiwa14}"
 export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics}"
 export WANDB_ENTITY="${WANDB_ENTITY:-kk837}"
 export WANDB_GROUP="${WANDB_GROUP:-$STUDY_ID}"
@@ -90,7 +96,7 @@ git diff > "$SCALING_RUN_DIR/worktree.patch"
 # and hashes; given as a gen_s<seed>_n<count> NAME it is a function of the code,
 # so the commit above is the only record and two runs sharing a name across a
 # sampler change are different populations with nothing saying so.
-if [[ "${ROBOT_SPEC:-}" == *.json ]]; then
+if [[ "$ROBOT_SPEC" == *.json ]]; then
     [[ -f "$ROBOT_SPEC" ]] || { echo "ROBOT_SPEC file not found: $ROBOT_SPEC"; exit 1; }
     sha256sum "$ROBOT_SPEC" > "$SCALING_RUN_DIR/population.sha256"
     echo "Population: $ROBOT_SPEC ($(cut -c1-12 < "$SCALING_RUN_DIR/population.sha256"))"
