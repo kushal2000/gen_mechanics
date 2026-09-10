@@ -21,6 +21,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from pathlib import Path as pathlib_Path
 
 from hand_sampler import design_space
 from hand_sampler import robot_param_constants as rpc
@@ -59,6 +60,72 @@ def hinge_to_z(axis) -> np.ndarray:
     x = np.cross(ref, a)
     x /= max(float(np.linalg.norm(x)), 1e-12)
     return np.column_stack([x, np.cross(a, x), a])
+
+
+REPO_ROOT = pathlib_Path(__file__).resolve().parents[1]
+ARM_URDF = REPO_ROOT / "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
+
+
+def arm_link_frames(joint_pos: dict | None = None, *, base_pos=None, base_rot_z: float = 0.0
+                    ) -> dict:
+    """``link name -> 4x4`` world pose for the iiwa14 chain at a joint pose.
+
+    The hand alone is hard to read: a two-finger design floating in the palm
+    frame says nothing about whether it can reach the table. This is the rest of
+    the picture -- the arm it hangs off, at the home pose the env resets to.
+
+    Defaults to ``ARM_DEFAULT_JOINT_POS`` at ``BASE_POS``, which puts link_7 at
+    (0, 0.222, 0.744) and therefore the palm centre at (0, 0.098, 0.730).
+    """
+    import xml.etree.ElementTree as ET
+
+    pose = dict(rpc.ARM_DEFAULT_JOINT_POS if joint_pos is None else joint_pos)
+    root = ET.parse(ARM_URDF).getroot()
+    joints = {j.get("name"): j for j in root.findall("joint")}
+
+    acc = np.eye(4)
+    acc[:3, :3] = design_space.rpy_to_mat((0.0, 0.0, base_rot_z))
+    acc[:3, 3] = rpc.BASE_POS if base_pos is None else base_pos
+    frames = {f"{rpc.ARM_NAME}_link_0": acc.copy()}
+
+    for name in rpc.ARM_JOINT_NAMES:
+        j = joints[name]
+        origin = j.find("origin")
+        step = np.eye(4)
+        step[:3, :3] = design_space.rpy_to_mat(
+            [float(v) for v in (origin.get("rpy") or "0 0 0").split()])
+        step[:3, 3] = [float(v) for v in (origin.get("xyz") or "0 0 0").split()]
+        turn = np.eye(4)
+        turn[:3, :3] = design_space.rodrigues(
+            np.asarray([float(v) for v in j.find("axis").get("xyz").split()], float),
+            float(pose[name]))
+        acc = acc @ step @ turn
+        frames[j.find("child").get("link")] = acc.copy()
+    return frames
+
+
+def arm_visual_meshes(frames: dict) -> list:
+    """``[(absolute mesh path, 4x4 world transform)]`` for the arm's visuals."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(ARM_URDF).getroot()
+    out = []
+    for link in root.findall("link"):
+        world = frames.get(link.get("name"))
+        if world is None:
+            continue
+        for visual in link.findall("visual"):
+            mesh = visual.find("geometry/mesh")
+            if mesh is None:
+                continue
+            origin = visual.find("origin")
+            local = np.eye(4)
+            if origin is not None:
+                local[:3, :3] = design_space.rpy_to_mat(
+                    [float(v) for v in (origin.get("rpy") or "0 0 0").split()])
+                local[:3, 3] = [float(v) for v in (origin.get("xyz") or "0 0 0").split()]
+            out.append((ARM_URDF.parent / mesh.get("filename"), world @ local))
+    return out
 
 
 def palm_center_offset(hand: design_space.Hand) -> tuple[float, float, float]:

@@ -11,11 +11,18 @@ import random
 import numpy as np
 import trimesh
 import viser
+from viser.extras import ViserUrdf
 
+from hand_sampler import build
 from hand_sampler import design_space
+from hand_sampler import robot_param_constants as rpc
 from hand_sampler import mutate_design
 from hand_sampler import gen_init_pop
 from hand_sampler.design_space import face_frame
+
+# assets/urdf/table_narrow.urdf, at reset.table_reset_z. Surface at z = 0.53.
+TABLE_EXTENTS = (0.475, 0.4, 0.3)
+TABLE_CENTRE_Z = 0.38
 
 FLEXION_RGB = (0.25, 0.45, 0.95)
 ABDUCTION_RGB = (0.98, 0.60, 0.10)
@@ -106,14 +113,22 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--population", default=None,
                     help="a population JSON (or name) to open a stored design from")
+    ap.add_argument("--experiment", default=None,
+                    help="a drift experiment folder under assets/populations/: adds a "
+                         "ROUND axis, so the walk itself is what you scrub through")
     ap.add_argument("--design", type=int, default=0,
-                    help="which design of --population to open")
+                    help="which design to open")
     args = ap.parse_args()
 
     server = viser.ViserServer(port=args.port)
     rng = random.Random(args.seed)
 
-    designs = _load_designs(args.population) if args.population else None
+    rounds = _experiment_rounds(args.experiment) if args.experiment else None
+    load_round = _round_loader(rounds) if rounds else None
+    if rounds:
+        designs = load_round(len(rounds) - 1)          # open on the latest round
+    else:
+        designs = _load_designs(args.population) if args.population else None
     start = (designs[args.design] if designs
              else gen_init_pop.seed_population(args.seed, 1)[0])
     state: dict = {
@@ -122,11 +137,21 @@ def main() -> None:
         "seed": args.seed,
         "last_op": None,
         "angles": {},
+        "context": True,
     }
 
     # Walking the stored population, when there is one to walk. The file is the
     # only way to reach design 8113 without re-running the sampler, and a slider
     # over 24576 of them is the point of having written it down.
+    round_picker = None
+    if rounds:
+        with server.gui.add_folder(f"mutation rounds ({len(rounds)} snapshots)"):
+            round_picker = server.gui.add_slider(
+                "round", min=0, max=len(rounds) - 1, step=1,
+                initial_value=len(rounds) - 1)
+            round_info = server.gui.add_markdown("")
+            btn_rescan = server.gui.add_button("rescan folder")
+
     picker = None
     if designs is not None:
         with server.gui.add_folder(f"population ({len(designs)} designs)"):
@@ -142,78 +167,118 @@ def main() -> None:
         btn_mutate = server.gui.add_button("mutate")
         btn_undo = server.gui.add_button("undo")
         btn_reseed = server.gui.add_button("new seed")
+        cb_context = server.gui.add_checkbox("show arm + table", True)
+
+    with server.gui.add_folder("pose"):
+        btn_flex = server.gui.add_button("flex all")
+        btn_unflex = server.gui.add_button("unflex all")
         status = server.gui.add_markdown("")
+
+    @cb_context.on_update
+    def _(_) -> None:
+        state["context"] = bool(cb_context.value)
+        rebuild_scene()
+
+    @btn_flex.on_click
+    def _(_) -> None:
+        set_all_joints(math.degrees(design_space.JOINT_LIMIT[1]))
+
+    @btn_unflex.on_click
+    def _(_) -> None:
+        set_all_joints(0.0)
 
     joint_folder = server.gui.add_folder("joints")
     sliders: list = []
 
-    def rebuild_scene() -> None:
-        hand = state["hand"]
+    # ViserUrdf, not a pile of meshes rebuilt per frame. update_cfg() moves
+    # transforms only, so dragging a joint no longer reloads the arm; and what
+    # you are moving is the articulation the simulator authors -- palm slab,
+    # capsules as cylinder-plus-caps, ghost slots -- rather than a drawing of
+    # the design. The cost is the flexion/abduction colouring and the hinge
+    # pins, which live on in the `png` renderer.
+    scene: dict = {"urdf": None, "handle": None, "cfg": None, "names": []}
+
+    def rebuild_static() -> None:
         server.scene.reset()
-        server.scene.add_grid("/grid", width=0.4, height=0.4, cell_size=0.02)
+        scene["handle"] = None
+        if state["context"]:
+            table = trimesh.creation.box(extents=TABLE_EXTENTS)
+            table.apply_translation((0.0, 0.0, TABLE_CENTRE_Z))
+            server.scene.add_mesh_simple("/table", table.vertices, table.faces,
+                                         color=(209, 143, 89))
+            server.scene.add_grid("/grid", width=2.0, height=2.0, cell_size=0.1)
+        else:
+            server.scene.add_grid("/grid", width=0.6, height=0.6, cell_size=0.05)
+        # The arm's base, so the robot stands where the env puts it.
+        server.scene.add_frame("/robot", show_axes=False,
+                               position=tuple(rpc.BASE_POS) if state["context"] else (0.0, 0.0, 0.0))
 
-        t, w, l = hand.palm.extents
-        palm = trimesh.creation.box(extents=(t, w, l))
-        palm.apply_translation((0.0, 0.0, l / 2))
-        server.scene.add_mesh_simple("/palm", palm.vertices, palm.faces,
-                                     color=(120, 125, 135), opacity=0.55)
+    def rebuild_hand() -> None:
+        """New geometry: a different design is a different URDF."""
+        if scene["handle"] is not None:
+            scene["handle"].remove()
+        urdf = urdf_for(state["hand"])
+        scene["urdf"] = urdf
+        scene["handle"] = ViserUrdf(server, urdf, root_node_name="/robot")
+        scene["names"] = list(urdf.actuated_joint_names)
+        cfg = np.zeros(len(scene["names"]))
+        for i, name in enumerate(scene["names"]):
+            if name in rpc.ARM_DEFAULT_JOINT_POS:
+                cfg[i] = rpc.ARM_DEFAULT_JOINT_POS[name]
+        scene["cfg"] = cfg
+        push_cfg()
 
-        for fi, finger in enumerate(hand.fingers):
-            angles = state["angles"].get(fi, {})
-            joints, capsules = design_space.forward_kinematics(finger, hand.palm, angles)
-            axes = design_space.joint_axes(finger, hand.palm, angles)
+    def push_cfg() -> None:
+        """The whole point: transforms only, no mesh rebuild."""
+        cfg = scene["cfg"].copy()
+        for (fi, si), value in state["angles"].items():
+            name = f"f{fi}_j{si}"
+            if name in scene["names"]:
+                cfg[scene["names"].index(name)] = value
+        scene["handle"].update_cfg(cfg)
 
-            # the capsule carries the segment it belongs to; indexing by the capsule's own position would...
-            for n, (p0, p1, r, si) in enumerate(capsules):
-                mesh = capsule_mesh(p0, p1, r)
-                server.scene.add_mesh_simple(
-                    f"/f{fi}/link{n}", mesh.vertices, mesh.faces,
-                    color=theta_colour(finger.segments[si].joint.theta))
-
-            for si, (p, a) in enumerate(zip(joints[:-1], axes)):
-                perp = abs(finger.segments[si].joint.phi - math.pi / 2) < 1e-9
-                mesh = axis_mesh(p, a)
-                server.scene.add_mesh_simple(
-                    f"/f{fi}/j{si}", mesh.vertices, mesh.faces,
-                    color=(30, 30, 35) if perp else (220, 40, 40))
-            server.scene.add_icosphere(f"/f{fi}/tip", radius=design_space.CAPSULE_RADIUS * 0.45,
-                                       position=tuple(joints[-1]),
-                                       color=(250, 220, 60))
-
-            # the face normal, so a finger offset away from it reads as offset
-            p0 = design_space.mount_position(finger.mount, hand.palm)
-            d = design_space.mount_direction(finger.mount, hand.palm)
-            server.scene.add_spline_catmull_rom(
-                f"/f{fi}/dir", np.stack([p0, p0 + 0.02 * d]),
-                color=(200, 200, 210), line_width=2.0)
+    def rebuild_scene() -> None:
+        rebuild_static()
+        rebuild_hand()
 
     def rebuild_sliders() -> None:
-        for s in sliders:
-            s.remove()
+        for handle in sliders:
+            handle.remove()
         sliders.clear()
+        state["angles"].clear()
         lo, hi = design_space.JOINT_LIMIT
         with joint_folder:
             for fi, finger in enumerate(state["hand"].fingers):
                 for si, seg in enumerate(finger.segments):
-                    label = (f"f{fi}.j{si}  "
-                             f"{math.degrees(seg.joint.theta):.0f}d")
-                    s = server.gui.add_slider(label, min=math.degrees(lo),
-                                              max=math.degrees(hi), step=1.0,
-                                              initial_value=0.0)
+                    label = f"f{fi}.j{si}  {math.degrees(seg.joint.theta):.0f}d"
+                    handle = server.gui.add_slider(
+                        label, min=math.degrees(lo), max=math.degrees(hi),
+                        step=1.0, initial_value=0.0)
+                    sliders.append(handle)
 
-                    def on_change(_, fi=fi, si=si, handle=None) -> None:
-                        state["angles"].setdefault(fi, {})[si] = math.radians(
-                            handle.value)
-                        rebuild_scene()
+                    def on_change(_, fi=fi, si=si, h=handle) -> None:
+                        state["angles"][(fi, si)] = math.radians(h.value)
+                        push_cfg()          # transforms only
 
-                    s.on_update(lambda ev, fi=fi, si=si, h=s: on_change(ev, fi, si, h))
-                    sliders.append(s)
+                    handle.on_update(on_change)
+
+    def set_all_joints(degrees: float) -> None:
+        """Every joint of the hand together -- the pose that shows whether a
+        design can actually close on something."""
+        for handle in sliders:
+            handle.value = degrees
+        for fi, finger in enumerate(state["hand"].fingers):
+            for si in range(finger.n_joints):
+                state["angles"][(fi, si)] = math.radians(degrees)
+        push_cfg()
 
     def refresh(msg: str = "") -> None:
         info.content = describe(state["hand"], state["last_op"])
         status.content = msg
-        rebuild_scene()
+        # Sliders first: they clear the old design's angles, and rebuild_hand
+        # pushes a configuration built from whatever is in there.
         rebuild_sliders()
+        rebuild_hand()
 
     @btn_mutate.on_click
     def _(_) -> None:
@@ -250,6 +315,38 @@ def main() -> None:
         state["angles"] = {}
         refresh(f"seed {state['seed']}")
 
+    # Once, before anything else draws: refresh() rebuilds only the hand, so
+    # without this the table, the grid and the /robot base frame the URDF hangs
+    # off are never created at all.
+    rebuild_static()
+
+    if round_picker is not None:
+        def show_round(i: int) -> None:
+            nonlocal designs
+            i = max(0, min(int(i), len(rounds) - 1))
+            designs = load_round(i)
+            n_joints = sum(h.n_joints for h in designs) / len(designs)
+            n_fing = sum(h.n_fingers for h in designs) / len(designs)
+            round_info.content = (
+                f"**round {rounds[i][0]}** of {rounds[-1][0]} &nbsp;|&nbsp; "
+                f"{len(designs)} designs &nbsp;|&nbsp; "
+                f"{n_joints:.2f} joints/hand &nbsp;|&nbsp; {n_fing:.2f} fingers/hand")
+            picker.max = len(designs) - 1
+            show_design(min(int(picker.value), len(designs) - 1))
+
+        @round_picker.on_update
+        def _(_) -> None:
+            show_round(round_picker.value)
+
+        @btn_rescan.on_click
+        def _(_) -> None:
+            # The walk writes rounds as it goes, so a folder grows under you.
+            nonlocal rounds, load_round
+            rounds = _experiment_rounds(args.experiment)
+            load_round = _round_loader(rounds)
+            round_picker.max = len(rounds) - 1
+            show_round(round_picker.value)
+
     if picker is not None:
         def show_design(index: int) -> None:
             index = max(0, min(int(index), len(designs) - 1))
@@ -275,7 +372,10 @@ def main() -> None:
         def _(_) -> None:
             picker.value = rng.randrange(len(designs))
 
-        show_design(args.design)
+        if round_picker is not None:
+            show_round(len(rounds) - 1)
+        else:
+            show_design(args.design)
     else:
         refresh(f"seed {args.seed}")
 
@@ -363,6 +463,77 @@ def _grid(items, out: str, cols: int = 3, flex: float = 0.0) -> None:
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight", facecolor="white")
     print(f"wrote {out}  ({len(items)} hands)")
+
+
+def urdf_for(hand) -> "yourdfpy.URDF":
+    """The design as the ARM + HAND articulation, ready for ViserUrdf.
+
+    Not the design-space drawing: this is `build.urdf_for_viewing` grafted onto
+    the arm, so what you move is the thing the simulator authors -- palm slab,
+    capsules as cylinder-plus-caps, ghost slots and all.
+    """
+    import tempfile
+    import xml.etree.ElementTree as ET
+
+    import yourdfpy
+
+    from coevolution.pose_viewer import ARM_URDF_PATH, _graft_hand_onto_arm
+
+    with tempfile.TemporaryDirectory() as tmp:
+        text = build.urdf_for_viewing(hand, pathlib.Path(tmp) / "d.urdf").read_text()
+    root = ET.fromstring(_graft_hand_onto_arm(text, ARM_URDF_PATH))
+    # yourdfpy resolves a relative mesh against the file it loaded; there is no
+    # file here, so make them absolute instead of writing into the asset tree.
+    for mesh in root.findall(".//mesh"):
+        name = mesh.get("filename")
+        if name and not name.startswith(("/", "http")):
+            mesh.set("filename", str((ARM_URDF_PATH.parent / name).resolve()))
+    with tempfile.NamedTemporaryFile("w", suffix=".urdf", delete=False) as f:
+        f.write(ET.tostring(root, encoding="unicode"))
+        path = f.name
+    try:
+        return yourdfpy.URDF.load(path, load_meshes=True, build_collision_scene_graph=False)
+    finally:
+        pathlib.Path(path).unlink(missing_ok=True)
+
+
+def _experiment_rounds(directory) -> list:
+    """``[(round, path)]`` for a drift experiment folder, in round order."""
+    import re
+
+    d = pathlib.Path(directory)
+    if not d.is_dir():
+        d = pathlib.Path("assets/populations") / directory
+    if not d.is_dir():
+        raise SystemExit(f"no experiment folder at {directory!r}")
+    out = []
+    for f in d.glob("round_*.json"):
+        m = re.fullmatch(r"round_(\d+)", f.stem)
+        if m:
+            out.append((int(m.group(1)), f))
+    if not out:
+        raise SystemExit(f"{d} holds no round_NNNN.json snapshots")
+    return sorted(out)
+
+
+def _round_loader(rounds, keep: int = 3):
+    """Load a round on demand, keeping a few. 24576 designs is 18 MB a round and
+    a 500-round walk is 9 GB, so holding them all is not an option."""
+    from hand_sampler import population_io
+
+    cache: dict = {}
+    order: list = []
+
+    def load(index: int):
+        r, path = rounds[index]
+        if r not in cache:
+            cache[r] = population_io.load_population(path)
+            order.append(r)
+            while len(order) > keep:
+                cache.pop(order.pop(0), None)
+        return cache[r]
+
+    return load
 
 
 def _load_designs(population: str):
