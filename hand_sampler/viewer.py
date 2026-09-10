@@ -113,7 +113,8 @@ def main() -> None:
     server = viser.ViserServer(port=args.port)
     rng = random.Random(args.seed)
 
-    start = (_load_designs(args.population)[args.design] if args.population
+    designs = _load_designs(args.population) if args.population else None
+    start = (designs[args.design] if designs
              else gen_init_pop.seed_population(args.seed, 1)[0])
     state: dict = {
         "hand": start,
@@ -122,6 +123,18 @@ def main() -> None:
         "last_op": None,
         "angles": {},
     }
+
+    # Walking the stored population, when there is one to walk. The file is the
+    # only way to reach design 8113 without re-running the sampler, and a slider
+    # over 24576 of them is the point of having written it down.
+    picker = None
+    if designs is not None:
+        with server.gui.add_folder(f"population ({len(designs)} designs)"):
+            picker = server.gui.add_slider("design", min=0, max=len(designs) - 1,
+                                           step=1, initial_value=args.design)
+            btn_prev = server.gui.add_button("prev")
+            btn_next = server.gui.add_button("next")
+            btn_random = server.gui.add_button("random")
 
     with server.gui.add_folder("design"):
         info = server.gui.add_markdown("")
@@ -237,7 +250,38 @@ def main() -> None:
         state["angles"] = {}
         refresh(f"seed {state['seed']}")
 
-    refresh(f"seed {args.seed}")
+    if picker is not None:
+        def show_design(index: int) -> None:
+            index = max(0, min(int(index), len(designs) - 1))
+            state["hand"] = designs[index]
+            state["lineage"].clear()      # a stored design is a fresh start,
+            state["last_op"] = None       # not a step in the current lineage
+            state["angles"] = {}
+            refresh(f"design **{index}** of {args.population}")
+
+        @picker.on_update
+        def _(_) -> None:
+            show_design(picker.value)
+
+        @btn_prev.on_click
+        def _(_) -> None:
+            picker.value = max(0, int(picker.value) - 1)
+
+        @btn_next.on_click
+        def _(_) -> None:
+            picker.value = min(len(designs) - 1, int(picker.value) + 1)
+
+        @btn_random.on_click
+        def _(_) -> None:
+            picker.value = rng.randrange(len(designs))
+
+        show_design(args.design)
+    else:
+        refresh(f"seed {args.seed}")
+
+    # main() returning tears the server down with it, so hold the thread here
+    # rather than relying on the caller's shell to stay open.
+    server.sleep_forever()
     print(f"viewer on http://localhost:{args.port}")
     while True:
         import time
