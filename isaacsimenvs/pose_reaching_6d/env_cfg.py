@@ -29,6 +29,18 @@ class AssetsCfg:
     # A hand_sampler.HandPopulation injected in code: every env holds one of its
     # designs, and its template spec replaces robot_spec.
     robot_population: object | None = None
+    # Coulomb friction on the hand joints. OFF by default, which matches
+    # simtoolreal's Isaac Sim port: it defines the 22-entry table and never
+    # passes it to the actuator.
+    #
+    # The values come from its ISAACGYM env, where they ARE applied -- but the
+    # units are not established. Isaac Lab documents that this parameter is a
+    # COEFFICIENT in Isaac Sim 4.5 and an EFFORT (N.m) in 5.0 and later, and
+    # isaacgym's own docs say only "DOF friction". Passing 0.132 as a torque
+    # when it was authored as a coefficient is a silent physics change, and the
+    # Isaac Sim port declining to pass them is consistent with someone hitting
+    # exactly that. Turn it on deliberately, as an experiment, not by default.
+    apply_hand_joint_friction: bool = False
     # Or name one: robot_spec = "gen_s<seed>_n<count>" builds it from the
     # grammar. One knob, because the agent YAML interpolates the network's spec
     # from robot_spec and a second would let the two disagree.

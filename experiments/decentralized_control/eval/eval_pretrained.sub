@@ -36,10 +36,27 @@ export OMNI_KIT_CACHE_PATH="/tmp/${USER}_evalpre_${SLURM_JOB_ID:-local}"
 export TORCHINDUCTOR_CACHE_DIR="/tmp/${USER}_evalpre_ind_${SLURM_JOB_ID:-local}"
 mkdir -p "$OMNI_KIT_CACHE_PATH" "$TORCHINDUCTOR_CACHE_DIR" debug_outputs/eval_logs
 
+# simtoolreal's config is isaacgym-shaped (task.env.obsList, train.params); the
+# harness reads a hydra run (env.obs.obs_list, agent). Translate it once.
 PRE=/share/portal/kk837/simtoolreal/pretrained_policy
+RUNDIR=debug_outputs/eval_logs/pretrained_run
+mkdir -p "$RUNDIR/.hydra"
+python - <<'TRANSLATE'
+import pathlib, yaml
+src = yaml.safe_load(open("/share/portal/kk837/simtoolreal/pretrained_policy/config.yaml"))
+env = src["task"]["env"]
+out = {"env": {"obs": {"obs_list": list(env["obsList"]),
+                       "state_list": list(env["stateList"])},
+               "scene": {"num_envs": int(env["numEnvs"])}},
+       "agent": src["train"]}
+out["agent"]["params"]["config"]["num_actors"] = "${....env.scene.num_envs}"
+yaml.safe_dump(out, open("debug_outputs/eval_logs/pretrained_run/.hydra/config.yaml", "w"),
+               sort_keys=False)
+TRANSLATE
+
 python -u experiments/decentralized_control/eval/eval_finger_dropout.py \
     --checkpoint "$PRE/model.pth" \
-    --config "$PRE/config.yaml" \
+    --config "$RUNDIR/.hydra/config.yaml" \
     --variants intact \
     --num_envs "${NUM_ENVS:-2048}" \
     --steps "${STEPS:-3000}" \
