@@ -1,0 +1,43 @@
+#!/bin/bash
+#SBATCH --job-name=pop1_d64_l4
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop1_d64_l4-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop1_d64_l4-%j.err
+
+# ONE HAND, on the multi-embodiment path. The control for pop_l4.sub.
+#
+# pop_l4 trains 24576 designs at once and we do not yet know whether a failure
+# to converge would be the population or the path. This holds the path fixed --
+# same authoring, same padded 5x6 envelope, same joint masking, same tokens --
+# and removes the only other variable by giving every env the SAME design.
+#   converges here, not at 24k  -> the difficulty is many embodiments
+#   fails here too              -> the difficulty is the path, and 24k is noise
+#
+# gen_s0_n1 IS design 0 of gen_s0_n24576: seed_population is prefix-stable, and
+# the equality is asserted, not assumed. That hand is 2 fingers / 3 joints with
+# one abduction joint (theta=90) and one flexion joint (theta=0), so it exercises
+# the hinge axis rather than dodging it -- 3 of the envelope's 30 slots are real
+# and the other 27 are ghosts, which also makes this the strongest test of the
+# masking that a population depends on.
+#
+# Everything else is pop_l4.sub verbatim -- d64/L4, 12288 envs/GPU, global
+# minibatch 114688, seed 100 -- so the two curves differ by the population and
+# nothing else.
+set -euo pipefail
+export D_MODEL=64 TRANSFORMER_LAYERS=4
+export PHASE=train STUDY_ID=multi_embodiment_v1 MODEL_TAG=pop1_d64_l4
+export ROBOT_SPEC=gen_s0_n1
+export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED="${SEED:-100}"
+export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1
+export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
+export WANDB_GROUP=multi_embodiment_v1
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
+export MAX_EPOCHS=1000000
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh
