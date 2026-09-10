@@ -18,6 +18,7 @@ import gymnasium as gym
 import numpy as np
 
 from coevolution.interactive_viewer import create_html, make_embedded_robot, make_url_robot
+from hand_sampler import robot_param_constants as rpc
 
 
 
@@ -32,6 +33,10 @@ DEFAULT_ROBOT_URDF_RELATIVE_PATH = (
     "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
 )
 TABLE_URDF_PATH = REPO_ROOT / "assets" / "urdf" / "table_narrow.urdf"
+# A generated design is a hand only. The arm it hangs off comes from the same
+# vendor file the fixed robot uses, cut at the flange.
+ARM_URDF_PATH = REPO_ROOT / DEFAULT_ROBOT_URDF_RELATIVE_PATH
+ARM_TIP_LINK = rpc.ARM_TIP_LINK
 
 
 def _to_numpy(value: Any) -> np.ndarray:
@@ -141,7 +146,63 @@ def object_urdf_for_env(env, env_id: int) -> tuple[str, Path]:
     return urdf_path.read_text(encoding="utf-8"), urdf_path
 
 
-def _generated_robot_urdf_text(env) -> str | None:
+def _arm_chain_root(arm_urdf_path: Path) -> "ET.Element":
+    """The arm URDF with everything past the flange removed.
+
+    The vendor file is arm + SHARPA. A generated design replaces the hand but
+    keeps the arm, and the viewer animates the arm joints too -- so the chain
+    down to the flange has to survive and the SHARPA half has to go, or the
+    grafted design would hang beside a second hand.
+    """
+    root = ET.parse(arm_urdf_path).getroot()
+    children: dict[str, list[str]] = {}
+    for joint in root.findall("joint"):
+        children.setdefault(joint.find("parent").get("link"), []).append(
+            joint.find("child").get("link"))
+
+    drop: set[str] = set()
+    stack = list(children.get(ARM_TIP_LINK, ()))
+    while stack:
+        link = stack.pop()
+        if link in drop:
+            continue
+        drop.add(link)
+        stack.extend(children.get(link, ()))
+
+    for link in root.findall("link"):
+        if link.get("name") in drop:
+            root.remove(link)
+    for joint in root.findall("joint"):
+        if joint.find("child").get("link") in drop:
+            root.remove(joint)
+    return root
+
+
+def _graft_hand_onto_arm(hand_urdf_text: str, arm_urdf_path: Path) -> str:
+    """Hang a generated hand's links off the arm's flange, as one robot.
+
+    The frames the viewer plays back are the arm's -- ``robot_base_pose`` is the
+    articulation root, i.e. ``iiwa14_link_0``. A hand-only URDF therefore draws
+    the fingers at the base of the arm, and its joint names cover 30 of the 37
+    the trajectory carries, so the viewer stops at ``iiwa14_joint_1`` before
+    drawing anything at all.
+    """
+    arm = _arm_chain_root(arm_urdf_path)
+    hand = ET.fromstring(hand_urdf_text)
+    arm_links = {link.get("name") for link in arm.findall("link")}
+    if ARM_TIP_LINK not in arm_links:
+        raise RuntimeError(f"{arm_urdf_path} has no {ARM_TIP_LINK} to graft onto")
+
+    for element in hand:
+        # The hand's root link IS the flange; the arm already declares it.
+        if element.tag == "link" and element.get("name") in arm_links:
+            continue
+        arm.append(element)
+    arm.set("name", "generated_hand_on_" + (arm.get("name") or "arm"))
+    return ET.tostring(arm, encoding="unicode")
+
+
+def _generated_robot_urdf_text(env, env_id: int) -> str | None:
     """The viewing geometry of this env's design, or None for a fixed robot."""
     record = getattr(env, "scene_record", None)
     population = getattr(record, "population", None)
@@ -150,11 +211,14 @@ def _generated_robot_urdf_text(env) -> str | None:
     import tempfile
 
     from hand_sampler import build
-    idx = int(record.robot_design_index[0].item())
+    # This env's design, not env 0's: a population hands each env a different
+    # one, so capturing env N against design 0 draws the wrong hand.
+    idx = int(record.robot_design_index[env_id].item())
     with tempfile.TemporaryDirectory() as tmp:
-        return build.urdf_for_viewing(
+        hand_urdf_text = build.urdf_for_viewing(
             population.hands[idx], Path(tmp) / "d.urdf"
         ).read_text(encoding="utf-8")
+    return _graft_hand_onto_arm(hand_urdf_text, ARM_URDF_PATH)
 
 
 def object_urdf_text_for_env(env, env_id: int) -> str:
@@ -312,6 +376,14 @@ def build_pose_viewer_html(
             source_urdf_path=table_urdf_path,
             raw_base=raw_base,
         )
+    if robot_urdf_text is not None:
+        # The grafted arm keeps the vendor URDF's relative mesh names, so the
+        # browser needs them turned into raw URLs like every other embedded body.
+        robot_urdf_text = _rewrite_embedded_urdf_mesh_urls(
+            robot_urdf_text,
+            source_urdf_path=ARM_URDF_PATH,
+            raw_base=raw_base,
+        )
     if hole_urdf_text is not None and hole_urdf_path is not None:
         hole_urdf_text = _rewrite_embedded_urdf_mesh_urls(
             hole_urdf_text,
@@ -403,7 +475,7 @@ class PoseViewerWrapper(gym.Wrapper):
         # SHARPA while the sim runs something else. So build the geometry from
         # the design and EMBED it, the way the table and object already are:
         # capsules as cylinders, no mesh references, nothing to fetch.
-        self._robot_urdf_text = _generated_robot_urdf_text(env)
+        self._robot_urdf_text = _generated_robot_urdf_text(inner, self.env_id)
 
         self._step = 0
         self._capture_index = 0

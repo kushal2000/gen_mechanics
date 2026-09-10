@@ -91,6 +91,7 @@ def test_generated_hand_embeds_its_own_geometry():
     """Job 661118 died here: the smoke ran with CAPTURE_VIEWER=0, the real run
     with 1, so this path first executed at 12k envs after 12 minutes of setup."""
     import types
+    import xml.etree.ElementTree as ET
 
     src = open("coevolution/pose_viewer.py").read()
     head = src[:src.index("def _generated_robot_urdf_text")]
@@ -113,9 +114,17 @@ def test_generated_hand_embeds_its_own_geometry():
 
     env = types.SimpleNamespace(scene_record=types.SimpleNamespace(
         population=pop, robot_design_index=Index([2, 0, 1, 3])))
-    text = ns["_generated_robot_urdf_text"](env)
-    # Nothing to fetch: the browser gets the geometry, not a URL to it.
-    assert "<mesh" not in text
-    assert text.count("<cylinder") == 2 * pop.hands[2].n_joints   # visual + collision
+
+    # The captured env's design, not env 0's.
+    for env_id, design in enumerate([2, 0, 1, 3]):
+        text = ns["_generated_robot_urdf_text"](env, env_id)
+        # The hand's geometry is embedded, not a URL to fetch: only the arm it
+        # is grafted onto keeps meshes, and those are the vendor file's.
+        assert text.count("<cylinder") == 2 * pop.hands[design].n_joints  # visual + collision
+        assert "new_iiwa14_meshes" in text
+        # Every name the viewer replays resolves, or it draws nothing at all.
+        names = {j.get("name") for j in ET.fromstring(text).findall("joint")}
+        assert set(pop.spec.joint_names_canonical) <= names
+
     fixed = types.SimpleNamespace(scene_record=types.SimpleNamespace(population=None))
-    assert ns["_generated_robot_urdf_text"](fixed) is None
+    assert ns["_generated_robot_urdf_text"](fixed, 0) is None
