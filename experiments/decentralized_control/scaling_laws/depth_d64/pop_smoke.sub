@@ -30,6 +30,10 @@ export PHASE=train STUDY_ID=pop_smoke_v1 MODEL_TAG=pop_d64_l4
 export ROBOT_SPEC=gen_s0_n8
 export NUM_ENVS_PER_GPU=384 GLOBAL_MINIBATCH=2048 SEED=100
 export WANDB_ACTIVATE=0 CAPTURE_VIEWER=1   # same flags as the real run: 659790 passed with the viewer OFF and the real run then died in it
+# 3 epochs is 48 steps, so the real run's 600-frame capture never completes and
+# the HTML is never built. 32 frames finishes twice inside the budget, which is
+# what makes this job cover the viewer rather than just import it.
+export CAPTURE_VIEWER_LEN=32 CAPTURE_VIEWER_INTERVAL=40
 export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
 export MAX_EPOCHS=3
 bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh

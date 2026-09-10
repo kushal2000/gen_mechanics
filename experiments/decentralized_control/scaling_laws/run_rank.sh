@@ -9,7 +9,13 @@ VIEWER_ARGS=()
 # second knob would let the two disagree.
 ROBOT_SPEC="${ROBOT_SPEC:-sharpa_iiwa14}"
 if [[ "$LOCAL_RANK" == 0 && "${CAPTURE_VIEWER:-0}" == 1 ]]; then
-    VIEWER_ARGS=(--capture_viewer)
+    # LEN and INTERVAL are overridable so a short run can actually finish a
+    # capture. The smoke ran the viewer at the real run's 600-frame length and
+    # wrote nothing -- 3 epochs is 48 steps -- so the half of the path that
+    # builds the HTML went untested by the very job that exists to test it.
+    VIEWER_ARGS=(--capture_viewer
+        --capture_viewer_len "${CAPTURE_VIEWER_LEN:-600}"
+        --capture_viewer_interval "${CAPTURE_VIEWER_INTERVAL:-6000}")
 fi
 if [[ "$LOCAL_RANK" == 0 && "$WANDB_ACTIVATE" == 1 ]]; then
     WANDB_ARGS=(--wandb_activate --wandb_project "$WANDB_PROJECT"
