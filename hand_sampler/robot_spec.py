@@ -396,6 +396,17 @@ def design_index(n_envs: int, n_designs: int, *, rank: int = 0,
         raise ValueError("a population needs at least one design")
     if not 0 <= rank < max(world_size, 1):
         raise ValueError(f"rank {rank} outside world_size {world_size}")
+    # world_size was taken, checked against rank, and then not used: the slices
+    # only tile the population when the ranks between them hold at least as many
+    # envs as there are designs. Short of that the tail is simply never
+    # instantiated -- 8192 envs/GPU on 2 GPUs trains 16384 of 24576 designs and
+    # every log line looks right -- so it is fatal rather than a warning.
+    total_envs = n_envs * max(world_size, 1)
+    if total_envs < n_designs:
+        raise ValueError(
+            f"{total_envs} envs ({n_envs} x {max(world_size, 1)} ranks) cannot cover "
+            f"{n_designs} designs: {n_designs - total_envs} would never be trained. "
+            f"Raise num_envs, add ranks, or use a smaller population.")
     start = rank * n_envs
     return (start + np.arange(n_envs, dtype=np.int64)) % n_designs
 

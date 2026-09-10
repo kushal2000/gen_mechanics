@@ -143,3 +143,39 @@ def test_a_path_is_recognised_as_a_population_reference():
     assert robot_spec.is_population_file("/abs/path/p.json")
     assert not robot_spec.is_population_file("gen_s0_n64")
     assert not robot_spec.is_population_ref("sharpa_iiwa14")
+
+
+# --- the population must actually reach the GPUs -----------------------------
+
+def test_the_ranks_tile_the_population_exactly():
+    """12288 envs on each of 2 ranks covers 24576 designs once, with no overlap."""
+    import numpy as np
+
+    from hand_sampler.robot_spec import design_index
+
+    slices = [design_index(12288, 24576, rank=r, world_size=2) for r in (0, 1)]
+    counts = np.bincount(np.concatenate(slices), minlength=24576)
+    assert counts.min() == counts.max() == 1
+    assert len(np.intersect1d(*slices)) == 0
+    assert (slices[0].min(), slices[0].max()) == (0, 12287)
+    assert (slices[1].min(), slices[1].max()) == (12288, 24575)
+
+
+def test_uneven_but_complete_coverage_is_allowed():
+    """More envs than designs just repeats them; the render job does this."""
+    import numpy as np
+
+    from hand_sampler.robot_spec import design_index
+
+    counts = np.bincount(np.concatenate(
+        [design_index(6, 8, rank=r, world_size=2) for r in (0, 1)]), minlength=8)
+    assert counts.min() >= 1
+
+
+@pytest.mark.parametrize("n_envs,n_designs,world_size", [(8192, 24576, 2), (12288, 24576, 1)])
+def test_a_population_the_ranks_cannot_cover_is_fatal(n_envs, n_designs, world_size):
+    """Silently training two thirds of a population is the failure to prevent."""
+    from hand_sampler.robot_spec import design_index
+
+    with pytest.raises(ValueError, match="never be trained"):
+        design_index(n_envs, n_designs, rank=0, world_size=world_size)

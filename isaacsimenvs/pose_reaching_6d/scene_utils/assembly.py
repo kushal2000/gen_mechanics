@@ -360,6 +360,14 @@ def setup_scene(env) -> None:
         env.num_envs, population.n_designs,
         rank=int(os.environ.get("RANK", "0")),
         world_size=int(os.environ.get("WORLD_SIZE", "1")))
+    if design_idx is not None:
+        # In the log, because "which designs did this rank hold" is otherwise
+        # only answerable by re-deriving it.
+        print(f"[scene] rank {int(os.environ.get('RANK', '0'))} of "
+              f"{os.environ.get('WORLD_SIZE', '1')} holds designs "
+              f"{int(design_idx.min())}..{int(design_idx.max())} "
+              f"({len(set(design_idx.tolist()))} distinct of {population.n_designs})",
+              flush=True)
     collider_links = _author_robots_into_envs(
         env, spec, population, design_idx, asset_dir, offsets, t0)
 
