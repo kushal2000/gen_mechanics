@@ -245,8 +245,8 @@ def _convert_arm(tmp_dir, offsets: dict):
     return arm_usd, arm_root, link7_world
 
 
-def _author_robots_into_envs(env, spec, population, asset_dir: Path, offsets: dict,
-                             t0: float) -> dict[int, dict[str, int]] | None:
+def _author_robots_into_envs(env, spec, population, design_idx, asset_dir: Path,
+                             offsets: dict, t0: float) -> dict[int, dict[str, int]] | None:
     """One Robot prim per env, no spawner clone. A fixed hand is one reference
     to its converted file; a design references the shared arm and authors its
     own hand. Spawning through Isaac Lab instead copies the prim tree into every
@@ -273,7 +273,10 @@ def _author_robots_into_envs(env, spec, population, asset_dir: Path, offsets: di
                 prim.referenceList.explicitItems.append(
                     Sdf.Reference(robot_usd, Sdf.Path(robot_root)))
             else:
-                idx = _env_id_of(env_path) % population.n_designs
+                # From the SAME array the tables are gathered with: computing it
+                # twice is how rank 1 authored designs 0..n while its tables
+                # described n..2n, which the reset invariant caught.
+                idx = int(design_idx[_env_id_of(env_path)])
                 define(layer, root, "Xform")
                 arm = define(layer, f"{root}{ARM_PRIM}", "Xform")
                 arm.referenceList.explicitItems.append(
@@ -319,8 +322,12 @@ def setup_scene(env) -> None:
     _log_scene_step(t0, f"generated {len(urdf_paths)} object URDFs")
 
     # 2. Robots, authored into every env.
+    design_idx = None if population is None else design_index(
+        env.num_envs, population.n_designs,
+        rank=int(os.environ.get("RANK", "0")),
+        world_size=int(os.environ.get("WORLD_SIZE", "1")))
     collider_links = _author_robots_into_envs(
-        env, spec, population, asset_dir, offsets, t0)
+        env, spec, population, design_idx, asset_dir, offsets, t0)
 
     # 3. Table, converted and spawned.
     table_usd = _convert_urdf_to_usd(assets_cfg.table_urdf, asset_dir / "usd", fix_base=False)
@@ -343,11 +350,8 @@ def setup_scene(env) -> None:
     object_scale, object_pool_index = _object_tensors(env, object_scales, authored_map)
     env.scene_record = SceneRecord(
         robot_spec=spec, population=population,
-        robot_design_index=(None if population is None else torch.as_tensor(
-            design_index(env.num_envs, population.n_designs,
-                         rank=int(os.environ.get("RANK", "0")),
-                         world_size=int(os.environ.get("WORLD_SIZE", "1"))),
-            device=env.device)),
+        robot_design_index=(None if design_idx is None
+                            else torch.as_tensor(design_idx, device=env.device)),
         robot_collider_links=collider_links,
         object_urdf_paths=[str(p) for p in urdf_paths],
         object_scale=object_scale, object_pool_index=object_pool_index,
