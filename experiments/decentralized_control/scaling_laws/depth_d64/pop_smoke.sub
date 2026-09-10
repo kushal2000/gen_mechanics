@@ -27,8 +27,13 @@
 set -euo pipefail
 export D_MODEL=64 TRANSFORMER_LAYERS=4
 export PHASE=train STUDY_ID=pop_smoke_v1 MODEL_TAG=pop_d64_l4
-export ROBOT_SPEC=gen_s0_n8
-export NUM_ENVS_PER_GPU=384 GLOBAL_MINIBATCH=2048 SEED=100
+# Overridable, so a file-backed or larger population can be smoked without a
+# new .sub: sbatch --export=ALL,ROBOT_SPEC=<path>,NUM_ENVS_PER_GPU=516,GLOBAL_MINIBATCH=64
+# The coverage guard refuses a population the envs cannot tile, so 1024 designs
+# need >= 512 envs/GPU on 2 GPUs -- 516 is the first multiple of 6 past that,
+# and 64 is a minibatch that divides its augmented rollout (9632 / 32 = 301).
+export ROBOT_SPEC="${ROBOT_SPEC:-gen_s0_n8}"
+export NUM_ENVS_PER_GPU="${NUM_ENVS_PER_GPU:-384}" GLOBAL_MINIBATCH="${GLOBAL_MINIBATCH:-2048}" SEED=100
 export WANDB_ACTIVATE=0 CAPTURE_VIEWER=1   # same flags as the real run: 659790 passed with the viewer OFF and the real run then died in it
 # 3 epochs is 48 steps, so the real run's 600-frame capture never completes and
 # the HTML is never built. 32 frames finishes twice inside the budget, which is

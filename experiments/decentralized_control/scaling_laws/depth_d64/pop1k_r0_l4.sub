@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --job-name=pop1k_r0_d64_l4
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop1k_r0_d64_l4-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop1k_r0_d64_l4-%j.err
+
+# 1024 designs, generation 0. The first 1024 of gen_s0_n24576 (prefix-stable),
+# as a FILE so it hashes and so it pairs exactly with the round-500 run below.
+#
+# Everything else is pop_l4.sub verbatim -- d64/L4, 12288 envs/GPU, global
+# minibatch 114688, seed 100 -- so the four multi_embodiment_v1 curves differ by
+# the population and nothing else. 1024 designs over 24576 envs is 24 envs per
+# design and every SAPG block sees all 1024 (2048 = 2 x 1024).
+set -euo pipefail
+export D_MODEL=64 TRANSFORMER_LAYERS=4
+export PHASE=train STUDY_ID=multi_embodiment_v1 MODEL_TAG=pop1k_r0_d64_l4
+export ROBOT_SPEC=/share/portal/kk837/gen_mechanics/assets/populations/gen_s0_n1024_drift500_s0/round_0000.json
+export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED="${SEED:-100}"
+export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1
+export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
+export WANDB_GROUP=multi_embodiment_v1
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
+export MAX_EPOCHS=1000000
+bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh
