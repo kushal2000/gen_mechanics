@@ -414,6 +414,45 @@ def base_capsules(hand: Hand) -> list[tuple[np.ndarray, np.ndarray]]:
     return out
 
 
+def capsule_axis(p0: np.ndarray, p1: np.ndarray, radius: float
+                 ) -> tuple[np.ndarray, np.ndarray]:
+    """The AUTHORED capsule's axis for a link spanning ``p0`` to ``p1``.
+
+    A capsule's tip-to-tip extent is the link length, so its axis is inset by
+    one radius at each end -- `viewer.capsule_mesh` and `author_hand` both build
+    it that way. Using the full span instead treats every link as ``2 * radius``
+    longer than the simulator's, which for a clearance test is not conservative
+    in a useful way: it rejects designs that do not touch.
+
+    A link shorter than ``2 * radius`` has no cylindrical part at all and is a
+    sphere at its midpoint, which is what the simulator authors too.
+    """
+    d = np.asarray(p1, float) - np.asarray(p0, float)
+    length = float(np.linalg.norm(d))
+    if length < 1e-12:
+        return np.asarray(p0, float), np.asarray(p0, float)
+    half = max(length - 2.0 * radius, 0.0) / 2.0
+    mid = (np.asarray(p0, float) + np.asarray(p1, float)) / 2.0
+    return mid - d / length * half, mid + d / length * half
+
+
+def rest_capsules(hand: Hand) -> list[tuple[int, int, np.ndarray, np.ndarray]]:
+    """``(finger, depth, axis start, axis end)`` for EVERY link at the rest pose.
+
+    ``base_capsules`` is the proximal link of each finger and nothing else,
+    which is every pair a two-joint hand HAS. Mutation makes longer fingers, and
+    a distal link folding back onto another finger is invisible to a check that
+    only ever looks at the first segment of each.
+    """
+    out = []
+    for fi, f in enumerate(hand.fingers):
+        _, caps = forward_kinematics(f, hand.palm)
+        for p0, p1, radius, si in caps:
+            a, b = capsule_axis(p0, p1, radius)
+            out.append((fi, si, a, b))
+    return out
+
+
 def mount_separations(hand: Hand) -> list[float]:
     """Pairwise distances between finger mounts, in metres."""
     pos = [mount_position(f.mount, hand.palm) for f in hand.fingers]

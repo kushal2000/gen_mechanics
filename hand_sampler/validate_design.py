@@ -111,14 +111,31 @@ def check_packing(hand: design_space.Hand) -> list[str]:
 
 
 def check_base_clearance(hand: design_space.Hand) -> list[str]:
-    """Proximal links must not intersect each other at the rest pose."""
+    """No two links may intersect at the rest pose.
+
+    This used to look at ``base_capsules`` -- the proximal link of each finger
+    and nothing else. That is every pair a two-joint hand HAS, so generation 0
+    never noticed; mutation makes longer fingers, and at 5.7 joints/hand 1.9% of
+    designs had non-adjacent links overlapping by as much as 19.6 mm, a link
+    being 20.3 mm across. The simulator then starts every episode resolving a
+    contact the design was told was legal, and it gets worse the further the
+    population drifts.
+
+    Consecutive links within a finger are excluded: they meet at their shared
+    joint by construction, so their core segments touch at a point whatever the
+    design says.
+    """
     out: list[str] = []
-    caps = base_capsules(hand)
+    links = design_space.rest_capsules(hand)
     floor = 2.0 * design_space.CAPSULE_RADIUS
-    for (p0, p1), (q0, q1) in combinations(caps, 2):
+    for (fi, si, p0, p1), (fj, sj, q0, q1) in combinations(links, 2):
+        if fi == fj and abs(si - sj) <= 1:
+            continue
         d = segment_distance(p0, p1, q0, q1)
         if d < floor - _TOL:
-            out.append(f"two base links {d * 1000:.1f} mm apart at rest; capsules "
+            who = (f"finger {fi} link {si} and finger {fj} link {sj}" if fi != fj
+                   else f"finger {fi} links {si} and {sj}")
+            out.append(f"{who} are {d * 1000:.1f} mm apart at rest; capsules "
                        f"intersect below {floor * 1000:.0f} mm")
             break
     return out

@@ -303,21 +303,32 @@ def test_joint_axes_are_the_axes_the_joints_turn_about():
         assert np.allclose(design_space.joint_axes(finger, palm, {k: delta})[k], a, atol=1e-12)
 
 
-def test_fingers_do_not_overlap_at_the_base(pop):
-    """No two proximal links may intersect at rest."""
+def test_links_do_not_overlap_at_rest(pop):
+    """No two links may intersect at rest -- distal ones included.
+
+    Measured on the AUTHORED capsule axis, which is inset one radius at each end
+    because a capsule's tip-to-tip extent is the link length. This used to
+    compare the full mount-to-tip span, treating every link as 2 * CAPSULE_RADIUS
+    longer than the one the simulator builds; that is stricter, but strict about
+    a link that does not exist, and it rejected 18.9% of a drifted population for
+    contacts that never happen.
+    """
     rng = random.Random(4)
     hand = pop[0]
+    r = design_space.CAPSULE_RADIUS
     worst = float("inf")
     for _ in range(4000):
         child = mutate_design.mutate(rng, hand)
         if child:
             hand = child
-        caps = design_space.base_capsules(hand)
-        for (p0, p1), (q0, q1) in itertools.combinations(caps, 2):
-            worst = min(worst, design_space.segment_distance(p0, p1, q0, q1))
-    assert worst >= 2 * design_space.CAPSULE_RADIUS - 1e-9, (
-        f"base links came within {worst * 1000:.1f} mm; capsules intersect below "
-        f"{2 * design_space.CAPSULE_RADIUS * 1000:.0f} mm")
+        links = design_space.rest_capsules(hand)
+        for (fi, si, a0, a1), (fj, sj, b0, b1) in itertools.combinations(links, 2):
+            if fi == fj and abs(si - sj) <= 1:
+                continue          # consecutive links meet at their shared joint
+            worst = min(worst, design_space.segment_distance(a0, a1, b0, b1))
+    assert worst >= 2 * r - 1e-9, (
+        f"links came within {worst * 1000:.1f} mm; capsules intersect below "
+        f"{2 * r * 1000:.0f} mm")
 
 
 def test_same_face_mounts_keep_their_distance(pop):
@@ -748,3 +759,81 @@ def test_a_population_smaller_than_the_scene_wraps():
     from hand_sampler.robot_spec import design_index
     idx = design_index(10, 4, rank=1, world_size=2)
     assert idx.tolist() == [(10 + i) % 4 for i in range(10)]
+
+
+# --- self-intersection at rest, past the proximal links ----------------------
+
+# A real hand from round 50 of the neutral-drift walk, taken before the check
+# was extended. Its BASE links clear each other by 23.7 mm; finger 1's DISTAL
+# link and finger 3's base link are 19.4 mm apart and therefore intersect. It
+# cannot be reached by mutating any more -- the extended check rejects it at
+# mutation time, which is the point -- so it is written down instead.
+_DISTAL_OVERLAP = {
+    "palm": {"thickness": 0.025, "width": 0.07, "length": 0.06},
+    "fingers": [
+        {"mount": {"face": "+z", "u": 0.6, "v": 0.511904761904762},
+         "segments": [{"joint": {"theta": 1.832595714594046, "phi": 1.5707963267948966,
+                                 "offset": -0.2617993877991494}, "length": 0.04},
+                      {"joint": {"theta": 2.617993877991494, "phi": 1.5707963267948966,
+                                 "offset": -0.7853981633974483}, "length": 0.02},
+                      {"joint": {"theta": 2.8797932657906435, "phi": 1.5707963267948966,
+                                 "offset": 0.2617993877991494}, "length": 0.02}]},
+        {"mount": {"face": "-y", "u": 0.4, "v": 0.6309523809523809},
+         "segments": [{"joint": {"theta": 2.0943951023931953, "phi": 1.5707963267948966,
+                                 "offset": 0.2617993877991494}, "length": 0.035},
+                      {"joint": {"theta": 2.617993877991494, "phi": 1.5707963267948966,
+                                 "offset": -0.2617993877991494}, "length": 0.04}]},
+        {"mount": {"face": "+y", "u": 0.4, "v": 0.7261904761904762},
+         "segments": [{"joint": {"theta": 0.7853981633974483, "phi": 1.5707963267948966,
+                                 "offset": 0.2617993877991494}, "length": 0.035},
+                      {"joint": {"theta": 0.5235987755982988,
+                                 "phi": 1.5707963267948966}, "length": 0.025}]},
+        {"mount": {"face": "-y", "u": 0.6, "v": 0.16666666666666669},
+         "segments": [{"joint": {"theta": 1.308996938995747,
+                                 "phi": 1.5707963267948966}, "length": 0.065}]},
+    ],
+}
+
+
+def test_clearance_checks_every_link_not_just_the_proximal_ones():
+    """A distal link folding onto another finger used to be invisible.
+
+    ``check_base_clearance`` looked at ``base_capsules`` -- one link per finger,
+    which is every pair a two-joint hand HAS -- so generation 0 never noticed
+    and 2.2% of a drifted population started in self-contact.
+    """
+    import itertools
+
+    from hand_sampler import population_io, validate_design
+
+    hand = population_io.hand_from_dict(_DISTAL_OVERLAP)
+
+    # The base links are genuinely clear, so the old check saw nothing.
+    base = design_space.base_capsules(hand)
+    r = design_space.CAPSULE_RADIUS
+    worst_base = min(
+        design_space.segment_distance(*design_space.capsule_axis(p0, p1, r),
+                                      *design_space.capsule_axis(q0, q1, r))
+        for (p0, p1), (q0, q1) in itertools.combinations(base, 2))
+    assert worst_base >= 2 * r
+
+    complaints = validate_design.check_base_clearance(hand)
+    assert complaints, "a distal link intersects another finger and was missed"
+    assert "finger 1 link 1" in complaints[0] and "finger 3 link 0" in complaints[0]
+
+
+def test_rest_capsules_uses_the_authored_capsule_axis():
+    """Tip to tip is the link length, so the axis is inset a radius each end --
+    the same decomposition author_hand and viewer.capsule_mesh use."""
+    import numpy as np
+
+    r = design_space.CAPSULE_RADIUS
+    p0, p1 = np.zeros(3), np.array([0.05, 0.0, 0.0])
+    a, b = design_space.capsule_axis(p0, p1, r)
+    assert np.allclose(a, [r, 0, 0]) and np.allclose(b, [0.05 - r, 0, 0])
+    # tip to tip is the full length again once the caps are added back
+    assert np.isclose(np.linalg.norm(b - a) + 2 * r, 0.05)
+
+    # A link shorter than a diameter is a sphere at its midpoint, as authored.
+    a, b = design_space.capsule_axis(p0, np.array([0.015, 0.0, 0.0]), r)
+    assert np.allclose(a, b) and np.allclose(a, [0.0075, 0, 0])
