@@ -44,6 +44,18 @@ if [[ "${CAPTURE_VIDEO:-0}" == 1 ]]; then
         --video_capture_frames "${VIDEO_FRAMES:-10}"
         --video_fps "${VIDEO_FPS:-5}")
 fi
+# Coevolution: per-design returns for selection, and the previous generation's
+# policy to start from. `weights`, not `resume`: resume restores the epoch
+# counter too, and a generation that resumes at epoch 2000 with max_epochs 2000
+# trains for zero epochs.
+COEVO_ARGS=()
+if [[ "${DESIGN_REWARDS:-0}" == 1 ]]; then
+    COEVO_ARGS+=(--design_rewards)
+fi
+if [[ -n "${CHECKPOINT:-}" ]]; then
+    [[ -f "$CHECKPOINT" ]] || { echo "CHECKPOINT not found: $CHECKPOINT"; exit 1; }
+    COEVO_ARGS+=(--checkpoint "$CHECKPOINT" --checkpoint_load_mode weights)
+fi
 WANDB_ARGS=()
 if [[ "$WANDB_ACTIVATE" == 1 ]]; then
     WANDB_ARGS=(--wandb_activate --wandb_project "$WANDB_PROJECT"
@@ -85,6 +97,7 @@ ARGS=(
     "${WANDB_ARGS[@]}"
     "${VIEWER_ARGS[@]}"
     "${VIDEO_ARGS[@]}"
+    ${COEVO_ARGS[@]+"${COEVO_ARGS[@]}"}
     "env.assets.robot_spec=$ROBOT_SPEC"
     env.assets.num_assets_per_type=100
     "env.scene.num_envs=$NUM_ENVS_PER_GPU"

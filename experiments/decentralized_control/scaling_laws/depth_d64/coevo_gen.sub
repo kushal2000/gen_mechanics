@@ -1,0 +1,97 @@
+#!/bin/bash
+#SBATCH --job-name=coevo
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=04:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevo/coevo-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevo/coevo-%j.err
+
+# ONE GENERATION of coevolution. Trains the shared policy on this generation's
+# population for EPOCHS_PER_GEN, ranks the designs by mean episode return, keeps
+# the top KEEP, mutates each survivor once to refill, and submits the next
+# generation with this one's policy as its starting point.
+#
+# Why a job per generation rather than a loop inside one process: the population
+# is authored into USD at scene build, so a new population is a new scene. That
+# costs ~10 min at 24576 envs and buys a clean record -- every generation is its
+# own run directory, wandb run, population file and selection.json.
+#
+# The comparison is against pop1k_r500_l4 (job 783644): the same 1024 designs,
+# same hyperparameters, never selected. A coevolved population's mean return is
+# biased upward by selection, so compare at matching total env steps and look at
+# the survivors' children as much as the survivors.
+#
+# Launch generation 0 with:
+#   sbatch --export=ALL,COEVO_DIR=<dir>,GEN=0 coevo_gen.sub
+# where <dir>/gen_0/population.json exists. Everything after is automatic.
+set -euo pipefail
+
+: "${COEVO_DIR:?absolute path holding gen_<k>/population.json}"
+: "${GEN:?generation number}"
+export EPOCHS_PER_GEN="${EPOCHS_PER_GEN:-2000}"     # ~2 h at 24576 envs
+export KEEP="${KEEP:-512}"
+export MAX_GEN="${MAX_GEN:-20}"
+export CHECKPOINT="${CHECKPOINT:-}"                 # empty for generation 0
+
+POP="$COEVO_DIR/gen_$GEN/population.json"
+[[ -f "$POP" ]] || { echo "no population at $POP"; exit 1; }
+mkdir -p /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevo
+
+export D_MODEL=64 TRANSFORMER_LAYERS=4
+export PHASE=train STUDY_ID=coevolution_v1 MODEL_TAG="coevo_g$(printf '%03d' "$GEN")_d64_l4"
+export ROBOT_SPEC="$POP"
+export NUM_ENVS_PER_GPU="${NUM_ENVS_PER_GPU:-12288}" GLOBAL_MINIBATCH="${GLOBAL_MINIBATCH:-114688}" SEED="${SEED:-100}"
+export WANDB_ACTIVATE="${WANDB_ACTIVATE:-1}" WANDB_MODE=online CAPTURE_VIEWER=1
+export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837 WANDB_GROUP=coevolution_v1
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevo
+export MAX_EPOCHS="$EPOCHS_PER_GEN"
+export DESIGN_REWARDS=1
+
+echo "[coevo] generation $GEN of $MAX_GEN: $POP"
+echo "[coevo] policy from: ${CHECKPOINT:-scratch}"
+cd /share/portal/kk837/gen_mechanics
+set +e
+bash experiments/decentralized_control/scaling_laws/run.sh
+STATUS=$?
+set -e
+RUN_DIR=$(ls -dt "$SCALING_RUN_ROOT"/*_"${SLURM_JOB_ID}"_* 2>/dev/null | head -1)
+echo "[coevo] training exited $STATUS; run dir $RUN_DIR"
+echo "$RUN_DIR" > "$COEVO_DIR/gen_$GEN/run_dir.txt"
+if (( STATUS != 0 )); then
+    echo "[coevo] training failed; not evolving, not resubmitting"; exit "$STATUS"
+fi
+
+# --- select + mutate ---------------------------------------------------------
+REWARDS=("$RUN_DIR"/rank_*/design_rewards_rank*.json)
+[[ -f "${REWARDS[0]}" ]] || { echo "[coevo] no design_rewards files under $RUN_DIR"; exit 1; }
+NEXT=$((GEN + 1))
+mkdir -p "$COEVO_DIR/gen_$NEXT"
+.venv_isaacsim/bin/python -m hand_sampler.evolve "$POP" \
+    --rewards "${REWARDS[@]}" --out "$COEVO_DIR/gen_$NEXT/population.json" \
+    --keep "$KEEP" --seed $((1000 + GEN)) --generation "$GEN"
+cp "${REWARDS[@]}" "$COEVO_DIR/gen_$GEN/"
+
+# --- the policy this generation ends with ------------------------------------
+CKPT=$(ls -t "$RUN_DIR"/rank_0/*/nn/*.pth 2>/dev/null | head -1)
+[[ -f "$CKPT" ]] || { echo "[coevo] no checkpoint under $RUN_DIR/rank_0"; exit 1; }
+echo "$CKPT" > "$COEVO_DIR/gen_$GEN/checkpoint.txt"
+echo "[coevo] checkpoint: $CKPT"
+
+# --- next --------------------------------------------------------------------
+if (( NEXT < MAX_GEN )); then
+    # Not "$0": slurm runs a spooled copy of this file, and that copy is gone
+    # once the job ends. The next generation must come from the repo.
+    SELF=/share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/depth_d64/coevo_gen.sub
+    J=$(sbatch --parsable --job-name="coevo_g$(printf '%03d' "$NEXT")" \
+        --export=ALL,COEVO_DIR="$COEVO_DIR",GEN="$NEXT",CHECKPOINT="$CKPT",EPOCHS_PER_GEN="$EPOCHS_PER_GEN",KEEP="$KEEP",MAX_GEN="$MAX_GEN",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE" \
+        "$SELF")
+    echo "[coevo] submitted generation $NEXT as job $J"
+    echo "$J" > "$COEVO_DIR/gen_$NEXT/job_id.txt"
+else
+    echo "[coevo] reached MAX_GEN=$MAX_GEN; done"
+fi

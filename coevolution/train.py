@@ -72,6 +72,13 @@ def main() -> None:
     parser.add_argument("--capture_viewer_interval", type=int, default=6000)
     parser.add_argument("--capture_viewer_env_id", type=int, default=0)
     parser.add_argument("--capture_viewer_wandb_key", default="interactive_viewer")
+    # --- Per-design episode returns, for selection across a population ---
+    parser.add_argument(
+        "--design_rewards",
+        action="store_true",
+        help="Bank each env's episode return against its design and write "
+             "design_rewards_rank<N>.json to the run dir. Every rank, not just 0.",
+    )
     parser.add_argument(
         "--capture_viewer_github_raw_base",
         default="",
@@ -182,6 +189,19 @@ def main() -> None:
                 step_trigger=lambda step: step % args_cli.video_interval == 0,
                 video_length=args_cli.video_capture_frames,
                 disable_logger=True,
+            )
+
+        if args_cli.design_rewards:
+            from pathlib import Path
+
+            from coevolution.design_rewards import DesignRewardWrapper
+
+            # Innermost of the wrappers, so it sees the env's own reward and
+            # done, and on EVERY rank -- the ranks hold different designs.
+            env = DesignRewardWrapper(
+                env,
+                output_path=Path(hydra_run_dir) / f"design_rewards_rank{global_rank}.json",
+                rank=global_rank,
             )
 
         if args_cli.capture_viewer:
