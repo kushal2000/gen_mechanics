@@ -70,12 +70,13 @@ def test_the_selection_record_is_complete(hands):
 def test_merge_sums_across_ranks(tmp_path):
     from coevolution.design_rewards import merge_rank_files
 
-    a = {"designs": {"0": {"episodes": 2, "return_sum": 10.0, "success_sum": 1.0},
-                     "1": {"episodes": 1, "return_sum": 3.0, "success_sum": 0.0}}}
-    b = {"designs": {"0": {"episodes": 2, "return_sum": 6.0, "success_sum": 1.0}}}
+    a = {"designs": {"0": {"episodes": 2, "return_sum": 10.0, "goals_sum": 3.0, "succeeded": 1},
+                     "1": {"episodes": 1, "return_sum": 3.0, "goals_sum": 0.0, "succeeded": 0}}}
+    b = {"designs": {"0": {"episodes": 2, "return_sum": 6.0, "goals_sum": 2.0, "succeeded": 1}}}
     (tmp_path / "r0.json").write_text(json.dumps(a))
     (tmp_path / "r1.json").write_text(json.dumps(b))
     m = merge_rank_files([tmp_path / "r0.json", tmp_path / "r1.json"])
     assert m[0]["episodes"] == 4 and m[0]["return_mean"] == pytest.approx(4.0)
-    assert m[0]["success_rate"] == pytest.approx(0.5)
+    assert m[0]["success_rate"] == pytest.approx(0.5)          # 2 of 4 episodes reached a goal
+    assert m[0]["goals_per_episode"] == pytest.approx(1.25)   # 5 goals over 4 episodes
     assert m[1]["return_mean"] == pytest.approx(3.0)

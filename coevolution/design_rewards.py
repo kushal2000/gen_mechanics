@@ -47,7 +47,8 @@ class DesignRewardWrapper(gym.Wrapper):
         self.running = torch.zeros(inner.num_envs, device=dev)     # return so far, per env
         self.sum = torch.zeros(self.n_designs, device=dev)         # banked, per design
         self.count = torch.zeros(self.n_designs, device=dev)
-        self.success_sum = torch.zeros(self.n_designs, device=dev)
+        self.goals_sum = torch.zeros(self.n_designs, device=dev)      # goals hit, summed
+        self.succeeded = torch.zeros(self.n_designs, device=dev)      # episodes with >= 1 goal
         self._steps = 0
         self._t0 = time.time()
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,11 +72,15 @@ class DesignRewardWrapper(gym.Wrapper):
             d = self.design_of_env[done]
             self.sum.index_add_(0, d, self.running[done])
             self.count.index_add_(0, d, torch.ones_like(self.running[done]))
-            # Success, when the env reports it, is the cleaner signal than a
-            # shaped return and is kept alongside rather than instead.
+            # The env's `successes` is the number of goals reached THIS episode,
+            # not a 0/1 -- summing it and dividing by episodes gave a "success
+            # rate" of 2.2. Keep the goal count and, separately, whether the
+            # episode reached any goal at all; the second is the rate.
             succ = self._successes(info)
             if succ is not None:
-                self.success_sum.index_add_(0, d, succ.reshape(-1)[done].to(self.running.dtype))
+                g = succ.reshape(-1)[done].to(self.running.dtype)
+                self.goals_sum.index_add_(0, d, g)
+                self.succeeded.index_add_(0, d, (g > 0).to(self.running.dtype))
             self.running[done] = 0.0
 
         if self._steps % self.flush_every == 0:
@@ -96,18 +101,25 @@ class DesignRewardWrapper(gym.Wrapper):
             return                                  # nothing to say yet
         count = self.count.cpu()
         total = self.sum.cpu()
-        succ = self.success_sum.cpu()
+        goals = self.goals_sum.cpu(); succ = self.succeeded.cpu()
         mean = torch.where(count > 0, total / count.clamp(min=1), torch.zeros_like(total))
+        inner = self.env.unwrapped
         payload = {
             "rank": self.rank,
             "steps": self._steps,
+            # The curriculum lives on the env and does not survive a checkpoint
+            # (see reward_utils/curriculum.py). The next generation reads it
+            # from here and passes resume_success_tolerance, or it silently
+            # restarts at 0.075 on a different reward scale.
+            "success_tolerance": float(getattr(inner, "_current_success_tolerance", float("nan"))),
             "elapsed_s": round(time.time() - self._t0, 1),
             "n_designs": self.n_designs,
             "episodes": int(count.sum().item()),
             # One row per design this rank holds; the merge sums across ranks.
             "designs": {
                 str(i): {"episodes": int(count[i]), "return_sum": float(total[i]),
-                         "return_mean": float(mean[i]), "success_sum": float(succ[i])}
+                         "return_mean": float(mean[i]),
+                         "goals_sum": float(goals[i]), "succeeded": int(succ[i])}
                 for i in range(self.n_designs) if count[i] > 0
             },
         }
@@ -126,12 +138,14 @@ def merge_rank_files(paths) -> dict:
     for p in paths:
         data = json.loads(Path(p).read_text())
         for k, row in data["designs"].items():
-            a = acc.setdefault(int(k), {"episodes": 0, "return_sum": 0.0, "success_sum": 0.0})
+            a = acc.setdefault(int(k), {"episodes": 0, "return_sum": 0.0, "goals_sum": 0.0, "succeeded": 0})
             a["episodes"] += row["episodes"]
             a["return_sum"] += row["return_sum"]
-            a["success_sum"] += row.get("success_sum", 0.0)
+            a["goals_sum"] += row.get("goals_sum", row.get("success_sum", 0.0))
+            a["succeeded"] += row.get("succeeded", 0)
     for a in acc.values():
         n = max(a["episodes"], 1)
         a["return_mean"] = a["return_sum"] / n
-        a["success_rate"] = a["success_sum"] / n
+        a["goals_per_episode"] = a["goals_sum"] / n
+        a["success_rate"] = a["succeeded"] / n
     return acc

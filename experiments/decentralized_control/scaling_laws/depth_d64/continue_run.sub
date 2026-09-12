@@ -1,0 +1,65 @@
+#!/bin/bash
+#SBATCH --job-name=continue
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/continue-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/continue-%j.err
+
+# CONTINUE a finished (or time-limited) run past its 24 h, and keep continuing.
+# The coevolution loop without the selection: same population, same policy
+# carried forward, same curriculum carried forward. Exists so the baseline can
+# run as many days as the co-evolved population does.
+#
+#   sbatch --export=ALL,SOURCE_RUN=<run dir>,ROBOT_SPEC=<pop>,MODEL_TAG=<tag>,EPOCHS=<n> continue_run.sub
+#
+# Reads the newest checkpoint and the final success tolerance out of SOURCE_RUN
+# (tensorboard -- these runs predate the per-design table), trains EPOCHS more
+# at that tolerance, then resubmits itself with its own run dir as SOURCE_RUN.
+set -euo pipefail
+: "${SOURCE_RUN:?the run directory to continue from}"
+: "${ROBOT_SPEC:?the population it trained on}"
+: "${MODEL_TAG:?}"
+export EPOCHS="${EPOCHS:-20000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+cd /share/portal/kk837/gen_mechanics
+
+CKPT=$(ls -t "$SOURCE_RUN"/rank_0/*/nn/*.pth 2>/dev/null | head -1)
+[[ -f "$CKPT" ]] || { echo "no checkpoint under $SOURCE_RUN"; exit 1; }
+TOL=$(.venv_isaacsim/bin/python - "$SOURCE_RUN" <<'PY'
+import sys, glob, json, math, warnings; warnings.filterwarnings("ignore")
+run = sys.argv[1]
+for f in glob.glob(f"{run}/rank_0/design_rewards_rank0.json"):
+    t = json.load(open(f)).get("success_tolerance")
+    if t is not None and not math.isnan(t): print(f"{t:.6f}"); sys.exit(0)
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+ev = sorted(glob.glob(f"{run}/rank_0/*/summaries/events*"))
+a = EventAccumulator(ev[-1], size_guidance={"scalars": 0}); a.Reload()
+print(f"{a.Scalars('current_success_tolerance')[-1].value:.6f}")
+PY
+) || { echo "could not read the final success tolerance from $SOURCE_RUN; refusing to continue blind"; exit 1; }
+echo "[continue] #$CONT from $SOURCE_RUN"; echo "[continue] checkpoint $CKPT"; echo "[continue] success tolerance $TOL"
+
+export D_MODEL=64 TRANSFORMER_LAYERS=4
+export PHASE=train STUDY_ID=multi_embodiment_v1 MODEL_TAG="${MODEL_TAG}_c$CONT"
+export NUM_ENVS_PER_GPU=12288 GLOBAL_MINIBATCH=114688 SEED="${SEED:-100}"
+export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1 DESIGN_REWARDS=1
+export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837 WANDB_GROUP=multi_embodiment_v1
+export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
+export MAX_EPOCHS="$EPOCHS" CHECKPOINT="$CKPT" RESUME_TOL="$TOL"
+set +e; bash experiments/decentralized_control/scaling_laws/run.sh; STATUS=$?; set -e
+RUN_DIR=$(ls -dt "$SCALING_RUN_ROOT"/*_"${SLURM_JOB_ID}"_* | head -1)
+echo "[continue] exited $STATUS; run dir $RUN_DIR"
+# Time-limited by slurm is the normal way this ends, and rl_games' rolling
+# autosave leaves a usable checkpoint; only refuse to chain on a real failure.
+if (( STATUS != 0 )) && [[ ! -f "$RUN_DIR/rank_0/"*/nn/*.pth ]]; then echo "[continue] no checkpoint; stopping"; exit "$STATUS"; fi
+NEXT=$((CONT + 1))
+if (( NEXT <= MAX_CONT )); then
+    SELF=/share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/depth_d64/continue_run.sub
+    J=$(sbatch --parsable --job-name="${MODEL_TAG}_c$NEXT" --export=ALL,SOURCE_RUN="$RUN_DIR",ROBOT_SPEC="$ROBOT_SPEC",MODEL_TAG="$MODEL_TAG",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$NEXT",SEED="$SEED" "$SELF")
+    echo "[continue] submitted #$NEXT as $J"
+fi

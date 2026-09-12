@@ -56,6 +56,14 @@ if [[ -n "${CHECKPOINT:-}" ]]; then
     [[ -f "$CHECKPOINT" ]] || { echo "CHECKPOINT not found: $CHECKPOINT"; exit 1; }
     COEVO_ARGS+=(--checkpoint "$CHECKPOINT" --checkpoint_load_mode weights)
 fi
+# The success-tolerance curriculum is env state, not network state: weights
+# mode does not carry it, and a continuation that omits this restarts at 0.075
+# on a different reward scale (reward_utils/curriculum.py). The old generation
+# loop passed it; this one did not, and got away with it only because nothing
+# had tightened yet.
+if [[ -n "${RESUME_TOL:-}" ]]; then
+    COEVO_ARGS+=("env.termination.resume_success_tolerance=$RESUME_TOL")
+fi
 WANDB_ARGS=()
 if [[ "$WANDB_ACTIVATE" == 1 ]]; then
     WANDB_ARGS=(--wandb_activate --wandb_project "$WANDB_PROJECT"

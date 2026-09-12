@@ -37,6 +37,12 @@ export EPOCHS_PER_GEN="${EPOCHS_PER_GEN:-2000}"     # ~2 h at 24576 envs
 export KEEP="${KEEP:-512}"
 export MAX_GEN="${MAX_GEN:-20}"
 export CHECKPOINT="${CHECKPOINT:-}"                 # empty for generation 0
+# The success-tolerance curriculum is env state and does not survive a
+# checkpoint. Generation 6 tightened to 0.0675 in its last 270 epochs and
+# generation 7 restarted at 0.075 -- on a different reward scale -- because
+# nothing carried it. Each generation now records its final tolerance and the
+# next one resumes there.
+export RESUME_TOL="${RESUME_TOL:-}"
 
 POP="$COEVO_DIR/gen_$GEN/population.json"
 [[ -f "$POP" ]] || { echo "no population at $POP"; exit 1; }
@@ -54,6 +60,7 @@ export DESIGN_REWARDS=1
 
 echo "[coevo] generation $GEN of $MAX_GEN: $POP"
 echo "[coevo] policy from: ${CHECKPOINT:-scratch}"
+echo "[coevo] curriculum from: ${RESUME_TOL:-start (0.075)}"
 cd /share/portal/kk837/gen_mechanics
 set +e
 bash experiments/decentralized_control/scaling_laws/run.sh
@@ -82,13 +89,35 @@ CKPT=$(ls -t "$RUN_DIR"/rank_0/*/nn/*.pth 2>/dev/null | head -1)
 echo "$CKPT" > "$COEVO_DIR/gen_$GEN/checkpoint.txt"
 echo "[coevo] checkpoint: $CKPT"
 
+# --- the curriculum this generation ends with --------------------------------
+# From the per-design table the wrapper writes (instant); from tensorboard if a
+# generation predates that field (minutes on NFS); never silently 0.075.
+TOL=$(.venv_isaacsim/bin/python - "$RUN_DIR" <<'PY2'
+import json, sys, glob, math
+run = sys.argv[1]
+for f in sorted(glob.glob(f"{run}/rank_0/design_rewards_rank0.json")):
+    t = json.load(open(f)).get("success_tolerance")
+    if t is not None and not math.isnan(t): print(f"{t:.6f}"); sys.exit(0)
+import warnings; warnings.filterwarnings("ignore")
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+ev = sorted(glob.glob(f"{run}/rank_0/*/summaries/events*"))
+if ev:
+    a = EventAccumulator(ev[-1], size_guidance={"scalars": 0}); a.Reload()
+    s = a.Scalars("current_success_tolerance")
+    if s: print(f"{s[-1].value:.6f}"); sys.exit(0)
+sys.exit(1)
+PY2
+) || { echo "[coevo] could not read the final success tolerance; refusing to hand off blind"; exit 1; }
+echo "$TOL" > "$COEVO_DIR/gen_$GEN/success_tolerance.txt"
+echo "[coevo] final success tolerance: $TOL"
+
 # --- next --------------------------------------------------------------------
 if (( NEXT < MAX_GEN )); then
     # Not "$0": slurm runs a spooled copy of this file, and that copy is gone
     # once the job ends. The next generation must come from the repo.
     SELF=/share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/depth_d64/coevo_gen.sub
     J=$(sbatch --parsable --job-name="coevo_g$(printf '%03d' "$NEXT")" \
-        --export=ALL,COEVO_DIR="$COEVO_DIR",GEN="$NEXT",CHECKPOINT="$CKPT",EPOCHS_PER_GEN="$EPOCHS_PER_GEN",KEEP="$KEEP",MAX_GEN="$MAX_GEN",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE" \
+        --export=ALL,COEVO_DIR="$COEVO_DIR",GEN="$NEXT",CHECKPOINT="$CKPT",RESUME_TOL="$TOL",EPOCHS_PER_GEN="$EPOCHS_PER_GEN",KEEP="$KEEP",MAX_GEN="$MAX_GEN",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE" \
         "$SELF")
     echo "[coevo] submitted generation $NEXT as job $J"
     echo "$J" > "$COEVO_DIR/gen_$NEXT/job_id.txt"
