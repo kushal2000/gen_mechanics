@@ -8,6 +8,7 @@
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:2
+#SBATCH --signal=B:USR1@900
 #SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/continue-%j.log
 #SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/continue-%j.err
 
@@ -21,11 +22,20 @@
 # Reads the newest checkpoint and the final success tolerance out of SOURCE_RUN
 # (tensorboard -- these runs predate the per-design table), trains EPOCHS more
 # at that tolerance, then resubmits itself with its own run dir as SOURCE_RUN.
+#
+# THE CHAIN MUST SURVIVE A TIMEOUT. slurm's TIMEOUT kills the batch script, not
+# just the payload, so code after run.sh never runs -- link #1 (947594) hit 24 h
+# at epoch 16,267 of 20,000 and the baseline sat dead for a day and a half while
+# the co-evolution loop, whose generations fit in their window, kept going. So:
+# --signal=B:USR1@900 delivers USR1 to this shell 15 min before the limit, the
+# payload runs in the background so `wait` can be interrupted, and the trap
+# submits the next link from the rolling autosave before slurm pulls the plug.
+# EPOCHS defaults to 15000 so the normal path finishes inside 24 h regardless.
 set -euo pipefail
 : "${SOURCE_RUN:?the run directory to continue from}"
 : "${ROBOT_SPEC:?the population it trained on}"
 : "${MODEL_TAG:?}"
-export EPOCHS="${EPOCHS:-20000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
 cd /share/portal/kk837/gen_mechanics
 
 CKPT=$(ls -t "$SOURCE_RUN"/rank_0/*/nn/*.pth 2>/dev/null | head -1)
@@ -51,15 +61,29 @@ export WANDB_ACTIVATE=1 WANDB_MODE=online CAPTURE_VIEWER=1 DESIGN_REWARDS=1
 export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837 WANDB_GROUP=multi_embodiment_v1
 export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
 export MAX_EPOCHS="$EPOCHS" CHECKPOINT="$CKPT" RESUME_TOL="$TOL"
-set +e; bash experiments/decentralized_control/scaling_laws/run.sh; STATUS=$?; set -e
-RUN_DIR=$(ls -dt "$SCALING_RUN_ROOT"/*_"${SLURM_JOB_ID}"_* | head -1)
-echo "[continue] exited $STATUS; run dir $RUN_DIR"
-# Time-limited by slurm is the normal way this ends, and rl_games' rolling
-# autosave leaves a usable checkpoint; only refuse to chain on a real failure.
-if (( STATUS != 0 )) && [[ ! -f "$RUN_DIR/rank_0/"*/nn/*.pth ]]; then echo "[continue] no checkpoint; stopping"; exit "$STATUS"; fi
-NEXT=$((CONT + 1))
-if (( NEXT <= MAX_CONT )); then
-    SELF=/share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/depth_d64/continue_run.sub
+SELF=/share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/depth_d64/continue_run.sub
+CHAINED=0
+chain_next() {
+    (( CHAINED )) && return 0
+    RUN_DIR=$(ls -dt "$SCALING_RUN_ROOT"/*_"${SLURM_JOB_ID}"_* 2>/dev/null | head -1)
+    if [[ -z "$RUN_DIR" ]] || ! ls "$RUN_DIR"/rank_0/*/nn/*.pth >/dev/null 2>&1; then
+        echo "[continue] no checkpoint to chain from; not resubmitting"; return 1
+    fi
+    NEXT=$((CONT + 1))
+    if (( NEXT > MAX_CONT )); then echo "[continue] reached MAX_CONT=$MAX_CONT"; CHAINED=1; return 0; fi
     J=$(sbatch --parsable --job-name="${MODEL_TAG}_c$NEXT" --export=ALL,SOURCE_RUN="$RUN_DIR",ROBOT_SPEC="$ROBOT_SPEC",MODEL_TAG="$MODEL_TAG",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$NEXT",SEED="$SEED" "$SELF")
-    echo "[continue] submitted #$NEXT as $J"
-fi
+    echo "[continue] submitted #$NEXT as $J (from $RUN_DIR)"; CHAINED=1
+}
+trap 'echo "[continue] USR1: 15 min to the limit, chaining now"; chain_next' USR1
+
+set +e
+bash experiments/decentralized_control/scaling_laws/run.sh &
+PAYLOAD=$!
+wait $PAYLOAD; STATUS=$?
+# A signal interrupts `wait`; after the trap has chained, wait for the payload again.
+while kill -0 $PAYLOAD 2>/dev/null; do wait $PAYLOAD; STATUS=$?; done
+set -e
+RUN_DIR=$(ls -dt "$SCALING_RUN_ROOT"/*_"${SLURM_JOB_ID}"_* | head -1)
+echo "[continue] payload exited $STATUS; run dir $RUN_DIR"
+if (( STATUS != 0 )) && ! ls "$RUN_DIR"/rank_0/*/nn/*.pth >/dev/null 2>&1; then echo "[continue] failed with no checkpoint; stopping"; exit "$STATUS"; fi
+chain_next
