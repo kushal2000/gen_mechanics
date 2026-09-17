@@ -15,19 +15,15 @@ export PHASE=train
 export WANDB_ACTIVATE="${WANDB_ACTIVATE:-1}" WANDB_MODE=online CAPTURE_VIEWER="${CAPTURE_VIEWER:-1}"
 export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
 export DESIGN_REWARDS=1                                   # per-design returns; selection and the tolerance hand-off read them
-# What coevolution_v1 ran, pinned, because the code's defaults have moved on:
-#   objects     a random 1200-entry pool (12 size distributions x 100), env i
-#               holding entry i % 1200 -- each design met its own fixed dozen
-#   observation token geometry measured from the design's palm centre, divided
-#               by hand_scale; no palm keypoints (obs.geometry_origin default
-#               is palm_center, but the task YAML now says ee, so say it here)
-# experiments/17sep_coevolution changes both.
-export OBJECT_POOL="" OBJECT_ASSIGNMENT=env_modulo NUM_ASSETS_PER_TYPE=100
-V1_STATE_LIST='[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,object_keypoints_rel_joint,hand_scale,palm_pos,palm_rot,palm_vel,object_rot,object_vel,keypoints_rel_palm,keypoints_rel_goal,object_scales,closest_keypoint_max_dist,closest_fingertip_dist,lifted_object,progress,successes,reward]'
-export EXTRA_HYDRA="${EXTRA_HYDRA:-} env.obs.geometry_origin=palm_center env.obs.state_list=$V1_STATE_LIST"
-export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-$REPO/debug_outputs/train_logs/10sep_coevolution}"
-mkdir -p "$SCALING_RUN_ROOT"
-
+# Objects: the hand-picked 24 (scene_utils/objects/curated_pools.py DIVERSE_24,
+# small and large of each of the twelve size distributions), dealt so every
+# design meets every object exactly once per generation and the two ranks hold
+# disjoint halves of the deal (robot_spec.object_index, design_cycle).
+export OBJECT_POOL="${OBJECT_POOL:-diverse24}"
+export OBJECT_ASSIGNMENT="${OBJECT_ASSIGNMENT:-design_cycle}"
+export NUM_ASSETS_PER_TYPE="${NUM_ASSETS_PER_TYPE:-100}"    # unused while OBJECT_POOL is set
+# Observation: the task YAML's defaults -- token geometry from the end effector
+# in metres, the palm as four keypoints, keypoints_rel_ee in the ee frame.
 # The newest rl_games checkpoint under a run directory (its rolling autosave
 # included), or nothing.
 newest_checkpoint() { ls -t "$1"/rank_0/*/nn/*.pth 2>/dev/null | head -1; }

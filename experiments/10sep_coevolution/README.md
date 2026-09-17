@@ -54,7 +54,14 @@ debug_outputs/train_logs/coevolution/
 wandb: project gen_mechanics, group <label>
 ```
 
-Analysis and figures: `debug_outputs/coevo_analysis/` (`README.md` there).
+Analysis and figures: `debug_outputs/10sep_coevo_analysis/` (`README.md` there).
+
+## Pinned to what ran
+
+`common.sh` fixes the object pool (random 1200, `env_modulo`) and the
+observation (palm-centre geometry, no palm keypoints) to coevolution_v1's
+setup, because the code's defaults moved on 17 Sep -- see
+`../17sep_coevolution/README.md` for what changed and why.
 
 ## coevolution_v1 (Sep 2026)
 
@@ -66,4 +73,4 @@ was at 0.029 after 66k epochs. Joints per hand 11.2 → 18.1. Caveat found
 afterwards: by generation 13 every hand descended from one gen-0 design (#521),
 selected during the first four generations when the policy was still on its
 ~300-return plateau and rank correlation with eventual quality was ~0.2. Things
-a V2 should change are in `debug_outputs/coevo_analysis/README.md`.
+a V2 should change are in `debug_outputs/10sep_coevo_analysis/README.md`.

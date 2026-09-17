@@ -57,6 +57,13 @@ class AssetsCfg:
     object_density_scale: float = 1.0
     # Shuffle so env i % len(pool) covers types uniformly; parity runs set False.
     shuffle_assets: bool = True
+    # How pool entries go to envs -- see hand_sampler.robot_spec.object_index.
+    # "env_modulo" is the original rule; "design_cycle" gives every design the
+    # same objects (all of them, with a pool of total_envs // n_designs).
+    object_assignment: str = "env_modulo"
+    # A hand-picked pool from scene_utils/objects/curated_pools.py ("diverse24")
+    # instead of num_assets_per_type random draws per distribution.
+    object_pool: str = ""
 
     # Base frictions, set once at scene init.
     modify_asset_frictions: bool = True

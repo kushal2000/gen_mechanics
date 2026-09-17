@@ -34,7 +34,7 @@ from ..obs_utils import derive_spaces
 from .author_objects import author_handle_head, author_physics_material
 from hand_sampler import build
 from hand_sampler.robot_param_constants import ARM_ADJACENT_LINKS, ARM_TIP_LINK
-from hand_sampler.robot_spec import design_index
+from hand_sampler.robot_spec import design_index, object_index
 from .author_robot import ARM_PRIM, arm_only_urdf, flatten_robot_usd
 from .materials import apply_physx_material_properties
 from .sdf import define, set_xform
@@ -167,17 +167,27 @@ def _resolve_object_pool(assets_cfg, out_dir: str):
         shuffle=assets_cfg.shuffle_assets,
         seed=assets_cfg.object_seed,
         density_scale=assets_cfg.object_density_scale,
+        curated=assets_cfg.object_pool or None,
     )
     if not urdf_paths:
         raise ValueError("no object URDFs generated; check handle_head_types and num_assets_per_type")
     return urdf_paths, scales, params
 
 
-def _author_objects_into_envs(env, object_params) -> dict[int, int]:
+def _author_objects_into_envs(env, object_params, n_designs: int) -> dict[int, int]:
     """Author Object and GoalViz into every env; returns ``{env_id: pool_index}``
-    with env i on entry ``i % pool``."""
+    by the configured ``object_assignment`` rule."""
     n_pool = len(object_params)
     assets_cfg = env.cfg.assets
+    rank, world = int(os.environ.get("RANK", "0")), int(os.environ.get("WORLD_SIZE", "1"))
+    which = object_index(env.num_envs, n_pool, assets_cfg.object_assignment,
+                         rank=rank, world_size=world, n_designs=n_designs)
+    if assets_cfg.object_assignment == "design_cycle":
+        per_design = env.num_envs * world // max(n_designs, 1)
+        print(f"[scene] object assignment design_cycle: pool {n_pool}, {per_design} envs per design"
+              + ("" if per_design == n_pool else
+                 f" -- pool and envs-per-design differ, so designs meet {min(per_design, n_pool)} distinct objects"),
+              flush=True)
     layer = get_current_stage().GetRootLayer()
     t0 = time.perf_counter()
     asset_index: dict[int, int] = {}
@@ -191,9 +201,9 @@ def _author_objects_into_envs(env, object_params) -> dict[int, int]:
             restitution=float(assets_cfg.object_restitution))
         for env_path in _env_paths_in_order(env):
             env_id = _env_id_of(env_path)
-            asset_index[env_id] = env_id % n_pool
+            asset_index[env_id] = int(which[env_id])
             handle_scale, head_scale, handle_density, head_density = \
-                object_params[env_id % n_pool]
+                object_params[asset_index[env_id]]
             # GoalViz: no collider and no motion.
             for name, collision, kinematic in (("Object", True, False),
                                                ("GoalViz", False, True)):
@@ -378,7 +388,8 @@ def setup_scene(env) -> None:
     env.robot = Articulation(build_robot_articulation_cfg(
         spec, start_arm_higher=env.cfg.reset.start_arm_higher))
     env.table = RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
-    authored_map = _author_objects_into_envs(env, object_params)
+    authored_map = _author_objects_into_envs(
+        env, object_params, 1 if population is None else population.n_designs)
     env.object = RigidObject(RigidObjectCfg(prim_path=OBJECT_PATH, spawn=None))
     env.goal_viz = RigidObject(RigidObjectCfg(prim_path=GOALVIZ_PATH, spawn=None))
     _log_scene_step(t0, "spawned robot/table/object/goalviz")

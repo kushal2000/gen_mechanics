@@ -14,7 +14,7 @@ ARM="${1:?coevo | baseline}" POP="${2:?population .json}" LABEL="${3:?label}"; s
 [[ -f "$POP" ]] || { echo "no such population: $POP"; exit 1; }
 POP=$(readlink -f "$POP")
 EXTRA=""; for kv in "$@"; do EXTRA+=",$kv"; done
-mkdir -p /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/10sep_coevolution
+mkdir -p /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/17sep_coevolution
 case "$ARM" in
     coevo)
         DIR=/share/portal/kk837/gen_mechanics/assets/populations/$LABEL

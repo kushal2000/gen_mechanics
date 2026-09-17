@@ -837,3 +837,39 @@ def test_rest_capsules_uses_the_authored_capsule_axis():
     # A link shorter than a diameter is a sphere at its midpoint, as authored.
     a, b = design_space.capsule_axis(p0, np.array([0.015, 0.0, 0.0]), r)
     assert np.allclose(a, b) and np.allclose(a, [0.0075, 0, 0])
+
+
+# --- object assignment ---------------------------------------------------------
+
+def test_design_cycle_deals_every_object_to_every_design_once():
+    """24576 envs on 2 ranks, 1024 designs, a 24-object pool: each design
+    meets each object exactly once, and the two ranks hold disjoint halves of
+    that deal instead of the same dozen twice."""
+    import numpy as np
+    from hand_sampler.robot_spec import design_index, object_index
+    n_envs, n_designs, n_pool = 12288, 1024, 24
+    pairs = set()
+    for rank in (0, 1):
+        d = design_index(n_envs, n_designs, rank=rank, world_size=2)
+        o = object_index(n_envs, n_pool, "design_cycle", rank=rank, world_size=2, n_designs=n_designs)
+        new = set(zip(d.tolist(), o.tolist()))
+        assert not (pairs & new), "a (design, object) pair repeated across ranks"
+        pairs |= new
+    assert len(pairs) == n_designs * n_pool
+    per_design = np.zeros((n_designs, n_pool), int)
+    for d, o in pairs:
+        per_design[d, o] += 1
+    assert (per_design == 1).all()
+
+
+def test_env_modulo_is_the_old_rule_and_repeats_across_ranks():
+    from hand_sampler.robot_spec import object_index
+    o0 = object_index(12288, 1200, "env_modulo", rank=0, world_size=2, n_designs=1024)
+    o1 = object_index(12288, 1200, "env_modulo", rank=1, world_size=2, n_designs=1024)
+    assert (o0 == o1).all() and o0[1201] == 1
+
+
+def test_design_cycle_with_one_design_is_a_plain_cycle():
+    from hand_sampler.robot_spec import object_index
+    o = object_index(100, 24, "design_cycle", n_designs=1)
+    assert list(o[:26]) == list(range(24)) + [0, 1]

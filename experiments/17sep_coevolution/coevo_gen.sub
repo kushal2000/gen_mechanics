@@ -8,8 +8,8 @@
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:2
-#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/10sep_coevolution/coevo-%j.log
-#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/10sep_coevolution/coevo-%j.err
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/17sep_coevolution/coevo-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/17sep_coevolution/coevo-%j.err
 
 # ONE GENERATION of co-evolution. Trains the shared policy on this generation's
 # population for EPOCHS_PER_GEN, ranks the designs by mean episode return, keeps
@@ -33,10 +33,10 @@ export KEEP="${KEEP:-512}"
 export MAX_GEN="${MAX_GEN:-40}"
 export CHECKPOINT="${CHECKPOINT:-}"                 # empty for generation 0
 export RESUME_TOL="${RESUME_TOL:-}"                 # empty for generation 0
-export STUDY_ID="${STUDY_ID:-coevolution_v1}"
+export STUDY_ID="${STUDY_ID:-coevolution_v2}"
 
-SELF=/share/portal/kk837/gen_mechanics/experiments/10sep_coevolution/coevo_gen.sub
-source /share/portal/kk837/gen_mechanics/experiments/10sep_coevolution/common.sh
+SELF=/share/portal/kk837/gen_mechanics/experiments/17sep_coevolution/coevo_gen.sub
+source /share/portal/kk837/gen_mechanics/experiments/17sep_coevolution/common.sh
 POP="$COEVO_DIR/gen_$GEN/population.json"
 [[ -f "$POP" ]] || { echo "no population at $POP"; exit 1; }
 export ROBOT_SPEC="$POP" WANDB_GROUP="$STUDY_ID"

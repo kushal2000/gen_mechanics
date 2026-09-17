@@ -9,8 +9,8 @@
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:2
 #SBATCH --signal=B:USR1@900
-#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/10sep_coevolution/baseline-%j.log
-#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/10sep_coevolution/baseline-%j.err
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/17sep_coevolution/baseline-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/17sep_coevolution/baseline-%j.err
 
 # THE BASELINE: the same population, never re-selected, trained across as many
 # 24 h links as the co-evolution runs generations. Each link carries the policy
@@ -29,12 +29,12 @@
 # inside 24 h anyway.
 set -euo pipefail
 : "${ROBOT_SPEC:?population .json}"
-export STUDY_ID="${STUDY_ID:-coevolution_v1_baseline}"
+export STUDY_ID="${STUDY_ID:-coevolution_v2_baseline}"
 export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
 export SOURCE_RUN="${SOURCE_RUN:-}"                 # empty for link #1
 
-SELF=/share/portal/kk837/gen_mechanics/experiments/10sep_coevolution/baseline.sub
-source /share/portal/kk837/gen_mechanics/experiments/10sep_coevolution/common.sh
+SELF=/share/portal/kk837/gen_mechanics/experiments/17sep_coevolution/baseline.sub
+source /share/portal/kk837/gen_mechanics/experiments/17sep_coevolution/common.sh
 export WANDB_GROUP="$STUDY_ID" MAX_EPOCHS="$EPOCHS"
 export MODEL_TAG="${STUDY_ID}_c$(printf '%02d' "$CONT")_d${D_MODEL}_l${TRANSFORMER_LAYERS}"
 export CHECKPOINT="" RESUME_TOL=""

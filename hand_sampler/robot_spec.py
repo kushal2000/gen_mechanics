@@ -496,3 +496,29 @@ def population_from_ref(ref: str) -> "HandPopulation":
     """A population from either form of reference."""
     return (population_from_file(ref) if is_population_file(ref)
             else population_from_name(ref))
+
+
+def object_index(n_envs: int, n_pool: int, mode: str = "env_modulo", *, rank: int = 0,
+                 world_size: int = 1, n_designs: int = 1) -> "np.ndarray":
+    """Which object-pool entry each of ONE rank's envs holds.
+
+    ``env_modulo``: env ``e`` holds entry ``e % n_pool`` -- the original rule.
+    With designs tiled ``g % n_designs`` over the global env id ``g`` this pairs
+    every design with a fixed dozen objects out of the pool, the same dozen on
+    both ranks, and two designs are then ranked on different object subsets.
+
+    ``design_cycle``: entry ``(g // n_designs) % n_pool``. Design ``d`` sits at
+    ``g = d + n_designs * k``, so its k-th copy holds object ``k``: with a pool
+    the size of ``total_envs // n_designs`` (24 at 24576 envs and 1024 designs)
+    every design meets every object exactly once and the per-design mean return
+    is over the same objects for all of them.
+    """
+    import numpy as np
+    if n_pool <= 0:
+        raise ValueError("the object pool is empty")
+    g = rank * n_envs + np.arange(n_envs, dtype=np.int64)
+    if mode == "env_modulo":
+        return np.arange(n_envs, dtype=np.int64) % n_pool
+    if mode == "design_cycle":
+        return (g // max(n_designs, 1)) % n_pool
+    raise ValueError(f"object_assignment must be 'env_modulo' or 'design_cycle', got {mode!r}")

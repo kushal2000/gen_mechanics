@@ -107,7 +107,9 @@ ARGS=(
     "${VIDEO_ARGS[@]}"
     ${COEVO_ARGS[@]+"${COEVO_ARGS[@]}"}
     "env.assets.robot_spec=$ROBOT_SPEC"
-    env.assets.num_assets_per_type=100
+    "env.assets.num_assets_per_type=${NUM_ASSETS_PER_TYPE:-100}"
+    "env.assets.object_assignment=${OBJECT_ASSIGNMENT:-env_modulo}"
+    "env.assets.object_pool=${OBJECT_POOL:-}"
     "env.scene.num_envs=$NUM_ENVS_PER_GPU"
     'env.obs.obs_list=${env.obs.state_list}'
     env.action.arm_moving_average=1.0 env.action.hand_moving_average=1.0

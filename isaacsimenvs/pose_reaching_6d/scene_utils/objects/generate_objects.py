@@ -207,12 +207,17 @@ def generate_handle_head_urdfs(
     seed: int = _SEED,
     shuffle: bool = True,
     density_scale: float = 1.0,
+    curated: str | None = None,
 ) -> tuple[list[str], list[Scale3], list[tuple]]:
     """Write a pool of URDFs and return ``(paths, scales_normalized, params)``
     in final (shuffled) order, so env i takes entry ``i % len(pool)``.
 
     ``params`` are the ``(handle_scale, head_scale, handle_density, head_density)``
     each URDF was written from, for authoring the same object directly.
+
+    ``curated`` names a hand-picked pool in ``curated_pools`` instead of
+    sampling; ``num_per_type``, ``seed`` and ``shuffle`` are then unused and
+    the pool keeps its listed order.
     """
     out_dir = Path(out_dir)
     if out_dir.exists():
@@ -222,10 +227,15 @@ def generate_handle_head_urdfs(
     else:
         os.makedirs(out_dir)
 
-    entries, permutation = sample_pool_params(
-        handle_head_types=handle_head_types, num_per_type=num_per_type,
-        object_base_size=object_base_size, seed=seed, shuffle=shuffle,
-        density_scale=density_scale)
+    if curated:
+        from .curated_pools import curated_entries
+        entries = curated_entries(curated, object_base_size, density_scale)
+        permutation = list(range(len(entries)))
+    else:
+        entries, permutation = sample_pool_params(
+            handle_head_types=handle_head_types, num_per_type=num_per_type,
+            object_base_size=object_base_size, seed=seed, shuffle=shuffle,
+            density_scale=density_scale)
     paths, scales_norm, params = [], [], []
     for entry in entries:
         urdf_path = out_dir / pool_urdf_filename(entry)
