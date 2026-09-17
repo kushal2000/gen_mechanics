@@ -19,10 +19,11 @@ $E/launch.sh baseline $P coevolution_v2_baseline
 | **Geometry frame** | link boxes and object keypoints measured from the design's palm centre, ÷ `hand_scale` -- palm length leaked into every token | measured from the end effector (`iiwa14_link_7` origin) in metres, one point every design shares; `ee_pos/ee_rot/ee_vel`, `keypoints_rel_ee` in the ee frame | `obs.geometry_origin: ee` in `PoseReach.yaml` |
 | **Objects** | random pool of 1200; env *i* held entry *i* mod 1200, so each design met its own fixed dozen (the same dozen on both ranks) and designs were ranked on different objects | hand-picked pool of 24 (`curated_pools.DIVERSE_24`), dealt so every design meets every object exactly once per generation | `OBJECT_POOL=diverse24 OBJECT_ASSIGNMENT=design_cycle` in `common.sh`; `robot_spec.object_index` |
 | **Per-design table** | last window before exit never written (`os._exit` skips atexit) | flushed explicitly | `coevolution/train.py` |
+| **Epochs per generation** | 2000 (~3 h): the first four generations selected while the policy was still on its ~300-return plateau | 5000 (~8 h, `--time=10:00:00`) | `coevo_gen.sub` |
 | Run root / wandb group | `debug_outputs/train_logs/coevo`, `coevolution_v1` | `debug_outputs/train_logs/17sep_coevolution`, `coevolution_v2` | |
 
-Unchanged on purpose: model (d64/L4), 24,576 envs, minibatch, seed, 2000
-epochs per generation, keep 512, 40 generations, the 1024-hand round-500
+Unchanged on purpose: model (d64/L4), 24,576 envs, minibatch, seed, keep 512,
+40 generations (now ~14 days at 8 h each; `MAX_GEN` to shorten), the 1024-hand round-500
 starting population, and the ranking key (`return_mean`).
 
 The 10sep folder is pinned to the V1 setup (`env_modulo` objects, palm-centre
@@ -36,8 +37,7 @@ family taking the whole population by generation 13 (`debug_outputs/10sep_coevo_
 Nothing here addresses that; these are the knobs and the candidates:
 
 - **Start from a competent policy**: `launch.sh coevo $P coevolution_v2 CHECKPOINT=<.pth> RESUME_TOL=<tol>`
-  works today (the baseline's last link is a natural source). Or a longer
-  generation 0 via `EPOCHS_PER_GEN`.
+  works today (the baseline's last link is a natural source).
 - **Selection pressure**: `KEEP=768` (keep 75 %) works today.
 - **Lineage cap / niching / tournament**: not implemented; would go in
   `hand_sampler/evolve.py`.

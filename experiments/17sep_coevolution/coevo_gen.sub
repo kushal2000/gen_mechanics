@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=128000
-#SBATCH --time=04:00:00
+#SBATCH --time=10:00:00
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:2
@@ -12,7 +12,7 @@
 #SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/17sep_coevolution/coevo-%j.err
 
 # ONE GENERATION of co-evolution. Trains the shared policy on this generation's
-# population for EPOCHS_PER_GEN, ranks the designs by mean episode return, keeps
+# population for EPOCHS_PER_GEN (~8 h at 5000), ranks the designs by mean episode return, keeps
 # the top KEEP, mutates each survivor once to refill, and submits the next
 # generation with this one's policy and curriculum as its starting point.
 #
@@ -28,7 +28,10 @@
 set -euo pipefail
 : "${COEVO_DIR:?absolute path holding gen_<k>/population.json}"
 : "${GEN:?generation number}"
-export EPOCHS_PER_GEN="${EPOCHS_PER_GEN:-2000}"     # ~3 h wall clock incl. scene build
+# 5000, not v1's 2000: at ~5.7 s/epoch that is ~8 h of training plus the
+# scene build, inside the 10 h limit above. v1's generations were short enough
+# that the policy was still on its initial plateau for the first four.
+export EPOCHS_PER_GEN="${EPOCHS_PER_GEN:-5000}"
 export KEEP="${KEEP:-512}"
 export MAX_GEN="${MAX_GEN:-40}"
 export CHECKPOINT="${CHECKPOINT:-}"                 # empty for generation 0
