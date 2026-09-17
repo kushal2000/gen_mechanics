@@ -1,0 +1,76 @@
+#!/bin/bash
+#SBATCH --job-name=baseline
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevolution/baseline-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevolution/baseline-%j.err
+
+# THE BASELINE: the same population, never re-selected, trained across as many
+# 24 h links as the co-evolution runs generations. Each link carries the policy
+# and the success-tolerance curriculum forward exactly as coevo_gen.sub does --
+# it is the co-evolution loop with the selection step removed.
+#
+#   launch.sh baseline <population.json> <label>    # or by hand:
+#   sbatch --export=ALL,ROBOT_SPEC=<pop>,STUDY_ID=<label> baseline.sub
+#
+# Link #1 starts from scratch. Every link resubmits itself with its own run
+# directory as SOURCE_RUN, up to MAX_CONT links. slurm's TIMEOUT kills the
+# batch script, not just the payload, so the resubmit cannot wait for run.sh to
+# return: USR1 arrives 15 min before the limit, the payload runs in the
+# background so `wait` can be interrupted, and the trap chains from the rolling
+# autosave. EPOCHS per link defaults to 15000 so the normal path finishes
+# inside 24 h anyway.
+set -euo pipefail
+: "${ROBOT_SPEC:?population .json}"
+export STUDY_ID="${STUDY_ID:-coevolution_v1_baseline}"
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+export SOURCE_RUN="${SOURCE_RUN:-}"                 # empty for link #1
+
+SELF=/share/portal/kk837/gen_mechanics/experiments/coevolution/baseline.sub
+source /share/portal/kk837/gen_mechanics/experiments/coevolution/common.sh
+export WANDB_GROUP="$STUDY_ID" MAX_EPOCHS="$EPOCHS"
+export MODEL_TAG="${STUDY_ID}_c$(printf '%02d' "$CONT")_d${D_MODEL}_l${TRANSFORMER_LAYERS}"
+export CHECKPOINT="" RESUME_TOL=""
+if [[ -n "$SOURCE_RUN" ]]; then
+    CHECKPOINT=$(newest_checkpoint "$SOURCE_RUN")
+    [[ -f "$CHECKPOINT" ]] || { echo "no checkpoint under $SOURCE_RUN"; exit 1; }
+    RESUME_TOL=$(.venv_isaacsim/bin/python -m coevolution.loop.final_tolerance "$SOURCE_RUN") \
+        || { echo "no final success tolerance under $SOURCE_RUN; refusing to continue blind"; exit 1; }
+fi
+echo "[baseline] $STUDY_ID link #$CONT of $MAX_CONT on $ROBOT_SPEC"
+echo "[baseline] policy from: ${CHECKPOINT:-scratch}   curriculum from: ${RESUME_TOL:-start (0.075)}"
+
+CHAINED=0
+chain_next() {
+    (( CHAINED )) && return 0
+    local run_dir; run_dir=$(own_run_dir)
+    if [[ -z "$run_dir" ]] || [[ ! -f "$(newest_checkpoint "$run_dir")" ]]; then
+        echo "[baseline] no checkpoint to chain from; not resubmitting"; return 1
+    fi
+    local next=$((CONT + 1))
+    if (( next > MAX_CONT )); then echo "[baseline] reached MAX_CONT=$MAX_CONT"; CHAINED=1; return 0; fi
+    local j; j=$(sbatch --parsable --job-name="${STUDY_ID}_c$(printf '%02d' "$next")" \
+        --export=ALL,SOURCE_RUN="$run_dir",ROBOT_SPEC="$ROBOT_SPEC",STUDY_ID="$STUDY_ID",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$next",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE" \
+        "$SELF")
+    echo "[baseline] submitted link #$next as $j (from $run_dir)"; CHAINED=1
+}
+trap 'echo "[baseline] USR1: 15 min to the limit, chaining now"; chain_next' USR1
+
+cd "$REPO"
+set +e
+bash "${RUN_SH:-experiments/decentralized_control/scaling_laws/run.sh}" &
+PAYLOAD=$!
+wait $PAYLOAD; STATUS=$?
+while kill -0 $PAYLOAD 2>/dev/null; do wait $PAYLOAD; STATUS=$?; done   # a signal interrupts wait; wait again
+set -e
+RUN_DIR=$(own_run_dir)
+echo "[baseline] payload exited $STATUS; run dir $RUN_DIR"
+if (( STATUS != 0 )) && [[ ! -f "$(newest_checkpoint "$RUN_DIR")" ]]; then echo "[baseline] failed with no checkpoint; stopping"; exit "$STATUS"; fi
+chain_next

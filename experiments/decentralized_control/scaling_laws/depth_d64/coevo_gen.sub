@@ -11,6 +11,8 @@
 #SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevo/coevo-%j.log
 #SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevo/coevo-%j.err
 
+# SUPERSEDED by experiments/coevolution/ -- kept because coevolution_v1 ran from here
+# and the baseline chain still resubmits this path.
 # ONE GENERATION of coevolution. Trains the shared policy on this generation's
 # population for EPOCHS_PER_GEN, ranks the designs by mean episode return, keeps
 # the top KEEP, mutates each survivor once to refill, and submits the next

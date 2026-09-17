@@ -1,0 +1,81 @@
+#!/bin/bash
+#SBATCH --job-name=coevo
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=04:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevolution/coevo-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevolution/coevo-%j.err
+
+# ONE GENERATION of co-evolution. Trains the shared policy on this generation's
+# population for EPOCHS_PER_GEN, ranks the designs by mean episode return, keeps
+# the top KEEP, mutates each survivor once to refill, and submits the next
+# generation with this one's policy and curriculum as its starting point.
+#
+# A job per generation rather than a loop in one process: the population is
+# authored into USD at scene build, so a new population is a new scene (~10 min
+# at 24576 envs). It also leaves a clean record -- every generation is its own
+# run directory, wandb run, population file and selection.json.
+#
+#   launch.sh coevo <population.json> <label>       # or by hand:
+#   sbatch --export=ALL,COEVO_DIR=<dir>,GEN=0 coevo_gen.sub
+#
+# with <dir>/gen_0/population.json in place. Everything after is automatic.
+set -euo pipefail
+: "${COEVO_DIR:?absolute path holding gen_<k>/population.json}"
+: "${GEN:?generation number}"
+export EPOCHS_PER_GEN="${EPOCHS_PER_GEN:-2000}"     # ~3 h wall clock incl. scene build
+export KEEP="${KEEP:-512}"
+export MAX_GEN="${MAX_GEN:-40}"
+export CHECKPOINT="${CHECKPOINT:-}"                 # empty for generation 0
+export RESUME_TOL="${RESUME_TOL:-}"                 # empty for generation 0
+export STUDY_ID="${STUDY_ID:-coevolution_v1}"
+
+SELF=/share/portal/kk837/gen_mechanics/experiments/coevolution/coevo_gen.sub
+source /share/portal/kk837/gen_mechanics/experiments/coevolution/common.sh
+POP="$COEVO_DIR/gen_$GEN/population.json"
+[[ -f "$POP" ]] || { echo "no population at $POP"; exit 1; }
+export ROBOT_SPEC="$POP" WANDB_GROUP="$STUDY_ID"
+export MODEL_TAG="${STUDY_ID}_g$(printf '%03d' "$GEN")_d${D_MODEL}_l${TRANSFORMER_LAYERS}"
+export MAX_EPOCHS="$EPOCHS_PER_GEN"
+
+echo "[coevo] $STUDY_ID generation $GEN of $MAX_GEN: $POP"
+echo "[coevo] policy from: ${CHECKPOINT:-scratch}   curriculum from: ${RESUME_TOL:-start (0.075)}"
+cd "$REPO"
+set +e; bash "${RUN_SH:-experiments/decentralized_control/scaling_laws/run.sh}"; STATUS=$?; set -e
+RUN_DIR=$(own_run_dir)
+echo "[coevo] training exited $STATUS; run dir $RUN_DIR"
+echo "$RUN_DIR" > "$COEVO_DIR/gen_$GEN/run_dir.txt"
+(( STATUS == 0 )) || { echo "[coevo] training failed; not evolving, not resubmitting"; exit "$STATUS"; }
+
+# --- select + mutate ---------------------------------------------------------
+REWARDS=("$RUN_DIR"/rank_*/design_rewards_rank*.json)
+[[ -f "${REWARDS[0]}" ]] || { echo "[coevo] no design_rewards files under $RUN_DIR"; exit 1; }
+NEXT=$((GEN + 1)); mkdir -p "$COEVO_DIR/gen_$NEXT"
+.venv_isaacsim/bin/python -m hand_sampler.evolve "$POP" \
+    --rewards "${REWARDS[@]}" --out "$COEVO_DIR/gen_$NEXT/population.json" \
+    --keep "$KEEP" --seed $((1000 + GEN)) --generation "$GEN"
+cp "${REWARDS[@]}" "$COEVO_DIR/gen_$GEN/"
+
+# --- what this generation hands on: policy and curriculum --------------------
+CKPT=$(newest_checkpoint "$RUN_DIR")
+[[ -f "$CKPT" ]] || { echo "[coevo] no checkpoint under $RUN_DIR"; exit 1; }
+TOL=$(.venv_isaacsim/bin/python -m coevolution.loop.final_tolerance "$RUN_DIR") \
+    || { echo "[coevo] no final success tolerance; refusing to hand off blind"; exit 1; }
+echo "$CKPT" > "$COEVO_DIR/gen_$GEN/checkpoint.txt"
+echo "$TOL"  > "$COEVO_DIR/gen_$GEN/success_tolerance.txt"
+echo "[coevo] checkpoint $CKPT"; echo "[coevo] final success tolerance $TOL"
+
+# --- next --------------------------------------------------------------------
+if (( NEXT < MAX_GEN )); then
+    J=$(sbatch --parsable --job-name="${STUDY_ID}_g$(printf '%03d' "$NEXT")" \
+        --export=ALL,COEVO_DIR="$COEVO_DIR",GEN="$NEXT",CHECKPOINT="$CKPT",RESUME_TOL="$TOL",EPOCHS_PER_GEN="$EPOCHS_PER_GEN",KEEP="$KEEP",MAX_GEN="$MAX_GEN",STUDY_ID="$STUDY_ID",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE" \
+        "$SELF")
+    echo "[coevo] submitted generation $NEXT as job $J"; echo "$J" > "$COEVO_DIR/gen_$NEXT/job_id.txt"
+else
+    echo "[coevo] reached MAX_GEN=$MAX_GEN; done"
+fi
