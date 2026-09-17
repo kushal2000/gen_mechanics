@@ -32,10 +32,17 @@ def obs_field_sizes(spec) -> dict[str, int]:
         "joint_enabled": n_hand,
         "object_keypoints_rel_joint": 3 * NUM_KEYPOINTS * n_hand,
         "hand_scale": 1,
-        # Global task state.
+        # The palm slab as four points in the end-effector frame; static per design.
+        "palm_keypoints": 3 * JOINT_BOX_POINTS,
+        # Global task state. palm_* is measured at the design's palm centre,
+        # ee_* at link_7's own origin; same body, different point.
         "palm_pos": 3,
         "palm_rot": 4,
         "palm_vel": 6,
+        "ee_pos": 3,
+        "ee_rot": 4,
+        "ee_vel": 6,
+        "keypoints_rel_ee": 3 * NUM_KEYPOINTS,
         "object_rot": 4,
         "object_vel": 6,
         "keypoints_rel_palm": 3 * NUM_KEYPOINTS,
@@ -49,6 +56,7 @@ def obs_field_sizes(spec) -> dict[str, int]:
         "successes": 1,
         "reward": 1,
         "fingertip_pos_rel_palm": 3 * n_tips,
+        "fingertip_pos_rel_ee": 3 * n_tips,
     }
 
 

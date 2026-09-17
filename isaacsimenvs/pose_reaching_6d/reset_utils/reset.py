@@ -129,6 +129,7 @@ def allocate_state_buffers(env) -> None:
             "hand_scale": np.full((1, 1), spec.hand_scale, np.float32),
             "fingertip_valid": np.ones((1, spec.num_fingertips), bool),
             "palm_center_offset": np.asarray(spec.palm_center_offset, np.float32)[None],
+            "palm_keypoints": np.asarray(spec.palm_keypoints, np.float32)[None],
         }
         expand = True
     else:
@@ -150,6 +151,12 @@ def allocate_state_buffers(env) -> None:
     # every reduction over the fingertip axis inert for it at once.
     env._fingertip_mask = _to("fingertip_valid", torch.bool)
     env._palm_center_offset = _to("palm_center_offset", torch.float32)  # (N, 3)
+    env._palm_keypoints_local = _to("palm_keypoints", torch.float32)    # (N, 4, 3)
+    if env._palm_keypoints_local.shape[1:] != (4, 3):
+        raise RuntimeError(f"{spec.name}: spec carries no palm_keypoints")
+    if env.cfg.obs.geometry_origin not in ("palm_center", "ee"):
+        raise ValueError(f"obs.geometry_origin must be 'palm_center' or 'ee', "
+                         f"got {env.cfg.obs.geometry_origin!r}")
     # (S, 3), broadcast over envs. A generated design has none: its capsule tip
     # IS the pad, so the offset is zero rather than a measured pad centre.
     env._fingertip_offsets = torch.tensor(

@@ -165,3 +165,57 @@ def test_the_viewer_draws_the_palm_on_the_flange(hands, tmp_path):
 
         links = [l.get("name") for l in root.findall("link")]
         assert len(links) == len(set(links)), f"design {i}: merged link duplicated"
+
+
+# --- palm keypoints: the slab as the policy reads it -------------------------
+
+def _box_from_keypoints(kp):
+    """``(centre, edge vectors)`` of the box four keypoints describe."""
+    kp = np.asarray(kp, float)
+    edges = kp[1:] - kp[0]
+    return kp[0] + 0.5 * edges.sum(axis=0), edges
+
+
+def test_palm_keypoints_are_the_authored_slab(hands):
+    """Same encoding as a link box -- a corner and its three neighbours -- and
+    the box they span is the collider ``palm_box`` authors, edge for edge."""
+    for i, hand in enumerate(hands):
+        kp = build.palm_keypoints_of(hand)
+        assert kp.shape == (4, 3), i
+        centre, edges = _box_from_keypoints(kp)
+        extents, pose = build.palm_box(hand)
+        assert np.allclose(centre, pose[:3, 3], atol=1e-6), i
+        # Each edge runs along one of the palm's axes as rotated into link_7.
+        assert np.allclose(np.linalg.norm(edges, axis=1), extents, atol=1e-6), i
+        assert np.allclose(edges / np.linalg.norm(edges, axis=1, keepdims=True), pose[:3, :3].T, atol=1e-6), i
+
+
+def test_palm_keypoints_are_in_the_end_effector_frame_not_the_palms(hands):
+    """The wrist face sits one flange stack out along link_7's z, whatever the
+    design -- the point of measuring from the end effector."""
+    z_wrist = rpc.LINK7_TO_FLANGE_Z_M + rpc.FLANGE_TO_PALM_Z_M
+    for hand in hands:
+        kp = build.palm_keypoints_of(hand)
+        assert kp[0, 2] == pytest.approx(z_wrist, abs=1e-6)              # the corner is on the wrist face
+        assert kp[3, 2] == pytest.approx(z_wrist + hand.palm.length, abs=1e-6)
+
+
+def test_palm_keypoints_move_only_with_the_palm(hands):
+    """Two designs with the same palm and different fingers read identically;
+    a longer palm moves exactly one keypoint."""
+    from dataclasses import replace
+    a, b = hands[0], replace(hands[1], palm=hands[0].palm)
+    assert np.allclose(build.palm_keypoints_of(a), build.palm_keypoints_of(b))
+    longer = replace(a, palm=replace(a.palm, length=a.palm.length + 0.02))
+    d = build.palm_keypoints_of(longer) - build.palm_keypoints_of(a)
+    assert np.allclose(d[:3], 0.0) and d[3, 2] == pytest.approx(0.02, abs=1e-6)
+
+
+def test_sharpas_palm_keypoints_sit_at_its_measured_box():
+    """SHARPA's box is measured in left_hand_C_MC; through the same URDF chain
+    (link_7 -> flange 0.045 -> mount +15 deg -> palm +0.05, -90 deg) it lands
+    ~14 cm out along the flange axis, and its edges are the measured extents."""
+    kp = build.palm_keypoints(rpc.PALM_BOX_CENTER_M, rpc.PALM_EXTENTS_M)
+    centre, edges = _box_from_keypoints(kp)
+    assert centre[2] == pytest.approx(0.095 + rpc.PALM_BOX_CENTER_M[2], abs=1e-6)
+    assert np.allclose(np.linalg.norm(edges, axis=1), rpc.PALM_EXTENTS_M, atol=1e-9)

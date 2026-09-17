@@ -26,9 +26,12 @@ from hand_sampler.robot_param_constants import (
     ARM_STIFFNESS,
     ARM_TIP_LINK,
     BASE_POS,
+    PALM_BOX_CENTER_M,
+    PALM_EXTENTS_M,
     BASE_ROT,
     START_ARM_HIGHER_DELTAS,
 )
+from hand_sampler.build import palm_keypoints
 from hand_sampler.design_space import joint_link_boxes
 from hand_sampler.robot_spec import RobotSpec, Vec3
 
@@ -81,6 +84,9 @@ SHARPA_IIWA14 = RobotSpec(
 
     # Grasp center, ~16 cm out along the flange axis from iiwa14_link_7.
     palm_center_offset=(-0.0, -0.02, 0.16),
+    # The palm box (robot_param_constants) walked from left_hand_C_MC to link_7
+    # by the same link_7 -> flange -> mount -> palm chain the URDF declares.
+    palm_keypoints=tuple(tuple(map(float, p)) for p in palm_keypoints(PALM_BOX_CENTER_M, PALM_EXTENTS_M)),
 
     adjacent_links=SHARPA_IIWA14_ADJACENT_LINKS,
     link_prim_regexes=(

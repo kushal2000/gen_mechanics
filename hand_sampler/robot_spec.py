@@ -81,6 +81,9 @@ class RobotSpec:
     joint_geometry_valid: tuple[bool, ...] = ()
     hand_scale: float = 0.0
     """Longest encoded edge, in metres. Also given to the policy."""
+    palm_keypoints: tuple = ()
+    """(4, 3) nested tuples: the palm slab as a corner and its three neighbours,
+    in the palm body's (end-effector) frame. See ``build.palm_keypoints``."""
 
     # Pad centres, one per fingertip body. Feeds fingertip_pos_rel_palm, which
     # the simtoolreal checkpoint's 140-d obsList requires -- and which a dense
@@ -169,6 +172,9 @@ class RobotSpec:
 
         if len(self.palm_center_offset) != 3:
             raise ValueError(f"{who}: palm_center_offset is not a 3-vector")
+        if self.palm_keypoints and (len(self.palm_keypoints) != 4
+                                    or any(len(p) != 3 for p in self.palm_keypoints)):
+            raise ValueError(f"{who}: palm_keypoints is not 4 x 3")
 
         # Every joint must appear in every table that governs it.
         tables = [
@@ -248,6 +254,7 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
         hand_default_joint_pos={n: 0.0 for n in names},
         start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
         palm_center_offset=build.palm_center_offset(hand),
+        palm_keypoints=tuple(tuple(map(float, p)) for p in build.palm_keypoints_of(hand)),
         adjacent_links={**dict(rpc.ARM_ADJACENT_LINKS), **build.adjacent_links()},
         link_prim_regexes=(".*",),
         base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT,
@@ -278,6 +285,7 @@ class HandPopulation:
     hand_scale: "np.ndarray"         # (n,)
     fingertip_valid: "np.ndarray"    # (n, F) bool
     palm_center_offset: "np.ndarray"  # (n, 3), link_7 -> palm centre
+    palm_keypoints: "np.ndarray"     # (n, 4, 3), the slab in link_7's frame
 
     @property
     def n_designs(self) -> int:
@@ -305,6 +313,7 @@ class HandPopulation:
             "hand_scale": self.hand_scale[idx][:, None],           # (N, 1)
             "fingertip_valid": self.fingertip_valid[idx],          # (N, F)
             "palm_center_offset": self.palm_center_offset[idx],    # (N, 3)
+            "palm_keypoints": self.palm_keypoints[idx],            # (N, 4, 3)
         }
 
 
@@ -354,6 +363,7 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
     scale = np.zeros((n,), dtype=np.float32)
     ft_valid = np.zeros((n, F), dtype=bool)
     palm_off = np.zeros((n, 3), dtype=np.float32)
+    palm_kp = np.zeros((n, 4, 3), dtype=np.float32)
 
     for i, hand in enumerate(hands):
         if hand.n_fingers > F:
@@ -361,6 +371,7 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
         b_i, v_i, s_i = design_space.joint_boxes(hand)
         scale[i] = s_i
         palm_off[i] = build.palm_center_offset(hand)
+        palm_kp[i] = build.palm_keypoints_of(hand)
         seen = 0
         for f, finger in enumerate(hand.fingers):
             if finger.n_joints > D:
@@ -375,7 +386,8 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
                 seen += 1
     return HandPopulation(spec=spec, hands=tuple(hands), joint_link_boxes=boxes,
                           joint_valid=valid, joint_limits=limits, hand_scale=scale,
-                          fingertip_valid=ft_valid, palm_center_offset=palm_off)
+                          fingertip_valid=ft_valid, palm_center_offset=palm_off,
+                          palm_keypoints=palm_kp)
 
 
 def design_index(n_envs: int, n_designs: int, *, rank: int = 0,

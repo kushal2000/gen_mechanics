@@ -273,6 +273,12 @@ def main() -> None:
 
     run()
 
+    # os._exit below runs no atexit handlers; the per-design table's final
+    # window has to be written here or it is lost.
+    if args_cli.design_rewards:
+        from coevolution.design_rewards import flush_all
+        flush_all()
+
     # Kit shutdown hangs (per CLAUDE.md + isaacsim_conversion/distill.py).
     del app
     sys.stdout.flush()

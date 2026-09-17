@@ -155,6 +155,30 @@ def palm_box(hand: design_space.Hand) -> tuple[tuple, np.ndarray]:
     return tuple(float(v) for v in hand.palm.extents), pose
 
 
+def palm_keypoints(center, extents) -> np.ndarray:
+    """The palm slab as four points in ``iiwa14_link_7``'s frame: a corner and
+    its three adjacent corners -- the same encoding ``joint_boxes`` uses for a
+    link, so the policy reads the palm the way it reads everything else.
+
+    ``center`` and ``extents`` are in the palm's own frame (the box is axis-
+    aligned there, for SHARPA and for a generated slab alike); the points come
+    back in link_7's frame, which is the end-effector frame every observation
+    is expressed in. That frame is the arm's, so it is the same for every
+    design -- the palm's size and placement show up here and nowhere else.
+    """
+    c = np.asarray(center, float)
+    e = np.asarray(extents, float)
+    p0 = c - 0.5 * e
+    pts = np.stack([p0, p0 + [e[0], 0, 0], p0 + [0, e[1], 0], p0 + [0, 0, e[2]]])
+    T = flange_to_palm()
+    return (pts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+
+
+def palm_keypoints_of(hand: design_space.Hand) -> np.ndarray:
+    """``palm_keypoints`` for a generated design."""
+    return palm_keypoints(design_space.palm_center(hand.palm), hand.palm.extents)
+
+
 def palm_mass_props(hand: design_space.Hand) -> tuple[float, np.ndarray]:
     """``(mass, 3x3 inertia about the palm's own centre)`` for the palm box.
 

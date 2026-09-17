@@ -75,20 +75,26 @@ class ObsCfg:
     state_list: tuple[str, ...] = (
         "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel",
         "prev_action_targets", "joint_link_bbox", "joint_lower", "joint_upper",
-        "joint_enabled", "object_keypoints_rel_joint", "hand_scale",
-        "palm_pos", "palm_rot", "palm_vel", "object_rot", "object_vel",
-        "keypoints_rel_palm", "keypoints_rel_goal", "object_scales",
+        "joint_enabled", "object_keypoints_rel_joint", "palm_keypoints",
+        "ee_pos", "ee_rot", "ee_vel", "object_rot", "object_vel",
+        "keypoints_rel_ee", "keypoints_rel_goal", "object_scales",
         "closest_keypoint_max_dist", "closest_fingertip_dist",
         "lifted_object", "progress", "successes", "reward",
     )
     obs_list: tuple[str, ...] = (
         "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel",
         "prev_action_targets", "joint_link_bbox", "joint_lower", "joint_upper",
-        "joint_enabled", "object_keypoints_rel_joint", "hand_scale",
-        "palm_pos", "palm_rot", "object_rot", "keypoints_rel_palm",
+        "joint_enabled", "object_keypoints_rel_joint", "palm_keypoints",
+        "ee_pos", "ee_rot", "object_rot", "keypoints_rel_ee",
         "keypoints_rel_goal", "object_scales",
     )
     clamp_abs_observations: float = 10.0
+    # Where joint_link_bbox and object_keypoints_rel_joint are measured from.
+    # "ee": link_7's origin, metres -- one point every design shares; the palm
+    # is then described by palm_keypoints alone. "palm_center": the design's
+    # palm centre, / hand_scale -- what every run before 2026-09-17 trained on;
+    # a saved config without this key evaluates as it trained.
+    geometry_origin: str = "palm_center"
 
 
 @configclass

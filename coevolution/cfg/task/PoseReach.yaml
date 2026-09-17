@@ -67,16 +67,21 @@ assets:
 # 3) obs — asymmetric actor-critic obs layout
 # -----------------------------------------------------------------------------
 obs:
+  # Geometry is measured from the end effector (link_7's origin) in metres:
+  # the one point every design shares. The palm enters as its four keypoints.
+  # Runs before 2026-09-17 used palm_center / hand_scale; their saved configs
+  # carry no geometry_origin and evaluate as they trained.
+  geometry_origin: ee
   state_list: [joint_pos, joint_vel, prev_joint_pos, prev_joint_vel, prev_action_targets,
                joint_link_bbox, joint_lower, joint_upper, joint_enabled,
-               object_keypoints_rel_joint, hand_scale, palm_pos, palm_rot, palm_vel,
-               object_rot, object_vel, keypoints_rel_palm,
+               object_keypoints_rel_joint, palm_keypoints, ee_pos, ee_rot, ee_vel,
+               object_rot, object_vel, keypoints_rel_ee,
                keypoints_rel_goal, object_scales, closest_keypoint_max_dist,
                closest_fingertip_dist, lifted_object, progress, successes, reward]
   obs_list: [joint_pos, joint_vel, prev_joint_pos, prev_joint_vel, prev_action_targets,
              joint_link_bbox, joint_lower, joint_upper, joint_enabled,
-             object_keypoints_rel_joint, hand_scale, palm_pos, palm_rot,
-             object_rot, keypoints_rel_palm,
+             object_keypoints_rel_joint, palm_keypoints, ee_pos, ee_rot,
+             object_rot, keypoints_rel_ee,
              keypoints_rel_goal, object_scales]
   clamp_abs_observations: 10.0
 

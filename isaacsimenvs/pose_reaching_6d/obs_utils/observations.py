@@ -145,8 +145,9 @@ def _canonical_joint_obs(env) -> tuple[torch.Tensor, ...]:
     )
 
 
-def _joint_link_geometry_obs(env, palm_center_pos_w, palm_rot, env_origins):
-    """Batched SHARPA link boxes in the normalized palm frame plus joint origins."""
+def _joint_link_geometry_obs(env, origin_w, palm_rot, env_origins, scale):
+    """Batched link boxes relative to ``origin_w`` in the palm body's orientation,
+    divided by ``scale``, plus joint origins."""
     state = env.robot.data.body_state_w[:, env._joint_link_body_ids, :]
     body_pos = state[:, :, 0:3]
     body_rot = state[:, :, 3:7]
@@ -160,9 +161,9 @@ def _joint_link_geometry_obs(env, palm_center_pos_w, palm_rot, env_origins):
     palm_inv[:, 1:] *= -1.0
     box_palm = _quat_apply_broadcast(
         palm_inv[:, None, None, :],
-        box_world - palm_center_pos_w[:, None, None, :],
+        box_world - origin_w[:, None, None, :],
     )
-    box_palm = box_palm / env._hand_scale[:, None, None, :]
+    box_palm = box_palm / scale[:, None, None, :]
 
     valid = env._joint_geometry_valid
     box_palm = box_palm * valid[:, :, None, None].to(box_palm.dtype)
@@ -171,15 +172,22 @@ def _joint_link_geometry_obs(env, palm_center_pos_w, palm_rot, env_origins):
 
 
 def _object_keypoints_rel_joint(
-    object_keypoints, joint_origins, palm_rot, hand_scale, valid
+    object_keypoints, joint_origins, palm_rot, scale, valid
 ) -> torch.Tensor:
-    """Object keypoints from every joint, in normalized palm-frame vectors."""
+    """Object keypoints from every joint, in the palm body's orientation, / scale."""
     rel_world = object_keypoints[:, None, :, :] - joint_origins[:, :, None, :]
     palm_inv = palm_rot.clone()
     palm_inv[:, 1:] *= -1.0
     rel_palm = _quat_apply_broadcast(palm_inv[:, None, None, :], rel_world)
-    rel_palm = rel_palm / hand_scale[:, None, None, :]
+    rel_palm = rel_palm / scale[:, None, None, :]
     return rel_palm * valid[:, :, None, None].to(rel_palm.dtype)
+
+
+def _rotate_into(palm_rot, vectors_w):
+    """World vectors ``(N, K, 3)`` expressed in the palm body's orientation."""
+    palm_inv = palm_rot.clone()
+    palm_inv[:, 1:] *= -1.0
+    return _quat_apply_broadcast(palm_inv[:, None, :], vectors_w)
 
 
 # ----------------------------------------------------------------------------
@@ -295,6 +303,20 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         palm_pos_w, palm_rot, env._palm_center_offset, (env.num_envs,)
     )
     palm_pos = palm_center_pos_w - env_origins
+    # The end effector: link_7's own origin, before any per-design offset. The
+    # one point every hand in a population shares.
+    ee_pos = palm_pos_w - env_origins
+
+    # Which point the token geometry is measured from, and in what units.
+    #   palm_center: the design's palm centre, / hand_scale -- the original
+    #     convention, kept so checkpoints trained on it still evaluate. The
+    #     palm's length leaks into every token (the centre sits at length/2).
+    #   ee: link_7's origin, in metres. Palm size and placement then appear in
+    #     palm_keypoints and nowhere else.
+    if env.cfg.obs.geometry_origin == "ee":
+        geometry_origin_w, geometry_scale = palm_pos_w, torch.ones_like(env._hand_scale)
+    else:
+        geometry_origin_w, geometry_scale = palm_center_pos_w, env._hand_scale
 
     # Fingertip pad centres. Dropping this field when the per-joint token fields
     # landed is what the MLP control arm regressed on: done_hand_far went from
@@ -309,6 +331,9 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     )
     fingertip_pos_rel_palm = (
         (ft_pos_pad_w - env_origins.unsqueeze(1)) - palm_pos.unsqueeze(1)
+    ).reshape(env.num_envs, -1)
+    fingertip_pos_rel_ee = _rotate_into(
+        palm_rot, ft_pos_pad_w - palm_pos_w.unsqueeze(1)
     ).reshape(env.num_envs, -1)
 
     obj_pos = env.object.data.root_pos_w - env_origins
@@ -358,6 +383,13 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         keypoints_rel_palm_clean if object_is_clean
         else noisy_obj_kp - palm_pos.unsqueeze(1)
     )
+    # The same object keypoints from the end effector, in its orientation --
+    # the frame the tokens and palm_keypoints use, so the three agree.
+    keypoints_rel_ee_clean = _rotate_into(palm_rot, obj_kp - palm_pos_w.unsqueeze(1))
+    keypoints_rel_ee_noisy = (
+        keypoints_rel_ee_clean if object_is_clean
+        else _rotate_into(palm_rot, noisy_obj_kp - palm_pos_w.unsqueeze(1))
+    )
     keypoints_rel_goal_clean = obj_kp - goal_kp
     keypoints_rel_goal_noisy = (
         keypoints_rel_goal_clean
@@ -366,15 +398,15 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     )
 
     joint_link_bbox, joint_origins, joint_geometry_valid = (
-        _joint_link_geometry_obs(env, palm_center_pos_w, palm_rot, env_origins)
+        _joint_link_geometry_obs(env, geometry_origin_w, palm_rot, env_origins, geometry_scale)
     )
     object_keypoints_rel_joint_clean = _object_keypoints_rel_joint(
-        obj_kp, joint_origins, palm_rot, env._hand_scale, joint_geometry_valid
+        obj_kp, joint_origins, palm_rot, geometry_scale, joint_geometry_valid
     )
     object_keypoints_rel_joint_noisy = (
         object_keypoints_rel_joint_clean if object_is_clean
         else _object_keypoints_rel_joint(
-            noisy_obj_kp, joint_origins, palm_rot, env._hand_scale,
+            noisy_obj_kp, joint_origins, palm_rot, geometry_scale,
             joint_geometry_valid,
         )
     )
@@ -402,9 +434,21 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "object_keypoints_rel_joint": object_keypoints_rel_joint_clean,
         "hand_scale": env._hand_scale,
         "fingertip_pos_rel_palm": fingertip_pos_rel_palm,
+        "fingertip_pos_rel_ee": fingertip_pos_rel_ee,
         "palm_pos": palm_pos,
         "palm_rot": palm_rot_xyzw,
         "palm_vel": palm_vel,
+        # The same body as palm_*: link_7 is the palm body. ee_pos is its own
+        # origin where palm_pos is the design's palm centre; the rest are the
+        # same numbers under the name that says what they are.
+        "ee_pos": ee_pos,
+        "ee_rot": palm_rot_xyzw,
+        "ee_vel": palm_vel,
+        # Static per design: the slab in link_7's frame. Constant like the
+        # joint limits, and the only place the palm's size and position appear
+        # once the geometry origin is the end effector.
+        "palm_keypoints": env._palm_keypoints_local.reshape(env.num_envs, -1),
+        "keypoints_rel_ee": keypoints_rel_ee_clean,
         "object_rot": obj_rot_xyzw,
         "object_vel": obj_vel,
         "keypoints_rel_palm": keypoints_rel_palm_clean,
@@ -423,6 +467,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     obs_noisy["object_rot"] = noisy_obj_rot_xyzw
     obs_noisy["object_vel"] = noisy_obj_vel
     obs_noisy["keypoints_rel_palm"] = keypoints_rel_palm_noisy
+    obs_noisy["keypoints_rel_ee"] = keypoints_rel_ee_noisy
     obs_noisy["keypoints_rel_goal"] = keypoints_rel_goal_noisy
     obs_noisy["object_keypoints_rel_joint"] = object_keypoints_rel_joint_noisy
     if dr.joint_velocity_obs_noise_std > 0:

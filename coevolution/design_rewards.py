@@ -23,6 +23,19 @@ import gymnasium as gym
 import torch
 
 
+_LIVE: list["DesignRewardWrapper"] = []
+"""Every wrapper built in this process, so ``flush_all`` can reach them.
+train.py leaves through ``os._exit`` -- Kit's shutdown hangs otherwise -- and
+``os._exit`` runs no atexit handlers. The smoke that motivated the atexit hook
+(48 steps, no file) still wrote nothing: the hook was registered and never ran."""
+
+
+def flush_all() -> None:
+    """Write every live table. Call before ``os._exit``."""
+    for w in _LIVE:
+        w.flush()
+
+
 class DesignRewardWrapper(gym.Wrapper):
     """Bank each env's episode return against the design it holds."""
 
@@ -54,9 +67,10 @@ class DesignRewardWrapper(gym.Wrapper):
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         # rl_games does not call close() on MAX_EPOCHS, so the final window --
         # or, in a run shorter than flush_every, the whole thing -- would never
-        # reach disk. The smoke found exactly that: 48 steps, no file. atexit
-        # runs on the normal interpreter exit that follows MAX EPOCHS NUM.
+        # reach disk. atexit covers a normal interpreter exit; train.py's
+        # os._exit does not run it, so train.py also calls flush_all().
         atexit.register(self.flush)
+        _LIVE.append(self)
         print(f"[design_rewards] rank {self.rank}: {inner.num_envs} envs over "
               f"{int(self.design_of_env.unique().numel())} of {self.n_designs} designs "
               f"-> {self.output_path}", flush=True)
