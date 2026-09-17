@@ -11,7 +11,7 @@
 #SBATCH --signal=B:USR1@900
 #SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/continue-%j.log
 #SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/continue-%j.err
-# SUPERSEDED by experiments/coevolution/ -- kept because coevolution_v1 ran from here
+# SUPERSEDED by experiments/10sep_coevolution/ -- kept because coevolution_v1 ran from here
 # and the baseline chain still resubmits this path.
 
 # CONTINUE a finished (or time-limited) run past its 24 h, and keep continuing.

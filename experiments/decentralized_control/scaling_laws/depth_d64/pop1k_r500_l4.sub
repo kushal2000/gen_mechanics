@@ -11,7 +11,7 @@
 #SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop1k_r500_d64_l4-%j.log
 #SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64/pop1k_r500_d64_l4-%j.err
 
-# SUPERSEDED by experiments/coevolution/ -- kept because coevolution_v1 ran from here
+# SUPERSEDED by experiments/10sep_coevolution/ -- kept because coevolution_v1 ran from here
 # and the baseline chain still resubmits this path.
 # 1024 designs after 500 rounds of neutral drift -- the same 1024 lineages as
 # round 0, each mutated 500 times with no selection. ~12 joints/hand against 3,

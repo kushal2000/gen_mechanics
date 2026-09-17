@@ -33,8 +33,8 @@ export STUDY_ID="${STUDY_ID:-coevolution_v1_baseline}"
 export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
 export SOURCE_RUN="${SOURCE_RUN:-}"                 # empty for link #1
 
-SELF=/share/portal/kk837/gen_mechanics/experiments/coevolution/baseline.sub
-source /share/portal/kk837/gen_mechanics/experiments/coevolution/common.sh
+SELF=/share/portal/kk837/gen_mechanics/experiments/10sep_coevolution/baseline.sub
+source /share/portal/kk837/gen_mechanics/experiments/10sep_coevolution/common.sh
 export WANDB_GROUP="$STUDY_ID" MAX_EPOCHS="$EPOCHS"
 export MODEL_TAG="${STUDY_ID}_c$(printf '%02d' "$CONT")_d${D_MODEL}_l${TRANSFORMER_LAYERS}"
 export CHECKPOINT="" RESUME_TOL=""

@@ -14,7 +14,7 @@ The two jobs source `common.sh`, so they differ only in the selection.
 ## Reproduce
 
 ```bash
-E=experiments/coevolution
+E=experiments/10sep_coevolution
 $E/make_population.sh 0 1024 500         # -> assets/populations/gen_s0_n1024_drift500_s0/round_0500.json
 P=assets/populations/gen_s0_n1024_drift500_s0/round_0500.json
 $E/launch.sh coevo    $P coevolution_v2            # 40 generations, self-chaining, ~6 days

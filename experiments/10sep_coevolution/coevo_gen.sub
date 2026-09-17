@@ -35,8 +35,8 @@ export CHECKPOINT="${CHECKPOINT:-}"                 # empty for generation 0
 export RESUME_TOL="${RESUME_TOL:-}"                 # empty for generation 0
 export STUDY_ID="${STUDY_ID:-coevolution_v1}"
 
-SELF=/share/portal/kk837/gen_mechanics/experiments/coevolution/coevo_gen.sub
-source /share/portal/kk837/gen_mechanics/experiments/coevolution/common.sh
+SELF=/share/portal/kk837/gen_mechanics/experiments/10sep_coevolution/coevo_gen.sub
+source /share/portal/kk837/gen_mechanics/experiments/10sep_coevolution/common.sh
 POP="$COEVO_DIR/gen_$GEN/population.json"
 [[ -f "$POP" ]] || { echo "no population at $POP"; exit 1; }
 export ROBOT_SPEC="$POP" WANDB_GROUP="$STUDY_ID"
