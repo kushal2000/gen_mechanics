@@ -40,5 +40,5 @@ export WANDB_ACTIVATE=0 CAPTURE_VIEWER=1   # same flags as the real run: 659790 
 # what makes this job cover the viewer rather than just import it.
 export CAPTURE_VIEWER_LEN=32 CAPTURE_VIEWER_INTERVAL=40
 export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
-export MAX_EPOCHS=3
+export MAX_EPOCHS="${MAX_EPOCHS:-3}"
 bash /share/portal/kk837/gen_mechanics/experiments/decentralized_control/scaling_laws/run.sh

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 import pathlib
 import sys
 import math
@@ -175,6 +176,8 @@ def main() -> None:
     with server.gui.add_folder("pose"):
         btn_flex = server.gui.add_button("flex all")
         btn_unflex = server.gui.add_button("unflex all")
+        btn_flex_opp = server.gui.add_button("flex opp")
+        anim_seconds = server.gui.add_slider("animation (s)", min=0.0, max=4.0, step=0.25, initial_value=1.5)
         status = server.gui.add_markdown("")
 
     @cb_context.on_update
@@ -184,11 +187,15 @@ def main() -> None:
 
     @btn_flex.on_click
     def _(_) -> None:
-        set_all_joints(math.degrees(design_space.JOINT_LIMIT[1]))
+        animate_all_joints(math.degrees(design_space.JOINT_LIMIT[1]))
 
     @btn_unflex.on_click
     def _(_) -> None:
-        set_all_joints(0.0)
+        animate_all_joints(0.0)
+
+    @btn_flex_opp.on_click
+    def _(_) -> None:
+        animate_all_joints(math.degrees(design_space.JOINT_LIMIT[0]))
 
     joint_folder = server.gui.add_folder("joints")
     sliders: list = []
@@ -261,7 +268,8 @@ def main() -> None:
 
                     def on_change(_, fi=fi, si=si, h=handle) -> None:
                         state["angles"][(fi, si)] = math.radians(h.value)
-                        push_cfg()          # transforms only
+                        if not state.get("animating"):
+                            push_cfg()      # transforms only; an animation pushes once per frame itself
 
                     handle.on_update(on_change)
 
@@ -274,6 +282,40 @@ def main() -> None:
             for si in range(finger.n_joints):
                 state["angles"][(fi, si)] = math.radians(degrees)
         push_cfg()
+
+    def animate_all_joints(degrees: float, fps: float = 30.0) -> None:
+        """Glide every joint from where it is to ``degrees`` over the GUI's
+        animation time, so the closing motion is visible rather than a jump.
+        Runs in a thread; a new click supersedes the one in flight."""
+        import threading
+        seconds = float(anim_seconds.value)
+        if seconds <= 0.0 or not sliders:
+            set_all_joints(degrees); return
+        token = state["anim_token"] = state.get("anim_token", 0) + 1
+        start = [float(h.value) for h in sliders]
+        n = max(1, int(seconds * fps))
+
+        def run() -> None:
+            state["animating"] = True
+            try:
+                for k in range(1, n + 1):
+                    if state.get("anim_token") != token:
+                        return
+                    a = k / n; a = a * a * (3 - 2 * a)                # ease in/out
+                    idx = 0
+                    for fi, finger in enumerate(state["hand"].fingers):
+                        for si in range(finger.n_joints):
+                            v = start[idx] + (degrees - start[idx]) * a
+                            sliders[idx].value = v
+                            state["angles"][(fi, si)] = math.radians(v)
+                            idx += 1
+                    push_cfg()
+                    time.sleep(1.0 / fps)
+            finally:
+                if state.get("anim_token") == token:
+                    state["animating"] = False
+
+        threading.Thread(target=run, daemon=True).start()
 
     def refresh(msg: str = "") -> None:
         info.content = describe(state["hand"], state["last_op"])
@@ -391,10 +433,6 @@ def main() -> None:
     # main() returning tears the server down with it, so hold the thread here
     # rather than relying on the caller's shell to stay open.
     server.sleep_forever()
-    print(f"viewer on http://localhost:{args.port}")
-    while True:
-        import time
-        time.sleep(1.0)
 
 
 # --- PNG renderer: same kinematics, no browser, no server ------------------
