@@ -54,7 +54,7 @@ debug_outputs/train_logs/coevolution/
 wandb: project gen_mechanics, group <label>
 ```
 
-Analysis and figures: `debug_outputs/10sep_coevo_analysis/` (`README.md` there).
+Analysis scripts: `analysis/` (README there); their figures and videos: `debug_outputs/10sep_coevo_analysis/`.
 
 ## Pinned to what ran
 
@@ -73,4 +73,4 @@ was at 0.029 after 66k epochs. Joints per hand 11.2 → 18.1. Caveat found
 afterwards: by generation 13 every hand descended from one gen-0 design (#521),
 selected during the first four generations when the policy was still on its
 ~300-return plateau and rank correlation with eventual quality was ~0.2. Things
-a V2 should change are in `debug_outputs/10sep_coevo_analysis/README.md`.
+a V2 should change are in `analysis/README.md`.

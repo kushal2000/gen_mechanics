@@ -33,7 +33,7 @@ defaults are now these.
 ## Not changed yet -- decisions still open
 
 V1's lineage record showed selection on noise in generations 0-3 and one
-family taking the whole population by generation 13 (`debug_outputs/10sep_coevo_analysis/README.md`).
+family taking the whole population by generation 13 (`../10sep_coevolution/analysis/README.md`).
 Nothing here addresses that; these are the knobs and the candidates:
 
 - **Start from a competent policy**: `launch.sh coevo $P coevolution_v2 CHECKPOINT=<.pth> RESUME_TOL=<tol>`
