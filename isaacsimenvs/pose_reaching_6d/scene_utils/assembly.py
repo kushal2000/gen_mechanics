@@ -174,12 +174,14 @@ def _resolve_object_pool(assets_cfg, out_dir: str):
     return urdf_paths, scales, params
 
 
-def _author_objects_into_envs(env, object_params, n_designs: int) -> dict[int, int]:
+def _author_objects_into_envs(env, object_params, design_idx) -> dict[int, int]:
     """Author Object and GoalViz into every env; returns ``{env_id: pool_index}``
-    by the configured ``object_assignment`` rule."""
+    by the configured ``object_assignment`` rule. ``design_idx`` is the per-env
+    design (None for a single robot)."""
     n_pool = len(object_params)
     assets_cfg = env.cfg.assets
     rank, world = int(os.environ.get("RANK", "0")), int(os.environ.get("WORLD_SIZE", "1"))
+    n_designs = 1 if design_idx is None else int(design_idx.max()) + 1
     which = object_index(env.num_envs, n_pool, assets_cfg.object_assignment,
                          rank=rank, world_size=world, n_designs=n_designs)
     if assets_cfg.object_assignment == "design_cycle":
@@ -188,6 +190,17 @@ def _author_objects_into_envs(env, object_params, n_designs: int) -> dict[int, i
               + ("" if per_design == n_pool else
                  f" -- pool and envs-per-design differ, so designs meet {min(per_design, n_pool)} distinct objects"),
               flush=True)
+        if design_idx is not None:
+            # What THIS rank actually deals, from the arrays that author it: the
+            # other rank must hold the complementary set, and the log of both
+            # ranks together is the record that every design met every object.
+            held = {}
+            for d, o in zip(design_idx.tolist(), which.tolist()):
+                held.setdefault(int(d), set()).add(int(o))
+            counts = sorted(len(v) for v in held.values())
+            print(f"[scene] rank {rank}: design 0 holds objects {sorted(held.get(0, ()))}; "
+                  f"distinct objects per design on this rank min {counts[0]} max {counts[-1]} "
+                  f"over {len(held)} designs", flush=True)
     layer = get_current_stage().GetRootLayer()
     t0 = time.perf_counter()
     asset_index: dict[int, int] = {}
@@ -388,8 +401,7 @@ def setup_scene(env) -> None:
     env.robot = Articulation(build_robot_articulation_cfg(
         spec, start_arm_higher=env.cfg.reset.start_arm_higher))
     env.table = RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
-    authored_map = _author_objects_into_envs(
-        env, object_params, 1 if population is None else population.n_designs)
+    authored_map = _author_objects_into_envs(env, object_params, design_idx)
     env.object = RigidObject(RigidObjectCfg(prim_path=OBJECT_PATH, spawn=None))
     env.goal_viz = RigidObject(RigidObjectCfg(prim_path=GOALVIZ_PATH, spawn=None))
     _log_scene_step(t0, "spawned robot/table/object/goalviz")
