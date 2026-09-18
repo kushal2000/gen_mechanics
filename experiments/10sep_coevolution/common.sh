@@ -28,6 +28,23 @@ export EXTRA_HYDRA="${EXTRA_HYDRA:-} env.obs.geometry_origin=palm_center env.obs
 export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-$REPO/debug_outputs/train_logs/10sep_coevolution}"
 mkdir -p "$SCALING_RUN_ROOT"
 
+# sbatch against a controller that sometimes answers "Socket timed out" AFTER
+# accepting the job (generation 0 of coevolution_v2_gen2k: the error, exit 1,
+# and the generation-1 job queued anyway). Retrying blindly would submit twice
+# and two jobs would write one gen_<k> directory, so on failure look the name
+# up in the queue first and adopt the job if it is there.
+submit_once() {   # submit_once <job-name> <sbatch args...>; prints the job id
+    local name="$1"; shift; local j i
+    for i in 1 2 3 4 5 6; do
+        j=$(sbatch --parsable --job-name="$name" "$@" 2>/dev/null) && [[ "$j" =~ ^[0-9]+ ]] && { echo "${j%%;*}"; return 0; }
+        sleep 20
+        j=$(squeue -h -u "$USER" --name="$name" -o %i 2>/dev/null | head -1)
+        [[ -n "$j" ]] && { echo "$j"; return 0; }
+        echo "[submit] attempt $i for $name failed; retrying" >&2; sleep 40
+    done
+    echo "[submit] could not submit $name" >&2; return 1
+}
+
 # The newest rl_games checkpoint under a run directory (its rolling autosave
 # included), or nothing.
 newest_checkpoint() { ls -t "$1"/rank_0/*/nn/*.pth 2>/dev/null | head -1; }

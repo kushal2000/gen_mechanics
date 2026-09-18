@@ -56,7 +56,7 @@ chain_next() {
     fi
     local next=$((CONT + 1))
     if (( next > MAX_CONT )); then echo "[baseline] reached MAX_CONT=$MAX_CONT"; CHAINED=1; return 0; fi
-    local j; j=$(sbatch --parsable --job-name="${STUDY_ID}_c$(printf '%02d' "$next")" \
+    local j; j=$(submit_once "${STUDY_ID}_c$(printf '%02d' "$next")" \
         --export=ALL,SOURCE_RUN="$run_dir",ROBOT_SPEC="$ROBOT_SPEC",STUDY_ID="$STUDY_ID",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$next",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE" \
         "$SELF")
     echo "[baseline] submitted link #$next as $j (from $run_dir)"; CHAINED=1

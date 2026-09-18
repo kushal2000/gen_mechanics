@@ -75,7 +75,7 @@ echo "[coevo] checkpoint $CKPT"; echo "[coevo] final success tolerance $TOL"
 
 # --- next --------------------------------------------------------------------
 if (( NEXT < MAX_GEN )); then
-    J=$(sbatch --parsable --job-name="${STUDY_ID}_g$(printf '%03d' "$NEXT")" \
+    J=$(submit_once "${STUDY_ID}_g$(printf '%03d' "$NEXT")" \
         --export=ALL,COEVO_DIR="$COEVO_DIR",GEN="$NEXT",CHECKPOINT="$CKPT",RESUME_TOL="$TOL",EPOCHS_PER_GEN="$EPOCHS_PER_GEN",KEEP="$KEEP",MAX_GEN="$MAX_GEN",STUDY_ID="$STUDY_ID",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE" \
         "$SELF")
     echo "[coevo] submitted generation $NEXT as job $J"; echo "$J" > "$COEVO_DIR/gen_$NEXT/job_id.txt"
