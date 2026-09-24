@@ -27,7 +27,17 @@ export TASK="${TASK:-GenMech-InHandReorient-Direct-v0}"
 # works meanwhile, because the authored palm box and finger capsules are
 # renderable gprims on their own.
 export WANDB_ACTIVATE="${WANDB_ACTIVATE:-1}" WANDB_MODE=online CAPTURE_VIEWER="${CAPTURE_VIEWER:-0}"
-export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
+# Isaac's own RTX render IS usable hand-only -- the authored palm box and finger
+# capsules are renderable gprims, no meshes required -- and it draws what the
+# simulator actually built rather than what the design says. On by default while
+# this task is new. Set here rather than passed at submit time so it survives
+# the link chaining, whose --export does not carry it. Frames land in
+# <run_dir>/videos; nothing uploads them to wandb.
+export CAPTURE_VIDEO="${CAPTURE_VIDEO:-1}"
+# Its own project: this task shares no metric scale with pose reaching -- the
+# return is a rotation residual, not a reach -- so mixing them in one project
+# makes every cross-run chart misleading.
+export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_inhandreorient}" WANDB_ENTITY=kk837
 export DESIGN_REWARDS=1                                   # per-design returns; selection and the tolerance hand-off read them
 export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-$REPO/debug_outputs/train_logs/24sep_inhand_reorientation}"
 mkdir -p "$SCALING_RUN_ROOT"
