@@ -22,5 +22,5 @@ TASK = "GenMech-PoseReach-Direct-v0"
 
 if __name__ == "__main__":
     parser = build_parser(__doc__.splitlines()[0])
-    parser.add_argument("--device", default="cuda:0")
-    play(TASK, parser.parse_args())
+    known, hydra_args = parser.parse_known_args()
+    play(TASK, known, hydra_args)
