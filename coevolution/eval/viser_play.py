@@ -40,7 +40,11 @@ GOAL_GHOST_RGBA = (0.25, 0.85, 0.40, 0.35)
 
 def build_parser(description: str) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=description)
-    p.add_argument("--checkpoint", required=True, help="an rl_games .pth")
+    p.add_argument("--checkpoint", default="",
+                   help="an rl_games .pth. OMIT IT to run a randomly initialised "
+                        "policy -- the right way to check that resets and initial "
+                        "poses look sane, with no trained behaviour on top. The env "
+                        "then comes from the task's own config instead of a run's.")
     p.add_argument("--run-dir", default="", help="training run dir; inferred from --checkpoint if omitted")
     p.add_argument("--population", default="", help="override the run's robot_spec")
     p.add_argument("--designs", default="0",
@@ -141,14 +145,25 @@ def play(task: str, args, hydra_args=None) -> None:
 
     from hand_sampler import build, population_io, robot_spec
 
-    run_dir = pathlib.Path(args.run_dir) if args.run_dir else infer_run_dir(args.checkpoint)
-    cfg_path = run_dir / "rank_0" / ".hydra" / "config.yaml"
-    if not cfg_path.is_file():
-        raise SystemExit(f"no saved config under {run_dir}; pass --run-dir explicitly")
+    if args.checkpoint:
+        run_dir = pathlib.Path(args.run_dir) if args.run_dir else infer_run_dir(args.checkpoint)
+        cfg_path = run_dir / "rank_0" / ".hydra" / "config.yaml"
+        if not cfg_path.is_file():
+            raise SystemExit(f"no saved config under {run_dir}; pass --run-dir explicitly")
 
-    from omegaconf import OmegaConf
+        from omegaconf import OmegaConf
 
-    ref = args.population or str(OmegaConf.load(cfg_path).env.assets.robot_spec)
+        ref = args.population or str(OmegaConf.load(cfg_path).env.assets.robot_spec)
+    else:
+        # Random policy: there is no run to replay, so the env is built from the
+        # TASK's own config, which is what you want when checking inits -- it is
+        # the task as currently configured, not as some past run configured it.
+        run_dir = pathlib.Path("")
+        if not args.population:
+            raise SystemExit("--population is required when no --checkpoint is given")
+        ref = args.population
+        print("[play] NO CHECKPOINT: randomly initialised policy, task-default env",
+              flush=True)
     pop_ref, labels = assemble_population(ref, args)
     print(f"[play] task {task}\n[play] run  {run_dir}\n[play] watching {len(labels)} design(s): "
           + ", ".join(f"{l['name']} ({l['fingers']}f/{l['joints']}j)" for l in labels), flush=True)
@@ -163,7 +178,7 @@ def play(task: str, args, hydra_args=None) -> None:
     host, port = listener.address
     child = subprocess.Popen(
         [sys.executable, str(_WORKER), "--task", task, "--checkpoint", args.checkpoint,
-         "--run-dir", str(run_dir), "--population", pop_ref, "--num-envs", str(len(hands)),
+         "--run-dir", ("" if not args.checkpoint else str(run_dir)), "--population", pop_ref, "--num-envs", str(len(hands)),
          "--expl-coef", str(args.expl_coef), "--tolerance", str(args.tolerance),
          "--device", args.device, "--host", host, "--port", str(port),
          "--authkey", authkey.hex()] + list(hydra_args or []),

@@ -26,8 +26,8 @@ from multiprocessing.connection import Client
 def _args():
     p = argparse.ArgumentParser()
     p.add_argument("--task", required=True)
-    p.add_argument("--checkpoint", required=True)
-    p.add_argument("--run-dir", required=True)
+    p.add_argument("--checkpoint", default="")
+    p.add_argument("--run-dir", default="")
     p.add_argument("--population", required=True, help="already narrowed by the parent")
     p.add_argument("--num-envs", type=int, default=1)
     p.add_argument("--expl-coef", type=float, default=0.0)
@@ -75,12 +75,20 @@ def main() -> None:
 
         @hydra_task_config_with_yaml(args.task, "rl_games_joint_transformer_cfg_entry_point")
         def _run(env_cfg, agent_cfg):
-            saved = OmegaConf.load(f"{run_dir}/rank_0/.hydra/config.yaml")
-            env_d = OmegaConf.to_container(saved.env, resolve=True)
-            # Derived at scene build, and stored as STRINGS in the saved config.
-            for k in ("observation_space", "state_space", "action_space"):
-                env_d.pop(k, None)
-            env_cfg.from_dict(env_d)
+            saved = None
+            if run_dir:
+                saved = OmegaConf.load(f"{run_dir}/rank_0/.hydra/config.yaml")
+                env_d = OmegaConf.to_container(saved.env, resolve=True)
+                # Derived at scene build, and stored as STRINGS in the saved config.
+                for k in ("observation_space", "state_space", "action_space"):
+                    env_d.pop(k, None)
+                env_cfg.from_dict(env_d)
+            else:
+                # No run to replay: hydra has already applied the task YAML, so
+                # env_cfg IS the task as configured. Only the symmetric obs list
+                # has to be matched by hand -- run_rank.sh sets it per run, not
+                # in the YAML, and the policy is built from this width.
+                env_cfg.obs.obs_list = tuple(env_cfg.obs.state_list)
             env_cfg.scene.num_envs = args.num_envs
             env_cfg.assets.robot_spec = args.population
             if args.tolerance > 0:
@@ -94,13 +102,31 @@ def main() -> None:
 
             import yaml
 
-            acfg = OmegaConf.to_container(saved, resolve=True)["agent"]
+            if saved is not None:
+                acfg = OmegaConf.to_container(saved, resolve=True)["agent"]
+            else:
+                acfg = OmegaConf.to_container(OmegaConf.create(agent_cfg), resolve=True)
+                # The train YAML interpolates the network's spec and field list
+                # from env.assets.robot_spec / env.obs.obs_list, and hydra
+                # resolved those WHEN IT COMPOSED -- before the env config was
+                # pointed at this population. Left alone the network builds for
+                # sharpa_iiwa14 against the 17-field actor list and dies with
+                # "layout mismatch ... 789-d, but rl_games says 1032-d".
+                # env_cfg.py:49 warns about exactly this: one knob, because the
+                # agent YAML reads the network's spec from robot_spec.
+                net = acfg["params"]["network"]
+                net["robot_spec"] = args.population
+                net["obs_list"] = list(env_cfg.obs.obs_list)
+                # Training runs with no separate critic; match it.
+                acfg["params"]["config"]["central_value_config"] = None
             acfg["params"]["config"]["multi_gpu"] = False
             f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
             yaml.safe_dump({"train": acfg}, f)
             f.close()
+            # checkpoint None -> rl_games builds the network and never restores,
+            # i.e. a randomly initialised policy.
             player = RlPlayer(obs["policy"].shape[-1], inner.action_space.shape[-1], f.name,
-                              args.checkpoint, device=args.device,
+                              args.checkpoint or None, device=args.device,
                               sapg_expl_coef=args.expl_coef, num_envs=inner.num_envs)
 
             spec = inner.scene_record.robot_spec
@@ -162,10 +188,13 @@ def main() -> None:
                      object_quat=inner.object.data.root_quat_w.cpu().numpy().tolist(),
                      goal_pos=(inner.goal_viz.data.root_pos_w - origins).cpu().numpy().tolist(),
                      goal_quat=inner.goal_viz.data.root_quat_w.cpu().numpy().tolist(),
+                     # The in-hand task parks the table 1.35 m below the palm --
+                     # the ground plane is the real catch floor -- so drawing it
+                     # is pure clutter there.
                      table_pos=((inner.table.data.root_pos_w - origins).cpu().numpy().tolist()
-                                if getattr(inner, "table", None) is not None else None),
+                                if _show_table(inner) else None),
                      table_quat=(inner.table.data.root_quat_w.cpu().numpy().tolist()
-                                 if getattr(inner, "table", None) is not None else None),
+                                 if _show_table(inner) else None),
                      stats=_stats(inner))
             env.close()
 
@@ -180,6 +209,12 @@ def main() -> None:
         import os
 
         os._exit(0)          # Kit does not tear down cleanly
+
+
+def _show_table(inner) -> bool:
+    """Only when the task actually uses it."""
+    return (getattr(inner, "table", None) is not None
+            and not getattr(inner.cfg.reset, "object_in_hand", False))
 
 
 def _stats(inner) -> dict:
