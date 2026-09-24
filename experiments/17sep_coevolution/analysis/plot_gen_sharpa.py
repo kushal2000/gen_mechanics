@@ -26,6 +26,7 @@ the population with the harness at every generation (eval_population.py).
 import json, pathlib, sys
 sys.path[:0] = [str(pathlib.Path(__file__).resolve().parent), "/share/portal/kk837/depthbasedRL/plot_figures"]
 import numpy as np, matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 from _style import configure_rcparams, style_axis, COLORS
 import curves as C
 
@@ -54,18 +55,26 @@ sharpa = np.array([x["ret"] for x in rows]); goals = np.array([x["goals"] for x 
 tol = np.array([x["tolerance"] for x in rows])
 pop = np.array([endpoint(g) for g in G]); pop_goals = np.array([endpoint_goals(g) for g in G])
 
+def ticks(a):
+    """Label every 5th generation, tick every 1: the divergence sits between
+    gens 3 and 9, which a 10-wide tick spacing hides."""
+    a.xaxis.set_major_locator(MultipleLocator(5))
+    a.xaxis.set_minor_locator(MultipleLocator(1))
+    a.tick_params(axis="x", which="minor", length=2, width=0.6, colors=COLORS["spine"])
+
 fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.8))
 ax = axes[0]
-ax.plot(G, pop, color=POP, label="Population (end of generation)")
-ax.plot(G, sharpa, color=IMIT, ls="-.", label="gen-SHARPA, zero-shot")
+ax.plot(G, pop, color=POP, marker="o", ms=2.6, mew=0, label="Population (end of generation)")
+ax.plot(G, sharpa, color=IMIT, ls="-.", marker="o", ms=2.6, mew=0, label="gen-SHARPA, zero-shot")
 ax.set_xlabel("Generation"); ax.set_ylabel("Mean episode return")
 ax.set_title("Return under the same checkpoint", fontsize=11, pad=6)
-ax.set_xlim(G[0], G[-1]); ax.set_ylim(0, None); style_axis(ax)
+ax.set_xlim(G[0], G[-1]); ax.set_ylim(0, None); style_axis(ax); ticks(ax)
 ax2 = axes[1]
-ax2.plot(G, pop_goals, color=POP, label="Population")
-ax2.plot(G, goals, color=IMIT, ls="-.", label="gen-SHARPA, zero-shot")
+ax2.plot(G, pop_goals, color=POP, marker="o", ms=2.6, mew=0, label="Population")
+ax2.plot(G, goals, color=IMIT, ls="-.", marker="o", ms=2.6, mew=0, label="gen-SHARPA, zero-shot")
 ax2.set_xlabel("Generation"); ax2.set_ylabel("Goals per episode"); ax2.set_ylim(0, None)
 ax2.set_title("Goals under the same checkpoint", fontsize=11, pad=6); style_axis(ax2)
+ax2.set_xlim(G[0], G[-1]); ticks(ax2)   # same span as the left panel
 ax3 = ax2.twinx()
 ax3.plot(G, tol, color=GREY, ls=":", lw=1.2, label="Success tolerance")
 ax3.set_ylabel("Tolerance (m)"); ax3.set_ylim(0, 0.08)

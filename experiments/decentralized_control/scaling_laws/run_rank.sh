@@ -17,7 +17,7 @@
 # predicates for one decision is how a change in one of them silently does
 # nothing.
 set -euo pipefail
-LOCAL_BATCH=$((GLOBAL_MINIBATCH / 2))
+LOCAL_BATCH=$((GLOBAL_MINIBATCH / ${GPUS:-2}))
 # ROBOT_SPEC selects the hand: a registered name, gen_s<seed>_n<count> for a
 # generated population, or a path to a population .json. It has to be ONE name
 # -- the agent YAML interpolates the network's copy from it, so a second knob
@@ -128,7 +128,11 @@ ARGS=(
     "agent.params.config.expl_coef_block_size=$EXPL_BLOCK_SIZE"
     "agent.params.config.learning_rate=$LEARNING_RATE"
     agent.params.config.lr_schedule=adaptive
-    agent.params.config.horizon_length=16 agent.params.config.mini_epochs=2
+    # PPO passes over each rollout. Two is what every run so far used; one
+    # halves the gradient steps per epoch (not the per-epoch dataset build,
+    # advantage pass or SAPG augmentation, which run once either way) at the
+    # cost of halving sample reuse.
+    agent.params.config.horizon_length=16 "agent.params.config.mini_epochs=${MINI_EPOCHS:-2}"
     "agent.params.config.max_epochs=$MAX_EPOCHS"
     agent.params.config.save_frequency=100 agent.params.config.save_best_after=0
     "${NET_ARGS[@]}"
