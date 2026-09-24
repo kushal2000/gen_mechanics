@@ -331,7 +331,7 @@ def capture_pose_viewer_frame(env, env_id: int) -> dict[str, Any]:
     robot_root_pos = env.robot.data.root_pos_w[env_id] - origin
     object_pos = env.object.data.root_pos_w[env_id] - origin
     goal_pos = env.goal_viz.data.root_pos_w[env_id] - origin
-    table_pos = env.table.data.root_pos_w[env_id] - origin
+    table = getattr(env, "table", None)      # an in-hand task spawns none
     hole = getattr(env, "hole", None)
 
     frame = {
@@ -341,8 +341,10 @@ def capture_pose_viewer_frame(env, env_id: int) -> dict[str, Any]:
         "robot_base_pose": _pose_xyzw(robot_root_pos, env.robot.data.root_quat_w[env_id]),
         "object_pose": _pose_xyzw(object_pos, env.object.data.root_quat_w[env_id]),
         "goal_pose": _pose_xyzw(goal_pos, env.goal_viz.data.root_quat_w[env_id]),
-        "table_pose": _pose_xyzw(table_pos, env.table.data.root_quat_w[env_id]),
     }
+    if table is not None:
+        frame["table_pose"] = _pose_xyzw(
+            table.data.root_pos_w[env_id] - origin, table.data.root_quat_w[env_id])
     if hole is not None:
         hole_pos = hole.data.root_pos_w[env_id] - origin
         frame["hole_pose"] = _pose_xyzw(hole_pos, hole.data.root_quat_w[env_id])
@@ -408,11 +410,14 @@ def build_pose_viewer_html(
         )
 
     timestamps = np.arange(len(frames), dtype=np.float32) / 60.0
+    # An in-hand task spawns no table, so the frames carry no table_pose and
+    # there is nothing to draw. Gated on the FRAMES rather than on the urdf
+    # text, which is read from disk either way.
+    has_table = bool(table_urdf_text) and all("table_pose" in f for f in frames)
     robots = [
         make_embedded_robot(name="robot", urdf_text=robot_urdf_text, animated=True)
         if robot_urdf_text else
         make_url_robot(name="robot", urdf_url=robot_urdf_url, animated=True),
-        make_embedded_robot(name="table", urdf_text=table_urdf_text),
         make_embedded_robot(name="object", urdf_text=object_urdf_text),
         make_embedded_robot(
             name="goal",
@@ -421,10 +426,12 @@ def build_pose_viewer_html(
         ),
     ]
     object_poses = {
-        "table": np.stack([frame["table_pose"] for frame in frames]),
         "object": np.stack([frame["object_pose"] for frame in frames]),
         "goal": np.stack([frame["goal_pose"] for frame in frames]),
     }
+    if has_table:
+        robots.insert(1, make_embedded_robot(name="table", urdf_text=table_urdf_text))
+        object_poses["table"] = np.stack([frame["table_pose"] for frame in frames])
     if hole_urdf_text is not None and all("hole_pose" in frame for frame in frames):
         robots.insert(2, make_embedded_robot(name="hole", urdf_text=hole_urdf_text))
         object_poses["hole"] = np.stack([frame["hole_pose"] for frame in frames])

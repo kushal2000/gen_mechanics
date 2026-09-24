@@ -171,7 +171,10 @@ def apply_physx_material_properties(env) -> None:
     for name, friction in (("table", assets_cfg.table_friction),
                            ("object", assets_cfg.object_friction),
                            ("goal_viz", assets_cfg.robot_friction)):
-        view = getattr(env, name).root_physx_view
+        asset = getattr(env, name, None)
+        if asset is None:
+            continue          # an in-hand task spawns no table
+        view = asset.root_physx_view
         materials = view.get_material_properties()
         materials[:] = material(float(friction))
         if name == "object":
