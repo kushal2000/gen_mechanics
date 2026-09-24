@@ -63,9 +63,23 @@ ROLLOUT=$((NUM_ENVS_PER_GPU * 16))
 # non-dividing size makes one step much wider than the rest (global 98304 at
 # 12288 envs/GPU: three of 49152 then one of 81920) and adds a compile shape.
 AUG_ROLLOUT=$((ROLLOUT + ROLLOUT / 6))
-(( AUG_ROLLOUT % LOCAL_BATCH == 0 )) || {
-    echo "Minibatch $LOCAL_BATCH/rank must divide the SAPG-augmented rollout $AUG_ROLLOUT"; exit 1;
-}
+if (( AUG_ROLLOUT % LOCAL_BATCH != 0 )); then
+    # PPODataset gives the remainder to the LAST minibatch, so a non-dividing
+    # size does not fail -- it makes one step much wider than the rest. The
+    # 98304 reference run relied on that. Allowed on request, but say how wide
+    # the widest step actually is: peak memory follows THAT, not the configured
+    # number, so a benchmark labelled 98304 is really measuring the wider one.
+    N=$(( AUG_ROLLOUT / LOCAL_BATCH ))
+    WIDEST=$(( LOCAL_BATCH + AUG_ROLLOUT - N * LOCAL_BATCH ))
+    if [[ "${ALLOW_UNEVEN_MINIBATCH:-0}" == 1 ]]; then
+        echo "[run] minibatch $LOCAL_BATCH/rank does not divide the SAPG-augmented rollout" \
+             "$AUG_ROLLOUT: $N steps, the last $WIDEST wide. Peak memory follows $WIDEST."
+    else
+        echo "Minibatch $LOCAL_BATCH/rank must divide the SAPG-augmented rollout $AUG_ROLLOUT" \
+             "($N steps, the last would be $WIDEST wide). Set ALLOW_UNEVEN_MINIBATCH=1 to run anyway."
+        exit 1
+    fi
+fi
 if [[ "${DRY_RUN:-0}" == 1 ]]; then
     export SCALING_RUN_DIR="/tmp/scaling_dry_run/$RUN_NAME"
     export LOCAL_RANK=0
