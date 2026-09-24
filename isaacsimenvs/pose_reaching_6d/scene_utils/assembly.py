@@ -423,13 +423,20 @@ def setup_scene(env) -> None:
     collider_links = _author_robots_into_envs(
         env, spec, population, design_idx, asset_dir, offsets, t0)
 
-    # 3. Table, converted and spawned.
-    table_usd = _convert_urdf_to_usd(assets_cfg.table_urdf, asset_dir / "usd", fix_base=False)
+    # 3. Table, converted and spawned -- unless the task has no use for one.
+    # An in-hand task holds the object on a fixed palm, so nothing ever rests on
+    # a table and the ground plane already catches a dropped object. Parking it
+    # below the scene still spawns a rigid body per env and still cooks and
+    # broadphases it, for nothing.
+    want_table = not env.cfg.reset.object_in_hand
+    table_usd = (_convert_urdf_to_usd(assets_cfg.table_urdf, asset_dir / "usd", fix_base=False)
+                 if want_table else None)
 
     # 4. Spawn.
     env.robot = Articulation(build_robot_articulation_cfg(
         spec, start_arm_higher=env.cfg.reset.start_arm_higher))
-    env.table = RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
+    env.table = (RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
+                 if want_table else None)
     authored_map = _author_objects_into_envs(env, object_params, design_idx)
     env.object = RigidObject(RigidObjectCfg(prim_path=OBJECT_PATH, spawn=None))
     env.goal_viz = RigidObject(RigidObjectCfg(prim_path=GOALVIZ_PATH, spawn=None))
@@ -453,7 +460,8 @@ def setup_scene(env) -> None:
 
     # 7. Register so DirectRLEnv refreshes their tensors each step.
     env.scene.articulations["robot"] = env.robot
-    env.scene.rigid_objects["table"] = env.table
+    if env.table is not None:
+        env.scene.rigid_objects["table"] = env.table
     env.scene.rigid_objects["object"] = env.object
     env.scene.rigid_objects["goal_viz"] = env.goal_viz
     _log_scene_step(t0, "registered assets with scene")

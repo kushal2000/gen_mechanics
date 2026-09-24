@@ -375,6 +375,10 @@ def _reset_table_pose(env, env_ids: torch.Tensor) -> None:
     `table_reset_xy_range_m` / `table_reset_yaw_range_deg` — default ranges
     are zero so this is a no-op for runs that don't opt in.
     """
+    # The in-hand task spawns no table at all; _table_z_per_env still gets a
+    # value below so anything reading it keeps working.
+    if env.table is None:
+        return
     cfg = env.cfg.reset
     n = env_ids.numel()
     env_origins = env.scene.env_origins[env_ids]

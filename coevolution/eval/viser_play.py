@@ -240,7 +240,11 @@ def play(task: str, args, hydra_args=None) -> None:
     robot_root = server.scene.add_frame("/robot_root", show_axes=False)
     # The table the object sits on. Its pose is per-env and randomised at reset,
     # so the child sends it; the box size is the URDF's.
+    # Hidden until the child actually reports a table pose. Created-but-never-
+    # positioned left it sitting at the world origin, directly under the hand --
+    # which is worse than not drawing it, because it looks deliberate.
     table = server.scene.add_box("/table", dimensions=(0.475, 0.4, 0.3), color=(150, 150, 155))
+    table.visible = False
     # /object and /goal are FRAMES the real object URDF is mounted under, once
     # the child tells us which of the curated pool each env drew. A stand-in box
     # would misrepresent the task: the pool spans 16 mm markers to 290 mm
@@ -309,6 +313,7 @@ def play(task: str, args, hydra_args=None) -> None:
             if msg.get("table_pos"):
                 table.position = tuple(msg["table_pos"][i])
                 table.wxyz = tuple(msg["table_quat"][i])
+                table.visible = True
             md.content = _status(msg["stats"], i)
     except (EOFError, ConnectionResetError):
         print("[play] worker closed the connection", flush=True)
