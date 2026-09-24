@@ -35,7 +35,7 @@ from .author_objects import author_handle_head, author_physics_material
 from hand_sampler import build
 from hand_sampler.robot_param_constants import ARM_ADJACENT_LINKS, ARM_TIP_LINK
 from hand_sampler.robot_spec import design_index, object_index
-from .author_robot import ARM_PRIM, arm_only_urdf, flatten_robot_usd
+from .author_robot import ARM_PRIM, arm_only_urdf, flatten_robot_usd, stub_urdf
 from .materials import apply_physx_material_properties
 from .sdf import define, set_xform
 from .objects.generate_objects import generate_handle_head_urdfs
@@ -77,8 +77,16 @@ def _resolve_spec(cfg):
     if population is None:
         from hand_sampler.robot_spec import is_population_ref, population_from_ref
         if is_population_ref(cfg.assets.robot_spec):
-            population = population_from_ref(cfg.assets.robot_spec)
+            population = population_from_ref(
+                cfg.assets.robot_spec,
+                hand_only=bool(getattr(cfg.assets, "hand_only", False)))
     if population is None:
+        if getattr(cfg.assets, "hand_only", False):
+            raise ValueError(
+                "assets.hand_only needs a population reference: the fixed-robot "
+                "path converts a whole URDF including its arm, so there is no "
+                "stub to mount. Point assets.robot_spec at a population .json "
+                "(one design is a population of one).")
         return None, get_robot_spec(cfg.assets.robot_spec)
     return population, population.spec
 
@@ -255,15 +263,22 @@ def _convert_fixed_robot(spec, urdf: str, usd_work_dir: Path, offsets: dict) -> 
     return flatten_robot_usd(converted, usd_work_dir / "robot_flat.usd", **offsets)
 
 
-def _convert_arm(tmp_dir, offsets: dict):
-    """The shared iiwa14 arm every authored design attaches to.
+def _convert_arm(tmp_dir, offsets: dict, hand_only: bool = False):
+    """The shared mount every authored design attaches to.
 
-    ``(usd, root, link7_world)``. Converted ONCE: a population references this
-    one file and authors only its own hand bodies on top.
+    ``(usd, root, link7_world, link7_mass_props)``. Converted ONCE: a population
+    references this one file and authors only its own hand bodies on top.
+
+    ``hand_only`` swaps the 7-DOF iiwa14 for a single fixed link that keeps the
+    name ``ARM_TIP_LINK``. Everything downstream is untouched -- the hand still
+    attaches to ``{root}/arm/iiwa14_link_7``, the palm still merges into it --
+    the articulation just has no arm joints.
     """
     arm_dir = Path(tmp_dir) / "arm"
+    urdf = (stub_urdf(arm_dir / "iiwa14_tip_stub.urdf") if hand_only
+            else arm_only_urdf(arm_dir / "iiwa14_arm_only.urdf"))
     raw = _convert_urdf_to_usd(
-        str(arm_only_urdf(arm_dir / "iiwa14_arm_only.urdf")), arm_dir,
+        str(urdf), arm_dir,
         fix_base=True, self_collision=True, joint_drive=_robot_joint_drive_cfg())
     # The arm's OWN consecutive links, filtered here for the same reason the
     # fixed robot filters its whole map: self_collision=True above turns the
@@ -271,7 +286,9 @@ def _convert_arm(tmp_dir, offsets: dict):
     # anything. Convert -> filter -> flatten, the order _convert_fixed_robot
     # uses; the hand's pairs are authored per env by build.author_hand, which
     # has no file to edit.
-    _apply_self_collision_filters(raw, dict(ARM_ADJACENT_LINKS))
+    # One link has no consecutive-link pairs to filter.
+    if not hand_only:
+        _apply_self_collision_filters(raw, dict(ARM_ADJACENT_LINKS))
     arm_usd, arm_root = flatten_robot_usd(raw, arm_dir / "arm_flat.usd", **offsets)
     stage = Usd.Stage.Open(arm_usd)
     link7 = stage.GetPrimAtPath(f"{arm_root}/{ARM_TIP_LINK}")
@@ -314,8 +331,10 @@ def _author_robots_into_envs(env, spec, population, design_idx, asset_dir: Path,
             spec, env.cfg.assets.robot_urdf or spec.urdf_path, asset_dir / "usd", offsets)
         _log_scene_step(t0, "converted the robot")
     else:
-        arm_usd, arm_root, link7_world, link7_mass = _convert_arm(asset_dir, offsets)
-        _log_scene_step(t0, "converted the shared arm once")
+        hand_only = bool(getattr(env.cfg.assets, "hand_only", False))
+        arm_usd, arm_root, link7_world, link7_mass = _convert_arm(
+            asset_dir, offsets, hand_only=hand_only)
+        _log_scene_step(t0, f"converted the shared {'tip stub' if hand_only else 'arm'} once")
 
     base_pos = tuple(float(v) for v in spec.base_pos)
     base_rot = tuple(float(v) for v in spec.base_rot)

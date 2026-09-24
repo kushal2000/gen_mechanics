@@ -230,7 +230,19 @@ def compute_intermediate_values(env) -> None:
     obj_kp = _keypoints_world(obj_pos, obj_rot, kp_offsets)
     goal_kp = _keypoints_world(goal_pos, goal_rot, kp_offsets)
 
-    env._keypoints_max_dist = torch.norm(obj_kp - goal_kp, dim=-1).max(dim=-1).values
+    if env.cfg.obs.orientation_only_goal:
+        # Reorientation: the object is held, so WHERE it sits is not the task.
+        # Referring each keypoint set to its own centre cancels the translation
+        # and leaves the rotation residual -- for a rigid keypoint cloud that is
+        # the chordal distance between the two orientations, scaled by keypoint
+        # radius. It stays in metres, so _closest_keypoint_max_dist, the
+        # progress reward, _near_goal and the tolerance curriculum are all
+        # unchanged; only the quantity they measure is.
+        rel_dist = torch.norm(
+            (obj_kp - obj_pos.unsqueeze(1)) - (goal_kp - goal_pos.unsqueeze(1)), dim=-1)
+        env._keypoints_max_dist = rel_dist.max(dim=-1).values
+    else:
+        env._keypoints_max_dist = torch.norm(obj_kp - goal_kp, dim=-1).max(dim=-1).values
 
     # Legacy -1 sentinel: first observed value becomes closest-so-far.
     sentinel = env._closest_keypoint_max_dist < 0.0

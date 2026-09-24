@@ -421,7 +421,17 @@ def _reset_object_pose(env, env_ids: torch.Tensor) -> None:
     n = env_ids.numel()
     env_origins = env.scene.env_origins[env_ids]
 
-    if cfg.fixed_start_pose is not None:
+    if cfg.object_in_hand:
+        # In-hand tasks start holding the object, so it is placed at the PALM
+        # rather than above the table -- which also makes the placement follow
+        # the design, since the palm centre offset is per-design.
+        palm_w = env.robot.data.body_state_w[env_ids][:, env._palm_body_id, 0:3]
+        pos_local = palm_w - env_origins + env._palm_center_offset[env_ids]
+        noise = torch.empty(n, 3, device=env.device).uniform_(-1.0, 1.0)
+        pos_local = pos_local + noise * torch.as_tensor(
+            (cfg.in_hand_position_noise,) * 3, device=env.device, dtype=torch.float32)
+        quat = random_orientation(n, device=env.device)
+    elif cfg.fixed_start_pose is not None:
         fixed = torch.as_tensor(cfg.fixed_start_pose, device=env.device, dtype=torch.float32)
         pos_local = fixed[:3].unsqueeze(0).expand(n, -1)
         quat = fixed[3:].unsqueeze(0).expand(n, -1)
@@ -513,7 +523,13 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     env._prev_episode_successes[env_ids] = env._successes[env_ids]
 
     _clear_goal_trackers(env, env_ids)
-    env._lifted_object[env_ids] = False
+    env._lifted_object[env_ids] = env.cfg.reset.object_in_hand
+    # LOAD-BEARING, and it has to land HERE, after the clear above rather than
+    # in _reset_object_pose which runs earlier. keypoint_reward is gated on
+    # _lifted_object, and lifting_reward only latches it once the object rises
+    # lifting_bonus_threshold above _object_init_z. An object that starts in the
+    # hand and is never raised would leave it False forever and the keypoint
+    # reward identically zero -- a silent, total loss of training signal.
     env._successes[env_ids] = 0
 
     env._action_queue[env_ids] = 0.0

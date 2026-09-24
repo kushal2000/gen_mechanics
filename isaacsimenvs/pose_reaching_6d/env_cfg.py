@@ -25,6 +25,11 @@ class AssetsCfg:
     # Selects the RobotSpec (joint names, gains, home pose, geometry, adjacency);
     # action_space and the observation dims derive from it.
     robot_spec: str = "sharpa_iiwa14"
+    # Mount the hand on a fixed stub link instead of the iiwa14. The palm merges
+    # INTO the tip link either way (build._author_palm), so the stub keeps the
+    # name iiwa14_link_7 and the articulation simply reports no arm joints.
+    # False for every run so far -- this must never change pose reaching.
+    hand_only: bool = False
     robot_urdf: str = ""  # overrides spec.urdf_path; the joint set must still match
     # A hand_sampler.HandPopulation injected in code: every env holds one of its
     # designs, and its template spec replaces robot_spec.
@@ -95,6 +100,11 @@ class ObsCfg:
         "ee_pos", "ee_rot", "object_rot", "keypoints_rel_ee",
         "keypoints_rel_goal", "object_scales",
     )
+    # Compare object and goal keypoints about their OWN centres, making
+    # _keypoints_max_dist a pure rotation residual (still in metres, so the
+    # tolerance curriculum and every downstream reader are unaffected). False
+    # keeps the fused position+orientation metric pose reaching needs.
+    orientation_only_goal: bool = False
     clamp_abs_observations: float = 10.0
     # Where joint_link_bbox and object_keypoints_rel_joint are measured from.
     # "ee": link_7's origin, metres -- one point every design shares; the palm
@@ -150,6 +160,12 @@ class ResetCfg:
     reset_position_noise_x: float = 0.1
     reset_position_noise_y: float = 0.1
     reset_position_noise_z: float = 0.02
+    # Place the object in the palm at reset instead of above the table, and
+    # latch _lifted_object so the keypoint reward is live from step 0.
+    object_in_hand: bool = False
+    # Jitter on that in-palm placement. Small: the table-placement noise above
+    # is 0.1 m, which would put the object outside the hand entirely.
+    in_hand_position_noise: float = 0.005
     fixed_start_pose: tuple[float, float, float, float, float, float, float] | None = None
 
     # Joint state noise.
@@ -191,6 +207,10 @@ class TerminationCfg:
     # tolerance lives on the env and does not survive an rl_games checkpoint.
     resume_success_tolerance: float = 0.0
 
+    # "Dropped" as a distance from the palm rather than an absolute floor
+    # height: a fixed palm-up hand has no floor to fall below. None keeps the
+    # object_z_local < 0.1 test pose reaching uses.
+    drop_distance_m: float | None = None
     success_steps: int = 10
     max_consecutive_successes: int = 50
     force_consecutive_near_goal_steps: bool = False

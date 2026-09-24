@@ -136,8 +136,10 @@ class RobotSpec:
         """Fail loudly on a malformed spec."""
         who = f"RobotSpec({self.name!r})"
 
-        if not self.arm_joint_names:
-            raise ValueError(f"{who}: arm_joint_names is empty")
+        # arm_joint_names MAY be empty: a hand-only task mounts the hand on a
+        # fixed stub link (author_robot.stub_urdf) with no arm DOF at all.
+        # resolve_matching_names([]) returns ([], []), and the arm/hand id sets
+        # still tile the joint vector, so every downstream index path holds.
         if not self.hand_joint_names:
             raise ValueError(f"{who}: hand_joint_names is empty")
         if not self.fingertip_body_names:
@@ -215,7 +217,24 @@ __all__ = ["RobotSpec", "Vec3", "Quat"]
 
 
 
-def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
+def _arm_fields(hand_only: bool) -> dict:
+    """The arm half of a RobotSpec, or nothing at all.
+
+    ``hand_only`` mounts the hand on a fixed stub link with no arm DOF
+    (scene_utils.author_robot.stub_urdf). The names and the three arm-keyed
+    maps have to be blanked TOGETHER: ``validate`` checks each map's keys
+    against ``arm_joint_names``, so dropping only the names fails immediately.
+    """
+    if hand_only:
+        return dict(arm_joint_names=(), arm_stiffness={}, arm_damping={},
+                    arm_default_joint_pos={}, start_arm_higher_deltas={})
+    from hand_sampler import robot_param_constants as rpc   # deferred, as the factories do
+    return dict(arm_joint_names=rpc.ARM_JOINT_NAMES, arm_stiffness=rpc.ARM_STIFFNESS,
+                arm_damping=rpc.ARM_DAMPING, arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
+                start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS)
+
+
+def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "", hand_only: bool = False,
                          hand_name: str = "generated") -> RobotSpec:
     """Project a ``design_space.Hand`` onto the flat description the env reads.
 
@@ -243,16 +262,13 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "",
 
     return RobotSpec(
         name=name, arm_name=rpc.ARM_NAME, hand_name=hand_name, urdf_path=urdf_path,
-        arm_joint_names=rpc.ARM_JOINT_NAMES, hand_joint_names=tuple(names),
+        hand_joint_names=tuple(names), **_arm_fields(hand_only),
         palm_body_name=rpc.ARM_TIP_LINK, fingertip_body_names=tuple(tips),
-        arm_stiffness=rpc.ARM_STIFFNESS, arm_damping=rpc.ARM_DAMPING,
         hand_stiffness=stiffness, hand_damping=damping, hand_armature=armature,
         joint_link_bodies=tuple(f"{n.split('_j')[0]}_link{n.split('_j')[1]}" for n in names),
         joint_link_boxes=tuple(tuple(map(tuple, b)) for b in boxes),
         joint_geometry_valid=tuple(bool(v) for v in valid), hand_scale=float(scale),
-        arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
         hand_default_joint_pos={n: 0.0 for n in names},
-        start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
         palm_center_offset=build.palm_center_offset(hand),
         palm_keypoints=tuple(tuple(map(float, p)) for p in build.palm_keypoints_of(hand)),
         adjacent_links={**dict(rpc.ARM_ADJACENT_LINKS), **build.adjacent_links()},
@@ -317,7 +333,8 @@ class HandPopulation:
         }
 
 
-def population_spec(hands, *, name: str = "generated_population") -> HandPopulation:
+def population_spec(hands, *, name: str = "generated_population",
+                    hand_only: bool = False) -> HandPopulation:
     """Project many ``Hand`` trees onto one template plus per-design tables."""
     import numpy as np
 
@@ -335,14 +352,11 @@ def population_spec(hands, *, name: str = "generated_population") -> HandPopulat
     e, v, k, b, a = rpc.gen_joint_drive()
     spec = RobotSpec(
         name=name, arm_name=rpc.ARM_NAME, hand_name="generated", urdf_path="",
-        arm_joint_names=rpc.ARM_JOINT_NAMES, hand_joint_names=names,
+        hand_joint_names=names, **_arm_fields(hand_only),
         palm_body_name=rpc.ARM_TIP_LINK, fingertip_body_names=tips,
-        arm_stiffness=rpc.ARM_STIFFNESS, arm_damping=rpc.ARM_DAMPING,
         hand_stiffness={n: k for n in names}, hand_damping={n: b for n in names},
         hand_armature={n: a for n in names},
-        arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
         hand_default_joint_pos={n: 0.0 for n in names},
-        start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
         # The template's own offset is a placeholder: the palm centre depends on
         # palm.length, so it is per design and lives in the tables below.
         palm_center_offset=(0.0, 0.0, 0.0),
@@ -448,23 +462,28 @@ def is_population_ref(ref: str) -> bool:
     return is_population_name(ref) or is_population_file(ref)
 
 
-def population_from_name(name: str) -> "HandPopulation":
+def population_from_name(name: str, *, hand_only: bool = False) -> "HandPopulation":
     """Build (once) the population a ``gen_s<seed>_n<count>`` name denotes."""
     import re
 
-    if name in _POPULATION_CACHE:
-        return _POPULATION_CACHE[name]
+    # hand_only is part of the KEY: the same hands build a different spec with
+    # and without arm joints, and handing back a cached arm-bearing spec would
+    # silently restore 7 DOF the task removed.
+    key = (name, hand_only)
+    if key in _POPULATION_CACHE:
+        return _POPULATION_CACHE[key]
     m = re.fullmatch(POPULATION_NAME, name or "")
     if m is None:
         raise KeyError(f"not a population name: {name!r}")
     from hand_sampler import gen_init_pop
     seed, count = int(m.group(1)), int(m.group(2))
-    pop = population_spec(gen_init_pop.seed_population(seed, count), name=name)
-    _POPULATION_CACHE[name] = pop
+    pop = population_spec(gen_init_pop.seed_population(seed, count), name=name,
+                          hand_only=hand_only)
+    _POPULATION_CACHE[key] = pop
     return pop
 
 
-def population_from_file(path) -> "HandPopulation":
+def population_from_file(path, *, hand_only: bool = False) -> "HandPopulation":
     """Build (once) the population stored at ``path``.
 
     A NAME makes the population a function of the code: seed_population
@@ -479,23 +498,24 @@ def population_from_file(path) -> "HandPopulation":
     from pathlib import Path
 
     resolved = str(Path(path).expanduser().resolve())
-    if resolved in _POPULATION_CACHE:
-        return _POPULATION_CACHE[resolved]
+    key = (resolved, hand_only)   # see population_from_name on why hand_only keys
+    if key in _POPULATION_CACHE:
+        return _POPULATION_CACHE[key]
     if not Path(resolved).is_file():
         raise FileNotFoundError(
             f"no population file at {path!r}. Write one with\n"
             f"    python -m hand_sampler.population_io <gen_s<seed>_n<count>> --out {path}")
     from hand_sampler import population_io
     hands = population_io.load_population(resolved)
-    pop = population_spec(hands, name=Path(resolved).stem)
-    _POPULATION_CACHE[resolved] = pop
+    pop = population_spec(hands, name=Path(resolved).stem, hand_only=hand_only)
+    _POPULATION_CACHE[key] = pop
     return pop
 
 
-def population_from_ref(ref: str) -> "HandPopulation":
+def population_from_ref(ref: str, *, hand_only: bool = False) -> "HandPopulation":
     """A population from either form of reference."""
-    return (population_from_file(ref) if is_population_file(ref)
-            else population_from_name(ref))
+    return (population_from_file(ref, hand_only=hand_only) if is_population_file(ref)
+            else population_from_name(ref, hand_only=hand_only))
 
 
 def object_index(n_envs: int, n_pool: int, mode: str = "env_modulo", *, rank: int = 0,

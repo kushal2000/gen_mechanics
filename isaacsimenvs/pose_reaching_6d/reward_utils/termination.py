@@ -51,8 +51,15 @@ def compute_terminations(env) -> tuple[torch.Tensor, torch.Tensor]:
         env.episode_length_buf[goal_reset_ids] = 0
 
     # Termination causes.
-    object_z_local = env.object.data.root_pos_w[:, 2] - env_origins[:, 2]
-    fall = object_z_local < 0.1
+    if term_cfg.drop_distance_m is not None:
+        # A fixed palm-up hand has no floor to fall below, so "dropped" is a
+        # distance from the palm: the object has left the hand. Measured to the
+        # palm BODY (link_7 / the stub), the one frame every design shares.
+        palm_pos = env.robot.data.body_state_w[:, env._palm_body_id, 0:3]
+        fall = torch.norm(env.object.data.root_pos_w - palm_pos, dim=-1) > term_cfg.drop_distance_m
+    else:
+        object_z_local = env.object.data.root_pos_w[:, 2] - env_origins[:, 2]
+        fall = object_z_local < 0.1
 
     if term_cfg.max_consecutive_successes > 0:
         max_successes_reached = env._successes >= term_cfg.max_consecutive_successes
