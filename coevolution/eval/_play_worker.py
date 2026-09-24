@@ -183,7 +183,15 @@ def main() -> None:
 
                 origins = inner.scene.env_origins
                 send(kind="frame",
-                     joint_pos=inner.robot.data.joint_pos.detach().cpu().numpy().tolist(),
+                     # CANONICAL order. robot.data.joint_pos is in Isaac Lab's
+                     # parser order, which INTERLEAVES the hand joints relative
+                     # to canonical (SHARPA lands as 7, 12, 17, 22, 27, 8, ...).
+                     # The parent zips these against joint_names_canonical, so
+                     # sending Lab order gives every joint another joint's angle
+                     # -- the whole hand animates wrongly, and a finger whose
+                     # stand-in value barely moves looks frozen.
+                     joint_pos=inner.robot.data.joint_pos[:, inner._perm_lab_to_canon]
+                                    .detach().cpu().numpy().tolist(),
                      object_pos=(inner.object.data.root_pos_w - origins).cpu().numpy().tolist(),
                      object_quat=inner.object.data.root_quat_w.cpu().numpy().tolist(),
                      goal_pos=(inner.goal_viz.data.root_pos_w - origins).cpu().numpy().tolist(),
