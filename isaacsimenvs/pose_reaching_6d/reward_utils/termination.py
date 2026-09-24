@@ -53,10 +53,15 @@ def compute_terminations(env) -> tuple[torch.Tensor, torch.Tensor]:
     # Termination causes.
     if term_cfg.drop_distance_m is not None:
         # A fixed palm-up hand has no floor to fall below, so "dropped" is a
-        # distance from the palm: the object has left the hand. Measured to the
-        # palm BODY (link_7 / the stub), the one frame every design shares.
-        palm_pos = env.robot.data.body_state_w[:, env._palm_body_id, 0:3]
-        fall = torch.norm(env.object.data.root_pos_w - palm_pos, dim=-1) > term_cfg.drop_distance_m
+        # distance from the hand. Measured to the palm CENTRE, not link_7's
+        # origin: the two differ by 0.095 + palm_length/2, which VARIES PER
+        # DESIGN, so a body-relative threshold would give a long-palmed hand
+        # less slack than a short one and bias the per-design return that
+        # co-evolution selects on. _palm_center_pos_w is set by
+        # compute_intermediate_values, which runs first in _get_dones.
+        fall = torch.norm(
+            env.object.data.root_pos_w - env._palm_center_pos_w, dim=-1
+        ) > term_cfg.drop_distance_m
     else:
         object_z_local = env.object.data.root_pos_w[:, 2] - env_origins[:, 2]
         fall = object_z_local < 0.1

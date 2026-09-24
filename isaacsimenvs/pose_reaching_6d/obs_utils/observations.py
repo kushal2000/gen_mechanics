@@ -208,6 +208,15 @@ def compute_intermediate_values(env) -> None:
     goal_pos = env.goal_viz.data.root_pos_w - env_origins
     goal_rot = env.goal_viz.data.root_quat_w
 
+    # The palm CENTRE in world, for anything that needs a per-design-fair
+    # reference to the hand. link_7's own origin sits palm_center_offset away
+    # (0.095 + palm_length/2), so measuring to the body instead would make a
+    # threshold mean something different for a long palm than a short one --
+    # exactly the per-design bias palm_center_offset exists to remove.
+    _palm = env.robot.data.body_state_w[:, env._palm_body_id, :]
+    env._palm_center_pos_w = _apply_local_offset(
+        _palm[:, 0:3], _palm[:, 3:7], env._palm_center_offset, (env.num_envs,))
+
     ft_state = env.robot.data.body_state_w[:, env._fingertip_body_ids, :]
     ft_pos = ft_state[:, :, 0:3] - env_origins.unsqueeze(1)
     env._curr_fingertip_distances = torch.norm(
@@ -402,12 +411,27 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         keypoints_rel_ee_clean if object_is_clean
         else _rotate_into(palm_rot, noisy_obj_kp - palm_pos_w.unsqueeze(1))
     )
-    keypoints_rel_goal_clean = obj_kp - goal_kp
-    keypoints_rel_goal_noisy = (
-        keypoints_rel_goal_clean
-        if object_is_clean and noisy_goal_kp is goal_kp
-        else noisy_obj_kp - noisy_goal_kp
-    )
+    # keypoints_rel_goal is the ONLY field carrying the goal, so it has to be
+    # referred to the same frame the reward scores. Under orientation_only_goal
+    # the reward ignores where the object sits, and leaving the raw difference
+    # here would hand the policy a position error it is never graded on -- a
+    # real confounder, not a cosmetic one. Centring both sets leaves the pure
+    # rotation residual, matching compute_intermediate_values exactly.
+    if env.cfg.obs.orientation_only_goal:
+        _obj_c, _goal_c = obj_pos.unsqueeze(1), goal_pos.unsqueeze(1)
+        keypoints_rel_goal_clean = (obj_kp - _obj_c) - (goal_kp - _goal_c)
+        keypoints_rel_goal_noisy = (
+            keypoints_rel_goal_clean
+            if object_is_clean and noisy_goal_kp is goal_kp
+            else (noisy_obj_kp - noisy_obj_pos.unsqueeze(1)) - (noisy_goal_kp - _goal_c)
+        )
+    else:
+        keypoints_rel_goal_clean = obj_kp - goal_kp
+        keypoints_rel_goal_noisy = (
+            keypoints_rel_goal_clean
+            if object_is_clean and noisy_goal_kp is goal_kp
+            else noisy_obj_kp - noisy_goal_kp
+        )
 
     joint_link_bbox, joint_origins, joint_geometry_valid = (
         _joint_link_geometry_obs(env, geometry_origin_w, palm_rot, env_origins, geometry_scale)

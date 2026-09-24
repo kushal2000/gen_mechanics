@@ -77,16 +77,11 @@ def _resolve_spec(cfg):
     if population is None:
         from hand_sampler.robot_spec import is_population_ref, population_from_ref
         if is_population_ref(cfg.assets.robot_spec):
-            population = population_from_ref(
-                cfg.assets.robot_spec,
-                hand_only=bool(getattr(cfg.assets, "hand_only", False)))
+            # "handonly:" on the front selects the stub mount. It rides on the
+            # reference so the network resolves the same spec -- see
+            # hand_sampler.robot_spec.HANDONLY_PREFIX.
+            population = population_from_ref(cfg.assets.robot_spec)
     if population is None:
-        if getattr(cfg.assets, "hand_only", False):
-            raise ValueError(
-                "assets.hand_only needs a population reference: the fixed-robot "
-                "path converts a whole URDF including its arm, so there is no "
-                "stub to mount. Point assets.robot_spec at a population .json "
-                "(one design is a population of one).")
         return None, get_robot_spec(cfg.assets.robot_spec)
     return population, population.spec
 
@@ -108,24 +103,37 @@ def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False) -> Art
             joint_vel={".*": 0.0},
         ),
         # Keyed by joint name.
-        actuators={
-            "arm": ImplicitActuatorCfg(
-                joint_names_expr=list(spec.arm_joint_names),
-                stiffness=dict(spec.arm_stiffness),
-                damping=dict(spec.arm_damping),
-                friction=0.0,
-            ),
-            "hand": ImplicitActuatorCfg(
-                joint_names_expr=list(spec.hand_joint_names),
-                stiffness=dict(spec.hand_stiffness),
-                damping=dict(spec.hand_damping),
-                armature=dict(spec.hand_armature),
-                # Zero everywhere, deliberately. 0.0 rather than None: None
-                # takes whatever the USD carries, which is not uniformity.
-                friction=0.0,
-            ),
-        },
+        actuators=_actuator_groups(spec),
     )
+
+
+def _actuator_groups(spec) -> dict:
+    """Actuator groups, keyed by joint name.
+
+    The arm group is OMITTED when the spec has no arm joints: Isaac Lab raises
+    "No joints found for actuator group: arm" (articulation.py:1725) on a group
+    whose expression matches nothing, so a hand-only robot cannot carry an empty
+    one. With an arm present this builds exactly the dict it always did.
+    """
+    groups = {
+        "hand": ImplicitActuatorCfg(
+            joint_names_expr=list(spec.hand_joint_names),
+            stiffness=dict(spec.hand_stiffness),
+            damping=dict(spec.hand_damping),
+            armature=dict(spec.hand_armature),
+            # Zero everywhere, deliberately. 0.0 rather than None: None takes
+            # whatever the USD carries, which is not uniformity.
+            friction=0.0,
+        ),
+    }
+    if spec.arm_joint_names:
+        groups["arm"] = ImplicitActuatorCfg(
+            joint_names_expr=list(spec.arm_joint_names),
+            stiffness=dict(spec.arm_stiffness),
+            damping=dict(spec.arm_damping),
+            friction=0.0,
+        )
+    return groups
 
 
 def build_rigid_object_cfg(prim_path: str, usd_path: str, props: dict) -> RigidObjectCfg:
@@ -331,7 +339,9 @@ def _author_robots_into_envs(env, spec, population, design_idx, asset_dir: Path,
             spec, env.cfg.assets.robot_urdf or spec.urdf_path, asset_dir / "usd", offsets)
         _log_scene_step(t0, "converted the robot")
     else:
-        hand_only = bool(getattr(env.cfg.assets, "hand_only", False))
+        # The spec is the single source of truth: no arm joints means the hand
+        # mounts on the stub. Nothing else can disagree with it.
+        hand_only = spec.num_arm_joints == 0
         arm_usd, arm_root, link7_world, link7_mass = _convert_arm(
             asset_dir, offsets, hand_only=hand_only)
         _log_scene_step(t0, f"converted the shared {'tip stub' if hand_only else 'arm'} once")

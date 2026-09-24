@@ -31,7 +31,10 @@ class InHandReorientEnvCfg(PoseReachEnvCfg):
             super().__post_init__()
 
         # --- hand-only mount -------------------------------------------------
-        self.assets.hand_only = True
+        # Selected by a "handonly:" prefix on assets.robot_spec, NOT set here:
+        # the agent YAML interpolates the network's spec from that same string,
+        # so a separate flag would let the policy and the articulation disagree
+        # about the joint count. See hand_sampler.robot_spec.HANDONLY_PREFIX.
         # No arm reach to clear, so envs pack far tighter.
         self.scene.env_spacing = 0.6
 

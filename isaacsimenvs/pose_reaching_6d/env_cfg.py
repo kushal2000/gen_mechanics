@@ -25,11 +25,6 @@ class AssetsCfg:
     # Selects the RobotSpec (joint names, gains, home pose, geometry, adjacency);
     # action_space and the observation dims derive from it.
     robot_spec: str = "sharpa_iiwa14"
-    # Mount the hand on a fixed stub link instead of the iiwa14. The palm merges
-    # INTO the tip link either way (build._author_palm), so the stub keeps the
-    # name iiwa14_link_7 and the articulation simply reports no arm joints.
-    # False for every run so far -- this must never change pose reaching.
-    hand_only: bool = False
     robot_urdf: str = ""  # overrides spec.urdf_path; the joint set must still match
     # A hand_sampler.HandPopulation injected in code: every env holds one of its
     # designs, and its template spec replaces robot_spec.

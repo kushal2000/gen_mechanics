@@ -453,13 +453,31 @@ def is_population_name(name: str) -> bool:
     return re.fullmatch(POPULATION_NAME, name or "") is not None
 
 
+# A hand-only robot is selected by PREFIXING the population reference, not by a
+# separate config flag. The agent YAML interpolates the network's spec straight
+# from env.assets.robot_spec (joint_transformer resolves it through
+# get_robot_spec -> population_from_ref), so a second knob would let the policy
+# build itself for 37 joints while the articulation has 30. One string, one
+# answer, for the env and the network alike.
+HANDONLY_PREFIX = "handonly:"
+
+
+def split_handonly(ref: str) -> tuple[str, bool]:
+    """``(bare reference, hand_only)``."""
+    if ref and ref.startswith(HANDONLY_PREFIX):
+        return ref[len(HANDONLY_PREFIX):], True
+    return ref, False
+
+
 def is_population_file(ref: str) -> bool:
     """A reference that names a FILE rather than a seed and a count."""
-    return bool(ref) and ref.endswith(".json")
+    bare, _ = split_handonly(ref)
+    return bool(bare) and bare.endswith(".json")
 
 
 def is_population_ref(ref: str) -> bool:
-    return is_population_name(ref) or is_population_file(ref)
+    bare, _ = split_handonly(ref)
+    return is_population_name(bare) or is_population_file(bare)
 
 
 def population_from_name(name: str, *, hand_only: bool = False) -> "HandPopulation":
@@ -512,10 +530,16 @@ def population_from_file(path, *, hand_only: bool = False) -> "HandPopulation":
     return pop
 
 
-def population_from_ref(ref: str, *, hand_only: bool = False) -> "HandPopulation":
-    """A population from either form of reference."""
-    return (population_from_file(ref, hand_only=hand_only) if is_population_file(ref)
-            else population_from_name(ref, hand_only=hand_only))
+def population_from_ref(ref: str) -> "HandPopulation":
+    """A population from either form of reference.
+
+    ``handonly:`` on the front mounts the hand on a fixed stub link with no arm
+    joints. It rides on the reference so the network resolves the same spec the
+    env does -- see HANDONLY_PREFIX.
+    """
+    bare, hand_only = split_handonly(ref)
+    return (population_from_file(bare, hand_only=hand_only) if is_population_file(bare)
+            else population_from_name(bare, hand_only=hand_only))
 
 
 def object_index(n_envs: int, n_pool: int, mode: str = "env_modulo", *, rank: int = 0,

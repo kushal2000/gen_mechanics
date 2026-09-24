@@ -60,11 +60,12 @@ scene:
 # 3) assets — URDFs, procedural-generation knobs, static per-material frictions
 # -----------------------------------------------------------------------------
 assets:
-  # Mount the hand on a fixed stub link named iiwa14_link_7 instead of the
-  # 7-DOF iiwa14. The palm merges into that link either way, so the hand, its
-  # joint names and the palm merge are untouched -- there are simply no arm
-  # joints, and action_space drops from 37 to 30.
-  hand_only: true
+  # NOTE: the hand-only mount is NOT a field here. It rides on the robot
+  # reference as a "handonly:" prefix --
+  #     ROBOT_SPEC=handonly:/path/to/population.json
+  # because the agent YAML interpolates the network's spec from
+  # env.assets.robot_spec, and a second knob would let the policy build itself
+  # for 37 joints while the articulation has 30. One string, one answer.
   # The robot knob. Everything hardware-specific (joint names and order, PD
   # gains, home pose, palm/fingertip geometry, self-collision adjacency, action
   # dim) comes from this spec -- see isaacsimenvs/pose_reaching_6d/scene_utils/robots/. Override on the CLI with
