@@ -144,7 +144,17 @@ reward:
   reach_goal_bonus: 1000.0
 
   kuka_actions_penalty_scale: 0.03
-  hand_actions_penalty_scale: 0.003
+  # 0.0003, not the transport task's 0.003. MEASURED: at 0.003 the velocity
+  # penalty came to about -28 per episode against +8 of keypoint progress, so
+  # holding still beat manipulating -- every episode ended by timeout, nothing
+  # was ever dropped (done_fall 0.0003) and 63 goals landed in 544k episodes.
+  # That value was set when the keypoint reward spanned METRES; the centred
+  # rotation residual spans 0..117 mm. IsaacLab's inhand task uses 2.5e-5 for
+  # the same term, so even 0.0003 stays an order of magnitude above it.
+  #
+  # Note kuka_actions_penalty_scale contributes exactly 0 here -- there are no
+  # arm joints -- so this is the only regularizer, unopposed.
+  hand_actions_penalty_scale: 0.0003
 
 # -----------------------------------------------------------------------------
 # 6) reset — initial-state distribution + goal sampling

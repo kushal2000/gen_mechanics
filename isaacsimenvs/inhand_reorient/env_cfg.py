@@ -69,6 +69,9 @@ class InHandReorientEnvCfg(PoseReachEnvCfg):
         self.reward.lifting_bonus = 0.0
         self.reward.distance_delta_rew_scale = 0.0
         self.reward.keypoint_rew_scale = 2000.0
+        # Measured at 0.003: velocity penalty ~-28/episode against +8 of
+        # keypoint progress, so the policy froze. See the task YAML.
+        self.reward.hand_actions_penalty_scale = 0.0003
 
         # --- goals: uniform SO(3); position is not scored, only drawn ---------
         self.reset.goal_sampling_type = "absolute"
