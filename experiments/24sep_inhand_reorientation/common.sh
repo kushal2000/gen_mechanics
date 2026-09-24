@@ -18,7 +18,15 @@ export GLOBAL_MINIBATCH="${GLOBAL_MINIBATCH:-114688}"
 export SEED="${SEED:-100}"
 export PHASE=train
 export TASK="${TASK:-GenMech-InHandReorient-Direct-v0}"
-export WANDB_ACTIVATE="${WANDB_ACTIVATE:-1}" WANDB_MODE=online CAPTURE_VIEWER="${CAPTURE_VIEWER:-1}"
+# Viewer OFF, unlike 17sep. pose_viewer._graft_hand_onto_arm hangs the hand off
+# the arm's flange and plays back frames rooted at iiwa14_link_0, expecting 37
+# joint names -- its own docstring says a hand-only URDF "draws the fingers at
+# the base of the arm". With no arm there is nothing to graft onto, so it would
+# render a wrong picture rather than fail loudly. Teaching it to root at
+# iiwa14_link_7 is a follow-up; GENMECH_KEEP_VISUALS=1 with --capture_video
+# works meanwhile, because the authored palm box and finger capsules are
+# renderable gprims on their own.
+export WANDB_ACTIVATE="${WANDB_ACTIVATE:-1}" WANDB_MODE=online CAPTURE_VIEWER="${CAPTURE_VIEWER:-0}"
 export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
 export DESIGN_REWARDS=1                                   # per-design returns; selection and the tolerance hand-off read them
 export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-$REPO/debug_outputs/train_logs/24sep_inhand_reorientation}"
