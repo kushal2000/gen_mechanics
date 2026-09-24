@@ -186,6 +186,9 @@ def _graft_hand_onto_arm(hand_urdf_text: str, arm_urdf_path: Path) -> str:
     the fingers at the base of the arm, and its joint names cover 30 of the 37
     the trajectory carries, so the viewer stops at ``iiwa14_joint_1`` before
     drawing anything at all.
+
+    None of which applies to a robot with NO arm: there the articulation root
+    already IS the flange, so the caller skips this entirely.
     """
     arm = _arm_chain_root(arm_urdf_path)
     hand = ET.fromstring(hand_urdf_text)
@@ -222,6 +225,15 @@ def _generated_robot_urdf_text(env, env_id: int) -> str | None:
         hand_urdf_text = build.urdf_for_viewing(
             population.hands[idx], Path(tmp) / "d.urdf"
         ).read_text(encoding="utf-8")
+    # A hand-only robot IS the hand: urdf_for_viewing is already rooted at
+    # ARM_TIP_LINK, the stub carries that link at the articulation root with an
+    # identity transform (verified on the converted stage), and
+    # joint_names_canonical is exactly the hand slots the URDF declares. So the
+    # graft -- which exists to place a hand against an arm's flange and pad the
+    # trajectory's arm joints -- has nothing to do, and doing it anyway would
+    # draw an arm that is not in the scene.
+    if population.spec.num_arm_joints == 0:
+        return hand_urdf_text
     return _graft_hand_onto_arm(hand_urdf_text, ARM_URDF_PATH)
 
 

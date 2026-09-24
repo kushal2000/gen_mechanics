@@ -252,6 +252,14 @@ def main() -> None:
                 }
             )
             observers.append(WandbAlgoObserver(wandb_cfg))
+            if args_cli.capture_video:
+                # Otherwise the recorded mp4s only ever exist on the node.
+                from pathlib import Path as _Path
+
+                from coevolution.utils.rlgames_utils import VideoToWandbObserver
+
+                observers.append(
+                    VideoToWandbObserver(_Path(hydra_run_dir) / "videos"))
 
         runner = Runner(MultiObserver(observers))
         # Co-locate rl_games artifacts (checkpoints, summaries) with the Hydra

@@ -417,3 +417,51 @@ def teacher_env_info(wrapped) -> dict:
         "agents": 1,
         "value_size": 1,
     }
+
+
+class VideoToWandbObserver(AlgoObserver):
+    """Upload Isaac's recorded videos to wandb as they appear.
+
+    ``gym.wrappers.RecordVideo`` writes mp4s into ``<run_dir>/videos`` and
+    nothing ever looks at them again, so a run's only visual evidence sits on a
+    compute node. This watches that folder and logs each NEW file once.
+
+    It exists because the pose viewer cannot serve a hand-only robot -- it
+    grafts a design onto the arm's flange and plays back frames rooted at
+    ``iiwa14_link_0`` -- while the RTX render works for any robot, meshes or
+    not. It is also the stronger artefact of the two: the viewer draws what the
+    design SAYS, this draws what the simulator actually built.
+
+    Failure here must never take training down, so every step is guarded: a
+    missing wandb, an unwritable file, a half-flushed mp4.
+    """
+
+    def __init__(self, video_dir, key: str = "video"):
+        super().__init__()
+        from pathlib import Path
+
+        self.video_dir = Path(video_dir)
+        self.key = key
+        self._seen: set[str] = set()
+
+    def after_print_stats(self, frame, epoch_num, total_time):
+        try:
+            import wandb
+
+            if wandb.run is None or not self.video_dir.is_dir():
+                return
+            for p in sorted(self.video_dir.glob("*.mp4")):
+                if p.name in self._seen or p.stat().st_size == 0:
+                    continue
+                # RecordVideo closes the file before moving on, but a capture
+                # still in progress would upload as a truncated clip; skip
+                # anything touched in the last few seconds.
+                import time
+
+                if time.time() - p.stat().st_mtime < 5.0:
+                    continue
+                wandb.log({self.key: wandb.Video(str(p), format="mp4")}, step=frame)
+                self._seen.add(p.name)
+                print(f"[video] uploaded {p.name} to wandb", flush=True)
+        except Exception as exc:                      # never break training
+            print(f"[video] upload skipped: {type(exc).__name__}: {exc}", flush=True)

@@ -7,7 +7,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #SBATCH --signal=B:USR1@900
 #SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/24sep_inhand_reorientation/imitation-%j.log
 #SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/24sep_inhand_reorientation/imitation-%j.err

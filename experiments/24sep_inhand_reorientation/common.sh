@@ -13,26 +13,24 @@
 
 REPO=/share/portal/kk837/gen_mechanics
 export D_MODEL="${D_MODEL:-64}" TRANSFORMER_LAYERS="${TRANSFORMER_LAYERS:-4}"
-export NUM_ENVS_PER_GPU="${NUM_ENVS_PER_GPU:-12288}"     # x2 GPUs = 24576 envs = 24 per design at 1024
+# ONE gpu, all 24576 envs on it. The hand-only robot drops 7 arm joints and 7
+# large arm links per env against pose reaching, which is what makes this fit
+# where the arm version OOMed. GPUS is set HERE rather than at submit time
+# because the link chaining's --export does not carry it, so a second link
+# would otherwise revert to two.
+export GPUS="${GPUS:-1}"
+export NUM_ENVS_PER_GPU="${NUM_ENVS_PER_GPU:-24576}"
 export GLOBAL_MINIBATCH="${GLOBAL_MINIBATCH:-114688}"
 export SEED="${SEED:-100}"
 export PHASE=train
 export TASK="${TASK:-GenMech-InHandReorient-Direct-v0}"
-# Viewer OFF, unlike 17sep. pose_viewer._graft_hand_onto_arm hangs the hand off
-# the arm's flange and plays back frames rooted at iiwa14_link_0, expecting 37
-# joint names -- its own docstring says a hand-only URDF "draws the fingers at
-# the base of the arm". With no arm there is nothing to graft onto, so it would
-# render a wrong picture rather than fail loudly. Teaching it to root at
-# iiwa14_link_7 is a follow-up; GENMECH_KEEP_VISUALS=1 with --capture_video
-# works meanwhile, because the authored palm box and finger capsules are
-# renderable gprims on their own.
-export WANDB_ACTIVATE="${WANDB_ACTIVATE:-1}" WANDB_MODE=online CAPTURE_VIEWER="${CAPTURE_VIEWER:-0}"
-# Isaac's own RTX render IS usable hand-only -- the authored palm box and finger
-# capsules are renderable gprims, no meshes required -- and it draws what the
-# simulator actually built rather than what the design says. On by default while
-# this task is new. Set here rather than passed at submit time so it survives
-# the link chaining, whose --export does not carry it. Frames land in
-# <run_dir>/videos; nothing uploads them to wandb.
+# Viewer ON: pose_viewer now serves a hand-only robot. urdf_for_viewing is
+# already rooted at ARM_TIP_LINK, the stub carries that link at the articulation
+# root with an identity transform, and joint_names_canonical is exactly the 30
+# hand slots the URDF declares -- so the arm graft is skipped rather than
+# drawing an arm that is not in the scene. (With an arm it is still needed: the
+# trajectory animates 37 joints against a 30-joint URDF.)
+export WANDB_ACTIVATE="${WANDB_ACTIVATE:-1}" WANDB_MODE=online CAPTURE_VIEWER="${CAPTURE_VIEWER:-1}"
 export CAPTURE_VIDEO="${CAPTURE_VIDEO:-1}"
 # Its own project: this task shares no metric scale with pose reaching -- the
 # return is a rotation residual, not a reach -- so mixing them in one project
