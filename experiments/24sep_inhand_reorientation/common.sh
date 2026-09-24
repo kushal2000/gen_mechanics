@@ -31,7 +31,14 @@ export TASK="${TASK:-GenMech-InHandReorient-Direct-v0}"
 # drawing an arm that is not in the scene. (With an arm it is still needed: the
 # trajectory animates 37 joints against a 30-joint URDF.)
 export WANDB_ACTIVATE="${WANDB_ACTIVATE:-1}" WANDB_MODE=online CAPTURE_VIEWER="${CAPTURE_VIEWER:-1}"
-export CAPTURE_VIDEO="${CAPTURE_VIDEO:-1}"
+export CAPTURE_VIDEO="${CAPTURE_VIDEO:-0}"
+# How often the INTERACTIVE pose viewer captures, in epochs. run_rank.sh
+# defaults to 6000, which suits a 15000-epoch pose-reaching link and means a
+# brand-new task shows nothing for hours. 250 puts a viewer on wandb within the
+# first few minutes of training, which is when it is most worth looking at.
+# CAPTURE_VIEWER_LEN stays at the default 600 frames: shorter and the capture
+# ends mid-episode.
+export CAPTURE_VIEWER_INTERVAL="${CAPTURE_VIEWER_INTERVAL:-250}"
 # Its own project: this task shares no metric scale with pose reaching -- the
 # return is a rotation residual, not a reach -- so mixing them in one project
 # makes every cross-run chart misleading.

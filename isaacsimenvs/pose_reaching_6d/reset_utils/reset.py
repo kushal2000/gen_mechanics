@@ -6,7 +6,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from isaaclab.utils.math import random_orientation
+from isaaclab.utils.math import quat_apply, random_orientation
 
 from ..obs_utils import sample_log_uniform
 from .goal_sampling import sample_absolute_goal_pose, sample_delta_goal_pose
@@ -422,14 +422,39 @@ def _reset_object_pose(env, env_ids: torch.Tensor) -> None:
     env_origins = env.scene.env_origins[env_ids]
 
     if cfg.object_in_hand:
-        # In-hand tasks start holding the object, so it is placed at the PALM
-        # rather than above the table -- which also makes the placement follow
-        # the design, since the palm centre offset is per-design.
-        palm_w = env.robot.data.body_state_w[env_ids][:, env._palm_body_id, 0:3]
-        pos_local = palm_w - env_origins + env._palm_center_offset[env_ids]
+        # ON the palm's outer face, not at the palm's centre -- the centre is
+        # inside the slab, and an object spawned there starts interpenetrating.
+        #
+        # palm_center_offset is expressed in link_7's frame, so it has to be
+        # ROTATED before it is added: adding it to the world position treats a
+        # local offset as a world one, which with a palm-up base rotation puts
+        # the object nowhere near the hand. _apply_local_offset is what every
+        # other site uses for exactly this.
+        from isaacsimenvs.pose_reaching_6d.obs_utils.observations import _apply_local_offset
+
+        palm_state = env.robot.data.body_state_w[env_ids][:, env._palm_body_id, :]
+        palm_pos_w, palm_quat = palm_state[:, 0:3], palm_state[:, 3:7]
+        centre_w = _apply_local_offset(
+            palm_pos_w, palm_quat, env._palm_center_offset[env_ids], (n,))
+
+        # build.palm_keypoints lays the slab out as [p0, p0+thickness,
+        # p0+width, p0+length] in link_7's frame, so keypoint 1 minus keypoint 0
+        # IS the thickness edge: the grasp normal and the per-design half
+        # thickness in one, with nothing new to plumb through HandPopulation.
+        kp = env._palm_keypoints_local[env_ids]
+        edge = kp[:, 1] - kp[:, 0]
+        half_thickness = 0.5 * torch.norm(edge, dim=-1, keepdim=True)
+        normal_w = quat_apply(palm_quat, edge / torch.norm(edge, dim=-1, keepdim=True))
+
+        half_object = 0.5 * float(max(env.cfg.reward.fixed_size))
+        lift = half_thickness + half_object + cfg.in_hand_clearance
+        pos_local = centre_w + normal_w * lift - env_origins
+
+        # Jitter ACROSS the palm, not through it: displacing along the normal
+        # would bury the object in the slab or drop it from a height.
         noise = torch.empty(n, 3, device=env.device).uniform_(-1.0, 1.0)
-        pos_local = pos_local + noise * torch.as_tensor(
-            (cfg.in_hand_position_noise,) * 3, device=env.device, dtype=torch.float32)
+        noise = noise - normal_w * (noise * normal_w).sum(-1, keepdim=True)
+        pos_local = pos_local + noise * cfg.in_hand_position_noise
         quat = random_orientation(n, device=env.device)
     elif cfg.fixed_start_pose is not None:
         fixed = torch.as_tensor(cfg.fixed_start_pose, device=env.device, dtype=torch.float32)

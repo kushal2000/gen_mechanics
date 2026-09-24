@@ -161,6 +161,10 @@ class ResetCfg:
     # Jitter on that in-palm placement. Small: the table-placement noise above
     # is 0.1 m, which would put the object outside the hand entirely.
     in_hand_position_noise: float = 0.005
+    # Gap between the palm face and the object at reset. A few mm is under two
+    # policy steps of free fall, so no settle phase is needed, and it keeps the
+    # object from starting in contact with a finger it is meant to be caged by.
+    in_hand_clearance: float = 0.003
     fixed_start_pose: tuple[float, float, float, float, float, float, float] | None = None
 
     # Joint state noise.
