@@ -113,9 +113,14 @@ git diff > "$SCALING_RUN_DIR/worktree.patch"
 # and hashes; given as a gen_s<seed>_n<count> NAME it is a function of the code,
 # so the commit above is the only record and two runs sharing a name across a
 # sampler change are different populations with nothing saying so.
-if [[ "$ROBOT_SPEC" == *.json ]]; then
-    [[ -f "$ROBOT_SPEC" ]] || { echo "ROBOT_SPEC file not found: $ROBOT_SPEC"; exit 1; }
-    sha256sum "$ROBOT_SPEC" > "$SCALING_RUN_DIR/population.sha256"
+# A "handonly:" prefix selects the arm-free mount and rides on the reference so
+# the network resolves the same spec the env does. It is not part of the PATH,
+# so strip it before touching the filesystem -- hashing the population is the
+# point of this block and it must hash the file, not the decorated string.
+ROBOT_SPEC_PATH="${ROBOT_SPEC#handonly:}"
+if [[ "$ROBOT_SPEC_PATH" == *.json ]]; then
+    [[ -f "$ROBOT_SPEC_PATH" ]] || { echo "ROBOT_SPEC file not found: $ROBOT_SPEC_PATH"; exit 1; }
+    sha256sum "$ROBOT_SPEC_PATH" > "$SCALING_RUN_DIR/population.sha256"
     echo "Population: $ROBOT_SPEC ($(cut -c1-12 < "$SCALING_RUN_DIR/population.sha256"))"
 else
     echo "Population: $ROBOT_SPEC (sampled from the name; pinned only by git_commit.txt)" \
