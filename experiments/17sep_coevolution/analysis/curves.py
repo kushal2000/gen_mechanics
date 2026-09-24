@@ -33,6 +33,29 @@ def _curves(events: str):
     np.savez(f, reward=r, tol=t); return r, t
 
 
+def scalar(job: str, tag: str) -> np.ndarray:
+    """One named tensorboard scalar from one run, cached on (events, tag)."""
+    ev = pathlib.Path(_events(job))
+    f = CACHE / (hashlib.md5(f"{ev}:{ev.stat().st_mtime_ns}:{tag}".encode()).hexdigest() + ".npy")
+    if f.exists():
+        return np.load(f)
+    from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+    a = EventAccumulator(str(ev), size_guidance={"scalars": 0}); a.Reload()
+    v = np.array([x.value for x in a.Scalars(tag)]) if tag in a.Tags()["scalars"] else np.array([])
+    np.save(f, v); return v
+
+
+def generation_jobs(label: str) -> dict:
+    """``{generation: job id}`` for a co-evolution arm."""
+    P = ROOT / "assets/populations" / label
+    out = {}
+    for d in sorted(P.glob("gen_*"), key=lambda p: int(p.name.split("_")[1])):
+        j = d / "job_id.txt"
+        if j.exists():
+            out[int(d.name.split("_")[1])] = j.read_text().strip()
+    return out
+
+
 def _events(job: str, root: pathlib.Path = LOGS):
     ev = sorted(glob.glob(f"{root}/*_{job}_*/rank_0/*/summaries/events*"))
     return ev[-1] if ev else None

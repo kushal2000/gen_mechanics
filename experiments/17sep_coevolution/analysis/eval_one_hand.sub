@@ -1,0 +1,32 @@
+#!/bin/bash
+#SBATCH --job-name=one_hand
+#SBATCH --nodes=1 --ntasks=1 --cpus-per-task=4 --mem=64000
+#SBATCH --time=01:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/gen_sharpa_eval/one_hand-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/gen_sharpa_eval/one_hand-%j.err
+# GENS is COLON separated: sbatch --export splits its value on commas, so a
+# comma-separated list arrives as GENS=0 plus a handful of stray variable names.
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+mkdir -p debug_outputs/train_logs/gen_sharpa_eval
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_CACHE_PATH="${SLURM_TMPDIR:-/tmp}/${USER}_onehand_${SLURM_JOB_ID:-local}"; mkdir -p "$OMNI_KIT_CACHE_PATH"
+python -u experiments/17sep_coevolution/analysis/eval_one_hand.py --headless \
+    --population "${POPULATION:?}" --label "${LABEL:-coevolution_v2_gen2k}" \
+    --steps "${STEPS:-1200}" --warmup "${WARMUP:-0}" --window "${WINDOW:-0}" --expl_coef "${EXPL_COEF:-50}" --tolerance "${TOLERANCE:-own}" ${GENS:+--gens "${GENS//:/,}"} \
+    env.scene.num_envs="${NUM_ENVS:-480}" \
+    'env.obs.obs_list=${env.obs.state_list}' \
+    `# the objects the policy trained on. These live in common.sh and reach the` \
+    `# trainer through run_rank.sh; this script calls the env directly, so without` \
+    `# them it silently falls back to the dataclass defaults -- the random 1200` \
+    `# pool with env_modulo, a different task from the one being evaluated.` \
+    env.assets.object_pool="${OBJECT_POOL:-diverse24}" \
+    env.assets.object_assignment="${OBJECT_ASSIGNMENT:-design_cycle}" \
+    env.action.arm_moving_average=1.0 env.action.hand_moving_average=1.0 \
+    env.domain_randomization.use_obs_delay=false env.domain_randomization.use_action_delay=false \
+    env.domain_randomization.use_object_state_delay_noise=false \
+    env.domain_randomization.joint_velocity_obs_noise_std=0.0 \
+    env.domain_randomization.force_scale=0.0 env.domain_randomization.torque_scale=0.0
