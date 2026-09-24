@@ -225,13 +225,18 @@ def _arm_fields(hand_only: bool) -> dict:
     maps have to be blanked TOGETHER: ``validate`` checks each map's keys
     against ``arm_joint_names``, so dropping only the names fails immediately.
     """
-    if hand_only:
-        return dict(arm_joint_names=(), arm_stiffness={}, arm_damping={},
-                    arm_default_joint_pos={}, start_arm_higher_deltas={})
     from hand_sampler import robot_param_constants as rpc   # deferred, as the factories do
+    if hand_only:
+        # Also the PLACEMENT: with no arm the stub puts link_7 at the robot root
+        # with an identity transform, so base_rot alone orients the whole hand,
+        # and palm-up is exactly this rotation.
+        return dict(arm_joint_names=(), arm_stiffness={}, arm_damping={},
+                    arm_default_joint_pos={}, start_arm_higher_deltas={},
+                    base_pos=rpc.HAND_ONLY_BASE_POS, base_rot=rpc.hand_only_base_rot())
     return dict(arm_joint_names=rpc.ARM_JOINT_NAMES, arm_stiffness=rpc.ARM_STIFFNESS,
                 arm_damping=rpc.ARM_DAMPING, arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
-                start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS)
+                start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,
+                base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT)
 
 
 def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "", hand_only: bool = False,
@@ -273,7 +278,6 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "", hand_only: boo
         palm_keypoints=tuple(tuple(map(float, p)) for p in build.palm_keypoints_of(hand)),
         adjacent_links={**dict(rpc.ARM_ADJACENT_LINKS), **build.adjacent_links()},
         link_prim_regexes=(".*",),
-        base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT,
         notes=f"derived from a Hand: {hand.n_fingers} fingers, {hand.n_joints} joints",
     )
 
@@ -362,7 +366,6 @@ def population_spec(hands, *, name: str = "generated_population",
         palm_center_offset=(0.0, 0.0, 0.0),
         adjacent_links={**dict(rpc.ARM_ADJACENT_LINKS), **build.adjacent_links()},
         link_prim_regexes=(".*",),
-        base_pos=rpc.BASE_POS, base_rot=rpc.BASE_ROT,
         joint_link_bodies=tuple(f"f{f}_link{d}" for f in range(F) for d in range(D)),
         joint_link_boxes=tuple(((0.0,) * 3,) * 4 for _ in range(J)),
         joint_geometry_valid=(False,) * J, hand_scale=1.0,

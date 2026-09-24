@@ -100,7 +100,9 @@ else
 fi
 ARGS=(
     python -u coevolution/train.py
-    --task GenMech-PoseReach-Direct-v0
+    # The registered task. Defaults to pose reaching, which every run so far
+    # used; GenMech-InHandReorient-Direct-v0 is the hand-only variant.
+    --task "${TASK:-GenMech-PoseReach-Direct-v0}"
     --agent "$AGENT_ENTRY" --headless
     "${WANDB_ARGS[@]}"
     "${VIEWER_ARGS[@]}"

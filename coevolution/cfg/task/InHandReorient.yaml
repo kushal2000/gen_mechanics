@@ -75,13 +75,15 @@ assets:
   robot_urdf: ""
   table_urdf: "assets/urdf/table_narrow.urdf"
 
-  handle_head_types: ["hammer", "screwdriver", "marker", "spatula", "eraser", "brush"]
+  handle_head_types: ["cube"]
+  object_pool: cube1            # one 45 mm, 46 g cube
+  object_assignment: env_modulo # one object, so cycling designs over it is moot
   num_assets_per_type: 100
 
   modify_asset_frictions: true
   robot_friction: 0.5
   finger_tip_friction: 1.5
-  object_friction: 0.5
+  object_friction: 1.0   # a cube resting on a flat palm needs grip (was 0.5)
   table_friction: 0.5
 
 # -----------------------------------------------------------------------------
@@ -122,10 +124,16 @@ action:
 # 5) reward — keypoint + lifting + distance-delta + reach-goal + action penalties
 # -----------------------------------------------------------------------------
 reward:
-  keypoint_rew_scale: 200.0
+  # The centred metric spans only 0..117 mm (keypoint radius 58.5 mm for a
+  # 45 mm cube at keypoint_scale 1.5), where the transport task's spanned
+  # metres. At 200 the whole shaping budget per goal would be ~23 against a
+  # 1000 goal bonus. 2000 restores roughly the pose task's ~1:4 ratio.
+  # READ episode_cumulative/keypoint_rew against bonus_rew in the first run
+  # and rebalance -- this is a calculated starting point, not a tuned one.
+  keypoint_rew_scale: 2000.0
   keypoint_scale: 1.5
-  object_base_size: 0.04
-  fixed_size: [0.141, 0.03025, 0.0271]
+  object_base_size: 0.045  # == the cube edge, so object_scale is exactly (1,1,1)
+  fixed_size: [0.045, 0.045, 0.045]   # the cube; reward and obs keypoints coincide
   fixed_size_keypoint_reward: true
 
   lifting_rew_scale: 0.0      # no lift phase: the object starts in the hand
@@ -156,15 +164,24 @@ reset:
   reset_dof_pos_random_interval_fingers: 0.1
   reset_dof_vel_random_interval: 0.5
 
-  table_reset_z: 0.38
+  # The palm sits at z=0.50 and the table surface is table_reset_z + 0.15,
+  # so the default 0.38 would put it at 0.53 -- straight through the hand.
+  # Drop it out of the scene; the ground plane at z=0 is the catch floor.
+  table_reset_z: -1.0
   table_reset_z_range: 0.01
   table_object_z_offset: 0.25
 
-  goal_sampling_type: delta           # "delta" | "absolute"
+  # "absolute" samples orientation with random_orientation, i.e. uniform
+  # SO(3). "delta" would cap each new goal at 90 deg from the last, which
+  # is not the task. A full reset already forces absolute; this is what the
+  # mid-episode resample after a goal HIT uses.
+  goal_sampling_type: absolute        # "delta" | "absolute"
   delta_goal_distance: 0.1
   delta_rotation_degrees: 90.0
-  target_volume_mins: [-0.35, -0.2, 0.6]
-  target_volume_maxs: [0.35, 0.2, 0.95]
+  # Pinned: the goal POSITION is not scored under orientation_only_goal, so
+  # this only places the GoalViz marker. 15 cm above the palm.
+  target_volume_mins: [0.0, 0.0, 0.65]
+  target_volume_maxs: [0.0, 0.0, 0.65]
   target_volume_region_scale: 1.0
 
 # -----------------------------------------------------------------------------
@@ -175,8 +192,26 @@ termination:
   # from the palm body. Borrowed from IsaacLab's inhand task.
   drop_distance_m: 0.3
   episode_length: 600                 # policy steps (600 * 2 * 1/120 = 10s)
-  success_tolerance: 0.075            # curriculum start
-  target_success_tolerance: 0.01      # curriculum floor
+  # NO CURRICULUM. Both bounds are the same value, so the clamp in
+  # update_tolerance_curriculum (new_tol = clamp(tol*0.9, target, success)) can
+  # never move it -- the curriculum is inert by construction rather than
+  # switched off somewhere else. IsaacLab's inhand task likewise trains against
+  # one fixed threshold.
+  #
+  # The tolerance is compared against max keypoint distance, so it maps to an
+  # angle: threshold = tol * keypoint_scale, angle = 2*asin(thr/2r), r = 58.5 mm
+  # for a 45 mm cube at keypoint_scale 1.5.
+  #   0.01547 -> 22.9 deg (OpenAI's 0.4 rad)
+  #   0.00997 -> 14.7 deg
+  #   0.00390 ->  5.7 deg (IsaacLab / DexPBT's 0.1 rad)  <- this
+  #
+  # Tight enough that goals/episode may read 0 for a long time. That is fine
+  # and deliberate: the keypoint reward is PROGRESS-based and stays dense all
+  # the way down, so designs are still ranked by how far they rotate the cube,
+  # and the success rate is then an honest measure rather than something a
+  # curriculum manufactured by loosening the target.
+  success_tolerance: 0.0039           # fixed; 0.1 rad on a 45 mm cube
+  target_success_tolerance: 0.0039    # == success_tolerance: curriculum inert
   eval_success_tolerance: null
   success_steps: 10
   max_consecutive_successes: 50
@@ -205,13 +240,17 @@ domain_randomization:
   joint_velocity_obs_noise_std: 0.1
 
   # random force/torque impulses
-  force_scale: 20.0
+  # OFF for in-hand. force_only_when_lifted is ALWAYS satisfied now that the
+  # object starts latched as lifted, so these impulses would fire every step
+  # of every episode and make a cube on a flat palm unholdable. Zero also
+  # skips the per-substep PhysX wrench upload entirely.
+  force_scale: 0.0
   force_prob_range: [0.001, 0.1]
   force_decay: 0.0
   force_decay_interval: 0.08
   force_only_when_lifted: true
 
-  torque_scale: 2.0
+  torque_scale: 0.0
   torque_prob_range: [0.001, 0.1]
   torque_decay: 0.0
   torque_decay_interval: 0.08

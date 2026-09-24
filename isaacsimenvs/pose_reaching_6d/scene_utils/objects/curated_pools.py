@@ -63,7 +63,15 @@ DIVERSE_24: list[tuple] = [
     ("brush",       (0.16, 0.025),         (0.11, 0.11, 0.035),       500,  500),
 ]
 
-CURATED_POOLS: dict[str, list[tuple]] = {"diverse24": DIVERSE_24}
+# One 45 mm cube, for in-hand reorientation. 500 kg/m^3 sits in the LOW_DENSITY
+# band and brackets the OpenAI reorientation cube's 493 kg/m^3, giving ~46 g.
+#
+# 45 mm rather than 50: touching a cube's equator needs a fingertip to clear
+# edge/2 above the palm surface, and the palm half-width is only ~30 mm, so a
+# larger cube is one the fingers reach up BESIDE rather than over.
+CUBE1: list[tuple] = [("cube", (0.045, 0.045, 0.045), None, 500.0, None)]
+
+CURATED_POOLS: dict[str, list[tuple]] = {"diverse24": DIVERSE_24, "cube1": CUBE1}
 
 
 def object_mass(handle_scale, head_scale, handle_density, head_density) -> float:
@@ -136,4 +144,4 @@ def describe(name: str = "diverse24") -> str:
     return "\n".join(rows)
 
 
-__all__ = ["CURATED_POOLS", "DIVERSE_24", "curated_entries", "describe", "object_mass"]
+__all__ = ["CURATED_POOLS", "DIVERSE_24", "CUBE1", "curated_entries", "describe", "object_mass"]

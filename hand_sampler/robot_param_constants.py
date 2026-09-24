@@ -13,6 +13,8 @@ because they define the search rather than the hardware.
 
 from __future__ import annotations
 
+from functools import lru_cache as _lru_cache
+
 import math
 
 
@@ -75,6 +77,49 @@ START_ARM_HIGHER_DELTAS: dict[str, float] = {
 # Base placement on the table.
 BASE_POS: tuple[float, float, float] = (0.0, 0.8, 0.0)
 BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
+
+# --- hand-only placement: palm up ----------------------------------------------
+# With no arm, the stub puts iiwa14_link_7 at the robot root with an IDENTITY
+# local-to-world (verified against the converted stage, job 252328), so the
+# whole hand's world orientation is this one rotation.
+#
+# Derived, not pasted, so it cannot drift from FLANGE_TO_PALM_YAW_RAD.
+# Computed lazily: build imports this module, so calling it at import time
+# is a cycle. The palm
+# frame is (x = thickness = GRASP_DIR, y = width, z = wrist->fingertip length).
+# Palm up means palm +x -> world +z; palm +z -> world +y keeps the fingers
+# reaching horizontally. R_base = R_palm_world @ flange_to_palm().T.
+#
+# Consequence worth knowing: link_7 +z maps to world +y, and palm_center_offset
+# is (0, 0, 0.095 + palm_length/2) along link_7 z -- so the palm centre's world
+# Z IS INDEPENDENT OF PALM LENGTH and only its y shifts (about +-15 mm across a
+# population). Grasp height is therefore the same for every design, which a
+# per-design height would not be.
+@_lru_cache(maxsize=1)
+def hand_only_base_rot() -> tuple[float, float, float, float]:
+    import numpy as np
+
+    from hand_sampler import build, design_space
+
+    F = build.flange_to_palm()[:3, :3]              # palm axes in link_7's frame
+    x_w = np.array([0.0, 0.0, 1.0])                 # palm +x (slab normal) -> up
+    z_w = np.array([0.0, 1.0, 0.0])                 # palm +z (length) -> horizontal
+    R_palm_world = np.column_stack([x_w, np.cross(z_w, x_w), z_w])
+    R = R_palm_world @ F.T
+    assert abs(np.linalg.det(R) - 1.0) < 1e-9, "base rotation is not a rotation"
+    assert np.abs(R @ F[:, 0] - x_w).max() < 1e-9, "palm normal does not point up"
+    M = np.eye(4)
+    M[:3, :3] = R
+    _, q = design_space.mat_to_pos_quat(M)
+    q = np.asarray(q, float)
+    if q[0] < 0:                                    # q and -q are one rotation
+        q = -q
+    return tuple(float(v) for v in q)
+
+
+# Palm centre lands near (0, 0, 0.50): the y offset cancels the mean
+# 0.095 + palm_length/2 along world +y, and z is exact for every design.
+HAND_ONLY_BASE_POS: tuple[float, float, float] = (0.0, -0.125, 0.50)
 
 # Serial chain, so only consecutive links need filtering.
 ARM_ADJACENT_LINKS: dict[str, list[str]] = {

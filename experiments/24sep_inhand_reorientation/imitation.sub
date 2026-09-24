@@ -1,0 +1,75 @@
+#!/bin/bash
+#SBATCH --job-name=imitation
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:2
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/24sep_inhand_reorientation/imitation-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/24sep_inhand_reorientation/imitation-%j.err
+
+# THE IMITATION ARM: one hand -- gen-SHARPA, SHARPA rebuilt inside the design
+# grammar -- trained on in-hand reorientation for as long as the co-evolution
+# runs. It is the "what if we just built the hand we already believe in"
+# control: no population, no selection, nothing to rank.
+#
+# Mechanically it is baseline.sub with the population pinned to one design, so
+# it inherits the same link chaining and the same curriculum hand-off; only the
+# defaults and the log name differ.
+#
+#   sbatch imitation.sub                      # gen-SHARPA, hand-only
+#   sbatch --export=ALL,STUDY_ID=foo imitation.sub
+#
+set -euo pipefail
+# gen-SHARPA by default. handonly: is what drops the arm joints -- common.sh
+# refuses a bare reference, so this is not optional for the in-hand task.
+export ROBOT_SPEC="${ROBOT_SPEC:-handonly:/share/portal/kk837/gen_mechanics/assets/populations/sharpa_capsule.json}"
+export STUDY_ID="${STUDY_ID:-inhand_imitation}"
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+export SOURCE_RUN="${SOURCE_RUN:-}"                 # empty for link #1
+
+SELF=/share/portal/kk837/gen_mechanics/experiments/24sep_inhand_reorientation/imitation.sub
+source /share/portal/kk837/gen_mechanics/experiments/24sep_inhand_reorientation/common.sh
+export WANDB_GROUP="$STUDY_ID" MAX_EPOCHS="$EPOCHS"
+export MODEL_TAG="${STUDY_ID}_c$(printf '%02d' "$CONT")_d${D_MODEL}_l${TRANSFORMER_LAYERS}"
+export CHECKPOINT="" RESUME_TOL=""
+if [[ -n "$SOURCE_RUN" ]]; then
+    CHECKPOINT=$(newest_checkpoint "$SOURCE_RUN")
+    [[ -f "$CHECKPOINT" ]] || { echo "no checkpoint under $SOURCE_RUN"; exit 1; }
+    RESUME_TOL=$(.venv_isaacsim/bin/python -m coevolution.loop.final_tolerance "$SOURCE_RUN") \
+        || { echo "no final success tolerance under $SOURCE_RUN; refusing to continue blind"; exit 1; }
+fi
+echo "[imitation] $STUDY_ID link #$CONT of $MAX_CONT on $ROBOT_SPEC"
+echo "[imitation] policy from: ${CHECKPOINT:-scratch}   curriculum from: ${RESUME_TOL:-start (0.075)}"
+
+CHAINED=0
+chain_next() {
+    (( CHAINED )) && return 0
+    local run_dir; run_dir=$(own_run_dir)
+    if [[ -z "$run_dir" ]] || [[ ! -f "$(newest_checkpoint "$run_dir")" ]]; then
+        echo "[imitation] no checkpoint to chain from; not resubmitting"; return 1
+    fi
+    local next=$((CONT + 1))
+    if (( next > MAX_CONT )); then echo "[imitation] reached MAX_CONT=$MAX_CONT"; CHAINED=1; return 0; fi
+    local j; j=$(submit_once "${STUDY_ID}_c$(printf '%02d' "$next")" \
+        --export=ALL,SOURCE_RUN="$run_dir",ROBOT_SPEC="$ROBOT_SPEC",STUDY_ID="$STUDY_ID",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$next",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE" \
+        "$SELF")
+    echo "[imitation] submitted link #$next as $j (from $run_dir)"; CHAINED=1
+}
+trap 'echo "[imitation] USR1: 15 min to the limit, chaining now"; chain_next' USR1
+
+cd "$REPO"
+set +e
+bash "${RUN_SH:-experiments/decentralized_control/scaling_laws/run.sh}" &
+PAYLOAD=$!
+wait $PAYLOAD; STATUS=$?
+while kill -0 $PAYLOAD 2>/dev/null; do wait $PAYLOAD; STATUS=$?; done   # a signal interrupts wait; wait again
+set -e
+RUN_DIR=$(own_run_dir)
+echo "[imitation] payload exited $STATUS; run dir $RUN_DIR"
+if (( STATUS != 0 )) && [[ ! -f "$(newest_checkpoint "$RUN_DIR")" ]]; then echo "[imitation] failed with no checkpoint; stopping"; exit "$STATUS"; fi
+chain_next

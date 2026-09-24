@@ -24,7 +24,7 @@ Scale = Union[Scale2, Scale3]
 
 @dataclass
 class ObjectSizeDistribution:
-    type: Literal["hammer", "screwdriver", "marker", "spatula", "eraser", "brush"]
+    type: Literal["hammer", "screwdriver", "marker", "spatula", "eraser", "brush", "cube"]
     handle_min_lengths: Scale
     handle_max_lengths: Scale
     head_min_lengths: Optional[Scale]
@@ -227,6 +227,24 @@ OBJECT_SIZE_DISTRIBUTIONS: list[ObjectSizeDistribution] = [
         handle_max_density=LOW_DENSITY_MAX,
         head_min_density=LOW_DENSITY_MIN,
         head_max_density=LOW_DENSITY_MAX,
+    ),
+    # Cube — the in-hand reorientation object. APPENDED, never inserted:
+    # matching_distributions filters this list in order, so anything ahead of it
+    # keeps the index it had and no seeded pool changes.
+    #
+    # Its own type rather than a cube-shaped eraser: eraser spans
+    # (0.07, 0.02, 0.02)..(0.15, 0.07, 0.07), whose only in-range cube is 7 cm,
+    # far too big for a 50-70 mm palm to cage.
+    ObjectSizeDistribution(
+        type="cube",
+        handle_min_lengths=(0.040, 0.040, 0.040),
+        handle_max_lengths=(0.070, 0.070, 0.070),
+        head_min_lengths=None,
+        head_max_lengths=None,
+        handle_min_density=LOW_DENSITY_MIN,
+        handle_max_density=LOW_DENSITY_MAX,
+        head_min_density=None,
+        head_max_density=None,
     ),
 ]
 
