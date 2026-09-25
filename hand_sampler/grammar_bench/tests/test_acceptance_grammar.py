@@ -128,10 +128,29 @@ def test_grammar_structural_validity(seed):
                 f"seed={seed} palm body {name!r} does not connect to root through palm bodies"
             )
 
+    child_joint_count: dict = {}
+    for j in model.joints:
+        child_joint_count[j.parent] = child_joint_count.get(j.parent, 0) + 1
+
     for step in derivation.steps:
-        if step.production == "Digit":
+        if step.production != "Digit":
+            continue
+        if step.params["top_level"]:
             assert step.params["mount"] in palm_names, (
-                f"seed={seed} digit {step.params['gid']} mounts on non-palm body {step.params['mount']!r}"
+                f"seed={seed} digit {step.params['digit_id']} mounts on non-palm body {step.params['mount']!r}"
+            )
+        else:
+            # A branch digit measures what the grammar claims: its mount is
+            # the host phalanx's own body (never a palm body), and that body
+            # must genuinely have >= 2 child joints (its own next phalanx,
+            # if any, plus one joint per branch digit mounted on it).
+            mount = step.params["mount"]
+            assert mount not in palm_names, (
+                f"seed={seed} branch digit {step.params['digit_id']} mounts on palm body {mount!r}"
+            )
+            assert child_joint_count.get(mount, 0) >= 2, (
+                f"seed={seed} branch digit {step.params['digit_id']} mount {mount!r} "
+                f"has {child_joint_count.get(mount, 0)} child joints, expected >= 2"
             )
 
 
@@ -240,7 +259,8 @@ def test_grammar_support_audit():
         "one_digit": 0,
         "five_plus_digits": 0,
         "six_plus_phalanges": 0,
-        "branch": 0,
+        "in_digit_branch": 0,
+        "palm_tree": 0,
         "palm_joint": 0,
         "two_nonparallel_palm_joints": 0,
         "nonperpendicular_axis": 0,
@@ -261,11 +281,28 @@ def test_grammar_support_audit():
 
     for seed in range(N_AUDIT_SEEDS):
         derivation = sample_derivation(seed, DEFAULT_DISTRIBUTION)
+        model = derive(derivation)
         hand = next(s for s in derivation.steps if s.path == "hand").params
         if hand["digit_count"] == 1:
             counts["one_digit"] += 1
         if hand["digit_count"] >= 5:
             counts["five_plus_digits"] += 1
+
+        # Structural honesty: measure the *derived model*, not a derivation-step
+        # flag. in_digit_branch = some non-palm body has >= 2 child joints
+        # (real in-digit branching). palm_tree = some palm body has >= 2
+        # palm-body children (real palm fan-out, not a chain).
+        palm_names = {b.name for b in model.bodies if b.palm}
+        child_joint_count: dict = {}
+        palm_child_count: dict = {}
+        for j in model.joints:
+            child_joint_count[j.parent] = child_joint_count.get(j.parent, 0) + 1
+            if j.parent in palm_names and j.child in palm_names:
+                palm_child_count[j.parent] = palm_child_count.get(j.parent, 0) + 1
+        if any(name not in palm_names and n >= 2 for name, n in child_joint_count.items()):
+            counts["in_digit_branch"] += 1
+        if any(n >= 2 for n in palm_child_count.values()):
+            counts["palm_tree"] += 1
 
         palm_joint_axes = []
         for s in derivation.steps:
@@ -279,8 +316,6 @@ def test_grammar_support_audit():
                 if s.params["phalanx_count"] >= 6:
                     counts["six_plus_phalanges"] += 1
             if s.production == "Phalanx":
-                if s.params["branch_digit_count"] > 0:
-                    counts["branch"] += 1
                 mod = s.params["module"]
                 axis = mod["axis"]
                 if not is_axis_aligned(axis):
@@ -337,8 +372,31 @@ def _assert_impossible_is_legitimate(operator, derivation):
             f"< max {DEFAULT_DISTRIBUTION.digit_count_range[1]}"
         )
     elif operator == "delete_phalanx":
-        assert all(c <= 1 for c in counts), (
-            f"delete_phalanx raised VariationImpossible but some digit has phalanx_count>1: {counts}"
+        # Mirrors derive.py's ``_op_delete_phalanx`` deletable-candidate
+        # logic exactly: a phalanx that hosts a branch is refused outright,
+        # and the digit's current-last phalanx is refused too when deleting
+        # it would promote an under-branched (exactly 1 branch digit)
+        # phalanx to "last". VariationImpossible is legitimate only when no
+        # digit has any phalanx left that clears both checks.
+        def _has_deletable(s):
+            digit_id = s.params["digit_id"]
+            phalanx_count = s.params["phalanx_count"]
+            if phalanx_count <= 1:
+                return False
+            last_idx = phalanx_count - 1
+            phalanx_by_p = {
+                pp.params["p"]: pp for pp in derivation.steps
+                if pp.production == "Phalanx" and pp.params["digit_id"] == digit_id
+            }
+            second_last = phalanx_by_p.get(last_idx - 1)
+            last_deletion_safe = not (second_last is not None and second_last.params["branch_digit_count"] == 1)
+            return any(
+                pp.params["branch_digit_count"] == 0 and (p_idx != last_idx or last_deletion_safe)
+                for p_idx, pp in phalanx_by_p.items()
+            )
+
+        assert not any(_has_deletable(s) for s in derivation.steps if s.production == "Digit"), (
+            f"delete_phalanx raised VariationImpossible but some digit has a deletable phalanx: {counts}"
         )
     elif operator == "insert_phalanx":
         assert all(c >= DEFAULT_DISTRIBUTION.phalanx_count_range[1] for c in counts), (
@@ -368,3 +426,35 @@ def test_grammar_vary_operator(operator):
 
     print(f"vary operator={operator!r}: applied={n_applied} impossible={n_impossible} of {N_VARY_SEEDS} seeds")
     assert n_applied > 0
+
+
+def test_grammar_vary_replays_exactly_with_branch():
+    """A derivation containing an in-digit branch must still replay exactly
+    after ``vary``: ``derive`` is a pure function of the derivation, so
+    applying any operator and deriving the result twice must agree, and the
+    varied derivation must itself survive a JSON round trip unchanged."""
+    branch_seed = None
+    for seed in range(200):
+        derivation = sample_derivation(seed, DEFAULT_DISTRIBUTION)
+        if any(s.production == "Phalanx" and s.params["branch_digit_count"] > 0 for s in derivation.steps):
+            branch_seed = seed
+            break
+    assert branch_seed is not None, "no seed with a branch found in the first 200 seeds"
+
+    derivation = sample_derivation(branch_seed, DEFAULT_DISTRIBUTION)
+    n_checked = 0
+    for operator in OPERATORS:
+        rng = np.random.default_rng(3_000_000 + branch_seed)
+        try:
+            varied = vary(derivation, rng, DEFAULT_DISTRIBUTION, operator=operator)
+        except VariationImpossible:
+            continue
+        model_a = derive(varied)
+        model_b = derive(varied)
+        assert model_a == model_b, f"operator={operator} seed={branch_seed}: replay mismatch"
+        assert derive(derivation_from_json(derivation_to_json(varied))) == model_a, (
+            f"operator={operator} seed={branch_seed}: derivation JSON round trip changed the model"
+        )
+        n_checked += 1
+
+    assert n_checked > 0, "no operator applied to the branch-containing derivation"
