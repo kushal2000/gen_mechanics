@@ -16,6 +16,26 @@ Two entry points:
     Both come with named reason lists (``missing_constructs``,
     ``out_of_support``) -- never a bare boolean.
 
+    ``coverage``'s digit-count/phalanx-run/branch-depth checks read the
+    grammar's own palm-flag bookkeeping when it is present
+    (``CoverageResult.digit_count_source == "palm_flags"``). derive.py always
+    flags exactly the palm bodies it builds, so a model with *no* body flagged
+    ``palm=True`` at all is never grammar output -- it identifies an imported
+    model (e.g. a URDF) that the grammar's palm bookkeeping simply does not
+    apply to. Reporting a vacuous ``digit_count`` of 0 in that case would
+    misrepresent the model (every import would trip
+    ``digit_count_out_of_range:0``), so these three checks fall back instead
+    to a purely structural count: the number of movable-joint chains leaving
+    the declared root, treating any run of fixed joints as transparent (a
+    fixed subtree hanging off the root that never reaches a movable joint is
+    not a digit; see ``_movable_children``). The same walk is reused for the
+    fallback's phalanx-run and branch-depth checks so all three stay mutually
+    consistent. This path is recorded as ``digit_count_source ==
+    "root_chains"`` and, since it changes how the result was computed, also
+    surfaces as an informational ``"digit_count_source:root_chains"`` entry
+    in ``CoverageResult.notes`` (never in ``out_of_support`` -- it is not a
+    defect in the model).
+
 This module reads ``KinematicModel``/``Body``/``Joint``/... only; it never
 imports ``derive.py`` and never constructs a model itself. It is deliberately
 conservative: every heuristic below is documented at its use site, and where
@@ -241,6 +261,9 @@ class CoverageResult:
     missing_constructs: List[str]
     out_of_support: List[str]
     inventory: ConstructInventory
+    digit_count: int
+    digit_count_source: str  # "palm_flags" or "root_chains" -- see module docstring
+    notes: List[str] = field(default_factory=list)
 
 
 def _on_angle_grid(rad: float) -> bool:
@@ -293,6 +316,28 @@ def _limits_in_choice_set_m(limits: Tuple[float, float], choices_m: Tuple[Tuple[
         if abs(lo - lo_m) <= SET_TOL and abs(hi - hi_m) <= SET_TOL:
             return True
     return False
+
+
+def _movable_children(body_name: str, children: Dict[str, List]) -> List:
+    """``children[body_name]``, but with any run of fixed joints made
+    transparent: a fixed child is skipped over (never returned itself) and
+    replaced by its own children, recursively, until a movable joint (or a
+    leaf) is reached. Used only by ``coverage``'s structural
+    (``digit_count_source == "root_chains"``) fallback, where "child" must
+    mean "next movable joint down this branch", not "next joint" -- a
+    fixed-joint mounting frame spliced into a URDF must not itself be
+    mistaken for a phalanx or a branch. A fixed subtree with no movable
+    joint anywhere below it contributes nothing.
+    """
+    out: List = []
+    stack = list(children.get(body_name, []))
+    while stack:
+        j = stack.pop()
+        if j.type in MOVABLE_TYPES:
+            out.append(j)
+        else:
+            stack.extend(children.get(j.child, []))
+    return out
 
 
 def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -> CoverageResult:
@@ -351,24 +396,39 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
     if not (lo_p <= non_root_palm <= hi_p):
         out.append(f"palm_body_count_out_of_range:{non_root_palm}")
 
-    # Top-level digit count, read structurally: a top-level Digit always
-    # mounts on a palm body (rules.py), so its first joint has a palm parent
-    # and a non-palm child. This is exact for grammar output; for an
-    # imported model where no body is ever flagged palm=True it is
-    # definitionally 0, which is reported honestly (the grammar's own
-    # palm/digit bookkeeping simply does not apply to that import).
-    digit_starts = [
-        j for j in model.joints
-        if j.parent in palm_body_names and j.child not in palm_body_names
-    ]
+    children: Dict[str, List] = {}
+    for j in model.joints:
+        children.setdefault(j.parent, []).append(j)
+
+    notes: List[str] = []
+    if palm_body_names:
+        # Top-level digit count, read structurally: a top-level Digit always
+        # mounts on a palm body (rules.py), so its first joint has a palm
+        # parent and a non-palm child. Exact for grammar output, whose
+        # palm=True bookkeeping is set by derive.py for exactly the palm
+        # bodies it builds.
+        digit_starts = [
+            j for j in model.joints
+            if j.parent in palm_body_names and j.child not in palm_body_names
+        ]
+        digit_count_source = "palm_flags"
+    else:
+        # No body is flagged palm=True at all: never true of grammar output,
+        # so this identifies an imported model (e.g. a URDF) that the
+        # grammar's palm bookkeeping does not apply to. Fall back to a
+        # purely structural count instead of a vacuous 0: the number of
+        # movable-joint chains leaving the declared root, treating any run
+        # of fixed joints as transparent (see _movable_children). A fixed
+        # subtree hanging off the root that never reaches a movable joint is
+        # not a digit.
+        digit_starts = _movable_children(model.root, children)
+        digit_count_source = "root_chains"
+        notes.append("digit_count_source:root_chains")
+
     digit_count = len(digit_starts)
     lo_d, hi_d = dist.digit_count_range
     if not (lo_d <= digit_count <= hi_d):
         out.append(f"digit_count_out_of_range:{digit_count}")
-
-    children: Dict[str, List] = {}
-    for j in model.joints:
-        children.setdefault(j.parent, []).append(j)
 
     # Per-digit phalanx "run" length: walk forward from each digit start
     # while the current body has exactly one child (a lone continuation);
@@ -378,12 +438,17 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
     # safe against false "out of range" reports on genuine grammar output
     # (the true value is always >= this run length, and both are always
     # within [1, phalanx_count_range[1]] for a valid grammar model).
+    #
+    # In the structural (root_chains) fallback "child" means "next movable
+    # joint down this branch" (_movable_children), i.e. the longest
+    # movable-joint chain from a root child to a leaf/branch, so a fixed
+    # mounting joint spliced into a URDF never breaks or inflates a run.
     lo_ph, hi_ph = dist.phalanx_count_range
     run_length_issues = []
     for start in digit_starts:
         run, cur = 1, start.child
         while True:
-            kids = children.get(cur, [])
+            kids = _movable_children(cur, children) if digit_count_source == "root_chains" else children.get(cur, [])
             if len(kids) != 1:
                 break
             run += 1
@@ -399,6 +464,9 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
     # pure-z origin.xyz) and stays at the current depth; every other child
     # is a branch-digit start and sits one level deeper. A non-branching
     # body's single child (if any) always continues at the same depth.
+    #
+    # In the structural fallback, "child" again means _movable_children --
+    # a fixed pass-through joint is never itself a branch.
     def _is_continuation(kj) -> bool:
         return (
             tuple(kj.origin.rpy) == (0.0, 0.0, 0.0)
@@ -415,7 +483,7 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
             if body in seen:
                 continue
             seen.add(body)
-            kids = children.get(body, [])
+            kids = _movable_children(body, children) if digit_count_source == "root_chains" else children.get(body, [])
             if len(kids) >= 2:
                 cont = next((kj for kj in kids if _is_continuation(kj)), None)
                 for kj in kids:
@@ -515,4 +583,7 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
         missing_constructs=missing,
         out_of_support=out,
         inventory=inv,
+        digit_count=digit_count,
+        digit_count_source=digit_count_source,
+        notes=notes,
     )

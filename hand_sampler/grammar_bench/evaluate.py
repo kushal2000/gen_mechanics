@@ -2,7 +2,10 @@
 source file, import it, and report (a) fidelity of our forward kinematics
 against a frozen or freshly generated Pinocchio-oracle reference and (b)
 whether ``hand_sampler.grammar.coverage`` judges it expressible by / inside
-the support of the grammar. Writes ``pilot.json`` and ``pilot.md``.
+the support of the grammar. Writes ``pilot-report.json`` and
+``pilot-report.md`` (by default under ``project-notes/grammar/``, a location
+the repo's ``.gitignore`` does not drop, unlike ``results/``; override with
+``--out``).
 
 Held-out hands are reported here, never used to change any rule, range or
 tolerance (see ``manifest.json``'s own ``rules``). This script makes no claim
@@ -43,7 +46,7 @@ ORACLE_FK_SCRIPT = BENCH_DIR / "refgen" / "oracle_fk.py"
 MAKE_CONFIGS_SCRIPT = BENCH_DIR / "refgen" / "make_configs.py"
 
 DEFAULT_SEED = 20260925
-DEFAULT_OUT_DIR = BENCH_DIR / "results"
+DEFAULT_OUT_DIR = REPO_ROOT / "project-notes" / "grammar"
 
 # Support-audit categories exercised by
 # grammar_bench/tests/test_acceptance_grammar.py::test_grammar_support_audit
@@ -181,6 +184,9 @@ def _coverage_dict(result) -> dict:
         "in_support": result.in_support,
         "missing_constructs": list(result.missing_constructs),
         "out_of_support": list(result.out_of_support),
+        "digit_count": result.digit_count,
+        "digit_count_source": result.digit_count_source,
+        "notes": list(result.notes),
     }
 
 
@@ -269,9 +275,11 @@ def render_markdown(report: dict) -> str:
     )
     lines.append("")
     lines.append(
-        "| id | family | split | availability | movable joints | couplings | fidelity (max pos / max rot) | fidelity pass | expressible | in_support | missing constructs | out-of-support items |"
+        "| id | family | split | availability | movable joints | couplings | digit count | digit count source"
+        " | fidelity (max pos / max rot) | fidelity pass | expressible | in_support | missing constructs"
+        " | out-of-support items |"
     )
-    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for h in report["hands"]:
         fid = h.get("fidelity")
         if fid is not None:
@@ -286,12 +294,16 @@ def render_markdown(report: dict) -> str:
             sup = "yes" if cov["in_support"] else "no"
             missing = ", ".join(cov["missing_constructs"]) or "-"
             oos = ", ".join(cov["out_of_support"]) or "-"
+            digit_count = cov["digit_count"]
+            digit_count_source = cov["digit_count_source"]
         else:
             expr = sup = missing = oos = "-"
+            digit_count = digit_count_source = "-"
         lines.append(
             f"| {h['id']} | {h['family'] or '-'} | {h['split']} | {h['availability']}"
             f" | {h['movable_joints'] if h['movable_joints'] is not None else '-'}"
             f" | {h['couplings'] if h['couplings'] is not None else '-'}"
+            f" | {digit_count} | {digit_count_source}"
             f" | {fid_str} | {fid_pass} | {expr} | {sup} | {missing} | {oos} |"
         )
     lines.append("")
@@ -340,7 +352,10 @@ def render_markdown(report: dict) -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out", default=str(DEFAULT_OUT_DIR), help="output directory for pilot.json/pilot.md")
+    ap.add_argument(
+        "--out", default=str(DEFAULT_OUT_DIR),
+        help="output directory for pilot-report.json/pilot-report.md (default: project-notes/grammar)",
+    )
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = ap.parse_args(argv)
 
@@ -349,9 +364,9 @@ def main(argv=None):
 
     report = run(args.seed)
 
-    (out_dir / "pilot.json").write_text(json.dumps(report, indent=2))
-    (out_dir / "pilot.md").write_text(render_markdown(report))
-    print(f"wrote {out_dir / 'pilot.json'} and {out_dir / 'pilot.md'}")
+    (out_dir / "pilot-report.json").write_text(json.dumps(report, indent=2))
+    (out_dir / "pilot-report.md").write_text(render_markdown(report))
+    print(f"wrote {out_dir / 'pilot-report.json'} and {out_dir / 'pilot-report.md'}")
     return 0
 
 
