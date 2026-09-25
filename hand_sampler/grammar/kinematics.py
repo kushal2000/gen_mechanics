@@ -37,6 +37,16 @@ class Pose:
 @dataclass(frozen=True)
 class Body:
     name: str
+    # Iteration-3 additions (backward compatible: both default so every
+    # existing construction/JSON file that omits them still loads/equals as
+    # before). ``palm``: this body is part of the articulated palm structure
+    # (the grammar always flags its root ``True``; imported URDFs leave every
+    # body ``False``). ``radius``: reserved for the later geometry step
+    # (capsule radius); the grammar never sets it in this iteration. Segment
+    # length/direction for the geometry step is carried by a ``<body>_tip``
+    # ``Frame`` (see ``grammar/derive.py``), not by new Body fields.
+    palm: bool = False
+    radius: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -174,6 +184,34 @@ def validate(model: KinematicModel) -> None:
             if steps > len(body_names) + 1:
                 issues.append(f"cycle detected in body tree involving {start!r}")
                 break
+
+    # Palm-flag connectivity: only checked when at least one *non-root* body
+    # is flagged ``palm=True`` (imported URDFs never flag anything, so this
+    # is a no-op for them). When it applies: the root must be a palm body,
+    # and every flagged body must reach the root by a chain of parent joints
+    # that stays entirely within palm-flagged bodies (i.e. the palm bodies
+    # form a connected subtree containing the root).
+    palm_bodies = {b.name for b in model.bodies if b.palm}
+    if palm_bodies - {model.root}:
+        if model.root not in palm_bodies:
+            issues.append(f"palm bodies are flagged but root {model.root!r} is not a palm body")
+        else:
+            for b in palm_bodies:
+                cur = b
+                seen_walk = set()
+                ok = True
+                while cur != model.root:
+                    if cur in seen_walk:
+                        ok = False
+                        break
+                    seen_walk.add(cur)
+                    nxt = child_to_parent_body.get(cur)
+                    if nxt is None or nxt not in palm_bodies:
+                        ok = False
+                        break
+                    cur = nxt
+                if not ok:
+                    issues.append(f"palm body {b!r} is not connected to root through palm bodies")
 
     # Coupling checks.
     movable = {j.name for j in model.joints if j.type in MOVABLE_TYPES}

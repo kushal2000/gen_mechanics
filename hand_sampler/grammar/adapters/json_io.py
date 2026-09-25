@@ -39,11 +39,13 @@ def _pose_from_dict(d: Dict[str, Any]) -> Pose:
 
 
 def _body_to_dict(b: Body) -> Dict[str, Any]:
-    return {"name": b.name}
+    return {"name": b.name, "palm": b.palm, "radius": b.radius}
 
 
 def _body_from_dict(d: Dict[str, Any]) -> Body:
-    return Body(name=d["name"])
+    # ``.get`` with defaults: pre-iteration-3 JSON (no "palm"/"radius" keys)
+    # still loads, with both fields taking their ``Body`` defaults.
+    return Body(name=d["name"], palm=d.get("palm", False), radius=d.get("radius"))
 
 
 def _frame_to_dict(f: Frame) -> Dict[str, Any]:
