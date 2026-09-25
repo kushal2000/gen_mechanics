@@ -13,6 +13,7 @@ because they define the search rather than the hardware.
 
 from __future__ import annotations
 
+import os as _os
 from functools import lru_cache as _lru_cache
 
 import math
@@ -95,12 +96,25 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 # object was never lost because nothing had to hold it), and it hands the task a
 # degenerate solution of doing nothing.
 #
-# IsaacLab's inhand reference mounts the Allegro with its local axes 45.3, 45.3
-# and 84.6 degrees off vertical and spawns the cube 19 cm out AMONG the fingers,
-# with gravity enabled on the object. Gravity is a threat there, not a helper.
-# 45 degrees matches that: at friction 1.0 the slab alone is exactly on the edge
-# of holding the cube (tan 45 = 1), so the fingers have to do the rest.
-HAND_ONLY_PALM_TILT_DEG: float = 45.0
+# 45 was tried and overshot: tan 45 = 1 equals the friction coefficient, so the
+# cube slid off in about 24 steps (0.4 s) EVERY episode -- done_fall 1.0000,
+# done_timeout 0.0000, 4.18M episodes in 8050 steps. Too little time to learn
+# anything. The static friction-cone argument ignored that the cube is dropped
+# onto the face and is already sliding before static friction applies.
+#
+# 25 degrees: tan 25 = 0.466 against friction 1.0, so a settled cube is held
+# with roughly 2x margin -- the slab does not give it away, but it is close
+# enough to the edge that a nudge or a spin can start it moving, and then the
+# fingers have to catch it. The earlier 45 failed because of the AXIS, not the
+# angle: the object slid off the side past the fingers. With the slope running
+# at the fingertips a steeper angle is viable again. Note the reference has NO tilt parameter at all:
+# its object sits 19.9 cm out at the fingertips with no supporting surface, and
+# its two non-reach axes land at 45.3 degrees only incidentally. Tilting a plate
+# is not the same lever.
+# Overridable from the environment so two tilts can be compared side by side,
+# and so a training job can set it without editing the source -- this is a
+# parameter we are actively sweeping, not a settled constant.
+HAND_ONLY_PALM_TILT_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_TILT_DEG", "45.0"))
 
 
 @_lru_cache(maxsize=1)
@@ -113,18 +127,31 @@ def hand_only_base_rot() -> tuple[float, float, float, float]:
 
     F = build.flange_to_palm()[:3, :3]              # palm axes in link_7's frame
     t = _math.radians(HAND_ONLY_PALM_TILT_DEG)
-    # Palm +x is GRASP_DIR, the slab normal. Tilt it off vertical toward -y, so
-    # the object is held against a sloped face rather than resting on a level
-    # one; palm +z (wrist->fingertip) stays horizontal and perpendicular to the
-    # tilt, which keeps the fingers reaching across the slope rather than
-    # up it.
-    x_w = np.array([0.0, -_math.sin(t), _math.cos(t)])
-    z_w = np.array([1.0, 0.0, 0.0])
+    # WHICH AXIS THE TILT IS ABOUT DECIDES WHERE THE OBJECT SLIDES, and it is
+    # the whole point. Tilting about the palm's +z (finger) axis makes the
+    # downhill direction the palm's WIDTH: the object slides off the SIDE, past
+    # the fingers, which can do nothing about it. That was tried at 45 degrees
+    # and gave done_fall 1.0000 with ~24-step episodes -- not a hard task, an
+    # unplayable one.
+    #
+    # Tilt about the palm's WIDTH (+y) instead, so the slope runs along the
+    # finger direction and the object slides TOWARD THE FINGERTIPS, where the
+    # fingers are in the way and have to hold it. Verified below: the in-plane
+    # component of gravity is exactly +z_w.
+    x_w = np.array([0.0, -_math.sin(t), _math.cos(t)])      # normal, t off vertical
+    z_w = np.array([0.0, -_math.cos(t), -_math.sin(t)])     # fingertips, t below horizontal
     y_w = np.cross(z_w, x_w)
     R_palm_world = np.column_stack([x_w, y_w / np.linalg.norm(y_w), z_w])
     R = R_palm_world @ F.T
     assert abs(np.linalg.det(R) - 1.0) < 1e-9, "base rotation is not a rotation"
     assert np.abs(R @ F[:, 0] - x_w).max() < 1e-9, "palm normal is not where it should be"
+    # Gravity's in-plane component must point at the fingertips, not across the
+    # palm -- the difference between a task and an unplayable one.
+    g = np.array([0.0, 0.0, -1.0])
+    downhill = g - (g @ x_w) * x_w
+    if np.linalg.norm(downhill) > 1e-9:
+        downhill /= np.linalg.norm(downhill)
+        assert float(downhill @ z_w) > 0.99, "the object would slide off the side, not at the fingers"
     M = np.eye(4)
     M[:3, :3] = R
     _, q = design_space.mat_to_pos_quat(M)
