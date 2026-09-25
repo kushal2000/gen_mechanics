@@ -22,3 +22,14 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Artifacts: commits 5bf270d (benchmark), e87e887 (implementation); references in hand_sampler/grammar_bench/references/.
 - Open: I2 (coupling dropped by hand_root cut not reported), I3 (70 vs 71 configurations when 0 is outside the box). Not done this iteration: URDF export, JSON, coupled real hands (Ability/Inspire local-only), SHARPA hand_root import, closures.
 - Decision: keep.
+
+## Iteration 2 (2026-09-25): JSON, URDF export, coupling-cut fix, SHARPA import
+
+- Hypothesis: exact JSON round trip and a URDF exporter that re-emits verbatim poses and mimic tags reproduce the frozen Pinocchio references on the exported files; SHARPA imports with hand_root=left_hand_C_MC.
+- Worker: one Sonnet 5 run (~7 min, 53 tool uses). Coordinator verified frozen files unchanged, local references ignored, scope, and re-ran the suite.
+- Command: same pytest command as iteration 1 -> 45 passed in 4.39 s, 0 skips (oracle subprocess ran). References: `refgen/make_configs.py --hand-root left_hand_C_MC` + `refgen/oracle_fk.py` (Pinocchio 3.4.0), seed 20260925; local-only Ability/Inspire references generated into references/local (gitignored).
+- Evidence: Pinocchio(export) vs Pinocchio(source): allegro 1540 poses 0.0; leap 1562 0.0; barrett 630 0.0; sharpa 2310 4.5e-16 m / 3.0e-16 rad. Ours vs Pinocchio: sharpa 2310 poses 4.7e-16 / 7.5e-16; ability 1120 poses 5.7e-17 / 4.2e-16 (4 mimic); inspire 1330 poses 1.2e-16 / 4.6e-16 (6 mimic with offsets). SHARPA: 22 movable joints, 10 links dropped above the cut.
+- Conventions (accepted): placeholder effort/velocity 1.0 flagged in LossReport; frames export as zero-geometry links on fixed joints named <frame>__frame_fixed; export-oracle check limited to hands with frozen references.
+- Design decisions recorded this iteration (from discussion with Martin): representation is the evolution substrate, not an importer; palm-ness is a per-body flag; palm geometry = hull of palm capsules at rest cut per palm joint by a plane containing the axis; closed-chain solver deferred.
+- Artifacts: commits dfdb04b (benchmark), 82e46e0 (implementation). Loop job bb7e458d every 10 min, stop after 20:42 local.
+- Decision: keep.
