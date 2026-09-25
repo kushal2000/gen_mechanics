@@ -1,0 +1,114 @@
+{
+  "commit": "8d1395320f7027ccd088ba5593bde50a69eecf65",
+  "python": "3.14.0",
+  "versions": {
+    "numpy": "2.4.4",
+    "torch": "2.14.0",
+    "pytest": "9.1.1",
+    "scipy": "1.18.1",
+    "trimesh": "5.1.0",
+    "yourdfpy": "0.0.60"
+  },
+  "selection_records": [
+    {
+      "population": 8,
+      "keep": 2,
+      "actual_children": 6,
+      "recorded_children": 6,
+      "recorded_parents": [
+        7,
+        6,
+        7,
+        6,
+        7,
+        6
+      ]
+    },
+    {
+      "population": 8,
+      "keep": 4,
+      "actual_children": 4,
+      "recorded_children": 4,
+      "recorded_parents": [
+        7,
+        6,
+        5,
+        4
+      ]
+    },
+    {
+      "population": 8,
+      "keep": 6,
+      "actual_children": 2,
+      "recorded_children": 6,
+      "recorded_parents": [
+        7,
+        6,
+        5,
+        4,
+        3,
+        2
+      ]
+    },
+    {
+      "population": 8,
+      "keep": 8,
+      "actual_children": 0,
+      "recorded_children": 8,
+      "recorded_parents": [
+        7,
+        6,
+        5,
+        4,
+        3,
+        2,
+        1,
+        0
+      ]
+    }
+  ],
+  "axis_wrap": {
+    "link_mm": 50,
+    "offset_degrees": 60,
+    "ordinary_150_to_165_tip_displacement_mm": 11.303899832170218,
+    "wrapped_165_to_0_tip_displacement_mm": 85.86164364004021,
+    "unwrapped_165_to_180_tip_displacement_mm": 11.303899832170245,
+    "negating_offset_at_wrap_matches_unwrapped_mm": 8.364493191481491e-15,
+    "before_validation_errors": [],
+    "after_validation_errors": []
+  },
+  "population_validation": {
+    "loaded": true,
+    "validation_errors": [
+      "palm.width = 0.1230 outside [0.04, 0.1]",
+      "palm.width = 0.1230 off the 0.005 m grid"
+    ]
+  },
+  "radius_mm": {
+    "grammar_validator_tokens": 10.0,
+    "authored_collider": 10.165722109377384
+  },
+  "normalized_mask": {
+    "batch_rows": 4096,
+    "raw_enabled": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "normalized_enabled": [
+      0.010936406441032887,
+      0.010936406441032887,
+      0.010936406441032887
+    ],
+    "valid_before_normalization": [
+      true,
+      true,
+      true
+    ],
+    "valid_after_normalization": [
+      false,
+      false,
+      false
+    ]
+  }
+}

@@ -1,3 +1,8 @@
+# Local secrets and machine metadata
+.env
+.env.*
+.DS_Store
+
 # venvs / caches
 .venv*/
 __pycache__/
