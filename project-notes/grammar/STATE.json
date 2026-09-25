@@ -9,7 +9,7 @@
   "budget": {
     "worker_runs_used": 6,
     "worker_runs_max": 6,
-    "opus_reviews_used": 1,
+    "opus_reviews_used": 2,
     "opus_reviews_max": 2
   },
   "settled": [
@@ -72,17 +72,43 @@
     },
     {
       "id": "I7",
-      "status": "in_progress",
+      "status": "kept",
       "hypothesis": "Counting digits structurally for imported hands (root children / leaf chains) removes the vacuous digit_count_out_of_range:0 item and leaves the honest grid/limit findings.",
+      "decision": "keep",
+      "evidence": "commits 6b7387b+8b86062+49b886e; 813 passed; no digit_count_out_of_range items; ORCA counts as 1 digit (wrist-gated), noted"
+    },
+    {
+      "id": "I8",
+      "status": "open",
+      "hypothesis": "Geometry data model: mount points off host segment (derive.py:235), inconsistent palm segment (derive.py:215/227), palm_body_count=0 leaves no palm geometry. Must be fixed before the hull step.",
       "decision": null,
-      "evidence": "iteration 4 report; commits 1ce530e+68b34da"
+      "evidence": "opus-review-m1.md defects 1-3"
+    },
+    {
+      "id": "I9",
+      "status": "open",
+      "hypothesis": "Coverage 'expressible' is near-vacuous and two audit keys are mislabelled (nonperpendicular_axis, two_nonparallel_palm_joints); ORCA children-per-body not checked.",
+      "decision": null,
+      "evidence": "opus-review-m1.md defects 4-5"
+    },
+    {
+      "id": "I10",
+      "status": "open",
+      "hypothesis": "Couplings ignore source joint type; no derivation validator; vary keeps parent seed; rules.py types unused; test hygiene items (local tolerances, approx, body-set asserts, unused analytic refs).",
+      "decision": null,
+      "evidence": "opus-review-m1.md defects 6-10"
     }
   ],
   "last_green_commit": "68b34da",
-  "next_action": "Iteration 4 (Sonnet, worker run 5): coverage + held-out report. hand_sampler/grammar/coverage.py: construct inventory of a KinematicModel (joint types, couplings incl. offsets/negative multipliers, branching, palm bodies/joints, non-perpendicular axes, asymmetric limits, closures, unsupported constructs) and two-level coverage vs DEFAULT_DISTRIBUTION: 'expressible' (every construct in the inventory is one the grammar can produce) and 'in_support' (every fitted parameter inside the sampler's support: link lengths on grid/range, axes on the 15-degree grid, limits in the allowed sets, digit/phalanx counts in range). grammar_bench/evaluate.py: runs import fidelity (vs frozen refs where present) + coverage for every manifest hand (dev and held-out; local-only ones 'unavailable' if absent), writes grammar_bench/results/pilot.json + pilot.md with a claims section naming covered constructs and making no universality claim. Benchmark commit first (tests for coverage.py on the analytic fixtures + a results-format test), then implementation, then a results commit. No edits to rules/distributions in this iteration.",
+  "next_action": "PAUSED for Martin. Proposed iteration 5 (needs budget approval): fix I8 (segment convention, mount on segment, >=1 palm body, tests that mounts lie on host segments), then I9 (topology_expressible + missing checks, audit keys from derived models, ORCA noted in report, dirty flag), regenerate pilot-report; then I10.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
-    "stop_after": "2026-09-25T20:42:57-04:00"
+    "stop_after": "2026-09-25T20:42:57-04:00",
+    "stopped_at": "2026-09-25T19:52:33-04:00",
+    "stop_reason": "worker (6/6) and Opus (2/2) budgets exhausted; M1 partially met; scope/budget decision needed"
+  },
+  "milestones": {
+    "M1": "partially met (see opus-review-m1.md): kinematics/import/export/generation verified; coverage report overstates 'expressible'; geometry data model has defects I8"
   }
 }

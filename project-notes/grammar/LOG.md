@@ -50,3 +50,14 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Conventions accepted: hierarchical digit ids; branch on a last phalanx spawns >= 2 sub-digits; branch-hosting phalanx cannot be deleted; branch ids are stable identifiers even after host renumbering.
 - Artifacts: commits ab37531 (benchmark), 901a0ce (implementation).
 - Decision: keep. M1 status: representation, import/export, JSON, grammar done and verified; remaining: coverage + held-out report (iteration 4).
+
+## Iteration 4 + 4b (2026-09-25): coverage inventory, pilot report, structural digit count
+
+- Worker runs 5 and 6 (Sonnet 5). Command: same pytest -> 810 then 813 passed (~40 s). 11/11 available manifest hands pass Pinocchio fidelity (max 4.7e-16 m); 3 excluded by license. All 11 'expressible', none 'in_support' (real limits, link lengths, axes off the sampler's grids/sets). Fixed the vacuous digit_count_out_of_range item by counting movable chains off the root for imports (ORCA counts as 1 because of its wrist joint; limitation). Report at project-notes/grammar/pilot-report.{md,json} (the repo ignores any results/ dir).
+- Commits: 1ce530e, 68b34da, 644b21e, 6b7387b, 8b86062, 49b886e.
+- Decision: keep, with I7 closed.
+
+## Opus milestone review (2026-09-25): M1 partially met
+
+- Second and last Opus review (see opus-review-m1.md). Kinematic fidelity, import/export, and generation criteria met; coverage report overstates 'expressible'; geometry data model defects (mounts off segment, palm segment gap, palm_body_count=0) must be fixed before the hull step; several honesty/hygiene items.
+- Budgets: worker runs 6/6, Opus reviews 2/2. Loop bb7e458d stopped. Decision: pause for Martin; proposed iteration 5 recorded in STATE.next_action.
