@@ -19,6 +19,8 @@ from hand_sampler.grammar_bench import evaluate
 
 BENCH_DIR = Path(__file__).resolve().parent.parent
 ANALYTIC_DIR = BENCH_DIR / "fixtures" / "analytic"
+REAL_DIR = BENCH_DIR / "fixtures" / "real"
+ALLEGRO_URDF = REAL_DIR / "allegro_right" / "allegro_hand_description_right.urdf"
 MANIFEST = json.loads((BENCH_DIR / "manifest.json").read_text())
 
 N_GENERATED_SEEDS = 50
@@ -120,16 +122,49 @@ def test_coverage_loop_closure_not_expressible():
 
 
 # ---------------------------------------------------------------------------
-# 5. evaluate.main -> pilot.json / pilot.md
+# 4b. digit_count structural fallback (root_chains) for imported models with
+# no palm=True bodies at all -- see coverage.py's module docstring.
 # ---------------------------------------------------------------------------
+
+
+def test_coverage_digit_count_fallback_allegro():
+    model = load_urdf(ALLEGRO_URDF).model
+    result = coverage(model, DEFAULT_DISTRIBUTION)
+
+    assert not any(item.startswith("digit_count_out_of_range") for item in result.out_of_support)
+    assert result.digit_count == 4
+    assert result.digit_count_source == "root_chains"
+    assert "digit_count_source:root_chains" in result.notes
+
+
+def test_coverage_digit_count_fallback_offaxis_tree():
+    # offaxis_tree.urdf's root ("base") has exactly one direct child joint,
+    # j1 (revolute) -- a single movable-joint chain leaving the root, so the
+    # structural fallback must report 1 digit, not 0.
+    model = load_urdf(ANALYTIC_DIR / "offaxis_tree.urdf").model
+    result = coverage(model, DEFAULT_DISTRIBUTION)
+
+    assert not any(item.startswith("digit_count_out_of_range") for item in result.out_of_support)
+    assert result.digit_count == 1
+    assert result.digit_count_source == "root_chains"
+    assert "digit_count_source:root_chains" in result.notes
+
+
+# ---------------------------------------------------------------------------
+# 5. evaluate.main -> pilot-report.json / pilot-report.md
+# ---------------------------------------------------------------------------
+
+
+def test_evaluate_main_default_out_dir_is_project_notes_grammar():
+    assert evaluate.DEFAULT_OUT_DIR == evaluate.REPO_ROOT / "project-notes" / "grammar"
 
 
 def test_evaluate_main_produces_pilot_report(tmp_path):
     out_dir = tmp_path / "results"
     evaluate.main(["--out", str(out_dir)])
 
-    pilot_json = out_dir / "pilot.json"
-    pilot_md = out_dir / "pilot.md"
+    pilot_json = out_dir / "pilot-report.json"
+    pilot_md = out_dir / "pilot-report.md"
     assert pilot_json.is_file()
     assert pilot_md.is_file()
 
@@ -143,10 +178,13 @@ def test_evaluate_main_produces_pilot_report(tmp_path):
         assert "split" in h
         assert h["availability"] in {"available", "unavailable", "excluded"}
         assert h["fidelity"] is None or {"n_poses", "max_pos", "max_rot", "tolerance_met"} <= set(h["fidelity"])
-        assert h["coverage"] is None or {"expressible", "in_support", "missing_constructs", "out_of_support"} <= set(
-            h["coverage"]
-        )
+        assert h["coverage"] is None or {
+            "expressible", "in_support", "missing_constructs", "out_of_support",
+            "digit_count", "digit_count_source",
+        } <= set(h["coverage"])
 
     md_text = pilot_md.read_text()
     assert "## Claims" in md_text or "# Claims" in md_text
     assert "No universality claim is made." in md_text
+    assert "digit count" in md_text
+    assert "digit count source" in md_text
