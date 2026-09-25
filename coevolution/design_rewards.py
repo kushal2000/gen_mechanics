@@ -57,11 +57,19 @@ class DesignRewardWrapper(gym.Wrapper):
         self.n_designs = int(population.n_designs)
         dev = self.design_of_env.device
 
+        # float64 for the BANKED accumulators, not float32. float32 represents
+        # consecutive integers only up to 2**24 = 16,777,216, after which
+        # `count += 1` is a no-op and the counter silently saturates. A
+        # single-design run reaches that in about a day (observed exactly
+        # 16777216 on the in-hand imitation run at 200k steps), and because
+        # return_mean is sum/count a frozen denominator INFLATES the reported
+        # mean. A 1024-design population divides the episodes 1024 ways and
+        # never came close, which is why co-evolution's ranking never showed it.
         self.running = torch.zeros(inner.num_envs, device=dev)     # return so far, per env
-        self.sum = torch.zeros(self.n_designs, device=dev)         # banked, per design
-        self.count = torch.zeros(self.n_designs, device=dev)
-        self.goals_sum = torch.zeros(self.n_designs, device=dev)      # goals hit, summed
-        self.succeeded = torch.zeros(self.n_designs, device=dev)      # episodes with >= 1 goal
+        self.sum = torch.zeros(self.n_designs, device=dev, dtype=torch.float64)
+        self.count = torch.zeros(self.n_designs, device=dev, dtype=torch.float64)
+        self.goals_sum = torch.zeros(self.n_designs, device=dev, dtype=torch.float64)
+        self.succeeded = torch.zeros(self.n_designs, device=dev, dtype=torch.float64)
         self._steps = 0
         self._t0 = time.time()
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,8 +92,10 @@ class DesignRewardWrapper(gym.Wrapper):
         done = (terminated | truncated).reshape(-1)
         if done.any():
             d = self.design_of_env[done]
-            self.sum.index_add_(0, d, self.running[done])
-            self.count.index_add_(0, d, torch.ones_like(self.running[done]))
+            # cast at the add: the banked accumulators are float64, the
+            # per-step buffers stay float32, and index_add_ demands a match.
+            self.sum.index_add_(0, d, self.running[done].double())
+            self.count.index_add_(0, d, torch.ones_like(self.running[done]).double())
             # The env's `successes` is the number of goals reached THIS episode,
             # not a 0/1 -- summing it and dividing by episodes gave a "success
             # rate" of 2.2. Keep the goal count and, separately, whether the
@@ -93,8 +103,8 @@ class DesignRewardWrapper(gym.Wrapper):
             succ = self._successes(info)
             if succ is not None:
                 g = succ.reshape(-1)[done].to(self.running.dtype)
-                self.goals_sum.index_add_(0, d, g)
-                self.succeeded.index_add_(0, d, (g > 0).to(self.running.dtype))
+                self.goals_sum.index_add_(0, d, g.double())
+                self.succeeded.index_add_(0, d, (g > 0).double())
             self.running[done] = 0.0
 
         if self._steps % self.flush_every == 0:

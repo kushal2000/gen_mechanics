@@ -102,19 +102,22 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 # anything. The static friction-cone argument ignored that the cube is dropped
 # onto the face and is already sliding before static friction applies.
 #
-# 25 degrees: tan 25 = 0.466 against friction 1.0, so a settled cube is held
-# with roughly 2x margin -- the slab does not give it away, but it is close
-# enough to the edge that a nudge or a spin can start it moving, and then the
-# fingers have to catch it. The earlier 45 failed because of the AXIS, not the
-# angle: the object slid off the side past the fingers. With the slope running
-# at the fingertips a steeper angle is viable again. Note the reference has NO tilt parameter at all:
+# 50 degrees. The friction ANGLE at mu = 1.0 is atan(1) = 45 exactly, so at 45
+# the slab still holds a settled cube -- confirmed in the viewer, it did not
+# slide. The tilt has to EXCEED the friction angle for gravity to win:
+# tan 50 = 1.19 against 1.0 gives about 19% surplus, enough to start the cube
+# moving without flinging it.
+#
+# The earlier 45-degree failure was the AXIS, not the angle: the object slid
+# off the side, past the fingers. With the slope running at the fingertips it
+# now slides into them, which is the task. Note the reference has NO tilt parameter at all:
 # its object sits 19.9 cm out at the fingertips with no supporting surface, and
 # its two non-reach axes land at 45.3 degrees only incidentally. Tilting a plate
 # is not the same lever.
 # Overridable from the environment so two tilts can be compared side by side,
 # and so a training job can set it without editing the source -- this is a
 # parameter we are actively sweeping, not a settled constant.
-HAND_ONLY_PALM_TILT_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_TILT_DEG", "45.0"))
+HAND_ONLY_PALM_TILT_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_TILT_DEG", "50.0"))
 
 
 @_lru_cache(maxsize=1)
