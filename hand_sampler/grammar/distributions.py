@@ -32,6 +32,11 @@ class Distribution:
 
     branch_probability: float = 0.12
     max_branch_digits: int = 2
+    # Depth 0 = a top-level digit's own phalanges; a branch digit spawned
+    # from one of those is depth 1; a branch of a branch is depth 2; etc.
+    # Branching is only offered while the *current* digit's depth is below
+    # this bound, so the tree stays finite.
+    max_branch_depth: int = 2
 
     link_length_grid_m: float = 0.005
     link_length_range_m: Tuple[float, float] = (0.015, 0.080)

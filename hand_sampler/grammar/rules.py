@@ -11,22 +11,35 @@ grammar in the design note's own vocabulary:
     Module in {R(axis, limits), C(axis), P(axis, limits),
                Coupled(source, multiplier, offset)}
 
-Convention (decided in this iteration): ``Branch(Digit*)`` reuses the same
-``Digit`` production as ``Hand``'s top-level digits -- every ``Digit``,
-whether spawned directly by ``Hand`` or by a ``Branch``, mounts on *a palm
-body* (never on the branching phalanx itself), matching the ``Digit(mount:
-a palm body, ...)`` signature literally and keeping "every digit mounts on
-a palm body" true unconditionally (checked by the benchmark). A branch is
-still a real generative event tied to its phalanx (recorded as
-``branch_digit_count > 0`` on that ``Phalanx`` step) -- it just adds more
-digits to the hand rather than forking the finger's own tip.
+Convention (revised in iteration 3b, superseding the prior "branches mount
+on a palm body" choice): ``Branch(Digit*)`` reuses the same ``Digit``
+production as ``Hand``'s top-level digits, but a branch digit's ``mount`` is
+*the branching phalanx's own body* (the body distal to that phalanx's
+joint) -- not a palm body -- so that body genuinely acquires two or more
+child joints (the next phalanx in its own chain, plus one joint per branch
+digit). This is what makes "in-digit branching" a real structural fact,
+checked directly by the benchmark against the derived ``KinematicModel``
+rather than inferred from a derivation-step flag. A top-level ``Digit``
+still always mounts on a palm body. Branches may themselves branch, up to
+``Distribution.max_branch_depth`` (default 2, counted from the top-level
+digit at depth 0).
 
-Body/joint naming is deterministic from the derivation: the root is
-``"root"``; palm bodies are ``"palm{i}"`` with joint ``"palm{i}_j"``
-(``i`` 0-based, chained off the root); a digit's phalanx bodies are
-``"d{gid+1}p{p+1}"`` with joint ``"d{gid+1}p{p+1}_j"`` (``gid`` a global,
-0-based digit id shared by top-level and branch digits alike; ``p`` the
-0-based phalanx index within that digit).
+Digit identity is a hierarchical path, not a flat counter: a top-level
+digit's id is its 1-based index as a string (``"1"``, ``"2"``, ...); a
+branch digit spawned from phalanx ``p`` (0-based) of host digit ``H`` at
+branch slot ``b`` (0-based, when a phalanx spawns more than one sub-digit)
+has id ``f"{H}p{p+1}b{b}"``. Body/joint naming is deterministic from that
+id: the root is ``"root"``; palm bodies are ``"palm{i}"`` with joint
+``"palm{i}_j"`` (``i`` 0-based, each parented to the root or to an
+already-created palm body, forming a tree rather than a fixed chain); a
+digit's phalanx bodies are ``"d{digit_id}p{p+1}"`` with joint
+``"d{digit_id}p{p+1}_j"`` (``p`` the 0-based phalanx index within that
+digit) -- e.g. phalanx 1 (0-based) of the branch digit above is body
+``"d1p2b0p1"``. A digit id, once assigned, is never reused or renamed even
+if a later ``vary`` operator renumbers its host's phalanx indices (see
+``derive.py``'s ``_rename_branch_mounts``); it stays a valid, globally
+unique identifier, it just may no longer literally spell out the host's
+*current* phalanx index.
 
 Segment length/direction for the later geometry step is not a new ``Body``
 field: every body produced by a ``segment(...)`` production gets a
@@ -50,7 +63,9 @@ class RootProduction:
 
 @dataclass(frozen=True)
 class PalmBodyProduction:
-    """``PalmBody(parent) -> segment(length, direction) + optional PalmJoint(R, axis, limits)``."""
+    """``PalmBody(parent) -> segment(length, direction) + optional PalmJoint(R, axis, limits)``.
+    ``parent`` is sampled among the root and every already-created palm body,
+    so palm bodies fan out into a tree rather than a fixed chain."""
 
     parent: str
     length: float
@@ -62,14 +77,16 @@ class PalmBodyProduction:
 
 @dataclass(frozen=True)
 class DigitProduction:
-    """``Digit(mount, mount_pose) -> Phalanx+``."""
+    """``Digit(mount, mount_pose) -> Phalanx+``. ``mount`` is a palm body for
+    a top-level digit, or the host phalanx's own body for a branch digit."""
 
-    gid: int
+    digit_id: str
     mount: str
     mount_frac: float
     mount_rpy: Tuple[float, float, float]
     phalanx_count: int
     top_level: bool
+    depth: int
 
 
 @dataclass(frozen=True)
@@ -108,9 +125,13 @@ ModuleSpec = Union[ModuleR, ModuleC, ModuleP, ModuleCoupled]
 
 @dataclass(frozen=True)
 class PhalanxProduction:
-    """``Phalanx -> Module + segment(length) + optional Branch(Digit*)``."""
+    """``Phalanx -> Module + segment(length) + optional Branch(Digit*)``.
+    ``branch_digit_count > 0`` means this phalanx's own body (``"d{digit_id}p{p+1}"``)
+    is the mount for that many sub-``Digit``s, recorded as separate ``Digit``/
+    ``Phalanx`` steps whose ids are this digit's id extended with
+    ``f"p{p+1}b{slot}"``."""
 
-    gid: int
+    digit_id: str
     p: int
     module: ModuleSpec
     length: float
