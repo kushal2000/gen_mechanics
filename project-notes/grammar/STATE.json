@@ -5,9 +5,9 @@
   "branch": "martin/hand-grammar",
   "started_at": "2026-09-25T17:29:32-04:00",
   "deadline": "2026-09-25T19:29:32-04:00",
-  "iteration": 4,
+  "iteration": 5,
   "budget": {
-    "worker_runs_used": 4,
+    "worker_runs_used": 6,
     "worker_runs_max": 6,
     "opus_reviews_used": 1,
     "opus_reviews_max": 2
@@ -69,9 +69,16 @@
       "hypothesis": "Mounting branch digits on the branching phalanx body and parenting palm bodies to any existing palm body yields real in-digit branching and palm trees, measured directly by the audit, without breaking replay/vary/oracle agreement.",
       "decision": "keep",
       "evidence": "commits ab37531+901a0ce; coordinator probe 300 seeds: 220 in-digit branches, 109 palm trees; 755 passed; oracle 84,613 poses 7.4e-16"
+    },
+    {
+      "id": "I7",
+      "status": "in_progress",
+      "hypothesis": "Counting digits structurally for imported hands (root children / leaf chains) removes the vacuous digit_count_out_of_range:0 item and leaves the honest grid/limit findings.",
+      "decision": null,
+      "evidence": "iteration 4 report; commits 1ce530e+68b34da"
     }
   ],
-  "last_green_commit": "901a0ce",
+  "last_green_commit": "68b34da",
   "next_action": "Iteration 4 (Sonnet, worker run 5): coverage + held-out report. hand_sampler/grammar/coverage.py: construct inventory of a KinematicModel (joint types, couplings incl. offsets/negative multipliers, branching, palm bodies/joints, non-perpendicular axes, asymmetric limits, closures, unsupported constructs) and two-level coverage vs DEFAULT_DISTRIBUTION: 'expressible' (every construct in the inventory is one the grammar can produce) and 'in_support' (every fitted parameter inside the sampler's support: link lengths on grid/range, axes on the 15-degree grid, limits in the allowed sets, digit/phalanx counts in range). grammar_bench/evaluate.py: runs import fidelity (vs frozen refs where present) + coverage for every manifest hand (dev and held-out; local-only ones 'unavailable' if absent), writes grammar_bench/results/pilot.json + pilot.md with a claims section naming covered constructs and making no universality claim. Benchmark commit first (tests for coverage.py on the analytic fixtures + a results-format test), then implementation, then a results commit. No edits to rules/distributions in this iteration.",
   "loop": {
     "cron_job": "bb7e458d",
