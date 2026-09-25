@@ -26,13 +26,17 @@ BOX_SHRINK_REL = 1e-9
 CONTINUOUS_RANGE = (-2.0 * math.pi, 2.0 * math.pi)
 
 
-def _joint_info(urdf_path: Path):
+def _joint_info(urdf_path: Path, hand_root: str = None):
     root = ET.fromstring(urdf_path.read_bytes())
     joints = []
     mimic_dependents = set()
+    parent_of = {}
+    children_of = {}
     for jel in root.findall("joint"):
         name = jel.attrib["name"]
         jtype = jel.attrib["type"]
+        parent = jel.find("parent").attrib["link"]
+        child = jel.find("child").attrib["link"]
         limit_el = jel.find("limit")
         limits = None
         if limit_el is not None and "lower" in limit_el.attrib and "upper" in limit_el.attrib:
@@ -40,12 +44,34 @@ def _joint_info(urdf_path: Path):
         mimic_el = jel.find("mimic")
         if mimic_el is not None:
             mimic_dependents.add(name)
+        parent_of[name] = parent
+        children_of.setdefault(parent, []).append((name, child))
         joints.append((name, jtype, limits))
+
+    if hand_root is None:
+        return joints, mimic_dependents
+
+    # Keep only joints in the subtree rooted at hand_root (mirrors the
+    # grammar's own hand_root cut, reimplemented independently here since
+    # this script must not import hand_sampler.grammar).
+    keep_bodies = set()
+    keep_joint_names = set()
+    stack = [hand_root]
+    while stack:
+        b = stack.pop()
+        if b in keep_bodies:
+            continue
+        keep_bodies.add(b)
+        for jname, child in children_of.get(b, []):
+            keep_joint_names.add(jname)
+            stack.append(child)
+    joints = [(n, t, l) for (n, t, l) in joints if n in keep_joint_names]
+    mimic_dependents = mimic_dependents & keep_joint_names
     return joints, mimic_dependents
 
 
-def make_box(urdf_path: Path):
-    joints, mimic_dependents = _joint_info(urdf_path)
+def make_box(urdf_path: Path, hand_root: str = None):
+    joints, mimic_dependents = _joint_info(urdf_path, hand_root)
     box = {}
     for name, jtype, limits in joints:
         if jtype not in ("revolute", "continuous", "prismatic"):
@@ -68,8 +94,8 @@ def _shrink(lo, hi, rel):
     return new_lo, new_hi
 
 
-def make_configs(urdf_path: Path, n_random=N_RANDOM, seed=SEED):
-    box = make_box(urdf_path)
+def make_configs(urdf_path: Path, n_random=N_RANDOM, seed=SEED, hand_root: str = None):
+    box = make_box(urdf_path, hand_root)
     names = sorted(box)
     shrunk = {name: _shrink(*box[name], BOX_SHRINK_REL) for name in names}
 
@@ -95,11 +121,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--urdf", required=True)
     ap.add_argument("--id", required=True, help="hand id; output goes to references/<id>.configs.json")
+    ap.add_argument("--hand-root", default=None, help="restrict to the subtree rooted at this link")
     ap.add_argument("--out-dir", default=str(Path(__file__).resolve().parent.parent / "references"))
     args = ap.parse_args()
 
     urdf_path = Path(args.urdf)
-    configs = make_configs(urdf_path)
+    configs = make_configs(urdf_path, hand_root=args.hand_root)
     out_path = Path(args.out_dir) / f"{args.id}.configs.json"
     out_path.write_text(json.dumps(configs, indent=2))
     print(f"wrote {len(configs)} configurations to {out_path}")
