@@ -33,3 +33,12 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Design decisions recorded this iteration (from discussion with Martin): representation is the evolution substrate, not an importer; palm-ness is a per-body flag; palm geometry = hull of palm capsules at rest cut per palm joint by a plane containing the axis; closed-chain solver deferred.
 - Artifacts: commits dfdb04b (benchmark), 82e46e0 (implementation). Loop job bb7e458d every 10 min, stop after 20:42 local.
 - Decision: keep.
+
+## Iteration 3 (2026-09-25): grammar productions, derivations, vary
+
+- Hypothesis: typed grammar with separate parameter table and replayable derivations generates only valid models whose exports Pinocchio agrees with; support covers the listed constructs.
+- Worker: one Sonnet 5 run (~15 min). Command: same pytest command -> 754 passed in 35.7 s. Oracle: 200 seeds, 66,476 body poses, max 3.9e-16 m / 1.1e-15 rad. Support audit over 1000 seeds printed in the test (see commit 403e3cb). vary: 7 operators x 100 seeds valid.
+- Coordinator review: frozen files untouched; scope ok. Probe over 300 seeds: 0 non-palm bodies with >=2 child joints, 0 palm bodies with >=2 palm children. The worker mounted 'branch' digits on palm bodies (its convention 2) and chained palm bodies (convention 5), so the audit's 'branch' key does not measure branching. This is a coverage mislabel and is being fixed before the coverage report.
+- Accepted conventions: segment length stored as a `<body>_tip` frame; Coupled.source as a relative phalanx index; coupled-joint limits = exact affine image of the source range; URDF re-import equality checked kinematically because palm/radius flags and tip frames have no URDF form.
+- Artifacts: commits 403e3cb (benchmark), acf57e5 (implementation).
+- Decision: revise (I6 opened).

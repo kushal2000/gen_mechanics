@@ -5,9 +5,9 @@
   "branch": "martin/hand-grammar",
   "started_at": "2026-09-25T17:29:32-04:00",
   "deadline": "2026-09-25T19:29:32-04:00",
-  "iteration": 2,
+  "iteration": 3,
   "budget": {
-    "worker_runs_used": 2,
+    "worker_runs_used": 4,
     "worker_runs_max": 6,
     "opus_reviews_used": 1,
     "opus_reviews_max": 2
@@ -55,9 +55,23 @@
       "hypothesis": "Exact JSON round trip and a URDF exporter that re-emits verbatim poses and mimic tags reproduce the frozen Pinocchio references on the exported files; SHARPA imports with hand_root=left_hand_C_MC.",
       "decision": "keep",
       "evidence": "commits dfdb04b+82e46e0; 45 passed; export-oracle 0.0 on Allegro/LEAP/Barrett, 4.5e-16 on SHARPA; Ability 1120 poses 5.7e-17, Inspire 1330 poses 1.2e-16"
+    },
+    {
+      "id": "I5",
+      "status": "revise",
+      "hypothesis": "A typed grammar (root, palm bodies with optional palm joints, digit chains with branching and affine couplings, separate parameter table) with replayable derivations generates only valid models whose exported URDFs Pinocchio agrees with at 1e-10, and its support covers the listed constructs.",
+      "decision": "revise",
+      "evidence": "commits 403e3cb+acf57e5; 754 passed; oracle 66,476 poses 3.9e-16; but coordinator probe over 300 seeds: 0 in-digit branches, 0 palm trees; audit key 'branch' mislabels"
+    },
+    {
+      "id": "I6",
+      "status": "in_progress",
+      "hypothesis": "Mounting branch digits on the branching phalanx body and parenting palm bodies to any existing palm body yields real in-digit branching and palm trees, measured directly by the audit, without breaking replay/vary/oracle agreement.",
+      "decision": null,
+      "evidence": null
     }
   ],
-  "last_green_commit": "82e46e0",
+  "last_green_commit": "acf57e5",
   "next_action": "Iteration 3 (Sonnet): benchmark commit first (test_acceptance_grammar.py: 500 seeded derivations validate, mobility == len(u), JSON round trip, identical replay; 200 seeds export -> urdf_parser_py parses and Pinocchio FK on export equals ours via the subprocess oracle; support audit >=1 sample each of: 1 digit, >=5 digits, >=6 joints in a digit, branching, palm joint, non-perpendicular axis, coupling with b!=0, asymmetric limits, continuous, prismatic). Then hand_sampler/grammar/{rules,distributions,derive}.py: productions Hand->Root+PalmBody*+Digit*; PalmBody attaches to root or another palm body with an optional palm joint (tighter travel); Digit->Phalanx+ with optional branching; Module in {R, C, P, Coupled(affine to an earlier joint in the same digit)}; palm flag per body; parameter table separate from rules; Derivation(seed, grammar_version, steps) with sample/derive/replay and vary operators (resample, perturb, regrow subtree, insert/delete phalanx, add/remove digit). No geometry yet (palm hull is M3).",
   "loop": {
     "cron_job": "bb7e458d",
