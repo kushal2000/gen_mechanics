@@ -5,7 +5,7 @@
   "branch": "martin/hand-grammar",
   "started_at": "2026-09-25T17:29:32-04:00",
   "deadline": "2026-09-25T19:29:32-04:00",
-  "iteration": 3,
+  "iteration": 4,
   "budget": {
     "worker_runs_used": 4,
     "worker_runs_max": 6,
@@ -58,21 +58,21 @@
     },
     {
       "id": "I5",
-      "status": "revise",
+      "status": "kept",
       "hypothesis": "A typed grammar (root, palm bodies with optional palm joints, digit chains with branching and affine couplings, separate parameter table) with replayable derivations generates only valid models whose exported URDFs Pinocchio agrees with at 1e-10, and its support covers the listed constructs.",
-      "decision": "revise",
+      "decision": "keep after revision (I6)",
       "evidence": "commits 403e3cb+acf57e5; 754 passed; oracle 66,476 poses 3.9e-16; but coordinator probe over 300 seeds: 0 in-digit branches, 0 palm trees; audit key 'branch' mislabels"
     },
     {
       "id": "I6",
-      "status": "in_progress",
+      "status": "kept",
       "hypothesis": "Mounting branch digits on the branching phalanx body and parenting palm bodies to any existing palm body yields real in-digit branching and palm trees, measured directly by the audit, without breaking replay/vary/oracle agreement.",
-      "decision": null,
-      "evidence": null
+      "decision": "keep",
+      "evidence": "commits ab37531+901a0ce; coordinator probe 300 seeds: 220 in-digit branches, 109 palm trees; 755 passed; oracle 84,613 poses 7.4e-16"
     }
   ],
-  "last_green_commit": "acf57e5",
-  "next_action": "Iteration 3 (Sonnet): benchmark commit first (test_acceptance_grammar.py: 500 seeded derivations validate, mobility == len(u), JSON round trip, identical replay; 200 seeds export -> urdf_parser_py parses and Pinocchio FK on export equals ours via the subprocess oracle; support audit >=1 sample each of: 1 digit, >=5 digits, >=6 joints in a digit, branching, palm joint, non-perpendicular axis, coupling with b!=0, asymmetric limits, continuous, prismatic). Then hand_sampler/grammar/{rules,distributions,derive}.py: productions Hand->Root+PalmBody*+Digit*; PalmBody attaches to root or another palm body with an optional palm joint (tighter travel); Digit->Phalanx+ with optional branching; Module in {R, C, P, Coupled(affine to an earlier joint in the same digit)}; palm flag per body; parameter table separate from rules; Derivation(seed, grammar_version, steps) with sample/derive/replay and vary operators (resample, perturb, regrow subtree, insert/delete phalanx, add/remove digit). No geometry yet (palm hull is M3).",
+  "last_green_commit": "901a0ce",
+  "next_action": "Iteration 4 (Sonnet, worker run 5): coverage + held-out report. hand_sampler/grammar/coverage.py: construct inventory of a KinematicModel (joint types, couplings incl. offsets/negative multipliers, branching, palm bodies/joints, non-perpendicular axes, asymmetric limits, closures, unsupported constructs) and two-level coverage vs DEFAULT_DISTRIBUTION: 'expressible' (every construct in the inventory is one the grammar can produce) and 'in_support' (every fitted parameter inside the sampler's support: link lengths on grid/range, axes on the 15-degree grid, limits in the allowed sets, digit/phalanx counts in range). grammar_bench/evaluate.py: runs import fidelity (vs frozen refs where present) + coverage for every manifest hand (dev and held-out; local-only ones 'unavailable' if absent), writes grammar_bench/results/pilot.json + pilot.md with a claims section naming covered constructs and making no universality claim. Benchmark commit first (tests for coverage.py on the analytic fixtures + a results-format test), then implementation, then a results commit. No edits to rules/distributions in this iteration.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

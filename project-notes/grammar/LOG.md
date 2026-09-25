@@ -42,3 +42,11 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Accepted conventions: segment length stored as a `<body>_tip` frame; Coupled.source as a relative phalanx index; coupled-joint limits = exact affine image of the source range; URDF re-import equality checked kinematically because palm/radius flags and tip frames have no URDF form.
 - Artifacts: commits 403e3cb (benchmark), acf57e5 (implementation).
 - Decision: revise (I6 opened).
+
+## Iteration 3b (2026-09-25): real branching and palm trees (fix for I6)
+
+- Worker: one Sonnet 5 run (~11 min). Command: same pytest -> 755 passed in 38.4 s. Oracle: 200 seeds, 84,613 poses, max 7.4e-16 m / 1.4e-15 rad. Audit over 1000 seeds: in_digit_branch 708, palm_tree 335, palm_joint 877, two_nonparallel_palm_joints 297, coupling_nonzero_offset 3392, coupling_negative_multiplier 1474, continuous 2683, prismatic 2702, nonperpendicular_axis 22690, nonidentity_mount_rotation 7766, one_digit 146, five_plus_digits 354, six_plus_phalanges 1280.
+- Coordinator probe (independent of the test): 300 seeds -> 220 models with a non-palm body having >= 2 child joints, 109 with a palm body having >= 2 palm children.
+- Conventions accepted: hierarchical digit ids; branch on a last phalanx spawns >= 2 sub-digits; branch-hosting phalanx cannot be deleted; branch ids are stable identifiers even after host renumbering.
+- Artifacts: commits ab37531 (benchmark), 901a0ce (implementation).
+- Decision: keep. M1 status: representation, import/export, JSON, grammar done and verified; remaining: coverage + held-out report (iteration 4).
