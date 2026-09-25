@@ -232,7 +232,7 @@ def _arm_fields(hand_only: bool) -> dict:
         # and palm-up is exactly this rotation.
         return dict(arm_joint_names=(), arm_stiffness={}, arm_damping={},
                     arm_default_joint_pos={}, start_arm_higher_deltas={},
-                    base_pos=rpc.HAND_ONLY_BASE_POS, base_rot=rpc.hand_only_base_rot())
+                    base_pos=rpc.hand_only_base_pos(), base_rot=rpc.hand_only_base_rot())
     return dict(arm_joint_names=rpc.ARM_JOINT_NAMES, arm_stiffness=rpc.ARM_STIFFNESS,
                 arm_damping=rpc.ARM_DAMPING, arm_default_joint_pos=rpc.ARM_DEFAULT_JOINT_POS,
                 start_arm_higher_deltas=rpc.START_ARM_HIGHER_DELTAS,

@@ -78,36 +78,53 @@ START_ARM_HIGHER_DELTAS: dict[str, float] = {
 BASE_POS: tuple[float, float, float] = (0.0, 0.8, 0.0)
 BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 
-# --- hand-only placement: palm up ----------------------------------------------
+# --- hand-only placement ------------------------------------------------------
 # With no arm, the stub puts iiwa14_link_7 at the robot root with an IDENTITY
 # local-to-world (verified against the converted stage, job 252328), so the
 # whole hand's world orientation is this one rotation.
 #
-# Derived, not pasted, so it cannot drift from FLANGE_TO_PALM_YAW_RAD.
-# Computed lazily: build imports this module, so calling it at import time
-# is a cycle. The palm
-# frame is (x = thickness = GRASP_DIR, y = width, z = wrist->fingertip length).
-# Palm up means palm +x -> world +z; palm +z -> world +y keeps the fingers
-# reaching horizontally. R_base = R_palm_world @ flange_to_palm().T.
+# Derived, not pasted, so it cannot drift from FLANGE_TO_PALM_YAW_RAD, and
+# computed lazily because build imports this module. The palm frame is
+# (x = thickness = GRASP_DIR, y = width, z = wrist -> fingertip length), and
+# R_base = R_palm_world @ flange_to_palm().T.
+# How far the palm normal is tilted off vertical, in degrees.
 #
-# Consequence worth knowing: link_7 +z maps to world +y, and palm_center_offset
-# is (0, 0, 0.095 + palm_length/2) along link_7 z -- so the palm centre's world
-# Z IS INDEPENDENT OF PALM LENGTH and only its y shifts (about +-15 mm across a
-# population). Grasp height is therefore the same for every design, which a
-# per-design height would not be.
+# 0 would be palm-up: the slab horizontal, gravity pressing the object straight
+# onto it. That is a PLATE, not a hand -- a cube on a level plate stays put with
+# no skill at all, which measurably happened (run 267504: done_fall 0.0003, the
+# object was never lost because nothing had to hold it), and it hands the task a
+# degenerate solution of doing nothing.
+#
+# IsaacLab's inhand reference mounts the Allegro with its local axes 45.3, 45.3
+# and 84.6 degrees off vertical and spawns the cube 19 cm out AMONG the fingers,
+# with gravity enabled on the object. Gravity is a threat there, not a helper.
+# 45 degrees matches that: at friction 1.0 the slab alone is exactly on the edge
+# of holding the cube (tan 45 = 1), so the fingers have to do the rest.
+HAND_ONLY_PALM_TILT_DEG: float = 45.0
+
+
 @_lru_cache(maxsize=1)
 def hand_only_base_rot() -> tuple[float, float, float, float]:
+    import math as _math
+
     import numpy as np
 
     from hand_sampler import build, design_space
 
     F = build.flange_to_palm()[:3, :3]              # palm axes in link_7's frame
-    x_w = np.array([0.0, 0.0, 1.0])                 # palm +x (slab normal) -> up
-    z_w = np.array([0.0, 1.0, 0.0])                 # palm +z (length) -> horizontal
-    R_palm_world = np.column_stack([x_w, np.cross(z_w, x_w), z_w])
+    t = _math.radians(HAND_ONLY_PALM_TILT_DEG)
+    # Palm +x is GRASP_DIR, the slab normal. Tilt it off vertical toward -y, so
+    # the object is held against a sloped face rather than resting on a level
+    # one; palm +z (wrist->fingertip) stays horizontal and perpendicular to the
+    # tilt, which keeps the fingers reaching across the slope rather than
+    # up it.
+    x_w = np.array([0.0, -_math.sin(t), _math.cos(t)])
+    z_w = np.array([1.0, 0.0, 0.0])
+    y_w = np.cross(z_w, x_w)
+    R_palm_world = np.column_stack([x_w, y_w / np.linalg.norm(y_w), z_w])
     R = R_palm_world @ F.T
     assert abs(np.linalg.det(R) - 1.0) < 1e-9, "base rotation is not a rotation"
-    assert np.abs(R @ F[:, 0] - x_w).max() < 1e-9, "palm normal does not point up"
+    assert np.abs(R @ F[:, 0] - x_w).max() < 1e-9, "palm normal is not where it should be"
     M = np.eye(4)
     M[:3, :3] = R
     _, q = design_space.mat_to_pos_quat(M)
@@ -117,9 +134,30 @@ def hand_only_base_rot() -> tuple[float, float, float, float]:
     return tuple(float(v) for v in q)
 
 
-# Palm centre lands near (0, 0, 0.50): the y offset cancels the mean
-# 0.095 + palm_length/2 along world +y, and z is exact for every design.
-HAND_ONLY_BASE_POS: tuple[float, float, float] = (0.0, -0.125, 0.50)
+# Where the palm centre should end up, in world.
+HAND_ONLY_PALM_CENTRE: tuple[float, float, float] = (0.0, 0.0, 0.50)
+# The typical palm_center_offset magnitude, |(0, 0, 0.095 + palm_length/2)|.
+# Measured 0.1375..0.1450 m over 201 designs, so any one design lands within
+# about 4 mm of the target along that axis.
+_TYPICAL_PALM_CENTRE_OFFSET_M: float = 0.1450
+
+
+@_lru_cache(maxsize=1)
+def hand_only_base_pos() -> tuple[float, float, float]:
+    """Mount point putting the palm centre at HAND_ONLY_PALM_CENTRE.
+
+    Derived from the rotation rather than written down: the offset runs along
+    link_7's +z, and which way that points in world depends entirely on the
+    tilt -- it was world +y palm-up and is world +x at 45 degrees. A literal
+    here would silently misplace the hand the moment the tilt changed.
+    """
+    import numpy as np
+    from scipy.spatial.transform import Rotation as _R
+
+    q = hand_only_base_rot()
+    d = _R.from_quat([q[1], q[2], q[3], q[0]]).as_matrix() @ np.array([0.0, 0.0, 1.0])
+    pos = np.asarray(HAND_ONLY_PALM_CENTRE, float) - _TYPICAL_PALM_CENTRE_OFFSET_M * d
+    return tuple(float(v) for v in pos)
 
 # Serial chain, so only consecutive links need filtering.
 ARM_ADJACENT_LINKS: dict[str, list[str]] = {
