@@ -1,0 +1,518 @@
+"""Coverage / support audit for the hand-kinematics grammar (iteration 4).
+
+Two entry points:
+
+``inventory(model)``
+    A purely structural, grammar-agnostic census of the constructs present in
+    a ``KinematicModel``: joint-type counts, couplings, palm/branch structure,
+    axis health, limit symmetry, closures. Works on any valid model, imported
+    or grammar-derived.
+
+``coverage(model, dist)``
+    Judges an ``inventory`` against ``rules.py``/``distributions.py``:
+    ``expressible`` -- could the grammar's productions (see ``rules.py``)
+    ever represent this structure at all, independent of parameter ranges?
+    ``in_support`` -- does it also fall inside ``dist``'s sampled ranges/grids?
+    Both come with named reason lists (``missing_constructs``,
+    ``out_of_support``) -- never a bare boolean.
+
+This module reads ``KinematicModel``/``Body``/``Joint``/... only; it never
+imports ``derive.py`` and never constructs a model itself. It is deliberately
+conservative: every heuristic below is documented at its use site, and where
+a signal cannot be recovered from a bare model (e.g. "was this URDF axis
+attribute present in the source file"), the field says so rather than
+guessing. No claim of universality is made anywhere in this module.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+from .kinematics import ALL_TYPES, KinematicModel, MOVABLE_TYPES
+from .distributions import Distribution, DEFAULT_DISTRIBUTION, ANGLE_STEP_DEG, DEG
+
+GRID_TOL = 1e-9          # length-grid / axis-grid tolerance, per spec ("... to 1e-9")
+UNIT_TOL = 1e-9          # axis unit-norm tolerance
+PERP_TOL = 1e-6          # dot-product tolerance for "orthogonal to link direction"
+SET_TOL = 1e-9           # membership-in-choice-set tolerance (limits, couplings)
+
+DEFAULT_AXIS = (1.0, 0.0, 0.0)
+
+# rules.py/derive.py name every phalanx body "d{digit_id}p{p+1}" (p the
+# 0-based phalanx index). A body ending in "...p1" is therefore always a
+# digit or branch-digit's *first* phalanx -- a mount joint, not a fresh
+# grid-sampled segment. This pattern only ever matches grammar-produced
+# names; on an imported model it simply never matches, so it can only
+# remove (never add) a length-grid check -- it exists purely to break the
+# rare coincidence where a mount joint's randomly sampled mount_rpy/xyz
+# happens to look like a same-digit continuation (see the link-length
+# check below).
+_FIRST_PHALANX_RE = re.compile(r"^d.*p1$")
+
+
+def _is_first_phalanx_body(name: str) -> bool:
+    return bool(_FIRST_PHALANX_RE.match(name))
+
+
+# ---------------------------------------------------------------------------
+# inventory
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ConstructInventory:
+    joint_type_counts: Dict[str, int]
+    movable_joint_count: int
+
+    n_couplings: int
+    couplings_with_offset: int
+    couplings_negative: int
+
+    branching_bodies: int
+    branching_body_names: Tuple[str, ...]
+
+    palm_bodies: int
+    palm_joints: int
+    palm_tree_nodes: int
+
+    non_perpendicular_axes: int
+    undetermined_link_direction: int
+    non_unit_axes: int
+    default_axis_joints: int  # joints whose stored axis == (1,0,0); a URDF axis
+                               # left unspecified defaults here, but an explicit
+                               # (1,0,0) axis is indistinguishable post-parse --
+                               # this field reports the structural fact only.
+
+    asymmetric_limits: int
+    has_continuous: bool
+    has_prismatic: bool
+
+    limit_conflicts: int
+
+    n_closures: int
+    n_groups: int
+
+    max_digits: int          # number of leaf-terminated chains from the root
+    max_chain_depth: int     # longest root-to-leaf joint count
+
+
+def _norm(v) -> float:
+    return math.sqrt(sum(float(x) * float(x) for x in v))
+
+
+def inventory(model: KinematicModel) -> ConstructInventory:
+    bodies_by_name = {b.name: b for b in model.bodies}
+    joints_by_name = {j.name: j for j in model.joints}
+    frames_by_body_tip: Dict[str, Tuple[float, float, float]] = {
+        f.body: tuple(f.pose.xyz) for f in model.frames if f.name == f"{f.body}_tip"
+    }
+
+    joint_type_counts: Dict[str, int] = {t: 0 for t in ALL_TYPES}
+    for j in model.joints:
+        joint_type_counts[j.type] = joint_type_counts.get(j.type, 0) + 1
+    movable_joint_count = sum(joint_type_counts.get(t, 0) for t in MOVABLE_TYPES)
+
+    # Couplings.
+    n_couplings = len(model.couplings)
+    couplings_with_offset = sum(1 for c in model.couplings if abs(c.offset) > SET_TOL)
+    couplings_negative = sum(1 for c in model.couplings if c.multiplier < 0.0)
+
+    # Children map (structural; validate() already guarantees exactly one
+    # parent joint per non-root body, so this is a simple tree).
+    children: Dict[str, List] = {}
+    for j in model.joints:
+        children.setdefault(j.parent, []).append(j)
+
+    palm_body_names = {b.name for b in model.bodies if b.palm}
+    palm_bodies = len(palm_body_names)
+    palm_joints = sum(1 for j in model.joints if j.child in palm_body_names)
+    palm_tree_nodes = palm_bodies
+
+    branching_body_names = tuple(
+        sorted(
+            name for name, kids in children.items()
+            if name not in palm_body_names and len(kids) >= 2
+        )
+    )
+    branching_bodies = len(branching_body_names)
+
+    # Axis health + perpendicularity.
+    non_perpendicular_axes = 0
+    undetermined_link_direction = 0
+    non_unit_axes = 0
+    default_axis_joints = 0
+    for j in model.joints:
+        axis = tuple(float(v) for v in j.axis)
+        n = _norm(axis)
+        if axis == DEFAULT_AXIS:
+            default_axis_joints += 1
+        if n != 0.0 and abs(n - 1.0) > UNIT_TOL:
+            non_unit_axes += 1
+        if j.type not in MOVABLE_TYPES:
+            continue
+        # link direction = the child's own outgoing joint origin xyz, or its
+        # "<body>_tip" frame if one exists; undetermined if neither is present
+        # or the resulting vector is (numerically) zero-length.
+        direction = None
+        if j.child in frames_by_body_tip:
+            direction = frames_by_body_tip[j.child]
+        else:
+            kids = sorted(children.get(j.child, []), key=lambda kj: kj.name)
+            if kids:
+                direction = tuple(float(v) for v in kids[0].origin.xyz)
+        if direction is None or _norm(direction) < 1e-12 or n < 1e-12:
+            undetermined_link_direction += 1
+            continue
+        au = tuple(a / n for a in axis)
+        dn = _norm(direction)
+        du = tuple(d / dn for d in direction)
+        dot = sum(a * d for a, d in zip(au, du))
+        if abs(dot) > PERP_TOL:
+            non_perpendicular_axes += 1
+
+    # Limits.
+    asymmetric_limits = 0
+    for j in model.joints:
+        if j.limits is not None:
+            lo, hi = j.limits
+            if abs(lo + hi) > SET_TOL:
+                asymmetric_limits += 1
+
+    limit_conflicts = 0
+    try:
+        from .coords import admissible_box
+        _box, conflicts = admissible_box(model)
+        limit_conflicts = len(conflicts)
+    except Exception:
+        limit_conflicts = 0
+
+    # Leaf chains / depth from the declared root.
+    leaves = [b.name for b in model.bodies if b.name not in children]
+    max_digits = len(leaves)
+    depth_of: Dict[str, int] = {model.root: 0}
+    order = [model.root]
+    idx = 0
+    while idx < len(order):
+        cur = order[idx]
+        idx += 1
+        for j in children.get(cur, []):
+            depth_of[j.child] = depth_of[cur] + 1
+            order.append(j.child)
+    max_chain_depth = max(depth_of.get(leaf, 0) for leaf in leaves) if leaves else 0
+
+    return ConstructInventory(
+        joint_type_counts=joint_type_counts,
+        movable_joint_count=movable_joint_count,
+        n_couplings=n_couplings,
+        couplings_with_offset=couplings_with_offset,
+        couplings_negative=couplings_negative,
+        branching_bodies=branching_bodies,
+        branching_body_names=branching_body_names,
+        palm_bodies=palm_bodies,
+        palm_joints=palm_joints,
+        palm_tree_nodes=palm_tree_nodes,
+        non_perpendicular_axes=non_perpendicular_axes,
+        undetermined_link_direction=undetermined_link_direction,
+        non_unit_axes=non_unit_axes,
+        default_axis_joints=default_axis_joints,
+        asymmetric_limits=asymmetric_limits,
+        has_continuous=joint_type_counts.get("continuous", 0) > 0,
+        has_prismatic=joint_type_counts.get("prismatic", 0) > 0,
+        limit_conflicts=limit_conflicts,
+        n_closures=len(model.closures),
+        n_groups=len(model.groups),
+        max_digits=max_digits,
+        max_chain_depth=max_chain_depth,
+    )
+
+
+# ---------------------------------------------------------------------------
+# coverage
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CoverageResult:
+    expressible: bool
+    in_support: bool
+    missing_constructs: List[str]
+    out_of_support: List[str]
+    inventory: ConstructInventory
+
+
+def _on_angle_grid(rad: float) -> bool:
+    """True if ``rad`` lands on the 15-degree grid used everywhere a joint
+    axis elevation/azimuth or an orientation is sampled (``distributions.py``:
+    ``ANGLE_STEP_DEG``/``N_ANGLE_STEPS``/``N_ELEVATION_STEPS``)."""
+    step = ANGLE_STEP_DEG * DEG
+    k = rad / step
+    return abs(k - round(k)) * step < GRID_TOL
+
+
+def _axis_on_grid(axis: Tuple[float, float, float]) -> bool:
+    x, y, z = (float(v) for v in axis)
+    n = _norm((x, y, z))
+    if n < 1e-12:
+        return False
+    x, y, z = x / n, y / n, z / n
+    z = max(-1.0, min(1.0, z))
+    el = math.acos(z)
+    if not _on_angle_grid(el):
+        return False
+    # At the poles (el == 0 or pi) azimuth is degenerate -- any az is "on
+    # grid" since sample_axis's own az_k choice is unobservable there.
+    if el < GRID_TOL or abs(el - math.pi) < GRID_TOL:
+        return True
+    az = math.atan2(y, x)
+    return _on_angle_grid(az)
+
+
+def _length_on_grid(length: float, lo: float, grid: float) -> bool:
+    k = (length - lo) / grid
+    return abs(k - round(k)) * grid < GRID_TOL
+
+
+def _in_choice_set(value: float, choices: Tuple[float, ...]) -> bool:
+    return any(abs(value - c) <= SET_TOL for c in choices)
+
+
+def _limits_in_choice_set(limits: Tuple[float, float], choices_deg: Tuple[Tuple[float, float], ...]) -> bool:
+    lo, hi = limits
+    for lo_deg, hi_deg in choices_deg:
+        if abs(lo - lo_deg * DEG) <= SET_TOL and abs(hi - hi_deg * DEG) <= SET_TOL:
+            return True
+    return False
+
+
+def _limits_in_choice_set_m(limits: Tuple[float, float], choices_m: Tuple[Tuple[float, float], ...]) -> bool:
+    lo, hi = limits
+    for lo_m, hi_m in choices_m:
+        if abs(lo - lo_m) <= SET_TOL and abs(hi - hi_m) <= SET_TOL:
+            return True
+    return False
+
+
+def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -> CoverageResult:
+    inv = inventory(model)
+    missing: List[str] = []
+    out: List[str] = []
+
+    # -- expressible: could the grammar's own productions ever build this
+    # shape at all, regardless of sampled parameter values? --------------
+
+    if inv.n_closures > 0:
+        missing.append("loop_closure")
+
+    for t in inv.joint_type_counts:
+        if inv.joint_type_counts[t] > 0 and t not in ALL_TYPES:
+            missing.append(f"unsupported_joint_type:{t}")
+
+    body_parent_count: Dict[str, int] = {}
+    for j in model.joints:
+        body_parent_count[j.child] = body_parent_count.get(j.child, 0) + 1
+    multi_parent = sorted(b for b, n in body_parent_count.items() if n > 1)
+    if multi_parent:
+        missing.append("multiple_parent_joints:" + ",".join(multi_parent))
+
+    # Coupling depth: rules.py's ModuleCoupled sources an *earlier phalanx
+    # within the same digit* (see rules.py docstring), so a coupling chain
+    # can never be longer than one digit's own phalanx run, whose sampled
+    # length is bounded above by dist.phalanx_count_range[1] - 1 hops.
+    dependent_source = {c.dependent: c.source for c in model.couplings}
+    max_chain_hops = 0
+    for start in dependent_source:
+        hops, cur, seen = 0, start, set()
+        while cur in dependent_source and cur not in seen:
+            seen.add(cur)
+            cur = dependent_source[cur]
+            hops += 1
+        max_chain_hops = max(max_chain_hops, hops)
+    max_allowed_hops = max(0, dist.phalanx_count_range[1] - 1)
+    if max_chain_hops > max_allowed_hops:
+        missing.append("coupling_chain_too_deep")
+
+    if inv.n_groups > 0:
+        # rules.py/derive.py never emit JointGroup productions.
+        missing.append("joint_group")
+
+    expressible = len(missing) == 0
+
+    # -- in_support: also inside dist's sampled ranges/grids. -------------
+
+    joints_by_name = {j.name: j for j in model.joints}
+    bodies_by_name = {b.name: b for b in model.bodies}
+    palm_body_names = {b.name for b in model.bodies if b.palm}
+
+    non_root_palm = inv.palm_bodies - (1 if model.root in palm_body_names else 0)
+    lo_p, hi_p = dist.palm_body_count_range
+    if not (lo_p <= non_root_palm <= hi_p):
+        out.append(f"palm_body_count_out_of_range:{non_root_palm}")
+
+    # Top-level digit count, read structurally: a top-level Digit always
+    # mounts on a palm body (rules.py), so its first joint has a palm parent
+    # and a non-palm child. This is exact for grammar output; for an
+    # imported model where no body is ever flagged palm=True it is
+    # definitionally 0, which is reported honestly (the grammar's own
+    # palm/digit bookkeeping simply does not apply to that import).
+    digit_starts = [
+        j for j in model.joints
+        if j.parent in palm_body_names and j.child not in palm_body_names
+    ]
+    digit_count = len(digit_starts)
+    lo_d, hi_d = dist.digit_count_range
+    if not (lo_d <= digit_count <= hi_d):
+        out.append(f"digit_count_out_of_range:{digit_count}")
+
+    children: Dict[str, List] = {}
+    for j in model.joints:
+        children.setdefault(j.parent, []).append(j)
+
+    # Per-digit phalanx "run" length: walk forward from each digit start
+    # while the current body has exactly one child (a lone continuation);
+    # stop at a leaf or a branching body. This under-counts the grammar's
+    # own phalanx_count whenever a branch is spliced mid-digit (branching
+    # bodies end the run early), but it can never over-count -- so it is
+    # safe against false "out of range" reports on genuine grammar output
+    # (the true value is always >= this run length, and both are always
+    # within [1, phalanx_count_range[1]] for a valid grammar model).
+    lo_ph, hi_ph = dist.phalanx_count_range
+    run_length_issues = []
+    for start in digit_starts:
+        run, cur = 1, start.child
+        while True:
+            kids = children.get(cur, [])
+            if len(kids) != 1:
+                break
+            run += 1
+            cur = kids[0].child
+        if not (lo_ph <= run <= hi_ph):
+            run_length_issues.append(start.name)
+    if run_length_issues:
+        out.append("phalanx_run_out_of_range:" + ",".join(sorted(run_length_issues)))
+
+    # Branch depth: BFS from every digit start. At a branching body, at most
+    # one child continues the *same* digit (identified the same way as the
+    # link-length continuation check below: origin.rpy == (0,0,0) and a
+    # pure-z origin.xyz) and stays at the current depth; every other child
+    # is a branch-digit start and sits one level deeper. A non-branching
+    # body's single child (if any) always continues at the same depth.
+    def _is_continuation(kj) -> bool:
+        return (
+            tuple(kj.origin.rpy) == (0.0, 0.0, 0.0)
+            and kj.origin.xyz[0] == 0.0 and kj.origin.xyz[1] == 0.0
+            and not _is_first_phalanx_body(kj.child)
+        )
+
+    branch_depth_issue = False
+    for start in digit_starts:
+        stack = [(start.child, 0)]
+        seen = set()
+        while stack:
+            body, depth = stack.pop()
+            if body in seen:
+                continue
+            seen.add(body)
+            kids = children.get(body, [])
+            if len(kids) >= 2:
+                cont = next((kj for kj in kids if _is_continuation(kj)), None)
+                for kj in kids:
+                    d2 = depth if kj is cont else depth + 1
+                    if d2 > dist.max_branch_depth:
+                        branch_depth_issue = True
+                    stack.append((kj.child, d2))
+            else:
+                for kj in kids:
+                    stack.append((kj.child, depth))
+    if branch_depth_issue:
+        out.append("branch_depth_out_of_range")
+
+    # Link lengths: palm-joint lengths are always fresh grid samples
+    # (palm_length_range_m / link_length_grid_m). Phalanx-joint lengths are
+    # fresh grid samples (link_length_range_m / link_length_grid_m) *except*
+    # for a digit/branch's own first phalanx, whose origin is a mount
+    # fraction of the mount body's length, not itself a grid sample -- those
+    # are geometrically identified as joints whose origin is not a pure
+    # z-only, zero-rotation translation (see derive.py: a continuation
+    # phalanx always has origin.rpy == (0,0,0) and origin.xyz == (0,0,len);
+    # a mount joint's origin uses a freely sampled mount_rpy/mount_frac and
+    # essentially never matches that exact pattern) -- and are excluded from
+    # this check rather than mis-flagged.
+    off_grid, out_of_range = [], []
+    for j in model.joints:
+        if j.child in palm_body_names:
+            length = _norm(j.origin.xyz)
+            lo_len, hi_len = dist.palm_length_range_m
+            if not (lo_len - GRID_TOL <= length <= hi_len + GRID_TOL):
+                out_of_range.append(j.name)
+            elif not _length_on_grid(length, lo_len, dist.link_length_grid_m):
+                off_grid.append(j.name)
+        else:
+            is_continuation = (
+                tuple(j.origin.rpy) == (0.0, 0.0, 0.0)
+                and j.origin.xyz[0] == 0.0 and j.origin.xyz[1] == 0.0
+                and not _is_first_phalanx_body(j.child)
+            )
+            if not is_continuation:
+                continue
+            length = _norm(j.origin.xyz)
+            lo_len, hi_len = dist.link_length_range_m
+            if length == 0.0:
+                continue  # a zero-length continuation cannot be graded against a >0 grid
+            if not (lo_len - GRID_TOL <= length <= hi_len + GRID_TOL):
+                out_of_range.append(j.name)
+            elif not _length_on_grid(length, lo_len, dist.link_length_grid_m):
+                off_grid.append(j.name)
+    if off_grid:
+        out.append("link_length_off_grid:" + ",".join(sorted(off_grid)))
+    if out_of_range:
+        out.append("link_length_out_of_range:" + ",".join(sorted(out_of_range)))
+
+    # Axis grid: every movable joint's axis should land on the 15-degree
+    # spherical grid (distributions.sample_axis) in the joint's own frame.
+    axis_off_grid = [j.name for j in model.joints if j.type in MOVABLE_TYPES and not _axis_on_grid(j.axis)]
+    if axis_off_grid:
+        out.append("axis_off_grid:" + ",".join(sorted(axis_off_grid)))
+
+    # Limits: revolute/prismatic joints not produced by a coupling must
+    # match one of the distribution's own choice tuples -- palm joints
+    # (child body palm=True) draw from palm_joint_limit_choices_deg,
+    # everything else from revolute_limit_choices_deg / prismatic_limit_choices_m.
+    # A coupled joint's own limits are *derived* (image of the source's
+    # limits through the affine map), never sampled from a choice set, so
+    # they are excluded here; its multiplier/offset are checked instead.
+    dependents = {c.dependent for c in model.couplings}
+    limits_not_in_set = []
+    for j in model.joints:
+        if j.name in dependents or j.limits is None:
+            continue
+        if j.type == "revolute":
+            choices = dist.palm_joint_limit_choices_deg if j.child in palm_body_names else dist.revolute_limit_choices_deg
+            if not _limits_in_choice_set(j.limits, choices):
+                limits_not_in_set.append(j.name)
+        elif j.type == "prismatic":
+            if not _limits_in_choice_set_m(j.limits, dist.prismatic_limit_choices_m):
+                limits_not_in_set.append(j.name)
+    if limits_not_in_set:
+        out.append("limits_not_in_set:" + ",".join(sorted(limits_not_in_set)))
+
+    coupling_bad = []
+    for c in model.couplings:
+        if not _in_choice_set(c.multiplier, dist.coupling_multiplier_choices):
+            coupling_bad.append(f"{c.dependent}:multiplier")
+        if not _in_choice_set(c.offset, dist.coupling_offset_choices_rad):
+            coupling_bad.append(f"{c.dependent}:offset")
+    if coupling_bad:
+        out.append("coupling_params_not_in_set:" + ",".join(sorted(coupling_bad)))
+
+    in_support = expressible and len(out) == 0
+
+    return CoverageResult(
+        expressible=expressible,
+        in_support=in_support,
+        missing_constructs=missing,
+        out_of_support=out,
+        inventory=inv,
+    )
