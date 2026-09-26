@@ -5,9 +5,9 @@
   "branch": "martin/hand-grammar",
   "started_at": "2026-09-25T17:29:32-04:00",
   "deadline": "2026-09-25T19:29:32-04:00",
-  "iteration": 7,
+  "iteration": 8,
   "budget": {
-    "worker_runs_used": 10,
+    "worker_runs_used": 11,
     "worker_runs_max": 15,
     "opus_reviews_used": 2,
     "opus_reviews_max": 3,
@@ -27,7 +27,8 @@
     "Palm geometry: convex hull of all palm bodies' capsules at q=0, cut into one convex cell per palm body by a plane through each palm joint origin that contains the joint axis with normal n = d - (d.a)a (d = direction from parent palm joint/root to this joint). Fingers use capsules. Validator: every cell has positive volume; finger mounts lie on their palm body's cell. No geometry genes; mass from cell/capsule volume and one density.",
     "Closed-chain solver deferred to 'only if a production needs it'; the LoopClosure placeholder stays.",
     "Iteration-3 grammar productions: root, palm bodies with optional palm joint (tighter travel than finger joints), finger chains of phalanx capsules, optional intra-finger affine coupling.",
-    "Every generated hand has at least one palm body (Martin, 2026-09-25). Import-from-URDF only needs to work; it is not a priority."
+    "Every generated hand has at least one palm body (Martin, 2026-09-25). Import-from-URDF only needs to work; it is not a priority.",
+    "Palm cut plane refinement (coordinator, 2026-09-26, to confirm with Martin): plane through the palm joint origin containing its axis, normal = perp_axis(d_child - d_parent) where d_parent is the parent's segment direction toward its tip; sibling overlaps resolved by nearest spine; cells sharing a cut face are adjacent (collision-filtered)."
   ],
   "issues": [
     {
@@ -106,10 +107,17 @@
       "hypothesis": "Real fingers have mid-chain frame rotations/lateral offsets (continuation_pose) that the straight-rod digit convention cannot express; a 'rest bend' production (continuation rpy and lateral offset on a phalanx) would extend support. Decide with Martin whether evolution needs it.",
       "decision": null,
       "evidence": "pilot-report: 9/10 real hands fail only/mainly on continuation_pose"
+    },
+    {
+      "id": "I12",
+      "status": "in_progress",
+      "hypothesis": "Bisector cutting plane (through the joint, containing the axis, bisecting parent and child spines) plus nearest-spine sibling resolution yields positive-volume cells that contain their digit mounts; cells sharing a cut face are recorded as adjacent for collision filtering.",
+      "decision": null,
+      "evidence": "iteration 7 worker finding: literal rule gives 9% zero-volume cells, 52% mounts outside"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Iteration 7 running (M2 geometry overlay).",
+  "next_action": "Iteration 7b running: bisector cutting plane + hard assertions.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

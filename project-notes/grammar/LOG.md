@@ -77,3 +77,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Opened I11 (rest-bend production) for Martin's decision. Decision: keep. M1 closed.
 
 - Note (2026-09-26): the evaluator must run as a module (`python3 -m hand_sampler.grammar_bench.evaluate`); as a script it cannot import the package under system Python. Dirty flag is now read before any work (commit b194651); report regenerated clean (5948cb2).
+
+## Iteration 7 (2026-09-26): geometry overlay v0
+
+- Worker run 10 (Sonnet 5). Suite 2835 passed in ~80 s. geometry.py: numpy convex hull, half-space clipping, cutting planes, analytic capsule and exact polytope mass properties, OBJ + URDF collision export. Over 200 seeds: mean 2.69 palm bodies/cells; 30% of hands hit the degenerate-normal fallback; 18 zero-volume cells; 104 hands with a digit mount outside its nominal cell.
+- Finding: the literal rule (normal from the parent's origin to the joint) cuts the parent's own segment at every branch point. Refinement chosen: bisector plane between parent and child spines (still through the joint, still containing the axis); siblings by nearest spine; shared cut faces => adjacency. Committed as v0 with the gap stated; decision: revise (I12).
