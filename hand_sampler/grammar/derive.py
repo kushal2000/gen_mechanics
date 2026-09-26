@@ -35,6 +35,7 @@ from .distributions import (
     sample_grid_length_m,
     sample_module,
     sample_palm_joint_limits_rad,
+    sample_revolute_limits_rad,
 )
 from .fk import forward_kinematics
 from .kinematics import (
@@ -1032,6 +1033,197 @@ def _op_step_coupling(rng, dist: Distribution, derivation: Derivation) -> Option
     return steps
 
 
+# --------------------------------------------------------------------------
+# Minimal structural operators (opt-in only -- see ``MINIMAL_STRUCTURAL_OPERATORS``
+# below). Motivation (E1): ``add_digit``/``remove_digit`` change ~7 joints in
+# one application because a new digit is sampled at full size, and no
+# default operator changes palm structure at all. Each operator here edits
+# structure by the smallest possible increment (one single-phalanx digit, one
+# palm body, one palm joint's presence). Adding these to ``_OPERATOR_FNS``
+# does not change ``OPERATORS`` or default ``vary`` behaviour: a caller only
+# reaches them via ``operator=...`` or ``operators=MINIMAL_STRUCTURAL_OPERATORS``.
+# --------------------------------------------------------------------------
+
+MINIMAL_STRUCTURAL_OPERATORS: Tuple[str, ...] = (
+    "add_minimal_digit",
+    "add_palm_body",
+    "remove_palm_body",
+    "toggle_palm_joint",
+    "remove_digit_minimal",
+)
+
+
+def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    """Add a new top-level digit with exactly one phalanx (module kind
+    always ``"R"`` -- a single-phalanx digit has no earlier phalanx to
+    couple to, so ``"Coupled"`` is never valid there anyway; forcing ``"R"``
+    keeps this operator's effect exactly one movable revolute joint, never a
+    continuous/prismatic one). Mounts on a uniformly sampled existing body
+    (root or a palm body), like a fresh top-level digit."""
+    steps = list(derivation.steps)
+    hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
+    hand_params = steps[hand_idx].params
+    if hand_params["digit_count"] >= dist.digit_count_range[1]:
+        return None
+    mount_bodies = _mount_bodies_from_steps(steps)
+    top_ids = [int(s.params["digit_id"]) for s in steps if s.production == "Digit" and s.params.get("top_level")]
+    digit_id = str(max(top_ids, default=0) + 1)
+    mount = mount_bodies[int(rng.integers(0, len(mount_bodies)))]
+    mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
+    mount_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
+    axis = sample_axis(rng)
+    limits = sample_revolute_limits_rad(rng, dist)
+    length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
+    digit_step = DerivationStep(path=f"digit/{digit_id}", production="Digit", params={
+        "digit_id": digit_id, "mount": mount, "mount_frac": mount_frac, "mount_rpy": mount_rpy,
+        "phalanx_count": 1, "top_level": True, "depth": 0,
+    })
+    phalanx_step = DerivationStep(path=f"digit/{digit_id}/phalanx/0", production="Phalanx", params={
+        "digit_id": digit_id, "p": 0, "module": {"kind": "R", "axis": axis, "limits": limits},
+        "length": length, "branch_digit_count": 0,
+    })
+    new_hand = DerivationStep(path="hand", production="Hand",
+                               params={**hand_params, "digit_count": hand_params["digit_count"] + 1})
+    rest = [s for i, s in enumerate(steps) if i != hand_idx]
+    return rest + [new_hand, digit_step, phalanx_step]
+
+
+def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    """Reversible counterpart of ``add_minimal_digit``: remove a top-level
+    digit only if it has exactly one phalanx and that phalanx hosts no
+    branch (so removing it never orphans a branch digit's mount)."""
+    steps = list(derivation.steps)
+    hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
+    hand_params = steps[hand_idx].params
+    if hand_params["digit_count"] <= 1:
+        return None
+    phalanx_by_digit: Dict[str, List[DerivationStep]] = {}
+    for s in steps:
+        if s.production == "Phalanx":
+            phalanx_by_digit.setdefault(s.params["digit_id"], []).append(s)
+    candidates = [
+        s.params["digit_id"] for s in steps
+        if s.production == "Digit" and s.params.get("top_level") and s.params["phalanx_count"] == 1
+        and len(phalanx_by_digit.get(s.params["digit_id"], [])) == 1
+        and phalanx_by_digit[s.params["digit_id"]][0].params["branch_digit_count"] == 0
+    ]
+    if not candidates:
+        return None
+    digit_id = candidates[int(rng.integers(0, len(candidates)))]
+    kept = [s for s in steps if not _is_descendant_digit(digit_id, _step_digit_id(s))]
+    new_hand = DerivationStep(path="hand", production="Hand",
+                               params={**hand_params, "digit_count": hand_params["digit_count"] - 1})
+    return [s if s.path != "hand" else new_hand for s in kept]
+
+
+def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    """Add one new palm body (index ``palm_body_count``), sampled exactly
+    like ``sample_derivation``'s own palm-body loop: a sampled parent among
+    root and every existing palm body, a sampled mount fraction/length/
+    direction, and a palm joint present with probability
+    ``dist.palm_joint_probability``. Always appended at the end, so no
+    existing palm/digit step's name or path needs renumbering."""
+    steps = list(derivation.steps)
+    hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
+    hand_params = steps[hand_idx].params
+    palm_body_count = hand_params["palm_body_count"]
+    if palm_body_count >= dist.palm_body_count_range[1]:
+        return None
+    palm_names = [f"palm{i}" for i in range(palm_body_count)]
+    parent_choices = ["root"] + palm_names
+    parent = parent_choices[int(rng.integers(0, len(parent_choices)))]
+    mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
+    length = sample_grid_length_m(rng, dist.palm_length_range_m, dist.link_length_grid_m)
+    direction_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
+    has_joint = bool(float(rng.random()) < dist.palm_joint_probability)
+    axis = sample_axis(rng)
+    limits = sample_palm_joint_limits_rad(rng, dist) if has_joint else None
+    name = f"palm{palm_body_count}"
+    new_step = DerivationStep(path=f"palm/{palm_body_count}", production="PalmBody", params={
+        "name": name, "parent": parent, "mount_frac": mount_frac, "length": length,
+        "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": limits,
+    })
+    new_hand = DerivationStep(path="hand", production="Hand",
+                               params={**hand_params, "palm_body_count": palm_body_count + 1})
+    rest = [s for i, s in enumerate(steps) if i != hand_idx]
+    return rest + [new_hand, new_step]
+
+
+def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    """Remove a leaf palm body: one that is neither any other ``PalmBody``
+    step's ``parent`` nor any ``Digit`` step's ``mount`` (i.e. hosts no
+    digits and no palm children). Every palm body with a higher index is
+    renumbered down by one (name and ``path``), and any ``parent``/``mount``
+    reference to a renumbered body is rewritten to match -- the only
+    structural change beyond the removal itself, since a removed body is by
+    construction never referenced as a parent/mount itself."""
+    steps = list(derivation.steps)
+    hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
+    hand_params = steps[hand_idx].params
+    palm_body_count = hand_params["palm_body_count"]
+    if palm_body_count == 0:
+        return None
+    palm_steps = {s.params["name"]: s for s in steps if s.production == "PalmBody"}
+    parents_referenced = {s.params["parent"] for s in palm_steps.values()}
+    mounts_referenced = {s.params["mount"] for s in steps if s.production == "Digit"}
+    candidates = [
+        name for name in palm_steps
+        if name not in parents_referenced and name not in mounts_referenced
+    ]
+    if not candidates:
+        return None
+    remove_name = candidates[int(rng.integers(0, len(candidates)))]
+    remove_idx = int(remove_name[len("palm"):])
+
+    rename: Dict[str, str] = {
+        f"palm{i}": f"palm{i - 1}" for i in range(remove_idx + 1, palm_body_count)
+    }
+
+    new_steps: List[DerivationStep] = []
+    for s in steps:
+        if s.path == f"palm/{remove_idx}":
+            continue
+        if s.production == "PalmBody":
+            old_i = int(s.params["name"][len("palm"):])
+            new_i = old_i if old_i < remove_idx else old_i - 1
+            p = dict(s.params)
+            p["name"] = f"palm{new_i}"
+            if p["parent"] in rename:
+                p["parent"] = rename[p["parent"]]
+            new_steps.append(DerivationStep(path=f"palm/{new_i}", production="PalmBody", params=p))
+        elif s.production == "Digit" and s.params.get("mount") in rename:
+            new_steps.append(DerivationStep(path=s.path, production="Digit",
+                                             params={**s.params, "mount": rename[s.params["mount"]]}))
+        elif s.path == "hand":
+            new_steps.append(DerivationStep(path="hand", production="Hand",
+                                             params={**hand_params, "palm_body_count": palm_body_count - 1}))
+        else:
+            new_steps.append(s)
+    return new_steps
+
+
+def _op_toggle_palm_joint(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    """On one existing (necessarily non-root -- the root has no ``PalmBody``
+    step of its own) palm body, add a palm joint (sampled axis/limits) if
+    absent, or remove it (``has_joint=False``, ``limits=None``) if present."""
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps) if s.production == "PalmBody"]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    p = dict(s.params)
+    if p["has_joint"]:
+        p["has_joint"] = False
+        p["limits"] = None
+    else:
+        p["has_joint"] = True
+        p["axis"] = sample_axis(rng)
+        p["limits"] = sample_palm_joint_limits_rad(rng, dist)
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+    return steps
+
+
 _OPERATOR_FNS = {
     "resample_parameter": _op_resample_parameter,
     "perturb_parameter": _op_perturb_parameter,
@@ -1045,6 +1237,11 @@ _OPERATOR_FNS = {
     "step_mount": _op_step_mount,
     "step_length": _op_perturb_parameter,
     "step_coupling": _op_step_coupling,
+    "add_minimal_digit": _op_add_minimal_digit,
+    "remove_digit_minimal": _op_remove_digit_minimal,
+    "add_palm_body": _op_add_palm_body,
+    "remove_palm_body": _op_remove_palm_body,
+    "toggle_palm_joint": _op_toggle_palm_joint,
 }
 
 

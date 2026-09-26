@@ -171,6 +171,8 @@ register("smoke", _smoke_experiment)
 # ``from .runner import register, run_experiment`` at their own top level).
 from . import e1_locality as _e1_locality  # noqa: F401,E402
 from . import e2_drift as _e2_drift  # noqa: F401,E402
+from . import e3_reach as _e3_reach  # noqa: F401,E402
+from . import e4_redundancy as _e4_redundancy  # noqa: F401,E402
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
