@@ -61,3 +61,10 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Second and last Opus review (see opus-review-m1.md). Kinematic fidelity, import/export, and generation criteria met; coverage report overstates 'expressible'; geometry data model defects (mounts off segment, palm segment gap, palm_body_count=0) must be fixed before the hull step; several honesty/hygiene items.
 - Budgets: worker runs 6/6, Opus reviews 2/2. Loop bb7e458d stopped. Decision: pause for Martin; proposed iteration 5 recorded in STATE.next_action.
+
+## Iteration 5 (2026-09-25): segment convention, root palm, mounts on segments (I8)
+
+- Worker run 7 (Sonnet 5, ~10 min). Suite: 2314 passed in 45 s (coordinator run). Oracle: 200 seeds, 88,484 poses, max 5.1e-16 m / 1.3e-15 rad. GRAMMAR_VERSION 0.2.
+- Coordinator probe over 300 generated hands: root is a palm with L>0 in all; every joint origin is (0,0,t) with 0<=t<=L_host; worst world-frame offset from the host segment 3.9e-17 m.
+- Audit keys nonperpendicular_axis and two_nonparallel_palm_joints now computed from derived models (joint frame / root frame).
+- Commits: 565854c (benchmark), dca4d7a (implementation). Decision: keep.

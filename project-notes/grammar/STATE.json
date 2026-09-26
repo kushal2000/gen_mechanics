@@ -5,9 +5,9 @@
   "branch": "martin/hand-grammar",
   "started_at": "2026-09-25T17:29:32-04:00",
   "deadline": "2026-09-25T19:29:32-04:00",
-  "iteration": 5,
+  "iteration": 6,
   "budget": {
-    "worker_runs_used": 7,
+    "worker_runs_used": 8,
     "worker_runs_max": 15,
     "opus_reviews_used": 2,
     "opus_reviews_max": 3,
@@ -81,10 +81,10 @@
     },
     {
       "id": "I8",
-      "status": "open",
+      "status": "fixed",
       "hypothesis": "Geometry data model: mount points off host segment (derive.py:235), inconsistent palm segment (derive.py:215/227), palm_body_count=0 leaves no palm geometry. Must be fixed before the hull step.",
-      "decision": null,
-      "evidence": "opus-review-m1.md defects 1-3"
+      "decision": "keep",
+      "evidence": "commits 565854c+dca4d7a; probe 300 hands: 0 off-segment, 0 rootless; 2314 passed; oracle 88,484 poses 5.1e-16"
     },
     {
       "id": "I9",
@@ -101,8 +101,8 @@
       "evidence": "opus-review-m1.md defects 6-10"
     }
   ],
-  "last_green_commit": "68b34da",
-  "next_action": "Iteration 5 running: I8 geometry fixes + audit keys. Then iteration 6: coverage wording (topology_expressible), ORCA note, dirty-flag SHA, test hygiene; regenerate report.",
+  "last_green_commit": "dca4d7a",
+  "next_action": "Iteration 6 running: I9 (topology_expressible + missing checks, ORCA note, dirty flag) and I10 test hygiene; regenerate report.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
