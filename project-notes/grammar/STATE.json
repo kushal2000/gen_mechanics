@@ -28,7 +28,8 @@
     "Closed-chain solver deferred to 'only if a production needs it'; the LoopClosure placeholder stays.",
     "Iteration-3 grammar productions: root, palm bodies with optional palm joint (tighter travel than finger joints), finger chains of phalanx capsules, optional intra-finger affine coupling.",
     "Every generated hand has at least one palm body (Martin, 2026-09-25). Import-from-URDF only needs to work; it is not a priority.",
-    "Palm cut plane refinement (coordinator, 2026-09-26, to confirm with Martin): plane through the palm joint origin containing its axis, normal = perp_axis(d_child - d_parent) where d_parent is the parent's segment direction toward its tip; sibling overlaps resolved by nearest spine; cells sharing a cut face are adjacent (collision-filtered)."
+    "Palm cut plane refinement (coordinator, 2026-09-26, to confirm with Martin): plane through the palm joint origin containing its axis, normal = perp_axis(d_child - d_parent) where d_parent is the parent's segment direction toward its tip; sibling overlaps resolved by nearest spine; cells sharing a cut face are adjacent (collision-filtered).",
+    "Palm cells (2026-09-26, coordinator after worker counterexample): the plane-carved partition cannot hold for entangled palm trees (seed 10: three palm bodies whose own planes are non-discriminating; no single plane conserves volume and keeps both spines). Replaced by nearest-spine assignment of hull samples, one convex hull per palm body, overlaps allowed only between pairs recorded as adjacent (collision-filtered); coverage and containment asserted, exact partition not claimed. To confirm with Martin."
   ],
   "issues": [
     {
@@ -117,7 +118,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Finish iteration 7b (worker resumed with the Gram-Schmidt cutting plane: n perpendicular to both the axis and the parent spine, so the parent spine lies in the plane; boundary counts as inside). Then E0 infrastructure (proxy.py, canonical.py, phenodist.py, experiments runner).",
+  "next_action": "Iteration 7c running (nearest-spine palm cells). Then E0.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

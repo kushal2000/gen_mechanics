@@ -87,3 +87,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Plan: plan-overnight-2026-09-26.md (approved). Loop job 18e9e258 every 30 min; stop after 09:24 local.
 - Iteration 7b finding (worker): the bisector rule n = perp_a(d_c - d_p) does not keep the parent's spine on the parent side when the palm-joint axis is not perpendicular to the parent spine (seed 0: a digit mount 5 mm before the branch point lands 4.98 mm outside its cell). Decision: cutting plane contains BOTH the joint axis and the parent spine (n = component of d_c orthogonal to span(a, d_p)); child side is the side of the child's spine; points on the plane count as inside for containment. Fallback when a is parallel to d_p: n = perp_a(d_c).
+
+## Iteration 7b (2026-09-26): cutting-plane partition abandoned
+
+- Worker proved on seed 10 that when three or more palm bodies entangle, no single supporting plane both conserves hull volume and keeps both bodies' spines inside their cells (each body's own plane covers 74-95% of the hull). Across 200 seeds: 59 unresolved, 18 with real volume loss (up to 73%), 14.5% degenerate normals. Gram-Schmidt refinement (plane contains axis and parent spine) and the ancestor-safe walk were implemented and are correct for parent-child pairs but insufficient for siblings.
+- Decision: nearest-spine cells (iteration 7c) with an honest contract (coverage + containment + recorded adjacency; overlaps allowed among adjacent pairs; no exact partition). Geometry is off the critical path for E0-E5.
