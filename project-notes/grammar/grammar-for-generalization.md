@@ -1,6 +1,6 @@
 # What "evolve to generalize" asks of the grammar
 
-Draft started 2026-09-26 10:50 (coordinator). Re-read of the brief: README ("which hand's policy retains the most performance when the world shifts"; follow-on: co-design as a training curriculum, and co-design for generalization and sim-to-real), the investigation note §2 (bilevel: train a controller on one distribution, optimize hardware for performance under shifts in objects, physics, sensing, disturbances, tasks; outputs: a hand optimized for generalization and a co-design algorithm; three separate claims: curriculum, controllability, generalization), and the design note (useful, physically plausible hands without unnecessary complexity; performance(hand, current policy) confound).
+Written 2026-09-26 10:50-11:20 (coordinator). Re-read of the brief: README ("which hand's policy retains the most performance when the world shifts"; follow-on: co-design as a training curriculum, and co-design for generalization and sim-to-real), the investigation note §2 (bilevel: train a controller on one distribution, optimize hardware for performance under shifts in objects, physics, sensing, disturbances, tasks; outputs: a hand optimized for generalization and a co-design algorithm; three separate claims: curriculum, controllability, generalization), and the design note (useful, physically plausible hands without unnecessary complexity; performance(hand, current policy) confound).
 
 ## 1. Goals, restated as demands on the grammar
 
@@ -44,7 +44,34 @@ Process (flagged for the RL owners; the grammar cannot do these):
 
 Open: whether evolving the population beats sampling it at equal diversity is untested anywhere; it is the project's own claim 1 and needs the A/B the investigation note describes.
 
-## 5. Open analysis (this loop)
+
+## 5. Support widening, measured (E11: `experiments/E11_support_widening/e11_report.md`)
+
+Cumulative relaxation levels applied to the coverage check for every available real hand (SHARPA was reported unavailable by the script; issue I16):
+
+| Level | Relaxation added | Hands in support (of 10) |
+|---|---|---|
+| L0 | none | 0 |
+| L1 | rest bend (mid-chain rotation/offset allowed) | 0, but every hand's remaining items drop by one: rest bend is a prerequisite for all of them |
+| L2 | + continuous joint limits within the grammar's global range (-45 to 110 deg) | 3: Allegro, Wuji, xhand |
+| L3-L6 | + 1 mm lengths, 5 deg axes, continuous couplings, continuous lengths/axes | still 3 |
+| L7 | + limit and length ranges widened 1.5x | 4: + LEAP |
+| L8 | + fixed joints inside digits, unbounded children per body | 5: + ORCA |
+
+Never in support: Barrett, D'Claw, Tesollo (joint limits such as (-180, 0) deg, outside even the widened range; some are sign-convention equivalents of ranges we do allow), Ability and Inspire (blocked only by our check that a coupled joint's limits equal the affine image of its source's; real URDFs declare tighter dependent limits). Design-space cost: continuous limits add no grid cost; 1 mm lengths 6.0 bits per joint (vs 3.8); 5 deg axes 11.4 bits (vs 8.3). Generated designs stay in support at every level.
+
+Reading: the cheap, high-value changes are (1) the rest-bend primitive, (2) continuous limits inside a wider, sign-normalised range, (3) accepting dependent limits that lie within the source's image. Finer axis grids and continuous lengths buy nothing for these hands and cost the most bits, so the 15 deg / 5 mm grids can stay as mutation steps while limits and the bend become continuous parameters.
+
+## 6. Recommendation, final
+
+1. Grammar 0.5 = grammar 0.4 (exact-inverse operator pairs, insertion prior) plus: a rest-bend field on every phalanx (continuation rpy and lateral offset, continuous, small-step operator of one grid step, zero by default); joint limits as continuous bounded pairs with sign normalisation (axis flip with negated limits treated as equal, also in the canonical hash); dependent-joint limits accepted when contained in the source's image. Lengths and axes keep their grids.
+2. Immigrant prior stratified over structural bins (digit count x palm joints x couplings x prismatic), so the population's structural variety is maintained by the process rather than hoped for.
+3. No anthropomorphic assumptions; geometry stays capsules and derived palm cells; realizability limits live in the parameter table.
+4. Process items (RL owners): diversity guard, selection under held-out shifts with a separated test set, breadth over depth in evaluation, and the evolved-vs-sampled population A/B that would test the project's claim 1.
+
+Priority order for implementation: rest bend (unblocks every hand), then continuous sign-normalised limits, then the coupling containment rule, then the stratified immigrant prior.
+
+## 7. Analysis record (this loop)
 - E11: support widening levels vs real hands and bits-per-joint cost.
 - Literature: which properties of a morphology training distribution drive controller generalization (coverage vs diversity vs realism vs scale).
 - Then: a recommendation on the support (continuous vs grid, rest bend), on which structural variety the population should be forced to keep (curriculum), and on realizability constraints to add.

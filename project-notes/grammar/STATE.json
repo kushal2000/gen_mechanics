@@ -136,10 +136,24 @@
       "hypothesis": "Fix list from opus-review-final: stable joint identity for alignment (derivation step uids), coupled dependents recomputed via q_from_u in the child, reach normalisation not penalising digits, perturb in small-step share, provenance (refuse dirty trees or record patch hash), delete_phalanx re-attaches branches, E2 difference CIs + summary labels, E3 arch target on jointed palm bodies; E5b: envelope-constrained, noisy, paired starts, no cost tie-break, raw proxy/cost/motors logged, >= 20 restarts.",
       "decision": "keep",
       "evidence": "commits through e938fcf; 2923 passed; E1/E2/E5b re-run"
+    },
+    {
+      "id": "I16",
+      "status": "open",
+      "hypothesis": "E11 reported sharpa_left_on_iiwa14 as unavailable although assets/urdf/kuka_sharpa_description/... exists; the REPO: path resolution in e11_support_widening.py differs from evaluate.py. Fix and re-run E11 for SHARPA.",
+      "decision": null,
+      "evidence": "E11 report"
+    },
+    {
+      "id": "I17",
+      "status": "open",
+      "hypothesis": "Grammar 0.5 for generalization: rest-bend primitive; continuous sign-normalised limits; dependent limits accepted within the source image; stratified immigrant prior.",
+      "decision": null,
+      "evidence": "grammar-for-generalization.md sections 5-6"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Martin to review balanced-grammar-synthesis.md. Proposed: E8 (grammar 0.4 exact-inverse operator pairs + reversibility test + re-run E1/E2 as balance tests), E9 (process ablation: crowding/immigrants/archive with founder share), E10 (bandit AOS vs step schedule); controller reset protocol to RL owners.",
+  "next_action": "Martin to review grammar-for-generalization.md. Proposed: implement grammar 0.5 items in priority order (rest bend, continuous limits with sign normalisation, coupling containment, stratified immigrant prior), then re-run E1/E2/E3/E11 as balance and coverage tests.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -169,6 +183,7 @@
     "E5": "superseded by E5b",
     "E6": "written (grammar-for-evolution.md final)",
     "E5b": "done",
-    "E7": "done"
+    "E7": "done",
+    "E11": "done"
   }
 }

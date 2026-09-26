@@ -153,3 +153,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## Literature reviews and synthesis (2026-09-26 morning)
 
 - Two Sonnet reviews (robot morphology evolution; evolutionary methods in general) committed as lit-review-*.md. Synthesis with grammar/process/controller split and a 10-item balance test suite in balanced-grammar-synthesis.md. Key reframing: E2's drift is operator asymmetry (fixable in the grammar with exact-inverse pairs), founder dominance and late refinement collapse are process problems (immigrants, crowding, archive, age protection), controller fairness is Strgar & Kriegman's reset protocol.
+
+## Generalization investigation (2026-09-26 10:48-11:20)
+
+- Brief re-read (README, investigation note section 2, design note); lit review on morphology distributions and controller generalization (lit-review-morphology-distribution-for-generalization.md); E11 support-widening audit (rest bend is a prerequisite for every real hand; continuous limits bring 3 hands in; widened ranges 4; ORCA at L8; Barrett/D'Claw/Tesollo limit ranges outside; Ability/Inspire blocked by the coupling image-equality check). Suite 3018 passed. Recommendation in grammar-for-generalization.md section 6; issues I16, I17 opened. Loop stopped.
