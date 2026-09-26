@@ -413,16 +413,25 @@ def derive(derivation: Derivation) -> KinematicModel:
         parent = p["parent"]
         length = p["length"]
         rpy = tuple(p["direction_rpy"])
-        # Mount point ON the parent's own segment: T = Trans(0,0,frac*L) *
-        # Rot(rpy) -- xyz is the (unrotated) translation along the parent's
-        # own z-axis, rpy is the child frame's orientation relative to the
-        # parent, exactly as a URDF joint origin means (see rules.py's
+        # Mount point ON the parent's own segment: T = Trans(ox,oy,frac*L) *
+        # Rot(rpy) -- xyz is the translation to the mount point in the
+        # parent's own frame, rpy is the child frame's orientation relative
+        # to the parent, exactly as a URDF joint origin means (see rules.py's
         # convention-change note / fk.py's docstring). Never place the
         # child a further ``length`` out from that mount point -- that was
         # the old bug that left the parent's segment with an unowned
         # stretch between the mount and the parent's own tip.
+        #
+        # ``mount_offset`` (representation-check item 1): a lateral (x, y)
+        # displacement of the mount point off the parent's own z-axis line,
+        # read via ``.get`` for backward compatibility with any
+        # hand-authored/older PalmBody params dict predating this field
+        # (mirrors ``bend_offset``'s ``.get`` default below). Default
+        # ``(0.0, 0.0)`` keeps ``base_xyz`` exactly ``(0.0, 0.0, frac*L)`` --
+        # byte-identical to every pre-existing derivation/replay hash.
+        mount_offset = p.get("mount_offset", (0.0, 0.0))
         mount_len = body_length[parent]
-        base_xyz = (0.0, 0.0, p["mount_frac"] * mount_len)
+        base_xyz = (mount_offset[0], mount_offset[1], p["mount_frac"] * mount_len)
         jtype = "revolute" if p["has_joint"] else "fixed"
         axis = tuple(p["axis"]) if p["has_joint"] else (1.0, 0.0, 0.0)
         limits = tuple(p["limits"]) if p["has_joint"] else None

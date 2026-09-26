@@ -68,6 +68,20 @@ without a palm makes no sense, so ``palm_body_count`` is the number of
 root is never length-0. ``derive.segment(model, body)`` returns a body's
 segment endpoints (root frame, q=0) via forward kinematics, for anyone who
 needs to inspect this geometry directly.
+
+Representation vs. grammar (representation-check plan, item 1): ``derive()``
+is the REPRESENTATION COMPILER -- it accepts any structurally valid
+``Derivation`` and turns it into a ``KinematicModel`` with no notion of
+"in range" or "on grid" at all (a length of 0, a ``mount_frac`` outside
+``[0, 1]``, more palm bodies than any ``Distribution`` would ever sample, or
+an off-grid axis/limit/length all derive exactly like any other value).
+Grids, ranges, priors and operators -- what values ``sample_derivation``
+actually draws, and how ``vary`` perturbs them -- belong entirely to the
+GRAMMAR (``distributions.py``'s ``Distribution``/samplers, and ``derive.py``'s
+own ``vary``/operator machinery). A projection of a real hand into a
+``Derivation`` (``adapters/projection.py``) exercises exactly this
+distinction: it emits values ``derive()`` must accept but the grammar itself
+would never sample.
 """
 
 from __future__ import annotations
