@@ -14,7 +14,7 @@ from hand_sampler.grammar.adapters.urdf import load_urdf
 from hand_sampler.grammar.coverage import coverage, inventory
 from hand_sampler.grammar.derive import generate
 from hand_sampler.grammar.distributions import DEFAULT_DISTRIBUTION
-from hand_sampler.grammar.kinematics import Body, Frame, Joint, KinematicModel, LoopClosure, Pose
+from hand_sampler.grammar.kinematics import AffineCoupling, Body, Frame, Joint, KinematicModel, LoopClosure, Pose
 from hand_sampler.grammar_bench import evaluate
 
 BENCH_DIR = Path(__file__).resolve().parent.parent
@@ -65,7 +65,7 @@ def test_inventory_coupled_finger():
 def test_coverage_covers_own_generated_output(seed):
     _derivation, model = generate(seed, DEFAULT_DISTRIBUTION)
     result = coverage(model, DEFAULT_DISTRIBUTION)
-    assert result.expressible is True, f"seed={seed} missing={result.missing_constructs}"
+    assert result.topology_expressible is True, f"seed={seed} missing={result.missing_constructs}"
     assert result.in_support is True, f"seed={seed} out_of_support={result.out_of_support}"
     assert result.missing_constructs == []
     assert result.out_of_support == []
@@ -85,8 +85,8 @@ def test_coverage_offaxis_tree_structured_result():
     assert isinstance(result.out_of_support, list)
     assert all(isinstance(x, str) for x in result.out_of_support)
 
-    assert result.expressible == (result.missing_constructs == [])
-    assert result.in_support == (result.expressible and result.out_of_support == [])
+    assert result.topology_expressible == (result.missing_constructs == [])
+    assert result.in_support == (result.topology_expressible and result.out_of_support == [])
 
 
 # ---------------------------------------------------------------------------
@@ -116,9 +116,75 @@ def test_coverage_loop_closure_not_expressible():
     assert inv.n_closures == 1
 
     result = coverage(model, DEFAULT_DISTRIBUTION)
-    assert result.expressible is False
+    assert result.topology_expressible is False
     assert "loop_closure" in result.missing_constructs
     assert result.in_support is False
+
+
+# ---------------------------------------------------------------------------
+# 4c. iteration-6 honest-coverage checks: each new missing_constructs
+# category, flagged by name, on a small synthetic model.
+# ---------------------------------------------------------------------------
+
+
+def _synthetic_excess_children_model():
+    """A digit's own first phalanx (``d1p1``) has 6 child joints -- more than
+    ``1 + DEFAULT_DISTRIBUTION.max_branch_digits`` (3) -- which no Phalanx
+    production could ever build (ORCA's post-wrist body has 5)."""
+    bodies = [Body(name="root", palm=True), Body(name="d1p1")]
+    joints = [Joint(name="d1p1_j", type="revolute", parent="root", child="d1p1", limits=(-1.0, 1.0))]
+    for i in range(6):
+        bodies.append(Body(name=f"c{i}"))
+        joints.append(Joint(name=f"c{i}_j", type="revolute", parent="d1p1", child=f"c{i}", limits=(-1.0, 1.0)))
+    return KinematicModel(name="excess_children_test", root="root", bodies=tuple(bodies), joints=tuple(joints))
+
+
+def test_coverage_flags_excess_children_by_name():
+    model = _synthetic_excess_children_model()
+    result = coverage(model, DEFAULT_DISTRIBUTION)
+    assert result.topology_expressible is False
+    assert any(item == "excess_children:d1p1" for item in result.missing_constructs), result.missing_constructs
+
+
+def _synthetic_continuation_pose_model():
+    """A mid-digit continuation joint (``d1p2_j``, the sole child of
+    ``d1p1``) has a lateral (x/y) origin offset -- the grammar only ever
+    builds a continuation as ``Trans(0, 0, prev_len) * Rot(0, 0, 0)``."""
+    bodies = (Body(name="root", palm=True), Body(name="d1p1"), Body(name="d1p2"))
+    joints = (
+        Joint(name="d1p1_j", type="revolute", parent="root", child="d1p1", limits=(-1.0, 1.0)),
+        Joint(name="d1p2_j", type="revolute", parent="d1p1", child="d1p2",
+              origin=Pose(xyz=(0.01, 0.0, 0.02), rpy=(0.0, 0.0, 0.0)), limits=(-1.0, 1.0)),
+    )
+    return KinematicModel(name="continuation_pose_test", root="root", bodies=bodies, joints=joints)
+
+
+def test_coverage_flags_continuation_pose_by_name():
+    model = _synthetic_continuation_pose_model()
+    result = coverage(model, DEFAULT_DISTRIBUTION)
+    assert result.topology_expressible is False
+    assert any(item == "continuation_pose:d1p2_j" for item in result.missing_constructs), result.missing_constructs
+
+
+def _synthetic_cross_digit_coupling_model():
+    """A coupling whose dependent (``d1p1_j``) and source (``d2p1_j``) sit on
+    two different top-level digits -- rules.py's ModuleCoupled only ever
+    sources an earlier phalanx of the SAME digit."""
+    bodies = (Body(name="root", palm=True), Body(name="d1p1"), Body(name="d2p1"))
+    joints = (
+        Joint(name="d1p1_j", type="revolute", parent="root", child="d1p1", limits=(-1.0, 1.0)),
+        Joint(name="d2p1_j", type="revolute", parent="root", child="d2p1", limits=(-1.0, 1.0)),
+    )
+    couplings = (AffineCoupling(dependent="d1p1_j", source="d2p1_j", multiplier=1.0, offset=0.0),)
+    return KinematicModel(name="cross_digit_coupling_test", root="root", bodies=bodies, joints=joints,
+                           couplings=couplings)
+
+
+def test_coverage_flags_cross_digit_coupling_by_name():
+    model = _synthetic_cross_digit_coupling_model()
+    result = coverage(model, DEFAULT_DISTRIBUTION)
+    assert result.topology_expressible is False
+    assert any(item == "coupling_scope:d1p1_j" for item in result.missing_constructs), result.missing_constructs
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +245,7 @@ def test_evaluate_main_produces_pilot_report(tmp_path):
         assert h["availability"] in {"available", "unavailable", "excluded"}
         assert h["fidelity"] is None or {"n_poses", "max_pos", "max_rot", "tolerance_met"} <= set(h["fidelity"])
         assert h["coverage"] is None or {
-            "expressible", "in_support", "missing_constructs", "out_of_support",
+            "topology_expressible", "in_support", "missing_constructs", "out_of_support",
             "digit_count", "digit_count_source",
         } <= set(h["coverage"])
 

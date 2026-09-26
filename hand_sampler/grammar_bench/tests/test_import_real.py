@@ -60,9 +60,11 @@ def test_import_and_fk_match_oracle(hand_id):
     n_compared = 0
     for u, oracle_poses in zip(reference["configs"], reference["poses"]):
         ours = fk.forward_kinematics(model, u)
+        assert set(ours) == set(oracle_poses), (
+            f"{hand_id}: body-name mismatch, ours-only={set(ours) - set(oracle_poses)} "
+            f"oracle-only={set(oracle_poses) - set(ours)}"
+        )
         for body, T_oracle_list in oracle_poses.items():
-            if body not in ours:
-                continue
             T_oracle = np.array(T_oracle_list)
             pos_err = fk.position_error(ours[body], T_oracle)
             rot_err = fk.rotation_error(ours[body], T_oracle)
@@ -73,4 +75,5 @@ def test_import_and_fk_match_oracle(hand_id):
             assert rot_err <= ORACLE_ROT_RAD, f"{hand_id} body={body} rot_err={rot_err}"
 
     assert n_compared > 0
+    assert n_compared == len(reference["configs"]) * len(ours)
     print(f"{hand_id}: {n_compared} body-pose comparisons, max_pos={max_pos:.3e}, max_rot={max_rot:.3e}")

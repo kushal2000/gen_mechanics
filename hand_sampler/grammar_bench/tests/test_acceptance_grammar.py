@@ -50,6 +50,9 @@ from hand_sampler.grammar.coords import (
 )
 from hand_sampler.grammar.derive import (
     OPERATORS,
+    Derivation,
+    DerivationError,
+    DerivationStep,
     VariationImpossible,
     derivation_from_json,
     derivation_to_json,
@@ -57,21 +60,16 @@ from hand_sampler.grammar.derive import (
     generate,
     sample_derivation,
     segment,
+    validate_derivation,
     vary,
 )
 from hand_sampler.grammar.distributions import DEFAULT_DISTRIBUTION
 from hand_sampler.grammar.kinematics import validate
-from hand_sampler.grammar_bench.tolerances import ORACLE_POS_M, ORACLE_ROT_RAD
+from hand_sampler.grammar_bench.tolerances import ANALYTIC_POS_M, ANALYTIC_ROT_RAD, ORACLE_POS_M, ORACLE_ROT_RAD
 
 BENCH_DIR = Path(__file__).resolve().parent.parent
 ORACLE_PYTHON = Path("/home/singularity/anaconda3/envs/piper/bin/python")
 ORACLE_FK_SCRIPT = BENCH_DIR / "refgen" / "oracle_fk.py"
-
-# Same-code FK comparison (our own forward_kinematics on both sides of a
-# URDF export/reimport round trip): error should be at float-precision, far
-# tighter than the independent-oracle tolerance.
-REIMPORT_POS_M = 1e-9
-REIMPORT_ROT_RAD = 1e-9
 
 N_STRUCTURAL_SEEDS = 500
 N_URDF_SEEDS = 200
@@ -274,8 +272,13 @@ def test_grammar_urdf_export_reimport(seed):
         for name in orig_names:
             pos_err = fk.position_error(ours[name], reim[name])
             rot_err = fk.rotation_error(ours[name], reim[name])
-            assert pos_err <= REIMPORT_POS_M, f"seed={seed} body={name} pos_err={pos_err}"
-            assert rot_err <= REIMPORT_ROT_RAD, f"seed={seed} body={name} rot_err={rot_err}"
+            # The re-emitted poses are verbatim (checked above via `==` on
+            # every original joint's origin/axis/limits), so re-import FK
+            # must agree with the pre-export model at the same tight
+            # tolerance as an analytic cross-check, not merely the coarser
+            # independent-oracle one.
+            assert pos_err <= ANALYTIC_POS_M, f"seed={seed} body={name} pos_err={pos_err}"
+            assert rot_err <= ANALYTIC_ROT_RAD, f"seed={seed} body={name} rot_err={rot_err}"
 
 
 def test_grammar_urdf_export_matches_oracle():
@@ -283,6 +286,7 @@ def test_grammar_urdf_export_matches_oracle():
         pytest.skip("oracle-unavailable: piper conda interpreter not found")
 
     n_compared = 0
+    n_expected = 0
     max_pos = 0.0
     max_rot = 0.0
     t0 = time.time()
@@ -312,6 +316,15 @@ def test_grammar_urdf_export_matches_oracle():
             for u, oracle_poses in zip(configs, oracle_out["poses"]):
                 q = q_from_u(model, u)
                 ours = fk.forward_kinematics(model, q)
+                # to_urdf's export always adds an extra fixed-joint body per
+                # "<body>_tip" Frame (see this module's own convention note),
+                # so the oracle's exported body set is a strict superset of
+                # the model's original bodies -- every original body must
+                # still have an oracle measurement.
+                assert set(orig_names) <= set(oracle_poses), (
+                    f"seed={seed}: original body missing from oracle output: "
+                    f"{set(orig_names) - set(oracle_poses)}"
+                )
                 for name in orig_names:
                     T_oracle = np.array(oracle_poses[name])
                     pos_err = fk.position_error(ours[name], T_oracle)
@@ -322,12 +335,15 @@ def test_grammar_urdf_export_matches_oracle():
                     assert pos_err <= ORACLE_POS_M, f"seed={seed} body={name} pos_err={pos_err}"
                     assert rot_err <= ORACLE_ROT_RAD, f"seed={seed} body={name} rot_err={rot_err}"
 
+            n_expected += len(configs) * len(orig_names)
+
             urdf_path.unlink()
             cfg_path.unlink()
             out_path.unlink()
 
     elapsed = time.time() - t0
     assert n_compared > 0
+    assert n_compared == n_expected
     print(
         f"grammar oracle check: {N_URDF_SEEDS} seeds, {n_compared} body-pose comparisons, "
         f"max_pos={max_pos:.3e}, max_rot={max_rot:.3e}, elapsed={elapsed:.1f}s"
@@ -567,3 +583,96 @@ def test_grammar_vary_replays_exactly_with_branch():
         n_checked += 1
 
     assert n_checked > 0, "no operator applied to the branch-containing derivation"
+
+
+# ---------------------------------------------------------------------------
+# 5. validate_derivation / DerivationError (iteration 6)
+# ---------------------------------------------------------------------------
+
+N_VALIDATE_SEEDS = 500
+
+
+@pytest.mark.parametrize("seed", range(N_VALIDATE_SEEDS))
+def test_generated_derivations_validate_clean(seed):
+    derivation = sample_derivation(seed, DEFAULT_DISTRIBUTION)
+    assert validate_derivation(derivation) == []
+    derive(derivation)  # must not raise
+
+
+def test_derive_raises_on_unknown_digit_in_phalanx_step():
+    derivation = sample_derivation(0, DEFAULT_DISTRIBUTION)
+    junk = DerivationStep(
+        path="digit/99/phalanx/0", production="Phalanx",
+        params={"digit_id": "99", "p": 0,
+                "module": {"kind": "R", "axis": (1.0, 0.0, 0.0), "limits": (-1.0, 1.0)},
+                "length": 0.02, "branch_digit_count": 0},
+    )
+    bad = Derivation(seed=derivation.seed, grammar_version=derivation.grammar_version,
+                      steps=derivation.steps + (junk,))
+    issues = validate_derivation(bad)
+    assert any("99" in issue for issue in issues), issues
+    with pytest.raises(DerivationError) as excinfo:
+        derive(bad)
+    assert any("99" in issue for issue in excinfo.value.issues)
+
+
+def test_derive_raises_on_digit_count_mismatch():
+    derivation = sample_derivation(0, DEFAULT_DISTRIBUTION)
+    hand_idx = next(i for i, s in enumerate(derivation.steps) if s.path == "hand")
+    hand_step = derivation.steps[hand_idx]
+    bad_hand = DerivationStep(
+        path="hand", production="Hand",
+        params={**hand_step.params, "digit_count": hand_step.params["digit_count"] + 1},
+    )
+    steps = list(derivation.steps)
+    steps[hand_idx] = bad_hand
+    bad = Derivation(seed=derivation.seed, grammar_version=derivation.grammar_version, steps=tuple(steps))
+    issues = validate_derivation(bad)
+    assert any("digit_count" in issue for issue in issues), issues
+    with pytest.raises(DerivationError):
+        derive(bad)
+
+
+def test_derive_raises_on_grammar_version_mismatch():
+    derivation = sample_derivation(0, DEFAULT_DISTRIBUTION)
+    bad = Derivation(seed=derivation.seed, grammar_version="0.0", steps=derivation.steps)
+    issues = validate_derivation(bad)
+    assert any("grammar_version" in issue for issue in issues), issues
+    with pytest.raises(DerivationError):
+        derive(bad)
+
+
+# ---------------------------------------------------------------------------
+# 6. Derivation.lineage (iteration 6)
+# ---------------------------------------------------------------------------
+
+
+def test_fresh_derivation_has_empty_lineage():
+    derivation = sample_derivation(0, DEFAULT_DISTRIBUTION)
+    assert derivation.lineage == ()
+
+
+def test_vary_appends_lineage_entry_and_keeps_founder_seed():
+    derivation = sample_derivation(0, DEFAULT_DISTRIBUTION)
+    rng = np.random.default_rng(42)
+    varied = vary(derivation, rng, DEFAULT_DISTRIBUTION, operator="perturb_parameter")
+    assert varied.seed == derivation.seed  # founder seed never changes
+    assert len(varied.lineage) == len(derivation.lineage) + 1
+    op, parent_seed = varied.lineage[-1]
+    assert op == "perturb_parameter"
+    assert parent_seed == derivation.seed
+
+    rng2 = np.random.default_rng(43)
+    varied2 = vary(varied, rng2, DEFAULT_DISTRIBUTION, operator="perturb_parameter")
+    assert varied2.seed == derivation.seed
+    assert len(varied2.lineage) == 2
+
+
+def test_lineage_survives_json_round_trip():
+    derivation = sample_derivation(0, DEFAULT_DISTRIBUTION)
+    rng = np.random.default_rng(7)
+    varied = vary(derivation, rng, DEFAULT_DISTRIBUTION, operator="perturb_parameter")
+    assert varied.lineage != ()
+    round_tripped = derivation_from_json(derivation_to_json(varied))
+    assert round_tripped == varied
+    assert round_tripped.lineage == varied.lineage

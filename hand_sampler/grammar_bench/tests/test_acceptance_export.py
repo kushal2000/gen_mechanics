@@ -207,10 +207,23 @@ def test_urdf_export_matches_oracle(case, tmp_path):
     max_pos = 0.0
     max_rot = 0.0
     n_compared = 0
+    n_bodies = None
     for exp_poses, ref_poses in zip(exported_oracle["poses"], frozen_reference["poses"]):
+        # The export round trip never adds or drops a body for a real (non-
+        # grammar-derived) hand -- these models carry no "<body>_tip" frames
+        # (see test_acceptance_grammar.py's own convention note, which only
+        # applies to grammar output). For the three plain dev hands the
+        # exported and frozen-reference body sets agree exactly; for SHARPA,
+        # the frozen reference here is generated against the full
+        # iiwa14+hand robot (see references/sharpa_left_on_iiwa14.json),
+        # while the exported model only ever has the hand_root-truncated
+        # ("kept") bodies -- so reference bodies == kept bodies means every
+        # exported (kept) body must appear in the reference, not the reverse.
+        assert set(exp_poses) <= set(ref_poses), (
+            f"{hand_id}: exported body missing from reference: {set(exp_poses) - set(ref_poses)}"
+        )
+        n_bodies = len(exp_poses)
         for body, T_exp_list in exp_poses.items():
-            if body not in ref_poses:
-                continue
             T_exp = np.array(T_exp_list)
             T_ref = np.array(ref_poses[body])
             pos_err = fk.position_error(T_exp, T_ref)
@@ -222,6 +235,7 @@ def test_urdf_export_matches_oracle(case, tmp_path):
             assert rot_err <= ORACLE_ROT_RAD, f"{hand_id} body={body} rot_err={rot_err}"
 
     assert n_compared > 0
+    assert n_bodies is not None and n_compared == len(exported_oracle["poses"]) * n_bodies
     print(
         f"{hand_id} export-oracle: {n_compared} body-pose comparisons, "
         f"max_pos={max_pos:.3e}, max_rot={max_rot:.3e}"
@@ -298,16 +312,27 @@ def test_sharpa_import_and_fk():
     assert ref_path.is_file(), "missing references/sharpa_left_on_iiwa14.json"
     reference = json.loads(ref_path.read_text())
 
+    # SHARPA's oracle reference was generated against the full iiwa14+hand
+    # robot (dropped_above_hand_root bodies included), while our own model
+    # only ever has the hand_root-truncated ("kept") bodies -- so the
+    # reference is a strict superset, never equal, to our own body set.
+    # What must hold instead: reference bodies == kept bodies, restricted to
+    # the ones our (truncated) model actually has -- every kept body has a
+    # reference measurement.
+    kept_bodies = {b.name for b in model.bodies}
+
     max_pos = 0.0
     max_rot = 0.0
     n_compared = 0
     for u, oracle_poses in zip(reference["configs"], reference["poses"]):
         q = q_from_u(model, u)
         ours = fk.forward_kinematics(model, q)
-        for body, T_oracle_list in oracle_poses.items():
-            if body not in ours:
-                continue
-            T_oracle = np.array(T_oracle_list)
+        assert set(ours) == kept_bodies
+        assert kept_bodies <= set(oracle_poses), (
+            f"missing reference pose(s) for kept body: {kept_bodies - set(oracle_poses)}"
+        )
+        for body in kept_bodies:
+            T_oracle = np.array(oracle_poses[body])
             pos_err = fk.position_error(ours[body], T_oracle)
             rot_err = fk.rotation_error(ours[body], T_oracle)
             max_pos = max(max_pos, pos_err)
@@ -317,6 +342,7 @@ def test_sharpa_import_and_fk():
             assert rot_err <= ORACLE_ROT_RAD
 
     assert n_compared > 0
+    assert n_compared == len(reference["configs"]) * len(kept_bodies)
     print(f"sharpa_left_on_iiwa14: {n_compared} body-pose comparisons, max_pos={max_pos:.3e}, max_rot={max_rot:.3e}")
 
 
@@ -344,12 +370,16 @@ def test_local_only_coupled_hands_match_oracle(hand_id):
     max_pos = 0.0
     max_rot = 0.0
     n_compared = 0
+    n_bodies = None
     for u, oracle_poses in zip(reference["configs"], reference["poses"]):
         q = q_from_u(model, u)
         ours = fk.forward_kinematics(model, q)
+        assert set(ours) == set(oracle_poses), (
+            f"{hand_id}: body-name mismatch, ours-only={set(ours) - set(oracle_poses)} "
+            f"reference-only={set(oracle_poses) - set(ours)}"
+        )
+        n_bodies = len(ours)
         for body, T_oracle_list in oracle_poses.items():
-            if body not in ours:
-                continue
             T_oracle = np.array(T_oracle_list)
             pos_err = fk.position_error(ours[body], T_oracle)
             rot_err = fk.rotation_error(ours[body], T_oracle)
@@ -360,4 +390,5 @@ def test_local_only_coupled_hands_match_oracle(hand_id):
             assert rot_err <= ORACLE_ROT_RAD, f"{hand_id} body={body} rot_err={rot_err}"
 
     assert n_compared > 0
+    assert n_bodies is not None and n_compared == len(reference["configs"]) * n_bodies
     print(f"{hand_id}: {n_compared} body-pose comparisons, max_pos={max_pos:.3e}, max_rot={max_rot:.3e}")
