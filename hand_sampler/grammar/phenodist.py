@@ -90,42 +90,96 @@ def _per_config_mean_distance(pos_a: np.ndarray, pos_b: np.ndarray, penalty: flo
     return total / denom
 
 
+def _tip_positions_from_q(model: KinematicModel, frames: List[str], q: Mapping[str, float]) -> np.ndarray:
+    T = forward_kinematics(model, q)
+    return np.asarray([T[f][:3, 3] for f in frames], dtype=float)
+
+
 def phenotype_distance(a: KinematicModel, b: KinematicModel, seed: int, n_configs: int = 32) -> Dict[str, float]:
     """Dissimilarity between two derived hands.
 
-    ``tip_displacement_m``: both models are sampled with ``sample_configurations(model,
-    n_configs, seed)`` (independently -- their independent-joint sets generally
-    differ, so there is no shared configuration space; ``seed`` is simply reused for
-    both draws). For each of the first ``min(len(configs_a), len(configs_b))``
-    index-aligned configurations, tip positions are matched between the two
-    models by greedy nearest-first assignment on Euclidean distance; any tip
-    left unmatched (unequal tip counts) is penalized by ``(root_length_a +
-    root_length_b) / 2`` instead of a real distance, and the per-config score
-    is the mean over ``max(n_tips_a, n_tips_b)`` terms. ``tip_displacement_m``
-    is the mean of that per-config score over configurations (0.0 if either
-    model has zero tips and zero configurations are usable).
+    ``tip_displacement_m`` (I14 fix): ``a`` is treated as the PARENT and ``b``
+    as the CHILD (this is how every caller -- ``e1_locality``, ``e2_drift``'s
+    aggregate readings -- already uses this function). Only ``a``'s own
+    u-configurations are drawn (``sample_configurations(a, n_configs,
+    seed)``); ``b``'s configuration is built by ALIGNING joints BY NAME
+    rather than sampling ``b`` independently: for each of ``a``'s sampled
+    configurations, expand it to a full per-joint ``q`` via ``q_from_u``,
+    then for ``b`` reuse that same joint's value for every joint name
+    present in both ``a.joints`` and ``b.joints`` (this is well-defined
+    because ``derive.py``'s ``vary`` operators never rename an existing
+    joint), and set the value of every movable joint present ONLY in ``b``
+    to 0.0 (clamped into that joint's own declared limits, if any).
+
+    This fixes the previous (pre-I14) behaviour of drawing ``a`` and ``b``'s
+    configurations INDEPENDENTLY (via two separate ``sample_configurations``
+    calls): whenever a mutation adds or removes a joint, the sorted-name
+    independent-joint set shifts, which shifts every later joint's draw from
+    the shared ``np.random.default_rng(seed)`` stream even though that
+    joint's own value didn't structurally change -- an accepted-review-
+    documented noise floor of ~94 mm (a hand vs a hand with an unrelated new
+    joint, under independently-drawn configs, showed tip displacement on that
+    order even though every SHARED joint was mechanically unaffected).
+    Aligning by name means two structurally identical models (or a parent
+    and a child that share every joint) get IDENTICAL per-joint values, so
+    their tip displacement is exactly 0 regardless of ``seed``.
+
+    For each of ``a``'s ``n_configs`` (+ extremal) configurations, tip
+    positions are matched between the two models by greedy nearest-first
+    assignment on Euclidean distance; any tip left unmatched (unequal tip
+    counts) is penalized by ``(root_length_a + root_length_b) / 2`` instead
+    of a real distance, and the per-config score is the mean over
+    ``max(n_tips_a, n_tips_b)`` terms. ``tip_displacement_m`` is the mean of
+    that per-config score over configurations (0.0 if either model has zero
+    tips or zero configurations are usable).
+
+    ``n_shared_joints``: the number of joint NAMES present in both
+    ``a.joints`` and ``b.joints`` (regardless of movable/fixed type) -- how
+    much of the alignment above is actually reusing a real shared value
+    (vs. falling back to the child-only 0.0 default).
 
     The remaining keys are exact, seed-independent structural deltas.
     """
     frames_a = tip_frames(a)
     frames_b = tip_frames(b)
     configs_a = sample_configurations(a, n_configs, seed)
-    configs_b = sample_configurations(b, n_configs, seed)
-    n_common = min(len(configs_a), len(configs_b))
+
+    joints_by_name_a = {j.name: j for j in a.joints}
+    joints_by_name_b = {j.name: j for j in b.joints}
+    shared_names = set(joints_by_name_a) & set(joints_by_name_b)
+    n_shared_joints = len(shared_names)
+
+    n_common = len(configs_a)
     penalty = (_root_length_m(a) + _root_length_m(b)) / 2.0
 
     if n_common == 0:
         tip_displacement_m = 0.0
     else:
         scores = []
-        for k in range(n_common):
-            pos_a = _tip_positions_at(a, frames_a, configs_a[k])
-            pos_b = _tip_positions_at(b, frames_b, configs_b[k])
+        for u in configs_a:
+            q_a = q_from_u(a, u)
+            q_b: Dict[str, float] = {}
+            for name, jb in joints_by_name_b.items():
+                if name in q_a:
+                    # Shared joint (by name) whose value is known for ``a``
+                    # (movable there): reuse it verbatim -- see docstring.
+                    q_b[name] = q_a[name]
+                elif jb.type in ("revolute", "continuous", "prismatic"):
+                    # Movable joint only in ``b`` (or shared by name but not
+                    # movable in ``a``): 0.0, clamped into its own limits.
+                    val = 0.0
+                    if jb.limits is not None:
+                        lo, hi = jb.limits
+                        val = min(max(val, lo), hi)
+                    q_b[name] = val
+            pos_a = _tip_positions_from_q(a, frames_a, q_a)
+            pos_b = _tip_positions_from_q(b, frames_b, q_b)
             scores.append(_per_config_mean_distance(pos_a, pos_b, penalty))
         tip_displacement_m = float(np.mean(scores))
 
     return {
         "tip_displacement_m": tip_displacement_m,
+        "n_shared_joints": float(n_shared_joints),
         "joint_count_delta": float(abs(len(a.joints) - len(b.joints))),
         "digit_count_delta": float(abs(_digit_count(a) - _digit_count(b))),
         "palm_body_delta": float(abs(_palm_body_count(a) - _palm_body_count(b))),

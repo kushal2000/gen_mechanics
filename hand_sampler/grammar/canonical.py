@@ -30,7 +30,11 @@ _ROUND = 9
 
 
 def _r(x: float) -> float:
-    return round(float(x), _ROUND)
+    # ``+ 0.0`` folds a rounded ``-0.0`` back to ``0.0`` (``-0.0 == 0.0`` is
+    # True in Python, but ``json.dumps``/``repr`` -- and therefore this
+    # module's hash -- distinguish them; two geometrically-identical models
+    # that differ only in the sign of a zero must still hash identically).
+    return round(float(x), _ROUND) + 0.0
 
 
 def _rtuple(xs) -> Tuple[float, ...]:

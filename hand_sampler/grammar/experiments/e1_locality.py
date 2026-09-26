@@ -43,6 +43,7 @@ from ..canonical import canonical_form, phenotype_hash
 from ..derive import OPERATORS, SMALL_STEP_OPERATORS, VariationImpossible, derive, generate, vary
 from ..kinematics import KinematicModel
 from ..phenodist import phenotype_distance
+from ..proxy import tip_frames
 from ..variants import G_FULL
 from .runner import register, run_experiment
 
@@ -80,6 +81,63 @@ def fraction_joints_changed(canon_parent: KinematicModel, canon_child: Kinematic
         return 0.0
     common = sum((_joint_multiset(canon_parent) & _joint_multiset(canon_child)).values())
     return 1.0 - common / max(n_p, n_c)
+
+
+_FOOTNOTE_OPERATOR = "insert_phalanx"  # adds a joint -- the case the I14 alignment fix actually changes.
+
+
+def _legacy_unaligned_tip_displacement(a: KinematicModel, b: KinematicModel, seed: int, n_configs: int = 32) -> float:
+    """I14 footnote helper ONLY (fix 9): reproduces the PRE-I14 (unaligned)
+    ``phenotype_distance`` sampling scheme -- draw ``a`` and ``b``'s
+    u-configurations INDEPENDENTLY (two separate ``sample_configurations``
+    calls, same ``seed``) -- purely so the summary artifact can show, for
+    one operator, how much the I14 alignment fix (see ``phenodist.py``)
+    changed this number. Never used for any other purpose (the real
+    per-operator table below always uses the current, aligned
+    ``phenotype_distance``)."""
+    from ..coords import sample_configurations
+    from ..phenodist import _per_config_mean_distance, _root_length_m, _tip_positions_at
+
+    frames_a = tip_frames(a)
+    frames_b = tip_frames(b)
+    configs_a = sample_configurations(a, n_configs, seed)
+    configs_b = sample_configurations(b, n_configs, seed)
+    n_common = min(len(configs_a), len(configs_b))
+    if n_common == 0:
+        return 0.0
+    penalty = (_root_length_m(a) + _root_length_m(b)) / 2.0
+    scores = []
+    for k in range(n_common):
+        pos_a = _tip_positions_at(a, frames_a, configs_a[k])
+        pos_b = _tip_positions_at(b, frames_b, configs_b[k])
+        scores.append(_per_config_mean_distance(pos_a, pos_b, penalty))
+    return float(np.mean(scores))
+
+
+def _footnote_legacy_vs_aligned_median(seeds: Sequence[int], n_configs: int, sample_size: int = 30) -> Dict[str, Any]:
+    """Median (over up to ``sample_size`` of ``seeds``) tip_displacement_m
+    for ``_FOOTNOTE_OPERATOR`` under BOTH the current aligned
+    ``phenotype_distance`` and the legacy unaligned scheme above -- the
+    "footnote" required by fix 9."""
+    op_idx = ALL_OPERATORS.index(_FOOTNOTE_OPERATOR)
+    aligned_vals: List[float] = []
+    legacy_vals: List[float] = []
+    for seed in list(seeds)[:sample_size]:
+        derivation, parent = generate(seed, G_FULL)
+        rng = np.random.default_rng([seed, op_idx])
+        try:
+            child_derivation = vary(derivation, rng, G_FULL, operator=_FOOTNOTE_OPERATOR)
+        except VariationImpossible:
+            continue
+        child = derive(child_derivation)
+        aligned_vals.append(phenotype_distance(parent, child, seed, n_configs=n_configs)["tip_displacement_m"])
+        legacy_vals.append(_legacy_unaligned_tip_displacement(parent, child, seed, n_configs=n_configs))
+    return {
+        "operator": _FOOTNOTE_OPERATOR,
+        "n": len(aligned_vals),
+        "aligned_median": float(np.median(aligned_vals)) if aligned_vals else None,
+        "legacy_unaligned_median": float(np.median(legacy_vals)) if legacy_vals else None,
+    }
 
 
 def e1_locality_seed(seed: int, n_configs: int = 32) -> Dict[str, Any]:
@@ -156,7 +214,8 @@ def _fmt(v: Optional[float]) -> str:
     return "n/a" if v is None else f"{v:.4g}"
 
 
-def _summary_md(params: Dict[str, Any], aggregate: Dict[str, Any], wall_time_s: float) -> str:
+def _summary_md(params: Dict[str, Any], aggregate: Dict[str, Any], wall_time_s: float,
+                 footnote: Optional[Dict[str, Any]] = None) -> str:
     lines = [
         "# Experiment: e1_locality", "",
         f"Wall time: {wall_time_s:.3f} s", "",
@@ -187,6 +246,14 @@ def _summary_md(params: Dict[str, Any], aggregate: Dict[str, Any], wall_time_s: 
             f"tip_displacement_m median {_fmt(a['tip_displacement_m']['median'])} "
             f"(p90 {_fmt(a['tip_displacement_m']['p90'])})."
         )
+    if footnote is not None:
+        lines += ["", "## Footnote: aligned vs. legacy (pre-I14) tip_displacement_m", ""]
+        lines.append(
+            f"- {footnote['operator']} (n={footnote['n']} seeds): aligned (I14) median "
+            f"{_fmt(footnote['aligned_median'])} m; legacy unaligned (pre-I14, independently-sampled "
+            f"parent/child configs -- see ``_legacy_unaligned_tip_displacement``) median "
+            f"{_fmt(footnote['legacy_unaligned_median'])} m."
+        )
     lines.append("")
     return "\n".join(lines)
 
@@ -207,9 +274,11 @@ def run(out_dir: Optional[str] = None, seeds: Sequence[int] = range(1000),
     )
     aggregate = _aggregate_by_operator(result["per_seed"])
     result["aggregate"] = aggregate
+    footnote = _footnote_legacy_vs_aligned_median(seeds, n_configs)
+    result["footnote_legacy_vs_aligned"] = footnote
     out_path = Path(out_dir)
     (out_path / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True, default=str))
-    (out_path / "summary.md").write_text(_summary_md(result["params"], aggregate, result["wall_time_s"]))
+    (out_path / "summary.md").write_text(_summary_md(result["params"], aggregate, result["wall_time_s"], footnote))
     return result
 
 

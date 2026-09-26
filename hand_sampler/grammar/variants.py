@@ -45,6 +45,24 @@ G_SERIAL: Distribution = replace(
     palm_joint_probability=0.0,
 )
 
+# I14 fix 5: an "insertion" sub-Distribution (see distributions.Distribution
+# .insertion / derive.py's growth operators) that growth operators draw NEW
+# digit/phalanx material from: phalanges 1..3 (no growth op should ever
+# insert a full-size, up-to-6-phalanx digit/subtree in one step), no
+# branching. Everything else (palm-body-related fields included -- "palm
+# bodies as before") is identical to DEFAULT_DISTRIBUTION.
+_INSERTION_DIST: Distribution = replace(
+    DEFAULT_DISTRIBUTION, phalanx_count_range=(1, 3), branch_probability=0.0,
+)
+
+# G_FULL, but every growth operator inserts new material from
+# ``_INSERTION_DIST`` instead of the (otherwise identical) outer
+# distribution.
+G_FULL_INS: Distribution = replace(DEFAULT_DISTRIBUTION, insertion=_INSERTION_DIST)
+
+# G_NOBRANCH, with the same insertion sub-distribution wired in.
+G_NOBRANCH_INS: Distribution = replace(G_NOBRANCH, insertion=_INSERTION_DIST)
+
 # G_FULL_SMALL: the SAME sampling distribution as G_FULL, paired with the
 # small-step operator mixture (see derive.py's SMALL_STEP_OPERATORS) for use
 # with vary(..., operators=...) rather than the coarse-grained OPERATORS
@@ -58,6 +76,8 @@ NAMED_DISTRIBUTIONS = {
     "G_NOBRANCH": G_NOBRANCH,
     "G_NOCOUPLE": G_NOCOUPLE,
     "G_SERIAL": G_SERIAL,
+    "G_FULL_INS": G_FULL_INS,
+    "G_NOBRANCH_INS": G_NOBRANCH_INS,
 }
 
 __all__ = [
@@ -66,6 +86,8 @@ __all__ = [
     "G_NOBRANCH",
     "G_NOCOUPLE",
     "G_SERIAL",
+    "G_FULL_INS",
+    "G_NOBRANCH_INS",
     "G_FULL_SMALL",
     "NAMED_DISTRIBUTIONS",
     "OPERATORS",

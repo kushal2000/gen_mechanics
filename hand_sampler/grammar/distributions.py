@@ -88,6 +88,23 @@ class Distribution:
     # note and ``derive.py``'s ``sample_derivation``/``derive``.
     capsule_radius_choices_m: Tuple[float, ...] = (0.008, 0.010, 0.012)
 
+    # I14 fix 5: an optional separate ``Distribution`` used by the GROWTH
+    # operators (``add_digit``, ``add_palm_body``, ``regrow_subtree``,
+    # ``add_minimal_digit`` -- see ``derive.py``'s ``_growth_dist``) to
+    # sample brand-NEW material, instead of the (outer) ``Distribution`` a
+    # ``vary`` call is otherwise parameterized by. ``None`` (the default)
+    # means "no separate insertion distribution": every growth operator
+    # samples new material from the same outer ``Distribution``, exactly as
+    # before this fix (this is what every existing named ``Distribution`` --
+    # ``G_FULL``, ``G_SERIAL``, etc. -- still does, so default sampling and
+    # every existing replay/test is byte-identical). A caller-level cap
+    # (``digit_count_range``, ``palm_body_count_range``) is always read off
+    # the OUTER distribution, never the insertion one, since those bound the
+    # whole hand, not one newly-inserted piece. See ``variants.py``'s
+    # ``G_FULL_INS``/``G_NOBRANCH_INS`` for a concrete insertion
+    # distribution (phalanx_count_range=(1, 3), branch_probability=0.0).
+    insertion: Optional["Distribution"] = None
+
 
 DEFAULT_DISTRIBUTION = Distribution()
 
