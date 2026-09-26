@@ -25,7 +25,7 @@ from hand_sampler.grammar.derive import (
     vary,
 )
 from hand_sampler.grammar.kinematics import validate
-from hand_sampler.grammar.experiments.e3_reach import TARGETS, OPERATOR_SETS, e3_reach_seed
+from hand_sampler.grammar.experiments.e3_reach import DIST_VARIANTS, TARGETS, OPERATOR_SETS, e3_reach_seed
 from hand_sampler.grammar.experiments.e4_redundancy import (
     VARIANTS,
     OFFSPRING_OP_GROUPS,
@@ -188,22 +188,26 @@ def test_default_operators_and_default_vary_unaffected_by_minimal_ops():
 
 
 def test_e3_reach_seed_returns_all_target_opset_combinations():
-    result = e3_reach_seed(0, max_accepted=5, max_attempts_per_step=8, safety_cap=40)
-    assert len(result) == len(TARGETS) * len(OPERATOR_SETS)
+    # I14 fix 7: budget is now in PROPOSALS (evaluations); a variant
+    # (grammar Distribution) dimension was added alongside the operator
+    # pool dimension, so keys are "<target>::<opset>::<dist>".
+    result = e3_reach_seed(0, budget=40)
+    assert len(result) == len(TARGETS) * len(OPERATOR_SETS) * len(DIST_VARIANTS)
     for target_name in TARGETS:
         for opset_name in OPERATOR_SETS:
-            key = f"{target_name}::{opset_name}"
-            assert key in result
-            row = result[key]
-            for field in ("success", "final_distance", "n_accepted", "n_proposed"):
-                assert field in row
-            assert row["n_accepted"] <= 5
-            assert row["final_distance"] >= 0.0
+            for dist_name in DIST_VARIANTS:
+                key = f"{target_name}::{opset_name}::{dist_name}"
+                assert key in result
+                row = result[key]
+                for field in ("success", "final_distance", "n_accepted", "n_proposed"):
+                    assert field in row
+                assert row["n_proposed"] <= 40
+                assert row["final_distance"] >= 0.0
 
 
 def test_e3_reach_seed_deterministic():
-    r1 = e3_reach_seed(3, max_accepted=8, safety_cap=60)
-    r2 = e3_reach_seed(3, max_accepted=8, safety_cap=60)
+    r1 = e3_reach_seed(3, budget=60)
+    r2 = e3_reach_seed(3, budget=60)
     assert r1 == r2
 
 
@@ -212,7 +216,7 @@ def test_e3_reach_writes_result_json_via_runner():
         out_dir = str(Path(td) / "e3_out")
         fn = registered_experiments()["e3_reach"]
         result = run_experiment(
-            "e3_reach", fn, params={"max_accepted": 5, "max_attempts_per_step": 8, "safety_cap": 40},
+            "e3_reach", fn, params={"budget": 40},
             seeds=list(range(4)), out_dir=out_dir, processes=2,
         )
         result_path = Path(out_dir) / "result.json"

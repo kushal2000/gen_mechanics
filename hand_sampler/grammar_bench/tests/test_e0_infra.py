@@ -196,15 +196,36 @@ def test_canonical_hash_duplicate_rate_500_seeds():
 
 
 def test_phenotype_distance_zero_for_identical_and_symmetric():
+    # I14 fix: ``phenotype_distance`` now aligns configurations by joint
+    # NAME, drawing only ``a``'s own u-configurations (``a`` = parent, ``b``
+    # = child -- see phenodist.py's own docstring); an identical model
+    # against itself therefore has EVERY key at 0 except ``n_shared_joints``
+    # (every one of its own joints, by construction), for ANY seed.
     _, m0 = generate(5)
     _, m1 = generate(6)
     d_self = phenotype_distance(m0, m0, seed=1, n_configs=8)
+    assert d_self["n_shared_joints"] == float(len(m0.joints))
     for k, v in d_self.items():
+        if k == "n_shared_joints":
+            continue
         assert v == 0.0, f"{k} nonzero for identical model: {v}"
+    # A different seed changes nothing about self-distance (the noise floor
+    # this fix removes): still exactly 0 for every structural/tip key.
+    d_self_seed2 = phenotype_distance(m0, m0, seed=99, n_configs=8)
+    for k, v in d_self_seed2.items():
+        if k == "n_shared_joints":
+            continue
+        assert v == 0.0, f"{k} nonzero for identical model under a different seed: {v}"
 
+    # The purely STRUCTURAL keys (independent of which configs were drawn)
+    # remain exactly symmetric.
     d_ab = phenotype_distance(m0, m1, seed=1, n_configs=8)
     d_ba = phenotype_distance(m1, m0, seed=1, n_configs=8)
-    for k in d_ab:
+    structural_keys = (
+        "joint_count_delta", "digit_count_delta", "palm_body_delta",
+        "motor_delta", "total_length_delta_m",
+    )
+    for k in structural_keys:
         assert d_ab[k] == pytest.approx(d_ba[k], abs=1e-9), f"{k} not symmetric"
     # A genuinely different hand should show up as some nonzero delta.
     assert any(v > 0.0 for v in d_ab.values())

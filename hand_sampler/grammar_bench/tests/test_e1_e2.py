@@ -93,19 +93,25 @@ def test_e2_drift_result_json_keys_and_finite():
         loaded = json.loads(result_path.read_text())
         agg = loaded["aggregate"]
         assert agg["n_seeds"] == len(SEEDS)
-        for mixture_name in e2_drift.MIXTURES:
-            assert mixture_name in agg
-            m = agg[mixture_name]
-            for metric in ("joints", "digits", "motors"):
-                for label in ("4", "8"):
-                    key = f"delta_{metric}_at_{label}"
-                    assert key in m, f"missing {key!r} in mixture {mixture_name!r}"
-                    b = m[key]
-                    assert set(b.keys()) == {"mean", "ci_lo", "ci_hi", "n"}
-                    assert b["n"] == len(SEEDS)
-            assert f"distinct_hash_fraction_at_4" in m
-            assert f"distinct_hash_fraction_at_8" in m
-            assert "acceptance_rate" in m
+        # I14 fix 8: aggregate is now nested {dist_name: {mixture_name: ...}}
+        # (a variant dimension was added on top of the mixture dimension).
+        for dist_name in e2_drift.DIST_VARIANTS:
+            assert dist_name in agg
+            for mixture_name in e2_drift.MIXTURES:
+                assert mixture_name in agg[dist_name]
+                m = agg[dist_name][mixture_name]
+                for metric in ("joints", "digits", "motors"):
+                    for label in ("4", "8"):
+                        key = f"delta_{metric}_at_{label}"
+                        assert key in m, f"missing {key!r} in dist {dist_name!r} mixture {mixture_name!r}"
+                        b = m[key]
+                        assert set(b.keys()) == {"mean", "ci_lo", "ci_hi", "n"}
+                        assert b["n"] == len(SEEDS)
+                    final_key = f"final_{metric}_at_{label}"
+                    assert final_key in m
+                assert "distinct_hash_fraction_at_4" in m
+                assert "distinct_hash_fraction_at_8" in m
+                assert "acceptance_rate" in m
         assert _all_finite(agg)
         assert (Path(out_dir) / "summary.md").exists()
 
