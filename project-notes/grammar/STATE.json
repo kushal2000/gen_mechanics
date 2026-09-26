@@ -7,7 +7,7 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,
   "budget": {
-    "worker_runs_used": 12,
+    "worker_runs_used": 13,
     "worker_runs_max": 36,
     "opus_reviews_used": 2,
     "opus_reviews_max": 4,
@@ -118,7 +118,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "E0 running: proxy.py, canonical.py, phenodist.py, experiments runner.",
+  "next_action": "E1 running: locality per operator (baseline 7 operators + 5 small-step) on 1000 parents.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -138,8 +138,8 @@
     "cadence": "30m"
   },
   "experiments": {
-    "E0": "running",
-    "E1": "pending",
+    "E0": "done",
+    "E1": "running",
     "E2": "pending",
     "E3": "pending",
     "E4": "pending",

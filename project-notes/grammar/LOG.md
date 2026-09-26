@@ -97,3 +97,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Worker run 11 (resumed twice). Full suite 2834 passed in 377 s; geometry test alone ~5 min at 200 seeds, so the routine suite now runs 40 seeds (env GRAMMAR_GEOMETRY_SEEDS=200 reproduces the full run). 200-seed statistics: 2.69 palm bodies/cells per hand; min cell volume 4.96e-6 m3; mean pairwise overlap 7.4% of hull volume; 2.49 overlapping pairs per hand (of 2.88 possible), all recorded as adjacent; union deficit 4.8% (reported); mounts outside 0; spines outside 0; hull samples uncovered 0. Acceptance tolerance 1e-6 m for convexity/containment (float64 hull planes at thousands of points; documented with worst cases).
 - Open question for Martin: with nearest-spine cells most palm pairs overlap and are filtered; if that is too permissive for contact, the alternative is a per-body capsule palm (no shared hull). Decision: keep.
+
+## E0 (2026-09-26 ~02:55): experiment infrastructure
+
+- Worker run 12. Suite 2852 passed in 124 s. proxy.py (opposition, reach_coverage, antipodal_pinch, structural_cost; diagnostics only), canonical.py (order- and name-invariant hash; 500 seeds -> 500 distinct), phenodist.py, variants.py (G_FULL, G_NOPALMJOINT, G_NOBRANCH, G_NOCOUPLE, G_SERIAL, G_FULL_SMALL), derive.SMALL_STEP_OPERATORS (opt-in), experiments/runner.py (multiprocessing, provenance). Decision: keep.
