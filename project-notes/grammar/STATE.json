@@ -7,9 +7,9 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,
   "budget": {
-    "worker_runs_used": 14,
+    "worker_runs_used": 15,
     "worker_runs_max": 36,
-    "opus_reviews_used": 2,
+    "opus_reviews_used": 3,
     "opus_reviews_max": 4,
     "note": "Overnight program (Martin, 2026-09-26): 8-hour window; 25 more worker runs and 2 more Opus reviews on top of the pilot's usage."
   },
@@ -118,14 +118,14 @@
     },
     {
       "id": "I13",
-      "status": "open",
+      "status": "fixed",
       "hypothesis": "No operator adds/removes a palm body or toggles a palm joint; add_digit/remove_digit change ~7 joints because new digits are sampled at full size. Evolution needs minimal structural operators (add 1-phalanx digit, add/remove palm body, toggle palm joint).",
-      "decision": null,
-      "evidence": "E1 table; vary OPERATORS list"
+      "decision": "keep",
+      "evidence": "MINIMAL_STRUCTURAL_OPERATORS added; E3: arch_palm 0/64 with default ops, 64/64 with minimal ops"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "E3 running: minimal structural operators + reachability hill-climb to 4 targets; E4 redundancy counts.",
+  "next_action": "E5 running (proxy evolution across variants and operator sets); Opus review of E0-E4 in parallel (read-only).",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -148,9 +148,9 @@
     "E0": "done",
     "E1": "done",
     "E2": "done",
-    "E3": "running",
-    "E4": "running",
-    "E5": "pending",
+    "E3": "done",
+    "E4": "done",
+    "E5": "running",
     "E6": "pending"
   }
 }
