@@ -101,3 +101,10 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## E0 (2026-09-26 ~02:55): experiment infrastructure
 
 - Worker run 12. Suite 2852 passed in 124 s. proxy.py (opposition, reach_coverage, antipodal_pinch, structural_cost; diagnostics only), canonical.py (order- and name-invariant hash; 500 seeds -> 500 distinct), phenodist.py, variants.py (G_FULL, G_NOPALMJOINT, G_NOBRANCH, G_NOCOUPLE, G_SERIAL, G_FULL_SMALL), derive.SMALL_STEP_OPERATORS (opt-in), experiments/runner.py (multiprocessing, provenance). Decision: keep.
+
+## E1 locality + E2 neutral drift (2026-09-26 ~03:20)
+
+- Worker run 13. Suite 2858 passed in 126 s. E1: 1000 parents x 12 operators, 57 s wall. E2: 256 seeds x 3 mixtures x 500 steps from reduced G_SERIAL starts, 3.4 s wall. Results in project-notes/grammar/experiments/E1_locality and E2_drift (result.json + summary.md, seeds and SHA recorded).
+- E1 reading: small-step operators: tip displacement median 0.8-4.1 mm, p90 3-21 mm, joint count unchanged, null rate <= 0.8%. Default operators: perturb_parameter 0.8 mm median (local); resample_parameter 24 mm median / 136 mm p90; insert/delete_phalanx 1 joint but ~100 mm tip displacement (whole distal chain shifts); add/remove_digit 6.8/7.6 joints mean, ~77 mm; regrow_subtree 5.7 joints mean, 27% of joints changed median, 75% p90.
+- E2 reading: joints change from start: uniform +7.1 [6.3,7.9] at step 40, +9.3 [8.5,10.1] at 500; balanced +8.7 / +10.0; small_heavy +4.4 / +8.5. Digits +1.1..+1.8. No two seeds converge to the same phenotype. Growth is boundary-driven (shrink operators inapplicable at the small end) and plateaus near the distribution caps; equal proposal weights do not balance it (consistent with the earlier sampler audit).
+- Decisions: keep both. Opened I13 (minimal structural operators, palm-body operators). E3 will add them before measuring reachability.

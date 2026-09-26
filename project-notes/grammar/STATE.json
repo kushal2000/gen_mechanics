@@ -7,7 +7,7 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,
   "budget": {
-    "worker_runs_used": 13,
+    "worker_runs_used": 14,
     "worker_runs_max": 36,
     "opus_reviews_used": 2,
     "opus_reviews_max": 4,
@@ -115,10 +115,17 @@
       "hypothesis": "Bisector cutting plane (through the joint, containing the axis, bisecting parent and child spines) plus nearest-spine sibling resolution yields positive-volume cells that contain their digit mounts; cells sharing a cut face are recorded as adjacent for collision filtering.",
       "decision": "keep (nearest-spine)",
       "evidence": "200 seeds: 0 mounts/spines outside, min cell 5e-6 m3, overlap 7.4%, 2834 passed in 377 s; routine test now 40 seeds"
+    },
+    {
+      "id": "I13",
+      "status": "open",
+      "hypothesis": "No operator adds/removes a palm body or toggles a palm joint; add_digit/remove_digit change ~7 joints because new digits are sampled at full size. Evolution needs minimal structural operators (add 1-phalanx digit, add/remove palm body, toggle palm joint).",
+      "decision": null,
+      "evidence": "E1 table; vary OPERATORS list"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "E1 running: locality per operator (baseline 7 operators + 5 small-step) on 1000 parents.",
+  "next_action": "E3 running: minimal structural operators + reachability hill-climb to 4 targets; E4 redundancy counts.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -139,10 +146,10 @@
   },
   "experiments": {
     "E0": "done",
-    "E1": "running",
-    "E2": "pending",
-    "E3": "pending",
-    "E4": "pending",
+    "E1": "done",
+    "E2": "done",
+    "E3": "running",
+    "E4": "running",
     "E5": "pending",
     "E6": "pending"
   }
