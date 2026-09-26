@@ -247,13 +247,25 @@ def _single_field_diff(a: Derivation, b: Derivation):
 
 
 def test_small_step_operators_change_exactly_one_field_and_replay():
+    # Grammar 0.5 contract change: ``step_bend_rpy``/``step_bend_offset``
+    # (I16 priority 1) are no-ops by construction under ``DEFAULT_DISTRIBUTION``
+    # -- its ``bend_rpy_choices_rad``/``bend_offset_choices_m`` are each a
+    # single ("no bend") choice, so there is no grid-neighbour to step to
+    # (see distributions.Distribution.bend_probability's docstring: default
+    # sampling/replay must stay byte-identical, which requires the bend
+    # grid to stay a single point by default). Exercised instead under
+    # ``variants.G_BEND``, whose bend grids have real neighbours -- every
+    # OTHER small-step operator still applies fine under G_BEND too (it is
+    # ``DEFAULT_DISTRIBUTION`` with only the bend fields changed), so this
+    # substitution only affects the two bend operators' own dist choice.
     for opname in SMALL_STEP_OPERATORS:
+        dist = variants.G_BEND if opname in ("step_bend_rpy", "step_bend_offset") else DEFAULT_DISTRIBUTION
         n_applied = 0
         for seed in range(60):
-            d0, _ = generate(seed)
+            d0, _ = generate(seed, dist)
             rng = np.random.default_rng(1000 + seed)
             try:
-                d1 = vary(d0, rng, operator=opname)
+                d1 = vary(d0, rng, dist=dist, operator=opname)
             except VariationImpossible:
                 continue
             _single_field_diff(d0, d1)
@@ -282,12 +294,17 @@ def test_default_vary_operator_pool_unchanged():
 
 
 def test_vary_operators_kwarg_reaches_small_step_pool():
+    # Grammar 0.5 contract change: uses ``variants.G_BEND`` (see
+    # ``test_small_step_operators_change_exactly_one_field_and_replay``'s own
+    # note) so that ``step_bend_rpy``/``step_bend_offset`` -- now part of
+    # ``SMALL_STEP_OPERATORS`` -- are reachable/succeedable too, not just
+    # every pre-existing small-step operator.
     n_ok = 0
     for seed in range(20):
-        d0, _ = generate(seed)
+        d0, _ = generate(seed, variants.G_BEND)
         rng = np.random.default_rng(seed)
         try:
-            d1 = vary(d0, rng, operators=SMALL_STEP_OPERATORS)
+            d1 = vary(d0, rng, dist=variants.G_BEND, operators=SMALL_STEP_OPERATORS)
         except VariationImpossible:
             continue
         op_used = d1.lineage[-1][0]

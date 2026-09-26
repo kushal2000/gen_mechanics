@@ -160,10 +160,18 @@ def _synthetic_continuation_pose_model():
 
 
 def test_coverage_flags_continuation_pose_by_name():
+    """Grammar 0.5 (I16 priority 1) contract change: a rest-bend is now a
+    genuine grammar primitive (every Phalanx step carries ``bend_rpy``/
+    ``bend_offset`` -- see distributions.py/derive.py), so a mid-digit
+    lateral offset is topology-EXPRESSIBLE regardless of its value; whether
+    this SPECIFIC value is in the (default, "no bend") distribution's own
+    support is a grid-membership question, reported in ``out_of_support``
+    (like axis/limit/length grid checks) rather than ``missing_constructs``."""
     model = _synthetic_continuation_pose_model()
     result = coverage(model, DEFAULT_DISTRIBUTION)
-    assert result.topology_expressible is False
-    assert any(item == "continuation_pose:d1p2_j" for item in result.missing_constructs), result.missing_constructs
+    assert result.topology_expressible is True
+    assert any(item == "continuation_pose:d1p2_j" for item in result.out_of_support), result.out_of_support
+    assert result.in_support is False
 
 
 def _synthetic_cross_digit_coupling_model():
