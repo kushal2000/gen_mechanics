@@ -7,7 +7,7 @@ structural terms) two derived hands are. It is NOT a fitness or task score.
 
 from __future__ import annotations
 
-from typing import Dict, List, Mapping, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
@@ -95,23 +95,47 @@ def _tip_positions_from_q(model: KinematicModel, frames: List[str], q: Mapping[s
     return np.asarray([T[f][:3, 3] for f in frames], dtype=float)
 
 
-def phenotype_distance(a: KinematicModel, b: KinematicModel, seed: int, n_configs: int = 32) -> Dict[str, float]:
+def phenotype_distance(a: KinematicModel, b: KinematicModel, seed: int, n_configs: int = 32,
+                        identity_a: Optional[Mapping[str, int]] = None,
+                        identity_b: Optional[Mapping[str, int]] = None) -> Dict[str, float]:
     """Dissimilarity between two derived hands.
 
-    ``tip_displacement_m`` (I14 fix): ``a`` is treated as the PARENT and ``b``
-    as the CHILD (this is how every caller -- ``e1_locality``, ``e2_drift``'s
+    ``tip_displacement_m``: ``a`` is treated as the PARENT and ``b`` as the
+    CHILD (this is how every caller -- ``e1_locality``, ``e2_drift``'s
     aggregate readings -- already uses this function). Only ``a``'s own
     u-configurations are drawn (``sample_configurations(a, n_configs,
-    seed)``); ``b``'s configuration is built by ALIGNING joints BY NAME
-    rather than sampling ``b`` independently: for each of ``a``'s sampled
-    configurations, expand it to a full per-joint ``q`` via ``q_from_u``,
-    then for ``b`` reuse that same joint's value for every joint name
-    present in both ``a.joints`` and ``b.joints`` (this is well-defined
-    because ``derive.py``'s ``vary`` operators never rename an existing
-    joint), and set the value of every movable joint present ONLY in ``b``
-    to 0.0 (clamped into that joint's own declared limits, if any).
+    seed)``); ``b``'s configuration is built by ALIGNMENT rather than
+    sampling ``b`` independently (I14 fix; see below for why).
 
-    This fixes the previous (pre-I14) behaviour of drawing ``a`` and ``b``'s
+    ``identity_a``/``identity_b`` (I15 fix 1, optional): ``derive.
+    joint_identity(derivation)`` maps for ``a`` and ``b`` respectively
+    (``{joint_name: uid}``, ``uid`` the STABLE id of the derivation step
+    that created that joint). When BOTH are given, alignment matches a
+    joint of ``b`` to a joint of ``a`` by shared ``uid`` -- immune to
+    insert/delete_phalanx, remove_digit or remove_palm_body renumbering a
+    joint's NAME without it being new structure (``opus-review-final.md``'s
+    "77/200 insert_phalanx children had >= 2 same-name joints with changed
+    records" defect). When either is omitted (the I14 default), alignment
+    falls back to matching by joint NAME, which is exact only because
+    ``derive.py``'s ``vary`` operators never rename a joint that is
+    otherwise unchanged -- true for most operators, but not for the
+    renumbering ones above.
+
+    For EITHER alignment key, the value assigned to each of ``b``'s
+    INDEPENDENT joints (``coords.independent_joints(b)``) is: the matched
+    joint's value in ``a``'s expanded ``q`` (via ``q_from_u(a, u)``) if a
+    match exists, clamped into ``b``'s own declared limits (if any);
+    else 0.0, clamped the same way. ``b``'s DEPENDENT (coupled) joints are
+    then obtained by ``coords.q_from_u(b, u_b)`` -- i.e. through ``b``'s OWN
+    coupling formula applied to ``b``'s OWN independent values -- never by
+    copying a matched joint's raw value directly (I15 fix 1: the previous
+    scheme copied ANY shared-by-name joint's value verbatim, including a
+    coupled dependent one, silently ignoring the child's own coupling
+    multiplier/offset -- documented in ``opus-review-final.md`` as
+    "``step_coupling`` reads 0 mm by construction" and "``step_limits``
+    reads 0 because shared values are not clamped").
+
+    This (I14) fixes the pre-I14 behaviour of drawing ``a`` and ``b``'s
     configurations INDEPENDENTLY (via two separate ``sample_configurations``
     calls): whenever a mutation adds or removes a joint, the sorted-name
     independent-joint set shifts, which shifts every later joint's draw from
@@ -120,9 +144,10 @@ def phenotype_distance(a: KinematicModel, b: KinematicModel, seed: int, n_config
     documented noise floor of ~94 mm (a hand vs a hand with an unrelated new
     joint, under independently-drawn configs, showed tip displacement on that
     order even though every SHARED joint was mechanically unaffected).
-    Aligning by name means two structurally identical models (or a parent
-    and a child that share every joint) get IDENTICAL per-joint values, so
-    their tip displacement is exactly 0 regardless of ``seed``.
+    Aligning means two structurally identical models (or a parent and a
+    child that share every joint, with matching couplings) get IDENTICAL
+    per-joint values, so their tip displacement is exactly 0 regardless of
+    ``seed``.
 
     For each of ``a``'s ``n_configs`` (+ extremal) configurations, tip
     positions are matched between the two models by greedy nearest-first
@@ -133,10 +158,10 @@ def phenotype_distance(a: KinematicModel, b: KinematicModel, seed: int, n_config
     that per-config score over configurations (0.0 if either model has zero
     tips or zero configurations are usable).
 
-    ``n_shared_joints``: the number of joint NAMES present in both
-    ``a.joints`` and ``b.joints`` (regardless of movable/fixed type) -- how
-    much of the alignment above is actually reusing a real shared value
-    (vs. falling back to the child-only 0.0 default).
+    ``n_shared_joints``: the number of joints matched between ``a`` and
+    ``b`` by the SAME alignment key used above (uid if both identities were
+    given, else name) -- how much of the alignment is actually reusing a
+    real shared value (vs. falling back to the child-only 0.0 default).
 
     The remaining keys are exact, seed-independent structural deltas.
     """
@@ -144,10 +169,25 @@ def phenotype_distance(a: KinematicModel, b: KinematicModel, seed: int, n_config
     frames_b = tip_frames(b)
     configs_a = sample_configurations(a, n_configs, seed)
 
-    joints_by_name_a = {j.name: j for j in a.joints}
-    joints_by_name_b = {j.name: j for j in b.joints}
-    shared_names = set(joints_by_name_a) & set(joints_by_name_b)
-    n_shared_joints = len(shared_names)
+    joint_by_name_b = {j.name: j for j in b.joints}
+    indep_b = independent_joints(b)
+
+    use_uid = identity_a is not None and identity_b is not None
+    if use_uid:
+        uid_to_name_a: Dict[int, str] = {}
+        for name, uid in identity_a.items():
+            uid_to_name_a[uid] = name  # last write wins; uids are expected unique.
+
+        def _match_name_a(name_b: str) -> Optional[str]:
+            uid = identity_b.get(name_b)
+            return uid_to_name_a.get(uid) if uid is not None else None
+    else:
+        names_a = {j.name for j in a.joints}
+
+        def _match_name_a(name_b: str) -> Optional[str]:
+            return name_b if name_b in names_a else None
+
+    n_shared_joints = sum(1 for name_b in joint_by_name_b if _match_name_a(name_b) is not None)
 
     n_common = len(configs_a)
     penalty = (_root_length_m(a) + _root_length_m(b)) / 2.0
@@ -158,20 +198,19 @@ def phenotype_distance(a: KinematicModel, b: KinematicModel, seed: int, n_config
         scores = []
         for u in configs_a:
             q_a = q_from_u(a, u)
-            q_b: Dict[str, float] = {}
-            for name, jb in joints_by_name_b.items():
-                if name in q_a:
-                    # Shared joint (by name) whose value is known for ``a``
-                    # (movable there): reuse it verbatim -- see docstring.
-                    q_b[name] = q_a[name]
-                elif jb.type in ("revolute", "continuous", "prismatic"):
-                    # Movable joint only in ``b`` (or shared by name but not
-                    # movable in ``a``): 0.0, clamped into its own limits.
-                    val = 0.0
-                    if jb.limits is not None:
-                        lo, hi = jb.limits
-                        val = min(max(val, lo), hi)
-                    q_b[name] = val
+            u_b: Dict[str, float] = {}
+            for name_b in indep_b:
+                jb = joint_by_name_b[name_b]
+                name_a = _match_name_a(name_b)
+                val = q_a.get(name_a, 0.0) if name_a is not None else 0.0
+                if jb.limits is not None:
+                    lo, hi = jb.limits
+                    val = min(max(val, lo), hi)
+                u_b[name_b] = val
+            # ``b``'s dependent (coupled) joints come from ITS OWN coupling
+            # formula applied to ``u_b`` above -- never copied directly
+            # (I15 fix 1; see docstring).
+            q_b = q_from_u(b, u_b)
             pos_a = _tip_positions_from_q(a, frames_a, q_a)
             pos_b = _tip_positions_from_q(b, frames_b, q_b)
             scores.append(_per_config_mean_distance(pos_a, pos_b, penalty))

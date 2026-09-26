@@ -40,7 +40,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 
 from ..canonical import canonical_form, phenotype_hash
-from ..derive import OPERATORS, SMALL_STEP_OPERATORS, VariationImpossible, derive, generate, vary
+from ..derive import OPERATORS, SMALL_STEP_OPERATORS, VariationImpossible, derive, generate, joint_identity, vary
 from ..kinematics import KinematicModel
 from ..phenodist import phenotype_distance
 from ..proxy import tip_frames
@@ -130,7 +130,11 @@ def _footnote_legacy_vs_aligned_median(seeds: Sequence[int], n_configs: int, sam
         except VariationImpossible:
             continue
         child = derive(child_derivation)
-        aligned_vals.append(phenotype_distance(parent, child, seed, n_configs=n_configs)["tip_displacement_m"])
+        id_p, id_c = joint_identity(derivation), joint_identity(child_derivation)
+        aligned_vals.append(
+            phenotype_distance(parent, child, seed, n_configs=n_configs,
+                                identity_a=id_p, identity_b=id_c)["tip_displacement_m"]
+        )
         legacy_vals.append(_legacy_unaligned_tip_displacement(parent, child, seed, n_configs=n_configs))
     return {
         "operator": _FOOTNOTE_OPERATOR,
@@ -147,6 +151,7 @@ def e1_locality_seed(seed: int, n_configs: int = 32) -> Dict[str, Any]:
     derivation, parent = generate(seed, G_FULL)
     canon_parent = canonical_form(parent)
     parent_hash = phenotype_hash(parent)
+    identity_parent = joint_identity(derivation)  # I15 fix 8: uid-based alignment (see derive.joint_identity).
     out: Dict[str, Any] = {}
     for i, op in enumerate(ALL_OPERATORS):
         rng = np.random.default_rng([seed, i])
@@ -160,7 +165,9 @@ def e1_locality_seed(seed: int, n_configs: int = 32) -> Dict[str, Any]:
             }
             continue
         child = derive(child_derivation)
-        dist = phenotype_distance(parent, child, seed, n_configs=n_configs)
+        identity_child = joint_identity(child_derivation)
+        dist = phenotype_distance(parent, child, seed, n_configs=n_configs,
+                                   identity_a=identity_parent, identity_b=identity_child)
         canon_child = canonical_form(child)
         child_hash = phenotype_hash(child)
         out[op] = {
@@ -259,7 +266,7 @@ def _summary_md(params: Dict[str, Any], aggregate: Dict[str, Any], wall_time_s: 
 
 
 def run(out_dir: Optional[str] = None, seeds: Sequence[int] = range(1000),
-        n_configs: int = 32, processes: int = 24) -> Dict[str, Any]:
+        n_configs: int = 32, processes: int = 24, allow_dirty: bool = False) -> Dict[str, Any]:
     """Run ``e1_locality_seed`` over ``seeds`` via the multiprocess runner,
     then overwrite ``result.json``/``summary.md`` (still in ``out_dir``,
     default ``project-notes/grammar/experiments/E1_locality``) with a
@@ -270,7 +277,7 @@ def run(out_dir: Optional[str] = None, seeds: Sequence[int] = range(1000),
         out_dir = "project-notes/grammar/experiments/E1_locality"
     result = run_experiment(
         "e1_locality", e1_locality_seed, params={"n_configs": n_configs},
-        seeds=seeds, out_dir=out_dir, processes=processes,
+        seeds=seeds, out_dir=out_dir, processes=processes, allow_dirty=allow_dirty,
     )
     aggregate = _aggregate_by_operator(result["per_seed"])
     result["aggregate"] = aggregate

@@ -15,6 +15,7 @@ at their own module level so ``--list`` sees them too).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import multiprocessing as mp
 import sys
@@ -53,6 +54,19 @@ def _git_info(repo_dir: Path) -> Dict[str, Any]:
     except Exception:
         sha, dirty = None, None
     return {"sha": sha, "dirty": dirty}
+
+
+def _git_diff_sha256(repo_dir: Path) -> Optional[str]:
+    """sha256 hex digest of ``git diff HEAD`` (the exact patch on top of
+    the recorded ``git_sha``) -- I15 fix 5. Only meaningful when the tree
+    is dirty; ``None`` if git is unavailable."""
+    try:
+        diff = subprocess.run(
+            ["git", "diff", "HEAD"], cwd=str(repo_dir), capture_output=True, text=True, check=True,
+        ).stdout
+    except Exception:
+        return None
+    return hashlib.sha256(diff.encode("utf-8")).hexdigest()
 
 
 def _worker(task) -> Dict[str, Any]:
@@ -104,7 +118,8 @@ def _summary_md(name: str, params: Dict[str, Any], aggregate: Dict[str, Any], wa
 
 
 def run_experiment(name: str, fn: Callable[..., Any], params: Dict[str, Any], seeds: Sequence[int],
-                    out_dir: Optional[str] = None, processes: int = 24) -> Dict[str, Any]:
+                    out_dir: Optional[str] = None, processes: int = 24,
+                    allow_dirty: bool = False) -> Dict[str, Any]:
     """Run ``fn(seed, **params)`` over every ``seeds`` entry with a
     ``multiprocessing.Pool`` (size ``min(processes, len(seeds))``, never
     started at all for an empty/singleton ``seeds``), then write
@@ -112,7 +127,17 @@ def run_experiment(name: str, fn: Callable[..., Any], params: Dict[str, Any], se
     ``project-notes/grammar/experiments/<name>``, relative to the current
     working directory -- callers doing a real overnight run should invoke
     this from the repo root; tests always pass an explicit ``out_dir``).
-    Returns the same dict written to ``result.json``."""
+    Returns the same dict written to ``result.json``.
+
+    I15 fix 5 (provenance): refuses to run at all when the working tree is
+    dirty (``git status --porcelain`` non-empty) unless ``allow_dirty=True``
+    -- every prior overnight result had ``git_dirty: true`` with a
+    ``git_sha`` that predated the code that actually produced it, an
+    unusable provenance record. When ``allow_dirty=True`` (and the tree is
+    in fact dirty), ``result["git_diff_sha256"]`` records the sha256 of
+    ``git diff HEAD`` -- the exact patch on top of ``git_sha`` -- so the
+    result can still be tied to precisely the code that ran, even though
+    that code was never committed."""
     # I14 fix 11: read git SHA/dirty status FIRST, before any other work
     # (directory creation, seed materialization, the actual multiprocess
     # run) -- a run that takes minutes to hours must not attribute its
@@ -120,6 +145,13 @@ def run_experiment(name: str, fn: Callable[..., Any], params: Dict[str, Any], se
     # had already elapsed.
     repo_dir = Path(__file__).resolve().parents[3]  # .../gen_mechanics
     git_info = _git_info(repo_dir)
+    if git_info.get("dirty") and not allow_dirty:
+        raise RuntimeError(
+            "run_experiment: working tree is dirty (git status --porcelain is "
+            "non-empty). Commit first, or pass allow_dirty=True to record a "
+            "git_diff_sha256 provenance hash alongside the (stale) git_sha."
+        )
+    git_diff_sha256 = _git_diff_sha256(repo_dir) if (git_info.get("dirty") and allow_dirty) else None
 
     if out_dir is None:
         out_dir = f"project-notes/grammar/experiments/{name}"
@@ -146,6 +178,7 @@ def run_experiment(name: str, fn: Callable[..., Any], params: Dict[str, Any], se
         "aggregate": aggregate,
         "git_sha": git_info["sha"],
         "git_dirty": git_info["dirty"],
+        "git_diff_sha256": git_diff_sha256,
         "python_version": sys.version,
         "numpy_version": np.__version__,
         "grammar_version": GRAMMAR_VERSION,
@@ -180,6 +213,7 @@ from . import e3_reach as _e3_reach  # noqa: F401,E402
 from . import e4_redundancy as _e4_redundancy  # noqa: F401,E402
 
 from . import e5_evolve as _e5_evolve  # noqa: F401,E402
+from . import e5b_evolve_sim as _e5b_evolve_sim  # noqa: F401,E402
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

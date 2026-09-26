@@ -189,11 +189,13 @@ def _dist_prismatic_gripper(model: KinematicModel, derivation: Derivation) -> fl
 def _dist_arch_palm(model: KinematicModel, derivation: Derivation) -> float:
     """>= 2 non-root palm bodies with palm joints whose root-frame axes are
     non-parallel (at least one non-parallel pair among them), >= 4 digits,
-    AND (I14 fix) >= 2 of those digits mounted specifically on a non-root
-    palm body (``mount`` starting with ``"palm"``) -- not just anywhere --
-    since an "arch" of palm joints that no digit actually sits on is not
-    what this target is meant to reward (previously satisfiable by an
-    empty, jointed palm body with every digit still mounted on the root)."""
+    AND (I15 fix 7, tightening the I14 fix) >= 2 of those digits mounted
+    specifically on a non-root palm body that ITSELF carries a palm joint
+    (``has_joint`` True on that ``PalmBody`` step) -- not merely any
+    non-root palm body -- since a digit mounted on an un-jointed palm body
+    is not on the "arch" this target names at all (previously satisfiable
+    by digits mounted on a plain, joint-free palm body while the actual
+    jointed palm bodies stayed empty)."""
     digits = _top_level_digits(derivation)
     d_count = max(0, 4 - len(digits))
     palm_joint_steps = _palm_joint_steps(derivation)
@@ -213,8 +215,9 @@ def _dist_arch_palm(model: KinematicModel, derivation: Derivation) -> float:
         )
         if not any_nonparallel:
             parallel_shortfall = 1.0
-    n_on_palm = sum(1 for d in digits if str(d["mount"]).startswith("palm"))
-    d_mount = max(0, 2 - n_on_palm)
+    jointed_palm_names = {s.params["name"] for s in palm_joint_steps}
+    n_on_jointed_palm = sum(1 for d in digits if str(d["mount"]) in jointed_palm_names)
+    d_mount = max(0, 2 - n_on_jointed_palm)
     return float(d_count + d_k + parallel_shortfall + d_mount)
 
 
@@ -401,12 +404,13 @@ def _summary_md(params: Dict[str, Any], aggregate: Dict[str, Any], wall_time_s: 
 
 
 def run(out_dir: Optional[str] = None, seeds: Sequence[int] = range(64),
-        budget: int = DEFAULT_BUDGET, processes: int = 24) -> Dict[str, Any]:
+        budget: int = DEFAULT_BUDGET, processes: int = 24, allow_dirty: bool = False) -> Dict[str, Any]:
     if out_dir is None:
         out_dir = "project-notes/grammar/experiments/E3_reach"
     params = {"budget": budget}
     result = run_experiment(
         "e3_reach", e3_reach_seed, params=params, seeds=seeds, out_dir=out_dir, processes=processes,
+        allow_dirty=allow_dirty,
     )
     aggregate = _aggregate(result["per_seed"], budget)
     result["aggregate"] = aggregate

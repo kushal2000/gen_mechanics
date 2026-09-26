@@ -139,8 +139,24 @@ def _revolute_source_indices(steps, digit_id: str, upto: int) -> Tuple[int, ...]
     )
 
 
+def _max_uid(steps: Sequence[DerivationStep]) -> int:
+    """Highest ``uid`` (I15 fix 1) already stamped on any step's ``params``
+    (-1 if none). ``uid`` lives INSIDE ``params`` (not as a separate
+    ``DerivationStep`` field) so every existing in-place-edit operator
+    (``p = dict(s.params); p[...] = ...; DerivationStep(..., params=p)``)
+    already preserves it for free via the ``dict(s.params)`` copy -- only
+    the handful of sites that create a genuinely NEW step need to consult
+    this to allocate a fresh one."""
+    best = -1
+    for s in steps:
+        u = s.params.get("uid")
+        if isinstance(u, int) and u > best:
+            best = u
+    return best
+
+
 def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str, p: int,
-                     depth: int, is_last: bool) -> None:
+                     depth: int, is_last: bool, next_uid: List[int]) -> None:
     module = sample_module(rng, dist, p, _revolute_source_indices(steps, digit_id, p))
     length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
     branch_digit_count = 0
@@ -155,9 +171,11 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
         min_branches = 2 if is_last else 1
         if min_branches <= dist.max_branch_digits:
             branch_digit_count = int(rng.integers(min_branches, dist.max_branch_digits + 1))
+    uid = next_uid[0]
+    next_uid[0] += 1
     steps.append(DerivationStep(path=f"digit/{digit_id}/phalanx/{p}", production="Phalanx", params={
         "digit_id": digit_id, "p": p, "module": module, "length": length,
-        "branch_digit_count": branch_digit_count,
+        "branch_digit_count": branch_digit_count, "uid": uid,
     }))
     if branch_digit_count:
         # The branch mounts on THIS phalanx's own body (distal to its
@@ -166,29 +184,32 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
         phalanx_body = f"d{digit_id}p{p + 1}"
         for b in range(branch_digit_count):
             sub_id = f"{digit_id}p{p + 1}b{b}"
-            _emit_digit(rng, dist, steps, sub_id, [phalanx_body], top_level=False, depth=depth + 1)
+            _emit_digit(rng, dist, steps, sub_id, [phalanx_body], top_level=False, depth=depth + 1,
+                        next_uid=next_uid)
 
 
 def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str,
-                 mount_bodies: List[str], top_level: bool, depth: int) -> None:
+                 mount_bodies: List[str], top_level: bool, depth: int, next_uid: List[int]) -> None:
     mount = mount_bodies[int(rng.integers(0, len(mount_bodies)))]
     mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
     mount_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
     phalanx_count = int(rng.integers(dist.phalanx_count_range[0], dist.phalanx_count_range[1] + 1))
+    uid = next_uid[0]
+    next_uid[0] += 1
     steps.append(DerivationStep(path=f"digit/{digit_id}", production="Digit", params={
         "digit_id": digit_id, "mount": mount, "mount_frac": mount_frac, "mount_rpy": mount_rpy,
-        "phalanx_count": phalanx_count, "top_level": top_level, "depth": depth,
+        "phalanx_count": phalanx_count, "top_level": top_level, "depth": depth, "uid": uid,
     }))
     for p in range(phalanx_count):
-        _sample_phalanx(rng, dist, steps, digit_id, p, depth, is_last=(p == phalanx_count - 1))
+        _sample_phalanx(rng, dist, steps, digit_id, p, depth, is_last=(p == phalanx_count - 1), next_uid=next_uid)
 
 
 def _sample_digit(rng, dist: Distribution, steps: List[DerivationStep], next_id: List[int],
-                   mount_bodies: List[str]) -> None:
+                   mount_bodies: List[str], next_uid: List[int]) -> None:
     """Sample a fresh *top-level* digit (id is the next 1-based integer)."""
     digit_id = str(next_id[0])
     next_id[0] += 1
-    _emit_digit(rng, dist, steps, digit_id, mount_bodies, top_level=True, depth=0)
+    _emit_digit(rng, dist, steps, digit_id, mount_bodies, top_level=True, depth=0, next_uid=next_uid)
 
 
 def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) -> Derivation:
@@ -209,6 +230,11 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
         "capsule_radius_m": capsule_radius_m,
     }))
 
+    # I15 fix 1: a stable ``uid`` counter, shared across every PalmBody/
+    # Digit/Phalanx step this derivation creates (never resets, never
+    # reused) -- see ``_max_uid``'s docstring and ``joint_identity`` below.
+    next_uid: List[int] = [0]
+
     palm_names: List[str] = []
     for i in range(palm_body_count):
         name = f"palm{i}"
@@ -222,16 +248,19 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
         limits: Optional[Tuple[float, float]] = None
         if has_joint:
             limits = sample_palm_joint_limits_rad(rng, dist)
+        uid = next_uid[0]
+        next_uid[0] += 1
         steps.append(DerivationStep(path=f"palm/{i}", production="PalmBody", params={
             "name": name, "parent": parent, "mount_frac": mount_frac, "length": length,
             "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": limits,
+            "uid": uid,
         }))
         palm_names.append(name)
 
     mount_bodies = ["root"] + palm_names
     next_id = [1]
     for _ in range(digit_count):
-        _sample_digit(rng, dist, steps, next_id, mount_bodies)
+        _sample_digit(rng, dist, steps, next_id, mount_bodies, next_uid)
 
     return Derivation(seed=seed, grammar_version=GRAMMAR_VERSION, steps=tuple(steps))
 
@@ -476,6 +505,29 @@ def derive(derivation: Derivation) -> KinematicModel:
     return model
 
 
+def joint_identity(derivation: Derivation) -> Dict[str, int]:
+    """I15 fix 1: ``{joint_name: uid}`` for every joint ``derive(derivation)``
+    would produce, where ``uid`` is the stable identifier of the
+    ``Phalanx``/``PalmBody`` step that CREATED that joint (see
+    ``_max_uid``'s docstring). ``derive`` itself keeps joint NAMES
+    positional/renumbering-sensitive (so replay hashes and URDF names are
+    unchanged) -- this function is the alignment key callers (``phenodist.
+    phenotype_distance``, ``e1_locality``) should use instead of a bare name
+    match whenever they have a parent/child pair descended from a common
+    ancestor derivation, since insert/delete_phalanx, remove_digit and
+    remove_palm_body can renumber a joint's NAME (``d{digit_id}p{p+1}_j``)
+    without that joint being a new piece of structure at all. A joint whose
+    creating step predates this fix (no ``"uid"`` key in its params, e.g. a
+    derivation produced by an older ``sample_derivation``) maps to ``-1``."""
+    out: Dict[str, int] = {}
+    for s in derivation.steps:
+        if s.production == "PalmBody":
+            out[f"{s.params['name']}_j"] = int(s.params.get("uid", -1))
+        elif s.production == "Phalanx":
+            out[f"d{s.params['digit_id']}p{s.params['p'] + 1}_j"] = int(s.params.get("uid", -1))
+    return out
+
+
 def segment(model: KinematicModel, body: str) -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
     """Return ``(start, end)``: the endpoints, in the root frame at q=0, of
     ``body``'s own geometric segment. ``start`` is ``body``'s own origin;
@@ -661,7 +713,8 @@ def _op_regrow_subtree(rng, dist: Distribution, derivation: Derivation) -> Optio
     kept = [st for st in steps if not _is_descendant_digit(digit_id, _step_digit_id(st))]
 
     new_steps: List[DerivationStep] = []
-    _emit_digit(rng, _growth_dist(dist), new_steps, digit_id, mount_bodies, top_level, depth)
+    next_uid = [_max_uid(steps) + 1]
+    _emit_digit(rng, _growth_dist(dist), new_steps, digit_id, mount_bodies, top_level, depth, next_uid)
     return kept + new_steps
 
 
@@ -730,8 +783,10 @@ def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
     )
     module = sample_module(rng, dist, ins_p, revolute_source_indices)
     length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
+    new_uid = _max_uid(steps) + 1
     new_phalanx_list.append(DerivationStep(path=f"digit/{digit_id}/phalanx/{ins_p}", production="Phalanx", params={
         "digit_id": digit_id, "p": ins_p, "module": module, "length": length, "branch_digit_count": 0,
+        "uid": new_uid,
     }))
 
     new_dstep = DerivationStep(path=dstep.path, production="Digit",
@@ -741,16 +796,23 @@ def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
 
 
 def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    """I15 fix 4: a phalanx that hosts a branch MAY now be deleted -- its
+    branch sub-digit(s) are re-attached (their ``Digit`` step's ``mount``
+    field updated) rather than orphaned: to the PROXIMAL neighbour phalanx's
+    body (index ``del_p - 1``, whose body name is never itself renumbered
+    by this deletion, since only phalanges with an index ABOVE ``del_p``
+    shift down) if ``del_p > 0``, or to the digit's own ``mount`` body (a
+    palm body, or the host phalanx's body if this digit is itself a branch)
+    if ``del_p == 0`` (the first phalanx). Deleting any phalanx except the
+    digit's *current last one* never changes which phalanx is last, so it
+    is always safe. Deleting the last one promotes the previous phalanx to
+    "last" -- still refused when that PREVIOUS phalanx (not ``del_p``
+    itself) hosts exactly 1 branch digit of its OWN (valid only for a
+    non-last phalanx, which already has a next-phalanx child; as the new
+    last phalanx it would drop to a single child) -- this pre-existing
+    safety check is unrelated to ``del_p``'s own branches, which are simply
+    relocated, never left dangling."""
     steps = list(derivation.steps)
-    # A phalanx that hosts a branch is refused as a deletion target: deleting
-    # it would orphan its sub-digit(s)' mount, so it is never offered to
-    # ``del_p`` (a digit is only a candidate if it has a branch-free phalanx
-    # to delete and >1 phalanx overall). Deleting any phalanx except the
-    # digit's *current last one* never changes which phalanx is last, so it
-    # is always safe. Deleting the last one promotes the previous phalanx to
-    # "last" -- refused too when that phalanx hosts exactly 1 branch digit
-    # (valid only for a non-last phalanx, which already has a next-phalanx
-    # child; as the new last phalanx it would drop to a single child).
     candidates: List[Tuple[int, List[int]]] = []
     for i, s in enumerate(steps):
         if s.production != "Digit" or s.params["phalanx_count"] <= 1:
@@ -765,8 +827,8 @@ def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
         second_last = phalanx_by_p.get(last_idx - 1)
         last_deletion_safe = not (second_last is not None and second_last.params["branch_digit_count"] == 1)
         deletable = [
-            p_idx for p_idx, pp in phalanx_by_p.items()
-            if pp.params["branch_digit_count"] == 0 and (p_idx != last_idx or last_deletion_safe)
+            p_idx for p_idx in phalanx_by_p
+            if (p_idx != last_idx or last_deletion_safe)
         ]
         if deletable:
             candidates.append((i, deletable))
@@ -783,6 +845,19 @@ def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
                       if st.production == "Phalanx" and st.params["digit_id"] == digit_id}
     non_digit_others = [st for st in others
                          if not (st.production == "Phalanx" and st.params["digit_id"] == digit_id)]
+
+    # Re-attach ``del_p``'s own branch sub-digits (if any) BEFORE the
+    # renumbering pass below, since the deleted phalanx's body never
+    # survives renumbering at all (it is not merely renamed, it is gone).
+    deleted_body = f"d{digit_id}p{del_p + 1}"
+    reattach_mount = f"d{digit_id}p{del_p}" if del_p > 0 else dstep.params["mount"]
+    non_digit_others = [
+        DerivationStep(path=st.path, production="Digit", params={**st.params, "mount": reattach_mount})
+        if (st.production == "Digit" and not st.params.get("top_level", True)
+            and st.params.get("mount") == deleted_body)
+        else st
+        for st in non_digit_others
+    ]
 
     renumber: Dict[int, int] = {}
     new_phalanx_list: List[DerivationStep] = []
@@ -822,7 +897,8 @@ def _op_add_digit(rng, dist: Distribution, derivation: Derivation) -> Optional[L
     top_ids = [int(s.params["digit_id"]) for s in steps if s.production == "Digit" and s.params.get("top_level")]
     next_id = [max(top_ids, default=0) + 1]
     new_steps: List[DerivationStep] = []
-    _sample_digit(rng, _growth_dist(dist), new_steps, next_id, mount_bodies)
+    next_uid = [_max_uid(steps) + 1]
+    _sample_digit(rng, _growth_dist(dist), new_steps, next_id, mount_bodies, next_uid)
     new_hand = DerivationStep(path="hand", production="Hand",
                                params={**hand_params, "digit_count": hand_params["digit_count"] + 1})
     rest = [s for i, s in enumerate(steps) if i != hand_idx]
@@ -1151,13 +1227,14 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation) -> Op
     axis = sample_axis(rng)
     limits = sample_revolute_limits_rad(rng, gdist)
     length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m)
+    uid_base = _max_uid(steps) + 1
     digit_step = DerivationStep(path=f"digit/{digit_id}", production="Digit", params={
         "digit_id": digit_id, "mount": mount, "mount_frac": mount_frac, "mount_rpy": mount_rpy,
-        "phalanx_count": 1, "top_level": True, "depth": 0,
+        "phalanx_count": 1, "top_level": True, "depth": 0, "uid": uid_base,
     })
     phalanx_step = DerivationStep(path=f"digit/{digit_id}/phalanx/0", production="Phalanx", params={
         "digit_id": digit_id, "p": 0, "module": {"kind": "R", "axis": axis, "limits": limits},
-        "length": length, "branch_digit_count": 0,
+        "length": length, "branch_digit_count": 0, "uid": uid_base + 1,
     })
     new_hand = DerivationStep(path="hand", production="Hand",
                                params={**hand_params, "digit_count": hand_params["digit_count"] + 1})
@@ -1167,8 +1244,15 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation) -> Op
 
 def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
     """Reversible counterpart of ``add_minimal_digit``: remove a top-level
-    digit only if it has exactly one phalanx and that phalanx hosts no
-    branch (so removing it never orphans a branch digit's mount)."""
+    digit with 1 or 2 phalanges (I15 fix 4, widened from exactly 1 --
+    ``add_minimal_digit`` itself only ever ADDS a 1-phalanx digit, but
+    ``insert_phalanx``/other operators applied afterward can grow that
+    digit to 2 phalanges without this operator's own ratchet ever letting
+    it back down again), none of which host a branch (removing the whole
+    digit here -- via ``_is_descendant_digit`` -- also removes any branch
+    nested under it, which would make this "minimal" operator silently
+    remove a much larger subtree; ``delete_phalanx`` is the operator that
+    handles branch re-attachment)."""
     steps = list(derivation.steps)
     hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
     hand_params = steps[hand_idx].params
@@ -1180,9 +1264,9 @@ def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation) ->
             phalanx_by_digit.setdefault(s.params["digit_id"], []).append(s)
     candidates = [
         s.params["digit_id"] for s in steps
-        if s.production == "Digit" and s.params.get("top_level") and s.params["phalanx_count"] == 1
-        and len(phalanx_by_digit.get(s.params["digit_id"], [])) == 1
-        and phalanx_by_digit[s.params["digit_id"]][0].params["branch_digit_count"] == 0
+        if s.production == "Digit" and s.params.get("top_level") and s.params["phalanx_count"] in (1, 2)
+        and len(phalanx_by_digit.get(s.params["digit_id"], [])) == s.params["phalanx_count"]
+        and all(ph.params["branch_digit_count"] == 0 for ph in phalanx_by_digit.get(s.params["digit_id"], []))
     ]
     if not candidates:
         return None
@@ -1220,6 +1304,7 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation) -> Option
     new_step = DerivationStep(path=f"palm/{palm_body_count}", production="PalmBody", params={
         "name": name, "parent": parent, "mount_frac": mount_frac, "length": length,
         "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": limits,
+        "uid": _max_uid(steps) + 1,
     })
     new_hand = DerivationStep(path="hand", production="Hand",
                                params={**hand_params, "palm_body_count": palm_body_count + 1})

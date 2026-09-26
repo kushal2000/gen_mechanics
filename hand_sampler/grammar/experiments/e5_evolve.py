@@ -565,7 +565,7 @@ def run(
     conditions: Optional[Sequence[Tuple[str, str, str, str]]] = None,
     mu: int = DEFAULT_MU, lam: int = DEFAULT_LAMBDA, generations: int = DEFAULT_GENERATIONS,
     n_proxy_configs: int = DEFAULT_N_PROXY_CONFIGS, cost_weight: float = COST_WEIGHT_DEFAULT,
-    fixed_eval_seed: bool = False, processes: int = 24,
+    fixed_eval_seed: bool = False, processes: int = 24, allow_dirty: bool = False,
 ) -> Dict[str, Any]:
     """Run ``e5_evolve_seed`` over ``restarts x conditions`` (default: every
     one of the 48 conditions in ``all_conditions()``) via the multiprocess
@@ -595,6 +595,7 @@ def run(
     }
     result = run_experiment(
         "e5_evolve", e5_evolve_seed, params=fn_params, seeds=tasks, out_dir=out_dir, processes=processes,
+        allow_dirty=allow_dirty,
     )
     aggregate = _aggregate(result["per_seed"])
     result["aggregate"] = aggregate

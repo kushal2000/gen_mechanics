@@ -185,15 +185,24 @@ def opposition(model: KinematicModel, configs: Sequence[Mapping]) -> float:
     return hits / total if total else 0.0
 
 
+REACH_REFERENCE_LENGTH_M = 0.1
+
+
 def reach_coverage(model: KinematicModel, configs: Sequence[Mapping]) -> float:
     """Volume of the convex hull of every sampled tip position that lies in
     front of the palm (world/root-frame +z -- see module docstring's I14
-    fix on the "front" convention), divided by (total hand length, see
-    ``_total_hand_length_m``)^3 (I14 fix 4: previously divided by the root
-    segment's own length, which no operator ever mutates, so every hand
-    shared essentially the same denominator regardless of how much
-    structure it actually grew). Returns 0.0 if there are fewer than 4 such
-    points (degenerate hull) or the hand has zero total length."""
+    fix on the "front" convention), divided by a FIXED reference length
+    ``REACH_REFERENCE_LENGTH_M`` (0.1 m) cubed (I15 fix 2, superseding I14
+    fix 4: dividing by ``_total_hand_length_m(model)`` -- the hand's own
+    total length -- made every additional digit or phalanx shrink the
+    denominator as fast as it grew the hull, so populations optimizing this
+    proxy converged to ~1.1 digits (opus-review-final.md's residual
+    defect); a FIXED reference length, exactly like ``structural_cost``'s
+    own ``/ 0.1`` term, removes that self-penalizing coupling between
+    reach_coverage and digit/phalanx count -- more reachable volume in
+    front of the palm is simply better, regardless of how much structure
+    it took to get there). Returns 0.0 if there are fewer than 4 such
+    points (degenerate hull)."""
     frames = tip_frames(model)
     if not frames:
         return 0.0
@@ -202,15 +211,12 @@ def reach_coverage(model: KinematicModel, configs: Sequence[Mapping]) -> float:
     front = all_pts[all_pts[:, 2] > 0.0]
     if len(front) < 4:
         return 0.0
-    total_len = _total_hand_length_m(model)
-    if total_len <= 0.0:
-        return 0.0
     try:
         verts, faces = convex_hull_3d(front)
     except RuntimeError:
         return 0.0
     vol = abs(polytope_volume(verts, faces))
-    return float(vol / (total_len ** 3))
+    return float(vol / (REACH_REFERENCE_LENGTH_M ** 3))
 
 
 ANTIPODAL_SPHERE_RADIUS_M = 0.03
