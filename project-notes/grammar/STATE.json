@@ -168,10 +168,17 @@
       "hypothesis": "Suite runtime grew to 3.5-5 min (oracle subprocess tests, 500-seed loops); trim to ~2 min by sharing oracle runs and reducing routine seeds with env overrides.",
       "decision": null,
       "evidence": "3088 tests, 210-290 s"
+    },
+    {
+      "id": "I20",
+      "status": "done",
+      "hypothesis": "The grammar's parametric structure (derive) represents real hands exactly once grids/ranges are lifted.",
+      "decision": "keep",
+      "evidence": "project_to_derivation: 12/12 hands, max 1e-16 m / 2e-8 rad; commits after 7c2cc2e"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Item 1+2 running (PalmBody mount_offset; projection real hand -> Derivation). Then item 3 (E13 check + atlas + manifest), item 4 (cross-section study), Opus review.",
+  "next_action": "Item 3 running: manifest entries for SVH/Shadow/ARMS + palm_joints annotations; E13 check at 5 mm / 10 deg over 14 hands; real-hand atlas; pilot-report representation column. Then item 4 (cross-section study), Opus review.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

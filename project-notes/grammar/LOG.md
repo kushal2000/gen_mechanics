@@ -169,3 +169,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## Grammar 0.5 iteration C (2026-09-26 ~13:35)
 
 - Worker run 22. 3088 passed (210-290 s). I18 fixed. E12: reversibility 100%, locality per operator pass, histograms/redundancy pass, stationary drift residual small for digit and palm pairs, larger for the branch pair (applicability asymmetry). E3 with the evolution pool alone: arch 100%, anthropomorphic 14-20% (slow minimal moves). Coverage report regenerated: 8/11 real hands topology-expressible after the rest bend. Decision: keep; program paused for Martin. I19 opened (suite runtime).
+
+## Representation check, items 1+2 (2026-09-26 ~15:10)
+
+- A stray polling loop from the iteration-B worker (pgrep matched its own command, 6 h old) was found and killed; the first item-1+2 worker was stopped at Martin's request before editing and relaunched.
+- Suite 3109 passed. project_to_derivation holds 12/12 available hands at ~1e-16 m / 2e-8 rad with joint counts conserved (allegro, leap, barrett, dclaw, wuji, xhand, tesollo, orca, sharpa, ability, inspire, coupled_finger). Notes: Barrett fingertips undefined; Ability/Inspire dependent limits replaced by the coupling image; SHARPA's pinky CMC stays a digit joint under the structural palm rule (annotation in item 3 makes it a palm joint). Decision: keep.
