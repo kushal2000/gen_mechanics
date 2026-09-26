@@ -51,6 +51,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
+from .canonical import normalize_axis_sign
 from .coords import CONTINUOUS_SAMPLE_RANGE
 from .kinematics import ALL_TYPES, KinematicModel, MOVABLE_TYPES
 from .distributions import Distribution, DEFAULT_DISTRIBUTION, ANGLE_STEP_DEG, DEG
@@ -406,25 +407,70 @@ def _axis_ok(axis: Tuple[float, float, float], relax: FrozenSet[str]) -> bool:
     return _axis_on_grid_step(axis, step_deg)
 
 
-def _revolute_limits_ok(limits: Tuple[float, float], palm: bool, dist: Distribution, relax: FrozenSet[str]) -> bool:
+def _revolute_limits_ok(axis: Tuple[float, float, float], limits: Tuple[float, float], palm: bool,
+                         dist: Distribution, relax: FrozenSet[str]) -> bool:
     if "limits_continuous" in relax or "limits_range_x1.5" in relax:
-        lo_deg, hi_deg = global_revolute_limit_range_deg(dist)
+        # Grammar 0.5 (I16 priority 2): read the RANGE off ``dist`` itself
+        # (``revolute_limit_range_deg``) rather than deriving it from the
+        # (fixed, choice-set) ``revolute_limit_choices_deg``/
+        # ``palm_joint_limit_choices_deg`` -- so a ``Distribution`` that
+        # widens its own range (e.g. ``variants.G_CONT``) is judged against
+        # THAT range, not the unrelated default choice sets.
+        # ``global_revolute_limit_range_deg`` (below) is kept as-is for
+        # other callers (e11_support_widening's bits-per-joint table).
+        #
+        # Sign normalisation (I16 priority 2) is applied ONLY here, for the
+        # RANGE check -- never for the plain choice-set membership check
+        # below, whose choice set the grammar samples independently of the
+        # joint's own axis sign (so flipping would judge a grammar-sampled
+        # exact-choice-set value against choices it was never drawn against,
+        # breaking self-consistency on the grammar's own generated output).
+        #
+        # ``normalize_axis_sign`` picks ONE fixed representative of the
+        # equivalence class {(axis, limits), (-axis, (-hi, -lo))} -- correct
+        # for canonical_form's hashing (which only needs equality between
+        # the two), but NOT sufficient here on its own: a RANGE check is not
+        # invariant under the swap (the range (-45, 110) is not symmetric),
+        # so checking only the chosen representative can reject a limits
+        # pair that already fit before normalising (regressing the
+        # grammar's own generated-output check) while still not being what
+        # actually answers "is this joint's motion, under EITHER physically
+        # equivalent encoding, in support". The correct existential check is
+        # to accept if EITHER the joint's own declared ``limits`` OR its
+        # ``normalize_axis_sign`` representative fits the range -- which is
+        # exactly what makes Barrett's (-180, 0) deg + a flipped axis judge
+        # the same as (0, 180) deg un-flipped (one of the two fits, once the
+        # range is wide enough), while never being stricter than checking
+        # the declared value alone (monotonic: widening never removes a
+        # previously-in-range value from support).
+        lo_deg, hi_deg = dist.revolute_limit_range_deg
         if "limits_range_x1.5" in relax:
             lo_deg, hi_deg = _widen_range(lo_deg, hi_deg, 1.5)
         lo_rad, hi_rad = lo_deg * DEG, hi_deg * DEG
-        lo, hi = limits
-        return (lo_rad - SET_TOL) <= lo and hi <= (hi_rad + SET_TOL)
+
+        def _fits(pair: Tuple[float, float]) -> bool:
+            lo, hi = pair
+            return (lo_rad - SET_TOL) <= lo and hi <= (hi_rad + SET_TOL)
+
+        _, norm_limits = normalize_axis_sign(axis, limits)
+        return _fits(limits) or _fits(norm_limits)
     choices = dist.palm_joint_limit_choices_deg if palm else dist.revolute_limit_choices_deg
     return _limits_in_choice_set(limits, choices)
 
 
-def _prismatic_limits_ok(limits: Tuple[float, float], dist: Distribution, relax: FrozenSet[str]) -> bool:
+def _prismatic_limits_ok(axis: Tuple[float, float, float], limits: Tuple[float, float], dist: Distribution,
+                          relax: FrozenSet[str]) -> bool:
     if "limits_continuous" in relax or "limits_range_x1.5" in relax:
         lo_m, hi_m = global_prismatic_limit_range_m(dist)
         if "limits_range_x1.5" in relax:
             lo_m, hi_m = _widen_range(lo_m, hi_m, 1.5)
-        lo, hi = limits
-        return (lo_m - SET_TOL) <= lo and hi <= (hi_m + SET_TOL)
+
+        def _fits(pair: Tuple[float, float]) -> bool:
+            lo, hi = pair
+            return (lo_m - SET_TOL) <= lo and hi <= (hi_m + SET_TOL)
+
+        _, norm_limits = normalize_axis_sign(axis, limits)  # see _revolute_limits_ok's comment
+        return _fits(limits) or _fits(norm_limits)
     return _limits_in_choice_set_m(limits, dist.prismatic_limit_choices_m)
 
 
@@ -463,6 +509,29 @@ def _coupling_offset_ok(offset: float, dist: Distribution, relax: FrozenSet[str]
         lo, hi = COUPLING_CONTINUOUS_OFFSET_RANGE_RAD
         return (lo - SET_TOL) <= offset <= (hi + SET_TOL)
     return _in_choice_set(offset, dist.coupling_offset_choices_rad)
+
+
+def _bend_rpy_ok(rpy: Tuple[float, float, float], dist: Distribution, relax: FrozenSet[str]) -> bool:
+    """Grammar 0.5 (I16 priority 1): True if ``rpy`` matches one whole
+    triple in ``dist.bend_rpy_choices_rad`` exactly (the rest-bend grid), or
+    ``rest_bend`` is in ``relax`` ("any bend" -- the flag's pre-existing
+    meaning, unchanged)."""
+    if "rest_bend" in relax:
+        return True
+    return any(
+        abs(rpy[0] - c[0]) <= SET_TOL and abs(rpy[1] - c[1]) <= SET_TOL and abs(rpy[2] - c[2]) <= SET_TOL
+        for c in dist.bend_rpy_choices_rad
+    )
+
+
+def _bend_offset_ok(offset_xy: Tuple[float, float], dist: Distribution, relax: FrozenSet[str]) -> bool:
+    """``bend_offset`` counterpart of ``_bend_rpy_ok``."""
+    if "rest_bend" in relax:
+        return True
+    return any(
+        abs(offset_xy[0] - c[0]) <= SET_TOL and abs(offset_xy[1] - c[1]) <= SET_TOL
+        for c in dist.bend_offset_choices_m
+    )
 
 
 def _movable_children(body_name: str, children: Dict[str, List]) -> List:
@@ -632,7 +701,19 @@ def coverage(
 
     coupling_scope_bad = set()
     coupling_type_bad = set()
-    coupling_limits_bad = set()
+    # Grammar 0.5 (I16 priority 3): renamed from ``coupling_limits_bad`` /
+    # reported as ``coupling_limits_outside_image`` (was
+    # ``coupling_limits_not_image``) -- it now fires only when the
+    # dependent's declared limits are NOT CONTAINED in the affine image of
+    # the source's limits (i.e. the dependent could move somewhere the
+    # source's own image never reaches). A dependent whose own limits are
+    # strictly tighter than (but still contained in) the image is accepted
+    # -- real URDFs commonly declare a tighter dependent limit than the
+    # source's own range would image (Ability, Inspire) -- and reported
+    # instead as an informational ``dependent_limits_tighter:<joint>`` note
+    # (never in ``out_of_support``: it is not a defect).
+    coupling_limits_outside_image = set()
+    coupling_limits_tighter = set()
     for c in model.couplings:
         dep_joint = joints_by_name.get(c.dependent)
         src_joint = joints_by_name.get(c.source)
@@ -655,14 +736,18 @@ def coverage(
                 if lo_img > hi_img:
                     lo_img, hi_img = hi_img, lo_img
                 dlo, dhi = dep_joint.limits
-                if abs(dlo - lo_img) > SET_TOL or abs(dhi - hi_img) > SET_TOL:
-                    coupling_limits_bad.add(c.dependent)
+                if dlo < lo_img - SET_TOL or dhi > hi_img + SET_TOL:
+                    coupling_limits_outside_image.add(c.dependent)
+                elif abs(dlo - lo_img) > SET_TOL or abs(dhi - hi_img) > SET_TOL:
+                    coupling_limits_tighter.add(c.dependent)
     if coupling_scope_bad:
         missing.append("coupling_scope:" + ",".join(sorted(coupling_scope_bad)))
     if coupling_type_bad:
         missing.append("coupling_type_mismatch:" + ",".join(sorted(coupling_type_bad)))
-    if coupling_limits_bad:
-        missing.append("coupling_limits_not_image:" + ",".join(sorted(coupling_limits_bad)))
+    if coupling_limits_outside_image:
+        missing.append("coupling_limits_outside_image:" + ",".join(sorted(coupling_limits_outside_image)))
+    for name in sorted(coupling_limits_tighter):
+        notes.append(f"dependent_limits_tighter:{name}")
 
     # (e) a fixed joint spliced between two movable joints, inside a digit
     # (as opposed to on the palm-to-digit mount edge, or a palm body's own
@@ -696,10 +781,19 @@ def coverage(
     #
     # (b) every joint visited here beyond a digit's own start is, by
     # construction, a mid-digit continuation joint (its parent has exactly
-    # one child, so it is not a branch/mount point) -- the grammar always
-    # builds these with an identity orientation and a pure-z origin (see
-    # derive.py's convention note), so any non-identity rpy or lateral (x/y)
-    # offset on one of these is a shape the grammar cannot produce.
+    # one child, so it is not a branch/mount point). Grammar 0.5 (I16
+    # priority 1) gave every phalanx a rest-bend primitive -- a small
+    # additional rotation/lateral offset on top of the old pure-z,
+    # identity-orientation convention (see derive.py's ``_compose_bend_rpy``)
+    # -- so a continuation joint's pose is now topology-expressible (the
+    # grammar CAN build it) for ANY rpy/offset value; whether a SPECIFIC
+    # value is in the grammar's own SUPPORT is a grid-membership question,
+    # judged the same way axis/limit/length grids are (against
+    # ``dist.bend_rpy_choices_rad``/``bend_offset_choices_m``, via
+    # ``_bend_rpy_ok``/``_bend_offset_ok``) -- so "continuation_pose" now
+    # lives in ``out_of_support``, not ``missing_constructs``. ``rest_bend``
+    # in ``relax`` keeps its pre-existing meaning ("any bend", i.e. skip the
+    # grid check entirely).
     lo_ph, hi_ph = dist.phalanx_count_range
     run_length_issues = []
     continuation_pose_issues = []
@@ -710,10 +804,14 @@ def coverage(
             if len(kids) != 1:
                 break
             kid = kids[0]
-            if (
-                abs(kid.origin.rpy[0]) > SET_TOL or abs(kid.origin.rpy[1]) > SET_TOL
-                or abs(kid.origin.rpy[2]) > SET_TOL
-                or abs(kid.origin.xyz[0]) > SET_TOL or abs(kid.origin.xyz[1]) > SET_TOL
+            kid_rpy = tuple(float(v) for v in kid.origin.rpy)
+            kid_offset = (float(kid.origin.xyz[0]), float(kid.origin.xyz[1]))
+            has_bend = (
+                abs(kid_rpy[0]) > SET_TOL or abs(kid_rpy[1]) > SET_TOL or abs(kid_rpy[2]) > SET_TOL
+                or abs(kid_offset[0]) > SET_TOL or abs(kid_offset[1]) > SET_TOL
+            )
+            if has_bend and not (
+                _bend_rpy_ok(kid_rpy, dist, relax) and _bend_offset_ok(kid_offset, dist, relax)
             ):
                 continuation_pose_issues.append(kid.name)
             run += 1
@@ -722,8 +820,8 @@ def coverage(
             run_length_issues.append(start.name)
     if run_length_issues:
         out.append("phalanx_run_out_of_range:" + ",".join(sorted(run_length_issues)))
-    if continuation_pose_issues and "rest_bend" not in relax:
-        missing.append("continuation_pose:" + ",".join(sorted(set(continuation_pose_issues))))
+    if continuation_pose_issues:
+        out.append("continuation_pose:" + ",".join(sorted(set(continuation_pose_issues))))
 
     topology_expressible = len(missing) == 0
 
@@ -794,7 +892,11 @@ def coverage(
 
     # Axis grid: every movable joint's axis should land on the 15-degree
     # spherical grid (distributions.sample_axis) in the joint's own frame --
-    # unless ``axis_grid_5deg``/``axis_continuous`` relaxes the check.
+    # unless ``axis_grid_5deg``/``axis_continuous`` relaxes the check. No
+    # sign normalisation is needed here: the elevation grid spans [0, 180]
+    # in steps that evenly divide 180, so ``-axis`` (elevation ``pi - el``,
+    # azimuth ``az + pi``) is on-grid whenever ``axis`` is -- the check is
+    # already sign-invariant by construction.
     axis_off_grid = [j.name for j in model.joints if j.type in MOVABLE_TYPES and not _axis_ok(j.axis, relax)]
     if axis_off_grid:
         out.append("axis_off_grid:" + ",".join(sorted(axis_off_grid)))
@@ -807,17 +909,23 @@ def coverage(
     # limits through the affine map), never sampled from a choice set, so
     # they are excluded here; its multiplier/offset are checked instead.
     # ``limits_continuous``/``limits_range_x1.5`` relax exact choice-set
-    # membership to a (global, or widened-global) range check instead.
+    # membership to a (global, or widened-global) range check instead --
+    # sign-normalised (I16 priority 2) INSIDE ``_revolute_limits_ok``/
+    # ``_prismatic_limits_ok``'s own continuous-range branch only (never for
+    # the plain choice-set membership check: the grammar samples a choice
+    # independently of the joint's own axis sign, so normalising there would
+    # judge a grammar-sampled exact value against choices it was never drawn
+    # against -- see those functions' own comments).
     dependents = {c.dependent for c in model.couplings}
     limits_not_in_set = []
     for j in model.joints:
         if j.name in dependents or j.limits is None:
             continue
         if j.type == "revolute":
-            if not _revolute_limits_ok(j.limits, j.child in palm_body_names, dist, relax):
+            if not _revolute_limits_ok(j.axis, j.limits, j.child in palm_body_names, dist, relax):
                 limits_not_in_set.append(j.name)
         elif j.type == "prismatic":
-            if not _prismatic_limits_ok(j.limits, dist, relax):
+            if not _prismatic_limits_ok(j.axis, j.limits, dist, relax):
                 limits_not_in_set.append(j.name)
     if limits_not_in_set:
         out.append("limits_not_in_set:" + ",".join(sorted(limits_not_in_set)))

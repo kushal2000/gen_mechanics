@@ -30,6 +30,7 @@ from .distributions import (
     N_ANGLE_STEPS,
     N_ELEVATION_STEPS,
     sample_axis,
+    sample_bend,
     sample_capsule_radius_m,
     sample_grid_angle_rad,
     sample_grid_length_m,
@@ -159,6 +160,7 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
                      depth: int, is_last: bool, next_uid: List[int]) -> None:
     module = sample_module(rng, dist, p, _revolute_source_indices(steps, digit_id, p))
     length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
+    bend_rpy, bend_offset = sample_bend(rng, dist)
     branch_digit_count = 0
     if depth < dist.max_branch_depth and float(rng.random()) < dist.branch_probability:
         # A phalanx's body must end up with >= 2 child joints for this to be
@@ -176,6 +178,7 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
     steps.append(DerivationStep(path=f"digit/{digit_id}/phalanx/{p}", production="Phalanx", params={
         "digit_id": digit_id, "p": p, "module": module, "length": length,
         "branch_digit_count": branch_digit_count, "uid": uid,
+        "bend_rpy": bend_rpy, "bend_offset": bend_offset,
     }))
     if branch_digit_count:
         # The branch mounts on THIS phalanx's own body (distal to its
@@ -353,6 +356,30 @@ def validate_derivation(derivation: Derivation) -> List[str]:
     return issues
 
 
+def _compose_bend_rpy(existing_rpy: Tuple[float, float, float],
+                       bend_rpy: Tuple[float, float, float]) -> Tuple[float, float, float]:
+    """Grammar 0.5's rest-bend primitive (I16 priority 1): combine a
+    phalanx joint's existing origin orientation (the digit's own sampled
+    ``mount_rpy`` for its first phalanx, or the identity ``(0,0,0)`` for a
+    mid-digit continuation joint -- see rules.py's convention note) with the
+    small additional ``bend_rpy`` perturbation.
+
+    Composition order/method: plain COMPONENTWISE Euler-angle addition
+    (roll+roll, pitch+pitch, yaw+yaw) -- deliberately NOT a rotation-matrix
+    product (which would require decomposing the product back into a single
+    fixed-axis-XYZ triple, a lossy, gimbal-lock-prone operation for no
+    benefit here). This choice is exact and FK-correct regardless: fk.py's
+    ``rpy_to_matrix`` (and, identically, the URDF/Pinocchio convention
+    ``to_urdf`` exports to) only ever consumes ONE fixed-axis-XYZ triple per
+    joint origin -- the componentwise sum below IS that triple, so whatever
+    rotation it represents is exactly what gets built and exactly what any
+    FK oracle sees, with no separate decomposition step to get wrong. For a
+    continuation joint (``existing_rpy == (0,0,0)``) this reduces to
+    ``bend_rpy`` exactly, which is what ``coverage.py``'s bend-grid check
+    judges against ``Distribution.bend_rpy_choices_rad``."""
+    return tuple(float(a) + float(b) for a, b in zip(existing_rpy, bend_rpy))
+
+
 def derive(derivation: Derivation) -> KinematicModel:
     issues = validate_derivation(derivation)
     if issues:
@@ -428,10 +455,29 @@ def derive(derivation: Derivation) -> KinematicModel:
             pp = steps_by_path[f"digit/{digit_id}/phalanx/{pi}"].params
             body_name = f"d{digit_id}p{pi + 1}"
             joint_name = f"{body_name}_j"
+            # Grammar 0.5 rest-bend primitive (I16 priority 1): ``bend_rpy``/
+            # ``bend_offset`` default to (0,0,0)/(0,0) via ``.get`` for
+            # backward compatibility with any hand-authored Phalanx params
+            # dict predating this field (see distributions.Distribution
+            # .bend_probability's docstring). xyz becomes
+            # (bend_offset_x, bend_offset_y, t) -- t as today (the mount
+            # fraction along the host segment for pi==0, or the previous
+            # phalanx's own length for a continuation) -- since the existing
+            # convention's own x/y are always exactly 0 in both cases.
+            # rpy is composed with the existing convention's own rpy (the
+            # digit's sampled ``mount_rpy`` for pi==0, or identity for a
+            # continuation) by plain componentwise Euler-angle addition, NOT
+            # a rotation-matrix product -- see ``_compose_bend_rpy``'s own
+            # docstring for why this is FK-exact regardless.
+            bend_rpy = tuple(pp.get("bend_rpy", (0.0, 0.0, 0.0)))
+            bend_offset = tuple(pp.get("bend_offset", (0.0, 0.0)))
             if pi == 0:
-                origin = Pose(xyz=base_xyz, rpy=base_rpy)
+                origin_xyz = (bend_offset[0], bend_offset[1], base_xyz[2])
+                origin_rpy = _compose_bend_rpy(base_rpy, bend_rpy)
             else:
-                origin = Pose(xyz=(0.0, 0.0, prev_len), rpy=(0.0, 0.0, 0.0))
+                origin_xyz = (bend_offset[0], bend_offset[1], prev_len)
+                origin_rpy = _compose_bend_rpy((0.0, 0.0, 0.0), bend_rpy)
+            origin = Pose(xyz=origin_xyz, rpy=origin_rpy)
 
             mod = pp["module"]
             axis = tuple(mod["axis"])
@@ -783,10 +829,11 @@ def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
     )
     module = sample_module(rng, dist, ins_p, revolute_source_indices)
     length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
+    bend_rpy, bend_offset = sample_bend(rng, dist)
     new_uid = _max_uid(steps) + 1
     new_phalanx_list.append(DerivationStep(path=f"digit/{digit_id}/phalanx/{ins_p}", production="Phalanx", params={
         "digit_id": digit_id, "p": ins_p, "module": module, "length": length, "branch_digit_count": 0,
-        "uid": new_uid,
+        "uid": new_uid, "bend_rpy": bend_rpy, "bend_offset": bend_offset,
     }))
 
     new_dstep = DerivationStep(path=dstep.path, production="Digit",
@@ -946,6 +993,11 @@ SMALL_STEP_OPERATORS: Tuple[str, ...] = (
     # only the default small-step POOL no longer draws it.
     "step_root_length",
     "step_radius",
+    # Grammar 0.5 (I16 priority 1): one grid step on one component of a
+    # phalanx's own bend_rpy/bend_offset (see _op_step_bend_rpy/_offset
+    # below).
+    "step_bend_rpy",
+    "step_bend_offset",
 )
 
 
@@ -1053,6 +1105,29 @@ def _op_step_limits(rng, dist: Distribution, derivation: Derivation) -> Optional
         steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
         return steps
     mod = dict(p["module"])
+    if mod["kind"] == "R" and dist.limits_continuous:
+        # Grammar 0.5 (I16 priority 2): move ONE bound by one
+        # ``dist.limit_step_deg`` grid step, clamped within
+        # ``dist.revolute_limit_range_deg`` and away from the other bound
+        # (never crossing it, so ``lo < hi`` always still holds).
+        lo, hi = mod["limits"]
+        range_lo_deg, range_hi_deg = dist.revolute_limit_range_deg
+        range_lo, range_hi = range_lo_deg * DEG, range_hi_deg * DEG
+        step = dist.limit_step_deg * DEG
+        direction = 1.0 if bool(rng.integers(0, 2)) else -1.0
+        if bool(rng.integers(0, 2)):
+            new_lo = max(range_lo, min(lo + direction * step, min(range_hi, hi - 1e-9)))
+            if abs(new_lo - lo) < 1e-12:
+                return None
+            mod["limits"] = (new_lo, hi)
+        else:
+            new_hi = min(range_hi, max(hi + direction * step, max(range_lo, lo + 1e-9)))
+            if abs(new_hi - hi) < 1e-12:
+                return None
+            mod["limits"] = (lo, new_hi)
+        p["module"] = mod
+        steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+        return steps
     if mod["kind"] == "R":
         choices, scale = sorted(dist.revolute_limit_choices_deg), DEG
     else:
@@ -1185,6 +1260,75 @@ def _op_step_radius(rng, dist: Distribution, derivation: Derivation) -> Optional
     return steps
 
 
+def _bend_component_grid(choices, axis_index: int) -> List[float]:
+    """Sorted, de-duplicated set of the ``axis_index``-th component across
+    every whole triple/pair in ``choices`` (``dist.bend_rpy_choices_rad`` --
+    3 components -- or ``dist.bend_offset_choices_m`` -- 2 components).
+    ``variants.G_BEND`` builds each of these choice sets as the full
+    Cartesian product of one small per-component grid, so this recovers
+    that per-component grid for the small-step operators below (which move
+    ONE component by one grid step, unlike ``step_limits``/``step_coupling``,
+    which step the whole tuple to its neighbour in a flat choice list)."""
+    return sorted({c[axis_index] for c in choices})
+
+
+def _op_step_bend_rpy(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    """Grammar 0.5 (I16 priority 1): move ONE component (roll, pitch, or
+    yaw) of one Phalanx step's own ``bend_rpy`` to its numerically
+    neighbouring value on ``dist.bend_rpy_choices_rad``'s own per-component
+    grid (see ``_bend_component_grid``). A no-op (``None``) whenever that
+    component's grid has only one value (true of every default
+    ``Distribution``, whose ``bend_rpy_choices_rad`` is the single value
+    ``(0.0, 0.0, 0.0)``) or the current value is not itself on that grid."""
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps) if s.production == "Phalanx"]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    p = dict(s.params)
+    bend_rpy = list(p.get("bend_rpy", (0.0, 0.0, 0.0)))
+    comp = int(rng.integers(0, 3))
+    grid = _bend_component_grid(dist.bend_rpy_choices_rad, comp)
+    if len(grid) <= 1 or bend_rpy[comp] not in grid:
+        return None
+    ci = grid.index(bend_rpy[comp])
+    new_ci = _step_choice_index(rng, ci, len(grid))
+    if new_ci == ci:
+        return None
+    bend_rpy[comp] = grid[new_ci]
+    p["bend_rpy"] = tuple(bend_rpy)
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+    return steps
+
+
+def _op_step_bend_offset(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    """Grammar 0.5 (I16 priority 1): the ``bend_offset`` counterpart of
+    ``_op_step_bend_rpy`` -- moves ONE component (x or y) of one Phalanx
+    step's own ``bend_offset`` to its numerically neighbouring value on
+    ``dist.bend_offset_choices_m``'s own per-component grid."""
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps) if s.production == "Phalanx"]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    p = dict(s.params)
+    bend_offset = list(p.get("bend_offset", (0.0, 0.0)))
+    comp = int(rng.integers(0, 2))
+    grid = _bend_component_grid(dist.bend_offset_choices_m, comp)
+    if len(grid) <= 1 or bend_offset[comp] not in grid:
+        return None
+    ci = grid.index(bend_offset[comp])
+    new_ci = _step_choice_index(rng, ci, len(grid))
+    if new_ci == ci:
+        return None
+    bend_offset[comp] = grid[new_ci]
+    p["bend_offset"] = tuple(bend_offset)
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+    return steps
+
+
 # --------------------------------------------------------------------------
 # Minimal structural operators (opt-in only -- see ``MINIMAL_STRUCTURAL_OPERATORS``
 # below). Motivation (E1): ``add_digit``/``remove_digit`` change ~7 joints in
@@ -1227,6 +1371,7 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation) -> Op
     axis = sample_axis(rng)
     limits = sample_revolute_limits_rad(rng, gdist)
     length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m)
+    bend_rpy, bend_offset = sample_bend(rng, gdist)
     uid_base = _max_uid(steps) + 1
     digit_step = DerivationStep(path=f"digit/{digit_id}", production="Digit", params={
         "digit_id": digit_id, "mount": mount, "mount_frac": mount_frac, "mount_rpy": mount_rpy,
@@ -1235,6 +1380,7 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation) -> Op
     phalanx_step = DerivationStep(path=f"digit/{digit_id}/phalanx/0", production="Phalanx", params={
         "digit_id": digit_id, "p": 0, "module": {"kind": "R", "axis": axis, "limits": limits},
         "length": length, "branch_digit_count": 0, "uid": uid_base + 1,
+        "bend_rpy": bend_rpy, "bend_offset": bend_offset,
     })
     new_hand = DerivationStep(path="hand", production="Hand",
                                params={**hand_params, "digit_count": hand_params["digit_count"] + 1})
@@ -1417,6 +1563,8 @@ _OPERATOR_FNS = {
     "step_coupling": _op_step_coupling,
     "step_root_length": _op_step_root_length,
     "step_radius": _op_step_radius,
+    "step_bend_rpy": _op_step_bend_rpy,
+    "step_bend_offset": _op_step_bend_offset,
     "add_minimal_digit": _op_add_minimal_digit,
     "remove_digit_minimal": _op_remove_digit_minimal,
     "add_palm_body": _op_add_palm_body,

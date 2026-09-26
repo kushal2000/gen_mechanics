@@ -65,7 +65,14 @@ from ..distributions import ANGLE_STEP_DEG, DEFAULT_DISTRIBUTION, DEG, Distribut
 from .runner import register, run_experiment
 
 BENCH_DIR = Path(__file__).resolve().parents[3] / "hand_sampler" / "grammar_bench"
-REPO_ROOT = Path(__file__).resolve().parents[4]
+# I16 fix: this file lives at <repo>/hand_sampler/grammar/experiments/, so
+# ``parents[3]`` (matching BENCH_DIR's own reference point above) is the
+# repo root -- previously ``parents[4]`` (one level too high, the PARENT of
+# the repo), which silently made every ``REPO:``-prefixed manifest source
+# (SHARPA) resolve to a nonexistent path and be reported "unavailable",
+# unlike ``grammar_bench/evaluate.py``'s own ``REPO_ROOT = BENCH_DIR.parent.parent``
+# (== this same ``parents[3]``), which this now matches exactly.
+REPO_ROOT = Path(__file__).resolve().parents[3]
 MANIFEST_PATH = BENCH_DIR / "manifest.json"
 DEFAULT_HAND_URDF_ROOT = "/home/singularity/karma/karma-data/all_urdfs/full_models_as_downloaded"
 
@@ -510,7 +517,7 @@ def render_markdown(hxl: dict, unblock: dict, bits: dict, generated: dict) -> st
     )
     lines.append(
         "- Relaxations named here do not cover every `missing_constructs`/`out_of_support` category "
-        "coverage.py can report (e.g. `coupling_limits_not_image`, `coupling_scope`, `digit_count_out_of_range` "
+        "coverage.py can report (e.g. `coupling_limits_outside_image`, `coupling_scope`, `digit_count_out_of_range` "
         "have no corresponding relax flag in this design) -- a hand blocked by one of those stays "
         "out of support at every level; see the L8 remaining-items list above."
     )

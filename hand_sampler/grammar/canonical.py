@@ -29,6 +29,39 @@ from .kinematics import AffineCoupling, Body, Frame, KinematicModel, Joint, Pose
 _ROUND = 9
 
 
+def normalize_axis_sign(
+    axis: Tuple[float, float, float], limits: Tuple[float, float]
+) -> Tuple[Tuple[float, float, float], Tuple[float, float]]:
+    """Grammar 0.5 (I16 priority 2): the canonical representative of the
+    gauge symmetry ``(axis, (lo, hi)) == (-axis, (-hi, -lo))`` -- rotating
+    (or, for a prismatic joint, translating) by ``q`` about ``axis`` is the
+    exact same physical motion as moving by ``-q`` about ``-axis``, so a
+    joint's own sign convention for its axis is never itself physically
+    observable. Two real hands (or two grammar parameterisations) that
+    differ only in this convention -- e.g. Barrett's ``(-180, 0)`` deg limit
+    pair on a flipped axis, vs. the equivalent ``(0, 180)`` on the
+    un-flipped one -- must be judged identical, both by ``canonical_form``
+    (so they hash equal) and by ``coverage.py``'s own limit/axis checks.
+
+    The chosen representative is whichever of the two encodings has a
+    positive first-nonzero axis component (x, then y, then z) -- an
+    arbitrary but fixed and total tie-break, so the map is well-defined and
+    idempotent. An axis that is (numerically) all-zero is never valid but is
+    returned unchanged rather than raising, since this function must stay a
+    pure judgment call (coverage.py calls it on possibly-malformed imported
+    models)."""
+    x, y, z = (float(v) for v in axis)
+    first_nonzero = 0.0
+    for v in (x, y, z):
+        if abs(v) > 1e-12:
+            first_nonzero = v
+            break
+    if first_nonzero < 0.0:
+        lo, hi = limits
+        return (-x, -y, -z), (-float(hi), -float(lo))
+    return (x, y, z), (float(limits[0]), float(limits[1]))
+
+
 def _r(x: float) -> float:
     # ``+ 0.0`` folds a rounded ``-0.0`` back to ``0.0`` (``-0.0 == 0.0`` is
     # True in Python, but ``json.dumps``/``repr`` -- and therefore this
@@ -101,6 +134,23 @@ def canonical_form(model: KinematicModel) -> KinematicModel:
     for f in model.frames:
         frames_by_body.setdefault(f.body, []).append(f)
     hop_info = _coupling_hop_info(model)
+    # Sign normalisation (normalize_axis_sign, I16 priority 2) is applied to
+    # every joint's own (axis, limits) pair EXCEPT one that participates in
+    # an AffineCoupling (as dependent or source): that pair's sign
+    # convention is entangled with the coupling's own stored
+    # multiplier/offset (q_dependent = multiplier * q_source + offset,
+    # defined relative to each joint's OWN q-sign convention), so flipping
+    # one side's axis/limits here without also re-deriving the other would
+    # silently change what the emitted canonical model's coupling actually
+    # does -- out of scope for a pure renaming/hashing pass. Ordinary
+    # (non-coupled) revolute/prismatic joints -- the case this fixes (e.g.
+    # Barrett's flipped-axis limits) -- are unaffected by this exclusion.
+    _coupled_names = set(hop_info) | {c.source for c in model.couplings}
+
+    def _normalized(j: Joint) -> Tuple[Tuple[float, float, float], Any]:
+        if j.limits is None or j.name in _coupled_names:
+            return j.axis, j.limits
+        return normalize_axis_sign(j.axis, j.limits)
 
     signature_cache: Dict[str, Any] = {}
     order_cache: Dict[str, List[Joint]] = {}
@@ -114,13 +164,14 @@ def canonical_form(model: KinematicModel) -> KinematicModel:
             child_sig = _signature(j.child)
             hop, mult, off = hop_info.get(j.name, (-1, 0.0, 0.0))
             child_body = bodies_by_name[j.child]
+            norm_axis, norm_limits = _normalized(j)
             key = (
                 j.type,
                 _rtuple(j.origin.xyz),
                 _rtuple(j.origin.rpy),
-                _rtuple(j.axis),
-                _rtuple(j.limits) if j.limits is not None else (),
-                j.limits is None,
+                _rtuple(norm_axis),
+                _rtuple(norm_limits) if norm_limits is not None else (),
+                norm_limits is None,
                 j.name in hop_info,
                 hop, _r(mult), _r(off),
                 bool(child_body.palm),
@@ -169,10 +220,11 @@ def canonical_form(model: KinematicModel) -> KinematicModel:
             body_counter[0] += 1
             joint_name_map[j.name] = new_joint_name
             child_body = bodies_by_name[j.child]
+            norm_axis, norm_limits = _normalized(j)
             new_bodies.append(Body(name=new_child_name, palm=child_body.palm, radius=child_body.radius))
             new_joints.append(Joint(
                 name=new_joint_name, type=j.type, parent=new_body, child=new_child_name,
-                origin=j.origin, axis=j.axis, limits=j.limits,
+                origin=j.origin, axis=norm_axis, limits=norm_limits,
             ))
             _walk(j.child, new_child_name)
 

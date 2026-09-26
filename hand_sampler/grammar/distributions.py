@@ -88,6 +88,40 @@ class Distribution:
     # note and ``derive.py``'s ``sample_derivation``/``derive``.
     capsule_radius_choices_m: Tuple[float, ...] = (0.008, 0.010, 0.012)
 
+    # Grammar 0.5 (I16 support-widening, priority 1): the rest-bend
+    # primitive. A phalanx's own joint origin (its mount joint, for a
+    # digit's first phalanx, or its mid-digit continuation joint otherwise
+    # -- see rules.py's convention note / derive.py's ``_process_digit``)
+    # may deviate from the existing convention by a small additional
+    # rotation (``bend_rpy``, one whole (roll, pitch, yaw) triple drawn from
+    # this choice set) and a small lateral (x, y) offset on the host
+    # segment (``bend_offset``). The default choice sets contain only the
+    # "no bend" value and ``bend_probability`` defaults to 0.0 (never drawn
+    # at all -- see ``sample_bend`` below), so default sampling/replay is
+    # byte-identical to before this field existed. ``variants.G_BEND`` sets
+    # a real 15-degree/5-mm grid and a nonzero probability.
+    bend_rpy_choices_rad: Tuple[Tuple[float, float, float], ...] = ((0.0, 0.0, 0.0),)
+    bend_offset_choices_m: Tuple[Tuple[float, float], ...] = ((0.0, 0.0),)
+    bend_probability: float = 0.0
+
+    # Grammar 0.5 (I16 support-widening, priority 2): continuous,
+    # sign-normalised revolute limits. ``revolute_limit_range_deg`` is the
+    # range a continuous draw is bounded by; its default (-45, 110) is the
+    # union of every ``revolute_limit_choices_deg``/``palm_joint_limit_choices_deg``
+    # entry (see ``coverage.global_revolute_limit_range_deg``, which computes
+    # this dynamically for other callers -- this field is the static,
+    # per-``Distribution`` counterpart ``coverage.py``'s own limit check now
+    # reads). ``limits_continuous`` (default False) keeps existing
+    # choice-set sampling; when True, ``sample_revolute_limits_rad`` draws a
+    # continuous ``(lo, hi)`` pair (``lo < hi``) inside this range instead
+    # (see ``sample_revolute_limits_continuous_rad``), and the small-step
+    # ``step_limits`` operator (``derive.py``) moves one bound by
+    # ``limit_step_deg`` degrees instead of jumping between choice-tuple
+    # entries.
+    revolute_limit_range_deg: Tuple[float, float] = (-45.0, 110.0)
+    limits_continuous: bool = False
+    limit_step_deg: float = 15.0
+
     # I14 fix 5: an optional separate ``Distribution`` used by the GROWTH
     # operators (``add_digit``, ``add_palm_body``, ``regrow_subtree``,
     # ``add_minimal_digit`` -- see ``derive.py``'s ``_growth_dist``) to
@@ -137,9 +171,44 @@ def sample_axis(rng: np.random.Generator) -> Tuple[float, float, float]:
     return (float(x), float(y), float(z))
 
 
+def sample_revolute_limits_continuous_rad(rng: np.random.Generator, dist: Distribution) -> Tuple[float, float]:
+    """A continuous ``(lo, hi)`` pair, ``lo < hi``, drawn uniformly within
+    ``dist.revolute_limit_range_deg`` (in radians). Two independent uniform
+    draws, sorted -- the degenerate ``a == b`` case (probability ~0 for a
+    continuous draw) is nudged apart so ``lo < hi`` always holds."""
+    lo_deg, hi_deg = dist.revolute_limit_range_deg
+    a = float(rng.uniform(lo_deg, hi_deg))
+    b = float(rng.uniform(lo_deg, hi_deg))
+    if a > b:
+        a, b = b, a
+    if a == b:
+        b = min(hi_deg, a + 1e-9)
+        if a == b:
+            a = max(lo_deg, a - 1e-9)
+    return a * DEG, b * DEG
+
+
 def sample_revolute_limits_rad(rng: np.random.Generator, dist: Distribution) -> Tuple[float, float]:
+    if dist.limits_continuous:
+        return sample_revolute_limits_continuous_rad(rng, dist)
     lo_deg, hi_deg = dist.revolute_limit_choices_deg[int(rng.integers(0, len(dist.revolute_limit_choices_deg)))]
     return (lo_deg * DEG, hi_deg * DEG)
+
+
+def sample_bend(rng: np.random.Generator, dist: Distribution) -> Tuple[Tuple[float, float, float], Tuple[float, float]]:
+    """``(bend_rpy, bend_offset)`` for one Phalanx step -- see
+    ``Distribution.bend_probability``'s docstring. Never touches ``rng`` at
+    all when ``dist.bend_probability <= 0.0`` (true of every existing named
+    ``Distribution``), so every existing seed's default-sampling replay
+    (RNG-stream position included) is exactly as before this field
+    existed."""
+    if dist.bend_probability <= 0.0:
+        return (0.0, 0.0, 0.0), (0.0, 0.0)
+    if float(rng.random()) < dist.bend_probability:
+        bend_rpy = dist.bend_rpy_choices_rad[int(rng.integers(0, len(dist.bend_rpy_choices_rad)))]
+        bend_offset = dist.bend_offset_choices_m[int(rng.integers(0, len(dist.bend_offset_choices_m)))]
+        return tuple(float(v) for v in bend_rpy), tuple(float(v) for v in bend_offset)
+    return (0.0, 0.0, 0.0), (0.0, 0.0)
 
 
 def sample_palm_joint_limits_rad(rng: np.random.Generator, dist: Distribution) -> Tuple[float, float]:

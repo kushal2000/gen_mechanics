@@ -8,6 +8,8 @@ else identical to current default sampling behaviour.
 
 from __future__ import annotations
 
+import itertools
+import math
 from dataclasses import replace
 from typing import Tuple
 
@@ -69,6 +71,38 @@ G_NOBRANCH_INS: Distribution = replace(G_NOBRANCH, insertion=_INSERTION_DIST)
 # default. A distinct object from a bare Distribution: (dist, operators).
 G_FULL_SMALL: Tuple[Distribution, Tuple[str, ...]] = (G_FULL, SMALL_STEP_OPERATORS)
 
+# Grammar 0.5 (I16 support-widening, priority 1): the rest-bend primitive,
+# a 15-degree/5-mm grid (each rpy component in {-30,-15,0,15,30} deg, each
+# offset component in {-5,0,5} mm, full Cartesian product -- see
+# distributions.Distribution.bend_probability's docstring), probability 0.3.
+_BEND_DEG_GRID: Tuple[float, ...] = (-30.0, -15.0, 0.0, 15.0, 30.0)
+_BEND_OFFSET_MM_GRID: Tuple[float, ...] = (-5.0, 0.0, 5.0)
+
+_BEND_RPY_CHOICES_RAD: Tuple[Tuple[float, float, float], ...] = tuple(
+    tuple(v * math.pi / 180.0 for v in combo) for combo in itertools.product(_BEND_DEG_GRID, repeat=3)
+)
+_BEND_OFFSET_CHOICES_M: Tuple[Tuple[float, float], ...] = tuple(
+    tuple(v / 1000.0 for v in combo) for combo in itertools.product(_BEND_OFFSET_MM_GRID, repeat=2)
+)
+
+G_BEND: Distribution = replace(
+    DEFAULT_DISTRIBUTION,
+    bend_rpy_choices_rad=_BEND_RPY_CHOICES_RAD,
+    bend_offset_choices_m=_BEND_OFFSET_CHOICES_M,
+    bend_probability=0.3,
+)
+
+# Grammar 0.5 (I16 support-widening, priority 2): continuous, sign-normalised
+# revolute limits, range widened to (-180, 180) deg. NOTE (E11): generated
+# designs sampled under G_CONT may exceed the grammar's usual (-45, 110) deg
+# support range -- that is this variant's entire point (support widening),
+# not a defect.
+G_CONT: Distribution = replace(
+    DEFAULT_DISTRIBUTION,
+    limits_continuous=True,
+    revolute_limit_range_deg=(-180.0, 180.0),
+)
+
 # Every named Distribution variant above, for iteration by experiment code.
 NAMED_DISTRIBUTIONS = {
     "G_FULL": G_FULL,
@@ -78,6 +112,8 @@ NAMED_DISTRIBUTIONS = {
     "G_SERIAL": G_SERIAL,
     "G_FULL_INS": G_FULL_INS,
     "G_NOBRANCH_INS": G_NOBRANCH_INS,
+    "G_BEND": G_BEND,
+    "G_CONT": G_CONT,
 }
 
 __all__ = [
@@ -89,6 +125,8 @@ __all__ = [
     "G_FULL_INS",
     "G_NOBRANCH_INS",
     "G_FULL_SMALL",
+    "G_BEND",
+    "G_CONT",
     "NAMED_DISTRIBUTIONS",
     "OPERATORS",
     "SMALL_STEP_OPERATORS",
