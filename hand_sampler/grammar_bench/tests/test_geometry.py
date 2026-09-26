@@ -21,7 +21,11 @@ from hand_sampler.grammar.derive import generate
 from hand_sampler.grammar.fk import forward_kinematics
 from hand_sampler.grammar.kinematics import Body, Frame, Joint, KinematicModel, Pose
 
-N_SEEDS = 200
+# Benchmark decision (2026-09-26): 40 seeds in the routine suite so the whole suite stays
+# under ~2 minutes; the assertions are unchanged. The full 200-seed run is reproduced with
+# GRAMMAR_GEOMETRY_SEEDS=200 (results recorded in project-notes/grammar/LOG.md, iteration 7c).
+import os
+N_SEEDS = int(os.environ.get("GRAMMAR_GEOMETRY_SEEDS", "40"))
 
 
 # ---------------------------------------------------------------------------
