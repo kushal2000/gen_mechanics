@@ -7,8 +7,8 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 5,
   "budget": {
-    "worker_runs_used": 6,
-    "worker_runs_max": 6,
+    "worker_runs_used": 7,
+    "worker_runs_max": 9,
     "opus_reviews_used": 2,
     "opus_reviews_max": 2
   },
@@ -25,7 +25,8 @@
     "Palm-ness is a per-body flag; the palm set is a connected subtree containing the root; a palm joint is an ordinary joint whose child is a palm body. Any number of palm articulation directions; nothing anthropomorphic is assumed.",
     "Palm geometry: convex hull of all palm bodies' capsules at q=0, cut into one convex cell per palm body by a plane through each palm joint origin that contains the joint axis with normal n = d - (d.a)a (d = direction from parent palm joint/root to this joint). Fingers use capsules. Validator: every cell has positive volume; finger mounts lie on their palm body's cell. No geometry genes; mass from cell/capsule volume and one density.",
     "Closed-chain solver deferred to 'only if a production needs it'; the LoopClosure placeholder stays.",
-    "Iteration-3 grammar productions: root, palm bodies with optional palm joint (tighter travel than finger joints), finger chains of phalanx capsules, optional intra-finger affine coupling."
+    "Iteration-3 grammar productions: root, palm bodies with optional palm joint (tighter travel than finger joints), finger chains of phalanx capsules, optional intra-finger affine coupling.",
+    "Every generated hand has at least one palm body (Martin, 2026-09-25). Import-from-URDF only needs to work; it is not a priority."
   ],
   "issues": [
     {
@@ -100,7 +101,7 @@
     }
   ],
   "last_green_commit": "68b34da",
-  "next_action": "PAUSED for Martin. Proposed iteration 5 (needs budget approval): fix I8 (segment convention, mount on segment, >=1 palm body, tests that mounts lie on host segments), then I9 (topology_expressible + missing checks, audit keys from derived models, ORCA noted in report, dirty flag), regenerate pilot-report; then I10.",
+  "next_action": "Iteration 5 running: I8 geometry fixes + audit keys. Then iteration 6: coverage wording (topology_expressible), ORCA note, dirty-flag SHA, test hygiene; regenerate report.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
