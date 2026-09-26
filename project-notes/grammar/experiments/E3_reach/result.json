@@ -1,0 +1,6821 @@
+{
+  "aggregate": {
+    "anthropomorphic_staggered::DEFAULT": {
+      "median_accepted_at_success": 39.5,
+      "median_proposed_all": 49.0,
+      "median_proposed_at_success": 49.0,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 1.0,
+        "ci_lo": 1.0,
+        "n": 64,
+        "rate": 1.0
+      }
+    },
+    "anthropomorphic_staggered::DEFAULT+SMALL": {
+      "median_accepted_at_success": 76.5,
+      "median_proposed_all": 97.0,
+      "median_proposed_at_success": 91.5,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 0.96875,
+        "ci_lo": 0.828125,
+        "n": 64,
+        "rate": 0.90625
+      }
+    },
+    "anthropomorphic_staggered::MINIMAL": {
+      "median_accepted_at_success": 165.0,
+      "median_proposed_all": 262.0,
+      "median_proposed_at_success": 227.0,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 0.234375,
+        "ci_lo": 0.0625,
+        "n": 64,
+        "rate": 0.140625
+      }
+    },
+    "arch_palm::DEFAULT": {
+      "median_accepted_at_success": null,
+      "median_proposed_all": 223.0,
+      "median_proposed_at_success": null,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 0.0,
+        "ci_lo": 0.0,
+        "n": 64,
+        "rate": 0.0
+      }
+    },
+    "arch_palm::DEFAULT+SMALL": {
+      "median_accepted_at_success": null,
+      "median_proposed_all": 215.0,
+      "median_proposed_at_success": null,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 0.0,
+        "ci_lo": 0.0,
+        "n": 64,
+        "rate": 0.0
+      }
+    },
+    "arch_palm::MINIMAL": {
+      "median_accepted_at_success": 28.0,
+      "median_proposed_all": 40.0,
+      "median_proposed_at_success": 40.0,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 1.0,
+        "ci_lo": 1.0,
+        "n": 64,
+        "rate": 1.0
+      }
+    },
+    "n_seeds": 64,
+    "prismatic_gripper::DEFAULT": {
+      "median_accepted_at_success": 29.0,
+      "median_proposed_all": 36.5,
+      "median_proposed_at_success": 36.5,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 1.0,
+        "ci_lo": 1.0,
+        "n": 64,
+        "rate": 1.0
+      }
+    },
+    "prismatic_gripper::DEFAULT+SMALL": {
+      "median_accepted_at_success": 39.0,
+      "median_proposed_all": 51.5,
+      "median_proposed_at_success": 50.0,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 1.0,
+        "ci_lo": 0.953125,
+        "n": 64,
+        "rate": 0.984375
+      }
+    },
+    "prismatic_gripper::MINIMAL": {
+      "median_accepted_at_success": 82.0,
+      "median_proposed_all": 245.5,
+      "median_proposed_at_success": 139.0,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 0.734375,
+        "ci_lo": 0.484375,
+        "n": 64,
+        "rate": 0.609375
+      }
+    },
+    "radial_3::DEFAULT": {
+      "median_accepted_at_success": 48.5,
+      "median_proposed_all": 66.0,
+      "median_proposed_at_success": 64.5,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 1.0,
+        "ci_lo": 0.921875,
+        "n": 64,
+        "rate": 0.96875
+      }
+    },
+    "radial_3::DEFAULT+SMALL": {
+      "median_accepted_at_success": 64.0,
+      "median_proposed_all": 106.0,
+      "median_proposed_at_success": 80.0,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 0.90625,
+        "ci_lo": 0.71875,
+        "n": 64,
+        "rate": 0.8125
+      }
+    },
+    "radial_3::MINIMAL": {
+      "median_accepted_at_success": 113.0,
+      "median_proposed_all": 258.5,
+      "median_proposed_at_success": 152.0,
+      "n": 64,
+      "success_rate": {
+        "ci_hi": 0.640625,
+        "ci_lo": 0.390625,
+        "n": 64,
+        "rate": 0.515625
+      }
+    }
+  },
+  "git_dirty": true,
+  "git_sha": "9a30635eef0852acb0bee774894c140fb27c278d",
+  "grammar_version": "0.3",
+  "name": "e3_reach",
+  "numpy_version": "1.26.4",
+  "params": {
+    "max_accepted": 200,
+    "max_attempts_per_step": 8,
+    "safety_cap": 4000
+  },
+  "per_seed": [
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 50,
+          "n_proposed": 61,
+          "success": true,
+          "success_accepted": 50,
+          "success_proposed": 61
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 64,
+          "n_proposed": 81,
+          "success": true,
+          "success_accepted": 64,
+          "success_proposed": 81
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 308,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 235,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 10,
+          "n_proposed": 11,
+          "success": true,
+          "success_accepted": 10,
+          "success_proposed": 11
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 99,
+          "n_proposed": 135,
+          "success": true,
+          "success_accepted": 99,
+          "success_proposed": 135
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 153,
+          "n_proposed": 175,
+          "success": true,
+          "success_accepted": 153,
+          "success_proposed": 175
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 105,
+          "n_proposed": 170,
+          "success": true,
+          "success_accepted": 105,
+          "success_proposed": 170
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 147,
+          "n_proposed": 195,
+          "success": true,
+          "success_accepted": 147,
+          "success_proposed": 195
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 17,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 17,
+          "success_proposed": 17
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 251,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 0
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 24,
+          "n_proposed": 27,
+          "success": true,
+          "success_accepted": 24,
+          "success_proposed": 27
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 38,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 38
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 259,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 218,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 32,
+          "n_proposed": 39,
+          "success": true,
+          "success_accepted": 32,
+          "success_proposed": 39
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 38,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 38
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 96,
+          "n_proposed": 116,
+          "success": true,
+          "success_accepted": 96,
+          "success_proposed": 116
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 4,
+          "n_proposed": 15,
+          "success": true,
+          "success_accepted": 4,
+          "success_proposed": 15
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 112,
+          "n_proposed": 158,
+          "success": true,
+          "success_accepted": 112,
+          "success_proposed": 158
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 48,
+          "n_proposed": 66,
+          "success": true,
+          "success_accepted": 48,
+          "success_proposed": 66
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 259,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 1
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 89,
+          "n_proposed": 110,
+          "success": true,
+          "success_accepted": 89,
+          "success_proposed": 110
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 62,
+          "n_proposed": 75,
+          "success": true,
+          "success_accepted": 62,
+          "success_proposed": 75
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 237,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 221,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 208,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 45,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 45
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 29,
+          "n_proposed": 36,
+          "success": true,
+          "success_accepted": 29,
+          "success_proposed": 36
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 92,
+          "n_proposed": 109,
+          "success": true,
+          "success_accepted": 92,
+          "success_proposed": 109
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 137,
+          "n_proposed": 241,
+          "success": true,
+          "success_accepted": 137,
+          "success_proposed": 241
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 63,
+          "n_proposed": 80,
+          "success": true,
+          "success_accepted": 63,
+          "success_proposed": 80
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 251,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 93,
+          "n_proposed": 130,
+          "success": true,
+          "success_accepted": 93,
+          "success_proposed": 130
+        }
+      },
+      "seed": 2
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 64,
+          "n_proposed": 88,
+          "success": true,
+          "success_accepted": 64,
+          "success_proposed": 88
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 89,
+          "n_proposed": 105,
+          "success": true,
+          "success_accepted": 89,
+          "success_proposed": 105
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 272,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 216,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 217,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 22,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 22
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 35,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 35
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 70,
+          "n_proposed": 87,
+          "success": true,
+          "success_accepted": 70,
+          "success_proposed": 87
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 64,
+          "n_proposed": 95,
+          "success": true,
+          "success_accepted": 64,
+          "success_proposed": 95
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 35,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 35
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 53,
+          "n_proposed": 66,
+          "success": true,
+          "success_accepted": 53,
+          "success_proposed": 66
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 259,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 3
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 52,
+          "n_proposed": 69,
+          "success": true,
+          "success_accepted": 52,
+          "success_proposed": 69
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 115,
+          "n_proposed": 131,
+          "success": true,
+          "success_accepted": 115,
+          "success_proposed": 131
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 244,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 225,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 217,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 65,
+          "n_proposed": 104,
+          "success": true,
+          "success_accepted": 65,
+          "success_proposed": 104
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 39,
+          "n_proposed": 66,
+          "success": true,
+          "success_accepted": 39,
+          "success_proposed": 66
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 19,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 19
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 139,
+          "n_proposed": 227,
+          "success": true,
+          "success_accepted": 139,
+          "success_proposed": 227
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 86,
+          "n_proposed": 112,
+          "success": true,
+          "success_accepted": 86,
+          "success_proposed": 112
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 254,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 122,
+          "n_proposed": 152,
+          "success": true,
+          "success_accepted": 122,
+          "success_proposed": 152
+        }
+      },
+      "seed": 4
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 14,
+          "n_proposed": 16,
+          "success": true,
+          "success_accepted": 14,
+          "success_proposed": 16
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 55,
+          "n_proposed": 60,
+          "success": true,
+          "success_accepted": 55,
+          "success_proposed": 60
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 182,
+          "n_proposed": 239,
+          "success": true,
+          "success_accepted": 182,
+          "success_proposed": 239
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 228,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 219,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 27,
+          "n_proposed": 45,
+          "success": true,
+          "success_accepted": 27,
+          "success_proposed": 45
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 75,
+          "n_proposed": 108,
+          "success": true,
+          "success_accepted": 75,
+          "success_proposed": 108
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 36,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 36,
+          "success_proposed": 40
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 44,
+          "n_proposed": 71,
+          "success": true,
+          "success_accepted": 44,
+          "success_proposed": 71
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 26,
+          "n_proposed": 33,
+          "success": true,
+          "success_accepted": 26,
+          "success_proposed": 33
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 22,
+          "n_proposed": 27,
+          "success": true,
+          "success_accepted": 22,
+          "success_proposed": 27
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 300,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 5
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 30,
+          "n_proposed": 48,
+          "success": true,
+          "success_accepted": 30,
+          "success_proposed": 48
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 93,
+          "n_proposed": 102,
+          "success": true,
+          "success_accepted": 93,
+          "success_proposed": 102
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 4.0,
+          "n_accepted": 200,
+          "n_proposed": 282,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 232,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 209,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 32,
+          "n_proposed": 41,
+          "success": true,
+          "success_accepted": 32,
+          "success_proposed": 41
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 0,
+          "n_proposed": 0,
+          "success": true,
+          "success_accepted": 0,
+          "success_proposed": 0
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 0,
+          "n_proposed": 0,
+          "success": true,
+          "success_accepted": 0,
+          "success_proposed": 0
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 0,
+          "n_proposed": 0,
+          "success": true,
+          "success_accepted": 0,
+          "success_proposed": 0
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 42,
+          "n_proposed": 60,
+          "success": true,
+          "success_accepted": 42,
+          "success_proposed": 60
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 116,
+          "n_proposed": 134,
+          "success": true,
+          "success_accepted": 116,
+          "success_proposed": 134
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 129,
+          "n_proposed": 179,
+          "success": true,
+          "success_accepted": 129,
+          "success_proposed": 179
+        }
+      },
+      "seed": 6
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 40
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 17,
+          "n_proposed": 22,
+          "success": true,
+          "success_accepted": 17,
+          "success_proposed": 22
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 88,
+          "n_proposed": 132,
+          "success": true,
+          "success_accepted": 88,
+          "success_proposed": 132
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 216,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 49,
+          "n_proposed": 63,
+          "success": true,
+          "success_accepted": 49,
+          "success_proposed": 63
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 12,
+          "n_proposed": 15,
+          "success": true,
+          "success_accepted": 12,
+          "success_proposed": 15
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 41,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 41
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 307,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 104,
+          "n_proposed": 141,
+          "success": true,
+          "success_accepted": 104,
+          "success_proposed": 141
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 97,
+          "n_proposed": 119,
+          "success": true,
+          "success_accepted": 97,
+          "success_proposed": 119
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 193,
+          "n_proposed": 290,
+          "success": true,
+          "success_accepted": 193,
+          "success_proposed": 290
+        }
+      },
+      "seed": 7
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 33,
+          "n_proposed": 38,
+          "success": true,
+          "success_accepted": 33,
+          "success_proposed": 38
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 232,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 253,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 220,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 209,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 26,
+          "n_proposed": 37,
+          "success": true,
+          "success_accepted": 26,
+          "success_proposed": 37
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 72,
+          "n_proposed": 90,
+          "success": true,
+          "success_accepted": 72,
+          "success_proposed": 90
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 36,
+          "n_proposed": 43,
+          "success": true,
+          "success_accepted": 36,
+          "success_proposed": 43
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 328,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 39,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 39
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 92,
+          "n_proposed": 115,
+          "success": true,
+          "success_accepted": 92,
+          "success_proposed": 115
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 291,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 8
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 25,
+          "n_proposed": 32,
+          "success": true,
+          "success_accepted": 25,
+          "success_proposed": 32
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 177,
+          "n_proposed": 218,
+          "success": true,
+          "success_accepted": 177,
+          "success_proposed": 218
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 288,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 233,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 37,
+          "n_proposed": 51,
+          "success": true,
+          "success_accepted": 37,
+          "success_proposed": 51
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 24,
+          "n_proposed": 31,
+          "success": true,
+          "success_accepted": 24,
+          "success_proposed": 31
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 39,
+          "n_proposed": 55,
+          "success": true,
+          "success_accepted": 39,
+          "success_proposed": 55
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 331,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 11,
+          "n_proposed": 19,
+          "success": true,
+          "success_accepted": 11,
+          "success_proposed": 19
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 56,
+          "n_proposed": 77,
+          "success": true,
+          "success_accepted": 56,
+          "success_proposed": 77
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 160,
+          "n_proposed": 219,
+          "success": true,
+          "success_accepted": 160,
+          "success_proposed": 219
+        }
+      },
+      "seed": 9
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 54,
+          "n_proposed": 73,
+          "success": true,
+          "success_accepted": 54,
+          "success_proposed": 73
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 54,
+          "n_proposed": 58,
+          "success": true,
+          "success_accepted": 54,
+          "success_proposed": 58
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 276,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 230,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 210,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 18,
+          "n_proposed": 27,
+          "success": true,
+          "success_accepted": 18,
+          "success_proposed": 27
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 83,
+          "n_proposed": 104,
+          "success": true,
+          "success_accepted": 83,
+          "success_proposed": 104
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 100,
+          "n_proposed": 119,
+          "success": true,
+          "success_accepted": 100,
+          "success_proposed": 119
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 65,
+          "n_proposed": 122,
+          "success": true,
+          "success_accepted": 65,
+          "success_proposed": 122
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 96,
+          "n_proposed": 122,
+          "success": true,
+          "success_accepted": 96,
+          "success_proposed": 122
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 246,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 122,
+          "n_proposed": 187,
+          "success": true,
+          "success_accepted": 122,
+          "success_proposed": 187
+        }
+      },
+      "seed": 10
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 46,
+          "n_proposed": 61,
+          "success": true,
+          "success_accepted": 46,
+          "success_proposed": 61
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 131,
+          "n_proposed": 152,
+          "success": true,
+          "success_accepted": 131,
+          "success_proposed": 152
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 258,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 233,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 211,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 38,
+          "n_proposed": 43,
+          "success": true,
+          "success_accepted": 38,
+          "success_proposed": 43
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 21,
+          "n_proposed": 29,
+          "success": true,
+          "success_accepted": 21,
+          "success_proposed": 29
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 30,
+          "n_proposed": 39,
+          "success": true,
+          "success_accepted": 30,
+          "success_proposed": 39
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 309,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 18,
+          "n_proposed": 26,
+          "success": true,
+          "success_accepted": 18,
+          "success_proposed": 26
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 27,
+          "n_proposed": 31,
+          "success": true,
+          "success_accepted": 27,
+          "success_proposed": 31
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 288,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 11
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 42,
+          "n_proposed": 62,
+          "success": true,
+          "success_accepted": 42,
+          "success_proposed": 62
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 89,
+          "n_proposed": 103,
+          "success": true,
+          "success_accepted": 89,
+          "success_proposed": 103
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 4.0,
+          "n_accepted": 200,
+          "n_proposed": 259,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 221,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 218,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 39,
+          "n_proposed": 54,
+          "success": true,
+          "success_accepted": 39,
+          "success_proposed": 54
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 6,
+          "n_proposed": 11,
+          "success": true,
+          "success_accepted": 6,
+          "success_proposed": 11
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 27,
+          "n_proposed": 28,
+          "success": true,
+          "success_accepted": 27,
+          "success_proposed": 28
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 329,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 169,
+          "n_proposed": 235,
+          "success": true,
+          "success_accepted": 169,
+          "success_proposed": 235
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 52,
+          "n_proposed": 61,
+          "success": true,
+          "success_accepted": 52,
+          "success_proposed": 61
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 88,
+          "n_proposed": 130,
+          "success": true,
+          "success_accepted": 88,
+          "success_proposed": 130
+        }
+      },
+      "seed": 12
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 23,
+          "n_proposed": 26,
+          "success": true,
+          "success_accepted": 23,
+          "success_proposed": 26
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 81,
+          "n_proposed": 97,
+          "success": true,
+          "success_accepted": 81,
+          "success_proposed": 97
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 282,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 218,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 227,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 26,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 26
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 7,
+          "n_proposed": 9,
+          "success": true,
+          "success_accepted": 7,
+          "success_proposed": 9
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 30,
+          "n_proposed": 37,
+          "success": true,
+          "success_accepted": 30,
+          "success_proposed": 37
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 119,
+          "n_proposed": 184,
+          "success": true,
+          "success_accepted": 119,
+          "success_proposed": 184
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 55,
+          "n_proposed": 67,
+          "success": true,
+          "success_accepted": 55,
+          "success_proposed": 67
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 41,
+          "n_proposed": 50,
+          "success": true,
+          "success_accepted": 41,
+          "success_proposed": 50
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 288,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 13
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 13,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 13,
+          "success_proposed": 17
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 27,
+          "n_proposed": 37,
+          "success": true,
+          "success_accepted": 27,
+          "success_proposed": 37
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 285,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 232,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 209,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 44,
+          "n_proposed": 66,
+          "success": true,
+          "success_accepted": 44,
+          "success_proposed": 66
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 6,
+          "n_proposed": 6,
+          "success": true,
+          "success_accepted": 6,
+          "success_proposed": 6
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 107,
+          "n_proposed": 133,
+          "success": true,
+          "success_accepted": 107,
+          "success_proposed": 133
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 176,
+          "n_proposed": 300,
+          "success": true,
+          "success_accepted": 176,
+          "success_proposed": 300
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 185,
+          "n_proposed": 226,
+          "success": true,
+          "success_accepted": 185,
+          "success_proposed": 226
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 239,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 189,
+          "n_proposed": 259,
+          "success": true,
+          "success_accepted": 189,
+          "success_proposed": 259
+        }
+      },
+      "seed": 14
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 53,
+          "n_proposed": 65,
+          "success": true,
+          "success_accepted": 53,
+          "success_proposed": 65
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 96,
+          "n_proposed": 105,
+          "success": true,
+          "success_accepted": 96,
+          "success_proposed": 105
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 250,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 221,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 210,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 14,
+          "n_proposed": 25,
+          "success": true,
+          "success_accepted": 14,
+          "success_proposed": 25
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 46,
+          "n_proposed": 64,
+          "success": true,
+          "success_accepted": 46,
+          "success_proposed": 64
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 52,
+          "n_proposed": 61,
+          "success": true,
+          "success_accepted": 52,
+          "success_proposed": 61
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 53,
+          "n_proposed": 90,
+          "success": true,
+          "success_accepted": 53,
+          "success_proposed": 90
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 62,
+          "n_proposed": 73,
+          "success": true,
+          "success_accepted": 62,
+          "success_proposed": 73
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 139,
+          "n_proposed": 162,
+          "success": true,
+          "success_accepted": 139,
+          "success_proposed": 162
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 280,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 15
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 32,
+          "n_proposed": 44,
+          "success": true,
+          "success_accepted": 32,
+          "success_proposed": 44
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 67,
+          "n_proposed": 75,
+          "success": true,
+          "success_accepted": 67,
+          "success_proposed": 75
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 260,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 217,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 212,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 14,
+          "n_proposed": 22,
+          "success": true,
+          "success_accepted": 14,
+          "success_proposed": 22
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 5,
+          "n_proposed": 5,
+          "success": true,
+          "success_accepted": 5,
+          "success_proposed": 5
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 145,
+          "n_proposed": 180,
+          "success": true,
+          "success_accepted": 145,
+          "success_proposed": 180
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 65,
+          "n_proposed": 125,
+          "success": true,
+          "success_accepted": 65,
+          "success_proposed": 125
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 95,
+          "n_proposed": 127,
+          "success": true,
+          "success_accepted": 95,
+          "success_proposed": 127
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 43,
+          "n_proposed": 59,
+          "success": true,
+          "success_accepted": 43,
+          "success_proposed": 59
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 156,
+          "n_proposed": 221,
+          "success": true,
+          "success_accepted": 156,
+          "success_proposed": 221
+        }
+      },
+      "seed": 16
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 26,
+          "n_proposed": 30,
+          "success": true,
+          "success_accepted": 26,
+          "success_proposed": 30
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 49,
+          "n_proposed": 54,
+          "success": true,
+          "success_accepted": 49,
+          "success_proposed": 54
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 276,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 221,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 212,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 23,
+          "n_proposed": 29,
+          "success": true,
+          "success_accepted": 23,
+          "success_proposed": 29
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 30,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 30,
+          "success_proposed": 40
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 51,
+          "n_proposed": 61,
+          "success": true,
+          "success_accepted": 51,
+          "success_proposed": 61
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 304,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 259,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 146,
+          "n_proposed": 167,
+          "success": true,
+          "success_accepted": 146,
+          "success_proposed": 167
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 297,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 17
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 19,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 19
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 39,
+          "n_proposed": 48,
+          "success": true,
+          "success_accepted": 39,
+          "success_proposed": 48
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 255,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 223,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 63,
+          "n_proposed": 106,
+          "success": true,
+          "success_accepted": 63,
+          "success_proposed": 106
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 39,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 39
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 43,
+          "n_proposed": 68,
+          "success": true,
+          "success_accepted": 43,
+          "success_proposed": 68
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 308,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 27,
+          "n_proposed": 39,
+          "success": true,
+          "success_accepted": 27,
+          "success_proposed": 39
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 187,
+          "n_proposed": 218,
+          "success": true,
+          "success_accepted": 187,
+          "success_proposed": 218
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 271,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 18
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 38,
+          "n_proposed": 46,
+          "success": true,
+          "success_accepted": 38,
+          "success_proposed": 46
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 119,
+          "n_proposed": 142,
+          "success": true,
+          "success_accepted": 119,
+          "success_proposed": 142
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 269,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 226,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 209,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 14,
+          "n_proposed": 20,
+          "success": true,
+          "success_accepted": 14,
+          "success_proposed": 20
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 41,
+          "n_proposed": 58,
+          "success": true,
+          "success_accepted": 41,
+          "success_proposed": 58
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 39,
+          "n_proposed": 46,
+          "success": true,
+          "success_accepted": 39,
+          "success_proposed": 46
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 317,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 3,
+          "n_proposed": 3,
+          "success": true,
+          "success_accepted": 3,
+          "success_proposed": 3
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 36,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 36,
+          "success_proposed": 40
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 281,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 19
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 114,
+          "n_proposed": 147,
+          "success": true,
+          "success_accepted": 114,
+          "success_proposed": 147
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 73,
+          "n_proposed": 92,
+          "success": true,
+          "success_accepted": 73,
+          "success_proposed": 92
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 294,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 27,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 27,
+          "success_proposed": 40
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 12,
+          "n_proposed": 14,
+          "success": true,
+          "success_accepted": 12,
+          "success_proposed": 14
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 93,
+          "n_proposed": 102,
+          "success": true,
+          "success_accepted": 93,
+          "success_proposed": 102
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 82,
+          "n_proposed": 126,
+          "success": true,
+          "success_accepted": 82,
+          "success_proposed": 126
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 114,
+          "n_proposed": 153,
+          "success": true,
+          "success_accepted": 114,
+          "success_proposed": 153
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 44,
+          "n_proposed": 57,
+          "success": true,
+          "success_accepted": 44,
+          "success_proposed": 57
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 94,
+          "n_proposed": 132,
+          "success": true,
+          "success_accepted": 94,
+          "success_proposed": 132
+        }
+      },
+      "seed": 20
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 26,
+          "n_proposed": 29,
+          "success": true,
+          "success_accepted": 26,
+          "success_proposed": 29
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 149,
+          "n_proposed": 166,
+          "success": true,
+          "success_accepted": 149,
+          "success_proposed": 166
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 295,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 229,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 22,
+          "n_proposed": 39,
+          "success": true,
+          "success_accepted": 22,
+          "success_proposed": 39
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 61,
+          "n_proposed": 85,
+          "success": true,
+          "success_accepted": 61,
+          "success_proposed": 85
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 111,
+          "n_proposed": 122,
+          "success": true,
+          "success_accepted": 111,
+          "success_proposed": 122
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 367,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 36,
+          "n_proposed": 44,
+          "success": true,
+          "success_accepted": 36,
+          "success_proposed": 44
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 22,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 22
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 280,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 21
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 46,
+          "n_proposed": 60,
+          "success": true,
+          "success_accepted": 46,
+          "success_proposed": 60
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 49,
+          "n_proposed": 58,
+          "success": true,
+          "success_accepted": 49,
+          "success_proposed": 58
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 273,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 218,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 25,
+          "n_proposed": 39,
+          "success": true,
+          "success_accepted": 25,
+          "success_proposed": 39
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 115,
+          "n_proposed": 140,
+          "success": true,
+          "success_accepted": 115,
+          "success_proposed": 140
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 176,
+          "n_proposed": 217,
+          "success": true,
+          "success_accepted": 176,
+          "success_proposed": 217
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 344,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 48,
+          "n_proposed": 59,
+          "success": true,
+          "success_accepted": 48,
+          "success_proposed": 59
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 243,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 150,
+          "n_proposed": 235,
+          "success": true,
+          "success_accepted": 150,
+          "success_proposed": 235
+        }
+      },
+      "seed": 22
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 26,
+          "n_proposed": 37,
+          "success": true,
+          "success_accepted": 26,
+          "success_proposed": 37
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 227,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 271,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 221,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 213,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 26,
+          "n_proposed": 33,
+          "success": true,
+          "success_accepted": 26,
+          "success_proposed": 33
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 34,
+          "n_proposed": 46,
+          "success": true,
+          "success_accepted": 34,
+          "success_proposed": 46
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 15,
+          "n_proposed": 18,
+          "success": true,
+          "success_accepted": 15,
+          "success_proposed": 18
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 338,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 75,
+          "n_proposed": 93,
+          "success": true,
+          "success_accepted": 75,
+          "success_proposed": 93
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 64,
+          "n_proposed": 76,
+          "success": true,
+          "success_accepted": 64,
+          "success_proposed": 76
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 309,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 23
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 62,
+          "n_proposed": 80,
+          "success": true,
+          "success_accepted": 62,
+          "success_proposed": 80
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 33,
+          "n_proposed": 35,
+          "success": true,
+          "success_accepted": 33,
+          "success_proposed": 35
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 248,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 224,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 44,
+          "n_proposed": 63,
+          "success": true,
+          "success_accepted": 44,
+          "success_proposed": 63
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 2,
+          "n_proposed": 3,
+          "success": true,
+          "success_accepted": 2,
+          "success_proposed": 3
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 35,
+          "n_proposed": 53,
+          "success": true,
+          "success_accepted": 35,
+          "success_proposed": 53
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 319,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 82,
+          "n_proposed": 113,
+          "success": true,
+          "success_accepted": 82,
+          "success_proposed": 113
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 59,
+          "n_proposed": 73,
+          "success": true,
+          "success_accepted": 59,
+          "success_proposed": 73
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 161,
+          "n_proposed": 224,
+          "success": true,
+          "success_accepted": 161,
+          "success_proposed": 224
+        }
+      },
+      "seed": 24
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 54,
+          "n_proposed": 71,
+          "success": true,
+          "success_accepted": 54,
+          "success_proposed": 71
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 237,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 278,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 222,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 219,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 21,
+          "n_proposed": 29,
+          "success": true,
+          "success_accepted": 21,
+          "success_proposed": 29
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 35,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 35
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 26,
+          "n_proposed": 33,
+          "success": true,
+          "success_accepted": 26,
+          "success_proposed": 33
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 50,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 50
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 22,
+          "n_proposed": 31,
+          "success": true,
+          "success_accepted": 22,
+          "success_proposed": 31
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 200,
+          "n_proposed": 230,
+          "success": true,
+          "success_accepted": 200,
+          "success_proposed": 230
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 300,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 25
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 20,
+          "n_proposed": 27,
+          "success": true,
+          "success_accepted": 20,
+          "success_proposed": 27
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 63,
+          "n_proposed": 77,
+          "success": true,
+          "success_accepted": 63,
+          "success_proposed": 77
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 254,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 223,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 32,
+          "n_proposed": 49,
+          "success": true,
+          "success_accepted": 32,
+          "success_proposed": 49
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 55,
+          "n_proposed": 67,
+          "success": true,
+          "success_accepted": 55,
+          "success_proposed": 67
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 99,
+          "n_proposed": 117,
+          "success": true,
+          "success_accepted": 99,
+          "success_proposed": 117
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 53,
+          "n_proposed": 92,
+          "success": true,
+          "success_accepted": 53,
+          "success_proposed": 92
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 27,
+          "n_proposed": 43,
+          "success": true,
+          "success_accepted": 27,
+          "success_proposed": 43
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 12,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 12,
+          "success_proposed": 17
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 261,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 26
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 39,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 39
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 96,
+          "n_proposed": 117,
+          "success": true,
+          "success_accepted": 96,
+          "success_proposed": 117
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 261,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 224,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 27,
+          "n_proposed": 43,
+          "success": true,
+          "success_accepted": 27,
+          "success_proposed": 43
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 11,
+          "n_proposed": 19,
+          "success": true,
+          "success_accepted": 11,
+          "success_proposed": 19
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 101,
+          "n_proposed": 112,
+          "success": true,
+          "success_accepted": 101,
+          "success_proposed": 112
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 70,
+          "n_proposed": 127,
+          "success": true,
+          "success_accepted": 70,
+          "success_proposed": 127
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 72,
+          "n_proposed": 99,
+          "success": true,
+          "success_accepted": 72,
+          "success_proposed": 99
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 51,
+          "n_proposed": 75,
+          "success": true,
+          "success_accepted": 51,
+          "success_proposed": 75
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 107,
+          "n_proposed": 142,
+          "success": true,
+          "success_accepted": 107,
+          "success_proposed": 142
+        }
+      },
+      "seed": 27
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 60,
+          "n_proposed": 77,
+          "success": true,
+          "success_accepted": 60,
+          "success_proposed": 77
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 153,
+          "n_proposed": 176,
+          "success": true,
+          "success_accepted": 153,
+          "success_proposed": 176
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 144,
+          "n_proposed": 174,
+          "success": true,
+          "success_accepted": 144,
+          "success_proposed": 174
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 227,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 209,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 58,
+          "n_proposed": 83,
+          "success": true,
+          "success_accepted": 58,
+          "success_proposed": 83
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 18,
+          "n_proposed": 24,
+          "success": true,
+          "success_accepted": 18,
+          "success_proposed": 24
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 36,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 36
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 330,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 8,
+          "n_proposed": 15,
+          "success": true,
+          "success_accepted": 8,
+          "success_proposed": 15
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 10,
+          "n_proposed": 13,
+          "success": true,
+          "success_accepted": 10,
+          "success_proposed": 13
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 276,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 28
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 79,
+          "n_proposed": 96,
+          "success": true,
+          "success_accepted": 79,
+          "success_proposed": 96
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 103,
+          "n_proposed": 124,
+          "success": true,
+          "success_accepted": 103,
+          "success_proposed": 124
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 284,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 218,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 222,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 44,
+          "n_proposed": 67,
+          "success": true,
+          "success_accepted": 44,
+          "success_proposed": 67
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 8,
+          "n_proposed": 11,
+          "success": true,
+          "success_accepted": 8,
+          "success_proposed": 11
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 17,
+          "n_proposed": 23,
+          "success": true,
+          "success_accepted": 17,
+          "success_proposed": 23
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 126,
+          "n_proposed": 203,
+          "success": true,
+          "success_accepted": 126,
+          "success_proposed": 203
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 100,
+          "n_proposed": 122,
+          "success": true,
+          "success_accepted": 100,
+          "success_proposed": 122
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 97,
+          "n_proposed": 107,
+          "success": true,
+          "success_accepted": 97,
+          "success_proposed": 107
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 260,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 29
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 42,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 42
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 126,
+          "n_proposed": 146,
+          "success": true,
+          "success_accepted": 126,
+          "success_proposed": 146
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 264,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 222,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 40,
+          "n_proposed": 54,
+          "success": true,
+          "success_accepted": 40,
+          "success_proposed": 54
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 119,
+          "n_proposed": 151,
+          "success": true,
+          "success_accepted": 119,
+          "success_proposed": 151
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 45,
+          "n_proposed": 49,
+          "success": true,
+          "success_accepted": 45,
+          "success_proposed": 49
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 326,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 83,
+          "n_proposed": 113,
+          "success": true,
+          "success_accepted": 83,
+          "success_proposed": 113
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 94,
+          "n_proposed": 107,
+          "success": true,
+          "success_accepted": 94,
+          "success_proposed": 107
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 280,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 30
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 51,
+          "n_proposed": 61,
+          "success": true,
+          "success_accepted": 51,
+          "success_proposed": 61
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 40,
+          "n_proposed": 45,
+          "success": true,
+          "success_accepted": 40,
+          "success_proposed": 45
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 268,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 226,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 211,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 13,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 13,
+          "success_proposed": 17
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 3,
+          "n_proposed": 3,
+          "success": true,
+          "success_accepted": 3,
+          "success_proposed": 3
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 33,
+          "n_proposed": 41,
+          "success": true,
+          "success_accepted": 33,
+          "success_proposed": 41
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 157,
+          "n_proposed": 274,
+          "success": true,
+          "success_accepted": 157,
+          "success_proposed": 274
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 5,
+          "n_proposed": 9,
+          "success": true,
+          "success_accepted": 5,
+          "success_proposed": 9
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 246,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 268,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 31
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 56,
+          "n_proposed": 77,
+          "success": true,
+          "success_accepted": 56,
+          "success_proposed": 77
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 98,
+          "n_proposed": 119,
+          "success": true,
+          "success_accepted": 98,
+          "success_proposed": 119
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 306,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 217,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 29,
+          "n_proposed": 34,
+          "success": true,
+          "success_accepted": 29,
+          "success_proposed": 34
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 33,
+          "n_proposed": 46,
+          "success": true,
+          "success_accepted": 33,
+          "success_proposed": 46
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 32,
+          "n_proposed": 48,
+          "success": true,
+          "success_accepted": 32,
+          "success_proposed": 48
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 102,
+          "n_proposed": 180,
+          "success": true,
+          "success_accepted": 102,
+          "success_proposed": 180
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 43,
+          "n_proposed": 55,
+          "success": true,
+          "success_accepted": 43,
+          "success_proposed": 55
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 235,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 258,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 32
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 65,
+          "n_proposed": 83,
+          "success": true,
+          "success_accepted": 65,
+          "success_proposed": 83
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 42,
+          "n_proposed": 47,
+          "success": true,
+          "success_accepted": 42,
+          "success_proposed": 47
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 253,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 224,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 218,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 34,
+          "n_proposed": 48,
+          "success": true,
+          "success_accepted": 34,
+          "success_proposed": 48
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 26,
+          "n_proposed": 36,
+          "success": true,
+          "success_accepted": 26,
+          "success_proposed": 36
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 63,
+          "n_proposed": 75,
+          "success": true,
+          "success_accepted": 63,
+          "success_proposed": 75
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 188,
+          "n_proposed": 367,
+          "success": true,
+          "success_accepted": 188,
+          "success_proposed": 367
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 17,
+          "n_proposed": 22,
+          "success": true,
+          "success_accepted": 17,
+          "success_proposed": 22
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 20,
+          "n_proposed": 34,
+          "success": true,
+          "success_accepted": 20,
+          "success_proposed": 34
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 261,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 33
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 20,
+          "n_proposed": 27,
+          "success": true,
+          "success_accepted": 20,
+          "success_proposed": 27
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 66,
+          "n_proposed": 78,
+          "success": true,
+          "success_accepted": 66,
+          "success_proposed": 78
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 279,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 213,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 213,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 46,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 46
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 2,
+          "n_proposed": 3,
+          "success": true,
+          "success_accepted": 2,
+          "success_proposed": 3
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 34,
+          "n_proposed": 47,
+          "success": true,
+          "success_accepted": 34,
+          "success_proposed": 47
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 93,
+          "n_proposed": 140,
+          "success": true,
+          "success_accepted": 93,
+          "success_proposed": 140
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 25,
+          "n_proposed": 35,
+          "success": true,
+          "success_accepted": 25,
+          "success_proposed": 35
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 143,
+          "n_proposed": 172,
+          "success": true,
+          "success_accepted": 143,
+          "success_proposed": 172
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 303,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 34
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 30,
+          "n_proposed": 41,
+          "success": true,
+          "success_accepted": 30,
+          "success_proposed": 41
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 34,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 34,
+          "success_proposed": 40
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 158,
+          "n_proposed": 203,
+          "success": true,
+          "success_accepted": 158,
+          "success_proposed": 203
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 231,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 30,
+          "n_proposed": 53,
+          "success": true,
+          "success_accepted": 30,
+          "success_proposed": 53
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 33,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 33,
+          "success_proposed": 40
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 83,
+          "n_proposed": 105,
+          "success": true,
+          "success_accepted": 83,
+          "success_proposed": 105
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 298,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 47,
+          "n_proposed": 59,
+          "success": true,
+          "success_accepted": 47,
+          "success_proposed": 59
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 89,
+          "n_proposed": 102,
+          "success": true,
+          "success_accepted": 89,
+          "success_proposed": 102
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 183,
+          "n_proposed": 262,
+          "success": true,
+          "success_accepted": 183,
+          "success_proposed": 262
+        }
+      },
+      "seed": 35
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 15,
+          "n_proposed": 16,
+          "success": true,
+          "success_accepted": 15,
+          "success_proposed": 16
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 39,
+          "n_proposed": 50,
+          "success": true,
+          "success_accepted": 39,
+          "success_proposed": 50
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 257,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 228,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 17,
+          "n_proposed": 20,
+          "success": true,
+          "success_accepted": 17,
+          "success_proposed": 20
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 72,
+          "n_proposed": 100,
+          "success": true,
+          "success_accepted": 72,
+          "success_proposed": 100
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 38,
+          "n_proposed": 49,
+          "success": true,
+          "success_accepted": 38,
+          "success_proposed": 49
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 47,
+          "n_proposed": 80,
+          "success": true,
+          "success_accepted": 47,
+          "success_proposed": 80
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 5,
+          "n_proposed": 6,
+          "success": true,
+          "success_accepted": 5,
+          "success_proposed": 6
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 3,
+          "n_proposed": 4,
+          "success": true,
+          "success_accepted": 3,
+          "success_proposed": 4
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 307,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 36
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 45,
+          "n_proposed": 62,
+          "success": true,
+          "success_accepted": 45,
+          "success_proposed": 62
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 121,
+          "n_proposed": 141,
+          "success": true,
+          "success_accepted": 121,
+          "success_proposed": 141
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 165,
+          "n_proposed": 227,
+          "success": true,
+          "success_accepted": 165,
+          "success_proposed": 227
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 225,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 224,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 19,
+          "n_proposed": 26,
+          "success": true,
+          "success_accepted": 19,
+          "success_proposed": 26
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 77,
+          "n_proposed": 96,
+          "success": true,
+          "success_accepted": 77,
+          "success_proposed": 96
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 133,
+          "n_proposed": 152,
+          "success": true,
+          "success_accepted": 133,
+          "success_proposed": 152
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 329,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 61,
+          "n_proposed": 75,
+          "success": true,
+          "success_accepted": 61,
+          "success_proposed": 75
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 94,
+          "n_proposed": 127,
+          "success": true,
+          "success_accepted": 94,
+          "success_proposed": 127
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 91,
+          "n_proposed": 127,
+          "success": true,
+          "success_accepted": 91,
+          "success_proposed": 127
+        }
+      },
+      "seed": 37
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 62,
+          "n_proposed": 78,
+          "success": true,
+          "success_accepted": 62,
+          "success_proposed": 78
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 44,
+          "n_proposed": 52,
+          "success": true,
+          "success_accepted": 44,
+          "success_proposed": 52
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 101,
+          "n_proposed": 136,
+          "success": true,
+          "success_accepted": 101,
+          "success_proposed": 136
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 223,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 224,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 15,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 15,
+          "success_proposed": 17
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 0,
+          "n_proposed": 0,
+          "success": true,
+          "success_accepted": 0,
+          "success_proposed": 0
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 0,
+          "n_proposed": 0,
+          "success": true,
+          "success_accepted": 0,
+          "success_proposed": 0
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 0,
+          "n_proposed": 0,
+          "success": true,
+          "success_accepted": 0,
+          "success_proposed": 0
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 19,
+          "n_proposed": 36,
+          "success": true,
+          "success_accepted": 19,
+          "success_proposed": 36
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 251,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 47,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 47
+        }
+      },
+      "seed": 38
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 45,
+          "n_proposed": 53,
+          "success": true,
+          "success_accepted": 45,
+          "success_proposed": 53
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 72,
+          "n_proposed": 81,
+          "success": true,
+          "success_accepted": 72,
+          "success_proposed": 81
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 263,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 209,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 21,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 21
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 20,
+          "n_proposed": 27,
+          "success": true,
+          "success_accepted": 20,
+          "success_proposed": 27
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 13,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 13,
+          "success_proposed": 17
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 176,
+          "n_proposed": 292,
+          "success": true,
+          "success_accepted": 176,
+          "success_proposed": 292
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 117,
+          "n_proposed": 142,
+          "success": true,
+          "success_accepted": 117,
+          "success_proposed": 142
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 87,
+          "n_proposed": 97,
+          "success": true,
+          "success_accepted": 87,
+          "success_proposed": 97
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 190,
+          "n_proposed": 268,
+          "success": true,
+          "success_accepted": 190,
+          "success_proposed": 268
+        }
+      },
+      "seed": 39
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 30,
+          "n_proposed": 42,
+          "success": true,
+          "success_accepted": 30,
+          "success_proposed": 42
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 43,
+          "n_proposed": 49,
+          "success": true,
+          "success_accepted": 43,
+          "success_proposed": 49
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 289,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 220,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 213,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 12,
+          "n_proposed": 24,
+          "success": true,
+          "success_accepted": 12,
+          "success_proposed": 24
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 43,
+          "n_proposed": 49,
+          "success": true,
+          "success_accepted": 43,
+          "success_proposed": 49
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 168,
+          "n_proposed": 197,
+          "success": true,
+          "success_accepted": 168,
+          "success_proposed": 197
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 139,
+          "n_proposed": 243,
+          "success": true,
+          "success_accepted": 139,
+          "success_proposed": 243
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 49,
+          "n_proposed": 65,
+          "success": true,
+          "success_accepted": 49,
+          "success_proposed": 65
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 18,
+          "n_proposed": 22,
+          "success": true,
+          "success_accepted": 18,
+          "success_proposed": 22
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 158,
+          "n_proposed": 219,
+          "success": true,
+          "success_accepted": 158,
+          "success_proposed": 219
+        }
+      },
+      "seed": 40
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 56,
+          "n_proposed": 76,
+          "success": true,
+          "success_accepted": 56,
+          "success_proposed": 76
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 103,
+          "n_proposed": 118,
+          "success": true,
+          "success_accepted": 103,
+          "success_proposed": 118
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 300,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 223,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 213,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 34,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 34
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 0,
+          "n_proposed": 0,
+          "success": true,
+          "success_accepted": 0,
+          "success_proposed": 0
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 0,
+          "n_proposed": 0,
+          "success": true,
+          "success_accepted": 0,
+          "success_proposed": 0
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 0,
+          "n_proposed": 0,
+          "success": true,
+          "success_accepted": 0,
+          "success_proposed": 0
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 22,
+          "n_proposed": 23,
+          "success": true,
+          "success_accepted": 22,
+          "success_proposed": 23
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 147,
+          "n_proposed": 166,
+          "success": true,
+          "success_accepted": 147,
+          "success_proposed": 166
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 113,
+          "n_proposed": 174,
+          "success": true,
+          "success_accepted": 113,
+          "success_proposed": 174
+        }
+      },
+      "seed": 41
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 35,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 35
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 237,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 254,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 217,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 219,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 46,
+          "n_proposed": 68,
+          "success": true,
+          "success_accepted": 46,
+          "success_proposed": 68
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 48,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 48
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 12,
+          "n_proposed": 22,
+          "success": true,
+          "success_accepted": 12,
+          "success_proposed": 22
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 52,
+          "n_proposed": 78,
+          "success": true,
+          "success_accepted": 52,
+          "success_proposed": 78
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 45,
+          "n_proposed": 64,
+          "success": true,
+          "success_accepted": 45,
+          "success_proposed": 64
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 146,
+          "n_proposed": 171,
+          "success": true,
+          "success_accepted": 146,
+          "success_proposed": 171
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 120,
+          "n_proposed": 181,
+          "success": true,
+          "success_accepted": 120,
+          "success_proposed": 181
+        }
+      },
+      "seed": 42
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 65,
+          "n_proposed": 75,
+          "success": true,
+          "success_accepted": 65,
+          "success_proposed": 75
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 47,
+          "n_proposed": 67,
+          "success": true,
+          "success_accepted": 47,
+          "success_proposed": 67
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 184,
+          "n_proposed": 243,
+          "success": true,
+          "success_accepted": 184,
+          "success_proposed": 243
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 219,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 221,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 30,
+          "n_proposed": 50,
+          "success": true,
+          "success_accepted": 30,
+          "success_proposed": 50
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 21,
+          "n_proposed": 28,
+          "success": true,
+          "success_accepted": 21,
+          "success_proposed": 28
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 111,
+          "n_proposed": 125,
+          "success": true,
+          "success_accepted": 111,
+          "success_proposed": 125
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 76,
+          "n_proposed": 116,
+          "success": true,
+          "success_accepted": 76,
+          "success_proposed": 116
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 184,
+          "n_proposed": 241,
+          "success": true,
+          "success_accepted": 184,
+          "success_proposed": 241
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 100,
+          "n_proposed": 113,
+          "success": true,
+          "success_accepted": 100,
+          "success_proposed": 113
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 63,
+          "n_proposed": 87,
+          "success": true,
+          "success_accepted": 63,
+          "success_proposed": 87
+        }
+      },
+      "seed": 43
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 21,
+          "n_proposed": 25,
+          "success": true,
+          "success_accepted": 21,
+          "success_proposed": 25
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 86,
+          "n_proposed": 96,
+          "success": true,
+          "success_accepted": 86,
+          "success_proposed": 96
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 268,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 216,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 22,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 22
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 37,
+          "n_proposed": 51,
+          "success": true,
+          "success_accepted": 37,
+          "success_proposed": 51
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 58,
+          "n_proposed": 72,
+          "success": true,
+          "success_accepted": 58,
+          "success_proposed": 72
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 301,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 86,
+          "n_proposed": 104,
+          "success": true,
+          "success_accepted": 86,
+          "success_proposed": 104
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 67,
+          "n_proposed": 83,
+          "success": true,
+          "success_accepted": 67,
+          "success_proposed": 83
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 266,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 44
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 41,
+          "n_proposed": 56,
+          "success": true,
+          "success_accepted": 41,
+          "success_proposed": 56
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 111,
+          "n_proposed": 144,
+          "success": true,
+          "success_accepted": 111,
+          "success_proposed": 144
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 289,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 219,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 213,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 30,
+          "n_proposed": 43,
+          "success": true,
+          "success_accepted": 30,
+          "success_proposed": 43
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 53,
+          "n_proposed": 71,
+          "success": true,
+          "success_accepted": 53,
+          "success_proposed": 71
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 55,
+          "n_proposed": 66,
+          "success": true,
+          "success_accepted": 55,
+          "success_proposed": 66
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 152,
+          "n_proposed": 248,
+          "success": true,
+          "success_accepted": 152,
+          "success_proposed": 248
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 40,
+          "n_proposed": 49,
+          "success": true,
+          "success_accepted": 40,
+          "success_proposed": 49
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 85,
+          "n_proposed": 100,
+          "success": true,
+          "success_accepted": 85,
+          "success_proposed": 100
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 80,
+          "n_proposed": 106,
+          "success": true,
+          "success_accepted": 80,
+          "success_proposed": 106
+        }
+      },
+      "seed": 45
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 21,
+          "n_proposed": 31,
+          "success": true,
+          "success_accepted": 21,
+          "success_proposed": 31
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 54,
+          "n_proposed": 64,
+          "success": true,
+          "success_accepted": 54,
+          "success_proposed": 64
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 239,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 223,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 223,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 58,
+          "n_proposed": 78,
+          "success": true,
+          "success_accepted": 58,
+          "success_proposed": 78
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 32,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 32,
+          "success_proposed": 40
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 33,
+          "n_proposed": 39,
+          "success": true,
+          "success_accepted": 33,
+          "success_proposed": 39
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 287,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 89,
+          "n_proposed": 107,
+          "success": true,
+          "success_accepted": 89,
+          "success_proposed": 107
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 133,
+          "n_proposed": 152,
+          "success": true,
+          "success_accepted": 133,
+          "success_proposed": 152
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 273,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 46
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 80,
+          "n_proposed": 99,
+          "success": true,
+          "success_accepted": 80,
+          "success_proposed": 99
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 114,
+          "n_proposed": 131,
+          "success": true,
+          "success_accepted": 114,
+          "success_proposed": 131
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 280,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 232,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 216,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 21,
+          "n_proposed": 33,
+          "success": true,
+          "success_accepted": 21,
+          "success_proposed": 33
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 52,
+          "n_proposed": 78,
+          "success": true,
+          "success_accepted": 52,
+          "success_proposed": 78
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 105,
+          "n_proposed": 123,
+          "success": true,
+          "success_accepted": 105,
+          "success_proposed": 123
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 112,
+          "n_proposed": 182,
+          "success": true,
+          "success_accepted": 112,
+          "success_proposed": 182
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 22,
+          "n_proposed": 29,
+          "success": true,
+          "success_accepted": 22,
+          "success_proposed": 29
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 231,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 284,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 47
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 46,
+          "n_proposed": 50,
+          "success": true,
+          "success_accepted": 46,
+          "success_proposed": 50
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 185,
+          "n_proposed": 217,
+          "success": true,
+          "success_accepted": 185,
+          "success_proposed": 217
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 275,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 208,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 65,
+          "n_proposed": 93,
+          "success": true,
+          "success_accepted": 65,
+          "success_proposed": 93
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 14,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 14,
+          "success_proposed": 17
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 7,
+          "n_proposed": 11,
+          "success": true,
+          "success_accepted": 7,
+          "success_proposed": 11
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 136,
+          "n_proposed": 207,
+          "success": true,
+          "success_accepted": 136,
+          "success_proposed": 207
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 19,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 19
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 242,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 165,
+          "n_proposed": 245,
+          "success": true,
+          "success_accepted": 165,
+          "success_proposed": 245
+        }
+      },
+      "seed": 48
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 40
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 48,
+          "n_proposed": 51,
+          "success": true,
+          "success_accepted": 48,
+          "success_proposed": 51
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 184,
+          "n_proposed": 236,
+          "success": true,
+          "success_accepted": 184,
+          "success_proposed": 236
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 225,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 225,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 24,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 24
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 37,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 37
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 53,
+          "n_proposed": 76,
+          "success": true,
+          "success_accepted": 53,
+          "success_proposed": 76
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 90,
+          "n_proposed": 145,
+          "success": true,
+          "success_accepted": 90,
+          "success_proposed": 145
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 6,
+          "n_proposed": 7,
+          "success": true,
+          "success_accepted": 6,
+          "success_proposed": 7
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 233,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 275,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 49
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 57,
+          "n_proposed": 76,
+          "success": true,
+          "success_accepted": 57,
+          "success_proposed": 76
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 104,
+          "n_proposed": 128,
+          "success": true,
+          "success_accepted": 104,
+          "success_proposed": 128
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 273,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 212,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 21,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 21
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 12,
+          "n_proposed": 18,
+          "success": true,
+          "success_accepted": 12,
+          "success_proposed": 18
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 33,
+          "n_proposed": 45,
+          "success": true,
+          "success_accepted": 33,
+          "success_proposed": 45
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 29,
+          "n_proposed": 48,
+          "success": true,
+          "success_accepted": 29,
+          "success_proposed": 48
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 55,
+          "n_proposed": 67,
+          "success": true,
+          "success_accepted": 55,
+          "success_proposed": 67
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 140,
+          "n_proposed": 174,
+          "success": true,
+          "success_accepted": 140,
+          "success_proposed": 174
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 36,
+          "n_proposed": 48,
+          "success": true,
+          "success_accepted": 36,
+          "success_proposed": 48
+        }
+      },
+      "seed": 50
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 42,
+          "n_proposed": 54,
+          "success": true,
+          "success_accepted": 42,
+          "success_proposed": 54
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 122,
+          "n_proposed": 138,
+          "success": true,
+          "success_accepted": 122,
+          "success_proposed": 138
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 249,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 223,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 12,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 12,
+          "success_proposed": 17
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 53,
+          "n_proposed": 74,
+          "success": true,
+          "success_accepted": 53,
+          "success_proposed": 74
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 114,
+          "n_proposed": 141,
+          "success": true,
+          "success_accepted": 114,
+          "success_proposed": 141
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 82,
+          "n_proposed": 137,
+          "success": true,
+          "success_accepted": 82,
+          "success_proposed": 137
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 120,
+          "n_proposed": 161,
+          "success": true,
+          "success_accepted": 120,
+          "success_proposed": 161
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 23,
+          "n_proposed": 31,
+          "success": true,
+          "success_accepted": 23,
+          "success_proposed": 31
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 89,
+          "n_proposed": 130,
+          "success": true,
+          "success_accepted": 89,
+          "success_proposed": 130
+        }
+      },
+      "seed": 51
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 73,
+          "n_proposed": 97,
+          "success": true,
+          "success_accepted": 73,
+          "success_proposed": 97
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 178,
+          "n_proposed": 212,
+          "success": true,
+          "success_accepted": 178,
+          "success_proposed": 212
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 195,
+          "n_proposed": 272,
+          "success": true,
+          "success_accepted": 195,
+          "success_proposed": 272
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 235,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 220,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 65,
+          "n_proposed": 94,
+          "success": true,
+          "success_accepted": 65,
+          "success_proposed": 94
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 27,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 27
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 32,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 32,
+          "success_proposed": 40
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 25,
+          "n_proposed": 44,
+          "success": true,
+          "success_accepted": 25,
+          "success_proposed": 44
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 117,
+          "n_proposed": 148,
+          "success": true,
+          "success_accepted": 117,
+          "success_proposed": 148
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 21,
+          "n_proposed": 29,
+          "success": true,
+          "success_accepted": 21,
+          "success_proposed": 29
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 182,
+          "n_proposed": 256,
+          "success": true,
+          "success_accepted": 182,
+          "success_proposed": 256
+        }
+      },
+      "seed": 52
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 20,
+          "n_proposed": 24,
+          "success": true,
+          "success_accepted": 20,
+          "success_proposed": 24
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 80,
+          "n_proposed": 97,
+          "success": true,
+          "success_accepted": 80,
+          "success_proposed": 97
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 263,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 224,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 220,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 35,
+          "n_proposed": 51,
+          "success": true,
+          "success_accepted": 35,
+          "success_proposed": 51
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 19,
+          "n_proposed": 25,
+          "success": true,
+          "success_accepted": 19,
+          "success_proposed": 25
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 230,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 311,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 31,
+          "n_proposed": 53,
+          "success": true,
+          "success_accepted": 31,
+          "success_proposed": 53
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 131,
+          "n_proposed": 157,
+          "success": true,
+          "success_accepted": 131,
+          "success_proposed": 157
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 256,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 53
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 48,
+          "n_proposed": 60,
+          "success": true,
+          "success_accepted": 48,
+          "success_proposed": 60
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 83,
+          "n_proposed": 97,
+          "success": true,
+          "success_accepted": 83,
+          "success_proposed": 97
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 266,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 218,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 220,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 16,
+          "n_proposed": 26,
+          "success": true,
+          "success_accepted": 16,
+          "success_proposed": 26
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 68,
+          "n_proposed": 87,
+          "success": true,
+          "success_accepted": 68,
+          "success_proposed": 87
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 32,
+          "n_proposed": 36,
+          "success": true,
+          "success_accepted": 32,
+          "success_proposed": 36
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 280,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 9,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 9,
+          "success_proposed": 17
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 64,
+          "n_proposed": 93,
+          "success": true,
+          "success_accepted": 64,
+          "success_proposed": 93
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 71,
+          "n_proposed": 90,
+          "success": true,
+          "success_accepted": 71,
+          "success_proposed": 90
+        }
+      },
+      "seed": 54
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 27,
+          "n_proposed": 36,
+          "success": true,
+          "success_accepted": 27,
+          "success_proposed": 36
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 150,
+          "n_proposed": 181,
+          "success": true,
+          "success_accepted": 150,
+          "success_proposed": 181
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 245,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 248,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 208,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 14,
+          "n_proposed": 18,
+          "success": true,
+          "success_accepted": 14,
+          "success_proposed": 18
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 11,
+          "n_proposed": 16,
+          "success": true,
+          "success_accepted": 11,
+          "success_proposed": 16
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 47,
+          "n_proposed": 54,
+          "success": true,
+          "success_accepted": 47,
+          "success_proposed": 54
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 193,
+          "n_proposed": 352,
+          "success": true,
+          "success_accepted": 193,
+          "success_proposed": 352
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 110,
+          "n_proposed": 147,
+          "success": true,
+          "success_accepted": 110,
+          "success_proposed": 147
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 49,
+          "n_proposed": 58,
+          "success": true,
+          "success_accepted": 49,
+          "success_proposed": 58
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 305,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 55
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 20,
+          "n_proposed": 29,
+          "success": true,
+          "success_accepted": 20,
+          "success_proposed": 29
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 51,
+          "n_proposed": 74,
+          "success": true,
+          "success_accepted": 51,
+          "success_proposed": 74
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 255,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 231,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 209,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 29,
+          "n_proposed": 37,
+          "success": true,
+          "success_accepted": 29,
+          "success_proposed": 37
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 5,
+          "n_proposed": 7,
+          "success": true,
+          "success_accepted": 5,
+          "success_proposed": 7
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 129,
+          "n_proposed": 155,
+          "success": true,
+          "success_accepted": 129,
+          "success_proposed": 155
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 322,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 20,
+          "n_proposed": 26,
+          "success": true,
+          "success_accepted": 20,
+          "success_proposed": 26
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 116,
+          "n_proposed": 133,
+          "success": true,
+          "success_accepted": 116,
+          "success_proposed": 133
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 104,
+          "n_proposed": 137,
+          "success": true,
+          "success_accepted": 104,
+          "success_proposed": 137
+        }
+      },
+      "seed": 56
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 15,
+          "n_proposed": 15,
+          "success": true,
+          "success_accepted": 15,
+          "success_proposed": 15
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 85,
+          "n_proposed": 91,
+          "success": true,
+          "success_accepted": 85,
+          "success_proposed": 91
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 283,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 225,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 216,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 28,
+          "n_proposed": 40,
+          "success": true,
+          "success_accepted": 28,
+          "success_proposed": 40
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 38,
+          "n_proposed": 49,
+          "success": true,
+          "success_accepted": 38,
+          "success_proposed": 49
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 93,
+          "n_proposed": 110,
+          "success": true,
+          "success_accepted": 93,
+          "success_proposed": 110
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 121,
+          "n_proposed": 204,
+          "success": true,
+          "success_accepted": 121,
+          "success_proposed": 204
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 83,
+          "n_proposed": 110,
+          "success": true,
+          "success_accepted": 83,
+          "success_proposed": 110
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 171,
+          "n_proposed": 193,
+          "success": true,
+          "success_accepted": 171,
+          "success_proposed": 193
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 292,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 57
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 21,
+          "n_proposed": 24,
+          "success": true,
+          "success_accepted": 21,
+          "success_proposed": 24
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 37,
+          "n_proposed": 43,
+          "success": true,
+          "success_accepted": 37,
+          "success_proposed": 43
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 261,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 228,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 212,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 49,
+          "n_proposed": 71,
+          "success": true,
+          "success_accepted": 49,
+          "success_proposed": 71
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 61,
+          "n_proposed": 87,
+          "success": true,
+          "success_accepted": 61,
+          "success_proposed": 87
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 10,
+          "n_proposed": 10,
+          "success": true,
+          "success_accepted": 10,
+          "success_proposed": 10
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 324,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 87,
+          "n_proposed": 115,
+          "success": true,
+          "success_accepted": 87,
+          "success_proposed": 115
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 41,
+          "n_proposed": 55,
+          "success": true,
+          "success_accepted": 41,
+          "success_proposed": 55
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 45,
+          "n_proposed": 66,
+          "success": true,
+          "success_accepted": 45,
+          "success_proposed": 66
+        }
+      },
+      "seed": 58
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 14,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 14,
+          "success_proposed": 17
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 113,
+          "n_proposed": 137,
+          "success": true,
+          "success_accepted": 113,
+          "success_proposed": 137
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 249,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 218,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 40,
+          "n_proposed": 51,
+          "success": true,
+          "success_accepted": 40,
+          "success_proposed": 51
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 64,
+          "n_proposed": 86,
+          "success": true,
+          "success_accepted": 64,
+          "success_proposed": 86
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 12,
+          "n_proposed": 15,
+          "success": true,
+          "success_accepted": 12,
+          "success_proposed": 15
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 349,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 161,
+          "n_proposed": 220,
+          "success": true,
+          "success_accepted": 161,
+          "success_proposed": 220
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 179,
+          "n_proposed": 210,
+          "success": true,
+          "success_accepted": 179,
+          "success_proposed": 210
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 282,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        }
+      },
+      "seed": 59
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 63,
+          "n_proposed": 86,
+          "success": true,
+          "success_accepted": 63,
+          "success_proposed": 86
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 67,
+          "n_proposed": 81,
+          "success": true,
+          "success_accepted": 67,
+          "success_proposed": 81
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 257,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 232,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 214,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 38,
+          "n_proposed": 48,
+          "success": true,
+          "success_accepted": 38,
+          "success_proposed": 48
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 29,
+          "n_proposed": 33,
+          "success": true,
+          "success_accepted": 29,
+          "success_proposed": 33
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 41,
+          "n_proposed": 50,
+          "success": true,
+          "success_accepted": 41,
+          "success_proposed": 50
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 305,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 156,
+          "n_proposed": 204,
+          "success": true,
+          "success_accepted": 156,
+          "success_proposed": 204
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 91,
+          "n_proposed": 105,
+          "success": true,
+          "success_accepted": 91,
+          "success_proposed": 105
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 37,
+          "n_proposed": 57,
+          "success": true,
+          "success_accepted": 37,
+          "success_proposed": 57
+        }
+      },
+      "seed": 60
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 10,
+          "n_proposed": 11,
+          "success": true,
+          "success_accepted": 10,
+          "success_proposed": 11
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 237,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 255,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 234,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 209,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 24,
+          "n_proposed": 41,
+          "success": true,
+          "success_accepted": 24,
+          "success_proposed": 41
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 90,
+          "n_proposed": 126,
+          "success": true,
+          "success_accepted": 90,
+          "success_proposed": 126
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 63,
+          "n_proposed": 74,
+          "success": true,
+          "success_accepted": 63,
+          "success_proposed": 74
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 307,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 13,
+          "n_proposed": 17,
+          "success": true,
+          "success_accepted": 13,
+          "success_proposed": 17
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 248,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 42,
+          "n_proposed": 59,
+          "success": true,
+          "success_accepted": 42,
+          "success_proposed": 59
+        }
+      },
+      "seed": 61
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 49,
+          "n_proposed": 63,
+          "success": true,
+          "success_accepted": 49,
+          "success_proposed": 63
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 241,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 254,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 222,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 48,
+          "n_proposed": 80,
+          "success": true,
+          "success_accepted": 48,
+          "success_proposed": 80
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 15,
+          "n_proposed": 24,
+          "success": true,
+          "success_accepted": 15,
+          "success_proposed": 24
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 7,
+          "n_proposed": 13,
+          "success": true,
+          "success_accepted": 7,
+          "success_proposed": 13
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 77,
+          "n_proposed": 139,
+          "success": true,
+          "success_accepted": 77,
+          "success_proposed": 139
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 48,
+          "n_proposed": 62,
+          "success": true,
+          "success_accepted": 48,
+          "success_proposed": 62
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 44,
+          "n_proposed": 55,
+          "success": true,
+          "success_accepted": 44,
+          "success_proposed": 55
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 179,
+          "n_proposed": 250,
+          "success": true,
+          "success_accepted": 179,
+          "success_proposed": 250
+        }
+      },
+      "seed": 62
+    },
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "anthropomorphic_staggered::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 43,
+          "n_proposed": 51,
+          "success": true,
+          "success_accepted": 43,
+          "success_proposed": 51
+        },
+        "anthropomorphic_staggered::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 42,
+          "n_proposed": 54,
+          "success": true,
+          "success_accepted": 42,
+          "success_proposed": 54
+        },
+        "anthropomorphic_staggered::MINIMAL": {
+          "final_distance": 3.0,
+          "n_accepted": 200,
+          "n_proposed": 266,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 229,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::DEFAULT+SMALL": {
+          "final_distance": 2.0,
+          "n_accepted": 200,
+          "n_proposed": 215,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "arch_palm::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 21,
+          "n_proposed": 33,
+          "success": true,
+          "success_accepted": 21,
+          "success_proposed": 33
+        },
+        "prismatic_gripper::DEFAULT": {
+          "final_distance": 0.0,
+          "n_accepted": 22,
+          "n_proposed": 29,
+          "success": true,
+          "success_accepted": 22,
+          "success_proposed": 29
+        },
+        "prismatic_gripper::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 13,
+          "n_proposed": 16,
+          "success": true,
+          "success_accepted": 13,
+          "success_proposed": 16
+        },
+        "prismatic_gripper::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 188,
+          "n_proposed": 294,
+          "success": true,
+          "success_accepted": 188,
+          "success_proposed": 294
+        },
+        "radial_3::DEFAULT": {
+          "final_distance": 1.0,
+          "n_accepted": 200,
+          "n_proposed": 242,
+          "success": false,
+          "success_accepted": null,
+          "success_proposed": null
+        },
+        "radial_3::DEFAULT+SMALL": {
+          "final_distance": 0.0,
+          "n_accepted": 47,
+          "n_proposed": 55,
+          "success": true,
+          "success_accepted": 47,
+          "success_proposed": 55
+        },
+        "radial_3::MINIMAL": {
+          "final_distance": 0.0,
+          "n_accepted": 66,
+          "n_proposed": 101,
+          "success": true,
+          "success_accepted": 66,
+          "success_proposed": 101
+        }
+      },
+      "seed": 63
+    }
+  ],
+  "python_version": "3.10.12 (main, Aug 31 2026, 10:18:17) [GCC 11.4.0]",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63
+  ],
+  "wall_time_s": 2.8911988735198975
+}
