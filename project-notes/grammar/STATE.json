@@ -122,10 +122,17 @@
       "hypothesis": "No operator adds/removes a palm body or toggles a palm joint; add_digit/remove_digit change ~7 joints because new digits are sampled at full size. Evolution needs minimal structural operators (add 1-phalanx digit, add/remove palm body, toggle palm joint).",
       "decision": "keep",
       "evidence": "MINIMAL_STRUCTURAL_OPERATORS added; E3: arch_palm 0/64 with default ops, 64/64 with minimal ops"
+    },
+    {
+      "id": "I14",
+      "status": "in_progress",
+      "hypothesis": "Fix list from opus-review-e1-e4: aligned phenotype distance; antipodal_pinch same-configuration pairing; reach_coverage normalisation by a mutable size; opposition excluding same-digit tips; root_length/radius operators; sorted choice lists for step_limits/step_coupling; step_length alias removed; -0.0 in hash; insertion distribution for growth operators; symmetric palm-body removal; Wilson CIs and proposal budgets in E3; arch target requires digits mounted beyond palm joints; provenance dirty flag read before runs; circular import.",
+      "decision": null,
+      "evidence": "opus-review-e1-e4.md"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "E5 running (proxy evolution across variants and operator sets); Opus review of E0-E4 in parallel (read-only).",
+  "next_action": "Fix iteration (worker run 16) for I14; then re-run E1 (aligned), E2 (union pool on G_FULL/G_NOBRANCH), E3 (fixed), then E5.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -146,11 +153,11 @@
   },
   "experiments": {
     "E0": "done",
-    "E1": "done",
-    "E2": "done",
-    "E3": "done",
-    "E4": "done",
-    "E5": "running",
+    "E1": "invalid (confounded); re-run",
+    "E2": "valid for G_SERIAL only; re-run under recommended pool",
+    "E3": "partially valid; fix target/CIs/budget",
+    "E4": "uninformative; keep as record",
+    "E5": "stopped before completion; re-run after fixes",
     "E6": "pending"
   }
 }
