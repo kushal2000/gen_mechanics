@@ -7,7 +7,7 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,
   "budget": {
-    "worker_runs_used": 15,
+    "worker_runs_used": 17,
     "worker_runs_max": 36,
     "opus_reviews_used": 3,
     "opus_reviews_max": 4,
@@ -125,14 +125,14 @@
     },
     {
       "id": "I14",
-      "status": "in_progress",
+      "status": "fixed",
       "hypothesis": "Fix list from opus-review-e1-e4: aligned phenotype distance; antipodal_pinch same-configuration pairing; reach_coverage normalisation by a mutable size; opposition excluding same-digit tips; root_length/radius operators; sorted choice lists for step_limits/step_coupling; step_length alias removed; -0.0 in hash; insertion distribution for growth operators; symmetric palm-body removal; Wilson CIs and proposal budgets in E3; arch target requires digits mounted beyond palm joints; provenance dirty flag read before runs; circular import.",
-      "decision": null,
-      "evidence": "opus-review-e1-e4.md"
+      "decision": "keep",
+      "evidence": "2902 passed; E1-E4 re-run"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Fix iteration (worker run 16) for I14; then re-run E1 (aligned), E2 (union pool on G_FULL/G_NOBRANCH), E3 (fixed), then E5.",
+  "next_action": "E5 running on corrected instruments; then E6 write-up + final Opus review.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -153,11 +153,11 @@
   },
   "experiments": {
     "E0": "done",
-    "E1": "invalid (confounded); re-run",
-    "E2": "valid for G_SERIAL only; re-run under recommended pool",
-    "E3": "partially valid; fix target/CIs/budget",
-    "E4": "uninformative; keep as record",
-    "E5": "stopped before completion; re-run after fixes",
+    "E1": "done (aligned)",
+    "E2": "done (pools x dists)",
+    "E3": "done (proposal budget, Wilson)",
+    "E4": "done",
+    "E5": "running",
     "E6": "pending"
   }
 }

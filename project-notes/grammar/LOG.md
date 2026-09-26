@@ -120,3 +120,12 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - See opus-review-e1-e4.md. E1's structural-operator displacements were measurement noise (misaligned configurations); the "distal chain shifts" reading in the E1 entry above is withdrawn. E2 characterised G_SERIAL only; under the union pool on G_FULL neutral drift reaches ~20 joints in 40 steps (reviewer probe). antipodal_pinch is buggy. Root length and radius were never mutated.
 - Decisions: E5 stopped before completion (its results would be uninterpretable); I14 opened with the fix list; E1/E2/E3 to be re-run under the recommended pool before E5. Opus reviews used: 3 of 4.
+
+## I14 fixes + E1-E4 re-run (2026-09-26 ~04:25)
+
+- Worker run 16. Suite 2902 passed in 132 s. Wall: E1 62 s, E2 6.7 s, E3 10.5 s, E4 8.8 s. Stale e5_evolve.py from the stopped worker deleted.
+- E1 (aligned, 1000 parents): perturb 0.8 mm; step_radius/coupling/limits 0 mm tip motion; step_root_length 2.5 mm; step_mount 4.1 mm; add_digit 10.0 mm; remove_digit 11.4; insert_phalanx 14.0 (legacy unaligned 99.2, the artifact); resample 15.2; delete_phalanx 16.1; regrow 44.1.
+- E2 (128 seeds, 400 steps, final joints, paired 95% CI): G_FULL 32.7 [29.3,36.4] (DEFAULT) / 33.2 / 32.5 (UNION_weighted); G_NOBRANCH 14.4 / 14.6 / 15.7; G_FULL_INS 8.9 [8.1,9.7] / 8.8 / 9.1; G_NOBRANCH_INS 8.6 / 9.0 / 9.1. The insertion distribution, not the operator mixture, controls neutral bloat (3.5x lower than G_FULL).
+- E3 (64 restarts, 1500 proposals): anthropomorphic, radial and prismatic targets 100% [0.943,1] under every pool x dist (median 26-211 proposals); arch_palm 0% [0,0.057] under DEFAULT (no palm operator) and 100% under UNION for all dists (median 46-55 proposals).
+- E4: genuine null mutations 0% (default) / 1% (small-step); VariationImpossible 5.4% / 2.6-4.2%; 10k distinct phenotypes.
+- Decision: keep. Provisional recommendation before E5: union pool with weighted mixture, insertion distribution for growth, branching optional (G_NOBRANCH_INS and G_FULL_INS behave alike under drift).
