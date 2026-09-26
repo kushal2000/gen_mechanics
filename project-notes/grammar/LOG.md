@@ -82,3 +82,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Worker run 10 (Sonnet 5). Suite 2835 passed in ~80 s. geometry.py: numpy convex hull, half-space clipping, cutting planes, analytic capsule and exact polytope mass properties, OBJ + URDF collision export. Over 200 seeds: mean 2.69 palm bodies/cells; 30% of hands hit the degenerate-normal fallback; 18 zero-volume cells; 104 hands with a digit mount outside its nominal cell.
 - Finding: the literal rule (normal from the parent's origin to the joint) cuts the parent's own segment at every branch point. Refinement chosen: bisector plane between parent and child spines (still through the joint, still containing the axis); siblings by nearest spine; shared cut faces => adjacency. Committed as v0 with the gap stated; decision: revise (I12).
+
+## Overnight program started (2026-09-26T01:24-04:00): which grammar is best for evolution
+
+- Plan: plan-overnight-2026-09-26.md (approved). Loop job 18e9e258 every 30 min; stop after 09:24 local.
+- Iteration 7b finding (worker): the bisector rule n = perp_a(d_c - d_p) does not keep the parent's spine on the parent side when the palm-joint axis is not perpendicular to the parent spine (seed 0: a digit mount 5 mm before the branch point lands 4.98 mm outside its cell). Decision: cutting plane contains BOTH the joint axis and the parent spine (n = component of d_c orthogonal to span(a, d_p)); child side is the side of the child's spine; points on the plane count as inside for containment. Fallback when a is parallel to d_p: n = perp_a(d_c).

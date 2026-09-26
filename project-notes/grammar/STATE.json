@@ -8,10 +8,10 @@
   "iteration": 8,
   "budget": {
     "worker_runs_used": 11,
-    "worker_runs_max": 15,
+    "worker_runs_max": 36,
     "opus_reviews_used": 2,
-    "opus_reviews_max": 3,
-    "note": "Martin (2026-09-25): budget at coordinator's discretion; coordinator guardrails: 15 worker runs, 3 Opus reviews, pause on 3 consecutive unproductive attempts or scope changes."
+    "opus_reviews_max": 4,
+    "note": "Overnight program (Martin, 2026-09-26): 8-hour window; 25 more worker runs and 2 more Opus reviews on top of the pilot's usage."
   },
   "settled": [
     "Representation core = 1-DoF primitives {fixed, revolute, continuous, prismatic}; no helical; floating/planar/ball refused (UnsupportedConstruct), not expanded.",
@@ -117,7 +117,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Iteration 7b running: bisector cutting plane + hard assertions.",
+  "next_action": "Finish iteration 7b (worker resumed with the Gram-Schmidt cutting plane: n perpendicular to both the axis and the parent spine, so the parent spine lies in the plane; boundary counts as inside). Then E0 infrastructure (proxy.py, canonical.py, phenodist.py, experiments runner).",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -127,5 +127,22 @@
   },
   "milestones": {
     "M1": "met with honest coverage (2026-09-26): kinematics/import/export/generation verified; coverage report now states topology_expressible=no for all real hands with named reasons; in_support=no for all."
+  },
+  "program": {
+    "name": "overnight: which grammar is best for evolution",
+    "plan": "project-notes/grammar/plan-overnight-2026-09-26.md",
+    "started_at": "2026-09-26T01:24:07-04:00",
+    "stop_after": "2026-09-26T09:24:07-04:00",
+    "cron_job": "18e9e258",
+    "cadence": "30m"
+  },
+  "experiments": {
+    "E0": "pending",
+    "E1": "pending",
+    "E2": "pending",
+    "E3": "pending",
+    "E4": "pending",
+    "E5": "pending",
+    "E6": "pending"
   }
 }
