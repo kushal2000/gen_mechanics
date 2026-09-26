@@ -1,6 +1,6 @@
 # Experiment: e2_drift
 
-Wall time: 6.713 s
+Wall time: 6.609 s
 
 ## Params
 
@@ -16,22 +16,71 @@ n_seeds: 128
 
 Bootstrap CIs are PAIRED across mixtures (same seeds/starts within a dist variant -- see module docstring).
 
-## Final joints at step 400, per mixture x dist (paired 95% CI)
+## Start sizes per dist variant (mean over seeds)
+
+| dist | start digit_count mean | start max_phalanx_count mean |
+|---|---|---|
+| G_FULL | 1.812 | 1.914 |
+| G_NOBRANCH | 1.812 | 1.922 |
+| G_FULL_INS | 1.812 | 1.914 |
+| G_NOBRANCH_INS | 1.812 | 1.922 |
+
+## Final joints (ABSOLUTE, not a delta) at step 400, per mixture x dist (paired 95% CI)
 
 | dist | mixture | final joints mean | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|---|
-| G_FULL | DEFAULT_uniform | 32.71 | 29.3 | 36.38 | 128 |
-| G_FULL | UNION_uniform | 33.16 | 29.72 | 36.68 | 128 |
-| G_FULL | UNION_weighted | 32.53 | 29.29 | 35.84 | 128 |
+| G_FULL | DEFAULT_uniform | 30.76 | 27.13 | 34.62 | 128 |
+| G_FULL | UNION_uniform | 31.27 | 28.09 | 34.66 | 128 |
+| G_FULL | UNION_weighted | 32.07 | 28.43 | 35.88 | 128 |
 | G_NOBRANCH | DEFAULT_uniform | 14.4 | 13.19 | 15.61 | 128 |
-| G_NOBRANCH | UNION_uniform | 14.64 | 13.45 | 15.88 | 128 |
-| G_NOBRANCH | UNION_weighted | 15.7 | 14.58 | 16.89 | 128 |
-| G_FULL_INS | DEFAULT_uniform | 8.875 | 8.102 | 9.664 | 128 |
-| G_FULL_INS | UNION_uniform | 8.805 | 8.125 | 9.531 | 128 |
-| G_FULL_INS | UNION_weighted | 9.133 | 8.445 | 9.836 | 128 |
+| G_NOBRANCH | UNION_uniform | 14.21 | 13.02 | 15.42 | 128 |
+| G_NOBRANCH | UNION_weighted | 14.26 | 13.18 | 15.41 | 128 |
+| G_FULL_INS | DEFAULT_uniform | 8.688 | 7.938 | 9.469 | 128 |
+| G_FULL_INS | UNION_uniform | 8.742 | 8.039 | 9.414 | 128 |
+| G_FULL_INS | UNION_weighted | 8.305 | 7.656 | 8.961 | 128 |
 | G_NOBRANCH_INS | DEFAULT_uniform | 8.641 | 7.938 | 9.375 | 128 |
-| G_NOBRANCH_INS | UNION_uniform | 9 | 8.383 | 9.656 | 128 |
-| G_NOBRANCH_INS | UNION_weighted | 9.141 | 8.469 | 9.836 | 128 |
+| G_NOBRANCH_INS | UNION_uniform | 8.031 | 7.383 | 8.688 | 128 |
+| G_NOBRANCH_INS | UNION_weighted | 7.766 | 7.164 | 8.406 | 128 |
+
+## Difference CI: UNION_weighted minus DEFAULT_uniform, final joints/digits/motors at step 400 (paired by shared start; I15 fix 6)
+
+| dist | metric | mean DIFFERENCE | 95% CI lo | 95% CI hi | n |
+|---|---|---|---|---|---|
+| G_FULL | joints | 1.312 | -3.602 | 6.461 | 128 |
+| G_FULL | digits | 0.3984 | -0.03125 | 0.7969 | 128 |
+| G_FULL | motors | 1.398 | -2.805 | 5.774 | 128 |
+| G_NOBRANCH | joints | -0.1406 | -1.649 | 1.336 | 128 |
+| G_NOBRANCH | digits | 0.4531 | 0.0625 | 0.8438 | 128 |
+| G_NOBRANCH | motors | 0.02344 | -1.227 | 1.242 | 128 |
+| G_FULL_INS | joints | -0.3828 | -1.461 | 0.7502 | 128 |
+| G_FULL_INS | digits | 0.1094 | -0.3672 | 0.6172 | 128 |
+| G_FULL_INS | motors | -0.4453 | -1.43 | 0.5938 | 128 |
+| G_NOBRANCH_INS | joints | -0.875 | -1.805 | 0.07812 | 128 |
+| G_NOBRANCH_INS | digits | -0.25 | -0.7031 | 0.1719 | 128 |
+| G_NOBRANCH_INS | motors | -0.8203 | -1.649 | 0.05469 | 128 |
+
+## Difference CI: _INS minus plain, per pool (mixture), final joints/digits/motors at step 400 (paired by shared start; I15 fix 6)
+
+| pair | mixture | metric | mean DIFFERENCE | 95% CI lo | 95% CI hi | n |
+|---|---|---|---|---|---|---|
+| G_FULL_INS_minus_G_FULL | DEFAULT_uniform | joints | -22.07 | -25.97 | -18.46 | 128 |
+| G_FULL_INS_minus_G_FULL | DEFAULT_uniform | digits | -0.1719 | -0.6562 | 0.2969 | 128 |
+| G_FULL_INS_minus_G_FULL | DEFAULT_uniform | motors | -18.41 | -21.76 | -15.27 | 128 |
+| G_FULL_INS_minus_G_FULL | UNION_uniform | joints | -22.52 | -26.02 | -19.18 | 128 |
+| G_FULL_INS_minus_G_FULL | UNION_uniform | digits | -0.09375 | -0.4689 | 0.2734 | 128 |
+| G_FULL_INS_minus_G_FULL | UNION_uniform | motors | -18.92 | -21.88 | -15.98 | 128 |
+| G_FULL_INS_minus_G_FULL | UNION_weighted | joints | -23.77 | -27.7 | -19.84 | 128 |
+| G_FULL_INS_minus_G_FULL | UNION_weighted | digits | -0.4609 | -0.8281 | -0.07812 | 128 |
+| G_FULL_INS_minus_G_FULL | UNION_weighted | motors | -20.26 | -23.6 | -16.98 | 128 |
+| G_NOBRANCH_INS_minus_G_NOBRANCH | DEFAULT_uniform | joints | -5.758 | -7.25 | -4.219 | 128 |
+| G_NOBRANCH_INS_minus_G_NOBRANCH | DEFAULT_uniform | digits | -0.01562 | -0.5 | 0.4609 | 128 |
+| G_NOBRANCH_INS_minus_G_NOBRANCH | DEFAULT_uniform | motors | -4.656 | -5.946 | -3.336 | 128 |
+| G_NOBRANCH_INS_minus_G_NOBRANCH | UNION_uniform | joints | -6.18 | -7.649 | -4.75 | 128 |
+| G_NOBRANCH_INS_minus_G_NOBRANCH | UNION_uniform | digits | -0.1875 | -0.6016 | 0.2266 | 128 |
+| G_NOBRANCH_INS_minus_G_NOBRANCH | UNION_uniform | motors | -5.117 | -6.352 | -3.866 | 128 |
+| G_NOBRANCH_INS_minus_G_NOBRANCH | UNION_weighted | joints | -6.492 | -7.688 | -5.273 | 128 |
+| G_NOBRANCH_INS_minus_G_NOBRANCH | UNION_weighted | digits | -0.7188 | -1.094 | -0.3438 | 128 |
+| G_NOBRANCH_INS_minus_G_NOBRANCH | UNION_weighted | motors | -5.5 | -6.484 | -4.484 | 128 |
 
 ## dist=G_FULL mixture=DEFAULT_uniform
 
@@ -39,9 +88,9 @@ Bootstrap CIs are PAIRED across mixtures (same seeds/starts within a dist varian
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 15.41 | 12.52 | 18.59 | 128 |
-| digits | 1.195 | 0.9141 | 1.477 | 128 |
-| motors | 12.7 | 10.19 | 15.42 | 128 |
+| joints | 16.01 | 12.84 | 19.17 | 128 |
+| digits | 1.039 | 0.7029 | 1.375 | 128 |
+| motors | 13.23 | 10.55 | 15.98 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -49,9 +98,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 23.67 | 20.12 | 27.45 | 128 |
-| digits | 1.648 | 1.367 | 1.938 | 128 |
-| motors | 19.86 | 16.84 | 23.21 | 128 |
+| joints | 21.47 | 17.37 | 25.81 | 128 |
+| digits | 1.477 | 1.094 | 1.867 | 128 |
+| motors | 17.96 | 14.45 | 21.7 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -59,12 +108,12 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.8497 |
-| delete_phalanx | 0.9712 |
-| insert_phalanx | 0.987 |
+| add_digit | 0.848 |
+| delete_phalanx | 0.9787 |
+| insert_phalanx | 0.9898 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.8193 |
+| remove_digit | 0.8285 |
 | resample_parameter | 1 |
 
 ## dist=G_FULL mixture=UNION_uniform
@@ -73,9 +122,9 @@ distinct_hash_fraction_at_400: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 15.27 | 12.14 | 18.75 | 128 |
-| digits | 1.594 | 1.312 | 1.875 | 128 |
-| motors | 12.7 | 10 | 15.57 | 128 |
+| joints | 12.83 | 10.02 | 15.84 | 128 |
+| digits | 1.062 | 0.7422 | 1.398 | 128 |
+| motors | 10.65 | 8.219 | 13.16 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -83,9 +132,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 24.12 | 20.66 | 27.64 | 128 |
-| digits | 2.211 | 1.961 | 2.469 | 128 |
-| motors | 20.64 | 17.56 | 23.73 | 128 |
+| joints | 21.98 | 18.62 | 25.46 | 128 |
+| digits | 1.656 | 1.328 | 1.984 | 128 |
+| motors | 18.48 | 15.54 | 21.54 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -93,24 +142,24 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.7797 |
-| add_minimal_digit | 0.7835 |
-| add_palm_body | 0.7658 |
-| delete_phalanx | 0.9677 |
-| insert_phalanx | 0.9954 |
+| add_digit | 0.8327 |
+| add_minimal_digit | 0.826 |
+| add_palm_body | 0.7594 |
+| delete_phalanx | 0.9606 |
+| insert_phalanx | 0.9947 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.9021 |
-| remove_digit_minimal | 0.5564 |
-| remove_palm_body | 0.7434 |
+| remove_digit | 0.8875 |
+| remove_digit_minimal | 0.6699 |
+| remove_palm_body | 0.7428 |
 | resample_parameter | 1 |
 | step_axis | 1 |
-| step_coupling | 0.8522 |
-| step_limits | 0.9993 |
+| step_coupling | 0.8245 |
+| step_limits | 0.999 |
 | step_mount | 1 |
 | step_radius | 1 |
 | step_root_length | 1 |
-| toggle_palm_joint | 0.7378 |
+| toggle_palm_joint | 0.7443 |
 
 ## dist=G_FULL mixture=UNION_weighted
 
@@ -118,9 +167,9 @@ distinct_hash_fraction_at_400: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 7.516 | 5.593 | 9.492 | 128 |
-| digits | 1.055 | 0.7969 | 1.32 | 128 |
-| motors | 6.258 | 4.562 | 8.047 | 128 |
+| joints | 8.289 | 6.171 | 10.6 | 128 |
+| digits | 0.9609 | 0.6562 | 1.281 | 128 |
+| motors | 6.812 | 5.008 | 8.727 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -128,9 +177,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 23.49 | 20.15 | 26.88 | 128 |
-| digits | 2.562 | 2.312 | 2.828 | 128 |
-| motors | 20.09 | 17.29 | 23.07 | 128 |
+| joints | 22.78 | 19.09 | 26.4 | 128 |
+| digits | 1.875 | 1.57 | 2.18 | 128 |
+| motors | 19.36 | 16.23 | 22.4 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -138,24 +187,24 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.8133 |
-| add_minimal_digit | 0.8053 |
-| add_palm_body | 0.7131 |
-| delete_phalanx | 0.9602 |
-| insert_phalanx | 0.9952 |
+| add_digit | 0.8235 |
+| add_minimal_digit | 0.8124 |
+| add_palm_body | 0.7239 |
+| delete_phalanx | 0.9474 |
+| insert_phalanx | 0.9934 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.9111 |
-| remove_digit_minimal | 0.6111 |
-| remove_palm_body | 0.7722 |
+| remove_digit | 0.8651 |
+| remove_digit_minimal | 0.6898 |
+| remove_palm_body | 0.7737 |
 | resample_parameter | 1 |
 | step_axis | 1 |
-| step_coupling | 0.7902 |
-| step_limits | 0.9996 |
+| step_coupling | 0.7635 |
+| step_limits | 0.9995 |
 | step_mount | 1 |
 | step_radius | 1 |
 | step_root_length | 1 |
-| toggle_palm_joint | 0.7899 |
+| toggle_palm_joint | 0.7888 |
 
 ## dist=G_NOBRANCH mixture=DEFAULT_uniform
 
@@ -197,9 +246,9 @@ distinct_hash_fraction_at_400: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 6.344 | 5.344 | 7.383 | 128 |
-| digits | 1.633 | 1.351 | 1.938 | 128 |
-| motors | 5.594 | 4.727 | 6.485 | 128 |
+| joints | 5.375 | 4.469 | 6.359 | 128 |
+| digits | 1.266 | 0.9922 | 1.547 | 128 |
+| motors | 4.695 | 3.891 | 5.563 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -207,9 +256,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 10.02 | 8.757 | 11.33 | 128 |
-| digits | 2.305 | 2.016 | 2.594 | 128 |
-| motors | 8.43 | 7.39 | 9.492 | 128 |
+| joints | 9.586 | 8.383 | 10.81 | 128 |
+| digits | 2.023 | 1.742 | 2.312 | 128 |
+| motors | 8.227 | 7.172 | 9.266 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -217,24 +266,24 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.7821 |
-| add_minimal_digit | 0.7775 |
-| add_palm_body | 0.7513 |
-| delete_phalanx | 0.9514 |
-| insert_phalanx | 0.9773 |
+| add_digit | 0.8313 |
+| add_minimal_digit | 0.82 |
+| add_palm_body | 0.7593 |
+| delete_phalanx | 0.9503 |
+| insert_phalanx | 0.9798 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.8958 |
-| remove_digit_minimal | 0.5841 |
-| remove_palm_body | 0.7515 |
+| remove_digit | 0.885 |
+| remove_digit_minimal | 0.7088 |
+| remove_palm_body | 0.7568 |
 | resample_parameter | 1 |
 | step_axis | 1 |
-| step_coupling | 0.6806 |
-| step_limits | 0.9996 |
+| step_coupling | 0.6719 |
+| step_limits | 0.9993 |
 | step_mount | 1 |
 | step_radius | 1 |
 | step_root_length | 1 |
-| toggle_palm_joint | 0.7559 |
+| toggle_palm_joint | 0.7645 |
 
 ## dist=G_NOBRANCH mixture=UNION_weighted
 
@@ -242,9 +291,9 @@ distinct_hash_fraction_at_400: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 4.188 | 3.398 | 5.047 | 128 |
-| digits | 0.7266 | 0.4844 | 0.9844 | 128 |
-| motors | 3.406 | 2.742 | 4.117 | 128 |
+| joints | 4.375 | 3.648 | 5.141 | 128 |
+| digits | 0.875 | 0.625 | 1.133 | 128 |
+| motors | 3.43 | 2.766 | 4.141 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -252,9 +301,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 11.07 | 9.93 | 12.28 | 128 |
-| digits | 2.703 | 2.43 | 2.984 | 128 |
-| motors | 9.508 | 8.539 | 10.52 | 128 |
+| joints | 9.633 | 8.539 | 10.79 | 128 |
+| digits | 2.242 | 1.977 | 2.523 | 128 |
+| motors | 8.258 | 7.328 | 9.203 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -262,24 +311,24 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.7873 |
-| add_minimal_digit | 0.7916 |
-| add_palm_body | 0.7301 |
-| delete_phalanx | 0.9552 |
-| insert_phalanx | 0.9804 |
+| add_digit | 0.8435 |
+| add_minimal_digit | 0.8228 |
+| add_palm_body | 0.7087 |
+| delete_phalanx | 0.9544 |
+| insert_phalanx | 0.974 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.8735 |
-| remove_digit_minimal | 0.5802 |
-| remove_palm_body | 0.7741 |
+| remove_digit | 0.8653 |
+| remove_digit_minimal | 0.7165 |
+| remove_palm_body | 0.7704 |
 | resample_parameter | 1 |
 | step_axis | 1 |
-| step_coupling | 0.6595 |
-| step_limits | 0.9992 |
+| step_coupling | 0.6659 |
+| step_limits | 0.9982 |
 | step_mount | 1 |
 | step_radius | 1 |
 | step_root_length | 1 |
-| toggle_palm_joint | 0.7845 |
+| toggle_palm_joint | 0.7958 |
 
 ## dist=G_FULL_INS mixture=DEFAULT_uniform
 
@@ -287,9 +336,9 @@ distinct_hash_fraction_at_400: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | -1.07 | -2.461 | 0.1875 | 128 |
-| digits | 1.312 | 1.008 | 1.625 | 128 |
-| motors | -1.164 | -2.391 | -0.04668 | 128 |
+| joints | -1.352 | -2.781 | -0.04688 | 128 |
+| digits | 0.8906 | 0.5232 | 1.25 | 128 |
+| motors | -1.297 | -2.57 | -0.125 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -297,9 +346,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | -0.1641 | -1.453 | 1.087 | 128 |
-| digits | 1.664 | 1.336 | 1.984 | 128 |
-| motors | -0.1719 | -1.305 | 0.9297 | 128 |
+| joints | -0.6016 | -1.961 | 0.7893 | 128 |
+| digits | 1.305 | 0.9219 | 1.664 | 128 |
+| motors | -0.4531 | -1.703 | 0.7895 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -307,12 +356,12 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.8427 |
-| delete_phalanx | 0.8954 |
-| insert_phalanx | 0.9983 |
+| add_digit | 0.8403 |
+| delete_phalanx | 0.896 |
+| insert_phalanx | 0.9979 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.8266 |
+| remove_digit | 0.8203 |
 | resample_parameter | 1 |
 
 ## dist=G_FULL_INS mixture=UNION_uniform
@@ -321,9 +370,9 @@ distinct_hash_fraction_at_400: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | -0.4375 | -1.672 | 0.7188 | 128 |
-| digits | 1.156 | 0.8906 | 1.43 | 128 |
-| motors | -0.375 | -1.414 | 0.6484 | 128 |
+| joints | -1.031 | -2.234 | 0.07832 | 128 |
+| digits | 0.9375 | 0.617 | 1.242 | 128 |
+| motors | -0.8828 | -1.93 | 0.1096 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -331,9 +380,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | -0.2344 | -1.57 | 1.102 | 128 |
-| digits | 1.922 | 1.617 | 2.242 | 128 |
-| motors | -0.2656 | -1.469 | 0.9219 | 128 |
+| joints | -0.5469 | -2 | 0.8205 | 128 |
+| digits | 1.562 | 1.227 | 1.891 | 128 |
+| motors | -0.4375 | -1.727 | 0.75 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -341,24 +390,24 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.8222 |
-| add_minimal_digit | 0.8058 |
-| add_palm_body | 0.7389 |
-| delete_phalanx | 0.8906 |
+| add_digit | 0.8559 |
+| add_minimal_digit | 0.8384 |
+| add_palm_body | 0.7394 |
+| delete_phalanx | 0.8444 |
 | insert_phalanx | 1 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.8652 |
-| remove_digit_minimal | 0.6995 |
-| remove_palm_body | 0.7436 |
+| remove_digit | 0.8366 |
+| remove_digit_minimal | 0.7949 |
+| remove_palm_body | 0.7428 |
 | resample_parameter | 1 |
 | step_axis | 1 |
-| step_coupling | 0.3936 |
-| step_limits | 0.9993 |
+| step_coupling | 0.3448 |
+| step_limits | 0.9986 |
 | step_mount | 1 |
 | step_radius | 1 |
 | step_root_length | 1 |
-| toggle_palm_joint | 0.7409 |
+| toggle_palm_joint | 0.7516 |
 
 ## dist=G_FULL_INS mixture=UNION_weighted
 
@@ -366,9 +415,9 @@ distinct_hash_fraction_at_400: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | -0.9531 | -2.047 | 0.1094 | 128 |
-| digits | 0.8047 | 0.5469 | 1.078 | 128 |
-| motors | -0.8203 | -1.773 | 0.1328 | 128 |
+| joints | -0.8984 | -2.024 | 0.1406 | 128 |
+| digits | 0.5391 | 0.2656 | 0.8203 | 128 |
+| motors | -0.8203 | -1.812 | 0.1016 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -376,9 +425,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 0.09375 | -1.297 | 1.453 | 128 |
-| digits | 1.867 | 1.562 | 2.172 | 128 |
-| motors | -0.07031 | -1.281 | 1.102 | 128 |
+| joints | -0.9844 | -2.461 | 0.3986 | 128 |
+| digits | 1.414 | 1.07 | 1.766 | 128 |
+| motors | -0.8984 | -2.172 | 0.3281 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -386,24 +435,24 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.844 |
-| add_minimal_digit | 0.8406 |
-| add_palm_body | 0.7465 |
-| delete_phalanx | 0.8595 |
+| add_digit | 0.8456 |
+| add_minimal_digit | 0.8514 |
+| add_palm_body | 0.732 |
+| delete_phalanx | 0.8472 |
 | insert_phalanx | 0.9989 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.8541 |
-| remove_digit_minimal | 0.6828 |
-| remove_palm_body | 0.7345 |
+| remove_digit | 0.8159 |
+| remove_digit_minimal | 0.772 |
+| remove_palm_body | 0.7408 |
 | resample_parameter | 1 |
 | step_axis | 1 |
-| step_coupling | 0.3737 |
-| step_limits | 0.9976 |
+| step_coupling | 0.3218 |
+| step_limits | 0.9947 |
 | step_mount | 1 |
 | step_radius | 1 |
 | step_root_length | 1 |
-| toggle_palm_joint | 0.7424 |
+| toggle_palm_joint | 0.7359 |
 
 ## dist=G_NOBRANCH_INS mixture=DEFAULT_uniform
 
@@ -445,9 +494,9 @@ distinct_hash_fraction_at_400: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 2.406 | 1.828 | 2.992 | 128 |
-| digits | 1.078 | 0.7812 | 1.375 | 128 |
-| motors | 2.156 | 1.625 | 2.696 | 128 |
+| joints | 2.039 | 1.484 | 2.578 | 128 |
+| digits | 0.9297 | 0.6406 | 1.219 | 128 |
+| motors | 1.797 | 1.304 | 2.305 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -455,9 +504,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 4.375 | 3.703 | 5.063 | 128 |
-| digits | 1.969 | 1.688 | 2.281 | 128 |
-| motors | 3.961 | 3.352 | 4.602 | 128 |
+| joints | 3.406 | 2.727 | 4.117 | 128 |
+| digits | 1.836 | 1.531 | 2.133 | 128 |
+| motors | 3.109 | 2.5 | 3.735 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -465,24 +514,24 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.8273 |
-| add_minimal_digit | 0.8215 |
-| add_palm_body | 0.7513 |
-| delete_phalanx | 0.894 |
-| insert_phalanx | 0.999 |
+| add_digit | 0.8584 |
+| add_minimal_digit | 0.8514 |
+| add_palm_body | 0.756 |
+| delete_phalanx | 0.8507 |
+| insert_phalanx | 0.9993 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.8638 |
-| remove_digit_minimal | 0.667 |
-| remove_palm_body | 0.7347 |
+| remove_digit | 0.8307 |
+| remove_digit_minimal | 0.781 |
+| remove_palm_body | 0.7456 |
 | resample_parameter | 1 |
 | step_axis | 1 |
-| step_coupling | 0.3926 |
-| step_limits | 1 |
+| step_coupling | 0.3688 |
+| step_limits | 0.9972 |
 | step_mount | 1 |
 | step_radius | 1 |
 | step_root_length | 1 |
-| toggle_palm_joint | 0.7279 |
+| toggle_palm_joint | 0.7341 |
 
 ## dist=G_NOBRANCH_INS mixture=UNION_weighted
 
@@ -490,9 +539,9 @@ distinct_hash_fraction_at_400: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 1.438 | 0.9219 | 1.984 | 128 |
-| digits | 0.7344 | 0.492 | 0.9846 | 128 |
-| motors | 1.312 | 0.8672 | 1.758 | 128 |
+| joints | 1.414 | 0.898 | 1.945 | 128 |
+| digits | 0.7266 | 0.4688 | 0.9844 | 128 |
+| motors | 1.258 | 0.7891 | 1.742 | 128 |
 
 distinct_hash_fraction_at_40: 1
 
@@ -500,9 +549,9 @@ distinct_hash_fraction_at_40: 1
 
 | metric | mean delta | 95% CI lo | 95% CI hi | n |
 |---|---|---|---|---|
-| joints | 4.516 | 3.828 | 5.227 | 128 |
-| digits | 2.062 | 1.766 | 2.352 | 128 |
-| motors | 4.117 | 3.477 | 4.781 | 128 |
+| joints | 3.141 | 2.531 | 3.797 | 128 |
+| digits | 1.523 | 1.234 | 1.812 | 128 |
+| motors | 2.758 | 2.172 | 3.398 | 128 |
 
 distinct_hash_fraction_at_400: 1
 
@@ -510,48 +559,84 @@ distinct_hash_fraction_at_400: 1
 
 | operator | acceptance_rate |
 |---|---|
-| add_digit | 0.8468 |
-| add_minimal_digit | 0.8644 |
-| add_palm_body | 0.7344 |
-| delete_phalanx | 0.8468 |
-| insert_phalanx | 1 |
+| add_digit | 0.851 |
+| add_minimal_digit | 0.8594 |
+| add_palm_body | 0.7216 |
+| delete_phalanx | 0.8211 |
+| insert_phalanx | 0.9967 |
 | perturb_parameter | 1 |
 | regrow_subtree | 1 |
-| remove_digit | 0.8491 |
-| remove_digit_minimal | 0.6887 |
-| remove_palm_body | 0.7547 |
+| remove_digit | 0.8002 |
+| remove_digit_minimal | 0.7668 |
+| remove_palm_body | 0.7306 |
 | resample_parameter | 1 |
 | step_axis | 1 |
-| step_coupling | 0.3444 |
-| step_limits | 0.9965 |
+| step_coupling | 0.3429 |
+| step_limits | 0.9972 |
 | step_mount | 1 |
 | step_radius | 1 |
 | step_root_length | 1 |
-| toggle_palm_joint | 0.7689 |
+| toggle_palm_joint | 0.7391 |
 
 ## Reading
 
-- G_FULL/DEFAULT_uniform step 40: joints 15.41 [12.52, 18.59]; digits 1.195 [0.9141, 1.477]; motors 12.7 [10.19, 15.42]; distinct_hash_fraction 1.
-- G_FULL/DEFAULT_uniform step 400: joints 23.67 [20.12, 27.45]; digits 1.648 [1.367, 1.938]; motors 19.86 [16.84, 23.21]; distinct_hash_fraction 1.
-- G_FULL/UNION_uniform step 40: joints 15.27 [12.14, 18.75]; digits 1.594 [1.312, 1.875]; motors 12.7 [10, 15.57]; distinct_hash_fraction 1.
-- G_FULL/UNION_uniform step 400: joints 24.12 [20.66, 27.64]; digits 2.211 [1.961, 2.469]; motors 20.64 [17.56, 23.73]; distinct_hash_fraction 1.
-- G_FULL/UNION_weighted step 40: joints 7.516 [5.593, 9.492]; digits 1.055 [0.7969, 1.32]; motors 6.258 [4.562, 8.047]; distinct_hash_fraction 1.
-- G_FULL/UNION_weighted step 400: joints 23.49 [20.15, 26.88]; digits 2.562 [2.312, 2.828]; motors 20.09 [17.29, 23.07]; distinct_hash_fraction 1.
-- G_NOBRANCH/DEFAULT_uniform step 40: joints 7.547 [6.391, 8.766]; digits 1.188 [0.8984, 1.484]; motors 6.367 [5.351, 7.453]; distinct_hash_fraction 1.
-- G_NOBRANCH/DEFAULT_uniform step 400: joints 9.773 [8.562, 11.02]; digits 1.789 [1.477, 2.109]; motors 8.234 [7.148, 9.297]; distinct_hash_fraction 1.
-- G_NOBRANCH/UNION_uniform step 40: joints 6.344 [5.344, 7.383]; digits 1.633 [1.351, 1.938]; motors 5.594 [4.727, 6.485]; distinct_hash_fraction 1.
-- G_NOBRANCH/UNION_uniform step 400: joints 10.02 [8.757, 11.33]; digits 2.305 [2.016, 2.594]; motors 8.43 [7.39, 9.492]; distinct_hash_fraction 1.
-- G_NOBRANCH/UNION_weighted step 40: joints 4.188 [3.398, 5.047]; digits 0.7266 [0.4844, 0.9844]; motors 3.406 [2.742, 4.117]; distinct_hash_fraction 1.
-- G_NOBRANCH/UNION_weighted step 400: joints 11.07 [9.93, 12.28]; digits 2.703 [2.43, 2.984]; motors 9.508 [8.539, 10.52]; distinct_hash_fraction 1.
-- G_FULL_INS/DEFAULT_uniform step 40: joints -1.07 [-2.461, 0.1875]; digits 1.312 [1.008, 1.625]; motors -1.164 [-2.391, -0.04668]; distinct_hash_fraction 1.
-- G_FULL_INS/DEFAULT_uniform step 400: joints -0.1641 [-1.453, 1.087]; digits 1.664 [1.336, 1.984]; motors -0.1719 [-1.305, 0.9297]; distinct_hash_fraction 1.
-- G_FULL_INS/UNION_uniform step 40: joints -0.4375 [-1.672, 0.7188]; digits 1.156 [0.8906, 1.43]; motors -0.375 [-1.414, 0.6484]; distinct_hash_fraction 1.
-- G_FULL_INS/UNION_uniform step 400: joints -0.2344 [-1.57, 1.102]; digits 1.922 [1.617, 2.242]; motors -0.2656 [-1.469, 0.9219]; distinct_hash_fraction 1.
-- G_FULL_INS/UNION_weighted step 40: joints -0.9531 [-2.047, 0.1094]; digits 0.8047 [0.5469, 1.078]; motors -0.8203 [-1.773, 0.1328]; distinct_hash_fraction 1.
-- G_FULL_INS/UNION_weighted step 400: joints 0.09375 [-1.297, 1.453]; digits 1.867 [1.562, 2.172]; motors -0.07031 [-1.281, 1.102]; distinct_hash_fraction 1.
-- G_NOBRANCH_INS/DEFAULT_uniform step 40: joints 3.852 [3.242, 4.453]; digits 1.484 [1.211, 1.75]; motors 3.375 [2.781, 3.946]; distinct_hash_fraction 1.
-- G_NOBRANCH_INS/DEFAULT_uniform step 400: joints 4.016 [3.359, 4.719]; digits 1.773 [1.477, 2.086]; motors 3.578 [2.984, 4.188]; distinct_hash_fraction 1.
-- G_NOBRANCH_INS/UNION_uniform step 40: joints 2.406 [1.828, 2.992]; digits 1.078 [0.7812, 1.375]; motors 2.156 [1.625, 2.696]; distinct_hash_fraction 1.
-- G_NOBRANCH_INS/UNION_uniform step 400: joints 4.375 [3.703, 5.063]; digits 1.969 [1.688, 2.281]; motors 3.961 [3.352, 4.602]; distinct_hash_fraction 1.
-- G_NOBRANCH_INS/UNION_weighted step 40: joints 1.438 [0.9219, 1.984]; digits 0.7344 [0.492, 0.9846]; motors 1.312 [0.8672, 1.758]; distinct_hash_fraction 1.
-- G_NOBRANCH_INS/UNION_weighted step 400: joints 4.516 [3.828, 5.227]; digits 2.062 [1.766, 2.352]; motors 4.117 [3.477, 4.781]; distinct_hash_fraction 1.
+(I15 fix 6: every number below tagged "Δ" is a DELTA from that (seed, dist)'s shared reduced START -- not an absolute joint/digit/motor count; start sizes are reported separately above.)
+
+- G_FULL start: digit_count mean 1.812, max_phalanx_count mean 1.914.
+- G_FULL/DEFAULT_uniform step 40: Δjoints 16.01 [12.84, 19.17]; Δdigits 1.039 [0.7029, 1.375]; Δmotors 13.23 [10.55, 15.98]; distinct_hash_fraction 1.
+- G_FULL/DEFAULT_uniform step 400: Δjoints 21.47 [17.37, 25.81]; Δdigits 1.477 [1.094, 1.867]; Δmotors 17.96 [14.45, 21.7]; distinct_hash_fraction 1.
+- G_FULL/UNION_uniform step 40: Δjoints 12.83 [10.02, 15.84]; Δdigits 1.062 [0.7422, 1.398]; Δmotors 10.65 [8.219, 13.16]; distinct_hash_fraction 1.
+- G_FULL/UNION_uniform step 400: Δjoints 21.98 [18.62, 25.46]; Δdigits 1.656 [1.328, 1.984]; Δmotors 18.48 [15.54, 21.54]; distinct_hash_fraction 1.
+- G_FULL/UNION_weighted step 40: Δjoints 8.289 [6.171, 10.6]; Δdigits 0.9609 [0.6562, 1.281]; Δmotors 6.812 [5.008, 8.727]; distinct_hash_fraction 1.
+- G_FULL/UNION_weighted step 400: Δjoints 22.78 [19.09, 26.4]; Δdigits 1.875 [1.57, 2.18]; Δmotors 19.36 [16.23, 22.4]; distinct_hash_fraction 1.
+- G_FULL DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δjoints 1.312 [-3.602, 6.461] (n=128).
+- G_FULL DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δdigits 0.3984 [-0.03125, 0.7969] (n=128).
+- G_FULL DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δmotors 1.398 [-2.805, 5.774] (n=128).
+- G_NOBRANCH start: digit_count mean 1.812, max_phalanx_count mean 1.922.
+- G_NOBRANCH/DEFAULT_uniform step 40: Δjoints 7.547 [6.391, 8.766]; Δdigits 1.188 [0.8984, 1.484]; Δmotors 6.367 [5.351, 7.453]; distinct_hash_fraction 1.
+- G_NOBRANCH/DEFAULT_uniform step 400: Δjoints 9.773 [8.562, 11.02]; Δdigits 1.789 [1.477, 2.109]; Δmotors 8.234 [7.148, 9.297]; distinct_hash_fraction 1.
+- G_NOBRANCH/UNION_uniform step 40: Δjoints 5.375 [4.469, 6.359]; Δdigits 1.266 [0.9922, 1.547]; Δmotors 4.695 [3.891, 5.563]; distinct_hash_fraction 1.
+- G_NOBRANCH/UNION_uniform step 400: Δjoints 9.586 [8.383, 10.81]; Δdigits 2.023 [1.742, 2.312]; Δmotors 8.227 [7.172, 9.266]; distinct_hash_fraction 1.
+- G_NOBRANCH/UNION_weighted step 40: Δjoints 4.375 [3.648, 5.141]; Δdigits 0.875 [0.625, 1.133]; Δmotors 3.43 [2.766, 4.141]; distinct_hash_fraction 1.
+- G_NOBRANCH/UNION_weighted step 400: Δjoints 9.633 [8.539, 10.79]; Δdigits 2.242 [1.977, 2.523]; Δmotors 8.258 [7.328, 9.203]; distinct_hash_fraction 1.
+- G_NOBRANCH DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δjoints -0.1406 [-1.649, 1.336] (n=128).
+- G_NOBRANCH DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δdigits 0.4531 [0.0625, 0.8438] (n=128).
+- G_NOBRANCH DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δmotors 0.02344 [-1.227, 1.242] (n=128).
+- G_FULL_INS start: digit_count mean 1.812, max_phalanx_count mean 1.914.
+- G_FULL_INS/DEFAULT_uniform step 40: Δjoints -1.352 [-2.781, -0.04688]; Δdigits 0.8906 [0.5232, 1.25]; Δmotors -1.297 [-2.57, -0.125]; distinct_hash_fraction 1.
+- G_FULL_INS/DEFAULT_uniform step 400: Δjoints -0.6016 [-1.961, 0.7893]; Δdigits 1.305 [0.9219, 1.664]; Δmotors -0.4531 [-1.703, 0.7895]; distinct_hash_fraction 1.
+- G_FULL_INS/UNION_uniform step 40: Δjoints -1.031 [-2.234, 0.07832]; Δdigits 0.9375 [0.617, 1.242]; Δmotors -0.8828 [-1.93, 0.1096]; distinct_hash_fraction 1.
+- G_FULL_INS/UNION_uniform step 400: Δjoints -0.5469 [-2, 0.8205]; Δdigits 1.562 [1.227, 1.891]; Δmotors -0.4375 [-1.727, 0.75]; distinct_hash_fraction 1.
+- G_FULL_INS/UNION_weighted step 40: Δjoints -0.8984 [-2.024, 0.1406]; Δdigits 0.5391 [0.2656, 0.8203]; Δmotors -0.8203 [-1.812, 0.1016]; distinct_hash_fraction 1.
+- G_FULL_INS/UNION_weighted step 400: Δjoints -0.9844 [-2.461, 0.3986]; Δdigits 1.414 [1.07, 1.766]; Δmotors -0.8984 [-2.172, 0.3281]; distinct_hash_fraction 1.
+- G_FULL_INS DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δjoints -0.3828 [-1.461, 0.7502] (n=128).
+- G_FULL_INS DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δdigits 0.1094 [-0.3672, 0.6172] (n=128).
+- G_FULL_INS DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δmotors -0.4453 [-1.43, 0.5938] (n=128).
+- G_NOBRANCH_INS start: digit_count mean 1.812, max_phalanx_count mean 1.922.
+- G_NOBRANCH_INS/DEFAULT_uniform step 40: Δjoints 3.852 [3.242, 4.453]; Δdigits 1.484 [1.211, 1.75]; Δmotors 3.375 [2.781, 3.946]; distinct_hash_fraction 1.
+- G_NOBRANCH_INS/DEFAULT_uniform step 400: Δjoints 4.016 [3.359, 4.719]; Δdigits 1.773 [1.477, 2.086]; Δmotors 3.578 [2.984, 4.188]; distinct_hash_fraction 1.
+- G_NOBRANCH_INS/UNION_uniform step 40: Δjoints 2.039 [1.484, 2.578]; Δdigits 0.9297 [0.6406, 1.219]; Δmotors 1.797 [1.304, 2.305]; distinct_hash_fraction 1.
+- G_NOBRANCH_INS/UNION_uniform step 400: Δjoints 3.406 [2.727, 4.117]; Δdigits 1.836 [1.531, 2.133]; Δmotors 3.109 [2.5, 3.735]; distinct_hash_fraction 1.
+- G_NOBRANCH_INS/UNION_weighted step 40: Δjoints 1.414 [0.898, 1.945]; Δdigits 0.7266 [0.4688, 0.9844]; Δmotors 1.258 [0.7891, 1.742]; distinct_hash_fraction 1.
+- G_NOBRANCH_INS/UNION_weighted step 400: Δjoints 3.141 [2.531, 3.797]; Δdigits 1.523 [1.234, 1.812]; Δmotors 2.758 [2.172, 3.398]; distinct_hash_fraction 1.
+- G_NOBRANCH_INS DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δjoints -0.875 [-1.805, 0.07812] (n=128).
+- G_NOBRANCH_INS DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δdigits -0.25 [-0.7031, 0.1719] (n=128).
+- G_NOBRANCH_INS DIFFERENCE (UNION_weighted minus DEFAULT_uniform) at step 400: Δmotors -0.8203 [-1.649, 0.05469] (n=128).
+- DIFFERENCE G_FULL_INS_minus_G_FULL (mixture=DEFAULT_uniform) at step 400: Δjoints -22.07 [-25.97, -18.46] (n=128).
+- DIFFERENCE G_FULL_INS_minus_G_FULL (mixture=DEFAULT_uniform) at step 400: Δdigits -0.1719 [-0.6562, 0.2969] (n=128).
+- DIFFERENCE G_FULL_INS_minus_G_FULL (mixture=DEFAULT_uniform) at step 400: Δmotors -18.41 [-21.76, -15.27] (n=128).
+- DIFFERENCE G_FULL_INS_minus_G_FULL (mixture=UNION_uniform) at step 400: Δjoints -22.52 [-26.02, -19.18] (n=128).
+- DIFFERENCE G_FULL_INS_minus_G_FULL (mixture=UNION_uniform) at step 400: Δdigits -0.09375 [-0.4689, 0.2734] (n=128).
+- DIFFERENCE G_FULL_INS_minus_G_FULL (mixture=UNION_uniform) at step 400: Δmotors -18.92 [-21.88, -15.98] (n=128).
+- DIFFERENCE G_FULL_INS_minus_G_FULL (mixture=UNION_weighted) at step 400: Δjoints -23.77 [-27.7, -19.84] (n=128).
+- DIFFERENCE G_FULL_INS_minus_G_FULL (mixture=UNION_weighted) at step 400: Δdigits -0.4609 [-0.8281, -0.07812] (n=128).
+- DIFFERENCE G_FULL_INS_minus_G_FULL (mixture=UNION_weighted) at step 400: Δmotors -20.26 [-23.6, -16.98] (n=128).
+- DIFFERENCE G_NOBRANCH_INS_minus_G_NOBRANCH (mixture=DEFAULT_uniform) at step 400: Δjoints -5.758 [-7.25, -4.219] (n=128).
+- DIFFERENCE G_NOBRANCH_INS_minus_G_NOBRANCH (mixture=DEFAULT_uniform) at step 400: Δdigits -0.01562 [-0.5, 0.4609] (n=128).
+- DIFFERENCE G_NOBRANCH_INS_minus_G_NOBRANCH (mixture=DEFAULT_uniform) at step 400: Δmotors -4.656 [-5.946, -3.336] (n=128).
+- DIFFERENCE G_NOBRANCH_INS_minus_G_NOBRANCH (mixture=UNION_uniform) at step 400: Δjoints -6.18 [-7.649, -4.75] (n=128).
+- DIFFERENCE G_NOBRANCH_INS_minus_G_NOBRANCH (mixture=UNION_uniform) at step 400: Δdigits -0.1875 [-0.6016, 0.2266] (n=128).
+- DIFFERENCE G_NOBRANCH_INS_minus_G_NOBRANCH (mixture=UNION_uniform) at step 400: Δmotors -5.117 [-6.352, -3.866] (n=128).
+- DIFFERENCE G_NOBRANCH_INS_minus_G_NOBRANCH (mixture=UNION_weighted) at step 400: Δjoints -6.492 [-7.688, -5.273] (n=128).
+- DIFFERENCE G_NOBRANCH_INS_minus_G_NOBRANCH (mixture=UNION_weighted) at step 400: Δdigits -0.7188 [-1.094, -0.3438] (n=128).
+- DIFFERENCE G_NOBRANCH_INS_minus_G_NOBRANCH (mixture=UNION_weighted) at step 400: Δmotors -5.5 [-6.484, -4.484] (n=128).
