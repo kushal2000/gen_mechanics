@@ -7,7 +7,7 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,
   "budget": {
-    "worker_runs_used": 11,
+    "worker_runs_used": 12,
     "worker_runs_max": 36,
     "opus_reviews_used": 2,
     "opus_reviews_max": 4,
@@ -111,14 +111,14 @@
     },
     {
       "id": "I12",
-      "status": "in_progress",
+      "status": "fixed",
       "hypothesis": "Bisector cutting plane (through the joint, containing the axis, bisecting parent and child spines) plus nearest-spine sibling resolution yields positive-volume cells that contain their digit mounts; cells sharing a cut face are recorded as adjacent for collision filtering.",
-      "decision": null,
-      "evidence": "iteration 7 worker finding: literal rule gives 9% zero-volume cells, 52% mounts outside"
+      "decision": "keep (nearest-spine)",
+      "evidence": "200 seeds: 0 mounts/spines outside, min cell 5e-6 m3, overlap 7.4%, 2834 passed in 377 s; routine test now 40 seeds"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Iteration 7c running (nearest-spine palm cells). Then E0.",
+  "next_action": "E0 running: proxy.py, canonical.py, phenodist.py, experiments runner.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -138,7 +138,7 @@
     "cadence": "30m"
   },
   "experiments": {
-    "E0": "pending",
+    "E0": "running",
     "E1": "pending",
     "E2": "pending",
     "E3": "pending",

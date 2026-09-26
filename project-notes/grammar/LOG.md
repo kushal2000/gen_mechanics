@@ -92,3 +92,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Worker proved on seed 10 that when three or more palm bodies entangle, no single supporting plane both conserves hull volume and keeps both bodies' spines inside their cells (each body's own plane covers 74-95% of the hull). Across 200 seeds: 59 unresolved, 18 with real volume loss (up to 73%), 14.5% degenerate normals. Gram-Schmidt refinement (plane contains axis and parent spine) and the ancestor-safe walk were implemented and are correct for parent-child pairs but insufficient for siblings.
 - Decision: nearest-spine cells (iteration 7c) with an honest contract (coverage + containment + recorded adjacency; overlaps allowed among adjacent pairs; no exact partition). Geometry is off the critical path for E0-E5.
+
+## Iteration 7c (2026-09-26): nearest-spine palm cells (I12 closed)
+
+- Worker run 11 (resumed twice). Full suite 2834 passed in 377 s; geometry test alone ~5 min at 200 seeds, so the routine suite now runs 40 seeds (env GRAMMAR_GEOMETRY_SEEDS=200 reproduces the full run). 200-seed statistics: 2.69 palm bodies/cells per hand; min cell volume 4.96e-6 m3; mean pairwise overlap 7.4% of hull volume; 2.49 overlapping pairs per hand (of 2.88 possible), all recorded as adjacent; union deficit 4.8% (reported); mounts outside 0; spines outside 0; hull samples uncovered 0. Acceptance tolerance 1e-6 m for convexity/containment (float64 hull planes at thousands of points; documented with worst cases).
+- Open question for Martin: with nearest-spine cells most palm pairs overlap and are filtered; if that is too permissive for contact, the alternative is a per-body capsule palm (no shared hull). Decision: keep.
