@@ -75,3 +75,5 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Coverage now reports topology_expressible = no for every available real hand: 9/10 on continuation_pose (mid-chain frame rotation or lateral offset the straight-rod convention cannot express), Ability/Inspire also coupling_limits_not_image, ORCA on excess_children and fixed_in_digit. in_support = no for all (limits/lengths/axes off the sampler's grids). This is the honest picture; the earlier 'expressible: yes' was vacuous.
 - Coupling sources restricted to revolute (3961 couplings over 1000 seeds, 0 non-revolute). Derivation validator rejects junk steps. vary records lineage; founder seed unchanged.
 - Opened I11 (rest-bend production) for Martin's decision. Decision: keep. M1 closed.
+
+- Note (2026-09-26): the evaluator must run as a module (`python3 -m hand_sampler.grammar_bench.evaluate`); as a script it cannot import the package under system Python. Dirty flag is now read before any work (commit b194651); report regenerated clean (5948cb2).

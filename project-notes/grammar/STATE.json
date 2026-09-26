@@ -7,7 +7,7 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 7,
   "budget": {
-    "worker_runs_used": 9,
+    "worker_runs_used": 10,
     "worker_runs_max": 15,
     "opus_reviews_used": 2,
     "opus_reviews_max": 3,
@@ -109,7 +109,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Iteration 7 (M2 start): geometry overlay - capsules per finger body (radius per hand from distribution), palm hull per palm body: hull of all palm capsules at q=0 cut by planes through each palm joint origin containing the axis with normal n = d - (d.a)a; positive-volume validation; mass/inertia from volume x density; export to URDF collision (capsules as cylinder+spheres, hull as mesh file or convex vertices); tests: convexity, cell volume > 0, cells partition the hull volume (sum of cell volumes == hull volume within 1e-9 relative), mounts on cell surface.",
+  "next_action": "Iteration 7 running (M2 geometry overlay).",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
