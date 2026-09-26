@@ -139,3 +139,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## Final Opus review (2026-09-26 ~05:10): E5 write-up confounded
 
 - See opus-review-final.md. Note flagged; consolidated note section 10 corrected to rest on E2/E3 only. I15 opened; E5b planned to match the simulator loop (envelope, noise, paired starts, no tie-break). Opus reviews used 4/4.
+
+## I15 + E5b (2026-09-26 ~06:00): final evidence and write-up
+
+- Worker run 18. Suite 2923 passed. E1 62 s, E2 6.6 s, E5b 185 s (54 conditions x 24 restarts). Commits through e938fcf.
+- E5b reading: insertion prior slows growth to the 5-digit target (median gen 10 -> 14.5-16 under the default pool; 58-83% vs 96-100% reach under union pools); cost term lowers raw pinch 0.89 -> 0.68 while halving motors; palm operators 100% dead under the 5x6 envelope; clone rate < 1.3e-4.
+- grammar-for-evolution.md rewritten on E1-E5b; design-grammar-and-evolution.md section 10 corrected. Program finished; loop stopped. Decisions for Martin listed in STATE.next_action.

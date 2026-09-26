@@ -1,66 +1,58 @@
-> **Status (2026-09-26 05:15): the E5 section and parts of the recommendation below were found wrong or confounded by the final Opus review (`opus-review-final.md`): cost-aware fitness is in penalised units, 'none' runs carry a cost tie-break, starts were unpaired across distributions, and the proxies fix the structure. E1's structural medians are only partly aligned. The recommendation direction rests on E2 and E3. This note is being corrected after a fix iteration and an E5 re-run; do not cite the E5 numbers until then.**
-
 # Which grammar is best for evolution? Evidence and recommendation
 
-Written 2026-09-26 by the coordinator from experiments E1-E5 (corrected instruments; E5 at commit after 40cb2ed). Everything here is CPU-only kinematics and geometry; no RL was run. Results describe the grammar at `GRAMMAR_VERSION` 0.3 with the operators in `hand_sampler/grammar/derive.py`; they do not predict task performance.
+Final version, 2026-09-26 ~06:00, written by the coordinator from experiments E1-E5b on `martin/hand-grammar` (code and results through commit e938fcf). Two independent Opus reviews (`opus-review-e1-e4.md`, `opus-review-final.md`) found the first versions of E1, E2, E4 and E5 confounded; every number below comes from the corrected re-runs (E1/E2 with joint-identity alignment and paired CIs, E5b matched to the simulator loop). All results are CPU kinematics and geometric proxies; nothing here predicts task reward.
 
 ## 1. Question and method
 
-"Best for evolution" was decomposed into properties a fitness-driven search over the grammar needs, each measured with seeded, reproducible experiments recorded under `project-notes/grammar/experiments/`:
+"Best for evolution" was decomposed into properties a fitness-driven search needs, each measured with seeded experiments recorded under `project-notes/grammar/experiments/` (result.json carries seeds, git SHA or diff hash, versions, wall time):
 
 | Property | Experiment | Instrument |
 |---|---|---|
-| Locality of one mutation | E1 (1000 parents x 13 operators) | fingertip displacement with joint-aligned configurations, joint/motor deltas |
-| Neutral drift (bloat) | E2 (128 seeds x 400 steps x 3 mixtures x 4 distributions, paired CIs) | joints/digits/motors vs step |
-| Reachability of target skeletons | E3 (4 targets x 2 pools x 4 distributions x 64 restarts, 1500 proposals) | Wilson CIs, censored medians |
-| Redundancy | E4 (10k samples, 20k offspring) | canonical phenotype hash |
-| Exploitability under selection | E5 (48 conditions x 6 restarts, (32+32), 40 generations) | geometric proxies: opposition, antipodal pinch, log reach; optional cost term |
+| Locality of one mutation | E1: 1000 parents x 13 operators | fingertip displacement with configurations aligned by stable joint identity |
+| Neutral drift | E2: 128 seeds x 400 steps x 3 mixtures x 4 distributions | joints/digits/motors vs step; paired difference CIs (shared starts) |
+| Reachability | E3: 4 targets x 2 pools x 4 distributions x 64 restarts, 1500 proposals | Wilson CIs, censored medians |
+| Redundancy | E4: 10k samples, 20k offspring | canonical phenotype hash |
+| Selection, simulator-matched | E5b: 54 conditions x 24 restarts, (16+16), 40 generations, hard 5x6 envelope, noisy returns, no cost tie-break, starts paired across all factors | raw proxy, cost, motors, target-reach rate, per-operator rejection and improvement |
 
-An independent Opus review found the first versions of E1/E2/E4 confounded (misaligned configurations, wrong pool, null = impossible); the numbers below are from the corrected re-runs.
+Grammar under test: version 0.3 (root palm segment; palm bodies as a tree with optional palm joints; digits with optional branching; R/C/P modules; intra-digit affine couplings; one capsule radius per hand), operators in `hand_sampler/grammar/derive.py`.
 
 ## 2. Findings
 
-**Locality (E1).** Small-step operators move fingertips by 0-4 mm at the median and never change joint counts. Structural operators are moderate: add/remove digit 10-11 mm, insert/delete phalanx 14-16 mm, resample 15 mm; regrow_subtree is the only coarse one (44 mm median, 75% of joints changed at p90). Every operator is applicable >= 82% of the time; genuine null mutations are 0% for default operators and 1% for small steps.
+**Locality (E1, aligned).** Small-step operators move fingertips 0-4 mm at the median (perturb 0.8, step_axis 1.7, step_mount 4.1, step_root_length 2.5, step_limits 0.3, step_coupling 1.5, step_radius 0). Structural operators: insert_phalanx 8.6 mm, add_digit 10, remove_digit 11, delete_phalanx 13, resample 14, regrow 37 (p90 120 mm). Applicability >= 82% everywhere; genuine null mutations 0% (default) and about 1% (small steps; step_axis 4.9%).
 
-**Neutral drift (E2).** From 3-joint starts, drift relaxes toward the prior the growth operators sample from, not toward the caps. Final joints at step 400: G_FULL 33 [29,36]; G_NOBRANCH 14-16; with an insertion distribution (new material limited to 1-3 phalanges, no branches) 9 [8,10] for both. The operator mixture barely matters (DEFAULT, UNION_uniform, UNION_weighted within CI); what the growth operators insert does. Branching doubles the prior joint count and ratchets (a phalanx hosting a branch cannot be deleted).
+**Neutral drift (E2).** Starts are 1.8 digits with 1.9 phalanges. Final joints at step 400: G_FULL 33 [29,36]; G_NOBRANCH 14-16; G_FULL_INS 8.9 [8.1,9.7]; G_NOBRANCH_INS 8.6-9.1. Paired differences: insertion prior minus plain = -22 to -24 joints for the G_FULL family (CI excludes zero by a wide margin); union-weighted minus default-uniform = within +-1.5 joints, CIs include zero for every distribution. At step 40 the mixture does matter for G_FULL (default +15 joints vs union-weighted +7.5), so the mixture affects speed, the insertion prior affects the plateau.
 
-**Reachability (E3).** Under the union pool every target is reached in 100% [94%,100%] of restarts for every distribution: staggered 5-digit anthropomorphic, 3-digit radial, 2-digit prismatic gripper, and the articulated-arch palm, with medians of 26-211 proposals. Under the default pool the arch palm is unreachable (0% [0,6%]) because no default operator creates a palm body or palm joint; that is a property of the operator pool, not of the representation.
+**Reachability (E3).** With the union pool (uniform), all four targets (staggered 5-digit anthropomorphic, 3-digit radial, prismatic gripper, articulated-arch palm with digits on jointed palm bodies) are reached in 100% [94,100] of restarts for every distribution. The default pool reaches the three non-palm targets 100% in 2-3x fewer proposals (anthropomorphic median 49 vs 143) and cannot reach the arch (0% [0,6]) because it has no palm-body or palm-joint operator. The insertion prior slows the 5-digit target about 1.5x (78 vs 49 proposals under default; 211 vs 143 under union).
 
-**Redundancy (E4).** 10,000 random seeds give 10,000 distinct phenotypes; sibling offspring coincide 2-3% of the time; derivation order differs from canonical order in 72-90% of models (the hash handles it). Redundancy is not a search problem at this grid resolution.
+**Redundancy (E4).** 10,000 random seeds give 10,000 distinct phenotypes; genuine null mutations are 0-1%; VariationImpossible 3-5%. Not a search problem at this grid.
 
-
-**Selection under proxies (E5).** Marginal means over conditions (per-cell 95% CIs over 6 restarts are in `experiments/E5_evolve/summary.md` and are wide):
-
-| Factor | Level | Final best proxy | Final mean motors |
-|---|---|---|---|
-| distribution | G_FULL | 0.65 | 6.1 |
-| | G_FULL_INS | 0.70 | 4.9 |
-| | G_NOBRANCH | 0.55 | 2.9 |
-| | G_NOBRANCH_INS | 0.73 | 3.5 |
-| pool | DEFAULT_uniform | 0.66 | 4.7 |
-| | UNION_weighted | 0.66 | 4.1 |
-| cost term | none | 0.69 | 5.6 |
-| | aware (0.02 x cost) | 0.63 | 3.1 |
-| proxy | opposition | 0.85 (ceiling 1.0 reached in 4 cells) | 2.5 |
-| | antipodal pinch | 0.76 | 5.5 |
-| | log reach | 0.37 | 5.0 |
-
-The insertion prior helps selection, not only neutral drift: both insertion variants beat their plain counterparts on every proxy while using fewer motors; plain G_NOBRANCH with the union pool did worst on pinch (0.27-0.33). The union pool matches the default pool on fitness with fewer motors; under it, small-step operators survive selection 42-49% of the time (perturb 48%, step_axis 44%, step_limits 42%, step_mount 41%, step_radius 48%, step_root_length 44%, step_coupling 49%) against 9-29% for structural moves (regrow 9%, add_digit 10%, add_minimal_digit 14%, add_palm_body 15%, insert_phalanx 16%, remove_digit 18-19%, delete_phalanx 29%, remove_palm_body 37%, toggle_palm_joint 31%). A cost term of 0.02 x structural cost halves motors at a 0.06 proxy cost. Constructs are neither eliminated nor demanded by these proxies: at generation 40, palm joints appear in 8-23% of individuals, couplings 15-35%, prismatic joints 17-44%, branches 18-39% where allowed. Caveats: the proxies are diagnostics with flat regions (opposition saturates at 1.0; 66-85% of random hands score 0), fitness is re-evaluated each generation with a new configuration seed, and 6 restarts give wide intervals; none of this predicts RL reward.
+**Selection, simulator-matched (E5b).** Envelope 5 digits x 6 joints, no palm joints, no branches; fitness = proxy + Gaussian noise (sigma = 10% of the initial range) - w x structural cost; ties random.
+- *Growth toward a large target* (fitness = negative structural distance to the 5-digit, >= 3-phalanx target): under the default pool every condition reaches the target in 100% of 24 restarts, at median generation 10 without the insertion prior and 14.5-16 with it. Under the small-step-heavy union pools the plain distribution still reaches it 96-100% of the time (median generation 20-24), but the insertion-prior distributions only 58-83% within 40 generations. Paired difference in final distance, INS minus plain, is -0.29 to -0.46 with CIs excluding zero under union pools.
+- *Cost term* (raw proxy reported): w = 0.01-0.02 cuts final motors from 5-6 to 2-3 but lowers the raw pinch proxy, e.g. 0.89 -> 0.68 -> 0.66 (G_FULL_INS, default pool). The cost is real, not a logging artifact.
+- *Pinch proxy*: final best raw pinch 0.70-0.90 across conditions; INS minus plain differences have CIs that include zero in 5 of 6 pinch comparisons. Distributions are not separated by this proxy.
+- *Palm operators under the envelope*: add_palm_body is envelope-rejected 100% of the time and toggle/remove_palm_body are inapplicable 100%, so the union-weighted pool wastes about 15% of proposals; the same pool without palm operators has no dead weight. Clone rate (all 8 retries rejected) is below 1.3e-4 everywhere.
+- *Operator strict-improvement rates* (child raw proxy > parent, same seed; pinch, default pool): add_digit 18%, delete_phalanx 14%, remove_digit 10%, insert_phalanx 9%, perturb 9%, regrow 8%, resample 4%.
 
 ## 3. Recommendation
 
-1. **Representation and productions**: keep grammar 0.3 (root palm segment, palm bodies as a tree with optional palm joints, digits with optional branching, R/C/P modules, intra-digit affine couplings, one capsule radius per hand). Palm articulation and non-anthropomorphic layouts are expressible and reachable.
-2. **Growth prior separate from initialisation prior**: use the insertion distribution for add_digit, add_palm_body, regrow_subtree and add_minimal_digit. This is the single largest lever on bloat (3.5x).
-3. **Operator pool**: the union pool (default structural + minimal structural incl. palm-body and palm-joint operators + small steps incl. root length and radius), weighted by evaluations roughly 55% small-step, 25% minimal structural, 10% resample, 10% coarse. Drop step_length (alias of perturb). Regrow_subtree stays as the rare large move.
-4. **Branching**: keep it expressible; evolve with G_NOBRANCH_INS by default (best proxy results with the fewest motors) and use G_FULL_INS when branching is a design question; E5 shows selection tolerates branches (18-39% of individuals) but does not need them.
-6. **Selection**: report structural cost always; a small cost term (0.02 x cost) halves motor count at a small proxy cost and is the cheapest guard against bloat under a noisy task score.
-5. **Geometry**: derived, never a gene (capsules; nearest-spine palm cells with recorded adjacency).
+1. **Representation and productions**: keep grammar 0.3. Palm articulation and non-anthropomorphic layouts are expressible and reachable (E3); geometry stays derived (capsules; nearest-spine palm cells with recorded adjacency).
+2. **Growth prior**: the insertion prior is a dial, not a free win. It is the only lever that controls neutral bloat (E2: 33 -> 9 joints) and it slows growth toward large hands (E3: 1.5x more proposals; E5b: median generation 10 -> 15 under the default pool, and 58-83% instead of 96-100% target reach under small-step-heavy pools). For a 40-generation budget starting from simple seeds, use the insertion prior with the default-heavy pool, or the plain prior with an explicit cost term; do not combine the insertion prior with a small-step-heavy pool if large hands must be reachable.
+3. **Operator pool for the simulator loop**: default structural operators plus minimal structural operators plus small steps, WITHOUT palm operators while the 5x6 envelope forbids palm joints (E5b: they are 100% dead). Weight toward structural moves early (E3/E5b: growth speed) and toward small steps late; the exact schedule is untested.
+4. **Operator pool when palm articulation is allowed** (after an envelope change): add the palm-body and palm-joint operators; without them the arch is unreachable (E3).
+5. **Branching**: off by default (envelope forbids it; it doubles the neutral prior and ratchets); G_NOBRANCH_INS vs G_FULL_INS is not separated by any experiment here.
+6. **Cost**: report structural cost always. A term of 0.01-0.02 per unit cost halves motors and lowers the raw proxy by about 0.2 on pinch; whether that trade is right depends on the task and is a decision, not a finding. Under noisy returns there is no implicit parsimony (E5b broke ties at random), so bloat control must come from the prior or an explicit term.
 
-## 4. Open questions for Martin
-- Rest-bend production (I11): every real hand has a mid-chain frame rotation or offset the straight-rod digit cannot express. Not needed for the targets above; needed only if real-hand fidelity matters for the evolved space.
-- Palm-joint travel and coupling semantics for underactuation (which joints share a motor) are parameter-table choices with no evidence yet.
-- Whether structural cost should enter selection or only reporting (E5 cost-aware runs will show what it suppresses).
-- Simulator contract: the fixed 5x6 envelope cannot hold palm joints or >6-joint digits; an envelope adapter that refuses over-envelope designs is required before any co-evolution run.
+## 4. What is not established
+- Any relation between the proxies and RL reward. Opposition saturates and favours two digits; pinch has flat regions; the target-distance fitness is structural.
+- The right mixture weights or a schedule (structural-early, small-late) - untested.
+- Whether the rest-bend production (issue I11) matters for evolution; real hands need it for fidelity, the targets here do not.
+- Whether palm cells with 7% mean overlap among adjacent pairs behave acceptably in contact; the alternative is a per-body capsule palm.
 
-## 5. Provenance
-Commits on `martin/hand-grammar` through the E5 results commit; each experiment folder has result.json with seeds, git SHA, versions and wall time. Reviews: opus-review-m1.md, opus-review-e1-e4.md.
+## 5. Open questions for Martin
+- Envelope: keep 5x6 without palm joints (then drop palm operators) or extend it (then keep them)?
+- Insertion prior on or off for the first co-evolution run (bloat control vs growth speed)?
+- Cost term in selection, or cost reporting only?
+- Rest-bend production: needed?
+
+## 6. Provenance
+E1/E2/E5b results were generated from a working tree whose diff hash is recorded in each result.json (`git_diff_sha256` 4ee077ad...), then committed as e938fcf with that code; E3/E4 from the I14 code (commit history in LOG.md). Suite: 2,923 tests, all passing.
