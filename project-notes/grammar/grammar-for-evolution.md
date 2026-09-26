@@ -60,3 +60,18 @@ Grammar under test: version 0.3 (root palm segment; palm bodies as a tree with o
 
 ## 6. Provenance
 E1/E2/E5b results were generated from a working tree whose diff hash is recorded in each result.json (`git_diff_sha256` 4ee077ad...), then committed as e938fcf with that code; E3/E4 from the I14 code (commit history in LOG.md). Suite: 2,923 tests, all passing.
+
+## 7. Grammar 0.5 status (2026-09-26 afternoon; commits through iteration C)
+
+Implemented: rest-bend primitive on every phalanx (Pinocchio-verified), continuous sign-normalised limits (G_CONT), coupling containment rule, exact-inverse operator pool `EVOLUTION_OPERATORS` (five pairs: minimal digit, phalanx, empty palm body, palm-joint toggle, branch digit; plus small steps incl. bend and root/radius), undo targets, a stratified immigrant prior, and the balance test suite as experiment E12.
+
+Balance test results (E12, `experiments/E12_balance/summary.md`):
+- Reversibility: 100% for every pair (500 parents, two distributions).
+- Locality per operator: pass (every structural p90 <= 42 mm; every small-step median <= 4.4 mm).
+- Prior size histograms: pass (no bound holds more than 20% of mass). Redundancy: 5000/5000 distinct.
+- Neutral drift, stationary regime (starts sampled from the prior, 200 steps): phalanx pair and palm-joint toggle balanced; digit pair +0.8 digits, empty-palm pair +0.5 palm bodies, branch pair +8 joints per 200 steps. The first two are the mismatch between the sampling prior and the walk's own stationary distribution (about +0.1-0.2 per 40 steps, negligible at the project's budgets); the branch pair drifts because branches with more than one phalanx cannot be removed while growth is almost always applicable. Branching is off under the current envelope; if it is turned on, `remove_branch_digit` should accept up to two phalanges.
+- Reachability with the evolution pool alone (E3): arch palm 100% in 71-87 proposals, radial 75-92%, prismatic 53-73%, anthropomorphic 14-20% within 1500 proposals: minimal moves are slow to build five three-phalanx digits, which is why the step schedule (default pool early) or stratified immigrants remain part of the recommendation.
+
+Coverage after 0.5 (`pilot-report.md`): 8 of 11 real hands are now topology-expressible (the rest bend removed the universal blocker); none is in the default sampling support, which is by design (grids and choice sets), and E11 gives the widening levels at which each enters.
+
+Open: whether to sample limits continuously by default (G_CONT) for the co-evolution run; the branch-removal rule; suite runtime (about 3.5-5 min, worth trimming).

@@ -165,3 +165,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## Grammar 0.5 iteration B (2026-09-26 ~12:45)
 
 - Worker run 21. 3084 passed in 204 s. E12 balance suite: reversibility 100% (10/10 pair x dist); per-pair drift from minimum-size starts positive for digit/phalanx/branch pairs (applicability asymmetry at the boundary, plus the delete_phalanx aliasing defect); remove_palm_body p90 195 mm; histograms and redundancy pass. E2: EVOLUTION mixtures drift to 12-13 joints on G_FULL (vs 31 default) and 12-13 on G_FULL_INS (vs 8.7 default). Decision: keep code, revise criteria and fix I18 in iteration C.
+
+## Grammar 0.5 iteration C (2026-09-26 ~13:35)
+
+- Worker run 22. 3088 passed (210-290 s). I18 fixed. E12: reversibility 100%, locality per operator pass, histograms/redundancy pass, stationary drift residual small for digit and palm pairs, larger for the branch pair (applicability asymmetry). E3 with the evolution pool alone: arch 100%, anthropomorphic 14-20% (slow minimal moves). Coverage report regenerated: 8/11 real hands topology-expressible after the rest bend. Decision: keep; program paused for Martin. I19 opened (suite runtime).
