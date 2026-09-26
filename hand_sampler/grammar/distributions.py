@@ -27,6 +27,10 @@ N_ELEVATION_STEPS = 180 // int(ANGLE_STEP_DEG) + 1  # 13 choices spanning [0, 18
 @dataclass(frozen=True)
 class Distribution:
     digit_count_range: Tuple[int, int] = (1, 6)
+    # Number of palm bodies *in addition to* the root -- the root is always
+    # a palm body with its own real segment (see rules.py's RootProduction
+    # docstring), so 0 here still yields a hand with a palm, never a
+    # palm-less one.
     palm_body_count_range: Tuple[int, int] = (0, 3)
     phalanx_count_range: Tuple[int, int] = (1, 6)
 

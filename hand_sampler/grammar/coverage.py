@@ -497,42 +497,26 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
     if branch_depth_issue:
         out.append("branch_depth_out_of_range")
 
-    # Link lengths: palm-joint lengths are always fresh grid samples
-    # (palm_length_range_m / link_length_grid_m). Phalanx-joint lengths are
-    # fresh grid samples (link_length_range_m / link_length_grid_m) *except*
-    # for a digit/branch's own first phalanx, whose origin is a mount
-    # fraction of the mount body's length, not itself a grid sample -- those
-    # are geometrically identified as joints whose origin is not a pure
-    # z-only, zero-rotation translation (see derive.py: a continuation
-    # phalanx always has origin.rpy == (0,0,0) and origin.xyz == (0,0,len);
-    # a mount joint's origin uses a freely sampled mount_rpy/mount_frac and
-    # essentially never matches that exact pattern) -- and are excluded from
-    # this check rather than mis-flagged.
+    # Link lengths: since iteration 5's convention fix, a joint's origin.xyz
+    # encodes only *where on the parent's own segment* the child mounts
+    # (never the child's own length -- see rules.py's convention-change
+    # note), so a body's own segment length must be read from its own
+    # "<body>_tip" frame instead, uniformly for every body (root, palm,
+    # phalanx/branch alike; no more special-casing a digit/branch's first
+    # phalanx, whose origin used to conflate a mount fraction with a grid
+    # sample under the old, buggy convention). Root/palm bodies draw their
+    # length fresh from palm_length_range_m/link_length_grid_m; every other
+    # (phalanx) body draws its fresh from link_length_range_m/link_length_grid_m.
+    body_tip_length: Dict[str, float] = {
+        f.body: float(f.pose.xyz[2]) for f in model.frames if f.name == f"{f.body}_tip"
+    }
     off_grid, out_of_range = [], []
-    for j in model.joints:
-        if j.child in palm_body_names:
-            length = _norm(j.origin.xyz)
-            lo_len, hi_len = dist.palm_length_range_m
-            if not (lo_len - GRID_TOL <= length <= hi_len + GRID_TOL):
-                out_of_range.append(j.name)
-            elif not _length_on_grid(length, lo_len, dist.link_length_grid_m):
-                off_grid.append(j.name)
-        else:
-            is_continuation = (
-                tuple(j.origin.rpy) == (0.0, 0.0, 0.0)
-                and j.origin.xyz[0] == 0.0 and j.origin.xyz[1] == 0.0
-                and not _is_first_phalanx_body(j.child)
-            )
-            if not is_continuation:
-                continue
-            length = _norm(j.origin.xyz)
-            lo_len, hi_len = dist.link_length_range_m
-            if length == 0.0:
-                continue  # a zero-length continuation cannot be graded against a >0 grid
-            if not (lo_len - GRID_TOL <= length <= hi_len + GRID_TOL):
-                out_of_range.append(j.name)
-            elif not _length_on_grid(length, lo_len, dist.link_length_grid_m):
-                off_grid.append(j.name)
+    for name, length in body_tip_length.items():
+        lo_len, hi_len = dist.palm_length_range_m if name in palm_body_names else dist.link_length_range_m
+        if not (lo_len - GRID_TOL <= length <= hi_len + GRID_TOL):
+            out_of_range.append(name)
+        elif not _length_on_grid(length, lo_len, dist.link_length_grid_m):
+            off_grid.append(name)
     if off_grid:
         out.append("link_length_off_grid:" + ",".join(sorted(off_grid)))
     if out_of_range:

@@ -30,7 +30,7 @@ from .distributions import (
     sample_module,
     sample_palm_joint_limits_rad,
 )
-from .fk import rpy_to_matrix
+from .fk import forward_kinematics
 from .kinematics import (
     AffineCoupling,
     Body,
@@ -157,9 +157,13 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
     steps: List[DerivationStep] = []
 
     digit_count = int(rng.integers(dist.digit_count_range[0], dist.digit_count_range[1] + 1))
+    # Additional palm bodies beyond the root -- the root is always a palm
+    # body with a real segment of its own (root_length below), so a hand
+    # never lacks a palm even when palm_body_count == 0.
     palm_body_count = int(rng.integers(dist.palm_body_count_range[0], dist.palm_body_count_range[1] + 1))
+    root_length = sample_grid_length_m(rng, dist.palm_length_range_m, dist.link_length_grid_m)
     steps.append(DerivationStep(path="hand", production="Hand", params={
-        "digit_count": digit_count, "palm_body_count": palm_body_count,
+        "digit_count": digit_count, "palm_body_count": palm_body_count, "root_length": root_length,
     }))
 
     palm_names: List[str] = []
@@ -167,6 +171,7 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
         name = f"palm{i}"
         parent_choices = ["root"] + palm_names
         parent = parent_choices[int(rng.integers(0, len(parent_choices)))]
+        mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
         length = sample_grid_length_m(rng, dist.palm_length_range_m, dist.link_length_grid_m)
         direction_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
         has_joint = bool(float(rng.random()) < dist.palm_joint_probability)
@@ -175,8 +180,8 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
         if has_joint:
             limits = sample_palm_joint_limits_rad(rng, dist)
         steps.append(DerivationStep(path=f"palm/{i}", production="PalmBody", params={
-            "name": name, "parent": parent, "length": length, "direction_rpy": direction_rpy,
-            "has_joint": has_joint, "axis": axis, "limits": limits,
+            "name": name, "parent": parent, "mount_frac": mount_frac, "length": length,
+            "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": limits,
         }))
         palm_names.append(name)
 
@@ -197,12 +202,17 @@ def derive(derivation: Derivation) -> KinematicModel:
     steps_by_path = {s.path: s for s in derivation.steps}
     hand = steps_by_path["hand"].params
     palm_body_count = hand["palm_body_count"]
+    root_length = hand["root_length"]
 
+    # The root always owns a real segment (see rules.py's RootProduction /
+    # convention-change note): a hand always has a palm, so body_length for
+    # "root" is never 0, and the root gets its own "<body>_tip" frame just
+    # like every other segment-owning body.
     bodies: List[Body] = [Body(name="root", palm=True)]
     joints: List[Joint] = []
-    frames: List[Frame] = []
+    frames: List[Frame] = [Frame(name="root_tip", body="root", pose=Pose(xyz=(0.0, 0.0, root_length)))]
     couplings: List[AffineCoupling] = []
-    body_length: Dict[str, float] = {"root": 0.0}
+    body_length: Dict[str, float] = {"root": root_length}
     joints_by_name: Dict[str, Joint] = {}
 
     for i in range(palm_body_count):
@@ -211,14 +221,22 @@ def derive(derivation: Derivation) -> KinematicModel:
         parent = p["parent"]
         length = p["length"]
         rpy = tuple(p["direction_rpy"])
-        R = rpy_to_matrix(rpy)
-        offset = R @ np.array([0.0, 0.0, length])
+        # Mount point ON the parent's own segment: T = Trans(0,0,frac*L) *
+        # Rot(rpy) -- xyz is the (unrotated) translation along the parent's
+        # own z-axis, rpy is the child frame's orientation relative to the
+        # parent, exactly as a URDF joint origin means (see rules.py's
+        # convention-change note / fk.py's docstring). Never place the
+        # child a further ``length`` out from that mount point -- that was
+        # the old bug that left the parent's segment with an unowned
+        # stretch between the mount and the parent's own tip.
+        mount_len = body_length[parent]
+        base_xyz = (0.0, 0.0, p["mount_frac"] * mount_len)
         jtype = "revolute" if p["has_joint"] else "fixed"
         axis = tuple(p["axis"]) if p["has_joint"] else (1.0, 0.0, 0.0)
         limits = tuple(p["limits"]) if p["has_joint"] else None
         j = Joint(
             name=f"{name}_j", type=jtype, parent=parent, child=name,
-            origin=Pose(xyz=tuple(float(v) for v in offset), rpy=rpy),
+            origin=Pose(xyz=base_xyz, rpy=rpy),
             axis=axis, limits=limits,
         )
         joints.append(j)
@@ -230,10 +248,12 @@ def derive(derivation: Derivation) -> KinematicModel:
     def _process_digit(p: Dict[str, Any]) -> None:
         digit_id = p["digit_id"]
         mount = p["mount"]
+        # Mount point ON the host segment (see the palm-mount comment above
+        # -- the same convention, applied to a digit/branch mounting on a
+        # palm or phalanx body): xyz is the unrotated translation along the
+        # host's own z-axis, mount_rpy is the child frame's orientation.
         mount_len = body_length.get(mount, 0.0)
-        Rm = rpy_to_matrix(tuple(p["mount_rpy"]))
-        off = Rm @ np.array([0.0, 0.0, p["mount_frac"] * mount_len])
-        base_xyz = tuple(float(v) for v in off)
+        base_xyz = (0.0, 0.0, p["mount_frac"] * mount_len)
         base_rpy = tuple(p["mount_rpy"])
 
         prev_body = mount
@@ -318,6 +338,20 @@ def derive(derivation: Derivation) -> KinematicModel:
     )
     validate(model)
     return model
+
+
+def segment(model: KinematicModel, body: str) -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
+    """Return ``(start, end)``: the endpoints, in the root frame at q=0, of
+    ``body``'s own geometric segment. ``start`` is ``body``'s own origin;
+    ``end`` is its ``"<body>_tip"`` frame (every body the grammar produces
+    carries one -- see rules.py). This is a thin q=0 forward-kinematics
+    query; it lives here (rather than in coverage.py) because it is about
+    the derived model's geometry itself, not about judging that geometry
+    against a ``Distribution``."""
+    transforms = forward_kinematics(model, {})
+    start = tuple(float(v) for v in transforms[body][:3, 3])
+    end = tuple(float(v) for v in transforms[f"{body}_tip"][:3, 3])
+    return start, end
 
 
 def generate(seed, dist: Distribution = DEFAULT_DISTRIBUTION) -> Tuple[Derivation, KinematicModel]:

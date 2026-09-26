@@ -45,6 +45,29 @@ Segment length/direction for the later geometry step is not a new ``Body``
 field: every body produced by a ``segment(...)`` production gets a
 ``Frame`` named ``"<body>_tip"`` whose pose is ``(0, 0, length)`` in the
 body's own frame -- the geometry step reads that frame instead.
+
+Convention fix (iteration 5, ``GRAMMAR_VERSION`` "0.1" -> "0.2"): a mount
+point is a point ON the host's own segment, never off it. Every body's
+segment runs from its own origin to its own ``"<body>_tip"`` frame at
+``(0, 0, L)`` *in its own frame*. A child mounted on a host at fraction
+``frac`` gets a joint whose ``origin`` is ``Trans(0, 0, frac * L) *
+Rot(rpy)`` -- i.e. ``origin.xyz = (0, 0, frac * L)`` (translation, in the
+host's own frame, never rotated by ``rpy``) and ``origin.rpy = rpy`` (the
+child frame's orientation relative to the host) -- exactly what a URDF
+joint origin means (see ``fk.py``'s docstring/``pose_to_matrix``). This
+applies uniformly to a digit/branch mounting on a palm or phalanx body
+*and* to a palm body mounting on its parent palm body (previously the
+latter placed the child's origin a full segment-length ``L`` further out
+than its mount, and its own tip a further ``L`` beyond that, leaving an
+"unowned" stretch of the parent's segment -- fixed by giving ``PalmBody``
+its own ``mount_frac``, sampled the same way a ``Digit``'s is). The root
+itself now always carries a real segment too (``Hand``'s own
+``root_length``, sampled from the same range as a palm segment): a hand
+without a palm makes no sense, so ``palm_body_count`` is the number of
+*additional* palm bodies beyond the root, and 0 of those is fine, but the
+root is never length-0. ``derive.segment(model, body)`` returns a body's
+segment endpoints (root frame, q=0) via forward kinematics, for anyone who
+needs to inspect this geometry directly.
 """
 
 from __future__ import annotations
@@ -52,22 +75,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-GRAMMAR_VERSION = "0.1"
+GRAMMAR_VERSION = "0.2"
 
 
 @dataclass(frozen=True)
 class RootProduction:
     """``Root``: the fixed hand-frame body. Always body name ``"root"``,
-    always ``Body.palm == True``."""
+    always ``Body.palm == True``. Always owns a real segment too (length
+    ``Hand``'s own ``root_length``, sampled like a palm body's, carried on
+    the ``"root_tip"`` ``Frame``) -- a hand always has a palm, so the root
+    is never a zero-length stub."""
 
 
 @dataclass(frozen=True)
 class PalmBodyProduction:
-    """``PalmBody(parent) -> segment(length, direction) + optional PalmJoint(R, axis, limits)``.
+    """``PalmBody(parent, mount_frac, mount_pose) -> segment(length, direction) + optional PalmJoint(R, axis, limits)``.
     ``parent`` is sampled among the root and every already-created palm body,
-    so palm bodies fan out into a tree rather than a fixed chain."""
+    so palm bodies fan out into a tree rather than a fixed chain. ``mount_frac``
+    (drawn from the same ``mount_frac_choices`` a ``Digit`` uses) places this
+    body's own origin at that fraction along ``parent``'s own segment --
+    exactly like a ``Digit``'s mount -- so ``parent``'s segment is never left
+    with an unowned stretch between where this body mounts and its own tip."""
 
     parent: str
+    mount_frac: float
     length: float
     direction_rpy: Tuple[float, float, float]
     has_joint: bool
