@@ -83,6 +83,11 @@ class Distribution:
 
     mount_frac_choices: Tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 1.0)
 
+    # Iteration 7 (M2/geometry): one capsule radius, sampled once per hand and
+    # stamped onto every ``Body.radius`` -- see ``rules.py``'s module-level
+    # note and ``derive.py``'s ``sample_derivation``/``derive``.
+    capsule_radius_choices_m: Tuple[float, ...] = (0.008, 0.010, 0.012)
+
 
 DEFAULT_DISTRIBUTION = Distribution()
 
@@ -128,6 +133,10 @@ def sample_palm_joint_limits_rad(rng: np.random.Generator, dist: Distribution) -
 def sample_prismatic_limits_m(rng: np.random.Generator, dist: Distribution) -> Tuple[float, float]:
     lo, hi = dist.prismatic_limit_choices_m[int(rng.integers(0, len(dist.prismatic_limit_choices_m)))]
     return (float(lo), float(hi))
+
+
+def sample_capsule_radius_m(rng: np.random.Generator, dist: Distribution) -> float:
+    return float(dist.capsule_radius_choices_m[int(rng.integers(0, len(dist.capsule_radius_choices_m)))])
 
 
 def sample_module_kind(rng: np.random.Generator, dist: Distribution, allow_coupled: bool) -> str:

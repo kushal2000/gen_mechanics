@@ -75,7 +75,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-GRAMMAR_VERSION = "0.2"
+GRAMMAR_VERSION = "0.3"
+
+# Iteration 7 (start of M2, geometry): geometry is a derived OVERLAY, never a
+# gene -- ``GeometrySpec`` (see ``grammar/geometry.py``) is computed from the
+# kinematic model plus one scalar radius per hand. That radius is still
+# sampled by the grammar itself (``Distribution.capsule_radius_choices_m``,
+# see ``distributions.py``), because a physically-sized capsule needs SOME
+# value and different hands should be able to differ -- but it never affects
+# the kinematic tree, so ``derive`` just stamps the same sampled value onto
+# every ``Body.radius`` field (bumping ``GRAMMAR_VERSION`` 0.2 -> 0.3, since
+# it is a new per-hand parameter every derivation must now carry).
 
 
 @dataclass(frozen=True)

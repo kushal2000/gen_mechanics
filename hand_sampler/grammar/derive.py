@@ -25,6 +25,7 @@ from .distributions import (
     DEFAULT_DISTRIBUTION,
     Distribution,
     sample_axis,
+    sample_capsule_radius_m,
     sample_grid_angle_rad,
     sample_grid_length_m,
     sample_module,
@@ -194,8 +195,12 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
     # never lacks a palm even when palm_body_count == 0.
     palm_body_count = int(rng.integers(dist.palm_body_count_range[0], dist.palm_body_count_range[1] + 1))
     root_length = sample_grid_length_m(rng, dist.palm_length_range_m, dist.link_length_grid_m)
+    # One capsule radius per hand (iteration 7 / M2, geometry overlay -- see
+    # rules.py's module note): stamped onto every Body.radius by ``derive``.
+    capsule_radius_m = sample_capsule_radius_m(rng, dist)
     steps.append(DerivationStep(path="hand", production="Hand", params={
         "digit_count": digit_count, "palm_body_count": palm_body_count, "root_length": root_length,
+        "capsule_radius_m": capsule_radius_m,
     }))
 
     palm_names: List[str] = []
@@ -322,12 +327,18 @@ def derive(derivation: Derivation) -> KinematicModel:
     hand = steps_by_path["hand"].params
     palm_body_count = hand["palm_body_count"]
     root_length = hand["root_length"]
+    # One scalar capsule radius for the whole hand (see rules.py's module
+    # note / distributions.py's capsule_radius_choices_m); stamped onto every
+    # Body below -- geometry itself is never derived here (see geometry.py),
+    # only this one per-hand parameter that geometry.py later reads off
+    # Body.radius.
+    capsule_radius_m = hand["capsule_radius_m"]
 
     # The root always owns a real segment (see rules.py's RootProduction /
     # convention-change note): a hand always has a palm, so body_length for
     # "root" is never 0, and the root gets its own "<body>_tip" frame just
     # like every other segment-owning body.
-    bodies: List[Body] = [Body(name="root", palm=True)]
+    bodies: List[Body] = [Body(name="root", palm=True, radius=capsule_radius_m)]
     joints: List[Joint] = []
     frames: List[Frame] = [Frame(name="root_tip", body="root", pose=Pose(xyz=(0.0, 0.0, root_length)))]
     couplings: List[AffineCoupling] = []
@@ -360,7 +371,7 @@ def derive(derivation: Derivation) -> KinematicModel:
         )
         joints.append(j)
         joints_by_name[j.name] = j
-        bodies.append(Body(name=name, palm=True))
+        bodies.append(Body(name=name, palm=True, radius=capsule_radius_m))
         frames.append(Frame(name=f"{name}_tip", body=name, pose=Pose(xyz=(0.0, 0.0, length))))
         body_length[name] = length
 
@@ -423,7 +434,7 @@ def derive(derivation: Derivation) -> KinematicModel:
             joints_by_name[joint_name] = j
             if coupling is not None:
                 couplings.append(coupling)
-            bodies.append(Body(name=body_name))
+            bodies.append(Body(name=body_name, radius=capsule_radius_m))
             length = pp["length"]
             frames.append(Frame(name=f"{body_name}_tip", body=body_name, pose=Pose(xyz=(0.0, 0.0, length))))
             body_length[body_name] = length
