@@ -179,27 +179,7 @@ from . import e2_drift as _e2_drift  # noqa: F401,E402
 from . import e3_reach as _e3_reach  # noqa: F401,E402
 from . import e4_redundancy as _e4_redundancy  # noqa: F401,E402
 
-try:
-    # e5_evolve.py is an unfinished file from a stopped worker (I14: left
-    # untouched, per the coordinator's instruction) that hardcodes an
-    # ``assert len(POOLS["UNION"]) == ... == 17`` module-level invariant
-    # tying it to the exact size of ``derive.SMALL_STEP_OPERATORS`` before
-    # this iteration's fix 5 (which changes that size: -step_length,
-    # +step_root_length, +step_radius). Importing it is still attempted (so
-    # it registers itself exactly as before whenever its own assumptions
-    # hold), but guarded here -- not inside e5_evolve.py itself -- so that
-    # file staying broken/stale never takes down every OTHER experiment
-    # module's registration (and every test that imports this module) along
-    # with it.
-    from . import e5_evolve as _e5_evolve  # noqa: F401,E402
-except Exception as _e5_evolve_import_error:  # noqa: BLE001
-    import warnings as _warnings
-
-    _warnings.warn(
-        f"experiments.e5_evolve failed to import ({type(_e5_evolve_import_error).__name__}: "
-        f"{_e5_evolve_import_error}); 'e5_evolve' will not appear in registered_experiments().",
-        stacklevel=1,
-    )
+from . import e5_evolve as _e5_evolve  # noqa: F401,E402
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
