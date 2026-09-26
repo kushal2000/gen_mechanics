@@ -842,8 +842,15 @@ def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
     return _rename_branch_mounts(result, digit_id, renumber)
 
 
-def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
-    """I15 fix 4: a phalanx that hosts a branch MAY now be deleted -- its
+def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation,
+                        target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+    """``target`` (grammar 0.5, reversibility): when given, the uid of the
+    ``Phalanx`` step to delete -- restricts the candidate pool to exactly
+    that phalanx (still subject to every safety check below) instead of
+    drawing uniformly, so a caller (the reversibility test) can undo a
+    specific ``insert_phalanx`` application precisely.
+
+    I15 fix 4: a phalanx that hosts a branch MAY now be deleted -- its
     branch sub-digit(s) are re-attached (their ``Digit`` step's ``mount``
     field updated) rather than orphaned: to the PROXIMAL neighbour phalanx's
     body (index ``del_p - 1``, whose body name is never itself renumbered
@@ -876,6 +883,7 @@ def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
         deletable = [
             p_idx for p_idx in phalanx_by_p
             if (p_idx != last_idx or last_deletion_safe)
+            and (target is None or phalanx_by_p[p_idx].params.get("uid") == target)
         ]
         if deletable:
             candidates.append((i, deletable))
@@ -1388,7 +1396,8 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation) -> Op
     return rest + [new_hand, digit_step, phalanx_step]
 
 
-def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation,
+                              target: Optional[int] = None) -> Optional[List[DerivationStep]]:
     """Reversible counterpart of ``add_minimal_digit``: remove a top-level
     digit with 1 or 2 phalanges (I15 fix 4, widened from exactly 1 --
     ``add_minimal_digit`` itself only ever ADDS a 1-phalanx digit, but
@@ -1398,7 +1407,13 @@ def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation) ->
     digit here -- via ``_is_descendant_digit`` -- also removes any branch
     nested under it, which would make this "minimal" operator silently
     remove a much larger subtree; ``delete_phalanx`` is the operator that
-    handles branch re-attachment)."""
+    handles branch re-attachment).
+
+    ``target`` (grammar 0.5, reversibility): when given, the uid of the
+    ``Digit`` step to remove -- restricts the candidate pool to exactly that
+    digit (still subject to every safety check above) instead of drawing
+    uniformly, so a caller (the reversibility test) can undo a specific
+    ``add_minimal_digit`` application precisely."""
     steps = list(derivation.steps)
     hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
     hand_params = steps[hand_idx].params
@@ -1413,6 +1428,7 @@ def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation) ->
         if s.production == "Digit" and s.params.get("top_level") and s.params["phalanx_count"] in (1, 2)
         and len(phalanx_by_digit.get(s.params["digit_id"], [])) == s.params["phalanx_count"]
         and all(ph.params["branch_digit_count"] == 0 for ph in phalanx_by_digit.get(s.params["digit_id"], []))
+        and (target is None or s.params.get("uid") == target)
     ]
     if not candidates:
         return None
@@ -1458,8 +1474,14 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation) -> Option
     return rest + [new_hand, new_step]
 
 
-def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
-    """Remove ANY existing palm body (I14 fix 5 -- previously restricted to
+def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation,
+                          target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+    """``target`` (grammar 0.5, reversibility): when given, the uid of the
+    ``PalmBody`` step to remove -- restricts the candidate pool to exactly
+    that body instead of drawing uniformly, so a caller (the reversibility
+    test) can undo a specific ``add_palm_body`` application precisely.
+
+    Remove ANY existing palm body (I14 fix 5 -- previously restricted to
     a leaf palm body with no digit/palm children, which made this operator
     far less often applicable than ``add_palm_body``, an asymmetry the
     review flagged). If the removed body ``X`` hosts palm children
@@ -1485,7 +1507,12 @@ def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation) -> Opt
     if palm_body_count == 0:
         return None
     palm_steps = {s.params["name"]: s for s in steps if s.production == "PalmBody"}
-    candidates = list(palm_steps.keys())
+    if target is None:
+        candidates = list(palm_steps.keys())
+    else:
+        candidates = [name for name, s in palm_steps.items() if s.params.get("uid") == target]
+    if not candidates:
+        return None
     remove_name = candidates[int(rng.integers(0, len(candidates)))]
     remove_step = palm_steps[remove_name]
     remove_idx = int(remove_name[len("palm"):])
@@ -1526,12 +1553,25 @@ def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation) -> Opt
     return new_steps
 
 
-def _op_toggle_palm_joint(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_toggle_palm_joint(rng, dist: Distribution, derivation: Derivation,
+                           target: Optional[int] = None) -> Optional[List[DerivationStep]]:
     """On one existing (necessarily non-root -- the root has no ``PalmBody``
     step of its own) palm body, add a palm joint (sampled axis/limits) if
-    absent, or remove it (``has_joint=False``, ``limits=None``) if present."""
+    absent, or remove it (``has_joint=False``, ``limits=None``) if present.
+
+    Self-inverse (grammar 0.5, reversibility): toggling twice on the SAME
+    body restores it exactly (on/off keeps the stored axis only if the
+    limits were also byte-identical -- toggling off then on again resamples
+    axis/limits, so use ``target`` below rather than relying on a second
+    random toggle happening to land on the same body/axis). ``target``, when
+    given, is the uid of the ``PalmBody`` step to toggle -- restricts the
+    candidate pool to exactly that body instead of drawing uniformly."""
     steps = list(derivation.steps)
-    candidates = [i for i, s in enumerate(steps) if s.production == "PalmBody"]
+    if target is None:
+        candidates = [i for i, s in enumerate(steps) if s.production == "PalmBody"]
+    else:
+        candidates = [i for i, s in enumerate(steps)
+                      if s.production == "PalmBody" and s.params.get("uid") == target]
     if not candidates:
         return None
     idx = candidates[int(rng.integers(0, len(candidates)))]
@@ -1546,6 +1586,112 @@ def _op_toggle_palm_joint(rng, dist: Distribution, derivation: Derivation) -> Op
         p["limits"] = sample_palm_joint_limits_rad(rng, dist)
     steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
     return steps
+
+
+# --------------------------------------------------------------------------
+# Branch-digit operators (grammar 0.5, iteration B): the exact-inverse pair
+# for "branch" in ``EVOLUTION_OPERATORS``' operator table (add a
+# single-phalanx branch digit on a sampled existing phalanx body / remove a
+# branch digit with exactly 1 phalanx and no sub-branches of its own). Each
+# mirrors ``add_minimal_digit``/``remove_digit_minimal`` but for a BRANCH
+# digit (mounted on a phalanx body, ``top_level=False``) rather than a
+# top-level one -- unlike a fresh top-level digit, a branch digit's HOST
+# phalanx step tracks how many branches it hosts (``branch_digit_count``,
+# see ``rules.PhalanxProduction``'s docstring), which both operators keep
+# accurate (read by ``_op_delete_phalanx``'s own safety check and by
+# ``_op_remove_digit_minimal``'s "no branch" gate).
+# --------------------------------------------------------------------------
+
+
+def _op_add_branch_digit(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    """Add one new branch digit (1 phalanx, mirrors ``add_minimal_digit``)
+    on a uniformly sampled existing ``Phalanx`` step's own body, subject to
+    ``dist.max_branch_depth`` (the host digit's own depth must still be
+    below it) and ``dist.max_branch_digits`` (the host phalanx must not
+    already host the max). New material (module/length/bend/mount pose) is
+    drawn from ``_growth_dist(dist)``, like every other growth operator."""
+    steps = list(derivation.steps)
+    digit_depth = {s.params["digit_id"]: s.params["depth"] for s in steps if s.production == "Digit"}
+    candidates = [
+        i for i, s in enumerate(steps)
+        if s.production == "Phalanx"
+        and digit_depth.get(s.params["digit_id"], 0) < dist.max_branch_depth
+        and s.params["branch_digit_count"] < dist.max_branch_digits
+    ]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    host = steps[idx]
+    host_digit_id = host.params["digit_id"]
+    host_p = host.params["p"]
+    host_body = f"d{host_digit_id}p{host_p + 1}"
+    slot = host.params["branch_digit_count"]
+    sub_id = f"{host_digit_id}p{host_p + 1}b{slot}"
+    depth = digit_depth[host_digit_id] + 1
+
+    gdist = _growth_dist(dist)
+    mount_frac = float(gdist.mount_frac_choices[int(rng.integers(0, len(gdist.mount_frac_choices)))])
+    mount_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
+    axis = sample_axis(rng)
+    limits = sample_revolute_limits_rad(rng, gdist)
+    length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m)
+    bend_rpy, bend_offset = sample_bend(rng, gdist)
+    uid_base = _max_uid(steps) + 1
+
+    digit_step = DerivationStep(path=f"digit/{sub_id}", production="Digit", params={
+        "digit_id": sub_id, "mount": host_body, "mount_frac": mount_frac, "mount_rpy": mount_rpy,
+        "phalanx_count": 1, "top_level": False, "depth": depth, "uid": uid_base,
+    })
+    phalanx_step = DerivationStep(path=f"digit/{sub_id}/phalanx/0", production="Phalanx", params={
+        "digit_id": sub_id, "p": 0, "module": {"kind": "R", "axis": axis, "limits": limits},
+        "length": length, "branch_digit_count": 0, "uid": uid_base + 1,
+        "bend_rpy": bend_rpy, "bend_offset": bend_offset,
+    })
+    new_host = DerivationStep(path=host.path, production="Phalanx",
+                               params={**host.params, "branch_digit_count": slot + 1})
+    rest = [s if i != idx else new_host for i, s in enumerate(steps)]
+    return rest + [digit_step, phalanx_step]
+
+
+def _op_remove_branch_digit(rng, dist: Distribution, derivation: Derivation,
+                             target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+    """Exact-inverse counterpart of ``add_branch_digit``: remove a branch
+    digit (``top_level=False``) with exactly 1 phalanx and no sub-branches
+    of its own, decrementing its HOST phalanx's ``branch_digit_count``.
+    ``target``: uid of the branch ``Digit`` step to remove (restricts the
+    candidate pool instead of drawing uniformly, so a caller -- the
+    reversibility test -- can undo a specific ``add_branch_digit``
+    application precisely)."""
+    steps = list(derivation.steps)
+    phalanx_by_digit: Dict[str, DerivationStep] = {
+        s.params["digit_id"]: s for s in steps if s.production == "Phalanx"
+    }
+    candidates = [
+        s for s in steps
+        if s.production == "Digit" and not s.params.get("top_level", True)
+        and s.params["phalanx_count"] == 1
+        and phalanx_by_digit.get(s.params["digit_id"]) is not None
+        and phalanx_by_digit[s.params["digit_id"]].params["branch_digit_count"] == 0
+        and (target is None or s.params.get("uid") == target)
+    ]
+    if not candidates:
+        return None
+    branch_step = candidates[int(rng.integers(0, len(candidates)))]
+    branch_digit_id = branch_step.params["digit_id"]
+    host_body = branch_step.params["mount"]
+
+    kept = [s for s in steps if not _is_descendant_digit(branch_digit_id, _step_digit_id(s))]
+
+    def _decrement_host(s: DerivationStep) -> DerivationStep:
+        if s.production != "Phalanx":
+            return s
+        body_name = f"d{s.params['digit_id']}p{s.params['p'] + 1}"
+        if body_name != host_body:
+            return s
+        return DerivationStep(path=s.path, production="Phalanx",
+                               params={**s.params, "branch_digit_count": s.params["branch_digit_count"] - 1})
+
+    return [_decrement_host(s) for s in kept]
 
 
 _OPERATOR_FNS = {
@@ -1570,7 +1716,90 @@ _OPERATOR_FNS = {
     "add_palm_body": _op_add_palm_body,
     "remove_palm_body": _op_remove_palm_body,
     "toggle_palm_joint": _op_toggle_palm_joint,
+    "add_branch_digit": _op_add_branch_digit,
+    "remove_branch_digit": _op_remove_branch_digit,
 }
+
+# --------------------------------------------------------------------------
+# EVOLUTION_OPERATORS (grammar 0.5, iteration B / balanced-grammar-synthesis
+# .md section 3's operator table): the exact-inverse operator pool -- five
+# growth/shrink pairs (digit, phalanx, palm body, palm joint -- self-inverse
+# -- branch) plus every small-step operator. Each pair's growth move draws
+# new material from ``dist.insertion`` when set (``_growth_dist``, see
+# above); each pair's shrink move accepts an optional ``target`` uid so a
+# caller can undo a specific growth application precisely (see
+# ``apply_operator`` below and the reversibility test in
+# ``experiments/e12_balance.py`` / ``grammar_bench/tests/test_grammar05_b.py``).
+# Deliberately excludes ``regrow_subtree``/full-size ``add_digit``/
+# ``remove_digit``/``resample_parameter`` (no exact inverse, large jumps --
+# see balanced-grammar-synthesis.md section 3's "dropped from the default
+# pool").
+# --------------------------------------------------------------------------
+
+EVOLUTION_PAIRS: Tuple[Tuple[str, str], ...] = (
+    ("add_minimal_digit", "remove_digit_minimal"),
+    ("insert_phalanx", "delete_phalanx"),
+    ("add_palm_body", "remove_palm_body"),
+    ("toggle_palm_joint", "toggle_palm_joint"),
+    ("add_branch_digit", "remove_branch_digit"),
+)
+
+INVERSE_OF: Dict[str, str] = {}
+for _growth, _shrink in EVOLUTION_PAIRS:
+    INVERSE_OF[_growth] = _shrink
+    INVERSE_OF[_shrink] = _growth
+del _growth, _shrink
+
+EVOLUTION_OPERATORS: Tuple[str, ...] = (
+    "add_minimal_digit", "remove_digit_minimal",
+    "insert_phalanx", "delete_phalanx",
+    "add_palm_body", "remove_palm_body",
+    "toggle_palm_joint",
+    "add_branch_digit", "remove_branch_digit",
+) + tuple(SMALL_STEP_OPERATORS)
+assert len(EVOLUTION_OPERATORS) == len(set(EVOLUTION_OPERATORS)), "EVOLUTION_OPERATORS has duplicates"
+
+# Shrink operators (and self-inverse ``toggle_palm_joint``) that accept an
+# optional ``target`` uid, per ``_OPERATOR_FNS`` above.
+TARGETABLE_OPERATORS = frozenset({
+    "remove_digit_minimal", "delete_phalanx", "remove_palm_body",
+    "toggle_palm_joint", "remove_branch_digit",
+})
+
+
+def apply_operator(derivation: Derivation, rng: np.random.Generator, dist: Distribution,
+                    operator: str, target: Optional[int] = None) -> Optional[Derivation]:
+    """Apply ``operator`` exactly ONCE (unlike ``vary``: no 32-attempt retry
+    loop, no re-drawing a different operator on failure) to ``derivation``,
+    optionally passing ``target`` through to the underlying ``_op_*``
+    function when ``operator in TARGETABLE_OPERATORS`` (a uid selecting
+    which digit/phalanx/palm-body to act on, instead of drawing uniformly
+    -- see each targetable ``_op_*``'s own docstring). Returns ``None`` when
+    the operator has no valid application (the underlying function returned
+    ``None``, or the candidate failed to derive/validate) -- the caller
+    decides what "not applicable" means for its own accounting (E1's
+    ``VariationImpossible`` convention does not apply here, since this
+    function never retries)."""
+    if operator not in _OPERATOR_FNS:
+        raise ValueError(f"unknown vary operator {operator!r}")
+    fn = _OPERATOR_FNS[operator]
+    if operator in TARGETABLE_OPERATORS:
+        candidate_steps = fn(rng, dist, derivation, target=target)
+    else:
+        candidate_steps = fn(rng, dist, derivation)
+    if candidate_steps is None:
+        return None
+    if tuple(candidate_steps) == derivation.steps:
+        return None
+    candidate = Derivation(
+        seed=derivation.seed, grammar_version=derivation.grammar_version,
+        steps=tuple(candidate_steps), lineage=derivation.lineage + ((operator, derivation.seed),),
+    )
+    try:
+        derive(candidate)
+    except ModelError:
+        return None
+    return candidate
 
 
 def vary(derivation: Derivation, rng: np.random.Generator, dist: Distribution = DEFAULT_DISTRIBUTION,

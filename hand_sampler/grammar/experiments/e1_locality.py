@@ -40,14 +40,28 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 
 from ..canonical import canonical_form, phenotype_hash
-from ..derive import OPERATORS, SMALL_STEP_OPERATORS, VariationImpossible, derive, generate, joint_identity, vary
+from ..derive import (
+    EVOLUTION_OPERATORS, OPERATORS, SMALL_STEP_OPERATORS, VariationImpossible, derive, generate,
+    joint_identity, vary,
+)
 from ..kinematics import KinematicModel
 from ..phenodist import phenotype_distance
 from ..proxy import tip_frames
 from ..variants import G_FULL
 from .runner import register, run_experiment
 
-ALL_OPERATORS: tuple = tuple(OPERATORS) + tuple(SMALL_STEP_OPERATORS)
+# Grammar 0.5 (iteration B): ``EVOLUTION_OPERATORS`` (the exact-inverse pool
+# -- see derive.py's own module-level comment) folded in as an ADDITIONAL
+# operator set, de-duplicated against the pre-existing 12 (``OPERATORS`` +
+# ``SMALL_STEP_OPERATORS`` -- every ``SMALL_STEP_OPERATORS`` entry and
+# ``insert_phalanx``/``delete_phalanx`` already overlap) via
+# ``dict.fromkeys`` (order-preserving): only the 7 genuinely new operators
+# (``add_minimal_digit``, ``remove_digit_minimal``, ``add_palm_body``,
+# ``remove_palm_body``, ``toggle_palm_joint``, ``add_branch_digit``,
+# ``remove_branch_digit``) are appended.
+ALL_OPERATORS: tuple = tuple(dict.fromkeys(
+    tuple(OPERATORS) + tuple(SMALL_STEP_OPERATORS) + tuple(EVOLUTION_OPERATORS)
+))
 
 _CONTINUOUS_KEYS = (
     "tip_displacement_m", "joint_count_delta", "fraction_joints_changed",

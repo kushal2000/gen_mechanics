@@ -64,7 +64,10 @@ import numpy as np
 
 from ..canonical import phenotype_hash
 from ..coords import independent_joints
-from ..derive import MINIMAL_STRUCTURAL_OPERATORS, OPERATORS, SMALL_STEP_OPERATORS, VariationImpossible, derive, vary
+from ..derive import (
+    EVOLUTION_OPERATORS, EVOLUTION_PAIRS, MINIMAL_STRUCTURAL_OPERATORS, OPERATORS, SMALL_STEP_OPERATORS,
+    VariationImpossible, derive, vary,
+)
 from ..kinematics import KinematicModel
 from ..phenodist import _digit_count, _palm_body_count, _total_length_m
 from ..variants import G_FULL, G_FULL_INS, G_NOBRANCH, G_NOBRANCH_INS
@@ -121,10 +124,30 @@ def _union_weighted_mixture() -> Dict[str, float]:
     return mix
 
 
+def _evolution_weighted_mixture() -> Dict[str, float]:
+    """Grammar 0.5 (iteration B): 55% of the weight split equally over
+    ``SMALL_STEP_OPERATORS``; the remaining 45% split equally over
+    ``derive.EVOLUTION_PAIRS``' 5 pairs (9% each), and WITHIN a
+    non-self-inverse pair split equally again between its growth and
+    shrink member (4.5% each) -- ``toggle_palm_joint`` (the one
+    self-inverse pair) gets its whole 9% share on the single operator."""
+    mix: Dict[str, float] = {op: 0.55 / len(SMALL_STEP_OPERATORS) for op in SMALL_STEP_OPERATORS}
+    pair_share = 0.45 / len(EVOLUTION_PAIRS)
+    for growth, shrink in EVOLUTION_PAIRS:
+        if growth == shrink:
+            mix[growth] = mix.get(growth, 0.0) + pair_share
+        else:
+            mix[growth] = mix.get(growth, 0.0) + pair_share / 2.0
+            mix[shrink] = mix.get(shrink, 0.0) + pair_share / 2.0
+    return mix
+
+
 MIXTURES: Dict[str, Dict[str, float]] = {
     "DEFAULT_uniform": _uniform(OPERATORS),
     "UNION_uniform": _uniform(UNION_OPERATORS),
     "UNION_weighted": _union_weighted_mixture(),
+    "EVOLUTION_uniform": _uniform(EVOLUTION_OPERATORS),
+    "EVOLUTION_weighted": _evolution_weighted_mixture(),
 }
 
 for _name, _mix in MIXTURES.items():
