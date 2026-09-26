@@ -7,7 +7,7 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,
   "budget": {
-    "worker_runs_used": 21,
+    "worker_runs_used": 22,
     "worker_runs_max": 36,
     "opus_reviews_used": 4,
     "opus_reviews_max": 4,
@@ -150,10 +150,17 @@
       "hypothesis": "Grammar 0.5 for generalization: rest-bend primitive; continuous sign-normalised limits; dependent limits accepted within the source image; stratified immigrant prior.",
       "decision": null,
       "evidence": "grammar-for-generalization.md sections 5-6"
+    },
+    {
+      "id": "I18",
+      "status": "in_progress",
+      "hypothesis": "delete_phalanx on phalanx 0 with branches re-attaches them to the digit's mount (a palm body), aliasing branch digits as top-level; fix: re-attach to the distal neighbour or refuse when the digit has one phalanx. remove_palm_body in the evolution pool must only remove an empty leaf (exact inverse of add_palm_body). Balance criterion 1 should test stationarity from prior-sampled starts, with boundary drift reported separately; locality criterion per operator.",
+      "decision": null,
+      "evidence": "E12 (a),(b)"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Iteration B running: exact-inverse operator pool (grammar 0.4 pairs incl. branch pair), stratified immigrant prior, reversibility test, E1/E2 per-pair drift as balance tests.",
+  "next_action": "Iteration C running: I18 fixes, E12 criteria refined, re-run E12/E1/E2/E3/E11, regenerate coverage report, update notes.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

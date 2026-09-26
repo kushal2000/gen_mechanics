@@ -161,3 +161,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## Grammar 0.5 iteration A (2026-09-26 ~11:55)
 
 - Worker run 20. 3037 passed. Rest bend (Pinocchio-checked on 20 G_BEND seeds), continuous limits (G_CONT), sign normalisation (no current hand affected; Barrett's ranges are out of range on either encoding), coupling containment (Inspire thumb couplings now accepted; 4 Inspire finger and 4 Ability couplings genuinely outside the image), I16 fixed (SHARPA at L7). Decision: keep.
+
+## Grammar 0.5 iteration B (2026-09-26 ~12:45)
+
+- Worker run 21. 3084 passed in 204 s. E12 balance suite: reversibility 100% (10/10 pair x dist); per-pair drift from minimum-size starts positive for digit/phalanx/branch pairs (applicability asymmetry at the boundary, plus the delete_phalanx aliasing defect); remove_palm_body p90 195 mm; histograms and redundancy pass. E2: EVOLUTION mixtures drift to 12-13 joints on G_FULL (vs 31 default) and 12-13 on G_FULL_INS (vs 8.7 default). Decision: keep code, revise criteria and fix I18 in iteration C.
