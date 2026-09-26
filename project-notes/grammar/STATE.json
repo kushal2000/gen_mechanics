@@ -7,7 +7,7 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,
   "budget": {
-    "worker_runs_used": 20,
+    "worker_runs_used": 21,
     "worker_runs_max": 36,
     "opus_reviews_used": 4,
     "opus_reviews_max": 4,
@@ -139,10 +139,10 @@
     },
     {
       "id": "I16",
-      "status": "open",
+      "status": "fixed",
       "hypothesis": "E11 reported sharpa_left_on_iiwa14 as unavailable although assets/urdf/kuka_sharpa_description/... exists; the REPO: path resolution in e11_support_widening.py differs from evaluate.py. Fix and re-run E11 for SHARPA.",
-      "decision": null,
-      "evidence": "E11 report"
+      "decision": "keep",
+      "evidence": "e11 REPO_ROOT parents[3]; SHARPA in support at L7"
     },
     {
       "id": "I17",
@@ -153,7 +153,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Iteration A running: rest bend, continuous sign-normalised limits, coupling containment, I16 fix. Then B: exact-inverse operator pool + stratified immigrants + balance tests. Then C: coverage/E3/E11 re-run and notes.",
+  "next_action": "Iteration B running: exact-inverse operator pool (grammar 0.4 pairs incl. branch pair), stratified immigrant prior, reversibility test, E1/E2 per-pair drift as balance tests.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

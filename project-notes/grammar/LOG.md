@@ -157,3 +157,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## Generalization investigation (2026-09-26 10:48-11:20)
 
 - Brief re-read (README, investigation note section 2, design note); lit review on morphology distributions and controller generalization (lit-review-morphology-distribution-for-generalization.md); E11 support-widening audit (rest bend is a prerequisite for every real hand; continuous limits bring 3 hands in; widened ranges 4; ORCA at L8; Barrett/D'Claw/Tesollo limit ranges outside; Ability/Inspire blocked by the coupling image-equality check). Suite 3018 passed. Recommendation in grammar-for-generalization.md section 6; issues I16, I17 opened. Loop stopped.
+
+## Grammar 0.5 iteration A (2026-09-26 ~11:55)
+
+- Worker run 20. 3037 passed. Rest bend (Pinocchio-checked on 20 G_BEND seeds), continuous limits (G_CONT), sign normalisation (no current hand affected; Barrett's ranges are out of range on either encoding), coupling containment (Inspire thumb couplings now accepted; 4 Inspire finger and 4 Ability couplings genuinely outside the image), I16 fixed (SHARPA at L7). Decision: keep.
