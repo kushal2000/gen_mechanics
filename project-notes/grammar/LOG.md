@@ -68,3 +68,10 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Coordinator probe over 300 generated hands: root is a palm with L>0 in all; every joint origin is (0,0,t) with 0<=t<=L_host; worst world-frame offset from the host segment 3.9e-17 m.
 - Audit keys nonperpendicular_axis and two_nonparallel_palm_joints now computed from derived models (joint frame / root frame).
 - Commits: 565854c (benchmark), dca4d7a (implementation). Decision: keep.
+
+## Iteration 6 (2026-09-26): honest coverage, validator, lineage, test hygiene (I9, I10)
+
+- Worker run 8 (Sonnet 5). Suite: 2825 passed in 67 s (coordinator run). Commits 02739fe (benchmark), 3acff20 (implementation), report regenerated on a clean tree.
+- Coverage now reports topology_expressible = no for every available real hand: 9/10 on continuation_pose (mid-chain frame rotation or lateral offset the straight-rod convention cannot express), Ability/Inspire also coupling_limits_not_image, ORCA on excess_children and fixed_in_digit. in_support = no for all (limits/lengths/axes off the sampler's grids). This is the honest picture; the earlier 'expressible: yes' was vacuous.
+- Coupling sources restricted to revolute (3961 couplings over 1000 seeds, 0 non-revolute). Derivation validator rejects junk steps. vary records lineage; founder seed unchanged.
+- Opened I11 (rest-bend production) for Martin's decision. Decision: keep. M1 closed.

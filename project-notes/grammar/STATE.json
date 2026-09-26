@@ -5,9 +5,9 @@
   "branch": "martin/hand-grammar",
   "started_at": "2026-09-25T17:29:32-04:00",
   "deadline": "2026-09-25T19:29:32-04:00",
-  "iteration": 6,
+  "iteration": 7,
   "budget": {
-    "worker_runs_used": 8,
+    "worker_runs_used": 9,
     "worker_runs_max": 15,
     "opus_reviews_used": 2,
     "opus_reviews_max": 3,
@@ -88,21 +88,28 @@
     },
     {
       "id": "I9",
-      "status": "open",
+      "status": "fixed",
       "hypothesis": "Coverage 'expressible' is near-vacuous and two audit keys are mislabelled (nonperpendicular_axis, two_nonparallel_palm_joints); ORCA children-per-body not checked.",
-      "decision": null,
-      "evidence": "opus-review-m1.md defects 4-5"
+      "decision": "keep",
+      "evidence": "commits 02739fe+3acff20; 2825 passed in 67 s"
     },
     {
       "id": "I10",
-      "status": "open",
+      "status": "fixed",
       "hypothesis": "Couplings ignore source joint type; no derivation validator; vary keeps parent seed; rules.py types unused; test hygiene items (local tolerances, approx, body-set asserts, unused analytic refs).",
+      "decision": "keep",
+      "evidence": "commits 02739fe+3acff20; 2825 passed in 67 s"
+    },
+    {
+      "id": "I11",
+      "status": "open",
+      "hypothesis": "Real fingers have mid-chain frame rotations/lateral offsets (continuation_pose) that the straight-rod digit convention cannot express; a 'rest bend' production (continuation rpy and lateral offset on a phalanx) would extend support. Decide with Martin whether evolution needs it.",
       "decision": null,
-      "evidence": "opus-review-m1.md defects 6-10"
+      "evidence": "pilot-report: 9/10 real hands fail only/mainly on continuation_pose"
     }
   ],
-  "last_green_commit": "dca4d7a",
-  "next_action": "Iteration 6 running: I9 (topology_expressible + missing checks, ORCA note, dirty flag) and I10 test hygiene; regenerate report.",
+  "last_green_commit": "3acff20",
+  "next_action": "Iteration 7 (M2 start): geometry overlay - capsules per finger body (radius per hand from distribution), palm hull per palm body: hull of all palm capsules at q=0 cut by planes through each palm joint origin containing the axis with normal n = d - (d.a)a; positive-volume validation; mass/inertia from volume x density; export to URDF collision (capsules as cylinder+spheres, hull as mesh file or convex vertices); tests: convexity, cell volume > 0, cells partition the hull volume (sum of cell volumes == hull volume within 1e-9 relative), mounts on cell surface.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -111,6 +118,6 @@
     "stop_reason": "worker (6/6) and Opus (2/2) budgets exhausted; M1 partially met; scope/budget decision needed"
   },
   "milestones": {
-    "M1": "partially met (see opus-review-m1.md): kinematics/import/export/generation verified; coverage report overstates 'expressible'; geometry data model has defects I8"
+    "M1": "met with honest coverage (2026-09-26): kinematics/import/export/generation verified; coverage report now states topology_expressible=no for all real hands with named reasons; in_support=no for all."
   }
 }
