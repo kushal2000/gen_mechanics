@@ -51,6 +51,14 @@ class VariationImpossible(Exception):
     application after 32 attempts (e.g. ``remove_digit`` at 1 digit)."""
 
 
+class DerivationError(ModelError):
+    """Raised by ``derive`` when ``validate_derivation`` finds the
+    *derivation itself* malformed -- before any attempt is made to build a
+    ``KinematicModel`` from it. A ``ModelError`` subclass (same ``issues``
+    list interface), so every existing ``except ModelError`` catch site
+    (e.g. ``vary``'s own retry loop) already handles it."""
+
+
 @dataclass(frozen=True)
 class DerivationStep:
     path: str
@@ -63,6 +71,16 @@ class Derivation:
     seed: int
     grammar_version: str
     steps: Tuple[DerivationStep, ...]
+    # Provenance of a ``vary``-produced derivation: an ordered tuple of
+    # (operator, parent_seed) entries, one per ``vary`` application, oldest
+    # first. Empty for a freshly sampled derivation. ``seed`` itself is
+    # always the *founder* seed (the seed originally passed to
+    # ``sample_derivation``) and is never changed by ``vary`` -- a varied
+    # derivation is replayed by re-running its own stored ``steps`` through
+    # ``derive``, never by resampling from ``seed`` again, so ``lineage`` is
+    # the only record of which operators were applied and in what order;
+    # ``seed`` alone does not recover it.
+    lineage: Tuple[Tuple[str, int], ...] = ()
 
 
 # --------------------------------------------------------------------------
@@ -100,9 +118,23 @@ def _is_descendant_digit(host_id: str, candidate_id: Optional[str]) -> bool:
     return candidate_id == host_id or candidate_id.startswith(host_id + "p")
 
 
+def _revolute_source_indices(steps, digit_id: str, upto: int) -> Tuple[int, ...]:
+    """0-based indices < ``upto`` of ``digit_id``'s own Phalanx steps (already
+    present in ``steps``) whose module is revolute ("R") -- the only valid
+    ``Coupled`` source per the coupling-source rule (see
+    ``distributions.sample_module``)."""
+    return tuple(
+        sorted(
+            s.params["p"] for s in steps
+            if s.production == "Phalanx" and s.params["digit_id"] == digit_id
+            and s.params["p"] < upto and s.params["module"]["kind"] == "R"
+        )
+    )
+
+
 def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str, p: int,
                      depth: int, is_last: bool) -> None:
-    module = sample_module(rng, dist, p)
+    module = sample_module(rng, dist, p, _revolute_source_indices(steps, digit_id, p))
     length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
     branch_digit_count = 0
     if depth < dist.max_branch_depth and float(rng.random()) < dist.branch_probability:
@@ -198,7 +230,94 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
 # --------------------------------------------------------------------------
 
 
+def validate_derivation(derivation: Derivation) -> List[str]:
+    """Structural validation of a ``Derivation`` *as a trace* -- independent
+    of, and prior to, building any ``KinematicModel`` from it. Returns a list
+    of issue strings (empty if clean). Checks:
+
+    - ``grammar_version`` matches the current ``GRAMMAR_VERSION``.
+    - every ``Phalanx`` step's ``digit_id`` names a ``Digit`` step present in
+      the same derivation.
+    - the ``hand`` step's ``digit_count`` equals the number of top-level
+      ``Digit`` steps.
+    - each ``Digit`` step's ``Phalanx`` steps have exactly the indices
+      ``0..phalanx_count - 1`` (contiguous, no gaps or duplicates).
+    - every ``Digit`` step's ``mount`` names a body that another step in the
+      derivation actually creates (``"root"``, a ``PalmBody`` step's
+      ``name``, or some digit's own phalanx body ``f"d{digit_id}p{p+1}"``).
+    """
+    issues: List[str] = []
+
+    if derivation.grammar_version != GRAMMAR_VERSION:
+        issues.append(
+            f"grammar_version mismatch: derivation has {derivation.grammar_version!r}, "
+            f"expected {GRAMMAR_VERSION!r}"
+        )
+
+    hand_steps = [s for s in derivation.steps if s.path == "hand"]
+    hand = hand_steps[0].params if len(hand_steps) == 1 else None
+    if len(hand_steps) != 1:
+        issues.append(f"expected exactly one 'hand' step, found {len(hand_steps)}")
+
+    digit_steps: Dict[str, DerivationStep] = {}
+    for s in derivation.steps:
+        if s.production == "Digit":
+            digit_id = s.params["digit_id"]
+            if digit_id in digit_steps:
+                issues.append(f"duplicate Digit step for digit id {digit_id!r}")
+            digit_steps[digit_id] = s
+
+    phalanx_by_digit: Dict[str, Dict[int, DerivationStep]] = {}
+    for s in derivation.steps:
+        if s.production != "Phalanx":
+            continue
+        digit_id = s.params["digit_id"]
+        if digit_id not in digit_steps:
+            issues.append(f"Phalanx step {s.path!r} references unknown digit id {digit_id!r}")
+            continue
+        by_p = phalanx_by_digit.setdefault(digit_id, {})
+        p = s.params["p"]
+        if p in by_p:
+            issues.append(f"duplicate Phalanx step for digit {digit_id!r} index {p}")
+        by_p[p] = s
+
+    if hand is not None:
+        n_top_level = sum(1 for s in digit_steps.values() if s.params.get("top_level"))
+        if n_top_level != hand["digit_count"]:
+            issues.append(
+                f"hand digit_count={hand['digit_count']} disagrees with "
+                f"{n_top_level} top-level Digit step(s)"
+            )
+
+    for digit_id, dstep in digit_steps.items():
+        expected = list(range(dstep.params["phalanx_count"]))
+        got = sorted(phalanx_by_digit.get(digit_id, {}))
+        if got != expected:
+            issues.append(
+                f"digit {digit_id!r} phalanx indices {got} are not contiguous 0..{dstep.params['phalanx_count'] - 1}"
+            )
+
+    known_bodies = {"root"}
+    for s in derivation.steps:
+        if s.production == "PalmBody":
+            known_bodies.add(s.params["name"])
+    for digit_id, by_p in phalanx_by_digit.items():
+        for p in by_p:
+            known_bodies.add(f"d{digit_id}p{p + 1}")
+
+    for digit_id, dstep in digit_steps.items():
+        mount = dstep.params["mount"]
+        if mount not in known_bodies:
+            issues.append(f"digit {digit_id!r} mount {mount!r} is not a body any step creates")
+
+    return issues
+
+
 def derive(derivation: Derivation) -> KinematicModel:
+    issues = validate_derivation(derivation)
+    if issues:
+        raise DerivationError(issues)
+
     steps_by_path = {s.path: s for s in derivation.steps}
     hand = steps_by_path["hand"].params
     palm_body_count = hand["palm_body_count"]
@@ -399,6 +518,7 @@ def derivation_to_dict(d: Derivation) -> Dict[str, Any]:
         "seed": d.seed,
         "grammar_version": d.grammar_version,
         "steps": [_step_to_dict(s) for s in d.steps],
+        "lineage": _encode(d.lineage),
     }
 
 
@@ -409,6 +529,7 @@ def derivation_from_dict(d: Dict[str, Any]) -> Derivation:
         seed=d["seed"],
         grammar_version=d["grammar_version"],
         steps=tuple(_step_from_dict(s) for s in d["steps"]),
+        lineage=_decode(d["lineage"]) if "lineage" in d else (),
     )
 
 
@@ -452,7 +573,7 @@ def _op_resample_parameter(rng, dist: Distribution, derivation: Derivation) -> O
         return steps
     if s.production == "Phalanx":
         p = dict(s.params)
-        module = sample_module(rng, dist, p["p"])
+        module = sample_module(rng, dist, p["p"], _revolute_source_indices(steps, p["digit_id"], p["p"]))
         length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
         p.update({"module": module, "length": length})
         steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
@@ -576,7 +697,10 @@ def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
         new_phalanx_list.append(
             DerivationStep(path=f"digit/{digit_id}/phalanx/{new_p}", production="Phalanx", params=params))
 
-    module = sample_module(rng, dist, ins_p)
+    revolute_source_indices = tuple(
+        old_p for old_p in range(ins_p) if phalanx_steps[old_p].params["module"]["kind"] == "R"
+    )
+    module = sample_module(rng, dist, ins_p, revolute_source_indices)
     length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
     new_phalanx_list.append(DerivationStep(path=f"digit/{digit_id}/phalanx/{ins_p}", production="Phalanx", params={
         "digit_id": digit_id, "p": ins_p, "module": module, "length": length, "branch_digit_count": 0,
@@ -718,13 +842,16 @@ def vary(derivation: Derivation, rng: np.random.Generator, dist: Distribution = 
         candidate_steps = fn(rng, dist, derivation)
         if candidate_steps is None:
             continue
-        candidate = Derivation(seed=derivation.seed, grammar_version=derivation.grammar_version,
-                                steps=tuple(candidate_steps))
+        if tuple(candidate_steps) == derivation.steps:
+            continue
+        candidate = Derivation(
+            seed=derivation.seed, grammar_version=derivation.grammar_version,
+            steps=tuple(candidate_steps),
+            lineage=derivation.lineage + ((op, derivation.seed),),
+        )
         try:
             derive(candidate)
         except ModelError:
-            continue
-        if candidate == derivation:
             continue
         return candidate
     raise VariationImpossible(f"could not apply operator {op!r} to derivation after 32 attempts")

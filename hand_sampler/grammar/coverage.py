@@ -51,6 +51,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from .coords import CONTINUOUS_SAMPLE_RANGE
 from .kinematics import ALL_TYPES, KinematicModel, MOVABLE_TYPES
 from .distributions import Distribution, DEFAULT_DISTRIBUTION, ANGLE_STEP_DEG, DEG
 
@@ -256,7 +257,14 @@ def inventory(model: KinematicModel) -> ConstructInventory:
 
 @dataclass(frozen=True)
 class CoverageResult:
-    expressible: bool
+    # Renamed from "expressible" (iteration 6): could the grammar's own
+    # productions ever build this *topology* at all, independent of sampled
+    # parameter values -- necessary, not sufficient, for the grammar to
+    # actually represent the hand (a topology match says nothing about
+    # whether the specific lengths/axes/limits are ones the grammar would
+    # ever sample; that is what ``in_support`` is for). Renamed because the
+    # old name read as a stronger claim than the checks behind it justified.
+    topology_expressible: bool
     in_support: bool
     missing_constructs: List[str]
     out_of_support: List[str]
@@ -345,8 +353,55 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
     missing: List[str] = []
     out: List[str] = []
 
-    # -- expressible: could the grammar's own productions ever build this
-    # shape at all, regardless of sampled parameter values? --------------
+    joints_by_name = {j.name: j for j in model.joints}
+    bodies_by_name = {b.name: b for b in model.bodies}
+    palm_body_names = {b.name for b in model.bodies if b.palm}
+
+    children: Dict[str, List] = {}
+    for j in model.joints:
+        children.setdefault(j.parent, []).append(j)
+
+    non_root_palm = sum(1 for b in model.bodies if b.palm) - (1 if model.root in palm_body_names else 0)
+    lo_p, hi_p = dist.palm_body_count_range
+    if not (lo_p <= non_root_palm <= hi_p):
+        out.append(f"palm_body_count_out_of_range:{non_root_palm}")
+
+    # digit_starts / digit_count_source is needed by several of the new
+    # topology checks below (continuation_pose, coupling_scope, fixed_in_digit)
+    # as well as by the (pre-existing) in_support checks further down, so it
+    # is computed once, up front, and reused everywhere.
+    notes: List[str] = []
+    if palm_body_names:
+        # Top-level digit count, read structurally: a top-level Digit always
+        # mounts on a palm body (rules.py), so its first joint has a palm
+        # parent and a non-palm child. Exact for grammar output, whose
+        # palm=True bookkeeping is set by derive.py for exactly the palm
+        # bodies it builds.
+        digit_starts = [
+            j for j in model.joints
+            if j.parent in palm_body_names and j.child not in palm_body_names
+        ]
+        digit_count_source = "palm_flags"
+    else:
+        # No body is flagged palm=True at all: never true of grammar output,
+        # so this identifies an imported model (e.g. a URDF) that the
+        # grammar's palm bookkeeping does not apply to. Fall back to a
+        # purely structural count instead of a vacuous 0: the number of
+        # movable-joint chains leaving the declared root, treating any run
+        # of fixed joints as transparent (see _movable_children). A fixed
+        # subtree hanging off the root that never reaches a movable joint is
+        # not a digit.
+        digit_starts = _movable_children(model.root, children)
+        digit_count_source = "root_chains"
+        notes.append("digit_count_source:root_chains")
+
+    digit_count = len(digit_starts)
+    lo_d, hi_d = dist.digit_count_range
+    if not (lo_d <= digit_count <= hi_d):
+        out.append(f"digit_count_out_of_range:{digit_count}")
+
+    # ---- topology_expressible: could the grammar's own productions ever
+    # build this shape at all, regardless of sampled parameter values? -----
 
     if inv.n_closures > 0:
         missing.append("loop_closure")
@@ -383,52 +438,95 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
         # rules.py/derive.py never emit JointGroup productions.
         missing.append("joint_group")
 
-    expressible = len(missing) == 0
+    # (c)/(d)/(f) below need to know which digit's own subtree a body falls
+    # in; (a) reuses the same partition (see its comment). Assign every body
+    # to the digit whose own subtree (everything reachable, through any
+    # joint type, from that digit's start joint) contains it -- a body never
+    # in any digit_of entry is on the palm side (the root itself, or
+    # whatever sits between it and the first digit-start joint), never
+    # constrained by a digit's own branching cap. rules.py's ModuleCoupled
+    # always sources an earlier phalanx of the SAME digit -- never another
+    # digit, never a palm joint -- and derive.py always builds a Coupled
+    # dependent as type "revolute" with limits that are exactly the affine
+    # image of the (also always "revolute", after the coupling-source rule)
+    # source's own limits.
+    digit_of: Dict[str, int] = {}
+    for i, start in enumerate(digit_starts):
+        stack = [start.child]
+        while stack:
+            body = stack.pop()
+            if body in digit_of:
+                continue
+            digit_of[body] = i
+            stack.extend(kj.child for kj in children.get(body, []))
 
-    # -- in_support: also inside dist's sampled ranges/grids. -------------
+    # (a) a body inside some digit's own subtree can never end up with more
+    # than 1 + max_branch_digits child joints: a phalanx body's own children
+    # are, at most, its own next-phalanx joint (0 or 1) plus one joint per
+    # branch digit mounted on it (<= max_branch_digits). A body on the palm
+    # side (not in digit_of -- root, or any body strictly between root and a
+    # digit's own start joint) is excluded: the grammar's own palm fans out
+    # into an arbitrary tree (see palm_body_count_range/digit_count_range),
+    # so an ordinary multi-finger hand's palm/root is never penalized here,
+    # while a body already inside a digit that itself fans out further than
+    # a phalanx ever could (e.g. a wrist body reached through a single
+    # movable joint off the root, as in ORCA) is correctly flagged.
+    excess_children = sorted(
+        name for name, kids in children.items()
+        if name in digit_of and len(kids) > 1 + dist.max_branch_digits
+    )
+    if excess_children:
+        missing.append("excess_children:" + ",".join(excess_children))
 
-    joints_by_name = {j.name: j for j in model.joints}
-    bodies_by_name = {b.name: b for b in model.bodies}
-    palm_body_names = {b.name for b in model.bodies if b.palm}
+    coupling_scope_bad = set()
+    coupling_type_bad = set()
+    coupling_limits_bad = set()
+    for c in model.couplings:
+        dep_joint = joints_by_name.get(c.dependent)
+        src_joint = joints_by_name.get(c.source)
+        if dep_joint is None or src_joint is None:
+            continue
+        if src_joint.child in palm_body_names:
+            coupling_scope_bad.add(c.dependent)
+        elif digit_of.get(dep_joint.child, "?dep") != digit_of.get(src_joint.child, "?src"):
+            coupling_scope_bad.add(c.dependent)
+        if dep_joint.type != src_joint.type:
+            coupling_type_bad.add(c.dependent)
+        if dep_joint.limits is not None:
+            slo = shi = None
+            if src_joint.type == "continuous":
+                slo, shi = CONTINUOUS_SAMPLE_RANGE
+            elif src_joint.limits is not None:
+                slo, shi = src_joint.limits
+            if slo is not None:
+                lo_img, hi_img = c.multiplier * slo + c.offset, c.multiplier * shi + c.offset
+                if lo_img > hi_img:
+                    lo_img, hi_img = hi_img, lo_img
+                dlo, dhi = dep_joint.limits
+                if abs(dlo - lo_img) > SET_TOL or abs(dhi - hi_img) > SET_TOL:
+                    coupling_limits_bad.add(c.dependent)
+    if coupling_scope_bad:
+        missing.append("coupling_scope:" + ",".join(sorted(coupling_scope_bad)))
+    if coupling_type_bad:
+        missing.append("coupling_type_mismatch:" + ",".join(sorted(coupling_type_bad)))
+    if coupling_limits_bad:
+        missing.append("coupling_limits_not_image:" + ",".join(sorted(coupling_limits_bad)))
 
-    non_root_palm = inv.palm_bodies - (1 if model.root in palm_body_names else 0)
-    lo_p, hi_p = dist.palm_body_count_range
-    if not (lo_p <= non_root_palm <= hi_p):
-        out.append(f"palm_body_count_out_of_range:{non_root_palm}")
-
-    children: Dict[str, List] = {}
-    for j in model.joints:
-        children.setdefault(j.parent, []).append(j)
-
-    notes: List[str] = []
-    if palm_body_names:
-        # Top-level digit count, read structurally: a top-level Digit always
-        # mounts on a palm body (rules.py), so its first joint has a palm
-        # parent and a non-palm child. Exact for grammar output, whose
-        # palm=True bookkeeping is set by derive.py for exactly the palm
-        # bodies it builds.
-        digit_starts = [
-            j for j in model.joints
-            if j.parent in palm_body_names and j.child not in palm_body_names
-        ]
-        digit_count_source = "palm_flags"
-    else:
-        # No body is flagged palm=True at all: never true of grammar output,
-        # so this identifies an imported model (e.g. a URDF) that the
-        # grammar's palm bookkeeping does not apply to. Fall back to a
-        # purely structural count instead of a vacuous 0: the number of
-        # movable-joint chains leaving the declared root, treating any run
-        # of fixed joints as transparent (see _movable_children). A fixed
-        # subtree hanging off the root that never reaches a movable joint is
-        # not a digit.
-        digit_starts = _movable_children(model.root, children)
-        digit_count_source = "root_chains"
-        notes.append("digit_count_source:root_chains")
-
-    digit_count = len(digit_starts)
-    lo_d, hi_d = dist.digit_count_range
-    if not (lo_d <= digit_count <= hi_d):
-        out.append(f"digit_count_out_of_range:{digit_count}")
+    # (e) a fixed joint spliced between two movable joints, inside a digit
+    # (as opposed to on the palm-to-digit mount edge, or a palm body's own
+    # optional joint): the grammar's own Phalanx production always emits a
+    # movable joint (R/C/P/Coupled), so a fixed joint can never legitimately
+    # sit inside a digit's own chain.
+    digit_start_names = {s.name for s in digit_starts}
+    fixed_in_digit = sorted(
+        j.name for j in model.joints
+        if j.type == "fixed"
+        and j.child in digit_of
+        and j.name not in digit_start_names
+        and _movable_children(j.child, children)
+    )
+    if fixed_in_digit:
+        missing.append("fixed_in_digit:" + ",".join(fixed_in_digit))
 
     # Per-digit phalanx "run" length: walk forward from each digit start
     # while the current body has exactly one child (a lone continuation);
@@ -443,20 +541,39 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
     # joint down this branch" (_movable_children), i.e. the longest
     # movable-joint chain from a root child to a leaf/branch, so a fixed
     # mounting joint spliced into a URDF never breaks or inflates a run.
+    #
+    # (b) every joint visited here beyond a digit's own start is, by
+    # construction, a mid-digit continuation joint (its parent has exactly
+    # one child, so it is not a branch/mount point) -- the grammar always
+    # builds these with an identity orientation and a pure-z origin (see
+    # derive.py's convention note), so any non-identity rpy or lateral (x/y)
+    # offset on one of these is a shape the grammar cannot produce.
     lo_ph, hi_ph = dist.phalanx_count_range
     run_length_issues = []
+    continuation_pose_issues = []
     for start in digit_starts:
         run, cur = 1, start.child
         while True:
             kids = _movable_children(cur, children) if digit_count_source == "root_chains" else children.get(cur, [])
             if len(kids) != 1:
                 break
+            kid = kids[0]
+            if (
+                abs(kid.origin.rpy[0]) > SET_TOL or abs(kid.origin.rpy[1]) > SET_TOL
+                or abs(kid.origin.rpy[2]) > SET_TOL
+                or abs(kid.origin.xyz[0]) > SET_TOL or abs(kid.origin.xyz[1]) > SET_TOL
+            ):
+                continuation_pose_issues.append(kid.name)
             run += 1
-            cur = kids[0].child
+            cur = kid.child
         if not (lo_ph <= run <= hi_ph):
             run_length_issues.append(start.name)
     if run_length_issues:
         out.append("phalanx_run_out_of_range:" + ",".join(sorted(run_length_issues)))
+    if continuation_pose_issues:
+        missing.append("continuation_pose:" + ",".join(sorted(set(continuation_pose_issues))))
+
+    topology_expressible = len(missing) == 0
 
     # Branch depth: BFS from every digit start. At a branching body, at most
     # one child continues the *same* digit (identified the same way as the
@@ -559,10 +676,10 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
     if coupling_bad:
         out.append("coupling_params_not_in_set:" + ",".join(sorted(coupling_bad)))
 
-    in_support = expressible and len(out) == 0
+    in_support = topology_expressible and len(out) == 0
 
     return CoverageResult(
-        expressible=expressible,
+        topology_expressible=topology_expressible,
         in_support=in_support,
         missing_constructs=missing,
         out_of_support=out,

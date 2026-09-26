@@ -76,6 +76,20 @@ def _git_sha() -> str:
     return "unknown"
 
 
+def _git_dirty() -> bool:
+    """True if ``git status --porcelain`` reports any change (staged,
+    unstaged or untracked) relative to ``git_sha`` -- so the report is
+    honest about whether it was actually generated from that exact commit,
+    or from a working tree that has since moved on from it."""
+    try:
+        proc = subprocess.run(["git", "status", "--porcelain"], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        if proc.returncode == 0:
+            return bool(proc.stdout.strip())
+    except Exception:
+        pass
+    return True  # unknown status is reported as dirty, never silently clean
+
+
 def _resolve_hand(hand: dict, manifest: dict):
     """Returns (path_or_None, availability, reason_or_None). Mirrors the
     resolution rules used by test_acceptance_export.py's own
@@ -180,7 +194,7 @@ def _fidelity_for(hand_id: str, model, hand_root: Optional[str], urdf_path: Path
 
 def _coverage_dict(result) -> dict:
     return {
-        "expressible": result.expressible,
+        "topology_expressible": result.topology_expressible,
         "in_support": result.in_support,
         "missing_constructs": list(result.missing_constructs),
         "out_of_support": list(result.out_of_support),
@@ -250,6 +264,7 @@ def run(seed: int) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": seed,
         "git_sha": _git_sha(),
+        "git_dirty": _git_dirty(),
         "tool_versions": {"numpy": np.__version__, "python": sys.version.split()[0]},
         "tolerances": {"oracle_pos_m": ORACLE_POS_M, "oracle_rot_rad": ORACLE_ROT_RAD},
         "hands": hands_out,
@@ -264,7 +279,10 @@ def render_markdown(report: dict) -> str:
     lines = []
     lines.append("# Hand-kinematics grammar: iteration-4 coverage pilot")
     lines.append("")
-    lines.append(f"Generated {report['generated_at']} at git SHA `{report['git_sha']}`, seed {report['seed']}.")
+    dirty_note = " (working tree had uncommitted changes at generation time)" if report.get("git_dirty") else ""
+    lines.append(
+        f"Generated {report['generated_at']} at git SHA `{report['git_sha']}`{dirty_note}, seed {report['seed']}."
+    )
     lines.append("")
     lines.append(
         "For every hand: whether we could import it, whether our forward kinematics "
@@ -276,7 +294,7 @@ def render_markdown(report: dict) -> str:
     lines.append("")
     lines.append(
         "| id | family | split | availability | movable joints | couplings | digit count | digit count source"
-        " | fidelity (max pos / max rot) | fidelity pass | expressible | in_support | missing constructs"
+        " | fidelity (max pos / max rot) | fidelity pass | topology_expressible | in_support | missing constructs"
         " | out-of-support items |"
     )
     lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
@@ -290,7 +308,7 @@ def render_markdown(report: dict) -> str:
             fid_pass = "-"
         cov = h.get("coverage")
         if cov is not None:
-            expr = "yes" if cov["expressible"] else "no"
+            expr = "yes" if cov["topology_expressible"] else "no"
             sup = "yes" if cov["in_support"] else "no"
             missing = ", ".join(cov["missing_constructs"]) or "-"
             oos = ", ".join(cov["out_of_support"]) or "-"
@@ -320,6 +338,28 @@ def render_markdown(report: dict) -> str:
         lines.append(f"- {c}")
     lines.append("")
 
+    lines.append("## Known limitations")
+    lines.append("")
+    lines.append(
+        "- Digit counting for an imported model (`digit_count_source: root_chains`) counts "
+        "movable-joint chains leaving the declared root, treating a run of fixed joints as "
+        "transparent -- so a hand whose root passes through a single wrist joint before "
+        "fanning out to its fingers (e.g. `orca_right`) counts as 1 digit, not 5; it is not "
+        "a count of anatomical fingers."
+    )
+    lines.append(
+        "- `topology_expressible` is a necessary, not sufficient, condition: it means the "
+        "grammar's own productions could build a model with this *topology* (joint types, "
+        "branching, coupling scope, ...), never that the grammar would ever sample this "
+        "particular hand's lengths/axes/limits -- that is what `in_support` checks."
+    )
+    lines.append(
+        "- `in_support` is judged against `DEFAULT_DISTRIBUTION` only; a hand out of support "
+        "under the default ranges/grids/choice-sets might still be in support of some other "
+        "`Distribution` this module could construct."
+    )
+    lines.append("")
+
     lines.append("## Claims")
     lines.append("")
     lines.append(
@@ -335,9 +375,9 @@ def render_markdown(report: dict) -> str:
         "(`reference: generated_at_run`)."
     )
     lines.append(
-        "- `expressible`/`in_support` come from `hand_sampler.grammar.coverage`, which "
-        "checks the imported model against the grammar's own productions (`rules.py`) and "
-        "the default sampling distribution's ranges/grids (`distributions.py`); named "
+        "- `topology_expressible`/`in_support` come from `hand_sampler.grammar.coverage`, "
+        "which checks the imported model against the grammar's own productions (`rules.py`) "
+        "and the default sampling distribution's ranges/grids (`distributions.py`); named "
         "`missing_constructs`/`out_of_support` items are never dropped or relabeled to make "
         "a hand look better."
     )

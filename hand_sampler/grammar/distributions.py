@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -142,11 +142,29 @@ def sample_module_kind(rng: np.random.Generator, dist: Distribution, allow_coupl
     return options[-1][0]
 
 
-def sample_module(rng: np.random.Generator, dist: Distribution, phalanx_index: int) -> dict:
+def sample_module(rng: np.random.Generator, dist: Distribution, phalanx_index: int,
+                   revolute_source_indices: Optional[Tuple[int, ...]] = None) -> dict:
     """Sample a full module spec (dict, JSON-safe) for a phalanx at index
-    ``phalanx_index`` (0-based) within its digit. ``phalanx_index == 0`` can
-    never yield ``Coupled`` (no earlier joint in the digit to couple to)."""
-    kind = sample_module_kind(rng, dist, allow_coupled=phalanx_index > 0)
+    ``phalanx_index`` (0-based) within its digit.
+
+    Coupling-source rule: a ``Coupled`` module may only take a *revolute*
+    source, never a continuous or prismatic one (a continuous joint has no
+    fixed extent to take an affine image of, and coupling to a prismatic
+    joint's meters-valued range would silently reinterpret it as radians).
+    ``revolute_source_indices`` is the (0-based, within this digit) set of
+    earlier phalanx indices whose own module is already known to be ``"R"``
+    -- the only valid ``source_p`` choices. ``Coupled`` is dropped and
+    renormalized (like every other kind gated on ``phalanx_index == 0``)
+    whenever this set is empty, e.g. at a digit's first phalanx, or when no
+    earlier phalanx happens to be revolute. Callers that have not yet
+    decided earlier phalanges' kinds (there are none, at ``phalanx_index ==
+    0``) may omit it; it then defaults to ``range(phalanx_index)``, which is
+    only correct when the caller already knows every earlier phalanx is
+    revolute (true only for ``phalanx_index == 0``, where the range is
+    empty either way) -- every other caller must pass the real set."""
+    if revolute_source_indices is None:
+        revolute_source_indices = tuple(range(phalanx_index))
+    kind = sample_module_kind(rng, dist, allow_coupled=phalanx_index > 0 and len(revolute_source_indices) > 0)
     axis = sample_axis(rng)
     if kind == "R":
         return {"kind": "R", "axis": axis, "limits": sample_revolute_limits_rad(rng, dist)}
@@ -154,8 +172,9 @@ def sample_module(rng: np.random.Generator, dist: Distribution, phalanx_index: i
         return {"kind": "C", "axis": axis}
     if kind == "P":
         return {"kind": "P", "axis": axis, "limits": sample_prismatic_limits_m(rng, dist)}
-    # Coupled: source is an earlier phalanx (by relative index) in the same digit.
-    source_p = int(rng.integers(0, phalanx_index))
+    # Coupled: source is an earlier, revolute-only phalanx in the same digit
+    # (see the coupling-source rule above).
+    source_p = revolute_source_indices[int(rng.integers(0, len(revolute_source_indices)))]
     multiplier = float(dist.coupling_multiplier_choices[int(rng.integers(0, len(dist.coupling_multiplier_choices)))])
     offset = float(dist.coupling_offset_choices_rad[int(rng.integers(0, len(dist.coupling_offset_choices_rad)))])
     return {"kind": "Coupled", "axis": axis, "source_p": source_p, "multiplier": multiplier, "offset": offset}
