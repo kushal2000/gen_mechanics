@@ -1,6 +1,8 @@
 """Iteration-4 acceptance tests for ``hand_sampler/grammar/coverage.py``
 (structural inventory + support audit) and ``grammar_bench/evaluate.py``
-(the pilot report over the manifest's 14 hands).
+(the pilot report over the manifest's hands -- 16 as of the representation-
+check plan's item 3, which added ``shadow_right_local``/``arms_skel`` and
+turned ``svh_right`` from ``excluded`` into a scored local hand).
 """
 
 from __future__ import annotations
@@ -246,7 +248,7 @@ def test_evaluate_main_produces_pilot_report(tmp_path):
     hands = data["hands"]
     manifest_ids = {h["id"] for h in MANIFEST["hands"]}
     assert {h["id"] for h in hands} == manifest_ids
-    assert len(hands) == 14
+    assert len(hands) == 16  # representation-check plan item 3: was 14; +shadow_right_local, +arms_skel
 
     for h in hands:
         assert "split" in h
