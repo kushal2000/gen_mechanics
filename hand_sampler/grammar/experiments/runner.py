@@ -165,6 +165,13 @@ def _smoke_experiment(seed: int, n_configs: int = 8) -> Dict[str, float]:
 
 register("smoke", _smoke_experiment)
 
+# Import (only) for their module-level ``register(...)`` side effect, so
+# ``--list`` and ``registered_experiments()`` see "e1_locality"/"e2_drift".
+# Placed after ``register``/``run_experiment`` are defined (both modules do
+# ``from .runner import register, run_experiment`` at their own top level).
+from . import e1_locality as _e1_locality  # noqa: F401,E402
+from . import e2_drift as _e2_drift  # noqa: F401,E402
+
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="python3 -m hand_sampler.grammar.experiments.runner")
