@@ -1,0 +1,1351 @@
+{
+  "aggregate": {
+    "n_available_hands": {
+      "max": 10.0,
+      "mean": 10.0,
+      "min": 10.0,
+      "n": 1,
+      "std": 0.0
+    },
+    "n_blocked_at_l0": {
+      "max": 10.0,
+      "mean": 10.0,
+      "min": 10.0,
+      "n": 1,
+      "std": 0.0
+    },
+    "n_failed": 0,
+    "n_in_support_at_l8": {
+      "max": 5.0,
+      "mean": 5.0,
+      "min": 5.0,
+      "n": 1,
+      "std": 0.0
+    },
+    "n_ok": 1,
+    "n_seeds": 1
+  },
+  "git_diff_sha256": "0a9bf3409bed6d8d3b5e9ed823b9a180f190d1bc578e782d931249491884be5f",
+  "git_dirty": true,
+  "git_sha": "72dbff091580113e341f09d3768909ca551b4f33",
+  "grammar_version": "0.3",
+  "name": "e11_support_widening",
+  "numpy_version": "1.26.4",
+  "params": {
+    "n_generated_seeds": 200
+  },
+  "per_seed": [
+    {
+      "error": null,
+      "ok": true,
+      "result": {
+        "_bits": {
+          "baseline": {
+            "axis_choices_15deg_grid": 312,
+            "axis_choices_5deg_grid": 2664,
+            "coupling_mult_choices": 6,
+            "coupling_offset_choices": 5,
+            "link_length_choices_1mm_grid": 66,
+            "link_length_choices_5mm_grid": 14,
+            "palm_joint_limit_choices": 4,
+            "prismatic_limit_choices": 3,
+            "revolute_limit_choices": 10
+          },
+          "rows": [
+            {
+              "axis": "312 choices (8.285 bits), grid=15deg",
+              "coupling": "6 mult choices (2.585 bits) x 5 offset choices (2.322 bits)",
+              "level": "L0",
+              "link_length": "14 choices (3.807 bits), grid=5mm",
+              "prismatic_limits": "3 choices (1.585 bits)",
+              "relax": [],
+              "revolute_limits": "10 choices (3.322 bits)"
+            },
+            {
+              "axis": "312 choices (8.285 bits), grid=15deg",
+              "coupling": "6 mult choices (2.585 bits) x 5 offset choices (2.322 bits)",
+              "level": "L1",
+              "link_length": "14 choices (3.807 bits), grid=5mm",
+              "prismatic_limits": "3 choices (1.585 bits)",
+              "relax": [
+                "rest_bend"
+              ],
+              "revolute_limits": "10 choices (3.322 bits)"
+            },
+            {
+              "axis": "312 choices (8.285 bits), grid=15deg",
+              "coupling": "6 mult choices (2.585 bits) x 5 offset choices (2.322 bits)",
+              "level": "L2",
+              "link_length": "14 choices (3.807 bits), grid=5mm",
+              "prismatic_limits": "continuous",
+              "relax": [
+                "limits_continuous",
+                "rest_bend"
+              ],
+              "revolute_limits": "continuous in [-45.0, 110.0] deg (2 continuous DOF: lo, hi)"
+            },
+            {
+              "axis": "312 choices (8.285 bits), grid=15deg",
+              "coupling": "6 mult choices (2.585 bits) x 5 offset choices (2.322 bits)",
+              "level": "L3",
+              "link_length": "66 choices (6.044 bits), grid=1mm",
+              "prismatic_limits": "continuous",
+              "relax": [
+                "length_grid_1mm",
+                "limits_continuous",
+                "rest_bend"
+              ],
+              "revolute_limits": "continuous in [-45.0, 110.0] deg (2 continuous DOF: lo, hi)"
+            },
+            {
+              "axis": "2664 choices (11.379 bits), grid=5deg",
+              "coupling": "6 mult choices (2.585 bits) x 5 offset choices (2.322 bits)",
+              "level": "L4",
+              "link_length": "66 choices (6.044 bits), grid=1mm",
+              "prismatic_limits": "continuous",
+              "relax": [
+                "axis_grid_5deg",
+                "length_grid_1mm",
+                "limits_continuous",
+                "rest_bend"
+              ],
+              "revolute_limits": "continuous in [-45.0, 110.0] deg (2 continuous DOF: lo, hi)"
+            },
+            {
+              "axis": "2664 choices (11.379 bits), grid=5deg",
+              "coupling": "continuous: multiplier in [-2,2], offset in [-1,1] rad",
+              "level": "L5",
+              "link_length": "66 choices (6.044 bits), grid=1mm",
+              "prismatic_limits": "continuous",
+              "relax": [
+                "axis_grid_5deg",
+                "coupling_continuous",
+                "length_grid_1mm",
+                "limits_continuous",
+                "rest_bend"
+              ],
+              "revolute_limits": "continuous in [-45.0, 110.0] deg (2 continuous DOF: lo, hi)"
+            },
+            {
+              "axis": "continuous (unit sphere, 2 continuous DOF)",
+              "coupling": "continuous: multiplier in [-2,2], offset in [-1,1] rad",
+              "level": "L6",
+              "link_length": "continuous in [0.0150, 0.0800] m",
+              "prismatic_limits": "continuous",
+              "relax": [
+                "axis_continuous",
+                "axis_grid_5deg",
+                "coupling_continuous",
+                "length_continuous",
+                "length_grid_1mm",
+                "limits_continuous",
+                "rest_bend"
+              ],
+              "revolute_limits": "continuous in [-45.0, 110.0] deg (2 continuous DOF: lo, hi)"
+            },
+            {
+              "axis": "continuous (unit sphere, 2 continuous DOF)",
+              "coupling": "continuous: multiplier in [-2,2], offset in [-1,1] rad",
+              "level": "L7",
+              "link_length": "continuous in [-0.0013, 0.0963] m",
+              "prismatic_limits": "continuous",
+              "relax": [
+                "axis_continuous",
+                "axis_grid_5deg",
+                "coupling_continuous",
+                "length_continuous",
+                "length_grid_1mm",
+                "length_range_x1.5",
+                "limits_continuous",
+                "limits_range_x1.5",
+                "rest_bend"
+              ],
+              "revolute_limits": "continuous in [-83.8, 148.8] deg (2 continuous DOF: lo, hi)"
+            },
+            {
+              "axis": "continuous (unit sphere, 2 continuous DOF)",
+              "coupling": "continuous: multiplier in [-2,2], offset in [-1,1] rad",
+              "level": "L8",
+              "link_length": "continuous in [-0.0013, 0.0963] m",
+              "prismatic_limits": "continuous",
+              "relax": [
+                "axis_continuous",
+                "axis_grid_5deg",
+                "children_unbounded",
+                "coupling_continuous",
+                "fixed_in_digit_ok",
+                "length_continuous",
+                "length_grid_1mm",
+                "length_range_x1.5",
+                "limits_continuous",
+                "limits_range_x1.5",
+                "rest_bend"
+              ],
+              "revolute_limits": "continuous in [-83.8, 148.8] deg (2 continuous DOF: lo, hi)"
+            }
+          ]
+        },
+        "_generated": {
+          "all_in_support_by_level": {
+            "L0": true,
+            "L1": true,
+            "L2": true,
+            "L3": true,
+            "L4": true,
+            "L5": true,
+            "L6": true,
+            "L7": true,
+            "L8": true
+          },
+          "counterexample_seeds_by_level": {
+            "L0": [],
+            "L1": [],
+            "L2": [],
+            "L3": [],
+            "L4": [],
+            "L5": [],
+            "L6": [],
+            "L7": [],
+            "L8": []
+          },
+          "n_seeds": 200,
+          "seed0": 0
+        },
+        "_hxl": {
+          "hands": [
+            {
+              "available": true,
+              "family": "F1_four_finger_serial",
+              "id": "allegro_right",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "continuation_pose:joint_13"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:joint_0,joint_1,joint_10,joint_11,joint_12,joint_13,joint_14,joint_15,joint_2,joint_3,joint_4,joint_5,joint_6,joint_7,joint_8,joint_9"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:joint_0,joint_1,joint_10,joint_11,joint_12,joint_13,joint_14,joint_15,joint_2,joint_3,joint_4,joint_5,joint_6,joint_7,joint_8,joint_9"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L2": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L3": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L4": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L5": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L6": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L7": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L8": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                }
+              },
+              "split": "dev"
+            },
+            {
+              "available": true,
+              "family": "F1_four_finger_serial",
+              "id": "leap_right",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "continuation_pose:0,10,11,13,14,15,2,3,4,6,7,8"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:0,1,10,11,12,13,14,15,2,3,4,5,6,7,8,9"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:0,1,10,11,12,13,14,15,2,3,4,5,6,7,8,9"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L2": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:0,1,11,12,13,14,15,3,4,5,7,8,9"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L3": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:0,1,11,12,13,14,15,3,4,5,7,8,9"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L4": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:0,1,11,12,13,14,15,3,4,5,7,8,9"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L5": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:0,1,11,12,13,14,15,3,4,5,7,8,9"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L6": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:0,1,11,12,13,14,15,3,4,5,7,8,9"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L7": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L8": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                }
+              },
+              "split": "dev"
+            },
+            {
+              "available": true,
+              "family": "F4_non_anthropomorphic",
+              "id": "barrett_bh",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "continuation_pose:finger_1_dist_joint,finger_1_med_joint,finger_2_dist_joint,finger_2_med_joint,finger_3_dist_joint"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:finger_1_dist_joint,finger_1_med_joint,finger_1_prox_joint,finger_2_dist_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_dist_joint,finger_3_med_joint"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:finger_1_dist_joint,finger_1_med_joint,finger_1_prox_joint,finger_2_dist_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_dist_joint,finger_3_med_joint"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L2": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:finger_1_med_joint,finger_1_prox_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_med_joint"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L3": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:finger_1_med_joint,finger_1_prox_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_med_joint"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L4": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:finger_1_med_joint,finger_1_prox_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_med_joint"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L5": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:finger_1_med_joint,finger_1_prox_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_med_joint"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L6": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:finger_1_med_joint,finger_1_prox_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_med_joint"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L7": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:finger_1_med_joint,finger_1_prox_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_med_joint"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L8": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:finger_1_med_joint,finger_1_prox_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_med_joint"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                }
+              },
+              "split": "dev"
+            },
+            {
+              "available": true,
+              "family": "F3_underactuated_coupled",
+              "id": "ability_right",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2",
+                    "continuation_pose:index_q2,middle_q2,pinky_q2,ring_q2,thumb_q2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:index_q1,middle_q1,pinky_q1,ring_q1,thumb_q1,thumb_q2",
+                    "coupling_params_not_in_set:index_q2:multiplier,middle_q2:multiplier,pinky_q2:multiplier,ring_q2:multiplier"
+                  ],
+                  "remaining": 4,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:index_q1,middle_q1,pinky_q1,ring_q1,thumb_q1,thumb_q2",
+                    "coupling_params_not_in_set:index_q2:multiplier,middle_q2:multiplier,pinky_q2:multiplier,ring_q2:multiplier"
+                  ],
+                  "remaining": 3,
+                  "topology_expressible": false
+                },
+                "L2": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:thumb_q1",
+                    "coupling_params_not_in_set:index_q2:multiplier,middle_q2:multiplier,pinky_q2:multiplier,ring_q2:multiplier"
+                  ],
+                  "remaining": 3,
+                  "topology_expressible": false
+                },
+                "L3": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:thumb_q1",
+                    "coupling_params_not_in_set:index_q2:multiplier,middle_q2:multiplier,pinky_q2:multiplier,ring_q2:multiplier"
+                  ],
+                  "remaining": 3,
+                  "topology_expressible": false
+                },
+                "L4": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:thumb_q1",
+                    "coupling_params_not_in_set:index_q2:multiplier,middle_q2:multiplier,pinky_q2:multiplier,ring_q2:multiplier"
+                  ],
+                  "remaining": 3,
+                  "topology_expressible": false
+                },
+                "L5": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:thumb_q1"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L6": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:thumb_q1"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L7": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:thumb_q1"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L8": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:thumb_q1"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                }
+              },
+              "split": "dev"
+            },
+            {
+              "available": true,
+              "family": "F3_underactuated_coupled",
+              "id": "inspire_right",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint",
+                    "continuation_pose:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint,thumb_proximal_pitch_joint"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:index_proximal_joint,middle_proximal_joint,pinky_proximal_joint,ring_proximal_joint,thumb_proximal_pitch_joint,thumb_proximal_yaw_joint",
+                    "coupling_params_not_in_set:index_intermediate_joint:multiplier,index_intermediate_joint:offset,middle_intermediate_joint:multiplier,middle_intermediate_joint:offset,pinky_intermediate_joint:multiplier,pinky_intermediate_joint:offset,ring_intermediate_joint:multiplier,ring_intermediate_joint:offset,thumb_distal_joint:multiplier,thumb_intermediate_joint:multiplier"
+                  ],
+                  "remaining": 4,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:index_proximal_joint,middle_proximal_joint,pinky_proximal_joint,ring_proximal_joint,thumb_proximal_pitch_joint,thumb_proximal_yaw_joint",
+                    "coupling_params_not_in_set:index_intermediate_joint:multiplier,index_intermediate_joint:offset,middle_intermediate_joint:multiplier,middle_intermediate_joint:offset,pinky_intermediate_joint:multiplier,pinky_intermediate_joint:offset,ring_intermediate_joint:multiplier,ring_intermediate_joint:offset,thumb_distal_joint:multiplier,thumb_intermediate_joint:multiplier"
+                  ],
+                  "remaining": 3,
+                  "topology_expressible": false
+                },
+                "L2": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint"
+                  ],
+                  "out_of_support": [
+                    "coupling_params_not_in_set:index_intermediate_joint:multiplier,index_intermediate_joint:offset,middle_intermediate_joint:multiplier,middle_intermediate_joint:offset,pinky_intermediate_joint:multiplier,pinky_intermediate_joint:offset,ring_intermediate_joint:multiplier,ring_intermediate_joint:offset,thumb_distal_joint:multiplier,thumb_intermediate_joint:multiplier"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L3": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint"
+                  ],
+                  "out_of_support": [
+                    "coupling_params_not_in_set:index_intermediate_joint:multiplier,index_intermediate_joint:offset,middle_intermediate_joint:multiplier,middle_intermediate_joint:offset,pinky_intermediate_joint:multiplier,pinky_intermediate_joint:offset,ring_intermediate_joint:multiplier,ring_intermediate_joint:offset,thumb_distal_joint:multiplier,thumb_intermediate_joint:multiplier"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L4": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint"
+                  ],
+                  "out_of_support": [
+                    "coupling_params_not_in_set:index_intermediate_joint:multiplier,index_intermediate_joint:offset,middle_intermediate_joint:multiplier,middle_intermediate_joint:offset,pinky_intermediate_joint:multiplier,pinky_intermediate_joint:offset,ring_intermediate_joint:multiplier,ring_intermediate_joint:offset,thumb_distal_joint:multiplier,thumb_intermediate_joint:multiplier"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L5": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint"
+                  ],
+                  "out_of_support": [],
+                  "remaining": 1,
+                  "topology_expressible": false
+                },
+                "L6": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint"
+                  ],
+                  "out_of_support": [],
+                  "remaining": 1,
+                  "topology_expressible": false
+                },
+                "L7": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint"
+                  ],
+                  "out_of_support": [],
+                  "remaining": 1,
+                  "topology_expressible": false
+                },
+                "L8": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint"
+                  ],
+                  "out_of_support": [],
+                  "remaining": 1,
+                  "topology_expressible": false
+                }
+              },
+              "split": "dev"
+            },
+            {
+              "available": true,
+              "family": "F4_non_anthropomorphic",
+              "id": "dclaw",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "continuation_pose:joint_f1_1,joint_f1_2,joint_f2_1,joint_f2_2,joint_f3_1,joint_f3_2"
+                  ],
+                  "out_of_support": [
+                    "axis_off_grid:joint_f1_0,joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2",
+                    "limits_not_in_set:joint_f1_0,joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2"
+                  ],
+                  "remaining": 3,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "axis_off_grid:joint_f1_0,joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2",
+                    "limits_not_in_set:joint_f1_0,joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": true
+                },
+                "L2": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "axis_off_grid:joint_f1_0,joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2",
+                    "limits_not_in_set:joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": true
+                },
+                "L3": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "axis_off_grid:joint_f1_0,joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2",
+                    "limits_not_in_set:joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": true
+                },
+                "L4": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "axis_off_grid:joint_f1_0,joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2",
+                    "limits_not_in_set:joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": true
+                },
+                "L5": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "axis_off_grid:joint_f1_0,joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2",
+                    "limits_not_in_set:joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": true
+                },
+                "L6": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:joint_f1_1,joint_f1_2,joint_f2_0,joint_f2_1,joint_f2_2,joint_f3_0,joint_f3_1,joint_f3_2"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L7": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:joint_f1_1,joint_f1_2,joint_f2_1,joint_f2_2,joint_f3_1,joint_f3_2"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L8": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:joint_f1_1,joint_f1_2,joint_f2_1,joint_f2_2,joint_f3_1,joint_f3_2"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                }
+              },
+              "split": "heldout"
+            },
+            {
+              "available": true,
+              "family": "F2_five_finger_full",
+              "id": "wuji_right",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "continuation_pose:right_finger1_joint2,right_finger1_joint3,right_finger1_joint4,right_finger2_joint2,right_finger2_joint3,right_finger3_joint2,right_finger3_joint3,right_finger4_joint2,right_finger4_joint3,right_finger5_joint2,right_finger5_joint3"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:right_finger1_joint1,right_finger1_joint2,right_finger1_joint3,right_finger1_joint4,right_finger2_joint1,right_finger2_joint2,right_finger2_joint3,right_finger2_joint4,right_finger3_joint1,right_finger3_joint2,right_finger3_joint3,right_finger3_joint4,right_finger4_joint1,right_finger4_joint2,right_finger4_joint3,right_finger4_joint4,right_finger5_joint1,right_finger5_joint2,right_finger5_joint3,right_finger5_joint4"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:right_finger1_joint1,right_finger1_joint2,right_finger1_joint3,right_finger1_joint4,right_finger2_joint1,right_finger2_joint2,right_finger2_joint3,right_finger2_joint4,right_finger3_joint1,right_finger3_joint2,right_finger3_joint3,right_finger3_joint4,right_finger4_joint1,right_finger4_joint2,right_finger4_joint3,right_finger4_joint4,right_finger5_joint1,right_finger5_joint2,right_finger5_joint3,right_finger5_joint4"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L2": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L3": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L4": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L5": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L6": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L7": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L8": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                }
+              },
+              "split": "heldout"
+            },
+            {
+              "available": true,
+              "family": "F2_five_finger_full",
+              "id": "xhand_right",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "continuation_pose:right_hand_thumb_rota_joint1,right_hand_thumb_rota_joint2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:right_hand_index_bend_joint,right_hand_index_joint1,right_hand_index_joint2,right_hand_mid_joint1,right_hand_mid_joint2,right_hand_pinky_joint1,right_hand_pinky_joint2,right_hand_ring_joint1,right_hand_ring_joint2,right_hand_thumb_bend_joint,right_hand_thumb_rota_joint1,right_hand_thumb_rota_joint2"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:right_hand_index_bend_joint,right_hand_index_joint1,right_hand_index_joint2,right_hand_mid_joint1,right_hand_mid_joint2,right_hand_pinky_joint1,right_hand_pinky_joint2,right_hand_ring_joint1,right_hand_ring_joint2,right_hand_thumb_bend_joint,right_hand_thumb_rota_joint1,right_hand_thumb_rota_joint2"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L2": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L3": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L4": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L5": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L6": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L7": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                },
+                "L8": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                }
+              },
+              "split": "heldout"
+            },
+            {
+              "available": true,
+              "family": "F2_five_finger_full",
+              "id": "tesollo_dg5f_right",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "continuation_pose:rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_2,rj_dg_3_2,rj_dg_4_2,rj_dg_5_2"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:rj_dg_1_1,rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_1,rj_dg_2_2,rj_dg_2_3,rj_dg_2_4,rj_dg_3_1,rj_dg_3_2,rj_dg_3_3,rj_dg_3_4,rj_dg_4_1,rj_dg_4_2,rj_dg_4_3,rj_dg_4_4,rj_dg_5_1,rj_dg_5_2,rj_dg_5_3,rj_dg_5_4"
+                  ],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:rj_dg_1_1,rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_1,rj_dg_2_2,rj_dg_2_3,rj_dg_2_4,rj_dg_3_1,rj_dg_3_2,rj_dg_3_3,rj_dg_3_4,rj_dg_4_1,rj_dg_4_2,rj_dg_4_3,rj_dg_4_4,rj_dg_5_1,rj_dg_5_2,rj_dg_5_3,rj_dg_5_4"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L2": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_2,rj_dg_2_3,rj_dg_2_4,rj_dg_3_2,rj_dg_3_3,rj_dg_3_4,rj_dg_4_3,rj_dg_4_4,rj_dg_5_3,rj_dg_5_4"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L3": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_2,rj_dg_2_3,rj_dg_2_4,rj_dg_3_2,rj_dg_3_3,rj_dg_3_4,rj_dg_4_3,rj_dg_4_4,rj_dg_5_3,rj_dg_5_4"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L4": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_2,rj_dg_2_3,rj_dg_2_4,rj_dg_3_2,rj_dg_3_3,rj_dg_3_4,rj_dg_4_3,rj_dg_4_4,rj_dg_5_3,rj_dg_5_4"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L5": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_2,rj_dg_2_3,rj_dg_2_4,rj_dg_3_2,rj_dg_3_3,rj_dg_3_4,rj_dg_4_3,rj_dg_4_4,rj_dg_5_3,rj_dg_5_4"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L6": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_2,rj_dg_2_3,rj_dg_2_4,rj_dg_3_2,rj_dg_3_3,rj_dg_3_4,rj_dg_4_3,rj_dg_4_4,rj_dg_5_3,rj_dg_5_4"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L7": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_3,rj_dg_2_4,rj_dg_3_3,rj_dg_3_4,rj_dg_4_3,rj_dg_4_4,rj_dg_5_3,rj_dg_5_4"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                },
+                "L8": {
+                  "in_support": false,
+                  "missing_constructs": [],
+                  "out_of_support": [
+                    "limits_not_in_set:rj_dg_1_2,rj_dg_1_3,rj_dg_1_4,rj_dg_2_3,rj_dg_2_4,rj_dg_3_3,rj_dg_3_4,rj_dg_4_3,rj_dg_4_4,rj_dg_5_3,rj_dg_5_4"
+                  ],
+                  "remaining": 1,
+                  "topology_expressible": true
+                }
+              },
+              "split": "heldout"
+            },
+            {
+              "available": true,
+              "family": "F6_rolling_contact",
+              "id": "orca_right",
+              "levels": {
+                "L0": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "excess_children:right_palm",
+                    "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset,right_wrist_offset"
+                  ],
+                  "out_of_support": [
+                    "axis_off_grid:right_thumb_abd",
+                    "limits_not_in_set:right_index_abd,right_index_mcp,right_index_pip,right_middle_abd,right_middle_mcp,right_middle_pip,right_pinky_abd,right_pinky_mcp,right_pinky_pip,right_ring_abd,right_ring_mcp,right_ring_pip,right_thumb_abd,right_thumb_dip,right_thumb_mcp,right_thumb_pip,right_wrist"
+                  ],
+                  "remaining": 4,
+                  "topology_expressible": false
+                },
+                "L1": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "excess_children:right_palm",
+                    "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset,right_wrist_offset"
+                  ],
+                  "out_of_support": [
+                    "axis_off_grid:right_thumb_abd",
+                    "limits_not_in_set:right_index_abd,right_index_mcp,right_index_pip,right_middle_abd,right_middle_mcp,right_middle_pip,right_pinky_abd,right_pinky_mcp,right_pinky_pip,right_ring_abd,right_ring_mcp,right_ring_pip,right_thumb_abd,right_thumb_dip,right_thumb_mcp,right_thumb_pip,right_wrist"
+                  ],
+                  "remaining": 4,
+                  "topology_expressible": false
+                },
+                "L2": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "excess_children:right_palm",
+                    "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset,right_wrist_offset"
+                  ],
+                  "out_of_support": [
+                    "axis_off_grid:right_thumb_abd",
+                    "limits_not_in_set:right_thumb_dip,right_thumb_mcp,right_wrist"
+                  ],
+                  "remaining": 4,
+                  "topology_expressible": false
+                },
+                "L3": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "excess_children:right_palm",
+                    "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset,right_wrist_offset"
+                  ],
+                  "out_of_support": [
+                    "axis_off_grid:right_thumb_abd",
+                    "limits_not_in_set:right_thumb_dip,right_thumb_mcp,right_wrist"
+                  ],
+                  "remaining": 4,
+                  "topology_expressible": false
+                },
+                "L4": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "excess_children:right_palm",
+                    "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset,right_wrist_offset"
+                  ],
+                  "out_of_support": [
+                    "axis_off_grid:right_thumb_abd",
+                    "limits_not_in_set:right_thumb_dip,right_thumb_mcp,right_wrist"
+                  ],
+                  "remaining": 4,
+                  "topology_expressible": false
+                },
+                "L5": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "excess_children:right_palm",
+                    "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset,right_wrist_offset"
+                  ],
+                  "out_of_support": [
+                    "axis_off_grid:right_thumb_abd",
+                    "limits_not_in_set:right_thumb_dip,right_thumb_mcp,right_wrist"
+                  ],
+                  "remaining": 4,
+                  "topology_expressible": false
+                },
+                "L6": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "excess_children:right_palm",
+                    "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset,right_wrist_offset"
+                  ],
+                  "out_of_support": [
+                    "limits_not_in_set:right_thumb_dip,right_thumb_mcp,right_wrist"
+                  ],
+                  "remaining": 3,
+                  "topology_expressible": false
+                },
+                "L7": {
+                  "in_support": false,
+                  "missing_constructs": [
+                    "excess_children:right_palm",
+                    "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset,right_wrist_offset"
+                  ],
+                  "out_of_support": [],
+                  "remaining": 2,
+                  "topology_expressible": false
+                },
+                "L8": {
+                  "in_support": true,
+                  "missing_constructs": [],
+                  "out_of_support": [],
+                  "remaining": 0,
+                  "topology_expressible": true
+                }
+              },
+              "split": "heldout"
+            },
+            {
+              "available": false,
+              "family": "F2_five_finger_full",
+              "id": "sharpa_left_on_iiwa14",
+              "levels": null,
+              "reason": "unavailable: REPO path listed in manifest but missing on disk: REPO:assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf",
+              "split": "heldout"
+            },
+            {
+              "available": false,
+              "family": "F2_five_finger_full",
+              "id": "shadow_right",
+              "levels": null,
+              "reason": "excluded: GPL: local-only reference, never committed, not in the pilot.",
+              "split": "excluded"
+            },
+            {
+              "available": false,
+              "family": "F3_underactuated_coupled",
+              "id": "svh_right",
+              "levels": null,
+              "reason": "excluded: 20R + 11 mimic; licence unverified.",
+              "split": "excluded"
+            },
+            {
+              "available": false,
+              "family": "F5_prismatic",
+              "id": "dex1",
+              "levels": null,
+              "reason": "excluded: 2 prismatic joints; licence unverified.",
+              "split": "excluded"
+            }
+          ],
+          "levels": [
+            "L0",
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6",
+            "L7",
+            "L8"
+          ],
+          "relax_by_level": {
+            "L0": [],
+            "L1": [
+              "rest_bend"
+            ],
+            "L2": [
+              "limits_continuous",
+              "rest_bend"
+            ],
+            "L3": [
+              "length_grid_1mm",
+              "limits_continuous",
+              "rest_bend"
+            ],
+            "L4": [
+              "axis_grid_5deg",
+              "length_grid_1mm",
+              "limits_continuous",
+              "rest_bend"
+            ],
+            "L5": [
+              "axis_grid_5deg",
+              "coupling_continuous",
+              "length_grid_1mm",
+              "limits_continuous",
+              "rest_bend"
+            ],
+            "L6": [
+              "axis_continuous",
+              "axis_grid_5deg",
+              "coupling_continuous",
+              "length_continuous",
+              "length_grid_1mm",
+              "limits_continuous",
+              "rest_bend"
+            ],
+            "L7": [
+              "axis_continuous",
+              "axis_grid_5deg",
+              "coupling_continuous",
+              "length_continuous",
+              "length_grid_1mm",
+              "length_range_x1.5",
+              "limits_continuous",
+              "limits_range_x1.5",
+              "rest_bend"
+            ],
+            "L8": [
+              "axis_continuous",
+              "axis_grid_5deg",
+              "children_unbounded",
+              "coupling_continuous",
+              "fixed_in_digit_ok",
+              "length_continuous",
+              "length_grid_1mm",
+              "length_range_x1.5",
+              "limits_continuous",
+              "limits_range_x1.5",
+              "rest_bend"
+            ]
+          }
+        },
+        "_unblock": {
+          "counts": {
+            "axis_continuous": 0,
+            "axis_grid_5deg": 0,
+            "children_unbounded": 0,
+            "coupling_continuous": 0,
+            "fixed_in_digit_ok": 0,
+            "length_continuous": 0,
+            "length_grid_1mm": 0,
+            "length_range_x1.5": 0,
+            "limits_continuous": 0,
+            "limits_range_x1.5": 0,
+            "rest_bend": 0
+          },
+          "counts_from_l1": {
+            "axis_continuous": 0,
+            "axis_grid_5deg": 0,
+            "children_unbounded": 0,
+            "coupling_continuous": 0,
+            "fixed_in_digit_ok": 0,
+            "length_continuous": 0,
+            "length_grid_1mm": 0,
+            "length_range_x1.5": 0,
+            "limits_continuous": 3,
+            "limits_range_x1.5": 4
+          },
+          "n_available_hands": 10,
+          "n_blocked_at_l0": 10,
+          "n_blocked_at_l1": 10,
+          "ranked": [
+            "axis_continuous",
+            "axis_grid_5deg",
+            "children_unbounded",
+            "coupling_continuous",
+            "fixed_in_digit_ok",
+            "length_continuous",
+            "length_grid_1mm",
+            "length_range_x1.5",
+            "limits_continuous",
+            "limits_range_x1.5",
+            "rest_bend"
+          ],
+          "ranked_from_l1": [
+            "limits_range_x1.5",
+            "limits_continuous",
+            "axis_continuous",
+            "axis_grid_5deg",
+            "children_unbounded",
+            "coupling_continuous",
+            "fixed_in_digit_ok",
+            "length_continuous",
+            "length_grid_1mm",
+            "length_range_x1.5"
+          ],
+          "unblocked_hand_ids": {
+            "axis_continuous": [],
+            "axis_grid_5deg": [],
+            "children_unbounded": [],
+            "coupling_continuous": [],
+            "fixed_in_digit_ok": [],
+            "length_continuous": [],
+            "length_grid_1mm": [],
+            "length_range_x1.5": [],
+            "limits_continuous": [],
+            "limits_range_x1.5": [],
+            "rest_bend": []
+          },
+          "unblocked_hand_ids_from_l1": {
+            "axis_continuous": [],
+            "axis_grid_5deg": [],
+            "children_unbounded": [],
+            "coupling_continuous": [],
+            "fixed_in_digit_ok": [],
+            "length_continuous": [],
+            "length_grid_1mm": [],
+            "length_range_x1.5": [],
+            "limits_continuous": [
+              "allegro_right",
+              "wuji_right",
+              "xhand_right"
+            ],
+            "limits_range_x1.5": [
+              "allegro_right",
+              "leap_right",
+              "wuji_right",
+              "xhand_right"
+            ]
+          }
+        },
+        "all_generated_in_support_every_level": true,
+        "n_available_hands": 10,
+        "n_blocked_at_l0": 10,
+        "n_in_support_at_l8": 5
+      },
+      "seed": 0
+    }
+  ],
+  "python_version": "3.10.12 (main, Aug 31 2026, 10:18:17) [GCC 11.4.0]",
+  "seeds": [
+    0
+  ],
+  "wall_time_s": 0.4629695415496826
+}
