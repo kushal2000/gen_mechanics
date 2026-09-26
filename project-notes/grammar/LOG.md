@@ -129,3 +129,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - E3 (64 restarts, 1500 proposals): anthropomorphic, radial and prismatic targets 100% [0.943,1] under every pool x dist (median 26-211 proposals); arch_palm 0% [0,0.057] under DEFAULT (no palm operator) and 100% under UNION for all dists (median 46-55 proposals).
 - E4: genuine null mutations 0% (default) / 1% (small-step); VariationImpossible 5.4% / 2.6-4.2%; 10k distinct phenotypes.
 - Decision: keep. Provisional recommendation before E5: union pool with weighted mixture, insertion distribution for growth, branching optional (G_NOBRANCH_INS and G_FULL_INS behave alike under drift).
+
+## E5 proxy-fitness evolution (2026-09-26 ~04:50)
+
+- Worker run 17. Suite 2906 passed in 136 s. 288 tasks (48 conditions x 6 restarts), wall 690 s, no reductions. Results in experiments/E5_evolve.
+- Reading: insertion variants best (G_NOBRANCH_INS 0.73 / 3.5 motors; G_FULL_INS 0.70 / 4.9) vs plain (G_NOBRANCH 0.55; G_FULL 0.65 / 6.1); pools equal on fitness, UNION fewer motors; small-step operators survive selection 42-49% vs 9-29% structural; cost term halves motors (3.1 vs 5.6) at -0.06 proxy. Constructs persist at 8-44% without being required.
+- Decision: keep; recommendation written in grammar-for-evolution.md (G_NOBRANCH_INS or G_FULL_INS + union weighted pool + insertion prior + cost reporting/term).

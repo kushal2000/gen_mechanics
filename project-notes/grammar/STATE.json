@@ -132,7 +132,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "E5 running on corrected instruments; then E6 write-up + final Opus review.",
+  "next_action": "Final Opus review of the program and note; then append a section to design-grammar-and-evolution.md and stop the loop.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -157,7 +157,7 @@
     "E2": "done (pools x dists)",
     "E3": "done (proposal budget, Wilson)",
     "E4": "done",
-    "E5": "running",
-    "E6": "pending"
+    "E5": "done",
+    "E6": "written; final review pending"
   }
 }
