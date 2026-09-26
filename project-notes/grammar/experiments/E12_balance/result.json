@@ -1,253 +1,1069 @@
 {
   "drift": {
-    "G_FULL_INS": {
-      "EVOLUTION_pool": {
-        "delta_digits": {
-          "ci_hi": 2.140625,
-          "ci_lo": 1.4375,
-          "mean": 1.796875,
-          "n": 128
+    "boundary": {
+      "G_FULL_INS": {
+        "EVOLUTION_pool": {
+          "applicability": {
+            "add_branch_digit": {
+              "applicable": 1421,
+              "attempts": 1425,
+              "rate": 0.9971929824561403
+            },
+            "add_minimal_digit": {
+              "applicable": 1383,
+              "attempts": 1506,
+              "rate": 0.9183266932270916
+            },
+            "add_palm_body": {
+              "applicable": 831,
+              "attempts": 1503,
+              "rate": 0.5528942115768463
+            },
+            "delete_phalanx": {
+              "applicable": 1143,
+              "attempts": 1516,
+              "rate": 0.753957783641161
+            },
+            "insert_phalanx": {
+              "applicable": 1502,
+              "attempts": 1505,
+              "rate": 0.9980066445182725
+            },
+            "remove_branch_digit": {
+              "applicable": 1040,
+              "attempts": 1531,
+              "rate": 0.6792945787067276
+            },
+            "remove_digit_minimal": {
+              "applicable": 1134,
+              "attempts": 1504,
+              "rate": 0.7539893617021277
+            },
+            "remove_palm_body_empty": {
+              "applicable": 743,
+              "attempts": 1488,
+              "rate": 0.4993279569892473
+            },
+            "step_axis": {
+              "applicable": 1625,
+              "attempts": 1625,
+              "rate": 1.0
+            },
+            "step_bend_offset": {
+              "applicable": 0,
+              "attempts": 1553,
+              "rate": 0.0
+            },
+            "step_bend_rpy": {
+              "applicable": 0,
+              "attempts": 1456,
+              "rate": 0.0
+            },
+            "step_coupling": {
+              "applicable": 412,
+              "attempts": 1528,
+              "rate": 0.2696335078534031
+            },
+            "step_limits": {
+              "applicable": 1459,
+              "attempts": 1468,
+              "rate": 0.9938692098092643
+            },
+            "step_mount": {
+              "applicable": 1507,
+              "attempts": 1507,
+              "rate": 1.0
+            },
+            "step_radius": {
+              "applicable": 1494,
+              "attempts": 1494,
+              "rate": 1.0
+            },
+            "step_root_length": {
+              "applicable": 1494,
+              "attempts": 1494,
+              "rate": 1.0
+            },
+            "toggle_palm_joint": {
+              "applicable": 1431,
+              "attempts": 1497,
+              "rate": 0.9559118236472945
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 2.2109375,
+            "ci_lo": 1.671875,
+            "mean": 1.9453125,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 4.976757812499999,
+            "ci_lo": 2.6482421875,
+            "mean": 3.8203125,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.890625,
+            "ci_lo": 0.4765625,
+            "mean": 0.6875,
+            "n": 128
+          }
         },
-        "delta_joints": {
-          "ci_hi": 4.562695312499999,
-          "ci_lo": 2.171875,
-          "mean": 3.390625,
-          "n": 128
+        "add_branch_digit/remove_branch_digit": {
+          "applicability": {
+            "add_branch_digit": {
+              "applicable": 11971,
+              "attempts": 12736,
+              "rate": 0.9399340452261307
+            },
+            "remove_branch_digit": {
+              "applicable": 11382,
+              "attempts": 12864,
+              "rate": 0.8847947761194029
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 5.15625,
+            "ci_lo": 3.4609375,
+            "mean": 4.3125,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         },
-        "delta_palm_bodies": {
-          "ci_hi": 0.1171875,
-          "ci_lo": -0.3984375,
-          "mean": -0.1484375,
-          "n": 128
+        "add_minimal_digit/remove_digit_minimal": {
+          "applicability": {
+            "add_minimal_digit": {
+              "applicable": 10770,
+              "attempts": 12606,
+              "rate": 0.8543550690147549
+            },
+            "remove_digit_minimal": {
+              "applicable": 10548,
+              "attempts": 12994,
+              "rate": 0.8117592735108512
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 2.0625,
+            "ci_lo": 1.4529296875,
+            "mean": 1.734375,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.2109375,
+            "ci_lo": -1.0861328125,
+            "mean": -0.421875,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
+        },
+        "add_palm_body/remove_palm_body_empty": {
+          "applicability": {
+            "add_palm_body": {
+              "applicable": 8278,
+              "attempts": 12821,
+              "rate": 0.6456594649403322
+            },
+            "remove_palm_body_empty": {
+              "applicable": 8251,
+              "attempts": 12779,
+              "rate": 0.6456686751702011
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.4375,
+            "ci_lo": -0.015625,
+            "mean": 0.2109375,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.4375,
+            "ci_lo": -0.015625,
+            "mean": 0.2109375,
+            "n": 128
+          }
+        },
+        "insert_phalanx/delete_phalanx": {
+          "applicability": {
+            "delete_phalanx": {
+              "applicable": 11560,
+              "attempts": 12783,
+              "rate": 0.9043260580458421
+            },
+            "insert_phalanx": {
+              "applicable": 12101,
+              "attempts": 12817,
+              "rate": 0.9441366934540064
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 5.406445312499999,
+            "ci_lo": 3.109375,
+            "mean": 4.2265625,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
+        },
+        "toggle_palm_joint": {
+          "applicability": {
+            "toggle_palm_joint": {
+              "applicable": 21000,
+              "attempts": 25600,
+              "rate": 0.8203125
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         }
       },
-      "add_branch_digit/remove_branch_digit": {
-        "delta_digits": {
-          "ci_hi": -0.109375,
-          "ci_lo": -0.3671875,
-          "mean": -0.2265625,
-          "n": 128
+      "G_NOBRANCH_INS": {
+        "EVOLUTION_pool": {
+          "applicability": {
+            "add_branch_digit": {
+              "applicable": 1503,
+              "attempts": 1508,
+              "rate": 0.996684350132626
+            },
+            "add_minimal_digit": {
+              "applicable": 1348,
+              "attempts": 1495,
+              "rate": 0.9016722408026756
+            },
+            "add_palm_body": {
+              "applicable": 823,
+              "attempts": 1459,
+              "rate": 0.5640849897189856
+            },
+            "delete_phalanx": {
+              "applicable": 1079,
+              "attempts": 1567,
+              "rate": 0.6885768985322271
+            },
+            "insert_phalanx": {
+              "applicable": 1517,
+              "attempts": 1520,
+              "rate": 0.9980263157894737
+            },
+            "remove_branch_digit": {
+              "applicable": 939,
+              "attempts": 1490,
+              "rate": 0.6302013422818792
+            },
+            "remove_digit_minimal": {
+              "applicable": 1126,
+              "attempts": 1519,
+              "rate": 0.7412771560236998
+            },
+            "remove_palm_body_empty": {
+              "applicable": 769,
+              "attempts": 1476,
+              "rate": 0.5210027100271003
+            },
+            "step_axis": {
+              "applicable": 1565,
+              "attempts": 1565,
+              "rate": 1.0
+            },
+            "step_bend_offset": {
+              "applicable": 0,
+              "attempts": 1548,
+              "rate": 0.0
+            },
+            "step_bend_rpy": {
+              "applicable": 0,
+              "attempts": 1491,
+              "rate": 0.0
+            },
+            "step_coupling": {
+              "applicable": 259,
+              "attempts": 1525,
+              "rate": 0.16983606557377048
+            },
+            "step_limits": {
+              "applicable": 1470,
+              "attempts": 1475,
+              "rate": 0.9966101694915255
+            },
+            "step_mount": {
+              "applicable": 1443,
+              "attempts": 1443,
+              "rate": 1.0
+            },
+            "step_radius": {
+              "applicable": 1530,
+              "attempts": 1530,
+              "rate": 1.0
+            },
+            "step_root_length": {
+              "applicable": 1479,
+              "attempts": 1479,
+              "rate": 1.0
+            },
+            "toggle_palm_joint": {
+              "applicable": 1428,
+              "attempts": 1510,
+              "rate": 0.9456953642384106
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 2.0234375,
+            "ci_lo": 1.4375,
+            "mean": 1.734375,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 7.703125,
+            "ci_lo": 5.8826171875,
+            "mean": 6.8125,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.65625,
+            "ci_lo": 0.1951171875,
+            "mean": 0.421875,
+            "n": 128
+          }
         },
-        "delta_joints": {
-          "ci_hi": 5.0625,
-          "ci_lo": 3.34375,
-          "mean": 4.2109375,
-          "n": 128
+        "add_branch_digit/remove_branch_digit": {
+          "applicability": {
+            "add_branch_digit": {
+              "applicable": 11824,
+              "attempts": 12781,
+              "rate": 0.9251232297942258
+            },
+            "remove_branch_digit": {
+              "applicable": 11137,
+              "attempts": 12819,
+              "rate": 0.8687885170450114
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 6.0546875,
+            "ci_lo": 4.6638671875,
+            "mean": 5.3671875,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        }
-      },
-      "add_minimal_digit/remove_digit_minimal": {
-        "delta_digits": {
-          "ci_hi": 1.84375,
-          "ci_lo": 1.15625,
-          "mean": 1.484375,
-          "n": 128
+        "add_minimal_digit/remove_digit_minimal": {
+          "applicability": {
+            "add_minimal_digit": {
+              "applicable": 10816,
+              "attempts": 12609,
+              "rate": 0.8577999841383139
+            },
+            "remove_digit_minimal": {
+              "applicable": 10594,
+              "attempts": 12991,
+              "rate": 0.8154876452928951
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 2.0703125,
+            "ci_lo": 1.4140625,
+            "mean": 1.734375,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 1.015820312499999,
+            "ci_lo": 0.3046875,
+            "mean": 0.6484375,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         },
-        "delta_joints": {
-          "ci_hi": 0.2109375,
-          "ci_lo": -1.0861328125,
-          "mean": -0.421875,
-          "n": 128
+        "add_palm_body/remove_palm_body_empty": {
+          "applicability": {
+            "add_palm_body": {
+              "applicable": 8198,
+              "attempts": 12831,
+              "rate": 0.6389213623256177
+            },
+            "remove_palm_body_empty": {
+              "applicable": 8178,
+              "attempts": 12769,
+              "rate": 0.6404573576630903
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.3828125,
+            "ci_lo": -0.0546875,
+            "mean": 0.15625,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.3828125,
+            "ci_lo": -0.0546875,
+            "mean": 0.15625,
+            "n": 128
+          }
         },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        }
-      },
-      "add_palm_body/remove_palm_body": {
-        "delta_digits": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
+        "insert_phalanx/delete_phalanx": {
+          "applicability": {
+            "delete_phalanx": {
+              "applicable": 11232,
+              "attempts": 12784,
+              "rate": 0.8785982478097623
+            },
+            "insert_phalanx": {
+              "applicable": 11687,
+              "attempts": 12816,
+              "rate": 0.9119069912609239
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 4.0546875,
+            "ci_lo": 3.0466796875,
+            "mean": 3.5546875,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         },
-        "delta_joints": {
-          "ci_hi": 0.0,
-          "ci_lo": -0.5390625,
-          "mean": -0.2734375,
-          "n": 128
-        },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": -0.5390625,
-          "mean": -0.2734375,
-          "n": 128
-        }
-      },
-      "insert_phalanx/delete_phalanx": {
-        "delta_digits": {
-          "ci_hi": 1.726757812499999,
-          "ci_lo": 1.046875,
-          "mean": 1.375,
-          "n": 128
-        },
-        "delta_joints": {
-          "ci_hi": 5.406445312499999,
-          "ci_lo": 3.109375,
-          "mean": 4.2265625,
-          "n": 128
-        },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        }
-      },
-      "toggle_palm_joint": {
-        "delta_digits": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        },
-        "delta_joints": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
+        "toggle_palm_joint": {
+          "applicability": {
+            "toggle_palm_joint": {
+              "applicable": 21000,
+              "attempts": 25600,
+              "rate": 0.8203125
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         }
       }
     },
-    "G_NOBRANCH_INS": {
-      "EVOLUTION_pool": {
-        "delta_digits": {
-          "ci_hi": 2.265820312499999,
-          "ci_lo": 1.7109375,
-          "mean": 1.9921875,
-          "n": 128
+    "stationary": {
+      "G_FULL_INS": {
+        "EVOLUTION_pool": {
+          "applicability": {
+            "add_branch_digit": {
+              "applicable": 1541,
+              "attempts": 1541,
+              "rate": 1.0
+            },
+            "add_minimal_digit": {
+              "applicable": 1071,
+              "attempts": 1508,
+              "rate": 0.7102122015915119
+            },
+            "add_palm_body": {
+              "applicable": 813,
+              "attempts": 1509,
+              "rate": 0.5387673956262425
+            },
+            "delete_phalanx": {
+              "applicable": 1428,
+              "attempts": 1499,
+              "rate": 0.95263509006004
+            },
+            "insert_phalanx": {
+              "applicable": 1483,
+              "attempts": 1489,
+              "rate": 0.9959704499664204
+            },
+            "remove_branch_digit": {
+              "applicable": 1120,
+              "attempts": 1507,
+              "rate": 0.7431984074319841
+            },
+            "remove_digit_minimal": {
+              "applicable": 964,
+              "attempts": 1453,
+              "rate": 0.6634549208534067
+            },
+            "remove_palm_body_empty": {
+              "applicable": 729,
+              "attempts": 1441,
+              "rate": 0.5058986814712005
+            },
+            "step_axis": {
+              "applicable": 1392,
+              "attempts": 1392,
+              "rate": 1.0
+            },
+            "step_bend_offset": {
+              "applicable": 0,
+              "attempts": 1491,
+              "rate": 0.0
+            },
+            "step_bend_rpy": {
+              "applicable": 0,
+              "attempts": 1536,
+              "rate": 0.0
+            },
+            "step_coupling": {
+              "applicable": 1196,
+              "attempts": 1580,
+              "rate": 0.7569620253164557
+            },
+            "step_limits": {
+              "applicable": 1480,
+              "attempts": 1480,
+              "rate": 1.0
+            },
+            "step_mount": {
+              "applicable": 1557,
+              "attempts": 1557,
+              "rate": 1.0
+            },
+            "step_radius": {
+              "applicable": 1529,
+              "attempts": 1529,
+              "rate": 1.0
+            },
+            "step_root_length": {
+              "applicable": 1564,
+              "attempts": 1564,
+              "rate": 1.0
+            },
+            "toggle_palm_joint": {
+              "applicable": 1434,
+              "attempts": 1524,
+              "rate": 0.9409448818897638
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 1.1796875,
+            "ci_lo": 0.5078125,
+            "mean": 0.8359375,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 3.820507812499999,
+            "ci_lo": 0.6484375,
+            "mean": 2.1953125,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.8671875,
+            "ci_lo": 0.4529296875,
+            "mean": 0.65625,
+            "n": 128
+          }
         },
-        "delta_joints": {
-          "ci_hi": 7.226757812499999,
-          "ci_lo": 5.3982421875,
-          "mean": 6.3359375,
-          "n": 128
+        "add_branch_digit/remove_branch_digit": {
+          "applicability": {
+            "add_branch_digit": {
+              "applicable": 12528,
+              "attempts": 12718,
+              "rate": 0.9850605441107092
+            },
+            "remove_branch_digit": {
+              "applicable": 11474,
+              "attempts": 12882,
+              "rate": 0.8907002018320137
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 9.625195312499999,
+            "ci_lo": 6.984375,
+            "mean": 8.234375,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         },
-        "delta_palm_bodies": {
-          "ci_hi": 0.06269531249999893,
-          "ci_lo": -0.4765625,
-          "mean": -0.2109375,
-          "n": 128
+        "add_minimal_digit/remove_digit_minimal": {
+          "applicability": {
+            "add_minimal_digit": {
+              "applicable": 9019,
+              "attempts": 12789,
+              "rate": 0.7052154195011338
+            },
+            "remove_digit_minimal": {
+              "applicable": 8917,
+              "attempts": 12811,
+              "rate": 0.6960424635079229
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 1.093945312499999,
+            "ci_lo": 0.5,
+            "mean": 0.796875,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.703125,
+            "ci_lo": -0.0078125,
+            "mean": 0.3515625,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
+        },
+        "add_palm_body/remove_palm_body_empty": {
+          "applicability": {
+            "add_palm_body": {
+              "applicable": 7403,
+              "attempts": 12953,
+              "rate": 0.5715278313904115
+            },
+            "remove_palm_body_empty": {
+              "applicable": 7342,
+              "attempts": 12647,
+              "rate": 0.5805329327113149
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.6720703124999989,
+            "ci_lo": 0.28125,
+            "mean": 0.4765625,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.6720703124999989,
+            "ci_lo": 0.28125,
+            "mean": 0.4765625,
+            "n": 128
+          }
+        },
+        "insert_phalanx/delete_phalanx": {
+          "applicability": {
+            "delete_phalanx": {
+              "applicable": 12241,
+              "attempts": 12732,
+              "rate": 0.9614357524348099
+            },
+            "insert_phalanx": {
+              "applicable": 12273,
+              "attempts": 12868,
+              "rate": 0.9537612682623562
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 2.000195312499999,
+            "ci_lo": -1.625,
+            "mean": 0.25,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
+        },
+        "toggle_palm_joint": {
+          "applicability": {
+            "toggle_palm_joint": {
+              "applicable": 21000,
+              "attempts": 25600,
+              "rate": 0.8203125
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         }
       },
-      "add_branch_digit/remove_branch_digit": {
-        "delta_digits": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
+      "G_NOBRANCH_INS": {
+        "EVOLUTION_pool": {
+          "applicability": {
+            "add_branch_digit": {
+              "applicable": 1516,
+              "attempts": 1516,
+              "rate": 1.0
+            },
+            "add_minimal_digit": {
+              "applicable": 1174,
+              "attempts": 1506,
+              "rate": 0.7795484727755644
+            },
+            "add_palm_body": {
+              "applicable": 778,
+              "attempts": 1509,
+              "rate": 0.5155732273028496
+            },
+            "delete_phalanx": {
+              "applicable": 1403,
+              "attempts": 1520,
+              "rate": 0.9230263157894737
+            },
+            "insert_phalanx": {
+              "applicable": 1479,
+              "attempts": 1485,
+              "rate": 0.9959595959595959
+            },
+            "remove_branch_digit": {
+              "applicable": 981,
+              "attempts": 1478,
+              "rate": 0.6637347767253045
+            },
+            "remove_digit_minimal": {
+              "applicable": 1076,
+              "attempts": 1434,
+              "rate": 0.7503486750348675
+            },
+            "remove_palm_body_empty": {
+              "applicable": 692,
+              "attempts": 1525,
+              "rate": 0.45377049180327866
+            },
+            "step_axis": {
+              "applicable": 1385,
+              "attempts": 1385,
+              "rate": 1.0
+            },
+            "step_bend_offset": {
+              "applicable": 0,
+              "attempts": 1476,
+              "rate": 0.0
+            },
+            "step_bend_rpy": {
+              "applicable": 0,
+              "attempts": 1512,
+              "rate": 0.0
+            },
+            "step_coupling": {
+              "applicable": 909,
+              "attempts": 1538,
+              "rate": 0.5910273081924577
+            },
+            "step_limits": {
+              "applicable": 1560,
+              "attempts": 1560,
+              "rate": 1.0
+            },
+            "step_mount": {
+              "applicable": 1586,
+              "attempts": 1586,
+              "rate": 1.0
+            },
+            "step_radius": {
+              "applicable": 1516,
+              "attempts": 1516,
+              "rate": 1.0
+            },
+            "step_root_length": {
+              "applicable": 1534,
+              "attempts": 1534,
+              "rate": 1.0
+            },
+            "toggle_palm_joint": {
+              "applicable": 1409,
+              "attempts": 1520,
+              "rate": 0.9269736842105263
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 1.133007812499999,
+            "ci_lo": 0.4138671875,
+            "mean": 0.765625,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 4.5859375,
+            "ci_lo": 2.0,
+            "mean": 3.3359375,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.8828125,
+            "ci_lo": 0.4609375,
+            "mean": 0.671875,
+            "n": 128
+          }
         },
-        "delta_joints": {
-          "ci_hi": 6.0546875,
-          "ci_lo": 4.6638671875,
-          "mean": 5.3671875,
-          "n": 128
+        "add_branch_digit/remove_branch_digit": {
+          "applicability": {
+            "add_branch_digit": {
+              "applicable": 12509,
+              "attempts": 12753,
+              "rate": 0.9808672469222928
+            },
+            "remove_branch_digit": {
+              "applicable": 11370,
+              "attempts": 12847,
+              "rate": 0.8850315248696193
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 10.0859375,
+            "ci_lo": 7.6248046875,
+            "mean": 8.8984375,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        }
-      },
-      "add_minimal_digit/remove_digit_minimal": {
-        "delta_digits": {
-          "ci_hi": 2.0703125,
-          "ci_lo": 1.4140625,
-          "mean": 1.734375,
-          "n": 128
+        "add_minimal_digit/remove_digit_minimal": {
+          "applicability": {
+            "add_minimal_digit": {
+              "applicable": 9576,
+              "attempts": 12841,
+              "rate": 0.7457363133712328
+            },
+            "remove_digit_minimal": {
+              "applicable": 9487,
+              "attempts": 12759,
+              "rate": 0.7435535700289991
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.9923828124999989,
+            "ci_lo": 0.3748046875,
+            "mean": 0.6953125,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.4609375,
+            "ci_lo": -0.3126953125,
+            "mean": 0.078125,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         },
-        "delta_joints": {
-          "ci_hi": 1.015820312499999,
-          "ci_lo": 0.3046875,
-          "mean": 0.6484375,
-          "n": 128
+        "add_palm_body/remove_palm_body_empty": {
+          "applicability": {
+            "add_palm_body": {
+              "applicable": 7321,
+              "attempts": 12945,
+              "rate": 0.5655465430668212
+            },
+            "remove_palm_body_empty": {
+              "applicable": 7259,
+              "attempts": 12655,
+              "rate": 0.5736072698538127
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.671875,
+            "ci_lo": 0.296875,
+            "mean": 0.484375,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.671875,
+            "ci_lo": 0.296875,
+            "mean": 0.484375,
+            "n": 128
+          }
         },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        }
-      },
-      "add_palm_body/remove_palm_body": {
-        "delta_digits": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
+        "insert_phalanx/delete_phalanx": {
+          "applicability": {
+            "delete_phalanx": {
+              "applicable": 11922,
+              "attempts": 12676,
+              "rate": 0.9405175134111707
+            },
+            "insert_phalanx": {
+              "applicable": 12022,
+              "attempts": 12924,
+              "rate": 0.9302073661405138
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 1.8828125,
+            "ci_lo": -0.296875,
+            "mean": 0.78125,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         },
-        "delta_joints": {
-          "ci_hi": 0.0,
-          "ci_lo": -0.5390625,
-          "mean": -0.2734375,
-          "n": 128
-        },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": -0.5390625,
-          "mean": -0.2734375,
-          "n": 128
-        }
-      },
-      "insert_phalanx/delete_phalanx": {
-        "delta_digits": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        },
-        "delta_joints": {
-          "ci_hi": 4.0546875,
-          "ci_lo": 3.0466796875,
-          "mean": 3.5546875,
-          "n": 128
-        },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        }
-      },
-      "toggle_palm_joint": {
-        "delta_digits": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        },
-        "delta_joints": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
-        },
-        "delta_palm_bodies": {
-          "ci_hi": 0.0,
-          "ci_lo": 0.0,
-          "mean": 0.0,
-          "n": 128
+        "toggle_palm_joint": {
+          "applicability": {
+            "toggle_palm_joint": {
+              "applicable": 21000,
+              "attempts": 25600,
+              "rate": 0.8203125
+            }
+          },
+          "delta_digits": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_joints": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          },
+          "delta_palm_bodies": {
+            "ci_hi": 0.0,
+            "ci_lo": 0.0,
+            "mean": 0.0,
+            "n": 128
+          }
         }
       }
     }
   },
-  "git_diff_sha256": "feedd2b1ca456eb7339d12b715c3ec42cdc4fd8368ed726878719eec3c5d333d",
+  "git_diff_sha256": "d85741fc4a00ef76c1d6cb3e42ca4f1b0ce55b27e75c76c47459f1f47e6d0765",
   "git_dirty": true,
-  "git_sha": "5aa05d0c12acdf3245a4792625357870e9bd4a1a",
+  "git_sha": "8fa4b4d245b32da23a522ef1d557c6904d422e49",
   "histograms": {
     "G_BEND": {
       "digits": {
@@ -810,44 +1626,97 @@
   },
   "locality": {
     "n_seeds": 200,
-    "pass_no_structural_p90_60mm": false,
-    "pass_small_below_structural": false,
-    "pass_structural_median_20mm": true,
-    "per_op_p90": {
-      "add_branch_digit": 0.026584494745319626,
-      "add_minimal_digit": 0.02500000000000001,
-      "add_palm_body": 0.0,
-      "delete_phalanx": 0.05399356621754038,
-      "insert_phalanx": 0.02892325523365589,
-      "remove_branch_digit": 0.010000000000000002,
-      "remove_digit_minimal": 0.020000000000000007,
-      "remove_palm_body": 0.1947293543053153,
-      "step_axis": 0.0075165414519900095,
-      "step_bend_offset": null,
-      "step_bend_rpy": null,
-      "step_coupling": 0.010569416424549033,
-      "step_limits": 0.0036113789683335303,
-      "step_mount": 0.016290080095536157,
-      "step_radius": 0.0,
-      "step_root_length": 0.004690972222222225,
-      "toggle_palm_joint": 0.020962628701608088
+    "pass_small_median_5mm": true,
+    "pass_structural_p90_60mm": true,
+    "per_op": {
+      "add_branch_digit": {
+        "median": 0.00710696247736131,
+        "n": 200,
+        "p90": 0.026584494745319626
+      },
+      "add_minimal_digit": {
+        "median": 0.0075000000000000015,
+        "n": 162,
+        "p90": 0.02500000000000001
+      },
+      "add_palm_body": {
+        "median": 0.0,
+        "n": 139,
+        "p90": 0.0
+      },
+      "delete_phalanx": {
+        "median": 0.01197752562437825,
+        "n": 190,
+        "p90": 0.04189505072427175
+      },
+      "insert_phalanx": {
+        "median": 0.007638888888888889,
+        "n": 200,
+        "p90": 0.02892325523365589
+      },
+      "remove_branch_digit": {
+        "median": 0.005370879120879121,
+        "n": 76,
+        "p90": 0.010000000000000002
+      },
+      "remove_digit_minimal": {
+        "median": 0.006846590909090908,
+        "n": 114,
+        "p90": 0.020000000000000007
+      },
+      "remove_palm_body_empty": {
+        "median": 0.0,
+        "n": 66,
+        "p90": 0.0
+      },
+      "step_axis": {
+        "median": 0.001701002500728588,
+        "n": 200,
+        "p90": 0.0075165414519900095
+      },
+      "step_bend_offset": {
+        "median": null,
+        "n": 0,
+        "p90": null
+      },
+      "step_bend_rpy": {
+        "median": null,
+        "n": 0,
+        "p90": null
+      },
+      "step_coupling": {
+        "median": 0.0014990924098755437,
+        "n": 168,
+        "p90": 0.010569416424549033
+      },
+      "step_limits": {
+        "median": 0.0004246163516421006,
+        "n": 199,
+        "p90": 0.0036113789683335303
+      },
+      "step_mount": {
+        "median": 0.004375654394580358,
+        "n": 200,
+        "p90": 0.016290080095536157
+      },
+      "step_radius": {
+        "median": 0.0,
+        "n": 200,
+        "p90": 0.0
+      },
+      "step_root_length": {
+        "median": 0.0024999999999999996,
+        "n": 200,
+        "p90": 0.004690972222222225
+      },
+      "toggle_palm_joint": {
+        "median": 0.0,
+        "n": 159,
+        "p90": 0.020962628701608088
+      }
     },
-    "small_step": {
-      "median": 0.0012499999999999996,
-      "n": 1167,
-      "p90": 0.007396767348271001,
-      "q1": 5.543876270927297e-05,
-      "q3": 0.0036002404480735706
-    },
-    "structural": {
-      "median": 0.006493314110611382,
-      "n": 1399,
-      "p90": 0.042065027357086934,
-      "q1": 0.0022474747474747476,
-      "q3": 0.017347734704401534
-    },
-    "worst_structural_op": "remove_palm_body",
-    "worst_structural_p90": 0.1947293543053153
+    "small_violators": [],
+    "structural_violators": []
   },
   "name": "e12_balance",
   "params": {
@@ -880,7 +1749,7 @@
         "pass": true,
         "rate": 1.0
       },
-      "add_palm_body/remove_palm_body": {
+      "add_palm_body/remove_palm_body_empty": {
         "n_applicable": 373,
         "n_parents": 500,
         "n_recovered": 373,
@@ -917,7 +1786,7 @@
         "pass": true,
         "rate": 1.0
       },
-      "add_palm_body/remove_palm_body": {
+      "add_palm_body/remove_palm_body_empty": {
         "n_applicable": 373,
         "n_parents": 500,
         "n_recovered": 373,
@@ -940,5 +1809,5 @@
       }
     }
   },
-  "wall_time_s": 202.62122416496277
+  "wall_time_s": 203.7253806591034
 }

@@ -26,7 +26,7 @@ Cumulative relaxation levels applied to `hand_sampler.grammar.coverage.coverage`
 | xhand_right | F2_five_finger_full | heldout | no (2) | no (1) | yes (0) | yes (0) | yes (0) | yes (0) | yes (0) | yes (0) | yes (0) |
 | tesollo_dg5f_right | F2_five_finger_full | heldout | no (2) | no (1) | no (1) | no (1) | no (1) | no (1) | no (1) | no (1) | no (1) |
 | orca_right | F6_rolling_contact | heldout | no (4) | no (4) | no (4) | no (4) | no (4) | no (4) | no (3) | no (2) | yes (0) |
-| sharpa_left_on_iiwa14 | F2_five_finger_full | heldout | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable |
+| sharpa_left_on_iiwa14 | F2_five_finger_full | heldout | no (2) | no (1) | no (1) | no (1) | no (1) | no (1) | no (1) | yes (0) | yes (0) |
 | shadow_right | F2_five_finger_full | excluded | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable |
 | svh_right | F3_underactuated_coupled | excluded | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable |
 | dex1 | F5_prismatic | excluded | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable |
@@ -35,7 +35,7 @@ Cell format: `in_support (remaining out-of-support + missing-construct item coun
 
 ## Single-relaxation unblocking (from L0)
 
-Of 10 available hands, 10 are out of support at L0 (no relaxation). For each relaxation applied ALONE (not cumulatively), the count of hands it alone moves from not-in-support to in-support:
+Of 11 available hands, 11 are out of support at L0 (no relaxation). For each relaxation applied ALONE (not cumulatively), the count of hands it alone moves from not-in-support to in-support:
 
 | relaxation | hands unblocked | which hands |
 |---|---|---|
@@ -55,11 +55,11 @@ Every count above is 0 except `rest_bend` itself: every available real hand also
 
 ## Single-relaxation unblocking (from L1, i.e. with rest_bend already applied)
 
-The more informative version: 10 of 10 hands are still out of support at L1 ({rest_bend} only). For each OTHER relaxation added alone on top of rest_bend, the count of hands it unblocks:
+The more informative version: 11 of 11 hands are still out of support at L1 ({rest_bend} only). For each OTHER relaxation added alone on top of rest_bend, the count of hands it unblocks:
 
 | relaxation (+ rest_bend) | hands unblocked | which hands |
 |---|---|---|
-| limits_range_x1.5 | 4 | allegro_right, leap_right, wuji_right, xhand_right |
+| limits_range_x1.5 | 5 | allegro_right, leap_right, wuji_right, xhand_right, sharpa_left_on_iiwa14 |
 | limits_continuous | 3 | allegro_right, wuji_right, xhand_right |
 | axis_continuous | 0 | - |
 | axis_grid_5deg | 0 | - |
@@ -105,12 +105,12 @@ Seeds 0..199, `DEFAULT_DISTRIBUTION`:
 ## Remaining items at L8, hardest hands
 
 - **ability_right** (F3_underactuated_coupled): in_support=False
-  - missing_constructs: coupling_limits_not_image:index_q2,middle_q2,pinky_q2,ring_q2
+  - missing_constructs: coupling_limits_outside_image:index_q2,middle_q2,pinky_q2,ring_q2
   - out_of_support: limits_not_in_set:thumb_q1
 - **barrett_bh** (F4_non_anthropomorphic): in_support=False
   - out_of_support: limits_not_in_set:finger_1_med_joint,finger_1_prox_joint,finger_2_med_joint,finger_2_prox_joint,finger_3_med_joint
 - **inspire_right** (F3_underactuated_coupled): in_support=False
-  - missing_constructs: coupling_limits_not_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint,thumb_distal_joint,thumb_intermediate_joint
+  - missing_constructs: coupling_limits_outside_image:index_intermediate_joint,middle_intermediate_joint,pinky_intermediate_joint,ring_intermediate_joint
 - **dclaw** (F4_non_anthropomorphic): in_support=False
   - out_of_support: limits_not_in_set:joint_f1_1,joint_f1_2,joint_f2_1,joint_f2_2,joint_f3_1,joint_f3_2
 - **tesollo_dg5f_right** (F2_five_finger_full): in_support=False
@@ -119,5 +119,5 @@ Seeds 0..199, `DEFAULT_DISTRIBUTION`:
 ## Claims / limitations
 
 - Each relaxation is applied via `coverage.py`'s `relax` argument, never by editing `rules.py`/`distributions.py`; the grammar's own sampling behaviour is unchanged by this script.
-- Relaxations named here do not cover every `missing_constructs`/`out_of_support` category coverage.py can report (e.g. `coupling_limits_not_image`, `coupling_scope`, `digit_count_out_of_range` have no corresponding relax flag in this design) -- a hand blocked by one of those stays out of support at every level; see the L8 remaining-items list above.
+- Relaxations named here do not cover every `missing_constructs`/`out_of_support` category coverage.py can report (e.g. `coupling_limits_outside_image`, `coupling_scope`, `digit_count_out_of_range` have no corresponding relax flag in this design) -- a hand blocked by one of those stays out of support at every level; see the L8 remaining-items list above.
 - No universality claim is made; held-out-split hands are reported exactly like dev-split hands.
