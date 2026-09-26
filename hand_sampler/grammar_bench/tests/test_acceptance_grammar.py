@@ -56,6 +56,7 @@ from hand_sampler.grammar.derive import (
     derive,
     generate,
     sample_derivation,
+    segment,
     vary,
 )
 from hand_sampler.grammar.distributions import DEFAULT_DISTRIBUTION
@@ -152,6 +153,90 @@ def test_grammar_structural_validity(seed):
                 f"seed={seed} branch digit {step.params['digit_id']} mount {mount!r} "
                 f"has {child_joint_count.get(mount, 0)} child joints, expected >= 2"
             )
+
+
+# ---------------------------------------------------------------------------
+# 1b. Iteration-5 geometric convention: every mount sits ON its host's own
+# segment (never off it, on a sphere around the host's origin), every body
+# -- the root included -- owns a real segment, and ``derive.segment()``
+# agrees with ``forward_kinematics`` on the "<body>_tip" frames it reads.
+# ---------------------------------------------------------------------------
+
+N_GEOMETRY_SEEDS = 500
+
+
+@pytest.mark.parametrize("seed", range(N_GEOMETRY_SEEDS))
+def test_grammar_joint_origins_on_host_segment(seed):
+    """Every joint's origin is ``(0, 0, t)`` in its parent's own frame, with
+    ``0 <= t <= L`` where ``L`` is the parent body's own segment length (its
+    "<body>_tip" frame's z value) -- the convention fixed in iteration 5
+    (see rules.py's module docstring). This covers palm-to-palm mounts,
+    digit/branch mounts onto a palm or phalanx body, and phalanx-to-phalanx
+    continuations alike, since ``derive.py`` now builds all three the same
+    way: ``Trans(0, 0, frac * L) * Rot(rpy)``."""
+    _derivation, model = generate(seed)
+    tip_len = {f.body: float(f.pose.xyz[2]) for f in model.frames if f.name == f"{f.body}_tip"}
+    for j in model.joints:
+        x, y, z = j.origin.xyz
+        assert abs(x) < 1e-12 and abs(y) < 1e-12, (
+            f"seed={seed} joint {j.name!r} origin {j.origin.xyz} is not purely along its parent's z-axis"
+        )
+        L = tip_len[j.parent]
+        assert -1e-12 <= z <= L + 1e-12, (
+            f"seed={seed} joint {j.name!r} origin t={z} lies outside host segment [0, {L}]"
+        )
+
+
+@pytest.mark.parametrize("seed", range(N_GEOMETRY_SEEDS))
+def test_grammar_root_is_a_real_palm_segment(seed):
+    """Every hand has a palm: the root is always a palm body with its own
+    (> 0) segment, so the base of the tree is never a length-0 gap."""
+    _derivation, model = generate(seed)
+    palm_names = {b.name for b in model.bodies if b.palm}
+    tip_len = {f.body: float(f.pose.xyz[2]) for f in model.frames if f.name == f"{f.body}_tip"}
+    assert model.root in palm_names
+    assert model.root in tip_len
+    assert tip_len[model.root] > 0.0
+
+
+@pytest.mark.parametrize("seed", range(N_GEOMETRY_SEEDS))
+def test_grammar_palm_mount_point_on_parent_segment(seed):
+    """A palm body's mount point (root frame, q=0) sits exactly at
+    ``mount_frac`` along its parent's own segment, so the parent's segment
+    is never left with an unowned stretch, and no two palm bodies share a
+    piece of segment (a child's segment starts exactly where the parent's
+    still continues, generally in a different direction). Palm-body-to-
+    palm-body connectivity through the root is already checked by
+    ``validate`` (called inside ``generate``/``derive``) on every seed
+    here."""
+    derivation, model = generate(seed)
+    for step in derivation.steps:
+        if step.production != "PalmBody":
+            continue
+        name = step.params["name"]
+        parent = step.params["parent"]
+        frac = step.params["mount_frac"]
+        p_start, p_end = segment(model, parent)
+        c_start, _c_end = segment(model, name)
+        expected = tuple(ps + frac * (pe - ps) for ps, pe in zip(p_start, p_end))
+        err = max(abs(a - b) for a, b in zip(c_start, expected))
+        assert err < 1e-9, (
+            f"seed={seed} palm body {name!r} mount point off parent {parent!r}'s segment (err={err:.3e})"
+        )
+
+
+def test_grammar_segment_helper_matches_forward_kinematics():
+    """``derive.segment(model, body)`` is a q=0 forward-kinematics lookup of
+    ``body``'s own origin and its "<body>_tip" frame; check it agrees with
+    calling ``forward_kinematics`` directly, for every body of the first 50
+    generated hands."""
+    for seed in range(50):
+        _derivation, model = generate(seed)
+        transforms = fk.forward_kinematics(model, {})
+        for b in model.bodies:
+            start, end = segment(model, b.name)
+            assert np.allclose(start, tuple(transforms[b.name][:3, 3]), atol=1e-12)
+            assert np.allclose(end, tuple(transforms[f"{b.name}_tip"][:3, 3]), atol=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -272,13 +357,6 @@ def test_grammar_support_audit():
         "nonidentity_mount_rotation": 0,
     }
 
-    AXIS_ALIGNED = {(1.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 1.0, 0.0),
-                     (0.0, -1.0, 0.0), (0.0, 0.0, 1.0), (0.0, 0.0, -1.0)}
-
-    def is_axis_aligned(axis):
-        return any(abs(axis[0] - a[0]) < 1e-9 and abs(axis[1] - a[1]) < 1e-9 and abs(axis[2] - a[2]) < 1e-9
-                    for a in AXIS_ALIGNED)
-
     for seed in range(N_AUDIT_SEEDS):
         derivation = sample_derivation(seed, DEFAULT_DISTRIBUTION)
         model = derive(derivation)
@@ -304,11 +382,9 @@ def test_grammar_support_audit():
         if any(n >= 2 for n in palm_child_count.values()):
             counts["palm_tree"] += 1
 
-        palm_joint_axes = []
         for s in derivation.steps:
             if s.production == "PalmBody" and s.params["has_joint"]:
                 counts["palm_joint"] += 1
-                palm_joint_axes.append(s.params["axis"])
             if s.production == "Digit":
                 rpy = s.params["mount_rpy"]
                 if any(abs(v) > 1e-9 for v in rpy):
@@ -317,9 +393,6 @@ def test_grammar_support_audit():
                     counts["six_plus_phalanges"] += 1
             if s.production == "Phalanx":
                 mod = s.params["module"]
-                axis = mod["axis"]
-                if not is_axis_aligned(axis):
-                    counts["nonperpendicular_axis"] += 1
                 if mod["kind"] == "C":
                     counts["continuous_joint"] += 1
                 if mod["kind"] == "P":
@@ -332,13 +405,49 @@ def test_grammar_support_audit():
                     if mod["multiplier"] < 0.0:
                         counts["coupling_negative_multiplier"] += 1
 
-        for i in range(len(palm_joint_axes)):
-            for j2 in range(i + 1, len(palm_joint_axes)):
-                a, b = np.array(palm_joint_axes[i]), np.array(palm_joint_axes[j2])
-                cross_norm = float(np.linalg.norm(np.cross(a, b)))
+        # nonperpendicular_axis: measured on the DERIVED MODEL (fk.py's own
+        # convention), not on the raw sampled axis against the world X/Y/Z
+        # axes. A joint's frame equals its child body's own frame at q=0,
+        # and every phalanx body's segment direction is (0, 0, 1) in that
+        # same child frame (its "<body>_tip" frame is always (0, 0, length),
+        # see rules.py) -- so the segment direction, expressed in the
+        # joint's own frame, is exactly (0, 0, 1) already: no forward-
+        # kinematics transform is needed, ``|axis . (0,0,1)|`` after
+        # normalizing is just ``|axis_z|``. Counted once per model (not once
+        # per phalanx encountered), matching every other key in this audit.
+        if any(
+            abs(float(j.axis[2])) / float(np.linalg.norm(j.axis)) > 1e-9
+            for j in model.joints
+            if j.child not in palm_names and float(np.linalg.norm(j.axis)) > 1e-12
+        ):
+            counts["nonperpendicular_axis"] += 1
+
+        # two_nonparallel_palm_joints: a palm joint's axis is stored in its
+        # own (local) frame, and different palm bodies can sit at different
+        # orientations relative to the root (each PalmBody's direction_rpy
+        # chains onto the previous one) -- so comparing raw stored axes
+        # compares vectors expressed in different frames. Move every
+        # palm-joint axis into the ROOT frame at q=0 via forward_kinematics
+        # (a joint axis is a direction, so only the rotation part of its
+        # child body's root-frame transform applies) before cross-producting
+        # them. Counted once per model: stop at the first nonparallel pair.
+        transforms0 = fk.forward_kinematics(model, {})
+        palm_joint_root_axes = [
+            transforms0[j.child][:3, :3] @ np.array(j.axis, dtype=float)
+            for j in model.joints
+            if j.child in palm_names and j.type != "fixed"
+        ]
+        found_nonparallel = False
+        for i in range(len(palm_joint_root_axes)):
+            for j2 in range(i + 1, len(palm_joint_root_axes)):
+                cross_norm = float(np.linalg.norm(np.cross(palm_joint_root_axes[i], palm_joint_root_axes[j2])))
                 if cross_norm > 1e-6:
-                    counts["two_nonparallel_palm_joints"] += 1
+                    found_nonparallel = True
                     break
+            if found_nonparallel:
+                break
+        if found_nonparallel:
+            counts["two_nonparallel_palm_joints"] += 1
 
     print(f"grammar support audit over {N_AUDIT_SEEDS} seeds: {counts}")
     for key, n in counts.items():
