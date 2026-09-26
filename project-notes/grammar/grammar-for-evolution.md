@@ -1,6 +1,6 @@
 # Which grammar is best for evolution? Evidence and recommendation
 
-Final version, 2026-09-26 ~06:00, written by the coordinator from experiments E1-E5b on `martin/hand-grammar` (code and results through commit e938fcf). Two independent Opus reviews (`opus-review-e1-e4.md`, `opus-review-final.md`) found the first versions of E1, E2, E4 and E5 confounded; every number below comes from the corrected re-runs (E1/E2 with joint-identity alignment and paired CIs, E5b matched to the simulator loop). All results are CPU kinematics and geometric proxies; nothing here predicts task reward.
+Final version, 2026-09-26 ~06:30, written by the coordinator from experiments E1-E7 on `martin/hand-grammar`. Two independent Opus reviews (`opus-review-e1-e4.md`, `opus-review-final.md`) found the first versions of E1, E2, E4 and E5 confounded; every number below comes from the corrected re-runs (E1/E2 with joint-identity alignment and paired CIs, E5b matched to the simulator loop). All results are CPU kinematics and geometric proxies; nothing here predicts task reward.
 
 ## 1. Question and method
 
@@ -12,6 +12,7 @@ Final version, 2026-09-26 ~06:00, written by the coordinator from experiments E1
 | Neutral drift | E2: 128 seeds x 400 steps x 3 mixtures x 4 distributions | joints/digits/motors vs step; paired difference CIs (shared starts) |
 | Reachability | E3: 4 targets x 2 pools x 4 distributions x 64 restarts, 1500 proposals | Wilson CIs, censored medians |
 | Redundancy | E4: 10k samples, 20k offspring | canonical phenotype hash |
+| Mixture schedules | E7: 4 pools x 3 distributions x 2 fitnesses x 2 cost weights x 24 restarts, same mechanics as E5b | reach rate, first-reach generation, late-window tip displacement, paired differences |
 | Selection, simulator-matched | E5b: 54 conditions x 24 restarts, (16+16), 40 generations, hard 5x6 envelope, noisy returns, no cost tie-break, starts paired across all factors | raw proxy, cost, motors, target-reach rate, per-operator rejection and improvement |
 
 Grammar under test: version 0.3 (root palm segment; palm bodies as a tree with optional palm joints; digits with optional branching; R/C/P modules; intra-digit affine couplings; one capsule radius per hand), operators in `hand_sampler/grammar/derive.py`.
@@ -33,18 +34,21 @@ Grammar under test: version 0.3 (root palm segment; palm bodies as a tree with o
 - *Palm operators under the envelope*: add_palm_body is envelope-rejected 100% of the time and toggle/remove_palm_body are inapplicable 100%, so the union-weighted pool wastes about 15% of proposals; the same pool without palm operators has no dead weight. Clone rate (all 8 retries rejected) is below 1.3e-4 everywhere.
 - *Operator strict-improvement rates* (child raw proxy > parent, same seed; pinch, default pool): add_digit 18%, delete_phalanx 14%, remove_digit 10%, insert_phalanx 9%, perturb 9%, regrow 8%, resample 4%.
 
+
+**Mixture schedules (E7).** Two schedules were compared with the static pools under E5b mechanics: `SCHEDULE_step` (default pool for generations 0-14, then the small-step-weighted pool without palm operators) and `SCHEDULE_linear` (structural share ramping 0.8 -> 0.2). On the large-hand target, `SCHEDULE_step` matches the default pool (reach rate and final distance differences have CIs including zero in 5 of 6 distribution x cost cells; first reach 0.6-5 generations later) while cutting late-window tip displacement per accepted mutation from 14-18 mm to 6-8 mm, the same as the static weighted pool. Against the static weighted pool it is better on every reach measure: reach rate +0.04 to +0.33 and first reach 6.5-15.4 generations earlier, all CIs excluding zero. `SCHEDULE_linear` recovers full reach only without the insertion prior; with it, it still lags the default pool by 0.04-0.17 in reach rate. On the pinch proxy `SCHEDULE_linear` scored highest (0.91-0.98 at cost 0; differences vs both static pools positive, e.g. +0.35 [0.10, 0.60] for G_NOBRANCH at cost 0.01), which is the one place the smooth ramp wins.
+
 ## 3. Recommendation
 
 1. **Representation and productions**: keep grammar 0.3. Palm articulation and non-anthropomorphic layouts are expressible and reachable (E3); geometry stays derived (capsules; nearest-spine palm cells with recorded adjacency).
-2. **Growth prior**: the insertion prior is a dial, not a free win. It is the only lever that controls neutral bloat (E2: 33 -> 9 joints) and it slows growth toward large hands (E3: 1.5x more proposals; E5b: median generation 10 -> 15 under the default pool, and 58-83% instead of 96-100% target reach under small-step-heavy pools). For a 40-generation budget starting from simple seeds, use the insertion prior with the default-heavy pool, or the plain prior with an explicit cost term; do not combine the insertion prior with a small-step-heavy pool if large hands must be reachable.
-3. **Operator pool for the simulator loop**: default structural operators plus minimal structural operators plus small steps, WITHOUT palm operators while the 5x6 envelope forbids palm joints (E5b: they are 100% dead). Weight toward structural moves early (E3/E5b: growth speed) and toward small steps late; the exact schedule is untested.
+2. **Growth prior**: the insertion prior is a dial, not a free win, and the E7 step schedule removes most of its growth penalty. It is the only lever that controls neutral bloat (E2: 33 -> 9 joints) and it slows growth toward large hands (E3: 1.5x more proposals; E5b: median generation 10 -> 15 under the default pool, and 58-83% instead of 96-100% target reach under small-step-heavy pools). For a 40-generation budget starting from simple seeds, use the insertion prior with the default-heavy pool, or the plain prior with an explicit cost term; do not combine the insertion prior with a small-step-heavy pool if large hands must be reachable.
+3. **Operator pool for the simulator loop**: a step schedule (E7): default structural pool for roughly the first 15 of 40 generations, then the small-step-weighted pool, both WITHOUT palm operators while the 5x6 envelope forbids palm joints (E5b: they are 100% dead). This keeps the default pool's growth (100% reach of the 5-digit target with the insertion prior, median generation 16-17) with half the late tip displacement. The linear ramp is the better choice only if the task rewards fine adjustment more than structure.
 4. **Operator pool when palm articulation is allowed** (after an envelope change): add the palm-body and palm-joint operators; without them the arch is unreachable (E3).
 5. **Branching**: off by default (envelope forbids it; it doubles the neutral prior and ratchets); G_NOBRANCH_INS vs G_FULL_INS is not separated by any experiment here.
 6. **Cost**: report structural cost always. A term of 0.01-0.02 per unit cost halves motors and lowers the raw proxy by about 0.2 on pinch; whether that trade is right depends on the task and is a decision, not a finding. Under noisy returns there is no implicit parsimony (E5b broke ties at random), so bloat control must come from the prior or an explicit term.
 
 ## 4. What is not established
 - Any relation between the proxies and RL reward. Opposition saturates and favours two digits; pinch has flat regions; the target-distance fitness is structural.
-- The right mixture weights or a schedule (structural-early, small-late) - untested.
+- The exact switch generation of the step schedule (15 of 40 tested only) and its interaction with a noisy task score.
 - Whether the rest-bend production (issue I11) matters for evolution; real hands need it for fidelity, the targets here do not.
 - Whether palm cells with 7% mean overlap among adjacent pairs behave acceptably in contact; the alternative is a per-body capsule palm.
 

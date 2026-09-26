@@ -145,3 +145,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Worker run 18. Suite 2923 passed. E1 62 s, E2 6.6 s, E5b 185 s (54 conditions x 24 restarts). Commits through e938fcf.
 - E5b reading: insertion prior slows growth to the 5-digit target (median gen 10 -> 14.5-16 under the default pool; 58-83% vs 96-100% reach under union pools); cost term lowers raw pinch 0.89 -> 0.68 while halving motors; palm operators 100% dead under the 5x6 envelope; clone rate < 1.3e-4.
 - grammar-for-evolution.md rewritten on E1-E5b; design-grammar-and-evolution.md section 10 corrected. Program finished; loop stopped. Decisions for Martin listed in STATE.next_action.
+
+## E7 mixture schedules (2026-09-26 ~06:25)
+
+- Worker run 19. Suite 2935 passed. Wall 208 s (48 conditions x 24 restarts; diff hash d96ab7e6..., committed next). SCHEDULE_step matches the default pool on reach (CIs include 0) with late tip displacement halved (6-8 mm vs 14-18 mm) and beats the static weighted pool on reach rate (+0.04..+0.33) and first reach (6.5-15.4 generations earlier), all CIs excluding 0. SCHEDULE_linear lags under the insertion prior but scores highest on pinch. Recommendation item 3 updated. Decision: keep. Program closed.

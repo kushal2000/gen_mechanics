@@ -7,7 +7,7 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,
   "budget": {
-    "worker_runs_used": 18,
+    "worker_runs_used": 19,
     "worker_runs_max": 36,
     "opus_reviews_used": 4,
     "opus_reviews_max": 4,
@@ -139,7 +139,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "PAUSED for Martin: decide envelope (palm joints or not), insertion prior on/off, cost term, rest-bend production. Candidate next experiments: mixture schedule (structural-early/small-late); G_FULL_INS vs G_FULL pair under E5b; per-body capsule palm vs nearest-spine cells in contact.",
+  "next_action": "PAUSED for Martin: decide envelope (palm joints or not), insertion prior on/off, cost term, rest-bend production. Candidates: switch-generation sweep for the step schedule; G_FULL_INS vs G_FULL pair under E5b; capsule palm vs nearest-spine cells in contact; envelope adapter before any co-evolution run.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -157,8 +157,8 @@
     "stop_after": "2026-09-26T09:24:07-04:00",
     "cron_job": "18e9e258",
     "cadence": "30m",
-    "finished_at": "2026-09-26T06:05-04:00",
-    "stop_reason": "E6 written; loop stopped by coordinator"
+    "finished_at": "2026-09-26T06:30-04:00",
+    "stop_reason": "E6 written and E7 added; loop stopped by coordinator"
   },
   "experiments": {
     "E0": "done",
@@ -168,6 +168,7 @@
     "E4": "done",
     "E5": "superseded by E5b",
     "E6": "written (grammar-for-evolution.md final)",
-    "E5b": "done"
+    "E5b": "done",
+    "E7": "done"
   }
 }
