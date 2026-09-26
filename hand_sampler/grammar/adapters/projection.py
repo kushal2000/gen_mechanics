@@ -425,6 +425,11 @@ def project_to_derivation(
         }))
         name_map[j.name] = f"{palm_name_of[b]}_j"
         report["palm_bodies"].append(palm_name_of[b])
+        # PalmBody steps have no coupling schema: a mimic on a palm joint (e.g.
+        # SVH j5 driven by thumb opposition, ARMS CMC5 following CMC4) is kept
+        # as an independent palm joint and reported, never dropped silently.
+        if any(c.dependent == j.name for c in model.couplings):
+            report["coupling_not_in_structure"].append(j.name)
 
     digit_id_of: Dict[Tuple[str, ...], str] = {}
     next_digit_id = 1

@@ -32,6 +32,7 @@ from hand_sampler.grammar.adapters.urdf import load_urdf
 from hand_sampler.grammar.coords import q_from_u
 from hand_sampler.grammar.coverage import coverage
 from hand_sampler.grammar.distributions import DEFAULT_DISTRIBUTION
+from hand_sampler.grammar.experiments.e13_representation import check_hand as _e13_check_hand
 from hand_sampler.grammar.kinematics import MOVABLE_TYPES
 from hand_sampler.grammar_bench.tolerances import ORACLE_POS_M, ORACLE_ROT_RAD
 
@@ -192,6 +193,31 @@ def _fidelity_for(hand_id: str, model, hand_root: Optional[str], urdf_path: Path
     }, None
 
 
+def _representation_dict(hand: dict, path: Path) -> dict:
+    """Representation-check plan item 3: ``derive(project_to_derivation(hand))``
+    vs the hand's own forward kinematics, PASS at 5 mm / 10 deg -- see
+    ``hand_sampler.grammar.experiments.e13_representation.check_hand``."""
+    check = _e13_check_hand(
+        hand["id"], path, hand.get("hand_root"), hand.get("palm_joints") or (), hand.get("tip_frames") or {},
+    )
+    notes = []
+    if check.get("reason"):
+        notes.append(check["reason"])
+    rep = check.get("report") or {}
+    for key in ("fingertip_undefined", "coupling_not_in_structure", "branch_not_projected"):
+        if rep.get(key):
+            notes.append(f"{key}: {rep[key]}")
+    return {
+        "ok": check["ok"],
+        "passed": check["passed"],
+        "max_pos_mm": check["max_pos_mm"],
+        "max_axis_deg": check["max_axis_deg"],
+        "max_tip_mm": check["max_tip_mm"],
+        "joint_count_conserved": check["joint_count_conserved"],
+        "notes": notes,
+    }
+
+
 def _coverage_dict(result) -> dict:
     return {
         "topology_expressible": result.topology_expressible,
@@ -225,6 +251,7 @@ def run(seed: int) -> dict:
                 "couplings": None,
                 "fidelity": None,
                 "coverage": None,
+                "representation": None,
                 "losses": None,
             }
             path, availability, reason = _resolve_hand(hand, manifest)
@@ -254,6 +281,8 @@ def run(seed: int) -> dict:
 
             cov = coverage(model, DEFAULT_DISTRIBUTION)
             entry["coverage"] = _coverage_dict(cov)
+
+            entry["representation"] = _representation_dict(hand, path)
 
             fidelity, fidelity_reason = _fidelity_for(hand["id"], model, hand_root, path, tmp_root)
             entry["fidelity"] = fidelity
@@ -289,18 +318,22 @@ def render_markdown(report: dict) -> str:
     lines.append("")
     lines.append(
         "For every hand: whether we could import it, whether our forward kinematics "
-        "matches an independent oracle (Pinocchio) within tolerance, and whether the "
-        "grammar's own support audit (`hand_sampler.grammar.coverage`) judges the "
-        "imported model expressible by the grammar's productions and inside the "
-        "default distribution's sampled ranges."
+        "matches an independent oracle (Pinocchio) within tolerance, whether "
+        "`derive(project_to_derivation(hand))` reproduces the hand's own forward kinematics "
+        "at 5 mm / 10 degrees (`representation` -- the current fidelity claim; representation-"
+        "check plan item 3), and whether the grammar's own support audit "
+        "(`hand_sampler.grammar.coverage`) judges the imported model expressible by the "
+        "grammar's productions and inside the default distribution's sampled ranges "
+        "(`topology_expressible`/`in_support` -- an older heuristic, kept for the record)."
     )
     lines.append("")
     lines.append(
         "| id | family | split | availability | movable joints | couplings | digit count | digit count source"
-        " | fidelity (max pos / max rot) | fidelity pass | topology_expressible | in_support | missing constructs"
+        " | fidelity (max pos / max rot) | fidelity pass | representation (max pos / max axis / max tip)"
+        " | representation pass | representation notes | topology_expressible | in_support | missing constructs"
         " | out-of-support items |"
     )
-    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for h in report["hands"]:
         fid = h.get("fidelity")
         if fid is not None:
@@ -320,12 +353,19 @@ def render_markdown(report: dict) -> str:
         else:
             expr = sup = missing = oos = "-"
             digit_count = digit_count_source = "-"
+        rep = h.get("representation")
+        if rep is not None:
+            rep_str = f"{_fmt_err(rep['max_pos_mm'])} mm / {_fmt_err(rep['max_axis_deg'])} deg / {_fmt_err(rep['max_tip_mm'])} mm"
+            rep_pass = "yes" if rep["passed"] else "no"
+            rep_notes = "; ".join(rep["notes"]) or "-"
+        else:
+            rep_str = rep_pass = rep_notes = "-"
         lines.append(
             f"| {h['id']} | {h['family'] or '-'} | {h['split']} | {h['availability']}"
             f" | {h['movable_joints'] if h['movable_joints'] is not None else '-'}"
             f" | {h['couplings'] if h['couplings'] is not None else '-'}"
             f" | {digit_count} | {digit_count_source}"
-            f" | {fid_str} | {fid_pass} | {expr} | {sup} | {missing} | {oos} |"
+            f" | {fid_str} | {fid_pass} | {rep_str} | {rep_pass} | {rep_notes} | {expr} | {sup} | {missing} | {oos} |"
         )
     lines.append("")
 
@@ -366,10 +406,21 @@ def render_markdown(report: dict) -> str:
     lines.append("## Claims")
     lines.append("")
     lines.append(
-        "- Availability, fidelity and coverage above were computed for every hand listed "
-        "in `grammar_bench/manifest.json` (14 hands); `excluded`-split hands were never "
-        "imported, and `unavailable` hands were never scored (their reason is reported "
+        "- Availability, fidelity, coverage and representation above were computed for every "
+        "hand listed in `grammar_bench/manifest.json` (16 hands); `excluded`-split hands were "
+        "never imported, and `unavailable` hands were never scored (their reason is reported "
         "instead of a result)."
+    )
+    lines.append(
+        "- `representation` (projection pass/fail, max joint position/axis/fingertip error, "
+        "notes) comes from `hand_sampler.grammar.experiments.e13_representation.check_hand` -- "
+        "`derive(project_to_derivation(hand))` compared against the hand's own forward "
+        "kinematics over 64 random configurations plus the zero configuration, PASS at 5 mm / "
+        "10 degrees (see the representation-check plan, item 3; `project_to_derivation` itself "
+        "is an exact gauge change, so most hands pass at numerical precision, not merely within "
+        "tolerance). The older heuristic `topology_expressible`/`in_support` columns are kept "
+        "for the record only; `representation` is the current fidelity claim for the grammar's "
+        "own parametric structure."
     )
     lines.append(
         "- Fidelity, where reported, compares our own `hand_sampler.grammar.fk` against an "
