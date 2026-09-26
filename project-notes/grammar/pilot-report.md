@@ -1,6 +1,6 @@
 # Hand-kinematics grammar: iteration-4 coverage pilot
 
-Generated 2026-09-26T04:04:38.334548+00:00 at git SHA `5e04e150a0c3233862198cc20035aa91e9b0a86f` (working tree had uncommitted changes at generation time), seed 20260925.
+Generated 2026-09-26T04:10:23.994170+00:00 at git SHA `b194651ee288a119c3a6db59f05c2a7cc6fdda50`, seed 20260925.
 
 For every hand: whether we could import it, whether our forward kinematics matches an independent oracle (Pinocchio) within tolerance, and whether the grammar's own support audit (`hand_sampler.grammar.coverage`) judges the imported model expressible by the grammar's productions and inside the default distribution's sampled ranges.
 

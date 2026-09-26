@@ -1,9 +1,9 @@
 {
   "schema": "hand_grammar_bench/pilot/0.1",
-  "generated_at": "2026-09-26T04:04:38.334548+00:00",
+  "generated_at": "2026-09-26T04:10:23.994170+00:00",
   "seed": 20260925,
-  "git_sha": "5e04e150a0c3233862198cc20035aa91e9b0a86f",
-  "git_dirty": true,
+  "git_sha": "b194651ee288a119c3a6db59f05c2a7cc6fdda50",
+  "git_dirty": false,
   "tool_versions": {
     "numpy": "1.26.4",
     "python": "3.10.12"
