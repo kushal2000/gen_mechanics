@@ -49,7 +49,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from .coords import CONTINUOUS_SAMPLE_RANGE
 from .kinematics import ALL_TYPES, KinematicModel, MOVABLE_TYPES
@@ -326,6 +326,145 @@ def _limits_in_choice_set_m(limits: Tuple[float, float], choices_m: Tuple[Tuple[
     return False
 
 
+# ---------------------------------------------------------------------------
+# relax (E11 support-widening audit): each named string below independently
+# and cumulatively loosens one ``coverage`` check. ``coverage``'s own
+# behaviour with ``relax=frozenset()`` (the default) is byte-identical to
+# every version of this module before E11 -- every relax-aware branch below
+# falls through to the pre-existing check when its own name is absent.
+# ---------------------------------------------------------------------------
+
+RELAX_NAMES: Tuple[str, ...] = (
+    "limits_continuous",
+    "limits_range_x1.5",
+    "length_grid_1mm",
+    "length_continuous",
+    "length_range_x1.5",
+    "axis_grid_5deg",
+    "axis_continuous",
+    "coupling_continuous",
+    "rest_bend",
+    "fixed_in_digit_ok",
+    "children_unbounded",
+)
+
+LENGTH_GRID_1MM_M = 0.001
+COUPLING_CONTINUOUS_MULT_RANGE = (-2.0, 2.0)
+COUPLING_CONTINUOUS_OFFSET_RANGE_RAD = (-1.0, 1.0)
+
+
+def _widen_range(lo: float, hi: float, factor: float) -> Tuple[float, float]:
+    """``(lo, hi)`` widened ``factor``x about its own centre."""
+    centre = (lo + hi) / 2.0
+    half = (hi - lo) / 2.0 * factor
+    return centre - half, centre + half
+
+
+def global_revolute_limit_range_deg(dist: Distribution) -> Tuple[float, float]:
+    """The (min lo, max hi), in degrees, spanning every choice in both
+    ``dist.revolute_limit_choices_deg`` and ``dist.palm_joint_limit_choices_deg``
+    -- the range ``limits_continuous``/``limits_range_x1.5`` judge a revolute
+    joint's limits against, in place of exact choice-set membership."""
+    los = [lo for lo, _hi in dist.revolute_limit_choices_deg] + [lo for lo, _hi in dist.palm_joint_limit_choices_deg]
+    his = [hi for _lo, hi in dist.revolute_limit_choices_deg] + [hi for _lo, hi in dist.palm_joint_limit_choices_deg]
+    return min(los), max(his)
+
+
+def global_prismatic_limit_range_m(dist: Distribution) -> Tuple[float, float]:
+    """The (min lo, max hi), in metres, spanning ``dist.prismatic_limit_choices_m``."""
+    los = [lo for lo, _hi in dist.prismatic_limit_choices_m]
+    his = [hi for _lo, hi in dist.prismatic_limit_choices_m]
+    return min(los), max(his)
+
+
+def _on_angle_grid_step(rad: float, step_deg: float) -> bool:
+    step = step_deg * DEG
+    k = rad / step
+    return abs(k - round(k)) * step < GRID_TOL
+
+
+def _axis_on_grid_step(axis: Tuple[float, float, float], step_deg: float) -> bool:
+    x, y, z = (float(v) for v in axis)
+    n = _norm((x, y, z))
+    if n < 1e-12:
+        return False
+    x, y, z = x / n, y / n, z / n
+    z = max(-1.0, min(1.0, z))
+    el = math.acos(z)
+    if not _on_angle_grid_step(el, step_deg):
+        return False
+    if el < GRID_TOL or abs(el - math.pi) < GRID_TOL:
+        return True
+    az = math.atan2(y, x)
+    return _on_angle_grid_step(az, step_deg)
+
+
+def _axis_ok(axis: Tuple[float, float, float], relax: FrozenSet[str]) -> bool:
+    if "axis_continuous" in relax:
+        return True
+    step_deg = 5.0 if "axis_grid_5deg" in relax else ANGLE_STEP_DEG
+    return _axis_on_grid_step(axis, step_deg)
+
+
+def _revolute_limits_ok(limits: Tuple[float, float], palm: bool, dist: Distribution, relax: FrozenSet[str]) -> bool:
+    if "limits_continuous" in relax or "limits_range_x1.5" in relax:
+        lo_deg, hi_deg = global_revolute_limit_range_deg(dist)
+        if "limits_range_x1.5" in relax:
+            lo_deg, hi_deg = _widen_range(lo_deg, hi_deg, 1.5)
+        lo_rad, hi_rad = lo_deg * DEG, hi_deg * DEG
+        lo, hi = limits
+        return (lo_rad - SET_TOL) <= lo and hi <= (hi_rad + SET_TOL)
+    choices = dist.palm_joint_limit_choices_deg if palm else dist.revolute_limit_choices_deg
+    return _limits_in_choice_set(limits, choices)
+
+
+def _prismatic_limits_ok(limits: Tuple[float, float], dist: Distribution, relax: FrozenSet[str]) -> bool:
+    if "limits_continuous" in relax or "limits_range_x1.5" in relax:
+        lo_m, hi_m = global_prismatic_limit_range_m(dist)
+        if "limits_range_x1.5" in relax:
+            lo_m, hi_m = _widen_range(lo_m, hi_m, 1.5)
+        lo, hi = limits
+        return (lo_m - SET_TOL) <= lo and hi <= (hi_m + SET_TOL)
+    return _limits_in_choice_set_m(limits, dist.prismatic_limit_choices_m)
+
+
+def _length_ok(length: float, base_range: Tuple[float, float], grid_m: float, relax: FrozenSet[str]) -> Tuple[bool, bool]:
+    """Returns ``(in_range, on_grid)``. ``on_grid`` is only meaningful (and
+    only checked) when ``in_range`` and ``length_continuous`` is absent from
+    ``relax``.
+
+    Grid alignment always uses the ORIGINAL (unwidened) ``base_range[0]`` as
+    its reference point, never the widened lo: ``length_range_x1.5``
+    extends how far an existing grid reaches, it must never re-anchor the
+    grid itself, or an unrelated single relaxation could silently knock an
+    already-on-grid length off it (breaking monotonicity -- adding a
+    relaxation must never remove a model from support)."""
+    grid_lo, orig_hi = base_range
+    lo, hi = base_range
+    if "length_range_x1.5" in relax:
+        lo, hi = _widen_range(lo, hi, 1.5)
+    if not (lo - GRID_TOL <= length <= hi + GRID_TOL):
+        return False, False
+    if "length_continuous" in relax:
+        return True, True
+    grid = LENGTH_GRID_1MM_M if "length_grid_1mm" in relax else grid_m
+    return True, _length_on_grid(length, grid_lo, grid)
+
+
+def _coupling_mult_ok(multiplier: float, dist: Distribution, relax: FrozenSet[str]) -> bool:
+    if "coupling_continuous" in relax:
+        lo, hi = COUPLING_CONTINUOUS_MULT_RANGE
+        return (lo - SET_TOL) <= multiplier <= (hi + SET_TOL)
+    return _in_choice_set(multiplier, dist.coupling_multiplier_choices)
+
+
+def _coupling_offset_ok(offset: float, dist: Distribution, relax: FrozenSet[str]) -> bool:
+    if "coupling_continuous" in relax:
+        lo, hi = COUPLING_CONTINUOUS_OFFSET_RANGE_RAD
+        return (lo - SET_TOL) <= offset <= (hi + SET_TOL)
+    return _in_choice_set(offset, dist.coupling_offset_choices_rad)
+
+
 def _movable_children(body_name: str, children: Dict[str, List]) -> List:
     """``children[body_name]``, but with any run of fixed joints made
     transparent: a fixed child is skipped over (never returned itself) and
@@ -348,7 +487,20 @@ def _movable_children(body_name: str, children: Dict[str, List]) -> List:
     return out
 
 
-def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -> CoverageResult:
+def coverage(
+    model: KinematicModel,
+    dist: Distribution = DEFAULT_DISTRIBUTION,
+    relax: FrozenSet[str] = frozenset(),
+) -> CoverageResult:
+    """As before, plus an optional ``relax`` (E11): a set of named support
+    widenings (``RELAX_NAMES``), each applied independently and cumulatively.
+    ``relax=frozenset()`` (the default) reproduces every pre-E11 caller's
+    behaviour exactly -- every relax-aware check below falls through to its
+    original, non-relaxed form when its own name is absent. Unknown names in
+    ``relax`` are a caller error, not silently ignored."""
+    unknown = set(relax) - set(RELAX_NAMES)
+    if unknown:
+        raise ValueError(f"coverage: unknown relax name(s): {sorted(unknown)}")
     inv = inventory(model)
     missing: List[str] = []
     out: List[str] = []
@@ -475,7 +627,7 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
         name for name, kids in children.items()
         if name in digit_of and len(kids) > 1 + dist.max_branch_digits
     )
-    if excess_children:
+    if excess_children and "children_unbounded" not in relax:
         missing.append("excess_children:" + ",".join(excess_children))
 
     coupling_scope_bad = set()
@@ -525,7 +677,7 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
         and j.name not in digit_start_names
         and _movable_children(j.child, children)
     )
-    if fixed_in_digit:
+    if fixed_in_digit and "fixed_in_digit_ok" not in relax:
         missing.append("fixed_in_digit:" + ",".join(fixed_in_digit))
 
     # Per-digit phalanx "run" length: walk forward from each digit start
@@ -570,7 +722,7 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
             run_length_issues.append(start.name)
     if run_length_issues:
         out.append("phalanx_run_out_of_range:" + ",".join(sorted(run_length_issues)))
-    if continuation_pose_issues:
+    if continuation_pose_issues and "rest_bend" not in relax:
         missing.append("continuation_pose:" + ",".join(sorted(set(continuation_pose_issues))))
 
     topology_expressible = len(missing) == 0
@@ -629,10 +781,11 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
     }
     off_grid, out_of_range = [], []
     for name, length in body_tip_length.items():
-        lo_len, hi_len = dist.palm_length_range_m if name in palm_body_names else dist.link_length_range_m
-        if not (lo_len - GRID_TOL <= length <= hi_len + GRID_TOL):
+        base_range = dist.palm_length_range_m if name in palm_body_names else dist.link_length_range_m
+        in_range, on_grid = _length_ok(length, base_range, dist.link_length_grid_m, relax)
+        if not in_range:
             out_of_range.append(name)
-        elif not _length_on_grid(length, lo_len, dist.link_length_grid_m):
+        elif not on_grid:
             off_grid.append(name)
     if off_grid:
         out.append("link_length_off_grid:" + ",".join(sorted(off_grid)))
@@ -640,8 +793,9 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
         out.append("link_length_out_of_range:" + ",".join(sorted(out_of_range)))
 
     # Axis grid: every movable joint's axis should land on the 15-degree
-    # spherical grid (distributions.sample_axis) in the joint's own frame.
-    axis_off_grid = [j.name for j in model.joints if j.type in MOVABLE_TYPES and not _axis_on_grid(j.axis)]
+    # spherical grid (distributions.sample_axis) in the joint's own frame --
+    # unless ``axis_grid_5deg``/``axis_continuous`` relaxes the check.
+    axis_off_grid = [j.name for j in model.joints if j.type in MOVABLE_TYPES and not _axis_ok(j.axis, relax)]
     if axis_off_grid:
         out.append("axis_off_grid:" + ",".join(sorted(axis_off_grid)))
 
@@ -652,26 +806,27 @@ def coverage(model: KinematicModel, dist: Distribution = DEFAULT_DISTRIBUTION) -
     # A coupled joint's own limits are *derived* (image of the source's
     # limits through the affine map), never sampled from a choice set, so
     # they are excluded here; its multiplier/offset are checked instead.
+    # ``limits_continuous``/``limits_range_x1.5`` relax exact choice-set
+    # membership to a (global, or widened-global) range check instead.
     dependents = {c.dependent for c in model.couplings}
     limits_not_in_set = []
     for j in model.joints:
         if j.name in dependents or j.limits is None:
             continue
         if j.type == "revolute":
-            choices = dist.palm_joint_limit_choices_deg if j.child in palm_body_names else dist.revolute_limit_choices_deg
-            if not _limits_in_choice_set(j.limits, choices):
+            if not _revolute_limits_ok(j.limits, j.child in palm_body_names, dist, relax):
                 limits_not_in_set.append(j.name)
         elif j.type == "prismatic":
-            if not _limits_in_choice_set_m(j.limits, dist.prismatic_limit_choices_m):
+            if not _prismatic_limits_ok(j.limits, dist, relax):
                 limits_not_in_set.append(j.name)
     if limits_not_in_set:
         out.append("limits_not_in_set:" + ",".join(sorted(limits_not_in_set)))
 
     coupling_bad = []
     for c in model.couplings:
-        if not _in_choice_set(c.multiplier, dist.coupling_multiplier_choices):
+        if not _coupling_mult_ok(c.multiplier, dist, relax):
             coupling_bad.append(f"{c.dependent}:multiplier")
-        if not _in_choice_set(c.offset, dist.coupling_offset_choices_rad):
+        if not _coupling_offset_ok(c.offset, dist, relax):
             coupling_bad.append(f"{c.dependent}:offset")
     if coupling_bad:
         out.append("coupling_params_not_in_set:" + ",".join(sorted(coupling_bad)))

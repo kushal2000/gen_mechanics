@@ -215,6 +215,7 @@ from . import e4_redundancy as _e4_redundancy  # noqa: F401,E402
 from . import e5_evolve as _e5_evolve  # noqa: F401,E402
 from . import e5b_evolve_sim as _e5b_evolve_sim  # noqa: F401,E402
 from . import e7_schedule as _e7_schedule  # noqa: F401,E402
+from . import e11_support_widening as _e11_support_widening  # noqa: F401,E402
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
