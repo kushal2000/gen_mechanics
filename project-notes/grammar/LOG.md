@@ -174,3 +174,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - A stray polling loop from the iteration-B worker (pgrep matched its own command, 6 h old) was found and killed; the first item-1+2 worker was stopped at Martin's request before editing and relaunched.
 - Suite 3109 passed. project_to_derivation holds 12/12 available hands at ~1e-16 m / 2e-8 rad with joint counts conserved (allegro, leap, barrett, dclaw, wuji, xhand, tesollo, orca, sharpa, ability, inspire, coupled_finger). Notes: Barrett fingertips undefined; Ability/Inspire dependent limits replaced by the coupling image; SHARPA's pinky CMC stays a digit joint under the structural palm rule (annotation in item 3 makes it a palm joint). Decision: keep.
+
+## Representation check, item 3 (2026-09-26 ~16:00)
+
+- Manifest: SVH, Shadow (local, wrist cut at rh_palm), ARMS added as articulated_palm; palm_joints annotations (SHARPA pinky CMC, Shadow LFJ5, SVH j5, ARMS CMC4/CMC5; SVH's is redundant with the structural rule). Suite 3117 passed.
+- E13 on a clean tree: 15/15 hands PASS at numerical precision (max 2e-13 mm, 1.7e-6 deg), joint counts conserved. Reported: Barrett and ARMS fingertips undefined; SVH index/ring spread and palm arch j5, and ARMS CMC5 couplings not in the structure (palm-joint couplings were silently dropped until the coordinator's fix in projection.py).
+- Atlas grammar-gap table recorded as I21 for later grammar tuning. Decision: keep.
