@@ -482,7 +482,10 @@ def test_fix9_run_reports_legacy_vs_aligned_footnote():
 
 def test_fix7_e3_operator_sets_and_dist_variants():
     from hand_sampler.grammar.experiments.e3_reach import DIST_VARIANTS, OPERATOR_SETS
-    assert set(OPERATOR_SETS) == {"DEFAULT", "UNION"}
+    # Grammar 0.5 (I18 fix 7): a third pool, "EVOLUTION_uniform" (uniform
+    # over derive.EVOLUTION_OPERATORS), was added so E3 can compare
+    # reachability under the same exact-inverse pool E12 certifies.
+    assert set(OPERATOR_SETS) == {"DEFAULT", "UNION", "EVOLUTION_uniform"}
     assert set(DIST_VARIANTS) == {"G_FULL", "G_NOBRANCH", "G_FULL_INS", "G_NOBRANCH_INS"}
     assert "step_length" not in OPERATOR_SETS["UNION"]
     assert len(OPERATOR_SETS["UNION"]) == len(OPERATORS) + len(SMALL_STEP_OPERATORS) + len(MINIMAL_STRUCTURAL_OPERATORS)  # noqa: E501
