@@ -1,47 +1,87 @@
 # Experiment: e3_reach
 
-Wall time: 2.891 s
+Wall time: 10.485 s
 
 ## Params
 
 ```json
 {
-  "max_accepted": 200,
-  "max_attempts_per_step": 8,
-  "safety_cap": 4000
+  "budget": 1500
 }
 ```
 
 n_seeds (restarts): 64
 
-## Table: target x operator set
+Budget is in PROPOSALS (evaluations), not accepted moves. success_rate uses a Wilson score interval. median_proposed is censored at the budget for restarts that never succeeded (reported '>= budget' via is_lower_bound/censored_fraction when that applies).
 
-| target | operator_set | success_rate | 95% CI lo | 95% CI hi | median accepted @ success | median proposed @ success | n |
-|---|---|---|---|---|---|---|---|
-| anthropomorphic_staggered | DEFAULT | 1 | 1 | 1 | 39.5 | 49 | 64 |
-| anthropomorphic_staggered | DEFAULT+SMALL | 0.9062 | 0.8281 | 0.9688 | 76.5 | 91.5 | 64 |
-| anthropomorphic_staggered | MINIMAL | 0.1406 | 0.0625 | 0.2344 | 165 | 227 | 64 |
-| radial_3 | DEFAULT | 0.9688 | 0.9219 | 1 | 48.5 | 64.5 | 64 |
-| radial_3 | DEFAULT+SMALL | 0.8125 | 0.7188 | 0.9062 | 64 | 80 | 64 |
-| radial_3 | MINIMAL | 0.5156 | 0.3906 | 0.6406 | 113 | 152 | 64 |
-| prismatic_gripper | DEFAULT | 1 | 1 | 1 | 29 | 36.5 | 64 |
-| prismatic_gripper | DEFAULT+SMALL | 0.9844 | 0.9531 | 1 | 39 | 50 | 64 |
-| prismatic_gripper | MINIMAL | 0.6094 | 0.4844 | 0.7344 | 82 | 139 | 64 |
-| arch_palm | DEFAULT | 0 | 0 | 0 | n/a | n/a | 64 |
-| arch_palm | DEFAULT+SMALL | 0 | 0 | 0 | n/a | n/a | 64 |
-| arch_palm | MINIMAL | 1 | 1 | 1 | 28 | 40 | 64 |
+## Table: target x operator pool x dist
+
+| target | pool | dist | success_rate | 95% CI lo | 95% CI hi | median proposed (censored) | is_lower_bound | censored_fraction | n |
+|---|---|---|---|---|---|---|---|---|---|
+| anthropomorphic_staggered | DEFAULT | G_FULL | 1 | 0.9434 | 1 | 49 | False | 0 | 64 |
+| anthropomorphic_staggered | DEFAULT | G_NOBRANCH | 1 | 0.9434 | 1 | 43 | False | 0 | 64 |
+| anthropomorphic_staggered | DEFAULT | G_FULL_INS | 1 | 0.9434 | 1 | 78.5 | False | 0 | 64 |
+| anthropomorphic_staggered | DEFAULT | G_NOBRANCH_INS | 1 | 0.9434 | 1 | 80.5 | False | 0 | 64 |
+| anthropomorphic_staggered | UNION | G_FULL | 1 | 0.9434 | 1 | 142.5 | False | 0 | 64 |
+| anthropomorphic_staggered | UNION | G_NOBRANCH | 1 | 0.9434 | 1 | 107 | False | 0 | 64 |
+| anthropomorphic_staggered | UNION | G_FULL_INS | 1 | 0.9434 | 1 | 191.5 | False | 0 | 64 |
+| anthropomorphic_staggered | UNION | G_NOBRANCH_INS | 1 | 0.9434 | 1 | 211 | False | 0 | 64 |
+| radial_3 | DEFAULT | G_FULL | 1 | 0.9434 | 1 | 66 | False | 0 | 64 |
+| radial_3 | DEFAULT | G_NOBRANCH | 1 | 0.9434 | 1 | 59.5 | False | 0 | 64 |
+| radial_3 | DEFAULT | G_FULL_INS | 1 | 0.9434 | 1 | 52 | False | 0 | 64 |
+| radial_3 | DEFAULT | G_NOBRANCH_INS | 1 | 0.9434 | 1 | 63 | False | 0 | 64 |
+| radial_3 | UNION | G_FULL | 1 | 0.9434 | 1 | 123.5 | False | 0 | 64 |
+| radial_3 | UNION | G_NOBRANCH | 1 | 0.9434 | 1 | 110 | False | 0 | 64 |
+| radial_3 | UNION | G_FULL_INS | 1 | 0.9434 | 1 | 103 | False | 0 | 64 |
+| radial_3 | UNION | G_NOBRANCH_INS | 1 | 0.9434 | 1 | 114.5 | False | 0 | 64 |
+| prismatic_gripper | DEFAULT | G_FULL | 1 | 0.9434 | 1 | 36.5 | False | 0 | 64 |
+| prismatic_gripper | DEFAULT | G_NOBRANCH | 1 | 0.9434 | 1 | 26 | False | 0 | 64 |
+| prismatic_gripper | DEFAULT | G_FULL_INS | 1 | 0.9434 | 1 | 31.5 | False | 0 | 64 |
+| prismatic_gripper | DEFAULT | G_NOBRANCH_INS | 1 | 0.9434 | 1 | 30 | False | 0 | 64 |
+| prismatic_gripper | UNION | G_FULL | 1 | 0.9434 | 1 | 101 | False | 0 | 64 |
+| prismatic_gripper | UNION | G_NOBRANCH | 1 | 0.9434 | 1 | 71.5 | False | 0 | 64 |
+| prismatic_gripper | UNION | G_FULL_INS | 1 | 0.9434 | 1 | 81 | False | 0 | 64 |
+| prismatic_gripper | UNION | G_NOBRANCH_INS | 1 | 0.9434 | 1 | 82 | False | 0 | 64 |
+| arch_palm | DEFAULT | G_FULL | 0 | 3.469e-18 | 0.05662 | 1500 | True | 1 | 64 |
+| arch_palm | DEFAULT | G_NOBRANCH | 0 | 3.469e-18 | 0.05662 | 1500 | True | 1 | 64 |
+| arch_palm | DEFAULT | G_FULL_INS | 0 | 3.469e-18 | 0.05662 | 1500 | True | 1 | 64 |
+| arch_palm | DEFAULT | G_NOBRANCH_INS | 0 | 3.469e-18 | 0.05662 | 1500 | True | 1 | 64 |
+| arch_palm | UNION | G_FULL | 1 | 0.9434 | 1 | 55 | False | 0 | 64 |
+| arch_palm | UNION | G_NOBRANCH | 1 | 0.9434 | 1 | 46 | False | 0 | 64 |
+| arch_palm | UNION | G_FULL_INS | 1 | 0.9434 | 1 | 52 | False | 0 | 64 |
+| arch_palm | UNION | G_NOBRANCH_INS | 1 | 0.9434 | 1 | 52 | False | 0 | 64 |
 
 ## Reading
 
-- anthropomorphic_staggered / DEFAULT: success_rate 1 [1, 1] (n=64); median accepted @ success 39.5; median proposed @ success 49.
-- anthropomorphic_staggered / DEFAULT+SMALL: success_rate 0.9062 [0.8281, 0.9688] (n=64); median accepted @ success 76.5; median proposed @ success 91.5.
-- anthropomorphic_staggered / MINIMAL: success_rate 0.1406 [0.0625, 0.2344] (n=64); median accepted @ success 165; median proposed @ success 227.
-- radial_3 / DEFAULT: success_rate 0.9688 [0.9219, 1] (n=64); median accepted @ success 48.5; median proposed @ success 64.5.
-- radial_3 / DEFAULT+SMALL: success_rate 0.8125 [0.7188, 0.9062] (n=64); median accepted @ success 64; median proposed @ success 80.
-- radial_3 / MINIMAL: success_rate 0.5156 [0.3906, 0.6406] (n=64); median accepted @ success 113; median proposed @ success 152.
-- prismatic_gripper / DEFAULT: success_rate 1 [1, 1] (n=64); median accepted @ success 29; median proposed @ success 36.5.
-- prismatic_gripper / DEFAULT+SMALL: success_rate 0.9844 [0.9531, 1] (n=64); median accepted @ success 39; median proposed @ success 50.
-- prismatic_gripper / MINIMAL: success_rate 0.6094 [0.4844, 0.7344] (n=64); median accepted @ success 82; median proposed @ success 139.
-- arch_palm / DEFAULT: success_rate 0 [0, 0] (n=64); median accepted @ success n/a; median proposed @ success n/a.
-- arch_palm / DEFAULT+SMALL: success_rate 0 [0, 0] (n=64); median accepted @ success n/a; median proposed @ success n/a.
-- arch_palm / MINIMAL: success_rate 1 [1, 1] (n=64); median accepted @ success 28; median proposed @ success 40.
+- anthropomorphic_staggered / DEFAULT / G_FULL: success_rate 1 [0.9434, 1] (n=64); median proposed 49 (censored_fraction 0).
+- anthropomorphic_staggered / DEFAULT / G_NOBRANCH: success_rate 1 [0.9434, 1] (n=64); median proposed 43 (censored_fraction 0).
+- anthropomorphic_staggered / DEFAULT / G_FULL_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 78.5 (censored_fraction 0).
+- anthropomorphic_staggered / DEFAULT / G_NOBRANCH_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 80.5 (censored_fraction 0).
+- anthropomorphic_staggered / UNION / G_FULL: success_rate 1 [0.9434, 1] (n=64); median proposed 142.5 (censored_fraction 0).
+- anthropomorphic_staggered / UNION / G_NOBRANCH: success_rate 1 [0.9434, 1] (n=64); median proposed 107 (censored_fraction 0).
+- anthropomorphic_staggered / UNION / G_FULL_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 191.5 (censored_fraction 0).
+- anthropomorphic_staggered / UNION / G_NOBRANCH_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 211 (censored_fraction 0).
+- radial_3 / DEFAULT / G_FULL: success_rate 1 [0.9434, 1] (n=64); median proposed 66 (censored_fraction 0).
+- radial_3 / DEFAULT / G_NOBRANCH: success_rate 1 [0.9434, 1] (n=64); median proposed 59.5 (censored_fraction 0).
+- radial_3 / DEFAULT / G_FULL_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 52 (censored_fraction 0).
+- radial_3 / DEFAULT / G_NOBRANCH_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 63 (censored_fraction 0).
+- radial_3 / UNION / G_FULL: success_rate 1 [0.9434, 1] (n=64); median proposed 123.5 (censored_fraction 0).
+- radial_3 / UNION / G_NOBRANCH: success_rate 1 [0.9434, 1] (n=64); median proposed 110 (censored_fraction 0).
+- radial_3 / UNION / G_FULL_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 103 (censored_fraction 0).
+- radial_3 / UNION / G_NOBRANCH_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 114.5 (censored_fraction 0).
+- prismatic_gripper / DEFAULT / G_FULL: success_rate 1 [0.9434, 1] (n=64); median proposed 36.5 (censored_fraction 0).
+- prismatic_gripper / DEFAULT / G_NOBRANCH: success_rate 1 [0.9434, 1] (n=64); median proposed 26 (censored_fraction 0).
+- prismatic_gripper / DEFAULT / G_FULL_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 31.5 (censored_fraction 0).
+- prismatic_gripper / DEFAULT / G_NOBRANCH_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 30 (censored_fraction 0).
+- prismatic_gripper / UNION / G_FULL: success_rate 1 [0.9434, 1] (n=64); median proposed 101 (censored_fraction 0).
+- prismatic_gripper / UNION / G_NOBRANCH: success_rate 1 [0.9434, 1] (n=64); median proposed 71.5 (censored_fraction 0).
+- prismatic_gripper / UNION / G_FULL_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 81 (censored_fraction 0).
+- prismatic_gripper / UNION / G_NOBRANCH_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 82 (censored_fraction 0).
+- arch_palm / DEFAULT / G_FULL: success_rate 0 [3.469e-18, 0.05662] (n=64); median proposed >= 1500 (censored_fraction 1).
+- arch_palm / DEFAULT / G_NOBRANCH: success_rate 0 [3.469e-18, 0.05662] (n=64); median proposed >= 1500 (censored_fraction 1).
+- arch_palm / DEFAULT / G_FULL_INS: success_rate 0 [3.469e-18, 0.05662] (n=64); median proposed >= 1500 (censored_fraction 1).
+- arch_palm / DEFAULT / G_NOBRANCH_INS: success_rate 0 [3.469e-18, 0.05662] (n=64); median proposed >= 1500 (censored_fraction 1).
+- arch_palm / UNION / G_FULL: success_rate 1 [0.9434, 1] (n=64); median proposed 55 (censored_fraction 0).
+- arch_palm / UNION / G_NOBRANCH: success_rate 1 [0.9434, 1] (n=64); median proposed 46 (censored_fraction 0).
+- arch_palm / UNION / G_FULL_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 52 (censored_fraction 0).
+- arch_palm / UNION / G_NOBRANCH_INS: success_rate 1 [0.9434, 1] (n=64); median proposed 52 (censored_fraction 0).
