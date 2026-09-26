@@ -205,6 +205,9 @@ def _coverage_dict(result) -> dict:
 
 
 def run(seed: int) -> dict:
+    # Git state is read before any work so transient files created during the run
+    # cannot make a clean tree look dirty.
+    git_sha_at_start, git_dirty_at_start = _git_sha(), _git_dirty()
     manifest = json.loads(MANIFEST_PATH.read_text())
     hands_out = []
 
@@ -263,8 +266,8 @@ def run(seed: int) -> dict:
         "schema": "hand_grammar_bench/pilot/0.1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": seed,
-        "git_sha": _git_sha(),
-        "git_dirty": _git_dirty(),
+        "git_sha": git_sha_at_start,
+        "git_dirty": git_dirty_at_start,
         "tool_versions": {"numpy": np.__version__, "python": sys.version.split()[0]},
         "tolerances": {"oracle_pos_m": ORACLE_POS_M, "oracle_rot_rad": ORACLE_ROT_RAD},
         "hands": hands_out,
