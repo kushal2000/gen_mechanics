@@ -29,7 +29,11 @@
     "Iteration-3 grammar productions: root, palm bodies with optional palm joint (tighter travel than finger joints), finger chains of phalanx capsules, optional intra-finger affine coupling.",
     "Every generated hand has at least one palm body (Martin, 2026-09-25). Import-from-URDF only needs to work; it is not a priority.",
     "Palm cut plane refinement (coordinator, 2026-09-26, to confirm with Martin): plane through the palm joint origin containing its axis, normal = perp_axis(d_child - d_parent) where d_parent is the parent's segment direction toward its tip; sibling overlaps resolved by nearest spine; cells sharing a cut face are adjacent (collision-filtered).",
-    "Palm cells (2026-09-26, coordinator after worker counterexample): the plane-carved partition cannot hold for entangled palm trees (seed 10: three palm bodies whose own planes are non-discriminating; no single plane conserves volume and keeps both spines). Replaced by nearest-spine assignment of hull samples, one convex hull per palm body, overlaps allowed only between pairs recorded as adjacent (collision-filtered); coverage and containment asserted, exact partition not claimed. To confirm with Martin."
+    "Palm cells (2026-09-26, coordinator after worker counterexample): the plane-carved partition cannot hold for entangled palm trees (seed 10: three palm bodies whose own planes are non-discriminating; no single plane conserves volume and keeps both spines). Replaced by nearest-spine assignment of hull samples, one convex hull per palm body, overlaps allowed only between pairs recorded as adjacent (collision-filtered); coverage and containment asserted, exact partition not claimed. To confirm with Martin.",
+    "Representation vs grammar (Martin, 2026-09-26): the representation (structure compiled by derive()) must represent real hands relatively accurately (kinematics only, ~5 mm / 10 deg); the grammar (grids, ranges, priors, operators) is tuned later for explorability. Fitting real hands is an expressivity check only.",
+    "The 1e-10/1e-12 tolerances are code-correctness tests (our FK vs Pinocchio/sympy on the same file), not the representation fidelity criterion.",
+    "Geometry stays capsules for now; a cross-section study decides whether a single rounded-rectangle template fits most links at acceptable contact cost. Actuation (motors, cross-digit couplings) is future work.",
+    "Hand set for the representation check: current 11 + articulated-palm hands (SVH, Shadow, ARMS; SHARPA pinky CMC). Licences not a concern (local dev)."
   ],
   "issues": [
     {
@@ -167,7 +171,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "PAUSED for Martin: grammar 0.5 delivered with balance results; decide continuous-limit sampling by default, branch-removal rule, envelope; then hand process items (immigrants, crowding, archive, reset protocol) to the RL owners.",
+  "next_action": "Item 1+2 running (PalmBody mount_offset; projection real hand -> Derivation). Then item 3 (E13 check + atlas + manifest), item 4 (cross-section study), Opus review.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -179,10 +183,10 @@
     "M1": "met with honest coverage (2026-09-26): kinematics/import/export/generation verified; coverage report now states topology_expressible=no for all real hands with named reasons; in_support=no for all."
   },
   "program": {
-    "name": "grammar 0.5 implementation (Martin: 'do what you think is right')",
-    "started_at": "2026-09-26T11:10-04:00",
-    "plan": "grammar-for-generalization.md section 6 + balanced-grammar-synthesis.md section 3",
-    "finished_at": "2026-09-26T13:40-04:00"
+    "name": "representation check before integration",
+    "plan": "project-notes/grammar/plan-representation-check.md",
+    "started_at": "2026-09-26T14:10-04:00",
+    "budget": "<=4 Sonnet runs, 1 Opus review"
   },
   "experiments": {
     "E0": "done",
