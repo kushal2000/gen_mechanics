@@ -850,22 +850,29 @@ def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation,
     drawing uniformly, so a caller (the reversibility test) can undo a
     specific ``insert_phalanx`` application precisely.
 
-    I15 fix 4: a phalanx that hosts a branch MAY now be deleted -- its
-    branch sub-digit(s) are re-attached (their ``Digit`` step's ``mount``
-    field updated) rather than orphaned: to the PROXIMAL neighbour phalanx's
-    body (index ``del_p - 1``, whose body name is never itself renumbered
-    by this deletion, since only phalanges with an index ABOVE ``del_p``
-    shift down) if ``del_p > 0``, or to the digit's own ``mount`` body (a
-    palm body, or the host phalanx's body if this digit is itself a branch)
-    if ``del_p == 0`` (the first phalanx). Deleting any phalanx except the
-    digit's *current last one* never changes which phalanx is last, so it
-    is always safe. Deleting the last one promotes the previous phalanx to
-    "last" -- still refused when that PREVIOUS phalanx (not ``del_p``
-    itself) hosts exactly 1 branch digit of its OWN (valid only for a
-    non-last phalanx, which already has a next-phalanx child; as the new
-    last phalanx it would drop to a single child) -- this pre-existing
-    safety check is unrelated to ``del_p``'s own branches, which are simply
-    relocated, never left dangling."""
+    I15 fix 4 (I18 fix 1 corrects the ``del_p == 0`` case below): a phalanx
+    that hosts a branch MAY now be deleted -- its branch sub-digit(s) are
+    re-attached (their ``Digit`` step's ``mount`` field updated) rather than
+    orphaned: to the PROXIMAL neighbour phalanx's body (index ``del_p - 1``,
+    whose body name is never itself renumbered by this deletion, since only
+    phalanges with an index ABOVE ``del_p`` shift down) if ``del_p > 0``, or
+    to the digit's NEW phalanx 0 (the phalanx that was index 1, before it is
+    itself renumbered down to index 0) if ``del_p == 0`` (the first
+    phalanx) -- NEVER to the digit's own ``mount`` (I18 fix 1: that body can
+    be a palm body when this digit is top-level, and a branch digit must
+    never mount on a palm body; the old code reattached there, which broke
+    that invariant). A digit with only 1 phalanx is never a delete_phalanx
+    candidate at all (see the ``phalanx_count <= 1: continue`` guard below),
+    so this case never has to fall back to the digit's own mount: there is
+    always a new phalanx 0 to reattach to once ``del_p == 0`` is reached.
+    Deleting any phalanx except the digit's *current last one* never
+    changes which phalanx is last, so it is always safe. Deleting the last
+    one promotes the previous phalanx to "last" -- still refused when that
+    PREVIOUS phalanx (not ``del_p`` itself) hosts exactly 1 branch digit of
+    its OWN (valid only for a non-last phalanx, which already has a
+    next-phalanx child; as the new last phalanx it would drop to a single
+    child) -- this pre-existing safety check is unrelated to ``del_p``'s own
+    branches, which are simply relocated, never left dangling."""
     steps = list(derivation.steps)
     candidates: List[Tuple[int, List[int]]] = []
     for i, s in enumerate(steps):
@@ -905,7 +912,20 @@ def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation,
     # renumbering pass below, since the deleted phalanx's body never
     # survives renumbering at all (it is not merely renamed, it is gone).
     deleted_body = f"d{digit_id}p{del_p + 1}"
-    reattach_mount = f"d{digit_id}p{del_p}" if del_p > 0 else dstep.params["mount"]
+    if del_p > 0:
+        # Proximal neighbour's body name is unaffected by this deletion
+        # (only phalanges with an index ABOVE del_p shift down).
+        reattach_mount = f"d{digit_id}p{del_p}"
+    else:
+        # I18 fix 1: reattach to the phalanx that BECOMES the new phalanx 0
+        # (old index 1), using ITS pre-renumbering name -- the renumbering
+        # pass + ``_rename_branch_mounts`` call below then retargets this
+        # same mount (along with every other branch already hosted there)
+        # from "d{digit_id}p2" to "d{digit_id}p1", so the reattached branch
+        # ends up on the correct final phalanx-0 body. Never the digit's
+        # own ``mount``: that can be a palm body when this digit is
+        # top-level, and a branch digit must never mount on a palm body.
+        reattach_mount = f"d{digit_id}p{del_p + 2}"
     non_digit_others = [
         DerivationStep(path=st.path, production="Digit", params={**st.params, "mount": reattach_mount})
         if (st.production == "Digit" and not st.params.get("top_level", True)
@@ -1553,6 +1573,69 @@ def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation,
     return new_steps
 
 
+def _op_remove_palm_body_empty(rng, dist: Distribution, derivation: Derivation,
+                                target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+    """Exact-inverse counterpart of ``add_palm_body`` (grammar 0.5, I18 fix
+    2): remove a LEAF palm body -- one with no ``PalmBody`` child (no other
+    palm body's ``parent`` names it) and no ``Digit`` mounted on it -- i.e.
+    exactly the shape ``add_palm_body`` always produces (it is always
+    appended at the end, with nothing yet attached to it). Unlike the
+    general ``remove_palm_body`` (which accepts ANY existing body and
+    approximately re-attaches its children to its parent), this never
+    re-attaches anything, since a leaf by construction has nothing to
+    re-attach; it is used as the shrink half of the ``add_palm_body`` pair
+    in ``EVOLUTION_PAIRS``/``EVOLUTION_OPERATORS`` so that pair's neutral
+    walk is a genuine exact inverse rather than the approximate,
+    asymmetric general removal. ``remove_palm_body`` itself stays available
+    outside the evolution pool as a larger, non-exact-inverse move.
+
+    ``target``: uid of the ``PalmBody`` step to remove (restricts the
+    candidate pool to exactly that body instead of drawing uniformly, so
+    the reversibility test can undo a specific ``add_palm_body``
+    application precisely)."""
+    steps = list(derivation.steps)
+    hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
+    hand_params = steps[hand_idx].params
+    palm_body_count = hand_params["palm_body_count"]
+    if palm_body_count == 0:
+        return None
+    palm_steps = {s.params["name"]: s for s in steps if s.production == "PalmBody"}
+    parent_names = {s.params["parent"] for s in steps if s.production == "PalmBody"}
+    mount_names = {s.params["mount"] for s in steps if s.production == "Digit"}
+    leaf_names = [name for name in palm_steps if name not in parent_names and name not in mount_names]
+    if target is not None:
+        leaf_names = [name for name in leaf_names if palm_steps[name].params.get("uid") == target]
+    if not leaf_names:
+        return None
+    remove_name = leaf_names[int(rng.integers(0, len(leaf_names)))]
+    remove_idx = int(remove_name[len("palm"):])
+
+    rename: Dict[str, str] = {
+        f"palm{i}": f"palm{i - 1}" for i in range(remove_idx + 1, palm_body_count)
+    }
+    new_steps: List[DerivationStep] = []
+    for s in steps:
+        if s.path == f"palm/{remove_idx}":
+            continue
+        if s.production == "PalmBody":
+            old_i = int(s.params["name"][len("palm"):])
+            new_i = old_i if old_i < remove_idx else old_i - 1
+            p = dict(s.params)
+            p["name"] = f"palm{new_i}"
+            if p["parent"] in rename:
+                p["parent"] = rename[p["parent"]]
+            new_steps.append(DerivationStep(path=f"palm/{new_i}", production="PalmBody", params=p))
+        elif s.production == "Digit" and s.params.get("mount") in rename:
+            new_steps.append(DerivationStep(path=s.path, production="Digit",
+                                             params={**s.params, "mount": rename[s.params["mount"]]}))
+        elif s.path == "hand":
+            new_steps.append(DerivationStep(path="hand", production="Hand",
+                                             params={**hand_params, "palm_body_count": palm_body_count - 1}))
+        else:
+            new_steps.append(s)
+    return new_steps
+
+
 def _op_toggle_palm_joint(rng, dist: Distribution, derivation: Derivation,
                            target: Optional[int] = None) -> Optional[List[DerivationStep]]:
     """On one existing (necessarily non-root -- the root has no ``PalmBody``
@@ -1715,6 +1798,7 @@ _OPERATOR_FNS = {
     "remove_digit_minimal": _op_remove_digit_minimal,
     "add_palm_body": _op_add_palm_body,
     "remove_palm_body": _op_remove_palm_body,
+    "remove_palm_body_empty": _op_remove_palm_body_empty,
     "toggle_palm_joint": _op_toggle_palm_joint,
     "add_branch_digit": _op_add_branch_digit,
     "remove_branch_digit": _op_remove_branch_digit,
@@ -1733,13 +1817,19 @@ _OPERATOR_FNS = {
 # Deliberately excludes ``regrow_subtree``/full-size ``add_digit``/
 # ``remove_digit``/``resample_parameter`` (no exact inverse, large jumps --
 # see balanced-grammar-synthesis.md section 3's "dropped from the default
-# pool").
+# pool"). I18 fix 2: the palm-body pair uses ``remove_palm_body_empty`` (an
+# EXACT inverse of ``add_palm_body`` -- it only ever removes a leaf with no
+# children, exactly what ``add_palm_body`` produces), not the general
+# ``remove_palm_body`` (which accepts any body and approximately
+# re-attaches its children) -- that general operator stays defined and in
+# ``_OPERATOR_FNS``/``TARGETABLE_OPERATORS`` as a larger move available
+# OUTSIDE this pool.
 # --------------------------------------------------------------------------
 
 EVOLUTION_PAIRS: Tuple[Tuple[str, str], ...] = (
     ("add_minimal_digit", "remove_digit_minimal"),
     ("insert_phalanx", "delete_phalanx"),
-    ("add_palm_body", "remove_palm_body"),
+    ("add_palm_body", "remove_palm_body_empty"),
     ("toggle_palm_joint", "toggle_palm_joint"),
     ("add_branch_digit", "remove_branch_digit"),
 )
@@ -1753,7 +1843,7 @@ del _growth, _shrink
 EVOLUTION_OPERATORS: Tuple[str, ...] = (
     "add_minimal_digit", "remove_digit_minimal",
     "insert_phalanx", "delete_phalanx",
-    "add_palm_body", "remove_palm_body",
+    "add_palm_body", "remove_palm_body_empty",
     "toggle_palm_joint",
     "add_branch_digit", "remove_branch_digit",
 ) + tuple(SMALL_STEP_OPERATORS)
@@ -1762,7 +1852,7 @@ assert len(EVOLUTION_OPERATORS) == len(set(EVOLUTION_OPERATORS)), "EVOLUTION_OPE
 # Shrink operators (and self-inverse ``toggle_palm_joint``) that accept an
 # optional ``target`` uid, per ``_OPERATOR_FNS`` above.
 TARGETABLE_OPERATORS = frozenset({
-    "remove_digit_minimal", "delete_phalanx", "remove_palm_body",
+    "remove_digit_minimal", "delete_phalanx", "remove_palm_body", "remove_palm_body_empty",
     "toggle_palm_joint", "remove_branch_digit",
 })
 
@@ -1838,3 +1928,22 @@ def vary(derivation: Derivation, rng: np.random.Generator, dist: Distribution = 
             continue
         return candidate
     raise VariationImpossible(f"could not apply operator {op!r} to derivation after 32 attempts")
+
+
+def vary_tracked(derivation: Derivation, rng: np.random.Generator, dist: Distribution,
+                  operators: Sequence[str]) -> Tuple[Optional[Derivation], str]:
+    """Like ``vary(derivation, rng, dist, operators=operators)`` -- one
+    operator drawn uniformly from ``operators``, retried up to 32 times via
+    ``apply_operator`` (exactly ``vary``'s own per-attempt logic, since
+    ``apply_operator`` runs the same ``fn`` / no-op / ``ModelError`` checks)
+    -- but returns ``(candidate_or_None, op)`` instead of raising
+    ``VariationImpossible`` on total failure, so a caller (E12's per-pair
+    growth/shrink applicability-rate reporting, grammar 0.5 I18 fix 4) can
+    tally which operator was drawn and whether IT was applicable, without
+    duplicating ``vary``'s algorithm."""
+    op = operators[int(rng.integers(0, len(operators)))]
+    for _ in range(32):
+        candidate = apply_operator(derivation, rng, dist, op)
+        if candidate is not None:
+            return candidate, op
+    return None, op

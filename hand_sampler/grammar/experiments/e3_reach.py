@@ -68,6 +68,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from ..derive import (
+    EVOLUTION_OPERATORS,
     MINIMAL_STRUCTURAL_OPERATORS,
     OPERATORS,
     SMALL_STEP_OPERATORS,
@@ -89,6 +90,13 @@ from .starts import build_start
 OPERATOR_SETS: Dict[str, Tuple[str, ...]] = {
     "DEFAULT": tuple(OPERATORS),
     "UNION": tuple(dict.fromkeys(tuple(OPERATORS) + tuple(SMALL_STEP_OPERATORS) + tuple(MINIMAL_STRUCTURAL_OPERATORS))),
+    # Grammar 0.5 (I18 fix 7): the exact-inverse evolution pool
+    # (``derive.EVOLUTION_OPERATORS`` -- 5 growth/shrink pairs plus every
+    # small-step operator), drawn uniformly like ``DEFAULT``/``UNION``
+    # rather than through the pair-balanced ``EVOLUTION_pool`` weighting
+    # used by ``e2_drift``/``e12_balance``, so E3 can compare reachability
+    # under the SAME pool E12 certifies for neutral drift.
+    "EVOLUTION_uniform": tuple(EVOLUTION_OPERATORS),
 }
 for _name, _ops in OPERATOR_SETS.items():
     assert len(_ops) == len(set(_ops)), f"operator set {_name!r} has duplicates"

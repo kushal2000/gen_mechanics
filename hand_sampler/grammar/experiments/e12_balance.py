@@ -1,21 +1,35 @@
 """E12: the balance test suite (grammar 0.5, iteration B) --
 ``balanced-grammar-synthesis.md`` section 5, items 1-3, 5-6:
 
-(a) Per-pair neutral drift: mutation-only walks applying ONLY one
-    ``derive.EVOLUTION_PAIRS`` pair (equal probability over its 1-2
-    operators, via ``vary(..., operators=pair)``), 128 seeds x 200 steps,
-    under ``G_FULL_INS`` and ``G_NOBRANCH_INS``; and the same for the whole
-    ``EVOLUTION_OPERATORS`` pool (uniform). Reports E[delta joints],
-    E[delta digits], E[delta palm bodies] with a 95% (unpaired) bootstrap
-    CI. Pass: the CI includes 0 for every pair/pool/dist/metric.
-(b) Locality bands: reuses ``e1_locality.e1_locality_seed`` (under
-    ``G_FULL``, its own hardcoded dist) over a seed sample, then compares
-    the POOLED ``tip_displacement_m`` distribution of
-    ``SMALL_STEP_OPERATORS`` against the 9 "structural" operators in
-    ``EVOLUTION_OPERATORS`` (i.e. ``EVOLUTION_OPERATORS`` minus
-    ``SMALL_STEP_OPERATORS``). Pass: small-step IQR entirely below
-    structural IQR; structural median <= 0.020 m; no structural operator
-    with p90 > 0.060 m.
+(a) Per-pair neutral drift (grammar 0.5, I18 fix 4 -- TWO regimes, both
+    reported): mutation-only walks applying ONLY one ``derive.EVOLUTION_PAIRS``
+    pair (equal probability over its 1-2 operators, via ``vary_tracked(...,
+    operators=pair)``), 128 seeds x 200 steps, under ``G_FULL_INS`` and
+    ``G_NOBRANCH_INS``; and the same for the whole ``EVOLUTION_OPERATORS``
+    pool (uniform).
+      - ``boundary`` regime: starts are ``starts.build_start`` (reduced to
+        near-minimal digit/phalanx counts) -- reduced-size starts have an
+        inherently lopsided growth/shrink applicability ratio (shrink moves
+        are often inapplicable at the boundary), so drift here is EXPECTED
+        POSITIVE; reported descriptively (mean, no CI-based PASS/FAIL).
+      - ``stationary`` regime: starts are plain ``generate(seed, dist)``
+        (unreduced samples from the grammar's own stationary distribution).
+        Reports E[delta joints], E[delta digits], E[delta palm bodies] with
+        a 95% (unpaired) bootstrap CI. PASS iff the CI includes 0 for every
+        pair/pool/dist/metric -- this regime alone determines (a)'s overall
+        PASS/FAIL.
+    Both regimes also report, per pair, each of its 1-2 operators'
+    applicability rate over the walk (successful ``vary_tracked`` draws /
+    total draws of that operator) -- the growth/shrink ratio explains any
+    residual drift.
+(b) Locality bands (grammar 0.5, I18 fix 5 -- per-operator, not pooled):
+    reuses ``e1_locality.e1_locality_seed`` (under ``G_FULL``, its own
+    hardcoded dist) over a seed sample, then checks EVERY operator in
+    ``EVOLUTION_OPERATORS`` individually: PASS iff every ``SMALL_STEP_OPERATORS``
+    member's median ``tip_displacement_m`` <= 0.005 m (5 mm) AND every
+    "structural" operator (``EVOLUTION_OPERATORS`` minus
+    ``SMALL_STEP_OPERATORS``)'s p90 <= 0.060 m (60 mm); violators are listed
+    by name.
 (c) Reversibility: ``derive.apply_operator`` applies each pair's growth
     move then its shrink move (``target`` = the uid of the material the
     growth move just added -- self-inverse ``toggle_palm_joint`` targets a
@@ -48,7 +62,7 @@ from ..canonical import phenotype_hash
 from ..coords import independent_joints
 from ..derive import (
     EVOLUTION_OPERATORS, EVOLUTION_PAIRS, SMALL_STEP_OPERATORS, VariationImpossible, apply_operator,
-    derive, generate, vary,
+    derive, generate, vary, vary_tracked,
 )
 from ..kinematics import KinematicModel
 from ..phenodist import _digit_count, _palm_body_count
@@ -80,26 +94,52 @@ def _metrics(model: KinematicModel) -> Dict[str, float]:
     }
 
 
-def e12_drift_seed(seed: int, walk_length: int = 200) -> Dict[str, Any]:
+_REGIME_RNG_TAG = {"boundary": 0, "stationary": 1}
+
+
+def e12_drift_seed(seed: int, walk_length: int = 200, regime: str = "boundary") -> Dict[str, Any]:
+    """``regime``: ``"boundary"`` (``starts.build_start`` -- reduced,
+    near-minimal-size starts) or ``"stationary"`` (plain ``generate(seed,
+    dist)``, an unreduced sample from the grammar's own distribution) --
+    grammar 0.5, I18 fix 4. Each walk step draws one operator from the
+    pair/pool (``vary_tracked``, same algorithm as ``vary(..., operators=
+    ops)`` but also reports which operator was drawn and whether it was
+    applicable) so ``attempt_counts``/``applic_counts`` can report each
+    operator's own applicability rate over the walk."""
+    if regime not in _REGIME_RNG_TAG:
+        raise ValueError(f"unknown drift regime {regime!r}")
     out: Dict[str, Any] = {}
     for dist_name, dist in DIST_VARIANTS.items():
-        start_derivation, _, _, _ = build_start(seed, dist)
+        if regime == "boundary":
+            start_derivation, _, _, _ = build_start(seed, dist)
+        else:
+            start_derivation, _ = generate(seed, dist)
         start_model = derive(start_derivation)
         start_metrics = _metrics(start_model)
         dist_out: Dict[str, Any] = {"start": start_metrics}
         for p_idx, (label, ops) in enumerate(PAIR_LABELS):
-            rng = np.random.default_rng([seed, 7_000_000, p_idx])
+            rng = np.random.default_rng([seed, 7_000_000, p_idx, _REGIME_RNG_TAG[regime]])
             current = start_derivation
+            attempt_counts: Dict[str, int] = {op: 0 for op in ops}
+            applic_counts: Dict[str, int] = {op: 0 for op in ops}
             for _ in range(walk_length):
-                try:
-                    current = vary(current, rng, dist, operators=ops)
-                except VariationImpossible:
+                candidate, op = vary_tracked(current, rng, dist, ops)
+                attempt_counts[op] += 1
+                if candidate is None:
                     continue
+                applic_counts[op] += 1
+                current = candidate
             final_metrics = _metrics(derive(current))
             dist_out[label] = {
                 "delta_joints": final_metrics["joints"] - start_metrics["joints"],
                 "delta_digits": final_metrics["digits"] - start_metrics["digits"],
                 "delta_palm_bodies": final_metrics["palm_bodies"] - start_metrics["palm_bodies"],
+                "attempt_counts": attempt_counts,
+                "applic_counts": applic_counts,
+                "applicability_rate": {
+                    op: (applic_counts[op] / attempt_counts[op]) if attempt_counts[op] else None
+                    for op in ops
+                },
             }
         out[dist_name] = dist_out
     return out
@@ -120,14 +160,30 @@ def _bootstrap_ci(vals: Sequence[float], n_resamples: int = 2000, seed: int = 0)
 
 
 def _aggregate_drift(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Per (dist, pair) CIs for the 3 structural-delta metrics, plus (I18
+    fix 4) each pair's own operators' pooled applicability rate over the
+    walk: total successful ``vary_tracked`` draws / total draws of that
+    operator, summed across every seed's row (a pooled rate, not a mean of
+    per-seed rates, since a single seed's walk can draw an operator 0
+    times)."""
     agg: Dict[str, Any] = {}
     for dist_name in DIST_VARIANTS:
         dist_agg: Dict[str, Any] = {}
-        for label, _ops in PAIR_LABELS:
-            pair_agg = {}
+        for label, ops in PAIR_LABELS:
+            pair_agg: Dict[str, Any] = {}
             for metric in ("delta_joints", "delta_digits", "delta_palm_bodies"):
                 vals = [r[dist_name][label][metric] for r in rows if dist_name in r and label in r[dist_name]]
                 pair_agg[metric] = _bootstrap_ci(vals)
+            op_applic: Dict[str, Any] = {}
+            for op in ops:
+                relevant = [r[dist_name][label] for r in rows if dist_name in r and label in r[dist_name]]
+                total_attempt = sum(r["attempt_counts"].get(op, 0) for r in relevant)
+                total_applic = sum(r["applic_counts"].get(op, 0) for r in relevant)
+                op_applic[op] = {
+                    "attempts": total_attempt, "applicable": total_applic,
+                    "rate": (total_applic / total_attempt) if total_attempt else None,
+                }
+            pair_agg["applicability"] = op_applic
             dist_agg[label] = pair_agg
         agg[dist_name] = dist_agg
     return agg
@@ -138,9 +194,15 @@ def _aggregate_drift(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
+_SMALL_STEP_MEDIAN_LIMIT_M = 0.005
+_STRUCTURAL_P90_LIMIT_M = 0.060
+
+
 def _locality_bands(seeds: Sequence[int], n_configs: int = 16) -> Dict[str, Any]:
-    small_vals: List[float] = []
-    structural_vals: List[float] = []
+    """Grammar 0.5, I18 fix 5: per-operator criteria (replacing the old
+    pooled-IQR comparison). PASS iff every ``SMALL_STEP_OPERATORS`` member's
+    median <= ``_SMALL_STEP_MEDIAN_LIMIT_M`` AND every ``STRUCTURAL_OPS``
+    member's p90 <= ``_STRUCTURAL_P90_LIMIT_M``; violators are named."""
     per_op_vals: Dict[str, List[float]] = {op: [] for op in EVOLUTION_OPERATORS}
     for seed in seeds:
         row = e1_locality_seed(seed, n_configs=n_configs)
@@ -148,47 +210,32 @@ def _locality_bands(seeds: Sequence[int], n_configs: int = 16) -> Dict[str, Any]
             r = row.get(op)
             if r is None or r["applicable"] != 1.0 or r["tip_displacement_m"] is None:
                 continue
-            v = r["tip_displacement_m"]
-            per_op_vals[op].append(v)
-            if op in SMALL_STEP_OPERATORS:
-                small_vals.append(v)
-            else:
-                structural_vals.append(v)
+            per_op_vals[op].append(r["tip_displacement_m"])
 
-    def _iqr(vals: List[float]) -> Dict[str, Optional[float]]:
+    def _stats(vals: List[float]) -> Dict[str, Optional[float]]:
         if not vals:
-            return {"q1": None, "median": None, "q3": None, "p90": None, "n": 0}
+            return {"median": None, "p90": None, "n": 0}
         a = np.asarray(vals, dtype=float)
-        return {
-            "q1": float(np.percentile(a, 25)), "median": float(np.percentile(a, 50)),
-            "q3": float(np.percentile(a, 75)), "p90": float(np.percentile(a, 90)), "n": len(vals),
-        }
+        return {"median": float(np.percentile(a, 50)), "p90": float(np.percentile(a, 90)), "n": len(vals)}
 
-    small_stats = _iqr(small_vals)
-    structural_stats = _iqr(structural_vals)
-    per_op_p90 = {op: _iqr(vals)["p90"] for op, vals in per_op_vals.items()}
-    worst_structural_op = None
-    worst_structural_p90 = -1.0
-    for op in STRUCTURAL_OPS:
-        p90 = per_op_p90.get(op)
-        if p90 is not None and p90 > worst_structural_p90:
-            worst_structural_p90 = p90
-            worst_structural_op = op
+    per_op_stats = {op: _stats(vals) for op, vals in per_op_vals.items()}
 
-    small_below_structural = (
-        small_stats["q3"] is not None and structural_stats["q1"] is not None
-        and small_stats["q3"] <= structural_stats["q1"]
-    )
-    structural_median_ok = structural_stats["median"] is not None and structural_stats["median"] <= 0.020
-    no_structural_p90_over_60mm = worst_structural_p90 <= 0.060
+    small_violators = [
+        {"op": op, "median": per_op_stats[op]["median"], "n": per_op_stats[op]["n"]}
+        for op in SMALL_STEP_OPERATORS
+        if per_op_stats[op]["median"] is not None and per_op_stats[op]["median"] > _SMALL_STEP_MEDIAN_LIMIT_M
+    ]
+    structural_violators = [
+        {"op": op, "p90": per_op_stats[op]["p90"], "n": per_op_stats[op]["n"]}
+        for op in STRUCTURAL_OPS
+        if per_op_stats[op]["p90"] is not None and per_op_stats[op]["p90"] > _STRUCTURAL_P90_LIMIT_M
+    ]
 
     return {
-        "n_seeds": len(seeds), "small_step": small_stats, "structural": structural_stats,
-        "per_op_p90": per_op_p90, "worst_structural_op": worst_structural_op,
-        "worst_structural_p90": worst_structural_p90 if worst_structural_op is not None else None,
-        "pass_small_below_structural": bool(small_below_structural),
-        "pass_structural_median_20mm": bool(structural_median_ok),
-        "pass_no_structural_p90_60mm": bool(no_structural_p90_over_60mm),
+        "n_seeds": len(seeds), "per_op": per_op_stats,
+        "small_violators": small_violators, "structural_violators": structural_violators,
+        "pass_small_median_5mm": bool(len(small_violators) == 0),
+        "pass_structural_p90_60mm": bool(len(structural_violators) == 0),
     }
 
 
@@ -345,14 +392,54 @@ def _summary_md(result: Dict[str, Any]) -> str:
     lines = ["# Experiment: e12_balance", "", f"Wall time: {result['wall_time_s']:.3f} s", "",
              "## Params", "", "```json", json.dumps(result["params"], indent=2, sort_keys=True), "```", ""]
 
-    lines += ["## (a) Per-pair neutral drift -- 95% CI must include 0", ""]
-    all_drift_pass = True
+    def _applicability_table(regime_drift: Dict[str, Any], dist_name: str) -> List[str]:
+        out_lines = ["| pair | operator | attempts | applicable | rate |", "|---|---|---|---|---|"]
+        for label, ops in PAIR_LABELS:
+            if label == "EVOLUTION_pool":
+                continue  # per-PAIR applicability only -- see module docstring.
+            applic = regime_drift[dist_name][label]["applicability"]
+            for op in ops:
+                a = applic[op]
+                out_lines.append(
+                    f"| {label} | {op} | {a['attempts']} | {a['applicable']} | {_fmt(a['rate'])} |"
+                )
+        out_lines.append("")
+        return out_lines
+
+    lines += ["## (a) Per-pair neutral drift", ""]
+
+    lines += ["### Boundary regime (reduced minimum-size starts; drift expected positive)", ""]
+    boundary = result["drift"]["boundary"]
     for dist_name in DIST_VARIANTS:
-        lines += [f"### dist={dist_name}", "",
+        lines += [f"#### dist={dist_name}", "",
                   "| pair | metric | mean | 95% CI lo | 95% CI hi | n | PASS |", "|---|---|---|---|---|---|---|"]
         for label, _ops in PAIR_LABELS:
             for metric in ("delta_joints", "delta_digits", "delta_palm_bodies"):
-                b = result["drift"][dist_name][label][metric]
+                b = boundary[dist_name][label][metric]
+                # "PASS" here means "drift is >= 0, as expected at this reduced
+                # boundary start" -- informational, does not gate (a) overall.
+                ok = b["mean"] is None or b["mean"] >= 0.0
+                lines.append(
+                    f"| {label} | {metric} | {_fmt(b['mean'])} | {_fmt(b['ci_lo'])} | {_fmt(b['ci_hi'])} | "
+                    f"{b['n']} | {'PASS' if ok else 'FAIL'} |"
+                )
+        lines.append("")
+        lines += _applicability_table(boundary, dist_name)
+    lines.append(
+        "**PASS/FAIL boundary regime: informational only (drift here is expected positive by construction "
+        "-- reduced starts have a lopsided growth/shrink applicability ratio); it does not gate (a) overall.**"
+    )
+    lines.append("")
+
+    lines += ["### Stationary regime (random samples from the distribution; 95% CI must include 0)", ""]
+    stationary = result["drift"]["stationary"]
+    all_drift_pass = True
+    for dist_name in DIST_VARIANTS:
+        lines += [f"#### dist={dist_name}", "",
+                  "| pair | metric | mean | 95% CI lo | 95% CI hi | n | PASS |", "|---|---|---|---|---|---|---|"]
+        for label, _ops in PAIR_LABELS:
+            for metric in ("delta_joints", "delta_digits", "delta_palm_bodies"):
+                b = stationary[dist_name][label][metric]
                 ok = b["ci_lo"] is not None and b["ci_lo"] <= 0.0 <= b["ci_hi"]
                 all_drift_pass = all_drift_pass and ok
                 lines.append(
@@ -360,31 +447,47 @@ def _summary_md(result: Dict[str, Any]) -> str:
                     f"{b['n']} | {'PASS' if ok else 'FAIL'} |"
                 )
         lines.append("")
-    lines.append(f"**PASS/FAIL (a) per-pair neutral drift: {'PASS' if all_drift_pass else 'FAIL'}**")
+        lines += _applicability_table(stationary, dist_name)
+    lines.append(f"**PASS/FAIL (a) per-pair neutral drift (stationary regime): {'PASS' if all_drift_pass else 'FAIL'}**")
     lines.append("")
 
     lb = result["locality"]
     lines += [
-        "## (b) Locality bands (E1 machinery, EVOLUTION_OPERATORS pool, G_FULL)", "",
+        "## (b) Locality bands (per-operator, EVOLUTION_OPERATORS pool, G_FULL)", "",
         f"n_seeds: {lb['n_seeds']}", "",
-        f"small-step IQR: q1={_fmt(lb['small_step']['q1'])} median={_fmt(lb['small_step']['median'])} "
-        f"q3={_fmt(lb['small_step']['q3'])} (n={lb['small_step']['n']})", "",
-        f"structural IQR: q1={_fmt(lb['structural']['q1'])} median={_fmt(lb['structural']['median'])} "
-        f"q3={_fmt(lb['structural']['q3'])} p90={_fmt(lb['structural']['p90'])} (n={lb['structural']['n']})", "",
-        f"worst structural operator by p90: {lb['worst_structural_op']} "
-        f"({_fmt(lb['worst_structural_p90'])} m)", "",
-        f"- PASS/FAIL small-step IQR entirely below structural IQR: "
-        f"{'PASS' if lb['pass_small_below_structural'] else 'FAIL'}",
-        f"- PASS/FAIL structural median <= 0.020 m: "
-        f"{'PASS' if lb['pass_structural_median_20mm'] else 'FAIL'}",
-        f"- PASS/FAIL no structural operator p90 > 0.060 m: "
-        f"{'PASS' if lb['pass_no_structural_p90_60mm'] else 'FAIL'}",
-        "",
+        f"criteria: every small-step operator's median tip displacement <= {_SMALL_STEP_MEDIAN_LIMIT_M} m; "
+        f"every structural operator's p90 <= {_STRUCTURAL_P90_LIMIT_M} m.", "",
+        "| operator | kind | median (m) | p90 (m) | n | PASS |", "|---|---|---|---|---|---|",
     ]
-    locality_pass = (
-        lb["pass_small_below_structural"] and lb["pass_structural_median_20mm"]
-        and lb["pass_no_structural_p90_60mm"]
-    )
+    for op in EVOLUTION_OPERATORS:
+        kind = "small-step" if op in SMALL_STEP_OPERATORS else "structural"
+        st = lb["per_op"][op]
+        if kind == "small-step":
+            ok = st["median"] is None or st["median"] <= _SMALL_STEP_MEDIAN_LIMIT_M
+        else:
+            ok = st["p90"] is None or st["p90"] <= _STRUCTURAL_P90_LIMIT_M
+        lines.append(
+            f"| {op} | {kind} | {_fmt(st['median'])} | {_fmt(st['p90'])} | {st['n']} | {'PASS' if ok else 'FAIL'} |"
+        )
+    lines.append("")
+    if lb["small_violators"]:
+        lines.append(
+            "small-step violators (median > "
+            f"{_SMALL_STEP_MEDIAN_LIMIT_M} m): "
+            + ", ".join(f"{v['op']} ({_fmt(v['median'])} m, n={v['n']})" for v in lb["small_violators"])
+        )
+    else:
+        lines.append("small-step violators: none")
+    if lb["structural_violators"]:
+        lines.append(
+            "structural violators (p90 > "
+            f"{_STRUCTURAL_P90_LIMIT_M} m): "
+            + ", ".join(f"{v['op']} ({_fmt(v['p90'])} m, n={v['n']})" for v in lb["structural_violators"])
+        )
+    else:
+        lines.append("structural violators: none")
+    lines.append("")
+    locality_pass = lb["pass_small_median_5mm"] and lb["pass_structural_p90_60mm"]
     lines.append(f"**PASS/FAIL (b) locality bands: {'PASS' if locality_pass else 'FAIL'}**")
     lines.append("")
 
@@ -458,8 +561,16 @@ def run(out_dir: Optional[str] = None, drift_seeds: int = 128, drift_walk_length
     }
     t0 = time.time()
 
-    drift_rows = [e12_drift_seed(seed, drift_walk_length) for seed in range(drift_seeds)]
-    drift = _aggregate_drift(drift_rows)
+    drift_rows_boundary = [
+        e12_drift_seed(seed, drift_walk_length, regime="boundary") for seed in range(drift_seeds)
+    ]
+    drift_rows_stationary = [
+        e12_drift_seed(seed, drift_walk_length, regime="stationary") for seed in range(drift_seeds)
+    ]
+    drift = {
+        "boundary": _aggregate_drift(drift_rows_boundary),
+        "stationary": _aggregate_drift(drift_rows_stationary),
+    }
 
     locality = _locality_bands(range(locality_seeds))
     reversibility = _reversibility_rates(n_parents=reversibility_n_parents)

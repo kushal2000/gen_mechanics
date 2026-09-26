@@ -57,8 +57,9 @@ from .runner import register, run_experiment
 # ``insert_phalanx``/``delete_phalanx`` already overlap) via
 # ``dict.fromkeys`` (order-preserving): only the 7 genuinely new operators
 # (``add_minimal_digit``, ``remove_digit_minimal``, ``add_palm_body``,
-# ``remove_palm_body``, ``toggle_palm_joint``, ``add_branch_digit``,
-# ``remove_branch_digit``) are appended.
+# ``remove_palm_body_empty`` (I18 fix 2 -- the exact-inverse leaf removal,
+# replacing the general ``remove_palm_body`` in this pool), ``toggle_palm_joint``,
+# ``add_branch_digit``, ``remove_branch_digit``) are appended.
 ALL_OPERATORS: tuple = tuple(dict.fromkeys(
     tuple(OPERATORS) + tuple(SMALL_STEP_OPERATORS) + tuple(EVOLUTION_OPERATORS)
 ))
