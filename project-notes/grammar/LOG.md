@@ -135,3 +135,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Worker run 17. Suite 2906 passed in 136 s. 288 tasks (48 conditions x 6 restarts), wall 690 s, no reductions. Results in experiments/E5_evolve.
 - Reading: insertion variants best (G_NOBRANCH_INS 0.73 / 3.5 motors; G_FULL_INS 0.70 / 4.9) vs plain (G_NOBRANCH 0.55; G_FULL 0.65 / 6.1); pools equal on fitness, UNION fewer motors; small-step operators survive selection 42-49% vs 9-29% structural; cost term halves motors (3.1 vs 5.6) at -0.06 proxy. Constructs persist at 8-44% without being required.
 - Decision: keep; recommendation written in grammar-for-evolution.md (G_NOBRANCH_INS or G_FULL_INS + union weighted pool + insertion prior + cost reporting/term).
+
+## Final Opus review (2026-09-26 ~05:10): E5 write-up confounded
+
+- See opus-review-final.md. Note flagged; consolidated note section 10 corrected to rest on E2/E3 only. I15 opened; E5b planned to match the simulator loop (envelope, noise, paired starts, no tie-break). Opus reviews used 4/4.

@@ -9,7 +9,7 @@
   "budget": {
     "worker_runs_used": 17,
     "worker_runs_max": 36,
-    "opus_reviews_used": 3,
+    "opus_reviews_used": 4,
     "opus_reviews_max": 4,
     "note": "Overnight program (Martin, 2026-09-26): 8-hour window; 25 more worker runs and 2 more Opus reviews on top of the pilot's usage."
   },
@@ -129,10 +129,17 @@
       "hypothesis": "Fix list from opus-review-e1-e4: aligned phenotype distance; antipodal_pinch same-configuration pairing; reach_coverage normalisation by a mutable size; opposition excluding same-digit tips; root_length/radius operators; sorted choice lists for step_limits/step_coupling; step_length alias removed; -0.0 in hash; insertion distribution for growth operators; symmetric palm-body removal; Wilson CIs and proposal budgets in E3; arch target requires digits mounted beyond palm joints; provenance dirty flag read before runs; circular import.",
       "decision": "keep",
       "evidence": "2902 passed; E1-E4 re-run"
+    },
+    {
+      "id": "I15",
+      "status": "in_progress",
+      "hypothesis": "Fix list from opus-review-final: stable joint identity for alignment (derivation step uids), coupled dependents recomputed via q_from_u in the child, reach normalisation not penalising digits, perturb in small-step share, provenance (refuse dirty trees or record patch hash), delete_phalanx re-attaches branches, E2 difference CIs + summary labels, E3 arch target on jointed palm bodies; E5b: envelope-constrained, noisy, paired starts, no cost tie-break, raw proxy/cost/motors logged, >= 20 restarts.",
+      "decision": null,
+      "evidence": "opus-review-final.md"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Final Opus review of the program and note; then append a section to design-grammar-and-evolution.md and stop the loop.",
+  "next_action": "I15 fix iteration (worker run 18), then E5b (run 19), then rewrite grammar-for-evolution.md and stop.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -158,6 +165,6 @@
     "E3": "done (proposal budget, Wilson)",
     "E4": "done",
     "E5": "done",
-    "E6": "written; final review pending"
+    "E6": "draft flagged; to be rewritten after I15 and E5b"
   }
 }

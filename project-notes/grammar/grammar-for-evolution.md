@@ -1,3 +1,5 @@
+> **Status (2026-09-26 05:15): the E5 section and parts of the recommendation below were found wrong or confounded by the final Opus review (`opus-review-final.md`): cost-aware fitness is in penalised units, 'none' runs carry a cost tie-break, starts were unpaired across distributions, and the proxies fix the structure. E1's structural medians are only partly aligned. The recommendation direction rests on E2 and E3. This note is being corrected after a fix iteration and an E5 re-run; do not cite the E5 numbers until then.**
+
 # Which grammar is best for evolution? Evidence and recommendation
 
 Written 2026-09-26 by the coordinator from experiments E1-E5 (corrected instruments; E5 at commit after 40cb2ed). Everything here is CPU-only kinematics and geometry; no RL was run. Results describe the grammar at `GRAMMAR_VERSION` 0.3 with the operators in `hand_sampler/grammar/derive.py`; they do not predict task performance.
