@@ -7,7 +7,7 @@
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,
   "budget": {
-    "worker_runs_used": 19,
+    "worker_runs_used": 20,
     "worker_runs_max": 36,
     "opus_reviews_used": 4,
     "opus_reviews_max": 4,
@@ -153,7 +153,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Martin to review grammar-for-generalization.md. Proposed: implement grammar 0.5 items in priority order (rest bend, continuous limits with sign normalisation, coupling containment, stratified immigrant prior), then re-run E1/E2/E3/E11 as balance and coverage tests.",
+  "next_action": "Iteration A running: rest bend, continuous sign-normalised limits, coupling containment, I16 fix. Then B: exact-inverse operator pool + stratified immigrants + balance tests. Then C: coverage/E3/E11 re-run and notes.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -165,14 +165,9 @@
     "M1": "met with honest coverage (2026-09-26): kinematics/import/export/generation verified; coverage report now states topology_expressible=no for all real hands with named reasons; in_support=no for all."
   },
   "program": {
-    "name": "overnight: which grammar is best for evolution",
-    "plan": "project-notes/grammar/plan-overnight-2026-09-26.md",
-    "started_at": "2026-09-26T01:24:07-04:00",
-    "stop_after": "2026-09-26T09:24:07-04:00",
-    "cron_job": "18e9e258",
-    "cadence": "30m",
-    "finished_at": "2026-09-26T06:30-04:00",
-    "stop_reason": "E6 written and E7 added; loop stopped by coordinator"
+    "name": "grammar 0.5 implementation (Martin: 'do what you think is right')",
+    "started_at": "2026-09-26T11:10-04:00",
+    "plan": "grammar-for-generalization.md section 6 + balanced-grammar-synthesis.md section 3"
   },
   "experiments": {
     "E0": "done",
