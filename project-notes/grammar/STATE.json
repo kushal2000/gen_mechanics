@@ -139,7 +139,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "PAUSED for Martin: decide envelope (palm joints or not), insertion prior on/off, cost term, rest-bend production. Candidates: switch-generation sweep for the step schedule; G_FULL_INS vs G_FULL pair under E5b; capsule palm vs nearest-spine cells in contact; envelope adapter before any co-evolution run.",
+  "next_action": "Martin to review balanced-grammar-synthesis.md. Proposed: E8 (grammar 0.4 exact-inverse operator pairs + reversibility test + re-run E1/E2 as balance tests), E9 (process ablation: crowding/immigrants/archive with founder share), E10 (bandit AOS vs step schedule); controller reset protocol to RL owners.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

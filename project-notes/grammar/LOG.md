@@ -149,3 +149,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## E7 mixture schedules (2026-09-26 ~06:25)
 
 - Worker run 19. Suite 2935 passed. Wall 208 s (48 conditions x 24 restarts; diff hash d96ab7e6..., committed next). SCHEDULE_step matches the default pool on reach (CIs include 0) with late tip displacement halved (6-8 mm vs 14-18 mm) and beats the static weighted pool on reach rate (+0.04..+0.33) and first reach (6.5-15.4 generations earlier), all CIs excluding 0. SCHEDULE_linear lags under the insertion prior but scores highest on pinch. Recommendation item 3 updated. Decision: keep. Program closed.
+
+## Literature reviews and synthesis (2026-09-26 morning)
+
+- Two Sonnet reviews (robot morphology evolution; evolutionary methods in general) committed as lit-review-*.md. Synthesis with grammar/process/controller split and a 10-item balance test suite in balanced-grammar-synthesis.md. Key reframing: E2's drift is operator asymmetry (fixable in the grammar with exact-inverse pairs), founder dominance and late refinement collapse are process problems (immigrants, crowding, archive, age protection), controller fairness is Strgar & Kriegman's reset protocol.
