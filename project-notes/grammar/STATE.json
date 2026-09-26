@@ -8,9 +8,10 @@
   "iteration": 5,
   "budget": {
     "worker_runs_used": 7,
-    "worker_runs_max": 9,
+    "worker_runs_max": 15,
     "opus_reviews_used": 2,
-    "opus_reviews_max": 2
+    "opus_reviews_max": 3,
+    "note": "Martin (2026-09-25): budget at coordinator's discretion; coordinator guardrails: 15 worker runs, 3 Opus reviews, pause on 3 consecutive unproductive attempts or scope changes."
   },
   "settled": [
     "Representation core = 1-DoF primitives {fixed, revolute, continuous, prismatic}; no helical; floating/planar/ball refused (UnsupportedConstruct), not expanded.",
