@@ -308,3 +308,19 @@ Evidence and code references: [September 23 project investigation](investigation
 
 - [Cano et al., Mutation bias and the predictability of evolution (2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC10067271/): genetic mutation bias and its interaction with selection; not a model of anatomical add/remove balance.
 - [Maxon, On the heating of motors](https://support.maxongroup.com/hc/en-us/articles/360004427413-On-the-heating-of-motors-in-hand-held-tools): winding losses depend on squared current. The support page blocked direct retrieval; its indexed article excerpts support this point.
+
+## 10. Kinematic grammar and evolvability experiments (September 25–26, 2026)
+
+This section summarises work on `martin/hand-grammar`; the detailed record is in `project-notes/grammar/` (STATE.json, LOG.md, the experiment folders, two Opus reviews, and `grammar-for-evolution.md`).
+
+### What was built
+
+A representation of hand kinematics as a tree of bodies and 1-DoF joints at arbitrary SE(3) placements, with affine couplings, palm bodies as a flagged connected subtree, and geometry derived rather than searched (capsules on finger bodies; nearest-spine convex cells over a shared palm hull, with overlapping cell pairs recorded for collision filtering). Real hands import faithfully: forward kinematics agrees with Pinocchio to about 1e-16 m on Allegro, LEAP, Barrett, SHARPA, Ability and Inspire, and exported URDFs reproduce the source references bit-exactly. A grammar (`GRAMMAR_VERSION` 0.3) generates hands from typed productions with a separate parameter table; derivations replay exactly and carry lineage. The benchmark (2,906 tests) uses frozen tolerances and independent references (sympy closed forms, Pinocchio, urdf_parser_py) and never skips a fixture. No real hand lies inside the sampler's support; the named reason is that real fingers have a mid-chain frame rotation or lateral offset the straight-rod digit convention cannot express (open question I11).
+
+### What the experiments established
+
+With joint-aligned configurations, one mutation moves fingertips by 0–4 mm (small-step operators) or 10–16 mm (structural operators, except regrow at 44 mm). Neutral drift relaxes toward the prior the growth operators sample from: 33 joints at step 400 for the full distribution, 9 when new material is drawn from an insertion distribution limited to one to three phalanges without branches; the operator mixture makes no measurable difference. All four target skeletons, including an articulated-arch palm, are reached in 100% of 64 restarts under a union operator pool; the arch is unreachable without palm-body and palm-joint operators. Redundancy is negligible at this grid resolution. Under geometric proxy fitness, the insertion variants reach the best proxy values with the fewest motors, small-step operators survive selection two to four times as often as structural ones, and a cost term of 0.02 per unit structural cost halves motor count at a small proxy cost.
+
+### Recommendation and limits
+
+Evolve over `G_NOBRANCH_INS` (or `G_FULL_INS` when branching is a design question) with the union pool weighted toward small steps, growth drawn from the insertion prior, and structural cost reported or lightly penalised. These are CPU results on kinematics and geometric proxies; they say nothing about task reward. Before any co-evolution run, the fixed 5×6 simulator envelope needs an adapter that refuses over-envelope designs, since palm joints and long digits do not fit the current contract.
