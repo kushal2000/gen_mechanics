@@ -351,7 +351,7 @@ def test_runner_writes_result_json_and_summary_md():
         out_dir = str(Path(td) / "smoke_out")
         result = run_experiment(
             "smoke", smoke, params={"n_configs": 8}, seeds=list(range(6)),
-            out_dir=out_dir, processes=3,
+            out_dir=out_dir, processes=3, allow_dirty=True,
         )
         result_path = Path(out_dir) / "result.json"
         summary_path = Path(out_dir) / "summary.md"

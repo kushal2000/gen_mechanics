@@ -448,8 +448,8 @@ def test_fix11_git_info_present_in_result():
     fn = registered_experiments()["smoke"]
     with tempfile.TemporaryDirectory() as td:
         result = run_experiment("smoke", fn, params={"n_configs": 4}, seeds=[0, 1],
-                                 out_dir=str(Path(td) / "out"), processes=1)
-    assert "git_sha" in result and "git_dirty" in result
+                                 out_dir=str(Path(td) / "out"), processes=1, allow_dirty=True)
+    assert "git_sha" in result and "git_dirty" in result and "git_diff_sha256" in result
 
 
 # ---------------------------------------------------------------------------
@@ -471,7 +471,8 @@ def test_fix9_run_reports_legacy_vs_aligned_footnote():
     from pathlib import Path
     from hand_sampler.grammar.experiments import e1_locality
     with tempfile.TemporaryDirectory() as td:
-        result = e1_locality.run(out_dir=str(Path(td) / "out"), seeds=[0, 1, 2, 3, 4], n_configs=4, processes=2)
+        result = e1_locality.run(out_dir=str(Path(td) / "out"), seeds=[0, 1, 2, 3, 4], n_configs=4, processes=2,
+                                  allow_dirty=True)
     fn = result["footnote_legacy_vs_aligned"]
     assert fn["operator"] == "insert_phalanx"
     assert fn["aligned_median"] is not None

@@ -45,7 +45,7 @@ def test_e5_registered():
 def _run_tiny(out_dir: Path, **kwargs):
     return run(
         out_dir=str(out_dir), restarts=[0], conditions=_TINY_CONDITIONS,
-        mu=4, lam=4, generations=3, n_proxy_configs=4, processes=1, **kwargs,
+        mu=4, lam=4, generations=3, n_proxy_configs=4, processes=1, allow_dirty=True, **kwargs,
     )
 
 

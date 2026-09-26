@@ -217,7 +217,7 @@ def test_e3_reach_writes_result_json_via_runner():
         fn = registered_experiments()["e3_reach"]
         result = run_experiment(
             "e3_reach", fn, params={"budget": 40},
-            seeds=list(range(4)), out_dir=out_dir, processes=2,
+            seeds=list(range(4)), out_dir=out_dir, processes=2, allow_dirty=True,
         )
         result_path = Path(out_dir) / "result.json"
         assert result_path.exists()
@@ -265,7 +265,7 @@ def test_e4_redundancy_writes_result_json_via_runner():
         fn = registered_experiments()["e4_redundancy"]
         result = run_experiment(
             "e4_redundancy", fn, params={"n_offspring_parents": 3}, seeds=list(range(6)),
-            out_dir=out_dir, processes=2,
+            out_dir=out_dir, processes=2, allow_dirty=True,
         )
         result_path = Path(out_dir) / "result.json"
         assert result_path.exists()

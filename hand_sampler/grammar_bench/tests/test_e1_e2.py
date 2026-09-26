@@ -48,7 +48,7 @@ def test_e1_e2_registered():
 def test_e1_locality_result_json_keys_and_finite():
     with tempfile.TemporaryDirectory() as td:
         out_dir = str(Path(td) / "e1_out")
-        result = e1_locality.run(out_dir=out_dir, seeds=SEEDS, n_configs=4, processes=2)
+        result = e1_locality.run(out_dir=out_dir, seeds=SEEDS, n_configs=4, processes=2, allow_dirty=True)
         result_path = Path(out_dir) / "result.json"
         assert result_path.exists()
         loaded = json.loads(result_path.read_text())
@@ -70,8 +70,8 @@ def test_e1_locality_deterministic():
     with tempfile.TemporaryDirectory() as td:
         out1 = str(Path(td) / "run1")
         out2 = str(Path(td) / "run2")
-        r1 = e1_locality.run(out_dir=out1, seeds=SEEDS, n_configs=4, processes=2)
-        r2 = e1_locality.run(out_dir=out2, seeds=SEEDS, n_configs=4, processes=2)
+        r1 = e1_locality.run(out_dir=out1, seeds=SEEDS, n_configs=4, processes=2, allow_dirty=True)
+        r2 = e1_locality.run(out_dir=out2, seeds=SEEDS, n_configs=4, processes=2, allow_dirty=True)
         assert r1["per_seed"] == r2["per_seed"]
         assert r1["aggregate"] == r2["aggregate"]
 
@@ -86,7 +86,7 @@ def test_e2_drift_result_json_keys_and_finite():
         out_dir = str(Path(td) / "e2_out")
         result = e2_drift.run(
             out_dir=out_dir, seeds=SEEDS, walk_length=8, record_through=4,
-            record_every_after=2, processes=2,
+            record_every_after=2, processes=2, allow_dirty=True,
         )
         result_path = Path(out_dir) / "result.json"
         assert result_path.exists()
@@ -121,9 +121,9 @@ def test_e2_drift_deterministic():
         out1 = str(Path(td) / "run1")
         out2 = str(Path(td) / "run2")
         r1 = e2_drift.run(out_dir=out1, seeds=SEEDS, walk_length=8, record_through=4,
-                           record_every_after=2, processes=2)
+                           record_every_after=2, processes=2, allow_dirty=True)
         r2 = e2_drift.run(out_dir=out2, seeds=SEEDS, walk_length=8, record_through=4,
-                           record_every_after=2, processes=2)
+                           record_every_after=2, processes=2, allow_dirty=True)
         assert r1["per_seed"] == r2["per_seed"]
         assert r1["aggregate"] == r2["aggregate"]
 
