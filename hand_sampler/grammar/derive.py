@@ -15,15 +15,20 @@ through ``derive`` walking productions.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
 from .coords import CONTINUOUS_SAMPLE_RANGE
 from .distributions import (
+    ANGLE_STEP_DEG,
     DEFAULT_DISTRIBUTION,
+    DEG,
     Distribution,
+    N_ANGLE_STEPS,
+    N_ELEVATION_STEPS,
     sample_axis,
     sample_capsule_radius_m,
     sample_grid_angle_rad,
@@ -828,6 +833,205 @@ def _op_remove_digit(rng, dist: Distribution, derivation: Derivation) -> Optiona
     return [s if s.path != "hand" else new_hand for s in kept]
 
 
+# --------------------------------------------------------------------------
+# Small-step operators (opt-in only -- see ``vary``'s ``operators`` argument
+# and ``SMALL_STEP_OPERATORS`` below). Each edits EXACTLY one field of one
+# existing step (never adds/removes a step), by moving that field to a
+# grid-neighbouring choice rather than resampling it fresh -- unlike
+# ``resample_parameter``/``perturb_parameter`` above, which redraw a field
+# from its whole distribution. Adding these to ``_OPERATOR_FNS`` does not
+# change ``OPERATORS`` or default ``vary`` behaviour: a caller only reaches
+# them by naming them explicitly (``operator=...``) or opting into
+# ``operators=SMALL_STEP_OPERATORS``.
+# --------------------------------------------------------------------------
+
+SMALL_STEP_OPERATORS: Tuple[str, ...] = (
+    "step_axis",
+    "step_limits",
+    "step_mount",
+    "step_length",
+    "step_coupling",
+)
+
+
+def _axis_grid_indices(axis: Tuple[float, float, float]) -> Tuple[int, int]:
+    """Invert ``distributions.sample_axis``'s grid: find the (elevation,
+    azimuth) step indices whose axis matches ``axis`` exactly (every axis
+    stored in a derivation was produced by that same formula, so this is an
+    exact float match, not a nearest-neighbour search)."""
+    x, y, z = axis
+    for el_k in range(N_ELEVATION_STEPS):
+        el = el_k * ANGLE_STEP_DEG * DEG
+        for az_k in range(N_ANGLE_STEPS):
+            az = (az_k * ANGLE_STEP_DEG - 180.0) * DEG
+            xx, yy, zz = math.sin(el) * math.cos(az), math.sin(el) * math.sin(az), math.cos(el)
+            if abs(xx - x) < 1e-9 and abs(yy - y) < 1e-9 and abs(zz - z) < 1e-9:
+                return el_k, az_k
+    raise ValueError(f"axis {axis!r} is not on the sampling grid")
+
+
+def _step_axis_value(rng, axis: Tuple[float, float, float]) -> Tuple[float, float, float]:
+    """One grid step in elevation (clamped to [0, N_ELEVATION_STEPS-1]) or
+    azimuth (wrapped, since azimuth is circular), chosen at random."""
+    el_k, az_k = _axis_grid_indices(axis)
+    step_elevation = bool(rng.integers(0, 2))
+    direction = 1 if bool(rng.integers(0, 2)) else -1
+    if step_elevation:
+        el_k = max(0, min(N_ELEVATION_STEPS - 1, el_k + direction))
+    else:
+        az_k = (az_k + direction) % N_ANGLE_STEPS
+    el = el_k * ANGLE_STEP_DEG * DEG
+    az = (az_k * ANGLE_STEP_DEG - 180.0) * DEG
+    return (float(math.sin(el) * math.cos(az)), float(math.sin(el) * math.sin(az)), float(math.cos(el)))
+
+
+def _op_step_axis(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    steps = list(derivation.steps)
+    candidates = [
+        i for i, s in enumerate(steps)
+        if (s.production == "PalmBody" and s.params.get("has_joint"))
+        or s.production == "Phalanx"
+    ]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    p = dict(s.params)
+    try:
+        if s.production == "PalmBody":
+            p["axis"] = _step_axis_value(rng, p["axis"])
+        else:
+            mod = dict(p["module"])
+            mod["axis"] = _step_axis_value(rng, mod["axis"])
+            p["module"] = mod
+    except ValueError:
+        return None
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+    return steps
+
+
+def _find_choice_index(value: Tuple[float, float], choices: Sequence[Tuple[float, float]],
+                        scale: float) -> Optional[int]:
+    for i, (lo, hi) in enumerate(choices):
+        if abs(lo * scale - value[0]) < 1e-9 and abs(hi * scale - value[1]) < 1e-9:
+            return i
+    return None
+
+
+def _step_choice_index(rng, idx: int, n: int) -> int:
+    if n <= 1:
+        return idx
+    direction = 1 if bool(rng.integers(0, 2)) else -1
+    return max(0, min(n - 1, idx + direction))
+
+
+def _op_step_limits(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    steps = list(derivation.steps)
+    candidates = [
+        i for i, s in enumerate(steps)
+        if (s.production == "PalmBody" and s.params.get("has_joint"))
+        or (s.production == "Phalanx" and s.params["module"]["kind"] in ("R", "P"))
+    ]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    p = dict(s.params)
+    if s.production == "PalmBody":
+        choices = dist.palm_joint_limit_choices_deg
+        ci = _find_choice_index(p["limits"], choices, scale=DEG)
+        if ci is None:
+            return None
+        new_ci = _step_choice_index(rng, ci, len(choices))
+        if new_ci == ci:
+            return None
+        lo_deg, hi_deg = choices[new_ci]
+        p["limits"] = (lo_deg * DEG, hi_deg * DEG)
+        steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+        return steps
+    mod = dict(p["module"])
+    if mod["kind"] == "R":
+        choices, scale = dist.revolute_limit_choices_deg, DEG
+    else:
+        choices, scale = dist.prismatic_limit_choices_m, 1.0
+    ci = _find_choice_index(mod["limits"], choices, scale=scale)
+    if ci is None:
+        return None
+    new_ci = _step_choice_index(rng, ci, len(choices))
+    if new_ci == ci:
+        return None
+    lo, hi = choices[new_ci]
+    mod["limits"] = (lo * scale, hi * scale)
+    p["module"] = mod
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+    return steps
+
+
+def _step_one_grid_angle(rng, current: float) -> float:
+    k = int(round((current / DEG + 180.0) / ANGLE_STEP_DEG)) % N_ANGLE_STEPS
+    direction = 1 if bool(rng.integers(0, 2)) else -1
+    new_k = (k + direction) % N_ANGLE_STEPS
+    return (new_k * ANGLE_STEP_DEG - 180.0) * DEG
+
+
+def _op_step_mount(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps) if s.production in ("Digit", "PalmBody")]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    p = dict(s.params)
+    # A ``PalmBody`` step has no ``mount_rpy`` field of its own; its
+    # ``direction_rpy`` (the segment's own orientation) plays the analogous
+    # role and is stepped the same way.
+    rpy_field = "mount_rpy" if s.production == "Digit" else "direction_rpy"
+    step_frac = bool(rng.integers(0, 2))
+    if step_frac:
+        choices = list(dist.mount_frac_choices)
+        if p["mount_frac"] not in choices or len(choices) <= 1:
+            return None
+        ci = choices.index(p["mount_frac"])
+        new_ci = _step_choice_index(rng, ci, len(choices))
+        if new_ci == ci:
+            return None
+        p["mount_frac"] = choices[new_ci]
+    else:
+        rpy = list(p[rpy_field])
+        axis_i = int(rng.integers(0, 3))
+        rpy[axis_i] = _step_one_grid_angle(rng, rpy[axis_i])
+        p[rpy_field] = tuple(rpy)
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+    return steps
+
+
+def _op_step_coupling(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+    steps = list(derivation.steps)
+    candidates = [
+        i for i, s in enumerate(steps)
+        if s.production == "Phalanx" and s.params["module"]["kind"] == "Coupled"
+    ]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    p = dict(s.params)
+    mod = dict(p["module"])
+    field = "multiplier" if bool(rng.integers(0, 2)) else "offset"
+    choices = list(dist.coupling_multiplier_choices if field == "multiplier" else dist.coupling_offset_choices_rad)
+    cur = mod[field]
+    if cur not in choices or len(choices) <= 1:
+        return None
+    ci = choices.index(cur)
+    new_ci = _step_choice_index(rng, ci, len(choices))
+    if new_ci == ci:
+        return None
+    mod[field] = choices[new_ci]
+    p["module"] = mod
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+    return steps
+
+
 _OPERATOR_FNS = {
     "resample_parameter": _op_resample_parameter,
     "perturb_parameter": _op_perturb_parameter,
@@ -836,16 +1040,30 @@ _OPERATOR_FNS = {
     "delete_phalanx": _op_delete_phalanx,
     "add_digit": _op_add_digit,
     "remove_digit": _op_remove_digit,
+    "step_axis": _op_step_axis,
+    "step_limits": _op_step_limits,
+    "step_mount": _op_step_mount,
+    "step_length": _op_perturb_parameter,
+    "step_coupling": _op_step_coupling,
 }
 
 
 def vary(derivation: Derivation, rng: np.random.Generator, dist: Distribution = DEFAULT_DISTRIBUTION,
-         operator: Optional[str] = None) -> Derivation:
-    """Apply ``operator`` (one of ``OPERATORS``; random if omitted) to
-    ``derivation``, retrying up to 32 times with fresh randomness until the
-    result derives to a valid model and differs from the parent. Raises
-    ``VariationImpossible`` if no valid application is found."""
-    op = operator if operator is not None else OPERATORS[int(rng.integers(0, len(OPERATORS)))]
+         operator: Optional[str] = None, operators: Optional[Sequence[str]] = None) -> Derivation:
+    """Apply ``operator`` (random from ``operators`` if given, else random
+    from ``OPERATORS`` -- unchanged default behaviour -- if both are
+    omitted) to ``derivation``, retrying up to 32 times with fresh
+    randomness until the result derives to a valid model and differs from
+    the parent. Raises ``VariationImpossible`` if no valid application is
+    found. Passing ``operators=SMALL_STEP_OPERATORS`` (or any other
+    explicit operator/pool) is the only way to reach an operator outside
+    ``OPERATORS``; nothing here changes what a bare ``vary(derivation,
+    rng, dist)`` call does."""
+    if operator is not None:
+        op = operator
+    else:
+        pool = operators if operators is not None else OPERATORS
+        op = pool[int(rng.integers(0, len(pool)))]
     if op not in _OPERATOR_FNS:
         raise ValueError(f"unknown vary operator {op!r}")
     fn = _OPERATOR_FNS[op]
