@@ -1,9 +1,9 @@
 {
   "schema": "hand_grammar_bench/pilot/0.1",
-  "generated_at": "2026-09-26T17:23:54.343891+00:00",
+  "generated_at": "2026-09-26T23:50:44.199705+00:00",
   "seed": 20260925,
-  "git_sha": "8fa4b4d245b32da23a522ef1d557c6904d422e49",
-  "git_dirty": true,
+  "git_sha": "b9d9aa1526b34a177c487da201b3d746f6489c8d",
+  "git_dirty": false,
   "tool_versions": {
     "numpy": "1.26.4",
     "python": "3.10.12"
@@ -44,6 +44,15 @@
           "digit_count_source:root_chains"
         ]
       },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 1.0198049666328887e-13,
+        "max_axis_deg": 8.537736462515939e-07,
+        "max_tip_mm": 1.0103182026100663e-13,
+        "joint_count_conserved": true,
+        "notes": []
+      },
       "losses": {
         "dropped_above_hand_root": [],
         "couplings_cut": [],
@@ -81,6 +90,15 @@
           "digit_count_source:root_chains"
         ]
       },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 1.3755821205440479e-13,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 1.5704757352569648e-13,
+        "joint_count_conserved": true,
+        "notes": []
+      },
       "losses": {
         "dropped_above_hand_root": [],
         "couplings_cut": [],
@@ -116,6 +134,17 @@
         "digit_count_source": "root_chains",
         "notes": [
           "digit_count_source:root_chains"
+        ]
+      },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 1.1443916996305594e-13,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 0.0,
+        "joint_count_conserved": true,
+        "notes": [
+          "fingertip_undefined: ['finger_1_dist_link', 'finger_2_dist_link', 'finger_3_dist_link']"
         ]
       },
       "losses": {
@@ -157,6 +186,15 @@
         "notes": [
           "digit_count_source:root_chains"
         ]
+      },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 7.616996755589797e-14,
+        "max_axis_deg": 8.537736462515939e-07,
+        "max_tip_mm": 9.825336557208115e-14,
+        "joint_count_conserved": true,
+        "notes": []
       },
       "losses": {
         "dropped_above_hand_root": [],
@@ -200,6 +238,15 @@
           "dependent_limits_tighter:thumb_intermediate_joint"
         ]
       },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 7.353672668792638e-14,
+        "max_axis_deg": 8.537736462515939e-07,
+        "max_tip_mm": 9.437916079723832e-14,
+        "joint_count_conserved": true,
+        "notes": []
+      },
       "losses": {
         "dropped_above_hand_root": [],
         "couplings_cut": [],
@@ -237,6 +284,15 @@
         "notes": [
           "digit_count_source:root_chains"
         ]
+      },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 6.938893903907228e-14,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 1.0536214011716709e-13,
+        "joint_count_conserved": true,
+        "notes": []
       },
       "losses": {
         "dropped_above_hand_root": [],
@@ -278,6 +334,15 @@
           "digit_count_source:root_chains"
         ]
       },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 8.91992044961712e-14,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 9.126689985681992e-14,
+        "joint_count_conserved": true,
+        "notes": []
+      },
       "losses": {
         "dropped_above_hand_root": [],
         "couplings_cut": [],
@@ -315,6 +380,15 @@
           "digit_count_source:root_chains"
         ]
       },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 1.9653735636544138e-13,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 3.067469883233883e-13,
+        "joint_count_conserved": true,
+        "notes": []
+      },
       "losses": {
         "dropped_above_hand_root": [],
         "couplings_cut": [],
@@ -351,6 +425,15 @@
         "notes": [
           "digit_count_source:root_chains"
         ]
+      },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 8.804469334467935e-14,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 1.1652384351680995e-13,
+        "joint_count_conserved": true,
+        "notes": []
       },
       "losses": {
         "dropped_above_hand_root": [],
@@ -392,6 +475,15 @@
           "digit_count_source:root_chains"
         ]
       },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 1.6668697823562578e-13,
+        "max_axis_deg": 8.537736462515939e-07,
+        "max_tip_mm": 1.7092969054398356e-13,
+        "joint_count_conserved": true,
+        "notes": []
+      },
       "losses": {
         "dropped_above_hand_root": [],
         "couplings_cut": [],
@@ -429,6 +521,15 @@
           "digit_count_source:root_chains"
         ]
       },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 8.092071311423672e-14,
+        "max_axis_deg": 8.537736462515939e-07,
+        "max_tip_mm": 8.88781302544432e-14,
+        "joint_count_conserved": true,
+        "notes": []
+      },
       "losses": {
         "dropped_above_hand_root": [
           "iiwa14_link_0",
@@ -457,20 +558,199 @@
       "couplings": null,
       "fidelity": null,
       "coverage": null,
+      "representation": null,
       "losses": null
+    },
+    {
+      "id": "shadow_right_local",
+      "family": "F2_five_finger_full",
+      "split": "articulated_palm",
+      "license": "GPL",
+      "availability": "available",
+      "reason": null,
+      "movable_joints": 22,
+      "couplings": 0,
+      "fidelity": {
+        "n_poses": 2100,
+        "max_pos": 1.4307262668510394e-16,
+        "max_rot": 3.976416080268665e-16,
+        "tolerance_met": true,
+        "reference": "generated_at_run",
+        "reference_path": null
+      },
+      "coverage": {
+        "topology_expressible": true,
+        "in_support": false,
+        "missing_constructs": [],
+        "out_of_support": [
+          "continuation_pose:rh_LFJ4",
+          "limits_not_in_set:rh_FFJ1,rh_FFJ2,rh_FFJ3,rh_FFJ4,rh_LFJ1,rh_LFJ2,rh_LFJ3,rh_LFJ4,rh_LFJ5,rh_MFJ1,rh_MFJ2,rh_MFJ3,rh_MFJ4,rh_RFJ1,rh_RFJ2,rh_RFJ3,rh_RFJ4,rh_THJ1,rh_THJ2,rh_THJ3,rh_THJ4,rh_THJ5"
+        ],
+        "digit_count": 5,
+        "digit_count_source": "root_chains",
+        "notes": [
+          "digit_count_source:root_chains"
+        ]
+      },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 8.340326954278212e-14,
+        "max_axis_deg": 8.537736462515939e-07,
+        "max_tip_mm": 8.330285907980746e-14,
+        "joint_count_conserved": true,
+        "notes": []
+      },
+      "losses": {
+        "dropped_above_hand_root": [
+          "world",
+          "rh_forearm",
+          "rh_wrist"
+        ],
+        "couplings_cut": [],
+        "non_unit_axes": []
+      }
     },
     {
       "id": "svh_right",
       "family": "F3_underactuated_coupled",
-      "split": "excluded",
+      "split": "articulated_palm",
       "license": "UNVERIFIED",
-      "availability": "excluded",
-      "reason": "20R + 11 mimic; licence unverified.",
-      "movable_joints": null,
-      "couplings": null,
-      "fidelity": null,
-      "coverage": null,
-      "losses": null
+      "availability": "available",
+      "reason": null,
+      "movable_joints": 20,
+      "couplings": 11,
+      "fidelity": {
+        "n_poses": 1960,
+        "max_pos": 8.384297404680616e-17,
+        "max_rot": 3.945418707248932e-16,
+        "tolerance_met": true,
+        "reference": "generated_at_run",
+        "reference_path": null
+      },
+      "coverage": {
+        "topology_expressible": false,
+        "in_support": false,
+        "missing_constructs": [
+          "coupling_scope:right_hand_index_spread,right_hand_j5",
+          "coupling_limits_outside_image:right_hand_j16,right_hand_j17"
+        ],
+        "out_of_support": [
+          "continuation_pose:right_hand_Index_Finger_Distal,right_hand_Index_Finger_Proximal,right_hand_Middle_Finger_Distal,right_hand_Thumb_Flexion,right_hand_j14,right_hand_j15,right_hand_j3,right_hand_j4",
+          "limits_not_in_set:right_hand_Finger_Spread,right_hand_Index_Finger_Distal,right_hand_Index_Finger_Proximal,right_hand_Middle_Finger_Distal,right_hand_Middle_Finger_Proximal,right_hand_Pinky,right_hand_Ring_Finger,right_hand_Thumb_Flexion,right_hand_Thumb_Opposition",
+          "coupling_params_not_in_set:right_hand_j12:multiplier,right_hand_j13:multiplier,right_hand_j14:multiplier,right_hand_j15:multiplier,right_hand_j16:multiplier,right_hand_j17:multiplier,right_hand_j3:multiplier,right_hand_j4:multiplier"
+        ],
+        "digit_count": 4,
+        "digit_count_source": "root_chains",
+        "notes": [
+          "digit_count_source:root_chains",
+          "dependent_limits_tighter:right_hand_index_spread",
+          "dependent_limits_tighter:right_hand_j12",
+          "dependent_limits_tighter:right_hand_j13",
+          "dependent_limits_tighter:right_hand_j14",
+          "dependent_limits_tighter:right_hand_j15",
+          "dependent_limits_tighter:right_hand_j3",
+          "dependent_limits_tighter:right_hand_j4",
+          "dependent_limits_tighter:right_hand_j5",
+          "dependent_limits_tighter:right_hand_ring_spread"
+        ]
+      },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 9.984836867842184e-14,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 1.0031442548020353e-13,
+        "joint_count_conserved": true,
+        "notes": [
+          "coupling_not_in_structure: ['right_hand_j5', 'right_hand_index_spread', 'right_hand_ring_spread']"
+        ]
+      },
+      "losses": {
+        "dropped_above_hand_root": [
+          "base_link"
+        ],
+        "couplings_cut": [],
+        "non_unit_axes": []
+      }
+    },
+    {
+      "id": "arms_skel",
+      "family": "F7_skeletal",
+      "split": "articulated_palm",
+      "license": "UNVERIFIED",
+      "availability": "available",
+      "reason": null,
+      "movable_joints": 22,
+      "couplings": 1,
+      "fidelity": {
+        "n_poses": 1610,
+        "max_pos": 5.605063087764203e-17,
+        "max_rot": 5.539855105538809e-16,
+        "tolerance_met": true,
+        "reference": "generated_at_run",
+        "reference_path": null
+      },
+      "coverage": {
+        "topology_expressible": false,
+        "in_support": false,
+        "missing_constructs": [
+          "coupling_scope:CMC5"
+        ],
+        "out_of_support": [
+          "continuation_pose:CMC1b,IP,MCP,_2mid-distph,_2prox-midph_b,_3mid-distph,_3prox-midph_b,_4MCP__4mcp_abduction,_4mid-distph,_4prox-midph_b,_5MCP__5mcp_abduction,_5mid-distph,_5prox-midph_b",
+          "axis_off_grid:CMC1a,CMC1b,CMC4,CMC5,IP,MCP,_2MCP__2mcp_abduction,_2MCP__2mcp_flexion,_2mid-distph,_2prox-midph_b,_3MCP__3mcp_abduction,_3MCP__3mcp_flexion,_3mid-distph,_3prox-midph_b,_4MCP__4mcp_abduction,_4MCP__4mcp_flexion,_4mid-distph,_4prox-midph_b,_5MCP__5mcp_abduction,_5MCP__5mcp_flexion,_5mid-distph,_5prox-midph_b",
+          "limits_not_in_set:CMC1a,CMC1b,CMC4,IP,MCP,_2MCP__2mcp_abduction,_2MCP__2mcp_flexion,_2mid-distph,_2prox-midph_b,_3MCP__3mcp_abduction,_3MCP__3mcp_flexion,_3mid-distph,_3prox-midph_b,_4MCP__4mcp_abduction,_4MCP__4mcp_flexion,_4mid-distph,_4prox-midph_b,_5MCP__5mcp_abduction,_5MCP__5mcp_flexion,_5mid-distph,_5prox-midph_b",
+          "coupling_params_not_in_set:CMC5:multiplier"
+        ],
+        "digit_count": 5,
+        "digit_count_source": "root_chains",
+        "notes": [
+          "digit_count_source:root_chains"
+        ]
+      },
+      "representation": {
+        "ok": true,
+        "passed": true,
+        "max_pos_mm": 6.949727468511708e-14,
+        "max_axis_deg": 1.7075472925031877e-06,
+        "max_tip_mm": 0.0,
+        "joint_count_conserved": true,
+        "notes": [
+          "fingertip_undefined: ['5distph', '4distph', 'distal_thumb', '2distph', '3distph']",
+          "coupling_not_in_structure: ['CMC5']"
+        ]
+      },
+      "losses": {
+        "dropped_above_hand_root": [
+          "world"
+        ],
+        "couplings_cut": [],
+        "non_unit_axes": [
+          "CMC1a",
+          "CMC1b",
+          "MCP",
+          "IP",
+          "_2MCP__2mcp_abduction",
+          "_2MCP__2mcp_flexion",
+          "_2prox-midph_b",
+          "_2mid-distph",
+          "_3MCP__3mcp_abduction",
+          "_3MCP__3mcp_flexion",
+          "_3prox-midph_b",
+          "_3mid-distph",
+          "CMC4",
+          "_4MCP__4mcp_abduction",
+          "_4MCP__4mcp_flexion",
+          "_4prox-midph_b",
+          "_4mid-distph",
+          "CMC5",
+          "_5MCP__5mcp_abduction",
+          "_5MCP__5mcp_flexion",
+          "_5prox-midph_b",
+          "_5mid-distph"
+        ]
+      }
     },
     {
       "id": "dex1",
@@ -483,6 +763,7 @@
       "couplings": null,
       "fidelity": null,
       "coverage": null,
+      "representation": null,
       "losses": null
     }
   ]
