@@ -520,7 +520,14 @@ def test_fix7_arch_palm_requires_digits_on_palm():
 
 def test_fix8_e2_mixtures_and_dist_variants():
     from hand_sampler.grammar.experiments.e2_drift import DIST_VARIANTS, MIXTURES, UNION_OPERATORS
-    assert set(MIXTURES) == {"DEFAULT_uniform", "UNION_uniform", "UNION_weighted"}
+    # Grammar 0.5 (iteration B) added two more mixtures (``EVOLUTION_uniform``/
+    # ``EVOLUTION_weighted``, over ``derive.EVOLUTION_OPERATORS`` -- see
+    # e2_drift.py's module docstring) alongside the original three; this is a
+    # deliberate contract change (deliverable 4), not a weakening of this
+    # assertion.
+    assert set(MIXTURES) == {
+        "DEFAULT_uniform", "UNION_uniform", "UNION_weighted", "EVOLUTION_uniform", "EVOLUTION_weighted",
+    }
     assert set(DIST_VARIANTS) == {"G_FULL", "G_NOBRANCH", "G_FULL_INS", "G_NOBRANCH_INS"}
     assert "step_length" not in UNION_OPERATORS
     for name, mix in MIXTURES.items():
