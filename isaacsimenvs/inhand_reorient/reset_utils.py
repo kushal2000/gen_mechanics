@@ -209,6 +209,16 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
 
     update_palm_frame_geometry(env)
 
+    # Part C (graded per-design scoring): this episode's STARTING rot error
+    # is env._rot_error[env_ids] as of the update_palm_frame_geometry call
+    # just above (the just-written goal/object state) -- must run AFTER it,
+    # same reasoning as the success-streak note above (this can run on a
+    # partial env_ids reset; design_scoring.reset_scoring_state only touches
+    # env_ids, matching the other per-episode buffers in this function).
+    from . import design_scoring
+
+    design_scoring.reset_scoring_state(env, env_ids)
+
 
 def log_step_metrics(env) -> None:
     """Publish step-level extras consumed by RL-Games' ``EnvStatsAlgoObserver``

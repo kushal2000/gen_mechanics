@@ -376,5 +376,6 @@ def load_population(path) -> List["ge.EnvelopeDesign"]:
                 f"re-derived {actual_derived}): grammar_version/envelope match but derive()/canonicalize()/"
                 f"palm_up() output for this design changed"
             )
+        design.sha256 = d["sha256"]
         out.append(design)
     return out

@@ -43,6 +43,7 @@ def test_write_then_load_round_trips(tmp_path):
     for design, entry in zip(loaded, entries):
         assert isinstance(design, ge.EnvelopeDesign)
         assert design.source == entry.source
+        assert design.sha256 == entry.sha256  # threaded through for Part C's per-design score reports
 
 
 def test_tampered_design_derivation_is_rejected(tmp_path):

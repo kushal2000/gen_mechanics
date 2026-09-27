@@ -342,6 +342,13 @@ class EnvelopeDesign:
     impulse doesn't blow up the ghost/carrier joints at step 0. Empty for
     every sampled design (those are REJECTED on overlap instead, never
     exempted)."""
+    sha256: str = ""
+    """This design's entry-level sha256 (over its raw derivation dict,
+    `population_file._entry_sha256`) -- set by `population_file.
+    load_population`, empty for a design built directly by `canonicalize`
+    outside that path (e.g. most tests). Threaded through so per-design
+    graded-score reports (Part C) can cite it without needing the
+    population file's own JSON at report time."""
 
 
 def _compose_palm_transform(mount_body: str, stop_body: str, palm_joint_by_child: Dict[str, Joint]) -> np.ndarray:

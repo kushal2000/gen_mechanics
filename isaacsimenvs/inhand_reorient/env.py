@@ -16,6 +16,7 @@ from isaaclab.envs import DirectRLEnv
 
 from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
 
+from . import design_scoring
 from .env_cfg import InHandReorientEnvCfg
 from .obs_utils import build_observations, compute_intermediate_values, pre_physics_step
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
@@ -53,6 +54,7 @@ class InHandReorientEnv(PoseReachEnv):
         DirectRLEnv.__init__(self, cfg, render_mode, **kwargs)
         allocate_state_buffers(self)
         finalize_scene(self)
+        design_scoring.allocate_scoring_buffers(self)
 
     # --- Isaac Lab hooks -----------------------------------------------------
 
@@ -74,10 +76,12 @@ class InHandReorientEnv(PoseReachEnv):
         update_tolerance_curriculum(self)  # increments self._frame_counter
         update_goal_curriculum(self)  # reads it right after -- see its docstring
         compute_intermediate_values(self)
+        design_scoring.step_scoring_state(self)  # after _rot_error refresh, before terminations
         return compute_terminations(self)
 
     def _get_rewards(self) -> torch.Tensor:
         reward = compute_rewards(self)
+        design_scoring.bank_done_episodes(self, reward)  # before _reset_idx clears anything
         log_step_metrics(self)
         return reward
 
