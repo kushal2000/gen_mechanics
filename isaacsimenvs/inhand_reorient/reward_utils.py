@@ -19,7 +19,10 @@ from __future__ import annotations
 import torch
 
 from isaacsimenvs.pose_reaching_6d.reward_utils.curriculum import (  # noqa: F401
-    get_curriculum_state, set_curriculum_state, update_tolerance_curriculum,
+    get_curriculum_state, set_curriculum_state,
+)
+from isaacsimenvs.pose_reaching_6d.reward_utils.termination import (  # noqa: F401
+    update_tolerance_curriculum,
 )
 
 __all__ = [

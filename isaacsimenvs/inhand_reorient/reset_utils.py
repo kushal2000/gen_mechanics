@@ -104,4 +104,15 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     env._consec_success_steps[env_ids] = 0
     env._prev_episode_successes[env_ids] = env._successes[env_ids]
     env._successes[env_ids] = 0
-    env._prev_rot_error[env_ids] = 0.0  # compute_intermediate_values fills the real value next step
+    env._prev_rot_error[env_ids] = 0.0  # overwritten by compute_intermediate_values just below
+
+    # DirectRLEnv.reset() calls _get_observations() straight after _reset_idx(),
+    # with no _get_dones() in between -- so the palm-frame cache has to be
+    # fresh here too, not only from _get_dones() on a normal step. Geometry
+    # only (not the success-streak bookkeeping): this can run on a PARTIAL
+    # env_ids reset mid-training, and _get_dones() will still run this step
+    # for every env, so a second success-streak update here would double
+    # count it for the envs NOT being reset.
+    from .obs_utils import update_palm_frame_geometry
+
+    update_palm_frame_geometry(env)

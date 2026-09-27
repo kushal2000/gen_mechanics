@@ -8,7 +8,7 @@ from isaaclab.utils.math import quat_error_magnitude, quat_mul, quat_inv, subtra
 
 __all__ = [
     "OBS_FIELD_WIDTHS", "derive_spaces", "compute_intermediate_values",
-    "pre_physics_step", "build_observations",
+    "update_palm_frame_geometry", "pre_physics_step", "build_observations",
 ]
 
 # Width (last-dim size) of each observation field, independent of the hand.
@@ -55,10 +55,10 @@ def pre_physics_step(env, actions: torch.Tensor) -> None:
     env._cur_targets = torch.clamp(env._cur_targets, lower, upper)
 
 
-def compute_intermediate_values(env) -> None:
-    """Object pose in the palm frame and the rotation error to goal. Called
-    from ``_get_dones`` before terminations/rewards, so both read fresh
-    values (mirrors ``pose_reaching_6d``'s hook order)."""
+def update_palm_frame_geometry(env) -> None:
+    """Object/goal pose in the palm frame and the rotation error to goal.
+    Idempotent and safe to call from a partial reset (unlike
+    ``compute_intermediate_values``, it touches no per-episode counter)."""
     palm_pos_w = env.robot.data.body_pos_w[:, env.palm_body_idx]
     palm_quat_w = env.robot.data.body_quat_w[:, env.palm_body_idx]
     obj_pos_w = env.object.data.root_pos_w
@@ -73,9 +73,16 @@ def compute_intermediate_values(env) -> None:
     env._obj_quat_palm = obj_quat_palm
     env._goal_quat_palm = goal_quat_palm
     env._obj_quat_rel_goal = quat_mul(quat_inv(env._goal_quat_w), obj_quat_w)
-
-    env._prev_rot_error = env._rot_error
     env._rot_error = quat_error_magnitude(obj_quat_w, env._goal_quat_w)
+
+
+def compute_intermediate_values(env) -> None:
+    """Called from ``_get_dones`` once per step, before terminations/rewards
+    (mirrors ``pose_reaching_6d``'s hook order): refreshes the palm-frame
+    geometry AND advances the per-step success bookkeeping. Reset uses
+    ``update_palm_frame_geometry`` alone -- see its docstring."""
+    env._prev_rot_error = env._rot_error
+    update_palm_frame_geometry(env)
 
     tol = env._current_success_tolerance
     hit = env._rot_error <= tol

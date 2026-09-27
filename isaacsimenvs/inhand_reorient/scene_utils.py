@@ -97,6 +97,13 @@ def setup_scene(env) -> None:
     light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
     light_cfg.func("/World/Light", light_cfg)
 
+    # Clone env 0's prim subtree into every other env (the standard Isaac Lab
+    # regex-spawner pattern; pose_reaching_6d skips this because it authors
+    # every env's prims itself instead -- see this module's docstring).
+    env.scene.clone_environments(copy_from_source=False)
+    if env.device == "cpu":
+        env.scene.filter_collisions(global_prim_paths=[])
+
     env.scene.articulations["robot"] = env.robot
     env.scene.rigid_objects["object"] = env.object
     env.scene.rigid_objects["goal_viz"] = env.goal_viz
