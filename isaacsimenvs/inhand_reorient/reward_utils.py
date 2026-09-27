@@ -85,6 +85,21 @@ def restore_extra_curriculum_state(env, state: dict) -> None:
               f"{env._goal_curriculum_stage} from the checkpoint", flush=True)
 
 
+def _joint_valid_mask(env) -> torch.Tensor | None:
+    """`(num_envs, 32)` bool, `True` where that env's own design has a REAL
+    (non-ghost) joint in that envelope slot -- `None` for the single-hand
+    path (`env.hand_tables` is only set by `scene/author_grammar.py`'s
+    population path), so every existing single-hand call site is
+    byte-identical to before this function existed (Phase 2's hard
+    requirement)."""
+    tables = getattr(env, "hand_tables", None)
+    if tables is None:
+        return None
+    design_idx = env.scene_record["design_idx"]
+    valid = torch.as_tensor(tables.joint_valid, device=env.device, dtype=torch.bool)
+    return valid[design_idx]
+
+
 def compute_rewards(env) -> torch.Tensor:
     """Reward adopted from IsaacGymEnvs' AllegroHand/ShadowHand (Makoviychuk
     et al., 2021): a dense inverse-distance rotation term plus a position
@@ -106,9 +121,17 @@ def compute_rewards(env) -> torch.Tensor:
     rot_rew = cfg.rot_reward_scale / (env._rot_error + cfg.rot_eps)
     dist_rew = -cfg.dist_reward_scale * dist
     progress = env._prev_rot_error - env._rot_error
-    action_penalty = (env._prev_actions ** 2).sum(dim=-1)
-    action_delta_penalty = ((env._prev_actions - env._prev_actions_this_step) ** 2).sum(dim=-1)
-    hand_vel_penalty = (env.robot.data.joint_vel ** 2).sum(dim=-1)
+    joint_mask = _joint_valid_mask(env)  # None on the single-hand path (see its docstring)
+    if joint_mask is None:
+        action_penalty = (env._prev_actions ** 2).sum(dim=-1)
+        action_delta_penalty = ((env._prev_actions - env._prev_actions_this_step) ** 2).sum(dim=-1)
+        hand_vel_penalty = (env.robot.data.joint_vel ** 2).sum(dim=-1)
+    else:
+        action_penalty = ((env._prev_actions ** 2) * joint_mask).sum(dim=-1)
+        action_delta_penalty = (
+            ((env._prev_actions - env._prev_actions_this_step) ** 2) * joint_mask
+        ).sum(dim=-1)
+        hand_vel_penalty = ((env.robot.data.joint_vel ** 2) * joint_mask).sum(dim=-1)
 
     goal_bonus_term = cfg.goal_bonus * env._is_success.float()
     action_penalty_term = -cfg.action_penalty_scale * action_penalty

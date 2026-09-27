@@ -1,0 +1,392 @@
+"""Author a `GrammarPopulation` (or a single `EnvelopeDesign`) directly into
+USD prims, one design per env, no spawner clone -- mirrors
+`isaacsimenvs/pose_reaching_6d/scene_utils/assembly.py`'s
+`_author_robots_into_envs` (manual per-env `Sdf.ChangeBlock` authoring
+instead of Isaac Lab's regex spawner) and reuses
+`hand_sampler/build.py::author_hand`'s USD-authoring conventions (body/joint
+naming, ghost ` (0, 1e-8)` locked limits, no ghost collider, capsule
+colliders, `physics:axis = "Z"` with the real per-joint axis baked into
+`localRot0`/`localRot1`). `pxr`/`isaaclab` imports are all lazy (inside
+functions), so this module is importable outside Kit (only actually CALLING
+its authoring functions needs a running Kit process).
+
+World anchoring (no arm here, unlike the old sampler, whose hand merges into
+an already-fixed arm flange): follows Isaac Lab's own documented "make a
+floating robot fixed" pattern (`isaaclab/test/deps/isaacsim/
+check_floating_base_made_fixed.py`) -- `ArticulationRootAPI`/
+`PhysxArticulationAPI` go on the PARENT prim (`root_path`, i.e. the env's
+`.../Robot` Xform), and a `PhysicsFixedJoint` with only `physics:body1` set
+(no `body0` => anchored to world) attaches to the design's own root/palm
+rigid body, one level below.
+"""
+
+from __future__ import annotations
+
+import math
+import os
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+
+from hand_sampler import robot_param_constants as rpc
+from hand_sampler.design_space import mat_to_pos_quat
+from hand_sampler.robot_spec import design_index
+
+from . import grammar_envelope as ge
+from . import population_file as pf
+
+ROOT_BODY_NAME = "root"
+PC_BODY_NAMES = ("pc0", "pc1")
+
+
+def _finger_body_name(f: int, d: int) -> str:
+    return f"f{f}_link{d}"
+
+
+def _env_id_of(prim_path: str) -> int:
+    for token in prim_path.split("/"):
+        if token.startswith("env_"):
+            return int(token[len("env_"):])
+    raise ValueError(f"no env_<i> component in {prim_path!r}")
+
+
+def _env_paths_in_order(env) -> List[str]:
+    return sorted(env.scene.env_prim_paths, key=_env_id_of)
+
+
+# --------------------------------------------------------------------------
+# Per-slot body/joint authoring (one design)
+# --------------------------------------------------------------------------
+
+
+def _author_body_and_collider(layer, path: str, *, length: float, radius: float, mass: float,
+                               inertia_diag: Tuple[float, float, float], com_z: float,
+                               pos: Sequence[float], quat_wxyz: Sequence[float],
+                               real: bool) -> None:
+    from pxr import Gf, Sdf
+
+    from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, set_xform
+
+    body = define(layer, path, "Xform", ["PhysicsRigidBodyAPI", "PhysicsMassAPI"])
+    attr(body, "physics:mass", Sdf.ValueTypeNames.Float, float(mass))
+    attr(body, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
+         Gf.Vec3f(*[float(v) for v in inertia_diag]))
+    attr(body, "physics:centerOfMass", Sdf.ValueTypeNames.Float3, Gf.Vec3f(0.0, 0.0, float(com_z)))
+    set_xform(body, pos, quat_wxyz)
+
+    if real:
+        r = float(radius)
+        define(layer, f"{path}/collisions", "Xform")
+        mesh = define(layer, f"{path}/collisions/mesh_0", "Xform")
+        # Capsule collider along the body's own local +z (grammar's segment
+        # convention), so it is rotated 90deg off the collider prim's own
+        # native +Z-is-the-capsule-axis default onto our +z... the capsule
+        # geometry schema's own axis token handles this directly (below),
+        # so mesh_0 needs no extra rotation -- unlike build.py's URDF-derived
+        # links (which run along local +x and rotate the capsule mesh to
+        # match), a grammar body already runs along +z.
+        cap = define(layer, f"{path}/collisions/mesh_0/capsule", "Capsule", ["PhysicsCollisionAPI"])
+        attr(cap, "radius", Sdf.ValueTypeNames.Double, r)
+        attr(cap, "height", Sdf.ValueTypeNames.Double, float(rpc.cylinder_part(max(length, 1e-6), r)))
+        attr(cap, "axis", Sdf.ValueTypeNames.Token, "Z")
+        set_xform(mesh, (0.0, 0.0, length / 2.0), (1.0, 0.0, 0.0, 0.0))
+
+
+def _author_joint(layer, joint_path: str, *, body0_path: str, body1_path: str,
+                   frame0: np.ndarray, frame1: np.ndarray, limits_rad: Tuple[float, float],
+                   valid: bool) -> None:
+    from pxr import Gf, Sdf
+
+    from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
+
+    j = define(layer, joint_path, "PhysicsRevoluteJoint", ["PhysicsDriveAPI:angular", "PhysxJointAPI"])
+    rel(j, "physics:body0", body0_path)
+    rel(j, "physics:body1", body1_path)
+    jpos, jquat = mat_to_pos_quat(frame0)
+    _, j1quat = mat_to_pos_quat(frame1)
+    attr(j, "physics:localPos0", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(*[float(v) for v in jpos]))
+    attr(j, "physics:localRot0", Sdf.ValueTypeNames.Quatf,
+         Gf.Quatf(float(jquat[0]), Gf.Vec3f(*[float(v) for v in jquat[1:]])))
+    attr(j, "physics:localPos1", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(0.0, 0.0, 0.0))
+    attr(j, "physics:localRot1", Sdf.ValueTypeNames.Quatf,
+         Gf.Quatf(float(j1quat[0]), Gf.Vec3f(*[float(v) for v in j1quat[1:]])))
+    attr(j, "physics:axis", Sdf.ValueTypeNames.Token, "Z")
+    lo, hi = limits_rad
+    attr(j, "physics:lowerLimit", Sdf.ValueTypeNames.Float, float(math.degrees(lo)))
+    attr(j, "physics:upperLimit", Sdf.ValueTypeNames.Float, float(math.degrees(hi)))
+    attr(j, "physics:jointEnabled", Sdf.ValueTypeNames.Bool, True)
+    attr(j, "physics:excludeFromArticulation", Sdf.ValueTypeNames.Bool, False)
+    attr(j, "drive:angular:physics:stiffness", Sdf.ValueTypeNames.Float, rpc.CONVERTER_DRIVE_STIFFNESS)
+    attr(j, "drive:angular:physics:damping", Sdf.ValueTypeNames.Float, rpc.CONVERTER_DRIVE_DAMPING)
+    attr(j, "drive:angular:physics:maxForce", Sdf.ValueTypeNames.Float, float(rpc.GEN_JOINT_EFFORT_NM))
+    attr(j, "drive:angular:physics:targetPosition", Sdf.ValueTypeNames.Float, 0.0)
+    attr(j, "physxJoint:maxJointVelocity", Sdf.ValueTypeNames.Float,
+         float(math.degrees(rpc.GEN_JOINT_VELOCITY_RAD_S)))
+
+
+def _link_mass_props(length: float, radius: float, real: bool) -> Tuple[float, Tuple[float, float, float]]:
+    if not real:
+        return rpc.VIRTUAL_LINK_MASS_KG, (rpc.VIRTUAL_LINK_INERTIA,) * 3
+    mass = max(math.pi * radius * radius * length * rpc.GEN_LINK_DENSITY_KG_M3, 1e-6)
+    izz = 0.5 * mass * radius * radius
+    ixx = iyy = mass * (3.0 * radius * radius + length * length) / 12.0
+    return mass, (ixx, iyy, izz)
+
+
+def author_design(layer, root_path: str, design: ge.EnvelopeDesign) -> Dict[str, bool]:
+    """Author one design's root/palm, palm carriers and 30 finger-joint
+    slots under `root_path` (an already-`define`-d Xform, given its own
+    world `xformOp` by the caller). Returns `{body_name: has_collider}` for
+    every authored body -- a friction pass may use it (see
+    `AssetsCfg.modify_asset_frictions`, not yet wired for populations here;
+    see the Phase 2 report's known gaps)."""
+    from pxr import Gf, Sdf
+
+    from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
+
+    # `root_path` (e.g. ".../Robot") is the ArticulationRoot Xform -- the
+    # PARENT of the design's own root/palm rigid body, one level below (see
+    # module docstring's "World anchoring" note).
+    define(layer, root_path, "Xform", ["PhysicsArticulationRootAPI", "PhysxArticulationAPI"])
+    define(layer, f"{root_path}/joints", "Scope")
+    frames = ge.joint_local_frames(design)
+    colliders: Dict[str, bool] = {}
+
+    # --- root/palm body: the design's own fixed-base anchor ---------------
+    root_body_path = f"{root_path}/{ROOT_BODY_NAME}"
+    _author_body_and_collider(
+        layer, root_body_path, length=design.root_length_m, radius=design.capsule_radius_m,
+        mass=max(math.pi * design.capsule_radius_m ** 2 * max(design.root_length_m, 1e-6)
+                  * rpc.GEN_PALM_DENSITY_KG_M3, 1e-6),
+        inertia_diag=_link_mass_props(design.root_length_m, design.capsule_radius_m, True)[1],
+        com_z=design.root_length_m / 2.0, pos=(0.0, 0.0, 0.0), quat_wxyz=(1.0, 0.0, 0.0, 0.0), real=True,
+    )
+    colliders[ROOT_BODY_NAME] = True
+
+    # A `PhysicsFixedJoint` (body1 = root, body0 UNSET = world) anchors the
+    # root rigid body to world -- `ArticulationRootAPI`/`PhysxArticulationAPI`
+    # were already applied to `root_path` itself above (the PARENT of this
+    # body; see module docstring's "World anchoring" note).
+    fixed = define(layer, f"{root_path}/root_fixed_joint", "PhysicsFixedJoint")
+    rel(fixed, "physics:body1", root_body_path)
+    attr(fixed, "physics:localPos1", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(0.0, 0.0, 0.0))
+    attr(fixed, "physics:localRot1", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)))
+    # body0 unset (world); localPos0/localRot0 default to identity, which is
+    # correct here because `root` itself has zero local offset from
+    # `root_path` (the caller's own xformOp carries the design's full world
+    # pose), so root's world pose IS root_path's world pose.
+
+    # --- palm-carrier bodies + joints (pc0_j, pc1_j) -----------------------
+    for pc in range(2):
+        slot = ge.PC0_SLOT + pc
+        body_path = f"{root_path}/{PC_BODY_NAMES[pc]}"
+        valid = bool(design.slot_valid[slot])
+        length = float(design.slot_length[slot])
+        mass, inertia = _link_mass_props(length, design.capsule_radius_m, valid)
+        pos, quat = mat_to_pos_quat(design.slot_origin[slot])
+        _author_body_and_collider(
+            layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
+            inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
+        )
+        colliders[PC_BODY_NAMES[pc]] = valid
+        limits = tuple(float(v) for v in design.slot_limits[slot]) if valid else ge.GHOST_LIMITS
+        _author_joint(
+            layer, f"{root_path}/joints/{ge.SLOT_NAMES[slot]}", body0_path=root_body_path,
+            body1_path=body_path, frame0=frames[slot, 0], frame1=frames[slot, 1],
+            limits_rad=limits, valid=valid,
+        )
+
+    # --- finger joint slots (f0_j0..f4_j5) ----------------------------------
+    for f in range(ge.N_FINGERS):
+        for d in range(ge.N_JOINTS_PER_FINGER):
+            slot = f * ge.N_JOINTS_PER_FINGER + d
+            valid = bool(design.slot_valid[slot])
+            length = float(design.slot_length[slot])
+            body_path = f"{root_path}/{_finger_body_name(f, d)}"
+            mass, inertia = _link_mass_props(length, design.capsule_radius_m, valid)
+            pos, quat = mat_to_pos_quat(design.slot_origin[slot])
+            _author_body_and_collider(
+                layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
+                inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
+            )
+            colliders[_finger_body_name(f, d)] = valid
+
+            if d == 0:
+                body0_path = root_body_path if f in (0, 1, 2) else f"{root_path}/{PC_BODY_NAMES[f - 3]}"
+            else:
+                body0_path = f"{root_path}/{_finger_body_name(f, d - 1)}"
+            limits = tuple(float(v) for v in design.slot_limits[slot]) if valid else ge.GHOST_LIMITS
+            _author_joint(
+                layer, f"{root_path}/joints/{ge.SLOT_NAMES[slot]}", body0_path=body0_path,
+                body1_path=body_path, frame0=frames[slot, 0], frame1=frames[slot, 1],
+                limits_rad=limits, valid=valid,
+            )
+
+    return colliders
+
+
+# --------------------------------------------------------------------------
+# Population authoring
+# --------------------------------------------------------------------------
+
+
+HAND_BASE_POS_M: Tuple[float, float, float] = (0.0, 0.0, 0.5)
+"""Same convention as `hand_only.HandOnlySpec.base_pos`: a fixed height
+above the ground plane, identical for every env/design (the design only
+varies `base_rot`, from its own `palm_up` calibration)."""
+
+
+def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndarray) -> Dict[int, Dict[str, bool]]:
+    """One `Robot` prim per env, authored from `population`, `design_idx[env_id]`
+    picking which design. Hard-asserts `replicate_physics=False` and
+    `clone_in_fabric=False` (the caller must have set these; this function
+    only asserts, per the design note's env-interface contract)."""
+    assert env.cfg.scene.replicate_physics is False, "grammar populations require replicate_physics=False"
+    assert env.cfg.scene.clone_in_fabric is False, "grammar populations require clone_in_fabric=False"
+
+    from isaacsim.core.utils.stage import get_current_stage
+    from pxr import Sdf
+
+    from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import set_xform
+
+    layer = get_current_stage().GetRootLayer()
+    collider_links: Dict[int, Dict[str, bool]] = {}
+    env_paths = _env_paths_in_order(env)
+    assert len(env_paths) == env.num_envs, (
+        f"expected {env.num_envs} env prim paths, found {len(env_paths)}"
+    )
+
+    with Sdf.ChangeBlock():
+        for env_path in env_paths:
+            env_id = _env_id_of(env_path)
+            idx = int(design_idx[env_id])
+            root_path = f"{env_path}/Robot"
+            design = population.designs[idx]
+            authored = author_design(layer, root_path, design)
+            collider_links.setdefault(idx, authored)
+            base_rot = tuple(float(v) for v in population.base_rot[idx])
+            set_xform(layer.GetPrimAtPath(root_path), HAND_BASE_POS_M, base_rot)
+
+    return collider_links
+
+
+def _adjacent_links_template() -> Dict[str, List[str]]:
+    """Immediate parent/child body-name adjacency over the FIXED envelope
+    topology (same for every design; see `grammar_envelope.SLOT_PARENT`) --
+    enough for `HandOnlySpec.validate()`'s "self-collision would be
+    unfiltered" check. Real per-design self-collision filtering between
+    non-adjacent bodies is not attempted here (see the Phase 2 report's
+    known gaps)."""
+    def _body_name(slot: int) -> str:
+        if slot == ge.PC0_SLOT:
+            return PC_BODY_NAMES[0]
+        if slot == ge.PC1_SLOT:
+            return PC_BODY_NAMES[1]
+        f, d = divmod(slot, ge.N_JOINTS_PER_FINGER)
+        return _finger_body_name(f, d)
+
+    adjacency: Dict[str, List[str]] = {ROOT_BODY_NAME: []}
+    for slot in range(ge.N_SLOTS):
+        name = _body_name(slot)
+        parent = ge.SLOT_PARENT[slot]
+        parent_name = ROOT_BODY_NAME if parent == ge.ROOT_SENTINEL else _body_name(parent)
+        adjacency.setdefault(name, []).append(parent_name)
+        adjacency.setdefault(parent_name, []).append(name)
+    return adjacency
+
+
+def build_hand_population_spec(population: ge.GrammarPopulation, template_idx: int, base_rot: Sequence[float]):
+    """A `hand_only.HandOnlySpec`-shaped template describing the FIXED
+    32-joint envelope (same joint/body names and action-space size for
+    every design) -- lets `obs_utils.derive_spaces`/`reward_utils`/
+    `reset_utils` (all spec-generic, keyed by field name) run unmodified for
+    the population path. Per-design specifics (limits, validity, default
+    pose) live in `env.hand_tables` (the `GrammarPopulation`), not here --
+    `hand_joint_limits`/`hand_default_joint_pos` below are only
+    `template_idx`'s own values, a representative default, NOT authoritative
+    (the actually-authored PhysX joint limits differ per env; see the
+    module docstring and the Phase 2 report's known gaps around per-env
+    ghost-joint masking in reward/obs code, which is not yet wired)."""
+    from .. import hand_only  # local import: hand_only pulls in the same package's __init__ chain
+
+    stiffness = {n: hand_only.DEFAULT_HAND_STIFFNESS for n in ge.SLOT_NAMES}
+    damping = {n: hand_only.DEFAULT_HAND_DAMPING for n in ge.SLOT_NAMES}
+    armature = {n: hand_only.DEFAULT_HAND_ARMATURE for n in ge.SLOT_NAMES}
+    default_pos = dict(zip(ge.SLOT_NAMES, (float(v) for v in population.default_joint_pos[template_idx])))
+    limits = tuple(
+        (float(lo), float(hi)) for lo, hi in population.joint_limits[template_idx]
+    )
+    fingertip_names = tuple(_finger_body_name(f, ge.N_JOINTS_PER_FINGER - 1) for f in range(ge.N_FINGERS))
+
+    return hand_only.HandOnlySpec(
+        name="grammar_population", hand_name="grammar_population", urdf_path="",
+        hand_root=ROOT_BODY_NAME, hand_joint_names=ge.SLOT_NAMES, hand_joint_limits=limits,
+        palm_body_name=ROOT_BODY_NAME, fingertip_body_names=fingertip_names,
+        hand_stiffness=stiffness, hand_damping=damping, hand_armature=armature,
+        hand_default_joint_pos=default_pos, palm_center_offset=(0.0, 0.0, 0.0),
+        adjacent_links=_adjacent_links_template(), base_pos=HAND_BASE_POS_M,
+        base_rot=tuple(float(v) for v in base_rot),
+    )
+
+
+def setup_grammar_robot(env) -> None:
+    """Env-hook entry point: load `env.cfg.assets.hand_population`, author it
+    into every env, and set `env.hand_spec`/`env.scene_record`/
+    `env.hand_tables` (design note's "Env interface needed"; `env.
+    palm_body_idx` is resolved later by `scene_utils.finalize_scene`, once
+    the articulation view is live, same as the single-hand path). Called
+    from `scene_utils.setup_scene` instead of the single-hand path when
+    `hand_population` is non-empty."""
+    import torch
+
+    assert env.cfg.scene.replicate_physics is False, "hand_population requires scene.replicate_physics=False"
+    assert env.cfg.scene.clone_in_fabric is False, "hand_population requires scene.clone_in_fabric=False"
+
+    designs = pf.load_population(env.cfg.assets.hand_population)
+    population = ge.build_population(designs)
+    print(f"[inhand_reorient] loaded grammar population: {population.n_designs} designs from "
+          f"{env.cfg.assets.hand_population}", flush=True)
+
+    idx = design_index(
+        env.num_envs, population.n_designs,
+        rank=int(os.environ.get("RANK", "0")), world_size=int(os.environ.get("WORLD_SIZE", "1")),
+    )
+    # I27/risk 3: Isaac checks default joint positions on env 0 only --
+    # ensure a design with a limit range containing 0 lands in env 0 so that
+    # check is meaningful (never silently pass by placing an all-locked
+    # ghost-only design there).
+    idx = _rotate_so_env0_has_a_limits_contain_zero_design(idx, population)
+
+    collider_links = author_population(env, population, idx)
+
+    env.hand_spec = build_hand_population_spec(population, int(idx[0]), population.base_rot[int(idx[0])])
+    env.hand_tables = population
+    env.scene_record = {
+        "population": population, "design_idx": torch.as_tensor(idx, device=env.device),
+        "collider_links": collider_links, "population_path": env.cfg.assets.hand_population,
+    }
+
+
+def _rotate_so_env0_has_a_limits_contain_zero_design(idx: np.ndarray, population: ge.GrammarPopulation) -> np.ndarray:
+    """Swap `idx[0]`'s design for the first admitted design whose valid
+    joints' limits contain 0, if `idx[0]`'s current design does not already
+    qualify (see `setup_grammar_robot`'s I27/risk-3 note)."""
+    def _limits_contain_zero(design_id: int) -> bool:
+        valid = population.joint_valid[design_id]
+        lo, hi = population.joint_limits[design_id, :, 0], population.joint_limits[design_id, :, 1]
+        return bool(np.any(valid & (lo <= 0.0) & (hi >= 0.0)))
+
+    if _limits_contain_zero(int(idx[0])):
+        return idx
+    for candidate in range(population.n_designs):
+        if _limits_contain_zero(candidate):
+            out = np.array(idx, copy=True)
+            # Swap wherever `candidate` currently sits with slot 0, so every
+            # design is still represented the same number of times.
+            swap_positions = np.where(out == candidate)[0]
+            if swap_positions.size:
+                out[0], out[swap_positions[0]] = out[swap_positions[0]], out[0]
+            else:
+                out[0] = candidate
+            return out
+    return idx  # no design anywhere has a zero-containing limit; leave as is

@@ -89,10 +89,13 @@ def apply_palm_calibration(env, spec):
         spec, base_rot=base_rot, hand_default_joint_pos=hand_default_joint_pos)
 
 
-def _hand_articulation_cfg(spec, usd_path: str) -> ArticulationCfg:
+def _hand_articulation_cfg(spec, usd_path: str | None) -> ArticulationCfg:
+    """`usd_path=None` (the grammar-population path): the prims were already
+    authored directly into the stage (`scene/author_grammar.py`), so this
+    Articulation only needs to ATTACH to them, not spawn anything."""
     return ArticulationCfg(
         prim_path=ROBOT_PATH,
-        spawn=sim_utils.UsdFileCfg(usd_path=usd_path),
+        spawn=None if usd_path is None else sim_utils.UsdFileCfg(usd_path=usd_path),
         init_state=ArticulationCfg.InitialStateCfg(
             pos=spec.base_pos, rot=spec.base_rot,
             joint_pos=dict(spec.hand_default_joint_pos),
@@ -126,6 +129,13 @@ def _object_cfg(prim_path: str, size: float, offsets: dict, *, kinematic: bool,
 
 
 def setup_scene(env) -> None:
+    if env.cfg.assets.hand_population:
+        _setup_scene_population(env)
+        return
+    _setup_scene_single_hand(env)
+
+
+def _setup_scene_single_hand(env) -> None:
     t0 = time.perf_counter()
     asset_dir = Path(tempfile.mkdtemp(prefix="inhand_reorient_"))
 
@@ -167,6 +177,58 @@ def setup_scene(env) -> None:
     env.hand_spec = spec
     env.hand_cut = cut
     print(f"[inhand_reorient] scene ready ({time.perf_counter() - t0:.1f}s)", flush=True)
+
+
+def _setup_scene_population(env) -> None:
+    """Phase 2: one design per env, authored directly (no regex-spawner
+    clone) -- see `scene/author_grammar.py`."""
+    from .scene import author_grammar
+
+    assert env.cfg.scene.replicate_physics is False, (
+        "assets.hand_population is set: pass env.scene.replicate_physics=False "
+        "(a population cannot be homogenized by cloning env 0's physics)")
+    assert env.cfg.scene.clone_in_fabric is False, (
+        "assets.hand_population is set: pass env.scene.clone_in_fabric=False")
+
+    t0 = time.perf_counter()
+    _materialize_env_prims_population(env)
+    author_grammar.setup_grammar_robot(env)
+    spec = env.hand_spec
+    derive_spaces(env.cfg, spec)
+    print(f"[inhand_reorient] grammar population: {env.hand_tables.n_designs} designs, "
+          f"{env.num_envs} envs, action_space={env.cfg.action_space} "
+          f"({time.perf_counter() - t0:.1f}s)", flush=True)
+
+    offsets = dict(contact_offset=env.cfg.physics.contact_offset, rest_offset=env.cfg.physics.rest_offset)
+    env.robot = Articulation(_hand_articulation_cfg(spec, usd_path=None))
+    env.object = RigidObject(_object_cfg(
+        OBJECT_PATH, env.cfg.assets.object_size_m, offsets, kinematic=False,
+        density=env.cfg.assets.object_density))
+    env.goal_viz = RigidObject(_object_cfg(
+        GOALVIZ_PATH, env.cfg.assets.object_size_m, offsets, kinematic=True,
+        color=(0.9, 0.3, 0.2)))
+
+    spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+    light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
+    light_cfg.func("/World/Light", light_cfg)
+
+    # No clone_environments(): every env's Robot prim was authored directly
+    # above, distinct per design. Object/GoalViz still spawn per env through
+    # their own regex prim_path (independent of clone_environments/
+    # replicate_physics, which only govern the manually-authored robot).
+    env.scene.articulations["robot"] = env.robot
+    env.scene.rigid_objects["object"] = env.object
+    env.scene.rigid_objects["goal_viz"] = env.goal_viz
+    print(f"[inhand_reorient] population scene ready ({time.perf_counter() - t0:.1f}s)", flush=True)
+
+
+def _materialize_env_prims_population(env) -> None:
+    from isaacsim.core.utils.stage import get_current_stage
+
+    stage = get_current_stage()
+    for env_path in env.scene.env_prim_paths:
+        if not stage.GetPrimAtPath(env_path).IsValid():
+            stage.DefinePrim(env_path, "Xform")
 
 
 def finalize_scene(env) -> None:

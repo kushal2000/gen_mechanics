@@ -25,10 +25,16 @@ class AssetsCfg:
     """Which hand, and the object it reorients."""
 
     # A manifest hand id (hand_only.manifest_entry): "sharpa", "allegro_right",
-    # "dclaw", ... . One fixed hand for the whole run in Phase 1 -- no
-    # population/robot_spec-by-name indirection yet (that is Phase 2's
-    # grammar-to-simulator adapter).
+    # "dclaw", ... . Used only when `hand_population` is empty (the default);
+    # one fixed hand for the whole run.
     hand_id: str = "sharpa"
+    # Phase 2: path to a grammar population JSON (population_file.write_population's
+    # output). Empty (the default) keeps today's single-hand path byte-identical
+    # (`hand_id` above, scene.replicate_physics=True, the regex spawner). When
+    # set, `scene_utils.setup_scene` authors one design per env directly
+    # (scene.replicate_physics/clone_in_fabric are hard-asserted False; see
+    # `scene/author_grammar.py`).
+    hand_population: str = ""
     object_size_m: float = 0.06  # AllegroHand/ShadowHand-literature range is 0.06-0.065 m
     object_density: float = 500.0
     object_pool: tuple[float, ...] = ()  # cube edge lengths; () = object_size_m only
