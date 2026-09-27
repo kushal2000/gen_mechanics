@@ -211,16 +211,16 @@
     },
     {
       "id": "I25",
-      "status": "open",
+      "status": "resolved",
       "hypothesis": "dclaw palm-up calibration still scores 0 (no orientation/curl gives a reachable resting cube); needs per-joint curl or a different spawn for 3-finger geometry.",
-      "decision": null,
+      "decision": "6715211: per-joint curl profiles; dclaw calibrates (+z, score 0.125, >=2 fingertips in reach).",
       "evidence": "worker report 2026-09-27"
     },
     {
       "id": "I26",
-      "status": "open",
+      "status": "resolved",
       "hypothesis": "60-min SHARPA run: axis-only goals learned (successes/episode 0 -> 0.22, rot error 2.16 -> 1.60 by 10 min); at frame 24227 (~18 min) BOTH curricula fired in the same step (same statistic, threshold 3.0, interval 3000): goals axis -> full random and tolerance 0.40 -> 0.36. Afterwards successes fell to ~0.03 and rot error stayed ~1.95-2.0 rad for 40 min (no recovery). Full random-orientation goals are not learnable at this budget with this setup; axis goals are. Proposed: use palm-normal-axis goals as the E-R0/E-R1 task (cheap, discriminative), decouple the two curricula, log the goal stage; keep 'full' as a later, separately budgeted task.",
-      "decision": null,
+      "decision": "b6dab74: default goal stages ('axis',); goal curriculum advances only after the tolerance floor and never in the same step; goal stage and mode logged. 13 CPU tests.",
       "evidence": "outputs/2026-09-27/10-17-25/0_sharpa_60min (347M steps, 60 min, ~100k fps)"
     },
     {
@@ -264,6 +264,13 @@
       "hypothesis": "Opus review of Phase 2 (opus-review-phase2.md): 5 confirmed bugs (fingertip one link short; drop check along palm-local z; per-design rewards unbankable/stale successes; rest-overlap filter unenforced and mis-modelled, true rejection 59-64% not 75%; provenance does not pin derived tables) and 6 risks. Must be fixed before E-R1 or any population/evolution run. Item 2 also affects single hands with non-z up axes; routed to the E-R0 prep worker.",
       "decision": null,
       "evidence": "project-notes/grammar/opus-review-phase2.md"
+    },
+    {
+      "id": "I33",
+      "status": "in_progress",
+      "hypothesis": "xhand/wuji/tesollo had no collision geometry in Kit: resolve_hand_urdf loads the kinematics-only in-repo fixtures; the meshes are in the manifest source_root (~/karma/karma-data/all_urdfs/full_models_as_downloaded, 183 MB). Fix: prefer the sha-matched source copy, GEN_MECH_HAND_SOURCE_ROOT override for the cluster, fail loudly on lost collision geometry.",
+      "decision": null,
+      "evidence": "E-R0 prep worker 2026-09-27; coordinator check"
     }
   ],
   "last_green_commit": "3acff20",

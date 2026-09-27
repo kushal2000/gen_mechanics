@@ -234,3 +234,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Training smoke with a 16-design population: 2 epochs, exit 0. Boot ~5.5 s for 64 envs.
 - Admission: 13 commercial hands admitted; svh rejected (one palm joint carries 2 digits). G_SERIAL 100% and DEFAULT 76.5% structurally admitted, but ~75% of those fail the rest-overlap filter (I29); reach of random designs is poor (I30). Residual gaps: I31.
 - Tests: 78 package + 7 curriculum pass; grammar suite 3124 passed, 1 skipped.
+
+## E-R0 prep, part 1 (2026-09-27 ~15:00)
+
+- b6dab74: rotation about the palm normal is the default task; curricula decoupled (I26). 7978f49: drop detection along world z (review item 2; all six calibrated single hands use local +z, so past single-hand runs were unaffected). 6715211: dclaw calibrates with per-joint curl (I25).
+- xhand/wuji/tesollo scored 0 in calibration: the loader used kinematics-only fixture URDFs, so no collision geometry (I33). The worker concluded the meshes did not exist; they do, in the manifest source_root. Part 2 worker fixes the resolver, calibrates, and runs 15-min gates for all six hands plus a resume check.
+- Cluster needs the external model tree synced (183 MB) via `cluster sync <dir> hand_models`.
