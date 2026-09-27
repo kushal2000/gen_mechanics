@@ -257,3 +257,39 @@ def finalize_scene(env) -> None:
     print(f"[inhand_reorient] articulation view: {env.robot.data.joint_pos.shape[0]} envs x "
           f"{env.robot.data.joint_pos.shape[1]} joints, palm_body_idx={env.palm_body_idx}",
           flush=True)
+
+    if getattr(env, "hand_tables", None) is not None:
+        _resolve_population_joint_permutation(env)
+
+
+def _resolve_population_joint_permutation(env) -> None:
+    """The articulation view's own joint order is not guaranteed to match
+    `grammar_envelope.SLOT_NAMES` (PhysX/articulation discovery order need
+    not equal Sdf-authoring order -- confirmed different for the
+    single-hand SHARPA path too, see `diagnostics.py`'s own note). Every
+    `env.hand_tables` table (`joint_valid`, `joint_limits`, ...) is indexed
+    by `SLOT_NAMES`; `env.scene_record["slot_of_phys_col"]` is the
+    permutation from an articulation-view COLUMN to its `SLOT_NAMES` index,
+    so `table[..., perm]` reindexes a `SLOT_NAMES`-ordered row into
+    articulation-view column order. Fatal (not a silent best-effort) if any
+    name is missing -- exactly the silent-mispairing bug `diagnostics.py`
+    warns about, now checked instead of risked."""
+    import torch
+
+    from .scene import grammar_envelope as ge
+
+    phys_names = list(env.robot.data.joint_names)
+    missing = [n for n in phys_names if n not in ge.SLOT_NAMES]
+    if missing:
+        raise RuntimeError(f"articulation view has joint(s) {missing} not in grammar_envelope.SLOT_NAMES")
+    if len(phys_names) != len(ge.SLOT_NAMES):
+        raise RuntimeError(
+            f"articulation view has {len(phys_names)} joints, SLOT_NAMES has {len(ge.SLOT_NAMES)}")
+    perm = [ge.SLOT_NAMES.index(n) for n in phys_names]
+    if perm == list(range(len(ge.SLOT_NAMES))):
+        print("[inhand_reorient] articulation joint order matches SLOT_NAMES (identity permutation)",
+              flush=True)
+    else:
+        print(f"[inhand_reorient] articulation joint order DIFFERS from SLOT_NAMES; "
+              f"permutation resolved and stored in env.scene_record", flush=True)
+    env.scene_record["slot_of_phys_col"] = torch.as_tensor(perm, device=env.device, dtype=torch.long)

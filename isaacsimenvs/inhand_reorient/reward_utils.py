@@ -97,7 +97,11 @@ def _joint_valid_mask(env) -> torch.Tensor | None:
         return None
     design_idx = env.scene_record["design_idx"]
     valid = torch.as_tensor(tables.joint_valid, device=env.device, dtype=torch.bool)
-    return valid[design_idx]
+    valid = valid[design_idx]  # (num_envs, 32), SLOT_NAMES order
+    perm = env.scene_record.get("slot_of_phys_col")
+    if perm is not None:
+        valid = valid[:, perm]  # reindex to the articulation view's own column order
+    return valid
 
 
 def compute_rewards(env) -> torch.Tensor:
