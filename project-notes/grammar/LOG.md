@@ -254,3 +254,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - RTX 6000 Ada jobs (main QOS, ada6000-shared partition): boot <1 min (the 7.5-min boot was node-specific to improbablex005); training ~0.88 s/epoch, ~74k fps at 4096 envs (4090: ~0.26 s, ~250k).
 - 16384 envs: ~90k fps (1.25x); GPU util ~24-35% throughout. 16 CPUs vs 8: no change. Capping Kit and PhysX thread pools at 8: no change. Kit cache seed: no change.
 - Conclusion: the env step is CPU single-thread bound on the cluster's 3.5 GHz EPYC cores. 1 local 4090 ~ 3.4 cluster GPUs. Use the cluster for parallel runs; profile the env step for per-step overhead.
+
+## Spawn-frame worker (2026-09-27 ~17:50)
+
+- The frame math was consistent; the symptom came from two real bugs: xhand's "fingertips" included the palm root and cosmetic stubs (3fefee7, now 5 real tips), and calibration never required the spawn point above the palm (a17d14a, MIN_SPAWN_HEIGHT_ABOVE_PALM_M = 0.02, the same quantity the drop check uses). Recalibrated (dc539d7): all six hands spawn 0.14-0.21 m above the palm.
+- 15-min gates v2: tesollo starts to learn (drop 1.00 -> 0.93, 0.045 goals/episode); xhand and wuji still 100% drop. Remaining cause: merged fixed-joint fingertip bodies sit 2.6-5 cm from the tip surface (I36). Not blocking the pilot.
+- Single-hand baselines that learn from scratch in 15 min locally: dclaw (4.1 goals/episode), allegro (1.4), sharpa (0.71).

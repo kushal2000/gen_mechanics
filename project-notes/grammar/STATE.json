@@ -268,9 +268,9 @@
     },
     {
       "id": "I33",
-      "status": "in_progress",
+      "status": "resolved",
       "hypothesis": "xhand/wuji/tesollo had no collision geometry in Kit: resolve_hand_urdf loads the kinematics-only in-repo fixtures; the meshes are in the manifest source_root (~/karma/karma-data/all_urdfs/full_models_as_downloaded, 183 MB). Fix: prefer the sha-matched source copy, GEN_MECH_HAND_SOURCE_ROOT override for the cluster, fail loudly on lost collision geometry.",
-      "decision": null,
+      "decision": "1015e78/07a43be: sha-verified source URDFs with meshes; GEN_MECH_HAND_SOURCE_ROOT for the cluster; loud warning on lost collision geometry.",
       "evidence": "E-R0 prep worker 2026-09-27; coordinator check"
     },
     {
@@ -286,10 +286,24 @@
       "hypothesis": "Bug in Martin's cluster tool (~/research/slurm/bin/cluster, cmd_submit self-cap check): with no non-preemptible jobs held, `grep -oE '[0-9]+$'` matches nothing, the pipeline fails under set -e/pipefail, and `cluster submit --tier ada|ngpu` exits 1 with no message. Workaround: --tier main --partition ada6000-shared. Not edited (Martin's tool).",
       "decision": null,
       "evidence": "2026-09-27 submit attempts"
+    },
+    {
+      "id": "I36",
+      "status": "open",
+      "hypothesis": "xhand_right and wuji_right still do not learn from scratch (100% drop), tesollo barely (drop 0.93, 0.045 goals/episode at 15 min): their fingertip bodies are fixed-joint merge targets whose origins sit 2.6-5 cm from the real tip surface, corrupting the fingertip-centroid spawn point, the reach check and fingertip observations. Fix: compose the fixed-joint chain offset into fingertip positions (calibration and obs). Not blocking the evolution pilot (commercial hands are evaluated through grammar projections).",
+      "decision": null,
+      "evidence": "outputs/2026-09-27/17-*/0_*_eR0_local_v2; commits 3fefee7, a17d14a, dc539d7"
+    },
+    {
+      "id": "I37",
+      "status": "open",
+      "hypothesis": "Env step is CPU single-thread bound (cluster GPU util ~30%); profile and trim per-step Python/sync overhead in inhand_reorient (logging .item() calls, per-step extras, small kernels).",
+      "decision": null,
+      "evidence": "cluster jobs 2364841, 2364908, 2364909"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Spawn-frame fix worker (running). Cluster smoke 2364675 (running). Then: I32 fixes + graded per-design scoring + eval; CPU grammar screen G0; evolution pilot E-R2'.",
+  "next_action": "Worker: I32 population fixes (grammar_envelope first, commit tagged [G0-ready]) + palm-cell colliders + graded per-design scoring + frozen-policy eval. Then G0 CPU grammar screen in parallel once [G0-ready] lands. Then evolution driver.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
