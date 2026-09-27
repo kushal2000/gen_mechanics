@@ -292,4 +292,20 @@ def _resolve_population_joint_permutation(env) -> None:
     else:
         print(f"[inhand_reorient] articulation joint order DIFFERS from SLOT_NAMES; "
               f"permutation resolved and stored in env.scene_record", flush=True)
-    env.scene_record["slot_of_phys_col"] = torch.as_tensor(perm, device=env.device, dtype=torch.long)
+    perm_t = torch.as_tensor(perm, device=env.device, dtype=torch.long)
+    env.scene_record["slot_of_phys_col"] = perm_t
+
+    # I27/risk 3 (design note): every env's articulation initialised its own
+    # `default_joint_pos` from env 0's design's `hand_default_joint_pos`
+    # (`_hand_articulation_cfg`'s `InitialStateCfg` is one template dict for
+    # the whole scene) -- WRONG for every env whose design differs. Overwrite
+    # it per env, in phys-column order, now that the articulation view (and
+    # this permutation) are live.
+    population = env.hand_tables
+    design_idx = env.scene_record["design_idx"]
+    default_pos = torch.as_tensor(population.default_joint_pos, device=env.device, dtype=torch.float32)
+    default_pos = default_pos[design_idx][:, perm_t]  # (num_envs, 32), phys column order
+    env.robot.data.default_joint_pos[:] = default_pos
+    env.robot.write_joint_state_to_sim(default_pos, torch.zeros_like(default_pos))
+    print(f"[inhand_reorient] wrote per-env default_joint_pos for {env.num_envs} envs "
+          f"from their own design's palm_up calibration", flush=True)
