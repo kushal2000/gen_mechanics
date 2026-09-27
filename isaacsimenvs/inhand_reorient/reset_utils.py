@@ -103,6 +103,23 @@ def reset_goal_trackers(env, env_ids: torch.Tensor) -> None:
     env._consec_success_steps[env_ids] = 0
 
 
+def _object_spawn_offset(env, env_ids: torch.Tensor) -> torch.Tensor:
+    """`(len(env_ids), 3)`, in the palm/root's own LOCAL frame (matching
+    `env.cfg.reset.object_spawn_offset`'s existing "above the palm centre,
+    in the palm's own frame" convention). Single-hand path: the one global
+    cfg value, byte-identical to before this function existed. Population
+    path (`env.hand_tables` set): each env's OWN design's `palm_up`-
+    calibrated spawn point (over its fingertip workspace, not a fixed
+    offset -- every design's geometry/orientation differs)."""
+    tables = getattr(env, "hand_tables", None)
+    if tables is None:
+        offset = torch.as_tensor(env.cfg.reset.object_spawn_offset, device=env.device, dtype=torch.float32)
+        return offset.expand(env_ids.numel(), 3)
+    design_idx = env.scene_record["design_idx"][env_ids]
+    spawn = torch.as_tensor(tables.spawn_offset, device=env.device, dtype=torch.float32)
+    return spawn[design_idx]
+
+
 def reset_env_state(env, env_ids: torch.Tensor) -> None:
     """Full reset: hand joints, object spawn, goal, and per-episode buffers."""
     n = env_ids.numel()
@@ -133,9 +150,9 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     # position jitter -- all in the palm's own (world) frame at reset time.
     palm_pos_w = env.robot.data.body_pos_w[env_ids, env.palm_body_idx]
     palm_quat_w = env.robot.data.body_quat_w[env_ids, env.palm_body_idx]
-    offset = torch.as_tensor(env.cfg.reset.object_spawn_offset, device=env.device, dtype=torch.float32)
+    offset = _object_spawn_offset(env, env_ids)
     jitter = (torch.rand(n, 3, device=env.device) * 2.0 - 1.0) * env.cfg.reset.object_position_noise
-    local_pos = offset.expand(n, 3) + jitter
+    local_pos = offset + jitter
     env._spawn_obj_pos_palm[env_ids] = local_pos
     obj_pos_w = palm_pos_w + quat_apply(palm_quat_w, local_pos)
     obj_quat_w = random_orientation(n, device=env.device)
@@ -152,7 +169,7 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     # stages never actually applied to an episode's first (and, given how
     # rarely a random goal was reached, effectively only) goal.
     env._goal_quat_w[env_ids] = _sample_goal(env, env_ids, obj_quat_w)
-    goal_pos_w = palm_pos_w + quat_apply(palm_quat_w, offset.expand(n, 3))
+    goal_pos_w = palm_pos_w + quat_apply(palm_quat_w, offset)
     goal_state = torch.cat(
         [goal_pos_w, env._goal_quat_w[env_ids], torch.zeros(n, 6, device=env.device)], dim=-1)
     env.goal_viz.write_root_state_to_sim(goal_state, env_ids=env_ids)
