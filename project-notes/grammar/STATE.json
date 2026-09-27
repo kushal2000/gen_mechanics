@@ -33,7 +33,9 @@
     "Representation vs grammar (Martin, 2026-09-26): the representation (structure compiled by derive()) must represent real hands relatively accurately (kinematics only, ~5 mm / 10 deg); the grammar (grids, ranges, priors, operators) is tuned later for explorability. Fitting real hands is an expressivity check only.",
     "The 1e-10/1e-12 tolerances are code-correctness tests (our FK vs Pinocchio/sympy on the same file), not the representation fidelity criterion.",
     "Geometry stays capsules for now; a cross-section study decides whether a single rounded-rectangle template fits most links at acceptable contact cost. Actuation (motors, cross-digit couplings) is future work.",
-    "Hand set for the representation check: current 11 + articulated-palm hands (SVH, Shadow, ARMS; SHARPA pinky CMC). Licences not a concern (local dev)."
+    "Hand set for the representation check: current 11 + articulated-palm hands (SVH, Shadow, ARMS; SHARPA pinky CMC). Licences not a concern (local dev).",
+    "Wrists are never part of the hand (Martin, 2026-09-26): every manifest hand is cut at its palm; ORCA hand_root = right_palm.",
+    "One motor per joint (Martin, 2026-09-26): coupled/mimic joints and prismatic joints are future items; the projection keeps every mimic joint as an independent revolute joint with its own declared limits; no prismatic hands are added to the check."
   ],
   "issues": [
     {
@@ -186,13 +188,13 @@
     {
       "id": "I22",
       "status": "open",
-      "hypothesis": "Before the representation is settled: (1) claim wording + n/a tips + limit deltas + DOF counts; (2) _compose_bend_rpy -> R(mount)R(bend), byte-identical at bend 0; (3) parallel-transport gauge in projection; (4) atlas recomputed (fold axis sign, physical bend, mount offsets only, fixture excluded, DH invariants) and I21 rewritten; (5) branch check made live (real error), ORCA hand_root right_palm; (6) Pinocchio check of exported derived URDFs, sha256 verification for local files, Dex1 added. Couplings scope and Coupled own limits: deferred with actuation (Martin).",
+      "hypothesis": "Before the representation is settled: (1) claim wording + n/a tips + limit deltas + DOF counts; (2) _compose_bend_rpy -> R(mount)R(bend), byte-identical at bend 0; (3) parallel-transport gauge in projection; (4) atlas recomputed (fold axis sign, physical bend, mount offsets only, fixture excluded, DH invariants) and I21 rewritten; (5) branch check made live (real error), ORCA hand_root right_palm; (6) Pinocchio check of exported derived URDFs, sha256 verification for local files, Dex1 added. Couplings scope and Coupled own limits: deferred with actuation (Martin). UPDATED per Martin: no wrists; mimics -> independent joints (one motor per joint); prismatic and couplings are future items (no Dex1).",
       "decision": null,
       "evidence": "opus-review-representation.md"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Wait for item 4 (cross-section study, running); then one fix worker for I22; re-run E13; rewrite I21.",
+  "next_action": "I22 fix worker running in its own git worktree (parallel with the cross-section study); then merge, re-run E13, rewrite I21.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
