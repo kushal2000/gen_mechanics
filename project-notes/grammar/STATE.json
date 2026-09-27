@@ -240,7 +240,7 @@
     {
       "id": "I29",
       "status": "open",
-      "hypothesis": "Grammar samples self-intersect at rest: ~75% of structurally admitted designs (G_SERIAL 75.6%, DEFAULT 73.7%) have >3 mm capsule overlap at q=0 (root-mounted digits with no palm spread). Rejection biases populations toward 1-2 fingers. Needs a grammar-level mount-spacing rule (a grammar change, not a representation change).",
+      "hypothesis": "Grammar samples self-intersect at rest: ~75% of structurally admitted designs (G_SERIAL 75.6%, DEFAULT 73.7%) have >3 mm capsule overlap at q=0 (root-mounted digits with no palm spread). Rejection biases populations toward 1-2 fingers. Needs a grammar-level mount-spacing rule (a grammar change, not a representation change). Review correction: under the authored capsule geometry the rejection rate is 59-64%, not 75%.",
       "decision": null,
       "evidence": "Phase 2 worker, 1500 seeds per variant, af4881c filter"
     },
@@ -257,6 +257,13 @@
       "hypothesis": "Population path gaps: ghost residual 0.0125 rad (target 1e-4; traced to projected sharpa 20 mm rest overlap from the one-radius-per-hand projection); friction pass not wired; self-collision filtering only parent/child; uniform object size.",
       "decision": null,
       "evidence": "Phase 2 report"
+    },
+    {
+      "id": "I32",
+      "status": "open",
+      "hypothesis": "Opus review of Phase 2 (opus-review-phase2.md): 5 confirmed bugs (fingertip one link short; drop check along palm-local z; per-design rewards unbankable/stale successes; rest-overlap filter unenforced and mis-modelled, true rejection 59-64% not 75%; provenance does not pin derived tables) and 6 risks. Must be fixed before E-R1 or any population/evolution run. Item 2 also affects single hands with non-z up axes; routed to the E-R0 prep worker.",
+      "decision": null,
+      "evidence": "project-notes/grammar/opus-review-phase2.md"
     }
   ],
   "last_green_commit": "3acff20",
