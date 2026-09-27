@@ -63,17 +63,31 @@ def _env_paths_in_order(env) -> List[str]:
 def _author_body_and_collider(layer, path: str, *, length: float, radius: float, mass: float,
                                inertia_diag: Tuple[float, float, float], com_z: float,
                                pos: Sequence[float], quat_wxyz: Sequence[float],
-                               real: bool) -> None:
+                               real: bool, filtered_pair_targets: Sequence[str] = ()) -> None:
     from pxr import Gf, Sdf
 
-    from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, set_xform
+    from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel, set_xform
 
-    body = define(layer, path, "Xform", ["PhysicsRigidBodyAPI", "PhysicsMassAPI"])
+    apis = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    if filtered_pair_targets:
+        # Review item 4's exemption: this body has a rest-pose overlap with
+        # one it is not kinematically adjacent to (a PROJECTED commercial
+        # hand's capsule-projection artifact -- see
+        # `grammar_envelope.EnvelopeDesign.filtered_pairs`) -- collision-
+        # filter it explicitly instead of letting PhysX's depenetration
+        # impulse resolve a real interpenetration (which blows up the
+        # ghost/carrier joints on step 0 for a SAMPLED design with the same
+        # symptom; sampled designs are instead REJECTED on this, never
+        # exempted, so they never reach this branch).
+        apis.append("PhysicsFilteredPairsAPI")
+    body = define(layer, path, "Xform", apis)
     attr(body, "physics:mass", Sdf.ValueTypeNames.Float, float(mass))
     attr(body, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
          Gf.Vec3f(*[float(v) for v in inertia_diag]))
     attr(body, "physics:centerOfMass", Sdf.ValueTypeNames.Float3, Gf.Vec3f(0.0, 0.0, float(com_z)))
     set_xform(body, pos, quat_wxyz)
+    if filtered_pair_targets:
+        rel(body, "physics:filteredPairs", list(filtered_pair_targets))
 
     if real:
         r = float(radius)
@@ -199,6 +213,29 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
     def _slot_pos_quat(slot: int) -> Tuple[Tuple[float, float, float], Tuple[float, float, float, float]]:
         return mat_to_pos_quat(T_slot_in_root_path[slot])
 
+    def _node_body_path(node: int) -> str:
+        """`grammar_envelope.rest_overlap_pairs`/`filtered_pairs` node index
+        (a joint slot, or `ge.ROOT_NODE` for the root/palm capsule) -> this
+        design's own authored body path."""
+        if node == ge.ROOT_NODE:
+            return f"{root_path}/{ROOT_BODY_NAME}"
+        if node == ge.PC0_SLOT:
+            return f"{root_path}/{PC_BODY_NAMES[0]}"
+        if node == ge.PC1_SLOT:
+            return f"{root_path}/{PC_BODY_NAMES[1]}"
+        f, d = divmod(node, ge.N_JOINTS_PER_FINGER)
+        return f"{root_path}/{_finger_body_name(f, d)}"
+
+    # Review item 4's exemption (projected commercial hands only -- see
+    # `_author_body_and_collider`'s own comment): which authored body path
+    # must collision-filter which other authored body path(s), from this
+    # design's `filtered_pairs` (empty for every sampled design).
+    filtered_targets_of: Dict[str, List[str]] = {}
+    for i, j in design.filtered_pairs:
+        pi, pj = _node_body_path(i), _node_body_path(j)
+        filtered_targets_of.setdefault(pi, []).append(pj)
+        filtered_targets_of.setdefault(pj, []).append(pi)
+
     # --- root/palm body: the design's own fixed-base anchor, authored
     # DIRECTLY at its world pose (base_pos/base_rot_wxyz) -------------------
     root_body_path = f"{root_path}/{ROOT_BODY_NAME}"
@@ -209,6 +246,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
         mass=root_mass,
         inertia_diag=_link_mass_props(design.root_length_m, design.capsule_radius_m, True)[1],
         com_z=design.root_length_m / 2.0, pos=base_pos, quat_wxyz=base_rot_wxyz, real=True,
+        filtered_pair_targets=filtered_targets_of.get(root_body_path, ()),
     )
     colliders[ROOT_BODY_NAME] = True
 
@@ -259,6 +297,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
         _author_body_and_collider(
             layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
             inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
+            filtered_pair_targets=filtered_targets_of.get(body_path, ()),
         )
         colliders[PC_BODY_NAMES[pc]] = valid
         limits = tuple(float(v) for v in design.slot_limits[slot]) if valid else ge.GHOST_LIMITS
@@ -280,6 +319,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
             _author_body_and_collider(
                 layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
                 inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
+                filtered_pair_targets=filtered_targets_of.get(body_path, ()),
             )
             colliders[_finger_body_name(f, d)] = valid
 

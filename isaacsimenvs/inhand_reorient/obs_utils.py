@@ -81,6 +81,21 @@ def pre_physics_step(env, actions: torch.Tensor) -> None:
     env._cur_targets = torch.clamp(env._cur_targets, lower, upper)
 
 
+def _fingertip_valid_mask(env) -> torch.Tensor | None:
+    """`(num_envs, 5)` bool, `True` where that env's own design's fingertip
+    marker for that finger is real (see `grammar_envelope.palm_up`'s
+    `fingertip_valid` -- False for a finger that does not exist AND for one
+    whose real chain fills all 6 envelope slots, leaving no ghost slot to
+    place a tip marker at, review item 1). `None` on the single-hand path,
+    same pattern as `reward_utils._joint_valid_mask`."""
+    tables = getattr(env, "hand_tables", None)
+    if tables is None:
+        return None
+    design_idx = env.scene_record["design_idx"]
+    valid = torch.as_tensor(tables.fingertip_valid, device=env.device, dtype=torch.bool)
+    return valid[design_idx]  # (num_envs, 5)
+
+
 def update_palm_frame_geometry(env) -> None:
     """Object/goal pose in the palm frame and the rotation error to goal.
     Idempotent and safe to call from a partial reset (unlike
@@ -113,7 +128,10 @@ def update_palm_frame_geometry(env) -> None:
         tip_pos_w = env.robot.data.body_pos_w[:, tip_idx, :]  # (n, k, 3)
         rel_w = tip_pos_w - palm_pos_w.unsqueeze(1)
         palm_quat_flat = palm_quat_w.unsqueeze(1).expand(n, k, 4).reshape(n * k, 4)
-        tip_pos_palm = quat_apply_inverse(palm_quat_flat, rel_w.reshape(n * k, 3))
+        tip_pos_palm = quat_apply_inverse(palm_quat_flat, rel_w.reshape(n * k, 3)).reshape(n, k, 3)
+        fingertip_mask = _fingertip_valid_mask(env)  # None on the single-hand path
+        if fingertip_mask is not None:
+            tip_pos_palm = tip_pos_palm * fingertip_mask.unsqueeze(-1)
         env._fingertip_pos_palm = tip_pos_palm.reshape(n, k * 3)
 
 
