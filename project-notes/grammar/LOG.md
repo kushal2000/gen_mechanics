@@ -260,3 +260,11 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - The frame math was consistent; the symptom came from two real bugs: xhand's "fingertips" included the palm root and cosmetic stubs (3fefee7, now 5 real tips), and calibration never required the spawn point above the palm (a17d14a, MIN_SPAWN_HEIGHT_ABOVE_PALM_M = 0.02, the same quantity the drop check uses). Recalibrated (dc539d7): all six hands spawn 0.14-0.21 m above the palm.
 - 15-min gates v2: tesollo starts to learn (drop 1.00 -> 0.93, 0.045 goals/episode); xhand and wuji still 100% drop. Remaining cause: merged fixed-joint fingertip bodies sit 2.6-5 cm from the tip surface (I36). Not blocking the pilot.
 - Single-hand baselines that learn from scratch in 15 min locally: dclaw (4.1 goals/episode), allegro (1.4), sharpa (0.71).
+
+## Pilot prep: population fixes, graded scoring (2026-09-27 ~20:00)
+
+- 8 commits (b390acb..03d4e06). Review bugs fixed except palm-cell colliders (I30, deferred). Faithful admission gate: G_SERIAL 21.5%, DEFAULT 17.7% admitted. `viability_report(model)` for the CPU screen.
+- Graded per-design scoring banked in the env: graded_fitness = goals + 0.5 clip(rotation_progress/pi) + 0.25 min(time_held/episode_max, 1), per write window with curriculum snapshot.
+- Kit: 16-design smoke FK 0.0005 mm, homogeneous, limits exact, ghost |q| max 0.0126 rad, 39% of cubes resting at 100 zero-action steps (0-75% per design). 10-min 32-design run at 4096 envs: ~113k fps; graded_fitness spread 0.02-0.14 (6.7x); aggregate successes flat at this horizon.
+- Frozen-policy eval blocked by the vendored rl_games player (I38).
+- Next: evolution driver (MAP-Elites, in-job generation loop with resume, probes = projected commercial hands); G0 screen running.
