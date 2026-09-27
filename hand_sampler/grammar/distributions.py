@@ -139,6 +139,50 @@ class Distribution:
     # distribution (phalanx_count_range=(1, 3), branch_probability=0.0).
     insertion: Optional["Distribution"] = None
 
+    # G0 CPU grammar screen (plan revision 2026-09-27, step 2; I29/I30):
+    # three optional, off-by-default generative rules the screen's V2/V3
+    # variants turn on. Every one of them defaults to "off" in a way that
+    # leaves ``sample_derivation``'s RNG-stream and output byte-identical to
+    # before these fields existed for every EXISTING named ``Distribution``
+    # (``G_FULL``, ``G_SERIAL``, etc.) -- see each field's own docstring and
+    # ``derive.py``'s corresponding hook for the exact "off means identical"
+    # argument.
+
+    # I29 mount-spacing rule (V2): when set, top-level digit mounts (host
+    # body + ``mount_frac``) are PLANNED (``derive._plan_top_level_mounts``)
+    # to spread digits across ``mount_bodies`` and, within one host, across
+    # ``mount_frac_choices``, instead of drawn i.i.d. per digit -- a
+    # generative placement rule, not a rejection filter: it always returns
+    # exactly as many (host, frac) pairs as there are digits, even when the
+    # target below cannot be met by the discrete grid. The value is the
+    # TARGET minimum physical separation (m) between two mounts sharing one
+    # host, e.g. ``2 * capsule_radius_m + margin_m``. ``None`` (default)
+    # disables the planner entirely: ``sample_derivation`` draws each
+    # digit's mount exactly as it always has.
+    mount_min_separation_m: Optional[float] = None
+
+    # I30 curl-axis prior (V3): restricts a DIGIT phalanx's revolute-module
+    # axis (``distributions.sample_module``, never a palm joint's own axis)
+    # to this ``(lo_deg, hi_deg)`` elevation band from +z (see
+    # ``sample_axis``'s ``elevation_band_deg`` argument) -- a band centered
+    # on 90 deg keeps the axis roughly IN the plane transverse to the
+    # segment's own forward (+z) direction, i.e. hinge-like, so successive
+    # phalanges bend within a shared plane instead of a fully isotropic 3D
+    # axis (which is what makes a random hand's rest curl point in an
+    # incoherent direction per finger -- I30). ``None`` (default) disables
+    # the band: ``sample_axis`` draws the elevation uniformly over the full
+    # grid exactly as before this field existed.
+    digit_axis_elevation_band_deg: Optional[Tuple[float, float]] = None
+
+    # I30 opposition prior (V3): when ``True`` and a hand has >= 2 top-level
+    # digits, the LAST-sampled digit's mount orientation is chosen (not
+    # drawn) to oppose the mean forward direction of the earlier digits'
+    # mounts (``derive._best_opposing_rpy``), a thumb-like opposition rather
+    # than an independently random one. ``False`` (default) disables this:
+    # every digit's ``mount_rpy`` is drawn i.i.d. exactly as before this
+    # field existed.
+    opposition_prior: bool = False
+
 
 DEFAULT_DISTRIBUTION = Distribution()
 
@@ -158,10 +202,28 @@ def sample_grid_length_m(rng: np.random.Generator, length_range_m: Tuple[float, 
     return round(lo + k * grid_m, 10)
 
 
-def sample_axis(rng: np.random.Generator) -> Tuple[float, float, float]:
+def sample_axis(
+    rng: np.random.Generator, elevation_band_deg: Optional[Tuple[float, float]] = None,
+) -> Tuple[float, float, float]:
     """Unit joint axis on a 15-degree spherical grid, including oblique
-    (non-axis-aligned) directions -- not restricted to X/Y/Z."""
-    el_k = int(rng.integers(0, N_ELEVATION_STEPS))
+    (non-axis-aligned) directions -- not restricted to X/Y/Z.
+
+    ``elevation_band_deg`` (I30 curl-axis prior, default ``None``): when
+    given, the elevation grid index is drawn only from grid points whose
+    angle (from +z) falls inside ``(lo_deg, hi_deg)`` -- e.g. ``(60, 120)``
+    keeps the axis roughly transverse to +z (hinge-like). Falls back to the
+    full grid if the band contains no grid point. When ``None`` (every
+    existing call site), this draws EXACTLY the same two ``rng.integers``
+    calls, in the same order, as before this argument existed -- the RNG
+    stream is untouched."""
+    if elevation_band_deg is None:
+        el_k = int(rng.integers(0, N_ELEVATION_STEPS))
+    else:
+        lo_deg, hi_deg = elevation_band_deg
+        candidates = [k for k in range(N_ELEVATION_STEPS) if lo_deg <= k * ANGLE_STEP_DEG <= hi_deg]
+        if not candidates:
+            candidates = list(range(N_ELEVATION_STEPS))
+        el_k = candidates[int(rng.integers(0, len(candidates)))]
     az_k = int(rng.integers(0, N_ANGLE_STEPS))
     el = el_k * ANGLE_STEP_DEG * DEG
     az = (az_k * ANGLE_STEP_DEG - 180.0) * DEG
@@ -260,7 +322,7 @@ def sample_module(rng: np.random.Generator, dist: Distribution, phalanx_index: i
     if revolute_source_indices is None:
         revolute_source_indices = tuple(range(phalanx_index))
     kind = sample_module_kind(rng, dist, allow_coupled=phalanx_index > 0 and len(revolute_source_indices) > 0)
-    axis = sample_axis(rng)
+    axis = sample_axis(rng, dist.digit_axis_elevation_band_deg)
     if kind == "R":
         return {"kind": "R", "axis": axis, "limits": sample_revolute_limits_rad(rng, dist)}
     if kind == "C":

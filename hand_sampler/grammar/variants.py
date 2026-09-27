@@ -103,6 +103,87 @@ G_CONT: Distribution = replace(
     revolute_limit_range_deg=(-180.0, 180.0),
 )
 
+# --------------------------------------------------------------------------
+# G0 CPU grammar screen (plan revision 2026-09-27, step 2; project-notes/
+# grammar/experiments/g0/report.md). V0 is G_SERIAL (above): the
+# old-sampler-like baseline. V1-V3 are built one generative rule at a time,
+# each strictly on top of the last, so the screen can attribute any change
+# in viability/diversity to the rule that variant adds. V4 (palm support
+# under the spawn point) is deferred -- it needs geometry.py's palm-cell
+# convex-hull machinery, out of scope for this CPU screen's time box; see
+# the report's caveats.
+# --------------------------------------------------------------------------
+
+# V1: DEFAULT, constrained to what the viability oracle
+# (isaacsimenvs.inhand_reorient.scene.grammar_envelope.admit) can even
+# structurally admit -- revolute-only (every other module weight zeroed
+# and renormalized: no couplings, no continuous/prismatic joints), no
+# in-digit branching, at most 2 additional palm bodies, 1-5 digits.
+# Without this, most of a raw G_FULL/G_SERIAL sample is thrown out by the
+# STRUCTURAL gate alone, before viability (overlap, reach) is even
+# measured -- V1 is the fair "old-sampler-like, but envelope-shaped"
+# starting point the later rules build on.
+G_V1: Distribution = replace(
+    DEFAULT_DISTRIBUTION,
+    module_probabilities=(("R", 1.0), ("C", 0.0), ("P", 0.0), ("Coupled", 0.0)),
+    branch_probability=0.0,
+    palm_body_count_range=(0, 2),
+    digit_count_range=(1, 5),
+)
+
+# V2: V1 + the I29 finger-mount spacing rule (``sample_derivation``'s
+# ``derive._plan_top_level_mounts``, gated by ``mount_min_separation_m``):
+# top-level digit mounts are placed (never rejected/resampled) to spread
+# across the available palm/root hosts and, within one host, across
+# ``mount_frac_choices``, targeting this minimum physical separation
+# between two same-host mounts. The target is a FIXED, conservative
+# constant -- 2x the LARGEST sampled capsule radius (0.012 m; see
+# ``Distribution.capsule_radius_choices_m``) plus a 5 mm margin (the same
+# grid unit ``link_length_grid_m`` uses elsewhere) -- so every sampled
+# radius clears it, not just the modal one.
+G_V2: Distribution = replace(G_V1, mount_min_separation_m=2.0 * 0.012 + 0.005)
+
+# V3: V2 + the I30 curl and opposition priors.
+#
+# Curl axis prior: ``digit_axis_elevation_band_deg=(60, 120)`` keeps every
+# digit phalanx's revolute axis within 30 degrees of the horizontal (see
+# ``distributions.sample_axis``'s ``elevation_band_deg``), i.e. hinge-like
+# and roughly transverse to the segment's own forward direction, rather
+# than a fully isotropic 3D axis -- the isotropic default is why a random
+# hand's successive phalanges bend in incoherent directions (I30's "most
+# sampled hands reach the cube with one fingertip").
+#
+# Rest bend ("curl toward the palm normal"): reuses the EXISTING rest-bend
+# primitive (``Distribution.bend_probability``/``bend_rpy_choices_rad`` --
+# see ``G_BEND`` above for the symmetric-grid precedent) rather than a new
+# mechanism, with a choice set of ONLY forward (positive-pitch) values and
+# probability 1.0: every phalanx after a digit's first is a CONTINUATION
+# joint, whose bend composes directly as its own origin orientation (no
+# existing rotation to compose with -- see ``derive._compose_bend_rpy``),
+# so a positive-pitch-only bend makes every phalanx curl the SAME
+# consistent way relative to the previous phalanx's own heading, like a
+# closing finger, instead of ``G_BEND``'s symmetric (any-direction, only
+# 30% of the time) grid.
+#
+# Opposition prior: ``opposition_prior=True`` makes the LAST-sampled
+# top-level digit (whenever there are >= 2) oppose the mean mounting
+# direction of the earlier digits (``derive._best_opposing_rpy``) -- a
+# thumb-like layout -- instead of an independently random mount
+# orientation.
+_CURL_BEND_RPY_CHOICES_RAD: Tuple[Tuple[float, float, float], ...] = (
+    (0.0, 15.0 * math.pi / 180.0, 0.0),
+    (0.0, 30.0 * math.pi / 180.0, 0.0),
+    (0.0, 45.0 * math.pi / 180.0, 0.0),
+)
+G_V3: Distribution = replace(
+    G_V2,
+    digit_axis_elevation_band_deg=(60.0, 120.0),
+    opposition_prior=True,
+    bend_rpy_choices_rad=_CURL_BEND_RPY_CHOICES_RAD,
+    bend_offset_choices_m=((0.0, 0.0),),
+    bend_probability=1.0,
+)
+
 # Every named Distribution variant above, for iteration by experiment code.
 NAMED_DISTRIBUTIONS = {
     "G_FULL": G_FULL,
@@ -114,6 +195,17 @@ NAMED_DISTRIBUTIONS = {
     "G_NOBRANCH_INS": G_NOBRANCH_INS,
     "G_BEND": G_BEND,
     "G_CONT": G_CONT,
+    "G_V1": G_V1,
+    "G_V2": G_V2,
+    "G_V3": G_V3,
+}
+
+# The G0 screen's own variant roster, named per the plan (V0 = G_SERIAL).
+G0_SCREEN_VARIANTS = {
+    "V0": G_SERIAL,
+    "V1": G_V1,
+    "V2": G_V2,
+    "V3": G_V3,
 }
 
 __all__ = [
@@ -127,7 +219,11 @@ __all__ = [
     "G_FULL_SMALL",
     "G_BEND",
     "G_CONT",
+    "G_V1",
+    "G_V2",
+    "G_V3",
     "NAMED_DISTRIBUTIONS",
+    "G0_SCREEN_VARIANTS",
     "OPERATORS",
     "SMALL_STEP_OPERATORS",
 ]

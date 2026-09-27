@@ -156,6 +156,95 @@ def _max_uid(steps: Sequence[DerivationStep]) -> int:
     return best
 
 
+def _plan_top_level_mounts(
+    rng, dist: Distribution, mount_bodies: List[str], digit_count: int, host_length: Dict[str, float],
+) -> List[Tuple[str, float]]:
+    """G0 screen, I29 mount-spacing rule (V2): ``digit_count`` (host,
+    mount_frac) pairs for the top-level digits, spread across
+    ``mount_bodies`` and, within a shared host, across
+    ``dist.mount_frac_choices``, so neighbouring same-host mounts are as
+    physically separated (given that host's OWN sampled length) as the
+    discrete frac grid allows -- targeting ``dist.mount_min_separation_m``.
+    A placement rule, not a rejection: always returns exactly
+    ``digit_count`` pairs, even when the target cannot be met (more digits
+    than a short host's grid can space out), in which case digits are
+    spread as far apart as the grid allows (best effort, never retried).
+    Only called when ``dist.mount_min_separation_m is not None`` -- see
+    ``sample_derivation``."""
+    frac_choices = sorted(set(dist.mount_frac_choices))
+    n_frac = len(frac_choices)
+    min_sep = dist.mount_min_separation_m
+
+    def capacity(host: str) -> int:
+        length = host_length.get(host, 0.0)
+        if length <= 0.0 or n_frac <= 1:
+            return 1
+        count = 1
+        last = frac_choices[0]
+        for f in frac_choices[1:]:
+            if (f - last) * length >= min_sep:
+                count += 1
+                last = f
+        return max(1, count)
+
+    caps = {h: capacity(h) for h in mount_bodies}
+    counts = {h: 0 for h in mount_bodies}
+    for _ in range(digit_count):
+        host = max(mount_bodies, key=lambda h: (caps[h] - counts[h], -mount_bodies.index(h)))
+        counts[host] += 1
+
+    assignments: List[Tuple[str, float]] = []
+    for host in mount_bodies:
+        k = counts[host]
+        if k == 0:
+            continue
+        if k == 1:
+            idx = int(rng.integers(0, n_frac))
+            fracs = [frac_choices[idx]]
+        else:
+            positions = np.linspace(0, n_frac - 1, k)
+            fracs = [frac_choices[int(round(pos))] for pos in positions]
+        assignments.extend((host, f) for f in fracs)
+
+    order = rng.permutation(len(assignments))
+    return [assignments[i] for i in order]
+
+
+def _snap_to_angle_grid_rad(angle_rad: float) -> float:
+    """Nearest point (radians) on the same 24-point, 15-degree grid
+    ``sample_grid_angle_rad`` draws from (``{k * 15 - 180 : k in 0..23}``,
+    i.e. ``[-180, 165]`` degrees, wrapping)."""
+    deg = math.degrees(angle_rad) % 360.0
+    k = int(round((deg + 180.0) / ANGLE_STEP_DEG)) % N_ANGLE_STEPS
+    return (k * ANGLE_STEP_DEG - 180.0) * DEG
+
+
+def _best_opposing_rpy(oppose_forward: np.ndarray) -> Tuple[float, float, float]:
+    """G0 screen, I30 opposition prior (V3): a ``(roll=0, pitch, yaw)``
+    triple, snapped onto the same 15-degree grid ``sample_grid_angle_rad``
+    draws from, whose local +z direction (``rpy_to_matrix(rpy) @ (0,0,1)``)
+    most nearly opposes ``oppose_forward`` (a unit vector). Solved
+    analytically, not searched: with ``roll = 0``, ``rpy_to_matrix((0,
+    pitch, yaw)) @ (0,0,1) == (cos(yaw) sin(pitch), sin(yaw) sin(pitch),
+    cos(pitch))`` -- the usual spherical-coordinates parametrisation of a
+    unit vector by colatitude ``pitch`` and azimuth ``yaw`` -- so the exact
+    (unsnapped) ``pitch``/``yaw`` recovering the target direction
+    ``-oppose_forward`` are ``acos(target_z)`` and ``atan2(target_y,
+    target_x)``. A pure, deterministic computation (no RNG, no grid
+    search, no retry), so the result stays exactly reproducible from the
+    derivation that already fixed every earlier digit's own mount
+    orientation."""
+    target = -np.asarray(oppose_forward, dtype=float)
+    norm = float(np.linalg.norm(target))
+    if norm < 1e-9:
+        return (0.0, 0.0, 0.0)
+    target = target / norm
+    pitch = math.acos(float(np.clip(target[2], -1.0, 1.0)))
+    sp = math.sin(pitch)
+    yaw = math.atan2(float(target[1]), float(target[0])) if sp > 1e-9 else 0.0
+    return (0.0, _snap_to_angle_grid_rad(pitch), _snap_to_angle_grid_rad(yaw))
+
+
 def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str, p: int,
                      depth: int, is_last: bool, next_uid: List[int]) -> None:
     module = sample_module(rng, dist, p, _revolute_source_indices(steps, digit_id, p))
@@ -192,10 +281,24 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
 
 
 def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str,
-                 mount_bodies: List[str], top_level: bool, depth: int, next_uid: List[int]) -> None:
-    mount = mount_bodies[int(rng.integers(0, len(mount_bodies)))]
-    mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
-    mount_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
+                 mount_bodies: List[str], top_level: bool, depth: int, next_uid: List[int],
+                 forced_mount: Optional[Tuple[str, float]] = None,
+                 oppose_forward: Optional[np.ndarray] = None) -> None:
+    """``forced_mount``/``oppose_forward`` (G0 screen, I29/I30; both default
+    ``None``) are used ONLY by ``sample_derivation``'s top-level digit loop
+    when the corresponding prior is enabled -- every other caller (branch
+    digits, growth operators) omits both, taking the exact same i.i.d.
+    (host, frac) and random ``mount_rpy`` draws as before either argument
+    existed."""
+    if forced_mount is not None:
+        mount, mount_frac = forced_mount
+    else:
+        mount = mount_bodies[int(rng.integers(0, len(mount_bodies)))]
+        mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
+    if oppose_forward is not None:
+        mount_rpy = _best_opposing_rpy(oppose_forward)
+    else:
+        mount_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
     phalanx_count = int(rng.integers(dist.phalanx_count_range[0], dist.phalanx_count_range[1] + 1))
     uid = next_uid[0]
     next_uid[0] += 1
@@ -208,11 +311,14 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
 
 
 def _sample_digit(rng, dist: Distribution, steps: List[DerivationStep], next_id: List[int],
-                   mount_bodies: List[str], next_uid: List[int]) -> None:
+                   mount_bodies: List[str], next_uid: List[int],
+                   forced_mount: Optional[Tuple[str, float]] = None,
+                   oppose_forward: Optional[np.ndarray] = None) -> None:
     """Sample a fresh *top-level* digit (id is the next 1-based integer)."""
     digit_id = str(next_id[0])
     next_id[0] += 1
-    _emit_digit(rng, dist, steps, digit_id, mount_bodies, top_level=True, depth=0, next_uid=next_uid)
+    _emit_digit(rng, dist, steps, digit_id, mount_bodies, top_level=True, depth=0, next_uid=next_uid,
+                forced_mount=forced_mount, oppose_forward=oppose_forward)
 
 
 def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) -> Derivation:
@@ -239,6 +345,7 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
     next_uid: List[int] = [0]
 
     palm_names: List[str] = []
+    host_length: Dict[str, float] = {"root": root_length}
     for i in range(palm_body_count):
         name = f"palm{i}"
         parent_choices = ["root"] + palm_names
@@ -259,11 +366,39 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
             "uid": uid,
         }))
         palm_names.append(name)
+        host_length[name] = length
 
     mount_bodies = ["root"] + palm_names
     next_id = [1]
-    for _ in range(digit_count):
-        _sample_digit(rng, dist, steps, next_id, mount_bodies, next_uid)
+    # G0 screen (I29): plan every top-level digit's (host, frac) up front
+    # when the mount-spacing rule is on, instead of drawing each digit's
+    # mount independently -- see ``_plan_top_level_mounts``. ``None``
+    # (default distributions) keeps the original per-digit i.i.d. draw.
+    planned_mounts: Optional[List[Tuple[str, float]]] = None
+    if dist.mount_min_separation_m is not None and digit_count > 0:
+        planned_mounts = _plan_top_level_mounts(rng, dist, mount_bodies, digit_count, host_length)
+    for i in range(digit_count):
+        forced_mount = planned_mounts[i] if planned_mounts is not None else None
+        # G0 screen (I30): the LAST top-level digit, when the opposition
+        # prior is on and there are >= 2 digits, opposes the mean forward
+        # direction of the EARLIER digits' own (already-sampled) mounts --
+        # see ``_best_opposing_rpy``. Every earlier digit, and every digit
+        # under the default (off) prior, draws ``mount_rpy`` exactly as
+        # before this feature existed.
+        oppose_forward = None
+        if dist.opposition_prior and digit_count >= 2 and i == digit_count - 1:
+            prior_rpys = [
+                s.params["mount_rpy"] for s in steps
+                if s.production == "Digit" and s.params.get("top_level")
+            ]
+            if prior_rpys:
+                fwds = [rpy_to_matrix(tuple(rpy)) @ np.array([0.0, 0.0, 1.0]) for rpy in prior_rpys]
+                mean_fwd = np.mean(fwds, axis=0)
+                norm = float(np.linalg.norm(mean_fwd))
+                if norm > 1e-9:
+                    oppose_forward = mean_fwd / norm
+        _sample_digit(rng, dist, steps, next_id, mount_bodies, next_uid,
+                      forced_mount=forced_mount, oppose_forward=oppose_forward)
 
     return Derivation(seed=seed, grammar_version=GRAMMAR_VERSION, steps=tuple(steps))
 
