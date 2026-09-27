@@ -204,7 +204,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Phase 0: local Isaac stack install on the 4090 (background); Phase 1 env drafting; cluster access pending Martin's ssh -fN cluster.",
+  "next_action": "Phase 1 worker running (inhand_reorient); cluster access pending Martin's ssh -fN cluster; then cluster setup + venv build in a cpu-tier job.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

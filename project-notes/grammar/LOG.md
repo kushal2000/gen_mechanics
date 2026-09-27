@@ -193,3 +193,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - I22 fixes merged from the worker's worktree (merge 432dbe2): proper bend composition R(mount)R(bend) (byte-identical at zero), parallel-transport gauge, explicit palm set with a live branch check, one motor per joint (mimics independent), no wrists (ORCA cut at right_palm), fingertip n/a, Pinocchio check of exported derived URDFs, sha256 verification. Suite 3124 passed. E13: 15/15 PASS (14 real + fixture), max 1.1e-13 mm / 1.7e-6 deg; Pinocchio export check max 3.6e-13 mm. Worktree and branch removed after merge.
 - Corrected atlas recorded in I21 (mount offsets median 22.5 mm on 94% of mounts; 18% of phalanx lengths outside 15-80 mm; palm length median 93 mm; limits 15-19% outside; physical bends median 0.9 deg, max 99). Representation milestone settled.
+
+## RL phase 0: local stack (2026-09-26 ~21:40)
+
+- uv 0.12.19 installed user-level (~/.local/bin, no profile changes). Pinned README recipe into .venv_isaacsim (Python 3.11, gitignored, 17 GB): torch 2.7.0+cu126 (CUDA on the RTX 4090), numpy 1.26.0, isaaclab 2.3.2.post1, isaacsim 5.1.0.0, rl_games resolving to third_party (README verify check passes), pytest in the venv. Install script and log: scratchpad install_isaac.{sh,log}.
+- Cluster: cluster tool + slurm skill installed by Martin with local paths; Kerberos ticket valid; ssh control connection not yet open (Martin runs ssh -fN cluster).
