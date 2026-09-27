@@ -1,4 +1,62 @@
 {
+  "allegro_right": {
+    "axis": "-z",
+    "base_rot": [
+      6.123233995736766e-17,
+      1.0,
+      0.0,
+      0.0
+    ],
+    "date": "2026-09-27T02:16:43.596293+00:00",
+    "final_dist_m": 0.028512882068753242,
+    "git_sha": "a9c6fd72e23d0978c56dffe0a4e1b19161c1f99a",
+    "method": "calibrate_palm_up.py: 6 candidates (full=False), repeats=8, held 2.0s @ 120 Hz zero-action default-joint-target, scored over the trailing 50% of steps at threshold=0.08 m",
+    "roll_deg": 0.0,
+    "score": 1.0,
+    "score_table": [
+      {
+        "axis": "-z",
+        "final_dist_m": 0.028512882068753242,
+        "roll_deg": 0.0,
+        "score": 1.0
+      },
+      {
+        "axis": "-x",
+        "final_dist_m": 0.3265383839607239,
+        "roll_deg": 0.0,
+        "score": 0.375
+      },
+      {
+        "axis": "+x",
+        "final_dist_m": 0.3853256106376648,
+        "roll_deg": 0.0,
+        "score": 0.25
+      },
+      {
+        "axis": "+z",
+        "final_dist_m": 0.5167638063430786,
+        "roll_deg": 0.0,
+        "score": 0.0
+      },
+      {
+        "axis": "+y",
+        "final_dist_m": 0.5609850883483887,
+        "roll_deg": 0.0,
+        "score": 0.0
+      },
+      {
+        "axis": "-y",
+        "final_dist_m": 0.3520435690879822,
+        "roll_deg": 0.0,
+        "score": 0.0
+      }
+    ],
+    "spawn_offset_local": [
+      0.0,
+      5.81707222295529e-18,
+      -0.04749999940395355
+    ]
+  },
   "dclaw": {
     "axis": "-z",
     "base_rot": [
