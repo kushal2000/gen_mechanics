@@ -245,3 +245,46 @@ def test_build_hand_only_spec_is_clean_with_the_source_copy(hand_id, monkeypatch
     captured = capsys.readouterr()
     assert "collision geometry" not in captured.err
     spec.validate()
+
+
+# --------------------------------------------------------------------------
+# fingertip_body_names correctness (I34, 2026-09-27): xhand_right's URDF
+# branches a dead-end fixed-joint "back" stub off each MID-CHAIN link
+# (right_hand_*_rota_link1) as well as off the true tip's own parent
+# (right_hand_*_rota_link2/*back_link2), so the pre-I34 naive leaf merge
+# (leaf_link_names + merged_body_name) returned 11 names for a 5-fingered
+# hand -- including right_hand_link, the PALM ROOT itself (via the ee_link/
+# back_link dead ends off it) -- instead of the 5 real distal tips.
+# merged_terminal_names (see test_urdf_cutter.py) fixes this generally;
+# these are the end-to-end regression against the real hand.
+# --------------------------------------------------------------------------
+
+XHAND_RIGHT_TRUE_TIPS = frozenset({
+    "right_hand_thumb_rota_link2", "right_hand_index_rota_link2",
+    "right_hand_mid_link2", "right_hand_ring_link2", "right_hand_pinky_link2",
+})
+
+
+@needs_source_root
+def test_xhand_right_fingertips_are_the_5_real_distal_tips_not_knuckles_or_palm(
+    monkeypatch, tmp_path
+):
+    monkeypatch.delenv(SOURCE_ROOT_ENV_VAR, raising=False)
+    spec, _cut = build_hand_only_spec("xhand_right", out_dir=tmp_path)
+    assert set(spec.fingertip_body_names) == XHAND_RIGHT_TRUE_TIPS
+    assert len(spec.fingertip_body_names) == 5
+    assert spec.palm_body_name not in spec.fingertip_body_names
+
+
+@needs_source_root
+@pytest.mark.parametrize("hand_id", ("wuji_right", "tesollo_dg5f_right"))
+def test_other_mesh_only_hands_fingertips_unchanged_by_the_terminus_filter(
+    hand_id, monkeypatch, tmp_path
+):
+    # wuji_right/tesollo_dg5f_right have no dead-end branching (each finger's
+    # leaf chain ends in exactly one real tip link) -- the I34 filter must be
+    # a no-op for them: still 5 fingertips, one per finger.
+    monkeypatch.delenv(SOURCE_ROOT_ENV_VAR, raising=False)
+    spec, _cut = build_hand_only_spec(hand_id, out_dir=tmp_path)
+    assert len(spec.fingertip_body_names) == 5
+    assert spec.palm_body_name not in spec.fingertip_body_names

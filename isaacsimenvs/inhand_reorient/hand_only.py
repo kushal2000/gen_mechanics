@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Mapping
 
 from .urdf_cutter import (
-    CutURDF, cut_urdf_to_hand, leaf_link_names, merged_body_name, movable_joint_names,
+    CutURDF, cut_urdf_to_hand, merged_terminal_names, movable_joint_names,
 )
 
 __all__ = [
@@ -326,13 +326,16 @@ def build_hand_only_spec(
         )
 
     joint_names = movable_joint_names(cut.root)
-    # Post-merge names (merged_body_name): a hand-only cut's leaf links are
-    # sometimes a fixed-joint sensor/pad stub past the last actuated joint
-    # (e.g. SHARPA's "*_fingertip" -> "*_elastomer" -> "*_DP"), which the USD
-    # importer folds into that ancestor -- see merged_body_name's docstring.
-    # dict.fromkeys dedupes (preserving order) in the unlikely case two leaf
-    # names collapse onto the same surviving body.
-    tips = tuple(dict.fromkeys(merged_body_name(cut.root, t) for t in leaf_link_names(cut.root)))
+    # Post-merge, terminus-filtered names (merged_terminal_names): a hand-only
+    # cut's leaf links are sometimes a fixed-joint sensor/pad stub past the
+    # last actuated joint (e.g. SHARPA's "*_fingertip" -> "*_elastomer" ->
+    # "*_DP"), which the USD importer folds into that ancestor -- see
+    # merged_body_name's docstring -- or a dead-end stub branching off a
+    # MID-CHAIN link that also continues to the real tip (e.g. xhand_right's
+    # "*_rotaback_link1" off "*_rota_link1", I34) -- merged_terminal_names
+    # drops those so a knuckle (or the palm root) never masquerades as a
+    # fingertip.
+    tips = merged_terminal_names(cut.root)
     limits = _joint_limits(cut.root, joint_names)
     adjacency = _self_adjacent_links(cut.root, joint_names)
 

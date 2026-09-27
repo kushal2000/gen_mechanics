@@ -38,7 +38,7 @@ from hand_sampler.grammar_bench.refgen.mesh_sections import resolve_mesh_filenam
 
 __all__ = [
     "CutURDF", "cut_urdf_to_hand", "movable_joint_names", "leaf_link_names",
-    "merged_body_name",
+    "merged_body_name", "merged_terminal_names",
 ]
 
 _GEOMETRY_TAGS = ("visual", "collision")
@@ -228,3 +228,34 @@ def merged_body_name(root: ET.Element, link_name: str) -> str:
     while joint_type_of_child.get(name) == "fixed" and name in parent_of:
         name = parent_of[name]
     return name
+
+
+def merged_terminal_names(root: ET.Element) -> tuple[str, ...]:
+    """The merged (``merged_body_name``) names of ``leaf_link_names(root)``
+    that are actual kinematic TERMINI -- the general ``build_hand_only_spec``
+    fingertip fallback (I34: xhand_right regression, 2026-09-27).
+
+    ``leaf_link_names`` alone (every link that is no joint's parent, fixed OR
+    movable) cannot tell a real fingertip apart from a dead-end FIXED-joint
+    stub -- a cosmetic cover, sensor pad, or parallel four-bar "back"/coupler
+    link -- branching off a link that ALSO continues the real chain through a
+    MOVABLE joint. xhand_right's thumb is exactly this: ``right_hand_
+    thumb_rota_link1`` carries both a fixed ``*_rotaback_link1`` dead end AND
+    a revolute joint onward to ``*_rota_link2`` (itself carrying a fixed
+    ``*_rotaback_link2`` dead end alongside the fixed joint to the REAL tip,
+    ``*_rota_tip``). Naively merging every raw leaf (``merged_body_name``)
+    resolves the dead-end leaf ``*_rotaback_link1`` up through its fixed
+    joint to ``*_rota_link1`` -- the thumb's MID knuckle, not its tip -- and
+    reports it as a spurious "fingertip" (confirmed: xhand_right's raw merge
+    returned 11 names, including the PALM ROOT itself via ``*_ee_link``/
+    ``*_back_link``, instead of the 5 real ``*_tip`` links). Filtered here by
+    dropping any merged name that is itself the parent of a MOVABLE joint --
+    i.e. that has a further actuated descendant, so it cannot be a terminus --
+    which is a no-op for every hand whose leaves already resolve 1:1 onto
+    real tips (sharpa, allegro_right, dclaw, wuji_right, tesollo_dg5f_right:
+    confirmed byte-identical to the naive merge)."""
+    merged = dict.fromkeys(merged_body_name(root, t) for t in leaf_link_names(root))
+    movable_parents = {
+        j.find("parent").get("link") for j in root.findall("joint") if j.get("type") != "fixed"
+    }
+    return tuple(name for name in merged if name not in movable_parents)
