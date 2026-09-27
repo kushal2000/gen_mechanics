@@ -40,13 +40,25 @@ def initial_success_tolerance(env) -> float:
 
 
 def get_curriculum_state(env) -> dict:
-    """The curriculum state a resume needs, as plain JSON-able data."""
-    return {
+    """The curriculum state a resume needs, as plain JSON-able data.
+
+    ``env.extra_curriculum_state``, when the env defines it (a callable
+    returning a dict), is merged in on top -- a generic hook for an env that
+    stages MORE than this tolerance (currently ``inhand_reorient``'s goal-
+    difficulty curriculum, I24 Phase 1c), without this shared module knowing
+    any env-specific names. A ``PoseReachEnv`` (or anything else with no such
+    attribute) gets exactly the 4-key dict this always returned.
+    """
+    state = {
         "version": CURRICULUM_STATE_VERSION,
         "current_success_tolerance": float(env._current_success_tolerance),
         "frame_counter": int(env._frame_counter),
         "last_curriculum_update": int(env._last_curriculum_update),
     }
+    extra = getattr(env, "extra_curriculum_state", None)
+    if callable(extra):
+        state.update(extra())
+    return state
 
 
 def set_curriculum_state(env, state: dict | None) -> None:
@@ -72,6 +84,10 @@ def set_curriculum_state(env, state: dict | None) -> None:
     env._frame_counter = int(state.get("frame_counter", env._frame_counter))
     env._last_curriculum_update = int(
         state.get("last_curriculum_update", env._last_curriculum_update))
+
+    restore = getattr(env, "restore_extra_curriculum_state", None)
+    if callable(restore):
+        restore(state)
 
     ckpt_tol = state.get("current_success_tolerance")
     override = _resume_override(env)
