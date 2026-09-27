@@ -240,3 +240,11 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - b6dab74: rotation about the palm normal is the default task; curricula decoupled (I26). 7978f49: drop detection along world z (review item 2; all six calibrated single hands use local +z, so past single-hand runs were unaffected). 6715211: dclaw calibrates with per-joint curl (I25).
 - xhand/wuji/tesollo scored 0 in calibration: the loader used kinematics-only fixture URDFs, so no collision geometry (I33). The worker concluded the meshes did not exist; they do, in the manifest source_root. Part 2 worker fixes the resolver, calibrates, and runs 15-min gates for all six hands plus a resume check.
 - Cluster needs the external model tree synced (183 MB) via `cluster sync <dir> hand_models`.
+
+## First cluster job (2026-09-27 ~16:50)
+
+- Synced a clean `git archive` of 07a43be (secret scan: only a doc placeholder) to code/gen_mechanics, and the hand-model tree (183 MB) to code/hand_models.
+- Smoke 2364675 (main tier, RTX A6000, 30-min limit, 20.5 min elapsed, 0.34 GPU-h): dclaw trained 42M steps in 12.9 min at ~66k fps (4090: ~250k fps); learning per step matches local. Boot 7.5 min: Kit startup 300 s, URDF->USD conversion 120 s (cold caches). Kit ignored SIGTERM again; `timeout -k` killed it (137), as designed.
+- Cache test running on RTX 6000 Ada nodes: 2364778 (cold, saves a Kit cache seed to NFS) then 2364779 (warm, afterok).
+- Found a silent-failure bug in the cluster tool's ada/ngpu self-cap check (I35); used the main tier with the ada6000-shared partition instead.
+- Survey of the old co-evolution loop saved (coevolution-reuse-survey.md).
