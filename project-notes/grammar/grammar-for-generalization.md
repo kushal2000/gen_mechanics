@@ -75,3 +75,9 @@ Priority order for implementation: rest bend (unblocks every hand), then continu
 - E11: support widening levels vs real hands and bits-per-joint cost.
 - Literature: which properties of a morphology training distribution drive controller generalization (coverage vs diversity vs realism vs scale).
 - Then: a recommendation on the support (continuous vs grid, rest bend), on which structural variety the population should be forced to keep (curriculum), and on realizability constraints to add.
+
+## 8. Representation settled (2026-09-26 evening)
+
+The structure `derive()` compiles now holds all 14 real hands in the benchmark, including the articulated palms (SHARPA pinky CMC, Shadow LFJ5, SVH palm arch, ARMS CMC4/5), after cutting wrists and merging fixed joints, under one motor per joint. `derive(project(hand))` matches the original to about 1e-13 mm and 2e-6 deg, and Pinocchio on the exported URDF agrees with Pinocchio on the original. This is exact by construction, because each joint origin is a free pose: it proves topology and joint-type coverage, not approximation quality under a constrained grammar. Couplings and prismatic joints are future items; Barrett and ARMS have no fingertip frames; geometry stays capsules (E14).
+
+The corrected real-hand atlas (`experiments/E13_representation/summary.md`) is the input for grammar tuning. The largest gaps: finger mounts sit a median 22.5 mm off the palm line on 94% of mounts, with no offset production in the default grammar; co-located knuckles and long links put 18% of phalanx lengths outside 15-80 mm; palms are longer than 80 mm; 15-19% of joint limits fall outside the choice sets; rest bends are small but common.

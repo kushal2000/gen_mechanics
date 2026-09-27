@@ -181,17 +181,17 @@
     },
     {
       "id": "I21",
-      "status": "invalid (gauge/pooling artefacts); to be recomputed",
-      "hypothesis": "Grammar gaps from the E13 atlas (for later grammar tuning, not now): real palm segments longer than the grammar's 80 mm (67% outside); co-located knuckles and >80 mm links (18% of phalanx lengths outside 15-80 mm); lateral mount offsets on 28% of mounts with no grammar production; rest bends median 19 deg with bend off by default; limits outside choice sets ~20%; coupling multipliers off-grid 90%; palm-joint couplings (SVH j5, ARMS CMC5) and cross-digit couplings not in the structure.",
+      "status": "open (recomputed)",
+      "hypothesis": "Grammar gaps from the corrected E13 atlas (14 real hands, parallel-transport gauge), input for later grammar tuning: (1) lateral mount offsets: 94% of digit/palm mounts sit off the palm segment line (median 22.5 mm, max 62 mm) and the default grammar has no offset production; (2) phalanx lengths: 18% outside 15-80 mm (co-located knuckles at 0 mm and links up to 84 mm); (3) palm/root segment length: median 93 mm vs grammar max 80 mm (partly a URDF root-origin convention); (4) joint limits: 15-19% outside the choice sets (real ranges down to -180 and up to 180 deg); (5) physical rest bends: median 0.9 deg but nonzero in 57% of continuations (max 99 deg) while bend is off by default; (6) axis-to-link angle median 90 deg (perpendicular hinges dominate) with a few axial joints; (7) real hands use 0-11 mimic joints (future: couplings).",
       "decision": null,
-      "evidence": "opus-review-representation.md finding 4"
+      "evidence": "E13_representation/summary.md grammar-gap table (merge 432dbe2)"
     },
     {
       "id": "I22",
-      "status": "open",
+      "status": "fixed",
       "hypothesis": "Before the representation is settled: (1) claim wording + n/a tips + limit deltas + DOF counts; (2) _compose_bend_rpy -> R(mount)R(bend), byte-identical at bend 0; (3) parallel-transport gauge in projection; (4) atlas recomputed (fold axis sign, physical bend, mount offsets only, fixture excluded, DH invariants) and I21 rewritten; (5) branch check made live (real error), ORCA hand_root right_palm; (6) Pinocchio check of exported derived URDFs, sha256 verification for local files, Dex1 added. Couplings scope and Coupled own limits: deferred with actuation (Martin). UPDATED per Martin: no wrists; mimics -> independent joints (one motor per joint); prismatic and couplings are future items (no Dex1).",
-      "decision": null,
-      "evidence": "opus-review-representation.md"
+      "decision": "keep",
+      "evidence": "merge 432dbe2; 3124 passed; E13 15/15 PASS with Pinocchio export check; sha256 verified; ORCA cut at right_palm"
     },
     {
       "id": "I23",
@@ -202,7 +202,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "I22 fix worker running in its own git worktree (parallel with the cross-section study); then merge, re-run E13, rewrite I21.",
+  "next_action": "Representation settled. Next (Martin to choose): grammar tuning for explorability using I21 (mount offsets, knuckle lengths, palm length, limits, bends), or integration (slot adapter, USD authoring, tokens, evolve.py).",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -211,7 +211,8 @@
     "stop_reason": "worker (6/6) and Opus (2/2) budgets exhausted; M1 partially met; scope/budget decision needed"
   },
   "milestones": {
-    "M1": "met with honest coverage (2026-09-26): kinematics/import/export/generation verified; coverage report now states topology_expressible=no for all real hands with named reasons; in_support=no for all."
+    "M1": "met with honest coverage (2026-09-26): kinematics/import/export/generation verified; coverage report now states topology_expressible=no for all real hands with named reasons; in_support=no for all.",
+    "representation": "settled (2026-09-26): the structure compiled by derive() holds all 14 real hands (incl. articulated palms: SHARPA pinky CMC, Shadow LFJ5, SVH j5, ARMS CMC4/5) exactly after wrist cut and fixed-joint merge, with one motor per joint; verified by our FK and independently by Pinocchio on exported URDFs. Caveats: exact by construction (free pose per joint origin), fingertips undefined for Barrett and ARMS, couplings and prismatic joints are future items, capsule geometry (E14)."
   },
   "program": {
     "name": "representation check before integration",

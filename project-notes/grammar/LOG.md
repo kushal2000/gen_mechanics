@@ -188,3 +188,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## Representation check, item 4: cross-section study (2026-09-26 ~17:00)
 
 - E14 (piper env, allow_dirty with diff hash): 11 hands, 146 finger links, 413 sections (Shadow skipped: DAE only; Allegro via visual OBJ). Best single template h/w 1.00, r/h 0.45 (converges to a circle): 15%/41% of sections within 2/3 mm vs per-link capsule 15%/39%, per-hand radius 10%/23%, one radius 5%/17% (global radius 9.4 mm). Free rounded rectangles per section: median max error 2.7 mm vs circle 4.8 mm. PhysX docs: restOffset/contactOffset are per-shape but not documented as corner rounding; GPU convex hulls fall back to CPU above 64 vertices. Decision: keep capsules. I23 (runner --list quirk) opened.
+
+## Representation check closed (2026-09-26 ~18:10)
+
+- I22 fixes merged from the worker's worktree (merge 432dbe2): proper bend composition R(mount)R(bend) (byte-identical at zero), parallel-transport gauge, explicit palm set with a live branch check, one motor per joint (mimics independent), no wrists (ORCA cut at right_palm), fingertip n/a, Pinocchio check of exported derived URDFs, sha256 verification. Suite 3124 passed. E13: 15/15 PASS (14 real + fixture), max 1.1e-13 mm / 1.7e-6 deg; Pinocchio export check max 3.6e-13 mm. Worktree and branch removed after merge.
+- Corrected atlas recorded in I21 (mount offsets median 22.5 mm on 94% of mounts; 18% of phalanx lengths outside 15-80 mm; palm length median 93 mm; limits 15-19% outside; physical bends median 0.9 deg, max 99). Representation milestone settled.
