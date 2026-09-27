@@ -198,3 +198,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - uv 0.12.19 installed user-level (~/.local/bin, no profile changes). Pinned README recipe into .venv_isaacsim (Python 3.11, gitignored, 17 GB): torch 2.7.0+cu126 (CUDA on the RTX 4090), numpy 1.26.0, isaaclab 2.3.2.post1, isaacsim 5.1.0.0, rl_games resolving to third_party (README verify check passes), pytest in the venv. Install script and log: scratchpad install_isaac.{sh,log}.
 - Cluster: cluster tool + slurm skill installed by Martin with local paths; Kerberos ticket valid; ssh control connection not yet open (Martin runs ssh -fN cluster).
+
+## RL phase 0 (cluster) and phase 1 (2026-09-26 ~22:40)
+
+- Cluster: cluster setup (env.sh pushed, uv present), repo synced to /data/pulkitag/users/mpeticco/code/gen_mechanics, venv built by cpu-tier job 2359859 (tig-cpu, 4 CPUs, 16 GB, 29 min, COMPLETED; log slurm/logs/gm-venv-2359859.out). GPU hours used: 0.
+- Phase 1 (worker): isaacsimenvs/inhand_reorient (commits 9b7d501..ce3745e): URDF cutter, HandOnlySpec, InHandReorientEnv(PoseReachEnv), LSTM-MLP SAPG config. SHARPA 512-env smoke trains 5 epochs; kill-and-resume restores epoch and curriculum; dclaw boots. 31 package tests pass (venv, plugin autoload disabled). Gaps: no learning curve yet, counters not logged, palm-up orientation uncalibrated, allegro not booted -> Phase 1b running.
