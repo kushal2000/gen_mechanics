@@ -218,10 +218,10 @@
     },
     {
       "id": "I26",
-      "status": "in_progress",
-      "hypothesis": "Neither the tolerance curriculum (0.4 -> 0.1 rad) nor the goal curriculum (axis -> full) advanced in 15-min runs; both need 3.0 successes/episode (allegro 1.4, sharpa 0.7). A 60-min SHARPA run from scratch checks whether they advance, and gives E-R0 time calibration.",
+      "status": "open",
+      "hypothesis": "60-min SHARPA run: axis-only goals learned (successes/episode 0 -> 0.22, rot error 2.16 -> 1.60 by 10 min); at frame 24227 (~18 min) BOTH curricula fired in the same step (same statistic, threshold 3.0, interval 3000): goals axis -> full random and tolerance 0.40 -> 0.36. Afterwards successes fell to ~0.03 and rot error stayed ~1.95-2.0 rad for 40 min (no recovery). Full random-orientation goals are not learnable at this budget with this setup; axis goals are. Proposed: use palm-normal-axis goals as the E-R0/E-R1 task (cheap, discriminative), decouple the two curricula, log the goal stage; keep 'full' as a later, separately budgeted task.",
       "decision": null,
-      "evidence": "outputs/2026-09-27/*/0_sharpa_60min"
+      "evidence": "outputs/2026-09-27/10-17-25/0_sharpa_60min (347M steps, 60 min, ~100k fps)"
     },
     {
       "id": "I27",
@@ -229,6 +229,13 @@
       "hypothesis": "Kit hangs in shutdown after SIGTERM: a `timeout 900` run stayed alive (frozen) for ~10.5 h.",
       "decision": "Always `timeout -k 30 <cap>` locally; on SLURM the time limit already escalates to SIGKILL, but set --signal/grace and never rely on clean Kit shutdown.",
       "evidence": "worker report 2026-09-27"
+    },
+    {
+      "id": "I28",
+      "status": "resolved",
+      "hypothesis": "Phase 2 worker's own 'research' forks inherited its implementation brief and wrote the same module concurrently in the live checkout (grammar_envelope.py overwritten).",
+      "decision": "Coordinator stopped the 3 forks; worker restored its verified version and continues solo. Worker briefs now forbid subagents/forks.",
+      "evidence": "2026-09-27 10:44"
     }
   ],
   "last_green_commit": "3acff20",

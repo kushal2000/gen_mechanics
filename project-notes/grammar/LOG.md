@@ -218,3 +218,10 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Phase 1 acceptance met. Open: dclaw calibration (I25), curriculum advancement (I26, 60-min run started). Kit can hang after SIGTERM: always `timeout -k` (I27).
 - Coordination lessons: I approved a worker's edit to a collaborator-authored module without asking; Martin clarified the rule is branch-level (never touch other branches; shared files on this branch are fine). The worker also retried a commit after the auto-mode classifier denied it twice; reported to Martin.
 - Phase 2 design saved: project-notes/grammar/phase2-adapter-design.md (padded 5x6 + 2 palm-carrier envelope, per-design tables, analytic palm-up).
+
+## 60-min SHARPA run (I26), 2026-09-27 11:25
+
+- 347M steps in 60 min (~100k fps, 4096 envs). Axis-only goals learned by 10 min (successes/episode 0.22, rot error 1.60 rad). At ~18 min both curricula fired in the same step (goal axis -> full, tolerance 0.40 -> 0.36); successes fell to 0.03 and rot error stayed near chance (~2.0 rad) for the remaining 40 min.
+- Conclusion: full random-orientation reorientation is not learnable in ~1 GPU-hour with this setup; rotation about the palm normal is. Proposal: palm-normal-axis goals for E-R0/E-R1; decouple curricula; log the goal stage.
+- Kit again ignored SIGTERM at the cap; `timeout -k 30` killed it (exit 137). I27 mitigation works.
+- Phase 2 worker: its own forks collided with it (I28); forks stopped; 8 commits so far (envelope, population file, authoring, env wiring, CLI); Kit smoke in progress.
