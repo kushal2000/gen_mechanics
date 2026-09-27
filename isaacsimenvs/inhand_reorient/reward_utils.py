@@ -38,15 +38,32 @@ def compute_rewards(env) -> torch.Tensor:
     action_delta_penalty = ((env._prev_actions - env._prev_actions_this_step) ** 2).sum(dim=-1)
     hand_vel_penalty = (env.robot.data.joint_vel ** 2).sum(dim=-1)
 
-    reward = (
-        cfg.rotation_progress_scale * progress
-        + cfg.goal_bonus * env._is_success.float()
-        - cfg.action_penalty_scale * action_penalty
-        - cfg.action_delta_penalty_scale * action_delta_penalty
-        - cfg.hand_velocity_penalty_scale * hand_vel_penalty
-    )
-    reward = reward - cfg.drop_penalty * env._termination_reasons.get(
+    goal_bonus_term = cfg.goal_bonus * env._is_success.float()
+    action_penalty_term = -cfg.action_penalty_scale * action_penalty
+    action_delta_penalty_term = -cfg.action_delta_penalty_scale * action_delta_penalty
+    hand_vel_penalty_term = -cfg.hand_velocity_penalty_scale * hand_vel_penalty
+    drop_penalty_term = -cfg.drop_penalty * env._termination_reasons.get(
         "drop", torch.zeros_like(env._is_success)).float()
+    progress_term = cfg.rotation_progress_scale * progress
+
+    reward = (
+        progress_term + goal_bonus_term + action_penalty_term
+        + action_delta_penalty_term + hand_vel_penalty_term + drop_penalty_term
+    )
+    # Per-term breakdown, for TensorBoard (logging_utils.log_step_metrics
+    # publishes this as env.extras["episode_cumulative"], mirroring
+    # pose_reaching_6d's reward_utils.rewards -- see that module for why the
+    # SAME dict shape matters (EnvStatsAlgoObserver sums it over each
+    # episode, then averages over episodes that just finished).
+    env._reward_terms = {
+        "rotation_progress_rew": progress_term,
+        "goal_bonus_rew": goal_bonus_term,
+        "action_penalty": action_penalty_term,
+        "action_delta_penalty": action_delta_penalty_term,
+        "hand_velocity_penalty": hand_vel_penalty_term,
+        "drop_penalty": drop_penalty_term,
+        "total_reward": reward,
+    }
     return reward
 
 

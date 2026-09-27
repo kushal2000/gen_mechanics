@@ -18,7 +18,7 @@ from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
 
 from .env_cfg import InHandReorientEnvCfg
 from .obs_utils import build_observations, compute_intermediate_values, pre_physics_step
-from .reset_utils import allocate_state_buffers, reset_env_state
+from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
 from .reward_utils import compute_rewards, compute_terminations, update_tolerance_curriculum
 from .scene_utils import finalize_scene, setup_scene
 
@@ -62,7 +62,9 @@ class InHandReorientEnv(PoseReachEnv):
         return compute_terminations(self)
 
     def _get_rewards(self) -> torch.Tensor:
-        return compute_rewards(self)
+        reward = compute_rewards(self)
+        log_step_metrics(self)
+        return reward
 
     def _get_observations(self) -> dict[str, torch.Tensor]:
         return build_observations(self)

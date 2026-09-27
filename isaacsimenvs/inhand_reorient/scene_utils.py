@@ -13,6 +13,7 @@ population is involved (Phase 2).
 
 from __future__ import annotations
 
+import dataclasses
 import tempfile
 import time
 from pathlib import Path
@@ -26,12 +27,39 @@ from isaacsimenvs.pose_reaching_6d.scene_utils.assembly import _convert_fixed_ro
 
 from .hand_only import build_hand_only_spec
 from .obs_utils import derive_spaces
+from .palm_calibration import load_calibration
 
 ROBOT_PATH = "/World/envs/env_.*/Robot"
 OBJECT_PATH = "/World/envs/env_.*/Object"
 GOALVIZ_PATH = "/World/envs/env_.*/GoalViz"
 
-__all__ = ["setup_scene", "finalize_scene"]
+__all__ = ["setup_scene", "finalize_scene", "apply_palm_calibration"]
+
+
+def apply_palm_calibration(env, spec):
+    """Overrides ``spec.base_rot`` (and ``env.cfg.reset.object_spawn_offset``,
+    IN/OUT like ``derive_spaces``) from ``hand_calibration.json``'s entry for
+    ``env.cfg.assets.hand_id``, written by ``calibrate_palm_up.py``.
+
+    Fallback (no entry for this hand, or no file yet): identity ``base_rot``
+    (``spec`` unchanged) with a logged warning -- calibration is data, not a
+    hard requirement, so an uncalibrated hand still boots.
+    """
+    hand_id = env.cfg.assets.hand_id
+    entry = load_calibration().get(hand_id)
+    if entry is None:
+        print(f"[inhand_reorient] WARNING: no palm-up calibration for hand_id={hand_id!r} "
+              f"in hand_calibration.json; falling back to identity base_rot. Run "
+              f"calibrate_palm_up.py --hand {hand_id} to add one.", flush=True)
+        return spec
+    base_rot = tuple(float(v) for v in entry["base_rot"])
+    spawn_offset = tuple(float(v) for v in entry["spawn_offset_local"])
+    env.cfg.reset.object_spawn_offset = spawn_offset
+    print(f"[inhand_reorient] hand={hand_id} palm-up calibration: base_rot={base_rot} "
+          f"palm_normal_axis={entry.get('axis')} rest_score={entry.get('score')} "
+          f"spawn_offset_local={spawn_offset} (dated {entry.get('date')}, sha "
+          f"{entry.get('git_sha', 'unknown')[:12]})", flush=True)
+    return dataclasses.replace(spec, base_rot=base_rot)
 
 
 def _hand_articulation_cfg(spec, usd_path: str) -> ArticulationCfg:
@@ -75,6 +103,7 @@ def setup_scene(env) -> None:
     asset_dir = Path(tempfile.mkdtemp(prefix="inhand_reorient_"))
 
     spec, cut = build_hand_only_spec(env.cfg.assets.hand_id, out_dir=asset_dir)
+    spec = apply_palm_calibration(env, spec)
     derive_spaces(env.cfg, spec)
     print(f"[inhand_reorient] hand={env.cfg.assets.hand_id} joints={spec.num_hand_joints} "
           f"root={spec.hand_root} unresolved_meshes={cut.unresolved_meshes} "

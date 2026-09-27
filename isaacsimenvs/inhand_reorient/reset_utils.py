@@ -13,7 +13,9 @@ from isaaclab.utils.math import quat_apply, random_orientation
 
 from isaacsimenvs.pose_reaching_6d.reward_utils.curriculum import initial_success_tolerance
 
-__all__ = ["allocate_state_buffers", "reset_env_state", "reset_goal_trackers"]
+__all__ = [
+    "allocate_state_buffers", "reset_env_state", "reset_goal_trackers", "log_step_metrics",
+]
 
 
 def allocate_state_buffers(env) -> None:
@@ -116,3 +118,46 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     from .obs_utils import update_palm_frame_geometry
 
     update_palm_frame_geometry(env)
+
+
+def log_step_metrics(env) -> None:
+    """Publish step-level extras consumed by RL-Games' ``EnvStatsAlgoObserver``
+    (``coevolution/train.py``'s ``observers``), mirroring
+    ``pose_reaching_6d.reset_utils.logging_utils.log_step_metrics`` exactly so
+    the two tasks' TensorBoard/W&B panels line up: ``episode_cumulative``
+    (summed per episode, then averaged over episodes finishing this step) and
+    ``episode_final`` (read once, at the same episodes' last step) are the two
+    dict shapes that observer understands; anything else has to be a scalar
+    (or 0-dim tensor) to be picked up as ``direct_info``.
+
+    ``env.extras["successes"]`` is read directly by
+    ``coevolution/design_rewards.py`` (per-design reward banking) -- kept as
+    ``_prev_episode_successes``, unchanged, for that reason.
+    """
+    term_cfg = env.cfg.termination
+    if term_cfg.max_consecutive_successes > 0:
+        all_goals_hit = env._successes >= term_cfg.max_consecutive_successes
+    else:
+        all_goals_hit = torch.zeros_like(env._successes, dtype=torch.bool)
+
+    episode_final = {
+        "successes": env._successes.float(),
+        "all_goals_hit": all_goals_hit.float(),
+    }
+    episode_final.update({
+        f"done_{name}": value.float() for name, value in env._termination_reasons.items()
+    })
+
+    env.extras["episode_cumulative"] = env._reward_terms
+    env.extras["episode_final"] = episode_final
+    env.extras["successes"] = env._prev_episode_successes.float()
+    env.extras["current_success_tolerance"] = float(env._current_success_tolerance)
+
+    # Batch-level scalars refreshed every step (same "direct_info" mechanism
+    # current_success_tolerance uses above): rotation-error mean/median and
+    # mean hold-streak length are continuous, per-step quantities with no
+    # natural "episode_final" reading, unlike success/drop/timeout which are
+    # per-EPISODE outcomes already covered by episode_final above.
+    env.extras["rot_error_mean"] = float(env._rot_error.mean())
+    env.extras["rot_error_median"] = float(env._rot_error.median())
+    env.extras["consec_success_steps_mean"] = float(env._consec_success_steps.float().mean())
