@@ -36,7 +36,9 @@
     "Hand set for the representation check: current 11 + articulated-palm hands (SVH, Shadow, ARMS; SHARPA pinky CMC). Licences not a concern (local dev).",
     "Wrists are never part of the hand (Martin, 2026-09-26): every manifest hand is cut at its palm; ORCA hand_root = right_palm.",
     "One motor per joint (Martin, 2026-09-26): coupled/mimic joints and prismatic joints are future items; the projection keeps every mimic joint as an independent revolute joint with its own declared limits; no prismatic hands are added to the check.",
-    "Geometry cross-section (E14, 2026-09-26): keep capsules. On 413 sections from 11 hands a single rounded-rectangle template ties a per-link capsule (41% vs 39% within 3 mm); free per-section rounded rectangles fit ~2x tighter but need per-link shape parameters; no documented PhysX cost advantage. Revisit only with a GPU benchmark (proposal in cross-section-study.md)."
+    "Geometry cross-section (E14, 2026-09-26): keep capsules. On 413 sections from 11 hands a single rounded-rectangle template ties a per-link capsule (41% vs 39% within 3 mm); free per-section rounded rectangles fit ~2x tighter but need per-link shape parameters; no documented PhysX cost advantage. Revisit only with a GPU benchmark (proposal in cross-section-study.md).",
+    "RL experiments (Martin, 2026-09-26): stationary palm-up hand, in-hand reorientation, no arm; Martin builds it as a new package isaacsimenvs/inhand_reorient on his own branch; pose_reaching_6d and collaborators' branches untouched.",
+    "Cluster budget phase 1: <=200 GPU-hours, main tier, <=4 GPUs in flight; preemptible tiers only after resume is verified and with Martin's OK; follow ~/research/slurm/CLAUDE.md etiquette; the agent never attempts cluster logins."
   ],
   "issues": [
     {
@@ -202,7 +204,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Representation settled. Next (Martin to choose): grammar tuning for explorability using I21 (mount offsets, knuckle lengths, palm length, limits, bends), or integration (slot adapter, USD authoring, tokens, evolve.py).",
+  "next_action": "Phase 0: local Isaac stack install on the 4090 (background); Phase 1 env drafting; cluster access pending Martin's ssh -fN cluster.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -215,10 +217,12 @@
     "representation": "settled (2026-09-26): the structure compiled by derive() holds all 14 real hands (incl. articulated palms: SHARPA pinky CMC, Shadow LFJ5, SVH j5, ARMS CMC4/5) exactly after wrist cut and fixed-joint merge, with one motor per joint; verified by our FK and independently by Pinocchio on exported URDFs. Caveats: exact by construction (free pose per joint origin), fingertips undefined for Barrett and ARMS, couplings and prismatic joints are future items, capsule geometry (E14)."
   },
   "program": {
-    "name": "representation check before integration",
-    "plan": "project-notes/grammar/plan-representation-check.md",
-    "started_at": "2026-09-26T14:10-04:00",
-    "budget": "<=4 Sonnet runs, 1 Opus review"
+    "name": "RL grammar tuning on the CSAIL cluster (stationary-hand in-hand reorientation)",
+    "plan": "project-notes/grammar/plan-rl-grammar-tuning.md",
+    "started_at": "2026-09-26T21:28:21-04:00",
+    "gpu_hours_budget": 200,
+    "gpu_hours_used": 0.0,
+    "tier": "main, <=4 GPUs in flight"
   },
   "experiments": {
     "E0": "done",
