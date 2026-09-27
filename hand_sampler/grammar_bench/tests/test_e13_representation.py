@@ -110,7 +110,10 @@ def test_e13_core_via_run_experiment_writes_required_keys(tmp_path):
             assert key in h
 
     atlas = per_seed_result["_atlas"]
-    assert atlas["n_hands_pooled"] == 3
+    # I22 fix 6 (contract change): the analytic coupled_finger fixture is
+    # excluded from the pooled atlas statistics (it is not a real hand) --
+    # only allegro_right and leap_right are pooled here, not all 3 cases.
+    assert atlas["n_hands_pooled"] == 2
     assert "grammar_gap_table" in atlas
     assert len(atlas["grammar_gap_table"]) > 0
 
@@ -139,7 +142,14 @@ def test_every_available_hand_passes_at_5mm_10deg():
     for h in available:
         assert h["max_pos_mm"] <= 5.0
         assert h["max_axis_deg"] <= 10.0
-        assert h["max_tip_mm"] <= 5.0
+        # I22 fix 4 (contract change): a hand with no defined fingertip
+        # anywhere reports max_tip_mm as None (n/a), excluded from
+        # pass/fail, rather than a false 0 mm -- only assert the tolerance
+        # when a comparison was actually made.
+        if h["max_tip_mm"] is not None:
+            assert h["max_tip_mm"] <= 5.0
+        else:
+            assert h.get("n_tip_compared") == 0
         assert h["joint_count_conserved"] is True
 
     # The three new articulated-palm hands, when present on this machine,
@@ -157,15 +167,26 @@ def test_every_available_hand_passes_at_5mm_10deg():
 
 
 def test_atlas_grammar_gap_table_structure():
+    """I22 fix 6 (contract change): the coupling-multiplier/offset and
+    prismatic-limit rows are removed (future items -- see the I22 decision:
+    coupled/mimic and prismatic joints are out of scope); ``physical bend``
+    (angle between consecutive link directions) and a per-hand mimic-joint
+    count replace them, and the DH-invariant rows are new. Checked by
+    prefix, since several parameter names now carry a descriptive suffix."""
     out = e13.run_e13(e13.SEED, n_configs=8)
     gap = out["_atlas"]["grammar_gap_table"]
     assert len(gap) > 0
-    required_params = {
+    required_prefixes = (
         "digit_count (per hand)", "phalanx link length (m)", "mount_frac",
-        "rest bend angle, continuation phalanges (deg)", "coupling multiplier",
-    }
-    present_params = {row["parameter"] for row in gap}
-    assert required_params <= present_params
+        "physical bend angle, continuation phalanges (deg)",
+        "mimic joints per hand", "DH common-normal length a",
+        "DH twist alpha", "lateral mount offset, digit + palm-body mounts only",
+    )
+    present_params = [row["parameter"] for row in gap]
+    for prefix in required_prefixes:
+        assert any(p.startswith(prefix) for p in present_params), f"missing gap-table row starting with {prefix!r}"
+    assert not any(p == "coupling multiplier" or p == "coupling offset (rad)" for p in present_params)
+    assert not any(p.startswith("prismatic joint limit") for p in present_params)
 
     for row in gap:
         assert {"parameter", "real", "grammar", "frac_outside"} <= set(row)

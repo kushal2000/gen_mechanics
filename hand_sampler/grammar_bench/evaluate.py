@@ -204,7 +204,7 @@ def _representation_dict(hand: dict, path: Path) -> dict:
     if check.get("reason"):
         notes.append(check["reason"])
     rep = check.get("report") or {}
-    for key in ("fingertip_undefined", "coupling_not_in_structure", "branch_not_projected"):
+    for key in ("fingertip_undefined", "coupling_as_independent", "branch_not_projected"):
         if rep.get(key):
             notes.append(f"{key}: {rep[key]}")
     return {

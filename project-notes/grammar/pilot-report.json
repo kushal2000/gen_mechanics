@@ -1,8 +1,8 @@
 {
   "schema": "hand_grammar_bench/pilot/0.1",
-  "generated_at": "2026-09-26T23:50:44.199705+00:00",
+  "generated_at": "2026-09-27T00:44:50.258551+00:00",
   "seed": 20260925,
-  "git_sha": "b9d9aa1526b34a177c487da201b3d746f6489c8d",
+  "git_sha": "1b7f1e2e1ac5723d230d011251181271254899c6",
   "git_dirty": false,
   "tool_versions": {
     "numpy": "1.26.4",
@@ -47,9 +47,9 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 1.0198049666328887e-13,
+        "max_pos_mm": 8.554842949272357e-14,
         "max_axis_deg": 8.537736462515939e-07,
-        "max_tip_mm": 1.0103182026100663e-13,
+        "max_tip_mm": 8.886119947416683e-14,
         "joint_count_conserved": true,
         "notes": []
       },
@@ -93,9 +93,9 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 1.3755821205440479e-13,
+        "max_pos_mm": 6.546139416680337e-14,
         "max_axis_deg": 1.2074182697257333e-06,
-        "max_tip_mm": 1.5704757352569648e-13,
+        "max_tip_mm": 1.0614466625631893e-13,
         "joint_count_conserved": true,
         "notes": []
       },
@@ -139,9 +139,9 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 1.1443916996305594e-13,
-        "max_axis_deg": 1.2074182697257333e-06,
-        "max_tip_mm": 0.0,
+        "max_pos_mm": 7.47341745035227e-14,
+        "max_axis_deg": 8.537736462515939e-07,
+        "max_tip_mm": null,
         "joint_count_conserved": true,
         "notes": [
           "fingertip_undefined: ['finger_1_dist_link', 'finger_2_dist_link', 'finger_3_dist_link']"
@@ -167,8 +167,8 @@
         "max_pos": 5.661155180775285e-17,
         "max_rot": 4.180215679443876e-16,
         "tolerance_met": true,
-        "reference": "frozen",
-        "reference_path": "hand_sampler/grammar_bench/references/local/ability_right.json"
+        "reference": "generated_at_run",
+        "reference_path": null
       },
       "coverage": {
         "topology_expressible": false,
@@ -190,11 +190,13 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 7.616996755589797e-14,
+        "max_pos_mm": 5.776915683787074e-14,
         "max_axis_deg": 8.537736462515939e-07,
-        "max_tip_mm": 9.825336557208115e-14,
+        "max_tip_mm": 8.333897564733123e-14,
         "joint_count_conserved": true,
-        "notes": []
+        "notes": [
+          "coupling_as_independent: ['index_q2', 'middle_q2', 'ring_q2', 'pinky_q2']"
+        ]
       },
       "losses": {
         "dropped_above_hand_root": [],
@@ -216,8 +218,8 @@
         "max_pos": 1.2177709378935645e-16,
         "max_rot": 4.61303069392491e-16,
         "tolerance_met": true,
-        "reference": "frozen",
-        "reference_path": "hand_sampler/grammar_bench/references/local/inspire_right.json"
+        "reference": "generated_at_run",
+        "reference_path": null
       },
       "coverage": {
         "topology_expressible": false,
@@ -241,11 +243,13 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 7.353672668792638e-14,
-        "max_axis_deg": 8.537736462515939e-07,
-        "max_tip_mm": 9.437916079723832e-14,
+        "max_pos_mm": 6.869154506741516e-14,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 8.469999434971913e-14,
         "joint_count_conserved": true,
-        "notes": []
+        "notes": [
+          "coupling_as_independent: ['thumb_intermediate_joint', 'thumb_distal_joint', 'index_intermediate_joint', 'middle_intermediate_joint', 'ring_intermediate_joint', 'pinky_intermediate_joint']"
+        ]
       },
       "losses": {
         "dropped_above_hand_root": [],
@@ -288,9 +292,9 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 6.938893903907228e-14,
+        "max_pos_mm": 1.1123893155135927e-13,
         "max_axis_deg": 1.2074182697257333e-06,
-        "max_tip_mm": 1.0536214011716709e-13,
+        "max_tip_mm": 1.688305753616065e-13,
         "joint_count_conserved": true,
         "notes": []
       },
@@ -337,9 +341,9 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 8.91992044961712e-14,
+        "max_pos_mm": 6.546714017464125e-14,
         "max_axis_deg": 1.2074182697257333e-06,
-        "max_tip_mm": 9.126689985681992e-14,
+        "max_tip_mm": 9.315965764157242e-14,
         "joint_count_conserved": true,
         "notes": []
       },
@@ -383,9 +387,9 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 1.9653735636544138e-13,
+        "max_pos_mm": 5.928593550334434e-14,
         "max_axis_deg": 1.2074182697257333e-06,
-        "max_tip_mm": 3.067469883233883e-13,
+        "max_tip_mm": 8.326672684688674e-14,
         "joint_count_conserved": true,
         "notes": []
       },
@@ -429,9 +433,9 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 8.804469334467935e-14,
+        "max_pos_mm": 8.505453752507595e-14,
         "max_axis_deg": 1.2074182697257333e-06,
-        "max_tip_mm": 1.1652384351680995e-13,
+        "max_tip_mm": 1.1328952961336746e-13,
         "joint_count_conserved": true,
         "notes": []
       },
@@ -448,12 +452,12 @@
       "license": "MIT",
       "availability": "available",
       "reason": null,
-      "movable_joints": 17,
+      "movable_joints": 16,
       "couplings": 0,
       "fidelity": {
-        "n_poses": 2982,
-        "max_pos": 1.15746490986309e-16,
-        "max_rot": 5.222180388738335e-16,
+        "n_poses": 2698,
+        "max_pos": 8.914858544102342e-17,
+        "max_rot": 5.252059751039221e-16,
         "tolerance_met": true,
         "reference": "generated_at_run",
         "reference_path": null
@@ -462,14 +466,14 @@
         "topology_expressible": false,
         "in_support": false,
         "missing_constructs": [
-          "excess_children:right_palm",
-          "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset,right_wrist_offset"
+          "fixed_in_digit:right_index_abd_offset,right_index_mcp_offset,right_middle_abd_offset,right_middle_mcp_offset,right_pinky_abd_offset,right_pinky_mcp_offset,right_ring_abd_offset,right_ring_mcp_offset,right_thumb_abd_offset,right_thumb_mcp_offset,right_thumb_pip_offset"
         ],
         "out_of_support": [
+          "continuation_pose:right_index_mcp,right_index_pip,right_middle_mcp,right_middle_pip,right_pinky_mcp,right_pinky_pip,right_ring_mcp,right_ring_pip,right_thumb_abd,right_thumb_dip,right_thumb_pip",
           "axis_off_grid:right_thumb_abd",
-          "limits_not_in_set:right_index_abd,right_index_mcp,right_index_pip,right_middle_abd,right_middle_mcp,right_middle_pip,right_pinky_abd,right_pinky_mcp,right_pinky_pip,right_ring_abd,right_ring_mcp,right_ring_pip,right_thumb_abd,right_thumb_dip,right_thumb_mcp,right_thumb_pip,right_wrist"
+          "limits_not_in_set:right_index_abd,right_index_mcp,right_index_pip,right_middle_abd,right_middle_mcp,right_middle_pip,right_pinky_abd,right_pinky_mcp,right_pinky_pip,right_ring_abd,right_ring_mcp,right_ring_pip,right_thumb_abd,right_thumb_dip,right_thumb_mcp,right_thumb_pip"
         ],
-        "digit_count": 1,
+        "digit_count": 5,
         "digit_count_source": "root_chains",
         "notes": [
           "digit_count_source:root_chains"
@@ -478,14 +482,19 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 1.6668697823562578e-13,
-        "max_axis_deg": 8.537736462515939e-07,
-        "max_tip_mm": 1.7092969054398356e-13,
+        "max_pos_mm": 3.525374685387906e-14,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 5.051591013050332e-14,
         "joint_count_conserved": true,
         "notes": []
       },
       "losses": {
-        "dropped_above_hand_root": [],
+        "dropped_above_hand_root": [
+          "right_root",
+          "right_tower",
+          "right_world2tower_fixed_jointbody",
+          "right_wrist_jointbody"
+        ],
         "couplings_cut": [],
         "non_unit_axes": []
       }
@@ -524,9 +533,9 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 8.092071311423672e-14,
+        "max_pos_mm": 7.244417918960238e-14,
         "max_axis_deg": 8.537736462515939e-07,
-        "max_tip_mm": 8.88781302544432e-14,
+        "max_tip_mm": 1.716587549445839e-13,
         "joint_count_conserved": true,
         "notes": []
       },
@@ -595,9 +604,9 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 8.340326954278212e-14,
-        "max_axis_deg": 8.537736462515939e-07,
-        "max_tip_mm": 8.330285907980746e-14,
+        "max_pos_mm": 8.39696209046836e-14,
+        "max_axis_deg": 1.2074182697257333e-06,
+        "max_tip_mm": 8.558359842719694e-14,
         "joint_count_conserved": true,
         "notes": []
       },
@@ -658,12 +667,12 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 9.984836867842184e-14,
+        "max_pos_mm": 8.42011259293812e-14,
         "max_axis_deg": 1.2074182697257333e-06,
-        "max_tip_mm": 1.0031442548020353e-13,
+        "max_tip_mm": 6.973502068242161e-14,
         "joint_count_conserved": true,
         "notes": [
-          "coupling_not_in_structure: ['right_hand_j5', 'right_hand_index_spread', 'right_hand_ring_spread']"
+          "coupling_as_independent: ['right_hand_j5', 'right_hand_j3', 'right_hand_j4', 'right_hand_index_spread', 'right_hand_j14', 'right_hand_j15', 'right_hand_ring_spread', 'right_hand_j12', 'right_hand_j16', 'right_hand_j13', 'right_hand_j17']"
         ]
       },
       "losses": {
@@ -712,13 +721,13 @@
       "representation": {
         "ok": true,
         "passed": true,
-        "max_pos_mm": 6.949727468511708e-14,
+        "max_pos_mm": 6.245004513516506e-14,
         "max_axis_deg": 1.7075472925031877e-06,
-        "max_tip_mm": 0.0,
+        "max_tip_mm": null,
         "joint_count_conserved": true,
         "notes": [
           "fingertip_undefined: ['5distph', '4distph', 'distal_thumb', '2distph', '3distph']",
-          "coupling_not_in_structure: ['CMC5']"
+          "coupling_as_independent: ['CMC5']"
         ]
       },
       "losses": {

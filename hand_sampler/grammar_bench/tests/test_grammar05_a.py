@@ -38,7 +38,7 @@ from hand_sampler.grammar.adapters.urdf import load_urdf, to_urdf
 from hand_sampler.grammar.canonical import canonical_form, normalize_axis_sign, phenotype_hash
 from hand_sampler.grammar.coords import q_from_u, sample_configurations
 from hand_sampler.grammar.coverage import coverage
-from hand_sampler.grammar.derive import Derivation, generate, sample_derivation, vary
+from hand_sampler.grammar.derive import Derivation, DerivationStep, derive, generate, sample_derivation, vary
 from hand_sampler.grammar.distributions import DEFAULT_DISTRIBUTION, DEG
 from hand_sampler.grammar.kinematics import AffineCoupling, Body, Joint, KinematicModel
 from hand_sampler.grammar.variants import G_BEND, G_CONT
@@ -140,6 +140,56 @@ def test_g_bend_has_nonzero_bend_and_matches_oracle():
 
     assert any_nonzero, "expected at least one nonzero bend across G_BEND seeds"
     assert n_compared > 0
+
+
+# ---------------------------------------------------------------------------
+# 2b. I22 fix 1: _compose_bend_rpy is a proper rotation composition
+# (R(mount) @ R(bend)), not componentwise Euler addition -- a nonzero
+# phalanx-0 bend rotates about the MOUNT frame's own local axes, and a
+# continuation phalanx's bend is unchanged (base orientation is identity).
+# ---------------------------------------------------------------------------
+
+
+def _one_digit_derivation(mount_rpy, bend_rpy_p0, bend_rpy_p1):
+    from hand_sampler.grammar.rules import GRAMMAR_VERSION
+
+    steps = [
+        DerivationStep(path="hand", production="Hand", params={
+            "digit_count": 1, "palm_body_count": 0, "root_length": 0.05, "capsule_radius_m": 0.01,
+        }),
+        DerivationStep(path="digit/1", production="Digit", params={
+            "digit_id": "1", "mount": "root", "mount_frac": 0.5, "mount_rpy": mount_rpy,
+            "phalanx_count": 2, "top_level": True, "depth": 0, "uid": 0,
+        }),
+        DerivationStep(path="digit/1/phalanx/0", production="Phalanx", params={
+            "digit_id": "1", "p": 0, "module": {"kind": "R", "axis": (0.0, 1.0, 0.0), "limits": (-0.3, 0.9)},
+            "length": 0.02, "branch_digit_count": 0, "uid": 1,
+            "bend_rpy": bend_rpy_p0, "bend_offset": (0.0, 0.0),
+        }),
+        DerivationStep(path="digit/1/phalanx/1", production="Phalanx", params={
+            "digit_id": "1", "p": 1, "module": {"kind": "R", "axis": (0.0, 1.0, 0.0), "limits": (-0.3, 0.9)},
+            "length": 0.02, "branch_digit_count": 0, "uid": 2,
+            "bend_rpy": bend_rpy_p1, "bend_offset": (0.0, 0.0),
+        }),
+    ]
+    return Derivation(seed=-1, grammar_version=GRAMMAR_VERSION, steps=tuple(steps))
+
+
+def test_phalanx0_bend_rotates_about_mount_frame_local_axes():
+    mount_rpy = (0.3, -0.4, 0.5)
+    bend_rpy_p0 = (0.2, 0.1, -0.15)
+    bend_rpy_p1 = (0.05, -0.07, 0.09)  # continuation bend, should be UNCHANGED
+
+    derivation = _one_digit_derivation(mount_rpy, bend_rpy_p0, bend_rpy_p1)
+    m = derive(derivation)
+
+    j0 = next(j for j in m.joints if j.name == "d1p1_j")
+    R0 = fk.rpy_to_matrix(j0.origin.rpy)
+    expected0 = fk.rpy_to_matrix(mount_rpy) @ fk.rpy_to_matrix(bend_rpy_p0)
+    assert np.allclose(R0, expected0, atol=1e-12), "phalanx-0 bend must compose as R(mount) @ R(bend)"
+
+    j1 = next(j for j in m.joints if j.name == "d1p2_j")
+    assert j1.origin.rpy == bend_rpy_p1, "a continuation phalanx's bend_rpy must be unchanged (base orientation is identity)"
 
 
 # ---------------------------------------------------------------------------
