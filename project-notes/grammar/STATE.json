@@ -38,7 +38,8 @@
     "One motor per joint (Martin, 2026-09-26): coupled/mimic joints and prismatic joints are future items; the projection keeps every mimic joint as an independent revolute joint with its own declared limits; no prismatic hands are added to the check.",
     "Geometry cross-section (E14, 2026-09-26): keep capsules. On 413 sections from 11 hands a single rounded-rectangle template ties a per-link capsule (41% vs 39% within 3 mm); free per-section rounded rectangles fit ~2x tighter but need per-link shape parameters; no documented PhysX cost advantage. Revisit only with a GPU benchmark (proposal in cross-section-study.md).",
     "RL experiments (Martin, 2026-09-26): stationary palm-up hand, in-hand reorientation, no arm; Martin builds it as a new package isaacsimenvs/inhand_reorient on his own branch. Branch rule (Martin, 2026-09-27): every change stays on martin/hand-grammar and no other branch is ever touched; editing shared files ON THIS BRANCH is allowed (e.g. commit 350cacd, a generic resume hook in pose_reaching_6d/reward_utils/curriculum.py), but prefer keeping changes inside our own packages.",
-    "Cluster budget phase 1: <=200 GPU-hours, main tier, <=4 GPUs in flight; preemptible tiers only after resume is verified and with Martin's OK; follow ~/research/slurm/CLAUDE.md etiquette; the agent never attempts cluster logins."
+    "Cluster budget phase 1: <=200 GPU-hours, main tier, <=4 GPUs in flight; preemptible tiers only after resume is verified and with Martin's OK; follow ~/research/slurm/CLAUDE.md etiquette; the agent never attempts cluster logins.",
+    "Plan revision (Martin, 2026-09-27): replace E-R1 with a CPU grammar screen (viability + diversity) followed by an evolution pilot (MAP-Elites, shared controller with carried weights, graded fitness, 2 grammar variants x 2 seeds, ~20 GPU-h); E-R0 reduced to local gates + a cluster smoke. See plan-rl-grammar-tuning.md 'Revision, 2026-09-27'."
   ],
   "issues": [
     {
@@ -274,7 +275,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Opus review of Phase 2 (51be731..f81c3ca). Worker: axis-goal task + decoupled curricula (I26), per-design metrics for populations, reach-aware calibration of xhand/wuji/tesollo (+dclaw retry, I25), 15-min local learning gate per hand. Then grammar mount-spacing rule (I29/I30). Cluster: Martin reopens the ssh connection; then sync, dry-run, check, 20-min smoke, E-R0.",
+  "next_action": "Spawn-frame fix worker (running). Cluster smoke 2364675 (running). Then: I32 fixes + graded per-design scoring + eval; CPU grammar screen G0; evolution pilot E-R2'.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

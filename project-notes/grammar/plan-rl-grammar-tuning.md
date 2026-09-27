@@ -142,3 +142,36 @@ New Isaac-side module, `isaacsimenvs/inhand_reorient/scene/author_grammar.py` (i
   - grammar designs author with FK-matching frames.
 - **Cluster:** `cluster submit --dry-run` and `--check` for each job type, a 20-minute smoke, then E-R0.
 - **Reporting:** after each phase, a summary in `project-notes/grammar/` with job IDs, GPU-hours used, W&B links and results.
+
+## Revision, 2026-09-27 (approved by Martin: "sure go for it")
+
+**Why.** Evidence from Phases 1-2 and the local gates:
+- Rotation about the palm normal learns in about 15 minutes per real hand.
+- Full random reorientation does not learn within 1 GPU-hour.
+- Random grammar hands are mostly not viable: 59-64% self-intersect at rest, most reach the cube with one fingertip, and none keep it resting. A success-only fitness would score nearly all of them zero, leaving evolution nothing to climb.
+
+The large grammar comparison (E-R1, about 150 GPU-h) is replaced by a cheaper, more direct route to the question: how does the grammar shape exploration and diversity without making the problem intractable?
+
+**New order:**
+1. **Simulator fixes and graded scoring.**
+   - Fix the Opus review's population bugs (I32).
+   - Score each design with partial credit: time held, rotation achieved before a drop, and goals per unit time, keyed by design index at done time.
+   - Add a fixed-horizon evaluation of a checkpoint on a population, including projected commercial hands.
+2. **CPU grammar screen, G0, no GPU.** For each grammar variant, measure:
+   - viability: no rest overlap, at least 2 fingertips reach the spawn point, and some finger opposition;
+   - diversity: descriptor coverage and phenotype distance.
+
+   Grammar changes to test: a finger-mount spacing rule (I29), curl and opposition priors (I30), and palm support geometry.
+3. **Evolution pilot, E-R2', on the cluster.**
+   - Method: MAP-Elites with descriptors (digit count, joint count) and one shared controller whose weights carry across generations. The fitness is the graded score.
+   - Comparison: 2 grammar variants (baseline vs the best G0 variant), 2 seeds each.
+   - Metrics per generation:
+     - archive coverage and diversity;
+     - best and mean fitness;
+     - zero-shot success on the projected commercial hands;
+     - complexity.
+   - Rough cost: about 5 GPU-h per run, so about 20 GPU-h for the pilot. Scale only if the pilot is informative.
+
+**E-R0 shrinks.** The local 15-minute gates on 6 hands serve as single-hand baselines, and a 20-minute cluster smoke calibrates cluster speed.
+
+The 200 GPU-h cap, main-tier etiquette and the reporting rules stay unchanged.
