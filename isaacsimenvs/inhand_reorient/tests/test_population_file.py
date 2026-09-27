@@ -89,3 +89,64 @@ def test_canonical_json_hash_is_stable_under_key_reordering():
     b = pf._canonical_json_bytes({"a": 2, "b": 1})
     assert a == b
     assert pf._sha256_hex(a) == pf._sha256_hex(b)
+
+
+# --------------------------------------------------------------------------
+# Review item 5: provenance (grammar_version/envelope pinning, derived
+# digest independent of the raw derivation hash).
+# --------------------------------------------------------------------------
+
+
+def test_load_population_checks_grammar_version(tmp_path):
+    path, doc, entries = _small_population(tmp_path)
+    raw = json.loads(path.read_text())
+    raw["grammar_version"] = "not-the-real-version"
+    path.write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match="grammar_version"):
+        pf.load_population(path)
+
+
+def test_load_population_checks_envelope(tmp_path):
+    path, doc, entries = _small_population(tmp_path)
+    raw = json.loads(path.read_text())
+    raw["envelope"] = "not-the-real-envelope"
+    path.write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match="envelope"):
+        pf.load_population(path)
+
+
+def test_load_population_checks_derived_digest(tmp_path):
+    """A tampered/missing `derived_sha256` is fatal even though the raw
+    derivation `sha256` (which does NOT cover canonicalize/palm_up output)
+    still matches -- review item 5's "no digest covers the derived tables"
+    gap."""
+    path, doc, entries = _small_population(tmp_path)
+    raw = json.loads(path.read_text())
+    raw["designs"][0]["derived_sha256"] = "0" * 64
+    path.write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match="derived-table sha256 mismatch"):
+        pf.load_population(path)
+
+
+def test_load_population_requires_derived_digest_present(tmp_path):
+    path, doc, entries = _small_population(tmp_path)
+    raw = json.loads(path.read_text())
+    del raw["designs"][0]["derived_sha256"]
+    path.write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match="no derived_sha256"):
+        pf.load_population(path)
+
+
+def test_projected_entry_is_marked_exempt_with_filtered_pairs():
+    entry, status, reason = pf.projected_entry("sharpa_left_on_iiwa14")
+    assert status == "admitted", (status, reason)
+    assert entry.exempt_overlap is True
+    assert entry.filtered_pairs
+
+
+def test_sampled_entry_is_never_exempt():
+    entries, _rejections = pf.sampled_entries("G_SERIAL", range(30))
+    assert entries
+    for e in entries:
+        assert e.exempt_overlap is False
+        assert e.filtered_pairs == ()

@@ -10,9 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
 
 from hand_sampler.grammar.adapters.projection import ProjectionFailure, project_to_derivation
 from hand_sampler.grammar.adapters.urdf import load_urdf
@@ -33,7 +35,15 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 BENCH_DIR = REPO_ROOT / "hand_sampler" / "grammar_bench"
 MANIFEST_PATH = BENCH_DIR / "manifest.json"
 
-POPULATION_SCHEMA = "grammar_population/0.1"
+POPULATION_SCHEMA = "grammar_population/0.2"
+"""Bumped from 0.1 (review item 5, provenance): every design entry now also
+carries `derived_sha256` (a digest of `canonicalize`'s OWN numeric tables,
+not just the raw derivation -- catches a `derive`/`canonicalize`/`palm_up`
+change silently altering a population under the same derivation hash) and
+`exempt_overlap`/`filtered_pairs` (review item 4's projected-hand exemption
+-- see `admit`'s `check_overlap` and `EnvelopeDesign.filtered_pairs`).
+`load_population` requires both on every entry; a 0.1 file is rejected by
+the schema check below, not silently upgraded."""
 ENVELOPE_ID = "grammar_envelope/1"
 
 # Revolute-only: only the "R" module kind ever gets sampled (see
@@ -79,11 +89,49 @@ class PopulationEntry:
     source: str
     derivation_dict: dict
     sha256: str
+    derived_sha256: str = ""
+    exempt_overlap: bool = False
+    filtered_pairs: Tuple[Tuple[int, int], ...] = field(default_factory=tuple)
 
 
-def make_entry(source: str, derivation: Derivation) -> PopulationEntry:
+def _derived_digest(design: "ge.EnvelopeDesign") -> str:
+    """sha256 over `canonicalize`'s OWN derived tables (review item 5) --
+    independent of, and in addition to, `_entry_sha256`'s hash of the RAW
+    derivation dict. Pins the actually-simulated geometry: a `derive`,
+    `canonicalize` or `palm_up` code change that alters these tables for the
+    same derivation (e.g. a different bend/mount convention, a fixed bug in
+    the ghost-tip translation) changes THIS digest even though the
+    derivation-level `sha256` stays identical."""
+    payload = {
+        "slot_valid": design.slot_valid.astype(bool).tolist(),
+        "slot_origin": np.round(design.slot_origin.astype(float), 12).tolist(),
+        "slot_axis": np.round(design.slot_axis.astype(float), 12).tolist(),
+        "slot_limits": np.round(design.slot_limits.astype(float), 12).tolist(),
+        "slot_length": np.round(design.slot_length.astype(float), 12).tolist(),
+        "capsule_radius_m": round(float(design.capsule_radius_m), 12),
+        "root_length_m": round(float(design.root_length_m), 12),
+        "fingertip_marker_ok": design.fingertip_marker_ok.astype(bool).tolist(),
+    }
+    return _sha256_hex(_canonical_json_bytes(payload))
+
+
+def make_entry(source: str, derivation: Derivation, model, *, exempt_overlap: bool = False) -> PopulationEntry:
+    """`model` is `derive(derivation)` -- the caller has always already
+    built it (to run `admit` before deciding to keep this entry), so this
+    never re-derives. `exempt_overlap=True` (projected commercial hands
+    only, see `admit`'s own docstring) also records which rest-overlap pairs
+    (review item 4's "record which pairs") authoring must collision-filter
+    (`grammar_envelope.mark_filtered_pairs`)."""
     d = derivation_to_dict(derivation)
-    return PopulationEntry(source=source, derivation_dict=d, sha256=_entry_sha256(d))
+    design = ge.canonicalize(model, source=source)
+    filtered_pairs: Tuple[Tuple[int, int], ...] = ()
+    if exempt_overlap:
+        design = ge.mark_filtered_pairs(design)
+        filtered_pairs = design.filtered_pairs
+    return PopulationEntry(
+        source=source, derivation_dict=d, sha256=_entry_sha256(d), derived_sha256=_derived_digest(design),
+        exempt_overlap=exempt_overlap, filtered_pairs=filtered_pairs,
+    )
 
 
 def _reason_key(reason: str) -> str:
@@ -128,13 +176,17 @@ def sampled_entries(variant: str, seeds: Sequence[int]) -> Tuple[List[Population
     for seed in seeds:
         derivation = sample_derivation(seed, dist)
         model = derive(derivation)
+        # Default `admit()` args: structural + rest-overlap + spawn-height
+        # (review item 4's "sampled_only skips it" gap -- every SAMPLED
+        # design goes through the exact same full gate, here and in
+        # `load_population`, with no separate/weaker path).
         result = ge.admit(model)
         if not result.ok:
             for reason in result.reasons:
                 key = _reason_key(reason)
                 rejections[key] = rejections.get(key, 0) + 1
             continue
-        entries.append(make_entry(f"sampled:{variant}:{seed}", derivation))
+        entries.append(make_entry(f"sampled:{variant}:{seed}", derivation, model))
     return entries, rejections
 
 
@@ -219,11 +271,17 @@ def projected_entry(hand_id: str) -> Tuple[Optional[PopulationEntry], str, Optio
         return None, "rejected", f"validate_derivation issues: {issues}"
 
     model = derive(pr.derivation)
-    result = ge.admit(model)
+    # Projected commercial hands are EXEMPT from rest-overlap rejection
+    # (review item 4): their capsule overlaps are an artifact of projecting
+    # a real hand onto ONE radius per hand (SHARPA overlaps by 20 mm at the
+    # wrist, not a self-intersecting design), never a genuine defect a
+    # sampled design's overlap would be. Still subject to every OTHER
+    # check, including the structural gate and the spawn-height requirement.
+    result = ge.admit(model, check_overlap=False)
     if not result.ok:
         return None, "rejected", "; ".join(result.reasons)
 
-    entry = make_entry(f"projected:{hand_id}", pr.derivation)
+    entry = make_entry(f"projected:{hand_id}", pr.derivation, model, exempt_overlap=True)
     return entry, "admitted", None
 
 
@@ -238,7 +296,14 @@ def write_population(
     generator: str = "make_grammar_population.py",
     envelope: str = ENVELOPE_ID,
 ) -> dict:
-    designs = [{"source": e.source, "derivation": e.derivation_dict, "sha256": e.sha256} for e in entries]
+    designs = [
+        {
+            "source": e.source, "derivation": e.derivation_dict, "sha256": e.sha256,
+            "derived_sha256": e.derived_sha256, "exempt_overlap": e.exempt_overlap,
+            "filtered_pairs": [list(p) for p in e.filtered_pairs],
+        }
+        for e in entries
+    ]
     population_sha256 = _sha256_hex(_canonical_json_bytes([e.sha256 for e in entries]))
     doc = {
         "schema": POPULATION_SCHEMA,
@@ -256,12 +321,25 @@ def write_population(
 
 
 def load_population(path) -> List["ge.EnvelopeDesign"]:
-    """Load, verify every sha256 (entry + population), re-derive every
-    design from its stored derivation, and re-`admit` it -- any failure is
-    fatal (raises `ValueError`), per the design note's own contract."""
+    """Load, verify every sha256 (entry + population + derived-table digest),
+    verify provenance (`grammar_version`/`envelope`, review item 5),
+    re-derive every design from its stored derivation, and re-`admit` it
+    (respecting each entry's own `exempt_overlap`, review item 4) -- any
+    failure is fatal (raises `ValueError`), per the design note's own
+    contract. `--variant sampled_only` (`make_grammar_population.py`) goes
+    through this same function, so it is never a weaker gate than
+    `sampled_entries`' own (review item 4's "load_population does not
+    re-check it" gap)."""
     doc = json.loads(Path(path).read_text())
     if doc.get("schema") != POPULATION_SCHEMA:
         raise ValueError(f"unsupported population schema {doc.get('schema')!r}, expected {POPULATION_SCHEMA!r}")
+    if doc.get("grammar_version") != GRAMMAR_VERSION:
+        raise ValueError(
+            f"population grammar_version {doc.get('grammar_version')!r} != this checkout's "
+            f"{GRAMMAR_VERSION!r}: derive()/canonicalize() may disagree with what was admitted"
+        )
+    if doc.get("envelope") != ENVELOPE_ID:
+        raise ValueError(f"population envelope {doc.get('envelope')!r} != this checkout's {ENVELOPE_ID!r}")
 
     designs_raw = doc.get("designs", [])
     expected_population_sha = _sha256_hex(_canonical_json_bytes([d["sha256"] for d in designs_raw]))
@@ -281,8 +359,22 @@ def load_population(path) -> List["ge.EnvelopeDesign"]:
             )
         derivation = derivation_from_dict(d["derivation"])
         model = derive(derivation)
-        result = ge.admit(model)
+        exempt_overlap = bool(d.get("exempt_overlap", False))
+        result = ge.admit(model, check_overlap=not exempt_overlap)
         if not result.ok:
             raise ValueError(f"design {d.get('source')!r} fails re-admission: {'; '.join(result.reasons)}")
-        out.append(ge.canonicalize(model, source=d["source"]))
+        design = ge.canonicalize(model, source=d["source"])
+        if exempt_overlap:
+            design = ge.mark_filtered_pairs(design)
+        expected_derived = d.get("derived_sha256")
+        actual_derived = _derived_digest(design)
+        if not expected_derived:
+            raise ValueError(f"design {d.get('source')!r} has no derived_sha256 (population file predates it)")
+        if actual_derived != expected_derived:
+            raise ValueError(
+                f"design {d.get('source')!r} derived-table sha256 mismatch (expected {expected_derived}, "
+                f"re-derived {actual_derived}): grammar_version/envelope match but derive()/canonicalize()/"
+                f"palm_up() output for this design changed"
+            )
+        out.append(design)
     return out

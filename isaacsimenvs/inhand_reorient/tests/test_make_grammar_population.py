@@ -54,26 +54,38 @@ def test_write_test16_round_trips(tmp_path):
 def test_sampled_entries_have_no_bad_rest_overlap():
     """A rest-pose self-penetration (design note risk 4) was found, via a
     Kit smoke, to cause a violent (100+ rad in 1-2 steps) joint blowup --
-    make_grammar_population.py must reject sampled designs whose
-    rest_overlap_pairs penetration exceeds MAX_REST_PENETRATION_M."""
+    `ge.admit`'s default `check_overlap=True` (which every sampled-entry
+    collector in make_grammar_population.py now relies on, review item 4)
+    must reject any design whose rest_overlap_pairs penetration exceeds
+    MAX_REST_PENETRATION_M -- confirmed here directly on every collected
+    entry, not merely assumed from admission."""
     for entries in (mkpop.collect_serial_entries(8), mkpop.collect_carrier_entries(4)):
         for e in entries:
             model = derive(pf.derivation_from_dict(e.derivation_dict))
-            assert mkpop._no_bad_rest_overlap(model), f"{e.source} has a bad rest overlap"
+            design = ge.canonicalize(model, source=e.source)
+            pairs = ge.rest_overlap_pairs(design)
+            bad = [p for p in pairs if p[2] > ge.MAX_REST_PENETRATION_M]
+            assert not bad, f"{e.source} has a bad rest overlap: {bad}"
 
 
-def test_no_bad_rest_overlap_actually_rejects_a_known_bad_design():
+def test_admit_rejects_a_known_bad_rest_overlap_design():
     """G_SERIAL seed 7 (traced by a Kit smoke to a 5.6-9.6 mm rest overlap
     between f0/f1/f2/f4, all root-mounted with no palm spread) is the
-    concrete case this filter exists for -- confirm it is admitted by
-    grammar_envelope.admit (structurally valid) but rejected by the overlap
-    filter, so this isn't a vacuously-always-true check."""
+    concrete case the overlap filter exists for -- confirm it is
+    STRUCTURALLY valid (`_admit_structural`, the envelope-shape check alone)
+    but rejected by the full `ge.admit` gate (review item 4: the overlap
+    check is now part of `admit` itself, so this isn't a vacuously-always-
+    true check, and every sampled-entry path -- including `--variant
+    sampled_only` -- shares it)."""
     from hand_sampler.grammar.derive import sample_derivation
 
+    from isaacsimenvs.inhand_reorient.scene import grammar_envelope as ge2
     from isaacsimenvs.inhand_reorient.scene import population_file as pf2
 
     dist = pf2._variant_distribution("G_SERIAL")
     derivation = sample_derivation(7, dist)
     model = derive(derivation)
-    assert ge.admit(model).ok
-    assert not mkpop._no_bad_rest_overlap(model)
+    assert ge2._admit_structural(model).ok
+    result = ge2.admit(model)
+    assert not result.ok
+    assert any("rest-overlap" in r for r in result.reasons)

@@ -29,21 +29,6 @@ from .scene import population_file as pf
 DEFAULT_COMMERCIAL_HANDS: tuple[str, ...] = ("allegro_right", "dclaw", "sharpa_left_on_iiwa14", "wuji_right")
 
 
-MAX_REST_PENETRATION_M = 0.003
-"""Reject a design whose `rest_overlap_pairs` (capsule interpenetration at
-q=0) exceeds this. Design note risk 4 ("rest self-penetration: numpy
-overlap filter plus the zero-action smoke") flagged this as a risk but this
-CLI did not actually filter on it until a Kit smoke traced a violent,
-gravity-independent, velocity-capped joint blowup (multiple joints
-saturating +/-10 rad/s within one physics step, on every seed tried, always
-worst on the pc0/pc1 ghost columns because their limits are tightest) to
-exactly this: G_SERIAL seed 7's f0/f1/f2/f4 (all root-mounted, no palm
-spread to separate them) overlap by 5.6-9.6 mm at rest -- PhysX's
-depenetration impulse at the first step, not a bug in the joint frames or
-the authoring (confirmed separately: FK-in-Kit-vs-analytic matches to
-~5e-7 m with a pure state readback, no stepping)."""
-
-
 def _has_real_carrier(model) -> bool:
     """Whether `model` (already admitted) uses a REAL jointed palm carrier
     (finger slot 3 and/or 4 is a real joint, not a ghost) -- the "carrier
@@ -52,25 +37,25 @@ def _has_real_carrier(model) -> bool:
     return bool(design.slot_valid[ge.PC0_SLOT] or design.slot_valid[ge.PC1_SLOT])
 
 
-def _no_bad_rest_overlap(model, max_penetration_m: float = MAX_REST_PENETRATION_M) -> bool:
-    design = ge.canonicalize(model, source="_probe")
-    pairs = ge.rest_overlap_pairs(design)
-    return all(pen <= max_penetration_m for _a, _b, pen in pairs)
-
-
 def collect_serial_entries(n: int, seed0: int = 0, max_seeds: int = 5000) -> List[pf.PopulationEntry]:
     out: List[pf.PopulationEntry] = []
     dist = pf._variant_distribution("G_SERIAL")
     for seed in range(seed0, seed0 + max_seeds):
         derivation = sample_derivation(seed, dist)
         model = derive(derivation)
+        # `admit`'s default args already enforce the rest-overlap AND
+        # spawn-height gates (review items 2/4) -- this CLI used to run its
+        # own separate, easy-to-bypass `_no_bad_rest_overlap` check on top
+        # of a structural-only `admit(model)`; that duplication (and the
+        # `--variant sampled_only` path that skipped it entirely) is exactly
+        # the review's "not enforced ... sampled_only skips it" gap.
         result = ge.admit(model)
-        if result.ok and _no_bad_rest_overlap(model):
-            out.append(pf.make_entry(f"sampled:G_SERIAL:{seed}", derivation))
+        if result.ok:
+            out.append(pf.make_entry(f"sampled:G_SERIAL:{seed}", derivation, model))
             if len(out) >= n:
                 break
     if len(out) < n:
-        raise RuntimeError(f"only found {len(out)}/{n} admitted, non-overlapping G_SERIAL designs in {max_seeds} seeds")
+        raise RuntimeError(f"only found {len(out)}/{n} admitted G_SERIAL designs in {max_seeds} seeds")
     return out
 
 
@@ -83,12 +68,12 @@ def collect_carrier_entries(n: int, seed0: int = 0, max_seeds: int = 20000) -> L
         result = ge.admit(model)
         if not result.ok:
             continue
-        if _has_real_carrier(model) and _no_bad_rest_overlap(model):
-            out.append(pf.make_entry(f"sampled:DEFAULT_CARRIER:{seed}", derivation))
+        if _has_real_carrier(model):
+            out.append(pf.make_entry(f"sampled:DEFAULT_CARRIER:{seed}", derivation, model))
             if len(out) >= n:
                 break
     if len(out) < n:
-        raise RuntimeError(f"only found {len(out)}/{n} admitted, non-overlapping carrier designs in {max_seeds} seeds")
+        raise RuntimeError(f"only found {len(out)}/{n} admitted carrier designs in {max_seeds} seeds")
     return out
 
 

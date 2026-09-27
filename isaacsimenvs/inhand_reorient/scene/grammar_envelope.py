@@ -46,6 +46,8 @@ from hand_sampler.grammar.envelope import fits_envelope
 from hand_sampler.grammar.fk import forward_kinematics, pose_to_matrix, rodrigues
 from hand_sampler.grammar.kinematics import Joint, KinematicModel
 
+from ..palm_calibration import MIN_SPAWN_HEIGHT_ABOVE_PALM_M
+
 # --------------------------------------------------------------------------
 # Envelope layout constants
 # --------------------------------------------------------------------------
@@ -67,6 +69,12 @@ MAX_JOINTED_PALM_BODIES = 2
 GHOST_LENGTH_M = 1e-4
 GHOST_LIMITS = (0.0, 1e-8)
 GHOST_AXIS = (0.0, 0.0, 1.0)
+
+MAX_REST_PENETRATION_M = 0.003
+"""Default `admit(check_overlap=True)` rejection threshold -- moved here
+from `make_grammar_population.py` (which now imports it FROM here) so the
+gate lives with `admit` itself; see that module's own historical docstring
+for the Kit-traced blowup this threshold guards against."""
 
 SLOT_NAMES: Tuple[str, ...] = tuple(
     [f"f{f}_j{d}" for f in range(N_FINGERS) for d in range(N_JOINTS_PER_FINGER)] + ["pc0_j", "pc1_j"]
@@ -174,6 +182,17 @@ def _mat3_to_quat_wxyz(R: np.ndarray) -> np.ndarray:
     return q / np.linalg.norm(q)
 
 
+def _quat_apply_wxyz(q: Sequence[float], v: Sequence[float]) -> np.ndarray:
+    """Rotate the 3-vector `v` by the unit quaternion `q` (w, x, y, z) --
+    same convention as `palm_calibration.quat_apply`, reimplemented here so
+    `spawn_height_above_palm_m` stays numpy-only (no `scipy` import)."""
+    q = np.asarray(q, dtype=float)
+    v = np.asarray(v, dtype=float)
+    w, axis = q[0], q[1:]
+    t = 2.0 * np.cross(axis, v)
+    return v + w * t + np.cross(axis, t)
+
+
 # --------------------------------------------------------------------------
 # Admission
 # --------------------------------------------------------------------------
@@ -222,9 +241,16 @@ def _palm_index(body: str) -> int:
     return int(body[len("palm"):])
 
 
-def admit(model: KinematicModel) -> AdmissionResult:
-    """`(ok, reasons)` -- whether `model` fits the padded envelope losslessly.
-    See module docstring. `reasons` lists every violated check."""
+def _admit_structural(model: KinematicModel) -> AdmissionResult:
+    """`(ok, reasons)` -- whether `model` fits the padded envelope's SHAPE
+    losslessly (revolute-only, digit/joint counts, palm-carrier topology --
+    see the module docstring). Independent of rest-pose geometry (no rest-
+    overlap or spawn-height check -- those need a canonicalized design and a
+    per-caller policy on whether to enforce or merely report them, see the
+    public `admit` below, which wraps this). `canonicalize` calls THIS, not
+    `admit`, so canonicalizing a structurally-fine-but-overlapping design
+    (e.g. to inspect/report it, or before deciding whether to exempt it)
+    never recurses through the public gate."""
     reasons: List[str] = []
 
     env_ok, env_reasons = fits_envelope(
@@ -303,6 +329,19 @@ class EnvelopeDesign:
     finger_digit_id: Tuple[Optional[str], ...]  # length 5
     grammar_version: str = ""
     reasons: Tuple[str, ...] = field(default_factory=tuple)  # empty iff admitted
+    fingertip_marker_ok: np.ndarray = field(default_factory=lambda: np.zeros(N_FINGERS, dtype=bool))
+    """(5,) bool -- see `canonicalize`'s `_fill_chain`: whether this finger's
+    envelope fingertip-body slot is a ghost placed exactly at the real tip
+    (review item 1). False (no ghost to place) for a finger whose real chain
+    fills all 6 slots -- `palm_up` masks such a finger's `fingertip_valid`."""
+    filtered_pairs: Tuple[Tuple[int, int], ...] = field(default_factory=tuple)
+    """Slot-index pairs (root capsule uses -1) that overlap at rest and are
+    EXEMPTED from admission rejection (projected commercial hands only --
+    `admit`'s `check_overlap=False` path, see its docstring) -- authoring
+    must collision-filter exactly these pairs so PhysX's depenetration
+    impulse doesn't blow up the ghost/carrier joints at step 0. Empty for
+    every sampled design (those are REJECTED on overlap instead, never
+    exempted)."""
 
 
 def _compose_palm_transform(mount_body: str, stop_body: str, palm_joint_by_child: Dict[str, Joint]) -> np.ndarray:
@@ -328,7 +367,7 @@ def _compose_palm_transform(mount_body: str, stop_body: str, palm_joint_by_child
 
 
 def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
-    result = admit(model)
+    result = _admit_structural(model)
     if not result.ok:
         raise AdmissionError(result.reasons)
 
@@ -384,6 +423,8 @@ def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
         children_by_parent.setdefault(j.parent, []).append(j)
     frames_by_name = {fr.name: fr for fr in model.frames}
 
+    fingertip_marker_ok = np.zeros(N_FINGERS, dtype=bool)
+
     def _fill_chain(start_joint: Optional[Joint], base_slot: int, root_transform: np.ndarray) -> None:
         if start_joint is None:
             return
@@ -405,6 +446,35 @@ def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
             slot_length[idx] = float(frame.pose.xyz[2]) if frame is not None else GHOST_LENGTH_M
             slot_joint_name[idx] = j.name
             slot_body_name[idx] = j.child
+
+        # Review item 1 (fingertip one link short): a ghost slot's own
+        # `slot_origin` defaults to identity (see the `np.tile(np.eye(4), ...)`
+        # above), so with NO fix the first ghost slot after this finger's real
+        # chain sits at the BASE of the last real link (its parent's own
+        # origin), not that link's TIP -- and since every later ghost in the
+        # same finger is itself identity-offset from the one before it, the
+        # whole ghost tail (including `f{f}_link5`, whichever slot in this
+        # finger every population/observation caller treats as "the
+        # fingertip body") inherits that same wrong position. Translating
+        # ONLY this first ghost by the last real link's own length puts it
+        # (and everything chained after it) exactly at the real tip -- exact,
+        # not approximate, because a ghost's own length is negligible
+        # (`GHOST_LENGTH_M`) and its axis is the z-identity `GHOST_AXIS`, so
+        # `authored_fk`'s local transform for it is a pure translation.
+        if chain and len(chain) < N_JOINTS_PER_FINGER:
+            last_idx = base_slot + len(chain) - 1
+            first_ghost_idx = base_slot + len(chain)
+            tip_translation = np.eye(4)
+            tip_translation[2, 3] = float(slot_length[last_idx])
+            slot_origin[first_ghost_idx] = tip_translation
+        # Whether THIS finger's envelope-fixed "fingertip body" slot
+        # (index `base_slot + N_JOINTS_PER_FINGER - 1`, e.g. `f{f}_link5`)
+        # is a ghost that the translation above places exactly at the real
+        # tip. False when the finger's real chain fills all
+        # `N_JOINTS_PER_FINGER` slots (no ghost left to translate) -- see
+        # `palm_up`'s `fingertip_valid`, which masks the runtime fingertip
+        # OBSERVATION (not this finger's existence) in that case.
+        fingertip_marker_ok[base_slot // N_JOINTS_PER_FINGER] = bool(chain) and len(chain) < N_JOINTS_PER_FINGER
 
     for f in range(N_FINGERS):
         _fill_chain(finger_root_joint[f], f * N_JOINTS_PER_FINGER, finger_root_mount_transform[f])
@@ -430,8 +500,99 @@ def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
         slot_limits=slot_limits, slot_length=slot_length, slot_joint_name=tuple(slot_joint_name),
         slot_body_name=tuple(slot_body_name), capsule_radius_m=float(capsule_radius), root_length_m=root_length,
         finger_digit_id=tuple(finger_digit_id), grammar_version=getattr(model, "grammar_version", ""),
-        reasons=(),
+        reasons=(), fingertip_marker_ok=fingertip_marker_ok, filtered_pairs=(),
     )
+
+
+def admit(
+    model: KinematicModel,
+    *,
+    check_overlap: bool = True,
+    check_spawn_height: bool = True,
+    max_rest_penetration_m: float = MAX_REST_PENETRATION_M,
+    min_spawn_height_m: float = MIN_SPAWN_HEIGHT_ABOVE_PALM_M,
+) -> AdmissionResult:
+    """The public admission gate for a SAMPLED design (review items 2 and 3):
+    `_admit_structural(model)` (envelope shape) AND, by default, the design
+    note's risk-4 rest-overlap filter AND the spawn-height requirement
+    (review item 2 for populations -- `drop_detection` already uses world z
+    for the RUNTIME check; this is the admission-time equivalent). Both
+    physical checks canonicalize `model` once (structural admission has
+    already passed, so this cannot raise) and are independent -- a design
+    can fail either, both, or neither, and every violated reason is
+    reported, not just the first.
+
+    `check_overlap=False` is for PROJECTED commercial hands ONLY (review
+    item 2's exemption: their overlaps are artifacts of the one-radius-per-
+    hand capsule projection, not a real self-intersecting design) --
+    `population_file.projected_entry` passes it; every SAMPLED-design path
+    (`sampled_entries`, `load_population`, and hence `--variant
+    sampled_only`) uses the default, closing review item 4's "not enforced,
+    and sampled_only skips it" gap. `check_spawn_height=False` exists for
+    symmetry/testing only; no caller in this package passes it."""
+    structural = _admit_structural(model)
+    if not structural.ok:
+        return structural
+
+    reasons: List[str] = []
+    design = canonicalize(model)
+    if check_overlap:
+        pairs = rest_overlap_pairs(design)
+        bad = [(i, j, pen) for i, j, pen in pairs if pen > max_rest_penetration_m]
+        if bad:
+            worst = max(pen for _, _, pen in bad)
+            reasons.append(
+                f"{len(bad)} rest-overlap pair(s) exceed {max_rest_penetration_m * 1000.0:.1f} mm "
+                f"(worst {worst * 1000.0:.2f} mm)"
+            )
+    if check_spawn_height:
+        height = spawn_height_above_palm_m(design, palm_up(design, n_sweep=0))
+        if height < min_spawn_height_m:
+            reasons.append(
+                f"spawn height {height * 1000.0:.1f} mm above the palm along world z after base_rot "
+                f"< required {min_spawn_height_m * 1000.0:.1f} mm"
+            )
+    return AdmissionResult(ok=len(reasons) == 0, reasons=tuple(reasons))
+
+
+def viability_report(model: KinematicModel) -> dict:
+    """Numpy + `hand_sampler` only (no isaaclab), for the CPU grammar screen
+    (plan revision, step 2) -- everything a screen worker needs about ONE
+    derived model, without touching Kit:
+
+        {"admitted": bool, "reasons": [str, ...], "max_rest_overlap_mm": float,
+         "fingertips_reachable": int, "spawn_height_mm": float,
+         "digit_count": int, "joint_count": int}
+
+    `reasons` is `admit(model)`'s own (structural + overlap + spawn-height,
+    in that order -- structural failure short-circuits the rest, matching
+    `admit`). The geometry fields (`max_rest_overlap_mm`, `spawn_height_mm`,
+    `digit_count`, `joint_count`) are still reported even when `admitted` is
+    `False` and even when the failure is a physical (not structural) one --
+    the whole point of a screen is comparing near-miss designs, not only
+    admitted ones -- but are `None` when the model fails the STRUCTURAL
+    check (no envelope slots to measure at all)."""
+    structural = _admit_structural(model)
+    if not structural.ok:
+        return {
+            "admitted": False, "reasons": list(structural.reasons), "max_rest_overlap_mm": None,
+            "fingertips_reachable": None, "spawn_height_mm": None, "digit_count": None, "joint_count": None,
+        }
+
+    design = canonicalize(model)
+    pairs = rest_overlap_pairs(design)
+    max_overlap_mm = max((pen for _, _, pen in pairs), default=0.0) * 1000.0
+    pu = palm_up(design)
+    spawn_height_mm = spawn_height_above_palm_m(design, pu) * 1000.0
+    digit_count = int(sum(1 for d in design.finger_digit_id if d is not None))
+    joint_count = int(design.slot_valid.sum())
+
+    result = admit(model)
+    return {
+        "admitted": bool(result.ok), "reasons": list(result.reasons), "max_rest_overlap_mm": float(max_overlap_mm),
+        "fingertips_reachable": int(pu.reachable_fingertips), "spawn_height_mm": float(spawn_height_mm),
+        "digit_count": digit_count, "joint_count": joint_count,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -564,29 +725,75 @@ def mass_props(design: EnvelopeDesign, density: float = DEFAULT_DENSITY_KG_M3) -
 # --------------------------------------------------------------------------
 
 
+ROOT_NODE = -1
+"""Pseudo slot-index for the root/palm capsule in `rest_overlap_pairs`'s
+output and `EnvelopeDesign.filtered_pairs` -- the root body is authored
+(`author_grammar.author_design`'s `root_body_path`) but is not one of the 32
+envelope joint SLOTS, so it has no slot index of its own."""
+
+
+def _effective_parent(design: EnvelopeDesign, idx: int) -> int:
+    """The slot (or `ROOT_NODE`) this VALID slot `idx` is actually mounted
+    on, for adjacency purposes -- i.e. what it is EXPECTED to touch and
+    should be excluded from the overlap check against. Usually just
+    `SLOT_PARENT[idx]` (finger continuation joints, and PC0_SLOT/PC1_SLOT,
+    whose own parent is always `ROOT_SENTINEL` -> `ROOT_NODE`). The one case
+    `SLOT_PARENT` gets structurally wrong for THIS purpose: a finger 3/4 base
+    slot (`d==0`) whose structural parent (PC0_SLOT/PC1_SLOT) is a GHOST
+    (padding-only carrier, no real jointed palm body there) -- `canonicalize`
+    already collapses that ghost's zero transform when composing this slot's
+    own `slot_origin` (`_compose_palm_transform` walks straight to
+    `model.root` in that case), so the slot is PHYSICALLY mounted directly on
+    root, not on the (non-existent, uncollidable) ghost carrier -- review
+    item 4's "pairs that meet across ghosts". A same-finger continuation
+    joint's parent is always the previous slot in the SAME finger, which
+    `canonicalize`'s contiguous-prefix fill guarantees is valid whenever
+    `idx` itself is valid, so this can only ever fire for a base (`d==0`)
+    slot."""
+    parent = SLOT_PARENT[idx]
+    if parent == ROOT_SENTINEL:
+        return ROOT_NODE
+    if design.slot_valid[parent]:
+        return parent
+    return ROOT_NODE
+
+
 def rest_overlap_pairs(design: EnvelopeDesign) -> List[Tuple[int, int, float]]:
-    """Capsule-capsule rest-pose (q=0) self-penetration filter: every pair
-    of VALID, non-adjacent slots whose capsules overlap by more than their
-    own radii allow. Returns `(slot_i, slot_j, penetration_depth_m)` for
-    each such pair. Adjacent (envelope parent/child) pairs are excluded --
-    they share a joint and are expected to touch. This is a cheap capsule
-    proxy for true self-penetration (real palm-cell geometry can be tighter
-    or looser); see the design note's risk 4."""
+    """Capsule-capsule rest-pose (q=0) self-penetration filter over the
+    AUTHORED geometry: the root/palm capsule (`ROOT_NODE`) plus every VALID
+    joint slot, every pair whose capsules overlap by more than their own
+    radii allow, EXCLUDING pairs that are expected to touch (envelope
+    parent/child, walked through any ghost carrier via `_effective_parent`
+    -- review item 4's two gaps: "it ignores the root capsule and pairs that
+    meet across ghosts"). Returns `(slot_i, slot_j, penetration_depth_m)`
+    for each violating pair, `slot_i`/`slot_j` possibly `ROOT_NODE`. Ghost
+    slots themselves (other than the root pseudo-node) are never checked --
+    they have no collider (see `author_grammar._author_body_and_collider`'s
+    `real=False` path) and are physically incapable of a rest collision.
+    This is a cheap capsule proxy for true self-penetration (real palm-cell
+    geometry can be tighter or looser); see the design note's risk 4."""
     from hand_sampler.design_space import segment_distance
 
     T = authored_fk(design, np.zeros(N_SLOTS))
     valid_slots = [i for i in range(N_SLOTS) if design.slot_valid[i]]
-    adjacent = {(i, SLOT_PARENT[i]) for i in range(N_SLOTS)} | {(SLOT_PARENT[i], i) for i in range(N_SLOTS)}
+    adjacent = set()
+    for idx in valid_slots:
+        parent = _effective_parent(design, idx)
+        adjacent.add((idx, parent))
+        adjacent.add((parent, idx))
 
-    endpoints: Dict[int, Tuple[np.ndarray, np.ndarray, float]] = {}
+    endpoints: Dict[int, Tuple[np.ndarray, np.ndarray, float]] = {
+        ROOT_NODE: (np.zeros(3), np.array([0.0, 0.0, design.root_length_m]), design.capsule_radius_m),
+    }
     for idx in valid_slots:
         p0 = T[idx][:3, 3]
         p1 = (T[idx] @ np.array([0.0, 0.0, float(design.slot_length[idx]), 1.0]))[:3]
         endpoints[idx] = (p0, p1, design.capsule_radius_m)
 
+    nodes = [ROOT_NODE] + valid_slots
     out: List[Tuple[int, int, float]] = []
-    for a_i, i in enumerate(valid_slots):
-        for j in valid_slots[a_i + 1:]:
+    for a_i, i in enumerate(nodes):
+        for j in nodes[a_i + 1:]:
             if (i, j) in adjacent:
                 continue
             p0, p1, ri = endpoints[i]
@@ -596,6 +803,22 @@ def rest_overlap_pairs(design: EnvelopeDesign) -> List[Tuple[int, int, float]]:
             if pen > 1e-6:
                 out.append((i, j, float(pen)))
     return out
+
+
+def mark_filtered_pairs(design: EnvelopeDesign, max_penetration_m: float = 0.0) -> EnvelopeDesign:
+    """Return a copy of `design` with `filtered_pairs` set to every
+    `rest_overlap_pairs` pair deeper than `max_penetration_m` -- for designs
+    EXEMPTED from overlap rejection (projected commercial hands; see
+    `admit`'s `check_overlap=False` and this module's docstring on
+    `EnvelopeDesign.filtered_pairs`). `author_grammar.author_design` reads
+    this to collision-filter exactly these pairs at authoring time, instead
+    of relying on PhysX to resolve a real interpenetration itself (which, for
+    a design like this one, blows up the ghost/carrier joints on step 0 --
+    see this module's `MAX_REST_PENETRATION_M`)."""
+    import dataclasses
+
+    pairs = tuple((i, j) for i, j, pen in rest_overlap_pairs(design) if pen > max_penetration_m)
+    return dataclasses.replace(design, filtered_pairs=pairs)
 
 
 # --------------------------------------------------------------------------
@@ -716,11 +939,38 @@ def palm_up(
             last = finger_last_slot[f]
             fingertip_offsets[f] = (T_mid[last] @ np.array([0.0, 0.0, float(design.slot_length[last]), 1.0]))[:3]
 
+    # Review item 1: mask the exposed `fingertip_valid` (the runtime
+    # OBSERVATION flag -- see `obs_utils`) for a finger whose real chain
+    # fills every one of its 6 envelope slots, since then there is no ghost
+    # slot left for `canonicalize` to translate to the true tip (see its
+    # `fingertip_marker_ok`) -- the envelope-fixed "fingertip body"
+    # (`f{f}_link5`) would sit at that link's BASE, not its tip. `finger_valid`
+    # itself (this finger EXISTS) still gates every geometry computation
+    # above (mount/tip centroids, spawn point, reach sweep) -- unaffected,
+    # since those are pure FK and never depend on the marker-body trick.
+    fingertip_valid = finger_valid & design.fingertip_marker_ok
+
     return PalmUpResult(
         normal=normal, base_rot_wxyz=base_rot, default_q=mid_q, spawn_offset=spawn_offset,
-        fingertip_valid=finger_valid, fingertip_offsets=fingertip_offsets,
+        fingertip_valid=fingertip_valid, fingertip_offsets=fingertip_offsets,
         reachable_fingertips=int(np.count_nonzero(reach_count > 0)), n_swept=n_sweep,
     )
+
+
+def spawn_height_above_palm_m(design: EnvelopeDesign, pu: Optional[PalmUpResult] = None) -> float:
+    """The population spawn point's height above the palm along WORLD z,
+    AFTER `base_rot` -- `quat_apply(base_rot, spawn_offset_local)[2]`, the
+    ONE convention `palm_calibration.MIN_SPAWN_HEIGHT_ABOVE_PALM_M`'s
+    docstring pins down and `drop_detection.object_below_palm` (world z)
+    checks every reset. `HAND_BASE_POS_M`/`env_origins` (author_grammar.py)
+    are the SAME constant additive offset for every design's palm origin and
+    every env's spawn point respectively, so they cancel out of this
+    difference -- computing it here, from `spawn_offset`/`base_rot` alone,
+    with no scene/env in scope, is exact, not an approximation of the
+    runtime quantity. `pu` lets a caller that already ran `palm_up` (e.g.
+    `admit`) reuse it instead of paying for another (possibly swept) call."""
+    pu = pu if pu is not None else palm_up(design, n_sweep=0)
+    return float(_quat_apply_wxyz(pu.base_rot_wxyz, pu.spawn_offset)[2])
 
 
 # --------------------------------------------------------------------------
