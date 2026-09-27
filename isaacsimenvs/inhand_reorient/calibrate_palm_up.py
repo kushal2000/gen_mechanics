@@ -74,7 +74,17 @@ def parse_args() -> argparse.Namespace:
                         "every hand in this repo so far); the 0 lower bound of a typical flexion "
                         "joint here means positive angle = curling INTO the hand, so a moderate "
                         "positive frac searches for an actual cupped hold instead of assuming the "
-                        "flat default touches the object at all")
+                        "flat default touches the object at all. Ignored when --curl-profiles "
+                        "is given.")
+    p.add_argument("--curl-profiles", default="",
+                   help="I25 dclaw retry: comma list of candidate PROFILES, each a '/'-separated "
+                        "list of per-position curl fractions tiled cyclically across the joint "
+                        "declaration order -- e.g. '0.0/0.7/0.9' on dclaw's regular "
+                        "joint_f{1,2,3}_{0,1,2} order curls each finger's base/roll joint (the 0 "
+                        "position) at 0.0 and its distal joint (the 2 position) hardest, instead "
+                        "of one uniform fraction for the whole hand. Overrides --curl-fracs when "
+                        "non-empty; each profile is one more candidate group, same as one more "
+                        "curl_frac value.")
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--headless", action="store_true", default=True)
     return p.parse_args()
@@ -97,14 +107,21 @@ def main() -> None:
     from isaacsimenvs.inhand_reorient.env_cfg import InHandReorientEnvCfg
 
     candidates = pc.candidate_rotations(full=args.full)
-    curl_fracs = [float(v) for v in args.curl_fracs.split(",")]
-    # Every (axis candidate, curl fraction) pair is its own group of envs --
-    # same one-Kit-process multiplexing trick as the axis search alone used.
-    combos = [(cand, cf) for cand in candidates for cf in curl_fracs]
+    if args.curl_profiles:
+        # list[list[float]]; each a per-position profile tiled cyclically
+        # over the joint list below (I25).
+        curl_specs: list = [
+            [float(v) for v in prof.split("/")] for prof in args.curl_profiles.split(",")
+        ]
+    else:
+        curl_specs = [float(v) for v in args.curl_fracs.split(",")]  # list[float], uniform
+    # Every (axis candidate, curl spec) pair is its own group of envs -- same
+    # one-Kit-process multiplexing trick as the axis search alone used.
+    combos = [(cand, cf) for cand in candidates for cf in curl_specs]
     n_groups, repeats = len(combos), args.repeats
     n_envs = n_groups * repeats
     print(f"[calibrate_palm_up] hand={args.hand} {len(candidates)} axis candidates x "
-          f"{len(curl_fracs)} curl fractions x {repeats} repeats = {n_groups} groups, "
+          f"{len(curl_specs)} curl specs x {repeats} repeats = {n_groups} groups, "
           f"{n_envs} envs", flush=True)
 
     cfg = InHandReorientEnvCfg()
@@ -129,8 +146,21 @@ def main() -> None:
 
     lower0 = env.robot.data.soft_joint_pos_limits[0, :, 0]
     upper0 = env.robot.data.soft_joint_pos_limits[0, :, 1]
-    curl_table = torch.stack(
-        [lower0 + cf * (upper0 - lower0) for _cand, cf in combos])  # (n_groups, j)
+
+    def _curl_target(cf) -> torch.Tensor:
+        """Per-joint held target = lower + frac*(upper-lower). ``cf`` is
+        either one float (uniform, the original behaviour) or a per-position
+        profile (I25) tiled cyclically across the joint declaration order --
+        see --curl-profiles' help above."""
+        n = lower0.shape[0]
+        if isinstance(cf, (int, float)):
+            frac = torch.full((n,), float(cf), device=lower0.device, dtype=lower0.dtype)
+        else:
+            reps = -(-n // len(cf))  # ceil div
+            frac = torch.tensor((list(cf) * reps)[:n], device=lower0.device, dtype=lower0.dtype)
+        return lower0 + frac * (upper0 - lower0)
+
+    curl_table = torch.stack([_curl_target(cf) for _cand, cf in combos])  # (n_groups, j)
     default_pos = curl_table[group_of_env]  # (n_envs, j) -- per-env held target
     env.robot.write_joint_state_to_sim(default_pos, torch.zeros_like(default_pos))
 
@@ -204,10 +234,22 @@ def main() -> None:
     reach_per_group = reach_score.view(n_groups, repeats).mean(dim=1)
     final_dist_per_group = final_dist.view(n_groups, repeats).mean(dim=1)
 
+    def _curl_field(cf) -> dict:
+        """``{"curl_frac": cf}`` for the original uniform-fraction schema, or
+        ``{"curl_profile": [...]}`` for an I25 per-position profile -- kept as
+        two distinct, self-describing keys rather than overloading one, so a
+        reader of hand_calibration.json (or apply_palm_calibration, which
+        never reads either -- only hand_default_joint_pos) is never handed a
+        float where it might expect a list."""
+        return {"curl_frac": cf} if isinstance(cf, (int, float)) else {"curl_profile": list(cf)}
+
+    def _curl_str(cf) -> str:
+        return f"{cf:.2f}" if isinstance(cf, (int, float)) else "/".join(f"{v:.2f}" for v in cf)
+
     score_table = []
     for gi, (cand, cf) in enumerate(combos):
         score_table.append({
-            "axis": cand["axis"], "roll_deg": cand["roll_deg"], "curl_frac": cf,
+            "axis": cand["axis"], "roll_deg": cand["roll_deg"], **_curl_field(cf),
             "score": float(score_per_group[gi]),
             "stability_score": float(stability_per_group[gi]),
             "reach_score": float(reach_per_group[gi]),
@@ -215,8 +257,10 @@ def main() -> None:
         })
     score_table.sort(key=lambda e: -e["score"])
     for e in score_table:
+        cf_str = (f"{e['curl_frac']:.2f}" if "curl_frac" in e
+                  else "/".join(f"{v:.2f}" for v in e["curl_profile"]))
         print(f"[calibrate_palm_up]   axis={e['axis']:>2} roll={e['roll_deg']:>5.0f}deg "
-              f"curl={e['curl_frac']:.2f}  score={e['score']:.3f} "
+              f"curl={cf_str}  score={e['score']:.3f} "
               f"(stability={e['stability_score']:.3f} reach={e['reach_score']:.3f})  "
               f"final_dist={e['final_dist_m']:.4f}m", flush=True)
 
@@ -248,26 +292,28 @@ def main() -> None:
         "axis": winner["axis"],
         "roll_deg": winner["roll_deg"],
         "spawn_offset_local": [float(v) for v in local_offset],
-        "curl_frac": winner_curl_frac,
+        **_curl_field(winner_curl_frac),
         "hand_default_joint_pos": winner_joint_pos,
         "score": float(score_per_group[winner_gi]),
         "stability_score": float(stability_per_group[winner_gi]),
         "reach_score": float(reach_per_group[winner_gi]),
         "final_dist_m": float(final_dist_per_group[winner_gi]),
-        "method": (f"calibrate_palm_up.py: {len(candidates)} axis candidates x {len(curl_fracs)} "
-                   f"curl fracs (full={args.full}), repeats={repeats}, held {args.seconds:.1f}s @ "
-                   f"{1.0 / dt:.0f} Hz zero-action holding a curled joint target "
-                   f"(lower + curl_frac*(upper-lower) per joint), scored over the trailing "
-                   f"{args.score_window_frac:.0%} of steps as stability(dist to the fingertip-"
-                   f"centroid spawn point < {args.threshold_m} m) x reach(>=2 fingertips within "
-                   f"{args.reach_threshold_m} m of the object)"),
+        "method": (f"calibrate_palm_up.py: {len(candidates)} axis candidates x {len(curl_specs)} "
+                   f"curl specs (full={args.full}, profiles={bool(args.curl_profiles)}), "
+                   f"repeats={repeats}, held {args.seconds:.1f}s @ {1.0 / dt:.0f} Hz zero-action "
+                   f"holding a curled joint target (lower + frac*(upper-lower) per joint, frac "
+                   f"either one uniform value or a per-position profile tiled cyclically over the "
+                   f"joint order -- I25), scored over the trailing {args.score_window_frac:.0%} "
+                   f"of steps as stability(dist to the fingertip-centroid spawn point < "
+                   f"{args.threshold_m} m) x reach(>=2 fingertips within {args.reach_threshold_m} "
+                   f"m of the object)"),
         "date": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "git_sha": pc.git_sha(),
         "score_table": score_table,
     }
     pc.save_calibration({args.hand: entry})
     print(f"[calibrate_palm_up] hand={args.hand} WINNER axis={winner['axis']} "
-          f"roll={winner['roll_deg']:.0f}deg curl_frac={winner_curl_frac:.2f} "
+          f"roll={winner['roll_deg']:.0f}deg curl={_curl_str(winner_curl_frac)} "
           f"score={entry['score']:.3f} (stability={entry['stability_score']:.3f} "
           f"reach={entry['reach_score']:.3f}) base_rot={entry['base_rot']} "
           f"spawn_offset_local={entry['spawn_offset_local']} -> written to {pc.CALIB_PATH}",
