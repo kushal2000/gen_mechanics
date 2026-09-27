@@ -27,6 +27,7 @@ import os
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 from hand_sampler import robot_param_constants as rpc
 from hand_sampler.design_space import mat_to_pos_quat
@@ -133,57 +134,128 @@ def _link_mass_props(length: float, radius: float, real: bool) -> Tuple[float, T
     return mass, (ixx, iyy, izz)
 
 
-def author_design(layer, root_path: str, design: ge.EnvelopeDesign) -> Dict[str, bool]:
+def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
+                   base_pos: Sequence[float] = (0.0, 0.0, 0.0),
+                   base_rot_wxyz: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
+                   world_anchor_pos: Optional[Sequence[float]] = None) -> Dict[str, bool]:
     """Author one design's root/palm, palm carriers and 30 finger-joint
-    slots under `root_path` (an already-`define`-d Xform, given its own
-    world `xformOp` by the caller). Returns `{body_name: has_collider}` for
-    every authored body -- a friction pass may use it (see
-    `AssetsCfg.modify_asset_frictions`, not yet wired for populations here;
-    see the Phase 2 report's known gaps)."""
+    slots under `root_path` (an already-`define`-d Xform). `base_pos`/
+    `base_rot_wxyz` place the design's root BODY relative to `root_path`
+    (its own env's Xform -- USD composes this with the env's own origin
+    automatically, so this stays env-LOCAL). `world_anchor_pos` is the SAME
+    point but in GLOBAL STAGE coordinates (defaults to `base_pos` unchanged,
+    correct only for an env whose own origin is the stage origin): the fixed
+    joint anchoring root to world (`body0` unset) reads its own
+    `localPos0`/`localRot0` as an ABSOLUTE world-frame anchor, INDEPENDENT
+    of any USD xformOp hierarchy above it and thus INDEPENDENT of the env's
+    own grid offset -- confirmed by two Kit smokes: leaving `localPos0` at
+    its identity default fought a world-origin anchor against the authored
+    pose every step (FK error up to 0.24 m, ghost joints spun to 150+ rad);
+    setting it to `base_pos` alone (no env-origin offset) reproduced the
+    IDENTICAL error, because most sampled envs sit away from the stage
+    origin on the grid cloner's layout. The caller (`author_population`)
+    passes `world_anchor_pos = env_origin + base_pos`. Returns
+    `{body_name: has_collider}` for every authored body -- a friction pass
+    may use it (see `AssetsCfg.modify_asset_frictions`, not yet wired for
+    populations here; see the Phase 2 report's known gaps)."""
     from pxr import Gf, Sdf
 
     from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
 
     # `root_path` (e.g. ".../Robot") is the ArticulationRoot Xform -- the
     # PARENT of the design's own root/palm rigid body, one level below (see
-    # module docstring's "World anchoring" note).
+    # module docstring's "World anchoring" note). Left at IDENTITY: the
+    # design's world placement lives entirely on the root BODY + fixed
+    # joint below, not on this parent xform.
     define(layer, root_path, "Xform", ["PhysicsArticulationRootAPI", "PhysxArticulationAPI"])
     define(layer, f"{root_path}/joints", "Scope")
     frames = ge.joint_local_frames(design)
     colliders: Dict[str, bool] = {}
+    base_pos = tuple(float(v) for v in base_pos)
+    base_rot_wxyz = tuple(float(v) for v in base_rot_wxyz)
+    world_anchor = tuple(float(v) for v in (world_anchor_pos if world_anchor_pos is not None else base_pos))
 
-    # --- root/palm body: the design's own fixed-base anchor ---------------
+    # Every body is authored as a FLAT SIBLING directly under `root_path`
+    # (not nested under its own kinematic parent body), so each one's own
+    # initial xform must be its ABSOLUTE (root_path-relative) rest pose, NOT
+    # `design.slot_origin[slot]` (which is relative to the slot's KINEMATIC
+    # parent body -- only equal to the root_path-relative pose for a d==0
+    # finger slot mounted directly on root; wrong for every continuation
+    # joint d>=1, and for a carrier-mounted finger's own d==0 slot, whose
+    # origin is relative to pc0/pc1, not root_path). Confirmed by a Kit
+    # diagnostic: d==0 root-mounted slots read back with ~0 error, every
+    # continuation slot (d>=1) was off starting at its own joint, compounding
+    # down the chain. `T0[slot]` (`authored_fk` at q=0, ROOT-relative by
+    # construction) composed with the design's own base transform gives the
+    # correct root_path-relative pose for every slot uniformly.
+    T0 = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
+    T_base = np.eye(4)
+    T_base[:3, :3] = Rotation.from_quat(
+        [base_rot_wxyz[1], base_rot_wxyz[2], base_rot_wxyz[3], base_rot_wxyz[0]]
+    ).as_matrix()
+    T_base[:3, 3] = base_pos
+    T_slot_in_root_path = T_base @ T0  # (32,4,4), broadcasting T_base over all 32 slots
+
+    def _slot_pos_quat(slot: int) -> Tuple[Tuple[float, float, float], Tuple[float, float, float, float]]:
+        return mat_to_pos_quat(T_slot_in_root_path[slot])
+
+    # --- root/palm body: the design's own fixed-base anchor, authored
+    # DIRECTLY at its world pose (base_pos/base_rot_wxyz) -------------------
     root_body_path = f"{root_path}/{ROOT_BODY_NAME}"
+    root_mass = max(math.pi * design.capsule_radius_m ** 2 * max(design.root_length_m, 1e-6)
+                     * rpc.GEN_PALM_DENSITY_KG_M3, 1e-6)
     _author_body_and_collider(
         layer, root_body_path, length=design.root_length_m, radius=design.capsule_radius_m,
-        mass=max(math.pi * design.capsule_radius_m ** 2 * max(design.root_length_m, 1e-6)
-                  * rpc.GEN_PALM_DENSITY_KG_M3, 1e-6),
+        mass=root_mass,
         inertia_diag=_link_mass_props(design.root_length_m, design.capsule_radius_m, True)[1],
-        com_z=design.root_length_m / 2.0, pos=(0.0, 0.0, 0.0), quat_wxyz=(1.0, 0.0, 0.0, 0.0), real=True,
+        com_z=design.root_length_m / 2.0, pos=base_pos, quat_wxyz=base_rot_wxyz, real=True,
     )
     colliders[ROOT_BODY_NAME] = True
 
     # A `PhysicsFixedJoint` (body1 = root, body0 UNSET = world) anchors the
-    # root rigid body to world -- `ArticulationRootAPI`/`PhysxArticulationAPI`
-    # were already applied to `root_path` itself above (the PARENT of this
-    # body; see module docstring's "World anchoring" note).
+    # root rigid body to world. `localPos1`/`localRot1` (body1 = root's own
+    # frame) stay identity -- root's own origin. `localPos0`/`localRot0`
+    # (the WORLD anchor, since body0 is unset) are set to the SAME
+    # base_pos/base_rot_wxyz as the body itself, so the constraint holds
+    # root exactly where it was authored, not at the world origin.
     fixed = define(layer, f"{root_path}/root_fixed_joint", "PhysicsFixedJoint")
     rel(fixed, "physics:body1", root_body_path)
+    attr(fixed, "physics:localPos0", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(*world_anchor))
+    attr(fixed, "physics:localRot0", Sdf.ValueTypeNames.Quatf,
+         Gf.Quatf(base_rot_wxyz[0], Gf.Vec3f(*base_rot_wxyz[1:])))
     attr(fixed, "physics:localPos1", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(0.0, 0.0, 0.0))
     attr(fixed, "physics:localRot1", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)))
-    # body0 unset (world); localPos0/localRot0 default to identity, which is
-    # correct here because `root` itself has zero local offset from
-    # `root_path` (the caller's own xformOp carries the design's full world
-    # pose), so root's world pose IS root_path's world pose.
 
     # --- palm-carrier bodies + joints (pc0_j, pc1_j) -----------------------
+    # A GHOST pc body attaches DIRECTLY to root, but -- unlike the old
+    # sampler's ghosts, which only ever carry OTHER ghosts at a finger's
+    # unused tail -- a padding-only pc0/pc1 (no real carrier in the source
+    # design) still carries an entire REAL finger chain when a root-mounted
+    # digit fills envelope slot 3/4 (`canonicalize`'s free-slot assignment).
+    # The mass ratio that actually destabilises the solver is ghost-vs-that-
+    # REAL-FINGER, not ghost-vs-root: the coordinator's diagnosis, confirmed
+    # by a Kit diagnostic (pc1_j on a G_SERIAL design, carrying finger 4,
+    # reached 114 rad/s within 2 steps) -- and unchanged by an earlier fix
+    # that only scaled the ghost mass against ROOT (1% of root was still
+    # negligible next to the real finger 4 chain hanging off it). Fixed by
+    # giving the ghost a REAL phalanx's mass/inertia (same density formula,
+    # using this SPECIFIC finger's own first real segment length as the
+    # reference -- "realistic", not "negligible", exactly because it is
+    # mechanically carrying that finger).
     for pc in range(2):
         slot = ge.PC0_SLOT + pc
         body_path = f"{root_path}/{PC_BODY_NAMES[pc]}"
         valid = bool(design.slot_valid[slot])
         length = float(design.slot_length[slot])
-        mass, inertia = _link_mass_props(length, design.capsule_radius_m, valid)
-        pos, quat = mat_to_pos_quat(design.slot_origin[slot])
+        if valid:
+            mass, inertia = _link_mass_props(length, design.capsule_radius_m, True)
+        else:
+            finger_f = 3 + pc
+            ref_length = float(design.slot_length[finger_f * ge.N_JOINTS_PER_FINGER])
+            if not design.slot_valid[finger_f * ge.N_JOINTS_PER_FINGER]:
+                ref_length = 0.0  # that finger slot is itself unused padding: no load to buffer
+            mass, inertia = _link_mass_props(max(ref_length, ge.GHOST_LENGTH_M), design.capsule_radius_m, True)
+        pos, quat = _slot_pos_quat(slot)
         _author_body_and_collider(
             layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
             inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
@@ -204,7 +276,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign) -> Dict[str,
             length = float(design.slot_length[slot])
             body_path = f"{root_path}/{_finger_body_name(f, d)}"
             mass, inertia = _link_mass_props(length, design.capsule_radius_m, valid)
-            pos, quat = mat_to_pos_quat(design.slot_origin[slot])
+            pos, quat = _slot_pos_quat(slot)
             _author_body_and_collider(
                 layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
                 inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
@@ -247,14 +319,18 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
     from isaacsim.core.utils.stage import get_current_stage
     from pxr import Sdf
 
-    from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import set_xform
-
     layer = get_current_stage().GetRootLayer()
     collider_links: Dict[int, Dict[str, bool]] = {}
     env_paths = _env_paths_in_order(env)
     assert len(env_paths) == env.num_envs, (
         f"expected {env.num_envs} env prim paths, found {len(env_paths)}"
     )
+    # The fixed joint's world anchor (`author_design`'s `world_anchor_pos`)
+    # is in GLOBAL stage coordinates, not env-local -- each env sits at its
+    # own `env_origins[env_id]` on the grid cloner's layout (nonzero for
+    # every env but the one at the stage origin).
+    env_origins = env.scene.env_origins.detach().cpu().numpy()
+    base_pos_np = np.asarray(HAND_BASE_POS_M, dtype=float)
 
     with Sdf.ChangeBlock():
         for env_path in env_paths:
@@ -262,10 +338,13 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
             idx = int(design_idx[env_id])
             root_path = f"{env_path}/Robot"
             design = population.designs[idx]
-            authored = author_design(layer, root_path, design)
-            collider_links.setdefault(idx, authored)
             base_rot = tuple(float(v) for v in population.base_rot[idx])
-            set_xform(layer.GetPrimAtPath(root_path), HAND_BASE_POS_M, base_rot)
+            world_anchor = tuple(float(v) for v in (env_origins[env_id] + base_pos_np))
+            authored = author_design(
+                layer, root_path, design, base_pos=HAND_BASE_POS_M, base_rot_wxyz=base_rot,
+                world_anchor_pos=world_anchor,
+            )
+            collider_links.setdefault(idx, authored)
 
     return collider_links
 
