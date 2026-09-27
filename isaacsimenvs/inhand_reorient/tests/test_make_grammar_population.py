@@ -49,3 +49,31 @@ def test_write_test16_round_trips(tmp_path):
     pf.write_population(path, entries)
     loaded = pf.load_population(path)
     assert len(loaded) == 16
+
+
+def test_sampled_entries_have_no_bad_rest_overlap():
+    """A rest-pose self-penetration (design note risk 4) was found, via a
+    Kit smoke, to cause a violent (100+ rad in 1-2 steps) joint blowup --
+    make_grammar_population.py must reject sampled designs whose
+    rest_overlap_pairs penetration exceeds MAX_REST_PENETRATION_M."""
+    for entries in (mkpop.collect_serial_entries(8), mkpop.collect_carrier_entries(4)):
+        for e in entries:
+            model = derive(pf.derivation_from_dict(e.derivation_dict))
+            assert mkpop._no_bad_rest_overlap(model), f"{e.source} has a bad rest overlap"
+
+
+def test_no_bad_rest_overlap_actually_rejects_a_known_bad_design():
+    """G_SERIAL seed 7 (traced by a Kit smoke to a 5.6-9.6 mm rest overlap
+    between f0/f1/f2/f4, all root-mounted with no palm spread) is the
+    concrete case this filter exists for -- confirm it is admitted by
+    grammar_envelope.admit (structurally valid) but rejected by the overlap
+    filter, so this isn't a vacuously-always-true check."""
+    from hand_sampler.grammar.derive import sample_derivation
+
+    from isaacsimenvs.inhand_reorient.scene import population_file as pf2
+
+    dist = pf2._variant_distribution("G_SERIAL")
+    derivation = sample_derivation(7, dist)
+    model = derive(derivation)
+    assert ge.admit(model).ok
+    assert not mkpop._no_bad_rest_overlap(model)
