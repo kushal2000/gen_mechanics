@@ -120,8 +120,20 @@ def main() -> int:
                     continue
                 local_pos = torch.as_tensor(T[slot][:3, 3], device=device, dtype=torch.float32)
                 expected_w = palm_pos_w[env_id] + quat_apply(palm_quat_w[env_id].unsqueeze(0), local_pos.unsqueeze(0))[0]
-                body_name = design.slot_body_name[slot]
-                if body_name is None or body_name not in env.robot.data.body_names:
+                # AUTHORED body name (author_grammar.py's own slot->body-path
+                # convention: "f{f}_link{d}" / "pc0" / "pc1"), NOT
+                # `design.slot_body_name[slot]` (the GRAMMAR model's own body
+                # name, e.g. "d0p1") -- those never appear in the articulation's
+                # `body_names` at all, which silently degenerated this check to
+                # 0 checked bodies in the first run.
+                if slot == ge.PC0_SLOT:
+                    body_name = "pc0"
+                elif slot == ge.PC1_SLOT:
+                    body_name = "pc1"
+                else:
+                    f_i, d_i = divmod(slot, ge.N_JOINTS_PER_FINGER)
+                    body_name = f"f{f_i}_link{d_i}"
+                if body_name not in env.robot.data.body_names:
                     continue
                 body_idx = env.robot.data.body_names.index(body_name)
                 actual_w = env.robot.data.body_pos_w[env_id, body_idx]
