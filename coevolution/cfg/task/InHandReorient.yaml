@@ -99,7 +99,12 @@ reset:
   delta_rotation_degrees: 90.0
   drop_distance_m: 0.24
   goal_curriculum_enabled: true
-  goal_curriculum_stages: [axis, full]
+  # I26: axis-only by default (full random orientation was not learnable in
+  # a 60-min SHARPA run). "full" stays available by config, e.g.
+  # env.reset.goal_curriculum_stages='[axis,full]' on the CLI; with >1 stage
+  # the goal curriculum only advances once the tolerance curriculum below is
+  # at its floor (goal_curriculum.py's decoupling rule -- never the same step).
+  goal_curriculum_stages: [axis]
   goal_curriculum_interval: 3000
   goal_curriculum_success_threshold: 3.0
 

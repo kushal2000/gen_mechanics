@@ -25,35 +25,16 @@ from isaacsimenvs.pose_reaching_6d.reward_utils.termination import (  # noqa: F4
     update_tolerance_curriculum,
 )
 
+# update_goal_curriculum lives in goal_curriculum.py, which imports nothing
+# (not even isaaclab-triggering pose_reaching_6d modules) so its decoupling
+# logic (I26) is testable under plain pytest -- see that module's docstring.
+from .goal_curriculum import update_goal_curriculum  # noqa: F401
+
 __all__ = [
     "compute_rewards", "compute_terminations", "update_tolerance_curriculum",
     "update_goal_curriculum", "extra_curriculum_state", "restore_extra_curriculum_state",
     "get_curriculum_state", "set_curriculum_state",
 ]
-
-
-def update_goal_curriculum(env) -> None:
-    """Widen the goal-sampling curriculum (``reset_utils._sample_goal``'s
-    modes) once completed episodes average enough goals, mirroring
-    ``update_tolerance_curriculum`` (I24, Phase 1c). Reads
-    ``env._frame_counter`` AFTER ``update_tolerance_curriculum`` has already
-    advanced it this step -- call this right after that function, not before,
-    to avoid a double-increment (see ``env.py::_get_dones``)."""
-    cfg = env.cfg.reset
-    if not cfg.goal_curriculum_enabled:
-        return
-    if env._frame_counter - env._last_goal_curriculum_update < cfg.goal_curriculum_interval:
-        return
-    successes = env._prev_episode_successes.float()
-    if successes.numel() == 0 or successes.mean().item() < cfg.goal_curriculum_success_threshold:
-        return
-    env._last_goal_curriculum_update = env._frame_counter
-    if env._goal_curriculum_stage >= len(cfg.goal_curriculum_stages) - 1:
-        return
-    env._goal_curriculum_stage += 1
-    stage_name = cfg.goal_curriculum_stages[env._goal_curriculum_stage]
-    print(f"[inhand_reorient] goal curriculum -> stage {env._goal_curriculum_stage} "
-          f"({stage_name!r}) at frame {env._frame_counter}", flush=True)
 
 
 def extra_curriculum_state(env) -> dict:

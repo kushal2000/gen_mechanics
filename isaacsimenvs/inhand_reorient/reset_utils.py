@@ -15,6 +15,9 @@ from isaaclab.utils.math import quat_apply, quat_from_angle_axis, quat_mul, rand
 
 from isaacsimenvs.pose_reaching_6d.reward_utils.curriculum import initial_success_tolerance
 
+from .goal_curriculum import goal_curriculum_mode as _goal_curriculum_mode
+from .goal_curriculum import goal_mode_code as _goal_mode_code
+
 __all__ = [
     "allocate_state_buffers", "reset_env_state", "reset_goal_trackers", "log_step_metrics",
 ]
@@ -49,16 +52,6 @@ def allocate_state_buffers(env) -> None:
     # checkpoint hooks as the tolerance curriculum (see reward_utils.py).
     env._goal_curriculum_stage = 0
     env._last_goal_curriculum_update = 0
-
-
-def _goal_curriculum_mode(env) -> str:
-    """Which sampling mode is active right now: the staged curriculum's
-    current stage when enabled, else the static ``goal_sampling_type``."""
-    cfg = env.cfg.reset
-    if not cfg.goal_curriculum_enabled:
-        return cfg.goal_sampling_type
-    stage = min(env._goal_curriculum_stage, len(cfg.goal_curriculum_stages) - 1)
-    return cfg.goal_curriculum_stages[stage]
 
 
 def _sample_goal(env, env_ids: torch.Tensor, ref_quat: torch.Tensor) -> torch.Tensor:
@@ -225,6 +218,12 @@ def log_step_metrics(env) -> None:
     env.extras["episode_final"] = episode_final
     env.extras["successes"] = env._prev_episode_successes.float()
     env.extras["current_success_tolerance"] = float(env._current_success_tolerance)
+    # Goal-difficulty curriculum (I26 decoupling): the stage index and a
+    # numeric mode code (see goal_curriculum.GOAL_MODE_CODES: axis=0,
+    # delta=1, full/absolute=2) so TensorBoard shows exactly when the goal
+    # curriculum advanced, next to current_success_tolerance above.
+    env.extras["goal_curriculum_stage"] = float(env._goal_curriculum_stage)
+    env.extras["goal_mode_code"] = _goal_mode_code(_goal_curriculum_mode(env))
 
     # Batch-level scalars refreshed every step (same "direct_info" mechanism
     # current_success_tolerance uses above): rotation-error mean/median and

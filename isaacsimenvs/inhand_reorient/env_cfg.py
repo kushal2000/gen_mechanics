@@ -113,12 +113,24 @@ class ResetCfg:
     """Stage the GOAL's difficulty (reset_utils._sample_goal's modes) instead
     of always sampling a fully random goal orientation, mirroring the
     existing angular-TOLERANCE curriculum below (I24, Phase 1c)."""
-    goal_curriculum_stages: tuple[str, ...] = ("axis", "full")
+    goal_curriculum_stages: tuple[str, ...] = ("axis",)
     """Each stage is a ``_sample_goal`` mode: "axis" (rotate about the
     calibrated palm-normal axis only -- a 1-DOF spin task), "delta" (a random
-    axis, up to delta_rotation_degrees), "full"/"absolute" (fully random)."""
+    axis, up to delta_rotation_degrees), "full"/"absolute" (fully random).
+
+    Default is axis-only (I26): a 60-min SHARPA run showed full random-
+    orientation reorientation is not learnable at ~1 GPU-hour, while the
+    palm-normal-axis spin is. "full" stays available by config, e.g.
+    ``env.reset.goal_curriculum_stages='[axis,full]'`` on the CLI -- when more
+    than one stage is configured, ``goal_curriculum.update_goal_curriculum``
+    never advances the goal stage on the same step the tolerance curriculum
+    advances (see that module's docstring for the decoupling rule: the goal
+    curriculum only advances once the tolerance curriculum has reached its
+    floor, using the goal curriculum's own threshold/interval below)."""
     goal_curriculum_interval: int = 3000
-    """Frames between eligibility checks; mirrors tolerance_curriculum_interval."""
+    """Frames between eligibility checks (once the tolerance curriculum is at
+    its floor -- see goal_curriculum_stages above); mirrors
+    tolerance_curriculum_interval."""
     goal_curriculum_success_threshold: float = 3.0
     """Mean per-episode successes needed (over completed episodes) to advance
     one stage; mirrors tolerance_curriculum_success_threshold."""
