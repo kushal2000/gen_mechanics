@@ -37,6 +37,16 @@ class InHandReorientEnv(PoseReachEnv):
     def __init__(
         self, cfg: InHandReorientEnvCfg, render_mode: str | None = None, **kwargs
     ) -> None:
+        if cfg.assets.hand_population:
+            # A population cannot be homogenized by cloning env 0's physics
+            # (scene/author_grammar.py authors every env's design directly).
+            # Forced here, BEFORE DirectRLEnv.__init__ builds the
+            # InteractiveScene, so `env.assets.hand_population=<path>` alone
+            # (no separate `env.scene.replicate_physics=false` override) is
+            # enough on the CLI -- scene_utils.py's setup hooks still assert
+            # this holds, as a second, independent check.
+            cfg.scene.replicate_physics = False
+            cfg.scene.clone_in_fabric = False
         # Deliberately DirectRLEnv.__init__, not PoseReachEnv.__init__: the
         # latter calls pose_reaching_6d's own allocate_state_buffers/
         # finalize_scene after the super().__init__() that boots the sim.
