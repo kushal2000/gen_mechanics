@@ -22,6 +22,23 @@ the hand happens to be highest in WORLD z under a given candidate rotation,
 which is not necessarily anywhere near the fingers (e.g. it was the wrist/
 base for SHARPA's "-z up" candidate, whose fingers pointed away from it).
 
+A THIRD condition, ``height_score`` (I34, 2026-09-27), requires the spawn
+point to sit at least ``--min-height-above-palm-m`` above the palm's own
+WORLD z -- the SAME convention ``drop_detection.object_below_palm`` checks
+every reset (``palm_calibration.MIN_SPAWN_HEIGHT_ABOVE_PALM_M``'s docstring
+has the exact shared quantity, ``quat_apply(base_rot, spawn_offset_local)
+[2]``). Stability+reach alone do not imply this: a candidate can hold the
+cube rock-steady against >=2 fingertips for the whole scoring window while
+sitting level with, or below, the palm origin in world z -- fine in this
+script's own frozen-curl hold, but a guaranteed early drop-termination once
+the real env's gravity/reset-noise/full-episode dynamics are in play. This
+is exactly what happened pre-I34 for every hand calibrated on a NON-identity
+axis (xhand_right, wuji_right, tesollo_dg5f_right): the height requirement
+was never checked, so nothing favoured a candidate whose fingertip workspace
+actually ends up above the palm once its axis is rotated to world +z.
+Identity-axis hands (sharpa, allegro_right, dclaw) never hit this because
+their winning candidate happened to land there anyway.
+
 One Kit process, one scene: every candidate (x ``--repeats`` copies, for a
 little robustness to the position jitter each copy gets) is a DIFFERENT
 group of envs in the SAME InteractiveScene, so this never needs more than one
@@ -61,6 +78,12 @@ def parse_args() -> argparse.Namespace:
                         "'in reach'; a candidate needs >=2 in reach to score, not just stability "
                         "(I24 priority check: proximity to the palm ORIGIN alone can't tell a "
                         "cupped hold apart from the cube resting on an unrelated flat face)")
+    p.add_argument("--min-height-above-palm-m", type=float, default=None,
+                   help="a candidate's spawn point must sit at least this far above the palm's "
+                        "own WORLD z to score at all (I34: the SAME convention "
+                        "drop_detection.object_below_palm checks every reset). Defaults to "
+                        "palm_calibration.MIN_SPAWN_HEIGHT_ABOVE_PALM_M -- override only to "
+                        "investigate, not for a hand actually going into hand_calibration.json.")
     p.add_argument("--score-window-frac", type=float, default=0.5,
                    help="score over the trailing fraction of steps (lets it settle first)")
     p.add_argument("--object-size-m", type=float, default=0.055)
@@ -105,6 +128,10 @@ def main() -> None:
     from isaacsimenvs.inhand_reorient import palm_calibration as pc
     from isaacsimenvs.inhand_reorient.env import InHandReorientEnv
     from isaacsimenvs.inhand_reorient.env_cfg import InHandReorientEnvCfg
+
+    min_height_above_palm_m = (
+        args.min_height_above_palm_m if args.min_height_above_palm_m is not None
+        else pc.MIN_SPAWN_HEIGHT_ABOVE_PALM_M)
 
     candidates = pc.candidate_rotations(full=args.full)
     if args.curl_profiles:
@@ -198,6 +225,15 @@ def main() -> None:
     direction = torch.nn.functional.normalize(tip_centroid_w - palm_pos_w, dim=-1)
     spawn_pos = tip_centroid_w + direction * (args.spawn_margin_m + args.object_size_m / 2.0)
 
+    # I34: the spawn point itself, BEFORE any jitter/hold, must already clear
+    # min_height_above_palm_m above the palm in WORLD z -- the same
+    # convention drop_detection.object_below_palm checks every reset (see
+    # palm_calibration.MIN_SPAWN_HEIGHT_ABOVE_PALM_M's docstring). Gated into
+    # score_per_env below, not just reported, so a candidate that is
+    # stable+reachable but level with or below the palm can never win.
+    height_above_palm_w = spawn_pos[:, 2] - palm_pos_w[:, 2]
+    height_ok = (height_above_palm_w > min_height_above_palm_m).float()
+
     jitter = (torch.rand(n_envs, 3, device=device) * 2.0 - 1.0) * args.position_jitter_m
     obj_pos = spawn_pos + jitter
     obj_quat = torch.zeros(n_envs, 4, device=device)
@@ -225,13 +261,17 @@ def main() -> None:
 
     stability_score = stable_counts / n_score
     reach_score = reach_counts / n_score
-    # Both required: a candidate that is stable but unreachable (or briefly
-    # in reach but unstable) should not win over one that is both.
-    score_per_env = stability_score * reach_score
+    # All three required (I34 adds height_ok to I24's stability x reach): a
+    # candidate that is stable and reachable but sits level with or below the
+    # palm in world z should not win over one that also clears
+    # min_height_above_palm_m -- it cannot survive the runtime's own
+    # drop_detection.object_below_palm check.
+    score_per_env = stability_score * reach_score * height_ok
 
     score_per_group = score_per_env.view(n_groups, repeats).mean(dim=1)
     stability_per_group = stability_score.view(n_groups, repeats).mean(dim=1)
     reach_per_group = reach_score.view(n_groups, repeats).mean(dim=1)
+    height_above_palm_per_group = height_above_palm_w.view(n_groups, repeats).mean(dim=1)
     final_dist_per_group = final_dist.view(n_groups, repeats).mean(dim=1)
 
     def _curl_field(cf) -> dict:
@@ -253,6 +293,7 @@ def main() -> None:
             "score": float(score_per_group[gi]),
             "stability_score": float(stability_per_group[gi]),
             "reach_score": float(reach_per_group[gi]),
+            "height_above_palm_m": float(height_above_palm_per_group[gi]),
             "final_dist_m": float(final_dist_per_group[gi]),
         })
     score_table.sort(key=lambda e: -e["score"])
@@ -261,7 +302,8 @@ def main() -> None:
                   else "/".join(f"{v:.2f}" for v in e["curl_profile"]))
         print(f"[calibrate_palm_up]   axis={e['axis']:>2} roll={e['roll_deg']:>5.0f}deg "
               f"curl={cf_str}  score={e['score']:.3f} "
-              f"(stability={e['stability_score']:.3f} reach={e['reach_score']:.3f})  "
+              f"(stability={e['stability_score']:.3f} reach={e['reach_score']:.3f} "
+              f"height_above_palm={e['height_above_palm_m']:.4f}m)  "
               f"final_dist={e['final_dist_m']:.4f}m", flush=True)
 
     winner_gi = int(score_per_group.argmax())
@@ -297,16 +339,20 @@ def main() -> None:
         "score": float(score_per_group[winner_gi]),
         "stability_score": float(stability_per_group[winner_gi]),
         "reach_score": float(reach_per_group[winner_gi]),
+        "height_above_palm_m": float(height_above_palm_per_group[winner_gi]),
         "final_dist_m": float(final_dist_per_group[winner_gi]),
         "method": (f"calibrate_palm_up.py: {len(candidates)} axis candidates x {len(curl_specs)} "
                    f"curl specs (full={args.full}, profiles={bool(args.curl_profiles)}), "
-                   f"repeats={repeats}, held {args.seconds:.1f}s @ {1.0 / dt:.0f} Hz zero-action "
+                   f"repeats={repeats}, min_height_above_palm_m={min_height_above_palm_m}, "
+                   f"held {args.seconds:.1f}s @ {1.0 / dt:.0f} Hz zero-action "
                    f"holding a curled joint target (lower + frac*(upper-lower) per joint, frac "
                    f"either one uniform value or a per-position profile tiled cyclically over the "
                    f"joint order -- I25), scored over the trailing {args.score_window_frac:.0%} "
                    f"of steps as stability(dist to the fingertip-centroid spawn point < "
                    f"{args.threshold_m} m) x reach(>=2 fingertips within {args.reach_threshold_m} "
-                   f"m of the object)"),
+                   f"m of the object) x height(spawn point > {min_height_above_palm_m} m above "
+                   f"the palm's own world z -- I34, the same convention "
+                   f"drop_detection.object_below_palm checks every reset)"),
         "date": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "git_sha": pc.git_sha(),
         "score_table": score_table,
@@ -315,8 +361,9 @@ def main() -> None:
     print(f"[calibrate_palm_up] hand={args.hand} WINNER axis={winner['axis']} "
           f"roll={winner['roll_deg']:.0f}deg curl={_curl_str(winner_curl_frac)} "
           f"score={entry['score']:.3f} (stability={entry['stability_score']:.3f} "
-          f"reach={entry['reach_score']:.3f}) base_rot={entry['base_rot']} "
-          f"spawn_offset_local={entry['spawn_offset_local']} -> written to {pc.CALIB_PATH}",
+          f"reach={entry['reach_score']:.3f} height_above_palm={entry['height_above_palm_m']:.4f}m) "
+          f"base_rot={entry['base_rot']} spawn_offset_local={entry['spawn_offset_local']} "
+          f"-> written to {pc.CALIB_PATH}",
           flush=True)
 
     env.close()
