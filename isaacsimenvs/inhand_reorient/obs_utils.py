@@ -43,6 +43,26 @@ def derive_spaces(cfg, spec) -> None:
     cfg.state_space = sum(_field_width(f, spec) for f in cfg.obs.state_list)
 
 
+def _joint_valid_mask(env) -> torch.Tensor | None:
+    """`(num_envs, 32)` bool, `True` where that env's own design has a REAL
+    (non-ghost) joint in that envelope slot, in ARTICULATION-VIEW column
+    order -- `None` for the single-hand path. Same computation as
+    `reward_utils._joint_valid_mask` (duplicated here, not imported: that
+    module pulls in `isaacsimenvs.pose_reaching_6d`, which bootstraps Kit on
+    import -- see this module's own lazy-import discipline elsewhere in the
+    package, e.g. `drop_detection.py`'s docstring)."""
+    tables = getattr(env, "hand_tables", None)
+    if tables is None:
+        return None
+    design_idx = env.scene_record["design_idx"]
+    valid = torch.as_tensor(tables.joint_valid, device=env.device, dtype=torch.bool)
+    valid = valid[design_idx]
+    perm = env.scene_record.get("slot_of_phys_col")
+    if perm is not None:
+        valid = valid[:, perm]
+    return valid
+
+
 def pre_physics_step(env, actions: torch.Tensor) -> None:
     """Joint-position targets with moving-average smoothing, PoseReach-style.
 
@@ -63,12 +83,34 @@ def pre_physics_step(env, actions: torch.Tensor) -> None:
     could learn anything about rotating the object.
     """
     actions = actions.clamp(-1.0, 1.0)
+    joint_mask = _joint_valid_mask(env)  # None on the single-hand path
+    if joint_mask is not None:
+        # Review item 9: a ghost column's action penalty is already zeroed
+        # in reward_utils.compute_rewards, but the RAW action was still
+        # stored into `env._prev_actions` -- which is itself an observation
+        # field (obs_utils.build_observations's "prev_actions") -- giving
+        # the policy a free, unpenalized read/write memory channel across
+        # steps with no physical grounding (it can never move a ghost joint;
+        # its own limits are (0, 1e-8) regardless). Zero it at the source so
+        # neither the observation nor the reward can see anything but 0
+        # there, closing the channel instead of merely not rewarding it.
+        actions = actions * joint_mask
     env._prev_actions_this_step = env._prev_actions.clone()
     env._prev_actions = actions
 
     lower = env.robot.data.soft_joint_pos_limits[:, :, 0]
     upper = env.robot.data.soft_joint_pos_limits[:, :, 1]
-    default_pos = env.robot.data.default_joint_pos
+    # Review risk 11: on the population path, read the per-env default pose
+    # from this package's OWN cached tensor (`env.scene_record
+    # ["default_joint_pos"]`, set once by `scene_utils.
+    # _resolve_population_joint_permutation`), not Isaac Lab's own
+    # `default_joint_pos` buffer -- which reverts to the scene-wide CFG
+    # template (env 0's design) if the articulation re-initializes. `None`
+    # on the single-hand path, unchanged.
+    cached_default = (
+        env.scene_record.get("default_joint_pos") if getattr(env, "hand_tables", None) is not None else None
+    )
+    default_pos = cached_default if cached_default is not None else env.robot.data.default_joint_pos
     scale = env.cfg.action.dof_speed_scale
     span_up = (upper - default_pos) * scale
     span_dn = (default_pos - lower) * scale

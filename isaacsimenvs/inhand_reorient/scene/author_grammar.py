@@ -63,7 +63,9 @@ def _env_paths_in_order(env) -> List[str]:
 def _author_body_and_collider(layer, path: str, *, length: float, radius: float, mass: float,
                                inertia_diag: Tuple[float, float, float], com_z: float,
                                pos: Sequence[float], quat_wxyz: Sequence[float],
-                               real: bool, filtered_pair_targets: Sequence[str] = ()) -> None:
+                               real: bool, filtered_pair_targets: Sequence[str] = (),
+                               contact_offset: Optional[float] = None,
+                               rest_offset: Optional[float] = None) -> None:
     from pxr import Gf, Sdf
 
     from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel, set_xform
@@ -100,10 +102,26 @@ def _author_body_and_collider(layer, path: str, *, length: float, radius: float,
         # so mesh_0 needs no extra rotation -- unlike build.py's URDF-derived
         # links (which run along local +x and rotate the capsule mesh to
         # match), a grammar body already runs along +z.
-        cap = define(layer, f"{path}/collisions/mesh_0/capsule", "Capsule", ["PhysicsCollisionAPI"])
+        cap_apis = ["PhysicsCollisionAPI"]
+        if contact_offset is not None or rest_offset is not None:
+            # Parity with the single-hand path's own colliders (review
+            # item 11's "robot colliders have no contact offsets or
+            # friction"): the single-hand path's URDF-converted USD gets
+            # these from `author_robot.flatten_robot_usd` (same
+            # `PhysxCollisionAPI` attrs, same `env.cfg.physics.*` values);
+            # a grammar body is authored directly here instead, so it needs
+            # the same two attrs set explicitly, or it silently falls back
+            # to PhysX's own per-shape defaults instead of this task's
+            # configured 2mm contact / 0mm rest offset.
+            cap_apis.append("PhysxCollisionAPI")
+        cap = define(layer, f"{path}/collisions/mesh_0/capsule", "Capsule", cap_apis)
         attr(cap, "radius", Sdf.ValueTypeNames.Double, r)
         attr(cap, "height", Sdf.ValueTypeNames.Double, float(rpc.cylinder_part(max(length, 1e-6), r)))
         attr(cap, "axis", Sdf.ValueTypeNames.Token, "Z")
+        if contact_offset is not None:
+            attr(cap, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float, float(contact_offset))
+        if rest_offset is not None:
+            attr(cap, "physxCollision:restOffset", Sdf.ValueTypeNames.Float, float(rest_offset))
         set_xform(mesh, (0.0, 0.0, length / 2.0), (1.0, 0.0, 0.0, 0.0))
 
 
@@ -151,7 +169,9 @@ def _link_mass_props(length: float, radius: float, real: bool) -> Tuple[float, T
 def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
                    base_pos: Sequence[float] = (0.0, 0.0, 0.0),
                    base_rot_wxyz: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
-                   world_anchor_pos: Optional[Sequence[float]] = None) -> Dict[str, bool]:
+                   world_anchor_pos: Optional[Sequence[float]] = None,
+                   contact_offset: Optional[float] = None,
+                   rest_offset: Optional[float] = None) -> Dict[str, bool]:
     """Author one design's root/palm, palm carriers and 30 finger-joint
     slots under `root_path` (an already-`define`-d Xform). `base_pos`/
     `base_rot_wxyz` place the design's root BODY relative to `root_path`
@@ -247,6 +267,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
         inertia_diag=_link_mass_props(design.root_length_m, design.capsule_radius_m, True)[1],
         com_z=design.root_length_m / 2.0, pos=base_pos, quat_wxyz=base_rot_wxyz, real=True,
         filtered_pair_targets=filtered_targets_of.get(root_body_path, ()),
+        contact_offset=contact_offset, rest_offset=rest_offset,
     )
     colliders[ROOT_BODY_NAME] = True
 
@@ -298,6 +319,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
             layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
             inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
             filtered_pair_targets=filtered_targets_of.get(body_path, ()),
+            contact_offset=contact_offset, rest_offset=rest_offset,
         )
         colliders[PC_BODY_NAMES[pc]] = valid
         limits = tuple(float(v) for v in design.slot_limits[slot]) if valid else ge.GHOST_LIMITS
@@ -320,6 +342,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
                 layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
                 inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
                 filtered_pair_targets=filtered_targets_of.get(body_path, ()),
+                contact_offset=contact_offset, rest_offset=rest_offset,
             )
             colliders[_finger_body_name(f, d)] = valid
 
@@ -371,6 +394,13 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
     # every env but the one at the stage origin).
     env_origins = env.scene.env_origins.detach().cpu().numpy()
     base_pos_np = np.asarray(HAND_BASE_POS_M, dtype=float)
+    # Review item 11: give population robot colliders the SAME contact/rest
+    # offset as the single-hand path's own (`scene_utils._setup_scene_
+    # single_hand`'s `_convert_fixed_robot`, which threads these same
+    # `env.cfg.physics.*` values through `author_robot.flatten_robot_usd`),
+    # instead of silently falling back to PhysX's own per-shape defaults.
+    contact_offset = float(env.cfg.physics.contact_offset)
+    rest_offset = float(env.cfg.physics.rest_offset)
 
     with Sdf.ChangeBlock():
         for env_path in env_paths:
@@ -382,7 +412,7 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
             world_anchor = tuple(float(v) for v in (env_origins[env_id] + base_pos_np))
             authored = author_design(
                 layer, root_path, design, base_pos=HAND_BASE_POS_M, base_rot_wxyz=base_rot,
-                world_anchor_pos=world_anchor,
+                world_anchor_pos=world_anchor, contact_offset=contact_offset, rest_offset=rest_offset,
             )
             collider_links.setdefault(idx, authored)
 
@@ -470,12 +500,20 @@ def setup_grammar_robot(env) -> None:
         env.num_envs, population.n_designs,
         rank=int(os.environ.get("RANK", "0")), world_size=int(os.environ.get("WORLD_SIZE", "1")),
     )
-    # I27/risk 3: Isaac checks default joint positions on env 0 only --
-    # ensure a design with a limit range containing 0 lands in env 0 so that
-    # check is meaningful (never silently pass by placing an all-locked
-    # ghost-only design there).
-    idx = _rotate_so_env0_has_a_limits_contain_zero_design(idx, population)
-
+    # Review item 10 (risk): a previous version of this function swapped
+    # env 0's design assignment so a "limits contain 0" design landed there
+    # (Isaac Lab validates `InitialStateCfg.joint_pos` at construction time
+    # using ONE scene-wide template, built from THIS index below). Removed:
+    # it could silently DROP a design from the population outright (when the
+    # chosen candidate design held zero envs, `out[0] = candidate` overwrote
+    # env 0's previous design with no swap-back, so that previous design's
+    # only representative env vanished with no error) for a benefit that no
+    # longer exists -- `scene_utils._resolve_population_joint_permutation`
+    # now overwrites EVERY env's own `default_joint_pos` (including env 0's)
+    # from ITS OWN design right after the articulation view goes live, so
+    # the scene-wide CFG template's own limits/defaults (always mutually
+    # consistent, since both come from the SAME `template_idx`) no longer
+    # need env 0 to be any particular design.
     collider_links = author_population(env, population, idx)
 
     env.hand_spec = build_hand_population_spec(population, int(idx[0]), population.base_rot[int(idx[0])])
@@ -484,28 +522,3 @@ def setup_grammar_robot(env) -> None:
         "population": population, "design_idx": torch.as_tensor(idx, device=env.device),
         "collider_links": collider_links, "population_path": env.cfg.assets.hand_population,
     }
-
-
-def _rotate_so_env0_has_a_limits_contain_zero_design(idx: np.ndarray, population: ge.GrammarPopulation) -> np.ndarray:
-    """Swap `idx[0]`'s design for the first admitted design whose valid
-    joints' limits contain 0, if `idx[0]`'s current design does not already
-    qualify (see `setup_grammar_robot`'s I27/risk-3 note)."""
-    def _limits_contain_zero(design_id: int) -> bool:
-        valid = population.joint_valid[design_id]
-        lo, hi = population.joint_limits[design_id, :, 0], population.joint_limits[design_id, :, 1]
-        return bool(np.any(valid & (lo <= 0.0) & (hi >= 0.0)))
-
-    if _limits_contain_zero(int(idx[0])):
-        return idx
-    for candidate in range(population.n_designs):
-        if _limits_contain_zero(candidate):
-            out = np.array(idx, copy=True)
-            # Swap wherever `candidate` currently sits with slot 0, so every
-            # design is still represented the same number of times.
-            swap_positions = np.where(out == candidate)[0]
-            if swap_positions.size:
-                out[0], out[swap_positions[0]] = out[swap_positions[0]], out[0]
-            else:
-                out[0] = candidate
-            return out
-    return idx  # no design anywhere has a zero-containing limit; leave as is

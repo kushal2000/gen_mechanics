@@ -204,7 +204,7 @@ def test_build_population_table_shapes():
     assert pop.palm_frame.shape == (n, 7)
     assert pop.base_rot.shape == (n, 4)
     assert pop.spawn_offset.shape == (n, 3)
-    assert pop.drive.shape == (n, ge.N_SLOTS, 5)
+    assert not hasattr(pop, "drive"), "GrammarPopulation.drive was removed (review item 11: unused, inconsistent)"
     # A design with limits containing 0 must exist somewhere in a real
     # population, but this is a per-generator invariant (make_grammar_
     # population.py orders env 0), not a per-table one; here we only check

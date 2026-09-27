@@ -994,18 +994,24 @@ class GrammarPopulation:
     palm_frame: np.ndarray          # (n,7) float64 (xyz + wxyz quat)
     base_rot: np.ndarray            # (n,4) float64 (wxyz)
     spawn_offset: np.ndarray        # (n,3) float64
-    drive: np.ndarray               # (n,32,5) float64 (stiffness,damping,max_force,lo,hi placeholder)
     designs: Tuple[EnvelopeDesign, ...]
     palm_up_results: Tuple[PalmUpResult, ...]
+    # Review item 11 (risk): a `drive` table (stiffness/damping/max_force
+    # placeholders, `(n,32,5)`) used to live here. Removed: it was never
+    # read anywhere (the AUTHORED USD joint drive uses hardcoded
+    # `robot_param_constants` values, and the RUNTIME actuator gains come
+    # from `hand_only.DEFAULT_HAND_STIFFNESS`/`DEFAULT_HAND_DAMPING`, scene-
+    # wide, plus this env's own per-env carrier-gain override
+    # (`scene_utils._apply_per_env_carrier_gains`) -- none of it consulted
+    # `population.drive`), and its own placeholder values (3.0/0.1/0.5)
+    # actively disagreed with the values that DO govern behavior (SHARPA-
+    # mean stiffness/damping, 1.0 Nm effort). Wiring it up as the real
+    # source of truth would mean per-design (not just per-carrier) runtime
+    # gain overrides across all 30 finger joints -- a larger, Kit-risky
+    # change deferred past this pass; see the worker report.
 
 
-def build_population(
-    designs: Sequence[EnvelopeDesign],
-    default_stiffness: float = 3.0,
-    default_damping: float = 0.1,
-    default_max_force: float = 0.5,
-    **palm_up_kwargs,
-) -> GrammarPopulation:
+def build_population(designs: Sequence[EnvelopeDesign], **palm_up_kwargs) -> GrammarPopulation:
     n = len(designs)
     joint_link_boxes = np.zeros((n, N_SLOTS, 4, 3), dtype=np.float32)
     joint_valid = np.zeros((n, N_SLOTS), dtype=bool)
@@ -1019,7 +1025,6 @@ def build_population(
     palm_frame = np.zeros((n, 7))
     base_rot = np.zeros((n, 4))
     spawn_offset = np.zeros((n, 3))
-    drive = np.zeros((n, N_SLOTS, 5))
     palm_up_results: List[PalmUpResult] = []
 
     for i, design in enumerate(designs):
@@ -1046,16 +1051,10 @@ def build_population(
         palm_frame[i, :3] = 0.0
         palm_frame[i, 3:] = _mat3_to_quat_wxyz(np.eye(3))
 
-        for idx in range(N_SLOTS):
-            if design.slot_valid[idx]:
-                drive[i, idx] = (default_stiffness, default_damping, default_max_force, design.slot_limits[idx][0], design.slot_limits[idx][1])
-            else:
-                drive[i, idx] = (0.0, 0.0, 0.0, GHOST_LIMITS[0], GHOST_LIMITS[1])
-
     return GrammarPopulation(
         n_designs=n, sources=tuple(d.source for d in designs), joint_link_boxes=joint_link_boxes,
         joint_valid=joint_valid, joint_limits=joint_limits, default_joint_pos=default_joint_pos,
         hand_scale=hand_scale, fingertip_valid=fingertip_valid, fingertip_offsets=fingertip_offsets,
         palm_center=palm_center, palm_keypoints=palm_keypoints, palm_frame=palm_frame, base_rot=base_rot,
-        spawn_offset=spawn_offset, drive=drive, designs=tuple(designs), palm_up_results=tuple(palm_up_results),
+        spawn_offset=spawn_offset, designs=tuple(designs), palm_up_results=tuple(palm_up_results),
     )

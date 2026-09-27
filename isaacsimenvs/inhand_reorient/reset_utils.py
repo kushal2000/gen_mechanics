@@ -113,6 +113,30 @@ def _object_spawn_offset(env, env_ids: torch.Tensor) -> torch.Tensor:
     return spawn[design_idx]
 
 
+def _population_default_joint_pos(env, env_ids: torch.Tensor) -> torch.Tensor:
+    """`(len(env_ids), num_joints)` -- each of these envs' OWN design's
+    default pose, in the articulation view's phys-column order. Review risk
+    11 ("per-env defaults would revert to the template if the articulation
+    re-initializes"): `env.robot.data.default_joint_pos` is Isaac Lab's OWN
+    mutable buffer, which `scene_utils._resolve_population_joint_permutation`
+    overwrites once per env-construction -- but re-derives from the scene-
+    wide CFG template (env 0's design) if Isaac Lab's articulation
+    re-initializes (e.g. a timeline stop/play cycle re-running
+    `Articulation._initialize_impl`), silently reverting every OTHER env
+    back to the wrong design's defaults with no error. `env.scene_record
+    ["default_joint_pos"]` is instead a plain tensor this package owns, set
+    once from the same per-env computation and never touched by Isaac Lab's
+    own re-init path -- reading FROM it here (and in `obs_utils.
+    pre_physics_step`'s action-centering) makes both immune to that,
+    regardless of when/why a re-init happens. `None` on the single-hand
+    path (`env.hand_tables` unset) -- unaffected, falls through to Isaac
+    Lab's own buffer exactly as before this existed."""
+    cached = env.scene_record.get("default_joint_pos") if getattr(env, "hand_tables", None) is not None else None
+    if cached is not None:
+        return cached[env_ids]
+    return env.robot.data.default_joint_pos[env_ids]
+
+
 def reset_env_state(env, env_ids: torch.Tensor) -> None:
     """Full reset: hand joints, object spawn, goal, and per-episode buffers."""
     n = env_ids.numel()
@@ -120,7 +144,7 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
 
     # Hand joints to their (0) default pose plus uniform noise, clamped inside
     # each joint's own limits.
-    default_pos = env.robot.data.default_joint_pos[env_ids]
+    default_pos = _population_default_joint_pos(env, env_ids)
     lower = env.robot.data.soft_joint_pos_limits[env_ids, :, 0]
     upper = env.robot.data.soft_joint_pos_limits[env_ids, :, 1]
     noise = (torch.rand_like(default_pos) * 2.0 - 1.0) * env.cfg.reset.joint_reset_noise

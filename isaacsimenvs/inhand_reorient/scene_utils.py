@@ -19,12 +19,14 @@ import time
 from pathlib import Path
 
 import isaaclab.sim as sim_utils
+from hand_sampler import robot_param_constants as rpc
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import Articulation, ArticulationCfg, RigidObject, RigidObjectCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 
 from isaacsimenvs.pose_reaching_6d.scene_utils.assembly import _convert_fixed_robot
 
+from . import hand_only
 from .hand_only import build_hand_only_spec
 from .obs_utils import derive_spaces
 from .palm_calibration import load_calibration
@@ -132,12 +134,34 @@ _CARRIER_JOINT_NAMES = ("pc0_j", "pc1_j")
 _CARRIER_STIFFNESS = 500.0
 _CARRIER_DAMPING = 20.0
 _CARRIER_ARMATURE = 0.01
+_CARRIER_EFFORT_LIMIT_NM = 5.0
+"""Review risk 8, second half: the AUTHORED USD joint drive's own
+`maxForce` (`author_grammar._author_joint`, `rpc.GEN_JOINT_EFFORT_NM` = 1.0
+Nm, the SAME for every joint including carriers) saturates before the
+stiff carrier gains above can do their job -- a Kit smoke found a 6x
+stiffness increase (3000/80) bit-identical to the 500/20 baseline, because
+the torque output was capped at 1 Nm either way, not because 500/20 was
+already sufficient. `ImplicitActuatorCfg.effort_limit_sim` overrides that
+authored cap for this actuator group ONLY (the "hand" group keeps the
+authored 1 Nm), scene-wide default; `_apply_per_env_carrier_gains` below
+then restores the REAL-carrier envs' whole group (stiffness/damping/
+armature/effort) back to the hand's own normal per-joint values, since a
+REAL carrier is an actuated design joint the policy controls, not a
+mechanical support -- it should not get a stronger-than-normal torque
+budget or 128x stiffer gains (review risk 8's "SHARPA and carrier designs
+get a palm DOF 128x stiffer than their fingers")."""
 
 
 def _hand_articulation_cfg(spec, usd_path: str | None) -> ArticulationCfg:
     """`usd_path=None` (the grammar-population path): the prims were already
     authored directly into the stage (`scene/author_grammar.py`), so this
-    Articulation only needs to ATTACH to them, not spawn anything."""
+    Articulation only needs to ATTACH to them, not spawn anything. Scene-
+    wide defaults only (one `ImplicitActuatorCfg` per named group, applied
+    identically to every env at construction time) -- a population's PER-ENV
+    override (ghost vs real carrier) happens after the articulation view is
+    live, in `_apply_per_env_carrier_gains`, the same pattern
+    `_resolve_population_joint_permutation` already uses for
+    `default_joint_pos`."""
     carrier_names = [n for n in _CARRIER_JOINT_NAMES if n in spec.hand_joint_names]
     hand_names = [n for n in spec.hand_joint_names if n not in carrier_names]
     actuators = {
@@ -155,6 +179,7 @@ def _hand_articulation_cfg(spec, usd_path: str | None) -> ArticulationCfg:
             stiffness={n: _CARRIER_STIFFNESS for n in carrier_names},
             damping={n: _CARRIER_DAMPING for n in carrier_names},
             armature={n: _CARRIER_ARMATURE for n in carrier_names},
+            effort_limit_sim={n: _CARRIER_EFFORT_LIMIT_NM for n in carrier_names},
             friction=0.0,
         )
     return ArticulationCfg(
@@ -314,6 +339,21 @@ def finalize_scene(env) -> None:
           f"{env.robot.data.joint_pos.shape[1]} joints, palm_body_idx={env.palm_body_idx}",
           flush=True)
 
+    # Design note risk 1 ("topology drift: assert homogeneity") -- every env's
+    # design is authored directly into its own USD subtree (author_grammar.py),
+    # not cloned from one template like the single-hand path, so nothing but
+    # this assertion catches a design whose AUTHORED topology silently
+    # diverged from the fixed 32-slot envelope (a body/joint count or type
+    # mismatch PhysX's own tensor API would otherwise either reject outright
+    # or, worse, silently fall back to a per-env Python path for). `omni.
+    # physics.tensors.ArticulationView.is_homogeneous`: "whether all the
+    # articulations in the view are of the same type."
+    if not env.robot.root_physx_view.is_homogeneous:
+        raise RuntimeError(
+            "articulation view is NOT homogeneous across envs -- some env's authored "
+            "topology diverged from the fixed 32-slot envelope (see grammar_envelope.py's "
+            "module docstring); this must never happen for any admitted population")
+
     if getattr(env, "hand_tables", None) is not None:
         _resolve_population_joint_permutation(env)
 
@@ -363,5 +403,60 @@ def _resolve_population_joint_permutation(env) -> None:
     default_pos = default_pos[design_idx][:, perm_t]  # (num_envs, 32), phys column order
     env.robot.data.default_joint_pos[:] = default_pos
     env.robot.write_joint_state_to_sim(default_pos, torch.zeros_like(default_pos))
+    # Review risk 11: cache it OUTSIDE Isaac Lab's own mutable buffer too --
+    # `reset_utils._population_default_joint_pos`/`obs_utils.pre_physics_
+    # step` read this instead of `env.robot.data.default_joint_pos` on the
+    # population path, so a later articulation re-initialization (which
+    # rebuilds that buffer from the scene-wide CFG template, env 0's design)
+    # cannot silently revert every other env's default pose.
+    env.scene_record["default_joint_pos"] = default_pos.clone()
     print(f"[inhand_reorient] wrote per-env default_joint_pos for {env.num_envs} envs "
           f"from their own design's palm_up calibration", flush=True)
+
+    _apply_per_env_carrier_gains(env, phys_names, design_idx)
+
+
+def _apply_per_env_carrier_gains(env, phys_names: list[str], design_idx) -> None:
+    """Review risk 8: the scene-wide "carrier" `ImplicitActuatorCfg`
+    (`_hand_articulation_cfg`, stiff gains + a raised effort limit) is
+    meant for a GHOST pc0/pc1 (mechanically supporting a root-mounted
+    digit through a near-massless body, see this module's own comment
+    above `_CARRIER_JOINT_NAMES`) -- applied scene-wide, it ALSO lands on
+    every env whose pc0/pc1 is instead a REAL, policy-actuated design
+    joint (SHARPA, "carrier" designs), 128x stiffer and 5x the torque
+    budget of that same design's own fingers. Overwrite those envs' whole
+    carrier group back to the hand's normal per-joint gains, now that the
+    articulation view (and its own joint-order permutation) are live --
+    same per-env-override pattern as `default_joint_pos` just above."""
+    import torch
+
+    from .scene import grammar_envelope as ge
+
+    carrier_cols = [i for i, n in enumerate(phys_names) if n in _CARRIER_JOINT_NAMES]
+    if not carrier_cols:
+        return
+    carrier_slots = [ge.SLOT_NAMES.index(phys_names[i]) for i in carrier_cols]
+
+    population = env.hand_tables
+    joint_valid = torch.as_tensor(population.joint_valid, device=env.device, dtype=torch.bool)
+    real = joint_valid[design_idx][:, carrier_slots]  # (num_envs, len(carrier_cols)) bool
+
+    def _per_env(real_value: float, ghost_value: float) -> torch.Tensor:
+        ghost = torch.full_like(real, ghost_value, dtype=torch.float32)
+        real_t = torch.full_like(real, real_value, dtype=torch.float32)
+        return torch.where(real, real_t, ghost)
+
+    stiffness = _per_env(hand_only.DEFAULT_HAND_STIFFNESS, _CARRIER_STIFFNESS)
+    damping = _per_env(hand_only.DEFAULT_HAND_DAMPING, _CARRIER_DAMPING)
+    armature = _per_env(hand_only.DEFAULT_HAND_ARMATURE, _CARRIER_ARMATURE)
+    effort = _per_env(rpc.GEN_JOINT_EFFORT_NM, _CARRIER_EFFORT_LIMIT_NM)
+
+    joint_ids = carrier_cols
+    env.robot.write_joint_stiffness_to_sim(stiffness, joint_ids=joint_ids)
+    env.robot.write_joint_damping_to_sim(damping, joint_ids=joint_ids)
+    env.robot.write_joint_armature_to_sim(armature, joint_ids=joint_ids)
+    env.robot.write_joint_effort_limit_to_sim(effort, joint_ids=joint_ids)
+    n_real_envs = int(real.any(dim=-1).sum())
+    print(f"[inhand_reorient] carrier gains: {n_real_envs}/{env.num_envs} envs have a REAL "
+          f"pc0/pc1 carrier and got the hand's normal gains restored; the rest keep the "
+          f"stiff ghost-carrier defaults", flush=True)
