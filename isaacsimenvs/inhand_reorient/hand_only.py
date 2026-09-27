@@ -256,7 +256,15 @@ def build_hand_only_spec(
         hand_joint_names=joint_names, hand_joint_limits=limits,
         palm_body_name=cut.hand_root, fingertip_body_names=tips,
         hand_stiffness=stiffness, hand_damping=damping, hand_armature=armature,
-        hand_default_joint_pos={j: 0.0 for j in joint_names},
+        # Clamped into each joint's own limits: 0.0 for most hands, but some
+        # commercial hands (e.g. allegro_right's thumb joint_12, limits
+        # [0.263, 1.396]) do not have 0 in range at all, and Isaac Lab's
+        # Articulation._validate_cfg() hard-errors on a default outside the
+        # limits ("default positions out of the limits") rather than
+        # clamping it itself.
+        hand_default_joint_pos={
+            j: min(max(0.0, lo), hi) for j, (lo, hi) in zip(joint_names, limits)
+        },
         palm_center_offset=(0.0, 0.0, 0.0),
         adjacent_links=adjacency,
         joint_link_bodies=tuple(bodies),

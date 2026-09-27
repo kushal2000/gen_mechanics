@@ -1,0 +1,118 @@
+{
+  "dclaw": {
+    "axis": "-z",
+    "base_rot": [
+      6.123233995736766e-17,
+      1.0,
+      0.0,
+      0.0
+    ],
+    "date": "2026-09-27T02:15:27.555598+00:00",
+    "final_dist_m": 0.010213705711066723,
+    "git_sha": "b7c8c0b692b3c403990e050797762aab54c1d93f",
+    "method": "calibrate_palm_up.py: 6 candidates (full=False), repeats=8, held 2.0s @ 120 Hz zero-action default-joint-target, scored over the trailing 50% of steps at threshold=0.08 m",
+    "roll_deg": 0.0,
+    "score": 1.0,
+    "score_table": [
+      {
+        "axis": "-z",
+        "final_dist_m": 0.010213705711066723,
+        "roll_deg": 0.0,
+        "score": 1.0
+      },
+      {
+        "axis": "+y",
+        "final_dist_m": 0.23106622695922852,
+        "roll_deg": 0.0,
+        "score": 0.625
+      },
+      {
+        "axis": "+z",
+        "final_dist_m": 0.36878111958503723,
+        "roll_deg": 0.0,
+        "score": 0.25
+      },
+      {
+        "axis": "+x",
+        "final_dist_m": 0.4984138309955597,
+        "roll_deg": 0.0,
+        "score": 0.0
+      },
+      {
+        "axis": "-x",
+        "final_dist_m": 0.5086406469345093,
+        "roll_deg": 0.0,
+        "score": 0.0
+      },
+      {
+        "axis": "-y",
+        "final_dist_m": 0.5182915925979614,
+        "roll_deg": 0.0,
+        "score": 0.0
+      }
+    ],
+    "spawn_offset_local": [
+      0.0,
+      5.81707222295529e-18,
+      -0.04749999940395355
+    ]
+  },
+  "sharpa": {
+    "axis": "-z",
+    "base_rot": [
+      6.123233995736766e-17,
+      1.0,
+      0.0,
+      0.0
+    ],
+    "date": "2026-09-27T02:15:06.673126+00:00",
+    "final_dist_m": 0.028582103550434113,
+    "git_sha": "b7c8c0b692b3c403990e050797762aab54c1d93f",
+    "method": "calibrate_palm_up.py: 6 candidates (full=False), repeats=8, held 2.0s @ 120 Hz zero-action default-joint-target, scored over the trailing 50% of steps at threshold=0.08 m",
+    "roll_deg": 0.0,
+    "score": 1.0,
+    "score_table": [
+      {
+        "axis": "-z",
+        "final_dist_m": 0.028582103550434113,
+        "roll_deg": 0.0,
+        "score": 1.0
+      },
+      {
+        "axis": "+x",
+        "final_dist_m": 0.32200783491134644,
+        "roll_deg": 0.0,
+        "score": 0.375
+      },
+      {
+        "axis": "-x",
+        "final_dist_m": 0.3270503580570221,
+        "roll_deg": 0.0,
+        "score": 0.375
+      },
+      {
+        "axis": "+z",
+        "final_dist_m": 0.4944572448730469,
+        "roll_deg": 0.0,
+        "score": 0.0
+      },
+      {
+        "axis": "+y",
+        "final_dist_m": 0.49650782346725464,
+        "roll_deg": 0.0,
+        "score": 0.0
+      },
+      {
+        "axis": "-y",
+        "final_dist_m": 0.5153292417526245,
+        "roll_deg": 0.0,
+        "score": 0.0
+      }
+    ],
+    "spawn_offset_local": [
+      0.0,
+      5.81707222295529e-18,
+      -0.04749999940395355
+    ]
+  }
+}

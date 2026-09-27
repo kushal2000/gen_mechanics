@@ -82,3 +82,15 @@ def test_unavailable_commercial_hand_raises_a_clear_error(tmp_path):
     # inspire_right's commit_allowed is False and it has no fixture_path.
     with pytest.raises(ValueError, match="fixture_path"):
         build_hand_only_spec("inspire_right", out_dir=tmp_path)
+
+
+@pytest.mark.parametrize("hand_id", HANDS)
+def test_default_joint_pos_is_within_each_joints_own_limits(hand_id, tmp_path):
+    # Regression: allegro_right's thumb joint_12 has limits [0.263, 1.396],
+    # which excludes 0 -- a hardcoded 0.0 default crashes Isaac Lab's
+    # Articulation._validate_cfg() ("default positions out of the limits")
+    # at scene boot, well past anything a CPU-only test would catch.
+    spec, _ = build_hand_only_spec(hand_id, out_dir=tmp_path)
+    for j, (lo, hi) in zip(spec.hand_joint_names, spec.hand_joint_limits):
+        default = spec.hand_default_joint_pos[j]
+        assert lo <= default <= hi, f"{hand_id}/{j}: default {default} not in [{lo}, {hi}]"
