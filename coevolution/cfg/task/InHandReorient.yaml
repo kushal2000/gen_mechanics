@@ -1,0 +1,111 @@
+# -----------------------------------------------------------------------------
+# DirectRLEnvCfg top-level required fields
+# -----------------------------------------------------------------------------
+decimation: 2
+episode_length_s: 10.0
+# action_space / observation_space / state_space are DERIVED in
+# InHandReorientEnv's setup_scene from the selected hand's joint count and
+# obs.obs_list/state_list -- do not pin them here.
+
+# -----------------------------------------------------------------------------
+# 1) sim — 60 Hz policy, 120 Hz physics (same as PoseReach)
+# -----------------------------------------------------------------------------
+sim:
+  dt: 0.00833333333   # 1/120
+  render_interval: 2
+  gravity: [0.0, 0.0, -9.81]
+  physx:
+    solver_type: 1
+    min_position_iteration_count: 8
+    max_position_iteration_count: 8
+    min_velocity_iteration_count: 0
+    max_velocity_iteration_count: 0
+    bounce_threshold_velocity: 0.2
+    friction_offset_threshold: 0.04
+    friction_correlation_distance: 0.025
+    gpu_max_rigid_contact_count: 8388608
+    gpu_max_rigid_patch_count: 4194304
+
+# -----------------------------------------------------------------------------
+# 2) scene — one fixed hand, no per-env distinct assets, so the ordinary
+#    replicator can clone it (unlike pose_reaching_6d's population path).
+# -----------------------------------------------------------------------------
+scene:
+  num_envs: 4096              # must divide by expl_coef_block_size (4096) below
+  env_spacing: 0.6
+  replicate_physics: true
+  clone_in_fabric: true
+
+# -----------------------------------------------------------------------------
+# 3) assets — which hand, and the cube it reorients
+# -----------------------------------------------------------------------------
+assets:
+  # A hand_sampler/grammar_bench/manifest.json id: "sharpa", "allegro_right",
+  # "dclaw", "wuji_right", "xhand_right", "tesollo_dg5f_right", "orca_right",
+  # "leap_right", "barrett_bh". Override on the CLI with env.assets.hand_id=<id>.
+  hand_id: "sharpa"
+  object_size_m: 0.055
+  object_density: 500.0
+
+  modify_asset_frictions: true
+  robot_friction: 0.5
+  finger_tip_friction: 1.0
+  object_friction: 0.7
+  object_restitution: 0.0
+
+# -----------------------------------------------------------------------------
+# 4) obs — symmetric actor-critic (Phase 1 has no privileged state yet)
+# -----------------------------------------------------------------------------
+obs:
+  obs_list: [joint_pos, joint_vel, prev_actions,
+             object_pos_palm, object_quat_palm, goal_quat_palm, object_quat_rel_goal]
+  state_list: [joint_pos, joint_vel, prev_actions,
+               object_pos_palm, object_quat_palm, goal_quat_palm, object_quat_rel_goal]
+  clamp_abs_observations: 10.0
+
+# -----------------------------------------------------------------------------
+# 5) action — joint-position targets, moving-average smoothing
+# -----------------------------------------------------------------------------
+action:
+  hand_moving_average: 0.2
+  dof_speed_scale: 1.0
+
+# -----------------------------------------------------------------------------
+# 6) reward — rotation-error progress + goal bonus - action/velocity/drop penalties
+# -----------------------------------------------------------------------------
+reward:
+  rotation_progress_scale: 1.0
+  goal_bonus: 250.0
+  action_penalty_scale: 0.0003
+  action_delta_penalty_scale: 0.0003
+  hand_velocity_penalty_scale: 0.0003
+  drop_penalty: 50.0
+
+# -----------------------------------------------------------------------------
+# 7) reset — object spawn above the palm, goal sampling
+# -----------------------------------------------------------------------------
+reset:
+  object_spawn_offset: [0.0, 0.0, 0.06]
+  object_position_noise: 0.01
+  joint_reset_noise: 0.1
+  goal_sampling_type: absolute       # "absolute" | "delta"
+  delta_rotation_degrees: 90.0
+  drop_distance_m: 0.10
+
+# -----------------------------------------------------------------------------
+# 8) termination — end-of-episode conditions + the tolerance curriculum
+#    (fields match pose_reaching_6d.env_cfg.TerminationCfg 1:1 -- reused as a
+#    class so coevolution/utils/rlgames_utils.py's curriculum checkpoint
+#    restore, which reads these names directly, keeps working on resume)
+# -----------------------------------------------------------------------------
+termination:
+  episode_length: 600                 # policy steps (600 * 2 * 1/120 = 10s)
+  success_tolerance: 0.4              # curriculum start, radians
+  target_success_tolerance: 0.1       # curriculum floor, radians
+  eval_success_tolerance: null
+  success_steps: 10
+  max_consecutive_successes: 50
+  force_consecutive_near_goal_steps: false
+  tolerance_curriculum_increment: 0.9
+  tolerance_curriculum_interval: 3000
+  tolerance_curriculum_success_threshold: 3.0

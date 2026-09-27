@@ -1,0 +1,132 @@
+# gen_mechanics rl_games SAPG config for InHandReorient — LSTM MLP, sized
+# down from PoseReachSAPG.yaml for the much smaller observation (no
+# per-joint tokens; ~ 3 * num_hand_joints + 15 scalars).
+#
+# The joint-transformer config (PoseReachJointTransformerSAPG.yaml's
+# decentralized per-joint policy) is NOT ported here for Phase 1: it needs an
+# arm_head gated on n_arm > 0, and this task has no arm at all. Start with
+# this simpler LSTM MLP; a joint-transformer variant is follow-up work if the
+# per-joint tokens (joint_link_bbox, joint_lower/upper) get added back to
+# obs.obs_list.
+#
+# Constraint: num_envs % expl_coef_block_size == 0 (task yaml: num_envs=4096).
+
+params:
+  seed: 42
+
+  env:
+    clip_observations: 10.0   # matches env.obs.clamp_abs_observations
+    clip_actions: 1.0
+
+  algo:
+    name: a2c_continuous
+
+  model:
+    name: continuous_a2c_logstd
+
+  network:
+    name: actor_critic
+    separate: False
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: 0
+        fixed_sigma: coef_cond    # SAPG requires coef_cond (not 'fixed')
+    mlp:
+      units: [256, 256, 128]
+      activation: elu
+      d2rl: False
+      initializer:
+        name: default
+      regularizer:
+        name: None
+    rnn:
+      name: lstm
+      units: 256
+      layers: 1
+      before_mlp: True
+      layer_norm: True
+
+  load_checkpoint: False
+  load_path: ''
+
+  config:
+    # Must start with `<int>_` — our vendored rl_games parses policy_idx from the prefix.
+    name: 0_inhand_reorient_sapg
+    full_experiment_name: ${.name}
+    env_name: rlgpu
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    multi_gpu: False
+    ppo: True
+    mixed_precision: True
+    normalize_input: True
+    normalize_value: True
+    value_bootstrap: True
+    normalize_advantage: True
+    reward_shaper:
+      scale_value: 0.01
+    num_actors: ${....env.scene.num_envs}
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 3e-4
+    lr_schedule: adaptive
+    schedule_type: standard
+    kl_threshold: 0.016
+    score_to_win: 1000000
+    max_epochs: 1000000
+    save_best_after: 100
+    save_frequency: 3
+    print_stats: True
+    grad_norm: 1.0
+    entropy_coef: 0.0
+    truncate_grads: True
+    e_clip: 0.1
+    minibatch_size: 16384
+    mini_epochs: 4
+    critic_coef: 4.0
+    clip_value: True
+    horizon_length: 16
+    seq_length: 16
+    bounds_loss_coef: 0.0001
+
+    # Asymmetric critic slot -- symmetric here (state_list == obs_list), kept
+    # only because our vendored rl_games/SAPG expects the block to exist.
+    central_value_config:
+      minibatch_size: 16384
+      mini_epochs: 4
+      learning_rate: 3e-4
+      kl_threshold: 0.016
+      clip_value: True
+      normalize_input: True
+      truncate_grads: True
+      network:
+        name: actor_critic
+        central_value: True
+        mlp:
+          units: [256, 256, 128]
+          activation: elu
+          d2rl: False
+          initializer:
+            name: default
+          regularizer:
+            name: None
+
+    # === SAPG ===
+    use_others_experience: lf
+    off_policy_ratio: 1.0
+    expl_type: mixed_expl_learn_param
+    expl_reward_type: entropy
+    expl_reward_coef_embd_size: 32
+    expl_reward_coef_scale: 0.002
+    expl_coef_block_size: 4096
+
+    player:
+      deterministic: False
+      games_num: 100000
+      print_stats: False
