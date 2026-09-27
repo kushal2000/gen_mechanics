@@ -33,7 +33,7 @@ import torch
 
 __all__ = [
     "allocate_scoring_buffers", "reset_scoring_state", "step_scoring_state",
-    "bank_done_episodes", "maybe_write", "flush", "flush_all",
+    "bank_done_episodes", "maybe_write", "flush", "flush_all", "read_snapshot",
     "graded_fitness_components", "GOAL_WEIGHT", "ROTATION_WEIGHT", "TIME_WEIGHT",
 ]
 
@@ -147,6 +147,8 @@ def allocate_scoring_buffers(env) -> None:
     env._score_time_held_sum = torch.zeros(n_designs, device=device)
     env._score_rotation_progress_sum = torch.zeros(n_designs, device=device)
     env._score_return_sum = torch.zeros(n_designs, device=device)
+    env._score_rotation_term_sum = torch.zeros(n_designs, device=device)
+    env._score_time_term_sum = torch.zeros(n_designs, device=device)
     env._score_fitness_sum = torch.zeros(n_designs, device=device)
 
     env._score_total_steps = 0
@@ -216,7 +218,7 @@ def bank_done_episodes(env, reward: torch.Tensor) -> None:
     time_held_s = env._score_elapsed_steps[ids].float() * step_dt
     ep_return = env._score_return_running[ids]
 
-    _rot_term, _time_term, fitness = graded_fitness_components(goals, rotation_progress, time_held_s, episode_max_s)
+    rot_term, time_term, fitness = graded_fitness_components(goals, rotation_progress, time_held_s, episode_max_s)
     rotation_progress_clamped = torch.clamp(rotation_progress, min=0.0)
 
     ones = torch.ones_like(goals)
@@ -226,6 +228,8 @@ def bank_done_episodes(env, reward: torch.Tensor) -> None:
     env._score_time_held_sum.index_add_(0, d, time_held_s)
     env._score_rotation_progress_sum.index_add_(0, d, rotation_progress_clamped)
     env._score_return_sum.index_add_(0, d, ep_return)
+    env._score_rotation_term_sum.index_add_(0, d, rot_term)
+    env._score_time_term_sum.index_add_(0, d, time_term)
     env._score_fitness_sum.index_add_(0, d, fitness)
 
     if env._score_output_path is not None and env._score_window_steps >= WRITE_EVERY_N_STEPS:
@@ -240,6 +244,8 @@ def _snapshot_payload(env) -> dict:
     time_held_sum = env._score_time_held_sum.cpu()
     rotation_progress_sum = env._score_rotation_progress_sum.cpu()
     return_sum = env._score_return_sum.cpu()
+    rotation_term_sum = env._score_rotation_term_sum.cpu()
+    time_term_sum = env._score_time_term_sum.cpu()
     fitness_sum = env._score_fitness_sum.cpu()
     design_idx = env._score_design_idx.cpu()
 
@@ -270,6 +276,11 @@ def _snapshot_payload(env) -> dict:
             "return_sum": float(return_sum[i]),
             "return_mean": float(return_sum[i]) / n_ep,
             "graded_fitness": float(fitness_sum[i]) / n_ep,
+            "graded_fitness_components": {
+                "goal_term_mean": GOAL_WEIGHT * goals_per_episode,
+                "rotation_term_mean": float(rotation_term_sum[i]) / n_ep,
+                "time_term_mean": float(time_term_sum[i]) / n_ep,
+            },
         }
 
     return {
@@ -321,9 +332,19 @@ def maybe_write(env) -> None:
     env._score_time_held_sum.zero_()
     env._score_rotation_progress_sum.zero_()
     env._score_return_sum.zero_()
+    env._score_rotation_term_sum.zero_()
+    env._score_time_term_sum.zero_()
     env._score_fitness_sum.zero_()
     env._score_window_steps = 0
     env._score_window_t0 = time.time()
+
+
+def read_snapshot(env) -> dict:
+    """Public wrapper around the current window's snapshot -- for a caller
+    (e.g. `evaluate_population.py`) that wants the accumulated per-design
+    tallies as a dict WITHOUT writing/resetting anything (unlike
+    `maybe_write`/`flush`)."""
+    return _snapshot_payload(env)
 
 
 def flush(env) -> None:

@@ -179,6 +179,9 @@ def test_maybe_write_and_flush_produce_valid_json_and_reset_the_window(tmp_path)
     assert row["envs_per_design"] == 2
     assert "graded_fitness" in row
     assert "success_tolerance" in doc and "goal_curriculum_stage" in doc
+    comp = row["graded_fitness_components"]
+    assert abs((comp["goal_term_mean"] + comp["rotation_term_mean"] + comp["time_term_mean"])
+               - row["graded_fitness"]) < 1e-6
 
     # The window resets after a write: banking nothing new and flushing
     # again must show 0 episodes in the (now-empty) new window.
