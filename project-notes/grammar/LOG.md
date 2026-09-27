@@ -225,3 +225,12 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Conclusion: full random-orientation reorientation is not learnable in ~1 GPU-hour with this setup; rotation about the palm normal is. Proposal: palm-normal-axis goals for E-R0/E-R1; decouple curricula; log the goal stage.
 - Kit again ignored SIGTERM at the cap; `timeout -k 30` killed it (exit 137). I27 mitigation works.
 - Phase 2 worker: its own forks collided with it (I28); forks stopped; 8 commits so far (envelope, population file, authoring, env wiring, CLI); Kit smoke in progress.
+
+## Phase 2: grammar -> simulator adapter (2026-09-27 ~14:30)
+
+- 11 commits (51be731..f81c3ca), all inside isaacsimenvs/inhand_reorient/. Padded 5x6 + 2 palm-carrier envelope; sha256-provenanced population files; per-env USD authoring; joint-order permutation between slot and PhysX order; CLI make_grammar_population.
+- FK: CPU authored vs grammar FK ~1e-15; Kit readback vs grammar FK 4e-7 m / 1.2e-6 rad (q0 and random q); limits table vs PhysX exact.
+- Kit bugs found and fixed: fixed-joint world anchor ignored env origin; per-body initial pose; rest self-penetration exploded ghost joints (153 rad) -> admission filter on rest overlap > 3 mm; stiffer carrier actuators.
+- Training smoke with a 16-design population: 2 epochs, exit 0. Boot ~5.5 s for 64 envs.
+- Admission: 13 commercial hands admitted; svh rejected (one palm joint carries 2 digits). G_SERIAL 100% and DEFAULT 76.5% structurally admitted, but ~75% of those fail the rest-overlap filter (I29); reach of random designs is poor (I30). Residual gaps: I31.
+- Tests: 78 package + 7 curriculum pass; grammar suite 3124 passed, 1 skipped.

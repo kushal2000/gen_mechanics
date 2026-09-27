@@ -236,10 +236,31 @@
       "hypothesis": "Phase 2 worker's own 'research' forks inherited its implementation brief and wrote the same module concurrently in the live checkout (grammar_envelope.py overwritten).",
       "decision": "Coordinator stopped the 3 forks; worker restored its verified version and continues solo. Worker briefs now forbid subagents/forks.",
       "evidence": "2026-09-27 10:44"
+    },
+    {
+      "id": "I29",
+      "status": "open",
+      "hypothesis": "Grammar samples self-intersect at rest: ~75% of structurally admitted designs (G_SERIAL 75.6%, DEFAULT 73.7%) have >3 mm capsule overlap at q=0 (root-mounted digits with no palm spread). Rejection biases populations toward 1-2 fingers. Needs a grammar-level mount-spacing rule (a grammar change, not a representation change).",
+      "decision": null,
+      "evidence": "Phase 2 worker, 1500 seeds per variant, af4881c filter"
+    },
+    {
+      "id": "I30",
+      "status": "open",
+      "hypothesis": "Random grammar hands rarely reach the spawned cube: most sampled designs have 1 fingertip within 5 cm of the spawn point (commercial projections: dclaw 3/3, sharpa 3/5, wuji 3/5, allegro 2/4); 0/64 cubes resting at 100 zero-action steps. A controller trained on such populations may learn little; viability (reach, support surface) is a grammar-tuning target.",
+      "decision": null,
+      "evidence": "Phase 2 Kit smoke"
+    },
+    {
+      "id": "I31",
+      "status": "open",
+      "hypothesis": "Population path gaps: ghost residual 0.0125 rad (target 1e-4; traced to projected sharpa 20 mm rest overlap from the one-radius-per-hand projection); friction pass not wired; self-collision filtering only parent/child; uniform object size.",
+      "decision": null,
+      "evidence": "Phase 2 report"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Phase 2 (grammar -> simulator adapter) per project-notes/grammar/phase2-adapter-design.md: CPU parts first; Kit smoke only when the GPU is free. In parallel: 60-min SHARPA run (I26).",
+  "next_action": "Opus review of Phase 2 (51be731..f81c3ca). Worker: axis-goal task + decoupled curricula (I26), per-design metrics for populations, reach-aware calibration of xhand/wuji/tesollo (+dclaw retry, I25), 15-min local learning gate per hand. Then grammar mount-spacing rule (I29/I30). Cluster: Martin reopens the ssh connection; then sync, dry-run, check, 20-min smoke, E-R0.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
