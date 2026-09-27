@@ -35,6 +35,10 @@ GOALVIZ_PATH = "/World/envs/env_.*/GoalViz"
 
 __all__ = ["setup_scene", "finalize_scene", "apply_palm_calibration"]
 
+_LIMIT_MARGIN_RAD = 1e-3
+"""How far a calibrated default_joint_pos gets nudged inside its joint's own
+limits in ``apply_palm_calibration`` -- see the comment at its call site."""
+
 
 def apply_palm_calibration(env, spec):
     """Overrides ``spec.base_rot`` and ``spec.hand_default_joint_pos`` (and
@@ -70,13 +74,29 @@ def apply_palm_calibration(env, spec):
     spawn_offset = tuple(float(v) for v in entry["spawn_offset_local"])
     env.cfg.reset.object_spawn_offset = spawn_offset
 
+    limit_of = dict(zip(spec.hand_joint_names, spec.hand_joint_limits))
     hand_default_joint_pos = dict(spec.hand_default_joint_pos)
     calibrated_pose = entry.get("hand_default_joint_pos")
     n_overridden = 0
     if calibrated_pose:
         for j, v in calibrated_pose.items():
             if j in hand_default_joint_pos:
-                hand_default_joint_pos[j] = float(v)
+                # I25 retry crash (wuji_right): a calibration winner with
+                # curl_frac/curl_profile position 0.0 saves the RAW lower
+                # bound as that joint's default -- exactly on the limit.
+                # The saved value round-trips through float32 (PhysX
+                # soft_joint_pos_limits) -> JSON -> float64, which lands a
+                # few ULPs outside the hard limit Isaac Lab's own
+                # Articulation._validate_cfg() re-derives from the USD, so a
+                # boundary-exact default can hard-error at scene boot ("...
+                # default positions out of the limits") even though it was
+                # in range when it was measured. _LIMIT_MARGIN_RAD nudges
+                # any calibrated default a hair inside its own joint's
+                # limits -- physically negligible (0.057 deg), just enough
+                # to absorb that rounding.
+                lo, hi = limit_of.get(j, (-float("inf"), float("inf")))
+                margin = min(_LIMIT_MARGIN_RAD, max(0.0, (hi - lo) / 2.0 - 1e-9))
+                hand_default_joint_pos[j] = min(max(float(v), lo + margin), hi - margin)
                 n_overridden += 1
 
     print(f"[inhand_reorient] hand={hand_id} palm-up calibration: base_rot={base_rot} "
