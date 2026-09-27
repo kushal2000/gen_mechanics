@@ -89,13 +89,58 @@ def main() -> None:
 
     import gymnasium as gym
 
+    import torch
+
     import isaacsimenvs  # noqa: F401  registers GenMech-InHandReorient-Direct-v0
     import coevolution.networks  # noqa: F401  registers the joint_transformer net
     import isaacsimenvs.inhand_reorient.design_scoring as design_scoring
     import isaacsimenvs.inhand_reorient.env as inhand_env_module
     from coevolution.utils.hydra_utils import hydra_task_config_with_yaml
     from coevolution.utils.rlgames_utils import register_rlgames_env
+    from rl_games.algos_torch import players as rlg_players
+    from rl_games.algos_torch import torch_ext as rlg_torch_ext
     from rl_games.torch_runner import Runner
+
+    def _checkpoint_n_blocks(checkpoint_path: str):
+        """rl_games' vendored `PpoPlayerContinuous` hardcodes 6 SAPG
+        "exploration blocks" for `expl_type` in {mixed_expl_learn_param, ...}
+        (`players.py`'s own "TODO: remove the hardcoded value 6"), but the
+        TRAINING agent (`a2c_continuous.py`) sizes the model's `sigma`/
+        `extra_params` by `num_actors // expl_coef_block_size` -- 1 for this
+        task's yaml default (`num_envs == expl_coef_block_size == 4096`).
+        Loading such a checkpoint through the stock player raises a
+        size-mismatch `RuntimeError` (confirmed against a real checkpoint
+        from this branch's own E-R0-style smoke). Reads the checkpoint's OWN
+        saved shape directly, so this works for ANY block_size the run was
+        actually trained with, not just 1. `None` for a non-mixed_expl
+        checkpoint (no such key -- the stock player is fine as-is)."""
+        ckpt = rlg_torch_ext.load_checkpoint(checkpoint_path)
+        if isinstance(ckpt, dict) and 0 in ckpt:
+            ckpt = ckpt[0]
+        sigma = ckpt.get("model", {}).get("a2c_network.sigma")
+        return int(sigma.shape[0]) if sigma is not None else None
+
+    class _FixedBlockPpoPlayerContinuous(rlg_players.PpoPlayerContinuous):
+        """Rebuilds the model with `n_blocks` exploration blocks (from
+        `_checkpoint_n_blocks`) instead of the vendored player's hardcoded 6.
+        Confined to THIS file (`third_party/rl_games` is out of this
+        branch's edit scope): monkeypatches `torch.linspace` only for the
+        exact `(50.0, 0.0, 6)` call the buggy branch makes, only for the
+        duration of the wrapped `__init__` call."""
+
+        def __init__(self, params, n_blocks: int):
+            real_linspace = torch.linspace
+
+            def _patched_linspace(start, end, steps, *a, **kw):
+                if start == 50.0 and end == 0.0 and steps == 6:
+                    steps = n_blocks
+                return real_linspace(start, end, steps, *a, **kw)
+
+            torch.linspace = _patched_linspace
+            try:
+                super().__init__(params)
+            finally:
+                torch.linspace = real_linspace
 
     # Freeze BOTH curricula for the whole eval: a frozen-policy measurement
     # should not itself keep advancing a curriculum while it runs. Applied
@@ -123,6 +168,14 @@ def main() -> None:
         runner = Runner()
         runner.load(agent_cfg)
         runner.reset()
+
+        n_blocks = _checkpoint_n_blocks(args_cli.checkpoint)
+        if n_blocks is not None and n_blocks != 6:
+            print(f"[evaluate_population] checkpoint has {n_blocks} SAPG exploration block(s); "
+                  f"registering a player that matches it (rl_games' stock player hardcodes 6)", flush=True)
+            runner.player_factory.register_builder(
+                "a2c_continuous", lambda **kwargs: _FixedBlockPpoPlayerContinuous(n_blocks=n_blocks, **kwargs)
+            )
         player = runner.create_player()
         player.restore(args_cli.checkpoint)  # may also restore the checkpoint's own env_state (curriculum)
         player.model.eval()
