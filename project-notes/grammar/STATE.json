@@ -174,18 +174,25 @@
       "status": "done",
       "hypothesis": "The grammar's parametric structure (derive) represents real hands exactly once grids/ranges are lifted.",
       "decision": "keep",
-      "evidence": "project_to_derivation: 12/12 hands, max 1e-16 m / 2e-8 rad; commits after 7c2cc2e"
+      "evidence": "project_to_derivation: 12/12 hands, max 1e-16 m / 2e-8 rad; commits after 7c2cc2e; review: exact by construction (free SE(3) per joint origin) - confirms topology/joint-type coverage and code correctness, not approximation quality"
     },
     {
       "id": "I21",
-      "status": "open",
+      "status": "invalid (gauge/pooling artefacts); to be recomputed",
       "hypothesis": "Grammar gaps from the E13 atlas (for later grammar tuning, not now): real palm segments longer than the grammar's 80 mm (67% outside); co-located knuckles and >80 mm links (18% of phalanx lengths outside 15-80 mm); lateral mount offsets on 28% of mounts with no grammar production; rest bends median 19 deg with bend off by default; limits outside choice sets ~20%; coupling multipliers off-grid 90%; palm-joint couplings (SVH j5, ARMS CMC5) and cross-digit couplings not in the structure.",
       "decision": null,
-      "evidence": "E13 grammar-gap table"
+      "evidence": "opus-review-representation.md finding 4"
+    },
+    {
+      "id": "I22",
+      "status": "open",
+      "hypothesis": "Before the representation is settled: (1) claim wording + n/a tips + limit deltas + DOF counts; (2) _compose_bend_rpy -> R(mount)R(bend), byte-identical at bend 0; (3) parallel-transport gauge in projection; (4) atlas recomputed (fold axis sign, physical bend, mount offsets only, fixture excluded, DH invariants) and I21 rewritten; (5) branch check made live (real error), ORCA hand_root right_palm; (6) Pinocchio check of exported derived URDFs, sha256 verification for local files, Dex1 added. Couplings scope and Coupled own limits: deferred with actuation (Martin).",
+      "decision": null,
+      "evidence": "opus-review-representation.md"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Item 4 (cross-section study) running; then Opus review of items 1-3.",
+  "next_action": "Wait for item 4 (cross-section study, running); then one fix worker for I22; re-run E13; rewrite I21.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

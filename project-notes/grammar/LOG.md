@@ -180,3 +180,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Manifest: SVH, Shadow (local, wrist cut at rh_palm), ARMS added as articulated_palm; palm_joints annotations (SHARPA pinky CMC, Shadow LFJ5, SVH j5, ARMS CMC4/CMC5; SVH's is redundant with the structural rule). Suite 3117 passed.
 - E13 on a clean tree: 15/15 hands PASS at numerical precision (max 2e-13 mm, 1.7e-6 deg), joint counts conserved. Reported: Barrett and ARMS fingertips undefined; SVH index/ring spread and palm arch j5, and ARMS CMC5 couplings not in the structure (palm-joint couplings were silently dropped until the coordinator's fix in projection.py).
 - Atlas grammar-gap table recorded as I21 for later grammar tuning. Decision: keep.
+
+## Opus review of the representation check (2026-09-26 ~16:30)
+
+- See opus-review-representation.md. E13 passes by construction (free SE(3) per joint origin); it confirms topology/joint types/code, not approximation quality. Atlas values for rest bend, axis angle, lateral offset, root length and coupling multipliers were gauge/pooling artefacts; I21 marked invalid. I22 opened with the fix list. Couplings scope stays deferred (actuation).
