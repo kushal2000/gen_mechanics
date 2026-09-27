@@ -201,10 +201,17 @@
       "hypothesis": "`python3 -m hand_sampler.grammar.experiments.runner --list` shows only 'smoke' because running the module as __main__ duplicates the registry; importing runner as a package shows all experiments. Fix with a separate __main__ entry or registry in a non-main module.",
       "decision": null,
       "evidence": "E14 worker report"
+    },
+    {
+      "id": "I24",
+      "status": "in_progress",
+      "hypothesis": "Reorientation does not learn yet: SHARPA 4096 envs x 2200 epochs (144M steps, 22 min, peak 5.9 GB): rotation error mean 2.21 -> 2.22 rad (chance), drop fraction 1.00 -> 0.79 (learned to hold), tolerance never tightened. Diagnose wiring, adopt the proven IsaacGymEnvs Allegro/Shadow reorientation reward and an easier goal curriculum, show learning on Allegro then SHARPA, locally only.",
+      "decision": null,
+      "evidence": "outputs/2026-09-26/22-18-47/0_sharpa_learning_run (TensorBoard)"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Phase 1b worker (metrics, palm-up calibration, 30-min SHARPA learning run, allegro smoke). Before any GPU job: re-sync code (the synced copy predates Phase 1), then a 20-min smoke on the main tier.",
+  "next_action": "Phase 1c (local only): diagnose/fix learning (I24). No cluster GPU jobs until a local run shows learning.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

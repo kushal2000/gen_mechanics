@@ -203,3 +203,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Cluster: cluster setup (env.sh pushed, uv present), repo synced to /data/pulkitag/users/mpeticco/code/gen_mechanics, venv built by cpu-tier job 2359859 (tig-cpu, 4 CPUs, 16 GB, 29 min, COMPLETED; log slurm/logs/gm-venv-2359859.out). GPU hours used: 0.
 - Phase 1 (worker): isaacsimenvs/inhand_reorient (commits 9b7d501..ce3745e): URDF cutter, HandOnlySpec, InHandReorientEnv(PoseReachEnv), LSTM-MLP SAPG config. SHARPA 512-env smoke trains 5 epochs; kill-and-resume restores epoch and curriculum; dclaw boots. 31 package tests pass (venv, plugin autoload disabled). Gaps: no learning curve yet, counters not logged, palm-up orientation uncalibrated, allegro not booted -> Phase 1b running.
+
+## Phase 1b result (2026-09-26 ~23:00)
+
+- Worker (commits b7c8c0b, a9c6fd7, 73118b7): TensorBoard metrics (rot error, drops, timeouts, successes, tolerance, reward terms); palm-up calibration by drop test: sharpa, dclaw, allegro_right all had the palm facing DOWN under identity; the hand-only cut's local -z is the palm normal; base_rot = 180 deg about local x; the cube rests on the palm at zero action (score 1.0, 1-3 cm from the palm origin). Fixed allegro default joint positions outside limits. 47 package tests pass.
+- SHARPA learning run (4096 envs, 2200 epochs = 144M steps, 22 min, 0.6 s/epoch, peak 5.9 GB GPU memory): no reorientation learning (rot error 2.21 -> 2.22 rad, i.e. chance; drops 100% -> 79%; tolerance stuck at 0.4). Allegro smoke (128 envs, 2 epochs) boots and exits 0. Decision: phase 1 acceptance NOT met; I24 opened; no cluster GPU jobs yet.
