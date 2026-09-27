@@ -184,3 +184,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## Opus review of the representation check (2026-09-26 ~16:30)
 
 - See opus-review-representation.md. E13 passes by construction (free SE(3) per joint origin); it confirms topology/joint types/code, not approximation quality. Atlas values for rest bend, axis angle, lateral offset, root length and coupling multipliers were gauge/pooling artefacts; I21 marked invalid. I22 opened with the fix list. Couplings scope stays deferred (actuation).
+
+## Representation check, item 4: cross-section study (2026-09-26 ~17:00)
+
+- E14 (piper env, allow_dirty with diff hash): 11 hands, 146 finger links, 413 sections (Shadow skipped: DAE only; Allegro via visual OBJ). Best single template h/w 1.00, r/h 0.45 (converges to a circle): 15%/41% of sections within 2/3 mm vs per-link capsule 15%/39%, per-hand radius 10%/23%, one radius 5%/17% (global radius 9.4 mm). Free rounded rectangles per section: median max error 2.7 mm vs circle 4.8 mm. PhysX docs: restOffset/contactOffset are per-shape but not documented as corner rounding; GPU convex hulls fall back to CPU above 64 vertices. Decision: keep capsules. I23 (runner --list quirk) opened.

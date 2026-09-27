@@ -35,7 +35,8 @@
     "Geometry stays capsules for now; a cross-section study decides whether a single rounded-rectangle template fits most links at acceptable contact cost. Actuation (motors, cross-digit couplings) is future work.",
     "Hand set for the representation check: current 11 + articulated-palm hands (SVH, Shadow, ARMS; SHARPA pinky CMC). Licences not a concern (local dev).",
     "Wrists are never part of the hand (Martin, 2026-09-26): every manifest hand is cut at its palm; ORCA hand_root = right_palm.",
-    "One motor per joint (Martin, 2026-09-26): coupled/mimic joints and prismatic joints are future items; the projection keeps every mimic joint as an independent revolute joint with its own declared limits; no prismatic hands are added to the check."
+    "One motor per joint (Martin, 2026-09-26): coupled/mimic joints and prismatic joints are future items; the projection keeps every mimic joint as an independent revolute joint with its own declared limits; no prismatic hands are added to the check.",
+    "Geometry cross-section (E14, 2026-09-26): keep capsules. On 413 sections from 11 hands a single rounded-rectangle template ties a per-link capsule (41% vs 39% within 3 mm); free per-section rounded rectangles fit ~2x tighter but need per-link shape parameters; no documented PhysX cost advantage. Revisit only with a GPU benchmark (proposal in cross-section-study.md)."
   ],
   "issues": [
     {
@@ -191,6 +192,13 @@
       "hypothesis": "Before the representation is settled: (1) claim wording + n/a tips + limit deltas + DOF counts; (2) _compose_bend_rpy -> R(mount)R(bend), byte-identical at bend 0; (3) parallel-transport gauge in projection; (4) atlas recomputed (fold axis sign, physical bend, mount offsets only, fixture excluded, DH invariants) and I21 rewritten; (5) branch check made live (real error), ORCA hand_root right_palm; (6) Pinocchio check of exported derived URDFs, sha256 verification for local files, Dex1 added. Couplings scope and Coupled own limits: deferred with actuation (Martin). UPDATED per Martin: no wrists; mimics -> independent joints (one motor per joint); prismatic and couplings are future items (no Dex1).",
       "decision": null,
       "evidence": "opus-review-representation.md"
+    },
+    {
+      "id": "I23",
+      "status": "open",
+      "hypothesis": "`python3 -m hand_sampler.grammar.experiments.runner --list` shows only 'smoke' because running the module as __main__ duplicates the registry; importing runner as a package shows all experiments. Fix with a separate __main__ entry or registry in a non-main module.",
+      "decision": null,
+      "evidence": "E14 worker report"
     }
   ],
   "last_green_commit": "3acff20",
