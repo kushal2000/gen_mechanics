@@ -248,3 +248,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Cache test running on RTX 6000 Ada nodes: 2364778 (cold, saves a Kit cache seed to NFS) then 2364779 (warm, afterok).
 - Found a silent-failure bug in the cluster tool's ada/ngpu self-cap check (I35); used the main tier with the ada6000-shared partition instead.
 - Survey of the old co-evolution loop saved (coevolution-reuse-survey.md).
+
+## Cluster throughput investigation (2026-09-27 ~17:30), total 0.98 GPU-h so far
+
+- RTX 6000 Ada jobs (main QOS, ada6000-shared partition): boot <1 min (the 7.5-min boot was node-specific to improbablex005); training ~0.88 s/epoch, ~74k fps at 4096 envs (4090: ~0.26 s, ~250k).
+- 16384 envs: ~90k fps (1.25x); GPU util ~24-35% throughout. 16 CPUs vs 8: no change. Capping Kit and PhysX thread pools at 8: no change. Kit cache seed: no change.
+- Conclusion: the env step is CPU single-thread bound on the cluster's 3.5 GHz EPYC cores. 1 local 4090 ~ 3.4 cluster GPUs. Use the cluster for parallel runs; profile the env step for per-step overhead.

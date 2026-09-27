@@ -276,7 +276,7 @@
     {
       "id": "I34",
       "status": "open",
-      "hypothesis": "Cluster boot is ~7.5 min per job (Kit 300 s + conversion 120 s) vs <1 min locally; A6000 trains ~2.5x slower than the 4090. For an evolution run that restarts Kit each generation this costs hours. Testing a persistent Kit cache seed and RTX 6000 Ada nodes (jobs 2364778/2364779). The pilot driver should keep one Kit process across generations if Isaac Lab allows re-creating the env in-process.",
+      "hypothesis": "Cluster throughput ~74k fps per GPU (A6000 and RTX 6000 Ada alike) vs ~250k on the local 4090 (dclaw, 4096 envs). GPU util ~30%; not CPU count (8 vs 16 CPUs same), not thread oversubscription (Kit/PhysX threads capped: same), 16k envs only 1.25x. Most likely single-thread CPU speed (EPYC 7773X 3.5 GHz vs i9-13900KS ~6 GHz) in the Python/launch-bound env step. The 7.5-min boot was specific to the A6000 node improbablex005; Ada nodes boot in <1 min. Planning rule: 1 local 4090 ~ 3.4 cluster GPUs; main-tier cap 4 GPUs ~ 1.2 local 4090s. Lever: profile and trim per-step Python/sync overhead in the inhand env (benefits both).",
       "decision": null,
       "evidence": "job 2364675 log"
     },
@@ -322,7 +322,7 @@
     "E7": "done",
     "E11": "done"
   },
-  "gpu_hours_used": 0.34,
+  "gpu_hours_used": 0.98,
   "cluster_jobs": [
     {
       "id": 2364675,
@@ -332,6 +332,46 @@
       "elapsed": "00:20:30",
       "gpu_hours": 0.34,
       "result": "dclaw trained 42M steps in 12.9 min (~66k fps vs ~250k on the local 4090); learning per step matches local; boot 7.5 min (Kit startup 300 s, URDF->USD conversion 120 s, cold caches)"
+    },
+    {
+      "id": 2364778,
+      "name": "reorient-cacheA",
+      "tier": "main (ada6000-shared)",
+      "gpu": "RTX 6000 Ada",
+      "elapsed": "00:06:23",
+      "result": "cold cache; boot <1 min on Ada; 300 epochs; ~73k fps"
+    },
+    {
+      "id": 2364779,
+      "name": "reorient-cacheB",
+      "tier": "main (ada6000-shared)",
+      "gpu": "RTX 6000 Ada",
+      "elapsed": "00:06:03",
+      "result": "warm cache; no meaningful boot gain (Kit cache path holds ~10 KB)"
+    },
+    {
+      "id": 2364841,
+      "name": "reorient-scale16k",
+      "tier": "main (ada6000-shared)",
+      "gpu": "RTX 6000 Ada",
+      "elapsed": "00:12:53",
+      "result": "16384 envs: ~90k fps (1.25x), GPU util ~24%"
+    },
+    {
+      "id": 2364908,
+      "name": "reorient-thrX",
+      "tier": "main (ada6000-shared)",
+      "gpu": "RTX 6000 Ada",
+      "elapsed": "00:06:20",
+      "result": "8 CPUs + Kit/PhysX threads capped at 8: 74k fps, no change"
+    },
+    {
+      "id": 2364909,
+      "name": "reorient-thrY",
+      "tier": "main (ada6000-shared)",
+      "gpu": "RTX 6000 Ada",
+      "elapsed": "00:06:28",
+      "result": "16 CPUs: 73k fps, no change"
     }
   ]
 }
