@@ -25,6 +25,7 @@ from __future__ import annotations
 import atexit
 import json
 import math
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -54,11 +55,21 @@ ROTATION_WEIGHT = 0.5
 TIME_WEIGHT = 0.25
 
 EPISODE_MAX_S_FALLBACK = 10.0
-WRITE_EVERY_N_STEPS = 200
+WRITE_EVERY_N_STEPS = int(os.environ.get("GENMECH_DESIGN_SCORE_WRITE_EVERY", "200"))
 """Cadence for `maybe_write`'s periodic flush -- matches the order of
 magnitude of `design_rewards.py`'s own `flush_every=50` steps default,
 loosened since this module's per-write JSON is larger (per-design
-components, not just sum/count)."""
+components, not just sum/count).
+
+Overridable via `GENMECH_DESIGN_SCORE_WRITE_EVERY` -- needed because
+`train.py`'s own exit path uses `os._exit(0)` (Kit's shutdown hangs
+otherwise), which runs no `atexit` handlers, so `flush`'s own
+`atexit.register` (this module's only OTHER path to disk) never fires
+there. `train.py` is out of scope to edit (this branch's edit rule), so
+there is no hook to call `flush` explicitly the way `train.py` calls
+`design_rewards.flush_all()` -- the periodic write is the only mechanism
+available; a short smoke (a few hundred steps or fewer) needs a smaller
+value to actually produce a file at all."""
 
 
 def _design_idx(env) -> torch.Tensor:
@@ -123,7 +134,6 @@ def _resolve_output_path(env) -> Optional[Path]:
         run_dir = Path(HydraConfig.get().runtime.output_dir)
     except Exception:  # noqa: BLE001 -- no Hydra context; not fatal, just disables the periodic write
         return None
-    import os
 
     rank = int(os.environ.get("RANK", "0"))
     return run_dir / f"per_design_scores_rank{rank}.json"
@@ -284,7 +294,7 @@ def _snapshot_payload(env) -> dict:
         }
 
     return {
-        "rank": int(__import__("os").environ.get("RANK", "0")),
+        "rank": int(os.environ.get("RANK", "0")),
         "steps": int(env._score_total_steps),
         "window_steps": int(env._score_window_steps),
         "success_tolerance": float(getattr(env, "_current_success_tolerance", float("nan"))),
