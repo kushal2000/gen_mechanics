@@ -48,7 +48,7 @@ from hand_sampler.grammar.adapters.projection import ProjectionFailure, project_
 from hand_sampler.grammar.adapters.urdf import load_urdf
 from hand_sampler.grammar.derive import Derivation, DerivationStep, derive, validate_derivation
 from hand_sampler.grammar.fk import forward_kinematics
-from hand_sampler.grammar.kinematics import MOVABLE_TYPES
+from hand_sampler.grammar.kinematics import Body, Joint, KinematicModel, MOVABLE_TYPES, Pose
 from hand_sampler.grammar.rules import GRAMMAR_VERSION
 
 
@@ -208,7 +208,10 @@ FIXTURE_CASES: list = [
     ("wuji_right", BENCH_DIR / "fixtures/real/wuji_right/right.urdf", None, (), {}),
     ("xhand_right", BENCH_DIR / "fixtures/real/xhand_right/xhand_right.urdf", None, (), {}),
     ("tesollo_dg5f_right", BENCH_DIR / "fixtures/real/tesollo_dg5f_right/dg5f_right.urdf", None, (), {}),
-    ("orca_right", BENCH_DIR / "fixtures/real/orca_right/orcahand_right.urdf", None, (), {}),
+    # I22 wrists audit: hand_root must be the palm (right_palm), not None --
+    # None let load_urdf auto-pick right_root, which kept the movable
+    # right_wrist joint above the palm (see manifest.json's orca_right note).
+    ("orca_right", BENCH_DIR / "fixtures/real/orca_right/orcahand_right.urdf", "right_palm", (), {}),
     (
         "sharpa_left_on_iiwa14",
         REPO_ROOT / "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf",
@@ -328,8 +331,7 @@ def _check_hand(name: str, path: Path, hand_root: Optional[str], palm_joints, ti
         f"[{name}] max_pos_m={max_pos:.3e} max_axis_rad={max_axis:.3e} max_tip_m={max_tip:.3e} "
         f"merged_fixed={len(pr.report['merged_fixed_joints'])} palm_bodies={pr.report['palm_bodies']} "
         f"fingertip_undefined={pr.report['fingertip_undefined']} "
-        f"coupling_not_in_structure={pr.report['coupling_not_in_structure']} "
-        f"dependent_limits_replaced={pr.report['dependent_limits_replaced']}"
+        f"coupling_as_independent={pr.report['coupling_as_independent']}"
     )
     assert max_pos <= POS_TOL_M, f"{name}: max joint position error {max_pos} m exceeds {POS_TOL_M} m"
     assert max_axis <= AXIS_TOL_RAD, f"{name}: max joint axis error {max_axis} rad exceeds {AXIS_TOL_RAD} rad"
@@ -355,13 +357,69 @@ def test_projection_reports_fingertip_undefined_for_coincident_leaf() -> None:
 
 
 def test_projection_coupled_finger_couplings() -> None:
-    """The analytic ``coupled_finger`` fixture's two mimic joints (both
-    sourced off the digit's own first, revolute phalanx) must become
-    ``Coupled`` modules, not independent ``coupling_not_in_structure`` R
-    joints."""
+    """I22 decision (one motor per joint): the analytic ``coupled_finger``
+    fixture's two mimic joints (``joint2``, ``joint3``, both sourced off the
+    digit's own first, revolute phalanx ``joint1``) must be emitted as
+    independent revolute modules with their OWN declared limits -- never a
+    ``Coupled`` module, even though an earlier revolute source is available
+    in the same digit (this is a deliberate contract change from the
+    original representation-check plan item 2, which asked for ``Coupled``
+    here; the project owner's I22 decision overrides it: coupled/mimic
+    joints are a future item, and the projection must never emit
+    ``Coupled``)."""
     path = BENCH_DIR / "fixtures/analytic/coupled_finger.urdf"
     model = load_urdf(path).model
     pr = project_to_derivation(model)
     derived = derive(pr.derivation)
-    assert len(derived.couplings) == 2
-    assert not pr.report["coupling_not_in_structure"]
+    assert len(derived.couplings) == 0
+    assert set(pr.report["coupling_as_independent"]) == {"joint2", "joint3"}
+    d1p2_j = next(j for j in derived.joints if j.name == "d1p2_j")
+    d1p3_j = next(j for j in derived.joints if j.name == "d1p3_j")
+    assert d1p2_j.limits == (-1.4, 1.6)  # joint2's own declared limits, unchanged
+    assert d1p3_j.limits == (-0.5, 0.8)  # joint3's own declared limits, unchanged
+
+
+# --------------------------------------------------------------------------
+# I22 fix 3: an un-annotated in-digit branch raises ProjectionFailure
+# (branch_not_projected), live now that the old ">= 2 leaves" auto-include
+# rule is gone.
+# --------------------------------------------------------------------------
+
+
+def _synthetic_branchy_model() -> KinematicModel:
+    """root -[joint0]-> mid -[joint1]-> leaf1
+                              -[joint2]-> leaf2
+    ``mid`` has 2 movable children and is not the root and not named by any
+    ``palm_joints`` entry -- a genuine in-digit branch this schema cannot
+    project without an explicit annotation."""
+    bodies = (Body(name="root"), Body(name="mid"), Body(name="leaf1"), Body(name="leaf2"))
+    joints = (
+        Joint(name="joint0", type="revolute", parent="root", child="mid",
+              origin=Pose(xyz=(0.0, 0.0, 0.05)), axis=(0.0, 1.0, 0.0), limits=(-1.0, 1.0)),
+        Joint(name="joint1", type="revolute", parent="mid", child="leaf1",
+              origin=Pose(xyz=(0.01, 0.0, 0.02)), axis=(0.0, 1.0, 0.0), limits=(-1.0, 1.0)),
+        Joint(name="joint2", type="revolute", parent="mid", child="leaf2",
+              origin=Pose(xyz=(-0.01, 0.0, 0.02)), axis=(0.0, 1.0, 0.0), limits=(-1.0, 1.0)),
+    )
+    return KinematicModel(name="synthetic_branchy", root="root", bodies=bodies, joints=joints)
+
+
+def test_unannotated_in_digit_branch_raises_branch_not_projected() -> None:
+    model = _synthetic_branchy_model()
+    with pytest.raises(ProjectionFailure) as excinfo:
+        project_to_derivation(model)
+    assert excinfo.value.report["branch_not_projected"] == ["mid"]
+    assert "branch_not_projected" in str(excinfo.value)
+
+
+def test_annotating_the_branch_joint_as_palm_joints_fixes_it() -> None:
+    """Naming ``joint0`` (whose child ``mid`` is the branch point) in
+    ``palm_joints`` folds ``mid`` into the palm set, exactly the same fix
+    the manifest audit applied to the real hands that needed it (SVH's
+    ``right_hand_j5``, Shadow's ``rh_LFJ5``, ARMS's ``CMC4``/``CMC5``)."""
+    model = _synthetic_branchy_model()
+    pr = project_to_derivation(model, palm_joints=["joint0"])
+    assert not pr.report["branch_not_projected"]
+    assert "mid" in pr.report["palm_bodies"] or "palm0" in pr.report["palm_bodies"]
+    derived = derive(pr.derivation)
+    assert sum(1 for j in derived.joints if j.type in MOVABLE_TYPES) == 3
