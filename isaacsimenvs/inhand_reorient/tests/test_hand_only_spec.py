@@ -79,9 +79,17 @@ def test_cut_urdf_is_written_and_parseable(hand_id, tmp_path):
 
 
 def test_unavailable_commercial_hand_raises_a_clear_error(tmp_path):
-    # inspire_right's commit_allowed is False and it has no fixture_path.
+    # shadow_right: split "excluded", fixture_path None, and its
+    # source_path ("Shadow") is a directory, not a file -- unavailable under
+    # both resolution paths regardless of this machine's source_root.
+    # (inspire_right used to be the example here: commit_allowed False, no
+    # fixture_path. I33 made resolve_hand_urdf prefer the manifest's
+    # source_root/source_path copy when it is present and sha-verified --
+    # exactly what grammar_bench.evaluate._resolve_hand and
+    # scene/population_file._resolve_hand already do -- so inspire_right now
+    # resolves via its source copy; see test_resolve_hand_urdf.py.)
     with pytest.raises(ValueError, match="fixture_path"):
-        build_hand_only_spec("inspire_right", out_dir=tmp_path)
+        build_hand_only_spec("shadow_right", out_dir=tmp_path)
 
 
 @pytest.mark.parametrize("hand_id", HANDS)

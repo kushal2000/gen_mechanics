@@ -18,7 +18,10 @@ pulls in gymnasium).
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,12 +34,18 @@ from .urdf_cutter import (
 __all__ = [
     "HandOnlySpec", "ManifestHand", "manifest_entry", "resolve_hand_urdf",
     "build_hand_only_spec", "DEFAULT_HAND_STIFFNESS", "DEFAULT_HAND_DAMPING",
-    "DEFAULT_HAND_ARMATURE",
+    "DEFAULT_HAND_ARMATURE", "SOURCE_ROOT_ENV_VAR",
 ]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GRAMMAR_BENCH_DIR = REPO_ROOT / "hand_sampler" / "grammar_bench"
 MANIFEST_PATH = GRAMMAR_BENCH_DIR / "manifest.json"
+
+SOURCE_ROOT_ENV_VAR = "GEN_MECH_HAND_SOURCE_ROOT"
+"""Overrides the manifest's own ``source_root`` (a machine-local path,
+``/home/singularity/karma/karma-data/all_urdfs/full_models_as_downloaded`` in
+this dev environment) -- e.g. for a cluster job to point at a synced copy
+such as ``/data/pulkitag/users/mpeticco/code/hand_models``."""
 
 Vec3 = tuple[float, float, float]
 Quat = tuple[float, float, float, float]
@@ -155,6 +164,13 @@ class ManifestHand:
     hand_root: str | None
     urdf_path: Path
     """Absolute path to the SOURCE (uncut) URDF."""
+    mesh_source: str = "fixture"
+    """Which copy ``urdf_path`` points at: ``"source"`` (the manifest's
+    ``source_root``/``source_path``, mesh-complete, sha256-verified),
+    ``"fixture"`` (the in-repo ``grammar_bench`` copy, kinematics-only for
+    every hand whose collision geometry is mesh-only -- see the loud warning
+    ``resolve_hand_urdf`` prints when it falls back), or ``"repo"`` (SHARPA's
+    vendored asset, which carries its own meshes)."""
 
 
 def manifest_entry(hand_id: str) -> dict:
@@ -165,6 +181,26 @@ def manifest_entry(hand_id: str) -> dict:
     raise KeyError(f"{hand_id!r} is not in {MANIFEST_PATH}")
 
 
+def _sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _manifest_source_root() -> Path | None:
+    """``GEN_MECH_HAND_SOURCE_ROOT`` if set, else the manifest's own
+    ``source_root`` (a machine-local path -- absent or wrong on a machine
+    that never synced the full downloads, e.g. a cluster node)."""
+    override = os.environ.get(SOURCE_ROOT_ENV_VAR)
+    if override:
+        return Path(override)
+    manifest = json.loads(MANIFEST_PATH.read_text())
+    root = manifest.get("source_root")
+    return Path(root) if root else None
+
+
 def resolve_hand_urdf(hand_id: str) -> ManifestHand:
     """Which URDF and hand_root a manifest hand id uses.
 
@@ -172,22 +208,68 @@ def resolve_hand_urdf(hand_id: str) -> ManifestHand:
     (``hand_sampler.robot_param_constants.SHARPA_URDF``): its manifest entry
     (``sharpa_left_on_iiwa14``) carries no ``fixture_path`` because it is not
     a grammar_bench fixture, only the ``hand_root`` annotation.
+
+    Every other hand PREFERS the manifest's ``source_root``/``source_path``
+    copy (the full download, with meshes) over the in-repo ``fixture_path``
+    copy: several manifest hands (xhand_right, wuji_right,
+    tesollo_dg5f_right) have collision geometry that is mesh-only with no
+    primitive (box/sphere) fallback, and the in-repo fixture is the same
+    URDF text with no ``meshes/`` directory beside it, so every one of their
+    links loses its collision geometry silently once cut. The source copy
+    is only used when it is present on this machine AND its sha256 matches
+    the manifest (protects against a stale/partial sync); otherwise this
+    falls back to the fixture and prints a loud warning that collision
+    geometry may be missing.
     """
     if hand_id in ("sharpa", "sharpa_left_on_iiwa14"):
         from hand_sampler.robot_param_constants import SHARPA_URDF
 
         entry = manifest_entry("sharpa_left_on_iiwa14")
         return ManifestHand(hand_id="sharpa", hand_root=entry["hand_root"],
-                            urdf_path=(REPO_ROOT / SHARPA_URDF).resolve())
+                            urdf_path=(REPO_ROOT / SHARPA_URDF).resolve(),
+                            mesh_source="repo")
 
     entry = manifest_entry(hand_id)
+
+    source_path = entry.get("source_path")
+    if isinstance(source_path, str) and source_path and not source_path.startswith("REPO:"):
+        root = _manifest_source_root()
+        if root is not None:
+            candidate = root / source_path
+            if candidate.is_file():
+                expected_sha = entry.get("sha256")
+                if expected_sha is None or _sha256_of(candidate) == expected_sha:
+                    return ManifestHand(hand_id=hand_id, hand_root=entry["hand_root"],
+                                        urdf_path=candidate.resolve(), mesh_source="source")
+                print(
+                    f"WARNING resolve_hand_urdf({hand_id!r}): source copy at {candidate} "
+                    f"does not match the manifest sha256 ({expected_sha}); falling back to "
+                    f"the kinematics-only fixture copy -- collision geometry may be missing.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"WARNING resolve_hand_urdf({hand_id!r}): no source copy at {candidate} "
+                    f"(root={root}, set {SOURCE_ROOT_ENV_VAR} to override); falling back to "
+                    f"the kinematics-only fixture copy -- collision geometry may be missing.",
+                    file=sys.stderr,
+                )
+        else:
+            print(
+                f"WARNING resolve_hand_urdf({hand_id!r}): no source_root in the manifest and "
+                f"{SOURCE_ROOT_ENV_VAR} is unset; falling back to the kinematics-only fixture "
+                f"copy -- collision geometry may be missing.",
+                file=sys.stderr,
+            )
+
     fixture = entry.get("fixture_path")
     if not fixture:
         raise ValueError(
             f"{hand_id!r} has no fixture_path in the manifest (commit_allowed="
             f"{entry.get('commit_allowed')}); its URDF is not available locally")
     return ManifestHand(hand_id=hand_id, hand_root=entry["hand_root"],
-                        urdf_path=(GRAMMAR_BENCH_DIR / fixture).resolve())
+                        urdf_path=(GRAMMAR_BENCH_DIR / fixture).resolve(),
+                        mesh_source="fixture")
 
 
 def _joint_limits(root: ET.Element, joint_names: tuple[str, ...]) -> tuple[tuple[float, float], ...]:
@@ -233,6 +315,15 @@ def build_hand_only_spec(
     manifest_hand = resolve_hand_urdf(hand_id)
     cut = cut_urdf_to_hand(manifest_hand.urdf_path, manifest_hand.hand_root)
     cut_path = cut.write(Path(out_dir) / f"{hand_id}_hand_only.urdf")
+
+    if cut.collision_geometry_lost:
+        print(
+            f"WARNING build_hand_only_spec({hand_id!r}, mesh_source={manifest_hand.mesh_source!r}): "
+            f"{len(cut.collision_geometry_lost)} link(s) had collision geometry in the source URDF "
+            f"({manifest_hand.urdf_path}) but end up with NONE after the cut (every collision "
+            f"element used an unresolved mesh): {list(cut.collision_geometry_lost)}",
+            file=sys.stderr,
+        )
 
     joint_names = movable_joint_names(cut.root)
     # Post-merge names (merged_body_name): a hand-only cut's leaf links are

@@ -59,6 +59,14 @@ class CutURDF:
     unresolved_meshes: tuple[str, ...]
     """Mesh URIs that could not be resolved to a file on disk and were
     dropped from the cut (their <visual>/<collision> element is removed)."""
+    collision_geometry_lost: tuple[str, ...]
+    """Kept link names that had at least one <collision> element in the
+    SOURCE URDF but end up with none after mesh resolution -- i.e. every one
+    of their collision elements used an unresolved mesh (a link that also
+    carries a box/sphere/cylinder collision fallback, like most of
+    allegro_right/dclaw's links, is not counted: it still has collision).
+    Non-empty means the cut hand has links with NO collision geometry at all
+    in the scene, silently."""
 
     def write(self, out_path: str | Path) -> Path:
         out_path = Path(out_path)
@@ -146,12 +154,16 @@ def cut_urdf_to_hand(urdf_path: str | Path, hand_root: str | None) -> CutURDF:
 
     new_root = ET.Element("robot", {"name": source.get("name", "hand") + "_cut"})
     unresolved: list[str] = []
+    collision_lost: list[str] = []
     for link in source.findall("link"):
         name = link.get("name")
         if name not in kept_links:
             continue
+        had_collision = bool(link.findall("collision"))
         link_copy = ET.fromstring(ET.tostring(link))
         unresolved.extend(_resolve_mesh_elements(link_copy, urdf_dir))
+        if had_collision and not link_copy.findall("collision"):
+            collision_lost.append(name)
         new_root.append(link_copy)
     for joint in source.findall("joint"):
         if joint.get("name") not in kept_joints:
@@ -165,6 +177,7 @@ def cut_urdf_to_hand(urdf_path: str | Path, hand_root: str | None) -> CutURDF:
         root=new_root, hand_root=hand_root,
         kept_links=tuple(sorted(kept_links)), kept_joints=tuple(sorted(kept_joints)),
         dropped_above=dropped_above, unresolved_meshes=tuple(unresolved),
+        collision_geometry_lost=tuple(sorted(collision_lost)),
     )
 
 
