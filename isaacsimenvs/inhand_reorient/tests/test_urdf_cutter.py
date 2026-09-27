@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from isaacsimenvs.inhand_reorient.urdf_cutter import (
-    cut_urdf_to_hand, leaf_link_names, movable_joint_names,
+    cut_urdf_to_hand, leaf_link_names, merged_body_name, movable_joint_names,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -129,3 +129,28 @@ def test_leaf_link_names_fallback_tips():
 def test_missing_hand_root_raises():
     with pytest.raises(ValueError):
         cut_urdf_to_hand(SHARPA_URDF, "not_a_real_link")
+
+
+def test_merged_body_name_walks_the_fixed_joint_chain_to_the_actuated_body():
+    # left_pinky_fingertip -fixed-> left_pinky_elastomer -fixed-> left_pinky_DP
+    # (left_pinky_DP itself is the child of left_pinky_DIP, a REVOLUTE joint):
+    # the URDF importer's merge_fixed_joints folds both fixed-joint links into
+    # left_pinky_DP, which is the name that actually survives into the
+    # imported articulation (confirmed against its own import-time merge log:
+    # "link left_pinky_fingertip ... merged into left_pinky_elastomer" then
+    # "left_pinky_elastomer ... merged into left_pinky_DP"). I24: a fingertip
+    # lookup by the pre-merge leaf name (what leaf_link_names returns) has to
+    # resolve through this to find a body Articulation.data.body_names
+    # actually has.
+    cut = cut_urdf_to_hand(SHARPA_URDF, "left_hand_C_MC")
+    assert merged_body_name(cut.root, "left_pinky_fingertip") == "left_pinky_DP"
+
+
+def test_merged_body_name_is_identity_past_the_nearest_movable_joint():
+    cut = cut_urdf_to_hand(SHARPA_URDF, "left_hand_C_MC")
+    # left_pinky_DP is itself the child of a REVOLUTE joint (left_pinky_DIP):
+    # nothing merges past it walking further up, so it is already its own
+    # surviving name.
+    assert merged_body_name(cut.root, "left_pinky_DP") == "left_pinky_DP"
+    # The articulation root has no parent joint at all; also identity.
+    assert merged_body_name(cut.root, cut.hand_root) == cut.hand_root

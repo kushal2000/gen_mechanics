@@ -1,176 +1,886 @@
 {
   "allegro_right": {
-    "axis": "-z",
+    "axis": "+z",
     "base_rot": [
-      6.123233995736766e-17,
       1.0,
+      0.0,
       0.0,
       0.0
     ],
-    "date": "2026-09-27T02:16:43.596293+00:00",
-    "final_dist_m": 0.028512882068753242,
-    "git_sha": "a9c6fd72e23d0978c56dffe0a4e1b19161c1f99a",
-    "method": "calibrate_palm_up.py: 6 candidates (full=False), repeats=8, held 2.0s @ 120 Hz zero-action default-joint-target, scored over the trailing 50% of steps at threshold=0.08 m",
+    "curl_frac": 0.45,
+    "date": "2026-09-27T03:09:39.952233+00:00",
+    "final_dist_m": 0.6521087884902954,
+    "git_sha": "3bdc76831b8aac5c2480fadc554994e699fd6c84",
+    "hand_default_joint_pos": {
+      "joint_0": -0.04700002074241638,
+      "joint_1": 0.6166999340057373,
+      "joint_10": 0.673349916934967,
+      "joint_11": 0.6032499670982361,
+      "joint_12": 0.772849977016449,
+      "joint_13": 0.4655998945236206,
+      "joint_14": 0.6358499526977539,
+      "joint_15": 0.6844499707221985,
+      "joint_2": 0.673349916934967,
+      "joint_3": 0.6032499670982361,
+      "joint_4": -0.04700002074241638,
+      "joint_5": 0.6166999340057373,
+      "joint_6": 0.673349916934967,
+      "joint_7": 0.6032499670982361,
+      "joint_8": -0.04700002074241638,
+      "joint_9": 0.6166999340057373
+    },
+    "method": "calibrate_palm_up.py: 6 axis candidates x 5 curl fracs (full=False), repeats=8, held 2.0s @ 120 Hz zero-action holding a curled joint target (lower + curl_frac*(upper-lower) per joint), scored over the trailing 50% of steps as stability(dist to the fingertip-centroid spawn point < 0.08 m) x reach(>=2 fingertips within 0.05 m of the object)",
+    "reach_score": 0.125,
     "roll_deg": 0.0,
-    "score": 1.0,
+    "score": 0.125,
     "score_table": [
       {
-        "axis": "-z",
-        "final_dist_m": 0.028512882068753242,
+        "axis": "+z",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.6521087884902954,
+        "reach_score": 0.125,
         "roll_deg": 0.0,
-        "score": 1.0
-      },
-      {
-        "axis": "-x",
-        "final_dist_m": 0.3265383839607239,
-        "roll_deg": 0.0,
-        "score": 0.375
-      },
-      {
-        "axis": "+x",
-        "final_dist_m": 0.3853256106376648,
-        "roll_deg": 0.0,
-        "score": 0.25
+        "score": 0.125,
+        "stability_score": 0.25
       },
       {
         "axis": "+z",
-        "final_dist_m": 0.5167638063430786,
+        "curl_frac": 0.15,
+        "final_dist_m": 0.8194829225540161,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 0.0
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+z",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.7835960984230042,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+z",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.30504539608955383,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.625
+      },
+      {
+        "axis": "+z",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.6562806367874146,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.15,
+        "final_dist_m": 0.27002692222595215,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.25
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.2901547849178314,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.125
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.33663010597229004,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.125
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.3406636118888855,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.30392640829086304,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.15,
+        "final_dist_m": 0.48281949758529663,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.25
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.891349732875824,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.40995845198631287,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.375
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.8775469064712524,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.5909430384635925,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.15,
+        "final_dist_m": 0.4942229092121124,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.125
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.30952221155166626,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.375
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.3933503031730652,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.125
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.45581990480422974,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.125
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.3693467378616333,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       },
       {
         "axis": "+y",
-        "final_dist_m": 0.5609850883483887,
+        "curl_frac": 0.15,
+        "final_dist_m": 0.704657793045044,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 0.0
+        "score": 0.0,
+        "stability_score": 0.125
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.9475789070129395,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.125
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.5366756916046143,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.25
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.5363065600395203,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.5016224384307861,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       },
       {
         "axis": "-y",
-        "final_dist_m": 0.3520435690879822,
+        "curl_frac": 0.15,
+        "final_dist_m": 0.4938179552555084,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 0.0
+        "score": 0.0,
+        "stability_score": 0.25
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.7505656480789185,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.125
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.41957753896713257,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.25
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.6334937810897827,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.4560632109642029,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       }
     ],
     "spawn_offset_local": [
-      0.0,
-      5.81707222295529e-18,
-      -0.04749999940395355
-    ]
+      0.09647822380065918,
+      0.0149383544921875,
+      0.18658661842346191
+    ],
+    "stability_score": 0.25
   },
   "dclaw": {
-    "axis": "-z",
+    "axis": "+z",
     "base_rot": [
-      6.123233995736766e-17,
       1.0,
+      0.0,
       0.0,
       0.0
     ],
-    "date": "2026-09-27T02:15:27.555598+00:00",
-    "final_dist_m": 0.010213705711066723,
-    "git_sha": "b7c8c0b692b3c403990e050797762aab54c1d93f",
-    "method": "calibrate_palm_up.py: 6 candidates (full=False), repeats=8, held 2.0s @ 120 Hz zero-action default-joint-target, scored over the trailing 50% of steps at threshold=0.08 m",
+    "curl_frac": 0.4,
+    "date": "2026-09-27T03:09:16.518422+00:00",
+    "final_dist_m": 0.19357642531394958,
+    "git_sha": "3bdc76831b8aac5c2480fadc554994e699fd6c84",
+    "hand_default_joint_pos": {
+      "joint_f1_0": 0.2136000394821167,
+      "joint_f1_1": -0.3140000104904175,
+      "joint_f1_2": -0.3140000104904175,
+      "joint_f2_0": -0.5823999643325806,
+      "joint_f2_1": -0.3140000104904175,
+      "joint_f2_2": -0.3140000104904175,
+      "joint_f3_0": -0.5823999643325806,
+      "joint_f3_1": -0.3140000104904175,
+      "joint_f3_2": -0.3140000104904175
+    },
+    "method": "calibrate_palm_up.py: 6 axis candidates x 4 curl fracs (full=False), repeats=8, held 2.0s @ 120 Hz zero-action holding a curled joint target (lower + curl_frac*(upper-lower) per joint), scored over the trailing 50% of steps as stability(dist to the fingertip-centroid spawn point < 0.08 m) x reach(>=2 fingertips within 0.06 m of the object)",
+    "reach_score": 0.0,
     "roll_deg": 0.0,
-    "score": 1.0,
+    "score": 0.0,
     "score_table": [
       {
-        "axis": "-z",
-        "final_dist_m": 0.010213705711066723,
+        "axis": "+z",
+        "curl_frac": 0.4,
+        "final_dist_m": 0.19357642531394958,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 1.0
-      },
-      {
-        "axis": "+y",
-        "final_dist_m": 0.23106622695922852,
-        "roll_deg": 0.0,
-        "score": 0.625
+        "score": 0.0,
+        "stability_score": 0.0
       },
       {
         "axis": "+z",
-        "final_dist_m": 0.36878111958503723,
+        "curl_frac": 0.55,
+        "final_dist_m": 0.3417619466781616,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 0.25
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+z",
+        "curl_frac": 0.7,
+        "final_dist_m": 0.3887478709220886,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.25
+      },
+      {
+        "axis": "+z",
+        "curl_frac": 0.85,
+        "final_dist_m": 0.6410959959030151,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.4,
+        "final_dist_m": 0.2951914966106415,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.2861148715019226,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.7,
+        "final_dist_m": 0.3057320713996887,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.85,
+        "final_dist_m": 0.38458025455474854,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       },
       {
         "axis": "+x",
-        "final_dist_m": 0.4984138309955597,
+        "curl_frac": 0.4,
+        "final_dist_m": 0.47789132595062256,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 0.0
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.46831825375556946,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.7,
+        "final_dist_m": 0.4538803696632385,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.85,
+        "final_dist_m": 0.46886539459228516,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       },
       {
         "axis": "-x",
-        "final_dist_m": 0.5086406469345093,
+        "curl_frac": 0.4,
+        "final_dist_m": 0.47261524200439453,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 0.0
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.49385350942611694,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.7,
+        "final_dist_m": 0.5000793933868408,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.85,
+        "final_dist_m": 0.5068880319595337,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.4,
+        "final_dist_m": 0.44491273164749146,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.4921576976776123,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.7,
+        "final_dist_m": 0.5470418930053711,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.85,
+        "final_dist_m": 0.5864945650100708,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       },
       {
         "axis": "-y",
-        "final_dist_m": 0.5182915925979614,
+        "curl_frac": 0.4,
+        "final_dist_m": 0.5295523405075073,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 0.0
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.55,
+        "final_dist_m": 0.4909864068031311,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.7,
+        "final_dist_m": 0.4252729117870331,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.85,
+        "final_dist_m": 0.40335899591445923,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       }
     ],
     "spawn_offset_local": [
-      0.0,
-      5.81707222295529e-18,
-      -0.04749999940395355
-    ]
+      0.0052089691162109375,
+      -0.026953816413879395,
+      0.17735430598258972
+    ],
+    "stability_score": 0.0
   },
   "sharpa": {
-    "axis": "-z",
+    "axis": "+z",
     "base_rot": [
-      6.123233995736766e-17,
       1.0,
+      0.0,
       0.0,
       0.0
     ],
-    "date": "2026-09-27T02:15:06.673126+00:00",
-    "final_dist_m": 0.028582103550434113,
-    "git_sha": "b7c8c0b692b3c403990e050797762aab54c1d93f",
-    "method": "calibrate_palm_up.py: 6 candidates (full=False), repeats=8, held 2.0s @ 120 Hz zero-action default-joint-target, scored over the trailing 50% of steps at threshold=0.08 m",
+    "curl_frac": 0.3,
+    "date": "2026-09-27T03:08:19.774907+00:00",
+    "final_dist_m": 0.5316417217254639,
+    "git_sha": "3bdc76831b8aac5c2480fadc554994e699fd6c84",
+    "hand_default_joint_pos": {
+      "left_1_thumb_CMC_FE": 0.4538199305534363,
+      "left_2_index_MCP_FE": 0.34906697273254395,
+      "left_3_middle_MCP_FE": 0.34906697273254395,
+      "left_4_ring_MCP_FE": 0.34906697273254395,
+      "left_5_pinky_CMC": 0.07853998988866806,
+      "left_index_DIP": 0.41888996958732605,
+      "left_index_MCP_AA": -0.01396399736404419,
+      "left_index_PIP": 0.5235900282859802,
+      "left_middle_DIP": 0.41888996958732605,
+      "left_middle_MCP_AA": -0.01396399736404419,
+      "left_middle_PIP": 0.5235900282859802,
+      "left_pinky_DIP": 0.41888996958732605,
+      "left_pinky_MCP_AA": -0.01396399736404419,
+      "left_pinky_MCP_FE": 0.34906697273254395,
+      "left_pinky_PIP": 0.5235900282859802,
+      "left_ring_DIP": 0.41888996958732605,
+      "left_ring_MCP_AA": -0.01396399736404419,
+      "left_ring_PIP": 0.5235900282859802,
+      "left_thumb_CMC_AA": -0.20509997010231018,
+      "left_thumb_IP": 0.5235900282859802,
+      "left_thumb_MCP_AA": -0.1396399736404419,
+      "left_thumb_MCP_FE": 0.05237007141113281
+    },
+    "method": "calibrate_palm_up.py: 6 axis candidates x 5 curl fracs (full=False), repeats=16, held 3.0s @ 120 Hz zero-action holding a curled joint target (lower + curl_frac*(upper-lower) per joint), scored over the trailing 50% of steps as stability(dist to the fingertip-centroid spawn point < 0.08 m) x reach(>=2 fingertips within 0.05 m of the object)",
+    "reach_score": 0.1875,
     "roll_deg": 0.0,
-    "score": 1.0,
+    "score": 0.1875,
     "score_table": [
       {
-        "axis": "-z",
-        "final_dist_m": 0.028582103550434113,
+        "axis": "+z",
+        "curl_frac": 0.3,
+        "final_dist_m": 0.5316417217254639,
+        "reach_score": 0.1875,
         "roll_deg": 0.0,
-        "score": 1.0
-      },
-      {
-        "axis": "+x",
-        "final_dist_m": 0.32200783491134644,
-        "roll_deg": 0.0,
-        "score": 0.375
-      },
-      {
-        "axis": "-x",
-        "final_dist_m": 0.3270503580570221,
-        "roll_deg": 0.0,
-        "score": 0.375
+        "score": 0.1875,
+        "stability_score": 0.1875
       },
       {
         "axis": "+z",
-        "final_dist_m": 0.4944572448730469,
+        "curl_frac": 0.35,
+        "final_dist_m": 0.5499686002731323,
+        "reach_score": 0.1875,
         "roll_deg": 0.0,
-        "score": 0.0
+        "score": 0.1875,
+        "stability_score": 0.1875
+      },
+      {
+        "axis": "+z",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.7629692554473877,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+z",
+        "curl_frac": 0.4,
+        "final_dist_m": 0.6731486320495605,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+z",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.6754842400550842,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.29168790578842163,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.3,
+        "final_dist_m": 0.28533637523651123,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.28303417563438416,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.4,
+        "final_dist_m": 0.28824329376220703,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-z",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.29406994581222534,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.695586085319519,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.3,
+        "final_dist_m": 0.5453511476516724,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.5465678572654724,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.4,
+        "final_dist_m": 0.5572690367698669,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+x",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.564204752445221,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.25,
+        "final_dist_m": 0.4488900899887085,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.3,
+        "final_dist_m": 0.42265182733535767,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.4053545296192169,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.4,
+        "final_dist_m": 0.39381325244903564,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-x",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.3858749270439148,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       },
       {
         "axis": "+y",
-        "final_dist_m": 0.49650782346725464,
+        "curl_frac": 0.25,
+        "final_dist_m": 0.6183702349662781,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 0.0
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.3,
+        "final_dist_m": 0.4867645502090454,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.44827479124069214,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.4,
+        "final_dist_m": 0.44929593801498413,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "+y",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.4524911642074585,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       },
       {
         "axis": "-y",
-        "final_dist_m": 0.5153292417526245,
+        "curl_frac": 0.25,
+        "final_dist_m": 0.7527288198471069,
+        "reach_score": 0.0,
         "roll_deg": 0.0,
-        "score": 0.0
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.3,
+        "final_dist_m": 0.5104930996894836,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.35,
+        "final_dist_m": 0.5053642392158508,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.4,
+        "final_dist_m": 0.5014926195144653,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
+      },
+      {
+        "axis": "-y",
+        "curl_frac": 0.45,
+        "final_dist_m": 0.4992329478263855,
+        "reach_score": 0.0,
+        "roll_deg": 0.0,
+        "score": 0.0,
+        "stability_score": 0.0
       }
     ],
     "spawn_offset_local": [
-      0.0,
-      5.81707222295529e-18,
-      -0.04749999940395355
-    ]
+      0.0626974105834961,
+      -0.02990591526031494,
+      0.19483622908592224
+    ],
+    "stability_score": 0.1875
   }
 }

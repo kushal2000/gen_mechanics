@@ -36,7 +36,10 @@ from pathlib import Path
 
 from hand_sampler.grammar_bench.refgen.mesh_sections import resolve_mesh_filename
 
-__all__ = ["CutURDF", "cut_urdf_to_hand", "movable_joint_names", "leaf_link_names"]
+__all__ = [
+    "CutURDF", "cut_urdf_to_hand", "movable_joint_names", "leaf_link_names",
+    "merged_body_name",
+]
 
 _GEOMETRY_TAGS = ("visual", "collision")
 
@@ -177,3 +180,38 @@ def leaf_link_names(root: ET.Element) -> tuple[str, ...]:
     fingertip fallback when the manifest names no tip frames."""
     parents = {j.find("parent").get("link") for j in root.findall("joint")}
     return tuple(l.get("name") for l in root.findall("link") if l.get("name") not in parents)
+
+
+def merged_body_name(root: ET.Element, link_name: str) -> str:
+    """The name ``link_name`` actually has in the IMPORTED articulation.
+
+    Every USD conversion this package does sets ``merge_fixed_joints=True``
+    (``pose_reaching_6d.common_utils.urdf_to_usd._convert_urdf_to_usd``): a
+    link connected to its parent by a FIXED joint is folded into that parent,
+    which keeps its own name. A link's surviving name is therefore the
+    outermost ancestor reachable through fixed joints only -- the child of
+    the nearest ancestor MOVABLE joint, or itself if it already is one (or if
+    it has no parent at all, i.e. it is the articulation root).
+
+    Needed for fingertip lookups: several hands (e.g. SHARPA) model a
+    fingertip as a small fixed-joint sensor/pad link (or a short chain of
+    them) past the last actuated joint -- ``left_pinky_fingertip`` ->
+    ``left_pinky_elastomer`` -> ``left_pinky_DP`` all merge into
+    ``left_pinky_DP``, which is what ``Articulation.data.body_names`` (and
+    thus any fingertip-position lookup) actually has. The self-collision
+    adjacency map has the same merge problem and handles it by skipping
+    absent links rather than resolving them (``_apply_self_collision_filters``
+    logs "skipped N merged/absent links") -- fingertip lookups need the
+    resolved name itself, not a skip.
+    """
+    parent_of: dict[str, str] = {}
+    joint_type_of_child: dict[str, str] = {}
+    for j in root.findall("joint"):
+        child = j.find("child").get("link")
+        parent_of[child] = j.find("parent").get("link")
+        joint_type_of_child[child] = j.get("type")
+
+    name = link_name
+    while joint_type_of_child.get(name) == "fixed" and name in parent_of:
+        name = parent_of[name]
+    return name

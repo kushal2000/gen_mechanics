@@ -27,12 +27,84 @@ from isaacsimenvs.pose_reaching_6d.reward_utils.termination import (  # noqa: F4
 
 __all__ = [
     "compute_rewards", "compute_terminations", "update_tolerance_curriculum",
+    "update_goal_curriculum", "extra_curriculum_state", "restore_extra_curriculum_state",
     "get_curriculum_state", "set_curriculum_state",
 ]
 
 
+def update_goal_curriculum(env) -> None:
+    """Widen the goal-sampling curriculum (``reset_utils._sample_goal``'s
+    modes) once completed episodes average enough goals, mirroring
+    ``update_tolerance_curriculum`` (I24, Phase 1c). Reads
+    ``env._frame_counter`` AFTER ``update_tolerance_curriculum`` has already
+    advanced it this step -- call this right after that function, not before,
+    to avoid a double-increment (see ``env.py::_get_dones``)."""
+    cfg = env.cfg.reset
+    if not cfg.goal_curriculum_enabled:
+        return
+    if env._frame_counter - env._last_goal_curriculum_update < cfg.goal_curriculum_interval:
+        return
+    successes = env._prev_episode_successes.float()
+    if successes.numel() == 0 or successes.mean().item() < cfg.goal_curriculum_success_threshold:
+        return
+    env._last_goal_curriculum_update = env._frame_counter
+    if env._goal_curriculum_stage >= len(cfg.goal_curriculum_stages) - 1:
+        return
+    env._goal_curriculum_stage += 1
+    stage_name = cfg.goal_curriculum_stages[env._goal_curriculum_stage]
+    print(f"[inhand_reorient] goal curriculum -> stage {env._goal_curriculum_stage} "
+          f"({stage_name!r}) at frame {env._frame_counter}", flush=True)
+
+
+def extra_curriculum_state(env) -> dict:
+    """This env's half of the generic ``extra_curriculum_state`` hook
+    ``pose_reaching_6d.reward_utils.curriculum.get_curriculum_state`` calls
+    (guarded there with ``callable(...)``, so it stays ignorant of these
+    names) -- the goal-difficulty curriculum's own state, additive to the
+    tolerance curriculum's 4-key dict. ``InHandReorientEnv.extra_curriculum_
+    state`` is a thin bound-method wrapper around this free function, kept
+    here with the rest of this package's curriculum logic."""
+    return {
+        "goal_curriculum_stage": int(env._goal_curriculum_stage),
+        "last_goal_curriculum_update": int(env._last_goal_curriculum_update),
+    }
+
+
+def restore_extra_curriculum_state(env, state: dict) -> None:
+    """This env's half of the generic ``restore_extra_curriculum_state``
+    hook ``pose_reaching_6d.reward_utils.curriculum.set_curriculum_state``
+    calls. Tolerant of missing keys, same as the tolerance curriculum's own
+    restore -- a checkpoint written before the goal curriculum existed has
+    neither key and should still load."""
+    env._goal_curriculum_stage = int(
+        state.get("goal_curriculum_stage", env._goal_curriculum_stage))
+    env._last_goal_curriculum_update = int(
+        state.get("last_goal_curriculum_update", env._last_goal_curriculum_update))
+    if "goal_curriculum_stage" in state:
+        print(f"[curriculum] restored goal curriculum stage "
+              f"{env._goal_curriculum_stage} from the checkpoint", flush=True)
+
+
 def compute_rewards(env) -> torch.Tensor:
+    """Reward adopted from IsaacGymEnvs' AllegroHand/ShadowHand (Makoviychuk
+    et al., 2021): a dense inverse-distance rotation term plus a position
+    term keeping the object near its spawn point, a goal bonus, action and
+    fall penalties. The previous version's only dense signal was
+    ``rotation_progress_scale * (prev_rot_error - rot_error)`` -- a per-step
+    DELTA that is zero-mean under noise and gives no gradient toward
+    "closer" independent of whether the error is shrinking THIS step; the
+    inverse-distance term below is nonzero-mean and grows as the error
+    shrinks, which is what the literature recipe actually relies on. Kept
+    (default OFF, ``rotation_progress_scale=0.0``) for an A/B toggle.
+    """
     cfg = env.cfg.reward
+    # Goal position == the object's own spawn point in the palm frame: it
+    # never moves within an episode (reset_utils.reset_goal_trackers
+    # resamples the goal ORIENTATION only), so no separate goal-position
+    # buffer is needed.
+    dist = (env._obj_pos_palm - env._spawn_obj_pos_palm).norm(dim=-1)
+    rot_rew = cfg.rot_reward_scale / (env._rot_error + cfg.rot_eps)
+    dist_rew = -cfg.dist_reward_scale * dist
     progress = env._prev_rot_error - env._rot_error
     action_penalty = (env._prev_actions ** 2).sum(dim=-1)
     action_delta_penalty = ((env._prev_actions - env._prev_actions_this_step) ** 2).sum(dim=-1)
@@ -47,7 +119,7 @@ def compute_rewards(env) -> torch.Tensor:
     progress_term = cfg.rotation_progress_scale * progress
 
     reward = (
-        progress_term + goal_bonus_term + action_penalty_term
+        rot_rew + dist_rew + progress_term + goal_bonus_term + action_penalty_term
         + action_delta_penalty_term + hand_vel_penalty_term + drop_penalty_term
     )
     # Per-term breakdown, for TensorBoard (logging_utils.log_step_metrics
@@ -56,6 +128,8 @@ def compute_rewards(env) -> torch.Tensor:
     # SAME dict shape matters (EnvStatsAlgoObserver sums it over each
     # episode, then averages over episodes that just finished).
     env._reward_terms = {
+        "rotation_rew": rot_rew,
+        "distance_rew": dist_rew,
         "rotation_progress_rew": progress_term,
         "goal_bonus_rew": goal_bonus_term,
         "action_penalty": action_penalty_term,

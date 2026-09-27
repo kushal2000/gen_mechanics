@@ -6,8 +6,21 @@ hand, as DATA (``hand_calibration.json``), not per-hand code: it tries a
 fixed set of candidate base rotations (which LOCAL axis of the hand-only
 URDF's root/palm link ends up pointing along world +z, each with a roll),
 holds the hand at its default joint targets with zero action, drops a cube
-just above the palm's own geometric extent, and scores each candidate by how
-long/close the cube stays near the palm under gravity.
+onto the FINGERTIPS' OWN centroid (not just "above the palm's own geometric
+extent" -- see below), and scores each candidate by how long/close the cube
+stays there AND whether at least 2 fingertips stay within reach of it.
+
+Both stability and reach are scored (as of I24's priority check) because
+distance-to-the-PALM-ORIGIN alone cannot tell a cupped hold apart from the
+cube resting stably on some OTHER flat part of the hand the fingers can't
+reach (SHARPA's first calibration did exactly that: winning candidate scored
+stability 1.0 while sitting 0.09-0.19 m from every fingertip -- confirmed
+unreachable in a 300-config random joint sweep with the cube frozen in
+place). Spawning at the fingertip centroid rather than above the tallest
+body origin also matters on its own: the tallest body is whatever part of
+the hand happens to be highest in WORLD z under a given candidate rotation,
+which is not necessarily anywhere near the fingers (e.g. it was the wrist/
+base for SHARPA's "-z up" candidate, whose fingers pointed away from it).
 
 One Kit process, one scene: every candidate (x ``--repeats`` copies, for a
 little robustness to the position jitter each copy gets) is a DIFFERENT
@@ -42,13 +55,26 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--settle-seconds", type=float, default=0.15,
                    help="physics settle after the root-pose overwrite, before dropping the cube")
     p.add_argument("--threshold-m", type=float, default=0.08,
-                   help="object-to-palm-origin distance under which the object counts as 'on the hand'")
+                   help="object-to-spawn-point distance under which the object counts as stable")
+    p.add_argument("--reach-threshold-m", type=float, default=0.05,
+                   help="object-center-to-fingertip distance under which a fingertip counts as "
+                        "'in reach'; a candidate needs >=2 in reach to score, not just stability "
+                        "(I24 priority check: proximity to the palm ORIGIN alone can't tell a "
+                        "cupped hold apart from the cube resting on an unrelated flat face)")
     p.add_argument("--score-window-frac", type=float, default=0.5,
                    help="score over the trailing fraction of steps (lets it settle first)")
     p.add_argument("--object-size-m", type=float, default=0.055)
     p.add_argument("--spawn-margin-m", type=float, default=0.02,
                    help="clearance between the hand's highest body origin and the cube surface")
     p.add_argument("--position-jitter-m", type=float, default=0.01)
+    p.add_argument("--curl-fracs", default="0.0,0.35,0.6",
+                   help="comma list of joint-curl fractions to also grid-search (I24 priority "
+                        "check): held pose per joint = lower + frac*(upper-lower), same frac for "
+                        "every joint. 0.0 = the articulation's own default (uncurled/flat for "
+                        "every hand in this repo so far); the 0 lower bound of a typical flexion "
+                        "joint here means positive angle = curling INTO the hand, so a moderate "
+                        "positive frac searches for an actual cupped hold instead of assuming the "
+                        "flat default touches the object at all")
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--headless", action="store_true", default=True)
     return p.parse_args()
@@ -71,10 +97,15 @@ def main() -> None:
     from isaacsimenvs.inhand_reorient.env_cfg import InHandReorientEnvCfg
 
     candidates = pc.candidate_rotations(full=args.full)
-    n_groups, repeats = len(candidates), args.repeats
+    curl_fracs = [float(v) for v in args.curl_fracs.split(",")]
+    # Every (axis candidate, curl fraction) pair is its own group of envs --
+    # same one-Kit-process multiplexing trick as the axis search alone used.
+    combos = [(cand, cf) for cand in candidates for cf in curl_fracs]
+    n_groups, repeats = len(combos), args.repeats
     n_envs = n_groups * repeats
-    print(f"[calibrate_palm_up] hand={args.hand} {n_groups} candidates x {repeats} repeats "
-          f"= {n_envs} envs", flush=True)
+    print(f"[calibrate_palm_up] hand={args.hand} {len(candidates)} axis candidates x "
+          f"{len(curl_fracs)} curl fractions x {repeats} repeats = {n_groups} groups, "
+          f"{n_envs} envs", flush=True)
 
     cfg = InHandReorientEnvCfg()
     cfg.assets.hand_id = args.hand
@@ -88,14 +119,19 @@ def main() -> None:
     dt = env.sim.get_physics_dt()
 
     group_of_env = torch.arange(n_envs, device=device) // repeats
-    quat_table = torch.tensor([c["quat_wxyz"] for c in candidates], device=device, dtype=torch.float32)
+    quat_table = torch.tensor([c["quat_wxyz"] for c, _cf in combos], device=device, dtype=torch.float32)
     quat_per_env = quat_table[group_of_env]  # (n_envs, 4)
 
     base_pos_local = torch.tensor(env.hand_spec.base_pos, device=device, dtype=torch.float32)
     world_pos = env.scene.env_origins + base_pos_local.expand(n_envs, 3)
     root_pose = torch.cat([world_pos, quat_per_env], dim=-1)
     env.robot.write_root_pose_to_sim(root_pose)
-    default_pos = env.robot.data.default_joint_pos.clone()
+
+    lower0 = env.robot.data.soft_joint_pos_limits[0, :, 0]
+    upper0 = env.robot.data.soft_joint_pos_limits[0, :, 1]
+    curl_table = torch.stack(
+        [lower0 + cf * (upper0 - lower0) for _cand, cf in combos])  # (n_groups, j)
+    default_pos = curl_table[group_of_env]  # (n_envs, j) -- per-env held target
     env.robot.write_joint_state_to_sim(default_pos, torch.zeros_like(default_pos))
 
     def _hold_step() -> None:
@@ -115,16 +151,22 @@ def main() -> None:
               f"every env (max offset {moved.max().item():.4f} m) -- write_root_pose_to_sim may "
               f"not be repositioning this fixed-base articulation as expected.", flush=True)
 
-    # Analytic-ish spawn point: above the hand's own highest body ORIGIN
-    # (a cheap proxy for the palm's collision/visual bbox top -- exact per
-    # the plan would trace real geometry, but body origins already track the
-    # hand's spatial envelope well enough to place a cube "above the palm"
-    # without needing an extra USD bbox query), directly over the palm's own
-    # (x, y), offset along WORLD +z by the object's half-size + clearance.
-    max_body_z = env.robot.data.body_pos_w[:, :, 2].max(dim=1).values
-    offset_z = (max_body_z - palm_pos_w[:, 2]) + args.spawn_margin_m + args.object_size_m / 2.0
-    spawn_xy = palm_pos_w[:, :2]
-    spawn_pos = torch.cat([spawn_xy, (palm_pos_w[:, 2] + offset_z).unsqueeze(-1)], dim=-1)
+    # Spawn point: over the FINGERTIPS' OWN centroid (pushed a little further
+    # outward along the palm->fingertip-centroid direction), NOT "above the
+    # hand's highest body origin" -- the latter can be any part of the hand
+    # (e.g. the wrist/base), and the old scoring below (distance to the PALM
+    # ORIGIN, not to the spawn point) could not tell "resting stably under
+    # the fingers" apart from "resting stably on some unrelated flat face
+    # that happens to be near the palm origin too". Confirmed on SHARPA
+    # (I24 priority check): the previous winning "-z up" candidate scored
+    # 1.0 while every fingertip stayed 0.09-0.19 m from the cube at rest, and
+    # a 300-config random joint sweep with the cube frozen at that spawn
+    # point never got any fingertip within 3 cm of it. Reachability is now
+    # scored directly (``reach_score`` below), not just assumed from stability.
+    tip_pos_w = env.robot.data.body_pos_w[:, env.fingertip_body_idx, :]  # (n_envs, k, 3)
+    tip_centroid_w = tip_pos_w.mean(dim=1)
+    direction = torch.nn.functional.normalize(tip_centroid_w - palm_pos_w, dim=-1)
+    spawn_pos = tip_centroid_w + direction * (args.spawn_margin_m + args.object_size_m / 2.0)
 
     jitter = (torch.rand(n_envs, 3, device=device) * 2.0 - 1.0) * args.position_jitter_m
     obj_pos = spawn_pos + jitter
@@ -137,41 +179,68 @@ def main() -> None:
 
     n_steps = max(1, int(round(args.seconds / dt)))
     n_score = max(1, int(round(n_steps * args.score_window_frac)))
-    on_hand_counts = torch.zeros(n_envs, device=device)
+    stable_counts = torch.zeros(n_envs, device=device)
+    reach_counts = torch.zeros(n_envs, device=device)
     final_dist = None
     for step in range(n_steps):
         _hold_step()
-        dist = (env.object.data.root_pos_w - palm_pos_w).norm(dim=-1)
+        dist_to_spawn = (env.object.data.root_pos_w - spawn_pos).norm(dim=-1)
+        tip_pos_w = env.robot.data.body_pos_w[:, env.fingertip_body_idx, :]
+        dist_to_tips = (tip_pos_w - env.object.data.root_pos_w.unsqueeze(1)).norm(dim=-1)
+        n_close_tips = (dist_to_tips < args.reach_threshold_m).sum(dim=-1)
         if step >= n_steps - n_score:
-            on_hand_counts += (dist < args.threshold_m).float()
-        final_dist = dist
+            stable_counts += (dist_to_spawn < args.threshold_m).float()
+            reach_counts += (n_close_tips >= 2).float()
+        final_dist = dist_to_spawn
 
-    score_per_env = on_hand_counts / n_score
+    stability_score = stable_counts / n_score
+    reach_score = reach_counts / n_score
+    # Both required: a candidate that is stable but unreachable (or briefly
+    # in reach but unstable) should not win over one that is both.
+    score_per_env = stability_score * reach_score
+
     score_per_group = score_per_env.view(n_groups, repeats).mean(dim=1)
+    stability_per_group = stability_score.view(n_groups, repeats).mean(dim=1)
+    reach_per_group = reach_score.view(n_groups, repeats).mean(dim=1)
     final_dist_per_group = final_dist.view(n_groups, repeats).mean(dim=1)
 
     score_table = []
-    for gi, cand in enumerate(candidates):
+    for gi, (cand, cf) in enumerate(combos):
         score_table.append({
-            "axis": cand["axis"], "roll_deg": cand["roll_deg"],
+            "axis": cand["axis"], "roll_deg": cand["roll_deg"], "curl_frac": cf,
             "score": float(score_per_group[gi]),
+            "stability_score": float(stability_per_group[gi]),
+            "reach_score": float(reach_per_group[gi]),
             "final_dist_m": float(final_dist_per_group[gi]),
         })
     score_table.sort(key=lambda e: -e["score"])
     for e in score_table:
-        print(f"[calibrate_palm_up]   axis={e['axis']:>2} roll={e['roll_deg']:>5.0f}deg  "
-              f"score={e['score']:.3f}  final_dist={e['final_dist_m']:.4f}m", flush=True)
+        print(f"[calibrate_palm_up]   axis={e['axis']:>2} roll={e['roll_deg']:>5.0f}deg "
+              f"curl={e['curl_frac']:.2f}  score={e['score']:.3f} "
+              f"(stability={e['stability_score']:.3f} reach={e['reach_score']:.3f})  "
+              f"final_dist={e['final_dist_m']:.4f}m", flush=True)
 
     winner_gi = int(score_per_group.argmax())
-    winner = candidates[winner_gi]
+    winner, winner_curl_frac = combos[winner_gi]
     winner_quat = torch.tensor(winner["quat_wxyz"], dtype=torch.float32)
+    # env.robot.data.joint_names, NOT env.hand_spec.hand_joint_names: see
+    # diagnostics.py's matching comment -- curl_table is indexed by the
+    # ARTICULATION VIEW's own joint order (soft_joint_pos_limits), which is
+    # not guaranteed to match the spec's URDF-declaration order.
+    winner_joint_pos = {
+        name: float(v) for name, v in zip(env.robot.data.joint_names, curl_table[winner_gi])
+    }
 
-    # Fold the (analytic, pre-jitter) world spawn offset back into the
-    # palm's own local frame under the WINNING rotation, so scene_utils can
-    # hand it straight to env.cfg.reset.object_spawn_offset unchanged.
+    # Fold the (analytic, pre-jitter) world spawn point back into the palm's
+    # own local frame under the WINNING rotation, so scene_utils can hand it
+    # straight to env.cfg.reset.object_spawn_offset unchanged. A full 3-vector
+    # now (not just a z-offset): the fingertip-centroid spawn point is not
+    # necessarily directly above the palm origin's own (x, y).
     import numpy as np
 
-    world_offset = np.array([0.0, 0.0, float(offset_z.view(n_groups, repeats)[winner_gi].mean())])
+    winner_spawn_w = spawn_pos.view(n_groups, repeats, 3)[winner_gi].mean(dim=0)
+    winner_palm_w = palm_pos_w.view(n_groups, repeats, 3)[winner_gi].mean(dim=0)
+    world_offset = (winner_spawn_w - winner_palm_w).cpu().numpy().astype(float)
     local_offset = pc.quat_apply(pc.quat_inv(np.array(winner["quat_wxyz"])), world_offset)
 
     entry = {
@@ -179,21 +248,30 @@ def main() -> None:
         "axis": winner["axis"],
         "roll_deg": winner["roll_deg"],
         "spawn_offset_local": [float(v) for v in local_offset],
+        "curl_frac": winner_curl_frac,
+        "hand_default_joint_pos": winner_joint_pos,
         "score": float(score_per_group[winner_gi]),
+        "stability_score": float(stability_per_group[winner_gi]),
+        "reach_score": float(reach_per_group[winner_gi]),
         "final_dist_m": float(final_dist_per_group[winner_gi]),
-        "method": (f"calibrate_palm_up.py: {n_groups} candidates (full={args.full}), "
-                   f"repeats={repeats}, held {args.seconds:.1f}s @ {1.0 / dt:.0f} Hz zero-action "
-                   f"default-joint-target, scored over the trailing "
-                   f"{args.score_window_frac:.0%} of steps at threshold={args.threshold_m} m"),
+        "method": (f"calibrate_palm_up.py: {len(candidates)} axis candidates x {len(curl_fracs)} "
+                   f"curl fracs (full={args.full}), repeats={repeats}, held {args.seconds:.1f}s @ "
+                   f"{1.0 / dt:.0f} Hz zero-action holding a curled joint target "
+                   f"(lower + curl_frac*(upper-lower) per joint), scored over the trailing "
+                   f"{args.score_window_frac:.0%} of steps as stability(dist to the fingertip-"
+                   f"centroid spawn point < {args.threshold_m} m) x reach(>=2 fingertips within "
+                   f"{args.reach_threshold_m} m of the object)"),
         "date": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "git_sha": pc.git_sha(),
         "score_table": score_table,
     }
     pc.save_calibration({args.hand: entry})
     print(f"[calibrate_palm_up] hand={args.hand} WINNER axis={winner['axis']} "
-          f"roll={winner['roll_deg']:.0f}deg score={entry['score']:.3f} "
-          f"base_rot={entry['base_rot']} spawn_offset_local={entry['spawn_offset_local']} "
-          f"-> written to {pc.CALIB_PATH}", flush=True)
+          f"roll={winner['roll_deg']:.0f}deg curl_frac={winner_curl_frac:.2f} "
+          f"score={entry['score']:.3f} (stability={entry['stability_score']:.3f} "
+          f"reach={entry['reach_score']:.3f}) base_rot={entry['base_rot']} "
+          f"spawn_offset_local={entry['spawn_offset_local']} -> written to {pc.CALIB_PATH}",
+          flush=True)
 
     env.close()
     simulation_app.close()

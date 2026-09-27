@@ -4,7 +4,9 @@ palm frame, rotation error to goal) every reward/termination hook reads."""
 from __future__ import annotations
 
 import torch
-from isaaclab.utils.math import quat_error_magnitude, quat_mul, quat_inv, subtract_frame_transforms
+from isaaclab.utils.math import (
+    quat_apply_inverse, quat_error_magnitude, quat_inv, quat_mul, subtract_frame_transforms,
+)
 
 __all__ = [
     "OBS_FIELD_WIDTHS", "derive_spaces", "compute_intermediate_values",
@@ -12,42 +14,66 @@ __all__ = [
 ]
 
 # Width (last-dim size) of each observation field, independent of the hand.
+# "joint_pos"/"joint_vel"/"prev_actions" scale with the hand's joint count;
+# "fingertip_pos_palm" scales with its fingertip count -- both resolved in
+# ``_field_width`` from the spec rather than listed here.
 OBS_FIELD_WIDTHS = {
     "object_pos_palm": 3,
     "object_quat_palm": 4,
+    "object_lin_vel_palm": 3,
+    "object_ang_vel_palm": 3,
     "goal_quat_palm": 4,
     "object_quat_rel_goal": 4,
-    "prev_actions": None,   # = num hand joints
-    "joint_pos": None,
-    "joint_vel": None,
 }
+_PER_JOINT_FIELDS = ("prev_actions", "joint_pos", "joint_vel")
 
 
-def _field_width(name: str, num_joints: int) -> int:
-    w = OBS_FIELD_WIDTHS[name]
-    return num_joints if w is None else w
+def _field_width(name: str, spec) -> int:
+    if name in _PER_JOINT_FIELDS:
+        return spec.num_hand_joints
+    if name == "fingertip_pos_palm":
+        return 3 * spec.num_fingertips
+    return OBS_FIELD_WIDTHS[name]
 
 
 def derive_spaces(cfg, spec) -> None:
     """Set action/observation/state space sizes from the hand spec + obs cfg."""
-    j = spec.num_hand_joints
-    cfg.action_space = j
-    cfg.observation_space = sum(_field_width(f, j) for f in cfg.obs.obs_list)
-    cfg.state_space = sum(_field_width(f, j) for f in cfg.obs.state_list)
+    cfg.action_space = spec.num_hand_joints
+    cfg.observation_space = sum(_field_width(f, spec) for f in cfg.obs.obs_list)
+    cfg.state_space = sum(_field_width(f, spec) for f in cfg.obs.state_list)
 
 
 def pre_physics_step(env, actions: torch.Tensor) -> None:
-    """Joint-position targets with moving-average smoothing, PoseReach-style."""
+    """Joint-position targets with moving-average smoothing, PoseReach-style.
+
+    Actions in [-1, 1] scale PIECEWISE-LINEARLY around each joint's DEFAULT
+    position (``env.robot.data.default_joint_pos``, the calibrated rest pose
+    -- see ``hand_calibration.json``), not around the raw midpoint of its
+    limits: action=+1 still lands exactly on the upper limit and action=-1 on
+    the lower limit, but action=0 now reproduces the rest pose exactly. This
+    matters because ``hand_only.build_hand_only_spec`` sets each joint's
+    default to ``clamp(0.0, lower, upper)``, which for an asymmetric-limit
+    joint (e.g. allegro_right's thumb joint_12, limits [0.263, 1.396], default
+    0.263) sits far from the limits' midpoint -- roughly half the joint's span
+    away. Under the old (mid-of-limits) mapping, "zero action" pulled that
+    joint away from its good rest pose toward the middle of its range on
+    every single step from the first reset onward, before any policy
+    learning; a from-scratch policy (whose action mean starts near 0) would
+    have to learn a per-joint bias just to re-find the rest pose before it
+    could learn anything about rotating the object.
+    """
     actions = actions.clamp(-1.0, 1.0)
     env._prev_actions_this_step = env._prev_actions.clone()
     env._prev_actions = actions
 
-    spec = env.hand_spec
     lower = env.robot.data.soft_joint_pos_limits[:, :, 0]
     upper = env.robot.data.soft_joint_pos_limits[:, :, 1]
-    span = 0.5 * (upper - lower)
-    mid = 0.5 * (upper + lower)
-    scaled = mid + actions * span * env.cfg.action.dof_speed_scale
+    default_pos = env.robot.data.default_joint_pos
+    scale = env.cfg.action.dof_speed_scale
+    span_up = (upper - default_pos) * scale
+    span_dn = (default_pos - lower) * scale
+    scaled = default_pos + torch.where(actions >= 0, actions * span_up, actions * span_dn)
+
     alpha = env.cfg.action.hand_moving_average
     if not hasattr(env, "_cur_targets"):
         env._cur_targets = env.robot.data.joint_pos.clone()
@@ -66,14 +92,29 @@ def update_palm_frame_geometry(env) -> None:
 
     obj_pos_palm, obj_quat_palm = subtract_frame_transforms(
         palm_pos_w, palm_quat_w, obj_pos_w, obj_quat_w)
-    _goal_pos_palm, goal_quat_palm = subtract_frame_transforms(
-        palm_pos_w, palm_quat_w, obj_pos_w, env._goal_quat_w)
+    # Orientation only: the goal has no position of its own (its "position"
+    # IS the object's spawn point, tracked separately as
+    # ``env._spawn_obj_pos_palm``) -- the previous version of this line
+    # passed ``obj_pos_w`` as the goal's translation, computing (and then
+    # discarding) a position that was actually just ``obj_pos_palm`` again.
+    goal_quat_palm = quat_mul(quat_inv(palm_quat_w), env._goal_quat_w)
 
     env._obj_pos_palm = obj_pos_palm
     env._obj_quat_palm = obj_quat_palm
+    env._obj_lin_vel_palm = quat_apply_inverse(palm_quat_w, env.object.data.root_lin_vel_w)
+    env._obj_ang_vel_palm = quat_apply_inverse(palm_quat_w, env.object.data.root_ang_vel_w)
     env._goal_quat_palm = goal_quat_palm
     env._obj_quat_rel_goal = quat_mul(quat_inv(env._goal_quat_w), obj_quat_w)
     env._rot_error = quat_error_magnitude(obj_quat_w, env._goal_quat_w)
+
+    tip_idx = getattr(env, "fingertip_body_idx", None)
+    if tip_idx:
+        n, k = env.num_envs, len(tip_idx)
+        tip_pos_w = env.robot.data.body_pos_w[:, tip_idx, :]  # (n, k, 3)
+        rel_w = tip_pos_w - palm_pos_w.unsqueeze(1)
+        palm_quat_flat = palm_quat_w.unsqueeze(1).expand(n, k, 4).reshape(n * k, 4)
+        tip_pos_palm = quat_apply_inverse(palm_quat_flat, rel_w.reshape(n * k, 3))
+        env._fingertip_pos_palm = tip_pos_palm.reshape(n, k * 3)
 
 
 def compute_intermediate_values(env) -> None:
@@ -98,8 +139,11 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "prev_actions": env._prev_actions,
         "object_pos_palm": env._obj_pos_palm,
         "object_quat_palm": env._obj_quat_palm,
+        "object_lin_vel_palm": env._obj_lin_vel_palm,
+        "object_ang_vel_palm": env._obj_ang_vel_palm,
         "goal_quat_palm": env._goal_quat_palm,
         "object_quat_rel_goal": env._obj_quat_rel_goal,
+        "fingertip_pos_palm": env._fingertip_pos_palm,
     }
     clamp = env.cfg.obs.clamp_abs_observations
     obs = torch.cat([values[f] for f in env.cfg.obs.obs_list], dim=-1).clamp(-clamp, clamp)

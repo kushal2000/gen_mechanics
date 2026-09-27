@@ -24,7 +24,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
-from .urdf_cutter import CutURDF, cut_urdf_to_hand, leaf_link_names, movable_joint_names
+from .urdf_cutter import (
+    CutURDF, cut_urdf_to_hand, leaf_link_names, merged_body_name, movable_joint_names,
+)
 
 __all__ = [
     "HandOnlySpec", "ManifestHand", "manifest_entry", "resolve_hand_urdf",
@@ -233,7 +235,13 @@ def build_hand_only_spec(
     cut_path = cut.write(Path(out_dir) / f"{hand_id}_hand_only.urdf")
 
     joint_names = movable_joint_names(cut.root)
-    tips = leaf_link_names(cut.root)
+    # Post-merge names (merged_body_name): a hand-only cut's leaf links are
+    # sometimes a fixed-joint sensor/pad stub past the last actuated joint
+    # (e.g. SHARPA's "*_fingertip" -> "*_elastomer" -> "*_DP"), which the USD
+    # importer folds into that ancestor -- see merged_body_name's docstring.
+    # dict.fromkeys dedupes (preserving order) in the unlikely case two leaf
+    # names collapse onto the same surviving body.
+    tips = tuple(dict.fromkeys(merged_body_name(cut.root, t) for t in leaf_link_names(cut.root)))
     limits = _joint_limits(cut.root, joint_names)
     adjacency = _self_adjacent_links(cut.root, joint_names)
 

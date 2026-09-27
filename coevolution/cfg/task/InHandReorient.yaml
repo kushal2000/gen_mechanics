@@ -44,7 +44,7 @@ assets:
   # "dclaw", "wuji_right", "xhand_right", "tesollo_dg5f_right", "orca_right",
   # "leap_right", "barrett_bh". Override on the CLI with env.assets.hand_id=<id>.
   hand_id: "sharpa"
-  object_size_m: 0.055
+  object_size_m: 0.06
   object_density: 500.0
 
   modify_asset_frictions: true
@@ -58,9 +58,11 @@ assets:
 # -----------------------------------------------------------------------------
 obs:
   obs_list: [joint_pos, joint_vel, prev_actions,
-             object_pos_palm, object_quat_palm, goal_quat_palm, object_quat_rel_goal]
+             object_pos_palm, object_quat_palm, object_lin_vel_palm, object_ang_vel_palm,
+             goal_quat_palm, object_quat_rel_goal, fingertip_pos_palm]
   state_list: [joint_pos, joint_vel, prev_actions,
-               object_pos_palm, object_quat_palm, goal_quat_palm, object_quat_rel_goal]
+               object_pos_palm, object_quat_palm, object_lin_vel_palm, object_ang_vel_palm,
+               goal_quat_palm, object_quat_rel_goal, fingertip_pos_palm]
   clamp_abs_observations: 10.0
 
 # -----------------------------------------------------------------------------
@@ -71,26 +73,35 @@ action:
   dof_speed_scale: 1.0
 
 # -----------------------------------------------------------------------------
-# 6) reward — rotation-error progress + goal bonus - action/velocity/drop penalties
+# 6) reward — IsaacGymEnvs AllegroHand/ShadowHand recipe: dense inverse-
+#    distance rotation term + position term + goal bonus - action/drop
+#    penalties (rotation_progress_scale kept for A/B, off by default)
 # -----------------------------------------------------------------------------
 reward:
-  rotation_progress_scale: 1.0
+  rot_reward_scale: 1.0
+  rot_eps: 0.1
+  dist_reward_scale: 10.0
+  rotation_progress_scale: 0.0
   goal_bonus: 250.0
-  action_penalty_scale: 0.0003
+  action_penalty_scale: 0.0002
   action_delta_penalty_scale: 0.0003
   hand_velocity_penalty_scale: 0.0003
   drop_penalty: 50.0
 
 # -----------------------------------------------------------------------------
-# 7) reset — object spawn above the palm, goal sampling
+# 7) reset — object spawn above the palm, goal sampling + curriculum
 # -----------------------------------------------------------------------------
 reset:
   object_spawn_offset: [0.0, 0.0, 0.06]
   object_position_noise: 0.01
   joint_reset_noise: 0.1
-  goal_sampling_type: absolute       # "absolute" | "delta"
+  goal_sampling_type: absolute       # "absolute" | "delta" | "axis"; used only if curriculum is off
   delta_rotation_degrees: 90.0
-  drop_distance_m: 0.10
+  drop_distance_m: 0.24
+  goal_curriculum_enabled: true
+  goal_curriculum_stages: [axis, full]
+  goal_curriculum_interval: 3000
+  goal_curriculum_success_threshold: 3.0
 
 # -----------------------------------------------------------------------------
 # 8) termination — end-of-episode conditions + the tolerance curriculum

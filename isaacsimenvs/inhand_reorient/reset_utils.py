@@ -8,8 +8,10 @@ beyond what every caller already has booted), mirroring
 
 from __future__ import annotations
 
+import math
+
 import torch
-from isaaclab.utils.math import quat_apply, random_orientation
+from isaaclab.utils.math import quat_apply, quat_from_angle_axis, quat_mul, random_orientation
 
 from isaacsimenvs.pose_reaching_6d.reward_utils.curriculum import initial_success_tolerance
 
@@ -42,26 +44,62 @@ def allocate_state_buffers(env) -> None:
     env._last_curriculum_update = 0
     env._current_success_tolerance = initial_success_tolerance(env)
 
+    # Goal-difficulty curriculum (I24, Phase 1c): which sampling mode is
+    # active, and when it last advanced -- ferried through the same
+    # checkpoint hooks as the tolerance curriculum (see reward_utils.py).
+    env._goal_curriculum_stage = 0
+    env._last_goal_curriculum_update = 0
 
-def _sample_goal(env, env_ids: torch.Tensor) -> torch.Tensor:
+
+def _goal_curriculum_mode(env) -> str:
+    """Which sampling mode is active right now: the staged curriculum's
+    current stage when enabled, else the static ``goal_sampling_type``."""
+    cfg = env.cfg.reset
+    if not cfg.goal_curriculum_enabled:
+        return cfg.goal_sampling_type
+    stage = min(env._goal_curriculum_stage, len(cfg.goal_curriculum_stages) - 1)
+    return cfg.goal_curriculum_stages[stage]
+
+
+def _sample_goal(env, env_ids: torch.Tensor, ref_quat: torch.Tensor) -> torch.Tensor:
+    """A new goal orientation for ``env_ids``, relative to ``ref_quat`` (the
+    object's CURRENT world orientation: its just-written spawn pose on a full
+    reset, or wherever it was when it hit the previous goal on a mid-episode
+    resample -- see the two call sites below).
+
+    Modes (``_goal_curriculum_mode``):
+      - "axis": rotate ``ref_quat`` by a random angle about world +z only --
+        the calibrated palm-normal direction for every hand in
+        ``hand_calibration.json`` (Phase 1b), so this is a 1-DOF spin task
+        regardless of ``ref_quat``'s own tilt.
+      - "delta": rotate ``ref_quat`` by a random angle up to
+        ``delta_rotation_degrees`` about a random axis.
+      - "full" / "absolute": ``ref_quat`` is ignored; a fully random goal.
+    """
     n = env_ids.numel()
-    if env.cfg.reset.goal_sampling_type == "delta":
-        from isaaclab.utils.math import quat_from_angle_axis, quat_mul
-        import math
-
+    mode = _goal_curriculum_mode(env)
+    if mode in ("full", "absolute"):
+        return random_orientation(n, device=env.device)
+    if mode == "axis":
+        axis = torch.zeros(n, 3, device=env.device)
+        axis[:, 2] = 1.0
+        angle = torch.rand(n, device=env.device) * 2.0 * math.pi
+    elif mode == "delta":
         axis = torch.nn.functional.normalize(torch.randn(n, 3, device=env.device), dim=-1)
         angle = (torch.rand(n, device=env.device) * 2.0 - 1.0) * math.radians(
             env.cfg.reset.delta_rotation_degrees)
-        dq = quat_from_angle_axis(angle, axis)
-        return quat_mul(dq, env._goal_quat_w[env_ids])
-    return random_orientation(n, device=env.device)
+    else:
+        raise ValueError(f"unknown goal sampling mode {mode!r}")
+    dq = quat_from_angle_axis(angle, axis)
+    return quat_mul(dq, ref_quat)
 
 
 def reset_goal_trackers(env, env_ids: torch.Tensor) -> None:
     """A goal was hit mid-episode: resample it, without touching anything
     else (episode_length_buf reset is the caller's job, as in
     ``pose_reaching_6d.reward_utils.termination``)."""
-    env._goal_quat_w[env_ids] = _sample_goal(env, env_ids)
+    ref_quat = env.object.data.root_quat_w[env_ids]
+    env._goal_quat_w[env_ids] = _sample_goal(env, env_ids, ref_quat)
     env._consec_success_steps[env_ids] = 0
 
 
@@ -79,6 +117,17 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     joint_pos = torch.clamp(default_pos + noise, lower, upper)
     joint_vel = torch.zeros_like(joint_pos)
     env.robot.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
+    # ``_cur_targets`` is pre_physics_step's EMA state, not part of the
+    # articulation view -- DirectRLEnv._reset_idx doesn't touch it, so
+    # without this line a mid-training partial reset would resume tracking
+    # whatever target was in flight for THIS env_id right before its
+    # previous episode ended (e.g. a dropped/thrown configuration), fighting
+    # the freshly-written joint_pos above for the first few steps of every
+    # episode after the first. Doesn't exist yet on the very first reset
+    # (pre_physics_step creates it lazily, after this env has been reset at
+    # least once) -- nothing to fix up there.
+    if hasattr(env, "_cur_targets"):
+        env._cur_targets[env_ids] = joint_pos
 
     # Object: spawned just above the palm centre, random orientation, small
     # position jitter -- all in the palm's own (world) frame at reset time.
@@ -94,8 +143,15 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     obj_state = torch.cat([obj_pos_w, obj_quat_w, torch.zeros(n, 6, device=env.device)], dim=-1)
     env.object.write_root_state_to_sim(obj_state, env_ids=env_ids)
 
-    # Goal.
-    env._goal_quat_w[env_ids] = random_orientation(n, device=env.device)
+    # Goal: curriculum-staged, relative to the object's just-written spawn
+    # orientation (see ``_sample_goal``'s docstring). This used to always be
+    # ``random_orientation`` here regardless of ``goal_sampling_type`` /
+    # the curriculum -- ``_sample_goal`` (this module's other caller of it,
+    # ``reset_goal_trackers``) was reachable only by first REACHING a goal,
+    # so under the old fully-random-at-reset code the curriculum's easier
+    # stages never actually applied to an episode's first (and, given how
+    # rarely a random goal was reached, effectively only) goal.
+    env._goal_quat_w[env_ids] = _sample_goal(env, env_ids, obj_quat_w)
     goal_pos_w = palm_pos_w + quat_apply(palm_quat_w, offset.expand(n, 3))
     goal_state = torch.cat(
         [goal_pos_w, env._goal_quat_w[env_ids], torch.zeros(n, 6, device=env.device)], dim=-1)

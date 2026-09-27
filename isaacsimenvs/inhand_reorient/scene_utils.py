@@ -37,29 +37,56 @@ __all__ = ["setup_scene", "finalize_scene", "apply_palm_calibration"]
 
 
 def apply_palm_calibration(env, spec):
-    """Overrides ``spec.base_rot`` (and ``env.cfg.reset.object_spawn_offset``,
-    IN/OUT like ``derive_spaces``) from ``hand_calibration.json``'s entry for
-    ``env.cfg.assets.hand_id``, written by ``calibrate_palm_up.py``.
+    """Overrides ``spec.base_rot`` and ``spec.hand_default_joint_pos`` (and
+    ``env.cfg.reset.object_spawn_offset``, IN/OUT like ``derive_spaces``) from
+    ``hand_calibration.json``'s entry for ``env.cfg.assets.hand_id``, written
+    by ``calibrate_palm_up.py``.
+
+    The default-joint-pos override (I24 priority check) matters beyond
+    calibration itself: ``env.robot.data.default_joint_pos`` -- seeded from
+    ``spec.hand_default_joint_pos`` via ``_hand_articulation_cfg``'s
+    ``InitialStateCfg`` -- is also what every episode resets TO
+    (``reset_utils.reset_env_state``) and what "zero action" targets
+    (``obs_utils.pre_physics_step``), so a calibration that found a genuinely
+    CUPPED hold (not the flat, uncurled ``clamp(0.0, lower, upper)`` every
+    hand got before I24) needs to reach training the same way ``base_rot``
+    already does, or training still starts from -- and keeps drifting back
+    toward -- an open hand that never touched the object.
 
     Fallback (no entry for this hand, or no file yet): identity ``base_rot``
-    (``spec`` unchanged) with a logged warning -- calibration is data, not a
-    hard requirement, so an uncalibrated hand still boots.
+    and the spec's own (flat) default pose, with a logged warning --
+    calibration is data, not a hard requirement, so an uncalibrated hand
+    still boots.
     """
     hand_id = env.cfg.assets.hand_id
     entry = load_calibration().get(hand_id)
     if entry is None:
         print(f"[inhand_reorient] WARNING: no palm-up calibration for hand_id={hand_id!r} "
-              f"in hand_calibration.json; falling back to identity base_rot. Run "
-              f"calibrate_palm_up.py --hand {hand_id} to add one.", flush=True)
+              f"in hand_calibration.json; falling back to identity base_rot and the spec's own "
+              f"(flat) default joint pose. Run calibrate_palm_up.py --hand {hand_id} to add one.",
+              flush=True)
         return spec
     base_rot = tuple(float(v) for v in entry["base_rot"])
     spawn_offset = tuple(float(v) for v in entry["spawn_offset_local"])
     env.cfg.reset.object_spawn_offset = spawn_offset
+
+    hand_default_joint_pos = dict(spec.hand_default_joint_pos)
+    calibrated_pose = entry.get("hand_default_joint_pos")
+    n_overridden = 0
+    if calibrated_pose:
+        for j, v in calibrated_pose.items():
+            if j in hand_default_joint_pos:
+                hand_default_joint_pos[j] = float(v)
+                n_overridden += 1
+
     print(f"[inhand_reorient] hand={hand_id} palm-up calibration: base_rot={base_rot} "
-          f"palm_normal_axis={entry.get('axis')} rest_score={entry.get('score')} "
-          f"spawn_offset_local={spawn_offset} (dated {entry.get('date')}, sha "
-          f"{entry.get('git_sha', 'unknown')[:12]})", flush=True)
-    return dataclasses.replace(spec, base_rot=base_rot)
+          f"palm_normal_axis={entry.get('axis')} curl_frac={entry.get('curl_frac')} "
+          f"rest_score={entry.get('score')} (stability={entry.get('stability_score')} "
+          f"reach={entry.get('reach_score')}) spawn_offset_local={spawn_offset} "
+          f"default_joint_pos_overridden={n_overridden}/{len(hand_default_joint_pos)} "
+          f"(dated {entry.get('date')}, sha {entry.get('git_sha', 'unknown')[:12]})", flush=True)
+    return dataclasses.replace(
+        spec, base_rot=base_rot, hand_default_joint_pos=hand_default_joint_pos)
 
 
 def _hand_articulation_cfg(spec, usd_path: str) -> ArticulationCfg:
@@ -152,6 +179,11 @@ def finalize_scene(env) -> None:
             f"palm body {env.hand_spec.palm_body_name!r} not among the articulation's "
             f"bodies {body_names}")
     env.palm_body_idx = body_names.index(env.hand_spec.palm_body_name)
+    missing_tips = [t for t in env.hand_spec.fingertip_body_names if t not in body_names]
+    if missing_tips:
+        raise RuntimeError(
+            f"fingertip bodies {missing_tips} not among the articulation's bodies {body_names}")
+    env.fingertip_body_idx = [body_names.index(t) for t in env.hand_spec.fingertip_body_names]
     if env.robot.data.joint_pos.shape[0] != env.num_envs:
         raise RuntimeError(
             f"articulation view has {env.robot.data.joint_pos.shape[0]} envs, "

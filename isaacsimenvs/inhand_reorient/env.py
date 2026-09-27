@@ -19,7 +19,11 @@ from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
 from .env_cfg import InHandReorientEnvCfg
 from .obs_utils import build_observations, compute_intermediate_values, pre_physics_step
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
-from .reward_utils import compute_rewards, compute_terminations, update_tolerance_curriculum
+from .reward_utils import (
+    compute_rewards, compute_terminations, update_goal_curriculum, update_tolerance_curriculum,
+)
+from .reward_utils import extra_curriculum_state as _extra_curriculum_state
+from .reward_utils import restore_extra_curriculum_state as _restore_extra_curriculum_state
 from .scene_utils import finalize_scene, setup_scene
 
 __all__ = ["InHandReorientEnv", "InHandReorientEnvCfg"]
@@ -57,7 +61,8 @@ class InHandReorientEnv(PoseReachEnv):
         self.robot.set_joint_position_target(self._cur_targets)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
-        update_tolerance_curriculum(self)
+        update_tolerance_curriculum(self)  # increments self._frame_counter
+        update_goal_curriculum(self)  # reads it right after -- see its docstring
         compute_intermediate_values(self)
         return compute_terminations(self)
 
@@ -68,3 +73,17 @@ class InHandReorientEnv(PoseReachEnv):
 
     def _get_observations(self) -> dict[str, torch.Tensor]:
         return build_observations(self)
+
+    # --- generic curriculum-checkpoint hook -----------------------------
+    # pose_reaching_6d.reward_utils.curriculum.get_curriculum_state/
+    # set_curriculum_state (shared with PoseReachEnv) call these by name,
+    # guarded with callable(...), to ferry this env's EXTRA (goal-difficulty)
+    # curriculum state through the same rl_games checkpoint the tolerance
+    # curriculum already uses, without that shared module knowing this env's
+    # own state names.
+
+    def extra_curriculum_state(self) -> dict:
+        return _extra_curriculum_state(self)
+
+    def restore_extra_curriculum_state(self, state: dict) -> None:
+        _restore_extra_curriculum_state(self, state)
