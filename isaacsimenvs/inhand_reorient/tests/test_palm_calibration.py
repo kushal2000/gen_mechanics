@@ -80,3 +80,34 @@ def test_git_sha_returns_a_hex_string_in_this_repo():
     assert sha != "unknown"
     assert len(sha) == 40
     int(sha, 16)  # raises if not hex
+
+
+# --------------------------------------------------------------------------
+# I34 (2026-09-27): the ONE spawn-offset convention calibration and the env
+# share -- quat_apply(base_rot, spawn_offset_local) is the WORLD-frame offset
+# reset_utils.reset_env_state places the cube at (see
+# MIN_SPAWN_HEIGHT_ABOVE_PALM_M's docstring for why this is exact, not
+# approximate, for a fixed-base hand-only articulation). Every hand actually
+# committed to hand_calibration.json must clear the same margin above the
+# palm that drop_detection.object_below_palm requires at runtime, or its
+# very first reset drop-terminates.
+# --------------------------------------------------------------------------
+
+ALL_CALIBRATED_HANDS = (
+    "sharpa", "allegro_right", "dclaw", "xhand_right", "wuji_right", "tesollo_dg5f_right",
+)
+
+
+@pytest.mark.parametrize("hand_id", ALL_CALIBRATED_HANDS)
+def test_every_calibrated_hand_clears_the_min_spawn_height_above_the_palm(hand_id):
+    entry = pc.load_calibration().get(hand_id)
+    if entry is None:
+        pytest.skip(f"no committed calibration entry for {hand_id!r}")
+    base_rot = np.array(entry["base_rot"], dtype=float)
+    local_offset = np.array(entry["spawn_offset_local"], dtype=float)
+    world_offset = pc.quat_apply(base_rot, local_offset)
+    assert world_offset[2] > pc.MIN_SPAWN_HEIGHT_ABOVE_PALM_M, (
+        f"{hand_id}: spawn point is {world_offset[2]:.4f} m above the palm in world z "
+        f"(need > {pc.MIN_SPAWN_HEIGHT_ABOVE_PALM_M} m); base_rot={entry['base_rot']} "
+        f"spawn_offset_local={entry['spawn_offset_local']} -- re-run calibrate_palm_up.py "
+        f"--hand {hand_id}")

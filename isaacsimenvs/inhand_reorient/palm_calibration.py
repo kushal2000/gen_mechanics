@@ -23,14 +23,42 @@ from typing import Sequence
 import numpy as np
 
 __all__ = [
-    "CALIB_PATH", "AXIS_NAMES", "candidate_rotations", "quat_mul", "quat_inv",
-    "quat_apply", "git_sha", "load_calibration", "save_calibration",
+    "CALIB_PATH", "AXIS_NAMES", "MIN_SPAWN_HEIGHT_ABOVE_PALM_M", "candidate_rotations",
+    "quat_mul", "quat_inv", "quat_apply", "git_sha", "load_calibration", "save_calibration",
 ]
 
 CALIB_PATH = Path(__file__).resolve().parent / "hand_calibration.json"
 
 # Which LOCAL axis of the hand-only URDF's root/palm link is tried as "up".
 AXIS_NAMES: tuple[str, ...] = ("+z", "-z", "+x", "-x", "+y", "-y")
+
+MIN_SPAWN_HEIGHT_ABOVE_PALM_M = 0.02
+"""The ONE convention a calibrated spawn point and the runtime drop check
+share (I34, 2026-09-27): ``quat_apply(base_rot, spawn_offset_local)[2]`` --
+the cube's spawn point rotated into WORLD frame, exactly as
+``reset_utils.reset_env_state`` does through the palm body's LIVE world
+orientation (``quat_apply(palm_quat_w, local_pos)``; for a fixed-base
+articulation whose palm body IS the root, ``palm_quat_w`` is ``base_rot``
+bit-for-bit at every step, so this is not an approximation) -- must clear
+this margin above the palm's own world z.
+
+``calibrate_palm_up.py`` enforces this at SELECTION time (a candidate that
+does not clear it scores 0, regardless of stability/reach); tests/
+test_palm_calibration.py's ``test_every_calibrated_hand_clears_...`` enforces
+it on the committed ``hand_calibration.json`` itself, so a hand cannot be
+calibrated at all without satisfying the same thing
+``drop_detection.object_below_palm`` checks every reset
+(``obj_z - palm_z < -0.5 * drop_distance_m``, i.e. below -0.12 m at the
+0.24 m default). 0.02 m is a modest positive margin comfortably inside that
+-0.12 m failure threshold, not merely non-negative: before I34,
+calibrate_palm_up.py's stability(near the spawn point)+reach(>=2 fingertips
+close) scoring had NO requirement at all that the winning spawn point sit
+above the palm in world z -- for an identity base_rot (sharpa,
+allegro_right, dclaw) the winner happened to end up there anyway, but for a
+non-identity axis it did not (xhand_right: -0.147 m, BELOW the palm, past
+the runtime's own threshold, terminating episode step 1; wuji_right/
+tesollo_dg5f_right: +0.051/-0.002 m, level with the palm, not genuinely held
+up against gravity)."""
 
 
 def quat_mul(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
