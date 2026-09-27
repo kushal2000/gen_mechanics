@@ -89,10 +89,54 @@ def apply_palm_calibration(env, spec):
         spec, base_rot=base_rot, hand_default_joint_pos=hand_default_joint_pos)
 
 
+# Grammar envelope only (never present in a single-hand HandOnlySpec):
+# pc0_j/pc1_j are mechanically DIFFERENT from every other joint slot even
+# when they are themselves a GHOST -- a padding-only carrier still often
+# carries an entire REAL finger chain (envelope slot 3/4's root-mounted
+# digit, see grammar_envelope.canonicalize). A Kit smoke found the hand's
+# ordinary (SHARPA-derived) gains too weak to hold that load against
+# gravity through a near-massless ghost body: a bounded creep of the ghost
+# past its (0, 1e-8) limit (up to ~2.3 rad over 200 steps on wuji_right,
+# whose finger 3 hangs off a ghost pc0) -- distinct from, and discovered
+# only after fixing, the far more severe (100+ rad in 1-2 steps)
+# rest-self-penetration instability the same population had before
+# make_grammar_population.py started filtering on rest_overlap_pairs. This
+# carrier-only actuator group (500/20/0.01 vs the hand's own SHARPA-derived
+# ~3.9/0.15) brought the residual down to ~0.0125 rad max over 200 steps --
+# bounded and stable, but still above the design note's 1e-4 target; a 6x
+# stiffness increase (3000/80) made no further difference (bit-identical
+# result), so the residual is bounded by `physxJoint:maxJointVelocity`
+# (10 rad/s) during a brief initial transient, not by drive weakness --
+# left as a known gap, see the Phase 2 report.
+_CARRIER_JOINT_NAMES = ("pc0_j", "pc1_j")
+_CARRIER_STIFFNESS = 500.0
+_CARRIER_DAMPING = 20.0
+_CARRIER_ARMATURE = 0.01
+
+
 def _hand_articulation_cfg(spec, usd_path: str | None) -> ArticulationCfg:
     """`usd_path=None` (the grammar-population path): the prims were already
     authored directly into the stage (`scene/author_grammar.py`), so this
     Articulation only needs to ATTACH to them, not spawn anything."""
+    carrier_names = [n for n in _CARRIER_JOINT_NAMES if n in spec.hand_joint_names]
+    hand_names = [n for n in spec.hand_joint_names if n not in carrier_names]
+    actuators = {
+        "hand": ImplicitActuatorCfg(
+            joint_names_expr=hand_names,
+            stiffness={n: spec.hand_stiffness[n] for n in hand_names},
+            damping={n: spec.hand_damping[n] for n in hand_names},
+            armature={n: spec.hand_armature[n] for n in hand_names},
+            friction=0.0,
+        ),
+    }
+    if carrier_names:
+        actuators["carrier"] = ImplicitActuatorCfg(
+            joint_names_expr=carrier_names,
+            stiffness={n: _CARRIER_STIFFNESS for n in carrier_names},
+            damping={n: _CARRIER_DAMPING for n in carrier_names},
+            armature={n: _CARRIER_ARMATURE for n in carrier_names},
+            friction=0.0,
+        )
     return ArticulationCfg(
         prim_path=ROBOT_PATH,
         spawn=None if usd_path is None else sim_utils.UsdFileCfg(usd_path=usd_path),
@@ -101,15 +145,7 @@ def _hand_articulation_cfg(spec, usd_path: str | None) -> ArticulationCfg:
             joint_pos=dict(spec.hand_default_joint_pos),
             joint_vel={".*": 0.0},
         ),
-        actuators={
-            "hand": ImplicitActuatorCfg(
-                joint_names_expr=list(spec.hand_joint_names),
-                stiffness=dict(spec.hand_stiffness),
-                damping=dict(spec.hand_damping),
-                armature=dict(spec.hand_armature),
-                friction=0.0,
-            ),
-        },
+        actuators=actuators,
     )
 
 
