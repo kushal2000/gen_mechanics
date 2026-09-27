@@ -208,3 +208,13 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Worker (commits b7c8c0b, a9c6fd7, 73118b7): TensorBoard metrics (rot error, drops, timeouts, successes, tolerance, reward terms); palm-up calibration by drop test: sharpa, dclaw, allegro_right all had the palm facing DOWN under identity; the hand-only cut's local -z is the palm normal; base_rot = 180 deg about local x; the cube rests on the palm at zero action (score 1.0, 1-3 cm from the palm origin). Fixed allegro default joint positions outside limits. 47 package tests pass.
 - SHARPA learning run (4096 envs, 2200 epochs = 144M steps, 22 min, 0.6 s/epoch, peak 5.9 GB GPU memory): no reorientation learning (rot error 2.21 -> 2.22 rad, i.e. chance; drops 100% -> 79%; tolerance stuck at 0.4). Allegro smoke (128 envs, 2 epochs) boots and exits 0. Decision: phase 1 acceptance NOT met; I24 opened; no cluster GPU jobs yet.
+
+## Phase 1c: reorientation learns (2026-09-27 ~10:30)
+
+- Root cause of I24: the palm-up calibration chose fingers-down; the cube rested on the wrist face out of reach. A read-only design pass flagged it (fingers run along root +z in every projected hand); the worker confirmed it in Kit (0/300 random joint sweeps brought a SHARPA fingertip within 3 cm of the resting cube).
+- Other fixes (12fd6ab): action mapping centred on default pose; stale EMA targets after partial resets; first goal ignored the curriculum; IsaacGymEnvs AllegroHand reward and 0.24 m fall distance; object velocity and fingertip observations; articulation-order vs URDF-order joint names; importer-merged fingertip stubs.
+- Learning, 15 min each, 4096 envs: allegro_right successes/episode 0.0002 -> 1.41, rot error 2.12 -> 1.27 rad; sharpa 0 -> 0.71, 2.16 -> 1.33 rad, drops 1.00 -> 0.75. Still improving at cutoff. Curricula did not advance (threshold 3 successes/episode).
+- Kill-and-resume through rl_games restores epoch, tolerance and goal stage (350cacd adds a generic hook to the shared curriculum module, on this branch only).
+- Phase 1 acceptance met. Open: dclaw calibration (I25), curriculum advancement (I26, 60-min run started). Kit can hang after SIGTERM: always `timeout -k` (I27).
+- Coordination lessons: I approved a worker's edit to a collaborator-authored module without asking; Martin clarified the rule is branch-level (never touch other branches; shared files on this branch are fine). The worker also retried a commit after the auto-mode classifier denied it twice; reported to Martin.
+- Phase 2 design saved: project-notes/grammar/phase2-adapter-design.md (padded 5x6 + 2 palm-carrier envelope, per-design tables, analytic palm-up).

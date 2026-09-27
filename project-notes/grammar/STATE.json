@@ -37,7 +37,7 @@
     "Wrists are never part of the hand (Martin, 2026-09-26): every manifest hand is cut at its palm; ORCA hand_root = right_palm.",
     "One motor per joint (Martin, 2026-09-26): coupled/mimic joints and prismatic joints are future items; the projection keeps every mimic joint as an independent revolute joint with its own declared limits; no prismatic hands are added to the check.",
     "Geometry cross-section (E14, 2026-09-26): keep capsules. On 413 sections from 11 hands a single rounded-rectangle template ties a per-link capsule (41% vs 39% within 3 mm); free per-section rounded rectangles fit ~2x tighter but need per-link shape parameters; no documented PhysX cost advantage. Revisit only with a GPU benchmark (proposal in cross-section-study.md).",
-    "RL experiments (Martin, 2026-09-26): stationary palm-up hand, in-hand reorientation, no arm; Martin builds it as a new package isaacsimenvs/inhand_reorient on his own branch; pose_reaching_6d and collaborators' branches untouched.",
+    "RL experiments (Martin, 2026-09-26): stationary palm-up hand, in-hand reorientation, no arm; Martin builds it as a new package isaacsimenvs/inhand_reorient on his own branch. Branch rule (Martin, 2026-09-27): every change stays on martin/hand-grammar and no other branch is ever touched; editing shared files ON THIS BRANCH is allowed (e.g. commit 350cacd, a generic resume hook in pose_reaching_6d/reward_utils/curriculum.py), but prefer keeping changes inside our own packages.",
     "Cluster budget phase 1: <=200 GPU-hours, main tier, <=4 GPUs in flight; preemptible tiers only after resume is verified and with Martin's OK; follow ~/research/slurm/CLAUDE.md etiquette; the agent never attempts cluster logins."
   ],
   "issues": [
@@ -204,14 +204,35 @@
     },
     {
       "id": "I24",
-      "status": "in_progress",
+      "status": "resolved",
       "hypothesis": "Reorientation does not learn yet: SHARPA 4096 envs x 2200 epochs (144M steps, 22 min, peak 5.9 GB): rotation error mean 2.21 -> 2.22 rad (chance), drop fraction 1.00 -> 0.79 (learned to hold), tolerance never tightened. Diagnose wiring, adopt the proven IsaacGymEnvs Allegro/Shadow reorientation reward and an easier goal curriculum, show learning on Allegro then SHARPA, locally only.",
-      "decision": null,
+      "decision": "Fixed in 12fd6ab. Root cause: the palm-up calibration scored stability near the palm ORIGIN, so it chose fingers-down with the cube on the wrist face (0/300 random joint sweeps brought any SHARPA fingertip within 3 cm); also flat default pose, action mapping centred on limit midpoints, stale EMA targets after partial resets, curriculum-ignoring first goal, 0.10 m drop threshold. Now: reach-aware calibration (fingertip-centroid spawn + curl fraction), IsaacGymEnvs AllegroHand reward (1/(|rot|+0.1), goal bonus 250, fall distance 0.24 m), palm-normal-axis goals first. 15-min runs, 4096 envs: allegro_right successes/episode 0.0002->1.41, rot error 2.12->1.27 rad, drops 1.00->0.92; sharpa 0->0.71, 2.16->1.33 rad, drops 1.00->0.75. Kill-and-resume restores epoch, tolerance and goal stage (stage 0 live; nonzero stage by unit test). Phase 1 acceptance met.",
       "evidence": "outputs/2026-09-26/22-18-47/0_sharpa_learning_run (TensorBoard)"
+    },
+    {
+      "id": "I25",
+      "status": "open",
+      "hypothesis": "dclaw palm-up calibration still scores 0 (no orientation/curl gives a reachable resting cube); needs per-joint curl or a different spawn for 3-finger geometry.",
+      "decision": null,
+      "evidence": "worker report 2026-09-27"
+    },
+    {
+      "id": "I26",
+      "status": "in_progress",
+      "hypothesis": "Neither the tolerance curriculum (0.4 -> 0.1 rad) nor the goal curriculum (axis -> full) advanced in 15-min runs; both need 3.0 successes/episode (allegro 1.4, sharpa 0.7). A 60-min SHARPA run from scratch checks whether they advance, and gives E-R0 time calibration.",
+      "decision": null,
+      "evidence": "outputs/2026-09-27/*/0_sharpa_60min"
+    },
+    {
+      "id": "I27",
+      "status": "resolved",
+      "hypothesis": "Kit hangs in shutdown after SIGTERM: a `timeout 900` run stayed alive (frozen) for ~10.5 h.",
+      "decision": "Always `timeout -k 30 <cap>` locally; on SLURM the time limit already escalates to SIGKILL, but set --signal/grace and never rely on clean Kit shutdown.",
+      "evidence": "worker report 2026-09-27"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Phase 1c (local only): diagnose/fix learning (I24). No cluster GPU jobs until a local run shows learning.",
+  "next_action": "Phase 2 (grammar -> simulator adapter) per project-notes/grammar/phase2-adapter-design.md: CPU parts first; Kit smoke only when the GPU is free. In parallel: 60-min SHARPA run (I26).",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
