@@ -29,6 +29,10 @@ from isaacsimenvs.pose_reaching_6d.reward_utils.termination import (  # noqa: F4
 # (not even isaaclab-triggering pose_reaching_6d modules) so its decoupling
 # logic (I26) is testable under plain pytest -- see that module's docstring.
 from .goal_curriculum import update_goal_curriculum  # noqa: F401
+# object_below_palm: same reason, see drop_detection.py's docstring (2026-09-27
+# coordinator review: the old local-frame check only measured "below" for a
+# hand calibrated with local +z up).
+from .drop_detection import object_below_palm
 
 __all__ = [
     "compute_rewards", "compute_terminations", "update_tolerance_curriculum",
@@ -161,7 +165,13 @@ def compute_terminations(env) -> tuple[torch.Tensor, torch.Tensor]:
         env.episode_length_buf[goal_reset_ids] = 0
 
     displacement = (env._obj_pos_palm - env._spawn_obj_pos_palm).norm(dim=-1)
-    below_palm = env._obj_pos_palm[:, 2] < -0.5 * env.cfg.reset.drop_distance_m
+    # WORLD z, not env._obj_pos_palm's local/body frame -- see
+    # drop_detection.object_below_palm's docstring (2026-09-27 fix).
+    below_palm = object_below_palm(
+        env.object.data.root_pos_w[:, 2],
+        env.robot.data.body_pos_w[:, env.palm_body_idx, 2],
+        env.cfg.reset.drop_distance_m,
+    )
     drop = (displacement > env.cfg.reset.drop_distance_m) | below_palm
 
     if term_cfg.max_consecutive_successes > 0:
