@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 from ..derive import Derivation, DerivationStep, DERIVATION_SCHEMA
-from ..fk import forward_kinematics, rpy_to_matrix
+from ..fk import forward_kinematics, matrix_to_rpy, rpy_to_matrix
 from ..kinematics import Joint, KinematicModel, MOVABLE_TYPES
 from ..rules import GRAMMAR_VERSION
 
@@ -58,33 +58,14 @@ def _unit(v: np.ndarray) -> Optional[np.ndarray]:
     return v / n
 
 
-def matrix_to_rpy(R: np.ndarray) -> Tuple[float, float, float]:
-    """Deterministic inverse of ``fk.rpy_to_matrix`` (``R = Rz(yaw) Ry(pitch)
-    Rx(roll)``), with a gimbal-lock fallback (``pitch`` at +/-90 degrees:
-    ``yaw`` is pinned to 0 and ``roll`` recovered from the remaining
-    off-diagonal terms). Any valid ``(roll, pitch, yaw)`` reproducing ``R``
-    is acceptable -- FK only ever consumes the recomposed matrix, never the
-    triple itself -- so gimbal lock is a non-issue for correctness here."""
-    r20 = float(R[2, 0])
-    cp = math.hypot(float(R[0, 0]), float(R[1, 0]))
-    if cp < 1e-9:
-        pitch = math.atan2(-r20, cp)
-        yaw = 0.0
-        roll = math.atan2(-float(R[1, 2]), float(R[1, 1]))
-    else:
-        pitch = math.atan2(-r20, cp)
-        yaw = math.atan2(float(R[1, 0]), float(R[0, 0]))
-        roll = math.atan2(float(R[2, 1]), float(R[2, 2]))
-    return (roll, pitch, yaw)
-
-
 def _frame(z: np.ndarray, primary: Optional[np.ndarray], fallback: Optional[np.ndarray]) -> np.ndarray:
     """Build a right-handed orthonormal ``[x, y, z]`` (as columns) with the
     given unit ``z``, choosing ``x`` as the unit component of ``primary``
-    perpendicular to ``z`` (so ``primary`` -- e.g. a joint axis -- lands in
-    the x-z plane with a non-negative x-component by construction), falling
-    back to ``fallback``'s perpendicular component, then to world x/y, if
-    ``primary``/``fallback`` are parallel to ``z``."""
+    perpendicular to ``z``, falling back to ``fallback``'s perpendicular
+    component, then to world x/y, if ``primary``/``fallback`` are parallel
+    to ``z``. Used ONLY for the root frame (I22 fix 2): every other body's
+    frame is built by parallel transport (``_min_rotation``/``_transport``
+    below), never by re-deriving x from a joint axis or child order."""
     z = z / np.linalg.norm(z)
     for cand in (primary, fallback, np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])):
         if cand is None:
@@ -96,6 +77,43 @@ def _frame(z: np.ndarray, primary: Optional[np.ndarray], fallback: Optional[np.n
             y = np.cross(z, x)
             return np.stack([x, y, z], axis=1)
     raise ProjectionFailure("could not construct a canonical frame", {})
+
+
+def _min_rotation(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """The minimal-angle rotation matrix ``R`` with ``R @ a == b``, for unit
+    vectors ``a``, ``b`` (I22 fix 2: parallel transport). ``R = I`` when
+    ``a`` and ``b`` already coincide. When they are antiparallel (no unique
+    minimal rotation), rotates 180 degrees about an arbitrary axis
+    perpendicular to ``a`` -- a measure-zero case for real link directions,
+    and any choice is equally "minimal" there."""
+    cos_t = float(np.clip(np.dot(a, b), -1.0, 1.0))
+    axis = np.cross(a, b)
+    sin_t = float(np.linalg.norm(axis))
+    if sin_t < 1e-12:
+        if cos_t > 0.0:
+            return np.eye(3)
+        perp = _unit(np.cross(a, np.array([1.0, 0.0, 0.0])))
+        if perp is None:
+            perp = _unit(np.cross(a, np.array([0.0, 1.0, 0.0])))
+        K = np.array([[0.0, -perp[2], perp[1]], [perp[2], 0.0, -perp[0]], [-perp[1], perp[0], 0.0]])
+        return np.eye(3) + 2.0 * (K @ K)
+    axis = axis / sin_t
+    K = np.array([[0.0, -axis[2], axis[1]], [axis[2], 0.0, -axis[0]], [-axis[1], axis[0], 0.0]])
+    return np.eye(3) + sin_t * K + (1.0 - cos_t) * (K @ K)
+
+
+def _transport(R_parent: np.ndarray, z_child: np.ndarray) -> np.ndarray:
+    """The child's canonical frame (I22 fix 2, parallel-transport gauge):
+    ``z`` is the given ``z_child`` (the body's own link/segment direction);
+    ``x`` is the parent's own ``x`` carried by the minimal rotation taking
+    the parent's ``z`` to ``z_child`` -- never re-derived from the joint
+    axis or from child order, so the gauge has no roll/order freedom left to
+    be non-unique or discontinuous in."""
+    z_child_u = z_child / np.linalg.norm(z_child)
+    Rt = _min_rotation(R_parent[:, 2], z_child_u)
+    x_child = _unit(Rt @ R_parent[:, 0])
+    y_child = np.cross(z_child_u, x_child)
+    return np.stack([x_child, y_child, z_child_u], axis=1)
 
 
 def _rel_rpy(R_parent: np.ndarray, R_child: np.ndarray) -> Tuple[float, float, float]:
@@ -186,8 +204,7 @@ def project_to_derivation(
         "palm_bodies": [],
         "digits": {},
         "fingertip_undefined": [],
-        "coupling_not_in_structure": [],
-        "dependent_limits_replaced": [],
+        "coupling_as_independent": [],
         "branch_not_projected": [],
     }
 
@@ -202,22 +219,18 @@ def project_to_derivation(
     for m, joints in merged.movable_children.items():
         tree_children[m] = [j.child for j in joints]
 
-    leaf_count_cache: Dict[str, int] = {}
-
-    def leaf_count(m: str) -> int:
-        if m in leaf_count_cache:
-            return leaf_count_cache[m]
-        kids = tree_children.get(m, [])
-        val = 1 if not kids else sum(leaf_count(k) for k in kids)
-        leaf_count_cache[m] = val
-        return val
-
     all_merged_bodies = {model.root} | {j.child for js in merged.movable_children.values() for j in js}
 
-    palm_set = {model.root} | {m for m in all_merged_bodies if leaf_count(m) >= 2}
+    # Palm set (I22 fix 3): the root, plus every body on the path from root
+    # to the child of a manifest-annotated ``palm_joints`` entry. NO
+    # auto-inclusion rule based on leaf/child count any more -- a body earns
+    # palm membership only by explicit annotation (or by being the root
+    # itself). This makes the branch check below live: previously any body
+    # with >= 2 movable children was silently folded into the palm set by
+    # the old ">= 2 leaves" rule, which could mis-relabel a genuine in-digit
+    # branch as a palm chain without anyone noticing.
+    palm_set = {model.root}
 
-    # Explicit palm_joints: force the joint's child (+ path to root) into
-    # the palm set.
     joint_by_name = {j.name: j for j in model.joints}
     for jn in palm_joints:
         j = joint_by_name.get(jn)
@@ -230,14 +243,16 @@ def project_to_derivation(
             if cur is None:
                 break
 
-    # Sanity: every merged body with >1 movable child must be in palm_set
-    # under this rule (leaf_count >= 2 there too); anything violating this
-    # is a genuine in-digit branch this schema cannot project.
+    # Any non-palm merged body with >= 2 movable children (after fixed-joint
+    # merging) is a genuine in-digit branch this schema cannot project: the
+    # digit-chain walk below requires exactly 0 or 1 movable child per body
+    # outside the palm set. Raise, naming every offending body, rather than
+    # silently mis-projecting it.
     for m in all_merged_bodies:
         if len(tree_children.get(m, [])) > 1 and m not in palm_set:
             report["branch_not_projected"].append(m)
     if report["branch_not_projected"]:
-        raise ProjectionFailure(f"in-digit branch not projected: {report['branch_not_projected']}", report)
+        raise ProjectionFailure(f"branch_not_projected: {report['branch_not_projected']}", report)
 
     for j in model.joints:
         if j.type in MOVABLE_TYPES:
@@ -250,7 +265,6 @@ def project_to_derivation(
     R_can: Dict[str, np.ndarray] = {}
     length_of: Dict[str, float] = {}
     axis_world: Dict[str, np.ndarray] = {}  # merged body -> world axis of its own driving joint (non-root)
-    fingertip_abs: Dict[str, Optional[np.ndarray]] = {}
     fingertip_defined: Dict[str, bool] = {}
     tip_body_of: Dict[str, str] = {}  # last-phalanx merged body -> ORIGINAL tip body name
 
@@ -259,18 +273,20 @@ def project_to_derivation(
             return T0[body_or_point][:3, 3]
         return body_or_point
 
-    # Root frame.
+    # Root frame (I22 fix 2): +z toward the centroid of the root's own
+    # children's mount points; x = the ORIGINAL root frame's own x
+    # (T0[root] is the identity, so this is world x) projected perpendicular
+    # to z, falling back to the original y -- never the first child's
+    # position, so the result does not depend on child order.
     root_children = tree_children.get(model.root, [])
     if root_children:
         centroid = np.mean([pos(c) for c in root_children], axis=0)
         z_root = _unit(centroid - pos(model.root))
         if z_root is None:
             z_root = np.array([0.0, 0.0, 1.0])
-        fallback = pos(root_children[0]) - pos(model.root)
     else:
         z_root = np.array([0.0, 0.0, 1.0])
-        fallback = np.array([1.0, 0.0, 0.0])
-    R_can[model.root] = _frame(z_root, None, fallback)
+    R_can[model.root] = _frame(z_root, T0[model.root][:3, 0], T0[model.root][:3, 1])
     if root_children:
         proj = [float(np.dot(pos(c) - pos(model.root), z_root)) for c in root_children]
         length_of[model.root] = max(max(proj), _EPS)
@@ -293,22 +309,21 @@ def project_to_derivation(
         j = next(jj for jj in merged.movable_children[parent] if jj.child == b)
         axis_world[b] = T0[b][:3, :3] @ np.asarray(j.axis, dtype=float)
         kids = tree_children.get(b, [])
+        z_b = None
         if kids:
             centroid = np.mean([pos(c) for c in kids], axis=0)
             z_b = _unit(centroid - pos(b))
-        else:
-            z_b = None
         if z_b is None:
-            z_b = _unit(pos(b) - pos(parent))
-        if z_b is None:
-            z_b = np.array([0.0, 0.0, 1.0])
-        fallback = T0[b][:3, 0]
-        R_can[b] = _frame(z_b, axis_world[b], fallback)
-        if kids:
-            proj = [float(np.dot(pos(c) - pos(b), z_b)) for c in kids]
-            length_of[b] = max(max(proj), _EPS)
-        else:
+            # Zero-length palm body (I22 fix 2): inherit the parent's frame
+            # orientation wholesale -- its z is borrowed unchanged (equal to
+            # the parent's own z) only so a later transport step has
+            # something to carry from.
+            R_can[b] = R_can[parent]
             length_of[b] = _EPS
+            continue
+        R_can[b] = _transport(R_can[parent], z_b)
+        proj = [float(np.dot(pos(c) - pos(b), z_b)) for c in kids]
+        length_of[b] = max(max(proj), _EPS)
 
     # ---- digits -------------------------------------------------------------
 
@@ -354,33 +369,24 @@ def project_to_derivation(
                 else:
                     fingertip_defined[body] = True
                     target = tip_pt
-                fingertip_abs[body] = tip_pt if fingertip_defined[body] else None
             else:
                 target = pos(chain_bodies[i + 1])
                 dist = float(np.linalg.norm(target - pos(body)))
 
-            if target is not None and dist >= _EPS:
-                z_b = _unit(target - pos(body))
+            z_b = _unit(target - pos(body)) if target is not None else None
+            parent_R = R_can[mount_body] if i == 0 else R_can[chain_bodies[i - 1]]
+            if z_b is None:
+                # Zero-length phalanx (I22 fix 2): inherit the parent
+                # (mount body, or previous phalanx) frame orientation
+                # wholesale, rather than searching downstream for a
+                # non-coincident point or falling back to an axis-derived
+                # roll -- both of the old gauge's sources of non-uniqueness
+                # and discontinuity.
+                R_can[body] = parent_R
+                length_of[body] = 0.0
             else:
-                # coincident: use the next non-coincident point downstream,
-                # or fall back to the incoming direction / world z.
-                z_b = None
-                for k in range(i + 1, n):
-                    cand = pos(chain_bodies[k])
-                    z_b = _unit(cand - pos(body))
-                    if z_b is not None:
-                        break
-                if z_b is None and is_last and fingertip_abs.get(body) is not None:
-                    z_b = _unit(fingertip_abs[body] - pos(body))
-                if z_b is None:
-                    prev_pt = pos(mount_body) if i == 0 else pos(chain_bodies[i - 1])
-                    z_b = _unit(pos(body) - prev_pt)
-                if z_b is None:
-                    z_b = np.array([0.0, 0.0, 1.0])
-
-            fallback = T0[body][:3, 0]
-            R_can[body] = _frame(z_b, axis_world[body], fallback)
-            length_of[body] = 0.0 if dist < _EPS else dist
+                R_can[body] = _transport(parent_R, z_b)
+                length_of[body] = dist
 
     for (mount_body, chain_bodies, chain_joints) in digit_chains:
         frame_digit(mount_body, chain_bodies, chain_joints, chain_bodies[-1])
@@ -427,9 +433,10 @@ def project_to_derivation(
         report["palm_bodies"].append(palm_name_of[b])
         # PalmBody steps have no coupling schema: a mimic on a palm joint (e.g.
         # SVH j5 driven by thumb opposition, ARMS CMC5 following CMC4) is kept
-        # as an independent palm joint and reported, never dropped silently.
+        # as an independent palm joint (its own declared limits, one motor
+        # per joint -- I22 decision) and reported, never dropped silently.
         if any(c.dependent == j.name for c in model.couplings):
-            report["coupling_not_in_structure"].append(j.name)
+            report["coupling_as_independent"].append(j.name)
 
     digit_id_of: Dict[Tuple[str, ...], str] = {}
     next_digit_id = 1
@@ -450,36 +457,19 @@ def project_to_derivation(
             "top_level": True, "depth": 0, "uid": d_uid,
         }))
 
-        source_p_for_joint: Dict[str, int] = {}
         digit_report = {"phalanges": phalanx_count, "mount": mount_name}
         for i, (body, j) in enumerate(zip(chain_bodies, chain_joints)):
             axis_l = tuple(float(v) for v in (R_can[body].T @ axis_world[body]))
             module: Dict[str, Any]
-            coupling_note = None
-            src = None
-            for c in model.couplings:
-                if c.dependent == j.name:
-                    src = c
-                    break
-            if src is not None and src.source in source_p_for_joint:
-                sp = source_p_for_joint[src.source]
-                module = {"kind": "Coupled", "axis": axis_l, "source_p": sp,
-                          "multiplier": float(src.multiplier), "offset": float(src.offset)}
-                # informational: does the DECLARED limit match derive()'s
-                # own image-of-source computation?
-                src_joint = next(jj for jj in chain_joints if jj.name == src.source)
-                if src_joint.limits is not None and j.limits is not None:
-                    slo, shi = src_joint.limits
-                    lo_img = src.multiplier * slo + src.offset
-                    hi_img = src.multiplier * shi + src.offset
-                    if lo_img > hi_img:
-                        lo_img, hi_img = hi_img, lo_img
-                    if (abs(lo_img - j.limits[0]) > 1e-9 or abs(hi_img - j.limits[1]) > 1e-9):
-                        report["dependent_limits_replaced"].append(j.name)
-            elif src is not None:
-                module = {"kind": "R", "axis": axis_l, "limits": tuple(float(v) for v in j.limits)}
-                report["coupling_not_in_structure"].append(j.name)
-            elif j.type == "revolute":
+            # One motor per joint (I22 decision): every mimic/coupled joint
+            # -- even one whose source is an earlier revolute phalanx in
+            # this same digit -- is emitted as its own independent joint,
+            # with its OWN declared limits (never derived as an "image" of
+            # the source's range), never a ``Coupled`` module. Coupling is
+            # reported, not silently dropped, and never replaces the
+            # joint's own declared limits.
+            is_dependent = any(c.dependent == j.name for c in model.couplings)
+            if j.type == "revolute":
                 module = {"kind": "R", "axis": axis_l, "limits": tuple(float(v) for v in j.limits)}
             elif j.type == "continuous":
                 module = {"kind": "C", "axis": axis_l}
@@ -487,9 +477,8 @@ def project_to_derivation(
                 module = {"kind": "P", "axis": axis_l, "limits": tuple(float(v) for v in j.limits)}
             else:
                 raise ProjectionFailure(f"joint {j.name!r} has unsupported type {j.type!r}", report)
-
-            if module["kind"] == "R":
-                source_p_for_joint[j.name] = i
+            if is_dependent:
+                report["coupling_as_independent"].append(j.name)
 
             if i == 0:
                 bend_offset = (float(local_vec[0]), float(local_vec[1]))

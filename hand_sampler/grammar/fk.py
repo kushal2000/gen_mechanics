@@ -7,7 +7,8 @@ passes through the joint-frame origin. rpy is fixed-axis XYZ: R = Rz(yaw)*Ry(pit
 
 from __future__ import annotations
 
-from typing import Dict, Mapping
+import math
+from typing import Dict, Mapping, Tuple
 
 import numpy as np
 
@@ -23,6 +24,30 @@ def rpy_to_matrix(rpy) -> np.ndarray:
     ry = np.array([[cp, 0.0, sp], [0.0, 1.0, 0.0], [-sp, 0.0, cp]])
     rx = np.array([[1.0, 0.0, 0.0], [0.0, cr, -sr], [0.0, sr, cr]])
     return rz @ ry @ rx
+
+
+def matrix_to_rpy(R: np.ndarray) -> Tuple[float, float, float]:
+    """Deterministic inverse of ``rpy_to_matrix`` (``R = Rz(yaw) Ry(pitch)
+    Rx(roll)``), with a gimbal-lock fallback (``pitch`` at +/-90 degrees:
+    ``yaw`` is pinned to 0 and ``roll`` recovered from the remaining
+    off-diagonal terms). Any valid ``(roll, pitch, yaw)`` reproducing ``R``
+    is acceptable -- FK only ever consumes the recomposed matrix, never the
+    triple itself -- so gimbal lock is a non-issue for correctness here.
+    Moved here (representation-check I22 fix 1) from ``adapters/projection.py``
+    so ``derive.py``'s ``_compose_bend_rpy`` can share it without projection.py
+    importing derive.py's own module in reverse (projection.py already
+    imports FROM derive.py, never the other way)."""
+    r20 = float(R[2, 0])
+    cp = math.hypot(float(R[0, 0]), float(R[1, 0]))
+    if cp < 1e-9:
+        pitch = math.atan2(-r20, cp)
+        yaw = 0.0
+        roll = math.atan2(-float(R[1, 2]), float(R[1, 1]))
+    else:
+        pitch = math.atan2(-r20, cp)
+        yaw = math.atan2(float(R[1, 0]), float(R[0, 0]))
+        roll = math.atan2(float(R[2, 1]), float(R[2, 2]))
+    return (roll, pitch, yaw)
 
 
 def pose_to_matrix(pose: Pose) -> np.ndarray:

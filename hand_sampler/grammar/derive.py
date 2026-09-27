@@ -38,7 +38,7 @@ from .distributions import (
     sample_palm_joint_limits_rad,
     sample_revolute_limits_rad,
 )
-from .fk import forward_kinematics
+from .fk import forward_kinematics, matrix_to_rpy, rpy_to_matrix
 from .kinematics import (
     AffineCoupling,
     Body,
@@ -358,26 +358,48 @@ def validate_derivation(derivation: Derivation) -> List[str]:
 
 def _compose_bend_rpy(existing_rpy: Tuple[float, float, float],
                        bend_rpy: Tuple[float, float, float]) -> Tuple[float, float, float]:
-    """Grammar 0.5's rest-bend primitive (I16 priority 1): combine a
-    phalanx joint's existing origin orientation (the digit's own sampled
-    ``mount_rpy`` for its first phalanx, or the identity ``(0,0,0)`` for a
-    mid-digit continuation joint -- see rules.py's convention note) with the
-    small additional ``bend_rpy`` perturbation.
+    """Grammar 0.5's rest-bend primitive (I16 priority 1; I22 fix 1
+    corrects the composition): combine a phalanx joint's existing origin
+    orientation (the digit's own sampled ``mount_rpy`` for its first
+    phalanx, or the identity ``(0,0,0)`` for a mid-digit continuation joint
+    -- see rules.py's convention note) with the small additional
+    ``bend_rpy`` perturbation.
 
-    Composition order/method: plain COMPONENTWISE Euler-angle addition
-    (roll+roll, pitch+pitch, yaw+yaw) -- deliberately NOT a rotation-matrix
-    product (which would require decomposing the product back into a single
-    fixed-axis-XYZ triple, a lossy, gimbal-lock-prone operation for no
-    benefit here). This choice is exact and FK-correct regardless: fk.py's
-    ``rpy_to_matrix`` (and, identically, the URDF/Pinocchio convention
-    ``to_urdf`` exports to) only ever consumes ONE fixed-axis-XYZ triple per
-    joint origin -- the componentwise sum below IS that triple, so whatever
-    rotation it represents is exactly what gets built and exactly what any
-    FK oracle sees, with no separate decomposition step to get wrong. For a
-    continuation joint (``existing_rpy == (0,0,0)``) this reduces to
-    ``bend_rpy`` exactly, which is what ``coverage.py``'s bend-grid check
-    judges against ``Distribution.bend_rpy_choices_rad``."""
-    return tuple(float(a) + float(b) for a, b in zip(existing_rpy, bend_rpy))
+    Composition order/method: proper rotation-matrix composition
+    ``R = R(existing_rpy) @ R(bend_rpy)`` -- ``bend_rpy`` is applied in the
+    base/mount frame, i.e. it rotates about the MOUNT's own local axes, not
+    about world/componentwise axes -- converted back to a single fixed-axis
+    XYZ triple via ``fk.matrix_to_rpy`` (a deterministic gimbal-lock rule;
+    any triple reproducing ``R`` is FK-equivalent, since ``rpy_to_matrix`` /
+    ``to_urdf`` only ever consume the recomposed matrix). The old
+    COMPONENTWISE Euler-angle addition (roll+roll, pitch+pitch, yaw+yaw) was
+    exact only by accident, because every caller that samples a nonzero
+    ``existing_rpy`` (a digit's ``mount_rpy``) never also samples a nonzero
+    phalanx-0 ``bend_rpy`` at the same time (the grammar's own productions
+    keep phalanx-0 bend at 0); componentwise addition is NOT a valid small-
+    rotation composition in general (Opus review: median 4.7 deg axis error
+    across real mounts, up to 90 deg, if a mutation ever put a nonzero bend
+    on phalanx 0). When ``bend_rpy == (0.0, 0.0, 0.0)`` this returns
+    ``existing_rpy`` UNCHANGED (the identical object, not a recomputed
+    triple) so every existing derivation/replay hash stays byte-identical --
+    this is also exactly the continuation-joint case (``existing_rpy ==
+    (0,0,0)``), which then returns ``(0,0,0)`` unchanged, matching what
+    ``coverage.py``'s bend-grid check judges against
+    ``Distribution.bend_rpy_choices_rad``."""
+    if bend_rpy == (0.0, 0.0, 0.0):
+        return existing_rpy
+    if existing_rpy == (0.0, 0.0, 0.0):
+        # A mid-digit continuation joint's own base orientation is always
+        # exactly identity (see this function's docstring): composing with
+        # it is mathematically a no-op (R(0) @ R(bend) == R(bend)), so
+        # return ``bend_rpy`` unchanged rather than round-tripping it
+        # through rpy_to_matrix/matrix_to_rpy, which would perturb it by
+        # floating-point noise for no reason. This keeps every continuation
+        # phalanx's ``bend_rpy`` exactly on ``Distribution.bend_rpy_choices_rad``'s
+        # own grid, which ``coverage.py``'s bend-grid check relies on.
+        return bend_rpy
+    R = rpy_to_matrix(existing_rpy) @ rpy_to_matrix(bend_rpy)
+    return matrix_to_rpy(R)
 
 
 def derive(derivation: Derivation) -> KinematicModel:
