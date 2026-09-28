@@ -294,3 +294,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Grammar fixes: surface mounting + cross-host spacing (exact mount coincidences 13.4% -> 0%), curl skips phalanx 0 and opposition uses host frames (median opposition 106 -> 175 deg). New variants G_V1S, G_V2S, G_V3S; old ones byte-identical. Grammar suite 3157 passed.
 - 2000 seeds: viable V1 1.95% [1.43, 2.65], V1s 3.05%, V2s 5.00%, V3 8.35%, V3s 9.35% [8.15, 10.71]; cells 11/12/14/14/15 of 30; CPU time per viable design 5.1 s -> 1.25 s. All pairwise McNemar tests significant except V3 vs V3s. Trade-off: continuous pose diversity falls 164 -> 115 mm as viability rises. V2s keeps the most founders.
 - Pilot arms: G_V1 (baseline) vs G_V3S (best); G_V2S optional.
+
+## Evolution pilot launched (2026-09-27 ~23:15)
+
+- Cluster calibration 2371346 (A6000, 1 generation of G_V3S): boot 390 s, train 967 s at 54k fps, ~23 min/generation (the population path is only 1.9x slower than the 4090). Coverage 11/30 after generation 0.
+- Pilot array 2371572 on vision-pulkitag-a6000 (lab nodes; no preemption of other groups' jobs): G_V1 s0/s1 and G_V3S s0/s1, 8 generations each, 64 designs (60 archive/offspring + 4 projected probes), 4096 envs, 900 epochs/gen, train_tail fitness, --time 4:00:00. Code 8b4a91e.
+- Local 4090: G_V2S s0 (same settings), then s1.

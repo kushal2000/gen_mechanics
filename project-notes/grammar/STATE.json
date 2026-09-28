@@ -324,7 +324,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Cluster calibration: 1 generation of the evolution driver (G_V3S, 64 designs, 4096 envs, 900 epochs) on ada6000-shared to set honest limits; then pilot: G_V1 x2 + G_V3S x2 on the cluster (4 GPUs), G_V2S x2 locally.",
+  "next_action": "Pilot running: cluster array 2371572 (G_V1 x2, G_V3S x2) and local G_V2S s0 (then s1). Analyse coverage, QD-score, founders, probe fitness and complexity per generation when done; write the pilot report.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -376,7 +376,7 @@
       "recommendation": "pilot arms: G_V1 (baseline) vs G_V3S (best); G_V2S optional third arm"
     }
   },
-  "gpu_hours_used": 0.98,
+  "gpu_hours_used": 1.37,
   "cluster_jobs": [
     {
       "id": 2364675,
@@ -426,6 +426,22 @@
       "gpu": "RTX 6000 Ada",
       "elapsed": "00:06:28",
       "result": "16 CPUs: 73k fps, no change"
+    },
+    {
+      "id": 2371346,
+      "name": "evo-calib",
+      "tier": "main (vision-pulkitag-a6000)",
+      "gpu": "RTX A6000",
+      "elapsed": "00:22:49",
+      "result": "1 generation, G_V3S, 64 designs, 4096 envs, 900 epochs: boot 390 s, train 967 s at 54k fps (population path only 1.9x slower than the 4090); coverage 11/30. ~23 min/generation."
+    },
+    {
+      "id": 2371572,
+      "name": "evo-pilot (array 0-3%4)",
+      "tier": "main (vision-pulkitag-a6000)",
+      "gpu": "RTX A6000",
+      "elapsed": "running",
+      "result": "pilot: tasks 0,1 = G_V1 seeds 0,1; tasks 2,3 = G_V3S seeds 0,1; 8 generations x (64 designs, 4096 envs, 900 epochs); --time 4:00:00 (3.1 h measured + margin); run dirs /data/pulkitag/users/mpeticco/runs/evolution_pilot/pilot/<variant>_s<seed>; code 8b4a91e"
     }
   ]
 }
