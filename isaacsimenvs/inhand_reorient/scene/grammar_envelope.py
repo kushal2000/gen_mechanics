@@ -40,6 +40,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from hand_sampler import robot_param_constants as rpc
 from hand_sampler.design_space import _ordered_box
 from hand_sampler.grammar import geometry as grammar_geometry
 from hand_sampler.grammar.envelope import fits_envelope
@@ -511,6 +512,47 @@ def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
     )
 
 
+def _physical_reasons(
+    design: EnvelopeDesign,
+    *,
+    check_overlap: bool,
+    check_spawn_height: bool,
+    max_rest_penetration_m: float,
+    min_spawn_height_m: float,
+    pu: PalmUpResult,
+) -> Tuple[List[str], List[Tuple[int, int, float]], List[Tuple[int, int, float]]]:
+    """Shared by `admit` and `viability_report`: `(reasons, pairs_q0,
+    pairs_default_q)` for an already-`canonicalize`-d `design`, given a
+    `palm_up` result `pu` the caller already computed (so this never pays
+    for a second `palm_up` call). Opus review G0 item 3: overlap is checked
+    at BOTH `q=0` (the design's authored rest pose) and `pu.default_q` (the
+    reset pose the env actually uses every episode) -- a design must clear
+    both; the worse of the two drives the reason string. Item 4's spawn-
+    height check is unchanged, just reusing `pu` instead of recomputing it."""
+    reasons: List[str] = []
+    pairs_q0: List[Tuple[int, int, float]] = []
+    pairs_default_q: List[Tuple[int, int, float]] = []
+    if check_overlap:
+        pairs_q0 = rest_overlap_pairs(design)
+        pairs_default_q = rest_overlap_pairs(design, q=pu.default_q)
+        bad_q0 = [(i, j, pen) for i, j, pen in pairs_q0 if pen > max_rest_penetration_m]
+        bad_default_q = [(i, j, pen) for i, j, pen in pairs_default_q if pen > max_rest_penetration_m]
+        if bad_q0 or bad_default_q:
+            worst = max([pen for _, _, pen in bad_q0] + [pen for _, _, pen in bad_default_q])
+            reasons.append(
+                f"{len(bad_q0)} rest-overlap pair(s) at q=0 and {len(bad_default_q)} at default_q "
+                f"exceed {max_rest_penetration_m * 1000.0:.1f} mm (worst {worst * 1000.0:.2f} mm)"
+            )
+    if check_spawn_height:
+        height = spawn_height_above_palm_m(design, pu)
+        if height < min_spawn_height_m:
+            reasons.append(
+                f"spawn height {height * 1000.0:.1f} mm above the palm along world z after base_rot "
+                f"< required {min_spawn_height_m * 1000.0:.1f} mm"
+            )
+    return reasons, pairs_q0, pairs_default_q
+
+
 def admit(
     model: KinematicModel,
     *,
@@ -521,13 +563,14 @@ def admit(
 ) -> AdmissionResult:
     """The public admission gate for a SAMPLED design (review items 2 and 3):
     `_admit_structural(model)` (envelope shape) AND, by default, the design
-    note's risk-4 rest-overlap filter AND the spawn-height requirement
-    (review item 2 for populations -- `drop_detection` already uses world z
-    for the RUNTIME check; this is the admission-time equivalent). Both
-    physical checks canonicalize `model` once (structural admission has
-    already passed, so this cannot raise) and are independent -- a design
-    can fail either, both, or neither, and every violated reason is
-    reported, not just the first.
+    note's risk-4 rest-overlap filter (checked at BOTH `q=0` and the
+    design's own `default_q` -- opus review G0 item 3, a design must clear
+    both) AND the spawn-height requirement (review item 2 for populations --
+    `drop_detection` already uses world z for the RUNTIME check; this is the
+    admission-time equivalent). Both physical checks canonicalize `model`
+    once (structural admission has already passed, so this cannot raise)
+    and are independent -- a design can fail either, both, or neither, and
+    every violated reason is reported, not just the first.
 
     `check_overlap=False` is for PROJECTED commercial hands ONLY (review
     item 2's exemption: their overlaps are artifacts of the one-radius-per-
@@ -541,24 +584,15 @@ def admit(
     if not structural.ok:
         return structural
 
-    reasons: List[str] = []
     design = canonicalize(model)
-    if check_overlap:
-        pairs = rest_overlap_pairs(design)
-        bad = [(i, j, pen) for i, j, pen in pairs if pen > max_rest_penetration_m]
-        if bad:
-            worst = max(pen for _, _, pen in bad)
-            reasons.append(
-                f"{len(bad)} rest-overlap pair(s) exceed {max_rest_penetration_m * 1000.0:.1f} mm "
-                f"(worst {worst * 1000.0:.2f} mm)"
-            )
-    if check_spawn_height:
-        height = spawn_height_above_palm_m(design, palm_up(design, n_sweep=0))
-        if height < min_spawn_height_m:
-            reasons.append(
-                f"spawn height {height * 1000.0:.1f} mm above the palm along world z after base_rot "
-                f"< required {min_spawn_height_m * 1000.0:.1f} mm"
-            )
+    # A single cheap (`n_sweep=0`, no reach sweep) `palm_up` call: both
+    # physical checks only need `default_q`/`spawn_offset`/`base_rot_wxyz`,
+    # never the reach sweep itself.
+    pu = palm_up(design, n_sweep=0)
+    reasons, _pairs_q0, _pairs_default_q = _physical_reasons(
+        design, check_overlap=check_overlap, check_spawn_height=check_spawn_height,
+        max_rest_penetration_m=max_rest_penetration_m, min_spawn_height_m=min_spawn_height_m, pu=pu,
+    )
     return AdmissionResult(ok=len(reasons) == 0, reasons=tuple(reasons))
 
 
@@ -571,14 +605,20 @@ def viability_report(model: KinematicModel) -> dict:
          "fingertips_reachable": int, "spawn_height_mm": float,
          "digit_count": int, "joint_count": int}
 
-    `reasons` is `admit(model)`'s own (structural + overlap + spawn-height,
-    in that order -- structural failure short-circuits the rest, matching
-    `admit`). The geometry fields (`max_rest_overlap_mm`, `spawn_height_mm`,
-    `digit_count`, `joint_count`) are still reported even when `admitted` is
-    `False` and even when the failure is a physical (not structural) one --
-    the whole point of a screen is comparing near-miss designs, not only
-    admitted ones -- but are `None` when the model fails the STRUCTURAL
-    check (no envelope slots to measure at all)."""
+    `reasons` mirrors `admit(model)`'s own (structural + overlap + spawn-
+    height, in that order -- structural failure short-circuits the rest,
+    matching `admit`); both share the `_physical_reasons` helper on the SAME
+    canonicalized `design` and dense `palm_up` call, rather than this
+    function calling `admit(model)` separately and re-doing that work (the
+    per-design cost this function's own screening-throughput requirement,
+    opus review G0 item 4, cares about). `max_rest_overlap_mm` is the worse
+    of the q=0 and default_q poses (item 3). The geometry fields
+    (`max_rest_overlap_mm`, `spawn_height_mm`, `digit_count`, `joint_count`)
+    are still reported even when `admitted` is `False` and even when the
+    failure is a physical (not structural) one -- the whole point of a
+    screen is comparing near-miss designs, not only admitted ones -- but are
+    `None` when the model fails the STRUCTURAL check (no envelope slots to
+    measure at all)."""
     structural = _admit_structural(model)
     if not structural.ok:
         return {
@@ -587,16 +627,20 @@ def viability_report(model: KinematicModel) -> dict:
         }
 
     design = canonicalize(model)
-    pairs = rest_overlap_pairs(design)
-    max_overlap_mm = max((pen for _, _, pen in pairs), default=0.0) * 1000.0
-    pu = palm_up(design)
+    pu = palm_up(design)  # dense reach sweep -- also supplies default_q for the overlap check below
+    reasons, pairs_q0, pairs_default_q = _physical_reasons(
+        design, check_overlap=True, check_spawn_height=True,
+        max_rest_penetration_m=MAX_REST_PENETRATION_M, min_spawn_height_m=MIN_SPAWN_HEIGHT_ABOVE_PALM_M, pu=pu,
+    )
+    max_overlap_mm = max(
+        [pen for _, _, pen in pairs_q0] + [pen for _, _, pen in pairs_default_q], default=0.0
+    ) * 1000.0
     spawn_height_mm = spawn_height_above_palm_m(design, pu) * 1000.0
     digit_count = int(sum(1 for d in design.finger_digit_id if d is not None))
     joint_count = int(design.slot_valid.sum())
 
-    result = admit(model)
     return {
-        "admitted": bool(result.ok), "reasons": list(result.reasons), "max_rest_overlap_mm": float(max_overlap_mm),
+        "admitted": len(reasons) == 0, "reasons": reasons, "max_rest_overlap_mm": float(max_overlap_mm),
         "fingertips_reachable": int(pu.reachable_fingertips), "spawn_height_mm": float(spawn_height_mm),
         "digit_count": digit_count, "joint_count": joint_count,
     }
@@ -647,6 +691,45 @@ def authored_fk(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
         local = frame0 @ _rotz(float(q[idx])) @ np.linalg.inv(frame1)
         T[idx] = parent_T @ local
     return np.stack(T)
+
+
+def _rotz_batch(theta: np.ndarray) -> np.ndarray:
+    """`(N,4,4)` batched version of `_rotz` -- one Z-rotation matrix per
+    angle in `theta` (shape `(N,)`), via vectorized `cos`/`sin` instead of a
+    Python loop over `_rotz`."""
+    theta = np.asarray(theta, dtype=float)
+    n = theta.shape[0]
+    c, s = np.cos(theta), np.sin(theta)
+    T = np.zeros((n, 4, 4))
+    T[:, 0, 0], T[:, 0, 1] = c, -s
+    T[:, 1, 0], T[:, 1, 1] = s, c
+    T[:, 2, 2] = 1.0
+    T[:, 3, 3] = 1.0
+    return T
+
+
+def authored_fk_batch(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
+    """`(N,32,4,4)`: the SAME quantity as `authored_fk`, for `N` joint-vector
+    samples at once (`q` shape `(N,32)`), via numpy-broadcast batched matmul
+    instead of a per-sample Python loop over `authored_fk` -- opus review G0
+    item 4: the reach sweep's 200-sample loop (Python, one `authored_fk`
+    call per sample) was both too sparse (45%/34% of fingers "unreachable"
+    that a denser sweep reaches) and too slow to simply crank the sample
+    count up on; this is the batched-FK alternative the fix note allows, and
+    is what `palm_up`'s reach sweep now uses (>= 4000 samples/design)."""
+    frames = joint_local_frames(design)  # (32,2,4,4), independent of q
+    q = np.asarray(q, dtype=float)
+    n = q.shape[0]
+    T: List[Optional[np.ndarray]] = [None] * N_SLOTS
+    root_T = np.broadcast_to(np.eye(4), (n, 4, 4))
+    for idx in TOPOLOGICAL_ORDER:
+        parent = SLOT_PARENT[idx]
+        parent_T = root_T if parent == ROOT_SENTINEL else T[parent]
+        frame0, frame1 = frames[idx]
+        Rz = _rotz_batch(q[:, idx])
+        local = frame0[None, :, :] @ Rz @ np.linalg.inv(frame1)[None, :, :]
+        T[idx] = parent_T @ local
+    return np.stack(T, axis=1)  # (n, 32, 4, 4)
 
 
 def grammar_fk_reference(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
@@ -765,23 +848,61 @@ def _effective_parent(design: EnvelopeDesign, idx: int) -> int:
     return ROOT_NODE
 
 
-def rest_overlap_pairs(design: EnvelopeDesign) -> List[Tuple[int, int, float]]:
-    """Capsule-capsule rest-pose (q=0) self-penetration filter over the
-    AUTHORED geometry: the root/palm capsule (`ROOT_NODE`) plus every VALID
-    joint slot, every pair whose capsules overlap by more than their own
-    radii allow, EXCLUDING pairs that are expected to touch (envelope
-    parent/child, walked through any ghost carrier via `_effective_parent`
-    -- review item 4's two gaps: "it ignores the root capsule and pairs that
-    meet across ghosts"). Returns `(slot_i, slot_j, penetration_depth_m)`
-    for each violating pair, `slot_i`/`slot_j` possibly `ROOT_NODE`. Ghost
-    slots themselves (other than the root pseudo-node) are never checked --
-    they have no collider (see `author_grammar._author_body_and_collider`'s
-    `real=False` path) and are physically incapable of a rest collision.
-    This is a cheap capsule proxy for true self-penetration (real palm-cell
-    geometry can be tighter or looser); see the design note's risk 4."""
+def capsule_core_endpoints_local(length: float, radius: float) -> Tuple[float, float]:
+    """`(z0, z1)`: local-z interval of a capsule's CORE segment -- the
+    segment between the two hemisphere-cap CENTERS, which is what a
+    capsule-capsule distance query (PhysX's, and `segment_distance` below)
+    actually operates on -- for a body whose nominal segment runs local
+    `(0,0,0) -> (0,0,length)` with cross-section `radius` (this module's
+    convention; see `_capsule_box_vertices`).
+
+    Opus review G0 item 1: `rest_overlap_pairs` used to model this core as
+    the FULL `[0, length]` segment, 2r longer than what PhysX actually
+    builds -- every same-digit, small-gap "overlap" it flagged on that basis
+    was false. Matches `author_grammar._author_body_and_collider` exactly:
+    the collider mesh is centered at local z=`length/2`
+    (`set_xform(mesh, (0, 0, length/2), ...)`), with a cylindrical part of
+    length `rpc.cylinder_part(length, radius) == max(length - 2r, 0)`
+    (`hand_sampler.robot_param_constants.cylinder_part`) and a hemispherical
+    cap of `radius` on each end -- so the cap centers (this core segment's
+    own endpoints) sit at `length/2 -+ cylinder_part(length, radius) / 2`.
+    When `length < 2r` the cylindrical part clamps to 0 and both endpoints
+    coincide at `length/2`: the capsule is really a single sphere of radius
+    `r` (its overall extent still reaches the full `[0, length]`, same as
+    PhysX's, just via the sphere's own radius rather than a nonzero core
+    segment)."""
+    half_cyl = rpc.cylinder_part(max(float(length), 1e-6), float(radius)) / 2.0
+    center = float(length) / 2.0
+    return center - half_cyl, center + half_cyl
+
+
+def rest_overlap_pairs(design: EnvelopeDesign, q: Optional[np.ndarray] = None) -> List[Tuple[int, int, float]]:
+    """Capsule-capsule rest-pose self-penetration filter over the AUTHORED
+    geometry, at joint vector `q` (default `None` -> `q=0`, the design's
+    UN-curled pose; pass `palm_up(design, n_sweep=0).default_q` to check the
+    env's actual per-episode reset pose instead -- opus review G0 item 3:
+    the env resets to `default_q`, a ~35% curl, not q=0, and PhysX's own
+    depenetration at that pose is what actually risks the joint blowup this
+    filter guards against; `admit`/`viability_report` check BOTH poses, a
+    design must clear both): the root/palm capsule (`ROOT_NODE`) plus every
+    VALID joint slot, every pair whose capsule CORE segments
+    (`capsule_core_endpoints_local`, opus review G0 item 1 -- NOT the full
+    `[0, length]` nominal segment) overlap by more than their own radii
+    allow, EXCLUDING pairs that are expected to touch (envelope parent/
+    child, walked through any ghost carrier via `_effective_parent` --
+    review item 4 (phase2)'s two gaps: "it ignores the root capsule and
+    pairs that meet across ghosts"). Returns `(slot_i, slot_j,
+    penetration_depth_m)` for each violating pair, `slot_i`/`slot_j`
+    possibly `ROOT_NODE`. Ghost slots themselves (other than the root
+    pseudo-node) are never checked -- they have no collider (see
+    `author_grammar._author_body_and_collider`'s `real=False` path) and are
+    physically incapable of a rest collision. This is a cheap capsule proxy
+    for true self-penetration (real palm-cell geometry can be tighter or
+    looser); see the design note's risk 4."""
     from hand_sampler.design_space import segment_distance
 
-    T = authored_fk(design, np.zeros(N_SLOTS))
+    q_arr = np.zeros(N_SLOTS) if q is None else np.asarray(q, dtype=float).reshape(N_SLOTS)
+    T = authored_fk(design, q_arr)
     valid_slots = [i for i in range(N_SLOTS) if design.slot_valid[i]]
     adjacent = set()
     for idx in valid_slots:
@@ -789,12 +910,16 @@ def rest_overlap_pairs(design: EnvelopeDesign) -> List[Tuple[int, int, float]]:
         adjacent.add((idx, parent))
         adjacent.add((parent, idx))
 
+    root_z0, root_z1 = capsule_core_endpoints_local(design.root_length_m, design.capsule_radius_m)
     endpoints: Dict[int, Tuple[np.ndarray, np.ndarray, float]] = {
-        ROOT_NODE: (np.zeros(3), np.array([0.0, 0.0, design.root_length_m]), design.capsule_radius_m),
+        ROOT_NODE: (
+            np.array([0.0, 0.0, root_z0]), np.array([0.0, 0.0, root_z1]), design.capsule_radius_m,
+        ),
     }
     for idx in valid_slots:
-        p0 = T[idx][:3, 3]
-        p1 = (T[idx] @ np.array([0.0, 0.0, float(design.slot_length[idx]), 1.0]))[:3]
+        z0, z1 = capsule_core_endpoints_local(float(design.slot_length[idx]), design.capsule_radius_m)
+        p0 = (T[idx] @ np.array([0.0, 0.0, z0, 1.0]))[:3]
+        p1 = (T[idx] @ np.array([0.0, 0.0, z1, 1.0]))[:3]
         endpoints[idx] = (p0, p1, design.capsule_radius_m)
 
     nodes = [ROOT_NODE] + valid_slots
@@ -812,11 +937,18 @@ def rest_overlap_pairs(design: EnvelopeDesign) -> List[Tuple[int, int, float]]:
     return out
 
 
-def mark_filtered_pairs(design: EnvelopeDesign, max_penetration_m: float = 0.0) -> EnvelopeDesign:
-    """Return a copy of `design` with `filtered_pairs` set to every
-    `rest_overlap_pairs` pair deeper than `max_penetration_m` -- for designs
-    EXEMPTED from overlap rejection (projected commercial hands; see
-    `admit`'s `check_overlap=False` and this module's docstring on
+def mark_filtered_pairs(
+    design: EnvelopeDesign, max_penetration_m: float = 0.0, extra_qs: Sequence[np.ndarray] = (),
+) -> EnvelopeDesign:
+    """Return a copy of `design` with `filtered_pairs` set to the UNION,
+    over `q=0` and every pose in `extra_qs` (pass
+    `[palm_up(design, n_sweep=0).default_q]` so the design's own env reset
+    pose is covered too -- opus review G0 item 3's same q=0-vs-default_q gap
+    applies here: PhysX depenetrates whatever pose the articulation is
+    actually placed at, not only q=0), of every `rest_overlap_pairs` pair
+    deeper than `max_penetration_m` -- for designs EXEMPTED from overlap
+    rejection (projected commercial hands; see `admit`'s
+    `check_overlap=False` and this module's docstring on
     `EnvelopeDesign.filtered_pairs`). `author_grammar.author_design` reads
     this to collision-filter exactly these pairs at authoring time, instead
     of relying on PhysX to resolve a real interpenetration itself (which, for
@@ -824,8 +956,12 @@ def mark_filtered_pairs(design: EnvelopeDesign, max_penetration_m: float = 0.0) 
     see this module's `MAX_REST_PENETRATION_M`)."""
     import dataclasses
 
-    pairs = tuple((i, j) for i, j, pen in rest_overlap_pairs(design) if pen > max_penetration_m)
-    return dataclasses.replace(design, filtered_pairs=pairs)
+    pairs = set()
+    for q in (None, *extra_qs):
+        for i, j, pen in rest_overlap_pairs(design, q=q):
+            if pen > max_penetration_m:
+                pairs.add((i, j))
+    return dataclasses.replace(design, filtered_pairs=tuple(sorted(pairs)))
 
 
 # --------------------------------------------------------------------------
@@ -848,7 +984,7 @@ class PalmUpResult:
 def palm_up(
     design: EnvelopeDesign,
     object_half_size: float = 0.03,
-    n_sweep: int = 200,
+    n_sweep: int = 4000,
     seed: int = 0,
     reach_tol_m: float = 0.05,
     curl_frac: float = 0.35,
@@ -858,7 +994,9 @@ def palm_up(
     object over the fingertip workspace with a mild default curl, not over
     the palm/root origin, and report a CPU reachability metric (number of
     fingertips that reach within `reach_tol_m` of the spawn point over a
-    random joint sweep) instead of assuming reachability."""
+    dense (default 4000-sample, opus review G0 item 4) random joint sweep,
+    evaluated as one batched FK call via `authored_fk_batch`) instead of
+    assuming reachability."""
     valid_slots = [i for i in range(N_SLOTS) if design.slot_valid[i]]
     finger_valid = np.zeros(N_FINGERS, dtype=bool)
     finger_last_slot: List[Optional[int]] = [None] * N_FINGERS
@@ -914,31 +1052,38 @@ def palm_up(
     R_local_cols = np.column_stack([x_axis, y_axis, normal])  # local -> (x,y,n) frame
     base_rot = _mat3_to_quat_wxyz(R_local_cols.T)  # (x,y,n) frame -> world (ex,ey,ez)
 
-    # Spawn point: over the fingertip workspace (I24 lesson), at the hull
-    # extent along `normal` beyond the tip centroid, plus the object half
-    # size and 5 mm clearance.
-    if tip_pts_mid:
-        extents = [float(np.dot(p - tip_centroid, normal)) for p in tip_pts_mid]
-        hull_extent = max(0.0, max(extents, default=0.0))
-    else:
-        hull_extent = 0.0
-    spawn_offset = tip_centroid + normal * (hull_extent + object_half_size + 0.005)
+    # Spawn point (opus review G0 item 4): the fingertip centroid AT
+    # default_q, plus a clearance of the object half size and 5 mm along the
+    # calibrated palm normal -- NOT past the hull extent of the mid-curl
+    # fingertips (the previous `hull_extent` term put the spawn point beyond
+    # even a fully-extended finger's reach for 45%/34% of fingers; review
+    # item 4's "spawn point beyond the fingertips"). `spawn_height_above_
+    # palm_m`/`admit`'s spawn-height gate still separately guards against
+    # this landing at or below the palm.
+    spawn_offset = tip_centroid + normal * (object_half_size + 0.005)
 
-    rng = np.random.default_rng(seed)
+    # Reach sweep (opus review G0 item 4): a dense (>= 4000 samples/design)
+    # BATCHED FK sweep, not a 200-sample Python loop -- the sparse sweep
+    # undercounted reach (45%/34% of fingers looked unreachable that a dense
+    # sweep reaches; LEAP failed the >= 2 criterion on it). `n_sweep <= 0`
+    # (e.g. `admit`'s cheap `palm_up(design, n_sweep=0)` call, which only
+    # needs `default_q`/`spawn_offset`, not reach) skips the sweep entirely.
     reach_count = np.zeros(N_FINGERS, dtype=int)
-    for _ in range(n_sweep):
-        q = np.array(mid_q)
+    if n_sweep > 0:
+        rng = np.random.default_rng(seed)
+        q_batch = np.tile(mid_q, (n_sweep, 1))
         for idx in valid_slots:
             lo, hi = design.slot_limits[idx]
-            q[idx] = rng.uniform(lo, hi)
-        T = authored_fk(design, q)
+            q_batch[:, idx] = rng.uniform(lo, hi, size=n_sweep)
+        T_batch = authored_fk_batch(design, q_batch)  # (n_sweep, 32, 4, 4)
         for f in range(N_FINGERS):
             if not finger_valid[f]:
                 continue
             last = finger_last_slot[f]
-            tip = (T[last] @ np.array([0.0, 0.0, float(design.slot_length[last]), 1.0]))[:3]
-            if np.linalg.norm(tip - spawn_offset) <= reach_tol_m:
-                reach_count[f] += 1
+            local_tip = np.array([0.0, 0.0, float(design.slot_length[last]), 1.0])
+            tips = (T_batch[:, last] @ local_tip)[:, :3]  # (n_sweep, 3)
+            dist = np.linalg.norm(tips - spawn_offset[None, :], axis=1)
+            reach_count[f] = int(np.count_nonzero(dist <= reach_tol_m))
 
     fingertip_offsets = np.zeros((N_FINGERS, 3))
     for f in range(N_FINGERS):
