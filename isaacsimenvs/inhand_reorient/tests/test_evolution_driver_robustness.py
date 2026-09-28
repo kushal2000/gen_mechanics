@@ -123,6 +123,29 @@ def test_carry_resets_a_collapsed_grad_scaler_by_default(tmp_path):
     assert _load(dst)["scaler"]["scale"] == 0.0
 
 
+def test_carry_caps_the_running_normalizer_counts_when_asked(tmp_path):
+    """A normalizer that has seen 1e8 samples barely moves for a new
+    generation's designs (a joint slot no earlier design used keeps its ~0
+    variance and saturates the new design's inputs at +-5)."""
+    src = _fake_checkpoint(tmp_path / "src.pth")
+    ck = torch.load(src, map_location="cpu", weights_only=False)
+    ck[0]["model"]["running_mean_std.count"] = torch.tensor(4e8, dtype=torch.float64)
+    ck[0]["model"]["value_mean_std.count"] = torch.tensor(10.0, dtype=torch.float64)
+    ck[0]["assymetric_vf_nets"]["model.running_mean_std.count"] = torch.tensor(9e8, dtype=torch.float64)
+    torch.save(ck, src)
+    dst = tmp_path / "carry.pth"
+    drv.prepare_carry_checkpoint(src, dst, sigma_mode="keep", norm_count_cap=1e6)
+    out = torch.load(dst, map_location="cpu", weights_only=False)[0]
+    assert float(out["model"]["running_mean_std.count"]) == 1e6
+    assert float(out["model"]["value_mean_std.count"]) == 10.0  # below the cap: untouched
+    assert float(out["assymetric_vf_nets"]["model.running_mean_std.count"]) == 1e6
+    assert out["model"]["running_mean_std.count"].dtype == torch.float64
+
+    drv.prepare_carry_checkpoint(src, dst, sigma_mode="keep")  # default: no cap
+    out = torch.load(dst, map_location="cpu", weights_only=False)[0]
+    assert float(out["model"]["running_mean_std.count"]) == 4e8
+
+
 def test_carry_refuses_a_non_finite_checkpoint(tmp_path):
     src = _fake_checkpoint(tmp_path / "src.pth", nan_in="a2c_network.sigma")
     with pytest.raises(drv.NonFiniteCheckpoint, match="a2c_network.sigma"):
