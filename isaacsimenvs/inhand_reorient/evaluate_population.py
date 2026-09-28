@@ -47,6 +47,22 @@ comments at the fix site for the full trace. Verified against a real
 15-epoch SAPG checkpoint trained on ``test16.json`` at ``--num-envs 64``:
 runs to completion and writes per-design ``eval_scores.json`` rows.
 
+I40 (oracle-v2 pass, 2026-09-27): ``--num-envs 4096 --episodes-per-design
+64`` on a 64-design population ran over 12 minutes with no printed output,
+looking hung. It was not: the per-pass step loop used to run a FIXED
+``target_episodes * max_episode_length`` steps -- correct only for exactly
+one env per design. With ``envs_per_design`` envs running that design IN
+PARALLEL, every env completes an episode (<= ``max_episode_length`` steps,
+this env's own fixed timeout) independently, so ``envs_per_design``
+episodes land per ``max_episode_length``-step window, not one -- only
+``ceil(episodes_per_design / envs_per_design) * max_episode_length`` steps
+are actually needed. At 64 envs/design that is 64x fewer steps (~600, not
+38400) for one pass to already satisfy every design's target. Fixed below
+(``steps_per_pass``, right after computing ``n_designs``/
+``max_episode_steps``), plus a periodic progress print (steps/s, elapsed,
+min/max episodes-per-design so far) inside the loop itself so a long run
+has visible progress instead of silence until the next pass boundary.
+
 Run (single Kit process; ``timeout -k 30 <cap>`` per this branch's Kit-run
 rule; ``env.assets.hand_population=<file>`` works exactly as train.py's own
 Hydra CLI overrides do, but --population is a plain argparse flag here,
@@ -68,6 +84,7 @@ import argparse
 import math
 import os
 import sys
+import time
 
 
 def main() -> None:
@@ -205,9 +222,37 @@ def main() -> None:
         n_designs = int(getattr(inner_env, "hand_tables", None).n_designs) if getattr(inner_env, "hand_tables", None) is not None else 1
         target_episodes = int(args_cli.episodes_per_design)
         max_episode_steps = int(inner_env.max_episode_length)
-        print(f"[evaluate_population] {n_designs} designs, {inner_env.num_envs} envs, "
-              f"target {target_episodes} episodes/design, eval_success_tolerance="
-              f"{args_cli.eval_success_tolerance}, checkpoint={args_cli.checkpoint}", flush=True)
+        # I40 (evaluate_population.py hang investigation): the inner step
+        # loop used to run a FIXED `target_episodes * max_episode_steps`
+        # steps per pass -- correct only for exactly ONE env per design.
+        # With `envs_per_design` envs running that design IN PARALLEL, every
+        # episode (<= `max_episode_steps` steps, this env's own fixed
+        # timeout) contributes `envs_per_design` completed episodes at once,
+        # so only `ceil(target_episodes / envs_per_design) * max_episode_
+        # steps` steps are actually needed to guarantee `target_episodes`
+        # per design -- `envs_per_design`x fewer. At `--num-envs 4096
+        # --episodes-per-design 64` on a 64-design population (the run that
+        # "ran for more than 12 minutes ... without finishing"),
+        # envs_per_design=64 and the OLD formula asked for 64*600=38400
+        # steps/pass -- 64x the ~600 steps that formula actually needs. Not
+        # an infinite loop (the step count was always finite and the
+        # episode-target condition was always reachable, just badly
+        # oversized) -- see the module docstring's I40 note for the
+        # `--num-envs`-vs-max_episode_steps math. `// ` (floor), not
+        # `ceil`, of `num_envs / n_designs`: `hand_sampler.robot_spec.
+        # design_index`'s modulo split guarantees every design AT LEAST the
+        # floor count (some get one more on an uneven split), so this is a
+        # safe lower bound, never an over-estimate that could leave a design
+        # short; `max_extra_passes` remains the safety net for any design
+        # that DID get fewer envs on an uneven split.
+        envs_per_design = max(1, inner_env.num_envs // max(n_designs, 1))
+        episodes_needed_per_env = max(1, math.ceil(target_episodes / envs_per_design))
+        steps_per_pass = episodes_needed_per_env * max_episode_steps
+        print(f"[evaluate_population] {n_designs} designs, {inner_env.num_envs} envs "
+              f"({envs_per_design} envs/design), target {target_episodes} episodes/design "
+              f"({episodes_needed_per_env} episodes/env, {steps_per_pass} steps/pass), "
+              f"eval_success_tolerance={args_cli.eval_success_tolerance}, checkpoint={args_cli.checkpoint}",
+              flush=True)
 
         obs = player.env_reset(player.env)
 
@@ -287,9 +332,17 @@ def main() -> None:
         if player.is_rnn:
             player.init_rnn()
 
+        # I40: progress logging -- the old loop printed NOTHING between one
+        # pass's first and last step, so a big (`--num-envs`, `--episodes-
+        # per-design`) run looked hung for its whole (possibly 10+ minute)
+        # duration even while making normal progress. ~20 updates/pass, but
+        # never less often than every 100 steps (so a small pass, e.g. a
+        # quick smoke run, still gets at least a couple of prints).
+        progress_every = max(1, min(100, steps_per_pass // 20 or 1))
         max_passes = 1 + int(args_cli.max_extra_passes)
         for pass_i in range(max_passes):
-            for _ in range(target_episodes * max_episode_steps):
+            pass_t0 = time.perf_counter()
+            for step_i in range(steps_per_pass):
                 action = player.get_action(obs, is_deterministic=True)
                 obs, _reward, done, _info = player.env_step(player.env, action)
                 obs = _pad_coef_column(obs)
@@ -297,6 +350,17 @@ def main() -> None:
                     all_done_indices = done.nonzero(as_tuple=False)
                     for s in player.states:
                         s[:, all_done_indices, :] = s[:, all_done_indices, :] * 0.0
+
+                if (step_i + 1) % progress_every == 0 or step_i + 1 == steps_per_pass:
+                    elapsed = time.perf_counter() - pass_t0
+                    sps = (step_i + 1) / elapsed if elapsed > 0 else 0.0
+                    eps_now = inner_env._score_episodes.detach().cpu()
+                    print(
+                        f"[evaluate_population] pass {pass_i + 1}/{max_passes} step {step_i + 1}/{steps_per_pass} "
+                        f"({100.0 * (step_i + 1) / steps_per_pass:.0f}%) elapsed={elapsed:.1f}s "
+                        f"({sps:.0f} steps/s) episodes/design min={int(eps_now.min())} max={int(eps_now.max())}",
+                        flush=True,
+                    )
 
             episodes = inner_env._score_episodes.detach().cpu()
             short = int((episodes < target_episodes).sum())
