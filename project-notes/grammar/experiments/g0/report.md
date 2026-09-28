@@ -1,5 +1,7 @@
 # G0 CPU grammar screen: report
 
+**Superseded by `report_v2.md`** (opus-review-g0.md / I39: oracle and grammar fixes; this run's absolute rates are artifact-dominated).
+
 Branch `martin/hand-grammar`. Script: `experiments/grammar_screen/g0_screen.py`. Run with `.venv_isaacsim/bin/python`, no Kit/Isaac/GPU. Git SHA at run time: `ed7e3c3ddb6d96c19710bbf7a4263720e626f8e1` (tree dirty from a concurrent worker's uncommitted edits under `isaacsimenvs/inhand_reorient/`, none of which this screen touches or depends on). Results: `g0_results.json`, `g0_summary.csv`, `g0_viability.png`, `g0_descriptor_coverage.png`, `g0_explorability.png` (this directory).
 
 ## 1. Question
