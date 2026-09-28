@@ -619,6 +619,7 @@ def checkpoint_stats(path: Path) -> Dict[str, Any]:
 def prepare_carry_checkpoint(
     src: Path, dst: Path, *, sigma_mode: str = "keep", sigma_reset_value: float = 0.0,
     sigma_clamp_max: Optional[float] = None, reset_grad_scaler: bool = True,
+    norm_count_cap: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Validate `src` and write the checkpoint the next generation starts
     from to `dst` (`src` itself is never modified). Raises
@@ -626,8 +627,11 @@ def prepare_carry_checkpoint(
 
     `sigma_mode`: "keep" leaves the policy log-std as trained; "reset" sets
     every entry to `sigma_reset_value` (0.0 = std 1, the value a fresh
-    policy starts from); "clamp" caps it at `sigma_clamp_max`. Returns
-    `checkpoint_stats(dst)`."""
+    policy starts from); "clamp" caps it at `sigma_clamp_max`.
+    `norm_count_cap` (if > 0) caps the sample count of every running
+    observation/value normalizer, so the next generation's statistics move
+    it within a few epochs instead of being outweighed by every earlier
+    generation's samples. Returns `checkpoint_stats(dst)`."""
     import torch
 
     if sigma_mode not in SIGMA_MODES:
@@ -645,6 +649,14 @@ def prepare_carry_checkpoint(
             if sigma_clamp_max is None:
                 raise ValueError("sigma_mode='clamp' needs sigma_clamp_max")
             state["model"][SIGMA_KEY] = sigma.clamp(max=float(sigma_clamp_max))
+    if norm_count_cap is not None and norm_count_cap > 0:
+        for group in ("model", "assymetric_vf_nets"):
+            sub = state.get(group)
+            if not isinstance(sub, dict):
+                continue
+            for name, value in sub.items():
+                if name.endswith("mean_std.count") and torch.is_tensor(value) and float(value) > norm_count_cap:
+                    sub[name] = torch.full_like(value, float(norm_count_cap))
     if reset_grad_scaler and isinstance(state.get("scaler"), dict):
         state["scaler"] = dict(FRESH_GRAD_SCALER)
     dst = Path(dst)
@@ -842,6 +854,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                          "keep as trained, reset to --sigma-reset-value, or clamp at --sigma-clamp-max")
     ap.add_argument("--sigma-reset-value", type=float, default=0.0, help="log-std after reset (0.0 = std 1)")
     ap.add_argument("--sigma-clamp-max", type=float, default=0.0, help="log-std cap for --sigma-on-carry clamp")
+    ap.add_argument("--norm-count-cap", type=float, default=0.0,
+                    help="cap the carried observation/value normalizers' sample count (0 = keep), so a "
+                         "new generation's designs re-shape the normalizer within a few epochs")
     ap.add_argument("--no-reset-grad-scaler", dest="reset_grad_scaler", action="store_false",
                     help="carry the trained GradScaler state forward instead of resetting it")
     ap.add_argument("--train-retries", type=int, default=1,
@@ -861,6 +876,7 @@ def _resolved_config(args: argparse.Namespace) -> dict:
         "agent_entry_point": args.agent_entry_point, "train_override": list(args.train_override),
         "sigma_on_carry": args.sigma_on_carry, "sigma_reset_value": args.sigma_reset_value,
         "sigma_clamp_max": args.sigma_clamp_max, "reset_grad_scaler": args.reset_grad_scaler,
+        "norm_count_cap": args.norm_count_cap,
     }
 
 
@@ -940,7 +956,7 @@ def run_generation(
         carry_stats = prepare_carry_checkpoint(
             Path(last_checkpoint), carry_path, sigma_mode=args.sigma_on_carry,
             sigma_reset_value=args.sigma_reset_value, sigma_clamp_max=args.sigma_clamp_max,
-            reset_grad_scaler=args.reset_grad_scaler,
+            reset_grad_scaler=args.reset_grad_scaler, norm_count_cap=args.norm_count_cap,
         )
         print(f"[driver] generation {generation}: carrying {last_checkpoint} -> {carry_path} "
               f"(sigma_on_carry={args.sigma_on_carry}, std mean {carry_stats['std']['mean']:.3f})"
