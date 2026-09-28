@@ -314,6 +314,13 @@
       "hypothesis": "G0 oracle artifacts (opus-review-g0.md): capsules 2r longer than built; overlap checked at q=0 not default_q; spawn 35 mm beyond the fingertips with an undercounting sweep; digits mounted on the host centre axis (grammar); V3 bends phalanx 0 and opposition ignores host frames (grammar); explorability archive admits non-viable children. V3 > V1 robust (p<1e-4); absolute rates artifact-dominated. Fix before the pilot, then rerun G0.",
       "decision": null,
       "evidence": "project-notes/grammar/opus-review-g0.md"
+    },
+    {
+      "id": "I40",
+      "status": "open",
+      "hypothesis": "evaluate_population.py: multi-pass hang fixed (f279df5: steps per pass were envs_per_design x oversized; progress logging added). Residual: in an out-of-distribution test (checkpoint from another population), 7/16 designs banked no episode in ~4800 steps although timeouts should force one; recheck with a matched checkpoint and population before using eval fitness.",
+      "decision": null,
+      "evidence": "oracle worker report 2026-09-27"
     }
   ],
   "last_green_commit": "3acff20",

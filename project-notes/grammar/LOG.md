@@ -280,3 +280,11 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Driver committed (3fa968a..77a19c7): MAP-Elites archive (digits x joint bins, 30 cells), in-process generation loop, resume from state.json (tested by killing mid-generation), probes = projected allegro_right, dclaw, sharpa, leap_right; eval player fixed (f4087f6: batch-dimension handling plus the SAPG block-id column). 237 package tests pass.
 - Timing run on the local 4090 (G_V1, 64 designs, 4096 envs, 900 epochs/gen): boot ~155 s, train ~510 s, select <2 s, ~102k fps, i.e. ~11 min/generation. Coverage 8/8/9 of 30; QD-score 0.85/1.03/1.31; mean elite fitness 0.107/0.129/0.146; best ~0.18 flat; founders 8/8/7 (max share 0.22). Probe fitness flat (dclaw 0.13-0.14, others ~0.06). Oracle used here is the pre-fix one (I39).
 - Cluster estimate: ~35 min/generation (training 3.4x slower, boot slower), so 8 generations ~ 4.7 GPU-h per run.
+
+## Oracle v2 (2026-09-27 ~23:00)
+
+- e9a9c26, 773385b [oracle-v2]: rest overlap uses the built capsule core [r, L-r] (matches author_grammar exactly), checked at q=0 and at the reset pose default_q; spawn = fingertip centroid at default_q + (object half-size + 5 mm) along the palm normal; dense batched-FK reach sweep (4000 samples, ~40 ms/design, faster than before); population schema 0.3 with palm_up in derived_sha256.
+- Commercial projections: every 5-finger hand now reaches the spawn with >= 4 fingertips (LEAP 1 -> 4, xhand 2 -> 4, allegro 2 -> 3).
+- 500 seeds: G_V1 1.2% viable (was 0.25%), G_V3 7.2% (was 1.4%).
+- Kit: FK 0.0005 mm, homogeneous, 0 spawn-triggered drops, 42% of cubes resting at 100 zero-action steps.
+- Eval-script hang fixed (f279df5), residual oddity I40. Package tests 250 pass.
