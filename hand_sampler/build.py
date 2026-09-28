@@ -155,22 +155,28 @@ def palm_box(hand: design_space.Hand) -> tuple[tuple, np.ndarray]:
     return tuple(float(v) for v in hand.palm.extents), pose
 
 
-def palm_keypoints(center, extents) -> np.ndarray:
-    """The palm slab as four points in ``iiwa14_link_7``'s frame: a corner and
-    its three adjacent corners -- the same encoding ``joint_boxes`` uses for a
-    link, so the policy reads the palm the way it reads everything else.
+def palm_keypoints(center, extents, frame=None) -> np.ndarray:
+    """The palm slab as four points in the PALM BODY's frame: a corner and its
+    three adjacent corners -- the same encoding ``joint_boxes`` uses for a link,
+    so the policy reads the palm the way it reads everything else.
 
-    ``center`` and ``extents`` are in the palm's own frame (the box is axis-
-    aligned there, for SHARPA and for a generated slab alike); the points come
-    back in link_7's frame, which is the end-effector frame every observation
-    is expressed in. That frame is the arm's, so it is the same for every
-    design -- the palm's size and placement show up here and nowhere else.
+    ``center`` and ``extents`` are in the palm's own convention, where the box is
+    axis-aligned: x = thickness (the grasp normal), y = width, z = wrist to
+    fingertip. The ordering of the returned points is load-bearing --
+    ``reset_utils/reset.py`` takes ``kp[1] - kp[0]`` as the grasp normal to place
+    the in-hand object -- so the first edge must be the thickness one.
+
+    ``frame`` is the 4x4 taking that convention into the palm body's frame, and
+    defaults to SHARPA's ``flange_to_palm`` (palm -> iiwa14_link_7). A hand whose
+    own link frame is not ours passes its own: a commercial hand's URDF has no
+    reason to agree with this convention, and the alternative -- mirroring or
+    re-authoring its meshes -- throws away the vendor geometry we imported it for.
     """
     c = np.asarray(center, float)
     e = np.asarray(extents, float)
     p0 = c - 0.5 * e
     pts = np.stack([p0, p0 + [e[0], 0, 0], p0 + [0, e[1], 0], p0 + [0, 0, e[2]]])
-    T = flange_to_palm()
+    T = flange_to_palm() if frame is None else np.asarray(frame, float)
     return (pts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
 
 
