@@ -1,0 +1,45 @@
+#!/bin/bash
+#SBATCH --job-name=inhand_tol20_200
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/tol20deg_200st-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/tol20deg_200st-%j.err
+
+# 20 DEGREES, WITH A 200-STEP BUDGET PER GOAL INSTEAD OF 600.
+#
+# The budget is per GOAL, not per episode: termination.py:51 zeroes
+# episode_length_buf on every goal hit, so at 600 a policy that keeps scoring is
+# never truncated and one that stalls still gets 10 s to flail. 200 steps is 3.33 s,
+# which makes a stall cost an episode roughly three times sooner.
+#
+# The knob is EPISODE_STEPS, and common.sh converts it to episode_length_s. That
+# indirection is not decoration: max_episode_length, which
+# reward_utils/termination.py:77 actually compares against, is derived by
+# DirectRLEnv as ceil(episode_length_s / (sim.dt * decimation)).
+# termination.episode_length looks like the knob and is read by nothing except the
+# run record, so setting it alone would change the saved config and not the task.
+#
+#   sbatch tolerance_20deg_200steps.sub
+#
+set -euo pipefail
+
+# gen-SHARPA -- SHARPA rebuilt inside the design grammar. handonly: is what drops
+# the 7 arm joints, and common.sh refuses a bare reference: the prefix has to be
+# on the spec string because the agent YAML interpolates the network's shape from
+# env.assets.robot_spec, so a separate flag would build a 37-joint policy against
+# a 30-joint robot.
+export ROBOT_SPEC="${ROBOT_SPEC:-handonly:/share/portal/kk837/gen_mechanics/assets/populations/sharpa_capsule.json}"
+export STUDY_ID="${STUDY_ID:-inhand_tol20_200st}"
+export SUCCESS_TOLERANCE_DEG=20
+export EPISODE_STEPS=200
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+
+source /share/portal/kk837/gen_mechanics/experiments/28sep_inhand_reorientation/common.sh
+run_and_chain "$0"

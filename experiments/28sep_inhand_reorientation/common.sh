@@ -108,15 +108,46 @@ m = re.search(r'^\s*object_base_size:\s*([0-9.]+)', t, re.M)
 sys.exit('object_base_size not found in the task YAML') if not m else None
 sys.stdout.write(m.group(1))
 ") || { echo "[common] could not read the cube edge from the task YAML" >&2; exit 1; }
+read -r _DEC _DT_S < <(python3 -c "
+import re, sys
+t = open('$REPO/coevolution/cfg/task/InHandReorient.yaml').read()
+d = re.search(r'^decimation:\s*([0-9]+)', t, re.M)
+s = re.search(r'^\s*dt:\s*([0-9.]+)', t, re.M)
+sys.exit('decimation or dt not found in the task YAML') if not (d and s) else None
+print(d.group(1), s.group(1))
+") || { echo "[common] could not read decimation/dt from the task YAML" >&2; exit 1; }
 _TOL_M=$(python3 -c "
 import math
 print('%.8f' % ($_EDGE_M * math.sqrt(3) * math.sin(math.radians($SUCCESS_TOLERANCE_DEG) / 2)))
 ")
 echo "[common] success tolerance ${SUCCESS_TOLERANCE_DEG} deg -> ${_TOL_M} m (cube edge ${_EDGE_M} m)"
-# Both, because the curriculum is inert for this task: it clamps into
-# [target, success], so setting them equal pins the threshold. Setting only one
-# would leave a curriculum running between the two.
-export EXTRA_HYDRA="${EXTRA_HYDRA:-} env.termination.success_tolerance=$_TOL_M env.termination.target_success_tolerance=$_TOL_M"
+# --- the per-goal step budget ---------------------------------------------------
+# WHICH FIELD ACTUALLY TRUNCATES: max_episode_length, which DirectRLEnv derives as
+# ceil(episode_length_s / (sim.dt * decimation)) -- reward_utils/termination.py:77
+# compares against that. termination.episode_length looks like the knob and is read
+# by nothing but population/run_config.py's record, so setting it alone changes the
+# recorded config and not the task. Both are set here, from one step count.
+#
+# The budget is PER GOAL, not per episode: termination.py:51 zeroes
+# episode_length_buf on every goal hit, so a run with 600 lets the policy spend 10 s
+# reaching each goal in turn and never truncates while it keeps scoring.
+export EPISODE_STEPS="${EPISODE_STEPS:-600}"
+_STEP_DT=$(python3 -c "print(repr($_DT_S * $_DEC))")
+# Half a step short of the exact value, so the ceil lands ON the step count instead
+# of one past it when the division comes out a hair above an integer.
+_EP_S=$(python3 -c "print('%.8f' % (($EPISODE_STEPS - 0.5) * $_STEP_DT))")
+_EP_CHECK=$(python3 -c "import math; print(math.ceil($_EP_S / $_STEP_DT))")
+if [[ "$_EP_CHECK" != "$EPISODE_STEPS" ]]; then
+    echo "[common] episode_length_s $_EP_S gives $_EP_CHECK steps, wanted $EPISODE_STEPS" >&2
+    exit 1
+fi
+echo "[common] episode budget ${EPISODE_STEPS} steps per goal -> episode_length_s ${_EP_S} (verified ${_EP_CHECK} steps)"
+
+# Composed FRESH, never appended to an inherited copy: a chained link gets the
+# parent's whole environment through --export=ALL, so appending would pass every
+# override twice on link #2.  Both tolerance fields, because the curriculum clamps
+# into [target, success] and setting only one would leave it running between them.
+export EXTRA_HYDRA="env.termination.success_tolerance=$_TOL_M env.termination.target_success_tolerance=$_TOL_M env.episode_length_s=$_EP_S env.termination.episode_length=$EPISODE_STEPS"
 
 export OBJECT_POOL="${OBJECT_POOL:-cube1}"
 export OBJECT_ASSIGNMENT="${OBJECT_ASSIGNMENT:-env_modulo}"
@@ -185,7 +216,7 @@ chain_next() {   # chain_next <path to this .sub>
     # Named explicitly rather than trusting --export=ALL, which has been observed
     # not to carry them: GPUS reverting to 2 on link #2 is what prompted this.
     local j; j=$(submit_once "${STUDY_ID}_c$(printf '%02d' "$next")" \
-        --export=ALL,SOURCE_RUN="$run_dir",ROBOT_SPEC="$ROBOT_SPEC",STUDY_ID="$STUDY_ID",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$next",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",MINI_EPOCHS="${MINI_EPOCHS:-2}",GPUS="$GPUS",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE",SUCCESS_TOLERANCE_DEG="$SUCCESS_TOLERANCE_DEG",HAND_ONLY_PALM_PITCH_DEG="$HAND_ONLY_PALM_PITCH_DEG",HAND_ONLY_PALM_ROLL_DEG="$HAND_ONLY_PALM_ROLL_DEG" \
+        --export=ALL,SOURCE_RUN="$run_dir",ROBOT_SPEC="$ROBOT_SPEC",STUDY_ID="$STUDY_ID",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$next",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",MINI_EPOCHS="${MINI_EPOCHS:-2}",GPUS="$GPUS",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE",SUCCESS_TOLERANCE_DEG="$SUCCESS_TOLERANCE_DEG",EPISODE_STEPS="$EPISODE_STEPS",HAND_ONLY_PALM_PITCH_DEG="$HAND_ONLY_PALM_PITCH_DEG",HAND_ONLY_PALM_ROLL_DEG="$HAND_ONLY_PALM_ROLL_DEG" \
         "$self")
     echo "[$STUDY_ID] submitted link #$next as $j (from $run_dir)"; CHAINED=1
 }

@@ -372,8 +372,21 @@ def main() -> None:
                             tgt = t[:, inner._perm_canon_to_lab].contiguous()
                             inner._replay_target_lab_order = tgt.clamp(
                                 lim[..., 0], lim[..., 1])
-                            running = False
-                            send(kind="running", value=False)
+                            # PHYSICS KEEPS RUNNING, deliberately. These are position
+                            # TARGETS: the drives have to be stepped for the joints to
+                            # reach them, and the object has to be stepped to react.
+                            # Pausing here stored the target and moved nothing, which
+                            # is what "the sliders do nothing" was.
+                            if not running:
+                                running = True
+                                send(kind="running", value=True)
+                            # The goal probe freezes the loop to hold the object
+                            # still, which would also stop the drives -- the two
+                            # overrides cannot both be live.
+                            manual = None
+                            print(f"[worker] joint override: {len(vals)} targets, "
+                                  f"max |angle| {max(abs(v) for v in vals):.3f} rad",
+                                  flush=True)
                     elif c == "hold_zero":
                         hold_zero = bool(m.get("value"))
                         # Clearing the hook hands control back to the policy;
