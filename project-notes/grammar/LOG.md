@@ -300,3 +300,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Cluster calibration 2371346 (A6000, 1 generation of G_V3S): boot 390 s, train 967 s at 54k fps, ~23 min/generation (the population path is only 1.9x slower than the 4090). Coverage 11/30 after generation 0.
 - Pilot array 2371572 on vision-pulkitag-a6000 (lab nodes; no preemption of other groups' jobs): G_V1 s0/s1 and G_V3S s0/s1, 8 generations each, 64 designs (60 archive/offspring + 4 projected probes), 4096 envs, 900 epochs/gen, train_tail fitness, --time 4:00:00. Code 8b4a91e.
 - Local 4090: G_V2S s0 (same settings), then s1.
+
+## Pilot finding: the shared controller does not learn on populations (2026-09-28 ~00:40)
+
+- Local G_V2S_s0 (8 generations): coverage 13 -> 15 (plateau by gen 2), QD 1.02 -> 1.62 -> 1.59, founders 13 -> 7 (max share 0.2), joints ~10.7, best fitness flat ~0.18-0.21, probes flat. Gen 7's train.py crashed (std NaN at the first action) and the driver scored it anyway from one stale window.
+- Cause found: action log-std grows every generation in population training (std 15 / 46 / ~245 after gens 0 / 2 / 6); single-hand runs that learn keep std 0.7-3.0. With actions clipped to [-1, 1] the controller is effectively random, so fitness mostly reflects passive holding.
+- Actions: local G_V2S_s1 stopped (low value); cluster pilot left running as a weak-controller baseline (~8 GPU-h more); Opus worker fixing exploration and driver robustness (I41). Analysis tool committed (6423538).

@@ -321,10 +321,17 @@
       "hypothesis": "evaluate_population.py: multi-pass hang fixed (f279df5: steps per pass were envs_per_design x oversized; progress logging added). Residual: in an out-of-distribution test (checkpoint from another population), 7/16 designs banked no episode in ~4800 steps although timeouts should force one; recheck with a matched checkpoint and population before using eval fitness.",
       "decision": null,
       "evidence": "oracle worker report 2026-09-27"
+    },
+    {
+      "id": "I41",
+      "status": "in_progress",
+      "hypothesis": "Shared controller does not learn on populations: action log-std (a2c_network.sigma, std=exp) explodes in population training (std 15 after gen 0, 46 after gen 2, ~245 after gen 6 of G_V2S_s0) vs 0.7-3.0 in single-hand runs that learn; weight carry compounds it. The controller is near-random, so pilot fitness mostly measures passive holding; best and probe fitness are flat. Also a gen-7 crash (std NaN at the first action, after NaN warnings in gen 6) that the driver wrongly scored. Cluster pilot 2371572 runs the same flawed setup (kept running for pipeline and coverage data, ~8 GPU-h more). Opus worker root-causing and fixing (sigma handling, SAPG exploration settings, driver retry/NaN checks, env NaN guard).",
+      "decision": null,
+      "evidence": "outputs/evolution_pilot/pilot/G_V2S_s0, timing_run2, single-hand checkpoints"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Pilot running: cluster array 2371572 (G_V1 x2, G_V3S x2) and local G_V2S s0 (then s1). Analyse coverage, QD-score, founders, probe fitness and complexity per generation when done; write the pilot report.",
+  "next_action": "Fix I41 locally (Opus worker), then rerun the pilot with the fixed controller settings. Cluster pilot 2371572 finishes ~02:30; analyse with experiments/evolution_pilot/analyze_pilot.py as a weak-controller baseline.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
