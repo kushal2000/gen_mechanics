@@ -617,10 +617,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             raise SystemExit(f"unknown variant {name!r}; choices: {list(G0_SCREEN_VARIANTS)}")
         dist = G0_SCREEN_VARIANTS[name]
         results.append(run_variant(name, dist, args, variant_index))
+        # Write after EVERY variant (not just at the end): a screen that
+        # finds some variants far more expensive than others (e.g. a
+        # low-admit-rate baseline needs heavy extra-seed scanning) should
+        # never lose already-completed variants to a later timeout/kill.
+        write_outputs(results, provenance, args, args.out_dir)
+        if not args.no_plots:
+            make_plots(results, args.out_dir)
 
-    write_outputs(results, provenance, args, args.out_dir)
-    if not args.no_plots:
-        make_plots(results, args.out_dir)
     return 0
 
 
