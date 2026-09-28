@@ -35,8 +35,40 @@ import time
 from multiprocessing.connection import Listener
 
 _WORKER = pathlib.Path(__file__).resolve().parent / "_play_worker.py"
-# Green, translucent: the goal pose drawn as a ghost of the object itself.
+# Fallback only, for an object whose visuals are not all boxes: ViserUrdf's
+# mesh_color_override repaints EVERY mesh one colour, which is why the goal used to
+# be a flat green shadow. For a box-visual object the goal is instead rebuilt from
+# the URDF's own visuals with their own colours (see _draw_goal_from_urdf), so a
+# Rubik-faced cube's goal shows which way it is turned.
 GOAL_GHOST_RGBA = (0.25, 0.85, 0.40, 0.35)
+GOAL_OPACITY = 0.45
+
+
+def _goal_boxes_from_urdf(path):
+    """The URDF's box visuals as (dimensions, rgb, xyz, wxyz), or None.
+
+    None means "not all boxes" -- a cylinder or a mesh visual -- and the caller
+    falls back to the single-colour ghost rather than drawing the wrong shape.
+    """
+    import xml.etree.ElementTree as ET
+
+    out = []
+    for vis in ET.parse(path).getroot().iter("visual"):
+        box = vis.find("geometry/box")
+        if box is None:
+            return None
+        dims = tuple(float(v) for v in box.get("size").split())
+        org = vis.find("origin")
+        xyz = tuple(float(v) for v in (org.get("xyz", "0 0 0").split() if org is not None else "0 0 0".split()))
+        rpy = tuple(float(v) for v in (org.get("rpy", "0 0 0").split() if org is not None else "0 0 0".split()))
+        col = vis.find("material/color")
+        rgba = tuple(float(v) for v in col.get("rgba").split()) if col is not None else (0.6, 0.6, 0.6, 1.0)
+        cr, cp, cy = (math.cos(a / 2) for a in rpy)
+        sr, sp, sy = (math.sin(a / 2) for a in rpy)
+        wxyz = (cr * cp * cy + sr * sp * sy, sr * cp * cy - cr * sp * sy,
+                cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy)
+        out.append((dims, tuple(int(255 * c) for c in rgba[:3]), xyz, wxyz))
+    return out or None
 # Keypoint radius for a 45 mm cube at keypoint_scale 1.5: the residual is a
 # chordal distance, so mm -> degrees is 2*asin(d / 2r).
 KP_RADIUS_M = 0.5 * 1.5 * 0.045 * (3 ** 0.5)
@@ -307,6 +339,7 @@ def play(task: str, args, hydra_args=None) -> None:
         _push_manual(arm=True)
 
     kp_handles: dict = {}
+    joint_sliders: dict = {}
     viser_urdf, joint_names, shown = None, None, -1
     last_print = [0.0]
     prev_goal, prev_succ, prev_step = [None], [0], [None]
@@ -363,6 +396,9 @@ def play(task: str, args, hydra_args=None) -> None:
                         pass                      # older viser: label is read-only
                 elif kind == "ready":
                     joint_names = m["joint_names"]
+                    _build_joint_sliders(server, outbox, joint_sliders, joint_names,
+                                         m.get("joint_lower"), m.get("joint_upper"),
+                                         int(m.get("num_arm_joints") or 0))
                     object_urdfs = m.get("object_urdfs") or []
                     robot_root.position = tuple(m.get("base_pos") or (0.0, 0.0, 0.0))
                     robot_root.wxyz = tuple(m.get("base_rot") or (1.0, 0.0, 0.0, 0.0))
@@ -389,13 +425,25 @@ def play(task: str, args, hydra_args=None) -> None:
                         pass
                 obj_urdf = ViserUrdf(server, pathlib.Path(object_urdfs[i]),
                                      root_node_name="/object/mesh")
-                # The goal is the SAME geometry as a translucent green ghost, so
-                # the target pose reads as "put the tool here" rather than as an
-                # unrelated marker -- orientation included, which a sphere or an
-                # axis triad cannot show.
-                goal_urdf = ViserUrdf(server, pathlib.Path(object_urdfs[i]),
-                                      root_node_name="/goal/mesh",
-                                      mesh_color_override=GOAL_GHOST_RGBA)
+                # The goal is the SAME geometry, so the target reads as "put the
+                # object here" rather than as an unrelated marker -- orientation
+                # included, which a sphere or an axis triad cannot show.
+                #
+                # Rebuilt box by box with the URDF's OWN colours, translucent,
+                # rather than handed to ViserUrdf with mesh_color_override: that
+                # override repaints every mesh one colour, so a Rubik-faced cube's
+                # goal came out a flat green shadow with no orientation to read.
+                boxes = _goal_boxes_from_urdf(pathlib.Path(object_urdfs[i]))
+                if boxes:
+                    for k, (dims, rgb, xyz, wxyz) in enumerate(boxes):
+                        server.scene.add_box(f"/goal/mesh/v{k}", color=rgb,
+                                             dimensions=dims, opacity=GOAL_OPACITY,
+                                             position=xyz, wxyz=wxyz, flat_shading=False)
+                    goal_urdf = None
+                else:
+                    goal_urdf = ViserUrdf(server, pathlib.Path(object_urdfs[i]),
+                                          root_node_name="/goal/mesh",
+                                          mesh_color_override=GOAL_GHOST_RGBA)
                 obj_shown = i
             if joint_names and viser_urdf is not None:
                 q = msg["joint_pos"][i]
@@ -457,6 +505,66 @@ def play(task: str, args, hydra_args=None) -> None:
 # Object keypoints blue, goal keypoints green -- the same green as the goal ghost.
 KP_OBJ_RGB = (60, 130, 246)
 KP_GOAL_RGB = (64, 217, 102)
+
+
+def _build_joint_sliders(server, outbox, store: dict, names, lower, upper,
+                         n_arm: int) -> None:
+    """One slider per joint, ranged by that joint's own authored limits.
+
+    Built here rather than at startup because the joint list and the limits are
+    per DESIGN -- the child reports them in its ready handshake. Only the hand
+    joints get sliders: the arm, when there is one, is driven by a velocity-delta
+    accumulator rather than an absolute target, so a position slider would not mean
+    what it says.
+    """
+    if store or not names:
+        return
+    lower = lower or [-1.57] * len(names)
+    upper = upper or [1.57] * len(names)
+    with server.gui.add_folder("joints (manual)", expand_by_default=False):
+        g_on = server.gui.add_checkbox("drive joints by hand", False)
+        b_zero = server.gui.add_button("all to 0")
+        rows = []
+        for k, nm in enumerate(names):
+            if k < n_arm:
+                continue                       # arm: not an absolute-target joint
+            lo, hi = float(lower[k]), float(upper[k])
+            if hi - lo < 1e-6:
+                hi = lo + 1e-6
+            # Step fine enough to place a fingertip, ~200 notches across the range.
+            sl = server.gui.add_slider(nm, lo, hi, max((hi - lo) / 200.0, 1e-4),
+                                       min(max(0.0, lo), hi))
+            # Keep the bounds alongside the handle: a viser slider handle exposes
+            # only .value, so "all to 0" cannot read its own range back.
+            rows.append((k, sl, lo, hi))
+    store["on"] = g_on
+    store["rows"] = rows
+    store["n"] = len(names)
+
+    def push(_=None, arm=False):
+        # Touching a slider arms the override, the same way the goal probe does:
+        # a control that silently does nothing is indistinguishable from a broken one.
+        if arm and not g_on.value:
+            g_on.value = True                  # re-fires this handler with arm False
+            return
+        if not g_on.value:
+            outbox.put({"cmd": "joints", "values": None})
+            return
+        vals = [0.0] * len(names)
+        for k, sl, _lo, _hi in rows:
+            vals[k] = float(sl.value)
+        outbox.put({"cmd": "joints", "values": vals})
+
+    g_on.on_update(lambda _=None: push())
+    for _row in rows:
+        _row[1].on_update(lambda _=None: push(arm=True))
+
+    @b_zero.on_click
+    def _(_):
+        # 0 where the joint's range allows it, the nearest limit where it does not.
+        for _k, _sl, _lo, _hi in rows:
+            _sl.value = min(max(0.0, _lo), _hi)
+        push(arm=True)
 
 
 def _draw_keypoints(server, handles: dict, msg: dict, i: int, show: bool) -> None:

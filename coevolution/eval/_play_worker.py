@@ -151,7 +151,13 @@ def main() -> None:
                     obj_urdfs.append(str(object_urdf_for_env(inner, e)[1]))
                 except Exception:
                     obj_urdfs.append(None)
+            _lim_canon = inner.robot.data.joint_pos_limits[0][inner._perm_lab_to_canon]
             send(kind="ready",
+                 # CANONICAL order, matching joint_names: the parent labels its
+                 # sliders from these, and Lab order would put each joint's range
+                 # on another joint's slider.
+                 joint_lower=[float(v) for v in _lim_canon[:, 0]],
+                 joint_upper=[float(v) for v in _lim_canon[:, 1]],
                  joint_names=list(spec.joint_names_canonical),
                  num_envs=int(inner.num_envs),
                  num_arm_joints=int(spec.num_arm_joints),
@@ -346,6 +352,28 @@ def main() -> None:
                             manual = None
                             print("[worker] goal probe off; policy back in control",
                                   flush=True)
+                    elif c == "joints":
+                        vals = m.get("values")
+                        if not vals:
+                            hold_zero = False
+                            inner._replay_target_lab_order = None
+                            print("[worker] joint override off; policy back in control",
+                                  flush=True)
+                        else:
+                            # The sliders are in CANONICAL order and _cur_targets is
+                            # in Isaac Lab parser order, which interleaves the hand
+                            # joints -- the same permutation the action pipeline
+                            # applies (obs_utils/actions.py:51). Skipping it sends
+                            # every joint another joint's angle, which is exactly the
+                            # bug that once made the pinky look frozen.
+                            t = torch.tensor(vals, device=inner.device,
+                                             dtype=torch.float32).unsqueeze(0).expand(
+                                                 inner.num_envs, -1)
+                            tgt = t[:, inner._perm_canon_to_lab].contiguous()
+                            inner._replay_target_lab_order = tgt.clamp(
+                                lim[..., 0], lim[..., 1])
+                            running = False
+                            send(kind="running", value=False)
                     elif c == "hold_zero":
                         hold_zero = bool(m.get("value"))
                         # Clearing the hook hands control back to the policy;
