@@ -210,6 +210,105 @@ def _plan_top_level_mounts(
     return [assignments[i] for i in order]
 
 
+def _host_transforms_from_steps(steps: Sequence[DerivationStep], root_length: float) -> Dict[str, np.ndarray]:
+    """``{host_body_name: 4x4 root-frame transform}`` for ``"root"`` plus
+    every ``PalmBody`` step already present in ``steps`` -- the REST-POSE
+    (q=0) transform each host body would have once ``derive()`` builds it,
+    computed here from a scratch, throwaway ``KinematicModel`` containing
+    only those bodies (no digits: they are not sampled yet at the point
+    ``sample_derivation`` needs this, see ``_plan_top_level_mounts_surface``).
+    Exact, not approximate: every palm joint contributes identity rotation
+    at q=0 regardless of type (revolute or fixed), so this is precisely the
+    same rest transform ``forward_kinematics`` would report for these bodies
+    off the FULL derivation. Used only to PLAN digit mount positions (G0
+    screen review item 2, V3s' cross-host spacing) -- never exposed outside
+    ``derive.py``, never stored in the derivation itself."""
+    bodies: List[Body] = [Body(name="root")]
+    joints: List[Joint] = []
+    body_length: Dict[str, float] = {"root": root_length}
+    for s in steps:
+        if s.production != "PalmBody":
+            continue
+        p = s.params
+        name = p["name"]
+        parent = p["parent"]
+        mount_offset = p.get("mount_offset", (0.0, 0.0))
+        base_xyz = (mount_offset[0], mount_offset[1], p["mount_frac"] * body_length[parent])
+        jtype = "revolute" if p["has_joint"] else "fixed"
+        axis = tuple(p["axis"]) if p["has_joint"] else (1.0, 0.0, 0.0)
+        limits = tuple(p["limits"]) if p["has_joint"] else None
+        joints.append(Joint(
+            name=f"{name}_j", type=jtype, parent=parent, child=name,
+            origin=Pose(xyz=base_xyz, rpy=tuple(p["direction_rpy"])), axis=axis, limits=limits,
+        ))
+        bodies.append(Body(name=name))
+        body_length[name] = p["length"]
+    model = KinematicModel(name="_host_probe", root="root", bodies=tuple(bodies), joints=tuple(joints),
+                            frames=(), couplings=())
+    transforms = forward_kinematics(model, {})
+    return {name: transforms[name] for name in body_length}
+
+
+def _plan_top_level_mounts_surface(
+    rng, dist: Distribution, mount_bodies: List[str], digit_count: int, host_length: Dict[str, float],
+    host_radius_m: float, host_transforms: Dict[str, np.ndarray],
+) -> List[Tuple[str, float, float]]:
+    """G0 screen (opus-review-g0.md item 2), V3s cross-host spacing:
+    ``digit_count`` (host, mount_frac, azimuth_rad) triples for the
+    top-level digits, chosen by a greedy furthest-point search over EVERY
+    (host, frac, azimuth) grid point's actual root-frame 3-D position --
+    azimuth on the same 15-degree grid ``sample_grid_angle_rad`` draws from,
+    position ``host_transforms[host] @ (host_radius_m*cos(az),
+    host_radius_m*sin(az), frac*host_length[host], 1)`` (the mount's surface
+    point, see ``_emit_digit``) -- so mounts on DIFFERENT hosts (via
+    ``host_transforms``, ``_host_transforms_from_steps``) are spaced apart
+    just as much as same-host mounts, unlike ``_plan_top_level_mounts``
+    (same-host axial spacing only). A placement rule, not a rejection:
+    always returns exactly ``digit_count`` triples. The first point is
+    picked uniformly at random (``rng``); each subsequent point is the
+    remaining candidate maximizing its minimum distance to every
+    already-chosen point (ties broken by ``rng``) -- a standard greedy
+    farthest-point placement, never retried/rejected. Only called when
+    ``dist.mount_on_host_surface and dist.mount_min_separation_m is not
+    None`` -- see ``sample_derivation``."""
+    frac_choices = sorted(set(dist.mount_frac_choices))
+    az_choices = [k * ANGLE_STEP_DEG * DEG for k in range(N_ANGLE_STEPS)]
+
+    candidates: List[Tuple[str, float, float]] = []
+    positions: List[np.ndarray] = []
+    for host in mount_bodies:
+        T = host_transforms[host]
+        R, t = T[:3, :3], T[:3, 3]
+        length = host_length.get(host, 0.0)
+        for f in frac_choices:
+            for az in az_choices:
+                local = np.array([host_radius_m * math.cos(az), host_radius_m * math.sin(az), f * length])
+                candidates.append((host, f, az))
+                positions.append(R @ local + t)
+    pos = np.stack(positions)
+
+    remaining = list(range(len(candidates)))
+    chosen: List[int] = []
+    first = int(rng.integers(0, len(remaining)))
+    chosen.append(remaining.pop(first))
+    while len(chosen) < digit_count and remaining:
+        chosen_pos = pos[chosen]
+        dists = np.array([np.min(np.linalg.norm(chosen_pos - pos[ridx], axis=1)) for ridx in remaining])
+        best = float(dists.max())
+        best_local = [k for k, d in enumerate(dists) if d >= best - 1e-9]
+        pick = best_local[int(rng.integers(0, len(best_local)))]
+        chosen.append(remaining.pop(pick))
+    # The grid always has >= n_frac * n_azimuth (>= 5*24=120) points per
+    # host; digit_count is capped at 5 by the envelope, so this fallback
+    # (repeat the last chosen point) is unreachable in practice but keeps
+    # the "always exactly digit_count triples" contract total.
+    while len(chosen) < digit_count:
+        chosen.append(chosen[-1])
+
+    order = rng.permutation(len(chosen))
+    return [candidates[chosen[i]] for i in order]
+
+
 def _snap_to_angle_grid_rad(angle_rad: float) -> float:
     """Nearest point (radians) on the same 24-point, 15-degree grid
     ``sample_grid_angle_rad`` draws from (``{k * 15 - 180 : k in 0..23}``,
@@ -246,10 +345,21 @@ def _best_opposing_rpy(oppose_forward: np.ndarray) -> Tuple[float, float, float]
 
 
 def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str, p: int,
-                     depth: int, is_last: bool, next_uid: List[int]) -> None:
+                     depth: int, is_last: bool, next_uid: List[int], host_radius_m: float = 0.0) -> None:
     module = sample_module(rng, dist, p, _revolute_source_indices(steps, digit_id, p))
     length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
-    bend_rpy, bend_offset = sample_bend(rng, dist)
+    # Opus review of G0 (item 5 / V3s fix): ``curl_skip_first_phalanx`` never
+    # touches ``rng`` for phalanx 0 -- it must not draw (and discard) a bend
+    # that would otherwise have been sampled, since that would desync the
+    # RNG stream from every phalanx AFTER it relative to the same field
+    # being off. Phalanx 0's own origin composes with the digit's
+    # ``mount_rpy`` (see ``_compose_bend_rpy``), so bending it would tilt
+    # the mount frame the opposition prior already committed to -- every
+    # later phalanx (a plain continuation joint) still bends normally.
+    if dist.curl_skip_first_phalanx and p == 0:
+        bend_rpy, bend_offset = (0.0, 0.0, 0.0), (0.0, 0.0)
+    else:
+        bend_rpy, bend_offset = sample_bend(rng, dist)
     branch_digit_count = 0
     if depth < dist.max_branch_depth and float(rng.random()) < dist.branch_probability:
         # A phalanx's body must end up with >= 2 child joints for this to be
@@ -277,26 +387,60 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
         for b in range(branch_digit_count):
             sub_id = f"{digit_id}p{p + 1}b{b}"
             _emit_digit(rng, dist, steps, sub_id, [phalanx_body], top_level=False, depth=depth + 1,
-                        next_uid=next_uid)
+                        next_uid=next_uid, host_radius_m=host_radius_m)
 
 
 def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str,
                  mount_bodies: List[str], top_level: bool, depth: int, next_uid: List[int],
-                 forced_mount: Optional[Tuple[str, float]] = None,
-                 oppose_forward: Optional[np.ndarray] = None) -> None:
+                 forced_mount: Optional[Tuple] = None,
+                 oppose_forward: Optional[np.ndarray] = None,
+                 host_radius_m: float = 0.0,
+                 host_transforms: Optional[Dict[str, np.ndarray]] = None) -> None:
     """``forced_mount``/``oppose_forward`` (G0 screen, I29/I30; both default
     ``None``) are used ONLY by ``sample_derivation``'s top-level digit loop
     when the corresponding prior is enabled -- every other caller (branch
     digits, growth operators) omits both, taking the exact same i.i.d.
     (host, frac) and random ``mount_rpy`` draws as before either argument
-    existed."""
+    existed. ``forced_mount`` is a ``(host, frac)`` pair (old V2 planner,
+    ``_plan_top_level_mounts``) or a ``(host, frac, azimuth_rad)`` triple
+    (V3s' surface planner, ``_plan_top_level_mounts_surface``) -- the third
+    element, when present, is the PLANNED azimuth (skips the i.i.d. draw
+    below).
+
+    ``host_radius_m`` (opus review of G0 item 2 / V3s fix, default 0.0):
+    the hand's own ``capsule_radius_m`` -- read only when
+    ``dist.mount_on_host_surface`` is ``True``, in which case the mount
+    origin gets a radial ``(host_radius_m*cos(az), host_radius_m*sin(az))``
+    offset off the host's centre axis, azimuth ``az`` either the planned
+    one (``forced_mount``'s third element) or drawn i.i.d. from the same
+    15-degree grid ``mount_rpy`` itself uses. ``False`` (default) draws no
+    extra ``rng`` value at all and leaves ``mount_offset`` exactly
+    ``(0.0, 0.0)`` -- byte-identical to before this field existed."""
+    forced_azimuth: Optional[float] = None
     if forced_mount is not None:
-        mount, mount_frac = forced_mount
+        mount, mount_frac = forced_mount[0], forced_mount[1]
+        if len(forced_mount) > 2:
+            forced_azimuth = forced_mount[2]
     else:
         mount = mount_bodies[int(rng.integers(0, len(mount_bodies)))]
         mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
+    if dist.mount_on_host_surface:
+        azimuth = forced_azimuth if forced_azimuth is not None else sample_grid_angle_rad(rng)
+        mount_offset = (host_radius_m * math.cos(azimuth), host_radius_m * math.sin(azimuth))
+    else:
+        mount_offset = (0.0, 0.0)
     if oppose_forward is not None:
-        mount_rpy = _best_opposing_rpy(oppose_forward)
+        # Opus review item 5 / V3s fix: ``oppose_forward`` is a ROOT-frame
+        # direction; when the host-frame fix is on, rotate it into THIS
+        # digit's own host's local frame (``_best_opposing_rpy`` solves for
+        # a LOCAL +z direction) so the digit's actual root-frame forward
+        # direction -- not its local ``mount_rpy`` in isolation -- is what
+        # ends up opposing the others.
+        if host_transforms is not None:
+            R_host = host_transforms.get(mount, np.eye(4))[:3, :3]
+            mount_rpy = _best_opposing_rpy(R_host.T @ oppose_forward)
+        else:
+            mount_rpy = _best_opposing_rpy(oppose_forward)
     else:
         mount_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
     phalanx_count = int(rng.integers(dist.phalanx_count_range[0], dist.phalanx_count_range[1] + 1))
@@ -304,21 +448,26 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
     next_uid[0] += 1
     steps.append(DerivationStep(path=f"digit/{digit_id}", production="Digit", params={
         "digit_id": digit_id, "mount": mount, "mount_frac": mount_frac, "mount_rpy": mount_rpy,
+        "mount_offset": mount_offset,
         "phalanx_count": phalanx_count, "top_level": top_level, "depth": depth, "uid": uid,
     }))
     for p in range(phalanx_count):
-        _sample_phalanx(rng, dist, steps, digit_id, p, depth, is_last=(p == phalanx_count - 1), next_uid=next_uid)
+        _sample_phalanx(rng, dist, steps, digit_id, p, depth, is_last=(p == phalanx_count - 1), next_uid=next_uid,
+                         host_radius_m=host_radius_m)
 
 
 def _sample_digit(rng, dist: Distribution, steps: List[DerivationStep], next_id: List[int],
                    mount_bodies: List[str], next_uid: List[int],
-                   forced_mount: Optional[Tuple[str, float]] = None,
-                   oppose_forward: Optional[np.ndarray] = None) -> None:
+                   forced_mount: Optional[Tuple] = None,
+                   oppose_forward: Optional[np.ndarray] = None,
+                   host_radius_m: float = 0.0,
+                   host_transforms: Optional[Dict[str, np.ndarray]] = None) -> None:
     """Sample a fresh *top-level* digit (id is the next 1-based integer)."""
     digit_id = str(next_id[0])
     next_id[0] += 1
     _emit_digit(rng, dist, steps, digit_id, mount_bodies, top_level=True, depth=0, next_uid=next_uid,
-                forced_mount=forced_mount, oppose_forward=oppose_forward)
+                forced_mount=forced_mount, oppose_forward=oppose_forward, host_radius_m=host_radius_m,
+                host_transforms=host_transforms)
 
 
 def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) -> Derivation:
@@ -370,13 +519,33 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
 
     mount_bodies = ["root"] + palm_names
     next_id = [1]
-    # G0 screen (I29): plan every top-level digit's (host, frac) up front
-    # when the mount-spacing rule is on, instead of drawing each digit's
-    # mount independently -- see ``_plan_top_level_mounts``. ``None``
-    # (default distributions) keeps the original per-digit i.i.d. draw.
-    planned_mounts: Optional[List[Tuple[str, float]]] = None
+
+    # Opus review of G0 (item 2 / V3s fix): a scratch root-frame transform
+    # for "root" plus every palm body, computed once (only when a rule
+    # below actually needs it -- never for an untouched ``Distribution``),
+    # reused by BOTH the surface/cross-host mount planner and the
+    # host-frame-aware opposition prior below.
+    host_transforms: Optional[Dict[str, np.ndarray]] = None
+    if (dist.mount_on_host_surface and dist.mount_min_separation_m is not None) or dist.opposition_use_host_frame:
+        host_transforms = _host_transforms_from_steps(steps, root_length)
+
+    # G0 screen (I29 / opus review item 2): plan every top-level digit's
+    # mount up front when a spacing rule is on, instead of drawing each
+    # digit's mount independently. ``_plan_top_level_mounts`` (V2, same-host
+    # axial spacing only) is reached exactly as before this review
+    # (``mount_on_host_surface`` false); ``_plan_top_level_mounts_surface``
+    # (V3s, cross-host + azimuth) is reached only when BOTH
+    # ``mount_on_host_surface`` and ``mount_min_separation_m`` are set.
+    # ``None`` (either field left at its default) keeps the original
+    # per-digit i.i.d. draw.
+    planned_mounts: Optional[List[Tuple]] = None
     if dist.mount_min_separation_m is not None and digit_count > 0:
-        planned_mounts = _plan_top_level_mounts(rng, dist, mount_bodies, digit_count, host_length)
+        if dist.mount_on_host_surface:
+            planned_mounts = _plan_top_level_mounts_surface(
+                rng, dist, mount_bodies, digit_count, host_length, capsule_radius_m, host_transforms,
+            )
+        else:
+            planned_mounts = _plan_top_level_mounts(rng, dist, mount_bodies, digit_count, host_length)
     for i in range(digit_count):
         forced_mount = planned_mounts[i] if planned_mounts is not None else None
         # G0 screen (I30): the LAST top-level digit, when the opposition
@@ -387,18 +556,36 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
         # before this feature existed.
         oppose_forward = None
         if dist.opposition_prior and digit_count >= 2 and i == digit_count - 1:
-            prior_rpys = [
-                s.params["mount_rpy"] for s in steps
+            prior_digits = [
+                s.params for s in steps
                 if s.production == "Digit" and s.params.get("top_level")
             ]
-            if prior_rpys:
-                fwds = [rpy_to_matrix(tuple(rpy)) @ np.array([0.0, 0.0, 1.0]) for rpy in prior_rpys]
+            if prior_digits:
+                if dist.opposition_use_host_frame and host_transforms is not None:
+                    # Opus review item 5 / V3s fix: each earlier digit's own
+                    # ``mount_rpy`` is expressed in ITS OWN host's local
+                    # frame, not the root frame -- rotate each one into the
+                    # root frame with its host's own accumulated rotation
+                    # before averaging (mixed-host hands otherwise average
+                    # vectors from incompatible frames, opus-review-g0.md's
+                    # "105 deg in mixed-host hands").
+                    fwds = [
+                        host_transforms.get(p["mount"], np.eye(4))[:3, :3]
+                        @ (rpy_to_matrix(tuple(p["mount_rpy"])) @ np.array([0.0, 0.0, 1.0]))
+                        for p in prior_digits
+                    ]
+                else:
+                    fwds = [
+                        rpy_to_matrix(tuple(p["mount_rpy"])) @ np.array([0.0, 0.0, 1.0])
+                        for p in prior_digits
+                    ]
                 mean_fwd = np.mean(fwds, axis=0)
                 norm = float(np.linalg.norm(mean_fwd))
                 if norm > 1e-9:
                     oppose_forward = mean_fwd / norm
         _sample_digit(rng, dist, steps, next_id, mount_bodies, next_uid,
-                      forced_mount=forced_mount, oppose_forward=oppose_forward)
+                      forced_mount=forced_mount, oppose_forward=oppose_forward, host_radius_m=capsule_radius_m,
+                      host_transforms=host_transforms if dist.opposition_use_host_frame else None)
 
     return Derivation(seed=seed, grammar_version=GRAMMAR_VERSION, steps=tuple(steps))
 
@@ -610,8 +797,18 @@ def derive(derivation: Derivation) -> KinematicModel:
         # -- the same convention, applied to a digit/branch mounting on a
         # palm or phalanx body): xyz is the unrotated translation along the
         # host's own z-axis, mount_rpy is the child frame's orientation.
+        # ``mount_offset`` (opus review of G0 item 2 / V3s surface mounting):
+        # a lateral (x, y) displacement of the mount point off the host's
+        # own z-axis line -- the SAME field/convention PalmBody's own
+        # ``mount_offset`` already uses (see the palm-mount comment above),
+        # read via ``.get`` for backward compatibility with any
+        # hand-authored/older Digit params dict predating this field.
+        # Default ``(0.0, 0.0)`` keeps ``base_xyz`` exactly
+        # ``(0.0, 0.0, frac*L)`` -- byte-identical to every pre-existing
+        # derivation/replay hash.
         mount_len = body_length.get(mount, 0.0)
-        base_xyz = (0.0, 0.0, p["mount_frac"] * mount_len)
+        mount_offset = p.get("mount_offset", (0.0, 0.0))
+        base_xyz = (mount_offset[0], mount_offset[1], p["mount_frac"] * mount_len)
         base_rpy = tuple(p["mount_rpy"])
 
         prev_body = mount
@@ -638,7 +835,16 @@ def derive(derivation: Derivation) -> KinematicModel:
             bend_rpy = tuple(pp.get("bend_rpy", (0.0, 0.0, 0.0)))
             bend_offset = tuple(pp.get("bend_offset", (0.0, 0.0)))
             if pi == 0:
-                origin_xyz = (bend_offset[0], bend_offset[1], base_xyz[2])
+                # ``base_xyz``'s own (x, y) is the digit's ``mount_offset``
+                # (opus review item 2 / V3s surface mounting; (0.0, 0.0)
+                # unless ``mount_on_host_surface`` is on) -- additive with
+                # ``bend_offset`` (Grammar 0.5's independent rest-bend
+                # primitive), not overwritten by it, so the two features
+                # compose rather than one silently discarding the other.
+                # Both are (0.0, 0.0) for every distribution that sets
+                # neither, so this is byte-identical to before either field
+                # existed.
+                origin_xyz = (base_xyz[0] + bend_offset[0], base_xyz[1] + bend_offset[1], base_xyz[2])
                 origin_rpy = _compose_bend_rpy(base_rpy, bend_rpy)
             else:
                 origin_xyz = (bend_offset[0], bend_offset[1], prev_len)
@@ -926,7 +1132,10 @@ def _op_regrow_subtree(rng, dist: Distribution, derivation: Derivation) -> Optio
 
     new_steps: List[DerivationStep] = []
     next_uid = [_max_uid(steps) + 1]
-    _emit_digit(rng, _growth_dist(dist), new_steps, digit_id, mount_bodies, top_level, depth, next_uid)
+    hand_params = next(st.params for st in steps if st.path == "hand")
+    host_radius_m = hand_params.get("capsule_radius_m", 0.0)
+    _emit_digit(rng, _growth_dist(dist), new_steps, digit_id, mount_bodies, top_level, depth, next_uid,
+                host_radius_m=host_radius_m)
     return kept + new_steps
 
 

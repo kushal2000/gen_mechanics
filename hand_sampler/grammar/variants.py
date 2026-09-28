@@ -184,6 +184,62 @@ G_V3: Distribution = replace(
     bend_probability=1.0,
 )
 
+# --------------------------------------------------------------------------
+# Opus review of G0 (opus-review-g0.md, I39) -- V1/V2/V3 above are KEPT
+# byte-identical, for reference/comparison; V1s/V2s/V3s below are the FIXED
+# variants the rerun screen actually uses. Each is built the same
+# one-rule-at-a-time way as V1-V3, on the new off-by-default fields
+# ``distributions.Distribution`` gained for this review (surface mounting,
+# curl-skip-first-phalanx, opposition-uses-host-frame) -- none of them
+# changes any EXISTING named ``Distribution``'s sampling.
+# --------------------------------------------------------------------------
+
+# The same fixed, conservative separation target V2 already uses -- 2x the
+# largest sampled capsule radius (0.012 m) plus a 5 mm margin -- reused
+# here so V1s/V2s/V3s are directly attributable to the SAME "2*radius +
+# margin" target the review asked for, not a different number.
+_MOUNT_SEP_TARGET_M = 2.0 * 0.012 + 0.005
+
+# V1s: V1 + surface mounting (review item 2) -- a digit's mount origin sits
+# on its host's own surface (radial offset = the hand's one
+# ``capsule_radius_m``), azimuth drawn i.i.d. from the same 15-degree grid
+# ``mount_rpy`` uses (no deliberate spacing plan yet -- see V2s). This alone
+# already turns same-host mount collisions from "guaranteed at low
+# root/palm length" into "usually apart", since two i.i.d. azimuths at the
+# same axial frac are no longer coincident.
+G_V1S: Distribution = replace(G_V1, mount_on_host_surface=True)
+
+# V2s: V1s + cross-host spacing (review item 2) -- ``mount_min_separation_m``
+# now (via ``mount_on_host_surface=True``) dispatches to
+# ``derive._plan_top_level_mounts_surface``: a greedy furthest-point search
+# over every (host, frac, azimuth) grid point's ACTUAL 3-D position (root
+# frame, via a scratch FK pass over the sampled root/palm bodies), so
+# mounts on DIFFERENT hosts are spaced apart too, and a short root
+# (20-80 mm) can still place 4-5 digits by spreading them around the
+# surface, not just along its length.
+G_V2S: Distribution = replace(G_V1S, mount_min_separation_m=_MOUNT_SEP_TARGET_M)
+
+# V3s: V2s + the FIXED curl and opposition priors (review item 5).
+#
+# ``curl_skip_first_phalanx=True``: phalanx 0 (whose origin composes with
+# the digit's own ``mount_rpy`` -- see ``derive._compose_bend_rpy``) never
+# receives a rest-bend, so the mount frame the opposition prior committed
+# to is the digit's TRUE final rest-pose orientation, not one silently
+# tilted 15-45 deg afterward (V3's bug). Every phalanx after the first
+# still curls, exactly as V3 intends.
+#
+# ``opposition_use_host_frame=True``: the mean-forward direction (and the
+# last digit's own opposing target) are computed in the ROOT frame, each
+# earlier digit's ``mount_rpy`` rotated by ITS OWN host's accumulated
+# rotation first (``derive._host_transforms_from_steps``) -- fixes V3's
+# "105 deg in mixed-host hands" (root + palm-body digits averaged as if
+# they shared one frame).
+G_V3S: Distribution = replace(
+    G_V2S,
+    curl_skip_first_phalanx=True,
+    opposition_use_host_frame=True,
+)
+
 # Every named Distribution variant above, for iteration by experiment code.
 NAMED_DISTRIBUTIONS = {
     "G_FULL": G_FULL,
@@ -198,14 +254,22 @@ NAMED_DISTRIBUTIONS = {
     "G_V1": G_V1,
     "G_V2": G_V2,
     "G_V3": G_V3,
+    "G_V1S": G_V1S,
+    "G_V2S": G_V2S,
+    "G_V3S": G_V3S,
 }
 
 # The G0 screen's own variant roster, named per the plan (V0 = G_SERIAL).
+# V1/V2/V3 kept for reference; V1s/V2s/V3s are the fixed variants the rerun
+# (opus-review-g0.md) uses.
 G0_SCREEN_VARIANTS = {
     "V0": G_SERIAL,
     "V1": G_V1,
     "V2": G_V2,
     "V3": G_V3,
+    "V1s": G_V1S,
+    "V2s": G_V2S,
+    "V3s": G_V3S,
 }
 
 __all__ = [
@@ -222,6 +286,9 @@ __all__ = [
     "G_V1",
     "G_V2",
     "G_V3",
+    "G_V1S",
+    "G_V2S",
+    "G_V3S",
     "NAMED_DISTRIBUTIONS",
     "G0_SCREEN_VARIANTS",
     "OPERATORS",

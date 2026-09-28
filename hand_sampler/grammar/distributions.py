@@ -183,6 +183,71 @@ class Distribution:
     # field existed.
     opposition_prior: bool = False
 
+    # Opus review of G0 (opus-review-g0.md, item 2 / I39), V3s fix -- three
+    # more optional, off-by-default fields. Every one leaves V1/V2/V3 (and
+    # every other existing named ``Distribution``) byte-identical: each is
+    # read only at a site gated on it being non-default, so an untouched
+    # field never perturbs the RNG stream or the derived geometry.
+
+    # Surface mounting (review item 2): when ``True``, a digit's mount
+    # origin (top-level OR branch) is offset OFF the host's own centre axis
+    # by ``host_radius_m`` (the hand's one ``capsule_radius_m``, passed down
+    # by ``derive.py`` -- the host's own capsule radius) at an azimuth angle
+    # ("the rule": either drawn i.i.d. from the same 15-degree grid
+    # ``sample_grid_angle_rad`` uses, when no placement plan supplies one, or
+    # the placement plan's own chosen azimuth -- see
+    # ``derive._plan_top_level_mounts_surface``), instead of sitting ON the
+    # host's centre axis (``(0, 0, mount_frac * host_length)``). ``False``
+    # (default) keeps every digit mount exactly on-axis, byte-identical to
+    # before this field existed -- see ``derive._emit_digit``.
+    mount_on_host_surface: bool = False
+
+    # Cross-host spacing (review item 2), dispatched together with
+    # ``mount_on_host_surface``: when BOTH it and ``mount_min_separation_m``
+    # (declared above, reused as the SAME target -- V2's own dispatch path
+    # is unaffected: it is reached only when ``mount_on_host_surface`` is
+    # ``False``) are set, top-level digit mounts are planned by
+    # ``derive._plan_top_level_mounts_surface`` -- a greedy furthest-point
+    # placement over every (host, mount_frac, azimuth) grid point's ACTUAL
+    # 3-D position (via a scratch forward-kinematics pass over the
+    # already-sampled root/palm bodies, ``derive._host_transforms_from_steps``),
+    # so mounts on DIFFERENT hosts are spaced apart too, not just same-host
+    # mounts (the existing ``_plan_top_level_mounts``/V2 planner only
+    # reasons about same-host axial spacing). Using the surface azimuth (not
+    # just the axial ``mount_frac``) is what lets a short host (root length
+    # as low as 20 mm) still separate 4-5 digits: two mounts diametrically
+    # opposite in azimuth are already ``2 * host_radius_m`` apart before any
+    # axial offset at all.
+
+    # Curl-axis prior (review item 5 / V3s fix): when ``True``, a digit's
+    # FIRST phalanx (index 0 -- the one whose joint origin composes with the
+    # digit's own ``mount_rpy``, see ``derive._compose_bend_rpy``) never
+    # receives a rest-bend, regardless of ``bend_probability``/
+    # ``bend_rpy_choices_rad`` -- every phalanx AFTER the first still bends
+    # normally. V3's bug (opus-review-g0.md item 5): bending phalanx 0 tilts
+    # the digit's own MOUNT frame (not just its own shape), which silently
+    # invalidates the opposition prior's premise that ``mount_rpy`` is the
+    # digit's true rest-pose forward direction. ``False`` (default) leaves
+    # ``G_BEND`` (which deliberately bends phalanx 0 too, per I16/I11 -- a
+    # real mid-chain frame rotation) and V3 exactly as before this field
+    # existed.
+    curl_skip_first_phalanx: bool = False
+
+    # Opposition prior host frame fix (review item 5 / V3s fix): when
+    # ``True`` (and ``opposition_prior`` is also ``True``), the mean-forward
+    # direction of the earlier digits, and the last digit's own opposing
+    # target, are computed in the ROOT frame -- each digit's own HOST body's
+    # accumulated rotation (``derive._host_transforms_from_steps``) is
+    # applied to its local ``mount_rpy`` forward direction before averaging
+    # or opposing -- instead of treating every digit's ``mount_rpy`` as if
+    # it were already expressed in a shared frame. V3's bug: two digits
+    # mounted on DIFFERENT hosts (root vs. a rotated palm body) have
+    # ``mount_rpy`` in DIFFERENT local frames, so naively averaging them is
+    # only correct for root-only hands -- exactly the "105 deg in mixed-host
+    # hands" case the review measured. ``False`` (default) leaves V3 exactly
+    # as before this field existed.
+    opposition_use_host_frame: bool = False
+
 
 DEFAULT_DISTRIBUTION = Distribution()
 
