@@ -274,3 +274,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - New off-by-default generative rules (95c577a): mount spacing (V2), curl-axis band and opposition (V3); existing variants byte-identical (phenotype-hash test). Grammar suite 3135 passed, 1 skipped.
 - 2000 seeds per variant, viability = admitted AND >= 2 fingertips reach the spawn point: V0 (unconstrained G_SERIAL) 0%, V1 0.25%, V2 0.80%, V3 1.40%. Rest overlap rejects 53-57% of V1-V3; V3's gain is on reach (>= 2 fingertips 16.7% vs 5-6.5%). Cells occupied 5/6/9 of 30; CPU MAP-Elites coverage 50/49/56% with 6.7/6.0/7.7 founders (500 evals x 3). V3 has the lowest continuous phenotype diversity.
 - Recommendation: pilot compares V1 (baseline) with V3. Opus is checking the oracle for artifacts (root-capsule overlap, spawn placement) and the statistics before the pilot relies on it.
+
+## Evolution driver and local timing run (2026-09-27 ~22:30)
+
+- Driver committed (3fa968a..77a19c7): MAP-Elites archive (digits x joint bins, 30 cells), in-process generation loop, resume from state.json (tested by killing mid-generation), probes = projected allegro_right, dclaw, sharpa, leap_right; eval player fixed (f4087f6: batch-dimension handling plus the SAPG block-id column). 237 package tests pass.
+- Timing run on the local 4090 (G_V1, 64 designs, 4096 envs, 900 epochs/gen): boot ~155 s, train ~510 s, select <2 s, ~102k fps, i.e. ~11 min/generation. Coverage 8/8/9 of 30; QD-score 0.85/1.03/1.31; mean elite fitness 0.107/0.129/0.146; best ~0.18 flat; founders 8/8/7 (max share 0.22). Probe fitness flat (dclaw 0.13-0.14, others ~0.06). Oracle used here is the pre-fix one (I39).
+- Cluster estimate: ~35 min/generation (training 3.4x slower, boot slower), so 8 generations ~ 4.7 GPU-h per run.
