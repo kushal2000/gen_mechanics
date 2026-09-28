@@ -268,3 +268,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Kit: 16-design smoke FK 0.0005 mm, homogeneous, limits exact, ghost |q| max 0.0126 rad, 39% of cubes resting at 100 zero-action steps (0-75% per design). 10-min 32-design run at 4096 envs: ~113k fps; graded_fitness spread 0.02-0.14 (6.7x); aggregate successes flat at this horizon.
 - Frozen-policy eval blocked by the vendored rl_games player (I38).
 - Next: evolution driver (MAP-Elites, in-job generation loop with resume, probes = projected commercial hands); G0 screen running.
+
+## G0 CPU grammar screen (2026-09-27 ~21:00), under Opus verification
+
+- New off-by-default generative rules (95c577a): mount spacing (V2), curl-axis band and opposition (V3); existing variants byte-identical (phenotype-hash test). Grammar suite 3135 passed, 1 skipped.
+- 2000 seeds per variant, viability = admitted AND >= 2 fingertips reach the spawn point: V0 (unconstrained G_SERIAL) 0%, V1 0.25%, V2 0.80%, V3 1.40%. Rest overlap rejects 53-57% of V1-V3; V3's gain is on reach (>= 2 fingertips 16.7% vs 5-6.5%). Cells occupied 5/6/9 of 30; CPU MAP-Elites coverage 50/49/56% with 6.7/6.0/7.7 founders (500 evals x 3). V3 has the lowest continuous phenotype diversity.
+- Recommendation: pilot compares V1 (baseline) with V3. Opus is checking the oracle for artifacts (root-capsule overlap, spawn placement) and the statistics before the pilot relies on it.

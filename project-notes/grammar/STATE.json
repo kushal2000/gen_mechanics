@@ -341,7 +341,28 @@
     "E6": "written (grammar-for-evolution.md final)",
     "E5b": "done",
     "E7": "done",
-    "E11": "done"
+    "E11": "done",
+    "G0": {
+      "status": "done, under Opus verification",
+      "report": "project-notes/grammar/experiments/g0/report.md",
+      "viable_frac": {
+        "V0": 0.0,
+        "V1": 0.0025,
+        "V2": 0.008,
+        "V3": 0.014
+      },
+      "cells_occupied": {
+        "V1": 5,
+        "V2": 6,
+        "V3": 9
+      },
+      "map_elites_coverage": {
+        "V1": 0.5,
+        "V2": 0.489,
+        "V3": 0.556
+      },
+      "recommendation": "baseline V1 (G_V1), best V3 (G_V3)"
+    }
   },
   "gpu_hours_used": 0.98,
   "cluster_jobs": [
