@@ -152,10 +152,24 @@ export EXTRA_HYDRA="env.termination.success_tolerance=$_TOL_M env.termination.ta
 export OBJECT_POOL="${OBJECT_POOL:-cube1}"
 export OBJECT_ASSIGNMENT="${OBJECT_ASSIGNMENT:-env_modulo}"
 export NUM_ASSETS_PER_TYPE="${NUM_ASSETS_PER_TYPE:-100}"    # unused while OBJECT_POOL is set
-# ROBOT_SPEC must carry the handonly: prefix -- refuse rather than silently
-# train an arm-bearing robot on a task whose palm is bolted in mid-air.
-if [[ -n "${ROBOT_SPEC:-}" && "${ROBOT_SPEC}" != handonly:* ]]; then
-    echo "[common] ROBOT_SPEC must start with 'handonly:' for this task; got ${ROBOT_SPEC}" >&2
+# The robot must be hand-only -- refuse rather than silently train an arm-bearing
+# robot on a task whose palm is bolted in mid-air. Two forms are hand-only:
+#
+#   handonly:<population>   a GENERATED population. The prefix is what drops the 7 arm
+#                           joints, and it has to ride on the spec string because the
+#                           agent YAML interpolates the network's shape from it.
+#   *_handonly              a REGISTERED fixed hand that declares arm_joint_names=()
+#                           in its own spec, so it needs no prefix and would in fact
+#                           raise KeyError with one (is_population_ref only knows
+#                           gen_s<seed>_n<size> and .json).
+#
+# This is a NAME check, not a spec check, because common.sh runs before Kit boots and
+# resolving a spec imports scene_utils -> assembly -> pxr. The naming convention is
+# the contract; assembly._verify_articulation_view is what actually catches a robot
+# with the wrong joint count.
+if [[ -n "${ROBOT_SPEC:-}" && "${ROBOT_SPEC}" != handonly:* && "${ROBOT_SPEC}" != *_handonly ]]; then
+    echo "[common] ROBOT_SPEC must be 'handonly:<population>' or a registered" \
+         "'*_handonly' spec for this task; got ${ROBOT_SPEC}" >&2
     exit 1
 fi
 # sbatch against a controller that sometimes answers "Socket timed out" AFTER

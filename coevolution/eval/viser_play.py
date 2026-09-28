@@ -187,6 +187,7 @@ def play(task: str, args, hydra_args=None) -> None:
     import viser
     from viser.extras import ViserUrdf
 
+    import hand_sampler
     from hand_sampler import build, population_io, robot_spec
 
     if args.checkpoint:
@@ -213,16 +214,30 @@ def play(task: str, args, hydra_args=None) -> None:
           + ", ".join(f"{l['name']} ({l['fingers']}f/{l['joints']}j)" for l in labels), flush=True)
 
     bare, _ = robot_spec.split_handonly(pop_ref)
-    hands = population_io.load_population(bare)
-    urdf_dir = pathlib.Path(tempfile.mkdtemp(prefix="play_urdf_"))
-    urdfs = [_viewing_urdf(h, pop_ref, urdf_dir / f"d{i}.urdf") for i, h in enumerate(hands)]
+    if robot_spec.is_population_ref(pop_ref):
+        hands = population_io.load_population(bare)
+        urdf_dir = pathlib.Path(tempfile.mkdtemp(prefix="play_urdf_"))
+        urdfs = [_viewing_urdf(h, pop_ref, urdf_dir / f"d{i}.urdf") for i, h in enumerate(hands)]
+    else:
+        # A REGISTERED hand -- SHARPA, or a unified commercial hand -- has a real URDF
+        # with real meshes, so it is drawn as shipped: _viewing_urdf exists to author a
+        # generated design's capsules and graft an arm onto them, and neither applies.
+        # The path arrives in the child's ready handshake rather than being resolved
+        # here, because resolving a spec means importing the registry, which drags in
+        # scene_utils/__init__ -> assembly -> pxr and that only exists inside Kit.
+        hands = []
+        urdfs = []
+        print(f"[play] fixed spec {bare!r}: the worker will report its URDF", flush=True)
 
     authkey = secrets.token_bytes(16)
     listener = Listener(("127.0.0.1", 0), authkey=authkey)
     host, port = listener.address
     child = subprocess.Popen(
         [sys.executable, str(_WORKER), "--task", task, "--checkpoint", args.checkpoint,
-         "--run-dir", ("" if not args.checkpoint else str(run_dir)), "--population", pop_ref, "--num-envs", str(len(hands)),
+         "--run-dir", ("" if not args.checkpoint else str(run_dir)), "--population", pop_ref,
+         # One env per design for a population; a fixed spec is one hand, and
+         # len(hands) is 0 there because there is no population to load.
+         "--num-envs", str(max(len(hands), 1)),
          "--expl-coef", str(args.expl_coef), "--tolerance", str(args.tolerance),
          "--success-steps", str(args.success_steps), "--trace", args.trace,
          "--device", args.device, "--host", host, "--port", str(port),
@@ -396,6 +411,9 @@ def play(task: str, args, hydra_args=None) -> None:
                         pass                      # older viser: label is read-only
                 elif kind == "ready":
                     joint_names = m["joint_names"]
+                    if not urdfs and m.get("urdf_path"):
+                        urdfs = [pathlib.Path(m["urdf_path"])]
+                        print(f"[play] drawing {urdfs[0]}", flush=True)
                     _build_joint_sliders(server, outbox, joint_sliders, joint_names,
                                          m.get("joint_lower"), m.get("joint_upper"),
                                          int(m.get("num_arm_joints") or 0))

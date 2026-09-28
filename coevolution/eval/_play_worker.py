@@ -152,7 +152,13 @@ def main() -> None:
                 except Exception:
                     obj_urdfs.append(None)
             _lim_canon = inner.robot.data.joint_pos_limits[0][inner._perm_lab_to_canon]
+            # The parent cannot resolve a spec itself: importing the registry pulls in
+            # scene_utils/__init__ -> assembly -> pxr, which only exists inside Kit.
+            # So the side that already has the spec reports the file to draw.
+            import hand_sampler as _hs
+
             send(kind="ready",
+                 urdf_path=str(_hs.resolve(spec.urdf_path)),
                  # CANONICAL order, matching joint_names: the parent labels its
                  # sliders from these, and Lab order would put each joint's range
                  # on another joint's slider.

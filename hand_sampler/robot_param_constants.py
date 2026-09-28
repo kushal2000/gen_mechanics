@@ -186,15 +186,25 @@ REFERENCE_INHAND_BASE_ROT: tuple[float, float, float, float] = (
 )
 
 
-@_lru_cache(maxsize=1)
-def hand_only_base_rot() -> tuple[float, float, float, float]:
+@_lru_cache(maxsize=None)
+def hand_only_base_rot(frame=None) -> tuple[float, float, float, float]:
+    """Base rotation putting the palm at (pitch, roll).
+
+    ``frame`` is the 3x3 whose columns are the palm's axes -- thickness/grasp
+    normal, width, wrist-to-fingertip -- expressed in the ROBOT ROOT body's frame,
+    and defaults to SHARPA's (palm in ``iiwa14_link_7``). A commercial hand rooted
+    at its own palm link passes its own: its URDF has no reason to share our
+    convention, and adapting the frame is cheaper and safer than re-authoring the
+    vendor meshes to fit it.
+    """
     import math as _math
 
     import numpy as np
 
     from hand_sampler import build, design_space
 
-    F = build.flange_to_palm()[:3, :3]              # palm axes in link_7's frame
+    F = (build.flange_to_palm()[:3, :3] if frame is None
+         else np.asarray(frame, float)[:3, :3])      # palm axes in the root's frame
     p = _math.radians(HAND_ONLY_PALM_PITCH_DEG)
     r = _math.radians(HAND_ONLY_PALM_ROLL_DEG)
 
@@ -244,12 +254,18 @@ HAND_ONLY_PALM_CENTRE: tuple[float, float, float] = (0.0, 0.0, 0.50)
 _TYPICAL_PALM_CENTRE_OFFSET_M: float = 0.1450
 
 
-@_lru_cache(maxsize=1)
-def hand_only_base_pos() -> tuple[float, float, float]:
+@_lru_cache(maxsize=None)
+def hand_only_base_pos(frame=None, centre_offset=None) -> tuple[float, float, float]:
     """Mount point putting the palm centre at HAND_ONLY_PALM_CENTRE.
 
+    ``centre_offset`` is either the full palm-centre offset VECTOR in the root body's
+    frame, which places the palm centre exactly, or a scalar distance along the root's
+    +z, which is all a generated population can offer because its palm centre varies
+    per design while ``base_pos`` is one value. It defaults to the scalar measured over
+    201 generated designs.
+
     Derived from the rotation rather than written down: the offset runs along
-    link_7's +z, and which way that points in world depends entirely on pitch and
+    the root's +z, and which way that points in world depends entirely on pitch and
     roll -- it is world +y at roll 0 palm-up, and swings well out of that plane
     once the palm rolls over. A literal here would silently misplace the hand the
     moment either angle changed.
@@ -257,10 +273,22 @@ def hand_only_base_pos() -> tuple[float, float, float]:
     import numpy as np
     from scipy.spatial.transform import Rotation as _R
 
-    q = hand_only_base_rot()
-    d = _R.from_quat([q[1], q[2], q[3], q[0]]).as_matrix() @ np.array([0.0, 0.0, 1.0])
-    pos = np.asarray(HAND_ONLY_PALM_CENTRE, float) - _TYPICAL_PALM_CENTRE_OFFSET_M * d
-    return tuple(float(v) for v in pos)
+    q = hand_only_base_rot(frame)
+    R = _R.from_quat([q[1], q[2], q[3], q[0]]).as_matrix()
+    target = np.asarray(HAND_ONLY_PALM_CENTRE, float)
+    off = np.atleast_1d(np.asarray(
+        _TYPICAL_PALM_CENTRE_OFFSET_M if centre_offset is None else centre_offset, float))
+    if off.size == 3:
+        # EXACT: the palm centre is a known vector in the root body's frame, so put
+        # it on the target and be done. A measured hand rooted at its own palm knows
+        # this exactly; assuming the offset ran along the root's +z instead put
+        # Allegro's palm centre 42 mm off, because its offset is 11.7 mm lateral and
+        # points INTO the palm rather than out of it.
+        return tuple(float(v) for v in target - R @ off)
+    # APPROXIMATE, and deliberately so: a generated population's palm centre differs
+    # per design while base_pos is one value for the whole spec, so it can only use a
+    # typical reach along the root's +z.
+    return tuple(float(v) for v in target - float(off[0]) * (R @ np.array([0.0, 0.0, 1.0])))
 
 # Serial chain, so only consecutive links need filtering.
 ARM_ADJACENT_LINKS: dict[str, list[str]] = {

@@ -166,18 +166,26 @@ def palm_keypoints(center, extents, frame=None) -> np.ndarray:
     ``reset_utils/reset.py`` takes ``kp[1] - kp[0]`` as the grasp normal to place
     the in-hand object -- so the first edge must be the thickness one.
 
-    ``frame`` is the 4x4 taking that convention into the palm body's frame, and
-    defaults to SHARPA's ``flange_to_palm`` (palm -> iiwa14_link_7). A hand whose
-    own link frame is not ours passes its own: a commercial hand's URDF has no
-    reason to agree with this convention, and the alternative -- mirroring or
-    re-authoring its meshes -- throws away the vendor geometry we imported it for.
+    ``frame`` takes that convention into the palm body's frame, either as a 4x4 or
+    as a bare 3x3 rotation, and defaults to SHARPA's ``flange_to_palm``
+    (palm -> iiwa14_link_7). A hand whose own link frame is not ours passes its own:
+    a commercial hand's URDF has no reason to agree with this convention, and the
+    alternative -- mirroring or re-authoring its meshes -- throws away the vendor
+    geometry we imported it for. A hand rooted at its own palm needs no translation,
+    hence the 3x3 form.
     """
     c = np.asarray(center, float)
     e = np.asarray(extents, float)
     p0 = c - 0.5 * e
     pts = np.stack([p0, p0 + [e[0], 0, 0], p0 + [0, e[1], 0], p0 + [0, 0, e[2]]])
     T = flange_to_palm() if frame is None else np.asarray(frame, float)
-    return (pts @ T[:3, :3].T + T[:3, 3]).astype(np.float32)
+    if T.shape == (3, 3):
+        rot, offset = T, np.zeros(3)
+    elif T.shape == (4, 4):
+        rot, offset = T[:3, :3], T[:3, 3]
+    else:
+        raise ValueError(f"frame must be 3x3 or 4x4, got {T.shape}")
+    return (pts @ rot.T + offset).astype(np.float32)
 
 
 def palm_keypoints_of(hand: design_space.Hand) -> np.ndarray:
