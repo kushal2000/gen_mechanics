@@ -31,6 +31,22 @@ hooks on every ``env.step()`` call, regardless of who is driving it -- this
 script just drives the env with the loaded policy's actions and reads the
 accumulated per-design tallies off with ``design_scoring.read_snapshot``.
 
+I38 (evolution-pilot pass, 2026-09-27): the "133 vs 132" observation-
+normalization crash 03d4e06 left unresolved is fixed below, in ``run``,
+right after ``player.env_reset`` -- two independent bugs, both confined to
+THIS script (no ``third_party/rl_games`` edit): (1) ``BasePlayer.
+has_batch_dimension`` never gets set because this script's own step loop
+(deliberately, see above) never calls ``BasePlayer.run()``'s
+``get_batch_size``, so every observation gets a spurious extra leading
+dimension that shifts the coef-conditioning column slice onto the wrong
+axis; (2) a ``coef_cond``/``mixed_expl_learn_param`` network's declared
+input width is genuinely one column wider than the env's own observation
+(a per-env SAPG exploration-block id, a training-only concept the env
+never produces) and needs a constant padding column. See the inline
+comments at the fix site for the full trace. Verified against a real
+15-epoch SAPG checkpoint trained on ``test16.json`` at ``--num-envs 64``:
+runs to completion and writes per-design ``eval_scores.json`` rows.
+
 Run (single Kit process; ``timeout -k 30 <cap>`` per this branch's Kit-run
 rule; ``env.assets.hand_population=<file>`` works exactly as train.py's own
 Hydra CLI overrides do, but --population is a plain argparse flag here,
@@ -194,6 +210,80 @@ def main() -> None:
               f"{args_cli.eval_success_tolerance}, checkpoint={args_cli.checkpoint}", flush=True)
 
         obs = player.env_reset(player.env)
+
+        # The 133-vs-132 observation-normalization crash (see this module's
+        # own docstring / 03d4e06's commit message): root-caused by tracing
+        # actual tensor shapes through rl_games' vendored player. A
+        # coef_cond/mixed_expl_learn_param network's own obs width is (real
+        # env obs) + 1 -- one extra trailing column the SAPG player
+        # itself expects to hold a per-env exploration-block id (see
+        # `PpoPlayerContinuous.__init__`'s own `input_shape = obs_shape[0]
+        # + intr_reward_coef_embd.shape[1]`; for `expl_type=
+        # mixed_expl_learn_param` that embedding is 1-wide, a raw id, not
+        # the 32-wide sinusoidal encoding the "mixed_expl" non-learn_param
+        # branch uses) -- and the ENV never produces that extra column
+        # itself (SAPG's per-env exploration coefficient is a training-time
+        # concept only): `env.assets.hand_population`'s own observation is
+        # genuinely just the real 132 dims, one short of the network's
+        # declared total input width. That is a real, separate gap from
+        # what actually crashed here, and is handled below (padding). The
+        # crash itself -- "size of tensor a (133) must match ... b (132)
+        # ... dimension 2" -- has a THIRD dimension at all only because
+        # `BasePlayer.get_action`'s `unsqueeze_obs` fires whenever
+        # `self.has_batch_dimension` is still its class-default `False`;
+        # that flag only ever flips to `True` inside `get_batch_size`,
+        # which lives in `BasePlayer.run()` -- the very method this script
+        # replaces with its own step loop (see the module docstring), so it
+        # is simply never called. With no batch dimension recorded,
+        # `get_action` wraps every observation in a spurious extra leading
+        # dim, which shifts `norm_obs`'s `observation[:, :extra_info_start_
+        # idx]` coefficient-column slice onto the wrong axis (batch axis
+        # instead of feature axis) and produces exactly this error. Calling
+        # `get_batch_size` ourselves once, exactly as `run()` does before
+        # its own step loop, fixes it with no `third_party/rl_games` edit.
+        player.get_batch_size(obs, 1)
+        assert player.has_batch_dimension, "get_batch_size should have detected the batch dimension"
+
+        # The real (env-side) gap noted above: pad every observation with
+        # one constant trailing column so its total width matches what the
+        # coef_cond network expects. The value is irrelevant for a
+        # deterministic policy sized for exactly 1 exploration block (this
+        # branch's own `--num-envs`-sized `expl_coef_block_size`, see
+        # driver.py's `build_train_cmd`): `network_builder.py`'s
+        # `fixed_sigma == 'coef_cond'` forward pass picks a sigma row by
+        # matching this column against `a2c_network.sigma_ids`
+        # (`argmax` over an all-False comparison still deterministically
+        # picks row 0 when there is only one id), and `sigma` is unused by
+        # `get_action(..., is_deterministic=True)` regardless (it returns
+        # the mean action `mu`, never a `sigma`-scaled sample).
+        network = getattr(player.model, "a2c_network", None)
+        coef_id_idx = getattr(network, "sigma_id_idx", None) if network is not None else None
+        coef_pad_value = None
+        if coef_id_idx is not None:
+            sigma_ids = network.sigma_ids
+            if len(sigma_ids) != 1:
+                print(f"[evaluate_population] WARNING: checkpoint has {len(sigma_ids)} SAPG exploration "
+                      f"block id(s), not 1 -- padding every observation with a single constant id "
+                      f"({float(sigma_ids[0])}) is only exactly correct for 1 block (this branch always "
+                      f"trains with expl_coef_block_size == num_envs). Proceeding anyway: is_deterministic "
+                      f"play never reads sigma, so this cannot affect the reported action, only which "
+                      f"(unused) sigma row gets selected.", flush=True)
+            coef_pad_value = float(sigma_ids[0])
+            print(f"[evaluate_population] network expects a coef_cond conditioning column at obs index "
+                  f"{coef_id_idx} that the env never produces; padding every observation with a constant "
+                  f"column ({coef_pad_value}) before every player.get_action call.", flush=True)
+
+        def _pad_coef_column(o):
+            if coef_pad_value is None:
+                return o
+            if isinstance(o, dict):
+                o = dict(o)
+                o["obs"] = _pad_coef_column(o["obs"])
+                return o
+            pad_col = o.new_full((o.shape[0], 1), coef_pad_value)
+            return torch.cat([o, pad_col], dim=1)
+
+        obs = _pad_coef_column(obs)
         if player.is_rnn:
             player.init_rnn()
 
@@ -202,6 +292,7 @@ def main() -> None:
             for _ in range(target_episodes * max_episode_steps):
                 action = player.get_action(obs, is_deterministic=True)
                 obs, _reward, done, _info = player.env_step(player.env, action)
+                obs = _pad_coef_column(obs)
                 if player.is_rnn:
                     all_done_indices = done.nonzero(as_tuple=False)
                     for s in player.states:
