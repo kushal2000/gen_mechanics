@@ -211,6 +211,9 @@ def play(task: str, args, hydra_args=None) -> None:
         b_reset = server.gui.add_button("reset episode")
         b_goal = server.gui.add_button("resample goal")
         g_det = server.gui.add_checkbox("deterministic action", False)
+        # Overrides the policy entirely: every joint is driven to 0, which is
+        # NOT what a zero action does (that is the midpoint of each range).
+        g_zero = server.gui.add_checkbox("hold joints at 0 (ignore policy)", False)
     with server.gui.add_folder("status"):
         md = server.gui.add_markdown("waiting for Kit...")
 
@@ -247,6 +250,10 @@ def play(task: str, args, hydra_args=None) -> None:
     @g_det.on_update
     def _(_):
         outbox.put({"cmd": "deterministic", "value": bool(g_det.value)})
+
+    @g_zero.on_update
+    def _(_):
+        outbox.put({"cmd": "hold_zero", "value": bool(g_zero.value)})
 
     viser_urdf, joint_names, shown = None, None, -1
     last_print = [0.0]

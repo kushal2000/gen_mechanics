@@ -159,7 +159,27 @@ def main() -> None:
                  base_pos=[float(v) for v in spec.base_pos],
                  base_rot=[float(v) for v in spec.base_rot])
 
-            running, pending, det = True, 0, False
+            # "Hold every joint at 0" for inspecting geometry without the
+            # policy. NOT the same as sending a zero ACTION: the hand action is
+            # an ABSOLUTE map of [-1, 1] onto [lower, upper]
+            # (obs_utils/actions.py:87), so action 0 commands the MIDPOINT of
+            # each joint's range -- a half-closed hand, not an open one.
+            #
+            # Drive _cur_targets directly through the replay hook instead
+            # (actions.py:38), which bypasses the delay queue, the [-1,1]
+            # mapping and the moving average, so the pose is exactly 0 rather
+            # than easing toward it. Clamped to the authored limits: a joint
+            # whose range excludes 0 goes to its nearest limit, and how many do
+            # is reported once so a strange-looking pose is explained.
+            lim = inner.robot.data.joint_pos_limits           # (N, J, 2), Lab order
+            zero_lab = torch.zeros_like(inner.robot.data.joint_pos)
+            zero_lab = zero_lab.clamp(lim[..., 0], lim[..., 1])
+            n_clamped = int((zero_lab[0].abs() > 1e-9).sum())
+            if n_clamped:
+                print(f"[worker] hold-zero: {n_clamped} of {zero_lab.shape[1]} joints "
+                      f"cannot reach 0 and will sit at their nearest limit", flush=True)
+
+            running, pending, det, hold_zero = True, 0, False, False
             last_frame = [0.0]
             trace = None
             if args.trace:
@@ -187,6 +207,12 @@ def main() -> None:
                         running, pending = False, pending + 1
                     elif c == "deterministic":
                         det = bool(m.get("value"))
+                    elif c == "hold_zero":
+                        hold_zero = bool(m.get("value"))
+                        # Clearing the hook hands control back to the policy;
+                        # leaving it set would pin the hand forever.
+                        inner._replay_target_lab_order = zero_lab if hold_zero else None
+                        print(f"[worker] hold_zero -> {hold_zero}", flush=True)
                     elif c == "reset":
                         obs, _ = env.reset()
                     elif c == "resample":

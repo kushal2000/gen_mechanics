@@ -88,7 +88,7 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 # computed lazily because build imports this module. The palm frame is
 # (x = thickness = GRASP_DIR, y = width, z = wrist -> fingertip length), and
 # R_base = R_palm_world @ flange_to_palm().T.
-# --- orientation: two angles, and the reference is exactly one point in them ---
+# --- orientation: two angles, of which we set one from the reference --------
 # The palm frame is (x = thickness = GRASP_DIR, y = width, z = wrist -> fingertip),
 # so placing it takes two numbers, not one:
 #
@@ -98,15 +98,25 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 #          it. ROLL = 90 stands the palm vertical. Past 90 the palm faces
 #          downward and there is nothing underneath the object at all.
 #
-# The IsaacLab inhand reference is EXACTLY (pitch 5.4, roll 135) in these two --
-# not approximately. Rebuilding its frame from those two angles reproduces its
-# published quaternion to 8e-8, and hand_only_base_rot asserts it below. That is
-# also why matching it needed a second parameter at all: the single tilt this
-# replaced could only ever express roll = 0, and the reference's palm faces
-# 44.7 degrees BELOW horizontal with its fingers 5.4 degrees below.
+# WHICH ROLL THE REFERENCE USES, and why we do not take it. Decomposed in these
+# two angles the reference is (pitch 5.4, roll -45): rebuilt from them its palm
+# frame reproduces its published quaternion to 8e-8, so the decomposition is
+# exact rather than a fit. Its GRASPING face therefore points 45.25 degrees above
+# horizontal with its fingers nearly level -- a combination roll = 0 cannot
+# express, since at roll 0 the normal's angle off vertical and the fingers' angle
+# below horizontal are the same number by construction.
 #
-# The tilt sweep that came first is what established there is no good answer at
-# roll = 0 (all fixed SHARPA, keypoint reward):
+# Note the sign trap that cost a wrong commit here (82a05e7, corrected): the
+# reference's local +x is the BACK of its hand, not its grasping face. Its cube
+# sits at -0.055 m along that axis, so the grasping normal is -x. Taking +x as
+# ours rolled the hand over and spawned the cube underneath it.
+#
+# We keep roll = 0 deliberately -- the original single-family orientation, palm
+# normal straight up at pitch = 0 -- and take only the reference's TILT
+# MAGNITUDE, 45.25 degrees off vertical. So this matches how far the reference's
+# palm is from level, and not its finger dip.
+#
+# The tilt sweep that came first, all at roll 0 (fixed SHARPA, keypoint reward):
 #
 #    0  a level plate holds the cube for free -- the policy froze, done_fall
 #       0.0003, every episode ran out the clock (run 267504).
@@ -118,34 +128,31 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 #       done_fall went 0.9981 -> 0.9963 and successes stayed at 0.0001
 #       (run 316257). Unlearnable, not hard.
 #
-# The lesson is that tilting a plate was the wrong lever: at low angles the
-# SURFACE does the holding, at high angles gravity wins outright, and there is no
-# window in between where the FINGERS are what holds the object. Rolling the palm
-# past vertical removes the surface instead of fighting it, which is what the
-# reference actually does.
+# IMPORTANT CAVEAT, which is why 45.25 is not simply the 45 that failed above:
+# all four of those runs predate reset.in_hand_placement = "fingertips". They
+# spawned the cube on the palm SLAB, which is the only reason the tilt angle
+# mattered so much -- the slab was what held the cube, and tan(tilt) against the
+# palm-cube friction decided whether it stayed. Spawning at the fingertip
+# centroid already puts the cube past the slab's edge, so the tilt no longer sets
+# who holds the object; only finger contact does. Null policy, median episode
+# length to the 0.3 m drop, 256 envs, at fingertip placement:
 #
-# IMPORTANT CAVEAT on the four runs above: all of them predate
-# reset.in_hand_placement = "fingertips". They spawned the cube on the palm SLAB,
-# which is the only reason the tilt angle mattered so much. Spawning at the
-# fingertip centroid already put the cube past the slab's edge, so by the time
-# this roll landed there was no supporting surface left to remove.
+#   pitch 10,    roll 0     20 steps (0.33 s)
+#   pitch 45.25, roll 0     14 steps (0.23 s)
 #
-# Which is why matching the reference turned out to be nearly free. Null policy
-# (zero actions, fixed SHARPA, 256 envs, median episode length to the 0.3 m drop):
-#
-#   pitch 10,  roll 0    20 steps (0.33 s)   the orientation this replaced
-#   pitch 5.4, roll 90   16 steps (0.27 s)   palm vertical
-#   pitch 5.4, roll 135  14 steps (0.23 s)   the reference
-#
-# 20 -> 14 steps, not 600 -> 14: an open hand was already dropping the cube
-# immediately at the old orientation, and the roll only changes which way gravity
-# pulls it out. Whether it stays in hand is decided entirely by finger contact
-# from the start pose onward, at every one of these angles.
+# So the reference tilt costs 6 steps against the 10 degrees it replaces, not a
+# cliff. Do NOT read that as "45 degrees is fine after all": these are NULL-POLICY
+# episode lengths, while the done_fall 1.0000 above came from a trained run. What
+# the measurement does establish is that the tilt no longer decides who holds the
+# cube, because at fingertip placement an open hand drops it immediately at every
+# angle tried, 10 degrees included.
 #
 # Both overridable from the environment so two orientations can be compared
 # side by side without editing source.
-HAND_ONLY_PALM_PITCH_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_PITCH_DEG", "5.4"))
-HAND_ONLY_PALM_ROLL_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_ROLL_DEG", "135.0"))
+# 45.253656 = the reference's own palm tilt off vertical, derived from its
+# quaternion rather than pasted; hand_only_base_rot re-derives and asserts it.
+HAND_ONLY_PALM_PITCH_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_PITCH_DEG", "45.253656"))
+HAND_ONLY_PALM_ROLL_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_ROLL_DEG", "0.0"))
 
 # The single-angle form this replaced. Runs before 2026-09-28 set it, and it meant
 # exactly (pitch = tilt, roll = 0) -- honour that rather than ignore a variable
@@ -218,23 +225,23 @@ def hand_only_base_rot() -> tuple[float, float, float, float]:
     if q[0] < 0:                                    # q and -q are one rotation
         q = -q
 
-    # At the reference angles the PALM frame must be the reference's frame. Note
-    # this compares R_palm_world, not R: the returned base rotation differs from
-    # the reference quaternion by F, because our palm hangs off link_7 while
-    # theirs IS the base link. Asserted here rather than in a test because it is
-    # the claim the whole orientation choice rests on, and it costs one
-    # comparison per process.
-    if (abs(HAND_ONLY_PALM_PITCH_DEG - 5.4) < 1e-9
-            and abs(HAND_ONLY_PALM_ROLL_DEG - 135.0) < 1e-9):
+    # The default pitch is the REFERENCE's own palm tilt, so re-derive it from
+    # the reference quaternion rather than trusting the literal. Its grasping
+    # normal is -x, NOT +x: its cube sits 0.055 m along -x, and reading +x as the
+    # grasping face is what rolled the hand over in 82a05e7. Asserted here rather
+    # than in a test because the literal is the only place the number appears, and
+    # it costs one comparison per process.
+    if abs(HAND_ONLY_PALM_PITCH_DEG - 45.253656) < 1e-6:
         from scipy.spatial.transform import Rotation as _Rot
 
         ref = np.asarray(REFERENCE_INHAND_BASE_ROT, float)
         ref = ref / np.linalg.norm(ref)
         ref_R = _Rot.from_quat([ref[1], ref[2], ref[3], ref[0]]).as_matrix()
-        err = float(np.abs(R_palm_world - ref_R).max())
-        assert err < 1e-6, (
-            "palm frame no longer matches the IsaacLab inhand reference: "
-            f"max component error {err:.2e}"
+        ref_tilt = _math.degrees(_math.acos(float(-ref_R[2, 0])))
+        assert abs(ref_tilt - HAND_ONLY_PALM_PITCH_DEG) < 1e-4, (
+            "the default pitch no longer equals the IsaacLab inhand reference's "
+            f"palm tilt: reference {ref_tilt:.6f} deg, ours "
+            f"{HAND_ONLY_PALM_PITCH_DEG:.6f} deg"
         )
     return tuple(float(v) for v in q)
 
