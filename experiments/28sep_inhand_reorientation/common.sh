@@ -48,6 +48,17 @@ export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-$REPO/debug_outputs/train_logs/28se
 mkdir -p "$SCALING_RUN_ROOT"
 # One object, so there is nothing to deal: every env gets the same 45 mm cube
 # (curated_pools.CUBE1) and design_cycle would be a no-op.
+# --- palm geometry, declared rather than inherited -----------------------------
+# The tilt is read from the ENVIRONMENT at import (robot_param_constants), so it
+# never reaches the saved hydra config. Declaring it here puts it in the job log
+# and, via the chain export, keeps it identical across links. Without that a
+# chained run silently changes geometry when the source default moves: job 572107
+# is link #5 of a chain started under a different tilt, and its own record cannot
+# say which one it ran.
+export HAND_ONLY_PALM_PITCH_DEG="${HAND_ONLY_PALM_PITCH_DEG:-5.0}"
+export HAND_ONLY_PALM_ROLL_DEG="${HAND_ONLY_PALM_ROLL_DEG:-0.0}"
+echo "[common] palm pitch ${HAND_ONLY_PALM_PITCH_DEG} deg, roll ${HAND_ONLY_PALM_ROLL_DEG} deg"
+
 # --- the success threshold, set in DEGREES ------------------------------------
 # The env compares a keypoint residual in METRES, and the conversion is not
 # obvious, so set the angle and let this do the arithmetic. For keypoints at
@@ -149,7 +160,7 @@ chain_next() {   # chain_next <path to this .sub>
     # Named explicitly rather than trusting --export=ALL, which has been observed
     # not to carry them: GPUS reverting to 2 on link #2 is what prompted this.
     local j; j=$(submit_once "${STUDY_ID}_c$(printf '%02d' "$next")" \
-        --export=ALL,SOURCE_RUN="$run_dir",ROBOT_SPEC="$ROBOT_SPEC",STUDY_ID="$STUDY_ID",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$next",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",MINI_EPOCHS="${MINI_EPOCHS:-2}",GPUS="$GPUS",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE",SUCCESS_TOLERANCE_DEG="$SUCCESS_TOLERANCE_DEG" \
+        --export=ALL,SOURCE_RUN="$run_dir",ROBOT_SPEC="$ROBOT_SPEC",STUDY_ID="$STUDY_ID",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$next",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",MINI_EPOCHS="${MINI_EPOCHS:-2}",GPUS="$GPUS",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE",SUCCESS_TOLERANCE_DEG="$SUCCESS_TOLERANCE_DEG",HAND_ONLY_PALM_PITCH_DEG="$HAND_ONLY_PALM_PITCH_DEG",HAND_ONLY_PALM_ROLL_DEG="$HAND_ONLY_PALM_ROLL_DEG" \
         "$self")
     echo "[$STUDY_ID] submitted link #$next as $j (from $run_dir)"; CHAINED=1
 }
