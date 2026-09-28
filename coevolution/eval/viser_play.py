@@ -215,6 +215,19 @@ def play(task: str, args, hydra_args=None) -> None:
         # as a zero action, which commands the midpoint of each joint's range --
         # equal to 0 only for a hand whose limits are symmetric.
         g_zero = server.gui.add_checkbox("hold joints at 0 (ignore policy)", False)
+    with server.gui.add_folder("goal probe"):
+        # Walk up to the success condition by hand. The angle is the quantity the
+        # metric ought to be a function of; the axis sliders are here because it is
+        # not -- the four reward keypoints are two antipodal pairs, all coplanar, so
+        # for a fixed angle the residual varies by sqrt(3) with the axis and the
+        # threshold runs 5.74 deg on the most sensitive axis to 9.94 deg on the
+        # least. Sweep "axis polar" at a fixed angle near 6 deg to watch near-goal
+        # flicker on and off without the angle changing at all.
+        g_manual = server.gui.add_checkbox("drive object by hand (freezes physics)", False)
+        g_kp = server.gui.add_checkbox("draw reward keypoints", True)
+        s_deg = server.gui.add_slider("angle from goal (deg)", 0.0, 180.0, 0.1, 10.0)
+        s_pol = server.gui.add_slider("axis polar (deg)", 0.0, 180.0, 1.0, 90.0)
+        s_azi = server.gui.add_slider("axis azimuth (deg)", -180.0, 180.0, 1.0, 0.0)
     with server.gui.add_folder("status"):
         md = server.gui.add_markdown("waiting for Kit...")
 
@@ -256,6 +269,22 @@ def play(task: str, args, hydra_args=None) -> None:
     def _(_):
         outbox.put({"cmd": "hold_zero", "value": bool(g_zero.value)})
 
+    def _push_manual(_=None, arm=False):
+        # TOUCHING A SLIDER ARMS THE PROBE. Requiring the checkbox first made every
+        # slider silently inert, which is indistinguishable from the probe being
+        # broken -- the worker logged "goal probe off" on every drag.
+        if arm and not g_manual.value:
+            g_manual.value = True        # fires this handler again, with arm False
+            return
+        outbox.put({"cmd": "manual", "value": bool(g_manual.value),
+                    "deg": float(s_deg.value), "polar": float(s_pol.value),
+                    "azim": float(s_azi.value)})
+
+    g_manual.on_update(lambda _=None: _push_manual())
+    for _w in (s_deg, s_pol, s_azi):
+        _w.on_update(lambda _=None: _push_manual(arm=True))
+
+    kp_handles: dict = {}
     viser_urdf, joint_names, shown = None, None, -1
     last_print = [0.0]
     prev_goal, prev_succ, prev_step = [None], [0], [None]
@@ -351,6 +380,7 @@ def play(task: str, args, hydra_args=None) -> None:
                 viser_urdf.update_cfg(dict(zip(joint_names, q)))
             obj.position = tuple(msg["object_pos"][i])
             obj.wxyz = tuple(msg["object_quat"][i])
+            _draw_keypoints(server, kp_handles, msg, i, bool(g_kp.value))
             goal.position = tuple(msg["goal_pos"][i])
             goal.wxyz = tuple(msg["goal_quat"][i])
             if msg.get("table_pos"):
@@ -402,13 +432,91 @@ def play(task: str, args, hydra_args=None) -> None:
             child.kill()
 
 
+# Object keypoints blue, goal keypoints green -- the same green as the goal ghost.
+KP_OBJ_RGB = (60, 130, 246)
+KP_GOAL_RGB = (64, 217, 102)
+
+
+def _draw_keypoints(server, handles: dict, msg: dict, i: int, show: bool) -> None:
+    """Draw the two keypoint sets the reward compares, and the residual between them.
+
+    Both sets share the object's centre, because that is what the metric does: it
+    refers each set to its own origin before subtracting, so only orientation is
+    scored. The line lengths therefore ARE the per-keypoint residual, and the
+    longest line is _keypoints_max_dist -- the number the tolerance is compared to.
+    """
+    import numpy as np
+
+    okp, gkp = msg.get("obj_kp"), msg.get("goal_kp")
+    if not show or not okp or not gkp:
+        for h in handles.values():
+            try:
+                h.visible = False
+            except Exception:
+                pass
+        return
+    o = np.asarray(okp[i], dtype=np.float32)
+    g = np.asarray(gkp[i], dtype=np.float32)
+    n = len(o)
+    want = {
+        "obj": (o, np.tile(np.array(KP_OBJ_RGB, dtype=np.uint8), (n, 1))),
+        "goal": (g, np.tile(np.array(KP_GOAL_RGB, dtype=np.uint8), (n, 1))),
+    }
+    for key, (pts, cols) in want.items():
+        h = handles.get(key)
+        if h is None:
+            handles[key] = server.scene.add_point_cloud(
+                f"/keypoints_{key}", points=pts, colors=cols, point_size=0.006)
+        else:
+            h.points = pts
+            h.visible = True
+    # One segment per keypoint pair. add_line_segments is not in every viser
+    # version, so fall back to leaving the clouds alone rather than dying here.
+    seg = np.stack([o, g], axis=1)
+    h = handles.get("res")
+    try:
+        if h is None:
+            handles["res"] = server.scene.add_line_segments(
+                "/keypoints_residual", points=seg,
+                colors=np.tile(np.array((240, 90, 90), dtype=np.uint8), (n, 2, 1)),
+                line_width=3.0)
+        else:
+            h.points = seg
+            h.visible = True
+    except Exception:
+        handles["res"] = None
+
+
 def _status(stats: dict, i: int) -> str:
     def v(key, fmt="{:.4f}"):
         s = stats.get(key)
         if not s:
             return "-"
         return fmt.format(s[i] if len(s) > i else s[0])
-    return (f"**tolerance** {v('_current_success_tolerance')}  \n"
+    # mm and degrees, because the raw metres are hard to read against a 5.85 mm
+    # threshold, and degrees is the quantity anyone actually reasons about. The
+    # inverse of residual = 2*r*sin(theta/2) on the most sensitive axis, so it is a
+    # LOWER bound on the true angle: a residual can also come from a bigger rotation
+    # about a less sensitive axis.
+    def ang(key):
+        s = stats.get(key)
+        if not s:
+            return "-"
+        d = s[i] if len(s) > i else s[0]
+        x = d / (2.0 * KP_RADIUS_M)
+        return "{:.2f} deg".format(math.degrees(2.0 * math.asin(min(max(x, -1.0), 1.0))))
+
+    def mm(key):
+        s = stats.get(key)
+        if not s:
+            return "-"
+        return "{:.2f} mm".format(1000.0 * (s[i] if len(s) > i else s[0]))
+
+    return (f"**threshold** {mm('_tol_effective')} = {ang('_tol_effective')}  \n"
+            f"**residual** {mm('_keypoints_max_dist')} = {ang('_keypoints_max_dist')} "
+            f"(>= this angle)  \n"
+            f"**is_success** {v('_is_success', '{:.0f}')}  \n"
+            f"**raw tolerance** {v('_current_success_tolerance')} (x keypoint_scale)  \n"
             f"**keypoint dist** {v('_keypoints_max_dist')} m  \n"
             f"**best so far** {v('_closest_keypoint_max_dist')} m  \n"
             f"**near goal** {v('_near_goal', '{:.0f}')}  |  "

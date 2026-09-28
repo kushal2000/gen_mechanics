@@ -182,6 +182,40 @@ def main() -> None:
                       f"cannot reach 0 and will sit at their nearest limit", flush=True)
 
             running, pending, det, hold_zero = True, 0, False, False
+            # GOAL PROBE. Place the object at a chosen angle about a chosen axis
+            # AWAY FROM THE GOAL, with physics frozen, so the success condition can
+            # be walked up to by hand. The angle is what the metric should be a
+            # function of; the axis is there because it is not -- the four reward
+            # keypoints are two antipodal pairs and coplanar, so the residual for a
+            # given angle varies by sqrt(3) with the axis, and the threshold runs
+            # 5.7 deg on the most sensitive axis to 9.9 deg on the least.
+            manual = None            # None = the policy drives; else (deg, polar, azim)
+            from isaacsimenvs.pose_reaching_6d.obs_utils.observations import (
+                compute_intermediate_values,
+            )
+            from isaaclab.utils.math import (
+                quat_apply, quat_from_angle_axis, quat_mul,
+            )
+
+            def apply_manual(deg, polar, azim):
+                import math as _m
+
+                th, ph = _m.radians(polar), _m.radians(azim)
+                axis = torch.tensor(
+                    [_m.sin(th) * _m.cos(ph), _m.sin(th) * _m.sin(ph), _m.cos(th)],
+                    device=inner.device).expand(inner.num_envs, 3).contiguous()
+                ang = torch.full((inner.num_envs,), _m.radians(deg), device=inner.device)
+                # Pre-multiply: the delta is applied in the WORLD frame, so the
+                # slider's axis is the axis you see in the viewer.
+                q = quat_mul(quat_from_angle_axis(ang, axis),
+                             inner.goal_viz.data.root_quat_w)
+                pose = torch.cat([inner.object.data.root_pos_w, q], dim=-1)
+                inner.object.write_root_pose_to_sim(pose)
+                inner.object.write_root_velocity_to_sim(
+                    torch.zeros_like(inner.object.data.root_vel_w))
+                # Refresh the residual, _near_goal and _is_success against the pose
+                # just written, without stepping physics.
+                compute_intermediate_values(inner)
             last_frame = [0.0]
             trace = None
             if args.trace:
@@ -209,6 +243,18 @@ def main() -> None:
                         running, pending = False, pending + 1
                     elif c == "deterministic":
                         det = bool(m.get("value"))
+                    elif c == "manual":
+                        if m.get("value"):
+                            manual = (float(m.get("deg", 0.0)),
+                                      float(m.get("polar", 90.0)),
+                                      float(m.get("azim", 0.0)))
+                            running = False
+                            send(kind="running", value=False)
+                            apply_manual(*manual)
+                        else:
+                            manual = None
+                            print("[worker] goal probe off; policy back in control",
+                                  flush=True)
                     elif c == "hold_zero":
                         hold_zero = bool(m.get("value"))
                         # Clearing the hook hands control back to the policy;
@@ -225,7 +271,12 @@ def main() -> None:
                         reset_goal_trackers(
                             inner, torch.arange(inner.num_envs, device=inner.device))
 
-                if running or pending:
+                if manual is not None:
+                    # Physics frozen: re-assert the pose every iteration so nothing
+                    # (gravity, a contact, a residual velocity) drifts it while the
+                    # sliders are being read.
+                    apply_manual(*manual)
+                elif running or pending:
                     with torch.no_grad():
                         act = player.get_normalized_action(obs["policy"], deterministic_actions=det)
                     obs, _, _, _, _ = env.step(act)
@@ -263,7 +314,27 @@ def main() -> None:
                 last_frame[0] = now
 
                 origins = inner.scene.env_origins
+                # THE TWO KEYPOINT SETS THE METRIC COMPARES, so the residual can be
+                # seen rather than read off a number. Under orientation_only_goal the
+                # comparison is between sets CENTRED on their own origins
+                # (observations.py:250), so the goal set is sent translated onto the
+                # object's centre: the distance between paired points is then exactly
+                # what _keypoints_max_dist maxes over. Drawing the goal keypoints at
+                # the ghost instead would show a position error the reward ignores.
+                kp_off = (inner._keypoint_offsets_fixed
+                          if inner.cfg.reward.fixed_size_keypoint_reward
+                          else inner._keypoint_offsets)
+                _op, _oq = inner.object.data.root_pos_w, inner.object.data.root_quat_w
+                _gq = inner.goal_viz.data.root_quat_w
+                _n, _k = _op.shape[0], kp_off.shape[-2]
+                _off = kp_off.expand(_n, _k, 3).reshape(-1, 3)
+                _obj_kp = _op.unsqueeze(1) + quat_apply(
+                    _oq.unsqueeze(1).expand(_n, _k, 4).reshape(-1, 4), _off).reshape(_n, _k, 3)
+                _goal_kp = _op.unsqueeze(1) + quat_apply(
+                    _gq.unsqueeze(1).expand(_n, _k, 4).reshape(-1, 4), _off).reshape(_n, _k, 3)
                 send(kind="frame",
+                     obj_kp=(_obj_kp - origins.unsqueeze(1)).cpu().numpy().tolist(),
+                     goal_kp=(_goal_kp - origins.unsqueeze(1)).cpu().numpy().tolist(),
                      # CANONICAL order. robot.data.joint_pos is in Isaac Lab's
                      # parser order, which INTERLEAVES the hand joints relative
                      # to canonical (SHARPA lands as 7, 12, 17, 22, 27, 8, ...).
@@ -315,9 +386,20 @@ def _stats(inner) -> dict:
             return [float(x) for x in (v if hasattr(v, "__len__") else [v])]
         except Exception:
             return None
-    return {k: g(k) for k in ("_current_success_tolerance", "_keypoints_max_dist",
-                              "_closest_keypoint_max_dist", "_near_goal", "_successes",
-                              "_lifted_object", "episode_length_buf")}
+    out = {k: g(k) for k in ("_current_success_tolerance", "_keypoints_max_dist",
+                             "_closest_keypoint_max_dist", "_near_goal", "_successes",
+                             "_lifted_object", "episode_length_buf", "_is_success")}
+    # The tolerance the comparison ACTUALLY uses. _current_success_tolerance is
+    # not it: observations.py:269 multiplies by keypoint_scale before comparing,
+    # so the raw number in the config is 1.5x smaller than the threshold in the
+    # same units as _keypoints_max_dist. Showing both stops that being re-derived
+    # by hand every time someone reads the panel.
+    try:
+        out["_tol_effective"] = [float(inner._current_success_tolerance
+                                       * inner.cfg.reward.keypoint_scale)]
+    except Exception:
+        pass
+    return out
 
 
 if __name__ == "__main__":
