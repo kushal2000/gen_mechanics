@@ -19,7 +19,26 @@ export D_MODEL="${D_MODEL:-64}" TRANSFORMER_LAYERS="${TRANSFORMER_LAYERS:-4}"
 # because the link chaining's --export does not carry it, so a second link
 # would otherwise revert to two.
 export GPUS="${GPUS:-1}"
-export NUM_ENVS_PER_GPU="${NUM_ENVS_PER_GPU:-24576}"
+# 12288, NOT 24576. Measured: 24576 envs at minibatch 114688 dies with
+# torch.OutOfMemoryError on the transformer update -- empty_strided_cuda
+# ((114688, 31, 128), fp16) = 868 MiB against 47.28 of 47.38 GiB already in use,
+# with 78 MiB unallocated, so it is real pressure and not fragmentation.
+#
+# The binding cost is the UPDATE, not the simulation: 31 tokens x d_model x the
+# minibatch. That is why dropping the arm's 7 joints and 8 links per env did not
+# buy the env count it looked like it should -- the saving is in the rollout
+# buffer, not in the activations. 12288 with this minibatch is the configuration
+# 15 completed runs used on 24 Sep.
+#
+# AUG_ROLLOUT = envs * 16 * 7/6 = 229376, and 114688 divides it exactly twice, so
+# no minibatch is left wider than the others.
+#
+# SAPG's block size follows automatically: run.sh:39 sets
+# EXPL_BLOCK_SIZE = NUM_ENVS_PER_GPU / 6, so 12288 gives 2048 and the six
+# exploration blocks are preserved -- the same six the 24 Sep runs used. Nothing
+# to set by hand, but the constraint num_envs % expl_coef_block_size == 0 is real,
+# so an env count that is not a multiple of 6 would break it silently.
+export NUM_ENVS_PER_GPU="${NUM_ENVS_PER_GPU:-12288}"
 export GLOBAL_MINIBATCH="${GLOBAL_MINIBATCH:-114688}"
 # Declared, not inherited. run_rank.sh:137 also defaults to 2, so this changes
 # nothing today -- but the value would then be right only because two defaults in
