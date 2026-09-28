@@ -381,9 +381,13 @@
         "V3s": 15
       },
       "recommendation": "pilot arms: G_V1 (baseline) vs G_V3S (best); G_V2S optional third arm"
+    },
+    "pilot1": {
+      "status": "done - weak-controller baseline, inconclusive for grammar comparison (I41)",
+      "report": "project-notes/grammar/experiments/pilot1/README.md"
     }
   },
-  "gpu_hours_used": 1.37,
+  "gpu_hours_used": 13.06,
   "cluster_jobs": [
     {
       "id": 2364675,
