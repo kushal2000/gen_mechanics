@@ -27,6 +27,21 @@ from isaacsimenvs.inhand_reorient.scene import population_file as pf
 # --------------------------------------------------------------------------
 
 
+def test_repo_root_points_at_the_actual_gen_mechanics_checkout():
+    """Regression test for a real bug found during the tiny end-to-end
+    verification run: REPO_ROOT was off by one parents[] level (pointed
+    one directory ABOVE the gen_mechanics checkout), so every generation's
+    `timeout ... <train_python> coevolution/train.py` command silently
+    failed with exit 127 ("no such file or directory") for BOTH the
+    python interpreter and the script path, and the driver degraded
+    (correctly, but uselessly) to an all-zero-fitness archive every
+    generation without ever raising."""
+    assert drv.REPO_ROOT.name == "gen_mechanics"
+    assert (drv.REPO_ROOT / "coevolution" / "train.py").is_file()
+    assert drv.TRAIN_PY == drv.REPO_ROOT / "coevolution" / "train.py"
+    assert drv.TRAIN_PY.is_file()
+
+
 def test_resolve_variant_finds_named_distributions():
     dist = drv.resolve_variant("G_SERIAL")
     assert dist.palm_body_count_range == (0, 0)

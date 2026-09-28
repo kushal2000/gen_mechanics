@@ -58,7 +58,7 @@ from ..scene import grammar_envelope as ge
 from ..scene import population_file as pf
 from . import archive as arch
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 TRAIN_PY = REPO_ROOT / "coevolution" / "train.py"
 TASK_ID = "GenMech-InHandReorient-Direct-v0"
 AGENT_ENTRY_POINT = "rl_games_sapg_cfg_entry_point"
