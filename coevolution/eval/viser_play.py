@@ -25,6 +25,7 @@ reference warns about.
 from __future__ import annotations
 
 import argparse
+import math
 import pathlib
 import secrets
 import subprocess
@@ -36,6 +37,9 @@ from multiprocessing.connection import Listener
 _WORKER = pathlib.Path(__file__).resolve().parent / "_play_worker.py"
 # Green, translucent: the goal pose drawn as a ghost of the object itself.
 GOAL_GHOST_RGBA = (0.25, 0.85, 0.40, 0.35)
+# Keypoint radius for a 45 mm cube at keypoint_scale 1.5: the residual is a
+# chordal distance, so mm -> degrees is 2*asin(d / 2r).
+KP_RADIUS_M = 0.5 * 1.5 * 0.045 * (3 ** 0.5)
 
 
 def build_parser(description: str) -> argparse.ArgumentParser:
@@ -54,6 +58,14 @@ def build_parser(description: str) -> argparse.ArgumentParser:
     p.add_argument("--include", default="", help="extra population .json to append, e.g. gen-SHARPA")
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--tolerance", type=float, default=0.0, help="pin the success tolerance; 0 = the run's own")
+    p.add_argument("--trace", default="", help="write a per-step trace of env 0 here")
+    p.add_argument("--success-steps", type=int, default=0,
+                   help="how many near-goal steps count as a goal; 0 = the run's own (10). "
+                        "Set 1 to score a goal the instant the residual crosses the "
+                        "threshold, which is what you want when checking whether "
+                        "near-misses are real rather than a hold-duration failure. "
+                        "It also changes the reward: reach_goal_bonus is amortised as "
+                        "bonus/success_steps per near-goal step.")
     p.add_argument("--expl-coef", type=float, default=0.0,
                    help="SAPG exploration coefficient. Training spans 50->0 across env blocks; "
                         "0 is the greedy end and the right one for watching a policy.")
@@ -180,6 +192,7 @@ def play(task: str, args, hydra_args=None) -> None:
         [sys.executable, str(_WORKER), "--task", task, "--checkpoint", args.checkpoint,
          "--run-dir", ("" if not args.checkpoint else str(run_dir)), "--population", pop_ref, "--num-envs", str(len(hands)),
          "--expl-coef", str(args.expl_coef), "--tolerance", str(args.tolerance),
+         "--success-steps", str(args.success_steps), "--trace", args.trace,
          "--device", args.device, "--host", host, "--port", str(port),
          "--authkey", authkey.hex()] + list(hydra_args or []),
         env={**__import__("os").environ, "OMNI_KIT_ACCEPT_EULA": "YES"})
@@ -209,16 +222,18 @@ def play(task: str, args, hydra_args=None) -> None:
     import queue
 
     outbox: "queue.Queue[dict]" = queue.Queue()
-    running = {"v": True}
 
+    # The CHILD owns the running flag. Mirroring it here and sending
+    # pause/resume from the parent's copy meant two owners of one piece of
+    # state: b_step flipped the parent's without telling the child, and any
+    # double-fired handler toggled twice, so every other click became a no-op --
+    # "pause works, resume does not".
     @b_pause.on_click
     def _(_):
-        running["v"] = not running["v"]
-        outbox.put({"cmd": "resume" if running["v"] else "pause"})
+        outbox.put({"cmd": "toggle"})
 
     @b_step.on_click
     def _(_):
-        running["v"] = False
         outbox.put({"cmd": "step"})
 
     @b_reset.on_click
@@ -234,6 +249,8 @@ def play(task: str, args, hydra_args=None) -> None:
         outbox.put({"cmd": "deterministic", "value": bool(g_det.value)})
 
     viser_urdf, joint_names, shown = None, None, -1
+    last_print = [0.0]
+    prev_goal, prev_succ, prev_step = [None], [0], [None]
     object_urdfs: list = []
     # The robot base is not the env origin -- spec.base_pos puts it beside the
     # table -- so mount the arm under a frame the child positions.
@@ -262,24 +279,42 @@ def play(task: str, args, hydra_args=None) -> None:
                     break
             if not conn.poll(timeout=0.05):
                 continue
-            msg = conn.recv()
-            kind = msg.get("kind")
-            if kind == "status":
-                md.content = msg["text"]
+            # Drain everything pending: handle every non-frame message IN ORDER,
+            # and keep only the LAST frame. The child outruns viser by orders of
+            # magnitude, so rendering each frame means showing a backlog minutes
+            # old. An earlier version overwrote one `msg` slot instead, which
+            # silently ATE the one-shot `ready` handshake whenever frames
+            # arrived in the same batch -- joint_names stayed None and the robot
+            # was never drawn at all.
+            batch = [conn.recv()]
+            while conn.poll():
+                batch.append(conn.recv())
+            newest_frame = None
+            for m in batch:
+                if m.get("kind") == "frame":
+                    newest_frame = m
+                    continue
+                kind = m.get("kind")
+                if kind == "status":
+                    md.content = m["text"]
+                elif kind == "running":
+                    try:
+                        b_pause.label = "resume" if not m["value"] else "pause"
+                    except Exception:
+                        pass                      # older viser: label is read-only
+                elif kind == "ready":
+                    joint_names = m["joint_names"]
+                    object_urdfs = m.get("object_urdfs") or []
+                    robot_root.position = tuple(m.get("base_pos") or (0.0, 0.0, 0.0))
+                    robot_root.wxyz = tuple(m.get("base_rot") or (1.0, 0.0, 0.0, 0.0))
+                    md.content = "running"
+                elif kind == "error":
+                    md.content = "**worker failed**\n\n```\n" + m["text"][-1500:] + "\n```"
+                    print(m["text"], flush=True)
+                    raise SystemExit(1)
+            if newest_frame is None:
                 continue
-            if kind == "error":
-                md.content = "**worker failed**\n\n```\n" + msg["text"][-1500:] + "\n```"
-                print(msg["text"], flush=True)
-                break
-            if kind == "ready":
-                joint_names = msg["joint_names"]
-                object_urdfs = msg.get("object_urdfs") or []
-                robot_root.position = tuple(msg.get("base_pos") or (0.0, 0.0, 0.0))
-                robot_root.wxyz = tuple(msg.get("base_rot") or (1.0, 0.0, 0.0, 0.0))
-                md.content = "running"
-                continue
-            if kind != "frame":
-                continue
+            msg = newest_frame
 
             i = list(picker.options).index(picker.value)
             if i != shown:
@@ -315,6 +350,38 @@ def play(task: str, args, hydra_args=None) -> None:
                 table.wxyz = tuple(msg["table_quat"][i])
                 table.visible = True
             md.content = _status(msg["stats"], i)
+
+            # Also to stdout, throttled: the panel is fine for watching, but a
+            # printed series is what you scroll back through to see whether the
+            # residual is actually falling.
+            now = time.time()
+            if now - last_print[0] >= 0.5:
+                st = msg["stats"]
+                def _v(k):
+                    v = st.get(k)
+                    return None if not v else (v[i] if len(v) > i else v[0])
+                dist, tol = _v("_keypoints_max_dist"), _v("_current_success_tolerance")
+                best, succ = _v("_closest_keypoint_max_dist"), _v("_successes")
+                step = _v("episode_length_buf")
+                # Flag a goal change and an episode reset, so the print shows
+                # WHEN the env resampled rather than only the residual. A goal
+                # that changes without a success, or a step counter that rewinds
+                # without either, is the signature of a reset bug.
+                gq = tuple(round(float(x), 5) for x in msg["goal_quat"][i])
+                sc = int(_v("_successes") or 0)
+                tag = ""
+                if prev_goal[0] is not None and gq != prev_goal[0]:
+                    tag = "  <== GOAL RESAMPLED" + ("" if sc != prev_succ[0] else " (no success!)")
+                if prev_step[0] is not None and (step or 0) < prev_step[0]:
+                    tag += "  <== EPISODE RESET"
+                prev_goal[0], prev_succ[0], prev_step[0] = gq, sc, (step or 0)
+                if dist is not None:
+                    thr = (tol or 0.0) * 1.5          # tolerance * keypoint_scale
+                    ang = 2 * math.degrees(math.asin(min(dist / (2 * KP_RADIUS_M), 1.0)))
+                    print(f"[dist] step {int(step or 0):4d}  rot residual {1000*dist:7.2f} mm "
+                          f"({ang:5.1f} deg)  best {1000*(best or 0):7.2f} mm  "
+                          f"threshold {1000*thr:5.2f} mm  successes {int(succ or 0)}{tag}", flush=True)
+                last_print[0] = now
     except (EOFError, ConnectionResetError):
         print("[play] worker closed the connection", flush=True)
     finally:

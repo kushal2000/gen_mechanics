@@ -164,6 +164,10 @@ reset:
   # Also latches _lifted_object, without which keypoint_reward -- gated on it --
   # would be identically zero for the whole run.
   object_in_hand: true
+  # On the FINGERTIPS, not the palm: they are the grippy surface
+  # (mu 1.25 with the cube against the palm's 0.75), so the fingers
+  # hold the object rather than the slab.
+  in_hand_placement: fingertips
   in_hand_position_noise: 0.005
   reset_position_noise_x: 0.1
   reset_position_noise_y: 0.1
@@ -223,7 +227,19 @@ termination:
   success_tolerance: 0.0039           # fixed; 0.1 rad on a 45 mm cube
   target_success_tolerance: 0.0039    # == success_tolerance: curriculum inert
   eval_success_tolerance: null
-  success_steps: 10
+  # 1, not the transport task's 10. A goal scores the instant the residual
+  # crosses the threshold rather than needing it held for ten consecutive
+  # steps. Measured: the policy reaches the threshold only in brief excursions
+  # (per-step trace, min residual 15.9 mm against a 5.85 mm threshold, with one
+  # earlier touch at 5.30 mm that scored nothing), so requiring a ten-step hold
+  # asks for a stability it has no grasp to provide.
+  #
+  # Two consequences worth knowing: reach_goal_bonus is amortised as
+  # bonus/success_steps per near-goal step, so at 1 it pays the full 1000 in
+  # one step instead of 100 over ten; and goals resample on every crossing,
+  # which resets _closest_keypoint_max_dist and so keeps the progress reward
+  # live instead of exhausting it after a near miss.
+  success_steps: 1
   max_consecutive_successes: 50
   force_consecutive_near_goal_steps: false
   tolerance_curriculum_increment: 0.9

@@ -19,8 +19,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 import traceback
 from multiprocessing.connection import Client
+
+FRAME_PERIOD_S = 1.0 / 30.0      # viser cannot use more than this
 
 
 def _args():
@@ -32,6 +35,8 @@ def _args():
     p.add_argument("--num-envs", type=int, default=1)
     p.add_argument("--expl-coef", type=float, default=0.0)
     p.add_argument("--tolerance", type=float, default=0.0)
+    p.add_argument("--success-steps", type=int, default=0)
+    p.add_argument("--trace", default="", help="per-step CSV-ish trace for env 0")
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--host", required=True)
     p.add_argument("--port", type=int, required=True)
@@ -93,6 +98,11 @@ def main() -> None:
             env_cfg.assets.robot_spec = args.population
             if args.tolerance > 0:
                 env_cfg.termination.eval_success_tolerance = args.tolerance
+            if args.success_steps > 0:
+                # 1 scores a goal the instant the residual crosses the
+                # threshold, instead of requiring it held for 10 steps.
+                env_cfg.termination.success_steps = args.success_steps
+                print(f"[worker] success_steps -> {args.success_steps}", flush=True)
 
             env = gym.make(args.task, cfg=env_cfg)
             inner = env.unwrapped
@@ -150,6 +160,12 @@ def main() -> None:
                  base_rot=[float(v) for v in spec.base_rot])
 
             running, pending, det = True, 0, False
+            last_frame = [0.0]
+            trace = None
+            if args.trace:
+                trace = open(args.trace, "w", buffering=1)
+                trace.write("# step  keypoint_dist  tol  near is  succ   closest   goal_quat(wxyz)\n")
+                print(f"[worker] per-step trace -> {args.trace}", flush=True)
             while app.is_running():
                 while conn.poll():
                     m = conn.recv()
@@ -157,10 +173,16 @@ def main() -> None:
                     if c == "quit":
                         env.close()
                         return
-                    if c == "pause":
+                    if c == "toggle":
+                        running = not running
+                        send(kind="running", value=bool(running))
+                        print(f"[worker] running -> {running}", flush=True)
+                    elif c == "pause":
                         running = False
+                        send(kind="running", value=False)
                     elif c == "resume":
                         running = True
+                        send(kind="running", value=True)
                     elif c == "step":
                         running, pending = False, pending + 1
                     elif c == "deterministic":
@@ -180,6 +202,37 @@ def main() -> None:
                         act = player.get_normalized_action(obs["policy"], deterministic_actions=det)
                     obs, _, _, _, _ = env.step(act)
                     pending = max(0, pending - 1)
+
+                # Per-STEP trace for env 0, unthrottled, to a file. The viser
+                # print samples twice a second, which cannot distinguish "the
+                # goal resampled without a success" from "a success happened
+                # between two samples and zeroed episode_length_buf". This logs
+                # every step, so a resample either lines up with is_success or
+                # it does not.
+                if trace is not None:
+                    gq = inner.goal_viz.data.root_quat_w[0]
+                    row = (f"{int(inner.episode_length_buf[0]):6d} "
+                           f"{float(inner._keypoints_max_dist[0]):9.5f} "
+                           f"{float(inner._current_success_tolerance):8.5f} "
+                           f"{int(bool(inner._near_goal[0])):3d} "
+                           f"{int(bool(inner._is_success[0])):3d} "
+                           f"{int(inner._successes[0]):5d} "
+                           f"{float(inner._closest_keypoint_max_dist[0]):9.5f} "
+                           f"{' '.join(f'{float(v):+.4f}' for v in gq)}\n")
+                    trace.write(row)
+                    if int(inner.episode_length_buf[0]) % 200 == 0:
+                        trace.flush()
+
+                # Cap the frame rate. Uncapped, the child outruns viser by
+                # orders of magnitude and the connection becomes a growing
+                # backlog -- commands still arrive on time but the VIEW lags
+                # minutes behind, so pause looks broken.
+                now = time.time()
+                if now - last_frame[0] < FRAME_PERIOD_S:
+                    if not running and not pending:
+                        time.sleep(0.005)      # paused: yield instead of spinning
+                    continue
+                last_frame[0] = now
 
                 origins = inner.scene.env_origins
                 send(kind="frame",

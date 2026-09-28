@@ -1,6 +1,6 @@
 """Can these hands actually touch the cube?
 
-In-hand reorientation puts a cube on a fixed palm-up palm. A design whose
+In-hand reorientation puts a cube at a fixed palm. A design whose
 fingers never rise above the palm surface cannot touch it at all, and one that
 rises but not to the cube's equator can only push it around rather than turn
 it. Those designs all score the same, so SELECTION HAS NOTHING TO RANK THEM BY
@@ -17,6 +17,10 @@ Geometry: the palm frame has +x = GRASP_DIR = the slab normal (thickness), and
 the slab is centred at design_space.palm_center, so its outer face -- the
 surface the cube rests on -- is at x = thickness/2. Reach is measured from
 there. Touching a cube's equator needs edge/2 of clearance.
+
+All of this is in the PALM frame, so it is independent of how the palm is
+oriented in world -- the pitch/roll of the mount changes what gravity does, not
+what the fingers can reach.
 
     .venv_isaacsim/bin/python experiments/24sep_inhand_reorientation/analysis/reach_check.py \
         handonly:gen_s0_n1024 --cube 0.045 --samples 600

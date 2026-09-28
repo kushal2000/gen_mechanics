@@ -88,36 +88,87 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 # computed lazily because build imports this module. The palm frame is
 # (x = thickness = GRASP_DIR, y = width, z = wrist -> fingertip length), and
 # R_base = R_palm_world @ flange_to_palm().T.
-# How far the palm normal is tilted off vertical, in degrees.
+# --- orientation: two angles, and the reference is exactly one point in them ---
+# The palm frame is (x = thickness = GRASP_DIR, y = width, z = wrist -> fingertip),
+# so placing it takes two numbers, not one:
 #
-# 0 would be palm-up: the slab horizontal, gravity pressing the object straight
-# onto it. That is a PLATE, not a hand -- a cube on a level plate stays put with
-# no skill at all, which measurably happened (run 267504: done_fall 0.0003, the
-# object was never lost because nothing had to hold it), and it hands the task a
-# degenerate solution of doing nothing.
+#   PITCH  how far the finger axis dips below horizontal.
+#   ROLL   how far the palm normal is rotated about the finger axis, away from
+#          straight up. ROLL = 0 is palm-up, a plate with the object resting on
+#          it. ROLL = 90 stands the palm vertical. Past 90 the palm faces
+#          downward and there is nothing underneath the object at all.
 #
-# 45 was tried and overshot: tan 45 = 1 equals the friction coefficient, so the
-# cube slid off in about 24 steps (0.4 s) EVERY episode -- done_fall 1.0000,
-# done_timeout 0.0000, 4.18M episodes in 8050 steps. Too little time to learn
-# anything. The static friction-cone argument ignored that the cube is dropped
-# onto the face and is already sliding before static friction applies.
+# The IsaacLab inhand reference is EXACTLY (pitch 5.4, roll 135) in these two --
+# not approximately. Rebuilding its frame from those two angles reproduces its
+# published quaternion to 8e-8, and hand_only_base_rot asserts it below. That is
+# also why matching it needed a second parameter at all: the single tilt this
+# replaced could only ever express roll = 0, and the reference's palm faces
+# 44.7 degrees BELOW horizontal with its fingers 5.4 degrees below.
 #
-# 50 degrees. The friction ANGLE at mu = 1.0 is atan(1) = 45 exactly, so at 45
-# the slab still holds a settled cube -- confirmed in the viewer, it did not
-# slide. The tilt has to EXCEED the friction angle for gravity to win:
-# tan 50 = 1.19 against 1.0 gives about 19% surplus, enough to start the cube
-# moving without flinging it.
+# The tilt sweep that came first is what established there is no good answer at
+# roll = 0 (all fixed SHARPA, keypoint reward):
 #
-# The earlier 45-degree failure was the AXIS, not the angle: the object slid
-# off the side, past the fingers. With the slope running at the fingertips it
-# now slides into them, which is the task. Note the reference has NO tilt parameter at all:
-# its object sits 19.9 cm out at the fingertips with no supporting surface, and
-# its two non-reach axes land at 45.3 degrees only incidentally. Tilting a plate
-# is not the same lever.
-# Overridable from the environment so two tilts can be compared side by side,
-# and so a training job can set it without editing the source -- this is a
-# parameter we are actively sweeping, not a settled constant.
-HAND_ONLY_PALM_TILT_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_TILT_DEG", "50.0"))
+#    0  a level plate holds the cube for free -- the policy froze, done_fall
+#       0.0003, every episode ran out the clock (run 267504).
+#   25  tan 25 = 0.47 against friction 1.0: a settled cube stays put, but it can
+#       still be knocked loose, so the slope is not free grip.
+#   45  tan 45 = 1.0 equals the friction coefficient -- done_fall 1.0000,
+#       ~24-step episodes, too little time to learn anything.
+#   50  past the friction angle, so the cube slides ALWAYS. Over 14400 epochs
+#       done_fall went 0.9981 -> 0.9963 and successes stayed at 0.0001
+#       (run 316257). Unlearnable, not hard.
+#
+# The lesson is that tilting a plate was the wrong lever: at low angles the
+# SURFACE does the holding, at high angles gravity wins outright, and there is no
+# window in between where the FINGERS are what holds the object. Rolling the palm
+# past vertical removes the surface instead of fighting it, which is what the
+# reference actually does.
+#
+# IMPORTANT CAVEAT on the four runs above: all of them predate
+# reset.in_hand_placement = "fingertips". They spawned the cube on the palm SLAB,
+# which is the only reason the tilt angle mattered so much. Spawning at the
+# fingertip centroid already put the cube past the slab's edge, so by the time
+# this roll landed there was no supporting surface left to remove.
+#
+# Which is why matching the reference turned out to be nearly free. Null policy
+# (zero actions, fixed SHARPA, 256 envs, median episode length to the 0.3 m drop):
+#
+#   pitch 10,  roll 0    20 steps (0.33 s)   the orientation this replaced
+#   pitch 5.4, roll 90   16 steps (0.27 s)   palm vertical
+#   pitch 5.4, roll 135  14 steps (0.23 s)   the reference
+#
+# 20 -> 14 steps, not 600 -> 14: an open hand was already dropping the cube
+# immediately at the old orientation, and the roll only changes which way gravity
+# pulls it out. Whether it stays in hand is decided entirely by finger contact
+# from the start pose onward, at every one of these angles.
+#
+# Both overridable from the environment so two orientations can be compared
+# side by side without editing source.
+HAND_ONLY_PALM_PITCH_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_PITCH_DEG", "5.4"))
+HAND_ONLY_PALM_ROLL_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_ROLL_DEG", "135.0"))
+
+# The single-angle form this replaced. Runs before 2026-09-28 set it, and it meant
+# exactly (pitch = tilt, roll = 0) -- honour that rather than ignore a variable
+# someone has set and silently reorient their hand.
+_LEGACY_TILT = _os.environ.get("HAND_ONLY_PALM_TILT_DEG")
+if _LEGACY_TILT is not None:
+    if "HAND_ONLY_PALM_PITCH_DEG" in _os.environ or "HAND_ONLY_PALM_ROLL_DEG" in _os.environ:
+        raise RuntimeError(
+            "HAND_ONLY_PALM_TILT_DEG is the superseded single-angle form; set "
+            "HAND_ONLY_PALM_PITCH_DEG / HAND_ONLY_PALM_ROLL_DEG instead, not both"
+        )
+    HAND_ONLY_PALM_PITCH_DEG = float(_LEGACY_TILT)
+    HAND_ONLY_PALM_ROLL_DEG = 0.0
+
+# The reference's own published base rotation, quoted only so the assertion in
+# hand_only_base_rot has something to check against: IsaacLab
+# manager_based/manipulation/inhand, allegro_hand init_state.rot, (w, x, y, z).
+REFERENCE_INHAND_BASE_ROT: tuple[float, float, float, float] = (
+    0.257551,
+    0.283045,
+    0.683330,
+    -0.621782,
+)
 
 
 @_lru_cache(maxsize=1)
@@ -129,38 +180,62 @@ def hand_only_base_rot() -> tuple[float, float, float, float]:
     from hand_sampler import build, design_space
 
     F = build.flange_to_palm()[:3, :3]              # palm axes in link_7's frame
-    t = _math.radians(HAND_ONLY_PALM_TILT_DEG)
-    # WHICH AXIS THE TILT IS ABOUT DECIDES WHERE THE OBJECT SLIDES, and it is
-    # the whole point. Tilting about the palm's +z (finger) axis makes the
-    # downhill direction the palm's WIDTH: the object slides off the SIDE, past
-    # the fingers, which can do nothing about it. That was tried at 45 degrees
-    # and gave done_fall 1.0000 with ~24-step episodes -- not a hard task, an
-    # unplayable one.
-    #
-    # Tilt about the palm's WIDTH (+y) instead, so the slope runs along the
-    # finger direction and the object slides TOWARD THE FINGERTIPS, where the
-    # fingers are in the way and have to hold it. Verified below: the in-plane
-    # component of gravity is exactly +z_w.
-    x_w = np.array([0.0, -_math.sin(t), _math.cos(t)])      # normal, t off vertical
-    z_w = np.array([0.0, -_math.cos(t), -_math.sin(t)])     # fingertips, t below horizontal
+    p = _math.radians(HAND_ONLY_PALM_PITCH_DEG)
+    r = _math.radians(HAND_ONLY_PALM_ROLL_DEG)
+
+    # Fingers point into -y, dipping pitch below horizontal.
+    z_w = np.array([0.0, -_math.cos(p), -_math.sin(p)])
+    # The palm-up normal for that finger axis: world +z with its finger-axis
+    # component removed. Roll turns the real normal about the fingers away from it.
+    up = np.array([0.0, -_math.sin(p), _math.cos(p)])
+    x_w = _math.cos(r) * up + _math.sin(r) * np.cross(z_w, up)
     y_w = np.cross(z_w, x_w)
-    R_palm_world = np.column_stack([x_w, y_w / np.linalg.norm(y_w), z_w])
+    R_palm_world = np.column_stack([x_w, y_w, z_w])
     R = R_palm_world @ F.T
     assert abs(np.linalg.det(R) - 1.0) < 1e-9, "base rotation is not a rotation"
     assert np.abs(R @ F[:, 0] - x_w).max() < 1e-9, "palm normal is not where it should be"
-    # Gravity's in-plane component must point at the fingertips, not across the
-    # palm -- the difference between a task and an unplayable one.
-    g = np.array([0.0, 0.0, -1.0])
-    downhill = g - (g @ x_w) * x_w
-    if np.linalg.norm(downhill) > 1e-9:
-        downhill /= np.linalg.norm(downhill)
-        assert float(downhill @ z_w) > 0.99, "the object would slide off the side, not at the fingers"
+
+    # WHICH WAY THE SLOPE RUNS is what separates a task from an unplayable one,
+    # but only while the palm still faces up enough to support anything: rolled
+    # 45 degrees about the FINGER axis the object slid off the SIDE, past the
+    # fingers, which can do nothing about it (done_fall 1.0000, ~24-step
+    # episodes). Past roll 90 there is no supporting surface, so no slope either,
+    # and the check has nothing to say.
+    if float(x_w[2]) > 1e-6:
+        g = np.array([0.0, 0.0, -1.0])
+        downhill = g - (g @ x_w) * x_w
+        if np.linalg.norm(downhill) > 1e-9:
+            downhill /= np.linalg.norm(downhill)
+            assert abs(float(downhill @ y_w)) < 0.05, \
+                "the object would slide off the side, not at the fingers"
+            assert float(downhill @ z_w) > 0.0, \
+                "the slope runs back at the wrist, not at the fingertips"
+
     M = np.eye(4)
     M[:3, :3] = R
     _, q = design_space.mat_to_pos_quat(M)
     q = np.asarray(q, float)
     if q[0] < 0:                                    # q and -q are one rotation
         q = -q
+
+    # At the reference angles the PALM frame must be the reference's frame. Note
+    # this compares R_palm_world, not R: the returned base rotation differs from
+    # the reference quaternion by F, because our palm hangs off link_7 while
+    # theirs IS the base link. Asserted here rather than in a test because it is
+    # the claim the whole orientation choice rests on, and it costs one
+    # comparison per process.
+    if (abs(HAND_ONLY_PALM_PITCH_DEG - 5.4) < 1e-9
+            and abs(HAND_ONLY_PALM_ROLL_DEG - 135.0) < 1e-9):
+        from scipy.spatial.transform import Rotation as _Rot
+
+        ref = np.asarray(REFERENCE_INHAND_BASE_ROT, float)
+        ref = ref / np.linalg.norm(ref)
+        ref_R = _Rot.from_quat([ref[1], ref[2], ref[3], ref[0]]).as_matrix()
+        err = float(np.abs(R_palm_world - ref_R).max())
+        assert err < 1e-6, (
+            "palm frame no longer matches the IsaacLab inhand reference: "
+            f"max component error {err:.2e}"
+        )
     return tuple(float(v) for v in q)
 
 
@@ -177,9 +252,10 @@ def hand_only_base_pos() -> tuple[float, float, float]:
     """Mount point putting the palm centre at HAND_ONLY_PALM_CENTRE.
 
     Derived from the rotation rather than written down: the offset runs along
-    link_7's +z, and which way that points in world depends entirely on the
-    tilt -- it was world +y palm-up and is world +x at 45 degrees. A literal
-    here would silently misplace the hand the moment the tilt changed.
+    link_7's +z, and which way that points in world depends entirely on pitch and
+    roll -- it is world +y at roll 0 palm-up, and swings well out of that plane
+    once the palm rolls over. A literal here would silently misplace the hand the
+    moment either angle changed.
     """
     import numpy as np
     from scipy.spatial.transform import Rotation as _R

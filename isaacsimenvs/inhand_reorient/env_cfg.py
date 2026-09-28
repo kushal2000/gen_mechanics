@@ -89,6 +89,9 @@ class InHandReorientEnvCfg(PoseReachEnvCfg):
         # so designs are still ranked while the success rate stays honest.
         self.termination.success_tolerance = 0.0039
         self.termination.target_success_tolerance = 0.0039
+        # A goal scores on the first step inside tolerance; ten held steps asks
+        # for a stability the hand has no grasp to provide. See the task YAML.
+        self.termination.success_steps = 1
 
         # --- wrench DR off: force_only_when_lifted is now always true ---------
         self.domain_randomization.force_scale = 0.0

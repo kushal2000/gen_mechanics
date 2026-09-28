@@ -165,6 +165,13 @@ class ResetCfg:
     # policy steps of free fall, so no settle phase is needed, and it keeps the
     # object from starting in contact with a finger it is meant to be caged by.
     in_hand_clearance: float = 0.003
+    # Where the object starts: on the palm face, or resting on the FINGERTIPS.
+    # The fingertips are the grippy surface (finger_tip_friction 1.5 against the
+    # palm's 0.5, so mu 1.25 vs 0.75 combined with the object), and putting the
+    # object on them means the FINGERS hold it rather than the slab -- which is
+    # the task. It also makes the tilt largely irrelevant, since the support is
+    # no longer a plate.
+    in_hand_placement: str = "palm"          # "palm" | "fingertips"
     fixed_start_pose: tuple[float, float, float, float, float, float, float] | None = None
 
     # Joint state noise.

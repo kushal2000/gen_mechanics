@@ -451,8 +451,21 @@ def _reset_object_pose(env, env_ids: torch.Tensor) -> None:
         normal_w = quat_apply(palm_quat, edge / torch.norm(edge, dim=-1, keepdim=True))
 
         half_object = 0.5 * float(max(env.cfg.reward.fixed_size))
-        lift = half_thickness + half_object + cfg.in_hand_clearance
-        pos_local = centre_w + normal_w * lift - env_origins
+        if cfg.in_hand_placement == "fingertips":
+            # Rest it on the FINGERTIPS, not the palm. Their centroid at the
+            # reset pose is where the fingers actually are, and it follows the
+            # design -- a long-fingered hand holds the object further out
+            # without anything here changing. Ghost fingers are masked out;
+            # their template tip body sits at the palm and would drag the
+            # centroid back onto the slab.
+            ft = env.robot.data.body_state_w[env_ids][:, env._fingertip_body_ids, 0:3]
+            valid = env._fingertip_mask[env_ids].unsqueeze(-1).to(ft.dtype)
+            centroid_w = (ft * valid).sum(1) / valid.sum(1).clamp(min=1.0)
+            lift = half_object + cfg.in_hand_clearance
+            pos_local = centroid_w + normal_w * lift - env_origins
+        else:
+            lift = half_thickness + half_object + cfg.in_hand_clearance
+            pos_local = centre_w + normal_w * lift - env_origins
 
         # Jitter ACROSS the palm, not through it: displacing along the normal
         # would bury the object in the slab or drop it from a height.
