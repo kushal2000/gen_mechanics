@@ -27,8 +27,20 @@ gym.register(
         "env_cfg_entry_point": "isaacsimenvs.inhand_reorient.env_cfg:InHandReorientEnvCfg",
         "env_cfg_yaml_entry_point": str(_CFG_DIR / "task" / "InHandReorient.yaml"),
         "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReorientSAPG.yaml"),
+        # Population training (grammar hands via env.assets.hand_population):
+        # no implicit SAPG entropy bonus and a bounded policy log-std (I41).
+        "rl_games_sapg_pop_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReorientPopSAPG.yaml"),
     },
 )
+
+# Registers the `inhand_actor_critic` rl_games network the population config
+# uses. rl_games is present wherever training or evaluation can run; a bare
+# CPU tool environment without it simply skips the registration.
+try:
+    from . import policy_network  # noqa: F401
+except ModuleNotFoundError as _exc:  # pragma: no cover - depends on the environment
+    if _exc.name is None or not _exc.name.startswith("rl_games"):
+        raise
 
 
 def __getattr__(name: str) -> Any:
