@@ -1,0 +1,1037 @@
+{
+  "provenance": {
+    "sha": "773385b65014c09cbbabb45a534c35a8c4112670",
+    "dirty": false,
+    "numpy": "1.26.0",
+    "python": "3.11.16"
+  },
+  "args": {
+    "variants": [
+      "V1",
+      "V1s",
+      "V2s",
+      "V3",
+      "V3s"
+    ],
+    "out_dir": "project-notes/grammar/experiments/g0",
+    "tag": "v2",
+    "run_seed": 0,
+    "viability_seeds": 2000,
+    "diversity_n": 300,
+    "diversity_pairs": 3000,
+    "diversity_n_configs": 8,
+    "evolvability_parents": 200,
+    "evolvability_children": 5,
+    "explore_founders": 20,
+    "explore_evals": 3000,
+    "explore_repeats": 3,
+    "max_extra_seeds": 20000,
+    "n_workers": 28,
+    "no_plots": false,
+    "quick": false
+  },
+  "results": [
+    {
+      "variant": "V1",
+      "viability": {
+        "n_seeds": 2000,
+        "frac_admitted": 0.2735,
+        "frac_two_or_more_fingertips": 0.1405,
+        "frac_both": 0.0195,
+        "frac_both_wilson_ci": {
+          "rate": 0.0195,
+          "ci_lo": 0.014297256348690845,
+          "ci_hi": 0.026545026088593226,
+          "n": 2000,
+          "k": 39
+        },
+        "per_digit_count_viable": {
+          "1": {
+            "rate": 0.0,
+            "ci_lo": 0.0,
+            "ci_hi": 0.01035876310299899,
+            "n": 367,
+            "k": 0
+          },
+          "2": {
+            "rate": 0.046948356807511735,
+            "ci_lo": 0.030594574174461667,
+            "ci_hi": 0.07139991221355874,
+            "n": 426,
+            "k": 20
+          },
+          "3": {
+            "rate": 0.029177718832891247,
+            "ci_lo": 0.016369023395855397,
+            "ci_hi": 0.05148456297762993,
+            "n": 377,
+            "k": 11
+          },
+          "4": {
+            "rate": 0.014388489208633094,
+            "ci_lo": 0.006610616827235571,
+            "ci_hi": 0.0310317268360669,
+            "n": 417,
+            "k": 6
+          },
+          "5": {
+            "rate": 0.004842615012106538,
+            "ci_lo": 0.0013290258004018743,
+            "ci_hi": 0.017482583877001058,
+            "n": 413,
+            "k": 2
+          }
+        },
+        "reasons_histogram": {
+          "1 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 286,
+          "jointed palm body 'palm0' carries 2 digits, exceeds max 1": 170,
+          "2 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 116,
+          "jointed palm body 'palm1' has jointed palm ancestor 'palm0'": 107,
+          "jointed palm body 'palm0' carries 3 digits, exceeds max 1": 99,
+          "jointed palm body 'palm1' carries 2 digits, exceeds max 1": 80,
+          "3 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 75,
+          "2 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 48,
+          "4 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 46,
+          "1 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 38,
+          "0 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 32,
+          "jointed palm body 'palm0' carries 4 digits, exceeds max 1": 32,
+          "3 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 26,
+          "1 rest-overlap pair(s) at q=0 and 0 at default_q exceed 3.0 ": 25,
+          "5 rest-overlap pair(s) at q=0 and 5 at default_q exceed 3.0 ": 24,
+          "jointed palm body 'palm1' carries 3 digits, exceeds max 1": 23,
+          "2 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 21,
+          "6 rest-overlap pair(s) at q=0 and 6 at default_q exceed 3.0 ": 18,
+          "3 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 15,
+          "4 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 12
+        },
+        "descriptor_coverage": {
+          "cells_occupied": 11,
+          "n_cells": 30,
+          "shannon_entropy_bits": 3.0186425267107606,
+          "per_cell_counts": {
+            "d2_j1-5": 5,
+            "d2_j6-10": 12,
+            "d2_j11-15": 3,
+            "d3_j1-5": 1,
+            "d3_j6-10": 3,
+            "d3_j11-15": 6,
+            "d3_j16-20": 1,
+            "d4_j6-10": 3,
+            "d4_j11-15": 1,
+            "d4_j16-20": 2,
+            "d5_j21-25": 2
+          }
+        },
+        "complexity": {
+          "joint_count_histogram": {
+            "8": 7,
+            "15": 3,
+            "11": 3,
+            "4": 1,
+            "12": 3,
+            "2": 1,
+            "3": 4,
+            "9": 6,
+            "13": 1,
+            "22": 1,
+            "10": 4,
+            "17": 1,
+            "18": 2,
+            "7": 1,
+            "24": 1
+          },
+          "joint_count_mean": 10.282051282051283,
+          "joint_count_median": 9.0
+        },
+        "cost": {
+          "total_wall_s": 198.17889760428807,
+          "mean_wall_s_per_design": 0.09908944880214403,
+          "mean_wall_s_per_viable_design": 5.081510194981745
+        },
+        "n_viable_found": 39
+      },
+      "diversity": {
+        "n_designs": 300,
+        "n_pairs_sampled": 3000,
+        "n_pairs_total_possible": 44850,
+        "mean_tip_displacement_m": 0.16370938081152964,
+        "std_tip_displacement_m": 0.06476769109117045,
+        "n_extra_seeds_scanned": 13200
+      },
+      "evolvability": {
+        "n_parents": 200,
+        "n_children_attempted": 1000,
+        "n_children_produced": 634,
+        "child_viability_rate": 0.6435331230283912,
+        "frac_children_change_cell": 0.19250425894378195,
+        "frac_children_identical": 0.00473186119873817,
+        "frac_children_identical_or_neutral": 0.7476340694006309,
+        "n_extra_seeds_scanned": 8800
+      },
+      "explorability": {
+        "n_repeats": 3,
+        "n_evals_target": 3000,
+        "founders_target": 20,
+        "founders_found": 20,
+        "founders_target_met": true,
+        "per_repeat": [
+          {
+            "cells_occupied": 16,
+            "coverage_frac": 0.5333333333333333,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4879
+          },
+          {
+            "cells_occupied": 16,
+            "coverage_frac": 0.5333333333333333,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4832
+          },
+          {
+            "cells_occupied": 17,
+            "coverage_frac": 0.5666666666666667,
+            "distinct_founders_in_archive": 5,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 5040
+          }
+        ],
+        "coverage_frac_mean": 0.5444444444444444,
+        "coverage_frac_std": 0.01571348402636772,
+        "distinct_founders_mean": 5.666666666666667,
+        "n_extra_seeds_scanned": 0
+      },
+      "wall_s_total": 384.77513415104477
+    },
+    {
+      "variant": "V1s",
+      "viability": {
+        "n_seeds": 2000,
+        "frac_admitted": 0.328,
+        "frac_two_or_more_fingertips": 0.141,
+        "frac_both": 0.0305,
+        "frac_both_wilson_ci": {
+          "rate": 0.0305,
+          "ci_lo": 0.02381739549016912,
+          "ci_hi": 0.03898271190692737,
+          "n": 2000,
+          "k": 61
+        },
+        "per_digit_count_viable": {
+          "1": {
+            "rate": 0.0,
+            "ci_lo": 0.0,
+            "ci_hi": 0.01035876310299899,
+            "n": 367,
+            "k": 0
+          },
+          "2": {
+            "rate": 0.07511737089201878,
+            "ci_lo": 0.053709184261511195,
+            "ci_hi": 0.10411984183295353,
+            "n": 426,
+            "k": 32
+          },
+          "3": {
+            "rate": 0.034482758620689655,
+            "ci_lo": 0.02026076241127442,
+            "ci_hi": 0.058095882143918115,
+            "n": 377,
+            "k": 13
+          },
+          "4": {
+            "rate": 0.03117505995203837,
+            "ci_lo": 0.01830780576126488,
+            "ci_hi": 0.05260122231861479,
+            "n": 417,
+            "k": 13
+          },
+          "5": {
+            "rate": 0.007263922518159807,
+            "ci_lo": 0.0024734022432660336,
+            "ci_hi": 0.0211361946728782,
+            "n": 413,
+            "k": 3
+          }
+        },
+        "reasons_histogram": {
+          "1 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 247,
+          "jointed palm body 'palm0' carries 2 digits, exceeds max 1": 175,
+          "jointed palm body 'palm1' has jointed palm ancestor 'palm0'": 107,
+          "jointed palm body 'palm0' carries 3 digits, exceeds max 1": 103,
+          "2 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 99,
+          "jointed palm body 'palm1' carries 2 digits, exceeds max 1": 79,
+          "1 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 53,
+          "3 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 52,
+          "0 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 41,
+          "2 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 35,
+          "3 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 32,
+          "1 rest-overlap pair(s) at q=0 and 0 at default_q exceed 3.0 ": 31,
+          "jointed palm body 'palm0' carries 4 digits, exceeds max 1": 30,
+          "4 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 23,
+          "jointed palm body 'palm1' carries 3 digits, exceeds max 1": 21,
+          "2 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 19,
+          "4 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 18,
+          "1 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 17,
+          "5 rest-overlap pair(s) at q=0 and 5 at default_q exceed 3.0 ": 14,
+          "5 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 14
+        },
+        "descriptor_coverage": {
+          "cells_occupied": 12,
+          "n_cells": 30,
+          "shannon_entropy_bits": 3.072503106548592,
+          "per_cell_counts": {
+            "d2_j1-5": 6,
+            "d2_j6-10": 19,
+            "d2_j11-15": 7,
+            "d3_j1-5": 2,
+            "d3_j6-10": 5,
+            "d3_j11-15": 5,
+            "d3_j16-20": 1,
+            "d4_j6-10": 1,
+            "d4_j11-15": 7,
+            "d4_j16-20": 5,
+            "d5_j11-15": 1,
+            "d5_j16-20": 2
+          }
+        },
+        "complexity": {
+          "joint_count_histogram": {
+            "16": 3,
+            "10": 7,
+            "6": 3,
+            "11": 6,
+            "3": 5,
+            "7": 4,
+            "12": 3,
+            "15": 6,
+            "13": 3,
+            "8": 6,
+            "17": 1,
+            "9": 5,
+            "14": 2,
+            "20": 2,
+            "4": 2,
+            "18": 2,
+            "5": 1
+          },
+          "joint_count_mean": 10.442622950819672,
+          "joint_count_median": 10.0
+        },
+        "cost": {
+          "total_wall_s": 234.98446188453818,
+          "mean_wall_s_per_design": 0.11749223094226909,
+          "mean_wall_s_per_viable_design": 3.8522042931891503
+        },
+        "n_viable_found": 61
+      },
+      "diversity": {
+        "n_designs": 300,
+        "n_pairs_sampled": 3000,
+        "n_pairs_total_possible": 44850,
+        "mean_tip_displacement_m": 0.14765406798431815,
+        "std_tip_displacement_m": 0.05826353728657423,
+        "n_extra_seeds_scanned": 8800
+      },
+      "evolvability": {
+        "n_parents": 200,
+        "n_children_attempted": 1000,
+        "n_children_produced": 650,
+        "child_viability_rate": 0.6738461538461539,
+        "frac_children_change_cell": 0.2235494880546075,
+        "frac_children_identical": 0.007692307692307693,
+        "frac_children_identical_or_neutral": 0.7,
+        "n_extra_seeds_scanned": 5000
+      },
+      "explorability": {
+        "n_repeats": 3,
+        "n_evals_target": 3000,
+        "founders_target": 20,
+        "founders_found": 20,
+        "founders_target_met": true,
+        "per_repeat": [
+          {
+            "cells_occupied": 13,
+            "coverage_frac": 0.43333333333333335,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4770
+          },
+          {
+            "cells_occupied": 14,
+            "coverage_frac": 0.4666666666666667,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4624
+          },
+          {
+            "cells_occupied": 15,
+            "coverage_frac": 0.5,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4759
+          }
+        ],
+        "coverage_frac_mean": 0.4666666666666666,
+        "coverage_frac_std": 0.02721655269759086,
+        "distinct_founders_mean": 6.0,
+        "n_extra_seeds_scanned": 0
+      },
+      "wall_s_total": 258.135919791006
+    },
+    {
+      "variant": "V2s",
+      "viability": {
+        "n_seeds": 2000,
+        "frac_admitted": 0.4595,
+        "frac_two_or_more_fingertips": 0.1455,
+        "frac_both": 0.05,
+        "frac_both_wilson_ci": {
+          "rate": 0.05,
+          "ci_lo": 0.04128123361873174,
+          "ci_hi": 0.0604441089343959,
+          "n": 2000,
+          "k": 100
+        },
+        "per_digit_count_viable": {
+          "1": {
+            "rate": 0.0,
+            "ci_lo": 0.0,
+            "ci_hi": 0.01035876310299899,
+            "n": 367,
+            "k": 0
+          },
+          "2": {
+            "rate": 0.07981220657276995,
+            "ci_lo": 0.05767436802181122,
+            "ci_hi": 0.10946041469039422,
+            "n": 426,
+            "k": 34
+          },
+          "3": {
+            "rate": 0.07161803713527852,
+            "ci_lo": 0.04968395243844152,
+            "ci_hi": 0.10219409938870148,
+            "n": 377,
+            "k": 27
+          },
+          "4": {
+            "rate": 0.06235011990407674,
+            "ci_lo": 0.04290128534360571,
+            "ci_hi": 0.08978872808134591,
+            "n": 417,
+            "k": 26
+          },
+          "5": {
+            "rate": 0.031476997578692496,
+            "ci_lo": 0.018485993615404317,
+            "ci_hi": 0.05310347568815299,
+            "n": 413,
+            "k": 13
+          }
+        },
+        "reasons_histogram": {
+          "jointed palm body 'palm0' carries 2 digits, exceeds max 1": 200,
+          "1 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 192,
+          "jointed palm body 'palm1' has jointed palm ancestor 'palm0'": 107,
+          "jointed palm body 'palm0' carries 3 digits, exceeds max 1": 80,
+          "jointed palm body 'palm1' carries 2 digits, exceeds max 1": 79,
+          "2 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 69,
+          "1 rest-overlap pair(s) at q=0 and 0 at default_q exceed 3.0 ": 59,
+          "0 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 56,
+          "1 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 36,
+          "3 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 32,
+          "2 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 31,
+          "3 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 15,
+          "0 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 14,
+          "2 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 14,
+          "4 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 13,
+          "3 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 12,
+          "3 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 9,
+          "1 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 8,
+          "jointed palm body 'palm1' carries 3 digits, exceeds max 1": 8,
+          "5 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 7
+        },
+        "descriptor_coverage": {
+          "cells_occupied": 14,
+          "n_cells": 30,
+          "shannon_entropy_bits": 3.4980807578824797,
+          "per_cell_counts": {
+            "d2_j1-5": 8,
+            "d2_j6-10": 17,
+            "d2_j11-15": 9,
+            "d3_j1-5": 2,
+            "d3_j6-10": 9,
+            "d3_j11-15": 14,
+            "d3_j16-20": 2,
+            "d4_j6-10": 6,
+            "d4_j11-15": 10,
+            "d4_j16-20": 8,
+            "d4_j21-25": 2,
+            "d5_j11-15": 4,
+            "d5_j16-20": 8,
+            "d5_j21-25": 1
+          }
+        },
+        "complexity": {
+          "joint_count_histogram": {
+            "11": 8,
+            "5": 5,
+            "7": 5,
+            "10": 11,
+            "16": 4,
+            "20": 3,
+            "15": 7,
+            "12": 9,
+            "3": 3,
+            "14": 8,
+            "8": 4,
+            "17": 4,
+            "4": 2,
+            "18": 5,
+            "9": 9,
+            "19": 2,
+            "13": 5,
+            "6": 3,
+            "22": 3
+          },
+          "joint_count_mean": 11.82,
+          "joint_count_median": 11.5
+        },
+        "cost": {
+          "total_wall_s": 256.23808297660435,
+          "mean_wall_s_per_design": 0.12811904148830217,
+          "mean_wall_s_per_viable_design": 2.5623808297660435
+        },
+        "n_viable_found": 100
+      },
+      "diversity": {
+        "n_designs": 300,
+        "n_pairs_sampled": 3000,
+        "n_pairs_total_possible": 44850,
+        "mean_tip_displacement_m": 0.14225905088403568,
+        "std_tip_displacement_m": 0.05183229663507021,
+        "n_extra_seeds_scanned": 3800
+      },
+      "evolvability": {
+        "n_parents": 200,
+        "n_children_attempted": 1000,
+        "n_children_produced": 659,
+        "child_viability_rate": 0.6418816388467374,
+        "frac_children_change_cell": 0.19415807560137457,
+        "frac_children_identical": 0.004552352048558422,
+        "frac_children_identical_or_neutral": 0.7116843702579666,
+        "n_extra_seeds_scanned": 1800
+      },
+      "explorability": {
+        "n_repeats": 3,
+        "n_evals_target": 3000,
+        "founders_target": 20,
+        "founders_found": 20,
+        "founders_target_met": true,
+        "per_repeat": [
+          {
+            "cells_occupied": 13,
+            "coverage_frac": 0.43333333333333335,
+            "distinct_founders_in_archive": 8,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4808
+          },
+          {
+            "cells_occupied": 16,
+            "coverage_frac": 0.5333333333333333,
+            "distinct_founders_in_archive": 8,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4684
+          },
+          {
+            "cells_occupied": 16,
+            "coverage_frac": 0.5333333333333333,
+            "distinct_founders_in_archive": 8,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4797
+          }
+        ],
+        "coverage_frac_mean": 0.5,
+        "coverage_frac_std": 0.04714045207910316,
+        "distinct_founders_mean": 8.0,
+        "n_extra_seeds_scanned": 0
+      },
+      "wall_s_total": 276.7006578799919
+    },
+    {
+      "variant": "V3",
+      "viability": {
+        "n_seeds": 2000,
+        "frac_admitted": 0.3475,
+        "frac_two_or_more_fingertips": 0.381,
+        "frac_both": 0.0835,
+        "frac_both_wilson_ci": {
+          "rate": 0.0835,
+          "ci_lo": 0.07215988199915073,
+          "ci_hi": 0.09643701838613296,
+          "n": 2000,
+          "k": 167
+        },
+        "per_digit_count_viable": {
+          "1": {
+            "rate": 0.0,
+            "ci_lo": 0.0,
+            "ci_hi": 0.01035876310299899,
+            "n": 367,
+            "k": 0
+          },
+          "2": {
+            "rate": 0.1596244131455399,
+            "ci_lo": 0.1279087112425341,
+            "ci_hi": 0.19742393397126362,
+            "n": 426,
+            "k": 68
+          },
+          "3": {
+            "rate": 0.16976127320954906,
+            "ci_lo": 0.13524064667782412,
+            "ci_hi": 0.21094398151090218,
+            "n": 377,
+            "k": 64
+          },
+          "4": {
+            "rate": 0.0671462829736211,
+            "ci_lo": 0.04686166280336322,
+            "ci_hi": 0.0953331175977533,
+            "n": 417,
+            "k": 28
+          },
+          "5": {
+            "rate": 0.01694915254237288,
+            "ci_lo": 0.008233893251327156,
+            "ci_hi": 0.03456765261978231,
+            "n": 413,
+            "k": 7
+          }
+        },
+        "reasons_histogram": {
+          "jointed palm body 'palm0' carries 2 digits, exceeds max 1": 234,
+          "1 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 214,
+          "jointed palm body 'palm1' has jointed palm ancestor 'palm0'": 107,
+          "2 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 66,
+          "1 rest-overlap pair(s) at q=0 and 0 at default_q exceed 3.0 ": 58,
+          "jointed palm body 'palm0' carries 3 digits, exceeds max 1": 54,
+          "0 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 54,
+          "3 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 47,
+          "1 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 43,
+          "2 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 42,
+          "jointed palm body 'palm1' carries 2 digits, exceeds max 1": 41,
+          "2 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 30,
+          "3 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 22,
+          "3 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 22,
+          "5 rest-overlap pair(s) at q=0 and 5 at default_q exceed 3.0 ": 21,
+          "4 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 20,
+          "5 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 18,
+          "4 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 15,
+          "3 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 14,
+          "1 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 13
+        },
+        "descriptor_coverage": {
+          "cells_occupied": 14,
+          "n_cells": 30,
+          "shannon_entropy_bits": 3.1109622271231,
+          "per_cell_counts": {
+            "d2_j1-5": 12,
+            "d2_j6-10": 42,
+            "d2_j11-15": 14,
+            "d3_j1-5": 4,
+            "d3_j6-10": 23,
+            "d3_j11-15": 32,
+            "d3_j16-20": 5,
+            "d4_j1-5": 1,
+            "d4_j6-10": 2,
+            "d4_j11-15": 17,
+            "d4_j16-20": 8,
+            "d5_j16-20": 5,
+            "d5_j21-25": 1,
+            "d5_j26-32": 1
+          }
+        },
+        "complexity": {
+          "joint_count_histogram": {
+            "12": 20,
+            "9": 31,
+            "11": 18,
+            "16": 5,
+            "13": 10,
+            "3": 2,
+            "5": 9,
+            "7": 10,
+            "17": 7,
+            "18": 2,
+            "6": 9,
+            "8": 9,
+            "10": 8,
+            "14": 10,
+            "4": 4,
+            "15": 5,
+            "20": 1,
+            "2": 2,
+            "23": 1,
+            "19": 3,
+            "27": 1
+          },
+          "joint_count_mean": 10.604790419161677,
+          "joint_count_median": 10.0
+        },
+        "cost": {
+          "total_wall_s": 242.11594171560137,
+          "mean_wall_s_per_design": 0.12105797085780068,
+          "mean_wall_s_per_viable_design": 1.4497960581772538
+        },
+        "n_viable_found": 167
+      },
+      "diversity": {
+        "n_designs": 300,
+        "n_pairs_sampled": 3000,
+        "n_pairs_total_possible": 44850,
+        "mean_tip_displacement_m": 0.11495322611096541,
+        "std_tip_displacement_m": 0.03538592239685029,
+        "n_extra_seeds_scanned": 1800
+      },
+      "evolvability": {
+        "n_parents": 200,
+        "n_children_attempted": 1000,
+        "n_children_produced": 704,
+        "child_viability_rate": 0.7258522727272727,
+        "frac_children_change_cell": 0.16978193146417445,
+        "frac_children_identical": 0.0,
+        "frac_children_identical_or_neutral": 0.7571022727272727,
+        "n_extra_seeds_scanned": 600
+      },
+      "explorability": {
+        "n_repeats": 3,
+        "n_evals_target": 3000,
+        "founders_target": 20,
+        "founders_found": 20,
+        "founders_target_met": true,
+        "per_repeat": [
+          {
+            "cells_occupied": 15,
+            "coverage_frac": 0.5,
+            "distinct_founders_in_archive": 7,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4353
+          },
+          {
+            "cells_occupied": 15,
+            "coverage_frac": 0.5,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4441
+          },
+          {
+            "cells_occupied": 15,
+            "coverage_frac": 0.5,
+            "distinct_founders_in_archive": 5,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4399
+          }
+        ],
+        "coverage_frac_mean": 0.5,
+        "coverage_frac_std": 0.0,
+        "distinct_founders_mean": 6.0,
+        "n_extra_seeds_scanned": 0
+      },
+      "wall_s_total": 248.59027773700655
+    },
+    {
+      "variant": "V3s",
+      "viability": {
+        "n_seeds": 2000,
+        "frac_admitted": 0.3545,
+        "frac_two_or_more_fingertips": 0.3435,
+        "frac_both": 0.0935,
+        "frac_both_wilson_ci": {
+          "rate": 0.0935,
+          "ci_lo": 0.08150853615947415,
+          "ci_hi": 0.10705002328018448,
+          "n": 2000,
+          "k": 187
+        },
+        "per_digit_count_viable": {
+          "1": {
+            "rate": 0.0,
+            "ci_lo": 0.0,
+            "ci_hi": 0.01035876310299899,
+            "n": 367,
+            "k": 0
+          },
+          "2": {
+            "rate": 0.17136150234741784,
+            "ci_lo": 0.1385544338391368,
+            "ci_hi": 0.21004260291901272,
+            "n": 426,
+            "k": 73
+          },
+          "3": {
+            "rate": 0.17506631299734748,
+            "ci_lo": 0.1400364831946164,
+            "ci_hi": 0.21665120317581718,
+            "n": 377,
+            "k": 66
+          },
+          "4": {
+            "rate": 0.08633093525179857,
+            "ci_lo": 0.06300971066755368,
+            "ci_hi": 0.11720413763822252,
+            "n": 417,
+            "k": 36
+          },
+          "5": {
+            "rate": 0.029055690072639227,
+            "ci_lo": 0.01669776097446128,
+            "ci_hi": 0.05009372109035472,
+            "n": 413,
+            "k": 12
+          }
+        },
+        "reasons_histogram": {
+          "1 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 213,
+          "jointed palm body 'palm0' carries 2 digits, exceeds max 1": 168,
+          "jointed palm body 'palm1' has jointed palm ancestor 'palm0'": 107,
+          "jointed palm body 'palm0' carries 3 digits, exceeds max 1": 105,
+          "2 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 73,
+          "0 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 70,
+          "jointed palm body 'palm1' carries 2 digits, exceeds max 1": 63,
+          "1 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 48,
+          "1 rest-overlap pair(s) at q=0 and 0 at default_q exceed 3.0 ": 46,
+          "3 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 41,
+          "2 rest-overlap pair(s) at q=0 and 1 at default_q exceed 3.0 ": 38,
+          "2 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 32,
+          "jointed palm body 'palm0' carries 4 digits, exceeds max 1": 23,
+          "jointed palm body 'palm1' carries 3 digits, exceeds max 1": 22,
+          "1 rest-overlap pair(s) at q=0 and 3 at default_q exceed 3.0 ": 19,
+          "4 rest-overlap pair(s) at q=0 and 4 at default_q exceed 3.0 ": 17,
+          "5 root-mounted digit(s) + 1 jointed palm carrier(s) exceed t": 16,
+          "3 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 16,
+          "0 rest-overlap pair(s) at q=0 and 2 at default_q exceed 3.0 ": 15,
+          "6 rest-overlap pair(s) at q=0 and 6 at default_q exceed 3.0 ": 12
+        },
+        "descriptor_coverage": {
+          "cells_occupied": 15,
+          "n_cells": 30,
+          "shannon_entropy_bits": 3.191707817734439,
+          "per_cell_counts": {
+            "d2_j1-5": 9,
+            "d2_j6-10": 39,
+            "d2_j11-15": 25,
+            "d3_j1-5": 1,
+            "d3_j6-10": 29,
+            "d3_j11-15": 33,
+            "d3_j16-20": 3,
+            "d4_j1-5": 1,
+            "d4_j6-10": 3,
+            "d4_j11-15": 18,
+            "d4_j16-20": 10,
+            "d4_j21-25": 4,
+            "d5_j11-15": 2,
+            "d5_j16-20": 9,
+            "d5_j21-25": 1
+          }
+        },
+        "complexity": {
+          "joint_count_histogram": {
+            "14": 10,
+            "11": 32,
+            "13": 13,
+            "2": 3,
+            "17": 7,
+            "8": 21,
+            "21": 1,
+            "5": 1,
+            "9": 12,
+            "15": 12,
+            "22": 2,
+            "7": 9,
+            "18": 6,
+            "12": 11,
+            "6": 9,
+            "10": 20,
+            "16": 4,
+            "20": 3,
+            "3": 6,
+            "4": 1,
+            "19": 2,
+            "23": 2
+          },
+          "joint_count_mean": 11.224598930481283,
+          "joint_count_median": 11.0
+        },
+        "cost": {
+          "total_wall_s": 233.24659485323355,
+          "mean_wall_s_per_design": 0.11662329742661677,
+          "mean_wall_s_per_viable_design": 1.247307993867559
+        },
+        "n_viable_found": 187
+      },
+      "diversity": {
+        "n_designs": 300,
+        "n_pairs_sampled": 3000,
+        "n_pairs_total_possible": 44850,
+        "mean_tip_displacement_m": 0.11455583221372664,
+        "std_tip_displacement_m": 0.037077412184198986,
+        "n_extra_seeds_scanned": 1400
+      },
+      "evolvability": {
+        "n_parents": 200,
+        "n_children_attempted": 1000,
+        "n_children_produced": 676,
+        "child_viability_rate": 0.7071005917159763,
+        "frac_children_change_cell": 0.1933884297520661,
+        "frac_children_identical": 0.0,
+        "frac_children_identical_or_neutral": 0.7218934911242604,
+        "n_extra_seeds_scanned": 200
+      },
+      "explorability": {
+        "n_repeats": 3,
+        "n_evals_target": 3000,
+        "founders_target": 20,
+        "founders_found": 20,
+        "founders_target_met": true,
+        "per_repeat": [
+          {
+            "cells_occupied": 16,
+            "coverage_frac": 0.5333333333333333,
+            "distinct_founders_in_archive": 7,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4237
+          },
+          {
+            "cells_occupied": 15,
+            "coverage_frac": 0.5,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4320
+          },
+          {
+            "cells_occupied": 16,
+            "coverage_frac": 0.5333333333333333,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 3000,
+            "n_eval_attempts": 4364
+          }
+        ],
+        "coverage_frac_mean": 0.5222222222222221,
+        "coverage_frac_std": 0.01571348402636772,
+        "distinct_founders_mean": 6.333333333333333,
+        "n_extra_seeds_scanned": 0
+      },
+      "wall_s_total": 193.81086115399376
+    }
+  ],
+  "mcnemar": {
+    "V1_vs_V1s": {
+      "n_a_only": 34,
+      "n_b_only": 56,
+      "n_discordant": 90,
+      "p_value": 0.026301665131122268,
+      "p_value_one_sided_a_gt_b": 0.9925666235271868,
+      "p_value_one_sided_b_gt_a": 0.013150832565561134,
+      "higher": "b"
+    },
+    "V1_vs_V2s": {
+      "n_a_only": 38,
+      "n_b_only": 99,
+      "n_discordant": 137,
+      "p_value": 1.87794192808929e-07,
+      "p_value_one_sided_a_gt_b": 0.9999999650489302,
+      "p_value_one_sided_b_gt_a": 9.38970964044645e-08,
+      "higher": "b"
+    },
+    "V1_vs_V3": {
+      "n_a_only": 30,
+      "n_b_only": 158,
+      "n_discordant": 188,
+      "p_value": 3.4385234082386175e-22,
+      "p_value_one_sided_a_gt_b": 1.0,
+      "p_value_one_sided_b_gt_a": 1.7192617041193088e-22,
+      "higher": "b"
+    },
+    "V1_vs_V3s": {
+      "n_a_only": 23,
+      "n_b_only": 171,
+      "n_discordant": 194,
+      "p_value": 3.805103741590395e-29,
+      "p_value_one_sided_a_gt_b": 1.0,
+      "p_value_one_sided_b_gt_a": 1.9025518707951975e-29,
+      "higher": "b"
+    },
+    "V1s_vs_V2s": {
+      "n_a_only": 57,
+      "n_b_only": 96,
+      "n_discordant": 153,
+      "p_value": 0.002024898780200205,
+      "p_value_one_sided_a_gt_b": 0.9994247723983937,
+      "p_value_one_sided_b_gt_a": 0.0010124493901001025,
+      "higher": "b"
+    },
+    "V1s_vs_V3": {
+      "n_a_only": 47,
+      "n_b_only": 153,
+      "n_discordant": 200,
+      "p_value": 2.7087202681654102e-14,
+      "p_value_one_sided_a_gt_b": 0.9999999999999959,
+      "p_value_one_sided_b_gt_a": 1.3543601340827051e-14,
+      "higher": "b"
+    },
+    "V1s_vs_V3s": {
+      "n_a_only": 48,
+      "n_b_only": 174,
+      "n_discordant": 222,
+      "p_value": 5.722999301609905e-18,
+      "p_value_one_sided_a_gt_b": 1.0,
+      "p_value_one_sided_b_gt_a": 2.8614996508049527e-18,
+      "higher": "b"
+    },
+    "V2s_vs_V3": {
+      "n_a_only": 89,
+      "n_b_only": 156,
+      "n_discordant": 245,
+      "p_value": 2.2222326589635786e-05,
+      "p_value_one_sided_a_gt_b": 0.999993831245752,
+      "p_value_one_sided_b_gt_a": 1.1111163294817893e-05,
+      "higher": "b"
+    },
+    "V2s_vs_V3s": {
+      "n_a_only": 83,
+      "n_b_only": 170,
+      "n_discordant": 253,
+      "p_value": 4.7805556990965996e-08,
+      "p_value_one_sided_a_gt_b": 0.9999999885798371,
+      "p_value_one_sided_b_gt_a": 2.3902778495482998e-08,
+      "higher": "b"
+    },
+    "V3_vs_V3s": {
+      "n_a_only": 133,
+      "n_b_only": 153,
+      "n_discordant": 286,
+      "p_value": 0.2611920600653123,
+      "p_value_one_sided_a_gt_b": 0.8928726672476017,
+      "p_value_one_sided_b_gt_a": 0.13059603003265616,
+      "higher": "b"
+    }
+  }
+}
