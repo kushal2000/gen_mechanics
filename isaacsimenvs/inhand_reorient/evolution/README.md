@@ -173,3 +173,58 @@ end-to-end verification run's own kill/resume test exercises directly (see the w
 The driver never self-resubmits to SLURM (per this branch's own rule): a cluster job runs it
 once, with an honest `--time` limit; the run either finishes within that limit or is killed and
 picked up later by rerunning the identical command with the same `--run-dir`.
+
+## Training stability and failure handling (I41)
+
+The first pilot (`outputs/evolution_pilot/pilot/G_V2S_s0`) trained the population with the
+single-hand config, and its policy std grew from 1 to about 250 over seven generations, after
+which training stopped updating (NaN losses) and generation 7 crashed. Root cause and fix, in
+short (details in the I41 worker report):
+
+- `expl_reward_type: entropy` with ONE SAPG block (`expl_coef_block_size == num_envs`) is an
+  entropy bonus of 0.5 x `expl_reward_coef_scale` = 0.001 on every sample, whatever
+  `entropy_coef` says. Where the PPO gradient on the log-std is noise-dominated (ghost joint
+  slots, a population not yet learned), Adam turns that into a steady climb; a larger std shrinks
+  the KL per update, so the adaptive learning rate climbs to its 1e-2 cap; weights then grow
+  until fp16 activations overflow in the mixed-precision update (NaN loss, GradScaler scale 0).
+- `coevolution/cfg/train/InHandReorientPopSAPG.yaml` (`--agent-entry-point
+  rl_games_sapg_pop_cfg_entry_point`) is the population config: `expl_reward_type: none` and the
+  `inhand_actor_critic` network (`isaacsimenvs/inhand_reorient/policy_network.py`), which projects
+  the log-std parameter to `<= logstd_max` (0.0, i.e. std <= 1) before every forward. Its
+  checkpoints are interchangeable with the single-hand config's.
+
+Driver behaviour:
+
+- A generation counts as completed only if `train.py` exits 0, at least one scoring window was
+  written, and the checkpoint it leaves is finite with a live GradScaler. Otherwise the attempt's
+  `train/` and `train.log` are renamed `train_failed_<k>` and the generation is retried
+  (`--train-retries`, default 1) from the same population and carried checkpoint, with
+  `agent.params.seed` bumped. If every attempt fails the driver exits with status 2 and leaves
+  `state.json` at the last completed generation; nothing of the failed generation is scored or
+  archived. Rerunning the same command retries it.
+- The checkpoint carried into generation k is written to `gen_<k>/carry_checkpoint.pth`, after a
+  finiteness check (`NonFiniteCheckpoint` stops the driver), with the GradScaler reset
+  (`--no-reset-grad-scaler` to keep it), the log-std handled per `--sigma-on-carry
+  {keep,reset,clamp}` (`--sigma-reset-value`, `--sigma-clamp-max`), and optionally the running
+  observation/value normalizer counts capped (`--norm-count-cap`, so a new generation's designs
+  reshape the normalizer within a few epochs).
+- `generations.jsonl` rows add `attempts`, `sigma_carried_in` / `sigma_trained` (finite flag,
+  log-std and std mean/min/max, grad scale), `train_metrics` (TensorBoard head/tail means of
+  `successes`, `rot_error_mean`, episode length, drop rate, entropy, lr, ...), `window_metrics`
+  (episode-weighted goals per episode, time held and graded fitness over all designs, first and
+  last `--tail-frac` of windows) and `nonfinite_by_design`. `generations.csv` carries the scalar
+  versions.
+- The env's non-finite guard (`isaacsimenvs/inhand_reorient/nan_guard.py`) terminates and resets
+  any env whose physics state goes NaN/Inf (reason `nonfinite`, logged as
+  `episode_final/done_nonfinite`), gives it the drop penalty, sanitises observations, and
+  `design_scoring` counts these per design (`nonfinite_resets`, `nonfinite_resets_total`).
+- `--train-override KEY=VALUE` (repeatable) passes extra Hydra overrides to every generation.
+
+Recommended pilot settings after I41 (validated locally for 3 generations, see the worker
+report): `--designs 32` (28 archive slots + 4 probes; at 64 designs per 4096 envs the shared
+controller learned 2-3x more slowly per epoch, and at 16 designs the re-evaluated elites would
+soon fill every archive slot and leave no room for offspring), `--epochs-per-gen 900` (the
+first pilot's per-generation sample budget), `--agent-entry-point
+rl_games_sapg_pop_cfg_entry_point --sigma-on-carry clamp --sigma-clamp-max 0.0
+--norm-count-cap 1e6`. With the bounded network the clamp is a no-op safety net; use
+`--sigma-on-carry reset` only when resuming from a checkpoint trained with the old config.
