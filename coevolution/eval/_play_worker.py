@@ -189,7 +189,7 @@ def main() -> None:
             # keypoints are two antipodal pairs and coplanar, so the residual for a
             # given angle varies by sqrt(3) with the axis, and the threshold runs
             # 5.7 deg on the most sensitive axis to 9.9 deg on the least.
-            manual = None            # None = the policy drives; else (deg, polar, azim)
+            manual = None            # None = the policy drives
             from isaacsimenvs.pose_reaching_6d.obs_utils.observations import (
                 compute_intermediate_values,
             )
@@ -197,25 +197,118 @@ def main() -> None:
                 quat_apply, quat_from_angle_axis, quat_mul,
             )
 
-            def apply_manual(deg, polar, azim):
+            # The 24 rotations of a cube, as quaternions: every signed permutation
+            # matrix with det +1. Used only to report how far the object is from the
+            # NEAREST orientation that looks identical, which for a plain box is the
+            # distance a human would judge by. The reward does not use them.
+            def _cube_symmetry_quats():
+                import itertools
+
+                import numpy as np
+                from scipy.spatial.transform import Rotation as _R
+
+                mats = []
+                for perm in itertools.permutations(range(3)):
+                    for sx in (1, -1):
+                        for sy in (1, -1):
+                            for sz in (1, -1):
+                                M = np.zeros((3, 3))
+                                for row, col in enumerate(perm):
+                                    M[row, col] = (sx, sy, sz)[row]
+                                if abs(np.linalg.det(M) - 1.0) < 1e-9:
+                                    mats.append(M)
+                q = _R.from_matrix(np.stack(mats)).as_quat()      # xyzw
+                return torch.tensor(
+                    np.column_stack([q[:, 3], q[:, 0], q[:, 1], q[:, 2]]),
+                    device=inner.device, dtype=torch.float32)     # wxyz, (24, 4)
+
+            SYM = _cube_symmetry_quats()
+            print(f"[worker] cube symmetry group: {SYM.shape[0]} rotations", flush=True)
+
+            def _axis_world(name):
+                """The probe axis, in world, for a named direction.
+
+                Named in the CUBE's frame and rotated out to world, because that is
+                the frame the residual's axis-sensitivity lives in -- a world-frame
+                polar/azimuth pair interacts with whatever random orientation the
+                goal happens to have, which is why it was impossible to steer by
+                hand. "most"/"least" are computed from the goal-oriented keypoints
+                themselves, so they hit the extremes exactly instead of by search.
+                """
+                gq = inner.goal_viz.data.root_quat_w
+                nE = gq.shape[0]
+                kp = (inner._keypoint_offsets_fixed
+                      if inner.cfg.reward.fixed_size_keypoint_reward
+                      else inner._keypoint_offsets)
+                o = kp.reshape(-1, kp.shape[-2], 3)[:, :2, :].expand(nE, 2, 3)
+                v0 = quat_apply(gq, o[:, 0, :])
+                v1 = quat_apply(gq, o[:, 1, :])
+                if name == "most sensitive":
+                    # Perpendicular to both distinct keypoints: each one's full
+                    # radius counts, so the residual for a given angle is maximal.
+                    a = torch.cross(v0, v1, dim=-1)
+                elif name == "least sensitive":
+                    # Halfway between them: both keypoints keep only sin(35.26 deg)
+                    # of their radius perpendicular to the axis, which minimises the
+                    # MAX over keypoints.
+                    a = v0 + v1
+                else:
+                    local = {"cube face": (1.0, 0.0, 0.0),
+                             "cube edge": (1.0, 1.0, 0.0),
+                             "cube corner": (1.0, 1.0, 1.0),
+                             "world X": None, "world Y": None, "world Z": None}
+                    if name.startswith("world"):
+                        w = {"world X": (1.0, 0.0, 0.0), "world Y": (0.0, 1.0, 0.0),
+                             "world Z": (0.0, 0.0, 1.0)}[name]
+                        a = torch.tensor(w, device=inner.device).expand(nE, 3)
+                    else:
+                        lv = torch.tensor(local.get(name) or (1.0, 0.0, 0.0),
+                                          device=inner.device).expand(nE, 3)
+                        a = quat_apply(gq, lv)
+                return a / a.norm(dim=-1, keepdim=True).clamp(min=1e-9)
+
+            def apply_manual(spec):
                 import math as _m
 
-                th, ph = _m.radians(polar), _m.radians(azim)
-                axis = torch.tensor(
-                    [_m.sin(th) * _m.cos(ph), _m.sin(th) * _m.sin(ph), _m.cos(th)],
-                    device=inner.device).expand(inner.num_envs, 3).contiguous()
-                ang = torch.full((inner.num_envs,), _m.radians(deg), device=inner.device)
-                # Pre-multiply: the delta is applied in the WORLD frame, so the
-                # slider's axis is the axis you see in the viewer.
-                q = quat_mul(quat_from_angle_axis(ang, axis),
-                             inner.goal_viz.data.root_quat_w)
-                pose = torch.cat([inner.object.data.root_pos_w, q], dim=-1)
-                inner.object.write_root_pose_to_sim(pose)
+                gq = inner.goal_viz.data.root_quat_w
+                nE = gq.shape[0]
+                if spec.get("mode") == "free":
+                    # Intrinsic roll-pitch-yaw about the CUBE's own axes, starting
+                    # from the goal, so all three at 0 means "sitting on the goal".
+                    d = torch.zeros((nE, 4), device=inner.device)
+                    d[:, 0] = 1.0
+                    for ang_deg, lv in ((spec.get("roll", 0.0), (1.0, 0.0, 0.0)),
+                                        (spec.get("pitch", 0.0), (0.0, 1.0, 0.0)),
+                                        (spec.get("yaw", 0.0), (0.0, 0.0, 1.0))):
+                        ax = torch.tensor(lv, device=inner.device).expand(nE, 3).contiguous()
+                        a = torch.full((nE,), _m.radians(float(ang_deg)), device=inner.device)
+                        d = quat_mul(d, quat_from_angle_axis(a, ax))
+                    q = quat_mul(gq, d)          # post-multiply: cube-local axes
+                else:
+                    ax = _axis_world(spec.get("axis", "most sensitive"))
+                    a = torch.full((nE,), _m.radians(float(spec.get("deg", 0.0))),
+                                   device=inner.device)
+                    q = quat_mul(quat_from_angle_axis(a, ax.contiguous()), gq)
+                inner.object.write_root_pose_to_sim(
+                    torch.cat([inner.object.data.root_pos_w, q], dim=-1))
                 inner.object.write_root_velocity_to_sim(
                     torch.zeros_like(inner.object.data.root_vel_w))
                 # Refresh the residual, _near_goal and _is_success against the pose
                 # just written, without stepping physics.
                 compute_intermediate_values(inner)
+
+            def probe_angles():
+                """(angle from the goal, angle to the nearest identical-looking pose)."""
+                gq = inner.goal_viz.data.root_quat_w
+                oq = inner.object.data.root_quat_w
+                gi = gq * torch.tensor([1.0, -1.0, -1.0, -1.0], device=inner.device)
+                rel = quat_mul(gi, oq)                                  # (n, 4)
+                nominal = 2.0 * torch.acos(rel[:, 0].abs().clamp(max=1.0))
+                # |dot| against each cube symmetry: the largest dot is the closest
+                # symmetric image, so 2*acos of it is the smallest visual error.
+                dots = (rel.unsqueeze(1) * SYM.unsqueeze(0)).sum(-1).abs()
+                nearest = 2.0 * torch.acos(dots.max(dim=1).values.clamp(max=1.0))
+                return nominal * 180.0 / 3.141592653589793, nearest * 180.0 / 3.141592653589793
             last_frame = [0.0]
             trace = None
             if args.trace:
@@ -245,12 +338,10 @@ def main() -> None:
                         det = bool(m.get("value"))
                     elif c == "manual":
                         if m.get("value"):
-                            manual = (float(m.get("deg", 0.0)),
-                                      float(m.get("polar", 90.0)),
-                                      float(m.get("azim", 0.0)))
+                            manual = dict(m)
                             running = False
                             send(kind="running", value=False)
-                            apply_manual(*manual)
+                            apply_manual(manual)
                         else:
                             manual = None
                             print("[worker] goal probe off; policy back in control",
@@ -275,7 +366,7 @@ def main() -> None:
                     # Physics frozen: re-assert the pose every iteration so nothing
                     # (gravity, a contact, a residual velocity) drifts it while the
                     # sliders are being read.
-                    apply_manual(*manual)
+                    apply_manual(manual)
                 elif running or pending:
                     with torch.no_grad():
                         act = player.get_normalized_action(obs["policy"], deterministic_actions=det)
@@ -355,7 +446,7 @@ def main() -> None:
                                 if _show_table(inner) else None),
                      table_quat=(inner.table.data.root_quat_w.cpu().numpy().tolist()
                                  if _show_table(inner) else None),
-                     stats=_stats(inner))
+                     stats=_stats(inner, probe_angles()))
             env.close()
 
         _run()
@@ -377,7 +468,7 @@ def _show_table(inner) -> bool:
             and not getattr(inner.cfg.reset, "object_in_hand", False))
 
 
-def _stats(inner) -> dict:
+def _stats(inner, angles=None) -> dict:
     def g(name):
         v = getattr(inner, name, None)
         if v is None:
@@ -399,6 +490,9 @@ def _stats(inner) -> dict:
                                        * inner.cfg.reward.keypoint_scale)]
     except Exception:
         pass
+    if angles is not None:
+        out["_angle_deg"] = [float(x) for x in angles[0]]
+        out["_angle_sym_deg"] = [float(x) for x in angles[1]]
     return out
 
 

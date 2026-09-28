@@ -1,0 +1,42 @@
+#!/bin/bash
+#SBATCH --job-name=inhand_tol05
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/tol05deg-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/tol05deg-%j.err
+
+# IN-HAND REORIENTATION AT A 5 DEGREE SUCCESS THRESHOLD.
+#
+# The tight arm of the tolerance pair. 5 deg is slightly tighter than the 5.7362
+# deg the task has been running at, and is close to IsaacLab's 0.1 rad -- but
+# they train ONE embodiment for a long time, and nothing here has yet scored a
+# goal, so the question this pair answers is whether the threshold is why.
+#
+# Paired with tolerance_20deg.sub. One design, gen-SHARPA, so the threshold is
+# the only difference: a co-evolution run would confound it with which designs
+# got selected under it.
+#
+#   sbatch tolerance_5deg.sub
+#   sbatch --export=ALL,EPOCHS=30000 tolerance_5deg.sub
+#
+set -euo pipefail
+
+# gen-SHARPA -- SHARPA rebuilt inside the design grammar. handonly: is what drops
+# the 7 arm joints, and common.sh refuses a bare reference: the prefix has to be
+# on the spec string because the agent YAML interpolates the network's shape from
+# env.assets.robot_spec, so a separate flag would build a 37-joint policy against
+# a 30-joint robot.
+export ROBOT_SPEC="${ROBOT_SPEC:-handonly:/share/portal/kk837/gen_mechanics/assets/populations/sharpa_capsule.json}"
+export STUDY_ID="${STUDY_ID:-inhand_tol05}"
+export SUCCESS_TOLERANCE_DEG=5
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+
+source /share/portal/kk837/gen_mechanics/experiments/28sep_inhand_reorientation/common.sh
+run_and_chain "$0"

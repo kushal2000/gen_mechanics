@@ -216,18 +216,30 @@ def play(task: str, args, hydra_args=None) -> None:
         # equal to 0 only for a hand whose limits are symmetric.
         g_zero = server.gui.add_checkbox("hold joints at 0 (ignore policy)", False)
     with server.gui.add_folder("goal probe"):
-        # Walk up to the success condition by hand. The angle is the quantity the
-        # metric ought to be a function of; the axis sliders are here because it is
-        # not -- the four reward keypoints are two antipodal pairs, all coplanar, so
-        # for a fixed angle the residual varies by sqrt(3) with the axis and the
-        # threshold runs 5.74 deg on the most sensitive axis to 9.94 deg on the
-        # least. Sweep "axis polar" at a fixed angle near 6 deg to watch near-goal
-        # flicker on and off without the angle changing at all.
+        # Two ways to pose the object, both measured FROM THE GOAL so that zero
+        # everywhere means "sitting on the goal".
+        #
+        # The axis is a named direction rather than a polar/azimuth pair. The
+        # residual's sensitivity to the axis lives in the CUBE's frame, so
+        # world-frame spherical angles interact with whatever random orientation the
+        # goal happens to have -- measured, the residual does move (4.15 to 6.12 mm
+        # at a fixed 6 deg) but there is no way to steer it by hand. "most/least
+        # sensitive" are computed from the goal-oriented keypoints, so they hit the
+        # extremes exactly: hold the angle at 6 deg and switch between them to watch
+        # near-goal flip with the angle untouched.
         g_manual = server.gui.add_checkbox("drive object by hand (freezes physics)", False)
         g_kp = server.gui.add_checkbox("draw reward keypoints", True)
+        g_mode = server.gui.add_dropdown(
+            "mode", ("angle from goal", "free rotate"), initial_value="angle from goal")
         s_deg = server.gui.add_slider("angle from goal (deg)", 0.0, 180.0, 0.1, 10.0)
-        s_pol = server.gui.add_slider("axis polar (deg)", 0.0, 180.0, 1.0, 90.0)
-        s_azi = server.gui.add_slider("axis azimuth (deg)", -180.0, 180.0, 1.0, 0.0)
+        g_axis = server.gui.add_dropdown(
+            "axis", ("most sensitive", "least sensitive", "cube face", "cube edge",
+                     "cube corner", "world X", "world Y", "world Z"),
+            initial_value="most sensitive")
+        s_roll = server.gui.add_slider("roll (deg)", -180.0, 180.0, 1.0, 0.0)
+        s_pitch = server.gui.add_slider("pitch (deg)", -180.0, 180.0, 1.0, 0.0)
+        s_yaw = server.gui.add_slider("yaw (deg)", -180.0, 180.0, 1.0, 0.0)
+        b_snap = server.gui.add_button("snap to goal")
     with server.gui.add_folder("status"):
         md = server.gui.add_markdown("waiting for Kit...")
 
@@ -270,19 +282,29 @@ def play(task: str, args, hydra_args=None) -> None:
         outbox.put({"cmd": "hold_zero", "value": bool(g_zero.value)})
 
     def _push_manual(_=None, arm=False):
-        # TOUCHING A SLIDER ARMS THE PROBE. Requiring the checkbox first made every
-        # slider silently inert, which is indistinguishable from the probe being
-        # broken -- the worker logged "goal probe off" on every drag.
+        # TOUCHING ANY CONTROL ARMS THE PROBE. Requiring the checkbox first made
+        # every slider silently inert, which is indistinguishable from the feature
+        # not working -- the worker just logged "goal probe off" on every drag.
         if arm and not g_manual.value:
-            g_manual.value = True        # fires this handler again, with arm False
+            g_manual.value = True        # re-fires this handler with arm False
             return
         outbox.put({"cmd": "manual", "value": bool(g_manual.value),
-                    "deg": float(s_deg.value), "polar": float(s_pol.value),
-                    "azim": float(s_azi.value)})
+                    "mode": "free" if g_mode.value == "free rotate" else "axis",
+                    "deg": float(s_deg.value), "axis": str(g_axis.value),
+                    "roll": float(s_roll.value), "pitch": float(s_pitch.value),
+                    "yaw": float(s_yaw.value)})
 
     g_manual.on_update(lambda _=None: _push_manual())
-    for _w in (s_deg, s_pol, s_azi):
+    for _w in (s_deg, g_axis, g_mode, s_roll, s_pitch, s_yaw):
         _w.on_update(lambda _=None: _push_manual(arm=True))
+
+    @b_snap.on_click
+    def _(_):
+        # Every angle to zero: the object lands exactly on the goal, so the residual
+        # must read ~0 and is_success must go to 1. The direct test of the metric.
+        s_deg.value = 0.0
+        s_roll.value = s_pitch.value = s_yaw.value = 0.0
+        _push_manual(arm=True)
 
     kp_handles: dict = {}
     viser_urdf, joint_names, shown = None, None, -1
@@ -512,9 +534,17 @@ def _status(stats: dict, i: int) -> str:
             return "-"
         return "{:.2f} mm".format(1000.0 * (s[i] if len(s) > i else s[0]))
 
+    def deg(key):
+        s = stats.get(key)
+        if not s:
+            return "-"
+        return "{:.2f} deg".format(s[i] if len(s) > i else s[0])
+
     return (f"**threshold** {mm('_tol_effective')} = {ang('_tol_effective')}  \n"
-            f"**residual** {mm('_keypoints_max_dist')} = {ang('_keypoints_max_dist')} "
-            f"(>= this angle)  \n"
+            f"**residual** {mm('_keypoints_max_dist')}  \n"
+            f"**angle from goal** {deg('_angle_deg')}  \n"
+            f"**nearest identical pose** {deg('_angle_sym_deg')} "
+            f"(a plain cube has 24; the reward accepts one)  \n"
             f"**is_success** {v('_is_success', '{:.0f}')}  \n"
             f"**raw tolerance** {v('_current_success_tolerance')} (x keypoint_scale)  \n"
             f"**keypoint dist** {v('_keypoints_max_dist')} m  \n"
