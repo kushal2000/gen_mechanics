@@ -149,9 +149,12 @@ G_V2: Distribution = replace(G_V1, mount_min_separation_m=2.0 * 0.012 + 0.005)
 # digit phalanx's revolute axis within 30 degrees of the horizontal (see
 # ``distributions.sample_axis``'s ``elevation_band_deg``), i.e. hinge-like
 # and roughly transverse to the segment's own forward direction, rather
-# than a fully isotropic 3D axis -- the isotropic default is why a random
-# hand's successive phalanges bend in incoherent directions (I30's "most
-# sampled hands reach the cube with one fingertip").
+# than a fully isotropic 3D axis. Opus review of G0 (item 5): this band
+# restricts the axis's ELEVATION only -- its AZIMUTH is still drawn i.i.d.
+# per phalanx, so it does NOT, on its own, put successive phalanges' axes
+# in a shared hinge plane (measured: only 8% of successive axis pairs land
+# within 20 deg of each other under V3). That stronger claim is not made
+# here; V3/V3s only restrict each axis individually to the transverse band.
 #
 # Rest bend ("curl toward the palm normal"): reuses the EXISTING rest-bend
 # primitive (``Distribution.bend_probability``/``bend_rpy_choices_rad`` --
@@ -216,10 +219,15 @@ G_V1S: Distribution = replace(G_V1, mount_on_host_surface=True)
 # frame, via a scratch FK pass over the sampled root/palm bodies), so
 # mounts on DIFFERENT hosts are spaced apart too, and a short root
 # (20-80 mm) can still place 4-5 digits by spreading them around the
-# surface, not just along its length.
+# surface, not just along its length. Sibling of V3s (both built on V1s,
+# NOT nested under each other): V2s isolates the spacing rule's own effect,
+# V3s isolates the curl/opposition fix's own effect, so the rerun can
+# attribute either gain without the other confounding it.
 G_V2S: Distribution = replace(G_V1S, mount_min_separation_m=_MOUNT_SEP_TARGET_M)
 
-# V3s: V2s + the FIXED curl and opposition priors (review item 5).
+# V3s: V1s + the FIXED curl and opposition priors (review item 5) -- a
+# sibling of V2s (see its own comment above), not built on top of it, so
+# V3s isolates the curl/opposition fix from the spacing rule.
 #
 # ``curl_skip_first_phalanx=True``: phalanx 0 (whose origin composes with
 # the digit's own ``mount_rpy`` -- see ``derive._compose_bend_rpy``) never
@@ -235,9 +243,14 @@ G_V2S: Distribution = replace(G_V1S, mount_min_separation_m=_MOUNT_SEP_TARGET_M)
 # "105 deg in mixed-host hands" (root + palm-body digits averaged as if
 # they shared one frame).
 G_V3S: Distribution = replace(
-    G_V2S,
-    curl_skip_first_phalanx=True,
+    G_V1S,
+    digit_axis_elevation_band_deg=(60.0, 120.0),
+    opposition_prior=True,
     opposition_use_host_frame=True,
+    bend_rpy_choices_rad=_CURL_BEND_RPY_CHOICES_RAD,
+    bend_offset_choices_m=((0.0, 0.0),),
+    bend_probability=1.0,
+    curl_skip_first_phalanx=True,
 )
 
 # Every named Distribution variant above, for iteration by experiment code.
