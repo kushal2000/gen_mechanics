@@ -21,6 +21,12 @@ export D_MODEL="${D_MODEL:-64}" TRANSFORMER_LAYERS="${TRANSFORMER_LAYERS:-4}"
 export GPUS="${GPUS:-1}"
 export NUM_ENVS_PER_GPU="${NUM_ENVS_PER_GPU:-24576}"
 export GLOBAL_MINIBATCH="${GLOBAL_MINIBATCH:-114688}"
+# Declared, not inherited. run_rank.sh:137 also defaults to 2, so this changes
+# nothing today -- but the value would then be right only because two defaults in
+# different files agree, and a chained link is exactly where that stops being true.
+# The 24sep runs used 1; this pair uses 2, so they are not comparable on sample
+# reuse and only against each other.
+export MINI_EPOCHS="${MINI_EPOCHS:-2}"
 export SEED="${SEED:-100}"
 export PHASE=train
 export TASK="${TASK:-GenMech-InHandReorient-Direct-v0}"
