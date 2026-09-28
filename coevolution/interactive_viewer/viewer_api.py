@@ -174,6 +174,7 @@ def make_embedded_robot(
     rpy: Vec3 = (0.0, 0.0, 0.0),
     animated: bool = False,
     color_override: ColorRGB | None = None,
+    opacity: float | None = None,
 ) -> dict:
     robot = {
         "name": name,
@@ -184,6 +185,10 @@ def make_embedded_robot(
     }
     if color_override is not None:
         robot["color_override"] = list(color_override)
+    # Translucency instead of recolouring, for anything whose own colours carry
+    # information -- a Rubik-faced cube's goal pose being the case it was added for.
+    if opacity is not None:
+        robot["opacity"] = float(opacity)
     return robot
 
 

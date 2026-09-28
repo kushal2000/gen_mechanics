@@ -402,6 +402,39 @@
         loopToggleButton.textContent = isLooping ? "Loop: On" : "Loop: Off";
       }
 
+      // Make a robot translucent WITHOUT touching its colours. The goal pose used
+      // to be flattened to solid green by colorOverride, which is fine for an
+      // unmarked object and useless for a Rubik-faced cube: the whole point of the
+      // faces is to see which way the goal is turned, and a single colour erases
+      // that. Transparency distinguishes goal from object instead of colour.
+      function applyOpacity(root, opacity) {
+        if (!(opacity > 0 && opacity < 1)) {
+          return root;
+        }
+        root.traverse((child) => {
+          if (!child.isMesh || !child.material) {
+            return;
+          }
+          // Clone: the loader can share one material instance across meshes, and
+          // across robots parsed from the same URDF text -- which the object and
+          // the goal are. Mutating in place would make the object translucent too.
+          const fade = (m) => {
+            const c = m.clone();
+            c.transparent = true;
+            c.opacity = opacity;
+            // Without this the six sticker faces occlude each other and the cube
+            // reads as a solid blob rather than a see-through one.
+            c.depthWrite = false;
+            return c;
+          };
+          child.material = Array.isArray(child.material)
+            ? child.material.map(fade)
+            : fade(child.material);
+          child.renderOrder = 1;
+        });
+        return root;
+      }
+
       function applyColorOverride(root, colorOverride) {
         if (!colorOverride) {
           return root;
@@ -440,6 +473,7 @@
           const completeWithOverride = (object, error = null) => {
             if (object && robotConfig.color_override) {
               applyColorOverride(object, robotConfig.color_override);
+              applyOpacity(object, robotConfig.opacity);
             }
             onComplete(object, error);
           };
@@ -617,6 +651,7 @@
               robot.rotation.set(...robotConfig.rpy);
               robot.name = robotConfig.name;
               applyColorOverride(robot, robotConfig.color_override);
+              applyOpacity(robot, robotConfig.opacity);
               scene.add(robot);
               resolve(robot);
             } catch (error) {
@@ -632,6 +667,7 @@
               robot.rotation.set(...robotConfig.rpy);
               robot.name = robotConfig.name;
               applyColorOverride(robot, robotConfig.color_override);
+              applyOpacity(robot, robotConfig.opacity);
               scene.add(robot);
               resolve(robot);
             },

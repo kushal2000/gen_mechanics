@@ -24,6 +24,51 @@ _OBJECT_BASE_SIZE = 0.04  # reward-space normalisation, the env's object_base_si
 OBJECT_ROOT_LINK = "object_root"
 _BROWN = '<material name="brown"><color rgba="0.55 0.27 0.07 1.0"/></material>'
 _GRAY = '<material name="gray"><color rgba="0.5 0.5 0.5 1.0"/></material>'
+# A CUBE'S ORIENTATION IS INVISIBLE without marked faces, which is the whole
+# difficulty of watching a reorientation policy: the object looks identical in 24
+# distinct orientations, so "is it at the goal" cannot be judged by eye. Standard
+# Rubik colours, opposite faces paired the way a real cube pairs them.
+_RUBIK_FACES = (
+    #  axis, sign, name,     rgb
+    (0, +1, "red",    "0.72 0.07 0.20"),
+    (0, -1, "orange", "0.93 0.45 0.13"),
+    (1, +1, "blue",   "0.05 0.28 0.75"),
+    (1, -1, "green",  "0.11 0.55 0.24"),
+    (2, +1, "white",  "0.95 0.95 0.95"),
+    (2, -1, "yellow", "0.98 0.85 0.10"),
+)
+_BLACK = '<material name="black"><color rgba="0.08 0.08 0.09 1.0"/></material>'
+# Sticker footprint as a fraction of the face, and thickness as a fraction of the
+# edge. The inset leaves the black body showing as a border, which is what makes
+# the faces readable at the size the viewer draws them.
+_STICKER_INSET = 0.82
+_STICKER_THICKNESS = 0.02
+
+
+def _rubik_stickers(scale) -> list[tuple[str, str]]:
+    """Six visual-only face plates for a cube, sitting just proud of each face.
+
+    Proud rather than flush: a plate coplanar with the body's own visual z-fights
+    with it and flickers as the camera moves.
+    """
+    edge = float(min(scale))
+    t = _STICKER_THICKNESS * edge
+    face = _STICKER_INSET * edge
+    out = []
+    for axis, sign, name, rgb in _RUBIK_FACES:
+        size = [face, face, face]
+        size[axis] = t
+        xyz = [0.0, 0.0, 0.0]
+        xyz[axis] = sign * (0.5 * edge + 0.5 * t)
+        geom = _box_geom(size, xyz=f"{xyz[0]} {xyz[1]} {xyz[2]}")
+        out.append((geom, f'<material name="{name}"><color rgba="{rgb} 1.0"/></material>'))
+    return out
+
+
+def _is_cube(scale) -> bool:
+    return len(scale) == 3 and max(scale) - min(scale) < 1e-9 * max(scale) + 1e-6
+
+
 _AXIS_X = "0 -1.5707963267948966 0"  # rpy putting a cylinder's axis along link x
 _AXIS_Y = "-1.5707963267948966 0 0"
 
@@ -40,13 +85,23 @@ def _cylinder_geom(height, radius, xyz: str = "0 0 0", rpy: str = "0 0 0") -> st
             f'      <geometry><cylinder length="{height}" radius="{radius}"/></geometry>')
 
 
-def _write_urdf(path: Path, name: str, parts, mass, ixx, iyy, izz, inertial_origin: str) -> Path:
+def _write_urdf(path: Path, name: str, parts, mass, ixx, iyy, izz, inertial_origin: str,
+                visual_only=()) -> Path:
     """One-link URDF with explicit <mass>/<inertia>: Isaac Sim's importer has no
-    <density> fallback and would use 1 kg."""
+    <density> fallback and would use 1 kg.
+
+    ``visual_only`` parts get a <visual> and NO <collision>. That distinction is
+    load-bearing: the Rubik face stickers are decoration, and emitting a collider
+    for each of them would change the contact geometry of every object that has
+    them, i.e. silently change the physics of the task they were added to explain.
+    """
     body = "".join(
         f"    <visual>\n      {geom}\n      {material}\n    </visual>\n"
         f"    <collision>\n      {geom}\n    </collision>\n"
         for geom, material in parts)
+    body += "".join(
+        f"    <visual>\n      {geom}\n      {material}\n    </visual>\n"
+        for geom, material in visual_only)
     path.write_text(
         f'<?xml version="1.0"?>\n<robot name="{name}">\n  <link name="{OBJECT_ROOT_LINK}">\n'
         f"{body}    <inertial>\n      <origin {inertial_origin}/>\n      <mass value=\"{mass}\"/>\n"
@@ -59,6 +114,14 @@ def generate_handle_urdf(path: Path, handle_scale: Scale, handle_density: float 
     """A single cuboid (3-tuple) or cylinder (2-tuple: height, diameter) handle."""
     if len(handle_scale) == 3:
         m, ixx, iyy, izz = compute_mass_and_inertia(handle_scale, handle_density)
+        # A cube gets Rubik faces and a black body; every other cuboid keeps brown.
+        # Gated on the SHAPE rather than on a flag because a cube is exactly the
+        # case whose orientation is unreadable without them -- an elongated handle
+        # already shows how it is turned.
+        if _is_cube(handle_scale):
+            return _write_urdf(path, "cuboid", [(_box_geom(handle_scale), _BLACK)],
+                               m, ixx, iyy, izz, 'xyz="0 0 0" rpy="0 0 0"',
+                               visual_only=_rubik_stickers(handle_scale))
         return _write_urdf(path, "cuboid", [(_box_geom(handle_scale), _BROWN)],
                            m, ixx, iyy, izz, 'xyz="0 0 0" rpy="0 0 0"')
     if len(handle_scale) == 2:

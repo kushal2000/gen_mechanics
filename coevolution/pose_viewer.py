@@ -422,7 +422,11 @@ def build_pose_viewer_html(
         make_embedded_robot(
             name="goal",
             urdf_text=object_urdf_text,
-            color_override=(0.20, 0.72, 0.31),
+            # Translucent, NOT recoloured. A cube carries Rubik face colours so its
+            # orientation is readable at all, and color_override would flatten all
+            # six to one green -- erasing the only thing the goal pose is there to
+            # show. Transparency separates goal from object instead.
+            opacity=0.38,
         ),
     ]
     object_poses = {
