@@ -168,6 +168,19 @@ reset:
   # (mu 1.25 with the cube against the palm's 0.75), so the fingers
   # hold the object rather than the slab.
   in_hand_placement: fingertips
+  # Halfway out from the palm centre to the fingertip centroid, not all the way.
+  # At 1.0 the cube sat right at the tips, which is the very edge of where the
+  # fingers can act on it -- they can only push it further out from there. 0.5
+  # keeps it inside the finger span so flexing has somewhere to carry it, and the
+  # palm-slab clearance is interpolated with it, so this is one position rather
+  # than a blend of two.
+  in_hand_fingertip_fraction: 0.5
+  # DROPPED onto the fingers, not started in contact with them. The lift already
+  # clears the highest fingertip pad and the object's exact reach along the palm
+  # normal for its sampled orientation, so this is pure margin on top -- it buys
+  # robustness against the pad point not being the tip's outermost surface (a
+  # capsule has a radius the pad point does not carry).
+  in_hand_drop_margin: 0.01
   in_hand_position_noise: 0.005
   reset_position_noise_x: 0.1
   reset_position_noise_y: 0.1

@@ -123,13 +123,23 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 # only -0.055 m along each of the others -- but the roll about it is not
 # recoverable this way.
 #
-# So the tilt stays a MEASURED parameter of our own task, not a borrowed one.
-# All of these ran at roll 0 with the cube on the palm SLAB (fixed SHARPA,
+# ONE ANGLE OF THE REFERENCE DOES SURVIVE, and it corroborates the 5 degrees
+# below. Its REACH AXIS is 5.4 degrees below horizontal, and that direction is
+# frame-robust in a way the roll about it is not: the cube sits 0.1835 m along +z
+# against -0.055 m along each of the other two, which pins +z as the direction the
+# fingers point without needing to know how the asset's frame sits in its palm. A
+# roughly level palm in a video and a reach axis 5.4 degrees off level are the same
+# observation, so 5 degrees is the reference's number as far as its config can tell
+# us -- and it is where our own default independently ended up.
+#
+# The tilt otherwise stays a MEASURED parameter of our own task, not a borrowed
+# one. All of these ran at roll 0 with the cube on the palm SLAB (fixed SHARPA,
 # keypoint reward):
 #
 #    0  a level plate holds the cube for free -- the policy froze, done_fall
 #       0.0003, every episode ran out the clock (run 267504).
-#   10  the current default.
+#    5  the current default.
+#   10  the previous default.
 #   25  tan 25 = 0.47 against friction 1.0: a settled cube stays put, but it can
 #       still be knocked loose, so the slope is not free grip.
 #   45  tan 45 = 1.0 equals the friction coefficient -- done_fall 1.0000,
@@ -143,13 +153,15 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 # tan(tilt) against palm-cube friction decided whether it stayed; now nothing
 # rests on the slab, so the tilt no longer decides who holds the object. Null
 # policy, median episode length to the 0.3 m drop, 256 envs, at fingertip
-# placement: pitch 10 gives 20 steps (0.33 s), pitch 45.25 gives 14 (0.23 s). An
-# open hand drops the cube immediately at BOTH, which is the point -- only finger
-# contact holds it now.
+# placement: pitch 5 gives 22 steps (0.37 s), pitch 10 gives 20 (0.33 s), pitch
+# 45.25 gives 14 (0.23 s). An open hand drops the cube immediately at ALL THREE,
+# which is the point -- only finger contact holds it now, and the 0-degree "free
+# grip" that froze the policy in run 267504 is no longer reachable by lowering the
+# tilt.
 #
 # Both overridable from the environment so two orientations can be compared
 # side by side without editing source.
-HAND_ONLY_PALM_PITCH_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_PITCH_DEG", "10.0"))
+HAND_ONLY_PALM_PITCH_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_PITCH_DEG", "5.0"))
 HAND_ONLY_PALM_ROLL_DEG: float = float(_os.environ.get("HAND_ONLY_PALM_ROLL_DEG", "0.0"))
 
 # The single-angle form this replaced. Runs before 2026-09-28 set it, and it meant

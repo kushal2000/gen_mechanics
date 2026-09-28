@@ -49,6 +49,13 @@ class InHandReorientEnvCfg(PoseReachEnvCfg):
         # --- the task --------------------------------------------------------
         # The object starts in the palm, and the goal is an orientation only.
         self.reset.object_in_hand = True
+        # Both set here as well as in the task YAML: the YAML is what a training
+        # run reads, but anything constructing this cfg directly (the tests, the
+        # smoke checks) would otherwise silently get the inherited "palm"
+        # placement and measure a different task.
+        self.reset.in_hand_placement = "fingertips"
+        self.reset.in_hand_fingertip_fraction = 0.5
+        self.reset.in_hand_drop_margin = 0.01
         self.obs.orientation_only_goal = True
         # Dropped means "left the hand", not "fell below a floor height".
         self.termination.drop_distance_m = 0.3

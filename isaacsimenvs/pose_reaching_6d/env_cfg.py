@@ -172,6 +172,17 @@ class ResetCfg:
     # the task. It also makes the tilt largely irrelevant, since the support is
     # no longer a plate.
     in_hand_placement: str = "palm"          # "palm" | "fingertips"
+    # Only read when in_hand_placement == "fingertips": how far out from the palm
+    # centre toward the fingertip centroid the object starts. 0 reproduces the
+    # "palm" placement exactly, 1 rests it on the tips. The clearance over the
+    # palm slab is interpolated with it, so intermediate values are a real
+    # position rather than a blend of two formulas.
+    in_hand_fingertip_fraction: float = 1.0
+    # Extra gap above whatever surface is under the object at reset, on top of
+    # in_hand_clearance. Only read for the "fingertips" placement. Non-zero means
+    # the object is DROPPED onto the fingers rather than starting in contact with
+    # them, which is what keeps it out of penetration for every orientation draw.
+    in_hand_drop_margin: float = 0.0
     fixed_start_pose: tuple[float, float, float, float, float, float, float] | None = None
 
     # Joint state noise.

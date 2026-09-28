@@ -6,7 +6,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from isaaclab.utils.math import quat_apply, random_orientation
+from isaaclab.utils.math import quat_apply, quat_apply_inverse, random_orientation
 
 from ..obs_utils import sample_log_uniform
 from .goal_sampling import sample_absolute_goal_pose, sample_delta_goal_pose
@@ -450,19 +450,62 @@ def _reset_object_pose(env, env_ids: torch.Tensor) -> None:
         half_thickness = 0.5 * torch.norm(edge, dim=-1, keepdim=True)
         normal_w = quat_apply(palm_quat, edge / torch.norm(edge, dim=-1, keepdim=True))
 
-        half_object = 0.5 * float(max(env.cfg.reward.fixed_size))
+        # SAMPLE THE ORIENTATION FIRST: how far the object reaches along the palm
+        # normal depends on it, and that is what sets the lift. The old code assumed
+        # half an edge (0.5 * max(fixed_size)) = 22.5 mm for a 45 mm cube; measured
+        # over 256 envs the true half-reach runs 23.4 to 39.0 mm, mean 33.5. So 22.5
+        # was below even the MINIMUM: the object was under-lifted in every env, by
+        # 0.7 mm to 16.5 mm depending on the draw. That is the whole of the
+        # intermittent reset penetration, and why it looked orientation-dependent.
+        quat = random_orientation(n, device=env.device)
+        half_extents = 0.5 * torch.as_tensor(
+            env.cfg.reward.fixed_size, device=env.device, dtype=torch.float32)
+        # Exact support of a box along a direction: sum |n_i| * h_i in the box's
+        # own frame. Per env, because every env drew its own orientation.
+        normal_obj = quat_apply_inverse(quat, normal_w)
+        half_object = (normal_obj.abs() * half_extents).sum(-1, keepdim=True)
+
         if cfg.in_hand_placement == "fingertips":
-            # Rest it on the FINGERTIPS, not the palm. Their centroid at the
-            # reset pose is where the fingers actually are, and it follows the
-            # design -- a long-fingered hand holds the object further out
-            # without anything here changing. Ghost fingers are masked out;
-            # their template tip body sits at the palm and would drag the
-            # centroid back onto the slab.
-            ft = env.robot.data.body_state_w[env_ids][:, env._fingertip_body_ids, 0:3]
-            valid = env._fingertip_mask[env_ids].unsqueeze(-1).to(ft.dtype)
-            centroid_w = (ft * valid).sum(1) / valid.sum(1).clamp(min=1.0)
-            lift = half_object + cfg.in_hand_clearance
-            pos_local = centroid_w + normal_w * lift - env_origins
+            # WHERE, in the palm plane: between the palm centre and the fingertip
+            # pad centroid, at in_hand_fingertip_fraction of the way out. The pads
+            # at the reset pose are where the fingers actually are and they follow
+            # the design -- a long-fingered hand holds the object further out
+            # without anything here changing. Ghost fingers are masked out; their
+            # template tip body sits at the palm and would drag the centroid back
+            # onto the slab.
+            ft_state = env.robot.data.body_state_w[env_ids][:, env._fingertip_body_ids, :]
+            ft_pos, ft_quat = ft_state[..., 0:3], ft_state[..., 3:7]
+            n_tips = ft_pos.shape[1]
+            # The pad, not the body origin: SHARPA's tip body sits behind its pad.
+            # Zero for a generated design, whose capsule tip IS the pad.
+            pad_w = ft_pos + quat_apply(
+                ft_quat.reshape(-1, 4),
+                env._fingertip_offsets.unsqueeze(0).expand(n, n_tips, 3).reshape(-1, 3),
+            ).reshape(n, n_tips, 3)
+            mask = env._fingertip_mask[env_ids]                       # (n, S) bool
+            valid = mask.unsqueeze(-1).to(pad_w.dtype)
+            centroid_w = (pad_w * valid).sum(1) / valid.sum(1).clamp(min=1.0)
+            f = float(cfg.in_hand_fingertip_fraction)
+            anchor_w = centre_w + f * (centroid_w - centre_w)
+            # Keep the fraction purely in-plane, so it moves the object across the
+            # hand without also changing how high it sits.
+            offset = anchor_w - centre_w
+            in_plane = offset - normal_w * (offset * normal_w).sum(-1, keepdim=True)
+
+            # HOW HIGH, along the normal: clear the HIGHEST valid pad, not their
+            # average -- half the tips are above a mean plane by construction, and
+            # at this reset pose the pads span 22.5 mm along the normal (-10.7 to
+            # +11.8 mm about the palm centre), so which one you reference matters.
+            # Floored at the slab surface so the object never starts inside the palm
+            # either. Verified: 0% of envs have a pad inside the object at reset,
+            # and the nearest pad clears its surface by 46 mm, well past the 9.5 mm
+            # a scaled dp capsule needs -- so the capsule is clear, not just the pad
+            # point the check is written on.
+            pad_h = ((pad_w - centre_w.unsqueeze(1)) * normal_w.unsqueeze(1)).sum(-1)
+            pad_h = pad_h.masked_fill(~mask, float("-inf")).max(dim=1).values.unsqueeze(-1)
+            surface_h = torch.maximum(pad_h, half_thickness)
+            lift = surface_h + half_object + cfg.in_hand_clearance + cfg.in_hand_drop_margin
+            pos_local = centre_w + in_plane + normal_w * lift - env_origins
         else:
             lift = half_thickness + half_object + cfg.in_hand_clearance
             pos_local = centre_w + normal_w * lift - env_origins
@@ -472,7 +515,6 @@ def _reset_object_pose(env, env_ids: torch.Tensor) -> None:
         noise = torch.empty(n, 3, device=env.device).uniform_(-1.0, 1.0)
         noise = noise - normal_w * (noise * normal_w).sum(-1, keepdim=True)
         pos_local = pos_local + noise * cfg.in_hand_position_noise
-        quat = random_orientation(n, device=env.device)
     elif cfg.fixed_start_pose is not None:
         fixed = torch.as_tensor(cfg.fixed_start_pose, device=env.device, dtype=torch.float32)
         pos_local = fixed[:3].unsqueeze(0).expand(n, -1)

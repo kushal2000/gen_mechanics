@@ -2,7 +2,7 @@
 
 The hand-only task -- a fixed hand, no arm, one cube already in it, goal a
 uniform random SO(3) orientation resampled on every success. The palm is tilted
-10 degrees off vertical about the palm WIDTH, so gravity's in-plane pull runs at
+5 degrees off vertical about the palm WIDTH, so gravity's in-plane pull runs at
 the fingertips rather than off the side.
 
     OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python -m coevolution.eval.play_inhand \

@@ -160,10 +160,12 @@ def main() -> None:
                  base_rot=[float(v) for v in spec.base_rot])
 
             # "Hold every joint at 0" for inspecting geometry without the
-            # policy. NOT the same as sending a zero ACTION: the hand action is
-            # an ABSOLUTE map of [-1, 1] onto [lower, upper]
-            # (obs_utils/actions.py:87), so action 0 commands the MIDPOINT of
-            # each joint's range -- a half-closed hand, not an open one.
+            # policy. Not simply a zero ACTION: the hand action is an ABSOLUTE map
+            # of [-1, 1] onto [lower, upper] (obs_utils/actions.py:87), so action 0
+            # commands the MIDPOINT of each joint's range. For SHARPA those limits
+            # are symmetric and the midpoint IS 0, so the two coincide -- but that
+            # is a property of one hand, not of the mapping, and a generated design
+            # with asymmetric limits would sit somewhere else entirely.
             #
             # Drive _cur_targets directly through the replay hook instead
             # (actions.py:38), which bypasses the delay queue, the [-1,1]

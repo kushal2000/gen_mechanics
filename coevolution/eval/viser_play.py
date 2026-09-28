@@ -211,8 +211,9 @@ def play(task: str, args, hydra_args=None) -> None:
         b_reset = server.gui.add_button("reset episode")
         b_goal = server.gui.add_button("resample goal")
         g_det = server.gui.add_checkbox("deterministic action", False)
-        # Overrides the policy entirely: every joint is driven to 0, which is
-        # NOT what a zero action does (that is the midpoint of each range).
+        # Overrides the policy entirely: every joint is driven to 0. Not the same
+        # as a zero action, which commands the midpoint of each joint's range --
+        # equal to 0 only for a hand whose limits are symmetric.
         g_zero = server.gui.add_checkbox("hold joints at 0 (ignore policy)", False)
     with server.gui.add_folder("status"):
         md = server.gui.add_markdown("waiting for Kit...")
