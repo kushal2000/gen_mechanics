@@ -98,37 +98,36 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 #          it. ROLL = 90 stands the palm vertical. Past 90 the palm faces
 #          downward and there is nothing underneath the object at all.
 #
-# WHAT THE REFERENCE'S TILT ACTUALLY IS, settled from its asset on 2026-09-28
-# after two wrong answers taken from its config alone.
+# THE REFERENCE'S PALM TILT IS STILL UNDETERMINED, after three attempts. What is
+# solid and what is not, so a fourth attempt starts from the right place:
 #
-# The quaternion fixes the base FRAME; reading a palm tilt off it needs to know
-# WHICH base axis is the palm normal. The Allegro URDF answers that unambiguously
-# (/home/kk837/.maniskill/data/robots/xarm6/xarm6_allegro_right.urdf; any copy of
-# allegro_hand_description carries the same frame):
+# SOLID, from the published rotation alone. Its base axes sit at these angles off
+# vertical: -x and -y at 45.25, -z at 84.60, +z at 95.40, +x and +y at 134.75.
 #
-#   index fingertip at (0, 0.0435, 0.1340) from base_link  -> fingers along +z
-#   index y +0.0435, ring y -0.0435                        -> y is the palm width
-#   thumb root at x -0.0182, other three at x 0            -> the thumb opposes
-#                                                             across -x, so x IS the
-#                                                             palm normal and the
-#                                                             inner face is -x
+# SOLID, from where it puts the cube. The cube is 0.1835 m along +z and only
+# -0.055 m along each of x and y, so +z is the direction the fingers point. No asset
+# needed: an object held in a hand sits out along the fingers.
 #
-# So its frame is (normal, width, fingers) exactly as ours is, with the grasping
-# face on -x where ours is +x. Under its published rotation that face points
-# (0.7071, -0.0665, 0.7040), which is 45.25 degrees off vertical. Its reach axis
-# comes out 5.4 degrees below horizontal, and its cube sits 0.1835 m along that axis
-# and 0.055 m off the palm plane on the grasping side. All three agree.
+# NOT SOLID: which axis is the palm NORMAL, which is what a tilt is measured from.
+# That needs the asset IsaacLab actually loads, allegro_hand_instanceable.usd on
+# Nucleus. A local Allegro URDF was tried
+# (.maniskill/data/robots/xarm6/xarm6_allegro_right.urdf) and does NOT substitute for
+# it: its joints are named joint_0.0 .. joint_15.0 while IsaacLab's are
+# thumb_joint_0 and friends, so they are different descriptions and a frame read off
+# one says nothing about the other. Reading its thumb offset gave 45.25 degrees; that
+# number is withdrawn, not confirmed.
 #
-# THE REFERENCE IS TILTED 45.25 DEGREES; the default below is 5. That divergence is
-# deliberate and recorded rather than resolved: 5 came from watching the task and
-# judging the palm near level, the asset disagrees with that reading, and the tilt is
-# not what decides this task anyway -- the measurements below are the reason.
+# So the default of 5 degrees stands on watching the task, which is the only direct
+# evidence anyone has looked at. It is not reconciled with the reference and does not
+# need to be: the tilt is not what decides this task, per the measurements below.
 #
-# The two wrong answers, written down so a third is not produced:
-#   82a05e7  read +x as the grasping face, which rolled the hand over and spawned the
-#            cube underneath it.
-#   40f9e94  concluded that no axis was within 45 degrees of vertical and that the
-#            palm plane was not axis-aligned at all. Both halves were false.
+# Three wrong answers, written down so a fourth is not produced the same way:
+#   82a05e7  read +x as the grasping face, rolled the hand over, spawned the cube
+#            underneath it.
+#   40f9e94  said no axis was within 45 degrees of vertical and the palm plane was
+#            not axis-aligned. The angle table in that commit was right; the gloss
+#            was not -- -x sits at 45.25, which is near enough to matter.
+#   82db7e1  settled it at 45.25 from a DIFFERENT hand's URDF. Wrong asset.
 #
 # The tilt otherwise stays a MEASURED parameter of our own task, not a borrowed
 # one. All of these ran at roll 0 with the cube on the palm SLAB (fixed SHARPA,
