@@ -35,15 +35,33 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 BENCH_DIR = REPO_ROOT / "hand_sampler" / "grammar_bench"
 MANIFEST_PATH = BENCH_DIR / "manifest.json"
 
-POPULATION_SCHEMA = "grammar_population/0.2"
+POPULATION_SCHEMA = "grammar_population/0.3"
 """Bumped from 0.1 (review item 5, provenance): every design entry now also
 carries `derived_sha256` (a digest of `canonicalize`'s OWN numeric tables,
 not just the raw derivation -- catches a `derive`/`canonicalize`/`palm_up`
 change silently altering a population under the same derivation hash) and
 `exempt_overlap`/`filtered_pairs` (review item 4's projected-hand exemption
 -- see `admit`'s `check_overlap` and `EnvelopeDesign.filtered_pairs`).
-`load_population` requires both on every entry; a 0.1 file is rejected by
-the schema check below, not silently upgraded."""
+
+Bumped again 0.2 -> 0.3 for the oracle-v2 fix (opus-review-g0.md items 1/3/
+4, `[oracle-v2]`): `rest_overlap_pairs` now models the BUILT capsule core
+`[r, L-r]` instead of the full `[0, L]` segment, checks both `q=0` and
+`default_q`, and `palm_up`'s spawn point/reach sweep changed (no more
+`hull_extent` overshoot, dense batched-FK reach). None of this changes
+`derive()`'s own output, so a 0.2 file's per-design `sha256` (over the raw
+derivation) would still "match" -- but the SIMULATED geometry (which
+designs admit, where the object spawns, how many fingertips reach it) is
+different, so a 0.2 file must fail LOUDLY, not silently keep validating
+under the new code (`load_population`'s schema check below does this
+unconditionally, independent of `derived_sha256`). `_derived_digest` ALSO
+now covers `palm_up`'s own derived fields (`default_q`/`spawn_offset`/
+`base_rot_wxyz`/`fingertip_valid`/`fingertip_offsets`), not just
+`canonicalize`'s -- closing the gap where a `palm_up`-only formula change
+(exactly what this fix makes) changed the actually-simulated spawn/default
+pose without changing the digest that was supposed to catch it.
+`load_population` requires both `derived_sha256` and this schema on every
+entry; an old file is rejected by the schema check below, not silently
+upgraded."""
 ENVELOPE_ID = "grammar_envelope/1"
 
 # Revolute-only: only the "R" module kind ever gets sampled (see
@@ -95,13 +113,22 @@ class PopulationEntry:
 
 
 def _derived_digest(design: "ge.EnvelopeDesign") -> str:
-    """sha256 over `canonicalize`'s OWN derived tables (review item 5) --
+    """sha256 over `canonicalize`'s OWN derived tables PLUS `palm_up`'s
+    (oracle-v2, `[oracle-v2]`: previously this covered `canonicalize`'s
+    tables only, so a `palm_up`-only formula change -- exactly what this fix
+    makes to the spawn point and default pose -- silently escaped it) --
     independent of, and in addition to, `_entry_sha256`'s hash of the RAW
     derivation dict. Pins the actually-simulated geometry: a `derive`,
     `canonicalize` or `palm_up` code change that alters these tables for the
     same derivation (e.g. a different bend/mount convention, a fixed bug in
-    the ghost-tip translation) changes THIS digest even though the
-    derivation-level `sha256` stays identical."""
+    the ghost-tip translation, a different spawn-point formula) changes THIS
+    digest even though the derivation-level `sha256` stays identical.
+    `palm_up`'s reach sweep uses a fixed default seed/sample count, so this
+    is still a deterministic function of `design` alone; run with
+    `n_sweep=0` here regardless, since only the pose/spawn fields (not the
+    stochastic `reachable_fingertips` reach count, a diagnostic, not a
+    simulated quantity) are pinned."""
+    pu = ge.palm_up(design, n_sweep=0)
     payload = {
         "slot_valid": design.slot_valid.astype(bool).tolist(),
         "slot_origin": np.round(design.slot_origin.astype(float), 12).tolist(),
@@ -111,6 +138,11 @@ def _derived_digest(design: "ge.EnvelopeDesign") -> str:
         "capsule_radius_m": round(float(design.capsule_radius_m), 12),
         "root_length_m": round(float(design.root_length_m), 12),
         "fingertip_marker_ok": design.fingertip_marker_ok.astype(bool).tolist(),
+        "default_q": np.round(pu.default_q.astype(float), 12).tolist(),
+        "spawn_offset": np.round(pu.spawn_offset.astype(float), 12).tolist(),
+        "base_rot_wxyz": np.round(pu.base_rot_wxyz.astype(float), 12).tolist(),
+        "fingertip_valid": pu.fingertip_valid.astype(bool).tolist(),
+        "fingertip_offsets": np.round(pu.fingertip_offsets.astype(float), 12).tolist(),
     }
     return _sha256_hex(_canonical_json_bytes(payload))
 
@@ -126,7 +158,12 @@ def make_entry(source: str, derivation: Derivation, model, *, exempt_overlap: bo
     design = ge.canonicalize(model, source=source)
     filtered_pairs: Tuple[Tuple[int, int], ...] = ()
     if exempt_overlap:
-        design = ge.mark_filtered_pairs(design)
+        # Filter pairs overlapping at EITHER q=0 or this design's own
+        # default_q (opus review G0 item 3's q=0-vs-default_q gap applies to
+        # authoring-time filtering too -- see `mark_filtered_pairs`'s own
+        # docstring).
+        default_q = ge.palm_up(design, n_sweep=0).default_q
+        design = ge.mark_filtered_pairs(design, extra_qs=[default_q])
         filtered_pairs = design.filtered_pairs
     return PopulationEntry(
         source=source, derivation_dict=d, sha256=_entry_sha256(d), derived_sha256=_derived_digest(design),
@@ -365,7 +402,12 @@ def load_population(path) -> List["ge.EnvelopeDesign"]:
             raise ValueError(f"design {d.get('source')!r} fails re-admission: {'; '.join(result.reasons)}")
         design = ge.canonicalize(model, source=d["source"])
         if exempt_overlap:
-            design = ge.mark_filtered_pairs(design)
+            # Same q=0 + default_q union `make_entry` used to build this
+            # design's `filtered_pairs` in the first place -- keep them
+            # consistent, or a re-load would authoring-filter fewer pairs
+            # than the file was actually built (and PhysX-verified) with.
+            default_q = ge.palm_up(design, n_sweep=0).default_q
+            design = ge.mark_filtered_pairs(design, extra_qs=[default_q])
         expected_derived = d.get("derived_sha256")
         actual_derived = _derived_digest(design)
         if not expected_derived:
