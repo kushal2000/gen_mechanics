@@ -316,6 +316,18 @@ def build_train_cmd(
         f"env.scene.num_envs={num_envs}",
         f"agent.params.config.max_epochs={max_epochs}",
         f"agent.params.config.minibatch_size={minibatch_size}",
+        # The asymmetric-critic block's OWN minibatch_size is a separate
+        # hardcoded 16384 in the yaml (central_value_config.minibatch_size);
+        # train_central_value() divides by `batch_size // this value` with
+        # no guard, so at any --num-envs small enough that
+        # num_envs*horizon_length < 16384 (e.g. this pilot's tiny/quick
+        # verification runs), the DEFAULT central_value minibatch_size
+        # alone gives num_minibatches == 0 -> ZeroDivisionError, even though
+        # the OUTER minibatch_size above was already scaled down correctly.
+        # Found by reproducing this exact crash at --num-envs 64 while
+        # investigating the eval-fitness player mismatch (see this
+        # package's README's "eval fitness" section).
+        f"agent.params.config.central_value_config.minibatch_size={minibatch_size}",
         f"agent.params.config.expl_coef_block_size={block_size}",
         f"hydra.run.dir={hydra_run_dir}",
     ]
@@ -480,28 +492,32 @@ CHECKPOINT_RE = re.compile(r"_ep_(\d+)_")
 
 
 def find_last_checkpoint(train_dir: Path) -> Optional[Path]:
-    """`<train_dir>/last/model.pth` -- rl_games' vendored agent
-    (`a2c_common.py`) writes exactly this path every 3 epochs
-    (independent of `save_frequency`), always overwriting IN PLACE, which
-    is what the plan's own `--checkpoint <prev gen last/model.pth>` names
-    literally. Falls back to the newest `nn/last_<name>_ep_<N>_rew_<R>.pth`
-    (highest epoch `<N>` wins, ties by mtime), then the single best-
-    checkpoint file (`nn/<name>.pth`) by mtime, for a run too short to have
-    reached epoch 3 (`last/model.pth` is never written at all in that
-    case)."""
-    direct = train_dir / "last" / "model.pth"
-    if direct.is_file():
-        return direct
-    nn_dir = train_dir / "nn"
-    if not nn_dir.is_dir():
-        return None
-    last_candidates = sorted(nn_dir.glob("last_*.pth"))
+    """`<train_dir>/.../last/model.pth` -- rl_games' vendored agent
+    (`a2c_common.py`) writes exactly this path every 3 epochs (independent
+    of `save_frequency`), always overwriting IN PLACE, which is what the
+    plan's own `--checkpoint <prev gen last/model.pth>` names literally.
+
+    Searched with `rglob`, not a direct child path: rl_games nests its own
+    `experiment_dir` one level below the Hydra run dir we pass as
+    `train_dir` (`os.path.join(train_dir, experiment_name)`, where
+    `experiment_name` is `agent.params.config.full_experiment_name` /
+    `name` -- "0_inhand_reorient_sapg" by default, never overridden by
+    `build_train_cmd`, but not worth hard-coding here either).
+
+    Falls back to the newest `nn/last_<name>_ep_<N>_rew_<R>.pth` (highest
+    epoch `<N>` wins, ties by mtime), then the single best-checkpoint file
+    (`nn/<name>.pth`) by mtime, for a run too short to have reached epoch 3
+    (`last/model.pth` is never written at all in that case)."""
+    direct = sorted(train_dir.rglob("last/model.pth"))
+    if direct:
+        return max(direct, key=lambda p: p.stat().st_mtime)
+    last_candidates = sorted(train_dir.rglob("nn/last_*.pth"))
     if last_candidates:
         def _epoch(p: Path) -> Tuple[int, float]:
             m = CHECKPOINT_RE.search(p.name)
             return (int(m.group(1)) if m else -1, p.stat().st_mtime)
         return max(last_candidates, key=_epoch)
-    other = sorted(nn_dir.glob("*.pth"))
+    other = sorted(train_dir.rglob("nn/*.pth"))
     if other:
         return max(other, key=lambda p: p.stat().st_mtime)
     return None

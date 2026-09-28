@@ -234,6 +234,10 @@ def test_build_train_cmd_scales_minibatch_and_block_size_for_small_num_envs():
     )
     assert "agent.params.config.expl_coef_block_size=512" in cmd
     assert "agent.params.config.minibatch_size=8192" in cmd  # 512 * 16, <= the 16384 cap
+    # the asymmetric-critic block's own hardcoded 16384 must scale down too
+    # (train_central_value's num_minibatches = batch_size // this value
+    # divides by zero otherwise -- see build_train_cmd's own comment).
+    assert "agent.params.config.central_value_config.minibatch_size=8192" in cmd
 
 
 def test_build_train_cmd_keeps_default_minibatch_at_the_yaml_scale():
@@ -337,6 +341,18 @@ def test_find_last_checkpoint_falls_back_to_the_best_checkpoint(tmp_path):
 
 def test_find_last_checkpoint_returns_none_when_nothing_was_saved(tmp_path):
     assert drv.find_last_checkpoint(tmp_path) is None
+
+
+def test_find_last_checkpoint_finds_rl_games_own_nested_experiment_dir(tmp_path):
+    """rl_games nests its own experiment_dir one level below the Hydra run
+    dir we pass as train_dir (`<train_dir>/<experiment_name>/...`) --
+    reproduced against a real training run while investigating the eval
+    fitness player mismatch (see the README)."""
+    nested = tmp_path / "0_inhand_reorient_sapg" / "last"
+    nested.mkdir(parents=True)
+    (nested / "model.pth").write_text("x")
+    got = drv.find_last_checkpoint(tmp_path)
+    assert got == nested / "model.pth"
 
 
 # --------------------------------------------------------------------------
