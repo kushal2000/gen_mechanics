@@ -68,7 +68,16 @@ export CAPTURE_VIEWER_INTERVAL="${CAPTURE_VIEWER_INTERVAL:-250}"
 # return is a rotation residual, not a reach -- so mixing them in one project
 # makes every cross-run chart misleading.
 export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_inhandreorient}" WANDB_ENTITY=kk837
-export DESIGN_REWARDS=1                                   # per-design returns; selection and the tolerance hand-off read them
+# Per-design returns need a POPULATION to attribute them to. A registered fixed hand
+# has one design and no population, and design_rewards.py:49 raises rather than
+# degrading -- which is how the first Allegro submission died after authoring 12288
+# envs. Derived from the spec form rather than left to each .sub to remember.
+if [[ "${ROBOT_SPEC:-}" == handonly:* || "${ROBOT_SPEC:-}" == *.json ]]; then
+    export DESIGN_REWARDS="${DESIGN_REWARDS:-1}"   # selection and the tolerance hand-off read these
+else
+    export DESIGN_REWARDS=0
+fi
+echo "[common] robot ${ROBOT_SPEC:-<default>}  design_rewards ${DESIGN_REWARDS}"
 export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-$REPO/debug_outputs/train_logs/28sep_inhand_reorientation}"
 mkdir -p "$SCALING_RUN_ROOT"
 # One object, so there is nothing to deal: every env gets the same 45 mm cube
@@ -208,11 +217,20 @@ prepare_link() {
     if [[ -n "${SOURCE_RUN:-}" ]]; then
         CHECKPOINT=$(newest_checkpoint "$SOURCE_RUN")
         [[ -f "$CHECKPOINT" ]] || { echo "no checkpoint under $SOURCE_RUN"; exit 1; }
-        # The tolerance does not survive an rl_games checkpoint, so it is read
-        # back from the source run rather than restarting the curriculum. Inert
-        # here (success == target), but wrong silently if it were ever dropped.
-        RESUME_TOL=$(cd "$REPO" && .venv_isaacsim/bin/python -m coevolution.loop.final_tolerance "$SOURCE_RUN") \
-            || { echo "no final success tolerance under $SOURCE_RUN; refusing to continue blind"; exit 1; }
+        # The tolerance does not survive an rl_games checkpoint, so it is read back
+        # from the source run rather than restarting the curriculum. Inert here
+        # (success == target), but wrong silently if it were ever dropped.
+        #
+        # Only when design rewards exist: final_tolerance reads
+        # design_rewards_rank0.json, which a fixed hand never writes because it has no
+        # population. For those, EXTRA_HYDRA pins both tolerance fields from
+        # SUCCESS_TOLERANCE_DEG on every link anyway, so there is nothing to hand over.
+        if [[ "${DESIGN_REWARDS:-0}" == 1 ]]; then
+            RESUME_TOL=$(cd "$REPO" && .venv_isaacsim/bin/python -m coevolution.loop.final_tolerance "$SOURCE_RUN") \
+                || { echo "no final success tolerance under $SOURCE_RUN; refusing to continue blind"; exit 1; }
+        else
+            echo "[$STUDY_ID] fixed hand: tolerance comes from SUCCESS_TOLERANCE_DEG, not a hand-off"
+        fi
     fi
     echo "[$STUDY_ID] link #$CONT of $MAX_CONT on $ROBOT_SPEC"
     echo "[$STUDY_ID] threshold ${SUCCESS_TOLERANCE_DEG} deg   policy from: ${CHECKPOINT:-scratch}"

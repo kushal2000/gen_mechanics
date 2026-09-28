@@ -16,11 +16,12 @@ from __future__ import annotations
 
 from hand_sampler.robot_spec import RobotSpec
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.allegro_handonly import ALLEGRO_HANDONLY
+from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_handonly import SHARPA_HANDONLY
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_iiwa14 import SHARPA_IIWA14
 
 
 REGISTRY: dict[str, RobotSpec] = {
-    spec.name: spec for spec in (SHARPA_IIWA14, ALLEGRO_HANDONLY)
+    spec.name: spec for spec in (SHARPA_IIWA14, SHARPA_HANDONLY, ALLEGRO_HANDONLY)
 }
 
 
@@ -41,4 +42,4 @@ def get_robot_spec(name: str) -> RobotSpec:
 
 
 __all__ = ["ALLEGRO_HANDONLY", "RobotSpec", "REGISTRY", "get_robot_spec",
-           "SHARPA_IIWA14"]
+           "SHARPA_HANDONLY", "SHARPA_IIWA14"]
