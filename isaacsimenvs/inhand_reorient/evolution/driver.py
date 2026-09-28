@@ -22,6 +22,17 @@ CLI:
 Resume: rerun the exact same command with the same ``--run-dir``; the
 driver loads ``<run-dir>/state.json`` (written atomically after every
 COMPLETED generation) and continues from the next one.
+
+Robustness (I41): a generation counts as completed only if ``train.py``
+exits 0 AND leaves a checkpoint whose tensors are all finite and whose
+GradScaler has not collapsed to 0. Otherwise it is retried once from the
+same carried checkpoint (with a different seed); a second failure stops the
+driver with a nonzero exit, ``state.json`` still at the last good
+generation, and nothing of the failed generation scored or archived. The
+checkpoint carried into a generation is written to
+``gen_<k>/carry_checkpoint.pth`` after a finiteness check, with the policy's
+log-std optionally reset or clamped (``--sigma-on-carry``) and the
+GradScaler reset to its initial state.
 """
 
 from __future__ import annotations
@@ -37,7 +48,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -303,11 +314,13 @@ def _minibatch_and_block_size(num_envs: int, horizon_length: int) -> Tuple[int, 
 def build_train_cmd(
     *, train_python: str, population_path: Path, num_envs: int, max_epochs: int, hydra_run_dir: Path,
     checkpoint: Optional[Path], resume_success_tolerance: Optional[float], horizon_length: int,
+    agent_entry_point: str = AGENT_ENTRY_POINT, seed: Optional[int] = None,
+    extra_overrides: Sequence[str] = (),
 ) -> List[str]:
     minibatch_size, block_size = _minibatch_and_block_size(num_envs, horizon_length)
     cmd = [
         str(train_python), str(TRAIN_PY),
-        "--task", TASK_ID, "--agent", AGENT_ENTRY_POINT, "--headless",
+        "--task", TASK_ID, "--agent", agent_entry_point, "--headless",
     ]
     if checkpoint is not None:
         cmd += ["--checkpoint", str(checkpoint), "--checkpoint_load_mode", "weights"]
@@ -333,6 +346,9 @@ def build_train_cmd(
     ]
     if resume_success_tolerance is not None:
         cmd += [f"env.termination.resume_success_tolerance={resume_success_tolerance}"]
+    if seed is not None:
+        cmd += [f"agent.params.seed={seed}"]
+    cmd += list(extra_overrides)
     return cmd
 
 
@@ -524,6 +540,228 @@ def find_last_checkpoint(train_dir: Path) -> Optional[Path]:
 
 
 # --------------------------------------------------------------------------
+# Checkpoint health and carry-over (I41)
+# --------------------------------------------------------------------------
+
+SIGMA_KEY = "a2c_network.sigma"
+SIGMA_MODES = ("keep", "reset", "clamp")
+# torch.cuda.amp.GradScaler's own initial state (rl_games builds its scaler
+# with the defaults). rl_games' weights-mode load restores the scaler from the
+# checkpoint, so a scale that collapsed to 0 in one generation (every step
+# skipped after a non-finite loss) would otherwise freeze the next one too.
+FRESH_GRAD_SCALER = {
+    "scale": 65536.0, "growth_factor": 2.0, "backoff_factor": 0.5, "growth_interval": 2000, "_growth_tracker": 0,
+}
+MIN_HEALTHY_GRAD_SCALE = 1e-3
+
+
+class NonFiniteCheckpoint(ValueError):
+    """A checkpoint holds NaN/Inf tensors and must not be carried forward."""
+
+
+class GenerationFailed(RuntimeError):
+    """Both attempts at one generation's training failed."""
+
+
+def _load_checkpoint(path: Path) -> dict:
+    import torch  # lazy: the driver itself stays importable without torch
+
+    return torch.load(str(path), map_location="cpu", weights_only=False)
+
+
+def _policy_state(ck: dict) -> dict:
+    """rl_games keys a checkpoint by policy/rank index (`ck[0]["model"]`)."""
+    if isinstance(ck, dict) and 0 in ck and isinstance(ck[0], dict):
+        return ck[0]
+    return ck
+
+
+def _iter_float_tensors(state: dict):
+    import torch
+
+    for group in ("model", "assymetric_vf_nets"):
+        sub = state.get(group)
+        if not isinstance(sub, dict):
+            continue
+        for name, value in sub.items():
+            if torch.is_tensor(value) and value.is_floating_point():
+                yield f"{group}/{name}", value
+
+
+def _tensor_summary(t) -> Dict[str, float]:
+    t = t.detach().double()
+    return {"mean": float(t.mean()), "min": float(t.min()), "max": float(t.max())}
+
+
+def checkpoint_stats(path: Path) -> Dict[str, Any]:
+    """Health summary of an rl_games checkpoint: whether every model/critic
+    tensor is finite (and which are not), the policy log-std (`sigma`) and
+    std = exp(sigma) statistics (the network's `sigma_activation` is None,
+    so the parameter IS the log-std), the GradScaler's scale, and the epoch."""
+    import torch
+
+    state = _policy_state(_load_checkpoint(Path(path)))
+    nonfinite = [name for name, t in _iter_float_tensors(state) if not bool(torch.isfinite(t).all())]
+    out: Dict[str, Any] = {
+        "path": str(path), "finite": not nonfinite, "nonfinite_tensors": nonfinite,
+        "epoch": state.get("epoch"), "grad_scale": None, "sigma": None, "std": None,
+    }
+    scaler = state.get("scaler")
+    if isinstance(scaler, dict) and "scale" in scaler:
+        out["grad_scale"] = float(scaler["scale"])
+    sigma = state.get("model", {}).get(SIGMA_KEY)
+    if sigma is not None and bool(torch.isfinite(sigma).all()):
+        out["sigma"] = _tensor_summary(sigma)
+        out["std"] = _tensor_summary(sigma.double().exp())
+    return out
+
+
+def prepare_carry_checkpoint(
+    src: Path, dst: Path, *, sigma_mode: str = "keep", sigma_reset_value: float = 0.0,
+    sigma_clamp_max: Optional[float] = None, reset_grad_scaler: bool = True,
+) -> Dict[str, Any]:
+    """Validate `src` and write the checkpoint the next generation starts
+    from to `dst` (`src` itself is never modified). Raises
+    `NonFiniteCheckpoint` if any model/critic tensor is NaN/Inf.
+
+    `sigma_mode`: "keep" leaves the policy log-std as trained; "reset" sets
+    every entry to `sigma_reset_value` (0.0 = std 1, the value a fresh
+    policy starts from); "clamp" caps it at `sigma_clamp_max`. Returns
+    `checkpoint_stats(dst)`."""
+    import torch
+
+    if sigma_mode not in SIGMA_MODES:
+        raise ValueError(f"sigma_mode must be one of {SIGMA_MODES}, got {sigma_mode!r}")
+    ck = _load_checkpoint(Path(src))
+    state = _policy_state(ck)
+    bad = [name for name, t in _iter_float_tensors(state) if not bool(torch.isfinite(t).all())]
+    if bad:
+        raise NonFiniteCheckpoint(f"checkpoint {src} has non-finite tensors: {', '.join(bad)}")
+    sigma = state.get("model", {}).get(SIGMA_KEY)
+    if sigma is not None:
+        if sigma_mode == "reset":
+            state["model"][SIGMA_KEY] = torch.full_like(sigma, float(sigma_reset_value))
+        elif sigma_mode == "clamp":
+            if sigma_clamp_max is None:
+                raise ValueError("sigma_mode='clamp' needs sigma_clamp_max")
+            state["model"][SIGMA_KEY] = sigma.clamp(max=float(sigma_clamp_max))
+    if reset_grad_scaler and isinstance(state.get("scaler"), dict):
+        state["scaler"] = dict(FRESH_GRAD_SCALER)
+    dst = Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_suffix(dst.suffix + ".tmp")
+    torch.save(ck, str(tmp))
+    tmp.replace(dst)
+    return checkpoint_stats(dst)
+
+
+# --------------------------------------------------------------------------
+# Per-generation training-health aggregates
+# --------------------------------------------------------------------------
+
+TB_TAGS: Tuple[str, ...] = (
+    "successes", "rot_error_mean", "episode_lengths/iter", "episode_final/done_drop",
+    "episode_final/done_nonfinite", "losses/entropy", "info/last_lr", "info/kl", "rewards/iter",
+)
+
+
+def training_scalars(train_dir: Path, tags: Sequence[str] = TB_TAGS, frac: float = 0.1) -> Dict[str, Dict[str, float]]:
+    """Mean of each TensorBoard scalar over the first (`head`) and last
+    (`tail`) `frac` of its logged points, read from rl_games' own
+    `<train_dir>/<experiment>/summaries`. Empty if there are no summaries
+    or tensorboard is unavailable (never fatal to the driver)."""
+    event_files = sorted(Path(train_dir).rglob("summaries/events.out.tfevents.*"))
+    if not event_files:
+        return {}
+    try:
+        from tensorboard.backend.event_processing import event_accumulator
+    except Exception:  # noqa: BLE001 -- optional dependency
+        return {}
+    out: Dict[str, Dict[str, float]] = {}
+    for logdir in sorted({p.parent for p in event_files}):
+        ea = event_accumulator.EventAccumulator(str(logdir), size_guidance={"scalars": 0})
+        try:
+            ea.Reload()
+        except Exception:  # noqa: BLE001 -- a truncated event file must not stop the driver
+            continue
+        available = set(ea.Tags().get("scalars", []))
+        for tag in tags:
+            if tag not in available:
+                continue
+            values = [e.value for e in ea.Scalars(tag)]
+            finite = [v for v in values if math.isfinite(v)]
+            if not finite:
+                continue
+            k = max(1, int(len(finite) * frac))
+            out[tag] = {
+                "head": float(np.mean(finite[:k])), "tail": float(np.mean(finite[-k:])),
+                "n": len(values), "n_nonfinite": len(values) - len(finite),
+            }
+    return out
+
+
+def _aggregate_windows(windows: Sequence[dict]) -> Dict[str, float]:
+    episodes = 0
+    sums = {"goals_per_episode": 0.0, "time_held_mean_s": 0.0, "graded_fitness": 0.0}
+    for w in windows:
+        for row in w.get("designs", {}).values():
+            ep = int(row.get("episodes", 0))
+            if ep <= 0:
+                continue
+            episodes += ep
+            for key in sums:
+                sums[key] += float(row.get(key, 0.0)) * ep
+    out = {key: (value / episodes if episodes else 0.0) for key, value in sums.items()}
+    out["episodes"] = episodes
+    return out
+
+
+def window_metrics(windows: Sequence[dict], *, tail_frac: float = 0.3) -> Dict[str, Dict[str, float]]:
+    """Episode-weighted aggregates over ALL designs (goals per episode =
+    aggregate successes per episode, mean time held, mean graded fitness),
+    for the first and last `tail_frac` of this generation's write windows."""
+    if not windows:
+        return {}
+    k = max(1, math.ceil(len(windows) * tail_frac))
+    return {"head": _aggregate_windows(windows[:k]), "tail": _aggregate_windows(windows[-k:])}
+
+
+def nonfinite_by_source(windows: Sequence[dict]) -> Dict[str, int]:
+    """Episodes ended by the env's non-finite physics guard, per design
+    `source` (each design's running total, so the latest window wins).
+    Only designs with at least one such episode are listed."""
+    out: Dict[str, int] = {}
+    for w in windows:
+        for row in w.get("designs", {}).values():
+            source = row.get("source")
+            total = int(row.get("nonfinite_resets_total", 0))
+            if source and total > 0:
+                out[source] = max(out.get(source, 0), total)
+    return out
+
+
+def assess_attempt(result: "TrainRunResult", train_dir: Path) -> Tuple[bool, str, Optional[Path], Optional[dict]]:
+    """`(ok, reason, checkpoint, checkpoint_stats)` for one training
+    attempt. OK only if train.py exited 0, at least one scoring window was
+    captured, a checkpoint exists, every tensor in it is finite, and its
+    GradScaler has not collapsed (a scale near 0 means every optimizer step
+    after some point was skipped on a non-finite loss)."""
+    checkpoint = find_last_checkpoint(train_dir)
+    stats = checkpoint_stats(checkpoint) if checkpoint is not None else None
+    if result.returncode != 0:
+        return False, f"train.py exited {result.returncode}", checkpoint, stats
+    if not result.windows:
+        return False, "no design-scoring window was written", checkpoint, stats
+    if checkpoint is None or stats is None:
+        return False, "no checkpoint was written", checkpoint, stats
+    if not stats["finite"]:
+        return False, f"checkpoint has non-finite tensors: {', '.join(stats['nonfinite_tensors'])}", checkpoint, stats
+    if stats["grad_scale"] is not None and stats["grad_scale"] < MIN_HEALTHY_GRAD_SCALE:
+        return False, f"GradScaler collapsed (scale {stats['grad_scale']}): training stopped updating", checkpoint, stats
+    return True, "ok", checkpoint, stats
+
+
+# --------------------------------------------------------------------------
 # State (archive + rng + generation index + checkpoint + config hash)
 # --------------------------------------------------------------------------
 
@@ -591,6 +829,24 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap.add_argument("--poll-interval-s", type=float, default=3.0)
     ap.add_argument("--train-python", default=str(REPO_ROOT / ".venv_isaacsim" / "bin" / "python3"))
     ap.add_argument("--eval-episodes-per-design", type=int, default=8)
+    # --- training config / stability (I41) ---
+    ap.add_argument("--agent-entry-point", default=AGENT_ENTRY_POINT,
+                    help="gym-registered rl_games config key for train.py's --agent (e.g. "
+                         "rl_games_sapg_pop_cfg_entry_point for InHandReorientPopSAPG.yaml)")
+    ap.add_argument("--train-override", action="append", default=[], metavar="KEY=VALUE",
+                    help="extra Hydra override passed to every generation's train.py (repeatable)")
+    ap.add_argument("--train-seed", type=int, default=42,
+                    help="agent.params.seed for a generation's first attempt; a retry uses seed+1")
+    ap.add_argument("--sigma-on-carry", choices=SIGMA_MODES, default="keep",
+                    help="policy log-std handling when carrying weights into the next generation: "
+                         "keep as trained, reset to --sigma-reset-value, or clamp at --sigma-clamp-max")
+    ap.add_argument("--sigma-reset-value", type=float, default=0.0, help="log-std after reset (0.0 = std 1)")
+    ap.add_argument("--sigma-clamp-max", type=float, default=0.0, help="log-std cap for --sigma-on-carry clamp")
+    ap.add_argument("--no-reset-grad-scaler", dest="reset_grad_scaler", action="store_false",
+                    help="carry the trained GradScaler state forward instead of resetting it")
+    ap.add_argument("--train-retries", type=int, default=1,
+                    help="retries of a failed generation (same population, same carried checkpoint) "
+                         "before the driver stops")
     return ap.parse_args(argv)
 
 
@@ -602,6 +858,9 @@ def _resolved_config(args: argparse.Namespace) -> dict:
         "max_offspring_retries": args.max_offspring_retries,
         "min_episodes_per_design": args.min_episodes_per_design, "tail_frac": args.tail_frac,
         "horizon_length": args.horizon_length,
+        "agent_entry_point": args.agent_entry_point, "train_override": list(args.train_override),
+        "sigma_on_carry": args.sigma_on_carry, "sigma_reset_value": args.sigma_reset_value,
+        "sigma_clamp_max": args.sigma_clamp_max, "reset_grad_scaler": args.reset_grad_scaler,
     }
 
 
@@ -622,6 +881,8 @@ CSV_COLUMNS = [
     "generation", "coverage", "n_cells_total", "qd_score", "best_fitness", "mean_fitness", "median_fitness",
     "n_distinct_founders", "max_founder_share", "mean_joint_count", "max_joint_count",
     "boot_s", "train_s", "select_s", "fps", "checkpoint", "n_windows",
+    "std_mean", "std_min", "std_max", "agg_goals_per_episode", "agg_time_held_s", "tb_successes",
+    "tb_rot_error_mean", "nonfinite_resets", "n_attempts",
 ]
 
 
@@ -632,6 +893,18 @@ def _append_csv(path: Path, row: dict) -> None:
         if write_header:
             w.writeheader()
         w.writerow({k: row.get(k) for k in CSV_COLUMNS})
+
+
+def _set_aside_failed_attempt(gen_dir: Path, attempt: int) -> None:
+    """Move a failed attempt's `train/` and `train.log` out of the way
+    (`train_failed_<k>/`, `train_failed_<k>.log`) so the retry writes a
+    fresh `train/` and the failed attempt stays inspectable."""
+    train_dir = gen_dir / "train"
+    if train_dir.exists():
+        train_dir.rename(gen_dir / f"train_failed_{attempt}")
+    log_path = gen_dir / "train.log"
+    if log_path.exists():
+        log_path.rename(gen_dir / f"train_failed_{attempt}.log")
 
 
 def run_generation(
@@ -658,30 +931,61 @@ def run_generation(
     env_vars = _write_env(Path(f"/tmp/{os.environ.get('USER', 'user')}/ov_cache"))
     env_vars["GENMECH_DESIGN_SCORE_WRITE_EVERY"] = str(write_every)
 
-    cmd = build_train_cmd(
-        train_python=args.train_python, population_path=population_path, num_envs=args.num_envs,
-        max_epochs=args.epochs_per_gen, hydra_run_dir=train_dir, checkpoint=last_checkpoint,
-        resume_success_tolerance=(prev_tolerance if generation > 0 else None), horizon_length=args.horizon_length,
-    )
-    cmd = ["timeout", "-k", "30", str(args.gen_timeout_s)] + cmd
-
-    print(f"[driver] generation {generation}: {len(plan.entries)} designs "
-          f"({args.designs - len(probe_hand_ids)} archive + {len(probe_hand_ids)} probes), "
-          f"write_every={write_every} steps, cmd={' '.join(cmd)}", flush=True)
+    # The checkpoint this generation starts from: validated (finite) and
+    # prepared once, reused unchanged by a retry.
+    carry_path: Optional[Path] = None
+    carry_stats: Optional[dict] = None
+    if last_checkpoint is not None:
+        carry_path = gen_dir / "carry_checkpoint.pth"
+        carry_stats = prepare_carry_checkpoint(
+            Path(last_checkpoint), carry_path, sigma_mode=args.sigma_on_carry,
+            sigma_reset_value=args.sigma_reset_value, sigma_clamp_max=args.sigma_clamp_max,
+            reset_grad_scaler=args.reset_grad_scaler,
+        )
+        print(f"[driver] generation {generation}: carrying {last_checkpoint} -> {carry_path} "
+              f"(sigma_on_carry={args.sigma_on_carry}, std mean {carry_stats['std']['mean']:.3f})"
+              if carry_stats.get("std") else
+              f"[driver] generation {generation}: carrying {last_checkpoint} -> {carry_path}", flush=True)
 
     score_path = train_dir / "per_design_scores_rank0.json"
     log_path = gen_dir / "train.log"
-    result = run_training_subprocess(
-        cmd, cwd=REPO_ROOT, extra_env=env_vars, log_path=log_path, score_path=score_path,
-        timeout_s=args.gen_timeout_s, poll_interval_s=args.poll_interval_s,
-    )
-    print(f"[driver] generation {generation}: train.py exited {result.returncode}, "
-          f"{len(result.windows)} window(s) captured, boot={result.boot_s:.1f}s train={result.train_s:.1f}s "
-          f"fps={result.fps:.0f}", flush=True)
-    if result.returncode != 0:
-        print(f"[driver] WARNING: generation {generation}'s train.py exited nonzero "
-              f"({result.returncode}); proceeding with whatever windows were captured -- see {log_path}",
-              flush=True)
+    attempts: List[dict] = []
+    result: Optional[TrainRunResult] = None
+    new_checkpoint: Optional[Path] = None
+    trained_stats: Optional[dict] = None
+    n_attempts = 1 + max(0, int(args.train_retries))
+    for attempt in range(n_attempts):
+        if attempt > 0:
+            _set_aside_failed_attempt(gen_dir, attempt - 1)
+        cmd = build_train_cmd(
+            train_python=args.train_python, population_path=population_path, num_envs=args.num_envs,
+            max_epochs=args.epochs_per_gen, hydra_run_dir=train_dir, checkpoint=carry_path,
+            resume_success_tolerance=(prev_tolerance if generation > 0 else None),
+            horizon_length=args.horizon_length, agent_entry_point=args.agent_entry_point,
+            seed=args.train_seed + attempt, extra_overrides=args.train_override,
+        )
+        cmd = ["timeout", "-k", "30", str(args.gen_timeout_s)] + cmd
+        print(f"[driver] generation {generation} attempt {attempt}: {len(plan.entries)} designs "
+              f"({args.designs - len(probe_hand_ids)} archive + {len(probe_hand_ids)} probes), "
+              f"write_every={write_every} steps, cmd={' '.join(cmd)}", flush=True)
+        result = run_training_subprocess(
+            cmd, cwd=REPO_ROOT, extra_env=env_vars, log_path=log_path, score_path=score_path,
+            timeout_s=args.gen_timeout_s, poll_interval_s=args.poll_interval_s,
+        )
+        ok, reason, new_checkpoint, trained_stats = assess_attempt(result, train_dir)
+        attempts.append({"attempt": attempt, "returncode": result.returncode, "ok": ok, "reason": reason,
+                         "n_windows": len(result.windows)})
+        print(f"[driver] generation {generation} attempt {attempt}: train.py exited {result.returncode}, "
+              f"{len(result.windows)} window(s) captured, boot={result.boot_s:.1f}s train={result.train_s:.1f}s "
+              f"fps={result.fps:.0f} -> {'OK' if ok else 'FAILED: ' + reason}", flush=True)
+        if ok:
+            break
+    else:
+        raise GenerationFailed(
+            f"generation {generation} failed after {n_attempts} attempt(s): "
+            + "; ".join(f"attempt {a['attempt']}: {a['reason']}" for a in attempts)
+            + f" (logs: {gen_dir}). Nothing from this generation was scored or archived.")
+    assert result is not None and new_checkpoint is not None
 
     t_select1 = time.time()
     fitness_by_source = compute_train_tail_fitness(
@@ -712,10 +1016,18 @@ def run_generation(
     archive.update_generation(candidates, generation)
     select_s = select_build_s + (time.time() - t_select1)
 
-    new_checkpoint = find_last_checkpoint(train_dir)
     new_tolerance = prev_tolerance
     if result.windows:
         new_tolerance = float(result.windows[-1].get("success_tolerance", prev_tolerance))
+
+    train_metrics = training_scalars(train_dir)
+    win_metrics = window_metrics(result.windows, tail_frac=args.tail_frac)
+    nonfinite = nonfinite_by_source(result.windows)
+    source_to_id = {m.source: m.design_id for m in plan.metas}
+    nonfinite_by_design = {source_to_id.get(src, src): n for src, n in sorted(nonfinite.items())}
+    if nonfinite_by_design:
+        print(f"[driver] generation {generation}: non-finite physics resets by design: {nonfinite_by_design}",
+              flush=True)
 
     summary = archive.summary()
     row = {
@@ -729,16 +1041,31 @@ def run_generation(
         "probes": probe_report,
         "timings": {"boot_s": result.boot_s, "train_s": result.train_s, "select_s": select_s},
         "fps": result.fps,
-        "checkpoint": str(new_checkpoint) if new_checkpoint else None,
+        "checkpoint": str(new_checkpoint),
         "success_tolerance": new_tolerance,
         "n_windows": len(result.windows),
         "n_designs": len(plan.entries),
         "returncode": result.returncode,
+        "attempts": attempts,
         "population_sha256": population_doc["population_sha256"],
+        "sigma_carried_in": carry_stats,
+        "sigma_trained": trained_stats,
+        "train_metrics": train_metrics,
+        "window_metrics": win_metrics,
+        "nonfinite_by_design": nonfinite_by_design,
     }
     _append_jsonl(run_dir / "generations.jsonl", row)
     csv_row = {k: row[k] for k in CSV_COLUMNS if k in row}
-    csv_row.update(boot_s=result.boot_s, train_s=result.train_s, select_s=select_s)
+    std = (trained_stats or {}).get("std") or {}
+    tail = win_metrics.get("tail", {})
+    csv_row.update(
+        boot_s=result.boot_s, train_s=result.train_s, select_s=select_s,
+        std_mean=std.get("mean"), std_min=std.get("min"), std_max=std.get("max"),
+        agg_goals_per_episode=tail.get("goals_per_episode"), agg_time_held_s=tail.get("time_held_mean_s"),
+        tb_successes=train_metrics.get("successes", {}).get("tail"),
+        tb_rot_error_mean=train_metrics.get("rot_error_mean", {}).get("tail"),
+        nonfinite_resets=sum(nonfinite.values()), n_attempts=len(attempts),
+    )
     _append_csv(run_dir / "generations.csv", csv_row)
 
     return new_checkpoint, new_tolerance
@@ -799,10 +1126,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
               flush=True)
 
     for generation in range(start_generation, args.generations):
-        last_checkpoint, prev_tolerance = run_generation(
-            generation, args, run_dir, dist, archive, driver_rng, minter, last_checkpoint, prev_tolerance,
-            probe_hand_ids,
-        )
+        try:
+            last_checkpoint, prev_tolerance = run_generation(
+                generation, args, run_dir, dist, archive, driver_rng, minter, last_checkpoint, prev_tolerance,
+                probe_hand_ids,
+            )
+        except (GenerationFailed, NonFiniteCheckpoint) as exc:
+            # state.json is deliberately NOT rewritten: it still describes the
+            # last generation that completed, so a rerun of the same command
+            # resumes (retries) this generation from the last good checkpoint.
+            print(f"[driver] ERROR: {exc}", flush=True)
+            print(f"[driver] stopping; {state_path} is left at generation "
+                  f"{generation - 1 if generation > 0 else 'none (no generation completed)'}.", flush=True)
+            return 2
         save_state(
             state_path, archive=archive, driver_rng=driver_rng, generation_completed=generation,
             last_checkpoint=str(last_checkpoint) if last_checkpoint else None, prev_tolerance=prev_tolerance,
