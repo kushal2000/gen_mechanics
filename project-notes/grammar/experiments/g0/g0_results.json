@@ -1,0 +1,488 @@
+{
+  "provenance": {
+    "sha": "ed7e3c3ddb6d96c19710bbf7a4263720e626f8e1",
+    "dirty": true,
+    "numpy": "1.26.0",
+    "python": "3.11.16"
+  },
+  "args": {
+    "variants": [
+      "V0",
+      "V1",
+      "V2",
+      "V3"
+    ],
+    "out_dir": "project-notes/grammar/experiments/g0",
+    "run_seed": 0,
+    "viability_seeds": 2000,
+    "diversity_n": 300,
+    "diversity_pairs": 3000,
+    "diversity_n_configs": 8,
+    "evolvability_parents": 200,
+    "evolvability_children": 5,
+    "explore_founders": 50,
+    "explore_evals": 500,
+    "explore_repeats": 3,
+    "max_extra_seeds": 1000,
+    "no_plots": false,
+    "quick": false
+  },
+  "results": [
+    {
+      "variant": "V0",
+      "viability": {
+        "n_seeds": 2000,
+        "frac_admitted": 0.049,
+        "frac_two_or_more_fingertips": 0.0015,
+        "frac_both": 0.0,
+        "reasons_histogram": {
+          "non-revolute movable joint type(s) present": 1675,
+          "1 coupling(s) present; envelope requires revolute-only, no c": 520,
+          "2 coupling(s) present; envelope requires revolute-only, no c": 451,
+          "digit_count 6 exceeds max_digits 5": 353,
+          "6 root-mounted digit(s) + 0 jointed palm carrier(s) exceed t": 353,
+          "3 coupling(s) present; envelope requires revolute-only, no c": 275,
+          "4 coupling(s) present; envelope requires revolute-only, no c": 146,
+          "5 coupling(s) present; envelope requires revolute-only, no c": 70,
+          "6 coupling(s) present; envelope requires revolute-only, no c": 26,
+          "1 rest-overlap pair(s) exceed 3.0 mm": 25,
+          "7 coupling(s) present; envelope requires revolute-only, no c": 15,
+          "3 rest-overlap pair(s) exceed 3.0 mm": 6,
+          "2 rest-overlap pair(s) exceed 3.0 mm": 5,
+          "8 coupling(s) present; envelope requires revolute-only, no c": 4,
+          "6 rest-overlap pair(s) exceed 3.0 mm": 3,
+          "9 coupling(s) present; envelope requires revolute-only, no c": 2,
+          "spawn height 2.2 mm above the palm along world z after base_": 1,
+          "5 rest-overlap pair(s) exceed 3.0 mm": 1,
+          "13 rest-overlap pair(s) exceed 3.0 mm": 1,
+          "9 rest-overlap pair(s) exceed 3.0 mm": 1
+        },
+        "descriptor_coverage": {
+          "cells_occupied": 0,
+          "n_cells": 30,
+          "shannon_entropy_bits": 0.0,
+          "per_cell_counts": {}
+        },
+        "complexity": {
+          "joint_count_histogram": {},
+          "joint_count_mean": null,
+          "joint_count_median": null
+        },
+        "cost": {
+          "total_wall_s": 23.805387853994034,
+          "mean_wall_s_per_design": 0.011902693926997016,
+          "mean_wall_s_per_viable_design": null
+        },
+        "n_viable_found": 0
+      },
+      "diversity": {
+        "n_designs": 1,
+        "n_pairs_sampled": 0,
+        "mean_tip_displacement_m": null,
+        "n_extra_seeds_scanned": 1000
+      },
+      "evolvability": {
+        "n_parents": 1,
+        "n_children_attempted": 5,
+        "n_children_produced": 2,
+        "child_viability_rate": 1.0,
+        "frac_children_change_cell": 0.0,
+        "frac_children_identical": 0.0,
+        "frac_children_identical_or_neutral": 1.0,
+        "n_extra_seeds_scanned": 1000
+      },
+      "explorability": {
+        "n_repeats": 3,
+        "n_evals_target": 500,
+        "per_repeat": [
+          {
+            "cells_occupied": 0,
+            "coverage_frac": 0.0,
+            "distinct_founders_in_archive": 0,
+            "n_founders": 0,
+            "n_evals_succeeded": 0,
+            "n_eval_attempts": 1
+          },
+          {
+            "cells_occupied": 0,
+            "coverage_frac": 0.0,
+            "distinct_founders_in_archive": 0,
+            "n_founders": 0,
+            "n_evals_succeeded": 0,
+            "n_eval_attempts": 1
+          },
+          {
+            "cells_occupied": 0,
+            "coverage_frac": 0.0,
+            "distinct_founders_in_archive": 0,
+            "n_founders": 0,
+            "n_evals_succeeded": 0,
+            "n_eval_attempts": 1
+          }
+        ],
+        "coverage_frac_mean": 0.0,
+        "coverage_frac_std": 0.0,
+        "distinct_founders_mean": 0.0,
+        "n_extra_seeds_scanned": 1000
+      },
+      "wall_s_total": 61.247852895990945
+    },
+    {
+      "variant": "V1",
+      "viability": {
+        "n_seeds": 2000,
+        "frac_admitted": 0.1755,
+        "frac_two_or_more_fingertips": 0.065,
+        "frac_both": 0.0025,
+        "reasons_histogram": {
+          "1 rest-overlap pair(s) exceed 3.0 mm": 305,
+          "3 rest-overlap pair(s) exceed 3.0 mm": 180,
+          "jointed palm body 'palm0' carries 2 digits, exceeds max 1": 170,
+          "2 rest-overlap pair(s) exceed 3.0 mm": 136,
+          "4 rest-overlap pair(s) exceed 3.0 mm": 107,
+          "jointed palm body 'palm1' has jointed palm ancestor 'palm0'": 107,
+          "jointed palm body 'palm0' carries 3 digits, exceeds max 1": 99,
+          "jointed palm body 'palm1' carries 2 digits, exceeds max 1": 80,
+          "6 rest-overlap pair(s) exceed 3.0 mm": 76,
+          "5 rest-overlap pair(s) exceed 3.0 mm": 68,
+          "7 rest-overlap pair(s) exceed 3.0 mm": 61,
+          "8 rest-overlap pair(s) exceed 3.0 mm": 51,
+          "9 rest-overlap pair(s) exceed 3.0 mm": 35,
+          "10 rest-overlap pair(s) exceed 3.0 mm": 34,
+          "jointed palm body 'palm0' carries 4 digits, exceeds max 1": 32,
+          "12 rest-overlap pair(s) exceed 3.0 mm": 26,
+          "jointed palm body 'palm1' carries 3 digits, exceeds max 1": 23,
+          "11 rest-overlap pair(s) exceed 3.0 mm": 23,
+          "13 rest-overlap pair(s) exceed 3.0 mm": 17,
+          "16 rest-overlap pair(s) exceed 3.0 mm": 13
+        },
+        "descriptor_coverage": {
+          "cells_occupied": 5,
+          "n_cells": 30,
+          "shannon_entropy_bits": 2.321928094887362,
+          "per_cell_counts": {
+            "d2_j6-10": 1,
+            "d2_j11-15": 1,
+            "d3_j1-5": 1,
+            "d3_j11-15": 1,
+            "d4_j6-10": 1
+          }
+        },
+        "complexity": {
+          "joint_count_histogram": {
+            "12": 1,
+            "3": 1,
+            "13": 1,
+            "8": 1,
+            "10": 1
+          },
+          "joint_count_mean": 9.2,
+          "joint_count_median": 10.0
+        },
+        "cost": {
+          "total_wall_s": 263.43925959215267,
+          "mean_wall_s_per_design": 0.13171962979607632,
+          "mean_wall_s_per_viable_design": 52.68785191843053
+        },
+        "n_viable_found": 5
+      },
+      "diversity": {
+        "n_designs": 8,
+        "n_pairs_sampled": 28,
+        "n_pairs_total_possible": 28,
+        "mean_tip_displacement_m": 0.17007723624280185,
+        "std_tip_displacement_m": 0.08264857590232644,
+        "n_extra_seeds_scanned": 1000
+      },
+      "evolvability": {
+        "n_parents": 11,
+        "n_children_attempted": 55,
+        "n_children_produced": 34,
+        "child_viability_rate": 0.7058823529411765,
+        "frac_children_change_cell": 0.25806451612903225,
+        "frac_children_identical": 0.029411764705882353,
+        "frac_children_identical_or_neutral": 0.6764705882352942,
+        "n_extra_seeds_scanned": 1000
+      },
+      "explorability": {
+        "n_repeats": 3,
+        "n_evals_target": 500,
+        "per_repeat": [
+          {
+            "cells_occupied": 14,
+            "coverage_frac": 0.4666666666666667,
+            "distinct_founders_in_archive": 7,
+            "n_founders": 9,
+            "n_evals_succeeded": 500,
+            "n_eval_attempts": 844
+          },
+          {
+            "cells_occupied": 15,
+            "coverage_frac": 0.5,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 9,
+            "n_evals_succeeded": 500,
+            "n_eval_attempts": 811
+          },
+          {
+            "cells_occupied": 16,
+            "coverage_frac": 0.5333333333333333,
+            "distinct_founders_in_archive": 7,
+            "n_founders": 9,
+            "n_evals_succeeded": 500,
+            "n_eval_attempts": 821
+          }
+        ],
+        "coverage_frac_mean": 0.5,
+        "coverage_frac_std": 0.02721655269759086,
+        "distinct_founders_mean": 6.666666666666667,
+        "n_extra_seeds_scanned": 1000
+      },
+      "wall_s_total": 916.5202871980146
+    },
+    {
+      "variant": "V2",
+      "viability": {
+        "n_seeds": 2000,
+        "frac_admitted": 0.258,
+        "frac_two_or_more_fingertips": 0.0505,
+        "frac_both": 0.008,
+        "reasons_histogram": {
+          "1 rest-overlap pair(s) exceed 3.0 mm": 319,
+          "jointed palm body 'palm0' carries 2 digits, exceeds max 1": 234,
+          "2 rest-overlap pair(s) exceed 3.0 mm": 170,
+          "3 rest-overlap pair(s) exceed 3.0 mm": 153,
+          "jointed palm body 'palm1' has jointed palm ancestor 'palm0'": 107,
+          "4 rest-overlap pair(s) exceed 3.0 mm": 101,
+          "5 rest-overlap pair(s) exceed 3.0 mm": 71,
+          "6 rest-overlap pair(s) exceed 3.0 mm": 59,
+          "jointed palm body 'palm0' carries 3 digits, exceeds max 1": 54,
+          "7 rest-overlap pair(s) exceed 3.0 mm": 42,
+          "jointed palm body 'palm1' carries 2 digits, exceeds max 1": 41,
+          "10 rest-overlap pair(s) exceed 3.0 mm": 35,
+          "8 rest-overlap pair(s) exceed 3.0 mm": 35,
+          "9 rest-overlap pair(s) exceed 3.0 mm": 29,
+          "11 rest-overlap pair(s) exceed 3.0 mm": 21,
+          "12 rest-overlap pair(s) exceed 3.0 mm": 9,
+          "15 rest-overlap pair(s) exceed 3.0 mm": 8,
+          "14 rest-overlap pair(s) exceed 3.0 mm": 7,
+          "13 rest-overlap pair(s) exceed 3.0 mm": 6,
+          "5 root-mounted digit(s) + 1 jointed palm carrier(s) exceed t": 3
+        },
+        "descriptor_coverage": {
+          "cells_occupied": 6,
+          "n_cells": 30,
+          "shannon_entropy_bits": 2.311278124459133,
+          "per_cell_counts": {
+            "d2_j1-5": 1,
+            "d2_j6-10": 3,
+            "d2_j11-15": 2,
+            "d3_j11-15": 6,
+            "d3_j16-20": 3,
+            "d4_j16-20": 1
+          }
+        },
+        "complexity": {
+          "joint_count_histogram": {
+            "10": 1,
+            "7": 1,
+            "13": 2,
+            "17": 3,
+            "14": 1,
+            "11": 2,
+            "12": 3,
+            "2": 1,
+            "18": 1,
+            "9": 1
+          },
+          "joint_count_mean": 12.1875,
+          "joint_count_median": 12.0
+        },
+        "cost": {
+          "total_wall_s": 273.5472799949348,
+          "mean_wall_s_per_design": 0.1367736399974674,
+          "mean_wall_s_per_viable_design": 17.096704999683425
+        },
+        "n_viable_found": 16
+      },
+      "diversity": {
+        "n_designs": 19,
+        "n_pairs_sampled": 171,
+        "n_pairs_total_possible": 171,
+        "mean_tip_displacement_m": 0.18964790015854177,
+        "std_tip_displacement_m": 0.057809160660597665,
+        "n_extra_seeds_scanned": 1000
+      },
+      "evolvability": {
+        "n_parents": 25,
+        "n_children_attempted": 125,
+        "n_children_produced": 74,
+        "child_viability_rate": 0.5135135135135135,
+        "frac_children_change_cell": 0.06451612903225806,
+        "frac_children_identical": 0.0,
+        "frac_children_identical_or_neutral": 0.7837837837837838,
+        "n_extra_seeds_scanned": 1000
+      },
+      "explorability": {
+        "n_repeats": 3,
+        "n_evals_target": 500,
+        "per_repeat": [
+          {
+            "cells_occupied": 14,
+            "coverage_frac": 0.4666666666666667,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 500,
+            "n_eval_attempts": 777
+          },
+          {
+            "cells_occupied": 14,
+            "coverage_frac": 0.4666666666666667,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 500,
+            "n_eval_attempts": 820
+          },
+          {
+            "cells_occupied": 16,
+            "coverage_frac": 0.5333333333333333,
+            "distinct_founders_in_archive": 6,
+            "n_founders": 20,
+            "n_evals_succeeded": 500,
+            "n_eval_attempts": 799
+          }
+        ],
+        "coverage_frac_mean": 0.48888888888888893,
+        "coverage_frac_std": 0.03142696805273544,
+        "distinct_founders_mean": 6.0,
+        "n_extra_seeds_scanned": 1000
+      },
+      "wall_s_total": 953.8450595220202
+    },
+    {
+      "variant": "V3",
+      "viability": {
+        "n_seeds": 2000,
+        "frac_admitted": 0.2415,
+        "frac_two_or_more_fingertips": 0.1665,
+        "frac_both": 0.014,
+        "reasons_histogram": {
+          "1 rest-overlap pair(s) exceed 3.0 mm": 299,
+          "jointed palm body 'palm0' carries 2 digits, exceeds max 1": 234,
+          "2 rest-overlap pair(s) exceed 3.0 mm": 171,
+          "3 rest-overlap pair(s) exceed 3.0 mm": 149,
+          "4 rest-overlap pair(s) exceed 3.0 mm": 108,
+          "jointed palm body 'palm1' has jointed palm ancestor 'palm0'": 107,
+          "6 rest-overlap pair(s) exceed 3.0 mm": 76,
+          "5 rest-overlap pair(s) exceed 3.0 mm": 60,
+          "jointed palm body 'palm0' carries 3 digits, exceeds max 1": 54,
+          "7 rest-overlap pair(s) exceed 3.0 mm": 53,
+          "8 rest-overlap pair(s) exceed 3.0 mm": 46,
+          "9 rest-overlap pair(s) exceed 3.0 mm": 41,
+          "jointed palm body 'palm1' carries 2 digits, exceeds max 1": 41,
+          "10 rest-overlap pair(s) exceed 3.0 mm": 23,
+          "11 rest-overlap pair(s) exceed 3.0 mm": 20,
+          "12 rest-overlap pair(s) exceed 3.0 mm": 11,
+          "13 rest-overlap pair(s) exceed 3.0 mm": 10,
+          "15 rest-overlap pair(s) exceed 3.0 mm": 9,
+          "18 rest-overlap pair(s) exceed 3.0 mm": 8,
+          "14 rest-overlap pair(s) exceed 3.0 mm": 7
+        },
+        "descriptor_coverage": {
+          "cells_occupied": 9,
+          "n_cells": 30,
+          "shannon_entropy_bits": 2.8234665284277938,
+          "per_cell_counts": {
+            "d2_j1-5": 3,
+            "d2_j6-10": 9,
+            "d2_j11-15": 3,
+            "d3_j6-10": 4,
+            "d3_j11-15": 3,
+            "d4_j11-15": 3,
+            "d4_j16-20": 1,
+            "d5_j11-15": 1,
+            "d5_j26-32": 1
+          }
+        },
+        "complexity": {
+          "joint_count_histogram": {
+            "11": 5,
+            "6": 3,
+            "5": 2,
+            "4": 1,
+            "10": 1,
+            "8": 1,
+            "18": 1,
+            "7": 3,
+            "9": 5,
+            "14": 2,
+            "15": 1,
+            "13": 2,
+            "27": 1
+          },
+          "joint_count_mean": 10.178571428571429,
+          "joint_count_median": 9.0
+        },
+        "cost": {
+          "total_wall_s": 276.08442285034107,
+          "mean_wall_s_per_design": 0.13804221142517054,
+          "mean_wall_s_per_viable_design": 9.860157958940752
+        },
+        "n_viable_found": 28
+      },
+      "diversity": {
+        "n_designs": 40,
+        "n_pairs_sampled": 780,
+        "n_pairs_total_possible": 780,
+        "mean_tip_displacement_m": 0.12058084385157629,
+        "std_tip_displacement_m": 0.03795915293440627,
+        "n_extra_seeds_scanned": 1000
+      },
+      "evolvability": {
+        "n_parents": 48,
+        "n_children_attempted": 240,
+        "n_children_produced": 171,
+        "child_viability_rate": 0.6549707602339181,
+        "frac_children_change_cell": 0.16049382716049382,
+        "frac_children_identical": 0.0,
+        "frac_children_identical_or_neutral": 0.7953216374269005,
+        "n_extra_seeds_scanned": 1000
+      },
+      "explorability": {
+        "n_repeats": 3,
+        "n_evals_target": 500,
+        "per_repeat": [
+          {
+            "cells_occupied": 16,
+            "coverage_frac": 0.5333333333333333,
+            "distinct_founders_in_archive": 7,
+            "n_founders": 40,
+            "n_evals_succeeded": 500,
+            "n_eval_attempts": 779
+          },
+          {
+            "cells_occupied": 17,
+            "coverage_frac": 0.5666666666666667,
+            "distinct_founders_in_archive": 8,
+            "n_founders": 40,
+            "n_evals_succeeded": 500,
+            "n_eval_attempts": 719
+          },
+          {
+            "cells_occupied": 17,
+            "coverage_frac": 0.5666666666666667,
+            "distinct_founders_in_archive": 8,
+            "n_founders": 40,
+            "n_evals_succeeded": 500,
+            "n_eval_attempts": 685
+          }
+        ],
+        "coverage_frac_mean": 0.5555555555555556,
+        "coverage_frac_std": 0.01571348402636772,
+        "distinct_founders_mean": 7.666666666666667,
+        "n_extra_seeds_scanned": 1000
+      },
+      "wall_s_total": 995.0675134920166
+    }
+  ]
+}
