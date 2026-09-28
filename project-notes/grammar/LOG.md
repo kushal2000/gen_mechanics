@@ -306,3 +306,10 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Local G_V2S_s0 (8 generations): coverage 13 -> 15 (plateau by gen 2), QD 1.02 -> 1.62 -> 1.59, founders 13 -> 7 (max share 0.2), joints ~10.7, best fitness flat ~0.18-0.21, probes flat. Gen 7's train.py crashed (std NaN at the first action) and the driver scored it anyway from one stale window.
 - Cause found: action log-std grows every generation in population training (std 15 / 46 / ~245 after gens 0 / 2 / 6); single-hand runs that learn keep std 0.7-3.0. With actions clipped to [-1, 1] the controller is effectively random, so fitness mostly reflects passive holding.
 - Actions: local G_V2S_s1 stopped (low value); cluster pilot left running as a weak-controller baseline (~8 GPU-h more); Opus worker fixing exploration and driver robustness (I41). Analysis tool committed (6423538).
+
+## I41 fixed: population training learns (2026-09-28 ~04:00)
+
+- Root cause: SAPG's hidden entropy bonus (coefficient 0.001 with one block) plus ghost action slots, saturating clipped actions and adaptive lr drove log-std up without bound; fp16 overflow then collapsed the GradScaler to 0 and a PyTorch edge case wrote NaN weights at gen 7. No design produced non-finite physics.
+- Fix (292c72d..94edf2a): population train config InHandReorientPopSAPG.yaml (no entropy bonus, log-std clamped <= 0), driver retries and checks, env NaN guard. Single-hand path unchanged (dclaw bit-identical for 300 epochs). 293 package tests.
+- 32 designs learn; 64 learn 2-3x slower. 3-generation validation (G_V3S, 32 designs, 900 epochs/gen): successes .019 -> .074, episode length 21 -> 63, std 1.00 -> 0.73, probes allegro .064 -> .104, sharpa .114 -> .220, leap .124 -> .210.
+- Pilot 2: G_V1 vs G_V3S, 32 designs, 1200 epochs/gen, 12 generations; seeds 0-1 on the cluster (4 A6000s), seed 2 of each locally.
