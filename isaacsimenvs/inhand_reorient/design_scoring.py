@@ -160,6 +160,11 @@ def allocate_scoring_buffers(env) -> None:
     env._score_rotation_term_sum = torch.zeros(n_designs, device=device)
     env._score_time_term_sum = torch.zeros(n_designs, device=device)
     env._score_fitness_sum = torch.zeros(n_designs, device=device)
+    # Episodes ended by nan_guard's "nonfinite" termination (a physics
+    # blow-up), per design: this window's count and the run's running total
+    # (never reset, so the last write carries everything up to it).
+    env._score_nonfinite_sum = torch.zeros(n_designs, device=device)
+    env._score_nonfinite_total = torch.zeros(n_designs, device=device)
 
     env._score_total_steps = 0
     env._score_window_steps = 0
@@ -241,6 +246,11 @@ def bank_done_episodes(env, reward: torch.Tensor) -> None:
     env._score_rotation_term_sum.index_add_(0, d, rot_term)
     env._score_time_term_sum.index_add_(0, d, time_term)
     env._score_fitness_sum.index_add_(0, d, fitness)
+    nonfinite = reasons.get("nonfinite")
+    if nonfinite is not None:
+        nf = nonfinite[ids].float()
+        env._score_nonfinite_sum.index_add_(0, d, nf)
+        env._score_nonfinite_total.index_add_(0, d, nf)
 
     if env._score_output_path is not None and env._score_window_steps >= WRITE_EVERY_N_STEPS:
         maybe_write(env)
@@ -257,6 +267,8 @@ def _snapshot_payload(env) -> dict:
     rotation_term_sum = env._score_rotation_term_sum.cpu()
     time_term_sum = env._score_time_term_sum.cpu()
     fitness_sum = env._score_fitness_sum.cpu()
+    nonfinite_sum = env._score_nonfinite_sum.cpu()
+    nonfinite_total = env._score_nonfinite_total.cpu()
     design_idx = env._score_design_idx.cpu()
 
     tables = getattr(env, "hand_tables", None)
@@ -291,6 +303,8 @@ def _snapshot_payload(env) -> dict:
                 "rotation_term_mean": float(rotation_term_sum[i]) / n_ep,
                 "time_term_mean": float(time_term_sum[i]) / n_ep,
             },
+            "nonfinite_resets": int(nonfinite_sum[i]),
+            "nonfinite_resets_total": int(nonfinite_total[i]),
         }
 
     return {
@@ -304,6 +318,8 @@ def _snapshot_payload(env) -> dict:
         "window_elapsed_s": round(time.time() - env._score_window_t0, 1),
         "n_designs": n_designs,
         "episodes": int(episodes.sum().item()),
+        "nonfinite_resets": int(nonfinite_sum.sum().item()),
+        "nonfinite_resets_total": int(nonfinite_total.sum().item()),
         "graded_fitness_formula": (
             f"goals + {ROTATION_WEIGHT} * clip(rotation_progress / pi, 0, 1) "
             f"+ {TIME_WEIGHT} * min(time_held_s / episode_max_s, 1), averaged over this window's episodes"
@@ -345,6 +361,7 @@ def maybe_write(env) -> None:
     env._score_rotation_term_sum.zero_()
     env._score_time_term_sum.zero_()
     env._score_fitness_sum.zero_()
+    env._score_nonfinite_sum.zero_()
     env._score_window_steps = 0
     env._score_window_t0 = time.time()
 

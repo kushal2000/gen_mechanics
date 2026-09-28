@@ -16,7 +16,7 @@ from isaaclab.envs import DirectRLEnv
 
 from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
 
-from . import design_scoring
+from . import design_scoring, nan_guard
 from .env_cfg import InHandReorientEnvCfg
 from .obs_utils import build_observations, compute_intermediate_values, pre_physics_step
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
@@ -55,6 +55,7 @@ class InHandReorientEnv(PoseReachEnv):
         allocate_state_buffers(self)
         finalize_scene(self)
         design_scoring.allocate_scoring_buffers(self)
+        nan_guard.allocate_guard_buffers(self)
 
     # --- Isaac Lab hooks -----------------------------------------------------
 
@@ -76,17 +77,21 @@ class InHandReorientEnv(PoseReachEnv):
         update_tolerance_curriculum(self)  # increments self._frame_counter
         update_goal_curriculum(self)  # reads it right after -- see its docstring
         compute_intermediate_values(self)
+        # Flag and neutralise envs whose physics went non-finite BEFORE any
+        # consumer of this step's geometry (scoring, terminations, reward).
+        nan_guard.guard_step_state(self)
         design_scoring.step_scoring_state(self)  # after _rot_error refresh, before terminations
-        return compute_terminations(self)
+        terminated, truncated = compute_terminations(self)
+        return nan_guard.add_nonfinite_termination(self, terminated), truncated
 
     def _get_rewards(self) -> torch.Tensor:
-        reward = compute_rewards(self)
+        reward = nan_guard.sanitize_reward(self, compute_rewards(self))
         design_scoring.bank_done_episodes(self, reward)  # before _reset_idx clears anything
         log_step_metrics(self)
         return reward
 
     def _get_observations(self) -> dict[str, torch.Tensor]:
-        return build_observations(self)
+        return nan_guard.sanitize_observations(self, build_observations(self))
 
     # --- generic curriculum-checkpoint hook -----------------------------
     # pose_reaching_6d.reward_utils.curriculum.get_curriculum_state/
