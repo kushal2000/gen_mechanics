@@ -98,39 +98,37 @@ BASE_ROT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 #          it. ROLL = 90 stands the palm vertical. Past 90 the palm faces
 #          downward and there is nothing underneath the object at all.
 #
-# WHY THE REFERENCE'S QUATERNION CANNOT SETTLE THIS, having been tried twice.
-# Decomposed into these two angles the reference is (pitch 5.4, roll -45) and the
-# rebuild reproduces its published quaternion to 8e-8 -- but that only fixes its
-# BASE FRAME, and reading a palm tilt off it needs the extra assumption that its
-# base axes map onto palm-normal / width / fingers the way ours do. They do not:
+# WHAT THE REFERENCE'S TILT ACTUALLY IS, settled from its asset on 2026-09-28
+# after two wrong answers taken from its config alone.
 #
-#   the reference's axis      tilt off vertical if it were the palm normal
-#   -x, -y                     45.25 deg
-#   -z                         84.60 deg
-#   +z                         95.40 deg
-#   +x, +y                    134.75 deg
+# The quaternion fixes the base FRAME; reading a palm tilt off it needs to know
+# WHICH base axis is the palm normal. The Allegro URDF answers that unambiguously
+# (/home/kk837/.maniskill/data/robots/xarm6/xarm6_allegro_right.urdf; any copy of
+# allegro_hand_description carries the same frame):
 #
-# NO axis of it is within 45 degrees of vertical. Videos of the task show a
-# roughly level palm, so its palm plane simply is not aligned with a base-frame
-# axis, and every number in that table is an artefact of the asset's frame rather
-# than a property of the task. Settling it would take the Allegro URDF, not the
-# env config.
+#   index fingertip at (0, 0.0435, 0.1340) from base_link  -> fingers along +z
+#   index y +0.0435, ring y -0.0435                        -> y is the palm width
+#   thumb root at x -0.0182, other three at x 0            -> the thumb opposes
+#                                                             across -x, so x IS the
+#                                                             palm normal and the
+#                                                             inner face is -x
 #
-# Two wrong turns are recorded here so they are not taken a third time. 82a05e7
-# took +x as the grasping face and rolled the hand over, spawning the cube
-# underneath it; 154ba54 took -x and set the tilt to 45.25 degrees. The cube
-# offset does at least pin the reach axis -- the cube sits 0.1835 m along +z and
-# only -0.055 m along each of the others -- but the roll about it is not
-# recoverable this way.
+# So its frame is (normal, width, fingers) exactly as ours is, with the grasping
+# face on -x where ours is +x. Under its published rotation that face points
+# (0.7071, -0.0665, 0.7040), which is 45.25 degrees off vertical. Its reach axis
+# comes out 5.4 degrees below horizontal, and its cube sits 0.1835 m along that axis
+# and 0.055 m off the palm plane on the grasping side. All three agree.
 #
-# ONE ANGLE OF THE REFERENCE DOES SURVIVE, and it corroborates the 5 degrees
-# below. Its REACH AXIS is 5.4 degrees below horizontal, and that direction is
-# frame-robust in a way the roll about it is not: the cube sits 0.1835 m along +z
-# against -0.055 m along each of the other two, which pins +z as the direction the
-# fingers point without needing to know how the asset's frame sits in its palm. A
-# roughly level palm in a video and a reach axis 5.4 degrees off level are the same
-# observation, so 5 degrees is the reference's number as far as its config can tell
-# us -- and it is where our own default independently ended up.
+# THE REFERENCE IS TILTED 45.25 DEGREES; the default below is 5. That divergence is
+# deliberate and recorded rather than resolved: 5 came from watching the task and
+# judging the palm near level, the asset disagrees with that reading, and the tilt is
+# not what decides this task anyway -- the measurements below are the reason.
+#
+# The two wrong answers, written down so a third is not produced:
+#   82a05e7  read +x as the grasping face, which rolled the hand over and spawned the
+#            cube underneath it.
+#   40f9e94  concluded that no axis was within 45 degrees of vertical and that the
+#            palm plane was not axis-aligned at all. Both halves were false.
 #
 # The tilt otherwise stays a MEASURED parameter of our own task, not a borrowed
 # one. All of these ran at roll 0 with the cube on the palm SLAB (fixed SHARPA,
