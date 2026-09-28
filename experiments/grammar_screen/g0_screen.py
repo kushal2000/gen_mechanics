@@ -18,10 +18,16 @@ Run with the project's `.venv_isaacsim` interpreter (importing
 minutes) -- used by the acceptance test, not for real numbers.
 
 Variants (see `hand_sampler.grammar.variants.G0_SCREEN_VARIANTS`):
-  V0  G_SERIAL              -- old-sampler-like baseline.
-  V1  DEFAULT, constrained  -- revolute only, no branching, envelope-shaped.
-  V2  V1 + mount-spacing rule (I29).
-  V3  V2 + curl-axis and opposition priors (I30).
+  V0   G_SERIAL              -- old-sampler-like baseline (superseded).
+  V1   DEFAULT, constrained  -- revolute only, no branching, envelope-shaped.
+  V2   V1 + mount-spacing rule (I29) (superseded by V2s; kept for reference).
+  V3   V2 + curl-axis and opposition priors (I30) (superseded by V3s; kept
+       for reference -- has the phalanx-0-bend/host-frame bugs opus-review
+       -g0.md item 5 found).
+  V1s  V1 + surface mounting (opus-review-g0.md item 2).
+  V2s  V1s + planned cross-host spacing (item 2).
+  V3s  V1s + the FIXED curl-axis and opposition priors (item 5).
+Default rerun roster: V1, V1s, V2s, V3, V3s (see `DEFAULT_RERUN_VARIANTS`).
 
 Definitions used throughout this script (see `report.md` for the full
 write-up):
