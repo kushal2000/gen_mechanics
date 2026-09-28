@@ -7,10 +7,10 @@ Registered as ``inhand_actor_critic``: rl_games' stock ``actor_critic``
     logstd_min: -5.0    # ... and to >= this (omit either to leave that side open)
 
 Why (I41): the population controller's log-std parameter (``a2c_network.
-sigma``, ``fixed_sigma: coef_cond``) drifted from 0 to about 6.7 over seven
-evolution-pilot generations (std ~250). Actions are clipped to [-1, 1]
-before they reach the env, so any std well above 1 only makes the executed
-actions bang-bang: it adds no exploration, it removes the reward's grip on
+sigma``, ``fixed_sigma: coef_cond``) drifted from 0 to a mean of 5.5 (max
+6.75) over seven evolution-pilot generations (geometric-mean std ~230).
+Actions are clipped to [-1, 1] before they reach the env, so any std well
+above 1 only makes the executed actions bang-bang: it adds no exploration, it removes the reward's grip on
 the std (the executed action distribution stops changing as sigma grows),
 and a large std shrinks the policy KL per update, which pushes the adaptive
 learning rate to its 1e-2 ceiling. Projecting the parameter (rather than
