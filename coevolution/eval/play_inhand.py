@@ -1,7 +1,9 @@
 """Watch an in-hand reorientation policy: one env, one checkpoint, render in viser.
 
-The hand-only task -- a fixed palm-up hand, no arm, one cube already in the palm,
-goal a uniform random SO(3) orientation resampled on every success.
+The hand-only task -- a fixed hand, no arm, one cube already in it, goal a
+uniform random SO(3) orientation resampled on every success. The palm is at the
+IsaacLab inhand reference orientation (pitch 5.4, roll 135), which faces it 44.75
+degrees BELOW horizontal: nothing is under the cube, so only finger contact holds it.
 
     OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python -m coevolution.eval.play_inhand \
         --checkpoint debug_outputs/train_logs/24sep_inhand_reorientation/<run>/rank_0/<name>/nn/<ckpt>.pth \
