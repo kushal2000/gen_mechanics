@@ -288,3 +288,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - 500 seeds: G_V1 1.2% viable (was 0.25%), G_V3 7.2% (was 1.4%).
 - Kit: FK 0.0005 mm, homogeneous, 0 spawn-triggered drops, 42% of cubes resting at 100 zero-action steps.
 - Eval-script hang fixed (f279df5), residual oddity I40. Package tests 250 pass.
+
+## G0 rerun against oracle v2 (2026-09-28 ~00:00)
+
+- Grammar fixes: surface mounting + cross-host spacing (exact mount coincidences 13.4% -> 0%), curl skips phalanx 0 and opposition uses host frames (median opposition 106 -> 175 deg). New variants G_V1S, G_V2S, G_V3S; old ones byte-identical. Grammar suite 3157 passed.
+- 2000 seeds: viable V1 1.95% [1.43, 2.65], V1s 3.05%, V2s 5.00%, V3 8.35%, V3s 9.35% [8.15, 10.71]; cells 11/12/14/14/15 of 30; CPU time per viable design 5.1 s -> 1.25 s. All pairwise McNemar tests significant except V3 vs V3s. Trade-off: continuous pose diversity falls 164 -> 115 mm as viability rises. V2s keeps the most founders.
+- Pilot arms: G_V1 (baseline) vs G_V3S (best); G_V2S optional.

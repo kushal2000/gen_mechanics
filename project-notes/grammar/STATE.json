@@ -310,9 +310,9 @@
     },
     {
       "id": "I39",
-      "status": "open",
+      "status": "resolved",
       "hypothesis": "G0 oracle artifacts (opus-review-g0.md): capsules 2r longer than built; overlap checked at q=0 not default_q; spawn 35 mm beyond the fingertips with an undercounting sweep; digits mounted on the host centre axis (grammar); V3 bends phalanx 0 and opposition ignores host frames (grammar); explorability archive admits non-viable children. V3 > V1 robust (p<1e-4); absolute rates artifact-dominated. Fix before the pilot, then rerun G0.",
-      "decision": null,
+      "decision": "Oracle v2 (773385b) + grammar fixes (a195b56, 5f5eeb9) + G0 rerun (cb209bb, report_v2.md).",
       "evidence": "project-notes/grammar/opus-review-g0.md"
     },
     {
@@ -324,7 +324,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Worker: I32 population fixes (grammar_envelope first, commit tagged [G0-ready]) + palm-cell colliders + graded per-design scoring + frozen-policy eval. Then G0 CPU grammar screen in parallel once [G0-ready] lands. Then evolution driver.",
+  "next_action": "Cluster calibration: 1 generation of the evolution driver (G_V3S, 64 designs, 4096 envs, 900 epochs) on ada6000-shared to set honest limits; then pilot: G_V1 x2 + G_V3S x2 on the cluster (4 GPUs), G_V2S x2 locally.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -357,25 +357,23 @@
     "E7": "done",
     "E11": "done",
     "G0": {
-      "status": "superseded pending oracle and grammar fixes (I39)",
-      "report": "project-notes/grammar/experiments/g0/report.md",
+      "status": "done (v2)",
+      "report": "project-notes/grammar/experiments/g0/report_v2.md",
       "viable_frac": {
-        "V0": 0.0,
-        "V1": 0.0025,
-        "V2": 0.008,
-        "V3": 0.014
+        "V1": 0.0195,
+        "V1s": 0.0305,
+        "V2s": 0.05,
+        "V3": 0.0835,
+        "V3s": 0.0935
       },
-      "cells_occupied": {
-        "V1": 5,
-        "V2": 6,
-        "V3": 9
+      "cells": {
+        "V1": 11,
+        "V1s": 12,
+        "V2s": 14,
+        "V3": 14,
+        "V3s": 15
       },
-      "map_elites_coverage": {
-        "V1": 0.5,
-        "V2": 0.489,
-        "V3": 0.556
-      },
-      "recommendation": "baseline V1 (G_V1), best V3 (G_V3)"
+      "recommendation": "pilot arms: G_V1 (baseline) vs G_V3S (best); G_V2S optional third arm"
     }
   },
   "gpu_hours_used": 0.98,
