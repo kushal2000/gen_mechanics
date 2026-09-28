@@ -674,6 +674,9 @@ def prepare_carry_checkpoint(
 TB_TAGS: Tuple[str, ...] = (
     "successes", "rot_error_mean", "episode_lengths/iter", "episode_final/done_drop",
     "episode_final/done_nonfinite", "losses/entropy", "info/last_lr", "info/kl", "rewards/iter",
+    # n_nonfinite of a loss is the early warning for the fp16-overflow failure (I41): NaN
+    # losses, GradScaler backing off to 0, then NaN weights on the next finite-loss step.
+    "losses/a_loss",
 )
 
 
