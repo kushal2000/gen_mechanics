@@ -307,6 +307,13 @@
       "hypothesis": "evaluate_population.py blocked by vendored rl_games player: checkpoint loads after a block-count workaround (03d4e06), but obs normalisation splits 133 vs 132 dims under SAPG coef_cond at inference. Evolution driver uses training-tail fitness until fixed.",
       "decision": null,
       "evidence": "worker report 2026-09-27"
+    },
+    {
+      "id": "I39",
+      "status": "open",
+      "hypothesis": "G0 oracle artifacts (opus-review-g0.md): capsules 2r longer than built; overlap checked at q=0 not default_q; spawn 35 mm beyond the fingertips with an undercounting sweep; digits mounted on the host centre axis (grammar); V3 bends phalanx 0 and opposition ignores host frames (grammar); explorability archive admits non-viable children. V3 > V1 robust (p<1e-4); absolute rates artifact-dominated. Fix before the pilot, then rerun G0.",
+      "decision": null,
+      "evidence": "project-notes/grammar/opus-review-g0.md"
     }
   ],
   "last_green_commit": "3acff20",
@@ -343,7 +350,7 @@
     "E7": "done",
     "E11": "done",
     "G0": {
-      "status": "done, under Opus verification",
+      "status": "superseded pending oracle and grammar fixes (I39)",
       "report": "project-notes/grammar/experiments/g0/report.md",
       "viable_frac": {
         "V0": 0.0,
