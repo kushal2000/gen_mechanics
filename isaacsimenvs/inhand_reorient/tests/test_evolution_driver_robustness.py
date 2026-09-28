@@ -210,6 +210,19 @@ def test_training_scalars_reads_head_and_tail_means_from_tensorboard(tmp_path):
     assert m["successes"]["n"] == 20
 
 
+def test_training_scalars_counts_non_finite_losses(tmp_path):
+    from torch.utils.tensorboard import SummaryWriter
+
+    w = SummaryWriter(str(tmp_path / EXPERIMENT / "summaries"))
+    for i in range(10):
+        w.add_scalar("losses/a_loss", float("nan") if i >= 7 else 0.1, i)
+    w.close()
+    m = drv.training_scalars(tmp_path)
+    assert m["losses/a_loss"]["n"] == 10
+    assert m["losses/a_loss"]["n_nonfinite"] == 3
+    assert m["losses/a_loss"]["tail"] == pytest.approx(0.1)  # finite points only
+
+
 def test_training_scalars_without_summaries_is_empty(tmp_path):
     assert drv.training_scalars(tmp_path) == {}
 
