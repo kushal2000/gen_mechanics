@@ -303,6 +303,20 @@ def test_train_tail_fitness_of_empty_windows_is_empty():
 # --------------------------------------------------------------------------
 
 
+def test_find_last_checkpoint_prefers_last_model_pth(tmp_path):
+    """rl_games' vendored agent writes `<experiment_dir>/last/model.pth`
+    every 3 epochs, always in place -- exactly what the plan's own
+    `--checkpoint <prev gen last/model.pth>` names; prefer it over the
+    epoch-tagged nn/ files even when both exist."""
+    (tmp_path / "last").mkdir()
+    (tmp_path / "last" / "model.pth").write_text("x")
+    nn = tmp_path / "nn"
+    nn.mkdir()
+    (nn / "last_run_ep_30_rew__2.0_.pth").write_text("x")
+    got = drv.find_last_checkpoint(tmp_path)
+    assert got == tmp_path / "last" / "model.pth"
+
+
 def test_find_last_checkpoint_picks_the_highest_epoch(tmp_path):
     nn = tmp_path / "nn"
     nn.mkdir()

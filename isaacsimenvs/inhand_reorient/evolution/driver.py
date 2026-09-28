@@ -480,12 +480,18 @@ CHECKPOINT_RE = re.compile(r"_ep_(\d+)_")
 
 
 def find_last_checkpoint(train_dir: Path) -> Optional[Path]:
-    """The newest checkpoint rl_games' vendored agent wrote this
-    generation: `nn/last_<name>_ep_<N>_rew_<R>.pth`, highest `<N>` wins
-    (ties broken by mtime). Falls back to the single best-checkpoint file
-    (`nn/<name>.pth`, written when a new best mean reward is found after
-    `save_best_after` epochs) by mtime if no `last_*` file exists at all
-    (a very short run, fewer epochs than `save_frequency`)."""
+    """`<train_dir>/last/model.pth` -- rl_games' vendored agent
+    (`a2c_common.py`) writes exactly this path every 3 epochs
+    (independent of `save_frequency`), always overwriting IN PLACE, which
+    is what the plan's own `--checkpoint <prev gen last/model.pth>` names
+    literally. Falls back to the newest `nn/last_<name>_ep_<N>_rew_<R>.pth`
+    (highest epoch `<N>` wins, ties by mtime), then the single best-
+    checkpoint file (`nn/<name>.pth`) by mtime, for a run too short to have
+    reached epoch 3 (`last/model.pth` is never written at all in that
+    case)."""
+    direct = train_dir / "last" / "model.pth"
+    if direct.is_file():
+        return direct
     nn_dir = train_dir / "nn"
     if not nn_dir.is_dir():
         return None
