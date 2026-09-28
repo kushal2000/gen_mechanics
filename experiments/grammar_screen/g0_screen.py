@@ -211,11 +211,24 @@ def exact_mcnemar(a_bools: Sequence[bool], b_bools: Sequence[bool]) -> Dict[str,
     c = sum(1 for x, y in zip(a_bools, b_bools) if (not x) and y)
     n_discordant = b + c
     if n_discordant == 0:
-        p = 1.0
+        p_two_sided = 1.0
+        p_one_sided_a_gt_b = 1.0
+        p_one_sided_b_gt_a = 1.0
     else:
-        p = float(binomtest(min(b, c), n_discordant, 0.5, alternative="two-sided").pvalue)
+        p_two_sided = float(binomtest(min(b, c), n_discordant, 0.5, alternative="two-sided").pvalue)
+        # One-sided p-values (opus-review-g0.md's own convention, "exact
+        # McNemar, one-sided"): P(Binom(n_discordant, 0.5) >= b) tests
+        # "A's rate > B's rate"; the mirror image tests the other direction.
+        p_one_sided_a_gt_b = float(binomtest(b, n_discordant, 0.5, alternative="greater").pvalue)
+        p_one_sided_b_gt_a = float(binomtest(c, n_discordant, 0.5, alternative="greater").pvalue)
     higher = "a" if b > c else ("b" if c > b else "tie")
-    return {"n_a_only": b, "n_b_only": c, "n_discordant": n_discordant, "p_value": p, "higher": higher}
+    return {
+        "n_a_only": b, "n_b_only": c, "n_discordant": n_discordant,
+        "p_value": p_two_sided,
+        "p_value_one_sided_a_gt_b": p_one_sided_a_gt_b,
+        "p_value_one_sided_b_gt_a": p_one_sided_b_gt_a,
+        "higher": higher,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -297,30 +310,53 @@ def run_viability(dist, n_seeds: int, pool: Optional["mp.pool.Pool"] = None) -> 
 
 
 def scan_viable_pool(dist, target_n: int, seed_records: List[Record], extra_seed_start: int,
-                      max_extra_seeds: int) -> Tuple[List[Tuple[Record, Derivation]], int]:
+                      max_extra_seeds: int,
+                      mp_pool: Optional["mp.pool.Pool"] = None,
+                      batch_size: int = 200) -> Tuple[List[Tuple[Record, Derivation]], int]:
     """Reuses viable seeds already found in ``seed_records`` (the fixed
     viability sweep), then scans additional seeds starting at
     ``extra_seed_start`` (never overlapping the fixed sweep) until
     ``target_n`` viable designs are collected or ``max_extra_seeds`` extra
     seeds have been tried. Returns ``(pool, n_extra_seeds_scanned)``; the
-    pool may be SHORTER than ``target_n`` (reported, not padded)."""
-    pool: List[Tuple[Record, Derivation]] = []
+    pool may be SHORTER than ``target_n`` (reported, not padded).
+
+    ``mp_pool`` (default ``None``, serial): a variant whose fixed sweep
+    falls well short of ``target_n`` (a low-viable-rate variant, or a large
+    pool target) can need many thousands of extra seeds -- scanned here in
+    ``batch_size`` chunks via ``multiprocessing.Pool.map`` so this is not a
+    single-core bottleneck."""
+    found: List[Tuple[Record, Derivation]] = []
     for r in seed_records:
         if r.viable:
             d = sample_derivation(r.seed, dist)
-            pool.append((r, d))
-            if len(pool) >= target_n:
-                return pool, 0
+            found.append((r, d))
+            if len(found) >= target_n:
+                return found, 0
 
     n_extra = 0
     seed = extra_seed_start
-    while len(pool) < target_n and n_extra < max_extra_seeds:
-        rec, d, _m = evaluate_seed(dist, seed)
-        n_extra += 1
-        seed += 1
-        if rec.viable:
-            pool.append((rec, d))
-    return pool, n_extra
+    if mp_pool is None:
+        while len(found) < target_n and n_extra < max_extra_seeds:
+            rec, d, _m = evaluate_seed(dist, seed)
+            n_extra += 1
+            seed += 1
+            if rec.viable:
+                found.append((rec, d))
+        return found, n_extra
+
+    while len(found) < target_n and n_extra < max_extra_seeds:
+        n_batch = min(batch_size, max_extra_seeds - n_extra)
+        batch_seeds = list(range(seed, seed + n_batch))
+        recs: List[Record] = mp_pool.map(_evaluate_seed_for_pool, [(dist, s) for s in batch_seeds],
+                                          chunksize=max(1, n_batch // 32))
+        n_extra += n_batch
+        seed += n_batch
+        for rec in recs:
+            if rec.viable:
+                found.append((rec, sample_derivation(rec.seed, dist)))
+                if len(found) >= target_n:
+                    break
+    return found, n_extra
 
 
 # --------------------------------------------------------------------------
@@ -547,17 +583,18 @@ def run_variant(name: str, dist, args, variant_index: int,
 
     diversity_pool, n_extra_div = scan_viable_pool(
         dist, args.diversity_n, viability["records"], args.viability_seeds, args.max_extra_seeds,
+        mp_pool=pool,
     )
     evolve_pool, n_extra_evo = scan_viable_pool(
         dist, args.evolvability_parents, viability["records"], args.viability_seeds + args.max_extra_seeds,
-        args.max_extra_seeds,
+        args.max_extra_seeds, mp_pool=pool,
     )
     # Opus review item 6: every variant asks for the SAME founders target
     # (``args.explore_founders``, e.g. 20) -- never padded if the scan
     # cannot fill it (see ``run_explorability``'s own ``founders_target_met``).
     founder_pool, n_extra_founders = scan_viable_pool(
         dist, args.explore_founders, viability["records"],
-        args.viability_seeds + 2 * args.max_extra_seeds, args.max_extra_seeds,
+        args.viability_seeds + 2 * args.max_extra_seeds, args.max_extra_seeds, mp_pool=pool,
     )
 
     print(f"[{name}] diversity ({len(diversity_pool)} designs, {n_extra_div} extra seeds scanned)...", flush=True)
