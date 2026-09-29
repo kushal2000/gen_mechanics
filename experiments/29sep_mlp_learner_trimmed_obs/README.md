@@ -56,6 +56,13 @@ source of the object's pose, so those policies were close to blind to the cube. 
 (MLP ≤ 0.05 goals/episode at epochs 2,000–2,800, where the full-observation MLP was at 4–46).
 Fixed in the observation builder. Relaunched under study names ending `_kpfix`.
 
+## No fall penalty (29 Sep)
+
+`mlp_5deg_<hand>_trimobs_nopen.sub`: the three MLP runs again with `env.reward.fall_penalty` at its
+default 0, everything else identical. Is the penalty still needed once the rest of the recipe
+(γ 0.998, lr 5e-4, 5 mini-epochs) is in place? Earlier no-penalty MLP runs at 20° (637911 gen-SHARPA,
+637916 Allegro) were learning but slower; they were cancelled before a clear answer.
+
 ## Launch
 
 ```bash
