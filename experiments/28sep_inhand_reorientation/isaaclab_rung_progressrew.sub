@@ -1,0 +1,47 @@
+#!/bin/bash
+#SBATCH --job-name=isaaclab_progressrew
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_progressrew-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_progressrew-%j.err
+#
+# DELTA: their dense 1/(dtheta+0.1) task reward replaced by OUR reward's SHAPE --
+# progress against the best orientation error seen so far for the current goal. The last
+# untested suspect: SAPG, gamma 0.99, gamma 0.98, cube size and random object init all
+# came out neutral or BETTER than the reference's own choice on its own env, so nothing
+# parametric explains why our task never learns to keep hold of the cube.
+#
+# Held fixed on purpose: the QUANTITY is still their quaternion angle, not our keypoint
+# residual, so this does not confound shape with metric. success_bonus stays 250 and the
+# penalties are untouched. Weight 267 = 28*30/pi makes the per-episode magnitude match
+# the term it replaces, because RewardManager multiplies by weight*dt even for a delta.
+#
+# A 512-env smoke at epoch 167 already showed done_object_out_of_reach 0.899 where the
+# baseline sits at 0.13 -- but at 1/16 the envs that is 2M frames against 33M, so the
+# real read is this run at matched epochs. Prediction if the shape is the cause: episode
+# length never climbs to ~560 and instead wanders, as 577945 has for 7800 epochs.
+#
+# ONE DELTA FROM THE REFERENCE, everything else theirs -- env, network and PPO. Read
+# against isaaclab_reference.sub (590311), which at 8192 envs took episode length from
+# 19 to 550 by epoch 142 and reached 0.207 goals/episode by epoch 1054. The comparison is
+# at MATCHED EPOCHS, not matched wall-clock.
+#
+# The header of isaaclab_reference.sub carries the shared reasoning; this file only says
+# what is different. See the rung's docstring in isaacsimenvs/inhand_isaaclab/env_cfg.py.
+#
+#   sbatch isaaclab_rung_progressrew.sub
+set -euo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+export OMNI_KIT_ACCEPT_EULA=YES
+mkdir -p "$REPO/debug_outputs/train_logs/inhand_isaaclab"
+cd "$REPO"
+echo "[isaaclab_progressrew] task GenMech-InHandIsaacLab-progressrew-v0  extra: "
+exec .venv_isaacsim/bin/python -u -m isaacsimenvs.inhand_isaaclab.train \
+    --task "GenMech-InHandIsaacLab-progressrew-v0" --num-envs "${NUM_ENVS:-8192}" --max-epochs "${MAX_EPOCHS:-5000}" \
+    --seed "${SEED:-42}"  --wandb

@@ -1,0 +1,70 @@
+#!/bin/bash
+#SBATCH --job-name=isaaclab_sapg
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_sapg-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_sapg-%j.err
+#
+# THE REFERENCE ENV, DRIVEN BY OUR LEARNER. The paired arm of isaaclab_reference.sub.
+#
+# The question: our seven in-hand jobs all run SAPG; the reference run does not. Every
+# other rung of the ladder changes the ENV and holds the learner at IsaacLab's PPO, so
+# none of them can say whether SAPG itself costs anything. This arm changes ONLY the
+# learner, on a task now known to learn -- the PPO baseline reaches episode length
+# ~560/600 by epoch 140 and 0.185 successes/episode by epoch 709.
+#
+# SAPG here is ours, not an approximation: expl_type mixed_expl_learn_param,
+# expl_reward_type entropy at coef scale 0.002, use_others_experience lf,
+# off_policy_ratio 1.0, fixed_sigma coef_cond -- the values in
+# coevolution/cfg/train/PoseReachSAPG*.yaml. The fork patched the stock
+# A2CBuilder.Network in place, so their own actor_critic MLP takes the learned block
+# embedding (72 -> 104 input) and coef_cond sigma with no network change.
+#
+# ENV COUNT IS 8192, NOT 12288, deliberately: identical to the PPO baseline, so the only
+# difference between the two runs is the learner. The cost is four blocks of 2048 rather
+# than our six -- block SIZE matches our runs, block COUNT does not, because 8192 is not
+# divisible by 6. Keeping the control exact is worth more than the block count.
+#
+# Minibatch: SAPG's dataset is WIDER than the rollout. augment_batch_for_mixed_expl
+# repeats it min(blocks, off_policy_ratio+1) = 2 times and filter_leader keeps only the
+# leading block of the copy, giving 196608 * 5/4 = 245760, which 16384 divides 15 times.
+# train.py refuses to start if that stops holding rather than handing PPODataset a
+# remainder it would silently bolt onto the last minibatch.
+#
+# The task id differs from rung 0 by one inert thing: a critic observation group, a copy
+# of the policy group. The fork concatenates the block embedding onto obs AND states with
+# no existence check, and the reference env declares only a policy group, so without it
+# the run dies on the first epoch with KeyError: 'states'. IsaacLab's agent config has no
+# central_value_config, so nothing ever reads those states. See InHandIsaacLabSapgCfg.
+#
+#   sbatch isaaclab_reference_sapg.sub
+#
+# Read against 590311. If this arm also reaches ~560 episode length and climbing
+# successes, SAPG is exonerated and the answer is in the env. If it stalls at a high drop
+# rate, SAPG is implicated on a task that PPO solves -- which would matter for all seven
+# running jobs.
+set -euo pipefail
+
+REPO=/share/portal/kk837/gen_mechanics
+export TASK="${TASK:-GenMech-InHandIsaacLab-sapg-learner-v0}"
+export NUM_ENVS="${NUM_ENVS:-8192}"
+export BLOCK_SIZE="${BLOCK_SIZE:-2048}"
+export MAX_EPOCHS="${MAX_EPOCHS:-5000}"
+export SEED="${SEED:-42}"
+export OMNI_KIT_ACCEPT_EULA=YES
+
+mkdir -p "$REPO/debug_outputs/train_logs/inhand_isaaclab"
+cd "$REPO"
+
+echo "[isaaclab_sapg] task $TASK"
+echo "[isaaclab_sapg] envs $NUM_ENVS  block $BLOCK_SIZE  epochs $MAX_EPOCHS  seed $SEED"
+
+exec .venv_isaacsim/bin/python -u -m isaacsimenvs.inhand_isaaclab.train \
+    --task "$TASK" --num-envs "$NUM_ENVS" --max-epochs "$MAX_EPOCHS" --seed "$SEED" \
+    --sapg --sapg-block-size "$BLOCK_SIZE" --wandb

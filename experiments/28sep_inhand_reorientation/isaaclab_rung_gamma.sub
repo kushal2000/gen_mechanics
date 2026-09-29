@@ -1,0 +1,33 @@
+#!/bin/bash
+#SBATCH --job-name=isaaclab_gamma
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_gamma-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_gamma-%j.err
+#
+# DELTA: gamma 0.998 -> 0.99, OUR discount. A learner rung, like --sapg. The effective horizon is 1/(1-gamma) STEPS, so seconds depend on the control rate: this cuts 316 steps (10.5 s at their 30 Hz) to 99 steps (3.31 s). NOTE that is NOT our horizon -- our 0.99 at 60 Hz is the same 99 steps but only 1.66 s. gamma 0.98 at 30 Hz would be 50 steps = 1.67 s, which is the rung that actually matches ours in time. An earlier version of this header said 1.7 s here and was simply wrong. Costed against the live run: a drop mid-episode forfeits ~17 of 28.5 episode return at 0.998, and the point of this rung is how much of that forfeit the value function can still see at 0.99.
+#
+# ONE DELTA FROM THE REFERENCE, everything else theirs -- env, network and PPO. Read
+# against isaaclab_reference.sub (590311), which at 8192 envs took episode length from
+# 19 to 550 by epoch 142 and reached 0.207 goals/episode by epoch 1054. The comparison is
+# at MATCHED EPOCHS, not matched wall-clock.
+#
+# The header of isaaclab_reference.sub carries the shared reasoning; this file only says
+# what is different. See the rung's docstring in isaacsimenvs/inhand_isaaclab/env_cfg.py.
+#
+#   sbatch isaaclab_rung_gamma.sub
+set -euo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+export OMNI_KIT_ACCEPT_EULA=YES
+mkdir -p "$REPO/debug_outputs/train_logs/inhand_isaaclab"
+cd "$REPO"
+echo "[isaaclab_gamma] task GenMech-InHandIsaacLab-step0-reference-v0  extra: --gamma 0.99"
+exec .venv_isaacsim/bin/python -u -m isaacsimenvs.inhand_isaaclab.train \
+    --task "GenMech-InHandIsaacLab-step0-reference-v0" --num-envs "${NUM_ENVS:-8192}" --max-epochs "${MAX_EPOCHS:-5000}" \
+    --seed "${SEED:-42}" --gamma 0.99 --wandb

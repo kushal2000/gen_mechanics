@@ -156,7 +156,9 @@ echo "[common] episode budget ${EPISODE_STEPS} steps per goal -> episode_length_
 # parent's whole environment through --export=ALL, so appending would pass every
 # override twice on link #2.  Both tolerance fields, because the curriculum clamps
 # into [target, success] and setting only one would leave it running between them.
-export EXTRA_HYDRA="env.termination.success_tolerance=$_TOL_M env.termination.target_success_tolerance=$_TOL_M env.episode_length_s=$_EP_S env.termination.episode_length=$EPISODE_STEPS"
+# USER_HYDRA: per-.sub overrides, appended here. Safe on the chain for the same reason as
+# above -- EXTRA_HYDRA is rebuilt from it on every link, never from its own inherited copy.
+export EXTRA_HYDRA="env.termination.success_tolerance=$_TOL_M env.termination.target_success_tolerance=$_TOL_M env.episode_length_s=$_EP_S env.termination.episode_length=$EPISODE_STEPS ${USER_HYDRA:-}"
 
 export OBJECT_POOL="${OBJECT_POOL:-cube1}"
 export OBJECT_ASSIGNMENT="${OBJECT_ASSIGNMENT:-env_modulo}"
@@ -212,7 +214,15 @@ own_run_dir() { ls -dt "$SCALING_RUN_ROOT"/*_"${SLURM_JOB_ID}"_* 2>/dev/null | h
 # before the wall clock so a 24 h limit does not cap the experiment.
 prepare_link() {
     export WANDB_GROUP="$STUDY_ID" MAX_EPOCHS="$EPOCHS"
-    export MODEL_TAG="${STUDY_ID}_c$(printf '%02d' "$CONT")_d${D_MODEL}_l${TRANSFORMER_LAYERS}"
+    # The arch belongs in the tag. run.sh:16-21 leaves D_MODEL/TRANSFORMER_LAYERS unset for
+    # the MLP because they do not describe it, but this tag is built from them regardless --
+    # so an ARCH=mlp run would be filed, named and charted as "d64_l4", which is a lie that
+    # survives into wandb and the run directory.
+    if [[ "${ARCH:-transformer}" == mlp ]]; then
+        export MODEL_TAG="${STUDY_ID}_c$(printf '%02d' "$CONT")_mlp"
+    else
+        export MODEL_TAG="${STUDY_ID}_c$(printf '%02d' "$CONT")_d${D_MODEL}_l${TRANSFORMER_LAYERS}"
+    fi
     export CHECKPOINT="" RESUME_TOL=""
     if [[ -n "${SOURCE_RUN:-}" ]]; then
         CHECKPOINT=$(newest_checkpoint "$SOURCE_RUN")
@@ -248,7 +258,7 @@ chain_next() {   # chain_next <path to this .sub>
     # Named explicitly rather than trusting --export=ALL, which has been observed
     # not to carry them: GPUS reverting to 2 on link #2 is what prompted this.
     local j; j=$(submit_once "${STUDY_ID}_c$(printf '%02d' "$next")" \
-        --export=ALL,SOURCE_RUN="$run_dir",ROBOT_SPEC="$ROBOT_SPEC",STUDY_ID="$STUDY_ID",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$next",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",MINI_EPOCHS="${MINI_EPOCHS:-2}",GPUS="$GPUS",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE",SUCCESS_TOLERANCE_DEG="$SUCCESS_TOLERANCE_DEG",EPISODE_STEPS="$EPISODE_STEPS",HAND_ONLY_PALM_PITCH_DEG="$HAND_ONLY_PALM_PITCH_DEG",HAND_ONLY_PALM_ROLL_DEG="$HAND_ONLY_PALM_ROLL_DEG" \
+        --export=ALL,ARCH="${ARCH:-transformer}",SOURCE_RUN="$run_dir",ROBOT_SPEC="$ROBOT_SPEC",STUDY_ID="$STUDY_ID",EPOCHS="$EPOCHS",MAX_CONT="$MAX_CONT",CONT="$next",NUM_ENVS_PER_GPU="$NUM_ENVS_PER_GPU",GLOBAL_MINIBATCH="$GLOBAL_MINIBATCH",MINI_EPOCHS="${MINI_EPOCHS:-2}",GPUS="$GPUS",SEED="$SEED",WANDB_ACTIVATE="$WANDB_ACTIVATE",SUCCESS_TOLERANCE_DEG="$SUCCESS_TOLERANCE_DEG",EPISODE_STEPS="$EPISODE_STEPS",HAND_ONLY_PALM_PITCH_DEG="$HAND_ONLY_PALM_PITCH_DEG",HAND_ONLY_PALM_ROLL_DEG="$HAND_ONLY_PALM_ROLL_DEG" \
         "$self")
     echo "[$STUDY_ID] submitted link #$next as $j (from $run_dir)"; CHAINED=1
 }
@@ -269,6 +279,16 @@ run_and_chain() {   # run_and_chain <path to this .sub>
     echo "[$STUDY_ID] payload exited $status; run dir $run_dir"
     if (( status != 0 )) && [[ ! -f "$(newest_checkpoint "$run_dir")" ]]; then
         echo "[$STUDY_ID] failed with no checkpoint; stopping"; exit "$status"
+    fi
+    # A NONZERO exit that has not already chained is a crash, not the wall clock: the
+    # time-limit path chains from the USR1 trap above and sets CHAINED first. Resubmitting
+    # after a crash that left a checkpoint is how an OOM at epoch 33 turned into links
+    # c02..c08 of inhand_allegro_tf_big (2026-09-29), each resuming the same config and
+    # dying the same way ~9 minutes in, with two copies of c06 and c07 running at once.
+    if (( status != 0 )) && (( ! CHAINED )); then
+        echo "[$STUDY_ID] payload crashed (exit $status); NOT resubmitting -- a deterministic" \
+             "crash would only repeat. Fix the cause and resubmit this .sub by hand."
+        exit "$status"
     fi
     chain_next "$self"
 }

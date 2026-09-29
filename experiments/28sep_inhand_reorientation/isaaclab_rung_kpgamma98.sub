@@ -1,0 +1,37 @@
+#!/bin/bash
+#SBATCH --job-name=isaaclab_kpgamma98
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_kpgamma98-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_kpgamma98-%j.err
+#
+# TWO DELTAS: OUR reward (progress on the keypoint residual) + OUR horizon (gamma 0.98 = 50 steps
+# = 1.67 s at their 30 Hz). Our reward alone keeps learning here (keypointrew) and gamma 0.98 alone
+# keeps learning (it trades possession for goals). In our env, dropping the cube harvests a fresh
+# progress budget per reset (~0.9 reward/step dropping vs ~0.12 holding on 585759), and a short
+# horizon cannot see what holding is worth. Prediction: possession stalls or collapses.
+#
+# ONE DELTA FROM THE REFERENCE, everything else theirs -- env, network and PPO. Read
+# against isaaclab_reference.sub (590311), which at 8192 envs took episode length from
+# 19 to 550 by epoch 142 and reached 0.207 goals/episode by epoch 1054. The comparison is
+# at MATCHED EPOCHS, not matched wall-clock.
+#
+# The header of isaaclab_reference.sub carries the shared reasoning; this file only says
+# what is different. See the rung's docstring in isaacsimenvs/inhand_isaaclab/env_cfg.py.
+#
+#   sbatch isaaclab_rung_kpgamma98.sub
+set -euo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+export OMNI_KIT_ACCEPT_EULA=YES
+mkdir -p "$REPO/debug_outputs/train_logs/inhand_isaaclab"
+cd "$REPO"
+echo "[isaaclab_kpgamma98] task GenMech-InHandIsaacLab-keypointrew-v0  extra: "
+exec .venv_isaacsim/bin/python -u -m isaacsimenvs.inhand_isaaclab.train \
+    --task "GenMech-InHandIsaacLab-keypointrew-v0" --num-envs "${NUM_ENVS:-8192}" --max-epochs "${MAX_EPOCHS:-5000}" \
+    --seed "${SEED:-42}" --gamma 0.98 --wandb

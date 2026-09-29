@@ -1,0 +1,39 @@
+#!/bin/bash
+#SBATCH --job-name=isaaclab_ourspawn
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_ourspawn-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_ourspawn-%j.err
+#
+# DELTA: their cube spawned at OUR env's placement relative to palm_link -- 32 mm back
+# toward the palm centre and dropped onto the palm, instead of cradled on the curled finger
+# pads over the fingertip centroid. Everything else rung 0 (60 mm cube, identity start,
+# +-1 cm jitter, their hand reset). Verified by probe: lands at (65.1, -13.6, 81.6) mm in
+# palm frame vs ours (65.1, -13.8, 84.8); a do-nothing hand holds it 100% for 10 s.
+# The attempt to BREAK the reference: every reward/metric change so far only slowed
+# possession learning here; if this one stalls, placement is what keeps ours stuck.
+#
+# ONE DELTA FROM THE REFERENCE, everything else theirs -- env, network and PPO. Read
+# against isaaclab_reference.sub (590311), which at 8192 envs took episode length from
+# 19 to 550 by epoch 142 and reached 0.207 goals/episode by epoch 1054. The comparison is
+# at MATCHED EPOCHS, not matched wall-clock.
+#
+# The header of isaaclab_reference.sub carries the shared reasoning; this file only says
+# what is different. See the rung's docstring in isaacsimenvs/inhand_isaaclab/env_cfg.py.
+#
+#   sbatch isaaclab_rung_ourspawn.sub
+set -euo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+export OMNI_KIT_ACCEPT_EULA=YES
+mkdir -p "$REPO/debug_outputs/train_logs/inhand_isaaclab"
+cd "$REPO"
+echo "[isaaclab_ourspawn] task GenMech-InHandIsaacLab-ourspawn-v0  extra: "
+exec .venv_isaacsim/bin/python -u -m isaacsimenvs.inhand_isaaclab.train \
+    --task "GenMech-InHandIsaacLab-ourspawn-v0" --num-envs "${NUM_ENVS:-8192}" --max-epochs "${MAX_EPOCHS:-5000}" \
+    --seed "${SEED:-42}"  --wandb

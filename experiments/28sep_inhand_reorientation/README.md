@@ -1,3 +1,8 @@
+> **Status (2026-09-29): answered.** The threshold was not the constraint. Our env learns to hold the
+> cube and then unlearns it because its reward pays more for dropping; a `fall_penalty` fixes it, and
+> with the MLP the task saturates at both 20° and 5°. Full account: **[FINDINGS.md](FINDINGS.md)**.
+> Run index: [below](#run-index). The original question is kept as written.
+
 # In-hand reorientation: is the success threshold the binding constraint?
 
 Hand-only in-hand cube reorientation has been running since 24 Sep and has never
@@ -64,6 +69,8 @@ would make it isotropic.
 
 ## What this experiment does not test
 
+_Superseded — see FINDINGS.md. In particular "holding is free" was wrong: the null policy holds, but trained policies learned to drop the cube because dropping paid more._
+
 - **Cube symmetry.** A plain box has 24 orientations that look identical and the
   reward accepts exactly one, so the policy can be visually aligned and score
   nothing. IsaacLab's DexCube has distinguishable faces, so for them the
@@ -87,3 +94,42 @@ pose. That last number is where the symmetry cost shows up.
 OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python -m coevolution.eval.play_inhand \
     --checkpoint <run>/rank_0/<name>/nn/<ckpt>.pth --port 8082 --success-steps 1
 ```
+
+
+## Run index
+
+Every `.sub` here is one run. Files are kept flat on purpose: `common.sh`'s chaining resubmits a run
+by its own `.sub` path, so moving a file breaks the next link of any chain still running.
+
+**Our env, SHARPA-capsule population** (the original question)
+- `tolerance_5deg.sub`, `tolerance_20deg.sub` — the 5° / 20° comparison
+- `tolerance_20deg_faces.sub`, `tolerance_20deg_200steps.sub`, `tolerance_20deg_mlp.sub`,
+  `tolerance_20deg_real_sharpa.sub` — variants (Rubik faces, 200-step episodes, MLP, real SHARPA)
+
+**IsaacLab's own env, our rl_games** (`isaacsimenvs/inhand_isaaclab/`; single-delta rungs unless noted)
+- `isaaclab_reference.sub` — rung 0, unchanged
+- learner: `isaaclab_reference_sapg.sub` (SAPG), `isaaclab_rung_gamma.sub` (γ 0.99),
+  `isaaclab_rung_gamma98.sub` (γ 0.98), `isaaclab_rung_ourhparams.sub` (our PPO hyperparameters)
+- env: `isaaclab_rung_timing.sub` (60 Hz, 10 s), `isaaclab_rung_cube45.sub`,
+  `isaaclab_rung_objinit.sub` (random start), `isaaclab_rung_ourspawn.sub`, `isaaclab_rung_ourhand.sub`
+- reward: `isaaclab_rung_progressrew.sub` (our progress shape), `isaaclab_rung_keypointrew.sub` (our full
+  reward)
+- combinations: `isaaclab_rung_combined.sub` (SAPG + γ .98 + cube45 + objinit), `isaaclab_rung_kpspawn.sub`
+  (our reward + our spawn), `isaaclab_rung_kpgamma98.sub` (our reward + γ .98), `isaaclab_rung_allours.sub`,
+  **`isaaclab_rung_ourdefault.sub`** (everything of ours except observation + network — reproduces the
+  collapse)
+
+**Our env, Allegro, 20° unless the name says 5°** — the fix
+- `tolerance_20deg_allegro.sub` — control (learns to hold, then collapses)
+- single reward/placement fixes that only delayed the collapse: `_refspawn`, `_bonus250`, `_dense`,
+  `_gamma998`
+- fixes that hold: `_fallpen200`, `_fallpen200_g998`, `_dense_g998`
+- on the fixed reward (fall penalty 200 + γ .998): `_fpg_mlp`, `_fpg_theirhp`, `_fpg_curl`,
+  **`_fpgm_theirhp`** (MLP + lr 5e-4 / 5 mini_epochs: saturates at 20° and, as
+  `tolerance_5deg_allegro_fpgm_theirhp.sub`, at 5°), `_fpgm_dense`
+- stock learner + fall penalty + MLP (γ .99, lr 1e-4, 2 mini_epochs): `_fpm_stock` (20° and 5°)
+- transformer: `_tf_skip`, `_tf_big`, `_tf_skip_big` (adaptive lr), `_tfc3e4`, `_tfc1e4`,
+  `_tfc3e4_skip` (constant lr)
+
+Recipe: `USER_HYDRA` in each file carries its env/agent overrides; `ARCH`, `LEARNING_RATE`,
+`MINI_EPOCHS`, `N_HEADS`, `FF_MULT`, `HAND_GLOBAL_SKIP`, `LR_SCHEDULE`, `GLOBAL_MINIBATCH` are env vars.

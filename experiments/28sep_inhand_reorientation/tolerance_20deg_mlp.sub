@@ -1,0 +1,66 @@
+#!/bin/bash
+#SBATCH --job-name=inhand_tol20_mlp
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/tol20deg-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/tol20deg-%j.err
+
+# IN-HAND REORIENTATION AT A 20 DEGREE SUCCESS THRESHOLD.
+#
+# The loose arm of the tolerance pair, 3.5x the 5.7362 deg the task has been
+# running at, and looser than anything in the literature for this task -- OpenAI's
+# 0.4 rad is 22.9 deg, which is the nearest. Deliberately generous: if goals still
+# read zero here, the threshold was never the binding constraint and the problem
+# is upstream of it.
+#
+# Paired with tolerance_5deg.sub. One design, gen-SHARPA, so the threshold is the
+# only difference: a co-evolution run would confound it with which designs got
+# selected under it.
+#
+#   sbatch tolerance_20deg.sub
+#   sbatch --export=ALL,EPOCHS=30000 tolerance_20deg.sub
+#
+# ARCH=mlp: THE SAME RUN AS tolerance_20deg.sub WITH THEIR NETWORK INSTEAD OF OURS.
+#
+# Our in-hand runs use a 4-layer joint transformer over per-joint tokens; IsaacLab and the
+# SAPG paper both use a plain MLP [512,256,128] / [1024,1024,512,512]. Every parametric
+# difference tested on the reference env so far -- SAPG, gamma, cube size, object init --
+# came out neutral or BETTER than the reference's choice, which leaves the representation
+# and the reward as the untested suspects. This is the representation half, and it is a
+# single environment variable because the joint transformer is handed a FLAT observation by
+# rl_games and tokenises it internally (see the note in PoseReachJointTransformerSAPG.yaml)
+# -- so the identical observation vector feeds an MLP with no env change at all.
+#
+# ARCH=mlp switches run_rank.sh:80 to rl_games_sapg_nolstm_cfg_entry_point. Two things had
+# to be fixed in common.sh for this to mean anything:
+#   * MODEL_TAG was built from D_MODEL/TRANSFORMER_LAYERS unconditionally, so this run would
+#     have been filed and charted as "d64_l4" -- an MLP run wearing the transformer's name.
+#   * ARCH was not in the chain's --export list, so link #2 would have silently reverted to
+#     the transformer mid-experiment. That is the same class of bug as GPUS reverting to 2.
+#
+# Read against tolerance_20deg.sub (577945): same env, same reward, same 20 deg tolerance,
+# same 12288 envs and minibatch, seed 42. If the MLP holds the cube where the transformer
+# does not, the representation is implicated; if it fails the same way, the reward is.
+#
+export ARCH=mlp
+set -euo pipefail
+
+# gen-SHARPA -- SHARPA rebuilt inside the design grammar. handonly: is what drops
+# the 7 arm joints, and common.sh refuses a bare reference: the prefix has to be
+# on the spec string because the agent YAML interpolates the network's shape from
+# env.assets.robot_spec, so a separate flag would build a 37-joint policy against
+# a 30-joint robot.
+export ROBOT_SPEC="${ROBOT_SPEC:-handonly:/share/portal/kk837/gen_mechanics/assets/populations/sharpa_capsule.json}"
+export STUDY_ID="${STUDY_ID:-inhand_tol20_mlp}"
+export SUCCESS_TOLERANCE_DEG=20
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+
+source /share/portal/kk837/gen_mechanics/experiments/28sep_inhand_reorientation/common.sh
+run_and_chain "$0"

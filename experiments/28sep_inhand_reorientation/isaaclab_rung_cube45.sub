@@ -1,0 +1,33 @@
+#!/bin/bash
+#SBATCH --job-name=isaaclab_cube45
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_cube45-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_cube45-%j.err
+#
+# DELTA: cube 60 mm -> 45 mm, OUR size, at the reference's own density. Verified at startup: 985 kg/m3 against the reference's 991, mass 0.0898 kg mean. A 45 mm cube is much harder to cage on a 100x117 mm palm, and possession is exactly where our runs fail.
+#
+# ONE DELTA FROM THE REFERENCE, everything else theirs -- env, network and PPO. Read
+# against isaaclab_reference.sub (590311), which at 8192 envs took episode length from
+# 19 to 550 by epoch 142 and reached 0.207 goals/episode by epoch 1054. The comparison is
+# at MATCHED EPOCHS, not matched wall-clock.
+#
+# The header of isaaclab_reference.sub carries the shared reasoning; this file only says
+# what is different. See the rung's docstring in isaacsimenvs/inhand_isaaclab/env_cfg.py.
+#
+#   sbatch isaaclab_rung_cube45.sub
+set -euo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+export OMNI_KIT_ACCEPT_EULA=YES
+mkdir -p "$REPO/debug_outputs/train_logs/inhand_isaaclab"
+cd "$REPO"
+echo "[isaaclab_cube45] task GenMech-InHandIsaacLab-cube45-v0  extra: "
+exec .venv_isaacsim/bin/python -u -m isaacsimenvs.inhand_isaaclab.train \
+    --task "GenMech-InHandIsaacLab-cube45-v0" --num-envs "${NUM_ENVS:-8192}" --max-epochs "${MAX_EPOCHS:-5000}" \
+    --seed "${SEED:-42}"  --wandb

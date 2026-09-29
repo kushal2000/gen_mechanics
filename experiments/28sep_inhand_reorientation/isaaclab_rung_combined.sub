@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH --job-name=isaaclab_combined
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_combined-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/inhand_isaaclab/isaaclab_combined-%j.err
+#
+# FOUR DELTAS AT ONCE -- every probe that individually came out neutral-or-better:
+#   SAPG (our learner)  +  gamma 0.98 (our 1.67 s horizon)  +  45 mm cube (our size)
+#   +  random object start orientation (ours).
+#
+# Individually clean does not imply jointly clean. The possession cost of a short horizon
+# is real and monotone (drop 0.075 / 0.275 / 0.432 as gamma goes 0.998 / 0.99 / 0.98) and
+# could compound with a smaller cube that is harder to cage. This run says whether it does.
+#
+# NOT included, on purpose: the reward shape, the keypoint success metric and the
+# joint-token observation. Those are the differences that remain implicated, and this is
+# the control that says how much of the gap they have to account for. If this still reaches
+# ~500 episode length with climbing goals, everything else is exonerated jointly too.
+#
+# 4 blocks of 2048 at 8192 envs; the SAPG-augmented rollout is 245760, which 16384 divides
+# 15 times. train.py refuses to start if that stops holding.
+# ONE DELTA FROM THE REFERENCE, everything else theirs -- env, network and PPO. Read
+# against isaaclab_reference.sub (590311), which at 8192 envs took episode length from
+# 19 to 550 by epoch 142 and reached 0.207 goals/episode by epoch 1054. The comparison is
+# at MATCHED EPOCHS, not matched wall-clock.
+#
+# The header of isaaclab_reference.sub carries the shared reasoning; this file only says
+# what is different. See the rung's docstring in isaacsimenvs/inhand_isaaclab/env_cfg.py.
+#
+#   sbatch isaaclab_rung_combined.sub
+set -euo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+export OMNI_KIT_ACCEPT_EULA=YES
+mkdir -p "$REPO/debug_outputs/train_logs/inhand_isaaclab"
+cd "$REPO"
+echo "[isaaclab_combined] task GenMech-InHandIsaacLab-combined-v0  extra: "
+exec .venv_isaacsim/bin/python -u -m isaacsimenvs.inhand_isaaclab.train \
+    --task "GenMech-InHandIsaacLab-combined-v0" --num-envs "${NUM_ENVS:-8192}" --max-epochs "${MAX_EPOCHS:-5000}" \
+    --seed "${SEED:-42}" --sapg --sapg-block-size 2048 --gamma 0.98 --wandb
