@@ -53,6 +53,10 @@ LADDER: tuple[tuple[str, str], ...] = (
     ("ourhand", "InHandIsaacLabOurHandCfg"),
     ("kpspawn", "InHandIsaacLabKeypointSpawnCfg"),
     ("ourdefault", "InHandIsaacLabOurDefaultCfg"),
+    # 29sep_what_breaks_reference: ourdefault with one group reverted to the reference.
+    ("lo-reward", "LooRewardCfg"), ("lo-success", "LooSuccessCfg"), ("lo-timing", "LooTimingCfg"),
+    ("lo-hand", "LooHandCfg"), ("lo-object", "LooObjectCfg"), ("lo-spawnreset", "LooSpawnResetCfg"),
+    ("lo-dr", "LooDrCfg"), ("lo-misc", "LooMiscCfg"), ("lo-tolerance", "LooToleranceCfg"),
 )
 
 LADDER_TASKS: tuple[str, ...] = tuple(f"GenMech-InHandIsaacLab-{s}-v0" for s, _ in LADDER)

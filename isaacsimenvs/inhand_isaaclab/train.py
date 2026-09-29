@@ -36,6 +36,8 @@ parser.add_argument("--run-dir", default="",
                     help="where checkpoints and logs go; defaults under debug_outputs")
 parser.add_argument("--checkpoint", default="", help="restore and continue from this .pth")
 parser.add_argument("--wandb", action="store_true", help="log to the inhand wandb project")
+parser.add_argument("--wandb-project", default="gen_mechanics_inhandreorient")
+parser.add_argument("--wandb-group", default="inhand_isaaclab")
 parser.add_argument("--gamma", type=float, default=0.0,
                     help="override the agent's discount; 0 keeps IsaacLab's 0.998. Ours is "
                          "0.99, which at 30 Hz is a 1.7 s horizon against their 10.5 s")
@@ -232,9 +234,9 @@ def main() -> None:
         # is exactly what the first submission of this did. It works only because this
         # init runs before Runner builds the writer; see wandb_utils.WandbAlgoObserver,
         # which exists for the same reason on the coevolution path.
-        wandb.init(project="gen_mechanics_inhandreorient", entity="kk837",
+        wandb.init(project=args.wandb_project, entity="kk837",
                    sync_tensorboard=True,
-                   group="inhand_isaaclab", name=os.path.basename(run_dir),
+                   group=args.wandb_group, name=os.path.basename(run_dir),
                    config={"task": args.task, "num_envs": env_cfg.scene.num_envs,
                            "decimation": env_cfg.decimation,
                            "episode_length_s": env_cfg.episode_length_s,

@@ -1,0 +1,28 @@
+#!/bin/bash
+#SBATCH --job-name=wbr_lo_object
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_what_breaks_reference/lo_object-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_what_breaks_reference/lo_object-%j.err
+#
+# REVERT object: their 60 mm cube at their mass (keypoint threshold re-derived for 60 mm).
+#
+# Leave-one-out from ourdefault (IsaacLab's env with everything of ours except the observation and
+# the network), which learns to hold the cube and then collapses. See README.md in this folder.
+#
+#   sbatch lo_object.sub
+set -euo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+export OMNI_KIT_ACCEPT_EULA=YES
+mkdir -p "$REPO/debug_outputs/train_logs/29sep_what_breaks_reference"
+cd "$REPO"
+exec .venv_isaacsim/bin/python -u -m isaacsimenvs.inhand_isaaclab.train \
+    --task "GenMech-InHandIsaacLab-lo-object-v0" --num-envs 12288 --max-epochs "${MAX_EPOCHS:-3000}" \
+    --seed "${SEED:-42}" --sapg --sapg-block-size 2048 --gamma 0.99 --our-hparams --mixed-precision \
+    --run-dir "$REPO/debug_outputs/train_logs/29sep_what_breaks_reference/0_lo_object_${SLURM_JOB_ID:-local}" --wandb --wandb-project gen_mechanics_what_breaks_reference --wandb-group 29sep_what_breaks_reference

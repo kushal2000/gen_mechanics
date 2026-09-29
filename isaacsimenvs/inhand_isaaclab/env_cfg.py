@@ -594,3 +594,158 @@ class InHandIsaacLabOurDefaultCfg(InHandIsaacLabSapgCfg):
         # --- no observation noise ----------------------------------------------------
         self.observations.policy.enable_corruption = False
         self.observations.critic.enable_corruption = False
+
+
+# ---------------------------------------------------------------------------------------------
+# 29sep_what_breaks_reference: LEAVE-ONE-OUT from ourdefault.
+#
+# ourdefault (their env + everything of ours but observation and network) reproduces our env's
+# learn-then-collapse; every single change applied alone to the reference did not. Each class
+# below is ourdefault with ONE GROUP of changes reverted to the reference. A group whose revert
+# keeps possession is one the break needs. Learner-side groups (gamma, PPO hyperparameters, SAPG)
+# are reverted by the .sub's flags, not here. See experiments/29sep_what_breaks_reference/.
+# ---------------------------------------------------------------------------------------------
+
+
+def _reference_cfg():
+    """A fresh rung-0 cfg to copy reverted groups from (post_init already run)."""
+    return InHandIsaacLabReferenceCfg()
+
+
+def _set_our_reward_weights(cfg) -> None:
+    """Re-derive our reward weights for the cfg's current step_dt (weight = ours / step_dt)."""
+    step_dt = cfg.sim.dt * cfg.decimation
+    if getattr(cfg.rewards, "keypoint_progress", None) is not None:
+        cfg.rewards.keypoint_progress.weight = 2000.0 / step_dt
+    if getattr(cfg.rewards, "goal_bonus", None) is not None:
+        cfg.rewards.goal_bonus.weight = 1000.0 / step_dt
+    if getattr(cfg.rewards, "hand_velocity", None) is not None:
+        cfg.rewards.hand_velocity.weight = -0.0003 / step_dt
+
+
+def _keypoint_tol_for_edge(edge_m: float, deg: float = 20.0) -> float:
+    from .keypoint_reward import KEYPOINT_SCALE
+    return edge_m * math.sqrt(3.0) * math.sin(math.radians(deg) / 2.0) * KEYPOINT_SCALE
+
+
+@configclass
+class LooRewardCfg(InHandIsaacLabOurDefaultCfg):
+    """Revert the REWARD SHAPE: their dense 1/(theta+0.1), their three penalties, and a 250
+    success bonus -- fired on OUR success test (the success test is a separate group), at their
+    weight. Their terms carry their own dt scaling, now at our 60 Hz."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from . import ourdefault as od
+        ref = _reference_cfg()
+        for k in ("keypoint_progress", "goal_bonus", "hand_velocity"):
+            setattr(self.rewards, k, None)
+        for k in ("track_orientation_inv_l2", "joint_vel_l2", "action_l2", "action_rate_l2"):
+            setattr(self.rewards, k, getattr(ref.rewards, k))
+        self.rewards.success_bonus = RewTerm(func=od.keypoint_success, weight=250.0,
+                                             params={"command_name": "object_pose"})
+
+
+@configclass
+class LooSuccessCfg(InHandIsaacLabOurDefaultCfg):
+    """Revert SUCCESS TEST + GOALS + TIMER: their command term -- true quat angle, rot_x*rot_y
+    goals, no per-goal timer reset -- but at OUR 20 deg, not their 0.1 rad: the tolerance is its
+    own group (LooToleranceCfg). Our reward's bonus fires on this success, at our weight."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab_tasks.manager_based.manipulation.inhand import mdp as ih_mdp
+        ref = _reference_cfg()
+        self.commands.object_pose = ref.commands.object_pose
+        self.commands.object_pose.debug_vis = False
+        self.commands.object_pose.orientation_success_threshold = math.radians(20.0)
+        self.rewards.goal_bonus = RewTerm(func=ih_mdp.success_bonus, weight=1.0,
+                                          params={"command_name": "object_pose"})
+        _set_our_reward_weights(self)
+
+
+@configclass
+class LooTimingCfg(InHandIsaacLabOurDefaultCfg):
+    """Revert TIMING: decimation 4 (30 Hz), 20 s episodes (600 steps), action EMA 0.95. Our reward
+    weights are re-derived so our per-policy-step magnitudes are unchanged."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.decimation = 4
+        self.sim.render_interval = self.decimation
+        self.episode_length_s = 20.0
+        self.actions.joint_pos.alpha = 0.95
+        _set_our_reward_weights(self)
+
+
+@configclass
+class LooHandCfg(InHandIsaacLabOurDefaultCfg):
+    """Revert the HAND: their Allegro USD, their actuators (0.5 N.m cap), their mount pose (palm
+    5.40 deg). Our fixed frictions are still applied to its bodies (DR is a separate group)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.robot = _reference_cfg().scene.robot
+
+
+@configclass
+class LooObjectCfg(InHandIsaacLabOurDefaultCfg):
+    """Revert the OBJECT: their 60 mm cube at their own (USD) mass. The keypoint threshold is
+    re-derived for the 60 mm edge so '20 deg' still means 20 deg."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.object.spawn = _reference_cfg().scene.object.spawn
+        self.commands.object_pose.keypoint_tol_m = _keypoint_tol_for_edge(0.06)
+
+
+@configclass
+class LooSpawnResetCfg(InHandIsaacLabOurDefaultCfg):
+    """Revert SPAWN + RESETS: their object start (over the fingertips, identity orientation, +-1 cm)
+    and their hand reset (uniform within 20% of each joint's range about the default)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ref = _reference_cfg()
+        self.scene.object.init_state.pos = ref.scene.object.init_state.pos
+        self.scene.object.init_state.rot = ref.scene.object.init_state.rot
+        self.events.reset_object = ref.events.reset_object
+        self.events.reset_robot_joints = ref.events.reset_robot_joints
+
+
+@configclass
+class LooDrCfg(InHandIsaacLabOurDefaultCfg):
+    """Revert DOMAIN RANDOMIZATION + FRICTION: their startup DR on friction (U(0.7,1.3), robot and
+    object), object mass (x U(0.4,1.6)), robot mass (x U(0.95,1.05)) and gains (log-U(0.3,3))."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ref = _reference_cfg()
+        self.events.fingertip_physics_material = None
+        for k in ("robot_physics_material", "robot_scale_mass", "robot_joint_stiffness_and_damping",
+                  "object_physics_material", "object_scale_mass"):
+            setattr(self.events, k, getattr(ref.events, k))
+
+
+@configclass
+class LooMiscCfg(InHandIsaacLabOurDefaultCfg):
+    """Revert the small things: their observation noise, and the drop test measured from the robot
+    ROOT rather than the palm."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ref = _reference_cfg()
+        self.observations.policy.enable_corruption = True
+        self.observations.critic.enable_corruption = True
+        self.terminations.object_out_of_reach = ref.terminations.object_out_of_reach
+
+
+@configclass
+class LooToleranceCfg(InHandIsaacLabOurDefaultCfg):
+    """Revert the TOLERANCE only: our keypoint success test tightened from 20 deg to their 0.1 rad
+    (5.73 deg). A looser target makes accidental goals during a tumble far more likely."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.object_pose.keypoint_tol_m = _keypoint_tol_for_edge(
+            0.06 * CUBE_SCALE, math.degrees(0.1))
