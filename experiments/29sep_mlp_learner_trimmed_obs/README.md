@@ -54,4 +54,4 @@ for f in experiments/29sep_mlp_learner_trimmed_obs/*.sub; do sbatch "$f"; done
 ```
 
 Logs: `debug_outputs/train_logs/29sep_mlp_learner_trimmed_obs/`. wandb project
-[`gen_mechanics_check_mlp_inhand_reorient`](https://wandb.ai/kk837/gen_mechanics_check_mlp_inhand_reorient).
+[`gen_mechanics_mlp_learner_trimmed_obs`](https://wandb.ai/kk837/gen_mechanics_mlp_learner_trimmed_obs).

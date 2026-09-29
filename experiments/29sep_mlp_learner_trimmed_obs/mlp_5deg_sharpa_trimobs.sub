@@ -38,7 +38,7 @@ export ROBOT_SPEC="${ROBOT_SPEC:-sharpa_handonly}"
 export STUDY_ID="${STUDY_ID:-mlp_5deg_sharpa_trimobs}"
 export SUCCESS_TOLERANCE_DEG=5
 export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
-export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_check_mlp_inhand_reorient}"
+export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_mlp_learner_trimmed_obs}"
 export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_mlp_learner_trimmed_obs}"
 
 source /share/portal/kk837/gen_mechanics/experiments/28sep_inhand_reorientation/common.sh
