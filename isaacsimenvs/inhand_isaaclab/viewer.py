@@ -110,12 +110,19 @@ def object_urdf_text(edge_m: float = DEX_CUBE_EDGE_M) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def build_html(frames: list[dict[str, Any]], *, edge_m: float = DEX_CUBE_EDGE_M) -> str:
-    """The viewer page for a captured rollout of the reference env."""
+def build_html(frames: list[dict[str, Any]], *, edge_m: float = DEX_CUBE_EDGE_M,
+               fps: float = 30.0) -> str:
+    """The viewer page for a captured rollout of the reference env.
+
+    ``fps`` is the rate the FRAMES were captured at, not a playback preference: the
+    reference steps its policy at 30 Hz (decimation 4 x dt 1/120) where our own env runs
+    at 60, and the default 60 would play this hand at double speed.
+    """
     from coevolution.pose_viewer import build_pose_viewer_html
 
     return build_pose_viewer_html(
         frames=frames,
+        fps=fps,
         object_urdf_text=object_urdf_text(edge_m),
         table_urdf_text="",            # the reference has no table
         # URL-backed, like every other robot in the viewer: the page fetches this from

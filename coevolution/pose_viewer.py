@@ -364,6 +364,7 @@ def build_pose_viewer_html(
     robot_urdf_relpath: str | None = None,
     github_raw_base: str | None = None,
     url_check: str = "skip",
+    fps: float = 60.0,
 ) -> str:
     """Build a self-contained-ish viewer HTML string from captured frames.
 
@@ -409,7 +410,11 @@ def build_pose_viewer_html(
             raw_base=raw_base,
         )
 
-    timestamps = np.arange(len(frames), dtype=np.float32) / 60.0
+    # One frame per captured step. 60 Hz is our own env's policy rate and stays the
+    # default so every existing caller is unchanged; the IsaacLab reference runs at
+    # 30 Hz (decimation 4 x 1/120), and playing its frames at 60 makes the hand look
+    # twice as fast as it is.
+    timestamps = np.arange(len(frames), dtype=np.float32) / float(fps)
     # An in-hand task spawns no table, so the frames carry no table_pose and
     # there is nothing to draw. Gated on the FRAMES rather than on the urdf
     # text, which is read from disk either way.
