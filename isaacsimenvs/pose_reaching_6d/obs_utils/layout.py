@@ -102,18 +102,36 @@ HAND_TOKEN_FIELDS: dict[str, int] = {
     "object_keypoints_rel_joint": 3 * NUM_KEYPOINTS,
 }
 
+# Token fields a policy may leave out of its observation list; every other token field is
+# required, so an accidental omission still raises. Without object_keypoints_rel_joint a joint
+# token carries only the joint's own state and geometry, and the object reaches it through the
+# global token by attention.
+OPTIONAL_HAND_TOKEN_FIELDS: frozenset[str] = frozenset({"object_keypoints_rel_joint"})
+
+# Gathered per joint but never a token feature: only the attention mask reads it, raw.
+MASK_FIELD = "joint_enabled"
+
 
 def build_token_layout(spec, field_list) -> dict:
-    """Describe exact gathers from a flat observation into hand-joint tokens."""
+    """Describe exact gathers from a flat observation into hand-joint tokens.
+
+    ``joint_enabled`` is NOT a token feature: it is gathered separately
+    (``enabled_columns``) and used only to build the attention mask, raw. A per-joint
+    existence flag carries no information the policy should act on, and a column that is a
+    constant 1 on a fixed hand is exactly what an input normaliser turns into noise.
+    """
     offsets = field_offsets(field_list, spec)
     n_arm = spec.num_arm_joints
     n_hand = spec.num_hand_joints
-    missing = [f for f in (*JOINT_WIDTH_FIELDS, *HAND_TOKEN_FIELDS) if f not in offsets]
+    missing = [f for f in (*JOINT_WIDTH_FIELDS, *HAND_TOKEN_FIELDS)
+               if f not in offsets and f not in OPTIONAL_HAND_TOKEN_FIELDS]
     if missing:
         raise KeyError(
             "joint_transformer requires explicit token fields; missing "
             f"{missing} from {list(field_list)}"
         )
+    token_fields = {f: w for f, w in HAND_TOKEN_FIELDS.items()
+                    if f in offsets and f != MASK_FIELD}
 
     token_columns: list[list[int]] = [[] for _ in range(n_hand)]
     global_slices: list[list[int]] = []
@@ -125,7 +143,7 @@ def build_token_layout(spec, field_list) -> dict:
         for joint in range(n_hand):
             token_columns[joint].append(start + n_arm + joint)
 
-    for field, stride in HAND_TOKEN_FIELDS.items():
+    for field, stride in token_fields.items():
         start, end = offsets[field]
         if end - start != stride * n_hand:
             raise ValueError(
@@ -135,6 +153,11 @@ def build_token_layout(spec, field_list) -> dict:
             token_columns[joint].extend(
                 range(start + joint * stride, start + (joint + 1) * stride)
             )
+
+    start, end = offsets[MASK_FIELD]
+    if end - start != n_hand:
+        raise ValueError(f"{MASK_FIELD} is {end - start} wide, expected {n_hand}")
+    enabled_columns = list(range(start, end))
 
     token_only = set(JOINT_WIDTH_FIELDS) | set(HAND_TOKEN_FIELDS)
     for field in field_list:
@@ -148,17 +171,9 @@ def build_token_layout(spec, field_list) -> dict:
         raise RuntimeError(f"ragged token columns: {sorted(widths)}")
     token_dim = widths.pop() if widths else 0
 
-    # Which column of a token says the joint exists. A padded design carries
-    # ghost tokens, and the network has to drop them from attention and from
-    # the value head's pooling -- so it needs this index, not just the field.
-    enabled_col = len(JOINT_WIDTH_FIELDS) + sum(
-        w for f, w in HAND_TOKEN_FIELDS.items()
-        if list(HAND_TOKEN_FIELDS).index(f) < list(HAND_TOKEN_FIELDS).index("joint_enabled")
-    )
-
     return {
         "obs_dim": compute_obs_dim(field_list, spec),
-        "enabled_col": enabled_col,
+        "enabled_columns": enabled_columns,
         "n_arm": n_arm,
         "n_hand": n_hand,
         "n_joints": spec.num_joints,
@@ -172,9 +187,11 @@ def build_token_layout(spec, field_list) -> dict:
 
 __all__ = [
     "HAND_TOKEN_FIELDS",
+    "OPTIONAL_HAND_TOKEN_FIELDS",
     "JOINT_BOX_DIM",
     "JOINT_BOX_POINTS",
     "JOINT_WIDTH_FIELDS",
+    "MASK_FIELD",
     "NUM_KEYPOINTS",
     "build_token_layout",
     "compute_obs_dim",

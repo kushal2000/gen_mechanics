@@ -31,6 +31,20 @@ History: on Allegro at 20° the transformer never learned (≤0.07 goals/episode
 under adaptive or constant lr and at larger width (28sep FINDINGS.md). Two earlier launches of this
 folder with the MLP's learner (644447–9, 644472–4) were cancelled within minutes.
 
+## The attention-mask bug, and the relaunch (29 Sep)
+
+Every transformer run before 29 Sep had no joint-to-joint attention. rl_games standardised the
+input before the network saw it, and the network read its attention mask as `joint_enabled > 0.5`
+off the standardised column. A fixed hand's constant 1 normalises to 0, so every joint was masked
+and attended to the global token alone. In trained checkpoints (644477 real SHARPA, 644475
+Allegro) d mu_k / d token_j was exactly 0 for every j ≠ k. The fix (`joint_transformer.py`):
+the network normalises its own input with statistics pooled over joints, rl_games' normaliser is
+off for it, and `joint_enabled` is read raw for the mask only and is no longer a token feature.
+Tests: `coevolution/networks/tests/test_joint_mask_normalized.py`.
+
+The first launches (644475–7 original learner, 644521–3 MLP learner) were cancelled. The relaunch
+uses the same `.sub` files with the fixed code, under study names ending `_fixed`.
+
 ## Launch
 
 ```bash

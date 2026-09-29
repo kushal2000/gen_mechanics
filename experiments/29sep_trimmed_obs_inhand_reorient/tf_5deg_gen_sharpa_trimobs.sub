@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=tf5m_gen_sharpa
+#SBATCH --job-name=tf5t_gen_sharpa
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
@@ -9,8 +9,8 @@
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:1
 #SBATCH --signal=B:USR1@900
-#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_check_transformer_inhand_reorient/tf_5deg_gen_sharpa_mlphp-%j.log
-#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_check_transformer_inhand_reorient/tf_5deg_gen_sharpa_mlphp-%j.err
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_trimmed_obs_inhand_reorient/tf_5deg_gen_sharpa_trimobs-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_trimmed_obs_inhand_reorient/tf_5deg_gen_sharpa_trimobs-%j.err
 
 # JOINT TRANSFORMER POLICY, 5 DEG GOAL TOLERANCE, ON GEN-SHARPA: SHARPA REBUILT IN OUR DESIGN GRAMMAR (capsules).
 #
@@ -20,19 +20,27 @@
 # No hand-global skip. Same wandb project, own log folder.
 # One of three identical runs that differ only in ROBOT_SPEC (see README.md).
 #
-#   sbatch experiments/29sep_check_transformer_inhand_reorient/tf_5deg_gen_sharpa_mlphp.sub
+# TRIMMED OBSERVATION (29sep_trimmed_obs_inhand_reorient/README.md). Joint token: the joint's own state,
+# link box, limits and enabled flag -- NO object_keypoints_rel_joint. Global: only object keypoints
+# (keypoints_rel_ee), goal residual (keypoints_rel_goal) and object velocity, plus the SAPG coefficient.
+# Everything constant (mount pose/vel, palm keypoints, cube size, lift latch) and every critic-type
+# field (reward, successes, progress, best-so-far distances) is dropped -- from the value head too,
+# since there is no separate critic. MLP and transformer use the identical list and learner.
+#
+#   sbatch experiments/29sep_trimmed_obs_inhand_reorient/tf_5deg_gen_sharpa_trimobs.sub
 export USER_HYDRA="env.reward.fall_penalty=200.0 agent.params.config.gamma=0.998"
+export OBS_LIST="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel]"
 export ARCH=transformer   # d_model 64, 4 layers (common.sh defaults)
 export LEARNING_RATE=0.0005
 export MINI_EPOCHS=5
 set -euo pipefail
 
 export ROBOT_SPEC="${ROBOT_SPEC:-handonly:/share/portal/kk837/gen_mechanics/assets/populations/sharpa_capsule.json}"
-export STUDY_ID="${STUDY_ID:-tf_5deg_gen_sharpa_mlphp_fixed}"
+export STUDY_ID="${STUDY_ID:-tf_5deg_gen_sharpa_trimobs}"
 export SUCCESS_TOLERANCE_DEG=5
 export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
 export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_check_mlp_inhand_reorient}"
-export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_check_transformer_inhand_reorient}"
+export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_trimmed_obs_inhand_reorient}"
 
 source /share/portal/kk837/gen_mechanics/experiments/28sep_inhand_reorientation/common.sh
 run_and_chain "$0"

@@ -94,7 +94,10 @@ params:
     multi_gpu: False
     ppo: True
     mixed_precision: True
-    normalize_input: True
+    # False: joint_transformer normalises its own input (_RunningNorm), pooling token
+    # statistics over joints and leaving joint_enabled raw for the attention mask. rl_games'
+    # per-column normaliser on top broke both (until 2026-09-29 every joint was masked).
+    normalize_input: False
     normalize_value: True
     value_bootstrap: True
     normalize_advantage: True
@@ -140,7 +143,7 @@ params:
       learning_rate: 1e-4
       kl_threshold: 0.016
       clip_value: True
-      normalize_input: True
+      normalize_input: False   # see the actor's normalize_input
       truncate_grads: True
       network:
         name: joint_transformer

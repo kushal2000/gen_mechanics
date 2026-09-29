@@ -159,6 +159,60 @@ class _ParallelEncoderLayer(nn.Module):
         return x + self.w_out(torch.cat([attn, F.gelu(u)], dim=-1))
 
 
+class _RunningNorm(nn.Module):
+    """Running mean/std standardisation that the network owns, so it chooses what to pool.
+
+    Replaces rl_games' input normaliser for this network (``normalize_input`` must be False).
+    That one standardises every flat column on its own statistics, which breaks a SHARED token
+    projection: joint j's link-box x and joint k's link-box x get different scales, and a
+    column that is constant per joint -- its limits, where its link sits -- normalises to 0 and
+    is erased. Here a token field is standardised on statistics POOLED over every real joint,
+    so a weight means the same thing for every joint and between-joint differences survive.
+
+    Same arithmetic as rl_games' RunningMeanStd (Chan merge, eps 1e-5, clip +-5, statistics
+    updated in training mode only, summed across ranks under DDP), with a weight per row so
+    ghost joints do not enter the statistics. Buffers are updated in place and outside any
+    compiled graph.
+    """
+
+    def __init__(self, dim: int, eps: float = 1e-5, clip: float = 5.0):
+        super().__init__()
+        self.eps, self.clip = eps, clip
+        self.register_buffer("running_mean", torch.zeros(dim, dtype=torch.float64))
+        self.register_buffer("running_var", torch.ones(dim, dtype=torch.float64))
+        self.register_buffer("count", torch.full((), 1e-4, dtype=torch.float64))
+
+    @torch.compiler.disable
+    @torch.no_grad()
+    def update(self, x: torch.Tensor, weight: torch.Tensor | None = None) -> None:
+        """Fold a batch into the statistics. ``x`` is (..., dim); ``weight`` is x.shape[:-1]."""
+        x = x.detach().reshape(-1, x.shape[-1]).double()
+        w = (torch.ones(x.shape[0], dtype=torch.float64, device=x.device) if weight is None
+             else weight.detach().reshape(-1).double())
+        stats = torch.cat([w.sum().view(1), (x * w[:, None]).sum(0), (x * x * w[:, None]).sum(0)])
+        if torch.distributed.is_available() and torch.distributed.is_initialized() \
+                and torch.distributed.get_world_size() > 1:
+            torch.distributed.all_reduce(stats)
+        n = stats[0]
+        if n <= 0:
+            return
+        dim = x.shape[-1]
+        batch_mean = stats[1:1 + dim] / n
+        batch_var = (stats[1 + dim:] / n - batch_mean ** 2).clamp(min=0.0)
+        delta = batch_mean - self.running_mean
+        total = self.count + n
+        m2 = (self.running_var * self.count + batch_var * n
+              + delta ** 2 * self.count * n / total)
+        self.running_mean.add_(delta * n / total)
+        self.running_var.copy_(m2 / total)
+        self.count.copy_(total)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        mean = self.running_mean.to(x.dtype)
+        std = torch.sqrt(self.running_var.to(x.dtype) + self.eps)
+        return ((x - mean) / std).clamp(-self.clip, self.clip)
+
+
 class JointTransformerNet(NetworkBuilder.BaseNetwork):
     """One token per hand joint, one global token, one shared action head."""
 
@@ -215,6 +269,16 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         self.n_arm = n_arm
 
         self._register_indices(layout)
+        # This network normalises its own input (_RunningNorm). rl_games' per-column
+        # normaliser on top would erase what the pooled one keeps, and would turn the raw
+        # joint_enabled column the attention mask reads into noise.
+        if kwargs.get("normalize_input", False):
+            raise ValueError(
+                "joint_transformer normalises its own input; set normalize_input: False "
+                "in the train YAML (rl_games' per-column normaliser breaks the shared token "
+                "projection and the attention mask)")
+        self.token_norm = _RunningNorm(layout["token_dim"])
+        self.global_norm = _RunningNorm(layout["global_dim"])
 
         d_model = self.d_model
         # The un-projected global vector, kept for the skip below.
@@ -425,7 +489,10 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # it (0.30 ms). The reshape back to (B, n_hand, token_dim) is free.
         token_columns = layout["token_columns"]
         self.token_dim = layout["token_dim"]
-        self.enabled_col = layout["enabled_col"]
+        self.register_buffer(
+            "enabled_index", torch.tensor(layout["enabled_columns"], dtype=torch.long),
+            persistent=False,
+        )
         self.register_buffer(
             "token_gather",
             torch.tensor(token_columns, dtype=torch.long).reshape(-1).contiguous(),
@@ -458,13 +525,18 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
             torch.index_select(env_obs, 1, self.token_gather)
             .view(env_obs.shape[0], self.n_hand, self.token_dim)
         )
-        # A padded design's ghost joints are locked, so their limits coincide and
-        # joint_enabled is 0. That column is the mask: it costs nothing to read
-        # and needs no second input path.
-        valid = raw_tokens[:, :, self.enabled_col] > 0.5
-        tokens = self.token_proj(raw_tokens)
-
+        # The attention mask, from joint_enabled RAW: rl_games' normaliser is off for this
+        # network, so the column is exactly 0 or 1 -- a ghost slot of a padded design is 0.
+        # It is not a token feature. (Until 2026-09-29 the mask read "> 0.5" off a column
+        # rl_games had standardised, where a fixed hand's constant 1 is 0: every joint was
+        # masked and attended to the global token alone -- no joint could see another.)
+        valid = torch.index_select(env_obs, 1, self.enabled_index) > 0.5
         glob = torch.index_select(env_obs, 1, self.global_index)
+        if self.training:
+            self.token_norm.update(raw_tokens, valid)     # pooled over real joints only
+            self.global_norm.update(glob)
+        tokens = self.token_proj(self.token_norm(raw_tokens))
+        glob = self.global_norm(glob)
         if coef is not None:
             glob = torch.cat([glob, coef], dim=-1)
 
