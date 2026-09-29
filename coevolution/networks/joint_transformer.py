@@ -248,10 +248,11 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # ``mu_head_units`` buys real decentralized capacity for nothing;
         # empty (the default) keeps the single Linear, and with it the
         # `mu_head.weight` state_dict key that existing checkpoints carry.
+        mu_in = d_model + (d_model + self.global_raw_dim if self.hand_global_skip else 0)
         if self.mu_head_units:
-            self.mu_head = _mlp(d_model, self.mu_head_units, 1)
+            self.mu_head = _mlp(mu_in, self.mu_head_units, 1)
         else:
-            self.mu_head = nn.Linear(d_model, 1)
+            self.mu_head = nn.Linear(mu_in, 1)
         # The arm carries the 6D pose task: once the object is grasped, driving it
         # through SE(3) goals is mostly arm motion, and the hand only has to hold
         # on. A first run that read the arm off the d_model-wide global token
@@ -343,6 +344,16 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         self.arm_head_units = list(params.get("arm_head_units", [256, 128]))
         # Per-joint action head width. [] keeps the original single Linear.
         self.mu_head_units = list(params.get("mu_head_units", []))
+        # Give the SHARED per-joint action head the global token and the raw global
+        # vector as well as the joint's own token -- the hand's version of the raw
+        # skip the arm head already has. Off by default, so existing checkpoints and
+        # runs are unchanged. Why: for a hand-only robot there is no arm head, so
+        # every action is mu_head(joint_token), and the goal (keypoints_rel_goal) and
+        # object pose/velocity are GLOBAL-only fields (layout.py). Each joint can only
+        # learn where to push through one attention read of a d_model token. On the
+        # in-hand task with the reward fixed (fall_penalty 200, gamma 0.998) the MLP
+        # reaches ~46 goals/episode at 20 deg while this network stays at ~0.06.
+        self.hand_global_skip = bool(params.get("hand_global_skip", False))
         # The final LayerNorm over the residual stream. Meaningful once there
         # are blocks to stabilize; with n_layers 0 there is no residual stream
         # and it only normalizes a bare Linear whose scale the next Linear can
@@ -492,7 +503,12 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         if self.central_value:
             return value, None
 
-        mu_hand = self.mu_head(joints).squeeze(-1)
+        if self.hand_global_skip:
+            ctx = torch.cat([glob, glob_raw], dim=-1).unsqueeze(1).expand(
+                -1, joints.shape[1], -1)
+            mu_hand = self.mu_head(torch.cat([joints, ctx], dim=-1)).squeeze(-1)
+        else:
+            mu_hand = self.mu_head(joints).squeeze(-1)
         mu_arm = self.arm_head(torch.cat([glob, glob_raw], dim=-1))
         # Canonical policy order is arm joints first, then hand joints.
         mu = self.mu_act(torch.cat([mu_arm, mu_hand], dim=-1))

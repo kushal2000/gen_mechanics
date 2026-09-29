@@ -88,7 +88,8 @@ else
         agent.params.network.separate=false
         "agent.params.network.d_model=$D_MODEL"
         "agent.params.network.n_layers=$TRANSFORMER_LAYERS"
-        agent.params.network.n_heads=1 agent.params.network.ff_mult=2
+        "agent.params.network.n_heads=${N_HEADS:-1}" "agent.params.network.ff_mult=${FF_MULT:-2}"
+        "++agent.params.network.hand_global_skip=${HAND_GLOBAL_SKIP:-false}"
         agent.params.network.compile_net=true
         '++agent.params.network.mu_head_units=[64]'
         'agent.params.network.arm_head_units=[256,128]'
@@ -129,7 +130,11 @@ ARGS=(
     agent.params.config.central_value_config=null
     "agent.params.config.expl_coef_block_size=$EXPL_BLOCK_SIZE"
     "agent.params.config.learning_rate=$LEARNING_RATE"
-    agent.params.config.lr_schedule=adaptive
+    # adaptive (default) | linear | constant. The adaptive controller multiplies lr by 1.5 whenever
+    # KL < kl_threshold/2, capped at 1e-2 (schedulers.py:19-32). For the joint transformer on in-hand
+    # it sat AT that cap -- 20x the configured 5e-4 -- while entropy rose 22.7 -> 25.7-27.6; the MLP
+    # stayed at 2e-4..1.7e-3 with falling entropy. Anything but adaptive/linear is a constant lr.
+    "agent.params.config.lr_schedule=${LR_SCHEDULE:-adaptive}"
     # PPO passes over each rollout. Two is what every run so far used; one
     # halves the gradient steps per epoch (not the per-epoch dataset build,
     # advantage pass or SAPG augmentation, which run once either way) at the
