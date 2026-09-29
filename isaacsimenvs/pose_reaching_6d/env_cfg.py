@@ -142,6 +142,21 @@ class RewardCfg:
 
     distance_delta_rew_scale: float = 50.0
     reach_goal_bonus: float = 1000.0
+    # Dense, always-positive orientation-proximity term, IsaacLab's shape: scale / (x + eps)
+    # per step, x = keypoint residual / keypoint radius (so x ~ angle for small rotations).
+    # 0 disables it, which is every run before 2026-09-29. Why it exists: our progress term
+    # pays nothing for HOLDING a cube it cannot currently improve on, and measured on 585759
+    # a policy that drops the cube earns ~2x the return of one that holds it (130-150 vs ~60
+    # per episode), so PPO learns possession by epoch 50 and then unlearns it.
+    orientation_proximity_scale: float = 0.0
+    orientation_proximity_eps: float = 0.1
+    # Charged once, on the step the object is dropped (termination.fall). 0 disables it, which
+    # is every run before 2026-09-29. Why: on 585759 a policy that drops the cube earns ~2x the
+    # return of one that holds it, because every reset issues a fresh start + goal = a fresh
+    # keypoint-progress budget that a tumbling cube harvests quickly (plus accidental 20 deg
+    # goals). A bonus of 250, a dense proximity term and gamma 0.998 each only DELAYED the
+    # resulting collapse; this makes the drop itself cost, independent of the horizon.
+    fall_penalty: float = 0.0
 
     kuka_actions_penalty_scale: float = 0.03
     hand_actions_penalty_scale: float = 0.003
@@ -171,7 +186,7 @@ class ResetCfg:
     # object on them means the FINGERS hold it rather than the slab -- which is
     # the task. It also makes the tilt largely irrelevant, since the support is
     # no longer a plate.
-    in_hand_placement: str = "palm"          # "palm" | "fingertips"
+    in_hand_placement: str = "palm"          # "palm" | "fingertips" | "palm_body_offset"
     # Only read when in_hand_placement == "fingertips": how far out from the palm
     # centre toward the fingertip centroid the object starts. 0 reproduces the
     # "palm" placement exactly, 1 rests it on the tips. The clearance over the
@@ -183,6 +198,9 @@ class ResetCfg:
     # the object is DROPPED onto the fingers rather than starting in contact with
     # them, which is what keeps it out of penetration for every orientation draw.
     in_hand_drop_margin: float = 0.0
+    # Only read when in_hand_placement == "palm_body_offset": (x, y, bottom_height) in
+    # metres, in the palm BODY's frame. See reset.py for the exact convention.
+    in_hand_palm_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
     fixed_start_pose: tuple[float, float, float, float, float, float, float] | None = None
 
     # Joint state noise.

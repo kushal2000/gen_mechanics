@@ -138,12 +138,29 @@ def compute_rewards(env) -> torch.Tensor:
         force_consecutive=term_cfg.force_consecutive_near_goal_steps,
     )
 
-    reward = lift_rew + lift_bonus_rew + ft_rew + kp_rew + kuka_pen + hand_pen + bonus
+    prox_rew = torch.zeros_like(kp_rew)
+    if rew_cfg.orientation_proximity_scale:
+        # Normalise by the keypoint radius |o| so x matches the angle for small rotations
+        # about the worst axis -- the same convention as the reference-env keypoint rung.
+        radius = env._keypoint_offsets_fixed[0].norm(dim=-1).max()
+        x = env._keypoints_max_dist / radius
+        prox_rew = rew_cfg.orientation_proximity_scale / (x + rew_cfg.orientation_proximity_eps)
+    fall_pen = torch.zeros_like(kp_rew)
+    if rew_cfg.fall_penalty:
+        # _termination_reasons is written by compute_terminations inside _get_dones, which
+        # DirectRLEnv.step runs BEFORE _get_rewards, so "fall" here is this step's drop.
+        reasons = getattr(env, "_termination_reasons", None)
+        if reasons is not None and "fall" in reasons:
+            fall_pen = -rew_cfg.fall_penalty * reasons["fall"].float()
+    reward = (lift_rew + lift_bonus_rew + ft_rew + kp_rew + kuka_pen + hand_pen + bonus
+              + prox_rew + fall_pen)
     env._reward_terms = {
         "fingertip_delta_rew": ft_rew,
         "lifting_rew": lift_rew,
         "lift_bonus_rew": lift_bonus_rew,
         "keypoint_rew": kp_rew,
+        "proximity_rew": prox_rew,
+        "fall_penalty": fall_pen,
         "kuka_actions_penalty": kuka_pen,
         "hand_actions_penalty": hand_pen,
         "bonus_rew": bonus,

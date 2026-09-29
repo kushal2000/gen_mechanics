@@ -506,6 +506,27 @@ def _reset_object_pose(env, env_ids: torch.Tensor) -> None:
             surface_h = torch.maximum(pad_h, half_thickness)
             lift = surface_h + half_object + cfg.in_hand_clearance + cfg.in_hand_drop_margin
             pos_local = centre_w + in_plane + normal_w * lift - env_origins
+        elif cfg.in_hand_placement == "palm_body_offset":
+            # An explicit start, for reproducing another env's placement exactly.
+            # (x, y) are in the palm BODY's own frame (palm_link for Allegro -- NOT the
+            # palm centre), projected into the palm plane; z is the height of the
+            # object's LOWEST point above the palm body origin along the grasp normal.
+            # The centre then sits half_object above that, per env, so a random start
+            # orientation lifts by its true support instead of burying a corner.
+            #
+            # Built to put our cube where IsaacLab's Allegro env puts theirs: measured
+            # in palm_link's frame their cube centre is (102, 9, 57) mm -- over the
+            # fingertip centroid, on the finger pads -- while our "fingertips" mode at
+            # fraction 0.5 puts it at (65, -14, 85), back over the palm and ~60 mm
+            # above the tips. A single-delta rung on their env tests whether that
+            # difference alone stops possession from being learned.
+            off = torch.as_tensor(cfg.in_hand_palm_offset, device=env.device,
+                                  dtype=torch.float32)
+            xy = quat_apply(palm_quat, torch.stack(
+                (off[0].expand(n), off[1].expand(n), torch.zeros(n, device=env.device)), -1))
+            xy = xy - normal_w * (xy * normal_w).sum(-1, keepdim=True)
+            lift = off[2] + half_object + cfg.in_hand_clearance + cfg.in_hand_drop_margin
+            pos_local = palm_pos_w + xy + normal_w * lift - env_origins
         else:
             lift = half_thickness + half_object + cfg.in_hand_clearance
             pos_local = centre_w + normal_w * lift - env_origins
