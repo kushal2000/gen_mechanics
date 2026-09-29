@@ -39,6 +39,20 @@ LADDER: tuple[tuple[str, str], ...] = (
     ("step1-decimation", "InHandIsaacLabDecimationCfg"),
     ("step2-episode", "InHandIsaacLabEpisodeCfg"),
     ("step3-tolerance", "InHandIsaacLabToleranceCfg"),
+    # Not an env rung: the reference env driven by OUR learner. Last so the numbered
+    # chain still reads as one-env-delta-per-step. See InHandIsaacLabSapgCfg.
+    ("sapg-learner", "InHandIsaacLabSapgCfg"),
+    # Independent single-delta probes off rung 0, not part of the chain.
+    ("cube45", "InHandIsaacLabCube45Cfg"),
+    ("objinit", "InHandIsaacLabObjInitCfg"),
+    ("progressrew", "InHandIsaacLabProgressRewardCfg"),
+    ("combined", "InHandIsaacLabCombinedCfg"),
+    ("keypointrew", "InHandIsaacLabKeypointRewardCfg"),
+    ("ourspawn", "InHandIsaacLabOurSpawnCfg"),
+    ("allours", "InHandIsaacLabAllOursCfg"),
+    ("ourhand", "InHandIsaacLabOurHandCfg"),
+    ("kpspawn", "InHandIsaacLabKeypointSpawnCfg"),
+    ("ourdefault", "InHandIsaacLabOurDefaultCfg"),
 )
 
 LADDER_TASKS: tuple[str, ...] = tuple(f"GenMech-InHandIsaacLab-{s}-v0" for s, _ in LADDER)
