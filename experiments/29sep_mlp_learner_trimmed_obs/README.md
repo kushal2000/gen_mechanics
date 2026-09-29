@@ -47,6 +47,15 @@ normaliser is off for it. Allegro also carries the palm × thumb_link_2 self-col
 Replaces the 29sep_check_transformer runs 651207–651212 (full observation, fixed network),
 which were cancelled at epochs 800–2000 (best 0.08 goals/episode, real SHARPA, MLP learner).
 
+## keypoints_rel_ee was broken, and the relaunch (29 Sep)
+
+The first launch (658186–8 MLP, 658929–31 transformer) ran with `keypoints_rel_ee` broken: it
+subtracted the palm's WORLD position from env-local keypoints, so every env's value carried its
+grid offset and was clipped at ±10 (median |value| 8.1 m). In this trimmed list it was the ONLY
+source of the object's pose, so those policies were close to blind to the cube. All six stayed flat
+(MLP ≤ 0.05 goals/episode at epochs 2,000–2,800, where the full-observation MLP was at 4–46).
+Fixed in the observation builder. Relaunched under study names ending `_kpfix`.
+
 ## Launch
 
 ```bash

@@ -35,7 +35,7 @@ export MINI_EPOCHS=5
 set -euo pipefail
 
 export ROBOT_SPEC="${ROBOT_SPEC:-handonly:/share/portal/kk837/gen_mechanics/assets/populations/sharpa_capsule.json}"
-export STUDY_ID="${STUDY_ID:-mlp_5deg_gen_sharpa_trimobs}"
+export STUDY_ID="${STUDY_ID:-mlp_5deg_gen_sharpa_trimobs_kpfix}"
 export SUCCESS_TOLERANCE_DEG=5
 export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
 export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_mlp_learner_trimmed_obs}"
