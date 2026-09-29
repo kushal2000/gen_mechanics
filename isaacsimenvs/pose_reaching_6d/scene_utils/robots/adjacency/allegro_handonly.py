@@ -43,6 +43,16 @@ for _a, _b in (("index", "middle"), ("middle", "ring")):
     _ADJACENT[f"{_a}_link_0"].append(f"{_b}_link_0")
     _ADJACENT[f"{_b}_link_0"].append(f"{_a}_link_0")
 
+# The thumb's medial link against the palm. The palm collider is a solid box over the slab
+# (the unified URDF replaced the vendor mesh, which carried a stray plate), and that box fills
+# the recess the thumb swings in: at the default pose thumb_link_2 already sits 1.3 mm inside
+# it, and it overlaps in 43% of joint configurations within the limits (up to 6.3 mm), measured
+# on the convex hulls PhysX builds (debug_outputs/inhand_debug/allegro_selfcollision.py). Left
+# live, every reset starts with the solver pushing the thumb out of the palm. thumb_link_3,
+# the tip, stays live against the palm: curling the tip into the palm is a real contact.
+_ADJACENT[PALM_BODY].append("thumb_link_2")
+_ADJACENT["thumb_link_2"].append(PALM_BODY)
+
 # The thumb opposes the fingers across the palm, 88 mm proximal of the finger roots
 # and 18 mm deeper into the slab. Its base is nowhere near theirs, so it is NOT
 # filtered against them: a thumb-to-finger contact is exactly the contact a grasp is
