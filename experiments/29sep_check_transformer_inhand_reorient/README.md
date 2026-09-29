@@ -15,6 +15,15 @@ the MLP counterparts with that in mind. The MLP stock-learner reference at 5° i
 | `tf_5deg_allegro` | real Allegro (`allegro_handonly`) | `mlp_5deg_allegro` |
 | `tf_5deg_gen_sharpa` | capsule SHARPA (`handonly:…/sharpa_capsule.json`) | `mlp_5deg_gen_sharpa` |
 
+**Exact counterparts**, `tf_5deg_<hand>_mlphp.sub`: the same three hands with the MLP runs'
+learner (γ 0.998, lr 5e-4 adaptive, 5 mini-epochs). Their exports differ from `mlp_5deg_<hand>.sub`
+only in `ARCH`, the study name and the log folder, so these pairs **differ only in the network**.
+
+| run | learner | differs from MLP counterpart in |
+|---|---|---|
+| `tf_5deg_<hand>` | original SAPG (γ 0.99, 1e-4, 2) | network and learner |
+| `tf_5deg_<hand>_mlphp` | MLP's (γ 0.998, 5e-4, 5) | network only |
+
 Transformer: `common.sh` defaults, d_model 64, 4 layers, 1 head, ff_mult 2. **No hand-global skip,
 ever.** Each joint's action comes from its own token only.
 
