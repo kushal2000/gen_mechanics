@@ -432,10 +432,15 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     )
     # The same object keypoints from the end effector, in its orientation --
     # the frame the tokens and palm_keypoints use, so the three agree.
-    keypoints_rel_ee_clean = _rotate_into(palm_rot, obj_kp - palm_pos_w.unsqueeze(1))
+    # obj_kp is ENV-LOCAL (root_pos_w - env_origins), so the end effector must be
+    # too: ee_pos, not palm_pos_w. Until 2026-09-29 this subtracted the WORLD
+    # position, so every env's value carried its grid offset (tens of metres at
+    # 12288 envs) and was clipped at clamp_abs_observations: the field held
+    # almost no object information.
+    keypoints_rel_ee_clean = _rotate_into(palm_rot, obj_kp - ee_pos.unsqueeze(1))
     keypoints_rel_ee_noisy = (
         keypoints_rel_ee_clean if object_is_clean
-        else _rotate_into(palm_rot, noisy_obj_kp - palm_pos_w.unsqueeze(1))
+        else _rotate_into(palm_rot, noisy_obj_kp - ee_pos.unsqueeze(1))
     )
     # keypoints_rel_goal is the ONLY field carrying the goal, so it has to be
     # referred to the same frame the reward scores. Under orientation_only_goal
