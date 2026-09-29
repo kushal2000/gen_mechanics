@@ -2,9 +2,12 @@
 
 `experiments/29sep_check_mlp_inhand_reorient/` shows an MLP learning 5° in-hand reorientation.
 At about epoch 1000–1800 (29 Sep): real SHARPA 7.4 goals/episode, Allegro 0.70 (on 624497's curve,
-which reached 48), gen-SHARPA 0.16 and rising. This folder runs the **joint transformer on exactly
-the same configs**. Each `.sub` is its MLP counterpart with only `ARCH` changed, so any
-difference in outcome is the network.
+which reached 48), gen-SHARPA 0.16 and rising. This folder runs the **joint transformer** on the same hands, task, 5° tolerance and
+fall penalty 200, with the **original SAPG learner** (`PoseReachJointTransformerSAPG.yaml`: γ 0.99,
+lr 1e-4 adaptive, 2 mini-epochs, horizon 16, entropy 0). The MLP runs use γ 0.998, lr 5e-4 and
+5 mini-epochs, so **each pair differs in network and learner**. Read the transformer runs against
+the MLP counterparts with that in mind. The MLP stock-learner reference at 5° is 634907 (Allegro,
+1.3 goals/episode at ~e4750).
 
 | run | hand | MLP counterpart |
 |---|---|---|
@@ -12,15 +15,12 @@ difference in outcome is the network.
 | `tf_5deg_allegro` | real Allegro (`allegro_handonly`) | `mlp_5deg_allegro` |
 | `tf_5deg_gen_sharpa` | capsule SHARPA (`handonly:…/sharpa_capsule.json`) | `mlp_5deg_gen_sharpa` |
 
-Recipe (shared with the MLP runs): fall penalty 200, γ 0.998, lr 5e-4 adaptive, 5 mini-epochs,
-12288 envs, SAPG 6 × 2048, 5° keypoint success test, 15000 epochs chained. Transformer:
-`common.sh` defaults, d_model 64, 4 layers, 1 head, ff_mult 2, no hand-global skip.
+Transformer: `common.sh` defaults, d_model 64, 4 layers, 1 head, ff_mult 2. **No hand-global skip,
+ever.** Each joint's action comes from its own token only.
 
-Known risk, not corrected here to keep the comparison clean: on Allegro at 20° the transformer
-never learned (≤0.07 goals/episode over 2000+ epochs) under adaptive or constant lr, with or
-without the skip and at larger width (28sep FINDINGS.md). Under the adaptive schedule its lr ran
-to the 1e-2 cap. These runs test whether that failure holds at the settings where all three MLPs
-learn. Read goals/episode against the MLP counterpart at matched epochs.
+History: on Allegro at 20° the transformer never learned (≤0.07 goals/episode over 2000+ epochs)
+under adaptive or constant lr and at larger width (28sep FINDINGS.md). Two earlier launches of this
+folder with the MLP's learner (644447–9, 644472–4) were cancelled within minutes.
 
 ## Launch
 
