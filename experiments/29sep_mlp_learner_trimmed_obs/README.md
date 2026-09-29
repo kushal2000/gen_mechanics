@@ -1,4 +1,4 @@
-# Trimmed observation: does a smaller, cleaner input help the joint transformer?
+# MLP learner + trimmed observation, transformer and MLP on three hands
 
 With the full state list as policy input, the joint transformer learns nothing at 5° on any hand
 (≤0.005 goals/episode), while the MLP on the same input reaches 46 (real SHARPA), 32 (Allegro) and
@@ -11,7 +11,8 @@ progress, best-so-far distances). This folder removes all of that, and the per-j
 
 | where | fields | per |
 |---|---|---|
-| joint token | `joint_pos`, `joint_vel`, `prev_joint_pos`, `prev_joint_vel`, `prev_action_targets`, `joint_link_bbox` (12), `joint_lower`, `joint_upper`, `joint_enabled` | 20 per joint |
+| joint token | `joint_pos`, `joint_vel`, `prev_joint_pos`, `prev_joint_vel`, `prev_action_targets`, `joint_link_bbox` (12), `joint_lower`, `joint_upper` | 19 per joint |
+| attention mask only | `joint_enabled`, read raw, never a token feature (the MLP sees it as an input) | — |
 | global token | `keypoints_rel_ee` (object keypoints, 12), `keypoints_rel_goal` (goal residual, 12), `object_vel` (6) | 30 |
 | global token | SAPG exploration coefficient (appended by the algorithm, learned embedding) | — |
 
@@ -35,11 +36,22 @@ transformer `tf_5deg_<hand>_mlphp`.
 Plumbing: `OBS_LIST` in `run_rank.sh` (unset keeps the full state list), and
 `object_keypoints_rel_joint` is now an optional token field (`layout.OPTIONAL_HAND_TOKEN_FIELDS`).
 
+## Code this runs on (29 Sep)
+
+Launched after the joint-transformer fix (`fbf8311`): joints now attend to each other. Before it,
+every joint was masked out of attention (see `29sep_check_transformer_inhand_reorient/README.md`).
+The network normalises its own input, with statistics pooled over joints, and rl_games'
+normaliser is off for it. Allegro also carries the palm × thumb_link_2 self-collision filter
+(`a211a54`). The MLP keeps rl_games' normaliser.
+
+Replaces the 29sep_check_transformer runs 651207–651212 (full observation, fixed network),
+which were cancelled at epochs 800–2000 (best 0.08 goals/episode, real SHARPA, MLP learner).
+
 ## Launch
 
 ```bash
-for f in experiments/29sep_trimmed_obs_inhand_reorient/*.sub; do sbatch "$f"; done
+for f in experiments/29sep_mlp_learner_trimmed_obs/*.sub; do sbatch "$f"; done
 ```
 
-Logs: `debug_outputs/train_logs/29sep_trimmed_obs_inhand_reorient/`. wandb project
+Logs: `debug_outputs/train_logs/29sep_mlp_learner_trimmed_obs/`. wandb project
 [`gen_mechanics_check_mlp_inhand_reorient`](https://wandb.ai/kk837/gen_mechanics_check_mlp_inhand_reorient).

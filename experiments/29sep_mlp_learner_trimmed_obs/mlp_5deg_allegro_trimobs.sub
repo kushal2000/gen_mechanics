@@ -9,8 +9,8 @@
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:1
 #SBATCH --signal=B:USR1@900
-#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_trimmed_obs_inhand_reorient/mlp_5deg_allegro_trimobs-%j.log
-#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_trimmed_obs_inhand_reorient/mlp_5deg_allegro_trimobs-%j.err
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_mlp_learner_trimmed_obs/mlp_5deg_allegro_trimobs-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_mlp_learner_trimmed_obs/mlp_5deg_allegro_trimobs-%j.err
 
 # MLP POLICY, 5 DEG GOAL TOLERANCE, ON THE REAL WONIK ALLEGRO HAND (16 DoF, real URDF).
 #
@@ -19,14 +19,14 @@
 # lr 5e-4 (adaptive), 5 mini_epochs, 12288 envs, SAPG 6 x 2048. (The stock learner, 634907, was at
 # 1.3 goals/episode after ~4750 epochs at 5 deg.)
 #
-# TRIMMED OBSERVATION (29sep_trimmed_obs_inhand_reorient/README.md). Joint token: the joint's own state,
+# TRIMMED OBSERVATION (29sep_mlp_learner_trimmed_obs/README.md). Joint token: the joint's own state,
 # link box, limits and enabled flag -- NO object_keypoints_rel_joint. Global: only object keypoints
 # (keypoints_rel_ee), goal residual (keypoints_rel_goal) and object velocity, plus the SAPG coefficient.
 # Everything constant (mount pose/vel, palm keypoints, cube size, lift latch) and every critic-type
 # field (reward, successes, progress, best-so-far distances) is dropped -- from the value head too,
 # since there is no separate critic. MLP and transformer use the identical list and learner.
 #
-#   sbatch experiments/29sep_trimmed_obs_inhand_reorient/mlp_5deg_allegro_trimobs.sub
+#   sbatch experiments/29sep_mlp_learner_trimmed_obs/mlp_5deg_allegro_trimobs.sub
 export USER_HYDRA="env.reward.fall_penalty=200.0 agent.params.config.gamma=0.998"
 export OBS_LIST="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel]"
 export ARCH=mlp
@@ -39,7 +39,7 @@ export STUDY_ID="${STUDY_ID:-mlp_5deg_allegro_trimobs}"
 export SUCCESS_TOLERANCE_DEG=5
 export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
 export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_check_mlp_inhand_reorient}"
-export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_trimmed_obs_inhand_reorient}"
+export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_mlp_learner_trimmed_obs}"
 
 source /share/portal/kk837/gen_mechanics/experiments/28sep_inhand_reorientation/common.sh
 run_and_chain "$0"
