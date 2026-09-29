@@ -251,6 +251,19 @@ class EnvStatsAlgoObserver(AlgoObserver):
             self.writer.add_scalar(key, _as_float(value), frame)
 
 
+class JointTransformerNormObserver(AlgoObserver):
+    """Hand rl_games' input-normalisation schedule to a joint transformer's own normalisers.
+
+    See ``coevolution.networks.joint_transformer.install_rl_games_hook``. No-op otherwise.
+    """
+
+    def after_init(self, algo):
+        from coevolution.networks.joint_transformer import install_rl_games_hook
+        if install_rl_games_hook(algo):
+            print("[joint_transformer] input statistics follow rl_games' schedule "
+                  "(first mini-epoch of each update)", flush=True)
+
+
 class MultiObserver(AlgoObserver):
     """Fan out every `AlgoObserver` callback to a list of observers.
 

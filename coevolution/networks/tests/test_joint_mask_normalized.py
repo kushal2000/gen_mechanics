@@ -168,3 +168,92 @@ def test_statistics_move_only_in_training_mode():
     with torch.no_grad():
         net({"obs": x})
     assert not torch.equal(before, net.token_norm.running_mean)
+
+
+# --- the normaliser against rl_games', and on rl_games' schedule -----------------------------
+
+def test_running_norm_matches_rl_games_running_mean_std():
+    """Unweighted, _RunningNorm must be rl_games' RunningMeanStd: same statistics, same output."""
+    from rl_games.algos_torch.running_mean_std import RunningMeanStd
+    torch.manual_seed(3)
+    ref, ours = RunningMeanStd((7,)), JT._RunningNorm(7)
+    ref.train(); ours.train()
+    for i in range(6):
+        x = torch.randn(257, 7) * torch.tensor([1e-3, 0.1, 1, 10, 100, 1, 1]) + i
+        ref(x)
+        ours.update(x)
+    ref.eval(); ours.eval()
+    # rl_games takes batch moments in float32, ours in float64: equal to float32 rounding.
+    assert torch.allclose(ours.running_mean, ref.running_mean, rtol=1e-5, atol=1e-7)
+    assert torch.allclose(ours.running_var, ref.running_var, rtol=1e-5, atol=1e-9)
+    assert torch.allclose(ours.count, ref.count)
+    x = torch.randn(50, 7) * 20
+    assert torch.allclose(ours(x), ref(x), atol=1e-5)
+
+
+def _rl_games_model():
+    """The real rl_games model class around the network, built the way a2c_continuous does."""
+    from rl_games.algos_torch.models import ModelA2CContinuousLogStd
+    builder = JT.JointTransformerBuilder()
+    builder.load(dict(d_model=16, n_layers=2, n_heads=1, ff_mult=2, mu_head_units=[16],
+                      value_head_units=[16], robot_spec="stub", obs_list=FIELDS,
+                      space={"continuous": {"fixed_sigma": "fixed", "mu_activation": "None",
+                                            "sigma_activation": "None"}}))
+    return ModelA2CContinuousLogStd(builder).build(dict(
+        input_shape=(OBS_DIM,), actions_num=N_HAND, normalize_input=False,
+        normalize_value=False, value_size=1, num_seqs=1))
+
+
+def test_statistics_follow_rl_games_schedule():
+    """Rollout (eval): frozen. First mini-epoch (train): update. After rl_games calls
+    model.running_mean_std.eval(): frozen, although the model is still in training mode."""
+    model = _rl_games_model()
+    algo = SimpleNamespace(model=model, normalize_input=False)
+    assert JT.install_rl_games_hook(algo) and algo.normalize_input
+    net = model.a2c_network
+    x = _obs(torch.ones(32, N_HAND))
+    call = lambda: model({"is_train": True, "obs": x, "prev_actions": torch.zeros(32, N_HAND)})
+    count = lambda: net.token_norm.count.item()
+
+    model.eval(); c0 = count()
+    with torch.no_grad():
+        model({"is_train": False, "obs": x})
+    assert count() == c0, "rollout must not move the statistics"
+
+    model.train()                                  # set_train()
+    with torch.no_grad():
+        call(); call()                             # mini-epoch 1, two minibatches
+    c1 = count()
+    assert c1 > c0
+    model.running_mean_std.eval()                  # a2c_common: freeze after mini-epoch 1
+    assert model.training and not net.token_norm.training
+    with torch.no_grad():
+        call(); call()                             # mini-epochs 2..
+    assert count() == c1, "statistics moved after the first mini-epoch"
+
+    model.eval(); model.train()                    # next update
+    with torch.no_grad():
+        call()
+    assert count() > c1
+
+
+def test_the_hook_adds_no_state_and_checkpoints_round_trip():
+    model = _rl_games_model()
+    algo = SimpleNamespace(model=model, normalize_input=False)
+    JT.install_rl_games_hook(algo)
+    assert model.running_mean_std.state_dict() == {}
+    keys = model.state_dict().keys()
+    assert not [k for k in keys if k.startswith("running_mean_std")]
+    assert "a2c_network.token_norm.running_mean" in keys
+    model.train()
+    with torch.no_grad():
+        model({"is_train": True, "obs": _obs(torch.ones(8, N_HAND)),
+               "prev_actions": torch.zeros(8, N_HAND)})
+    fresh = _rl_games_model()
+    fresh.load_state_dict(model.state_dict())
+    assert torch.equal(fresh.a2c_network.token_norm.running_var, model.a2c_network.token_norm.running_var)
+
+
+def test_the_hook_ignores_other_networks():
+    algo = SimpleNamespace(model=SimpleNamespace(a2c_network=torch.nn.Linear(2, 2)), normalize_input=True)
+    assert not JT.install_rl_games_hook(algo) and algo.normalize_input

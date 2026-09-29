@@ -169,9 +169,10 @@ class _RunningNorm(nn.Module):
     is erased. Here a token field is standardised on statistics POOLED over every real joint,
     so a weight means the same thing for every joint and between-joint differences survive.
 
-    Same arithmetic as rl_games' RunningMeanStd (Chan merge, eps 1e-5, clip +-5, statistics
-    updated in training mode only, summed across ranks under DDP), with a weight per row so
-    ghost joints do not enter the statistics. Buffers are updated in place and outside any
+    Same arithmetic as rl_games' RunningMeanStd -- prior mean 0 / var 1 / count 1, unbiased
+    batch variance, Chan merge, eps 1e-5, clip +-5, summed across ranks under DDP (tested
+    equal to it) -- with a weight per row so ghost joints do not enter the statistics, and the
+    same schedule (install_rl_games_hook): updated in the first mini-epoch of each update only. Buffers are updated in place and outside any
     compiled graph.
     """
 
@@ -180,12 +181,20 @@ class _RunningNorm(nn.Module):
         self.eps, self.clip = eps, clip
         self.register_buffer("running_mean", torch.zeros(dim, dtype=torch.float64))
         self.register_buffer("running_var", torch.ones(dim, dtype=torch.float64))
-        self.register_buffer("count", torch.full((), 1e-4, dtype=torch.float64))
+        self.register_buffer("count", torch.ones((), dtype=torch.float64))   # rl_games' prior
 
     @torch.compiler.disable
     @torch.no_grad()
     def update(self, x: torch.Tensor, weight: torch.Tensor | None = None) -> None:
-        """Fold a batch into the statistics. ``x`` is (..., dim); ``weight`` is x.shape[:-1]."""
+        """Fold a batch into the statistics, if this normaliser is in training mode.
+
+        Its OWN mode, not the network's: rl_games freezes input statistics after the first
+        mini-epoch of every update by calling ``model.running_mean_std.eval()`` while the
+        model stays in training mode (a2c_common.py train_epoch). ``install_rl_games_hook``
+        routes that call here. ``x`` is (..., dim); ``weight`` is x.shape[:-1].
+        """
+        if not self.training:
+            return
         x = x.detach().reshape(-1, x.shape[-1]).double()
         w = (torch.ones(x.shape[0], dtype=torch.float64, device=x.device) if weight is None
              else weight.detach().reshape(-1).double())
@@ -198,7 +207,8 @@ class _RunningNorm(nn.Module):
             return
         dim = x.shape[-1]
         batch_mean = stats[1:1 + dim] / n
-        batch_var = (stats[1 + dim:] / n - batch_mean ** 2).clamp(min=0.0)
+        # Unbiased, as rl_games' input.var(0).
+        batch_var = ((stats[1 + dim:] / n - batch_mean ** 2) * n / (n - 1).clamp(min=1.0)).clamp(min=0.0)
         delta = batch_mean - self.running_mean
         total = self.count + n
         m2 = (self.running_var * self.count + batch_var * n
@@ -211,6 +221,49 @@ class _RunningNorm(nn.Module):
         mean = self.running_mean.to(x.dtype)
         std = torch.sqrt(self.running_var.to(x.dtype) + self.eps)
         return ((x - mean) / std).clamp(-self.clip, self.clip)
+
+
+class _InputNormModeProxy(nn.Module):
+    """Stands in for rl_games' ``model.running_mean_std`` so rl_games drives our normalisers.
+
+    rl_games updates input statistics during the FIRST mini-epoch of each update only: it calls
+    ``model.running_mean_std.eval()`` after it, and ``model.train()`` / ``model.eval()`` around
+    rollouts and updates. With ``normalize_input: False`` it has no normaliser to call, so this
+    proxy takes the attribute and forwards train/eval to the network's own normalisers. It never
+    transforms anything (``model.norm_obs`` still sees ``normalize_input`` False on the model)
+    and holds no state, so rl_games' checkpoint entry for it is an empty dict.
+    """
+
+    def __init__(self, norms):
+        super().__init__()
+        object.__setattr__(self, "_norms", tuple(norms))    # not submodules: no state_dict copy
+
+    def forward(self, x):
+        return x
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        for n in self._norms:
+            n.train(mode)
+        return self
+
+
+def install_rl_games_hook(algo) -> bool:
+    """Give rl_games' input-normalisation schedule to a joint transformer's own normalisers.
+
+    Called from an AlgoObserver's ``after_init`` (the model exists by then). No-op, returning
+    False, for any other network. Sets ``algo.normalize_input`` so rl_games' train_epoch issues
+    its per-update freeze; the MODEL's flag stays False, so rl_games still never normalises.
+    """
+    net = getattr(getattr(algo, "model", None), "a2c_network", None)
+    if not isinstance(net, JointTransformerNet):
+        return False
+    if getattr(algo.model, "normalize_input", False):
+        raise ValueError("joint_transformer normalises its own input; normalize_input must be False")
+    algo.model.running_mean_std = _InputNormModeProxy([net.token_norm, net.global_norm])
+    algo.normalize_input = True
+    net._rl_games_hooked = True
+    return True
 
 
 class JointTransformerNet(NetworkBuilder.BaseNetwork):
@@ -279,6 +332,8 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
                 "projection and the attention mask)")
         self.token_norm = _RunningNorm(layout["token_dim"])
         self.global_norm = _RunningNorm(layout["global_dim"])
+        self._rl_games_hooked = False     # set by install_rl_games_hook
+        self._warned_unhooked = False
 
         d_model = self.d_model
         # The un-projected global vector, kept for the skip below.
@@ -532,9 +587,12 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # masked and attended to the global token alone -- no joint could see another.)
         valid = torch.index_select(env_obs, 1, self.enabled_index) > 0.5
         glob = torch.index_select(env_obs, 1, self.global_index)
-        if self.training:
-            self.token_norm.update(raw_tokens, valid)     # pooled over real joints only
-            self.global_norm.update(glob)
+        if self.token_norm.training and not self._rl_games_hooked and not self._warned_unhooked:
+            self._warned_unhooked = True
+            print("[joint_transformer] WARNING: training without install_rl_games_hook: input "
+                  "statistics update on every mini-epoch instead of the first only", flush=True)
+        self.token_norm.update(raw_tokens, valid)         # pooled over real joints only
+        self.global_norm.update(glob)
         tokens = self.token_proj(self.token_norm(raw_tokens))
         glob = self.global_norm(glob)
         if coef is not None:
@@ -625,4 +683,4 @@ class JointTransformerBuilder(NetworkBuilder):
         return self.build(name, **kwargs)
 
 
-__all__ = ["JointTransformerBuilder", "JointTransformerNet"]
+__all__ = ["JointTransformerBuilder", "JointTransformerNet", "install_rl_games_hook"]

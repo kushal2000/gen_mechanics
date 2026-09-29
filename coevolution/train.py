@@ -233,6 +233,11 @@ def main() -> None:
         )
 
         observers = [EnvStatsAlgoObserver()]
+        # The joint transformer normalises its own input; this hands it rl_games'
+        # per-update schedule for doing so (statistics move in the first mini-epoch only).
+        # A no-op for every other network.
+        from coevolution.utils.rlgames_utils import JointTransformerNormObserver
+        observers.append(JointTransformerNormObserver())
         if args_cli.wandb_activate:
             from coevolution.utils.wandb_utils import WandbAlgoObserver
 
