@@ -183,6 +183,15 @@ def _object_keypoints_rel_joint(
     return rel_palm * valid[:, :, None, None].to(rel_palm.dtype)
 
 
+def _quat_angle(q1, q2):
+    """Rotation angle in [0, pi] between two (w, x, y, z) quaternion batches; atan2 form,
+    which stays accurate near 0 where 2 acos(|<q1, q2>|) loses precision."""
+    conj = q2.clone()
+    conj[:, 1:] *= -1.0
+    rel = quat_mul(conj, q1)
+    return 2.0 * torch.atan2(rel[:, 1:].norm(dim=-1), rel[:, 0].abs())
+
+
 def _rotate_into(palm_rot, vectors_w):
     """World vectors ``(N, K, 3)`` expressed in the palm body's orientation."""
     palm_inv = palm_rot.clone()
@@ -250,6 +259,16 @@ def compute_intermediate_values(env) -> None:
         rel_dist = torch.norm(
             (obj_kp - obj_pos.unsqueeze(1)) - (goal_kp - goal_pos.unsqueeze(1)), dim=-1)
         env._keypoints_max_dist = rel_dist.max(dim=-1).values
+        if env.cfg.obs.orientation_metric == "angle":
+            # The true rotation angle between object and goal, as ARC LENGTH at the
+            # keypoint radius r: r * theta. Unlike the keypoint max, it does not depend
+            # on the rotation axis (the 4 corners leave some axes 20-35 deg for the same
+            # threshold). Kept in metres so the progress reward's scale, the
+            # closest-so-far record and the critic's closest_keypoint_max_dist keep
+            # their magnitudes (both span 0..~r*pi vs 0..2r).
+            env._orientation_angle = _quat_angle(obj_rot, goal_rot)
+            env._keypoint_radius = kp_offsets.norm(dim=-1).max(dim=-1).values
+            env._keypoints_max_dist = env._keypoint_radius * env._orientation_angle
     else:
         env._keypoints_max_dist = torch.norm(obj_kp - goal_kp, dim=-1).max(dim=-1).values
 
@@ -267,7 +286,14 @@ def compute_intermediate_values(env) -> None:
         tol = env._keypoint_success_tolerance_m()
     else:
         tol = env._current_success_tolerance * rew_cfg.keypoint_scale
-    env._near_goal = env._keypoints_max_dist <= tol
+    if env.cfg.obs.orientation_only_goal and env.cfg.obs.orientation_metric == "angle":
+        # tol is the keypoint tolerance in metres, success_tolerance * keypoint_scale =
+        # 2 r sin(theta_tol / 2) by common.sh's conversion; invert it to the angle, so
+        # SUCCESS_TOLERANCE_DEG means exactly that many degrees about any axis.
+        tol_angle = 2.0 * torch.asin((tol / (2.0 * env._keypoint_radius)).clamp(max=1.0))
+        env._near_goal = env._orientation_angle <= tol_angle
+    else:
+        env._near_goal = env._keypoints_max_dist <= tol
     env._near_goal_steps = update_near_goal_steps(
         near_goal=env._near_goal,
         near_goal_steps=env._near_goal_steps,

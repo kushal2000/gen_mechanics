@@ -99,6 +99,8 @@ obs:
   # _keypoints_max_dist is a pure rotation residual. Still metres, so the
   # tolerance curriculum and every downstream reader are unaffected.
   orientation_only_goal: true
+  # keypoint | angle -- what the success test and progress reward measure (env_cfg.py)
+  orientation_metric: keypoint
   state_list: [joint_pos, joint_vel, prev_joint_pos, prev_joint_vel, prev_action_targets,
                joint_link_bbox, joint_lower, joint_upper, joint_enabled,
                object_keypoints_rel_joint, palm_keypoints, ee_pos, ee_rot, ee_vel,

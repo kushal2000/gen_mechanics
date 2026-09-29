@@ -300,3 +300,47 @@ def test_shipped_and_planned_tolerances():
         assert math.isclose(got, want_m, abs_tol=1e-6), f"{deg} deg -> {got}"
         tight, _ = threshold_angles_deg(got)
         assert math.isclose(tight, deg, abs_tol=1e-6), "round trip failed"
+
+
+# ---------------------------------------------------------------------------
+# orientation_metric="angle": the true angle, tolerance converted back exactly
+# ---------------------------------------------------------------------------
+
+QUAT_ANGLE_SRC = OBSERVATIONS.read_text()
+
+
+def _quat_angle_np(q1, q2):
+    """observations._quat_angle, in numpy: 2 atan2(|v|, |w|) of conj(q2) * q1."""
+    w1, v1 = q1[0], q1[1:]
+    w2, v2 = q2[0], -q2[1:]
+    w = w2 * w1 - v2 @ v1
+    v = w2 * v1 + w1 * v2 + np.cross(v2, v1)
+    return 2.0 * math.atan2(np.linalg.norm(v), abs(w))
+
+
+def _axis_angle_quat(axis, theta):
+    axis = np.asarray(axis, float) / np.linalg.norm(axis)
+    return np.concatenate([[math.cos(theta / 2)], math.sin(theta / 2) * axis])
+
+
+@pytest.mark.parametrize("deg", [5.0, 20.0, 90.0, 179.0])
+@pytest.mark.parametrize("axis", [(1, 0, 0), (0, 0, 1), (1, 1, 1), (0.3, -0.8, 0.2)])
+def test_quat_angle_is_axis_independent(deg, axis):
+    q0 = _axis_angle_quat((0.2, 0.5, -0.4), 1.1)          # arbitrary goal
+    dq = _axis_angle_quat(axis, math.radians(deg))
+    w0, v0, w1, v1 = dq[0], dq[1:], q0[0], q0[1:]
+    q = np.concatenate([[w0 * w1 - v0 @ v1], w0 * v1 + w1 * v0 + np.cross(v0, v1)])
+    assert math.degrees(_quat_angle_np(q, q0)) == pytest.approx(deg, abs=1e-6)
+    assert math.degrees(_quat_angle_np(-q, q0)) == pytest.approx(deg, abs=1e-6)  # double cover
+
+
+@pytest.mark.parametrize("deg", [5.0, 20.0, 45.0])
+def test_angle_tolerance_inverts_common_sh(deg):
+    """common.sh writes success_tolerance = edge sqrt(3) sin(theta/2); the env tests against
+    tol = success_tolerance * keypoint_scale, and angle mode inverts it with the keypoint
+    radius r = |corner| * keypoint_scale * edge / 2. That must give back exactly theta."""
+    success_tolerance = CUBE_EDGE_M * math.sqrt(3) * math.sin(math.radians(deg) / 2)
+    tol = success_tolerance * KEYPOINT_SCALE
+    r = np.linalg.norm(KEYPOINT_CORNERS, axis=-1).max() * KEYPOINT_SCALE * CUBE_EDGE_M / 2
+    assert math.degrees(2 * math.asin(min(tol / (2 * r), 1.0))) == pytest.approx(deg, abs=1e-9)
+    assert "def _quat_angle" in QUAT_ANGLE_SRC and 'orientation_metric == "angle"' in QUAT_ANGLE_SRC

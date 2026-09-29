@@ -100,6 +100,11 @@ class ObsCfg:
     # tolerance curriculum and every downstream reader are unaffected). False
     # keeps the fused position+orientation metric pose reaching needs.
     orientation_only_goal: bool = False
+    # Under orientation_only_goal, what the success test and the progress reward measure.
+    # "keypoint": the max corner residual (axis-dependent: a fixed tolerance admits 20-35
+    # deg). "angle": the true quaternion angle, as arc length r * theta at the keypoint
+    # radius; the tolerance is converted back to that exact angle. Observations unchanged.
+    orientation_metric: str = "keypoint"
     clamp_abs_observations: float = 10.0
     # Where joint_link_bbox and object_keypoints_rel_joint are measured from.
     # "ee": link_7's origin, metres -- one point every design shares; the palm
