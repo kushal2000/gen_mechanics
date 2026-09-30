@@ -91,6 +91,12 @@ ROUNDS = {
         "l6_const2e3_ck": ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true",
                                           "LR_SCHEDULE": "constant", "LEARNING_RATE": "0.002"}),
     },
+    # Round 5: replicate depth. l6_ck (seed 100): 8.69 at 1500, 28.6 at 1837 (MLP 11.76 / ~30); l6_ck_s2:
+    # 0.30 at 800 vs base_s2 0.21. The bigger action head did not replicate (mu256_s2 slower than base_s2;
+    # l6_mu256_ck worse than l6_ck) -- its seed-100 win was likely luck.
+    5: {
+        "l6_ck_s3":    ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true", "SEED": "300"}),
+    },
 }
 
 TEMPLATE = """#!/bin/bash

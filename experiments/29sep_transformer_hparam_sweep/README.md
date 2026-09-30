@@ -93,3 +93,20 @@ and kl032 (lr pinned 1e-2) are dead and cancelled; const3e3 middling (0.18 at 10
 l8_ck, l6_const2e3_ck.
 
 **mu512 ran out of memory** (682896) — the action head runs on 30 tokens × 114688; retried as mu512_ck. l6_ck at 5.61 goals/episode at epoch 1369.
+
+**~6.5 h. Depth replicates; the bigger action head does not.**
+
+| run | @600 | @800 | @1000 | @1500 | latest |
+|---|---|---|---|---|---|
+| l6_ck (seed 100) | 0.081 | 0.403 | 1.11 | **8.69** | **28.6 at 1837** |
+| gen-SHARPA MLP | 0.176 | 0.514 | 1.24 | 11.76 | 38.6 at 2000 |
+| l6_ck_s2 (seed 200) | 0.051 | 0.297 | | | 0.73 at 932 |
+| d128_ck | 0.065 | 0.232 | 0.683 | | 3.94 at 1347 |
+| h4_ck | 0.016 | 0.093 | 0.343 | | 0.89 at 1194 |
+| base_s3 (seed 300) | 0.044 | 0.111 | 0.137 | 0.369 | 0.71 at 1972 |
+| l6_mu256_ck | 0.013 | 0.053 | | | 0.07 at 905 — cancelled |
+| mu256_s2 (seed 200) | 0.009 | | | | 0.02 at 652 |
+
+6 layers is at MLP pace on gen-SHARPA and helps on seed 200 too (0.30 vs 0.21 at 800). mu256's seed-100
+win did not replicate on seed 200 and hurts combined with depth; l6_mu256_ck and the pending mu512_ck
+were cancelled. Round 5 queued: l6_ck_s3 (seed 300).
