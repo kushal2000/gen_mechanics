@@ -257,3 +257,27 @@ def test_the_hook_adds_no_state_and_checkpoints_round_trip():
 def test_the_hook_ignores_other_networks():
     algo = SimpleNamespace(model=SimpleNamespace(a2c_network=torch.nn.Linear(2, 2)), normalize_input=True)
     assert not JT.install_rl_games_hook(algo) and algo.normalize_input
+
+
+def test_activation_checkpointing_is_exact():
+    """grad_checkpoint must change memory only: identical outputs and gradients."""
+    x = _obs(torch.ones(16, N_HAND))
+    torch.manual_seed(0)
+    plain = _net()
+    ckpt = _net()
+    ckpt.load_state_dict(plain.state_dict())
+    ckpt.grad_checkpoint = True
+    for net in (plain, ckpt):
+        net.train()
+        with torch.no_grad():
+            net({"obs": x})                                   # same statistics update in both
+    outs, grads = [], []
+    for net in (plain, ckpt):
+        net.token_norm.eval(); net.global_norm.eval()
+        net.zero_grad()
+        mu, _, value, _ = net({"obs": x})
+        (mu.square().sum() + value.sum()).backward()
+        outs.append(torch.cat([mu.flatten(), value.flatten()]).detach())
+        grads.append(torch.cat([p.grad.flatten() for p in net.parameters() if p.grad is not None]))
+    assert torch.allclose(outs[0], outs[1], atol=1e-6)
+    assert torch.allclose(grads[0], grads[1], atol=1e-6)

@@ -30,6 +30,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.checkpoint
 
 from rl_games.algos_torch.network_builder import NetworkBuilder
 
@@ -473,6 +474,11 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # in-hand task with the reward fixed (fall_penalty 200, gamma 0.998) the MLP
         # reaches ~46 goals/episode at 20 deg while this network stays at ~0.06.
         self.hand_global_skip = bool(params.get("hand_global_skip", False))
+        # Activation checkpointing: each encoder layer recomputes its activations in the backward
+        # pass instead of storing them. Mathematically identical (same outputs and gradients --
+        # dropout is 0), costs one extra forward per layer, and cuts activation memory so a deeper or
+        # wider model fits at the same minibatch. Off by default.
+        self.grad_checkpoint = bool(params.get("grad_checkpoint", False))
         # The final LayerNorm over the residual stream. Meaningful once there
         # are blocks to stabilize; with n_layers 0 there is no residual stream
         # and it only normalizes a bare Linear whose scale the next Linear can
@@ -605,8 +611,12 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
             # The global token is always present, so every query keeps one key.
             key_mask = torch.cat(
                 [valid, torch.ones_like(valid[:, :1])], dim=1)
+            ckpt = self.grad_checkpoint and self.training and torch.is_grad_enabled()
             for layer in self.layers:
-                x = layer(x, key_mask)
+                if ckpt:
+                    x = torch.utils.checkpoint.checkpoint(layer, x, key_mask, use_reentrant=False)
+                else:
+                    x = layer(x, key_mask)
             if self.final_norm:
                 x = self.ln_out(x)
             return x[:, : self.n_hand], x[:, self.n_hand], glob, valid

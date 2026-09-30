@@ -27,6 +27,7 @@ BASE = {
     "LEARNING_RATE": "0.0005", "MINI_EPOCHS": "5",
     "D_MODEL": "64", "TRANSFORMER_LAYERS": "4", "N_HEADS": "1", "FF_MULT": "2",
     "MU_HEAD_UNITS": '"[64]"', "VALUE_HEAD_UNITS": '"[512,256]"', "HORIZON": "16",
+    "GRAD_CHECKPOINT": "false",
     "LR_SCHEDULE": "adaptive",
 }
 UH = BASE["USER_HYDRA"].strip('"')
@@ -43,6 +44,11 @@ ROUNDS = {
         # Halving the minibatch would double the gradient steps too, so width is tested at 96 instead.
         "d128":        ("gen_sharpa", {"D_MODEL": "128"}),
         "d96":         ("gen_sharpa", {"D_MODEL": "96"}),
+        # l6 also ran out of memory (667095). Activation checkpointing recomputes layer activations in
+        # the backward pass: identical outputs and gradients (tested), ~40% of the memory, ~1.27x per
+        # update step. So depth and width are tested with it on and the learner unchanged.
+        "l6_ck":       ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true"}),
+        "d128_ck":     ("gen_sharpa", {"D_MODEL": "128", "GRAD_CHECKPOINT": "true"}),
         "h4":          ("gen_sharpa", {"N_HEADS": "4"}),
         "ff4":         ("gen_sharpa", {"FF_MULT": "4"}),
         "mu256":       ("gen_sharpa", {"MU_HEAD_UNITS": '"[256,128]"'}),

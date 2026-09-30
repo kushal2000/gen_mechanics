@@ -36,7 +36,9 @@ cancelled within minutes; it runs on gen-SHARPA. The working SHARPA / Allegro re
 | base_s2 | seed 200 (noise estimate) |
 | l2 / l6 | 2 / 6 layers |
 | d128 | d_model 128 — **out of GPU memory** (667090) at minibatch 114688 with 30 tokens |
-| d96 | d_model 96 (the widest that plausibly fits at the same minibatch) |
+| d96 | d_model 96 — cancelled before starting, replaced by d128_ck |
+| l6 | **out of GPU memory** (667095) |
+| l6_ck / d128_ck | 6 layers / d_model 128 with activation checkpointing (`GRAD_CHECKPOINT`, new network flag): identical outputs and gradients (tested), ~40% of the activation memory, ~1.27× per update step. The learner is unchanged. |
 | h4 | 4 attention heads |
 | ff4 | ff_mult 4 |
 | mu256 | action head [256,128] |

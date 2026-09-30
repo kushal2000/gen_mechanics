@@ -90,6 +90,7 @@ else
         "agent.params.network.n_layers=$TRANSFORMER_LAYERS"
         "agent.params.network.n_heads=${N_HEADS:-1}" "agent.params.network.ff_mult=${FF_MULT:-2}"
         "++agent.params.network.hand_global_skip=${HAND_GLOBAL_SKIP:-false}"
+        "++agent.params.network.grad_checkpoint=${GRAD_CHECKPOINT:-false}"
         agent.params.network.compile_net=true
         "++agent.params.network.mu_head_units=${MU_HEAD_UNITS:-[64]}"
         'agent.params.network.arm_head_units=[256,128]'
