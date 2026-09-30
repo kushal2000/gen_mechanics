@@ -113,6 +113,12 @@ ROUNDS = {
         "l6ck_real":   ("sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true"}),
         "l6ck_alg":    ("allegro", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true"}),
     },
+    # Round 8: combine the two fixes on the hardest seed. Ghost mask on seed 300 (4 layers): 0.83 at 1000 vs
+    # 0.14 without; depth alone on seed 300: 0.06 at 1000.
+    8: {
+        "ghost_l6_ck_s3": ("gen_sharpa", {"MASK_GHOST_ACTIONS": "true", "TRANSFORMER_LAYERS": "6",
+                                          "GRAD_CHECKPOINT": "true", "SEED": "300"}),
+    },
 }
 
 TEMPLATE = """#!/bin/bash

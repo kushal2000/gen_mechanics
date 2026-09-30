@@ -136,3 +136,10 @@ but **not to every gen-SHARPA seed**: l6_ck_s3 (seed 300) 0.008 at 800 — behin
 Depth made seeds 100 and 200 reliable, not all. Ghost mask, early: ghost_l4_s3 0.110 at 600 vs base_s3
 0.044 (2.5x); ghost_l4 (seed 100) 0.006 at 600, lr still pinned — no rescue yet. Finished at 2000: d128_ck
 35.4 (l6_ck 36.3), h4_ck 17.3. l8_ck slower than l6 so far (0.023 vs 0.081 at 600).
+
+**~9.5 h. The ghost mask helps; depth and the mask fix different things.** At epoch 1000: ghost_l4_s3 0.834
+(1 goal/ep at 1033) vs base_s3 0.137; ghost_l4 (seed 100) 0.067 vs BASE 0.009, its lr off the 1e-2 cap
+(2e-3) — consistent with ghost dimensions distorting the KL behind the adaptive lr. Depth alone does not
+fix seed 300 (l6_ck_s3 0.058). l8_ck worse than l6 at every checkpoint (0.050 at 800) — cancelled.
+Other hands, 6 vs 4 layers: Allegro 3.87 vs 1.63 at 1000 (10.6 at 1325); real SHARPA 0.109 vs 0.088 at
+400. l6_ck_s2 finished at 26.8. Round 8: ghost_l6_ck_s3.
