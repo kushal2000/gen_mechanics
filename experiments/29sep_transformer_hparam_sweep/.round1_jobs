@@ -3,9 +3,10 @@ r1_gen_sharpa_clip02.sub 667087
 r1_gen_sharpa_const1e3.sub 667088
 r1_gen_sharpa_const2e3.sub 667089
 r1_gen_sharpa_d128.sub 667090
-r1_gen_sharpa_ff4.sub 667091
-r1_gen_sharpa_h4.sub 667092
+r1_gen_sharpa_ff4.sub 667134
+r1_gen_sharpa_h4.sub 667135
 r1_gen_sharpa_kl008.sub 667093
 r1_gen_sharpa_l2.sub 667094
 r1_gen_sharpa_l6.sub 667095
 r1_gen_sharpa_mu256.sub 667096
+r1_gen_sharpa_d96.sub 667540

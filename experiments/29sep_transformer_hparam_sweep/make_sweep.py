@@ -39,7 +39,10 @@ ROUNDS = {
         "base_s2":     ("gen_sharpa", {"SEED": "200"}),
         "l2":          ("gen_sharpa", {"TRANSFORMER_LAYERS": "2"}),
         "l6":          ("gen_sharpa", {"TRANSFORMER_LAYERS": "6"}),
+        # d128 ran out of GPU memory (48 GB) at minibatch 114688 with gen-SHARPA's 30 tokens (667090).
+        # Halving the minibatch would double the gradient steps too, so width is tested at 96 instead.
         "d128":        ("gen_sharpa", {"D_MODEL": "128"}),
+        "d96":         ("gen_sharpa", {"D_MODEL": "96"}),
         "h4":          ("gen_sharpa", {"N_HEADS": "4"}),
         "ff4":         ("gen_sharpa", {"FF_MULT": "4"}),
         "mu256":       ("gen_sharpa", {"MU_HEAD_UNITS": '"[256,128]"'}),

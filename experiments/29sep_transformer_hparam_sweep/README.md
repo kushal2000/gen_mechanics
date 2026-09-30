@@ -35,7 +35,8 @@ cancelled within minutes; it runs on gen-SHARPA. The working SHARPA / Allegro re
 |---|---|
 | base_s2 | seed 200 (noise estimate) |
 | l2 / l6 | 2 / 6 layers |
-| d128 | d_model 128 |
+| d128 | d_model 128 — **out of GPU memory** (667090) at minibatch 114688 with 30 tokens |
+| d96 | d_model 96 (the widest that plausibly fits at the same minibatch) |
 | h4 | 4 attention heads |
 | ff4 | ff_mult 4 |
 | mu256 | action head [256,128] |
