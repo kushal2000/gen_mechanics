@@ -117,6 +117,14 @@ def unify(hand: str, cfg: dict, side: str) -> Path:
         out.insert(1, ET.Comment(" renamed to valid USD identifiers: " + ", ".join(f"{a} to {b}" for a, b in renamed.items()) + " "))
     for m in out.iter("mesh"):                       # meshes live in vendor_left/meshes
         m.set("filename", "vendor_left/" + m.get("filename"))
+    for v in out.iter("visual"):                     # the wandb viewer has no Collada loader: .dae -> STL
+        m = v.find("geometry/mesh")
+        if m is not None and m.get("filename").lower().endswith(".dae"):
+            src_mesh = HERE / hand / m.get("filename")
+            stl = Path("visual_stl") / (src_mesh.stem + ".stl")
+            (HERE / hand / stl).parent.mkdir(exist_ok=True)
+            trimesh.load(src_mesh, force="mesh").export(HERE / hand / stl)
+            m.set("filename", str(stl))
     dst = HERE / hand / f"{hand}_{side}.urdf"
     ET.ElementTree(out).write(dst, xml_declaration=True, encoding="utf-8")
     return dst
