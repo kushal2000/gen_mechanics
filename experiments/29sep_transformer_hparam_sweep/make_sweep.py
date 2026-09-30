@@ -52,6 +52,10 @@ ROUNDS = {
         "l6_ck":       ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true"}),
         "d128_ck":     ("gen_sharpa", {"D_MODEL": "128", "GRAD_CHECKPOINT": "true"}),
         "h4":          ("gen_sharpa", {"N_HEADS": "4"}),
+        # h4 (667135) hit a PhysX GPU crash ("Scene state is corrupted", CUDA error 2 = out of memory) ~13 min
+        # in; training carried on against a frozen sim and logged 50 "goals" per 50-step episode. Invalid.
+        # Retried with activation checkpointing (identical maths, far less training memory).
+        "h4_ck":       ("gen_sharpa", {"N_HEADS": "4", "GRAD_CHECKPOINT": "true"}),
         "ff4":         ("gen_sharpa", {"FF_MULT": "4"}),
         "mu256":       ("gen_sharpa", {"MU_HEAD_UNITS": '"[256,128]"'}),
         "kl008":       ("gen_sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.kl_threshold=0.008"'}),

@@ -60,3 +60,11 @@ adaptive lr drifted to 1e-4; ~0.05–0.09), const1e3 (0.05 at 1000), mu256 (0.08
 sweep const1e-4 (0.017 at 1527). Dead: l2 (lr pinned 1e-2, 88-step episodes) and the seed-100 baseline
 664620 — both cancelled, with 666081 (const1e-4), to free GPUs. gen-SHARPA MLP for reference: 1.24 at
 epoch 1000. Round 2 queued: constant lr 3e-3 and 5e-3, adaptive with kl_threshold 0.032.
+
+**h4 is INVALID — PhysX crashed, training continued.** 667135 logged 50 goals per 50-step episode
+from epoch ~22. Cause: a PhysX GPU crash about 13 minutes in (`GPU solveBlockUnified fail to launch
+kernel`, `Scene state is corrupted. Simulation cannot continue!`, then `getRigidDynamicData: CUDA
+error, code 2` ×45,204 — code 2 is out of memory). The run did not stop: the env returned frozen state
+(every cube motionless, env 0's 8 m from the palm, keypoint residual ~0.1 m) and a "success" each step.
+No other run tonight or today shows the error. The watcher now greps every sweep log for
+`Scene state is corrupted` and cancels such a run. Retried as `h4_ck` (with activation checkpointing).
