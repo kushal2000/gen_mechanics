@@ -143,3 +143,8 @@ Depth made seeds 100 and 200 reliable, not all. Ghost mask, early: ghost_l4_s3 0
 fix seed 300 (l6_ck_s3 0.058). l8_ck worse than l6 at every checkpoint (0.050 at 800) — cancelled.
 Other hands, 6 vs 4 layers: Allegro 3.87 vs 1.63 at 1000 (10.6 at 1325); real SHARPA 0.109 vs 0.088 at
 400. l6_ck_s2 finished at 26.8. Round 8: ghost_l6_ck_s3.
+
+**~10 h. Best gen-SHARPA transformer: 6 layers + ghost mask.** ghost_l6_ck (seed 100) 0.503 at 800, 1 goal/ep
+at **865** — before l6_ck (975) and the gen-SHARPA MLP (944). ghost_l4_s3 3.75 at 1396; l6_ck_s3 0.38 at
+1349. Other hands, 6 vs 4 layers: Allegro 18.1 vs 8.0 at 1500 (28.6 at 1709); real SHARPA about level (1 at
+641 vs 619). Depth never hurts; the mask helps where there are ghosts. Queued ghost_l6_ck_s2 (seed 200).

@@ -118,6 +118,9 @@ ROUNDS = {
     8: {
         "ghost_l6_ck_s3": ("gen_sharpa", {"MASK_GHOST_ACTIONS": "true", "TRANSFORMER_LAYERS": "6",
                                           "GRAD_CHECKPOINT": "true", "SEED": "300"}),
+        # ghost_l6_ck (seed 100) reached 1 goal/ep at 865 -- before l6_ck (975) and the MLP (944). Third seed.
+        "ghost_l6_ck_s2": ("gen_sharpa", {"MASK_GHOST_ACTIONS": "true", "TRANSFORMER_LAYERS": "6",
+                                          "GRAD_CHECKPOINT": "true", "SEED": "200"}),
     },
 }
 
