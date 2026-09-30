@@ -77,6 +77,9 @@ step move the actions little, with the shared value head taking 1e-2 steps unche
 
 `tf_5deg_sharpa_trimobs_nopen_lrconst.sub`: the same run with a CONSTANT lr of 5e-4 (`LR_SCHEDULE=constant`).
 
+`tf_5deg_gen_sharpa_trimobs_nopen_lrconst1e4.sub`: the no-penalty gen-SHARPA transformer with a constant lr of 1e-4.
+Its adaptive twin's lr pinned at 1e-2 and never came down, unlike Allegro / real SHARPA.
+
 MLP runs cancelled once they had answered their question: the three with the penalty and Allegro
 without it (saturated at ~44 goals/episode). Kept: real-SHARPA and gen-SHARPA without the penalty.
 
