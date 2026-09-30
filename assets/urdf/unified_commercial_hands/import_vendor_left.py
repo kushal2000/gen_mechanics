@@ -9,7 +9,7 @@ Repairs (rooting, wrist joints, colliders, ...) belong to each hand's unify step
 
     python assets/urdf/unified_commercial_hands/import_vendor_left.py <scratch_dir>
 """
-import os, shutil, subprocess, sys, xml.etree.ElementTree as ET
+import os, re, shutil, subprocess, sys, xml.etree.ElementTree as ET
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -65,6 +65,15 @@ def main(scratch: Path):
             seen[name] = src
             shutil.copy2(src, dest / "meshes" / name)
             m.set("filename", f"meshes/{name}")
+            if src.suffix.lower() == ".obj":            # an OBJ's materials (and their textures) travel with it
+                for mtl in re.findall(r"^mtllib\s+(\S+)", src.read_text(errors="ignore"), re.M):
+                    msrc = src.parent / mtl
+                    if not msrc.exists():
+                        continue                        # vendor never shipped it; viewers fall back to no material
+                    shutil.copy2(msrc, dest / "meshes" / mtl)
+                    for tex in re.findall(r"^\s*map_\w+\s+(?:-\S+\s+\S+\s+)*(\S+)", msrc.read_text(errors="ignore"), re.M):
+                        if (msrc.parent / tex).exists():
+                            shutil.copy2(msrc.parent / tex, dest / "meshes" / tex)
         # Licence notices travel with the files (BSD / MIT / Apache require it): the nearest LICENSE*
         # walking up from the URDF's folder to the repo root.
         lic_files = []
