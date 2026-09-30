@@ -53,3 +53,10 @@ seed 200 (`base_s2`) is at 0.07 goals/episode at epoch 561 with ~490-step episod
 (664620) never learned in 1,700 epochs. No variant beats seed 200 yet (clip02 0.04, const2e3 0.04,
 const1e3 / kl008 0.02); l2 is worst (0.01 at 738, lr pinned at 1e-2, 187-step episodes). Added
 `base_s3` (seed 300) to size the noise.
+
+**~2 h into round 1 (epochs 920–1480).** Separating by lr. Learning: base_s2 (seed 200) 0.42 at
+epoch 1000 / 0.57 at 1141 (lr settled ~6e-4), const2e3 0.32 / 0.41. Stalled: clip02 and kl008 (their
+adaptive lr drifted to 1e-4; ~0.05–0.09), const1e3 (0.05 at 1000), mu256 (0.08 at 918), and outside the
+sweep const1e-4 (0.017 at 1527). Dead: l2 (lr pinned 1e-2, 88-step episodes) and the seed-100 baseline
+664620 — both cancelled, with 666081 (const1e-4), to free GPUs. gen-SHARPA MLP for reference: 1.24 at
+epoch 1000. Round 2 queued: constant lr 3e-3 and 5e-3, adaptive with kl_threshold 0.032.

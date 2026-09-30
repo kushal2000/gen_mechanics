@@ -61,6 +61,14 @@ ROUNDS = {
         "const1e3":    ("gen_sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.001"}),
         "const2e3":    ("gen_sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.002"}),
     },
+    # Round 2 (queued at ~epoch 1100 of round 1): the lr direction. Runs whose lr stayed high learned
+    # (baseline seed 200 at ~6e-4..2e-3: 0.42 at epoch 1000; constant 2e-3: 0.32), runs whose lr ended low
+    # stalled (clip02 / kl008 drifted to 1e-4: ~0.05-0.07; constant 1e-3: 0.05; constant 1e-4: 0.012).
+    2: {
+        "const3e3":    ("gen_sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.003"}),
+        "const5e3":    ("gen_sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.005"}),
+        "kl032":       ("gen_sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.kl_threshold=0.032"'}),
+    },
 }
 
 TEMPLATE = """#!/bin/bash
