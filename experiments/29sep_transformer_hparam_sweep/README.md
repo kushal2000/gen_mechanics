@@ -110,3 +110,14 @@ l8_ck, l6_const2e3_ck.
 6 layers is at MLP pace on gen-SHARPA and helps on seed 200 too (0.30 vs 0.21 at 800). mu256's seed-100
 win did not replicate on seed 200 and hurts combined with depth; l6_mu256_ck and the pending mu512_ck
 were cancelled. Round 5 queued: l6_ck_s3 (seed 300).
+
+**Ghost joints (checked on the l6_ck checkpoint at epoch 2000).** gen-SHARPA has **21 real joints and 9
+ghost slots** (not 22 / 8 as first stated). Masking is correct: 21 valid per env, matching `joint_enabled`;
+real actions have exactly zero gradient w.r.t. ghost token inputs; ghosts stay out of the normaliser's
+statistics. Ghost joint_pos inputs sit at the ±10 clamp (normalised by a ~0 range) but reach nothing.
+**The problem is ghost ACTIONS:** all 30 action dimensions enter the PPO log-prob, the KL behind the
+adaptive lr and the SAPG entropy bonus. Ghost noise grew to sigma ~1.6 (real ~0.8), 44% of the entropy,
+and in the transformer every action comes from the shared head, so updates for real joints also move ghost
+means. New network flag `mask_ghost_actions` (`MASK_GHOST_ACTIONS`): ghost dimensions get constant mean 0 /
+log-std 0 with no gradient — they cancel from the ratio and KL. Per env from that env's raw joint_enabled
+(mixed populations handled; arm dims never masked); tested. Round 6: ghost_l4, ghost_l4_s3, ghost_l6_ck.

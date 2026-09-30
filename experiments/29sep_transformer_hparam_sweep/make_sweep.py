@@ -27,7 +27,7 @@ BASE = {
     "LEARNING_RATE": "0.0005", "MINI_EPOCHS": "5",
     "D_MODEL": "64", "TRANSFORMER_LAYERS": "4", "N_HEADS": "1", "FF_MULT": "2",
     "MU_HEAD_UNITS": '"[64]"', "VALUE_HEAD_UNITS": '"[512,256]"', "HORIZON": "16",
-    "GRAD_CHECKPOINT": "false",
+    "GRAD_CHECKPOINT": "false", "MASK_GHOST_ACTIONS": "false",
     "LR_SCHEDULE": "adaptive",
 }
 UH = BASE["USER_HYDRA"].strip('"')
@@ -96,6 +96,15 @@ ROUNDS = {
     # l6_mu256_ck worse than l6_ck) -- its seed-100 win was likely luck.
     5: {
         "l6_ck_s3":    ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true", "SEED": "300"}),
+    },
+    # Round 6: ghost action dimensions (network flag mask_ghost_actions). gen-SHARPA has 9 ghost slots of 30;
+    # their actions entered the PPO ratio / KL / SAPG entropy (sigma ~1.6 vs ~0.8 real, 44% of entropy), and
+    # in the transformer they come from the SAME shared head as real joints. Each run = an existing one + mask.
+    6: {
+        "ghost_l4":    ("gen_sharpa", {"MASK_GHOST_ACTIONS": "true"}),                       # vs BASE s100: never learned
+        "ghost_l4_s3": ("gen_sharpa", {"MASK_GHOST_ACTIONS": "true", "SEED": "300"}),        # vs base_s3: 0.71 at 1972
+        "ghost_l6_ck": ("gen_sharpa", {"MASK_GHOST_ACTIONS": "true", "TRANSFORMER_LAYERS": "6",
+                                       "GRAD_CHECKPOINT": "true"}),                            # vs l6_ck: 1 at 975
     },
 }
 

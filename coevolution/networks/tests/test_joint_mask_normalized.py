@@ -281,3 +281,70 @@ def test_activation_checkpointing_is_exact():
         grads.append(torch.cat([p.grad.flatten() for p in net.parameters() if p.grad is not None]))
     assert torch.allclose(outs[0], outs[1], atol=1e-6)
     assert torch.allclose(grads[0], grads[1], atol=1e-6)
+
+
+# --- ghost action dimensions ----------------------------------------------------------------
+
+def _mixed_population_obs():
+    """Envs from different designs: each env has its OWN ghost slots."""
+    enabled = torch.ones(12, N_HAND)
+    enabled[0:4, 4] = 0.0                 # design A: slot 4 is a ghost
+    enabled[4:8, 2:4] = 0.0               # design B: slots 2 and 3
+    return _obs(enabled), enabled > 0.5   # design C (8:12): no ghosts
+
+
+def test_ghost_actions_are_constant_per_env():
+    x, real = _mixed_population_obs()
+    net = _trained(_net(), x)
+    net.mask_ghost_actions = True
+    mu, logstd, _, _ = net({"obs": x})
+    assert torch.equal(mu[~real], torch.zeros_like(mu[~real]))
+    assert torch.equal(logstd[~real], torch.zeros_like(logstd[~real]))
+
+
+def test_real_actions_are_unchanged_by_the_ghost_mask():
+    x, real = _mixed_population_obs()
+    net = _trained(_net(), x)
+    with torch.no_grad():
+        mu0, ls0, v0, _ = net({"obs": x})
+        net.mask_ghost_actions = True
+        mu1, ls1, v1, _ = net({"obs": x})
+    assert torch.equal(mu0[real], mu1[real]) and torch.equal(ls0[real], ls1[real])
+    assert torch.equal(v0, v1)
+
+
+def test_ghost_dimensions_carry_no_gradient():
+    """Their log-prob must not depend on any parameter, so they cancel out of the PPO ratio."""
+    x, real = _mixed_population_obs()
+    net = _trained(_net(), x)
+    net.mask_ghost_actions = True
+    net.token_norm.eval(); net.global_norm.eval()
+    mu, logstd, _, _ = net({"obs": x})
+    a = torch.randn_like(mu)
+    logp = torch.distributions.Normal(mu, logstd.exp()).log_prob(a)
+    net.zero_grad()
+    logp[~real].sum().backward()
+    grads = [p.grad for p in net.parameters() if p.grad is not None]
+    assert all(torch.count_nonzero(g) == 0 for g in grads), "a ghost dimension reached a parameter"
+
+
+def test_arm_dimensions_are_never_masked(monkeypatch):
+    spec = SimpleNamespace(num_arm_joints=2, num_hand_joints=N_HAND, num_joints=N_HAND + 2,
+                           num_fingertips=2, hand_joint_names=[f"j{i}" for i in range(N_HAND)])
+    monkeypatch.setattr(JT.JointTransformerNet, "_build_layout",
+                        lambda self, d: L.build_token_layout(spec, self.field_list))
+    obs_dim = L.compute_obs_dim(FIELDS, spec)
+    a, b = L.field_offsets(FIELDS, spec)["joint_enabled"]
+    torch.manual_seed(0)
+    params = dict(d_model=16, n_layers=1, n_heads=1, ff_mult=2, mu_head_units=[16],
+                  value_head_units=[16], arm_head_units=[16], robot_spec="stub", obs_list=FIELDS,
+                  mask_ghost_actions=True,
+                  space={"continuous": {"fixed_sigma": "fixed", "mu_activation": "None",
+                                        "sigma_activation": "None"}})
+    net = JT.JointTransformerNet(params, actions_num=N_HAND + 2, input_shape=(obs_dim,)).eval()
+    x = torch.randn(6, obs_dim)
+    x[:, a:b] = 1.0
+    x[:, a + 1] = 0.0                                   # hand slot 1 is a ghost
+    mu, _, _, _ = net({"obs": x})
+    assert (mu[:, :2] != 0).all(), "arm dimensions were masked"
+    assert (mu[:, 2 + 1] == 0).all() and (mu[:, [2, 4, 5, 6]] != 0).all()

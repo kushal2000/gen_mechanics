@@ -479,6 +479,16 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # dropout is 0), costs one extra forward per layer, and cuts activation memory so a deeper or
         # wider model fits at the same minibatch. Off by default.
         self.grad_checkpoint = bool(params.get("grad_checkpoint", False))
+        # Ghost action dimensions. A padded design's ghost slots still get an action, and rl_games puts
+        # every action dimension into the PPO log-probability, the KL that drives the adaptive lr, and the
+        # entropy SAPG's exploration bonus rewards -- although a ghost joint is locked and its action does
+        # nothing. On gen-SHARPA (9 ghosts of 30) their learned noise grew to sigma ~1.6 vs ~0.8 on real
+        # joints, 44% of the policy's entropy. And here every action comes from ONE shared head, so an
+        # update for real joints also moves ghost means. With this on, a ghost dimension gets a constant
+        # mean (0) and log-std (0), no gradient: it cancels out of the ratio and the KL and contributes a
+        # constant entropy. Masked PER ENV from that env's raw joint_enabled, so a mixed population masks
+        # each design's own ghosts; arm dimensions are never masked. Off by default.
+        self.mask_ghost_actions = bool(params.get("mask_ghost_actions", False))
         # The final LayerNorm over the residual stream. Meaningful once there
         # are blocks to stabilize; with n_layers 0 there is no residual stream
         # and it only normalizes a bare Linear whose scale the next Linear can
@@ -662,7 +672,13 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
                 .argmax(dim=1)
             )
             sigma = self.sigma_act(self.sigma[idxs])
-        return mu, mu * 0 + sigma, value, None
+        sigma = mu * 0 + sigma
+        if self.mask_ghost_actions:
+            arm_valid = torch.ones(valid.shape[0], self.n_arm, dtype=torch.bool, device=valid.device)
+            act_valid = torch.cat([arm_valid, valid], dim=1)       # policy order: arm, then hand
+            mu = torch.where(act_valid, mu, torch.zeros_like(mu))
+            sigma = torch.where(act_valid, sigma, torch.zeros_like(sigma))
+        return mu, sigma, value, None
 
     # ------------------------------------------------------ rl_games protocol
 
