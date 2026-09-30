@@ -38,6 +38,13 @@ def _args():
     p.add_argument("--success-steps", type=int, default=0)
     p.add_argument("--trace", default="", help="per-step CSV-ish trace for env 0")
     p.add_argument("--device", default="cuda:0")
+    p.add_argument("--cross-hand", action="store_true",
+                   help="zero-shot: run the checkpoint on --population even though it was trained on "
+                        "another hand. The network is rebuilt for the target hand's layout (every "
+                        "weight is shared across joint tokens) and sigma, the one per-joint tensor, "
+                        "is resized to the target's joint count.")
+    p.add_argument("--hand-velocity-limit", type=float, default=-1.0,
+                   help="physics.hand_velocity_limit for the TARGET hand; <0 keeps the run's value")
     p.add_argument("--host", required=True)
     p.add_argument("--port", type=int, required=True)
     p.add_argument("--authkey", required=True)
@@ -96,6 +103,8 @@ def main() -> None:
                 env_cfg.obs.obs_list = tuple(env_cfg.obs.state_list)
             env_cfg.scene.num_envs = args.num_envs
             env_cfg.assets.robot_spec = args.population
+            if args.hand_velocity_limit >= 0:
+                env_cfg.physics.hand_velocity_limit = float(args.hand_velocity_limit)
             if args.tolerance > 0:
                 env_cfg.termination.eval_success_tolerance = args.tolerance
             if args.success_steps > 0:
@@ -113,6 +122,10 @@ def main() -> None:
             import yaml
 
             if saved is not None:
+                if args.cross_hand:
+                    # The network reads its spec through ${env.assets.robot_spec}; point that
+                    # at the target hand so the layout is built for ITS joints.
+                    saved.env.assets.robot_spec = args.population
                 acfg = OmegaConf.to_container(saved, resolve=True)["agent"]
             else:
                 acfg = OmegaConf.to_container(OmegaConf.create(agent_cfg), resolve=True)
@@ -135,8 +148,11 @@ def main() -> None:
             f.close()
             # checkpoint None -> rl_games builds the network and never restores,
             # i.e. a randomly initialised policy.
+            ckpt = args.checkpoint or None
+            if ckpt and args.cross_hand:
+                ckpt = _resize_sigma(ckpt, int(inner.action_space.shape[-1]))
             player = RlPlayer(obs["policy"].shape[-1], inner.action_space.shape[-1], f.name,
-                              args.checkpoint or None, device=args.device,
+                              ckpt, device=args.device,
                               sapg_expl_coef=args.expl_coef, num_envs=inner.num_envs)
 
             spec = inner.scene_record.robot_spec
@@ -507,6 +523,31 @@ def main() -> None:
         import os
 
         os._exit(0)          # Kit does not tear down cleanly
+
+
+def _resize_sigma(path: str, n_actions: int) -> str:
+    """A copy of the checkpoint whose sigma fits a hand with n_actions joints.
+
+    sigma is (exploration blocks, joints) -- the only tensor in the joint transformer
+    whose shape depends on the hand. Each block's joints get that block's mean log-std,
+    so a stochastic action explores as widely as it did in training; the greedy action
+    (deterministic, or expl-coef 0) never reads sigma at all.
+    """
+    import tempfile
+
+    import torch
+
+    ck = torch.load(path, map_location="cpu", weights_only=False)
+    inner = ck[0] if 0 in ck else ck
+    sig = inner["model"].get("a2c_network.sigma")
+    if sig is None or sig.shape[-1] == n_actions:
+        return path
+    new = sig.mean(dim=-1, keepdim=True).expand(*sig.shape[:-1], n_actions).clone()
+    inner["model"]["a2c_network.sigma"] = new
+    out = tempfile.NamedTemporaryFile(suffix=".pth", delete=False).name
+    torch.save(ck, out)
+    print(f"[worker] cross-hand: sigma {tuple(sig.shape)} -> {tuple(new.shape)}", flush=True)
+    return out
 
 
 def _show_table(inner) -> bool:
