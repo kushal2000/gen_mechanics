@@ -75,6 +75,8 @@ rl_games hard-codes 1e-2). Transformer runs pin lr at the 1e-2 cap while the MLP
 1.5e-4..5e-4 -- plausibly LayerNorm scale-invariance plus a shared, narrow action head making each
 step move the actions little, with the shared value head taking 1e-2 steps unchecked.
 
+`tf_5deg_sharpa_trimobs_nopen_lrconst.sub`: the same run with a CONSTANT lr of 5e-4 (`LR_SCHEDULE=constant`).
+
 MLP runs cancelled once they had answered their question: the three with the penalty and Allegro
 without it (saturated at ~44 goals/episode). Kept: real-SHARPA and gen-SHARPA without the penalty.
 
