@@ -17,6 +17,8 @@ LOGS = REPO / "debug_outputs/train_logs/30sep_ten_hands"
 LEFT = {
     "sharpa": "sharpa_handonly",
     "gen_sharpa": "handonly:/share/portal/kk837/gen_mechanics/assets/populations/sharpa_capsule.json",
+    # onboarded by assets/urdf/unified_commercial_hands/onboard.py (robots/unified_hands.py)
+    **{h: f"{h}_left_handonly" for h in ("allegro", "leap", "shadow", "dex3", "tesollo", "wuji2", "xhand")},
 }
 OBS_LIST = ("[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,"
             "joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel]")

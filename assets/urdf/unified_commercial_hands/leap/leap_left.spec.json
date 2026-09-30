@@ -1,0 +1,268 @@
+{
+ "hand": "leap",
+ "side": "left",
+ "urdf": "assets/urdf/unified_commercial_hands/leap/leap_left.urdf",
+ "palm_body": "palm_lower_left",
+ "hand_joint_names": [
+  "1",
+  "0",
+  "2",
+  "3",
+  "5",
+  "4",
+  "6",
+  "7",
+  "9",
+  "8",
+  "10",
+  "11",
+  "12",
+  "13",
+  "14",
+  "15"
+ ],
+ "joint_limits": {
+  "1": [
+   -0.314,
+   2.23
+  ],
+  "0": [
+   -1.047,
+   1.047
+  ],
+  "2": [
+   -0.506,
+   1.885
+  ],
+  "3": [
+   -0.366,
+   2.042
+  ],
+  "5": [
+   -0.314,
+   2.23
+  ],
+  "4": [
+   -1.047,
+   1.047
+  ],
+  "6": [
+   -0.506,
+   1.885
+  ],
+  "7": [
+   -0.366,
+   2.042
+  ],
+  "9": [
+   -0.314,
+   2.23
+  ],
+  "8": [
+   -1.047,
+   1.047
+  ],
+  "10": [
+   -0.506,
+   1.885
+  ],
+  "11": [
+   -0.366,
+   2.042
+  ],
+  "12": [
+   -2.094,
+   0.349
+  ],
+  "13": [
+   -2.443,
+   0.47
+  ],
+  "14": [
+   -1.2,
+   1.9
+  ],
+  "15": [
+   -1.34,
+   1.88
+  ]
+ },
+ "hand_default_joint_pos": {
+  "1": 0.0,
+  "0": 0.0,
+  "2": 0.0,
+  "3": 0.0,
+  "5": 0.0,
+  "4": 0.0,
+  "6": 0.0,
+  "7": 0.0,
+  "9": 0.0,
+  "8": 0.0,
+  "10": 0.0,
+  "11": 0.0,
+  "12": 0.0,
+  "13": 0.0,
+  "14": 0.0,
+  "15": 0.0
+ },
+ "fingertip_body_names": [
+  "fingertip",
+  "fingertip_2",
+  "fingertip_3",
+  "thumb_fingertip"
+ ],
+ "fingertip_offsets": [
+  [
+   0.0,
+   -0.048,
+   0.015
+  ],
+  [
+   0.0,
+   -0.048,
+   0.015
+  ],
+  [
+   0.0,
+   -0.048,
+   0.015
+  ],
+  [
+   0.0,
+   -0.06,
+   -0.015
+  ]
+ ],
+ "thumb_tip": "thumb_fingertip",
+ "palm_frame": [
+  [
+   0.0,
+   -0.0,
+   1.0
+  ],
+  [
+   0.0,
+   1.0,
+   0.0
+  ],
+  [
+   -1.0,
+   0.0,
+   0.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_frame_snapped": [
+  "x->-z",
+  "z->+x"
+ ],
+ "palm_centre_in_palm_body": [
+  -0.12480000000000001,
+  -0.05502916059230886,
+  0.013895995701400588
+ ],
+ "palm_extents_ours": [
+  0.04860800859719883,
+  0.12094167881538229,
+  0.10200000000000001
+ ],
+ "palm_centre_ours": [
+  -0.013895995701400588,
+  -0.05502916059230886,
+  -0.12480000000000001
+ ],
+ "adjacent_links": {
+  "dip": [
+   "fingertip",
+   "pip"
+  ],
+  "dip_2": [
+   "fingertip_2",
+   "pip_2"
+  ],
+  "dip_3": [
+   "fingertip_3",
+   "pip_3"
+  ],
+  "fingertip": [
+   "dip"
+  ],
+  "fingertip_2": [
+   "dip_2"
+  ],
+  "fingertip_3": [
+   "dip_3"
+  ],
+  "mcp_joint": [
+   "palm_lower_left",
+   "pip"
+  ],
+  "mcp_joint_2": [
+   "palm_lower_left",
+   "pip_2"
+  ],
+  "mcp_joint_3": [
+   "palm_lower_left",
+   "pip_3"
+  ],
+  "palm_lower_left": [
+   "mcp_joint",
+   "mcp_joint_2",
+   "mcp_joint_3",
+   "thumb_left_temp_base"
+  ],
+  "pip": [
+   "dip",
+   "mcp_joint"
+  ],
+  "pip_2": [
+   "dip_2",
+   "mcp_joint_2"
+  ],
+  "pip_3": [
+   "dip_3",
+   "mcp_joint_3"
+  ],
+  "thumb_dip": [
+   "thumb_fingertip",
+   "thumb_pip"
+  ],
+  "thumb_fingertip": [
+   "thumb_dip"
+  ],
+  "thumb_left_temp_base": [
+   "palm_lower_left",
+   "thumb_pip"
+  ],
+  "thumb_pip": [
+   "thumb_dip",
+   "thumb_left_temp_base"
+  ]
+ },
+ "overlap_at_home_mm": {},
+ "fingertip_pos_home_ours": {
+  "fingertip": [
+   0.0069,
+   -0.0311,
+   0.1315
+  ],
+  "fingertip_2": [
+   0.0069,
+   0.0143,
+   0.1315
+  ],
+  "fingertip_3": [
+   0.0069,
+   0.0597,
+   0.1315
+  ],
+  "thumb_fingertip": [
+   0.0237,
+   -0.1129,
+   -0.033
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.1,
+ "armature": 0.001
+}

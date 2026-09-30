@@ -18,10 +18,12 @@ from hand_sampler.robot_spec import RobotSpec
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.allegro_handonly import ALLEGRO_HANDONLY
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_handonly import SHARPA_HANDONLY
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_iiwa14 import SHARPA_IIWA14
+from isaacsimenvs.pose_reaching_6d.scene_utils.robots.unified_hands import UNIFIED_LEFT
 
 
 REGISTRY: dict[str, RobotSpec] = {
-    spec.name: spec for spec in (SHARPA_IIWA14, SHARPA_HANDONLY, ALLEGRO_HANDONLY)
+    spec.name: spec
+    for spec in (SHARPA_IIWA14, SHARPA_HANDONLY, ALLEGRO_HANDONLY, *UNIFIED_LEFT.values())
 }
 
 
