@@ -130,3 +130,9 @@ log-std 0 with no gradient — they cancel from the ratio and KL. Per env from t
 (l6_ck, seed 100: 975; MLP: 944) and 6.39 at 1385; l6_ck finished at 36.3 (MLP 38.6 at 2000). d128_ck
 16.4 at 1708 (1 at 1079), h4_ck 6.05 at 1675 (1 at 1211) — both help, less than depth. Dead and cancelled:
 l6_const2e3_ck (56-step episodes: constant lr breaks the deeper model) and mu256_s2 (0.04 at 1269).
+
+**~9 h.** 6 layers generalises to **Allegro** (r7: 1.58 at 800 vs 4-layer 0.657; 1 goal/ep at 738 vs 909)
+but **not to every gen-SHARPA seed**: l6_ck_s3 (seed 300) 0.008 at 800 — behind even base_s3 (0.111).
+Depth made seeds 100 and 200 reliable, not all. Ghost mask, early: ghost_l4_s3 0.110 at 600 vs base_s3
+0.044 (2.5x); ghost_l4 (seed 100) 0.006 at 600, lr still pinned — no rescue yet. Finished at 2000: d128_ck
+35.4 (l6_ck 36.3), h4_ck 17.3. l8_ck slower than l6 so far (0.023 vs 0.081 at 600).
