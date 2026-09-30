@@ -68,3 +68,19 @@ error, code 2` ×45,204 — code 2 is out of memory). The run did not stop: the 
 (every cube motionless, env 0's 8 m from the palm, keypoint residual ~0.1 m) and a "success" each step.
 No other run tonight or today shows the error. The watcher now greps every sweep log for
 `Scene state is corrupted` and cancels such a run. Retried as `h4_ck` (with activation checkpointing).
+
+**Round 1 at the 2000-epoch budget (~4 h).** Every variant ran on seed 100 — the seed on which BASE never
+learned (664620: ~0 through 2400 epochs) — so learning at all means the change rescued it.
+
+| run (seed) | @800 | @1000 | @1500 | ~2000 | first epoch at 1 goal/ep |
+|---|---|---|---|---|---|
+| mu256, action head [256,128] (100) | 0.022 | 0.136 | 1.29 | **7.33** | 1449 |
+| base_s2 (200) | 0.211 | 0.421 | 1.86 | **6.94** | 1335 |
+| const2e3 (100) | 0.217 | 0.320 | 0.78 | **4.30** | 1453 |
+| clip02 / const1e3 / kl008 (100) | ~0.03 | ~0.05 | ~0.11 | 0.15–0.19 | — |
+| BASE (100) | 0.012 | 0.009 | 0.007 | ~0 | — |
+| l6_ck, 6 layers (100) — running | 0.39 at 797 | | | | |
+
+Low final lr stalls (clip02 and kl008 drift the adaptive lr to 1e-4; const1e3). A bigger action head and a
+constant 2e-3 both rescue seed 100; 6 layers is fastest early. Round 3 queued: l6_mu256_ck, mu256_s2,
+mu512, l6_ck_s2. gen-SHARPA MLP reference: 1 goal/episode at epoch 944, 38.6 at 2000.

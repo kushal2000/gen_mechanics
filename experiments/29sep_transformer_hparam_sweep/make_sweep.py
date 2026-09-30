@@ -73,6 +73,15 @@ ROUNDS = {
         "const5e3":    ("gen_sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.005"}),
         "kl032":       ("gen_sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.kl_threshold=0.032"'}),
     },
+    # Round 3 (queued at ~epoch 2000 of round 1). Every round-1 variant used seed 100, the seed on which
+    # BASE never learned (664620). Rescued it: mu256 (7.33 at 2000), const2e3 (4.30); l6_ck strongest
+    # early (0.39 at ~800, ~2x base seed 200). Combine, and replicate on seed 200.
+    3: {
+        "l6_mu256_ck": ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "MU_HEAD_UNITS": '"[256,128]"', "GRAD_CHECKPOINT": "true"}),
+        "mu256_s2":    ("gen_sharpa", {"MU_HEAD_UNITS": '"[256,128]"', "SEED": "200"}),
+        "mu512":       ("gen_sharpa", {"MU_HEAD_UNITS": '"[512,256]"'}),
+        "l6_ck_s2":    ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true", "SEED": "200"}),
+    },
 }
 
 TEMPLATE = """#!/bin/bash
