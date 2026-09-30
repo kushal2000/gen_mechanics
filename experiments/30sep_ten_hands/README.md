@@ -1,4 +1,4 @@
-# Twelve hands, left and right: one RL policy per hand model
+# Twelve hands: one RL policy per hand model (left hands first)
 
 **Goal (30 Sep):** train in-hand reorientation policies for 11 commercial hands plus our gen-SHARPA, each as a **left and a
 right** model, with the default configuration (joint transformer, 4 layers, no ghost mask; γ 0.998,
@@ -22,6 +22,33 @@ adaptive lr from 5e-4, 5 mini-epochs; trimmed observation; no fall penalty; 5° 
 | 12 | gen-SHARPA (design grammar) | 30 slots: 21 real + 9 ghost | L (R?) | **left integrated** (`handonly:assets/populations/sharpa_capsule.json`) | capsule rebuild of left SHARPA; right needs a mirrored design — check the grammar supports mirroring |
 
 Open decision: Barrett has no left/right distinction (train once, or twice as two seeds).
+
+
+## Scope now (user, 30 Sep)
+
+**Train a LEFT-hand policy for all 12 hands**, default configuration, **5000 epochs** (`make_runs.py`).
+Mimic/coupled hands (Inspire, Ability, Barrett) are deferred. wandb project `gen_mechanics_ten_hands`.
+
+## Tracker — left hands
+
+| hand | left source (commit in vendor_left/SOURCE.md) | joints | 1 vendor | 2 unify+spec | 3 checks | 4 smoke | 5 train (5000 ep) |
+|---|---|---|---|---|---|---|---|
+| SHARPA | integrated (`sharpa_handonly`) | 22 | ✅ | ✅ | ✅ | ✅ | **696814** |
+| gen-SHARPA | population `sharpa_capsule.json` | 21 (+9 ghost) | ✅ | ✅ | ✅ | ✅ | **696815** |
+| Allegro | dex-urdf `allegro_hand_left.urdf` | 16 | ✅ | | | | |
+| LEAP | dex-urdf `leap_hand_left.urdf` | 16 | ✅ | | | | |
+| Shadow | dex-urdf `shadow_hand_left.urdf` | 24 incl. 2 wrist → 22 | ✅ | | | | |
+| Unitree Dex3-1 | unitree_ros `dex3_1_l.urdf` (official) | 7 | ✅ | | | | |
+| Tesollo DG-5F | dg5f_ros2 `dg5f_left.urdf` (official) | 20 | ✅ | | | | |
+| Wuji Hand 2 | wuji-description `hand2/hand2_beta2/.../left.urdf` (official; Beta 2 = what wuji-mjlab deploys) | 20 | ✅ | | | | |
+| XHAND1 | spider `xhand_left.urdf` (Robot Era SolidWorks export; licence NOASSERTION) | 12 | ✅ | | | | |
+| Inspire / Ability / Barrett | dex-urdf (deferred: mimic joints) | | | | | | |
+
+Step 1 = `assets/urdf/unified_commercial_hands/import_vendor_left.py`: left URDF + only its meshes, pinned
+commit, mesh paths made local; each loads with every mesh resolved (checked with yourdfpy).
+Sourcing notes: the older `wuji-hand-description` is Wuji Hand **1**; Hand 2 (left and right) is in
+`wuji-technology/wuji-description`. XHAND's vendor (Robot Era, org `roboterax`) publishes no hand URDF;
+the left model is from Meta's `spider` (also in `EmptyBlueBox/DexLatent`).
 
 ## Per-hand integration (what "integrated" means — see assets/urdf/unified_commercial_hands/README.md)
 
