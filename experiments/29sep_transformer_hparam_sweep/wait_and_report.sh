@@ -13,6 +13,10 @@ while (( $(date +%s) - t0 < MIN * 60 )); do
   for j in ${jobs//,/ }; do
     grep -qws "$j" $D/.reported_failures 2>/dev/null && continue
     e=$(ls debug_outputs/train_logs/29sep_transformer_hparam_sweep/*-$j.err 2>/dev/null | head -1)
+    # A CUDA OOM can end the payload with exit 0 (ff4, 667134: Slurm state COMPLETED), so read the log.
+    if [[ -n "$e" ]] && grep -qa "OutOfMemoryError" "$e"; then
+      bad="${bad}${bad:+$'\n'}$j CUDA_OUT_OF_MEMORY"
+    fi
     if [[ -n "$e" ]] && grep -qa "Scene state is corrupted" "$e"; then
       scancel "$j" 2>/dev/null
       bad="${bad}${bad:+$'\n'}$j PHYSX_SCENE_CORRUPTED (cancelled)"

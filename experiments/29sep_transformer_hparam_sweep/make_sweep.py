@@ -57,6 +57,8 @@ ROUNDS = {
         # Retried with activation checkpointing (identical maths, far less training memory).
         "h4_ck":       ("gen_sharpa", {"N_HEADS": "4", "GRAD_CHECKPOINT": "true"}),
         "ff4":         ("gen_sharpa", {"FF_MULT": "4"}),
+        # ff4 (667134) ran out of memory at startup but exited 0 -- Slurm called it COMPLETED. Retried with checkpointing.
+        "ff4_ck":      ("gen_sharpa", {"FF_MULT": "4", "GRAD_CHECKPOINT": "true"}),
         "mu256":       ("gen_sharpa", {"MU_HEAD_UNITS": '"[256,128]"'}),
         "kl008":       ("gen_sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.kl_threshold=0.008"'}),
         "clip02":      ("gen_sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.e_clip=0.2"'}),

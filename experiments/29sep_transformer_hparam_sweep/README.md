@@ -148,3 +148,6 @@ Other hands, 6 vs 4 layers: Allegro 3.87 vs 1.63 at 1000 (10.6 at 1325); real SH
 at **865** — before l6_ck (975) and the gen-SHARPA MLP (944). ghost_l4_s3 3.75 at 1396; l6_ck_s3 0.38 at
 1349. Other hands, 6 vs 4 layers: Allegro 18.1 vs 8.0 at 1500 (28.6 at 1709); real SHARPA about level (1 at
 641 vs 619). Depth never hurts; the mask helps where there are ghosts. Queued ghost_l6_ck_s2 (seed 200).
+
+**ff4 never ran:** 667134 hit CUDA OOM at startup but exited 0 (Slurm: COMPLETED), so the watcher missed it.
+The watcher now also greps for OutOfMemoryError; retried as ff4_ck.
