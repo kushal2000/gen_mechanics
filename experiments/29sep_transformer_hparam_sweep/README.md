@@ -151,3 +151,16 @@ at **865** — before l6_ck (975) and the gen-SHARPA MLP (944). ghost_l4_s3 3.75
 
 **ff4 never ran:** 667134 hit CUDA OOM at startup but exited 0 (Slurm: COMPLETED), so the watcher missed it.
 The watcher now also greps for OutOfMemoryError; retried as ff4_ck.
+
+## Decision (30 Sep, user)
+
+**Default RL configuration stays 4 layers, no ghost mask** — d_model 64, 4 layers, 1 head, ff_mult 2,
+action head [64], value head [512,256]; `grad_checkpoint` and `mask_ghost_actions` off (their defaults), on
+the fixed network (own input normaliser, attention mask) and the current learner (gamma 0.998, adaptive lr
+from 5e-4, 5 mini-epochs, no fall penalty). The runs in flight finish their budgets; no new rounds.
+
+For reference when running padded populations: tonight 4 layers without the mask never learned on
+gen-SHARPA seed 100, did not reach 1 goal/ep within 2000 epochs on seed 300, and reached it at 1335 on
+seed 200. 6 layers (seeds 100/200: ~975) and the ghost mask (seed 300: 1033; seed 100: ~2050) each helped;
+6 layers + mask reached 1 at 865 on seed 100, but its seeds 200/300 were behind at epochs 600–800.
+On real SHARPA and Allegro, 4 layers works well (both saturated: 46.5 and 42.9 goals/episode).
