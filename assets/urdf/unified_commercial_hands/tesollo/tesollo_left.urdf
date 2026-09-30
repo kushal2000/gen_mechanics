@@ -8,7 +8,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_palm.dae" />
+        <mesh filename="visual_stl/ll_dg_palm.stl" />
       </geometry>
     </visual>
     <collision>
@@ -27,7 +27,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_1_1.dae" />
+        <mesh filename="visual_stl/ll_dg_1_1.stl" />
       </geometry>
     </visual>
     <collision>
@@ -46,7 +46,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_1_2.dae" />
+        <mesh filename="visual_stl/ll_dg_1_2.stl" />
       </geometry>
     </visual>
     <collision>
@@ -65,7 +65,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_1_3.dae" />
+        <mesh filename="visual_stl/ll_dg_1_3.stl" />
       </geometry>
     </visual>
     <collision>
@@ -84,7 +84,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_1_4.dae" />
+        <mesh filename="visual_stl/ll_dg_1_4.stl" />
       </geometry>
     </visual>
     <collision>
@@ -103,7 +103,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_1_tip.dae" />
+        <mesh filename="visual_stl/ll_dg_1_tip.stl" />
       </geometry>
     </visual>
     <collision>
@@ -122,7 +122,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_2_1.dae" />
+        <mesh filename="visual_stl/ll_dg_2_1.stl" />
       </geometry>
     </visual>
     <collision>
@@ -141,7 +141,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_2_2.dae" />
+        <mesh filename="visual_stl/ll_dg_2_2.stl" />
       </geometry>
     </visual>
     <collision>
@@ -160,7 +160,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_2_3.dae" />
+        <mesh filename="visual_stl/ll_dg_2_3.stl" />
       </geometry>
     </visual>
     <collision>
@@ -179,7 +179,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_2_4.dae" />
+        <mesh filename="visual_stl/ll_dg_2_4.stl" />
       </geometry>
     </visual>
     <collision>
@@ -198,7 +198,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_2_tip.dae" />
+        <mesh filename="visual_stl/ll_dg_2_tip.stl" />
       </geometry>
     </visual>
     <collision>
@@ -217,7 +217,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_3_1.dae" />
+        <mesh filename="visual_stl/ll_dg_3_1.stl" />
       </geometry>
     </visual>
     <collision>
@@ -236,7 +236,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_3_2.dae" />
+        <mesh filename="visual_stl/ll_dg_3_2.stl" />
       </geometry>
     </visual>
     <collision>
@@ -255,7 +255,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_3_3.dae" />
+        <mesh filename="visual_stl/ll_dg_3_3.stl" />
       </geometry>
     </visual>
     <collision>
@@ -274,7 +274,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_3_4.dae" />
+        <mesh filename="visual_stl/ll_dg_3_4.stl" />
       </geometry>
     </visual>
     <collision>
@@ -293,7 +293,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_3_tip.dae" />
+        <mesh filename="visual_stl/ll_dg_3_tip.stl" />
       </geometry>
     </visual>
     <collision>
@@ -312,7 +312,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_4_1.dae" />
+        <mesh filename="visual_stl/ll_dg_4_1.stl" />
       </geometry>
     </visual>
     <collision>
@@ -331,7 +331,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_4_2.dae" />
+        <mesh filename="visual_stl/ll_dg_4_2.stl" />
       </geometry>
     </visual>
     <collision>
@@ -350,7 +350,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_4_3.dae" />
+        <mesh filename="visual_stl/ll_dg_4_3.stl" />
       </geometry>
     </visual>
     <collision>
@@ -369,7 +369,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_4_4.dae" />
+        <mesh filename="visual_stl/ll_dg_4_4.stl" />
       </geometry>
     </visual>
     <collision>
@@ -388,7 +388,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_4_tip.dae" />
+        <mesh filename="visual_stl/ll_dg_4_tip.stl" />
       </geometry>
     </visual>
     <collision>
@@ -407,7 +407,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_5_1.dae" />
+        <mesh filename="visual_stl/ll_dg_5_1.stl" />
       </geometry>
     </visual>
     <collision>
@@ -426,7 +426,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_5_2.dae" />
+        <mesh filename="visual_stl/ll_dg_5_2.stl" />
       </geometry>
     </visual>
     <collision>
@@ -445,7 +445,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_5_3.dae" />
+        <mesh filename="visual_stl/ll_dg_5_3.stl" />
       </geometry>
     </visual>
     <collision>
@@ -464,7 +464,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_5_4.dae" />
+        <mesh filename="visual_stl/ll_dg_5_4.stl" />
       </geometry>
     </visual>
     <collision>
@@ -483,7 +483,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="vendor_left/meshes/ll_dg_5_tip.dae" />
+        <mesh filename="visual_stl/ll_dg_5_tip.stl" />
       </geometry>
     </visual>
     <collision>
