@@ -76,3 +76,22 @@ first failed: Isaac's URDF importer renames names that are not valid USD identif
 one rigid body. `onboard.py` now renames every link and joint to a valid identifier (recorded in the URDF).
 Not yet checked per hand: cube spawn geometry and drive gains (uniform, Allegro's) — watch early curves
 and viewer pages.
+
+## Joint speed cap (30 Sep)
+
+Allegro (0.31 goals/episode @ 4969), Tesollo, Shadow and LEAP were slow or failed while every hand
+with fast joints converged. Cause: the hand actuator group set no speed limit, so the solver used
+each vendor URDF's `<limit velocity>` -- 3.14 rad/s Allegro (dex-urdf) and Tesollo, 2.0 Shadow,
+8.5 LEAP, against 11.5-15 on the hands that converged (the old hand-written Allegro that reached
+42.9 carried 6.28). Confirmed live: the new startup line `[reset] hand joint velocity limits`
+reads 3.14 for Allegro without the cap, 10 with it.
+
+Fix: `physics.hand_velocity_limit` (0 = vendor value, the default; run knob `HAND_VELOCITY_LIMIT`,
+`make_runs.py --vlim V`). 10 rad/s = the generated hands' `GEN_JOINT_VELOCITY_RAD_S`.
+Old runs 696962 (allegro, finished), 696966 / 696964 / 696963 (tesollo / shadow / leap, cancelled)
+are superseded by the `_v10` runs in `.jobs_v10`.
+
+Self-collision (convex hulls, unfiltered pairs, 201 poses per hand, `debug_outputs/ten_hands_physics/`):
+nothing at the home pose on any hand; allegro and dex3 essentially clean. Frequent overlaps between
+neighbouring fingers on tesollo (~45% of poses, up to 11 mm) and leap (~22%), and wuji2's thumb
+abduction link against the wrist (37%, 8 mm) -- still to be looked at.

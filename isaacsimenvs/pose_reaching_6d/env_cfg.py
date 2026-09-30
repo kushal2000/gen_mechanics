@@ -120,6 +120,11 @@ class PhysicsCfg:
 
     contact_offset: float = 0.002
     rest_offset: float = 0.0
+    # Hand joint speed cap (rad/s) in the solver, the same for every hand joint. 0 keeps whatever
+    # the converted USD carries -- the vendor URDF's <limit velocity>, which ranges 2.0 (Shadow) to
+    # 15 (SHARPA) across the commercial hands and throttled the slow ones. Generated hands are 10.
+    # (0 rather than None: Isaac Lab's config override refuses to put a number over a None default.)
+    hand_velocity_limit: float = 0.0
 
 
 @configclass

@@ -88,7 +88,8 @@ def _resolve_spec(cfg):
 
 # --- spawn configs ------------------------------------------------------------
 
-def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False) -> ArticulationCfg:
+def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False,
+                                 hand_velocity_limit: float | None = None) -> ArticulationCfg:
     """The robot articulation over prims already on the stage."""
     return ArticulationCfg(
         prim_path=ROBOT_PATH,
@@ -103,11 +104,11 @@ def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False) -> Art
             joint_vel={".*": 0.0},
         ),
         # Keyed by joint name.
-        actuators=_actuator_groups(spec),
+        actuators=_actuator_groups(spec, hand_velocity_limit=hand_velocity_limit),
     )
 
 
-def _actuator_groups(spec) -> dict:
+def _actuator_groups(spec, *, hand_velocity_limit: float | None = None) -> dict:
     """Actuator groups, keyed by joint name.
 
     The arm group is OMITTED when the spec has no arm joints: Isaac Lab raises
@@ -124,6 +125,8 @@ def _actuator_groups(spec) -> dict:
             # Zero everywhere, deliberately. 0.0 rather than None: None takes
             # whatever the USD carries, which is not uniformity.
             friction=0.0,
+            # None: the USD's (vendor URDF's) per-joint speed cap. See PhysicsCfg.hand_velocity_limit.
+            velocity_limit_sim=hand_velocity_limit,
         ),
     }
     if spec.arm_joint_names:
@@ -434,7 +437,8 @@ def setup_scene(env) -> None:
 
     # 4. Spawn.
     env.robot = Articulation(build_robot_articulation_cfg(
-        spec, start_arm_higher=env.cfg.reset.start_arm_higher))
+        spec, start_arm_higher=env.cfg.reset.start_arm_higher,
+        hand_velocity_limit=env.cfg.physics.hand_velocity_limit or None))
     env.table = (RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
                  if want_table else None)
     authored_map = _author_objects_into_envs(env, object_params, design_idx)
