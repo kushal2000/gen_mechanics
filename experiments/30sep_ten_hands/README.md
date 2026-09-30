@@ -1,6 +1,6 @@
-# Ten (eleven) hands, left and right: one RL policy per hand model
+# Twelve hands, left and right: one RL policy per hand model
 
-**Goal (30 Sep):** train in-hand reorientation policies for ~10 commercial hands, each as a **left and a
+**Goal (30 Sep):** train in-hand reorientation policies for 11 commercial hands plus our gen-SHARPA, each as a **left and a
 right** model, with the default configuration (joint transformer, 4 layers, no ghost mask; γ 0.998,
 adaptive lr from 5e-4, 5 mini-epochs; trimmed observation; no fall penalty; 5° tolerance).
 
@@ -19,8 +19,9 @@ adaptive lr from 5e-4, 5 mini-epochs; trimmed observation; no fall penalty; 5° 
 | 9 | PSYONIC Ability Hand | ~10 (6) | L/R | not started | **mimic joints** — needs mimic support |
 | 10 | Inspire RH56 | ~12 (6) | L/R | not started | **mimic joints** — needs mimic support |
 | 11 | BarrettHand | 8 (4) | **symmetric** | not started | left = right; mimic/coupled finger joints |
+| 12 | gen-SHARPA (design grammar) | 30 slots: 21 real + 9 ghost | L (R?) | **left integrated** (`handonly:assets/populations/sharpa_capsule.json`) | capsule rebuild of left SHARPA; right needs a mirrored design — check the grammar supports mirroring |
 
-Open decision: 11 hands listed vs 10 planned, and Barrett has no left/right distinction.
+Open decision: Barrett has no left/right distinction (train once, or twice as two seeds).
 
 ## Per-hand integration (what "integrated" means — see assets/urdf/unified_commercial_hands/README.md)
 
