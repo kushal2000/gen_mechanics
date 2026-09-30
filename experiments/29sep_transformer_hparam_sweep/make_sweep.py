@@ -80,6 +80,9 @@ ROUNDS = {
         "l6_mu256_ck": ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "MU_HEAD_UNITS": '"[256,128]"', "GRAD_CHECKPOINT": "true"}),
         "mu256_s2":    ("gen_sharpa", {"MU_HEAD_UNITS": '"[256,128]"', "SEED": "200"}),
         "mu512":       ("gen_sharpa", {"MU_HEAD_UNITS": '"[512,256]"'}),
+        # mu512 ran out of memory (682896): the head runs on all 30 tokens x the minibatch. Checkpointing the
+        # layers frees enough; identical maths.
+        "mu512_ck":    ("gen_sharpa", {"MU_HEAD_UNITS": '"[512,256]"', "GRAD_CHECKPOINT": "true"}),
         "l6_ck_s2":    ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true", "SEED": "200"}),
     },
     # Round 4: depth. l6_ck (seed 100) reached 1 goal/episode at epoch 975 -- the gen-SHARPA MLP did at 944.

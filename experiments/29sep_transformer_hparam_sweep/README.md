@@ -91,3 +91,5 @@ and is 1.7x slower per epoch. Too much lr kills learning: const5e3 (0.014 at 100
 and kl032 (lr pinned 1e-2) are dead and cancelled; const3e3 middling (0.18 at 1000). base_s3 (seed 300)
 0.14 at 1000: BASE alone is unreliable across seeds. h4_ck slow (0.016 at 600). Round 4 queued:
 l8_ck, l6_const2e3_ck.
+
+**mu512 ran out of memory** (682896) — the action head runs on 30 tokens × 114688; retried as mu512_ck. l6_ck at 5.61 goals/episode at epoch 1369.
