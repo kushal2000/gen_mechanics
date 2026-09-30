@@ -125,3 +125,8 @@ log-std 0 with no gradient — they cancel from the ratio and KL. Per env from t
 **Round 7 — overfitting check.** The gen-SHARPA winner (6 layers, default learner) on the other two hands:
 `r7_sharpa_l6ck_real` vs real-SHARPA 4-layer 664621 (1 goal/ep at 619) and `r7_allegro_l6ck_alg` vs Allegro
 4-layer 664619 (1 at 909, 9.0 at 1543). Same learner, seed 100; no ghosts on these hands.
+
+**~8 h. 6 layers replicates at MLP pace.** l6_ck_s2 (seed 200) reached 1 goal/episode at epoch 973
+(l6_ck, seed 100: 975; MLP: 944) and 6.39 at 1385; l6_ck finished at 36.3 (MLP 38.6 at 2000). d128_ck
+16.4 at 1708 (1 at 1079), h4_ck 6.05 at 1675 (1 at 1211) — both help, less than depth. Dead and cancelled:
+l6_const2e3_ck (56-step episodes: constant lr breaks the deeper model) and mu256_s2 (0.04 at 1269).
