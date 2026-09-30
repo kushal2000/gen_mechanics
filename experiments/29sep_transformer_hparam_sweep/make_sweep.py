@@ -82,6 +82,12 @@ ROUNDS = {
         "mu512":       ("gen_sharpa", {"MU_HEAD_UNITS": '"[512,256]"'}),
         "l6_ck_s2":    ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true", "SEED": "200"}),
     },
+    # Round 4: depth. l6_ck (seed 100) reached 1 goal/episode at epoch 975 -- the gen-SHARPA MLP did at 944.
+    4: {
+        "l8_ck":          ("gen_sharpa", {"TRANSFORMER_LAYERS": "8", "GRAD_CHECKPOINT": "true"}),
+        "l6_const2e3_ck": ("gen_sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true",
+                                          "LR_SCHEDULE": "constant", "LEARNING_RATE": "0.002"}),
+    },
 }
 
 TEMPLATE = """#!/bin/bash

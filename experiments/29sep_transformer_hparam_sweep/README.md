@@ -84,3 +84,10 @@ learned (664620: ~0 through 2400 epochs) — so learning at all means the change
 Low final lr stalls (clip02 and kl008 drift the adaptive lr to 1e-4; const1e3). A bigger action head and a
 constant 2e-3 both rescue seed 100; 6 layers is fastest early. Round 3 queued: l6_mu256_ck, mu256_s2,
 mu512, l6_ck_s2. gen-SHARPA MLP reference: 1 goal/episode at epoch 944, 38.6 at 2000.
+
+**~5 h. Depth wins.** l6_ck (6 layers, seed 100) reached 1 goal/episode at epoch **975** — the
+gen-SHARPA MLP did at 944 — and 3.69 at 1264 (@800 0.40, @1000 1.11). d128_ck helps less (0.23 at 800)
+and is 1.7x slower per epoch. Too much lr kills learning: const5e3 (0.014 at 1000, 126-step episodes)
+and kl032 (lr pinned 1e-2) are dead and cancelled; const3e3 middling (0.18 at 1000). base_s3 (seed 300)
+0.14 at 1000: BASE alone is unreliable across seeds. h4_ck slow (0.016 at 600). Round 4 queued:
+l8_ck, l6_const2e3_ck.
