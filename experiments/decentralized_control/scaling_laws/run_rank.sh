@@ -91,12 +91,12 @@ else
         "agent.params.network.n_heads=${N_HEADS:-1}" "agent.params.network.ff_mult=${FF_MULT:-2}"
         "++agent.params.network.hand_global_skip=${HAND_GLOBAL_SKIP:-false}"
         agent.params.network.compile_net=true
-        '++agent.params.network.mu_head_units=[64]'
+        "++agent.params.network.mu_head_units=${MU_HEAD_UNITS:-[64]}"
         'agent.params.network.arm_head_units=[256,128]'
         ++agent.params.network.parallel_block=false
         ++agent.params.network.affine_norm=true
         ++agent.params.network.final_norm=true
-        'agent.params.network.value_head_units=[512,256]'
+        "agent.params.network.value_head_units=${VALUE_HEAD_UNITS:-[512,256]}"
     )
 fi
 ARGS=(
@@ -141,7 +141,7 @@ ARGS=(
     # halves the gradient steps per epoch (not the per-epoch dataset build,
     # advantage pass or SAPG augmentation, which run once either way) at the
     # cost of halving sample reuse.
-    agent.params.config.horizon_length=16 "agent.params.config.mini_epochs=${MINI_EPOCHS:-2}"
+    "agent.params.config.horizon_length=${HORIZON:-16}" "agent.params.config.mini_epochs=${MINI_EPOCHS:-2}"
     "agent.params.config.max_epochs=$MAX_EPOCHS"
     agent.params.config.save_frequency=100 agent.params.config.save_best_after=0
     "${NET_ARGS[@]}"
