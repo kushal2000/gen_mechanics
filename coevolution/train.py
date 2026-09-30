@@ -238,6 +238,8 @@ def main() -> None:
         # A no-op for every other network.
         from coevolution.utils.rlgames_utils import JointTransformerNormObserver
         observers.append(JointTransformerNormObserver())
+        from coevolution.utils.rlgames_utils import SchedulerBoundsObserver
+        observers.append(SchedulerBoundsObserver())
         if args_cli.wandb_activate:
             from coevolution.utils.wandb_utils import WandbAlgoObserver
 

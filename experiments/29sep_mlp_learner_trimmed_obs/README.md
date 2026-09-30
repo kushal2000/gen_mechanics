@@ -67,6 +67,17 @@ Early result (single seed): without the penalty the MLP learned FASTER -- at mat
 SHARPA), 11x (Allegro) and 5x (gen-SHARPA) the penalty runs' goals/episode, with long episodes (no
 drop collapse). `tf_5deg_<hand>_trimobs_nopen.sub` are the transformer counterparts.
 
+## Capped learning rate (29 Sep)
+
+`tf_5deg_sharpa_trimobs_nopen_lrcap.sub`: the no-penalty real-SHARPA transformer with the adaptive
+schedule capped at 1e-3 (`++agent.params.config.max_lr=0.001`, applied by `SchedulerBoundsObserver`;
+rl_games hard-codes 1e-2). Transformer runs pin lr at the 1e-2 cap while the MLP settles at
+1.5e-4..5e-4 -- plausibly LayerNorm scale-invariance plus a shared, narrow action head making each
+step move the actions little, with the shared value head taking 1e-2 steps unchecked.
+
+MLP runs cancelled once they had answered their question: the three with the penalty and Allegro
+without it (saturated at ~44 goals/episode). Kept: real-SHARPA and gen-SHARPA without the penalty.
+
 ## Launch
 
 ```bash

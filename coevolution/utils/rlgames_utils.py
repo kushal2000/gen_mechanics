@@ -264,6 +264,26 @@ class JointTransformerNormObserver(AlgoObserver):
                   "(first mini-epoch of each update)", flush=True)
 
 
+class SchedulerBoundsObserver(AlgoObserver):
+    """Optional ``max_lr`` / ``min_lr`` for rl_games' adaptive lr schedule.
+
+    ``AdaptiveScheduler`` hard-codes its bounds (1e-6, 1e-2) with no config key. Set
+    ``agent.params.config.max_lr`` (hydra: ``++agent.params.config.max_lr=1e-3``) to cap it.
+    Absent keys leave rl_games untouched.
+    """
+
+    def after_init(self, algo):
+        sched = getattr(algo, "scheduler", None)
+        cfg = getattr(algo, "config", {}) or {}
+        for key in ("max_lr", "min_lr"):
+            if key in cfg and cfg[key] is not None:
+                if not hasattr(sched, key):
+                    raise ValueError(f"{key} set but the lr scheduler "
+                                     f"({type(sched).__name__}) has no {key}")
+                setattr(sched, key, float(cfg[key]))
+                print(f"[rl_games] adaptive lr {key} = {float(cfg[key]):g}", flush=True)
+
+
 class MultiObserver(AlgoObserver):
     """Fan out every `AlgoObserver` callback to a list of observers.
 
