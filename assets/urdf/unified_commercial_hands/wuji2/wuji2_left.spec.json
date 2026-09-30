@@ -261,7 +261,8 @@
   ],
   "l_ring_finger_proximal_abd": [
    "l_ring_finger_middle",
-   "l_ring_finger_proximal"
+   "l_ring_finger_proximal",
+   "l_wrist"
   ],
   "l_thumb_distal": [
    "l_thumb_middle"
@@ -284,11 +285,13 @@
    "l_pinky_proximal",
    "l_pinky_proximal_abd",
    "l_ring_finger_proximal",
+   "l_ring_finger_proximal_abd",
    "l_thumb_proximal"
   ]
  },
  "overlap_at_home_mm": {
-  "l_wrist x l_pinky_proximal_abd": 1.06
+  "l_wrist x l_pinky_proximal_abd": 1.31,
+  "l_wrist x l_ring_finger_proximal_abd": 1.08
  },
  "fingertip_pos_home_ours": {
   "l_thumb_distal": [

@@ -71,6 +71,15 @@ GAINS = {}
 
 import re
 
+def usd_name(name: str) -> str:
+    """A valid USD prim name: [A-Za-z_][A-Za-z0-9_]*. Isaac's URDF importer renames anything else on its
+    own (Allegro's 'link_0.0' became 'link_0_0') or, for bare-number joint names (LEAP's '0', '1', ...),
+    fails to build the articulation at all -- LEAP came out as ONE rigid body. Renaming here keeps the
+    unified URDF, the spec and the converted USD in agreement."""
+    out = re.sub(r"[^A-Za-z0-9_]", "_", name)
+    return out if re.match(r"[A-Za-z_]", out) else f"j{out}"
+
+
 def unify(hand: str, cfg: dict, side: str) -> Path:
     """Re-root the vendor URDF at the palm; keep only the palm's subtree. Mesh paths stay valid."""
     src = HERE / cfg["vendor"]
@@ -94,6 +103,18 @@ def unify(hand: str, cfg: dict, side: str) -> Path:
     for j in joints:
         if j in keep_joints:
             out.append(j)
+    renamed = {}
+    for el in list(out.iter("link")) + list(out.iter("joint")):
+        n = el.get("name"); u = usd_name(n)
+        if u != n:
+            renamed[n] = u; el.set("name", u)
+    for tag in ("parent", "child"):
+        for el in out.iter(tag):
+            el.set("link", usd_name(el.get("link")))
+    for el in out.iter("mimic"):
+        el.set("joint", usd_name(el.get("joint")))
+    if renamed:
+        out.insert(1, ET.Comment(" renamed to valid USD identifiers: " + ", ".join(f"{a} to {b}" for a, b in renamed.items()) + " "))
     for m in out.iter("mesh"):                       # meshes live in vendor_left/meshes
         m.set("filename", "vendor_left/" + m.get("filename"))
     dst = HERE / hand / f"{hand}_{side}.urdf"
@@ -124,7 +145,9 @@ def body_meshes(robot, body: str, merged: dict) -> list[trimesh.Trimesh]:
 
 def measure(hand: str, cfg: dict, urdf: Path, side: str) -> dict:
     robot = yourdfpy.URDF.load(str(urdf), build_collision_scene_graph=True, load_collision_meshes=True)
-    palm = cfg["palm"]; tips = cfg["tips"]; thumb = re.compile(cfg["thumb"])
+    unified_names = "vendor_left" in cfg["vendor"]
+    nm = usd_name if unified_names else (lambda x: x)
+    palm = nm(cfg["palm"]); tips = [nm(t) for t in cfg["tips"]]; thumb = re.compile(cfg["thumb"])
     # post-merge bodies: a link is its own body unless its parent joint is fixed
     parent_joint = {j.child: j for j in robot.joint_map.values()}
     def body_of(link):

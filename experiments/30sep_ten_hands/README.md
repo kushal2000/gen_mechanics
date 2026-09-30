@@ -35,14 +35,21 @@ Mimic/coupled hands (Inspire, Ability, Barrett) are deferred. wandb project `gen
 |---|---|---|---|---|---|---|---|
 | SHARPA | integrated (`sharpa_handonly`) | 22 | ✅ | ✅ | ✅ | ✅ | **696814** |
 | gen-SHARPA | population `sharpa_capsule.json` | 21 (+9 ghost) | ✅ | ✅ | ✅ | ✅ | **696815** |
-| Allegro | dex-urdf `allegro_hand_left.urdf` | 16 | ✅ | | | | |
-| LEAP | dex-urdf `leap_hand_left.urdf` | 16 | ✅ | | | | |
-| Shadow | dex-urdf `shadow_hand_left.urdf` | 24 incl. 2 wrist → 22 | ✅ | | | | |
-| Unitree Dex3-1 | unitree_ros `dex3_1_l.urdf` (official) | 7 | ✅ | | | | |
-| Tesollo DG-5F | dg5f_ros2 `dg5f_left.urdf` (official) | 20 | ✅ | | | | |
-| Wuji Hand 2 | wuji-description `hand2/hand2_beta2/.../left.urdf` (official; Beta 2 = what wuji-mjlab deploys) | 20 | ✅ | | | | |
-| XHAND1 | spider `xhand_left.urdf` (Robot Era SolidWorks export; licence NOASSERTION) | 12 | ✅ | | | | |
+| Allegro | dex-urdf `allegro_hand_left.urdf` | 16 | ✅ | ✅ | ✅ | ✅ | **696962** |
+| LEAP | dex-urdf `leap_hand_left.urdf` | 16 | ✅ | ✅ | ✅ | ✅ | **696963** |
+| Shadow | dex-urdf `shadow_hand_left.urdf` | 24 incl. 2 wrist → 22 | ✅ | ✅ | ✅ | ✅ | **696964** |
+| Unitree Dex3-1 | unitree_ros `dex3_1_l.urdf` (official) | 7 | ✅ | ✅ | ✅ | ✅ | **696965** |
+| Tesollo DG-5F | dg5f_ros2 `dg5f_left.urdf` (official) | 20 | ✅ | ✅ | ✅ | ✅ | **696966** |
+| Wuji Hand 2 | wuji-description `hand2/hand2_beta2/.../left.urdf` (official; Beta 2 = what wuji-mjlab deploys) | 20 | ✅ | ✅ | ✅ | ✅ | **696967** |
+| XHAND1 | spider `xhand_left.urdf` (Robot Era SolidWorks export; licence NOASSERTION) | 12 | ✅ | ✅ | ✅ | ✅ | **696968** |
 | Inspire / Ability / Barrett | dex-urdf (deferred: mimic joints) | | | | | | |
+
+Step 2 = `assets/urdf/unified_commercial_hands/onboard.py` (re-root at the palm, measure joints / home pose /
+palm frame / palm box / pads / self-collision pairs → `<hand>/<hand>_left.spec.json` + `.report.md`) and
+`robots/unified_hands.py` (JSON → RobotSpec `<hand>_left_handonly`). Validated by reproducing the hand-written
+Allegro right spec field for field (frame, palm box, mount pose, palm keypoints; pads within 1 cm).
+Step 3 = the report's checks (all PASS; Tesollo's 64 mm palm reviewed and waived: one continuous collider)
+and `isaacsimenvs/inhand_reorient/tests/test_unified_hands.py` (9 tests).
 
 Step 1 = `assets/urdf/unified_commercial_hands/import_vendor_left.py`: left URDF + only its meshes, pinned
 commit, mesh paths made local; each loads with every mesh resolved (checked with yourdfpy).
@@ -61,3 +68,11 @@ the left model is from Meta's `spider` (also in `EmptyBlueBox/DexLatent`).
 
 Mimic-joint hands (Ability, Inspire, Barrett) additionally need mimic support in the env (policy acts on
 motors only; coupled joints follow).
+
+**Smoke (step 4), 30 Sep:** all seven build, apply their self-collision filters and train 3 epochs. Bodies =
+joints + palm for each (Allegro/LEAP 17, Shadow 23, Tesollo/Wuji2 21, XHAND 13, Dex3 8). Allegro and LEAP
+first failed: Isaac's URDF importer renames names that are not valid USD identifiers (Allegro's
+`link_0.0` → `link_0_0`), and LEAP's bare-number joint names (`0`, `1`, ...) collapsed the whole hand into
+one rigid body. `onboard.py` now renames every link and joint to a valid identifier (recorded in the URDF).
+Not yet checked per hand: cube spawn geometry and drive gains (uniform, Allegro's) — watch early curves
+and viewer pages.

@@ -31,6 +31,7 @@ palm body [-0.0073, 0.0007, -0.037].
 ## Bodies overlapping at the home pose (filtered)
 | pair | overlap mm |
 |---|---|
-| l_wrist x l_pinky_proximal_abd | 1.06 |
+| l_wrist x l_pinky_proximal_abd | 1.31 |
+| l_wrist x l_ring_finger_proximal_abd | 1.08 |
 
 Gains: stiffness 3.0, damping 0.1, armature 0.001 (uniform).

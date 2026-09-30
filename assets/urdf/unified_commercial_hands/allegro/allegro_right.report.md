@@ -30,7 +30,7 @@ palm body [-0.0078, 0.0088, -0.0204].
 ## Bodies overlapping at the home pose (filtered)
 | pair | overlap mm |
 |---|---|
-| palm_link x thumb_link_1 | 6.49 |
+| palm_link x thumb_link_1 | 7.21 |
 | palm_link x thumb_link_2 | 1.23 |
 | palm_link x index_link_1 | 0.63 |
 | palm_link x ring_link_1 | 0.61 |
