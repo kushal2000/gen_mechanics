@@ -38,6 +38,8 @@ UH = BASE["USER_HYDRA"].strip('"')
 ROUNDS = {
     1: {
         "base_s2":     ("gen_sharpa", {"SEED": "200"}),
+        # Seed 100 (664620) never learned; seed 200 was at 0.07 by epoch 561. A third seed sizes the noise.
+        "base_s3":     ("gen_sharpa", {"SEED": "300"}),
         "l2":          ("gen_sharpa", {"TRANSFORMER_LAYERS": "2"}),
         "l6":          ("gen_sharpa", {"TRANSFORMER_LAYERS": "6"}),
         # d128 ran out of GPU memory (48 GB) at minibatch 114688 with gen-SHARPA's 30 tokens (667090).

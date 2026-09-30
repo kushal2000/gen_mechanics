@@ -48,4 +48,8 @@ cancelled within minutes; it runs on gen-SHARPA. The working SHARPA / Allegro re
 
 ## Log
 
-(results appended per round)
+**~1 h into round 1 (epochs 330–740).** The baseline is strongly seed-dependent on gen-SHARPA:
+seed 200 (`base_s2`) is at 0.07 goals/episode at epoch 561 with ~490-step episodes, while seed 100
+(664620) never learned in 1,700 epochs. No variant beats seed 200 yet (clip02 0.04, const2e3 0.04,
+const1e3 / kl008 0.02); l2 is worst (0.01 at 738, lr pinned at 1e-2, 187-step episodes). Added
+`base_s3` (seed 300) to size the noise.
