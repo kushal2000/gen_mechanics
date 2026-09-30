@@ -63,6 +63,10 @@ default 0, everything else identical. Is the penalty still needed once the rest 
 (γ 0.998, lr 5e-4, 5 mini-epochs) is in place? Earlier no-penalty MLP runs at 20° (637911 gen-SHARPA,
 637916 Allegro) were learning but slower; they were cancelled before a clear answer.
 
+Early result (single seed): without the penalty the MLP learned FASTER -- at matched epochs 3x (real
+SHARPA), 11x (Allegro) and 5x (gen-SHARPA) the penalty runs' goals/episode, with long episodes (no
+drop collapse). `tf_5deg_<hand>_trimobs_nopen.sub` are the transformer counterparts.
+
 ## Launch
 
 ```bash
