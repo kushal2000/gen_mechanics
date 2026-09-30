@@ -21,9 +21,15 @@ the noise, then combine the winners and test them on the other hands.
 
 Launcher knobs added for this sweep (defaults = previous behaviour): `MU_HEAD_UNITS`,
 `VALUE_HEAD_UNITS`, `HORIZON` in `run_rank.sh`. Logs: `debug_outputs/train_logs/29sep_transformer_hparam_sweep/`;
-wandb project [`gen_mechanics_transformer_sweep`](https://wandb.ai/kk837/gen_mechanics_transformer_sweep).
+wandb project [`gen_mechanics_gen_sharpa_tf_sweep`](https://wandb.ai/kk837/gen_mechanics_gen_sharpa_tf_sweep).
 
-## Round 1 — real SHARPA, one change each
+## Round 1 — gen-SHARPA, one change each
+
+The user asked to focus on gen-SHARPA: BASE learns on real SHARPA (level with the MLP) and Allegro, but
+not on gen-SHARPA (664620: 0.009 goals/episode at epoch ~840, lr pinned at 1e-2, episodes relapsing to
+~50 steps; the gen-SHARPA MLP reached 1 at epoch 944). Round 1 was first submitted on real SHARPA and
+cancelled within minutes; it runs on gen-SHARPA. The working SHARPA / Allegro references (664621,
+664619) were cancelled to free GPUs; their curves stay on disk.
 
 | variant | change |
 |---|---|

@@ -31,23 +31,24 @@ BASE = {
 }
 UH = BASE["USER_HYDRA"].strip('"')
 
-# name -> (hand, overrides). Round 1: one change at a time on real SHARPA, plus a second seed of
-# the baseline to measure run-to-run noise.
+# name -> (hand, overrides). Round 1: one change at a time on gen-SHARPA -- the one hand where BASE does
+# not learn (664620: adaptive lr pinned at 1e-2, episodes relapsing to ~50 steps) -- plus a second seed
+# of the baseline to measure run-to-run noise.
 ROUNDS = {
     1: {
-        "base_s2":     ("sharpa", {"SEED": "200"}),
-        "l2":          ("sharpa", {"TRANSFORMER_LAYERS": "2"}),
-        "l6":          ("sharpa", {"TRANSFORMER_LAYERS": "6"}),
-        "d128":        ("sharpa", {"D_MODEL": "128"}),
-        "h4":          ("sharpa", {"N_HEADS": "4"}),
-        "ff4":         ("sharpa", {"FF_MULT": "4"}),
-        "mu256":       ("sharpa", {"MU_HEAD_UNITS": '"[256,128]"'}),
-        "kl008":       ("sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.kl_threshold=0.008"'}),
-        "clip02":      ("sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.e_clip=0.2"'}),
+        "base_s2":     ("gen_sharpa", {"SEED": "200"}),
+        "l2":          ("gen_sharpa", {"TRANSFORMER_LAYERS": "2"}),
+        "l6":          ("gen_sharpa", {"TRANSFORMER_LAYERS": "6"}),
+        "d128":        ("gen_sharpa", {"D_MODEL": "128"}),
+        "h4":          ("gen_sharpa", {"N_HEADS": "4"}),
+        "ff4":         ("gen_sharpa", {"FF_MULT": "4"}),
+        "mu256":       ("gen_sharpa", {"MU_HEAD_UNITS": '"[256,128]"'}),
+        "kl008":       ("gen_sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.kl_threshold=0.008"'}),
+        "clip02":      ("gen_sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.e_clip=0.2"'}),
         # Constant lr at the level the adaptive schedule sat at while the working SHARPA transformer took
-        # off (1.3e-3..3e-3); the constant 5e-4 run (665191) was the slowest schedule tried.
-        "const1e3":    ("sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.001"}),
-        "const2e3":    ("sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.002"}),
+        # off (1.3e-3..3e-3); constant 5e-4 (665191, SHARPA) and 1e-4 (666081, gen-SHARPA) were too low.
+        "const1e3":    ("gen_sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.001"}),
+        "const2e3":    ("gen_sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.002"}),
     },
 }
 
@@ -74,7 +75,7 @@ export STUDY_ID="${{STUDY_ID:-sw{rnd}_{hand}_{name}}}"
 export SUCCESS_TOLERANCE_DEG=5
 # 2000-epoch budget per run, no chained continuation.
 export EPOCHS="${{EPOCHS:-2000}}" MAX_CONT="${{MAX_CONT:-1}}" CONT="${{CONT:-1}}"
-export WANDB_PROJECT="${{WANDB_PROJECT:-gen_mechanics_transformer_sweep}}"
+export WANDB_PROJECT="${{WANDB_PROJECT:-gen_mechanics_gen_sharpa_tf_sweep}}"
 export SCALING_RUN_ROOT="${{SCALING_RUN_ROOT:-{logs}}}"
 
 source {repo}/experiments/28sep_inhand_reorientation/common.sh
