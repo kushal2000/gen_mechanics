@@ -49,5 +49,5 @@ if __name__ == "__main__":
             print(row(lab, pat))
     for d in sorted(glob.glob(f"{LOGS}/29sep_transformer_hparam_sweep/0_scale_train_sw*")):
         name = os.path.basename(d).split("_c01_")[0].replace("0_scale_train_", "")
-        if hand is None or f"_{hand}_" in name:
+        if hand is None or f"_{hand}_" in f"{name}_":
             print(row(name, d))

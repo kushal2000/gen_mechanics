@@ -121,3 +121,7 @@ and in the transformer every action comes from the shared head, so updates for r
 means. New network flag `mask_ghost_actions` (`MASK_GHOST_ACTIONS`): ghost dimensions get constant mean 0 /
 log-std 0 with no gradient — they cancel from the ratio and KL. Per env from that env's raw joint_enabled
 (mixed populations handled; arm dims never masked); tested. Round 6: ghost_l4, ghost_l4_s3, ghost_l6_ck.
+
+**Round 7 — overfitting check.** The gen-SHARPA winner (6 layers, default learner) on the other two hands:
+`r7_sharpa_l6ck_real` vs real-SHARPA 4-layer 664621 (1 goal/ep at 619) and `r7_allegro_l6ck_alg` vs Allegro
+4-layer 664619 (1 at 909, 9.0 at 1543). Same learner, seed 100; no ghosts on these hands.

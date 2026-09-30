@@ -106,6 +106,13 @@ ROUNDS = {
         "ghost_l6_ck": ("gen_sharpa", {"MASK_GHOST_ACTIONS": "true", "TRANSFORMER_LAYERS": "6",
                                        "GRAD_CHECKPOINT": "true"}),                            # vs l6_ck: 1 at 975
     },
+    # Round 7: does the gen-SHARPA winner (6 layers) hold on the other hands, or is it overfit to gen-SHARPA?
+    # References (4 layers, same learner, seed 100): real SHARPA 664621 (1 goal/ep at 619), Allegro 664619
+    # (1 at 909, 9.0 at 1543). No ghost joints on these hands, so the ghost mask would be a no-op.
+    7: {
+        "l6ck_real":   ("sharpa", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true"}),
+        "l6ck_alg":    ("allegro", {"TRANSFORMER_LAYERS": "6", "GRAD_CHECKPOINT": "true"}),
+    },
 }
 
 TEMPLATE = """#!/bin/bash
