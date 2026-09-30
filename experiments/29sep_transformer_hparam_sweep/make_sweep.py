@@ -44,6 +44,10 @@ ROUNDS = {
         "mu256":       ("sharpa", {"MU_HEAD_UNITS": '"[256,128]"'}),
         "kl008":       ("sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.kl_threshold=0.008"'}),
         "clip02":      ("sharpa", {"USER_HYDRA": f'"{UH} agent.params.config.e_clip=0.2"'}),
+        # Constant lr at the level the adaptive schedule sat at while the working SHARPA transformer took
+        # off (1.3e-3..3e-3); the constant 5e-4 run (665191) was the slowest schedule tried.
+        "const1e3":    ("sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.001"}),
+        "const2e3":    ("sharpa", {"LR_SCHEDULE": "constant", "LEARNING_RATE": "0.002"}),
     },
 }
 

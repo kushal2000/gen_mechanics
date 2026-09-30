@@ -35,6 +35,7 @@ wandb project [`gen_mechanics_transformer_sweep`](https://wandb.ai/kk837/gen_mec
 | mu256 | action head [256,128] |
 | kl008 | adaptive-lr KL threshold 0.008 (more conservative) |
 | clip02 | PPO clip 0.2 |
+| const1e3 / const2e3 | constant lr 1e-3 / 2e-3 (the adaptive schedule sat at 1.3e-3–3e-3 during take-off; constant 5e-4 was too slow) |
 
 ## Log
 
