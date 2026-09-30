@@ -1,0 +1,281 @@
+{
+ "hand": "allegro_right",
+ "side": "right",
+ "urdf": "assets/urdf/unified_commercial_hands/allegro/allegro.urdf",
+ "palm_body": "palm_link",
+ "hand_joint_names": [
+  "index_joint_0",
+  "index_joint_1",
+  "index_joint_2",
+  "index_joint_3",
+  "middle_joint_0",
+  "middle_joint_1",
+  "middle_joint_2",
+  "middle_joint_3",
+  "ring_joint_0",
+  "ring_joint_1",
+  "ring_joint_2",
+  "ring_joint_3",
+  "thumb_joint_0",
+  "thumb_joint_1",
+  "thumb_joint_2",
+  "thumb_joint_3"
+ ],
+ "joint_limits": {
+  "index_joint_0": [
+   -0.558488888889,
+   0.558488888889
+  ],
+  "index_joint_1": [
+   -0.279244444444,
+   1.727825
+  ],
+  "index_joint_2": [
+   -0.279244444444,
+   1.727825
+  ],
+  "index_joint_3": [
+   -0.279244444444,
+   1.727825
+  ],
+  "middle_joint_0": [
+   -0.558488888889,
+   0.558488888889
+  ],
+  "middle_joint_1": [
+   -0.279244444444,
+   1.727825
+  ],
+  "middle_joint_2": [
+   -0.279244444444,
+   1.727825
+  ],
+  "middle_joint_3": [
+   -0.279244444444,
+   1.727825
+  ],
+  "ring_joint_0": [
+   -0.558488888889,
+   0.558488888889
+  ],
+  "ring_joint_1": [
+   -0.279244444444,
+   1.727825
+  ],
+  "ring_joint_2": [
+   -0.279244444444,
+   1.727825
+  ],
+  "ring_joint_3": [
+   -0.279244444444,
+   1.727825
+  ],
+  "thumb_joint_0": [
+   0.279244444444,
+   1.57075
+  ],
+  "thumb_joint_1": [
+   -0.331602777778,
+   1.15188333333
+  ],
+  "thumb_joint_2": [
+   -0.279244444444,
+   1.727825
+  ],
+  "thumb_joint_3": [
+   -0.279244444444,
+   1.76273055556
+  ]
+ },
+ "hand_default_joint_pos": {
+  "index_joint_0": 0.0,
+  "index_joint_1": 0.0,
+  "index_joint_2": 0.0,
+  "index_joint_3": 0.0,
+  "middle_joint_0": 0.0,
+  "middle_joint_1": 0.0,
+  "middle_joint_2": 0.0,
+  "middle_joint_3": 0.0,
+  "ring_joint_0": 0.0,
+  "ring_joint_1": 0.0,
+  "ring_joint_2": 0.0,
+  "ring_joint_3": 0.0,
+  "thumb_joint_0": 0.280244444444,
+  "thumb_joint_1": 0.0,
+  "thumb_joint_2": 0.0,
+  "thumb_joint_3": 0.0
+ },
+ "fingertip_body_names": [
+  "index_link_3",
+  "middle_link_3",
+  "ring_link_3",
+  "thumb_link_3"
+ ],
+ "fingertip_offsets": [
+  [
+   0.06122485000000002,
+   0.009656575000000002,
+   -6.155000000000003e-05
+  ],
+  [
+   0.06122485000000002,
+   0.009656575000000002,
+   -6.155000000000003e-05
+  ],
+  [
+   0.06122485000000002,
+   0.009656575000000002,
+   -6.155000000000003e-05
+  ],
+  [
+   0.07686565909090909,
+   0.009090295454545457,
+   1.0068181818181854e-05
+  ]
+ ],
+ "thumb_tip": "thumb_link_3",
+ "palm_frame": [
+  [
+   0.0,
+   0.0,
+   1.0
+  ],
+  [
+   0.0,
+   -1.0,
+   0.0
+  ],
+  [
+   1.0,
+   0.0,
+   0.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_frame_snapped": [
+  "x->+z",
+  "z->+x"
+ ],
+ "palm_centre_in_palm_body": [
+  -0.007762999999999999,
+  0.008777000000000004,
+  -0.0204
+ ],
+ "palm_extents_ours": [
+  0.0408,
+  0.117288,
+  0.1002
+ ],
+ "palm_centre_ours": [
+  -0.0204,
+  -0.008777000000000004,
+  -0.007762999999999999
+ ],
+ "adjacent_links": {
+  "index_link_0": [
+   "index_link_1",
+   "palm_link"
+  ],
+  "index_link_1": [
+   "index_link_0",
+   "index_link_2",
+   "palm_link"
+  ],
+  "index_link_2": [
+   "index_link_1",
+   "index_link_3"
+  ],
+  "index_link_3": [
+   "index_link_2"
+  ],
+  "middle_link_0": [
+   "middle_link_1",
+   "palm_link"
+  ],
+  "middle_link_1": [
+   "middle_link_0",
+   "middle_link_2"
+  ],
+  "middle_link_2": [
+   "middle_link_1",
+   "middle_link_3"
+  ],
+  "middle_link_3": [
+   "middle_link_2"
+  ],
+  "palm_link": [
+   "index_link_0",
+   "index_link_1",
+   "middle_link_0",
+   "ring_link_0",
+   "ring_link_1",
+   "thumb_link_0",
+   "thumb_link_1",
+   "thumb_link_2"
+  ],
+  "ring_link_0": [
+   "palm_link",
+   "ring_link_1"
+  ],
+  "ring_link_1": [
+   "palm_link",
+   "ring_link_0",
+   "ring_link_2"
+  ],
+  "ring_link_2": [
+   "ring_link_1",
+   "ring_link_3"
+  ],
+  "ring_link_3": [
+   "ring_link_2"
+  ],
+  "thumb_link_0": [
+   "palm_link",
+   "thumb_link_1"
+  ],
+  "thumb_link_1": [
+   "palm_link",
+   "thumb_link_0",
+   "thumb_link_2"
+  ],
+  "thumb_link_2": [
+   "palm_link",
+   "thumb_link_1",
+   "thumb_link_3"
+  ],
+  "thumb_link_3": [
+   "thumb_link_2"
+  ]
+ },
+ "overlap_at_home_mm": {
+  "palm_link x thumb_link_1": 7.21,
+  "palm_link x thumb_link_2": 1.23,
+  "palm_link x index_link_1": 0.63,
+  "palm_link x ring_link_1": 0.61
+ },
+ "fingertip_pos_home_ours": {
+  "index_link_3": [
+   0.0091,
+   0.0532,
+   0.1512
+  ],
+  "middle_link_3": [
+   0.0091,
+   0.0,
+   0.1539
+  ],
+  "ring_link_3": [
+   0.0091,
+   -0.0531,
+   0.1512
+  ],
+  "thumb_link_3": [
+   0.0253,
+   0.1178,
+   -0.0378
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.1,
+ "armature": 0.001
+}
