@@ -33,7 +33,12 @@ def _field_width(name: str, spec) -> int:
         return spec.num_hand_joints
     if name == "fingertip_pos_palm":
         return 3 * spec.num_fingertips
-    return OBS_FIELD_WIDTHS[name]
+    if name in OBS_FIELD_WIDTHS:
+        return OBS_FIELD_WIDTHS[name]
+    # The isaaclab_repose profile's fields (repose_profile.REPOSE_OBS_FIELDS).
+    from .repose_profile import repose_field_width
+
+    return repose_field_width(name, spec.num_hand_joints, spec.num_fingertips)
 
 
 def derive_spaces(cfg, spec) -> None:

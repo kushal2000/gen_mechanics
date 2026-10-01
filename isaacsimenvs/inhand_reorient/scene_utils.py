@@ -14,6 +14,7 @@ population is involved (Phase 2).
 from __future__ import annotations
 
 import dataclasses
+import math
 import tempfile
 import time
 from pathlib import Path
@@ -30,6 +31,7 @@ from . import hand_only
 from .hand_only import build_hand_only_spec
 from .obs_utils import derive_spaces
 from .palm_calibration import load_calibration
+from .repose_profile import is_repose
 
 ROBOT_PATH = "/World/envs/env_.*/Robot"
 OBJECT_PATH = "/World/envs/env_.*/Object"
@@ -152,7 +154,30 @@ budget or 128x stiffer gains (review risk 8's "SHARPA and carrier designs
 get a palm DOF 128x stiffer than their fingers")."""
 
 
-def _hand_articulation_cfg(spec, usd_path: str | None) -> ArticulationCfg:
+def _repose_hand_props(r):
+    """``ALLEGRO_HAND_CFG``'s rigid-body and articulation-root properties
+    (isaaclab_assets/robots/allegro.py), from the ``repose`` profile block."""
+    rigid = sim_utils.RigidBodyPropertiesCfg(
+        disable_gravity=bool(r.hand_disable_gravity),
+        retain_accelerations=False,
+        enable_gyroscopic_forces=False,
+        angular_damping=float(r.hand_angular_damping),
+        max_linear_velocity=1000.0,
+        max_angular_velocity=64 / math.pi * 180.0,
+        max_depenetration_velocity=float(r.hand_max_depenetration_velocity),
+        max_contact_impulse=1e32,
+    )
+    articulation = sim_utils.ArticulationRootPropertiesCfg(
+        enabled_self_collisions=True,
+        solver_position_iteration_count=int(r.hand_solver_position_iterations),
+        solver_velocity_iteration_count=int(r.hand_solver_velocity_iterations),
+        sleep_threshold=float(r.hand_sleep_threshold),
+        stabilization_threshold=float(r.hand_stabilization_threshold),
+    )
+    return rigid, articulation
+
+
+def _hand_articulation_cfg(spec, usd_path: str | None, repose=None) -> ArticulationCfg:
     """`usd_path=None` (the grammar-population path): the prims were already
     authored directly into the stage (`scene/author_grammar.py`), so this
     Articulation only needs to ATTACH to them, not spawn anything. Scene-
@@ -182,9 +207,17 @@ def _hand_articulation_cfg(spec, usd_path: str | None) -> ArticulationCfg:
             effort_limit_sim={n: _CARRIER_EFFORT_LIMIT_NM for n in carrier_names},
             friction=0.0,
         )
+    spawn = None
+    if usd_path is not None:
+        if repose is None:
+            spawn = sim_utils.UsdFileCfg(usd_path=usd_path)
+        else:
+            rigid, articulation = _repose_hand_props(repose)
+            spawn = sim_utils.UsdFileCfg(
+                usd_path=usd_path, rigid_props=rigid, articulation_props=articulation)
     return ArticulationCfg(
         prim_path=ROBOT_PATH,
-        spawn=None if usd_path is None else sim_utils.UsdFileCfg(usd_path=usd_path),
+        spawn=spawn,
         init_state=ArticulationCfg.InitialStateCfg(
             pos=spec.base_pos, rot=spec.base_rot,
             joint_pos=dict(spec.hand_default_joint_pos),
@@ -207,6 +240,80 @@ def _object_cfg(prim_path: str, size: float, offsets: dict, *, kinematic: bool,
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color),
     )
     return RigidObjectCfg(prim_path=prim_path, spawn=spawn)
+
+
+def _repose_object_cfg(prim_path: str, r, *, kinematic: bool,
+                       color: tuple[float, float, float] = (0.2, 0.4, 0.9)) -> RigidObjectCfg:
+    """The ``isaaclab_repose`` cube: NVIDIA's DexCube (0.06 m collision cube
+    at scale 1.2) rigid-body, mass and collision properties, as a plain
+    cuboid (no download at boot). The kinematic goal marker gets no
+    collision or mass."""
+    if kinematic:
+        rigid_props = sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True)
+        mass_props = None
+        collision_props = None
+    else:
+        rigid_props = sim_utils.RigidBodyPropertiesCfg(
+            kinematic_enabled=False,
+            disable_gravity=False,
+            enable_gyroscopic_forces=bool(r.object_enable_gyroscopic_forces),
+            solver_position_iteration_count=int(r.object_solver_position_iterations),
+            solver_velocity_iteration_count=int(r.object_solver_velocity_iterations),
+            sleep_threshold=float(r.object_sleep_threshold),
+            stabilization_threshold=float(r.object_stabilization_threshold),
+            max_depenetration_velocity=float(r.object_max_depenetration_velocity),
+        )
+        if float(r.object_mass_kg) > 0.0:
+            mass_props = sim_utils.MassPropertiesCfg(mass=float(r.object_mass_kg))
+        else:
+            mass_props = sim_utils.MassPropertiesCfg(density=float(r.object_density))
+        collision_props = sim_utils.CollisionPropertiesCfg(
+            contact_offset=float(r.object_contact_offset),
+            rest_offset=float(r.object_rest_offset),
+            torsional_patch_radius=float(r.object_torsional_patch_radius),
+            min_torsional_patch_radius=float(r.object_min_torsional_patch_radius),
+        )
+    size = float(r.object_size_m)
+    spawn = sim_utils.CuboidCfg(
+        size=(size, size, size),
+        rigid_props=rigid_props, mass_props=mass_props, collision_props=collision_props,
+        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color),
+    )
+    return RigidObjectCfg(prim_path=prim_path, spawn=spawn)
+
+
+def _scene_objects(env, offsets: dict) -> tuple[RigidObject, RigidObject]:
+    """``(object, goal marker)`` for the active task profile."""
+    if is_repose(env.cfg):
+        r = env.cfg.repose
+        return (RigidObject(_repose_object_cfg(OBJECT_PATH, r, kinematic=False)),
+                RigidObject(_repose_object_cfg(GOALVIZ_PATH, r, kinematic=True, color=(0.9, 0.3, 0.2))))
+    return (
+        RigidObject(_object_cfg(
+            OBJECT_PATH, env.cfg.assets.object_size_m, offsets, kinematic=False,
+            density=env.cfg.assets.object_density)),
+        RigidObject(_object_cfg(
+            GOALVIZ_PATH, env.cfg.assets.object_size_m, offsets, kinematic=True,
+            color=(0.9, 0.3, 0.2))),
+    )
+
+
+def _apply_repose_props_to_population(env) -> None:
+    """The population path authors its robots itself (no spawner), so the
+    profile's hand properties are written onto every env's Robot afterwards."""
+    t0 = time.perf_counter()
+    rigid, articulation = _repose_hand_props(env.cfg.repose)
+    from isaacsim.core.utils.stage import get_current_stage
+    from pxr import Sdf
+
+    stage = get_current_stage()
+    with Sdf.ChangeBlock():
+        for env_path in env.scene.env_prim_paths:
+            robot_path = f"{env_path}/Robot"
+            sim_utils.modify_rigid_body_properties(robot_path, rigid, stage=stage)
+            sim_utils.modify_articulation_root_properties(robot_path, articulation, stage=stage)
+    print(f"[inhand_reorient] isaaclab_repose hand properties written to {len(env.scene.env_prim_paths)} "
+          f"robots ({time.perf_counter() - t0:.1f}s)", flush=True)
 
 
 def setup_scene(env) -> None:
@@ -232,13 +339,9 @@ def _setup_scene_single_hand(env) -> None:
     robot_usd, _robot_root = _convert_fixed_robot(spec, spec.urdf_path, asset_dir / "usd", offsets)
     print(f"[inhand_reorient] converted hand USD ({time.perf_counter() - t0:.1f}s)", flush=True)
 
-    env.robot = Articulation(_hand_articulation_cfg(spec, robot_usd))
-    env.object = RigidObject(_object_cfg(
-        OBJECT_PATH, env.cfg.assets.object_size_m, offsets, kinematic=False,
-        density=env.cfg.assets.object_density))
-    env.goal_viz = RigidObject(_object_cfg(
-        GOALVIZ_PATH, env.cfg.assets.object_size_m, offsets, kinematic=True,
-        color=(0.9, 0.3, 0.2)))
+    repose = env.cfg.repose if is_repose(env.cfg) else None
+    env.robot = Articulation(_hand_articulation_cfg(spec, robot_usd, repose=repose))
+    env.object, env.goal_viz = _scene_objects(env, offsets)
 
     spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
     light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
@@ -281,13 +384,10 @@ def _setup_scene_population(env) -> None:
           f"({time.perf_counter() - t0:.1f}s)", flush=True)
 
     offsets = dict(contact_offset=env.cfg.physics.contact_offset, rest_offset=env.cfg.physics.rest_offset)
+    if is_repose(env.cfg):
+        _apply_repose_props_to_population(env)
     env.robot = Articulation(_hand_articulation_cfg(spec, usd_path=None))
-    env.object = RigidObject(_object_cfg(
-        OBJECT_PATH, env.cfg.assets.object_size_m, offsets, kinematic=False,
-        density=env.cfg.assets.object_density))
-    env.goal_viz = RigidObject(_object_cfg(
-        GOALVIZ_PATH, env.cfg.assets.object_size_m, offsets, kinematic=True,
-        color=(0.9, 0.3, 0.2)))
+    env.object, env.goal_viz = _scene_objects(env, offsets)
 
     spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
     light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))

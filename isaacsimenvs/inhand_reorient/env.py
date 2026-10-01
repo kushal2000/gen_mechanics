@@ -16,7 +16,7 @@ from isaaclab.envs import DirectRLEnv
 
 from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
 
-from . import design_scoring, nan_guard
+from . import design_scoring, nan_guard, repose_hooks
 from .env_cfg import InHandReorientEnvCfg
 from .obs_utils import build_observations, compute_intermediate_values, pre_physics_step
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
@@ -25,13 +25,18 @@ from .reward_utils import (
 )
 from .reward_utils import extra_curriculum_state as _extra_curriculum_state
 from .reward_utils import restore_extra_curriculum_state as _restore_extra_curriculum_state
+from .repose_profile import apply_profile_to_cfg, is_repose
 from .scene_utils import finalize_scene, setup_scene
 
 __all__ = ["InHandReorientEnv", "InHandReorientEnvCfg"]
 
 
 class InHandReorientEnv(PoseReachEnv):
-    """Reorient a cube in a fixed, palm-up hand towards a target orientation."""
+    """Reorient a cube in a fixed, palm-up hand towards a target orientation.
+
+    ``cfg.task_profile`` selects the task spec: "isaaclab_repose" (default,
+    NVIDIA's Isaac-Repose-Cube-Allegro-Direct-v0 spec; ``repose_hooks.py``)
+    or "legacy" (this env's original spec, unchanged)."""
 
     cfg: InHandReorientEnvCfg
 
@@ -51,9 +56,13 @@ class InHandReorientEnv(PoseReachEnv):
         # Deliberately DirectRLEnv.__init__, not PoseReachEnv.__init__: the
         # latter calls pose_reaching_6d's own allocate_state_buffers/
         # finalize_scene after the super().__init__() that boots the sim.
+        self._repose = is_repose(cfg)
+        apply_profile_to_cfg(cfg)  # no-op for the legacy profile
         DirectRLEnv.__init__(self, cfg, render_mode, **kwargs)
         allocate_state_buffers(self)
         finalize_scene(self)
+        if self._repose:
+            repose_hooks.allocate_repose_buffers(self)
         design_scoring.allocate_scoring_buffers(self)
         nan_guard.allocate_guard_buffers(self)
 
@@ -65,15 +74,26 @@ class InHandReorientEnv(PoseReachEnv):
     def _reset_idx(self, env_ids) -> None:
         assert env_ids is not None and env_ids.dtype == torch.long, f"env_ids={env_ids}"
         DirectRLEnv._reset_idx(self, env_ids)
+        if self._repose:
+            repose_hooks.reset_env_state(self, env_ids)
+            return
         reset_env_state(self, env_ids)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
+        if self._repose:
+            repose_hooks.pre_physics_step(self, actions)
+            return
         pre_physics_step(self, actions)
 
     def _apply_action(self) -> None:
+        if self._repose:
+            repose_hooks.apply_action(self)
+            return
         self.robot.set_joint_position_target(self._cur_targets)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if self._repose:
+            return self._get_dones_repose()
         update_tolerance_curriculum(self)  # increments self._frame_counter
         update_goal_curriculum(self)  # reads it right after -- see its docstring
         compute_intermediate_values(self)
@@ -85,13 +105,37 @@ class InHandReorientEnv(PoseReachEnv):
         return nan_guard.add_nonfinite_termination(self, terminated), truncated
 
     def _get_rewards(self) -> torch.Tensor:
+        if self._repose:
+            return self._get_rewards_repose()
         reward = nan_guard.sanitize_reward(self, compute_rewards(self))
         design_scoring.bank_done_episodes(self, reward)  # before _reset_idx clears anything
         log_step_metrics(self)
         return reward
 
     def _get_observations(self) -> dict[str, torch.Tensor]:
+        if self._repose:
+            return nan_guard.sanitize_observations(self, repose_hooks.build_observations(self))
         return nan_guard.sanitize_observations(self, build_observations(self))
+
+    # --- isaaclab_repose profile (NVIDIA's hook order; see repose_hooks) ---
+
+    def _get_dones_repose(self) -> tuple[torch.Tensor, torch.Tensor]:
+        self._frame_counter += 1  # no tolerance/goal curriculum in this profile
+        self._prev_rot_error = self._rot_error
+        repose_hooks.refresh_geometry(self)
+        nan_guard.guard_step_state(self)
+        design_scoring.step_scoring_state(self)
+        terminated, truncated = repose_hooks.compute_terminations(self)
+        return nan_guard.add_nonfinite_termination(self, terminated), truncated
+
+    def _get_rewards_repose(self) -> torch.Tensor:
+        # Reward first, then resample the goals it reached (NVIDIA's order).
+        reward = nan_guard.sanitize_reward(self, repose_hooks.compute_rewards_and_goals(self))
+        design_scoring.bank_done_episodes(self, reward)  # before _reset_idx clears anything
+        log_step_metrics(self)
+        self.extras["consecutive_successes"] = self._repose_consecutive_successes.mean()
+        self.extras["goal_mode_code"] = repose_hooks.GOAL_MODE_CODE_ISAACLAB
+        return reward
 
     # --- generic curriculum-checkpoint hook -----------------------------
     # pose_reaching_6d.reward_utils.curriculum.get_curriculum_state/
