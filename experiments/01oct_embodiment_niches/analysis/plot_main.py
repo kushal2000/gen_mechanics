@@ -58,7 +58,7 @@ COMPOSITES = [
     ("Smooth control", "action rate (rad/s),\ntime at speed cap",
      [(lambda d: d["target_rate_rad_s_per_joint"], False, "{:.0f}"),
       (lambda d: d["joint_speed_saturated_frac"], False, "{:.0%}")]),
-    ("Calm cube", "travel (m), accel (m/s) per goal,\nwander (mm)",
+    ("Calm cube", "travel (m), Δv (m/s) per goal,\nwander (mm)",
      [(_per_goal("obj_speed_mean"), False, "{:.2f}"), (_per_goal("obj_acc_mean"), False, "{:.0f}"),
       (lambda d: 1000 * d["palm_dist_std"], False, "{:.0f}")]),
 ]
