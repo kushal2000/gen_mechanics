@@ -37,37 +37,76 @@ def _style(ax):
     ax.tick_params(length=0)
 
 
+# Niche-map columns: each is the hand's mean rank over its component metrics, re-ranked.
+# Cube motion is PER GOAL, so a slow policy does not read as a gentle one.
+def _per_goal(key):
+    return lambda d: d[key] * 60.0 / d["goals_per_min"]
+
+
+def _robust(R, h):
+    import numpy as np
+    return float(np.mean([R[f"{h}__{c}"]["goals_per_min"] / R[f"{h}__nominal"]["goals_per_min"] for c in CONDS]))
+
+
+COMPOSITES = [
+    ("Speed", "goals / min", [(lambda d: d["goals_per_min"], True)]),
+    ("Reliability", "goals per drop", [(lambda d: d["goals_per_drop"], True)]),
+    ("Energy", "joint work per goal", [(lambda d: d["work_per_goal_J"], False)]),
+    ("Motion economy", "path efficiency,\ncube spin per goal",
+     [(lambda d: d["path_efficiency"], True), (_per_goal("obj_spin_mean"), False)]),
+    ("Smooth control", "action rate,\ntime at speed cap",
+     [(lambda d: d["target_rate_rad_s_per_joint"], False), (lambda d: d["joint_speed_saturated_frac"], False)]),
+    ("Calm cube", "travel & accel per goal,\nwander",
+     [(_per_goal("obj_speed_mean"), False), (_per_goal("obj_acc_mean"), False),
+      (lambda d: d["palm_dist_std"], False)]),
+    ("Robustness", "throughput kept,\n8 perturbations", "robust"),
+    ("Joints used", "participation ratio", [(lambda d: d["participation_frac"], True)]),
+]
+
+
+def _rank(vals, higher):
+    import numpy as np
+    v = np.asarray(vals, dtype=float)
+    order = np.argsort(-v if higher else v, kind="stable")
+    r = np.empty(len(v))
+    r[order] = np.arange(1, len(v) + 1)
+    return r
+
+
 def niche_map(R, hands):
     import numpy as np
-    # time per goal ranks identically to throughput, and mean power almost identically to energy per
-    # goal, so the map keeps one of each pair (both stay in plots/details/).
-    ms = [m for m in METRICS if m not in ("time_per_goal", "power")]
-    vals = np.array([[METRICS[m][3](R[f"{h}__nominal"]) for m in ms] for h in hands])
-    ranks = np.zeros_like(vals)
-    for j, m in enumerate(ms):
-        order = np.argsort(-vals[:, j] if METRICS[m][2] else vals[:, j], kind="stable")
-        ranks[order, j] = np.arange(1, len(hands) + 1)
-    fig, ax = plt.subplots(figsize=(13, 6.2), facecolor=SURFACE)
-    # Only the winner of each metric is filled; every other cell stays surface with its rank in muted ink.
-    best = (ranks == 1).astype(float)
-    ax.imshow(best, cmap=LinearSegmentedColormap.from_list("hl", ["#f3f2ef", BEST]), vmin=0, vmax=1,
-              aspect="auto")
+    cols, ranks = [], []
+    for name, sub, comps in COMPOSITES:
+        if comps == "robust":
+            r = _rank([_robust(R, h) for h in hands], True)
+        else:
+            parts = [_rank([g(R[f"{h}__nominal"]) for h in hands], hi) for g, hi in comps]
+            r = _rank(np.mean(parts, axis=0), False)
+        cols.append((name, sub))
+        ranks.append(r)
+    ranks = np.stack(ranks, axis=1)
+    fig, ax = plt.subplots(figsize=(13, 6.4), facecolor=SURFACE)
+    ax.imshow((ranks == 1).astype(float), cmap=LinearSegmentedColormap.from_list("hl", ["#f3f2ef", BEST]),
+              vmin=0, vmax=1, aspect="auto")
     for i in range(len(hands)):
-        for j in range(len(ms)):
+        for j in range(len(cols)):
             win = ranks[i, j] == 1
             ax.text(j, i, f"{int(ranks[i, j])}", ha="center", va="center", fontsize=10 if win else 9,
                     color="#ffffff" if win else INK2, fontweight="semibold" if win else "normal")
-    ax.set_xticks(range(len(ms)), [METRICS[m][0] for m in ms], rotation=35, ha="right", fontsize=9, color=INK)
+    ax.set_xticks(range(len(cols)), [n for n, _ in cols], fontsize=10, color=INK, fontweight="semibold")
+    ax.xaxis.tick_top()
+    for j, (_, sub) in enumerate(cols):
+        ax.text(j, len(hands) - 0.35, sub, ha="center", va="top", fontsize=8, color=INK2)
     ax.set_yticks(range(len(hands)), [NAMES[h] for h in hands], fontsize=10, color=INK)
-    ax.set_xticks([x - 0.5 for x in range(1, len(ms))], minor=True)
+    ax.set_xticks([x - 0.5 for x in range(1, len(cols))], minor=True)
     ax.set_yticks([y - 0.5 for y in range(1, len(hands))], minor=True)
     ax.grid(which="minor", color=SURFACE, linewidth=2)
     _style(ax)
-    ax.set_title("Niche map: who is best at what", loc="left", fontsize=13,
-                 color=INK, fontweight="semibold", pad=26)
-    ax.text(0, 1.015, "rank of each hand on each metric (1 = best); the best hand per metric is filled · "
-            "nominal conditions, 1024 envs × 60 s, greedy policy",
-            transform=ax.transAxes, fontsize=9, color=INK2)
+    ax.set_title("Niche map: who is best at what", loc="left", fontsize=13, color=INK,
+                 fontweight="semibold", pad=40)
+    ax.text(0, 1.075, "rank of each hand (1 = best, filled); a column with several metrics ranks the "
+            "mean of their ranks · nominal conditions except robustness", transform=ax.transAxes,
+            fontsize=9, color=INK2)
     fig.tight_layout()
     fig.savefig(OUT / "niche_map.png", dpi=160, facecolor=SURFACE)
     plt.close(fig)
