@@ -46,19 +46,25 @@ def niche_map(R, hands):
         order = np.argsort(-vals[:, j] if METRICS[m][2] else vals[:, j], kind="stable")
         ranks[order, j] = np.arange(1, len(hands) + 1)
     fig, ax = plt.subplots(figsize=(13, 6.2), facecolor=SURFACE)
-    ax.imshow(len(hands) + 1 - ranks, cmap=RAMP, vmin=1, vmax=len(hands), aspect="auto")
+    # Only the winner of each metric is filled; every other cell stays surface with its rank in muted ink.
+    best = (ranks == 1).astype(float)
+    ax.imshow(best, cmap=LinearSegmentedColormap.from_list("hl", ["#f3f2ef", BEST]), vmin=0, vmax=1,
+              aspect="auto")
     for i in range(len(hands)):
         for j in range(len(ms)):
-            _cell_text(ax, j, i, f"{int(ranks[i, j])}", ranks[i, j] <= 3)
+            win = ranks[i, j] == 1
+            ax.text(j, i, f"{int(ranks[i, j])}", ha="center", va="center", fontsize=10 if win else 9,
+                    color="#ffffff" if win else INK2, fontweight="semibold" if win else "normal")
     ax.set_xticks(range(len(ms)), [METRICS[m][0] for m in ms], rotation=35, ha="right", fontsize=9, color=INK)
     ax.set_yticks(range(len(hands)), [NAMES[h] for h in hands], fontsize=10, color=INK)
     ax.set_xticks([x - 0.5 for x in range(1, len(ms))], minor=True)
     ax.set_yticks([y - 0.5 for y in range(1, len(hands))], minor=True)
     ax.grid(which="minor", color=SURFACE, linewidth=2)
     _style(ax)
-    ax.set_title("Niche map: each hand's rank on each metric (1 = best)", loc="left", fontsize=13,
+    ax.set_title("Niche map: who is best at what", loc="left", fontsize=13,
                  color=INK, fontweight="semibold", pad=26)
-    ax.text(0, 1.015, "nominal conditions, 1024 envs × 60 s, greedy policy · darker = better",
+    ax.text(0, 1.015, "rank of each hand on each metric (1 = best); the best hand per metric is filled · "
+            "nominal conditions, 1024 envs × 60 s, greedy policy",
             transform=ax.transAxes, fontsize=9, color=INK2)
     fig.tight_layout()
     fig.savefig(OUT / "niche_map.png", dpi=160, facecolor=SURFACE)
