@@ -41,4 +41,8 @@ Full tables: `analysis/aggregate.py` -> `debug_outputs/embodiment_niches/summary
 - Confounds: torque limits differ ~50x across vendors (wuji2 0.2-0.3 N.m, allegro 10) and speed
   caps differ; energy winners are also the weakest hands. Policies were trained for goals only.
 
-Bar charts (one per metric, one bar per hand; darker = best): `plots/`, made by `analysis/plot_bars.py`.
+Bar charts (one per metric, one bar per hand; darker = best): `plots/details/`, made by `analysis/plot_bars.py`.
+
+Main figures: `plots/niche_map.png` (rank of every hand on every metric), `plots/speed_vs_energy.png`
+(Pareto front), `plots/robustness.png` (throughput kept per perturbation) -- `analysis/plot_main.py`.
+Per-metric bar charts: `plots/details/`.
