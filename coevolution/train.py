@@ -209,16 +209,29 @@ def main() -> None:
 
             from coevolution.pose_viewer import PoseViewerWrapper
 
-            env = PoseViewerWrapper(
-                env,
-                output_dir=Path(hydra_run_dir) / "interactive_viewer",
-                capture_len=args_cli.capture_viewer_len,
-                capture_interval=args_cli.capture_viewer_interval,
-                env_id=args_cli.capture_viewer_env_id,
-                wandb_key=args_cli.capture_viewer_wandb_key,
-                github_raw_base=args_cli.capture_viewer_github_raw_base,
-                url_check=args_cli.capture_viewer_url_check,
-            )
+            # One viewer per hand in a multi-hand scene (the first env holding each hand), each its
+            # own wandb key "<key>/<hand>" -- one panel per hand under one section. Otherwise one.
+            record = getattr(env.unwrapped, "scene_record", None)
+            hs = getattr(record, "hand_set", None)
+            if hs is not None:
+                hand_idx = record.robot_design_index.tolist()
+                viewers = [(hand_idx.index(h), f"{args_cli.capture_viewer_wandb_key}/{s.hand_name}",
+                            Path(hydra_run_dir) / "interactive_viewer" / s.hand_name)
+                           for h, s in enumerate(hs.specs)]
+            else:
+                viewers = [(args_cli.capture_viewer_env_id, args_cli.capture_viewer_wandb_key,
+                            Path(hydra_run_dir) / "interactive_viewer")]
+            for env_id, key, out_dir in viewers:
+                env = PoseViewerWrapper(
+                    env,
+                    output_dir=out_dir,
+                    capture_len=args_cli.capture_viewer_len,
+                    capture_interval=args_cli.capture_viewer_interval,
+                    env_id=env_id,
+                    wandb_key=key,
+                    github_raw_base=args_cli.capture_viewer_github_raw_base,
+                    url_check=args_cli.capture_viewer_url_check,
+                )
 
         # Clip bounds live in the rl_games YAML (params.env.*). Default to
         # +inf if absent so a task without clip YAML just runs unbounded —
