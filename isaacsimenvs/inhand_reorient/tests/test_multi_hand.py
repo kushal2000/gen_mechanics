@@ -52,7 +52,7 @@ def test_template_pads_to_the_largest_hand(mh):
 def test_per_env_tables_follow_each_hand(mh):
     hs = mh.hand_set("multi:allegro_left_uniform_handonly+dex3_left_uniform_handonly")
     idx = hs.hand_of_env(10)
-    assert idx.tolist() == [0] * 5 + [1] * 5                 # contiguous, near-equal blocks
+    assert idx.tolist() == [0, 1] * 5                         # round-robin across envs
     t = hs.per_env(idx)
     allegro, dex3 = hs.specs
     assert t["joint_valid"][0].sum() == allegro.num_hand_joints == 16
@@ -60,6 +60,10 @@ def test_per_env_tables_follow_each_hand(mh):
     assert t["fingertip_valid"][0].sum() == 4 and t["fingertip_valid"][9].sum() == 3
     np.testing.assert_allclose(t["joint_link_bbox_local"][9, :7], np.asarray(dex3.joint_link_boxes, np.float32))
     assert not t["joint_link_bbox_local"][9, 7:].any()          # ghost slots carry nothing
+    # every 2048-env SAPG block holds every hand
+    full = mh.hand_set("multi:uniform").hand_of_env(12288)
+    for b in range(6):
+        assert len(np.unique(full[b * 2048:(b + 1) * 2048])) == 8
     np.testing.assert_allclose(t["palm_keypoints"][0], np.asarray(allegro.palm_keypoints, np.float32))
     np.testing.assert_allclose(t["fingertip_offsets"][9, :3], np.asarray(dex3.fingertip_offsets, np.float32))
 

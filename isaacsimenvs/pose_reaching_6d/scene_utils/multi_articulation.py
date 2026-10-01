@@ -1,4 +1,4 @@
-"""One articulation's interface over several hands' articulations, each on its own contiguous env block.
+"""One articulation's interface over several hands' articulations, each over its own set of envs.
 
 ``env.robot`` is this object in a multi-hand scene (robots/multi_hand.py). It exposes what the env reads
 -- ``data.joint_pos`` / ``joint_vel`` / ``joint_pos_limits`` / ``body_state_w`` / ..., ``find_joints``,
@@ -115,11 +115,14 @@ class MultiHandArticulation:
         self.num_envs = int(hand_of_env.numel())
         self.hand_of_env = hand_of_env.to(device)
         self.n_joints, self.n_tips = hand_set.n_joints, hand_set.n_tips
+        # Each hand's envs, ascending -- the order its articulation view lists them (checked in resolve).
         self.blocks = [(self.hand_of_env == h).nonzero(as_tuple=True)[0] for h in range(len(self.arts))]
-        for h, b in enumerate(self.blocks):
-            if b.numel() == 0 or not torch.equal(b, torch.arange(int(b[0]), int(b[0]) + b.numel(), device=device)):
-                raise RuntimeError(f"hand {h}: envs are not one contiguous block")
-        self.block_start = [int(b[0]) for b in self.blocks]
+        if any(b.numel() == 0 for b in self.blocks):
+            raise RuntimeError("a hand has no envs")
+        # global env id -> row in its hand's articulation
+        self.local_of_env = torch.empty(self.num_envs, dtype=torch.long, device=device)
+        for b in self.blocks:
+            self.local_of_env[b] = torch.arange(b.numel(), device=device)
         self.joint_names = template_joints = list(hand_set.template.hand_joint_names)
         self.body_names = [PALM] + [slot_tip(i) for i in range(self.n_tips)] + \
                           [slot_link(k) for k in range(self.n_joints)]
@@ -147,9 +150,15 @@ class MultiHandArticulation:
                   list(links) + [palm] * (self.n_joints - len(links))
             self.joint_ids.append(list(jid))
             self.body_ids.append(ids)
-            if art.num_instances != self.blocks[len(self.joint_ids) - 1].numel():
+            block = self.blocks[len(self.joint_ids) - 1]
+            if art.num_instances != block.numel():
                 raise RuntimeError(f"{spec.name}: articulation covers {art.num_instances} envs, "
-                                   f"its block is {self.blocks[len(self.joint_ids) - 1].numel()}")
+                                   f"its block is {block.numel()}")
+            # Row r of the view must be the r-th env of the block, or every gather lands on another env.
+            env_of_row = [int(re.search(r"/env_(\d+)/", p).group(1)) for p in art.root_physx_view.prim_paths]
+            if env_of_row != block.tolist():
+                raise RuntimeError(f"{spec.name}: view rows are envs {env_of_row[:8]}..., "
+                                   f"expected {block.tolist()[:8]}...")
         self._resolved = True
 
     # -- name lookups, in slot space -------------------------------------------------------
@@ -188,7 +197,7 @@ class MultiHandArticulation:
         for h in range(len(self.arts)):
             sel = env_ids[hands == h]
             if sel.numel():
-                yield h, sel, sel - self.block_start[h]
+                yield h, sel, self.local_of_env[sel]
 
     def write_joint_state_to_sim(self, position, velocity, joint_ids=None, env_ids=None) -> None:
         """``position`` / ``velocity`` are (len(env_ids), J) in slot layout, rows in env_ids order."""

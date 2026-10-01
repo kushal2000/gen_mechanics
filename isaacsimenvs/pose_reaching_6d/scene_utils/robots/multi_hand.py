@@ -18,7 +18,9 @@ the sim much slower). The padding lives only in torch: the policy sees ``J = max
                          already reads a population through
 
 The slot a joint lands in carries no meaning across hands: the joint transformer has no positional
-embedding, so tokens are a set. Envs are dealt to hands in contiguous, near-equal blocks.
+embedding, so tokens are a set. Envs are dealt to hands ROUND-ROBIN (env i -> hand i mod H): SAPG gives
+each contiguous block of envs its own exploration coefficient, and contiguous hand blocks would tie a hand's
+identity to how much it explores.
 """
 
 from __future__ import annotations
@@ -87,12 +89,10 @@ class HandSet:
         return tuple(s.name for s in self.specs)
 
     def hand_of_env(self, num_envs: int) -> np.ndarray:
-        """(N,) hand index per env: contiguous, near-equal blocks in spec order."""
-        base, rem = divmod(num_envs, self.n_hands)
-        sizes = [base + (1 if h < rem else 0) for h in range(self.n_hands)]
-        if min(sizes) < 1:
+        """(N,) hand index per env, round-robin: every SAPG block holds every hand equally."""
+        if num_envs < self.n_hands:
             raise ValueError(f"{num_envs} envs cannot hold {self.n_hands} hands")
-        return np.repeat(np.arange(self.n_hands), sizes)
+        return np.arange(num_envs) % self.n_hands
 
     def per_env(self, hand_idx: np.ndarray) -> dict:
         """The population-style per-env tables (allocate_state_buffers) plus the pad offsets."""

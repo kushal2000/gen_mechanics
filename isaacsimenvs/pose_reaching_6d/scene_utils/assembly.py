@@ -398,13 +398,13 @@ def _author_robots_into_envs(env, spec, population, design_idx, asset_dir: Path,
 
 
 def _block_regex(env_ids) -> str:
-    """``/World/envs/env_(i|j|...)/Robot`` over one hand's env block (as UHAS does)."""
+    """``/World/envs/env_(i|j|...)/Robot`` over one hand's envs (as UHAS does)."""
     ids = [str(int(i)) for i in env_ids]
     return f"/World/envs/env_({'|'.join(ids)})/Robot" if len(ids) > 1 else f"/World/envs/env_{ids[0]}/Robot"
 
 
 def _author_multi_hands(env, hs, hand_idx, asset_dir: Path, offsets: dict, t0: float) -> None:
-    """Every hand converted ONCE, then referenced into its own block of envs at its own base pose."""
+    """Every hand converted ONCE, then referenced into its own envs at its own base pose."""
     converted = []
     for h, spec in enumerate(hs.specs):
         work = asset_dir / "usd" / f"hand{h}_{spec.hand_name}"
@@ -421,7 +421,7 @@ def _author_multi_hands(env, hs, hand_idx, asset_dir: Path, offsets: dict, t0: f
             prim.referenceList.explicitItems.append(Sdf.Reference(usd, Sdf.Path(root_path)))
             set_xform(layer.GetPrimAtPath(root), tuple(map(float, spec.base_pos)), tuple(map(float, spec.base_rot)))
     counts = {s.hand_name: int((hand_idx == h).sum()) for h, s in enumerate(hs.specs)}
-    _log_scene_step(t0, f"authored {env.num_envs} robots, one hand per env block: {counts}")
+    _log_scene_step(t0, f"authored {env.num_envs} robots, hands dealt round-robin: {counts}")
 
 
 # --- entry points ---------------------------------------------------------------
