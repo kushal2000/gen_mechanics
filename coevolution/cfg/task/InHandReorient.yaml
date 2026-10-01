@@ -1,5 +1,19 @@
 # -----------------------------------------------------------------------------
-# DirectRLEnvCfg top-level required fields
+# Task profile
+#   isaaclab_repose (default): NVIDIA's Isaac-Repose-Cube-Allegro-Direct-v0 spec
+#     (Isaac Lab 2.3.2), section 9 below. At env construction it overwrites
+#     decimation, sim.dt, sim.render_interval, episode_length_s, the default
+#     physics material and obs.obs_list/state_list with its own values, and
+#     ignores the action/reward/reset/termination sections. Override its
+#     numbers under env.repose.*.
+#   legacy: this env's original spec -- every section except 9, unchanged.
+#     Select with env.task_profile=legacy to reproduce or resume earlier runs
+#     (the evolution driver passes it by default; see evolution/README.md).
+# -----------------------------------------------------------------------------
+task_profile: isaaclab_repose
+
+# -----------------------------------------------------------------------------
+# DirectRLEnvCfg top-level required fields (legacy profile values)
 # -----------------------------------------------------------------------------
 decimation: 2
 episode_length_s: 10.0
@@ -125,3 +139,55 @@ termination:
   tolerance_curriculum_increment: 0.9
   tolerance_curriculum_interval: 3000
   tolerance_curriculum_success_threshold: 3.0
+
+# -----------------------------------------------------------------------------
+# 9) repose -- the isaaclab_repose profile: Isaac Lab 2.3.2
+#    isaaclab_tasks/direct/allegro_hand/allegro_hand_env_cfg.py
+#    (AllegroHandEnvCfg), isaaclab_assets/robots/allegro.py (ALLEGRO_HAND_CFG)
+#    and the DexCube USD. tests/test_repose_profile.py checks these against
+#    NVIDIA's installed config.
+# -----------------------------------------------------------------------------
+repose:
+  decimation: 4                     # 1/120 s physics, 30 Hz policy
+  episode_length_s: 10.0
+  sim_dt: 0.008333333333333333      # 1/120 to full precision (300 steps per 10 s episode)
+  static_friction: 1.0              # sim.physics_material (hand and cube)
+  dynamic_friction: 1.0
+  restitution: 0.0
+  bounce_threshold_velocity: 0.2
+  object_size_m: 0.072              # DexCube: 0.06 m collision cube, scale 1.2
+  object_density: 400.0
+  object_mass_kg: 0.0               # > 0 overrides density
+  object_contact_offset: 0.001      # DexCube collider
+  object_rest_offset: 0.0
+  object_torsional_patch_radius: 0.1
+  object_min_torsional_patch_radius: 0.008
+  object_solver_position_iterations: 8
+  object_solver_velocity_iterations: 0
+  object_sleep_threshold: 0.005
+  object_stabilization_threshold: 0.0025
+  object_max_depenetration_velocity: 1000.0
+  object_enable_gyroscopic_forces: true
+  hand_disable_gravity: true        # ALLEGRO_HAND_CFG rigid/articulation props
+  hand_angular_damping: 0.01
+  hand_max_depenetration_velocity: 1000.0
+  hand_solver_position_iterations: 8
+  hand_solver_velocity_iterations: 0
+  hand_sleep_threshold: 0.005
+  hand_stabilization_threshold: 0.0005
+  reset_position_noise: 0.01
+  reset_dof_pos_noise: 0.2
+  reset_dof_vel_noise: 0.0
+  in_hand_pos_offset: [0.0, 0.0, -0.04]   # position target = spawn point + this (world axes)
+  dist_reward_scale: -10.0
+  rot_reward_scale: 1.0
+  rot_eps: 0.1
+  action_penalty_scale: -0.0002
+  reach_goal_bonus: 250.0
+  fall_penalty: 0.0
+  fall_dist: 0.24
+  success_tolerance: 0.2            # fixed; no tolerance curriculum
+  max_consecutive_success: 0
+  av_factor: 0.1
+  vel_obs_scale: 0.2
+  act_moving_average: 1.0

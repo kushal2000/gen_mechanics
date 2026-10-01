@@ -30,6 +30,12 @@ gym.register(
         # Population training (grammar hands via env.assets.hand_population):
         # no implicit SAPG entropy bonus and a bounded policy log-std (I41).
         "rl_games_sapg_pop_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReorientPopSAPG.yaml"),
+        # task_profile=isaaclab_repose (the default): NVIDIA's own agent for
+        # Isaac-Repose-Cube-Allegro-Direct-v0 (plain PPO, MLP), and the same
+        # with the I41 log-std bound for population training.
+        "rl_games_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPPO.yaml"),
+        "rl_games_repose_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPPO.yaml"),
+        "rl_games_repose_pop_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPopPPO.yaml"),
     },
 )
 

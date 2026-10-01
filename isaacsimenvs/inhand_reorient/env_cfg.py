@@ -136,6 +136,81 @@ class ResetCfg:
     one stage; mirrors tolerance_curriculum_success_threshold."""
 
 
+@configclass
+class ReposeCfg:
+    """The ``isaaclab_repose`` task profile's numbers: Isaac Lab 2.3.2's
+    ``Isaac-Repose-Cube-Allegro-Direct-v0`` (``AllegroHandEnvCfg``, the
+    ``ALLEGRO_HAND_CFG`` asset and the DexCube USD), field names as theirs
+    where they have one. Read only when ``task_profile ==
+    "isaaclab_repose"``; ``repose_profile.apply_profile_to_cfg`` copies the
+    env-level ones (decimation, dt, episode length, physics material) onto
+    the cfg before the sim is built, so override them here
+    (``env.repose.decimation=...``), not at the top level."""
+
+    # --- env / sim (AllegroHandEnvCfg) ---
+    decimation: int = 4
+    episode_length_s: float = 10.0
+    sim_dt: float = 1.0 / 120.0
+    static_friction: float = 1.0
+    """sim.physics_material: the default material of every body with no
+    material of its own (the DexCube's binding points at a prim that does
+    not exist, so the cube uses it too)."""
+    dynamic_friction: float = 1.0
+    restitution: float = 0.0
+    bounce_threshold_velocity: float = 0.2
+
+    # --- object: DexCube (a 0.06 m collision cube) spawned at scale 1.2 ---
+    object_size_m: float = 0.072
+    object_density: float = 400.0
+    object_mass_kg: float = 0.0
+    """> 0 sets the cube's mass directly (overrides density), for matching a
+    measured reference mass."""
+    object_contact_offset: float = 0.001
+    object_rest_offset: float = 0.0
+    object_torsional_patch_radius: float = 0.1
+    object_min_torsional_patch_radius: float = 0.008
+    object_solver_position_iterations: int = 8
+    object_solver_velocity_iterations: int = 0
+    object_sleep_threshold: float = 0.005
+    object_stabilization_threshold: float = 0.0025
+    object_max_depenetration_velocity: float = 1000.0
+    object_enable_gyroscopic_forces: bool = True
+
+    # --- hand rigid-body / articulation props (ALLEGRO_HAND_CFG) ---
+    hand_disable_gravity: bool = True
+    hand_angular_damping: float = 0.01
+    hand_max_depenetration_velocity: float = 1000.0
+    hand_solver_position_iterations: int = 8
+    hand_solver_velocity_iterations: int = 0
+    hand_sleep_threshold: float = 0.005
+    hand_stabilization_threshold: float = 0.0005
+
+    # --- reset ---
+    reset_position_noise: float = 0.01
+    reset_dof_pos_noise: float = 0.2
+    reset_dof_vel_noise: float = 0.0
+    in_hand_pos_offset: tuple[float, float, float] = (0.0, 0.0, -0.04)
+    """Position target = the (noise-free) spawn point plus this, in WORLD
+    axes (NVIDIA: ``in_hand_pos = default object pos; in_hand_pos[:, 2] -=
+    0.04``)."""
+
+    # --- reward ---
+    dist_reward_scale: float = -10.0
+    rot_reward_scale: float = 1.0
+    rot_eps: float = 0.1
+    action_penalty_scale: float = -0.0002
+    reach_goal_bonus: float = 250.0
+    fall_penalty: float = 0.0
+    fall_dist: float = 0.24
+    success_tolerance: float = 0.2
+    max_consecutive_success: int = 0
+    av_factor: float = 0.1
+
+    # --- observation / control ---
+    vel_obs_scale: float = 0.2
+    act_moving_average: float = 1.0
+
+
 def _default_sim_cfg() -> SimulationCfg:
     return SimulationCfg(
         dt=1.0 / 120.0,
@@ -158,6 +233,12 @@ def _default_sim_cfg() -> SimulationCfg:
 
 @configclass
 class InHandReorientEnvCfg(DirectRLEnvCfg):
+    task_profile: str = "isaaclab_repose"
+    """"isaaclab_repose" (default): NVIDIA's in-hand cube reorientation spec
+    (``repose`` below, ``repose_profile.py``). "legacy": this env's original
+    spec (SAPG-era reward, tolerance and goal curricula, palm-normal-axis
+    goals), every field outside ``repose`` exactly as before; select it with
+    ``env.task_profile=legacy`` to reproduce or resume earlier runs."""
     decimation: int = 2
     episode_length_s: float = 10.0
     action_space: int = 0        # 0 = derive from the hand spec in setup_scene
@@ -179,9 +260,10 @@ class InHandReorientEnvCfg(DirectRLEnvCfg):
     physics: PhysicsCfg = PhysicsCfg()
     reset: ResetCfg = ResetCfg()
     termination: TerminationCfg = TerminationCfg()
+    repose: ReposeCfg = ReposeCfg()
 
 
 __all__ = [
     "InHandReorientEnvCfg", "AssetsCfg", "ObsCfg", "ActionCfg", "RewardCfg",
-    "PhysicsCfg", "ResetCfg", "TerminationCfg",
+    "PhysicsCfg", "ResetCfg", "ReposeCfg", "TerminationCfg",
 ]
