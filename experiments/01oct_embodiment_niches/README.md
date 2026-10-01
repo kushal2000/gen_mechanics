@@ -23,3 +23,20 @@ otherwise), which confounds speed and effort comparisons.
 
 Smoke (allegro, 64 envs x 5 s): ~110 goals/min, a joint at the 10 rad/s cap 98% of the time,
 cube rotates ~3.7x the required angle -- the policy is near bang-bang.
+
+## Results (81/81 runs, 1 Oct)
+
+Full tables: `aggregate.py` -> `debug_outputs/embodiment_niches/summary.json`.
+
+- **Throughput: Allegro wins every condition in absolute goals/min** (113 nominal; best under
+  every size, mass, friction and push condition). No robustness niche in absolute terms.
+- **Secondary axes do split.** Pareto front goals/min vs work/goal: sharpa, allegro, leap,
+  dex3, wuji2 (5 of 9). Work/goal 1.5 J wuji2 .. 14.9 J shadow (10x); path efficiency best
+  dex3 (0.31); gentlest cube gen-SHARPA / xhand / wuji2; most joints used leap (PR/J 0.80),
+  fewest shadow (0.27). Speed vs reliability: allegro and leap dominate everyone.
+- **Cube size is a cliff for all**: 40 mm keeps 74-99% (dex3 99%), 55 mm 28-50%, 65 mm ~0-5%,
+  failing by timeouts (held, not turned), not drops. Trained on 45 mm only.
+- Hard pushes (~5 g) separate reliability: drops/min gen-SHARPA 17, wuji2 10, dex3 8.4 vs
+  leap 0.8, allegro 1.6.
+- Confounds: torque limits differ ~50x across vendors (wuji2 0.2-0.3 N.m, allegro 10) and speed
+  caps differ; energy winners are also the weakest hands. Policies were trained for goals only.
