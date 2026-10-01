@@ -134,6 +134,13 @@ def compute_rewards_and_goals(env) -> torch.Tensor:
         reach_goal_bonus=r.reach_goal_bonus, fall_dist=r.fall_dist, fall_penalty=r.fall_penalty,
         av_factor=r.av_factor,
     )
+    nonfinite = getattr(env, "_nonfinite_mask", None)
+    if nonfinite is not None and bool(nonfinite.any()):
+        # nan_guard gave these envs identity object/goal quaternions, which
+        # read as a reached goal; their reward is replaced by
+        # nan_guard.sanitize_reward, and they must not count a success.
+        goal_hit = goal_hit & ~nonfinite
+        successes = env._successes.float() + goal_hit.float()
     env._successes = successes.round().long()
     env._repose_consecutive_successes = cons
     env._repose_goal_hit = goal_hit
