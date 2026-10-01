@@ -267,6 +267,33 @@ def _apply_canonical(root, cmap: dict) -> None:
         lim.set("upper", f"{hi:.9g}")
 
 
+def palm_near_links(urdf: Path, depth: int = 2) -> tuple[str, list[str]]:
+    """The palm body and every link within ``depth`` moving joints of it (fixed children included).
+
+    The palm collider is ONE convex hull, so it fills the recesses the knuckle links sit in: Wuji v2's
+    thumb proximal_abd overlapped it in 60% of poses across the joint range (middle finger 15%), blocking
+    the thumb. These pairs are filtered, as the hand-written Allegro spec does; links further out (a
+    curling thumb's middle and tip, the fingertips) still collide with the palm.
+    """
+    root = ET.parse(urdf).getroot()
+    joints = root.findall("joint")
+    children = {}
+    for j in joints:
+        children.setdefault(j.find("parent").get("link"), []).append(j)
+    child_links = {j.find("child").get("link") for j in joints}
+    palm = next(l.get("name") for l in root.findall("link") if l.get("name") not in child_links)
+    near, stack = [], [(palm, 0)]
+    while stack:
+        link, d = stack.pop()
+        for j in children.get(link, []):
+            c = j.find("child").get("link")
+            dc = d + (0 if j.get("type") == "fixed" else 1)
+            if dc <= depth:
+                near.append(c)
+                stack.append((c, dc))
+    return palm, near
+
+
 def make(hand: str, rel: str) -> dict:
     src = SRC / rel
     out_dir = HERE / hand
@@ -325,6 +352,15 @@ def make(hand: str, rel: str) -> dict:
     if spec_src.is_file():
         spec = json.loads(spec_src.read_text())
         spec["hand_default_joint_pos"] = {n: 0.0 for n in spec["hand_default_joint_pos"]}   # home is 0 now
+        palm, near = palm_near_links(dst)
+        adj = {k: list(v) for k, v in spec["adjacent_links"].items()}
+        for link in near:
+            if link not in adj.setdefault(palm, []):
+                adj[palm].append(link)
+            if palm not in adj.setdefault(link, []):
+                adj[link].append(palm)
+        spec["adjacent_links"] = adj
+        spec["palm_filter_depth"] = 2
         if "joint_limits" in spec:
             spec["joint_limits"] = {n: sorted([cmap[n]["sign"] * v - cmap[n]["offset"] for v in lim])
                                     if n in cmap else lim for n, lim in spec["joint_limits"].items()}

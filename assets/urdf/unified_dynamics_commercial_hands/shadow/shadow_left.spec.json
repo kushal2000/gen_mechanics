@@ -227,14 +227,16 @@
   ],
   "ffproximal": [
    "ffknuckle",
-   "ffmiddle"
+   "ffmiddle",
+   "palm"
   ],
   "lfdistal": [
    "lfmiddle"
   ],
   "lfknuckle": [
    "lfmetacarpal",
-   "lfproximal"
+   "lfproximal",
+   "palm"
   ],
   "lfmetacarpal": [
    "lfknuckle",
@@ -261,14 +263,22 @@
   ],
   "mfproximal": [
    "mfknuckle",
-   "mfmiddle"
+   "mfmiddle",
+   "palm"
   ],
   "palm": [
    "ffknuckle",
    "lfmetacarpal",
    "mfknuckle",
    "rfknuckle",
-   "thbase"
+   "thbase",
+   "ee_link",
+   "imu",
+   "thproximal",
+   "lfknuckle",
+   "rfproximal",
+   "mfproximal",
+   "ffproximal"
   ],
   "rfdistal": [
    "rfmiddle"
@@ -283,7 +293,8 @@
   ],
   "rfproximal": [
    "rfknuckle",
-   "rfmiddle"
+   "rfmiddle",
+   "palm"
   ],
   "thbase": [
    "palm",
@@ -302,7 +313,14 @@
   ],
   "thproximal": [
    "thbase",
-   "thhub"
+   "thhub",
+   "palm"
+  ],
+  "ee_link": [
+   "palm"
+  ],
+  "imu": [
+   "palm"
   ]
  },
  "overlap_at_home_mm": {},
@@ -336,6 +354,7 @@
  "stiffness": 3.0,
  "damping": 0.0775033248319064,
  "armature": 0.00058,
+ "palm_filter_depth": 2,
  "effort_limit": 0.5,
  "velocity_limit": 10.0,
  "link_density_kg_m3": 1750.0,

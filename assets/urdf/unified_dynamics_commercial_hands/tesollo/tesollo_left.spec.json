@@ -224,7 +224,8 @@
   ],
   "ll_dg_2_2": [
    "ll_dg_2_1",
-   "ll_dg_2_3"
+   "ll_dg_2_3",
+   "ll_dg_palm"
   ],
   "ll_dg_2_3": [
    "ll_dg_2_2",
@@ -239,7 +240,8 @@
   ],
   "ll_dg_3_2": [
    "ll_dg_3_1",
-   "ll_dg_3_3"
+   "ll_dg_3_3",
+   "ll_dg_palm"
   ],
   "ll_dg_3_3": [
    "ll_dg_3_2",
@@ -254,7 +256,8 @@
   ],
   "ll_dg_4_2": [
    "ll_dg_4_1",
-   "ll_dg_4_3"
+   "ll_dg_4_3",
+   "ll_dg_palm"
   ],
   "ll_dg_4_3": [
    "ll_dg_4_2",
@@ -269,7 +272,8 @@
   ],
   "ll_dg_5_2": [
    "ll_dg_5_1",
-   "ll_dg_5_3"
+   "ll_dg_5_3",
+   "ll_dg_palm"
   ],
   "ll_dg_5_3": [
    "ll_dg_5_2",
@@ -284,7 +288,11 @@
    "ll_dg_2_1",
    "ll_dg_3_1",
    "ll_dg_4_1",
-   "ll_dg_5_1"
+   "ll_dg_5_1",
+   "ll_dg_5_2",
+   "ll_dg_4_2",
+   "ll_dg_3_2",
+   "ll_dg_2_2"
   ]
  },
  "overlap_at_home_mm": {
@@ -320,6 +328,7 @@
  "stiffness": 3.0,
  "damping": 0.0775033248319064,
  "armature": 0.00058,
+ "palm_filter_depth": 2,
  "effort_limit": 0.5,
  "velocity_limit": 10.0,
  "link_density_kg_m3": 1750.0,

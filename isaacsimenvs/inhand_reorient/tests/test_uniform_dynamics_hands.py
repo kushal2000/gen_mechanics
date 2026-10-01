@@ -94,4 +94,6 @@ def test_canonical_home_is_zero_and_same_tokens_otherwise(mods):
         assert set(b.hand_default_joint_pos.values()) == {0.0}, b.name
         assert a.hand_joint_names == b.hand_joint_names and a.fingertip_body_names == b.fingertip_body_names
         assert np.allclose(a.base_pos, b.base_pos) and np.allclose(a.base_rot, b.base_rot), a.name
-        assert a.adjacent_links == b.adjacent_links, a.name
+        # Uniform specs add the palm vs links-within-two-joints filter on top of the vendor spec's pairs.
+        for k, v in a.adjacent_links.items():
+            assert set(v) <= set(b.adjacent_links.get(k, [])), (a.name, k)

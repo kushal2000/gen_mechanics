@@ -176,7 +176,13 @@
    "link_0_0",
    "link_12_0",
    "link_4_0",
-   "link_8_0"
+   "link_8_0",
+   "palm",
+   "link_13_0",
+   "link_9_0",
+   "link_5_0",
+   "link_1_0",
+   "wrist"
   ],
   "link_0_0": [
    "base_link",
@@ -195,7 +201,8 @@
   ],
   "link_13_0": [
    "link_12_0",
-   "link_14_0"
+   "link_14_0",
+   "base_link"
   ],
   "link_14_0": [
    "link_13_0",
@@ -206,7 +213,8 @@
   ],
   "link_1_0": [
    "link_0_0",
-   "link_2_0"
+   "link_2_0",
+   "base_link"
   ],
   "link_2_0": [
    "link_1_0",
@@ -221,7 +229,8 @@
   ],
   "link_5_0": [
    "link_4_0",
-   "link_6_0"
+   "link_6_0",
+   "base_link"
   ],
   "link_6_0": [
    "link_5_0",
@@ -236,7 +245,14 @@
   ],
   "link_9_0": [
    "link_10_0",
-   "link_8_0"
+   "link_8_0",
+   "base_link"
+  ],
+  "palm": [
+   "base_link"
+  ],
+  "wrist": [
+   "base_link"
   ]
  },
  "overlap_at_home_mm": {},
@@ -265,6 +281,7 @@
  "stiffness": 3.0,
  "damping": 0.0775033248319064,
  "armature": 0.00058,
+ "palm_filter_depth": 2,
  "effort_limit": 0.5,
  "velocity_limit": 10.0,
  "link_density_kg_m3": 1750.0,

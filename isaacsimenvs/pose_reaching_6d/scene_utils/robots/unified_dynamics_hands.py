@@ -24,6 +24,18 @@ def _sharpa_uniform():
     urdf = str((UNIFORM_DIR / "sharpa/sharpa_left.urdf").relative_to(REPO))
     joints = SHARPA_HANDONLY.hand_joint_names
     bodies, boxes, valid, scale = joint_link_boxes(str(REPO / urdf), joints)
+    # Same palm rule as make_uniform.py's spec JSONs: palm vs every link within two joints is filtered.
+    import importlib.util
+    sp = importlib.util.spec_from_file_location("make_uniform", UNIFORM_DIR / "make_uniform.py")
+    mu = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(mu)
+    palm, near = mu.palm_near_links(REPO / urdf)
+    adj = {k: list(v) for k, v in SHARPA_HANDONLY.adjacent_links.items()}
+    for link in near:
+        if link not in adj.setdefault(palm, []):
+            adj[palm].append(link)
+        if palm not in adj.setdefault(link, []):
+            adj[link].append(palm)
     return dataclasses.replace(
         SHARPA_HANDONLY, name="sharpa_left_uniform_handonly", urdf_path=urdf,
         hand_stiffness={n: float(s["stiffness"]) for n in joints},
@@ -32,6 +44,7 @@ def _sharpa_uniform():
         joint_link_bodies=tuple(bodies), joint_link_boxes=boxes, joint_geometry_valid=valid,
         hand_scale=float(scale),
         hand_default_joint_pos={n: 0.0 for n in joints},       # canonical: home is 0 on every joint
+        adjacent_links=adj,
         notes="SHARPA left hand with uniform dynamics (unified_dynamics_commercial_hands/make_uniform.py).")
 
 

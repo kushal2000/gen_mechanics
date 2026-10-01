@@ -209,19 +209,26 @@
    "mcp_joint",
    "mcp_joint_2",
    "mcp_joint_3",
-   "thumb_left_temp_base"
+   "thumb_left_temp_base",
+   "thumb_pip",
+   "pip_3",
+   "pip_2",
+   "pip"
   ],
   "pip": [
    "dip",
-   "mcp_joint"
+   "mcp_joint",
+   "palm_lower_left"
   ],
   "pip_2": [
    "dip_2",
-   "mcp_joint_2"
+   "mcp_joint_2",
+   "palm_lower_left"
   ],
   "pip_3": [
    "dip_3",
-   "mcp_joint_3"
+   "mcp_joint_3",
+   "palm_lower_left"
   ],
   "thumb_dip": [
    "thumb_fingertip",
@@ -236,7 +243,8 @@
   ],
   "thumb_pip": [
    "thumb_dip",
-   "thumb_left_temp_base"
+   "thumb_left_temp_base",
+   "palm_lower_left"
   ]
  },
  "overlap_at_home_mm": {},
@@ -265,6 +273,7 @@
  "stiffness": 3.0,
  "damping": 0.0775033248319064,
  "armature": 0.00058,
+ "palm_filter_depth": 2,
  "effort_limit": 0.5,
  "velocity_limit": 10.0,
  "link_density_kg_m3": 1750.0,

@@ -215,7 +215,8 @@
   ],
   "l_index_finger_proximal_abd": [
    "l_index_finger_middle",
-   "l_index_finger_proximal"
+   "l_index_finger_proximal",
+   "l_wrist"
   ],
   "l_middle_finger_distal": [
    "l_middle_finger_middle"
@@ -230,7 +231,8 @@
   ],
   "l_middle_finger_proximal_abd": [
    "l_middle_finger_middle",
-   "l_middle_finger_proximal"
+   "l_middle_finger_proximal",
+   "l_wrist"
   ],
   "l_pinky_distal": [
    "l_pinky_middle"
@@ -277,7 +279,8 @@
   ],
   "l_thumb_proximal_abd": [
    "l_thumb_middle",
-   "l_thumb_proximal"
+   "l_thumb_proximal",
+   "l_wrist"
   ],
   "l_wrist": [
    "l_index_finger_proximal",
@@ -286,7 +289,10 @@
    "l_pinky_proximal_abd",
    "l_ring_finger_proximal",
    "l_ring_finger_proximal_abd",
-   "l_thumb_proximal"
+   "l_thumb_proximal",
+   "l_middle_finger_proximal_abd",
+   "l_index_finger_proximal_abd",
+   "l_thumb_proximal_abd"
   ]
  },
  "overlap_at_home_mm": {
@@ -323,6 +329,7 @@
  "stiffness": 3.0,
  "damping": 0.0775033248319064,
  "armature": 0.00058,
+ "palm_filter_depth": 2,
  "effort_limit": 0.5,
  "velocity_limit": 10.0,
  "link_density_kg_m3": 1750.0,
