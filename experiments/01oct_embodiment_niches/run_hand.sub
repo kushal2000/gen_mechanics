@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH --job-name=niche
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=04:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+# Phase 1 niche evaluation for ONE hand: every condition, one Kit process each.
+#   sbatch --job-name=niche_<hand> --export=ALL,HAND=<hand> experiments/01oct_embodiment_niches/run_hand.sub
+set -uo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+OUT=$REPO/debug_outputs/embodiment_niches
+cd $REPO
+export OMNI_KIT_ACCEPT_EULA=YES
+for c in nominal cube40 cube55 cube65 light heavy slippery push push_hard; do
+    f=$OUT/${HAND}__${c}.json
+    [ -s "$f" ] && { echo "skip $f"; continue; }
+    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py \
+        --hand "$HAND" --condition "$c" --num-envs 1024 --seconds 60 --out "$f" \
+        > $OUT/logs/${HAND}__${c}.log 2>&1 || echo "FAILED $HAND $c (see logs/${HAND}__${c}.log)"
+    [ -s "$f" ] && echo "done $HAND $c"
+done

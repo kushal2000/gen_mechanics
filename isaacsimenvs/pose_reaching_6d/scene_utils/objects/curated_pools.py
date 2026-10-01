@@ -72,6 +72,10 @@ DIVERSE_24: list[tuple] = [
 CUBE1: list[tuple] = [("cube", (0.045, 0.045, 0.045), None, 500.0, None)]
 
 CURATED_POOLS: dict[str, list[tuple]] = {"diverse24": DIVERSE_24, "cube1": CUBE1}
+# The same cube at other edges, for evaluation sweeps over object size (the cube distribution
+# allows 40-70 mm). Density stays 500, so mass scales with volume as a real cube's would.
+for _mm in (40, 55, 65):
+    CURATED_POOLS[f"cube1_{_mm}mm"] = [("cube", (_mm / 1000,) * 3, None, 500.0, None)]
 
 
 def object_mass(handle_scale, head_scale, handle_density, head_density) -> float:
