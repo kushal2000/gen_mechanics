@@ -4,10 +4,21 @@ Used to get the reference learning curve for NVIDIA's in-hand cube
 reorientation benchmark, ``Isaac-Repose-Cube-Allegro-Direct-v0``, with the
 same rl_games, observers and run-dir layout as our own tasks:
 
-    timeout -k 30 4200 .venv_isaacsim/bin/python \
-        isaacsimenvs/inhand_reorient/tools/train_isaaclab_task.py \
+    OMNI_KIT_ACCEPT_EULA=YES WANDB_MODE=disabled timeout -k 30 3780 \
+        .venv_isaacsim/bin/python isaacsimenvs/inhand_reorient/tools/train_isaaclab_task.py \
         --task Isaac-Repose-Cube-Allegro-Direct-v0 --headless \
-        agent.params.config.max_epochs=100000
+        agent.params.config.num_actors=8192 \
+        agent.params.config.name=0_allegro_hand \
+        +agent.params.config.expl_type=none \
+        +agent.params.config.use_others_experience=none \
+        agent.params.network.space.continuous.fixed_sigma=fixed \
+        hydra.run.dir=outputs/isaaclab_repose/ref_allegro_8192
+
+The five agent overrides are what our vendored rl_games fork needs to run
+NVIDIA's YAML at all, not tuning: Isaac Lab's own train script sets
+``num_actors`` from the env; the fork parses an integer prefix from ``name``,
+reads ``expl_type``/``use_others_experience`` unguarded ("none" = plain PPO),
+and spells NVIDIA's ``fixed_sigma: True`` as the string "fixed".
 
 ``coevolution/train.py`` already registers every Isaac Lab task: its
 ``coevolution.utils.hydra_utils`` import pulls in ``isaaclab_tasks``, whose

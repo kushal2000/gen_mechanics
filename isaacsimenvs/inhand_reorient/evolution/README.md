@@ -43,6 +43,37 @@ Key flags (see `driver.py`'s `parse_args` for the full list and defaults):
   at least 10 (the plan's minimum) design-scoring write windows fall inside one generation,
   given `--epochs-per-gen` and `--horizon-length` (16, the yaml's own `horizon_length`).
 
+## Task profile (`--task-profile`, 2026-10-01)
+
+The env has two task specs, selected by `env.task_profile`:
+
+- `isaaclab_repose`, the env's default since 2026-10-01: NVIDIA's
+  `Isaac-Repose-Cube-Allegro-Direct-v0` spec (Isaac Lab 2.3.2) ported to our hands
+  (`isaacsimenvs/inhand_reorient/repose_profile.py`, numbers under `repose:` in
+  `coevolution/cfg/task/InHandReorient.yaml`): 30 Hz policy, 10 s episodes, friction 1.0, a
+  7.2 cm cube, NVIDIA's reward, observation, joint-limit control and reset noise, random
+  goals, success at 0.2 rad with no curricula. Its agent configs are plain PPO with NVIDIA's
+  hyperparameters: `InHandReposeIsaacLabPPO.yaml` (single hand) and
+  `InHandReposeIsaacLabPopPPO.yaml` (the same plus the I41 log-std bound, for populations).
+- `legacy`: the spec every run before 2026-10-01 used (SAPG-era reward, tolerance and
+  palm-normal-axis goal curricula).
+
+The driver defaults to the legacy spec and the SAPG agent, so runs started before the
+profile existed resume unchanged; it always passes `env.task_profile=...` explicitly, since
+the env's own default changed. To evolve under the new spec:
+
+```
+python -m isaacsimenvs.inhand_reorient.evolution.driver ... \
+    --task-profile isaaclab_repose \
+    --agent-entry-point rl_games_repose_pop_ppo_cfg_entry_point
+```
+
+With a non-SAPG agent the driver leaves out the SAPG-only overrides
+(`expl_coef_block_size`, `central_value_config.minibatch_size`) and caps
+`minibatch_size` at NVIDIA's 32768. `--task-profile` enters the resolved config (and its hash)
+only when it is not `legacy`. `evaluate_population.py` has no such flag: pass
+`env.task_profile=legacy` to it when evaluating a legacy checkpoint.
+
 ## File layout
 
 ```

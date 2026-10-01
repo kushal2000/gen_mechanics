@@ -77,6 +77,17 @@ AGENT_ENTRY_POINT = "rl_games_sapg_cfg_entry_point"
 STATE_SCHEMA = "evolution_driver_state/0.1"
 DEFAULT_HORIZON_LENGTH = 16  # coevolution/cfg/train/InHandReorientSAPG.yaml's `horizon_length`
 DEFAULT_MINIBATCH_CAP = 16384  # ... its `minibatch_size`
+
+# Task profile (env.task_profile) and the agent configs that go with it. The
+# driver defaults to the LEGACY profile and the SAPG agent, so a run started
+# before the isaaclab_repose profile existed resumes unchanged; the env's own
+# default is isaaclab_repose, which is why the profile is always passed.
+TASK_PROFILES: Tuple[str, ...] = ("legacy", "isaaclab_repose")
+DEFAULT_TASK_PROFILE = "legacy"
+SAPG_AGENT_ENTRY_POINTS: Tuple[str, ...] = (
+    "rl_games_sapg_cfg_entry_point", "rl_games_sapg_pop_cfg_entry_point")
+REPOSE_POP_AGENT_ENTRY_POINT = "rl_games_repose_pop_ppo_cfg_entry_point"  # InHandReposeIsaacLabPopPPO.yaml
+PPO_MINIBATCH_CAP = 32768  # InHandReposeIsaacLabPPO.yaml's (NVIDIA's) `minibatch_size`
 DEFAULT_PROBES: Tuple[str, ...] = ("allegro_right", "dclaw", "sharpa_left_on_iiwa14", "leap_right")
 
 
@@ -311,13 +322,26 @@ def _minibatch_and_block_size(num_envs: int, horizon_length: int) -> Tuple[int, 
     return minibatch_size, num_envs
 
 
+def is_sapg_agent(agent_entry_point: str) -> bool:
+    """SAPG configs carry a central-value block and an exploration block
+    size the driver must scale; the plain-PPO (isaaclab_repose) ones do not,
+    and Hydra rejects an override of a key the config lacks."""
+    return agent_entry_point in SAPG_AGENT_ENTRY_POINTS or "sapg" in agent_entry_point
+
+
 def build_train_cmd(
     *, train_python: str, population_path: Path, num_envs: int, max_epochs: int, hydra_run_dir: Path,
     checkpoint: Optional[Path], resume_success_tolerance: Optional[float], horizon_length: int,
     agent_entry_point: str = AGENT_ENTRY_POINT, seed: Optional[int] = None,
-    extra_overrides: Sequence[str] = (),
+    extra_overrides: Sequence[str] = (), task_profile: str = DEFAULT_TASK_PROFILE,
 ) -> List[str]:
+    if task_profile not in TASK_PROFILES:
+        raise ValueError(f"task_profile={task_profile!r}; expected one of {TASK_PROFILES}")
+    sapg = is_sapg_agent(agent_entry_point)
     minibatch_size, block_size = _minibatch_and_block_size(num_envs, horizon_length)
+    if not sapg:
+        batch_size = num_envs * horizon_length
+        minibatch_size = batch_size if batch_size <= PPO_MINIBATCH_CAP else PPO_MINIBATCH_CAP
     cmd = [
         str(train_python), str(TRAIN_PY),
         "--task", TASK_ID, "--agent", agent_entry_point, "--headless",
@@ -325,25 +349,29 @@ def build_train_cmd(
     if checkpoint is not None:
         cmd += ["--checkpoint", str(checkpoint), "--checkpoint_load_mode", "weights"]
     cmd += [
+        f"env.task_profile={task_profile}",
         f"env.assets.hand_population={population_path}",
         f"env.scene.num_envs={num_envs}",
         f"agent.params.config.max_epochs={max_epochs}",
         f"agent.params.config.minibatch_size={minibatch_size}",
-        # The asymmetric-critic block's OWN minibatch_size is a separate
-        # hardcoded 16384 in the yaml (central_value_config.minibatch_size);
-        # train_central_value() divides by `batch_size // this value` with
-        # no guard, so at any --num-envs small enough that
-        # num_envs*horizon_length < 16384 (e.g. this pilot's tiny/quick
-        # verification runs), the DEFAULT central_value minibatch_size
-        # alone gives num_minibatches == 0 -> ZeroDivisionError, even though
-        # the OUTER minibatch_size above was already scaled down correctly.
-        # Found by reproducing this exact crash at --num-envs 64 while
-        # investigating the eval-fitness player mismatch (see this
-        # package's README's "eval fitness" section).
-        f"agent.params.config.central_value_config.minibatch_size={minibatch_size}",
-        f"agent.params.config.expl_coef_block_size={block_size}",
-        f"hydra.run.dir={hydra_run_dir}",
     ]
+    if sapg:
+        cmd += [
+            # The asymmetric-critic block's OWN minibatch_size is a separate
+            # hardcoded 16384 in the yaml (central_value_config.minibatch_size);
+            # train_central_value() divides by `batch_size // this value` with
+            # no guard, so at any --num-envs small enough that
+            # num_envs*horizon_length < 16384 (e.g. this pilot's tiny/quick
+            # verification runs), the DEFAULT central_value minibatch_size
+            # alone gives num_minibatches == 0 -> ZeroDivisionError, even though
+            # the OUTER minibatch_size above was already scaled down correctly.
+            # Found by reproducing this exact crash at --num-envs 64 while
+            # investigating the eval-fitness player mismatch (see this
+            # package's README's "eval fitness" section).
+            f"agent.params.config.central_value_config.minibatch_size={minibatch_size}",
+            f"agent.params.config.expl_coef_block_size={block_size}",
+        ]
+    cmd += [f"hydra.run.dir={hydra_run_dir}"]
     if resume_success_tolerance is not None:
         cmd += [f"env.termination.resume_success_tolerance={resume_success_tolerance}"]
     if seed is not None:
@@ -845,9 +873,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap.add_argument("--train-python", default=str(REPO_ROOT / ".venv_isaacsim" / "bin" / "python3"))
     ap.add_argument("--eval-episodes-per-design", type=int, default=8)
     # --- training config / stability (I41) ---
+    ap.add_argument("--task-profile", choices=TASK_PROFILES, default=DEFAULT_TASK_PROFILE,
+                    help="env.task_profile for every generation: legacy (default; the spec runs before "
+                         "2026-10-01 used) or isaaclab_repose (NVIDIA's Isaac-Repose-Cube-Allegro spec; "
+                         f"pair it with --agent-entry-point {REPOSE_POP_AGENT_ENTRY_POINT})")
     ap.add_argument("--agent-entry-point", default=AGENT_ENTRY_POINT,
                     help="gym-registered rl_games config key for train.py's --agent (e.g. "
-                         "rl_games_sapg_pop_cfg_entry_point for InHandReorientPopSAPG.yaml)")
+                         "rl_games_sapg_pop_cfg_entry_point for InHandReorientPopSAPG.yaml, "
+                         f"{REPOSE_POP_AGENT_ENTRY_POINT} for InHandReposeIsaacLabPopPPO.yaml)")
     ap.add_argument("--train-override", action="append", default=[], metavar="KEY=VALUE",
                     help="extra Hydra override passed to every generation's train.py (repeatable)")
     ap.add_argument("--train-seed", type=int, default=42,
@@ -869,7 +902,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
 
 def _resolved_config(args: argparse.Namespace) -> dict:
-    return {
+    config = {
         "variant": args.variant, "seed": args.seed, "designs": args.designs,
         "probes": sorted(args.probes.split(",")), "num_envs": args.num_envs,
         "epochs_per_gen": args.epochs_per_gen, "fitness": args.fitness,
@@ -881,6 +914,11 @@ def _resolved_config(args: argparse.Namespace) -> dict:
         "sigma_clamp_max": args.sigma_clamp_max, "reset_grad_scaler": args.reset_grad_scaler,
         "norm_count_cap": args.norm_count_cap,
     }
+    # Only when it is not the default, so a run started before the flag
+    # existed keeps its config hash on resume.
+    if args.task_profile != DEFAULT_TASK_PROFILE:
+        config["task_profile"] = args.task_profile
+    return config
 
 
 def _write_env(cache_path: Path) -> Dict[str, str]:
@@ -982,6 +1020,7 @@ def run_generation(
             resume_success_tolerance=(prev_tolerance if generation > 0 else None),
             horizon_length=args.horizon_length, agent_entry_point=args.agent_entry_point,
             seed=args.train_seed + attempt, extra_overrides=args.train_override,
+            task_profile=args.task_profile,
         )
         cmd = ["timeout", "-k", "30", str(args.gen_timeout_s)] + cmd
         print(f"[driver] generation {generation} attempt {attempt}: {len(plan.entries)} designs "
