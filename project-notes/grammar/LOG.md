@@ -313,3 +313,10 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Fix (292c72d..94edf2a): population train config InHandReorientPopSAPG.yaml (no entropy bonus, log-std clamped <= 0), driver retries and checks, env NaN guard. Single-hand path unchanged (dclaw bit-identical for 300 epochs). 293 package tests.
 - 32 designs learn; 64 learn 2-3x slower. 3-generation validation (G_V3S, 32 designs, 900 epochs/gen): successes .019 -> .074, episode length 21 -> 63, std 1.00 -> 0.73, probes allegro .064 -> .104, sharpa .114 -> .220, leap .124 -> .210.
 - Pilot 2: G_V1 vs G_V3S, 32 designs, 1200 epochs/gen, 12 generations; seeds 0-1 on the cluster (4 A6000s), seed 2 of each locally.
+
+## Pilot 2, local seed 2 (2026-09-28, recorded 2026-10-01)
+
+- Fixed controller (pop config, std clamp), 32 designs, 1200 epochs/gen, 12 generations, both runs clean (no retries, no non-finite resets, std fell to ~0.47-0.49).
+- Final generation, G_V1 vs G_V3S: coverage 13 vs 13; QD 2.20 vs 8.35; best 0.39 vs 3.95 (multiple goals per episode); mean elite fitness 0.17 vs 0.64; time held 0.73 vs 3.15 s; aggregate successes 0.07 vs 0.27; founders 8 vs 7.
+- Probes rose for both (pilot 1 ~0.06-0.11): V1 allegro .24 dclaw .53 sharpa .39 leap .37; V3S .40 / .35 / .37 / .41 -- no clear grammar effect on zero-shot probe control.
+- One seed per arm; cluster seeds 0-1 (array 2378309) finished but are not fetched yet (ssh control connection expired).

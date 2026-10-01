@@ -331,7 +331,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Fix I41 locally (Opus worker), then rerun the pilot with the fixed controller settings. Cluster pilot 2371572 finishes ~02:30; analyse with experiments/evolution_pilot/analyze_pilot.py as a weak-controller baseline.",
+  "next_action": "Martin reopens the cluster ssh connection; fetch pilot2 runs (runs/evolution_pilot/pilot2/{G_V1,G_V3S}_s{0,1}), run analyze_pilot.py over all 6 seeds, write project-notes/grammar/experiments/pilot2/README.md, update GPU-hours from cluster hist.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -385,6 +385,39 @@
     "pilot1": {
       "status": "done - weak-controller baseline, inconclusive for grammar comparison (I41)",
       "report": "project-notes/grammar/experiments/pilot1/README.md"
+    },
+    "pilot2": {
+      "status": "local seeds done; cluster array 2378309 (seeds 0-1) finished but not fetched (ssh connection closed)",
+      "local_seed2": {
+        "G_V1": {
+          "coverage": 13,
+          "qd": 2.2,
+          "best": 0.39,
+          "mean": 0.17,
+          "founders": 8,
+          "time_held_s": 0.73,
+          "probes": {
+            "allegro": 0.24,
+            "dclaw": 0.53,
+            "sharpa": 0.39,
+            "leap": 0.37
+          }
+        },
+        "G_V3S": {
+          "coverage": 13,
+          "qd": 8.35,
+          "best": 3.95,
+          "mean": 0.64,
+          "founders": 7,
+          "time_held_s": 3.15,
+          "probes": {
+            "allegro": 0.4,
+            "dclaw": 0.35,
+            "sharpa": 0.37,
+            "leap": 0.41
+          }
+        }
+      }
     }
   },
   "gpu_hours_used": 13.06,
