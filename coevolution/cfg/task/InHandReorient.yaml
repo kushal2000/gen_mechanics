@@ -157,7 +157,8 @@ repose:
   bounce_threshold_velocity: 0.2
   object_size_m: 0.072              # DexCube: 0.06 m collision cube, scale 1.2
   object_density: 400.0
-  object_mass_kg: 0.0               # > 0 overrides density
+  object_mass_kg: 0.216             # NVIDIA's effective cube mass: the DexCube USD authors physics:mass 0.216,
+                                    # which takes precedence over density 400 (measured in their running env)
   object_contact_offset: 0.001      # DexCube collider
   object_rest_offset: 0.0
   object_torsional_patch_radius: 0.1

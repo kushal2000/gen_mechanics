@@ -162,9 +162,12 @@ class ReposeCfg:
     # --- object: DexCube (a 0.06 m collision cube) spawned at scale 1.2 ---
     object_size_m: float = 0.072
     object_density: float = 400.0
-    object_mass_kg: float = 0.0
-    """> 0 sets the cube's mass directly (overrides density), for matching a
-    measured reference mass."""
+    object_mass_kg: float = 0.216
+    """> 0 sets the cube's mass directly (overrides density). 0.216 kg is
+    NVIDIA's effective mass: the DexCube USD authors ``physics:mass = 0.216``,
+    which takes precedence over the configured density (measured in their
+    running env with ``root_physx_view.get_masses()``; density 400 alone
+    would give 0.149 kg)."""
     object_contact_offset: float = 0.001
     object_rest_offset: float = 0.0
     object_torsional_patch_radius: float = 0.1
