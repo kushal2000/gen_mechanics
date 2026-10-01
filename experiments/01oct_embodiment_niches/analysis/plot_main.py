@@ -39,7 +39,9 @@ def _style(ax):
 
 def niche_map(R, hands):
     import numpy as np
-    ms = list(METRICS)
+    # time per goal ranks identically to throughput, and mean power almost identically to energy per
+    # goal, so the map keeps one of each pair (both stay in plots/details/).
+    ms = [m for m in METRICS if m not in ("time_per_goal", "power")]
     vals = np.array([[METRICS[m][3](R[f"{h}__nominal"]) for m in ms] for h in hands])
     ranks = np.zeros_like(vals)
     for j, m in enumerate(ms):
