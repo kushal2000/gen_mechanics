@@ -46,3 +46,13 @@ Bar charts (one per metric, one bar per hand; darker = best): `plots/details/`, 
 Main figures: `plots/niche_map.png` (rank of every hand on every metric), `plots/speed_vs_energy.png`
 (Pareto front), `plots/robustness.png` (throughput kept per perturbation) -- `analysis/plot_main.py`.
 Per-metric bar charts: `plots/details/`.
+
+## Goals before drop (5-minute nominal runs, `<hand>__nominal_5min.json`)
+
+Literal minimum is 0 for 8/9 hands (a few episodes drop while the cube settles after reset); LEAP's
+is 4. Worst-5% of episodes (Kaplan-Meier, censored episodes counted): allegro 59, leap 55, dex3 32,
+sharpa 31, tesollo 31, xhand 29, shadow 27, wuji2 13, gen-SHARPA 9. Allegro's failures are mostly
+stalls (1579 timeouts vs 509 drops in 5 min); LEAP has the fewest of both (274 / 420).
+
+Niche map (`plots/niche_map.png`): one metric per column -- goals/min, goals before drop (worst
+5%), joint work per goal, path efficiency, action rate, cube travel per goal.

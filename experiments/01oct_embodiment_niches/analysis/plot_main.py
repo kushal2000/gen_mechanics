@@ -48,19 +48,16 @@ def _robust(R, h):
     return float(np.mean([R[f"{h}__{c}"]["goals_per_min"] / R[f"{h}__nominal"]["goals_per_min"] for c in CONDS]))
 
 
-# (column, units of the values shown, [(getter, higher is better, value format)])
+# One metric per column: (column, metric and unit, [(getter, higher is better, value format)]).
 COMPOSITES = [
     ("Speed", "goals / min", [(lambda d: d["goals_per_min"], True, "{:.0f}")]),
-    ("Reliability", "goals per drop", [(lambda d: d["goals_per_drop"], True, "{:.0f}")]),
+    # From the 5-minute nominal runs; the literal minimum is 0 for 8 of 9 hands.
+    ("Reliability", "goals before drop,\nworst 5% of episodes", [(lambda d: d["_gbd"]["p5"], True, "{:.0f}")]),
     ("Energy", "joint work per goal (J)", [(lambda d: d["work_per_goal_J"], False, "{:.1f}")]),
-    ("Motion economy", "path efficiency,\ncube spin per goal (rad)",
-     [(lambda d: d["path_efficiency"], True, "{:.2f}"), (_per_goal("obj_spin_mean"), False, "{:.1f}")]),
-    ("Smooth control", "action rate (rad/s),\ntime at speed cap",
-     [(lambda d: d["target_rate_rad_s_per_joint"], False, "{:.0f}"),
-      (lambda d: d["joint_speed_saturated_frac"], False, "{:.0%}")]),
-    ("Calm cube", "travel (m), Δv (m/s) per goal,\nwander (mm)",
-     [(_per_goal("obj_speed_mean"), False, "{:.2f}"), (_per_goal("obj_acc_mean"), False, "{:.0f}"),
-      (lambda d: 1000 * d["palm_dist_std"], False, "{:.0f}")]),
+    ("Motion economy", "path efficiency\n(goal angle / cube rotation)",
+     [(lambda d: d["path_efficiency"], True, "{:.2f}")]),
+    ("Smooth control", "action rate\n(rad/s per joint)", [(lambda d: d["target_rate_rad_s_per_joint"], False, "{:.0f}")]),
+    ("Calm cube", "cube travel per goal (m)", [(_per_goal("obj_speed_mean"), False, "{:.2f}")]),
 ]
 
 
@@ -75,6 +72,8 @@ def _rank(vals, higher):
 
 def niche_map(R, hands):
     import numpy as np
+    for h in hands:
+        R[f"{h}__nominal"]["_gbd"] = json.loads((D / f"{h}__nominal_5min.json").read_text())["goals_before_drop"]
     cols, ranks, labels = [], [], []
     for name, sub, comps in COMPOSITES:
         raw = [[g(R[f"{h}__nominal"]) for h in hands] for g, _, _ in comps]
@@ -104,8 +103,8 @@ def niche_map(R, hands):
     _style(ax)
     ax.set_title("Niche map: who is best at what", loc="left", fontsize=13, color=INK,
                  fontweight="semibold", pad=40)
-    ax.text(0, 1.075, "rank of each hand (1 = best, filled); a column with several metrics ranks the "
-            "mean of their ranks · values in brackets · nominal conditions", transform=ax.transAxes,
+    ax.text(0, 1.075, "rank of each hand on one metric per column (1 = best, filled) · value in brackets · "
+            "nominal conditions", transform=ax.transAxes,
             fontsize=9, color=INK2)
     fig.tight_layout()
     fig.savefig(OUT / "niche_map.png", dpi=160, facecolor=SURFACE)
