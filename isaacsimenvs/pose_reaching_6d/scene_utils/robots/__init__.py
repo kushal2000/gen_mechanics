@@ -19,11 +19,13 @@ from isaacsimenvs.pose_reaching_6d.scene_utils.robots.allegro_handonly import AL
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_handonly import SHARPA_HANDONLY
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_iiwa14 import SHARPA_IIWA14
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.unified_hands import UNIFIED_LEFT
+from isaacsimenvs.pose_reaching_6d.scene_utils.robots.unified_dynamics_hands import UNIFORM_LEFT
 
 
 REGISTRY: dict[str, RobotSpec] = {
     spec.name: spec
-    for spec in (SHARPA_IIWA14, SHARPA_HANDONLY, ALLEGRO_HANDONLY, *UNIFIED_LEFT.values())
+    for spec in (SHARPA_IIWA14, SHARPA_HANDONLY, ALLEGRO_HANDONLY, *UNIFIED_LEFT.values(),
+                 *UNIFORM_LEFT.values())
 }
 
 

@@ -57,6 +57,13 @@ def allocate_state_buffers(env) -> None:
     _vl = env.robot.data.joint_vel_limits[0, env._hand_joint_ids]
     print(f"[reset] hand joint velocity limits (rad/s): min {_vl.min().item():.3g} "
           f"max {_vl.max().item():.3g} (physics.hand_velocity_limit={env.cfg.physics.hand_velocity_limit})")
+    _d = env.robot.data
+    _h = env._hand_joint_ids
+    print(f"[reset] hand joint effort limits (N.m): min {_d.joint_effort_limits[0, _h].min().item():.3g} "
+          f"max {_d.joint_effort_limits[0, _h].max().item():.3g}; stiffness "
+          f"{_d.joint_stiffness[0, _h].min().item():.3g}-{_d.joint_stiffness[0, _h].max().item():.3g}; armature "
+          f"{_d.joint_armature[0, _h].min().item():.3g}-{_d.joint_armature[0, _h].max().item():.3g}; "
+          f"hand mass {float(_d.default_mass[0].sum()):.3f} kg")
     # Fingertips keep spec order: column i of the fingertip observations is
     # finger i. Addressed by SLOT, so a padded design's ghost fingers occupy
     # their own columns and fingertip_valid masks them.

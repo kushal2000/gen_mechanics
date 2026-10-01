@@ -1,0 +1,247 @@
+{
+ "hand": "xhand",
+ "side": "left",
+ "urdf": "assets/urdf/unified_dynamics_commercial_hands/xhand/xhand_left.urdf",
+ "palm_body": "left_hand_link",
+ "hand_joint_names": [
+  "left_hand_thumb_bend_joint",
+  "left_hand_thumb_rota_joint1",
+  "left_hand_thumb_rota_joint2",
+  "left_hand_index_bend_joint",
+  "left_hand_index_joint1",
+  "left_hand_index_joint2",
+  "left_hand_mid_joint1",
+  "left_hand_mid_joint2",
+  "left_hand_ring_joint1",
+  "left_hand_ring_joint2",
+  "left_hand_pinky_joint1",
+  "left_hand_pinky_joint2"
+ ],
+ "joint_limits": {
+  "left_hand_thumb_bend_joint": [
+   0.0,
+   1.83
+  ],
+  "left_hand_thumb_rota_joint1": [
+   -1.05,
+   1.57
+  ],
+  "left_hand_thumb_rota_joint2": [
+   -0.17,
+   1.83
+  ],
+  "left_hand_index_bend_joint": [
+   -0.175,
+   0.175
+  ],
+  "left_hand_index_joint1": [
+   0.0,
+   1.92
+  ],
+  "left_hand_index_joint2": [
+   0.0,
+   1.92
+  ],
+  "left_hand_mid_joint1": [
+   0.0,
+   1.92
+  ],
+  "left_hand_mid_joint2": [
+   0.0,
+   1.92
+  ],
+  "left_hand_ring_joint1": [
+   0.0,
+   1.92
+  ],
+  "left_hand_ring_joint2": [
+   0.0,
+   1.92
+  ],
+  "left_hand_pinky_joint1": [
+   0.0,
+   1.92
+  ],
+  "left_hand_pinky_joint2": [
+   0.0,
+   1.92
+  ]
+ },
+ "hand_default_joint_pos": {
+  "left_hand_thumb_bend_joint": 0.001,
+  "left_hand_thumb_rota_joint1": 0.0,
+  "left_hand_thumb_rota_joint2": 0.0,
+  "left_hand_index_bend_joint": 0.0,
+  "left_hand_index_joint1": 0.001,
+  "left_hand_index_joint2": 0.001,
+  "left_hand_mid_joint1": 0.001,
+  "left_hand_mid_joint2": 0.001,
+  "left_hand_ring_joint1": 0.001,
+  "left_hand_ring_joint2": 0.001,
+  "left_hand_pinky_joint1": 0.001,
+  "left_hand_pinky_joint2": 0.001
+ },
+ "fingertip_body_names": [
+  "left_hand_thumb_rota_link2",
+  "left_hand_index_rota_link2",
+  "left_hand_mid_link2",
+  "left_hand_ring_link2",
+  "left_hand_pinky_link2"
+ ],
+ "fingertip_offsets": [
+  [
+   0.0504017317642718,
+   0.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.0,
+   -0.0424999999999991
+  ],
+  [
+   0.0,
+   0.0,
+   -0.0424999999999995
+  ],
+  [
+   0.0,
+   0.0,
+   -0.0425
+  ],
+  [
+   0.0,
+   0.0,
+   -0.0424999999999995
+  ]
+ ],
+ "thumb_tip": "left_hand_thumb_rota_link2",
+ "palm_frame": [
+  [
+   0.0,
+   -1.0,
+   0.0
+  ],
+  [
+   -1.0,
+   -0.0,
+   0.0
+  ],
+  [
+   0.0,
+   -0.0,
+   -1.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_frame_snapped": [
+  "x->-y",
+  "z->-z"
+ ],
+ "palm_centre_in_palm_body": [
+  -0.0032628290355205536,
+  0.0,
+  -0.05897499993443489
+ ],
+ "palm_extents_ours": [
+  0.05000000074505806,
+  0.09387635439634323,
+  0.11794999986886978
+ ],
+ "palm_centre_ours": [
+  0.0,
+  0.0032628290355205536,
+  0.05897499993443489
+ ],
+ "adjacent_links": {
+  "left_hand_index_bend_link": [
+   "left_hand_index_rota_link1",
+   "left_hand_link"
+  ],
+  "left_hand_index_rota_link1": [
+   "left_hand_index_bend_link",
+   "left_hand_index_rota_link2",
+   "left_hand_link"
+  ],
+  "left_hand_index_rota_link2": [
+   "left_hand_index_rota_link1"
+  ],
+  "left_hand_link": [
+   "left_hand_index_bend_link",
+   "left_hand_index_rota_link1",
+   "left_hand_mid_link1",
+   "left_hand_pinky_link1",
+   "left_hand_ring_link1",
+   "left_hand_thumb_bend_link"
+  ],
+  "left_hand_mid_link1": [
+   "left_hand_link",
+   "left_hand_mid_link2"
+  ],
+  "left_hand_mid_link2": [
+   "left_hand_mid_link1"
+  ],
+  "left_hand_pinky_link1": [
+   "left_hand_link",
+   "left_hand_pinky_link2"
+  ],
+  "left_hand_pinky_link2": [
+   "left_hand_pinky_link1"
+  ],
+  "left_hand_ring_link1": [
+   "left_hand_link",
+   "left_hand_ring_link2"
+  ],
+  "left_hand_ring_link2": [
+   "left_hand_ring_link1"
+  ],
+  "left_hand_thumb_bend_link": [
+   "left_hand_link",
+   "left_hand_thumb_rota_link1"
+  ],
+  "left_hand_thumb_rota_link1": [
+   "left_hand_thumb_bend_link",
+   "left_hand_thumb_rota_link2"
+  ],
+  "left_hand_thumb_rota_link2": [
+   "left_hand_thumb_rota_link1"
+  ]
+ },
+ "overlap_at_home_mm": {
+  "left_hand_link x left_hand_index_rota_link1": 11.31
+ },
+ "fingertip_pos_home_ours": {
+  "left_hand_thumb_rota_link2": [
+   0.0202,
+   -0.1099,
+   -0.0303
+  ],
+  "left_hand_index_rota_link2": [
+   0.0066,
+   -0.0298,
+   0.1045
+  ],
+  "left_hand_mid_link2": [
+   0.0066,
+   -0.0073,
+   0.105
+  ],
+  "left_hand_ring_link2": [
+   0.0066,
+   0.0127,
+   0.102
+  ],
+  "left_hand_pinky_link2": [
+   0.0066,
+   0.0327,
+   0.099
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.0775033248319064,
+ "armature": 0.00058,
+ "effort_limit": 0.5,
+ "velocity_limit": 10.0,
+ "link_density_kg_m3": 1750.0,
+ "friction": 0.5
+}
