@@ -1,0 +1,362 @@
+{
+ "hand": "shadow",
+ "side": "left",
+ "urdf": "assets/urdf/unified_dynamics_commercial_hands/shadow/shadow_left.urdf",
+ "palm_body": "palm",
+ "hand_joint_names": [
+  "FFJ4",
+  "FFJ3",
+  "FFJ2",
+  "FFJ1",
+  "MFJ4",
+  "MFJ3",
+  "MFJ2",
+  "MFJ1",
+  "RFJ4",
+  "RFJ3",
+  "RFJ2",
+  "RFJ1",
+  "LFJ5",
+  "LFJ4",
+  "LFJ3",
+  "LFJ2",
+  "LFJ1",
+  "THJ5",
+  "THJ4",
+  "THJ3",
+  "THJ2",
+  "THJ1"
+ ],
+ "joint_limits": {
+  "FFJ4": [
+   -0.349065850399,
+   0.349065850399
+  ],
+  "FFJ3": [
+   -0.261799387799,
+   1.57079632679
+  ],
+  "FFJ2": [
+   0.0,
+   1.57079632679
+  ],
+  "FFJ1": [
+   0.0,
+   1.57079632679
+  ],
+  "MFJ4": [
+   -0.349065850399,
+   0.349065850399
+  ],
+  "MFJ3": [
+   -0.261799387799,
+   1.57079632679
+  ],
+  "MFJ2": [
+   0.0,
+   1.57079632679
+  ],
+  "MFJ1": [
+   0.0,
+   1.57079632679
+  ],
+  "RFJ4": [
+   -0.349065850399,
+   0.349065850399
+  ],
+  "RFJ3": [
+   -0.261799387799,
+   1.57079632679
+  ],
+  "RFJ2": [
+   0.0,
+   1.57079632679
+  ],
+  "RFJ1": [
+   0.0,
+   1.57079632679
+  ],
+  "LFJ5": [
+   0.0,
+   0.785398163397
+  ],
+  "LFJ4": [
+   -0.349065850399,
+   0.349065850399
+  ],
+  "LFJ3": [
+   -0.261799387799,
+   1.57079632679
+  ],
+  "LFJ2": [
+   0.0,
+   1.57079632679
+  ],
+  "LFJ1": [
+   0.0,
+   1.57079632679
+  ],
+  "THJ5": [
+   -1.0471975512,
+   1.0471975512
+  ],
+  "THJ4": [
+   0.0,
+   1.2217304764
+  ],
+  "THJ3": [
+   -0.209439510239,
+   0.209439510239
+  ],
+  "THJ2": [
+   -0.698131700798,
+   0.698131700798
+  ],
+  "THJ1": [
+   -0.261799387799,
+   1.57079632679
+  ]
+ },
+ "hand_default_joint_pos": {
+  "FFJ4": 0.0,
+  "FFJ3": 0.0,
+  "FFJ2": 0.0,
+  "FFJ1": 0.0,
+  "MFJ4": 0.0,
+  "MFJ3": 0.0,
+  "MFJ2": 0.0,
+  "MFJ1": 0.0,
+  "RFJ4": 0.0,
+  "RFJ3": 0.0,
+  "RFJ2": 0.0,
+  "RFJ1": 0.0,
+  "LFJ5": 0.0,
+  "LFJ4": 0.0,
+  "LFJ3": 0.0,
+  "LFJ2": 0.0,
+  "LFJ1": 0.0,
+  "THJ5": 0.0,
+  "THJ4": 0.0,
+  "THJ3": 0.0,
+  "THJ2": 0.0,
+  "THJ1": 0.0
+ },
+ "fingertip_body_names": [
+  "ffdistal",
+  "mfdistal",
+  "rfdistal",
+  "lfdistal",
+  "thdistal"
+ ],
+ "fingertip_offsets": [
+  [
+   0.0,
+   0.0,
+   0.026
+  ],
+  [
+   0.0,
+   0.0,
+   0.026
+  ],
+  [
+   0.0,
+   0.0,
+   0.026
+  ],
+  [
+   0.0,
+   0.0,
+   0.026
+  ],
+  [
+   0.0,
+   0.0,
+   0.0275
+  ]
+ ],
+ "thumb_tip": "thdistal",
+ "palm_frame": [
+  [
+   0.0,
+   1.0,
+   0.0
+  ],
+  [
+   -1.0,
+   0.0,
+   0.0
+  ],
+  [
+   0.0,
+   -0.0,
+   1.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_frame_snapped": [
+  "x->-y",
+  "z->+z"
+ ],
+ "palm_centre_in_palm_body": [
+  -0.0010000000000000009,
+  -0.00514852911895226,
+  0.041999999999999996
+ ],
+ "palm_extents_ours": [
+  0.03429705823790452,
+  0.082,
+  0.098
+ ],
+ "palm_centre_ours": [
+  0.00514852911895226,
+  -0.0010000000000000009,
+  0.041999999999999996
+ ],
+ "adjacent_links": {
+  "ffdistal": [
+   "ffmiddle"
+  ],
+  "ffknuckle": [
+   "ffproximal",
+   "palm"
+  ],
+  "ffmiddle": [
+   "ffdistal",
+   "ffproximal"
+  ],
+  "ffproximal": [
+   "ffknuckle",
+   "ffmiddle",
+   "palm"
+  ],
+  "lfdistal": [
+   "lfmiddle"
+  ],
+  "lfknuckle": [
+   "lfmetacarpal",
+   "lfproximal",
+   "palm"
+  ],
+  "lfmetacarpal": [
+   "lfknuckle",
+   "palm"
+  ],
+  "lfmiddle": [
+   "lfdistal",
+   "lfproximal"
+  ],
+  "lfproximal": [
+   "lfknuckle",
+   "lfmiddle"
+  ],
+  "mfdistal": [
+   "mfmiddle"
+  ],
+  "mfknuckle": [
+   "mfproximal",
+   "palm"
+  ],
+  "mfmiddle": [
+   "mfdistal",
+   "mfproximal"
+  ],
+  "mfproximal": [
+   "mfknuckle",
+   "mfmiddle",
+   "palm"
+  ],
+  "palm": [
+   "ffknuckle",
+   "lfmetacarpal",
+   "mfknuckle",
+   "rfknuckle",
+   "thbase",
+   "ee_link",
+   "imu",
+   "thproximal",
+   "lfknuckle",
+   "rfproximal",
+   "mfproximal",
+   "ffproximal"
+  ],
+  "rfdistal": [
+   "rfmiddle"
+  ],
+  "rfknuckle": [
+   "palm",
+   "rfproximal"
+  ],
+  "rfmiddle": [
+   "rfdistal",
+   "rfproximal"
+  ],
+  "rfproximal": [
+   "rfknuckle",
+   "rfmiddle",
+   "palm"
+  ],
+  "thbase": [
+   "palm",
+   "thproximal"
+  ],
+  "thdistal": [
+   "thmiddle"
+  ],
+  "thhub": [
+   "thmiddle",
+   "thproximal"
+  ],
+  "thmiddle": [
+   "thdistal",
+   "thhub"
+  ],
+  "thproximal": [
+   "thbase",
+   "thhub",
+   "palm"
+  ],
+  "ee_link": [
+   "palm"
+  ],
+  "imu": [
+   "palm"
+  ]
+ },
+ "overlap_at_home_mm": {},
+ "fingertip_pos_home_ours": {
+  "ffdistal": [
+   -0.0051,
+   -0.032,
+   0.123
+  ],
+  "mfdistal": [
+   -0.0051,
+   -0.01,
+   0.127
+  ],
+  "rfdistal": [
+   -0.0051,
+   0.012,
+   0.123
+  ],
+  "lfdistal": [
+   -0.005,
+   0.034,
+   0.1146
+  ],
+  "thdistal": [
+   0.0035,
+   -0.0825,
+   0.0365
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.0775033248319064,
+ "armature": 0.00058,
+ "palm_filter_depth": 2,
+ "effort_limit": 0.5,
+ "velocity_limit": 10.0,
+ "link_density_kg_m3": 1750.0,
+ "friction": 0.5
+}
