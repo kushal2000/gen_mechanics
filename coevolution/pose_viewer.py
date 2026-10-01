@@ -269,7 +269,15 @@ _LIMIT_WARN_COUNTS: dict[str, int] = {}
 _LIMIT_WARN_CAP = 5
 
 
-def _warn_joint_limit_violations(env, joint_names, joint_pos, tol: float = 1e-3) -> None:
+def _env_hand_spec(env, env_id: int):
+    """In a multi-hand scene, the spec of the hand THIS env holds (its real URDF and joints); else None."""
+    hs = getattr(getattr(env, "scene_record", None), "hand_set", None)
+    if hs is None:
+        return None
+    return hs.specs[int(env.scene_record.robot_design_index[env_id].item())]
+
+
+def _warn_joint_limit_violations(env, joint_names, joint_pos, tol: float = 1e-3, env_id: int = 0) -> None:
     """Warn when a simulated joint sits outside the limits the URDF declares.
 
     This matters because the two consumers of a captured frame disagree: the
@@ -287,10 +295,11 @@ def _warn_joint_limit_violations(env, joint_names, joint_pos, tol: float = 1e-3)
     if limits is None:
         return
 
-    lim = limits[0]  # (num_joints, 2), Isaac Lab joint order
+    lim = limits[env_id]  # (num_joints, 2), Isaac Lab joint order
     perm = getattr(env, "_perm_lab_to_canon", None)
     if perm is not None:
         lim = lim[perm]
+    lim = lim[: len(joint_names)]            # a multi-hand env's real joints are its first slots
     lower, upper = lim[:, 0], lim[:, 1]
 
     bad = ((joint_pos < lower - tol) | (joint_pos > upper + tol)).nonzero().flatten().tolist()
@@ -319,14 +328,20 @@ def capture_pose_viewer_frame(env, env_id: int) -> dict[str, Any]:
     # Canonical policy order when the env exposes it, so the viewer's joint
     # columns line up with the policy's. Names come from the robot spec rather
     # than a module constant, so this follows whichever hand is mounted.
-    if hasattr(env, "_perm_lab_to_canon") and hasattr(env, "scene_record"):
+    hand = _env_hand_spec(env, env_id)
+    if hand is not None:
+        # Multi-hand scene: slot k is this hand's k-th joint, so its first n slots ARE its joints, under
+        # the names its own URDF uses (the template's s0..s{J-1} exist in no URDF).
+        joint_pos = env.robot.data.joint_pos[env_id, env._perm_lab_to_canon][: hand.num_hand_joints]
+        joint_names = list(hand.joint_names_canonical)
+    elif hasattr(env, "_perm_lab_to_canon") and hasattr(env, "scene_record"):
         joint_pos = env.robot.data.joint_pos[env_id, env._perm_lab_to_canon]
         joint_names = list(env.scene_record.robot_spec.joint_names_canonical)
     else:
         joint_pos = env.robot.data.joint_pos[env_id]
         joint_names = list(env.robot.data.joint_names)
 
-    _warn_joint_limit_violations(env, joint_names, joint_pos)
+    _warn_joint_limit_violations(env, joint_names, joint_pos, env_id=env_id)
 
     robot_root_pos = env.robot.data.root_pos_w[env_id] - origin
     object_pos = env.object.data.root_pos_w[env_id] - origin
@@ -497,7 +512,8 @@ class PoseViewerWrapper(gym.Wrapper):
         # The robot URDF must be the one these frames were captured from. Taking
         # it from the spec rather than a module constant is what keeps the
         # viewer's joint names and its URDF in agreement for every hand.
-        spec = getattr(getattr(inner, "scene_record", None), "robot_spec", None)
+        spec = _env_hand_spec(inner, self.env_id) or getattr(
+            getattr(inner, "scene_record", None), "robot_spec", None)   # multi-hand: this env's hand
         self._robot_urdf_relpath = (
             spec.urdf_path if spec is not None else DEFAULT_ROBOT_URDF_RELATIVE_PATH
         )
