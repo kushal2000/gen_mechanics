@@ -39,7 +39,8 @@
     "Geometry cross-section (E14, 2026-09-26): keep capsules. On 413 sections from 11 hands a single rounded-rectangle template ties a per-link capsule (41% vs 39% within 3 mm); free per-section rounded rectangles fit ~2x tighter but need per-link shape parameters; no documented PhysX cost advantage. Revisit only with a GPU benchmark (proposal in cross-section-study.md).",
     "RL experiments (Martin, 2026-09-26): stationary palm-up hand, in-hand reorientation, no arm; Martin builds it as a new package isaacsimenvs/inhand_reorient on his own branch. Branch rule (Martin, 2026-09-27): every change stays on martin/hand-grammar and no other branch is ever touched; editing shared files ON THIS BRANCH is allowed (e.g. commit 350cacd, a generic resume hook in pose_reaching_6d/reward_utils/curriculum.py), but prefer keeping changes inside our own packages.",
     "Cluster budget phase 1: <=200 GPU-hours, main tier, <=4 GPUs in flight; preemptible tiers only after resume is verified and with Martin's OK; follow ~/research/slurm/CLAUDE.md etiquette; the agent never attempts cluster logins.",
-    "Plan revision (Martin, 2026-09-27): replace E-R1 with a CPU grammar screen (viability + diversity) followed by an evolution pilot (MAP-Elites, shared controller with carried weights, graded fitness, 2 grammar variants x 2 seeds, ~20 GPU-h); E-R0 reduced to local gates + a cluster smoke. See plan-rl-grammar-tuning.md 'Revision, 2026-09-27'."
+    "Plan revision (Martin, 2026-09-27): replace E-R1 with a CPU grammar screen (viability + diversity) followed by an evolution pilot (MAP-Elites, shared controller with carried weights, graded fitness, 2 grammar variants x 2 seeds, ~20 GPU-h); E-R0 reduced to local gates + a cluster smoke. See plan-rl-grammar-tuning.md 'Revision, 2026-09-27'.",
+    "GPU budget (Martin, 2026-10-01): may exceed 200 GPU-h; do not hog -- match the lab's usage: 4 GPUs continuously on main (SLURM cap) plus resumable runs on the preemptible free-cycles tier as a throttled array (<= 8 in flight); avoid the outlier pattern of dozens of GPUs."
   ],
   "issues": [
     {
@@ -387,40 +388,12 @@
       "report": "project-notes/grammar/experiments/pilot1/README.md"
     },
     "pilot2": {
-      "status": "local seeds done; cluster array 2378309 (seeds 0-1) finished but not fetched (ssh connection closed)",
-      "local_seed2": {
-        "G_V1": {
-          "coverage": 13,
-          "qd": 2.2,
-          "best": 0.39,
-          "mean": 0.17,
-          "founders": 8,
-          "time_held_s": 0.73,
-          "probes": {
-            "allegro": 0.24,
-            "dclaw": 0.53,
-            "sharpa": 0.39,
-            "leap": 0.37
-          }
-        },
-        "G_V3S": {
-          "coverage": 13,
-          "qd": 8.35,
-          "best": 3.95,
-          "mean": 0.64,
-          "founders": 7,
-          "time_held_s": 3.15,
-          "probes": {
-            "allegro": 0.4,
-            "dclaw": 0.35,
-            "sharpa": 0.37,
-            "leap": 0.41
-          }
-        }
-      }
+      "status": "done",
+      "report": "project-notes/grammar/experiments/pilot2/README.md",
+      "summary": "V3S > V1 on median elite fitness in every seed (0.39-0.44 vs 0.16-0.35) and lower founder dominance; QD/coverage/best within seed variance; probes rose to 0.3-0.5 for both"
     }
   },
-  "gpu_hours_used": 13.06,
+  "gpu_hours_used": 35.43,
   "cluster_jobs": [
     {
       "id": 2364675,
