@@ -206,7 +206,12 @@ class EnvStatsAlgoObserver(AlgoObserver):
         for key in keys:
             if key not in self.episode_final_avg:
                 self.episode_final_avg[key] = deque([], maxlen=self.algo.games_to_track)
-            self.episode_final_avg[key].extend(rows[key])
+            row = rows[key]
+            if key.startswith("per_hand/"):
+                # NaN outside this hand's envs: keep only its own episodes, so each hand gets a full
+                # window rather than its share of everyone's.
+                row = [v for v in row if v == v]
+            self.episode_final_avg[key].extend(row)
 
     def _process_vector_summaries(self, infos, *, tag: str) -> None:
         if tag not in infos:
@@ -244,7 +249,9 @@ class EnvStatsAlgoObserver(AlgoObserver):
                     self.writer.add_scalar(f"episode_cumulative_max/{key}_max", np.max(values), frame)
             for key, values in self.episode_final_avg.items():
                 if values:
-                    self.writer.add_scalar(f"episode_final/{key}", np.mean(values), frame)
+                    # per_hand/* keeps its own top-level name, so it is its own wandb tab.
+                    tag = key if key.startswith("per_hand/") else f"episode_final/{key}"
+                    self.writer.add_scalar(tag, np.mean(values), frame)
             self.new_finished_episodes = False
 
         for key, value in self.direct_info.items():
