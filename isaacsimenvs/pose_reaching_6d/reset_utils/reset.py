@@ -27,6 +27,9 @@ def allocate_state_buffers(env) -> None:
     dr = env.cfg.domain_randomization
     rew = env.cfg.reward
     spec = env.scene_record.robot_spec
+    hand_set = getattr(env.scene_record, "hand_set", None)
+    if hand_set is not None:
+        env.robot.resolve()       # multi-hand: each hand's real joints and bodies onto the slots
 
     # --- Joint/body id caches ---
     # Joints are *selected* by exact name from the spec (not by a regex like
@@ -134,7 +137,11 @@ def allocate_state_buffers(env) -> None:
     # One design or many: a population gathers per env, a fixed hand broadcasts
     # the spec's own row. Both end up (N, ...) so nothing downstream branches.
     population = env.scene_record.population
-    if population is None:
+    if hand_set is not None:
+        # Several hands, one per env block: the same per-env tables a population gives.
+        per_env = hand_set.per_env(env.scene_record.robot_design_index.detach().cpu().numpy())
+        expand = False
+    elif population is None:
         per_env = {
             "joint_link_bbox_local": np.asarray(spec.joint_link_boxes, np.float32)[None],
             "joint_geometry_valid": np.asarray(spec.joint_geometry_valid, bool)[None],
@@ -174,6 +181,9 @@ def allocate_state_buffers(env) -> None:
     env._fingertip_offsets = torch.tensor(
         spec.fingertip_offsets or ((0.0, 0.0, 0.0),) * spec.num_fingertips,
         device=env.device, dtype=torch.float32)
+    if hand_set is not None:
+        # (N, S, 3): every hand's own pad offsets. _apply_local_offset expands either shape.
+        env._fingertip_offsets = _to("fingertip_offsets", torch.float32)
 
     limits = env.robot.data.joint_pos_limits  # (N, num_joints, 2), Lab order
 
@@ -200,6 +210,13 @@ def allocate_state_buffers(env) -> None:
     # tables -- and a disagreement is invisible at runtime: the policy would be
     # told a joint exists where the simulator has locked it, or the reverse, and
     # train perfectly happily on a body that is not the one it is driving.
+    if hand_set is not None:
+        # A ghost slot must read (0, 0) and a real joint a real range -- else the mask is wrong.
+        expected = torch.as_tensor(per_env["joint_valid"], device=env.device, dtype=torch.bool)
+        if not torch.equal(env._joint_enabled > 0.5, expected):
+            bad = ((env._joint_enabled > 0.5) != expected).any(dim=1).nonzero(as_tuple=True)[0]
+            raise RuntimeError(f"multi-hand: joint_enabled disagrees with the hand set in "
+                               f"{bad.numel()} envs (first env {int(bad[0])})")
     if population is not None:
         expected = torch.as_tensor(
             per_env["joint_geometry_valid"], device=env.device, dtype=torch.bool)
@@ -490,9 +507,10 @@ def _reset_object_pose(env, env_ids: torch.Tensor) -> None:
             n_tips = ft_pos.shape[1]
             # The pad, not the body origin: SHARPA's tip body sits behind its pad.
             # Zero for a generated design, whose capsule tip IS the pad.
+            offs = (env._fingertip_offsets[env_ids] if env._fingertip_offsets.dim() == 3
+                    else env._fingertip_offsets.unsqueeze(0).expand(n, n_tips, 3))
             pad_w = ft_pos + quat_apply(
-                ft_quat.reshape(-1, 4),
-                env._fingertip_offsets.unsqueeze(0).expand(n, n_tips, 3).reshape(-1, 3),
+                ft_quat.reshape(-1, 4), offs.reshape(-1, 3),
             ).reshape(n, n_tips, 3)
             mask = env._fingertip_mask[env_ids]                       # (n, S) bool
             valid = mask.unsqueeze(-1).to(pad_w.dtype)

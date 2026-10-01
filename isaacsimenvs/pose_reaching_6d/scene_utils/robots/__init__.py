@@ -33,6 +33,10 @@ def get_robot_spec(name: str) -> RobotSpec:
     """Look up a spec by name, or fail with the list of valid names."""
     if name in REGISTRY:
         return REGISTRY[name]
+    # Several hands in one scene: a padded template over their specs (robots/multi_hand.py).
+    from isaacsimenvs.pose_reaching_6d.scene_utils.robots.multi_hand import hand_set, is_multi_ref
+    if is_multi_ref(name):
+        return hand_set(name).template
     # A generated population's shared template, by name or by file. Resolved
     # here so everything that asks -- the env AND the network, which
     # interpolates its own copy from the config -- gets the same answer.

@@ -84,6 +84,12 @@ def apply_physx_material_properties(env) -> None:
     default = material(float(assets_cfg.robot_friction))
     fingertip = material(float(assets_cfg.finger_tip_friction))
 
+    if getattr(record, "hand_set", None) is not None:
+        _apply_multi_hand(env, record.hand_set, default, fingertip, ft_lo, ft_hi, n_buckets)
+        _apply_non_robot(env, assets_cfg, material, obj_lo, obj_hi, n_buckets, env_ids)
+        _log_scene_step(t0, "applied PhysX material properties (multi-hand)")
+        return
+
     robot_view = env.robot.root_physx_view
     robot_materials = robot_view.get_material_properties()
     robot_materials[:] = default
@@ -167,7 +173,37 @@ def apply_physx_material_properties(env) -> None:
             robot_materials[..., channel] = torch.where(
                 ft_shape_mask, scaled, robot_materials[..., channel])
     robot_view.set_material_properties(robot_materials, env_ids)
+    _apply_non_robot(env, assets_cfg, material, obj_lo, obj_hi, n_buckets, env_ids)
+    _log_scene_step(t0, "applied PhysX material properties")
 
+
+def _apply_multi_hand(env, hand_set, default, fingertip, ft_lo, ft_hi, n_buckets) -> None:
+    """Per hand, its own view: default friction everywhere, fingertip friction on its tip links."""
+    assets_cfg = env.cfg.assets
+    for spec, art in zip(hand_set.specs, env.robot.arts):
+        view = art.root_physx_view
+        mats = view.get_material_properties()
+        mats[:] = default
+        names = list(view.shared_metatype.link_names)
+        start, hit = 0, False
+        for name, path in zip(names, view.link_paths[0]):
+            end = start + art._physics_sim_view.create_rigid_body_view(path).max_shapes
+            if name in spec.fingertip_body_names:
+                mats[:, start:end] = fingertip
+                if (ft_lo, ft_hi) != (1.0, 1.0):
+                    per = _bucketed(ft_lo, ft_hi, float(assets_cfg.finger_tip_friction), n_buckets, mats.shape[0])
+                    mats[:, start:end, 0] = per.unsqueeze(-1)
+                    mats[:, start:end, 1] = per.unsqueeze(-1)
+                hit = hit or end > start
+            start = end
+        if start != view.max_shapes:
+            raise RuntimeError(f"{spec.name}: counted {start} shapes, view reports {view.max_shapes}")
+        if not hit:
+            raise RuntimeError(f"{spec.name}: no fingertip shapes among {spec.fingertip_body_names}")
+        view.set_material_properties(mats, torch.arange(mats.shape[0], dtype=torch.int64))
+
+
+def _apply_non_robot(env, assets_cfg, material, obj_lo, obj_hi, n_buckets, env_ids) -> None:
     for name, friction in (("table", assets_cfg.table_friction),
                            ("object", assets_cfg.object_friction),
                            ("goal_viz", assets_cfg.robot_friction)):
@@ -185,8 +221,6 @@ def apply_physx_material_properties(env) -> None:
                 materials[:, :, 1] = per_env.unsqueeze(-1)
             materials[:, :, 2] = float(assets_cfg.object_restitution)
         view.set_material_properties(materials, env_ids)
-
-    _log_scene_step(t0, "applied PhysX material properties")
 
 
 __all__ = ["apply_physx_material_properties"]

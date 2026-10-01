@@ -116,7 +116,11 @@ def _sample_delay(
 
 
 def _normalize_joint_pos(raw, lower, upper) -> torch.Tensor:
-    return 2.0 * (raw - lower) / (upper - lower) - 1.0
+    # A slot with no range -- a multi-hand scene's ghost slot, limits (0, 0) -- reads 0, not 0/0.
+    # (Generated designs' ghosts carry a 1e-8 range for the same reason.)
+    rng = upper - lower
+    ok = rng > 1e-6
+    return torch.where(ok, 2.0 * (raw - lower) / torch.where(ok, rng, 1.0) - 1.0, torch.zeros_like(raw))
 
 
 def _quat_apply_broadcast(quat: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
@@ -536,8 +540,12 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     }
 
     if env.cfg.action.joint_units == "physical":
-        # One scale for every joint of every hand (see ActionCfg.joint_units).
-        for k in ("joint_pos", "prev_joint_pos", "prev_action_targets", "joint_lower", "joint_upper"):
+        # One scale for every joint of every hand (see ActionCfg.joint_units). joint_pos and
+        # prev_joint_pos arrive RANGE-normalised (_normalize_joint_pos); physical units want the raw
+        # angle, so they are rebuilt from radians here.
+        obs_clean["joint_pos"] = env.robot.data.joint_pos[:, env._perm_lab_to_canon] / math.pi
+        obs_clean["prev_joint_pos"] = env._prev_joint_pos_canon / math.pi
+        for k in ("prev_action_targets", "joint_lower", "joint_upper"):
             obs_clean[k] = obs_clean[k] / math.pi
         for k in ("joint_vel", "prev_joint_vel"):
             obs_clean[k] = obs_clean[k] / JOINT_VEL_SCALE

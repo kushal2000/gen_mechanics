@@ -68,6 +68,9 @@ class SceneRecord:
     object_scale: torch.Tensor  # (N, 3) dimensions / object_base_size
     object_pool_index: torch.Tensor  # (N,) long
     asset_dir: str  # temp dir holding the URDFs and converted USDs
+    # Several hands in one scene (robots/multi_hand.py): the HandSet, and robot_design_index is then
+    # each env's HAND index. None otherwise.
+    hand_set: object | None = None
 
 
 def _resolve_spec(cfg):
@@ -90,10 +93,11 @@ def _resolve_spec(cfg):
 
 def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False,
                                  hand_velocity_limit: float | None = None,
-                                 hand_overrides: dict | None = None) -> ArticulationCfg:
+                                 hand_overrides: dict | None = None,
+                                 prim_path: str = ROBOT_PATH) -> ArticulationCfg:
     """The robot articulation over prims already on the stage."""
     return ArticulationCfg(
-        prim_path=ROBOT_PATH,
+        prim_path=prim_path,
         spawn=None,
         init_state=ArticulationCfg.InitialStateCfg(
             pos=spec.base_pos,
@@ -393,13 +397,42 @@ def _author_robots_into_envs(env, spec, population, design_idx, asset_dir: Path,
     return collider_links
 
 
+def _block_regex(env_ids) -> str:
+    """``/World/envs/env_(i|j|...)/Robot`` over one hand's env block (as UHAS does)."""
+    ids = [str(int(i)) for i in env_ids]
+    return f"/World/envs/env_({'|'.join(ids)})/Robot" if len(ids) > 1 else f"/World/envs/env_{ids[0]}/Robot"
+
+
+def _author_multi_hands(env, hs, hand_idx, asset_dir: Path, offsets: dict, t0: float) -> None:
+    """Every hand converted ONCE, then referenced into its own block of envs at its own base pose."""
+    converted = []
+    for h, spec in enumerate(hs.specs):
+        work = asset_dir / "usd" / f"hand{h}_{spec.hand_name}"
+        work.mkdir(parents=True, exist_ok=True)
+        converted.append(_convert_fixed_robot(spec, spec.urdf_path, work, offsets))
+        _log_scene_step(t0, f"converted hand {h}: {spec.name}")
+    layer = get_current_stage().GetRootLayer()
+    with Sdf.ChangeBlock():
+        for env_path in _env_paths_in_order(env):
+            h = int(hand_idx[_env_id_of(env_path)])
+            spec, (usd, root_path) = hs.specs[h], converted[h]
+            root = f"{env_path}/Robot"
+            prim = define(layer, root, "Xform")
+            prim.referenceList.explicitItems.append(Sdf.Reference(usd, Sdf.Path(root_path)))
+            set_xform(layer.GetPrimAtPath(root), tuple(map(float, spec.base_pos)), tuple(map(float, spec.base_rot)))
+    counts = {s.hand_name: int((hand_idx == h).sum()) for h, s in enumerate(hs.specs)}
+    _log_scene_step(t0, f"authored {env.num_envs} robots, one hand per env block: {counts}")
+
+
 # --- entry points ---------------------------------------------------------------
 
 def setup_scene(env) -> None:
     """Build and register robot, table, object, goal, ground, and light;
     leaves the decisions in ``env.scene_record``."""
     # Spaces first: DirectRLEnv reads them in _configure_gym_env_spaces, after this hook.
-    population, spec = _resolve_spec(env.cfg)
+    from .robots.multi_hand import hand_set as _hand_set, is_multi_ref
+    hs = _hand_set(env.cfg.assets.robot_spec) if is_multi_ref(env.cfg.assets.robot_spec) else None
+    population, spec = (None, hs.template) if hs is not None else _resolve_spec(env.cfg)
     derive_spaces(env.cfg, spec)
 
     assets_cfg = env.cfg.assets
@@ -422,7 +455,9 @@ def setup_scene(env) -> None:
         env.num_envs, population.n_designs,
         rank=int(os.environ.get("RANK", "0")),
         world_size=int(os.environ.get("WORLD_SIZE", "1")))
-    if design_idx is not None:
+    if hs is not None:
+        design_idx = hs.hand_of_env(env.num_envs)     # each env's HAND, in contiguous blocks
+    if design_idx is not None and population is not None:
         # In the log, because "which designs did this rank hold" is otherwise
         # only answerable by re-deriving it.
         print(f"[scene] rank {int(os.environ.get('RANK', '0'))} of "
@@ -430,8 +465,12 @@ def setup_scene(env) -> None:
               f"{int(design_idx.min())}..{int(design_idx.max())} "
               f"({len(set(design_idx.tolist()))} distinct of {population.n_designs})",
               flush=True)
-    collider_links = _author_robots_into_envs(
-        env, spec, population, design_idx, asset_dir, offsets, t0)
+    if hs is not None:
+        _author_multi_hands(env, hs, design_idx, asset_dir, offsets, t0)
+        collider_links = None
+    else:
+        collider_links = _author_robots_into_envs(
+            env, spec, population, design_idx, asset_dir, offsets, t0)
 
     # 3. Table, converted and spawned -- unless the task has no use for one.
     # An in-hand task holds the object on a fixed palm, so nothing ever rests on
@@ -443,13 +482,23 @@ def setup_scene(env) -> None:
                  if want_table else None)
 
     # 4. Spawn.
-    env.robot = Articulation(build_robot_articulation_cfg(
-        spec, start_arm_higher=env.cfg.reset.start_arm_higher,
-        hand_velocity_limit=env.cfg.physics.hand_velocity_limit or None,
-        hand_overrides={"effort": env.cfg.physics.hand_effort_limit,
-                        "stiffness": env.cfg.physics.hand_stiffness,
-                        "damping": env.cfg.physics.hand_damping,
-                        "armature": env.cfg.physics.hand_armature}))
+    overrides = {"effort": env.cfg.physics.hand_effort_limit,
+                 "stiffness": env.cfg.physics.hand_stiffness,
+                 "damping": env.cfg.physics.hand_damping,
+                 "armature": env.cfg.physics.hand_armature}
+    if hs is not None:
+        # One articulation per hand over its own env block; env.robot presents them as one.
+        from .multi_articulation import MultiHandArticulation
+        arts = [Articulation(build_robot_articulation_cfg(
+                    s, hand_velocity_limit=env.cfg.physics.hand_velocity_limit or None,
+                    hand_overrides=overrides, prim_path=_block_regex(np.nonzero(design_idx == h)[0])))
+                for h, s in enumerate(hs.specs)]
+        env.robot = MultiHandArticulation(hs, arts, torch.as_tensor(design_idx), env.device)
+    else:
+        env.robot = Articulation(build_robot_articulation_cfg(
+            spec, start_arm_higher=env.cfg.reset.start_arm_higher,
+            hand_velocity_limit=env.cfg.physics.hand_velocity_limit or None,
+            hand_overrides=overrides))
     env.table = (RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
                  if want_table else None)
     authored_map = _author_objects_into_envs(env, object_params, design_idx)
@@ -471,7 +520,7 @@ def setup_scene(env) -> None:
         robot_collider_links=collider_links,
         object_urdf_paths=[str(p) for p in urdf_paths],
         object_scale=object_scale, object_pool_index=object_pool_index,
-        asset_dir=str(asset_dir))
+        asset_dir=str(asset_dir), hand_set=hs)
 
     # 7. Register so DirectRLEnv refreshes their tensors each step.
     env.scene.articulations["robot"] = env.robot
