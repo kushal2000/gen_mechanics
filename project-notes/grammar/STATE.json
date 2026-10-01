@@ -332,7 +332,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Martin reopens the cluster ssh connection; fetch pilot2 runs (runs/evolution_pilot/pilot2/{G_V1,G_V3S}_s{0,1}), run analyze_pilot.py over all 6 seeds, write project-notes/grammar/experiments/pilot2/README.md, update GPU-hours from cluster hist.",
+  "next_action": "Wait for pilot 3 (~13-14 h); keep the ssh master alive (Martin); then fetch, analyse all 12 runs, write pilot3 report.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -391,6 +391,12 @@
       "status": "done",
       "report": "project-notes/grammar/experiments/pilot2/README.md",
       "summary": "V3S > V1 on median elite fitness in every seed (0.39-0.44 vs 0.16-0.35) and lower founder dominance; QD/coverage/best within seed variance; probes rose to 0.3-0.5 for both"
+    },
+    "pilot3": {
+      "status": "running",
+      "design": "3 grammars (G_V1, G_V2S, G_V3S) x 4 seeds (0-3), 20 generations, 32 designs, 1200 epochs/gen, pop config; pilot-2 runs extended 12 -> 20 generations",
+      "cluster": "array 2511386 (ext: G_V1 s0/s1, G_V3S s0/s1 in runs/evolution_pilot/pilot2, --time 4:45:00) and 2511387 (new: G_V2S s0-3 in runs/evolution_pilot/pilot3, --time 11:15:00); main tier, A6000, <= 4 GPUs in flight",
+      "local": "G_V1 s2, G_V3S s2 (extend, outputs/evolution_pilot/pilot2), then G_V1 s3, G_V3S s3 (new, outputs/evolution_pilot/pilot3)"
     }
   },
   "gpu_hours_used": 35.43,

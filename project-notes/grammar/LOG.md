@@ -320,3 +320,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Final generation, G_V1 vs G_V3S: coverage 13 vs 13; QD 2.20 vs 8.35; best 0.39 vs 3.95 (multiple goals per episode); mean elite fitness 0.17 vs 0.64; time held 0.73 vs 3.15 s; aggregate successes 0.07 vs 0.27; founders 8 vs 7.
 - Probes rose for both (pilot 1 ~0.06-0.11): V1 allegro .24 dclaw .53 sharpa .39 leap .37; V3S .40 / .35 / .37 / .41 -- no clear grammar effect on zero-shot probe control.
 - One seed per arm; cluster seeds 0-1 (array 2378309) finished but are not fetched yet (ssh control connection expired).
+
+## Pilot 3 launched (2026-10-01 ~16:00)
+
+- 3 grammars x 4 seeds, 20 generations (pilot-2 runs extended from 12). Cluster: arrays 2511386 (extensions) and 2511387 (G_V2S s0-3), main tier, <= 4 GPUs in flight (lab norm; SLURM cap). Local: G_V1/G_V3S s2 extensions, then s3.
+- Lab usage check (squeue): most labmates hold 2-4 GPUs on main with 1-2 day limits; one heavy user runs ~26 mostly on preemptible tiers; we stay at 4.
