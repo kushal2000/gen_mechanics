@@ -40,7 +40,8 @@
     "RL experiments (Martin, 2026-09-26): stationary palm-up hand, in-hand reorientation, no arm; Martin builds it as a new package isaacsimenvs/inhand_reorient on his own branch. Branch rule (Martin, 2026-09-27): every change stays on martin/hand-grammar and no other branch is ever touched; editing shared files ON THIS BRANCH is allowed (e.g. commit 350cacd, a generic resume hook in pose_reaching_6d/reward_utils/curriculum.py), but prefer keeping changes inside our own packages.",
     "Cluster budget phase 1: <=200 GPU-hours, main tier, <=4 GPUs in flight; preemptible tiers only after resume is verified and with Martin's OK; follow ~/research/slurm/CLAUDE.md etiquette; the agent never attempts cluster logins.",
     "Plan revision (Martin, 2026-09-27): replace E-R1 with a CPU grammar screen (viability + diversity) followed by an evolution pilot (MAP-Elites, shared controller with carried weights, graded fitness, 2 grammar variants x 2 seeds, ~20 GPU-h); E-R0 reduced to local gates + a cluster smoke. See plan-rl-grammar-tuning.md 'Revision, 2026-09-27'.",
-    "GPU budget (Martin, 2026-10-01): may exceed 200 GPU-h; do not hog -- match the lab's usage: 4 GPUs continuously on main (SLURM cap) plus resumable runs on the preemptible free-cycles tier as a throttled array (<= 8 in flight); avoid the outlier pattern of dozens of GPUs."
+    "GPU budget (Martin, 2026-10-01): may exceed 200 GPU-h; do not hog -- match the lab's usage: 4 GPUs continuously on main (SLURM cap) plus resumable runs on the preemptible free-cycles tier as a throttled array (<= 8 in flight); avoid the outlier pattern of dozens of GPUs.",
+    "Task spec (Martin, 2026-10-01): adopt an established in-hand cube task instead of our own variant -- NVIDIA Isaac Lab's Isaac-Repose-Cube-Allegro-Direct-v0 (IsaacGymEnvs Allegro reorientation benchmark, ships with our Isaac Lab 2.3.2): match its sim, reward, observations, resets, goals and PPO settings; change only what variable hands require."
   ],
   "issues": [
     {
@@ -332,7 +333,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Wait for pilot 3 (~13-14 h); keep the ssh master alive (Martin); then fetch, analyse all 12 runs, write pilot3 report.",
+  "next_action": "Opus worker: reference baseline of Isaac-Repose-Cube-Allegro-Direct-v0 on the 4090, port its spec into inhand_reorient as task_profile isaaclab_repose with a plain-PPO yaml, equivalence check on Allegro, then sharpa/dclaw and a 32-design population smoke; driver flags.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -393,7 +394,7 @@
       "summary": "V3S > V1 on median elite fitness in every seed (0.39-0.44 vs 0.16-0.35) and lower founder dominance; QD/coverage/best within seed variance; probes rose to 0.3-0.5 for both"
     },
     "pilot3": {
-      "status": "running",
+      "status": "cluster runs continue on the old (legacy) task spec; local runs stopped 2026-10-01 to free the GPU for the task port (G_V1 s2 reached 20 generations; G_V3S s2 extension partial, resumable)",
       "design": "3 grammars (G_V1, G_V2S, G_V3S) x 4 seeds (0-3), 20 generations, 32 designs, 1200 epochs/gen, pop config; pilot-2 runs extended 12 -> 20 generations",
       "cluster": "array 2511386 (ext: G_V1 s0/s1, G_V3S s0/s1 in runs/evolution_pilot/pilot2, --time 4:45:00) and 2511387 (new: G_V2S s0-3 in runs/evolution_pilot/pilot3, --time 11:15:00); main tier, A6000, <= 4 GPUs in flight",
       "local": "G_V1 s2, G_V3S s2 (extend, outputs/evolution_pilot/pilot2), then G_V1 s3, G_V3S s3 (new, outputs/evolution_pilot/pilot3)"

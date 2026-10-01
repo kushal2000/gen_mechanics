@@ -325,3 +325,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - 3 grammars x 4 seeds, 20 generations (pilot-2 runs extended from 12). Cluster: arrays 2511386 (extensions) and 2511387 (G_V2S s0-3), main tier, <= 4 GPUs in flight (lab norm; SLURM cap). Local: G_V1/G_V3S s2 extensions, then s3.
 - Lab usage check (squeue): most labmates hold 2-4 GPUs on main with 1-2 day limits; one heavy user runs ~26 mostly on preemptible tiers; we stay at 4.
+
+## Task spec replaced by an established one (2026-10-01)
+
+- Martin: the task spec is the main issue; use an existing good in-hand cube task. Chosen: NVIDIA Isaac Lab's `Isaac-Repose-Cube-Allegro-Direct-v0` (in our installed Isaac Lab 2.3.2; the IsaacGymEnvs Allegro/Shadow reorientation benchmark): 30 Hz control, 10 s episodes, full random goal orientations, success within 0.2 rad, reward = -10 dist + 1/(|rot|+0.1) + 250 goal bonus - 0.0002 |a|^2, plain PPO (MLP 1024-512-256-128, fixed sigma, 8192 envs). Alternative noted: HORA (Qi et al., CoRL 2022) continuous z-axis rotation in Isaac Gym.
+- Local pilot-3 runs stopped to free the 4090; cluster pilot-3 runs continue on the legacy spec.
