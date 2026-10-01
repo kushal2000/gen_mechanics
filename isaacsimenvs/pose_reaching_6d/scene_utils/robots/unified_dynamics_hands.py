@@ -31,6 +31,7 @@ def _sharpa_uniform():
         hand_armature={n: float(s["armature"]) for n in joints},
         joint_link_bodies=tuple(bodies), joint_link_boxes=boxes, joint_geometry_valid=valid,
         hand_scale=float(scale),
+        hand_default_joint_pos={n: 0.0 for n in joints},       # canonical: home is 0 on every joint
         notes="SHARPA left hand with uniform dynamics (unified_dynamics_commercial_hands/make_uniform.py).")
 
 

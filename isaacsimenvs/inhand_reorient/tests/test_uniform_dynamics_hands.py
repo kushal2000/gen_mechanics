@@ -63,13 +63,35 @@ def test_uniform_gains_and_limits(mods):
             assert float(lim.get("velocity")) == rpc.VELOCITY, (h, n)
 
 
-def test_kinematics_and_tokens_unchanged(mods):
+def test_same_hand_under_the_canonical_map(mods):
+    """Every link lands exactly where it did: vendor q -> canonical q = sign * q - offset."""
+    import json
+    import yourdfpy
+    unified, uniform = mods
+    cmap = json.loads((ROOT / "assets/urdf/unified_dynamics_commercial_hands/canonical_map.json").read_text())
+    src = {h: ROOT / "assets/urdf/unified_commercial_hands" / h / f"{h}_left.urdf" for h in unified.UNIFIED_LEFT}
+    src["sharpa"] = ROOT / "assets/urdf/unified_commercial_hands/sharpa/sharpa.urdf"
+    rng = np.random.default_rng(0)
+    for h, path in src.items():
+        a = yourdfpy.URDF.load(str(path), load_meshes=False)
+        b = yourdfpy.URDF.load(str(ROOT / uniform.UNIFORM_LEFT[h].urdf_path), load_meshes=False)
+        names = [n for n, j in a.joint_map.items() if j.type == "revolute"]
+        for _ in range(5):
+            qa = {n: rng.uniform(a.joint_map[n].limit.lower, a.joint_map[n].limit.upper) for n in names}
+            qb = {n: cmap[h][n]["sign"] * v - cmap[h][n]["offset"] for n, v in qa.items()}
+            for n in qb:      # and the mapped angle is inside the new limits
+                assert b.joint_map[n].limit.lower - 1e-6 <= qb[n] <= b.joint_map[n].limit.upper + 1e-6, (h, n)
+            a.update_cfg(qa); b.update_cfg(qb)
+            for link in a.link_map:
+                assert np.allclose(a.get_transform(link), b.get_transform(link), atol=1e-6), (h, link)
+
+
+def test_canonical_home_is_zero_and_same_tokens_otherwise(mods):
     unified, uniform = mods
     pairs = [(unified.UNIFIED_LEFT[h], uniform.UNIFORM_LEFT[h]) for h in unified.UNIFIED_LEFT]
     pairs.append((sys.modules[PKG + ".sharpa_handonly"].SHARPA_HANDONLY, uniform.UNIFORM_LEFT["sharpa"]))
     for a, b in pairs:
-        assert a.hand_joint_names == b.hand_joint_names
-        assert a.fingertip_body_names == b.fingertip_body_names
-        assert np.allclose(a.joint_link_boxes, b.joint_link_boxes), a.name
+        assert set(b.hand_default_joint_pos.values()) == {0.0}, b.name
+        assert a.hand_joint_names == b.hand_joint_names and a.fingertip_body_names == b.fingertip_body_names
         assert np.allclose(a.base_pos, b.base_pos) and np.allclose(a.base_rot, b.base_rot), a.name
         assert a.adjacent_links == b.adjacent_links, a.name

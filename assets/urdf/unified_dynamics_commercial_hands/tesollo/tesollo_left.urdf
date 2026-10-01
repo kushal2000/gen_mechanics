@@ -372,8 +372,8 @@
     <origin xyz="-0.0162 -0.019 0.0128" rpy="0.0 0.0 0.0" />
     <parent link="ll_dg_palm" />
     <child link="ll_dg_1_1" />
-    <axis xyz="1 0 0" />
-    <limit lower="-0.8901179185171081" upper="0.3839724354387525" effort="0.5" velocity="10.0" />
+    <axis xyz="-1 -0 -0" />
+    <limit lower="-0.383972435" upper="0.890117919" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_1_2" type="revolute">
@@ -381,23 +381,23 @@
     <parent link="ll_dg_1_1" />
     <child link="ll_dg_1_2" />
     <axis xyz="0 0 1" />
-    <limit lower="-0.0" upper="3.141592653589793" effort="0.5" velocity="10.0" />
+    <limit lower="-0" upper="3.14159265" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_1_3" type="revolute">
     <origin xyz="0.0 -0.031 0.0" rpy="0.0 0.0 0.0" />
     <parent link="ll_dg_1_2" />
     <child link="ll_dg_1_3" />
-    <axis xyz="1 0 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <axis xyz="-1 -0 -0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_1_4" type="revolute">
     <origin xyz="0.0 -0.0388 0.0" rpy="0.0 0.0 0.0" />
     <parent link="ll_dg_1_3" />
     <child link="ll_dg_1_4" />
-    <axis xyz="1 0 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <axis xyz="-1 -0 -0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_1_tip" type="fixed">
@@ -410,8 +410,8 @@
     <origin xyz="-0.0071 -0.027 0.0661" rpy="0.0 0.0 0.0" />
     <parent link="ll_dg_palm" />
     <child link="ll_dg_2_1" />
-    <axis xyz="1 0 0" />
-    <limit lower="-0.6108652381980153" upper="0.4188790204786391" effort="0.5" velocity="10.0" />
+    <axis xyz="-1 -0 -0" />
+    <limit lower="-0.41887902" upper="0.610865238" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_2_2" type="revolute">
@@ -419,7 +419,7 @@
     <parent link="ll_dg_2_1" />
     <child link="ll_dg_2_2" />
     <axis xyz="0 1 0" />
-    <limit lower="-0.0" upper="2.007128639793479" effort="0.5" velocity="10.0" />
+    <limit lower="-0" upper="2.00712864" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_2_3" type="revolute">
@@ -427,7 +427,7 @@
     <parent link="ll_dg_2_2" />
     <child link="ll_dg_2_3" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_2_4" type="revolute">
@@ -435,7 +435,7 @@
     <parent link="ll_dg_2_3" />
     <child link="ll_dg_2_4" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_2_tip" type="fixed">
@@ -448,8 +448,8 @@
     <origin xyz="-0.0071 -0.0025 0.0701" rpy="0.0 0.0 0.0" />
     <parent link="ll_dg_palm" />
     <child link="ll_dg_3_1" />
-    <axis xyz="1 0 0" />
-    <limit lower="-0.6108652381980153" upper="0.6108652381980153" effort="0.5" velocity="10.0" />
+    <axis xyz="-1 -0 -0" />
+    <limit lower="-0.610865238" upper="0.610865238" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_3_2" type="revolute">
@@ -457,7 +457,7 @@
     <parent link="ll_dg_3_1" />
     <child link="ll_dg_3_2" />
     <axis xyz="0 1 0" />
-    <limit lower="0.0" upper="1.9547687622336491" effort="0.5" velocity="10.0" />
+    <limit lower="0" upper="1.95476876" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_3_3" type="revolute">
@@ -465,7 +465,7 @@
     <parent link="ll_dg_3_2" />
     <child link="ll_dg_3_3" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_3_4" type="revolute">
@@ -473,7 +473,7 @@
     <parent link="ll_dg_3_3" />
     <child link="ll_dg_3_4" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_3_tip" type="fixed">
@@ -486,8 +486,8 @@
     <origin xyz="-0.0071 0.022 0.0621" rpy="0.0 0.0 0.0" />
     <parent link="ll_dg_palm" />
     <child link="ll_dg_4_1" />
-    <axis xyz="1 0 0" />
-    <limit lower="-0.4188790204786391" upper="0.6108652381980153" effort="0.5" velocity="10.0" />
+    <axis xyz="-1 -0 -0" />
+    <limit lower="-0.610865238" upper="0.41887902" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_4_2" type="revolute">
@@ -495,7 +495,7 @@
     <parent link="ll_dg_4_1" />
     <child link="ll_dg_4_2" />
     <axis xyz="0 1 0" />
-    <limit lower="0.0" upper="1.9024088846738192" effort="0.5" velocity="10.0" />
+    <limit lower="0" upper="1.90240888" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_4_3" type="revolute">
@@ -503,7 +503,7 @@
     <parent link="ll_dg_4_2" />
     <child link="ll_dg_4_3" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_4_4" type="revolute">
@@ -511,7 +511,7 @@
     <parent link="ll_dg_4_3" />
     <child link="ll_dg_4_4" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_4_tip" type="fixed">
@@ -524,16 +524,16 @@
     <origin xyz="0.0103 0.0195 0.0182" rpy="0.0 0.0 0.0" />
     <parent link="ll_dg_palm" />
     <child link="ll_dg_5_1" />
-    <axis xyz="0 0 1" />
-    <limit lower="-1.0471975511965976" upper="0.017453292519943295" effort="0.5" velocity="10.0" />
+    <axis xyz="-0 -0 -1" />
+    <limit lower="-0.0174532925" upper="1.04719755" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_5_2" type="revolute">
     <origin xyz="0.0 0.028 0.0381" rpy="0.0 0.0 0.0" />
     <parent link="ll_dg_5_1" />
     <child link="ll_dg_5_2" />
-    <axis xyz="1 0 0" />
-    <limit lower="-0.6108652381980153" upper="0.4188790204786391" effort="0.5" velocity="10.0" />
+    <axis xyz="-1 -0 -0" />
+    <limit lower="-0.41887902" upper="0.610865238" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_5_3" type="revolute">
@@ -541,7 +541,7 @@
     <parent link="ll_dg_5_2" />
     <child link="ll_dg_5_3" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_5_4" type="revolute">
@@ -549,7 +549,7 @@
     <parent link="ll_dg_5_3" />
     <child link="ll_dg_5_4" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="0.5" velocity="10.0" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
 
   <joint name="lj_dg_5_tip" type="fixed">

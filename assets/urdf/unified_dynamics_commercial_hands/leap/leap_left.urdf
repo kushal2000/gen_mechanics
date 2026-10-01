@@ -575,7 +575,7 @@
     <origin xyz="-0.0122 0.03810 0.01450" rpy="-1.57079 0 1.57079" />
     <parent link="mcp_joint" />
     <child link="pip" />
-    <axis xyz="0 0 -1" />
+    <axis xyz="-0 -0 1" />
     <limit effort="0.5" velocity="10.0" lower="-1.047" upper="1.047" />
     <joint_properties friction="0.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
@@ -607,7 +607,7 @@
     <origin xyz="-0.0122 0.0381 0.0145" rpy="-1.57079 0 1.57079" />
     <parent link="mcp_joint_2" />
     <child link="pip_2" />
-    <axis xyz="0 0 -1" />
+    <axis xyz="-0 -0 1" />
     <limit effort="0.5" velocity="10.0" lower="-1.047" upper="1.047" />
     <joint_properties friction="0.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
@@ -639,7 +639,7 @@
     <origin xyz="-0.0122 0.0381 0.0145" rpy="-1.57079 0 1.57079" />
     <parent link="mcp_joint_3" />
     <child link="pip_3" />
-    <axis xyz="0 0 -1" />
+    <axis xyz="-0 -0 1" />
     <limit effort="0.5" velocity="10.0" lower="-1.047" upper="1.047" />
     <joint_properties friction="0.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
@@ -671,16 +671,16 @@
     <origin xyz="-0.1448 -0.0900 0.0049" rpy="0 1.57079 0" />
     <parent link="palm_lower_left" />
     <child link="thumb_left_temp_base" />
-    <axis xyz="0 0 -1" />
-    <limit effort="0.5" velocity="10.0" lower="-2.094" upper="0.349" />
+    <axis xyz="-0 -0 1" />
+    <limit effort="0.5" velocity="10.0" lower="-0.349" upper="2.094" />
     <joint_properties friction="0.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="j13" type="revolute">
     <origin xyz="0 -0.0143 -0.013" rpy="-1.57079 -1.57079 0" />
     <parent link="thumb_left_temp_base" />
     <child link="thumb_pip" />
-    <axis xyz="0 0 -1" />
-    <limit effort="0.5" velocity="10.0" lower="-2.443" upper="0.47" />
+    <axis xyz="-0 -0 1" />
+    <limit effort="0.5" velocity="10.0" lower="-0.47" upper="2.443" />
     <joint_properties friction="0.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="j14" type="revolute">
@@ -688,7 +688,7 @@
     <parent link="thumb_pip" />
     <child link="thumb_dip" />
     <axis xyz="0 0 -1" />
-    <limit effort="0.5" velocity="10.0" lower="-1.20" upper="1.90" />
+    <limit effort="0.5" velocity="10.0" lower="-1.2" upper="1.9" />
     <joint_properties friction="0.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="j15" type="revolute">

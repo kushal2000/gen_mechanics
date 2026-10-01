@@ -231,7 +231,8 @@ def main():
                 server.scene.remove_by_name(n)
             except Exception:
                 pass
-        st.update({"gui": [], "sliders": [], "red": [], "robot": None, "collider": None, "names": None})
+        st.update({"gui": [], "sliders": [], "red": [], "robot": None, "collider": None, "names": None,
+               "cmap": st.get("cmap")})
 
     def push_targets(_=None):
         if not st["sliders"]:
@@ -245,10 +246,17 @@ def main():
         folder = server.gui.add_folder("PD targets (rad)")
         st["gui"].append(folder)
         with folder:
-            b_zero = server.gui.add_button("all to home (0, clamped)")
+            b_zero = server.gui.add_button("home (all 0, clamped)")
             b_open = server.gui.add_button("all to lower limit")
             b_close = server.gui.add_button("all to upper limit")
             st["gui"] += [b_zero, b_open, b_close]
+            # Convention check (uniform hands): every FLEX joint at +0.6 must curl toward the palm, every
+            # SPREAD joint at +0.3 must move toward the same side of the hand. Kinds from canonical_map.json.
+            cmap = st.get("cmap") or {}
+            if cmap:
+                b_flex = server.gui.add_button("conventions: flex +0.6 (all should curl in)")
+                b_spread = server.gui.add_button("conventions: spread +0.3 (all to the same side)")
+                st["gui"] += [b_flex, b_spread]
             for k, n in enumerate(names):
                 a, b = float(lo[k]), max(float(hi[k]), float(lo[k]) + 1e-4)
                 sl = server.gui.add_slider(n, a, b, (b - a) / 200.0, min(max(0.0, a), b))
@@ -259,6 +267,15 @@ def main():
             for k, sl in st["sliders"]:
                 sl.value = f(float(lo[k]), float(hi[k]))
             push_targets()
+        def set_kind(kind, val):
+            for k, sl in st["sliders"]:
+                n = names[k]
+                v = val if cmap.get(n, {}).get("kind") == kind else 0.0
+                sl.value = min(max(v, float(lo[k])), float(hi[k]))
+            push_targets()
+        if cmap:
+            b_flex.on_click(lambda _: set_kind("flex", 0.6))
+            b_spread.on_click(lambda _: set_kind("spread", 0.3))
         b_zero.on_click(lambda _: set_all(lambda a, b: min(max(0.0, a), b)))
         b_open.on_click(lambda _: set_all(lambda a, b: a))
         b_close.on_click(lambda _: set_all(lambda a, b: b))
@@ -272,6 +289,7 @@ def main():
         md.content = f"loading **{hand}** ({'uniform' if uniform else 'vendor'} dynamics): Kit boots in ~1 min"
         sess = Session(hand, uniform, args.device)
         st["filtered"] = _filtered_pairs(hand, uniform)
+        st["cmap"] = (json.loads((HERE / "canonical_map.json").read_text()).get(hand, {}) if uniform else {})
         if not sess.accept():
             md.content = "**worker died before connecting** -- see the terminal"
             sess.close(); sess = None

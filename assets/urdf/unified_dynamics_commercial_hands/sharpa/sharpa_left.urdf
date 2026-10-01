@@ -536,8 +536,8 @@
     <origin xyz="0.01136 0.0263 0.0867" rpy="-3.1416 0 3.1416" />
     <parent link="left_hand_C_MC" />
     <child link="left_pinky_MC" />
-    <axis xyz="0 0 1" />
-    <limit lower="0" upper="0.2618" effort="0.5" velocity="10.0" />
+    <axis xyz="-0 -0 -1" />
+    <limit lower="-0.2618" upper="-0" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="left_pinky_MCP_FE" type="revolute">
     <origin xyz="0.00836 0.0048 0" rpy="-1.5708 1.5708 0" />
@@ -696,7 +696,7 @@
     <origin xyz="0 0 0" rpy="1.5708 0 0" />
     <parent link="left_thumb_MCP_VL" />
     <child link="left_thumb_PP" />
-    <axis xyz="0 0 1" />
+    <axis xyz="-0 -0 -1" />
     <limit lower="-0.3491" upper="0.3491" effort="0.5" velocity="10.0" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="left_thumb_IP" type="revolute">

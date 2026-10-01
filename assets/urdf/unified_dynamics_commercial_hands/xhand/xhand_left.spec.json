@@ -68,18 +68,18 @@
   ]
  },
  "hand_default_joint_pos": {
-  "left_hand_thumb_bend_joint": 0.001,
+  "left_hand_thumb_bend_joint": 0.0,
   "left_hand_thumb_rota_joint1": 0.0,
   "left_hand_thumb_rota_joint2": 0.0,
   "left_hand_index_bend_joint": 0.0,
-  "left_hand_index_joint1": 0.001,
-  "left_hand_index_joint2": 0.001,
-  "left_hand_mid_joint1": 0.001,
-  "left_hand_mid_joint2": 0.001,
-  "left_hand_ring_joint1": 0.001,
-  "left_hand_ring_joint2": 0.001,
-  "left_hand_pinky_joint1": 0.001,
-  "left_hand_pinky_joint2": 0.001
+  "left_hand_index_joint1": 0.0,
+  "left_hand_index_joint2": 0.0,
+  "left_hand_mid_joint1": 0.0,
+  "left_hand_mid_joint2": 0.0,
+  "left_hand_ring_joint1": 0.0,
+  "left_hand_ring_joint2": 0.0,
+  "left_hand_pinky_joint1": 0.0,
+  "left_hand_pinky_joint2": 0.0
  },
  "fingertip_body_names": [
   "left_hand_thumb_rota_link2",

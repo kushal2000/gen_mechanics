@@ -1,0 +1,1773 @@
+{
+ "allegro": {
+  "joint_0_0": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    0.996,
+    -0.087
+   ],
+   "measured_at": "curled",
+   "toward_grasp": -0.336,
+   "motion_per_lever": 0.937
+  },
+  "joint_1_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.199,
+   "motion_per_lever": 1.0
+  },
+  "joint_2_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.199,
+   "motion_per_lever": 1.0
+  },
+  "joint_3_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.199,
+   "motion_per_lever": 1.0
+  },
+  "joint_4_0": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    1.0,
+    0.0
+   ],
+   "measured_at": "curled",
+   "toward_grasp": 0.0,
+   "motion_per_lever": 0.937
+  },
+  "joint_5_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.204,
+   "motion_per_lever": 1.0
+  },
+  "joint_6_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.204,
+   "motion_per_lever": 1.0
+  },
+  "joint_7_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.204,
+   "motion_per_lever": 1.0
+  },
+  "joint_8_0": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    0.996,
+    0.087
+   ],
+   "measured_at": "curled",
+   "toward_grasp": 0.336,
+   "motion_per_lever": 0.937
+  },
+  "joint_9_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.199,
+   "motion_per_lever": 1.0
+  },
+  "joint_10_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.199,
+   "motion_per_lever": 1.0
+  },
+  "joint_11_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.199,
+   "motion_per_lever": 1.0
+  },
+  "joint_12_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.263,
+   "tip_motion_ours": [
+    0.973,
+    0.229,
+    0.02
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.342,
+   "motion_per_lever": 0.987
+  },
+  "joint_13_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.966,
+    0.259,
+    0.023
+   ],
+   "measured_at": "curled",
+   "toward_grasp": 0.483,
+   "motion_per_lever": 0.829
+  },
+  "joint_14_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    -0.087,
+    0.996
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.129,
+   "motion_per_lever": 1.0
+  },
+  "joint_15_0": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    -0.087,
+    0.996
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.129,
+   "motion_per_lever": 1.0
+  }
+ },
+ "leap": {
+  "j0": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    -1.0,
+    -0.009
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.234,
+   "motion_per_lever": 0.992
+  },
+  "j1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    -0.0,
+    -0.006
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.232,
+   "motion_per_lever": 0.994
+  },
+  "j2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.227,
+   "motion_per_lever": 0.984
+  },
+  "j3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.227,
+   "motion_per_lever": 0.954
+  },
+  "j4": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    -1.0,
+    -0.009
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.005,
+   "motion_per_lever": 0.992
+  },
+  "j5": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    -0.0,
+    -0.006
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.239,
+   "motion_per_lever": 0.994
+  },
+  "j6": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.233,
+   "motion_per_lever": 0.984
+  },
+  "j7": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.233,
+   "motion_per_lever": 0.954
+  },
+  "j8": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    -1.0,
+    -0.009
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.244,
+   "motion_per_lever": 0.992
+  },
+  "j9": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    -0.0,
+    -0.006
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.232,
+   "motion_per_lever": 0.994
+  },
+  "j10": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.227,
+   "motion_per_lever": 0.984
+  },
+  "j11": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.227,
+   "motion_per_lever": 0.954
+  },
+  "j12": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -1.0,
+    0.002,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.226,
+   "motion_per_lever": 0.996
+  },
+  "j13": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -1.0,
+    -0.0,
+    -0.006
+   ],
+   "measured_at": "curled",
+   "toward_grasp": -0.249,
+   "motion_per_lever": 0.421
+  },
+  "j14": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.183,
+   "motion_per_lever": 0.99
+  },
+  "j15": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.183,
+   "motion_per_lever": 0.97
+  }
+ },
+ "shadow": {
+  "FFJ4": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.197,
+   "motion_per_lever": 1.0
+  },
+  "FFJ3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.34,
+   "motion_per_lever": 1.0
+  },
+  "FFJ2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.34,
+   "motion_per_lever": 1.0
+  },
+  "FFJ1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.34,
+   "motion_per_lever": 1.0
+  },
+  "MFJ4": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.061,
+   "motion_per_lever": 1.0
+  },
+  "MFJ3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.338,
+   "motion_per_lever": 1.0
+  },
+  "MFJ2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.338,
+   "motion_per_lever": 1.0
+  },
+  "MFJ1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.338,
+   "motion_per_lever": 1.0
+  },
+  "RFJ4": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    -1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.075,
+   "motion_per_lever": 1.0
+  },
+  "RFJ3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.346,
+   "motion_per_lever": 1.0
+  },
+  "RFJ2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.346,
+   "motion_per_lever": 1.0
+  },
+  "RFJ1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.346,
+   "motion_per_lever": 1.0
+  },
+  "LFJ5": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.356,
+   "motion_per_lever": 0.574
+  },
+  "LFJ4": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    -1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.22,
+   "motion_per_lever": 1.0
+  },
+  "LFJ3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.356,
+   "motion_per_lever": 1.0
+  },
+  "LFJ2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.356,
+   "motion_per_lever": 1.0
+  },
+  "LFJ1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.356,
+   "motion_per_lever": 1.0
+  },
+  "THJ5": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.303,
+    0.674,
+    0.674
+   ],
+   "measured_at": "curled",
+   "toward_grasp": 0.186,
+   "motion_per_lever": 0.592
+  },
+  "THJ4": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    -0.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.372,
+   "motion_per_lever": 1.0
+  },
+  "THJ3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    -0.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.372,
+   "motion_per_lever": 1.0
+  },
+  "THJ2": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    0.707,
+    0.707
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.26,
+   "motion_per_lever": 1.0
+  },
+  "THJ1": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    0.707,
+    0.707
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.26,
+   "motion_per_lever": 1.0
+  }
+ },
+ "dex3": {
+  "left_hand_thumb_0_joint": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    1.0,
+    -0.001
+   ],
+   "measured_at": "curled",
+   "toward_grasp": -0.0,
+   "motion_per_lever": 0.502
+  },
+  "left_hand_thumb_1_joint": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.021,
+    0.0,
+    1.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.297,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_thumb_2_joint": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.039,
+    0.0,
+    0.999
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.279,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_middle_0_joint": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": -0.0,
+   "tip_motion_ours": [
+    -1.0,
+    0.0,
+    -0.021
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.348,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_middle_1_joint": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": -0.0,
+   "tip_motion_ours": [
+    -0.999,
+    0.0,
+    -0.039
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.331,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_index_0_joint": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": -0.0,
+   "tip_motion_ours": [
+    -1.0,
+    0.0,
+    -0.021
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.348,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_index_1_joint": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": -0.0,
+   "tip_motion_ours": [
+    -0.999,
+    0.0,
+    -0.039
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.331,
+   "motion_per_lever": 1.0
+  }
+ },
+ "tesollo": {
+  "lj_dg_1_1": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.282,
+   "motion_per_lever": 0.93
+  },
+  "lj_dg_1_2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": -0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.151,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_1_3": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.282,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_1_4": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.282,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_2_1": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    -1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.166,
+   "motion_per_lever": 0.991
+  },
+  "lj_dg_2_2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": -0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.229,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_2_3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.229,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_2_4": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.229,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_3_1": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    -1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.005,
+   "motion_per_lever": 0.991
+  },
+  "lj_dg_3_2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.226,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_3_3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.226,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_3_4": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.226,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_4_1": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    -1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.16,
+   "motion_per_lever": 0.991
+  },
+  "lj_dg_4_2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.235,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_4_3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.235,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_4_4": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.235,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_5_1": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "curled",
+   "toward_grasp": -0.266,
+   "motion_per_lever": 0.257
+  },
+  "lj_dg_5_2": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    -1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.385,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_5_3": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.274,
+   "motion_per_lever": 1.0
+  },
+  "lj_dg_5_4": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.274,
+   "motion_per_lever": 1.0
+  }
+ },
+ "wuji2": {
+  "l_thumb_cmc_flex": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.759,
+    0.431,
+    0.488
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.417,
+   "motion_per_lever": 0.793
+  },
+  "l_thumb_cmc_abd": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.579,
+    0.487,
+    0.654
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.091,
+   "motion_per_lever": 1.0
+  },
+  "l_thumb_mcp": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.415,
+    0.601,
+    0.683
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.426,
+   "motion_per_lever": 1.0
+  },
+  "l_thumb_ip": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.415,
+    0.601,
+    0.683
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.426,
+   "motion_per_lever": 1.0
+  },
+  "l_index_finger_mcp_flex": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.994,
+    0.093,
+    0.051
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.343,
+   "motion_per_lever": 1.0
+  },
+  "l_index_finger_mcp_abd": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.099,
+    0.986,
+    0.137
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.127,
+   "motion_per_lever": 1.0
+  },
+  "l_index_finger_pip": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.995,
+    0.095,
+    0.039
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.353,
+   "motion_per_lever": 1.0
+  },
+  "l_index_finger_dip": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.995,
+    0.095,
+    0.039
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.353,
+   "motion_per_lever": 1.0
+  },
+  "l_middle_finger_mcp_flex": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.999,
+    -0.0,
+    0.045
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.357,
+   "motion_per_lever": 1.0
+  },
+  "l_middle_finger_mcp_abd": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.001,
+    1.0,
+    -0.011
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.056,
+   "motion_per_lever": 1.0
+  },
+  "l_middle_finger_pip": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.999,
+    -0.0,
+    0.034
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.368,
+   "motion_per_lever": 1.0
+  },
+  "l_middle_finger_dip": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.999,
+    -0.0,
+    0.034
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.368,
+   "motion_per_lever": 1.0
+  },
+  "l_ring_finger_mcp_flex": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.998,
+    -0.064,
+    0.028
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.37,
+   "motion_per_lever": 1.0
+  },
+  "l_ring_finger_mcp_abd": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.068,
+    0.988,
+    -0.141
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.031,
+   "motion_per_lever": 1.0
+  },
+  "l_ring_finger_pip": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.998,
+    -0.066,
+    0.016
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.381,
+   "motion_per_lever": 1.0
+  },
+  "l_ring_finger_dip": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.998,
+    -0.066,
+    0.016
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.381,
+   "motion_per_lever": 1.0
+  },
+  "l_pinky_mcp_flex": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.991,
+    -0.13,
+    0.021
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.388,
+   "motion_per_lever": 1.0
+  },
+  "l_pinky_mcp_abd": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.131,
+    0.96,
+    -0.248
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.129,
+   "motion_per_lever": 1.0
+  },
+  "l_pinky_pip": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.991,
+    -0.133,
+    0.01
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.399,
+   "motion_per_lever": 1.0
+  },
+  "l_pinky_dip": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.991,
+    -0.133,
+    0.01
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.399,
+   "motion_per_lever": 1.0
+  }
+ },
+ "xhand": {
+  "left_hand_thumb_bend_joint": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.996,
+    0.094,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.258,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_thumb_rota_joint1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.259,
+    0.011,
+    0.966
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.23,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_thumb_rota_joint2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.259,
+    0.011,
+    0.966
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.23,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_index_bend_joint": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.0,
+    1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.191,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_index_joint1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.279,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_index_joint2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.279,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_mid_joint1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.283,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_mid_joint2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.283,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_ring_joint1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.287,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_ring_joint2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.287,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_pinky_joint1": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.287,
+   "motion_per_lever": 1.0
+  },
+  "left_hand_pinky_joint2": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.287,
+   "motion_per_lever": 1.0
+  }
+ },
+ "sharpa": {
+  "left_1_thumb_CMC_FE": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.998,
+    0.07,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.309,
+   "motion_per_lever": 0.732
+  },
+  "left_2_index_MCP_FE": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    -0.0,
+    -0.02
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.313,
+   "motion_per_lever": 1.0
+  },
+  "left_3_middle_MCP_FE": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    -0.0,
+    -0.02
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.318,
+   "motion_per_lever": 1.0
+  },
+  "left_4_ring_MCP_FE": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    -0.0,
+    -0.02
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.32,
+   "motion_per_lever": 1.0
+  },
+  "left_5_pinky_CMC": {
+   "kind": "spread",
+   "sign": -1.0,
+   "offset": -0.0,
+   "tip_motion_ours": [
+    0.071,
+    -0.997,
+    -0.0
+   ],
+   "measured_at": "curled",
+   "toward_grasp": 0.386,
+   "motion_per_lever": 0.952
+  },
+  "left_pinky_MCP_FE": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    1.0,
+    0.0,
+    -0.02
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.316,
+   "motion_per_lever": 1.0
+  },
+  "left_pinky_MCP_AA": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    1.0,
+    0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.211,
+   "motion_per_lever": 1.0
+  },
+  "left_pinky_PIP": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.999,
+    0.0,
+    -0.039
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.333,
+   "motion_per_lever": 1.0
+  },
+  "left_pinky_DIP": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.995,
+    0.0,
+    -0.1
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.389,
+   "motion_per_lever": 1.0
+  },
+  "left_ring_MCP_AA": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    1.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.073,
+   "motion_per_lever": 1.0
+  },
+  "left_ring_PIP": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.999,
+    -0.0,
+    -0.039
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.338,
+   "motion_per_lever": 1.0
+  },
+  "left_ring_DIP": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.995,
+    -0.0,
+    -0.1
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.394,
+   "motion_per_lever": 1.0
+  },
+  "left_middle_MCP_AA": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    1.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.055,
+   "motion_per_lever": 1.0
+  },
+  "left_middle_PIP": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.999,
+    -0.0,
+    -0.039
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.336,
+   "motion_per_lever": 1.0
+  },
+  "left_middle_DIP": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.995,
+    -0.0,
+    -0.1
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.392,
+   "motion_per_lever": 1.0
+  },
+  "left_index_MCP_AA": {
+   "kind": "spread",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    1.0,
+    -0.0
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.182,
+   "motion_per_lever": 1.0
+  },
+  "left_index_PIP": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.999,
+    -0.0,
+    -0.039
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.33,
+   "motion_per_lever": 1.0
+  },
+  "left_index_DIP": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.995,
+    -0.0,
+    -0.1
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.386,
+   "motion_per_lever": 1.0
+  },
+  "left_thumb_CMC_AA": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.0,
+    0.682,
+    0.731
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.244,
+   "motion_per_lever": 0.996
+  },
+  "left_thumb_MCP_FE": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.5,
+    0.636,
+    0.588
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.395,
+   "motion_per_lever": 1.0
+  },
+  "left_thumb_MCP_AA": {
+   "kind": "flex",
+   "sign": -1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    -0.866,
+    0.354,
+    0.354
+   ],
+   "measured_at": "home",
+   "toward_grasp": -0.079,
+   "motion_per_lever": 0.999
+  },
+  "left_thumb_IP": {
+   "kind": "flex",
+   "sign": 1.0,
+   "offset": 0.0,
+   "tip_motion_ours": [
+    0.498,
+    0.68,
+    0.539
+   ],
+   "measured_at": "home",
+   "toward_grasp": 0.454,
+   "motion_per_lever": 1.0
+  }
+ }
+}
