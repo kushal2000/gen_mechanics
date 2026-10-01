@@ -82,11 +82,15 @@ def apply_action_pipeline(env, actions: torch.Tensor) -> None:
     )
     arm_smoothed = torch.clamp(arm_smoothed, env._arm_lower, env._arm_upper)
 
-    # Hand: absolute [-1, 1] scale.
+    # Hand: absolute [-1, 1] scale -- onto each joint's own range, or (physical units) onto +-pi
+    # radians for every joint, clipped to the joint's range below.
     hand_prev = env._prev_targets[:, hand_ids]
-    hand_raw = env._hand_lower + 0.5 * (actions[:, hand_ids] + 1.0) * (
-        env._hand_upper - env._hand_lower
-    )
+    if env.cfg.action.joint_units == "physical":
+        hand_raw = math.pi * actions[:, hand_ids]
+    else:
+        hand_raw = env._hand_lower + 0.5 * (actions[:, hand_ids] + 1.0) * (
+            env._hand_upper - env._hand_lower
+        )
     hand_smoothed = (
         act_cfg.hand_moving_average * hand_raw
         + (1.0 - act_cfg.hand_moving_average) * hand_prev

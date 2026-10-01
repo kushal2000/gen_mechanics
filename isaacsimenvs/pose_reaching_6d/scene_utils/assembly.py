@@ -89,7 +89,8 @@ def _resolve_spec(cfg):
 # --- spawn configs ------------------------------------------------------------
 
 def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False,
-                                 hand_velocity_limit: float | None = None) -> ArticulationCfg:
+                                 hand_velocity_limit: float | None = None,
+                                 hand_overrides: dict | None = None) -> ArticulationCfg:
     """The robot articulation over prims already on the stage."""
     return ArticulationCfg(
         prim_path=ROBOT_PATH,
@@ -104,11 +105,13 @@ def build_robot_articulation_cfg(spec, *, start_arm_higher: bool = False,
             joint_vel={".*": 0.0},
         ),
         # Keyed by joint name.
-        actuators=_actuator_groups(spec, hand_velocity_limit=hand_velocity_limit),
+        actuators=_actuator_groups(spec, hand_velocity_limit=hand_velocity_limit,
+                                   hand_overrides=hand_overrides),
     )
 
 
-def _actuator_groups(spec, *, hand_velocity_limit: float | None = None) -> dict:
+def _actuator_groups(spec, *, hand_velocity_limit: float | None = None,
+                     hand_overrides: dict | None = None) -> dict:
     """Actuator groups, keyed by joint name.
 
     The arm group is OMITTED when the spec has no arm joints: Isaac Lab raises
@@ -116,12 +119,16 @@ def _actuator_groups(spec, *, hand_velocity_limit: float | None = None) -> dict:
     whose expression matches nothing, so a hand-only robot cannot carry an empty
     one. With an arm present this builds exactly the dict it always did.
     """
+    # PhysicsCfg overrides: one value for every hand joint where set (> 0), else the spec's own.
+    ov = {k: v for k, v in (hand_overrides or {}).items() if v}
+    joints = list(spec.hand_joint_names)
     groups = {
         "hand": ImplicitActuatorCfg(
-            joint_names_expr=list(spec.hand_joint_names),
-            stiffness=dict(spec.hand_stiffness),
-            damping=dict(spec.hand_damping),
-            armature=dict(spec.hand_armature),
+            joint_names_expr=joints,
+            stiffness={n: ov["stiffness"] for n in joints} if "stiffness" in ov else dict(spec.hand_stiffness),
+            damping={n: ov["damping"] for n in joints} if "damping" in ov else dict(spec.hand_damping),
+            armature={n: ov["armature"] for n in joints} if "armature" in ov else dict(spec.hand_armature),
+            effort_limit_sim=ov.get("effort"),
             # Zero everywhere, deliberately. 0.0 rather than None: None takes
             # whatever the USD carries, which is not uniformity.
             friction=0.0,
@@ -438,7 +445,11 @@ def setup_scene(env) -> None:
     # 4. Spawn.
     env.robot = Articulation(build_robot_articulation_cfg(
         spec, start_arm_higher=env.cfg.reset.start_arm_higher,
-        hand_velocity_limit=env.cfg.physics.hand_velocity_limit or None))
+        hand_velocity_limit=env.cfg.physics.hand_velocity_limit or None,
+        hand_overrides={"effort": env.cfg.physics.hand_effort_limit,
+                        "stiffness": env.cfg.physics.hand_stiffness,
+                        "damping": env.cfg.physics.hand_damping,
+                        "armature": env.cfg.physics.hand_armature}))
     env.table = (RigidObject(build_rigid_object_cfg(TABLE_PATH, table_usd, _table_props(offsets)))
                  if want_table else None)
     authored_map = _author_objects_into_envs(env, object_params, design_idx)

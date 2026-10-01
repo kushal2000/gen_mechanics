@@ -183,6 +183,11 @@ def _object_keypoints_rel_joint(
     return rel_palm * valid[:, :, None, None].to(rel_palm.dtype)
 
 
+# Physical joint units (ActionCfg.joint_units): velocities observed as (rad/s) / this -- the joint speed
+# cap every uniform hand shares, so 1.0 reads "at the cap".
+JOINT_VEL_SCALE = 10.0
+
+
 def _quat_angle(q1, q2):
     """Rotation angle in [0, pi] between two (w, x, y, z) quaternion batches; atan2 form,
     which stays accurate near 0 where 2 acos(|<q1, q2>|) loses precision."""
@@ -530,6 +535,14 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "reward": (env.reward_buf * 0.01).unsqueeze(-1),
     }
 
+    if env.cfg.action.joint_units == "physical":
+        # One scale for every joint of every hand (see ActionCfg.joint_units).
+        for k in ("joint_pos", "prev_joint_pos", "prev_action_targets", "joint_lower", "joint_upper"):
+            obs_clean[k] = obs_clean[k] / math.pi
+        for k in ("joint_vel", "prev_joint_vel"):
+            obs_clean[k] = obs_clean[k] / JOINT_VEL_SCALE
+        joint_vel, prev_joint_vel = obs_clean["joint_vel"], obs_clean["prev_joint_vel"]
+
     obs_noisy = dict(obs_clean)
     obs_noisy["object_rot"] = noisy_obj_rot_xyzw
     obs_noisy["object_vel"] = noisy_obj_vel
@@ -538,12 +551,15 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     obs_noisy["keypoints_rel_goal"] = keypoints_rel_goal_noisy
     obs_noisy["object_keypoints_rel_joint"] = object_keypoints_rel_joint_noisy
     if dr.joint_velocity_obs_noise_std > 0:
+        # The noise std is in rad/s; in physical units the velocities are / JOINT_VEL_SCALE.
+        vel_noise = dr.joint_velocity_obs_noise_std / (
+            JOINT_VEL_SCALE if env.cfg.action.joint_units == "physical" else 1.0)
         obs_noisy["joint_vel"] = (
-            joint_vel + torch.randn_like(joint_vel) * dr.joint_velocity_obs_noise_std
+            joint_vel + torch.randn_like(joint_vel) * vel_noise
         )
         obs_noisy["prev_joint_vel"] = (
             prev_joint_vel
-            + torch.randn_like(prev_joint_vel) * dr.joint_velocity_obs_noise_std
+            + torch.randn_like(prev_joint_vel) * vel_noise
         )
 
     state_tensor = _stack_obs_dict(obs_clean, env.cfg.obs.state_list)

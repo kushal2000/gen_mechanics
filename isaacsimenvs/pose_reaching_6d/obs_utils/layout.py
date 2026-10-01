@@ -135,6 +135,10 @@ def build_token_layout(spec, field_list) -> dict:
 
     token_columns: list[list[int]] = [[] for _ in range(n_hand)]
     global_slices: list[list[int]] = []
+    # Where each field sits inside a token, so the network can treat fields differently (e.g. keep the
+    # physical-unit joint fields out of the running normaliser).
+    token_field_slices: dict[str, list[int]] = {}
+    _pos = 0
 
     for field in JOINT_WIDTH_FIELDS:
         start, _ = offsets[field]
@@ -142,6 +146,8 @@ def build_token_layout(spec, field_list) -> dict:
             global_slices.append([start, start + n_arm])
         for joint in range(n_hand):
             token_columns[joint].append(start + n_arm + joint)
+        token_field_slices[field] = [_pos, _pos + 1]
+        _pos += 1
 
     for field, stride in token_fields.items():
         start, end = offsets[field]
@@ -153,6 +159,8 @@ def build_token_layout(spec, field_list) -> dict:
             token_columns[joint].extend(
                 range(start + joint * stride, start + (joint + 1) * stride)
             )
+        token_field_slices[field] = [_pos, _pos + stride]
+        _pos += stride
 
     start, end = offsets[MASK_FIELD]
     if end - start != n_hand:
@@ -180,6 +188,7 @@ def build_token_layout(spec, field_list) -> dict:
         "hand_joint_names": list(spec.hand_joint_names),
         "token_columns": token_columns,
         "token_dim": token_dim,
+        "token_field_slices": token_field_slices,
         "global_slices": global_slices,
         "global_dim": sum(end - start for start, end in global_slices),
     }

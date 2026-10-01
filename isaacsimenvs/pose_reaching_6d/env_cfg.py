@@ -125,6 +125,13 @@ class PhysicsCfg:
     # 15 (SHARPA) across the commercial hands and throttled the slow ones. Generated hands are 10.
     # (0 rather than None: Isaac Lab's config override refuses to put a number over a None default.)
     hand_velocity_limit: float = 0.0
+    # The rest of the hand actuator, overridable the same way (0 keeps the spec's / USD's value): lets a
+    # hand whose dynamics come from elsewhere -- a generated population -- run on the uniform-dynamics
+    # actuator (assets/urdf/unified_dynamics_commercial_hands: 0.5 N.m, 3.0, 0.0775, 0.00058).
+    hand_effort_limit: float = 0.0
+    hand_stiffness: float = 0.0
+    hand_damping: float = 0.0
+    hand_armature: float = 0.0
 
 
 @configclass
@@ -133,6 +140,17 @@ class ActionCfg:
 
     arm_moving_average: float = 0.1
     hand_moving_average: float = 0.1
+    # Hand joint units, in the observation AND the action.
+    #   "range"    (default, every run so far): observed joint angles in radians, and the action an
+    #              absolute map of [-1, 1] onto each joint's OWN [lower, upper] -- so the same action is a
+    #              different angle on every joint and every hand.
+    #   "physical" one scale for every joint of every hand: angles (joint_pos, prev_joint_pos,
+    #              prev_action_targets, joint_lower, joint_upper) observed as rad / pi, velocities as
+    #              (rad/s) / JOINT_VEL_SCALE, and the action target = pi * a radians, clipped to the joint's
+    #              range. With the canonical joint conventions (unified_dynamics_commercial_hands) the same
+    #              number is then the same motion on every hand. Pair it with the network's
+    #              raw_token_fields so the running normaliser does not re-scale these per batch.
+    joint_units: str = "range"
     dof_speed_scale: float = 1.5
 
 
