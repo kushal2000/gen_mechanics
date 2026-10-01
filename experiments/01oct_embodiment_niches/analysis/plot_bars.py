@@ -1,8 +1,8 @@
 """Bar charts of the phase-1 metrics: one chart per metric, one bar per hand.
 
-    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/plot_bars.py
+    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/analysis/plot_bars.py
 
-Writes debug_outputs/embodiment_niches/plots/: <metric>.png each, nominal_grid.png (every nominal
+Writes ../plots/: <metric>.png each, nominal_grid.png (every nominal
 metric), conditions_grid.png (goals/min under each perturbation, absolute).
 Hands keep one fixed order in every chart so a hand sits in the same row everywhere; the best
 hand per metric is the darker bar.
@@ -16,9 +16,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
+REPO = pathlib.Path(__file__).resolve().parents[3]
 D = REPO / "debug_outputs/embodiment_niches"
-OUT = D / "plots"
+OUT = pathlib.Path(__file__).resolve().parent.parent / "plots"
 
 NAMES = {"sharpa": "SHARPA", "gen_sharpa": "gen-SHARPA", "allegro": "Allegro", "leap": "LEAP",
          "shadow": "Shadow", "tesollo": "Tesollo", "dex3": "Dex3", "xhand": "XHAND", "wuji2": "Wuji v2"}

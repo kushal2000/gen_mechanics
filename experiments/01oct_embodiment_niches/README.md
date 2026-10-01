@@ -26,7 +26,7 @@ cube rotates ~3.7x the required angle -- the policy is near bang-bang.
 
 ## Results (81/81 runs, 1 Oct)
 
-Full tables: `aggregate.py` -> `debug_outputs/embodiment_niches/summary.json`.
+Full tables: `analysis/aggregate.py` -> `debug_outputs/embodiment_niches/summary.json`.
 
 - **Throughput: Allegro wins every condition in absolute goals/min** (113 nominal; best under
   every size, mass, friction and push condition). No robustness niche in absolute terms.
@@ -40,3 +40,5 @@ Full tables: `aggregate.py` -> `debug_outputs/embodiment_niches/summary.json`.
   leap 0.8, allegro 1.6.
 - Confounds: torque limits differ ~50x across vendors (wuji2 0.2-0.3 N.m, allegro 10) and speed
   caps differ; energy winners are also the weakest hands. Policies were trained for goals only.
+
+Bar charts (one per metric, one bar per hand; darker = best): `plots/`, made by `analysis/plot_bars.py`.

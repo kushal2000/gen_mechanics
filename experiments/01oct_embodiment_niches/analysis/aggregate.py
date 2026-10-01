@@ -1,6 +1,6 @@
 """Phase 1 tables: per-metric ranks, robustness retention, Pareto fronts, and a JSON for the page.
 
-    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/aggregate.py
+    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/analysis/aggregate.py
 """
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import json
 import pathlib
 import sys
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
+REPO = pathlib.Path(__file__).resolve().parents[3]
 D = REPO / "debug_outputs/embodiment_niches"
 
 HANDS = ["sharpa", "gen_sharpa", "allegro", "leap", "shadow", "tesollo", "dex3", "xhand", "wuji2"]
