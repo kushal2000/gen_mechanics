@@ -50,6 +50,8 @@ def _robust(R, h):
 
 # One metric per column: (column, metric and unit, [(getter, higher is better, value format)]).
 COMPOSITES = [
+    # What every policy was trained to maximise (training logs, mean of the last 100 epochs).
+    ("Training objective", "goals / episode\n(training, cap 50)", [(lambda d: d["_train"], True, "{:.1f}")]),
     ("Speed", "goals / min", [(lambda d: d["goals_per_min"], True, "{:.0f}")]),
     # From the 5-minute nominal runs; the literal minimum is 0 for 8 of 9 hands.
     ("Reliability", "goals before drop,\nworst 5% of episodes", [(lambda d: d["_gbd"]["p5"], True, "{:.0f}")]),
@@ -74,6 +76,9 @@ def niche_map(R, hands):
     import numpy as np
     for h in hands:
         R[f"{h}__nominal"]["_gbd"] = json.loads((D / f"{h}__nominal_5min.json").read_text())["goals_before_drop"]
+    train = json.loads((D / "training_final.json").read_text())
+    for h in hands:
+        R[f"{h}__nominal"]["_train"] = train[h]["goals_per_episode"]
     cols, ranks, labels = [], [], []
     for name, sub, comps in COMPOSITES:
         raw = [[g(R[f"{h}__nominal"]) for h in hands] for g, _, _ in comps]
@@ -82,7 +87,7 @@ def niche_map(R, hands):
         labels.append([", ".join(f.format(v[i]) for v, (_, _, f) in zip(raw, comps)) for i in range(len(hands))])
         cols.append((name, sub))
     ranks = np.stack(ranks, axis=1)
-    fig, ax = plt.subplots(figsize=(11.5, 6.4), facecolor=SURFACE)
+    fig, ax = plt.subplots(figsize=(13, 6.4), facecolor=SURFACE)
     ax.imshow((ranks == 1).astype(float), cmap=LinearSegmentedColormap.from_list("hl", ["#f3f2ef", BEST]),
               vmin=0, vmax=1, aspect="auto")
     for i in range(len(hands)):
@@ -103,8 +108,7 @@ def niche_map(R, hands):
     _style(ax)
     ax.set_title("Niche map: who is best at what", loc="left", fontsize=13, color=INK,
                  fontweight="semibold", pad=40)
-    ax.text(0, 1.075, "rank of each hand on one metric per column (1 = best, filled) · value in brackets · "
-            "nominal conditions", transform=ax.transAxes,
+    ax.text(0, 1.075, "rank of each hand on one metric per column (1 = best, filled) · value in brackets · other columns: evaluation, nominal conditions", transform=ax.transAxes,
             fontsize=9, color=INK2)
     fig.tight_layout()
     fig.savefig(OUT / "niche_map.png", dpi=160, facecolor=SURFACE)
