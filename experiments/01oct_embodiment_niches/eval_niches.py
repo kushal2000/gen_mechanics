@@ -65,6 +65,25 @@ def _summ(xs) -> dict:
             "p10": float(np.percentile(a, 10)), "p90": float(np.percentile(a, 90))}
 
 
+def _streaks(ST) -> dict:
+    """Goals before a drop: the minimum observed, and Kaplan-Meier quantiles over censored episodes."""
+    import numpy as np
+    g, dropped = ST[:, 0].astype(np.int64), ST[:, 1].astype(bool)
+    out = {"episodes": int(len(g)), "drops": int(dropped.sum()),
+           "min": int(g[dropped].min()) if dropped.any() else None,
+           "drops_before_first_goal": int((dropped & (g == 0)).sum())}
+    surv, at_risk_k = 1.0, {}
+    for k in np.unique(g[dropped]):
+        n_risk = int((g >= k).sum())
+        surv *= 1.0 - int(((g == k) & dropped).sum()) / n_risk
+        at_risk_k[int(k)] = surv
+    for q in (0.01, 0.05, 0.10, 0.25, 0.5):
+        # smallest k at which at least a q fraction of episodes have dropped; None = never in window
+        out[f"p{int(q * 100)}"] = next((k for k, s in sorted(at_risk_k.items()) if 1.0 - s >= q), None)
+    out["max_observed_streak"] = int(g.max())
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--hand", required=True)
@@ -146,6 +165,8 @@ def main() -> None:
         absqd = torch.zeros(J, **f64)
         seg_start, seg_rot, seg_work = torch.zeros(N, dtype=torch.long, device=dev), z(), z()
         seg_from_reset = torch.ones(N, dtype=torch.bool, device=dev)
+        streak = torch.zeros(N, dtype=torch.long, device=dev)    # goals since this episode began
+        streak_rec = []      # (goals before the episode ended, 1 = ended by a drop / 0 = censored)
 
         def angle_now():
             return _quat_angle(inner.object.data.root_quat_w, inner.goal_viz.data.root_quat_w)
@@ -204,6 +225,12 @@ def main() -> None:
                 i = fail.nonzero().squeeze(-1)
                 kind = torch.where(fall[i], 0, torch.where(tout[i], 1, 2)).double()
                 fail_rec.append(torch.stack([kind, (k + 1 - seg_start[i]).double() * dt], -1).cpu())
+            streak += succ.long()
+            if ended.any():
+                i = ended.nonzero().squeeze(-1)
+                # Only a drop is the failure; a timeout or hand_far ends the episode without one.
+                streak_rec.append(torch.stack([streak[i], fall[i].long()], -1).cpu())
+                streak = torch.where(ended, torch.zeros_like(streak), streak)
             new = succ | ended
             if new.any():
                 seg_start = torch.where(new, torch.full_like(seg_start, k + 1), seg_start)
@@ -215,6 +242,8 @@ def main() -> None:
             n_far += int(far.sum())
             prev_v, prev_qd, prev_tgt = v.clone(), qd.clone(), tgt.clone()
         wall = time.time() - t0
+        streak_rec.append(torch.stack([streak, torch.zeros_like(streak)], -1).cpu())   # still running
+        ST = torch.cat(streak_rec).numpy()
 
         S = torch.cat(succ_rec).numpy() if succ_rec else np.zeros((0, 5))
         F = torch.cat(fail_rec).numpy() if fail_rec else np.zeros((0, 2))
@@ -248,6 +277,9 @@ def main() -> None:
             # rotation the cube travelled per unit of rotation the goal required (1 = shortest path)
             "path_efficiency": float(mid[:, 1].sum() / max(mid[:, 2].sum(), 1e-9)) if len(mid) else None,
             "failed_segment_s": _summ(F[:, 1]),
+            # goals an episode achieves before dropping the cube; episodes still running (or ended
+            # by a timeout) at the end are censored, so the quantiles are Kaplan-Meier estimates
+            "goals_before_drop": _streaks(ST),
             # effort: measured = PhysX joint forces (use these); pd = the implicit actuator's
             # PD-law estimate, which overstates effort when joints sit at the speed cap
             "work_per_goal_J": float(acc["work_m"]) / max(n_succ, 1),

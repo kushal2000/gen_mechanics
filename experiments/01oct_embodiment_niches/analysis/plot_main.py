@@ -60,7 +60,6 @@ COMPOSITES = [
      [(_per_goal("obj_speed_mean"), False), (_per_goal("obj_acc_mean"), False),
       (lambda d: d["palm_dist_std"], False)]),
     ("Robustness", "throughput kept,\n8 perturbations", "robust"),
-    ("Joints used", "participation ratio", [(lambda d: d["participation_frac"], True)]),
 ]
 
 
@@ -85,7 +84,7 @@ def niche_map(R, hands):
         cols.append((name, sub))
         ranks.append(r)
     ranks = np.stack(ranks, axis=1)
-    fig, ax = plt.subplots(figsize=(13, 6.4), facecolor=SURFACE)
+    fig, ax = plt.subplots(figsize=(11.5, 6.4), facecolor=SURFACE)
     ax.imshow((ranks == 1).astype(float), cmap=LinearSegmentedColormap.from_list("hl", ["#f3f2ef", BEST]),
               vmin=0, vmax=1, aspect="auto")
     for i in range(len(hands)):
