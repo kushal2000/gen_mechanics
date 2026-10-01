@@ -175,6 +175,7 @@ repose:
   hand_solver_velocity_iterations: 0
   hand_sleep_threshold: 0.005
   hand_stabilization_threshold: 0.0005
+  hand_pose_file: repose_hand_poses.json   # per-hand pose overrides (isaacsimenvs/inhand_reorient/); "" = palm-up calibration
   reset_position_noise: 0.01
   reset_dof_pos_noise: 0.2
   reset_dof_vel_noise: 0.0

@@ -113,6 +113,36 @@ def apply_palm_calibration(env, spec):
         spec, base_rot=base_rot, hand_default_joint_pos=hand_default_joint_pos)
 
 
+def apply_repose_hand_pose(env, spec):
+    """isaaclab_repose profile only: if ``cfg.repose.hand_pose_file`` has an
+    entry for this hand, place the hand and its cube as that entry says
+    (``base_pos``, ``base_rot``, ``spawn_offset_local``,
+    ``hand_default_joint_pos``), overriding the palm-up calibration that
+    ``apply_palm_calibration`` applied. Other hands are returned unchanged."""
+    from .palm_calibration import load_repose_hand_poses, resolve_repose_hand_pose_path
+
+    hand_id = env.cfg.assets.hand_id
+    path = resolve_repose_hand_pose_path(env.cfg.repose.hand_pose_file)
+    entry = load_repose_hand_poses(path).get(hand_id)
+    if entry is None:
+        return spec
+    env.cfg.reset.object_spawn_offset = tuple(float(v) for v in entry["spawn_offset_local"])
+    limit_of = dict(zip(spec.hand_joint_names, spec.hand_joint_limits))
+    default = dict(spec.hand_default_joint_pos)
+    for j, v in (entry.get("hand_default_joint_pos") or {}).items():
+        if j not in default:
+            raise KeyError(f"{path}: {hand_id} joint {j!r} is not one of {list(default)}")
+        lo, hi = limit_of[j]
+        margin = min(_LIMIT_MARGIN_RAD, max(0.0, (hi - lo) / 2.0 - 1e-9))
+        default[j] = min(max(float(v), lo + margin), hi - margin)
+    print(f"[inhand_reorient] hand={hand_id} isaaclab_repose pose from {path}: "
+          f"base_pos={entry['base_pos']} base_rot={entry['base_rot']} "
+          f"spawn_offset_local={entry['spawn_offset_local']} ({entry.get('source', '')})", flush=True)
+    return dataclasses.replace(
+        spec, base_pos=tuple(float(v) for v in entry["base_pos"]),
+        base_rot=tuple(float(v) for v in entry["base_rot"]), hand_default_joint_pos=default)
+
+
 # Grammar envelope only (never present in a single-hand HandOnlySpec):
 # pc0_j/pc1_j are mechanically DIFFERENT from every other joint slot even
 # when they are themselves a GHOST -- a padding-only carrier still often
@@ -329,6 +359,8 @@ def _setup_scene_single_hand(env) -> None:
 
     spec, cut = build_hand_only_spec(env.cfg.assets.hand_id, out_dir=asset_dir)
     spec = apply_palm_calibration(env, spec)
+    if is_repose(env.cfg):
+        spec = apply_repose_hand_pose(env, spec)
     derive_spaces(env.cfg, spec)
     print(f"[inhand_reorient] hand={env.cfg.assets.hand_id} joints={spec.num_hand_joints} "
           f"root={spec.hand_root} unresolved_meshes={cut.unresolved_meshes} "

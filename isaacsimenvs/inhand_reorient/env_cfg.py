@@ -185,6 +185,13 @@ class ReposeCfg:
     hand_sleep_threshold: float = 0.005
     hand_stabilization_threshold: float = 0.0005
 
+    # --- hand pose ---
+    hand_pose_file: str = "repose_hand_poses.json"
+    """Per-hand pose overrides (``palm_calibration.REPOSE_HAND_POSES_PATH``;
+    relative paths are relative to this package). A hand with an entry
+    there is placed as that entry says; any other hand keeps its palm-up
+    calibration. Empty: palm-up calibration for every hand."""
+
     # --- reset ---
     reset_position_noise: float = 0.01
     reset_dof_pos_noise: float = 0.2

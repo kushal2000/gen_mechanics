@@ -25,6 +25,7 @@ import numpy as np
 __all__ = [
     "CALIB_PATH", "AXIS_NAMES", "MIN_SPAWN_HEIGHT_ABOVE_PALM_M", "candidate_rotations",
     "quat_mul", "quat_inv", "quat_apply", "git_sha", "load_calibration", "save_calibration",
+    "REPOSE_HAND_POSES_PATH", "resolve_repose_hand_pose_path", "load_repose_hand_poses",
 ]
 
 CALIB_PATH = Path(__file__).resolve().parent / "hand_calibration.json"
@@ -160,3 +161,28 @@ def save_calibration(data: dict, path: Path | None = None) -> None:
     existing = load_calibration(p)
     existing.update(data)
     p.write_text(json.dumps(existing, indent=2, sort_keys=True) + "\n")
+
+
+REPOSE_HAND_POSES_PATH = Path(__file__).resolve().parent / "repose_hand_poses.json"
+"""Hand poses for the isaaclab_repose task profile, keyed by hand id: where a
+hand sits and where its cube spawns when the profile should reproduce a
+reference setup rather than use the palm-up calibration above. Schema per
+entry: ``base_pos`` (env frame, m), ``base_rot`` (w, x, y, z),
+``spawn_offset_local`` (cube spawn point in the root/palm frame, m),
+``hand_default_joint_pos`` ({joint: rad}), plus provenance fields."""
+
+
+def resolve_repose_hand_pose_path(value: str) -> Path | None:
+    """``cfg.repose.hand_pose_file``: empty disables the override; a
+    relative path is relative to this package."""
+    if not value:
+        return None
+    p = Path(value)
+    return p if p.is_absolute() else Path(__file__).resolve().parent / p
+
+
+def load_repose_hand_poses(path: Path | None) -> dict:
+    if path is None or not path.is_file():
+        return {}
+    return json.loads(path.read_text())
+
