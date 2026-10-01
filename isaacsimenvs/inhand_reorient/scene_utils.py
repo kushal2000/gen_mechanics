@@ -334,14 +334,13 @@ def _apply_repose_props_to_population(env) -> None:
     t0 = time.perf_counter()
     rigid, articulation = _repose_hand_props(env.cfg.repose)
     from isaacsim.core.utils.stage import get_current_stage
-    from pxr import Sdf
 
     stage = get_current_stage()
-    with Sdf.ChangeBlock():
-        for env_path in env.scene.env_prim_paths:
-            robot_path = f"{env_path}/Robot"
-            sim_utils.modify_rigid_body_properties(robot_path, rigid, stage=stage)
-            sim_utils.modify_articulation_root_properties(robot_path, articulation, stage=stage)
+    # Usd API (schema application) is not safe inside an Sdf.ChangeBlock.
+    for env_path in env.scene.env_prim_paths:
+        robot_path = f"{env_path}/Robot"
+        sim_utils.modify_rigid_body_properties(robot_path, rigid, stage=stage)
+        sim_utils.modify_articulation_root_properties(robot_path, articulation, stage=stage)
     print(f"[inhand_reorient] isaaclab_repose hand properties written to {len(env.scene.env_prim_paths)} "
           f"robots ({time.perf_counter() - t0:.1f}s)", flush=True)
 
