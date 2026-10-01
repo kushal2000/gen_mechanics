@@ -594,3 +594,40 @@ def test_episode_is_300_policy_steps_at_30hz():
     r = _task_yaml()["repose"]
     steps = math.ceil(r["episode_length_s"] / (r["sim_dt"] * r["decimation"]))
     assert steps == 300
+
+
+# --------------------------------------------------------------------------
+# Hand poses for the profile (repose_hand_poses.json)
+# --------------------------------------------------------------------------
+
+
+def test_repose_hand_pose_file_reproduces_nvidias_allegro_cube_spawn():
+    """allegro_right's entry places our hand so the cube spawn point is
+    NVIDIA's (0, -0.17, 0.56) in the env frame, with the hand's palm
+    facing up, and NVIDIA's default joint pose (0, thumb base 0.28)."""
+    from isaacsimenvs.inhand_reorient import palm_calibration as pc
+
+    poses = pc.load_repose_hand_poses(pc.resolve_repose_hand_pose_path(_task_yaml()["repose"]["hand_pose_file"]))
+    entry = poses["allegro_right"]
+    rot = torch.tensor([entry["base_rot"]], dtype=torch.float64)
+    assert abs(float(rot.norm()) - 1.0) < 1e-5
+    spawn_env = torch.tensor(entry["base_pos"], dtype=torch.float64) + rp.quat_apply(
+        rot, torch.tensor([entry["spawn_offset_local"]], dtype=torch.float64))[0]
+    cfg_src = _nvidia_paths()["cfg"].read_text()
+    assert "pos=(0.0, -0.17, 0.56)" in cfg_src
+    torch.testing.assert_close(spawn_env, torch.tensor([0.0, -0.17, 0.56], dtype=torch.float64), atol=1e-4, rtol=0)
+    # The Allegro palm faces local +x: it must point up.
+    palm_normal_world = rp.quat_apply(rot, torch.tensor([[1.0, 0.0, 0.0]], dtype=torch.float64))[0]
+    assert palm_normal_world[2] > 0.99
+    assert "thumb_joint_0\": 0.28" in _nvidia_paths()["asset"].read_text().replace("'", "\"")
+    defaults = entry["hand_default_joint_pos"]
+    assert defaults.pop("joint_12") == 0.28 and set(defaults.values()) == {0.0} and len(defaults) == 15
+
+
+def test_repose_cube_mass_is_nvidias_effective_mass():
+    """The DexCube USD authors physics:mass 0.216, which wins over the
+    configured density 400 (0.149 kg); 0.216 kg is what NVIDIA's env
+    simulates (read back from its PhysX view in Kit)."""
+    r = _task_yaml()["repose"]
+    assert r["object_mass_kg"] == 0.216
+    assert 400.0 * r["object_size_m"] ** 3 == pytest.approx(0.1493, abs=1e-4)
