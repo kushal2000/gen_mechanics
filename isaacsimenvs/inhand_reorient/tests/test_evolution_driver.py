@@ -264,6 +264,73 @@ def test_build_train_cmd_keeps_default_minibatch_at_the_yaml_scale():
     assert "agent.params.config.expl_coef_block_size=4096" in cmd
 
 
+def test_build_train_cmd_defaults_to_the_legacy_profile_and_sapg():
+    """In-flight runs (started before the isaaclab_repose profile existed)
+    must resume with the spec they started on, although the env's own
+    default profile is now isaaclab_repose."""
+    cmd = drv.build_train_cmd(
+        train_python="python3", population_path=Path("/tmp/pop.json"), num_envs=4096, max_epochs=200,
+        hydra_run_dir=Path("/tmp/run"), checkpoint=None, resume_success_tolerance=None, horizon_length=16,
+    )
+    assert "env.task_profile=legacy" in cmd
+    assert cmd[cmd.index("--agent") + 1] == "rl_games_sapg_cfg_entry_point"
+    assert "agent.params.config.expl_coef_block_size=4096" in cmd
+
+
+def test_build_train_cmd_repose_profile_with_the_ppo_agent_skips_sapg_overrides():
+    cmd = drv.build_train_cmd(
+        train_python="python3", population_path=Path("/tmp/pop.json"), num_envs=4096, max_epochs=200,
+        hydra_run_dir=Path("/tmp/run"), checkpoint=None, resume_success_tolerance=None, horizon_length=16,
+        agent_entry_point=drv.REPOSE_POP_AGENT_ENTRY_POINT, task_profile="isaaclab_repose",
+    )
+    joined = " ".join(cmd)
+    assert "env.task_profile=isaaclab_repose" in cmd
+    assert cmd[cmd.index("--agent") + 1] == "rl_games_repose_pop_ppo_cfg_entry_point"
+    assert "expl_coef_block_size" not in joined
+    assert "central_value_config" not in joined
+    assert "agent.params.config.minibatch_size=32768" in cmd  # NVIDIA's minibatch
+    small = drv.build_train_cmd(
+        train_python="python3", population_path=Path("/tmp/pop.json"), num_envs=512, max_epochs=30,
+        hydra_run_dir=Path("/tmp/run"), checkpoint=None, resume_success_tolerance=None, horizon_length=16,
+        agent_entry_point=drv.REPOSE_POP_AGENT_ENTRY_POINT, task_profile="isaaclab_repose",
+    )
+    assert "agent.params.config.minibatch_size=8192" in small  # 512 * 16 < 32768
+
+
+def test_build_train_cmd_rejects_an_unknown_profile():
+    with pytest.raises(ValueError):
+        drv.build_train_cmd(
+            train_python="python3", population_path=Path("/tmp/pop.json"), num_envs=512, max_epochs=30,
+            hydra_run_dir=Path("/tmp/run"), checkpoint=None, resume_success_tolerance=None,
+            horizon_length=16, task_profile="isaaclab",
+        )
+
+
+def test_task_profile_flag_defaults_to_legacy_and_keeps_the_old_config_hash():
+    base = ["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x"]
+    legacy = drv.parse_args(base)
+    assert legacy.task_profile == "legacy"
+    assert legacy.agent_entry_point == "rl_games_sapg_cfg_entry_point"
+    assert "task_profile" not in drv._resolved_config(legacy)
+    repose = drv.parse_args(base + ["--task-profile", "isaaclab_repose",
+                                    "--agent-entry-point", drv.REPOSE_POP_AGENT_ENTRY_POINT])
+    assert drv._resolved_config(repose)["task_profile"] == "isaaclab_repose"
+    assert drv._config_hash(drv._resolved_config(repose)) != drv._config_hash(drv._resolved_config(legacy))
+
+
+def test_repose_agent_entry_points_are_registered():
+    import gymnasium as gym
+
+    import isaacsimenvs  # noqa: F401  registers the task
+
+    kwargs = gym.spec(drv.TASK_ID).kwargs
+    for key, name in (("rl_games_repose_pop_ppo_cfg_entry_point", "InHandReposeIsaacLabPopPPO.yaml"),
+                      ("rl_games_repose_ppo_cfg_entry_point", "InHandReposeIsaacLabPPO.yaml"),
+                      ("rl_games_cfg_entry_point", "InHandReposeIsaacLabPPO.yaml")):
+        assert Path(kwargs[key]).name == name and Path(kwargs[key]).is_file()
+    assert Path(kwargs["rl_games_sapg_cfg_entry_point"]).name == "InHandReorientSAPG.yaml"
+
+
 # --------------------------------------------------------------------------
 # compute_train_tail_fitness
 # --------------------------------------------------------------------------
