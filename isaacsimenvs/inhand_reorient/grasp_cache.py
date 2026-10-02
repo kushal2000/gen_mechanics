@@ -58,7 +58,8 @@ __all__ = [
     "CACHE_SCHEMA", "HORA_CANONICAL_ALLEGRO", "CANONICAL_GRASP_POSES", "GraspSet", "GraspTable",
     "StabilityThresholds", "design_key", "hand_key", "hand_calibration_sha", "sidecar_path",
     "object_signature", "signature_mismatches", "save_cache", "load_cache", "merge_sets", "prune_sets",
-    "sample_joint_candidates", "random_quats", "stable_mask", "build_table", "cache_summary",
+    "sample_joint_candidates", "random_quats", "stable_mask", "build_table", "cache_summary", "profile_pose",
+    "HORA_LIKE_PROFILE",
 ]
 
 CACHE_SCHEMA = "anyrotate_grasp_cache/0.1"
@@ -74,6 +75,32 @@ _HORA_TO_DRAKE = {"index": (0, 0), "thumb": (4, 12), "middle": (8, 4), "ring": (
 HORA_CANONICAL_ALLEGRO: Dict[str, float] = {
     f"joint_{drake + i}": _HORA_POSE[hora + i] for hora, drake in _HORA_TO_DRAKE.values() for i in range(4)}
 CANONICAL_GRASP_POSES: Dict[str, Dict[str, float]] = {"allegro_right": HORA_CANONICAL_ALLEGRO}
+
+# HORA's allegro pose as fractions of each joint's range, along a finger:
+# index (0.59, 0.80, 0.24, 0.29), middle (0.51, 0.71, 0.13, 0.20), ring
+# (0.53, 0.85, 0.24, 0.30). A generic "cage" for any design's fingers
+# (joints past the fourth keep 0.25).
+HORA_LIKE_PROFILE: Tuple[float, ...] = (0.6, 0.8, 0.25, 0.25, 0.25, 0.25)
+
+
+def profile_pose(joint_valid: np.ndarray, limits: np.ndarray, default: np.ndarray,
+                 profile: Sequence[float] = HORA_LIKE_PROFILE, n_fingers: int = 5, per_finger: int = 6
+                 ) -> np.ndarray:
+    """``(32,)`` pose in envelope-slot order: the d-th real joint of each
+    finger at ``lo + profile[d] (hi - lo)``; carrier and ghost slots keep
+    ``default``."""
+    q = np.array(default, dtype=float, copy=True)
+    for f in range(n_fingers):
+        d = 0
+        for k in range(per_finger):
+            s = f * per_finger + k
+            if not joint_valid[s]:
+                continue
+            frac = profile[min(d, len(profile) - 1)]
+            lo, hi = limits[s]
+            q[s] = lo + frac * (hi - lo)
+            d += 1
+    return q
 
 
 # --------------------------------------------------------------------------

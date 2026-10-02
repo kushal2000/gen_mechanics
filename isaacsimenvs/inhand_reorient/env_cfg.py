@@ -465,6 +465,12 @@ class AnyRotateCfg:
     ``hand_pose_file`` stands where its single-hand URDF asset does (pose,
     spawn point, default joints; ``projected_hands.urdf_equivalent_placement``)
     instead of at its analytic palm-up calibration."""
+    grasp_canonical_profile: str = "palm_up"
+    """Population grasp search: "palm_up" (default, each design's calibrated
+    curl) or "hora_like" (every finger at HORA's allegro pose as range
+    fractions, ``grasp_cache.HORA_LIKE_PROFILE``). 2026-10-02: the projected
+    allegro learned from HORA-pose grasps (8-11 s held at 15-30 min) and not
+    from palm-up ones (1.1-1.3 s)."""
     grasp_projected_canonical: bool = False
     """Grasp search: a projected commercial hand starts from its single-hand
     canonical grasp pose (``grasp_cache.CANONICAL_GRASP_POSES``, mapped onto

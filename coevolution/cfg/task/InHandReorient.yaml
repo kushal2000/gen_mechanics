@@ -319,6 +319,7 @@ anyrotate:
   population_palm_collider: capsule # capsule | mount_hull (convex palm over the root capsule and finger mounts)
   population_capsule_radius: -1.0   # > 0: link and root collider radius (m); -1: the design's own
   population_projected_pose: false  # projected hands stand where their URDF asset does (hand_pose_file)
+  grasp_canonical_profile: palm_up   # population grasp search: palm_up | hora_like (HORA's pose as range fractions)
   grasp_projected_canonical: false  # grasp search: projected hands start from their URDF canonical grasp pose
   gravity_curriculum: false         # Isaac Lab Dexsuite ADR gravity curriculum (optional)
   gravity_max_difficulty: 10

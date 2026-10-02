@@ -91,6 +91,16 @@ def canonical_grasp_pose(env) -> torch.Tensor:
     ids = torch.arange(env.num_envs, device=env.device)
     q = _population_default_joint_pos(env, ids).clone()
     tables = getattr(env, "hand_tables", None)
+    profile = getattr(env.cfg.anyrotate, "grasp_canonical_profile", "palm_up")
+    if profile not in ("palm_up", "hora_like"):
+        raise ValueError(f"anyrotate.grasp_canonical_profile={profile!r}; expected 'palm_up' or 'hora_like'")
+    if tables is not None and profile == "hora_like":
+        perm = env.scene_record.get("slot_of_phys_col")
+        perm_t = perm if perm is not None else torch.arange(q.shape[1], device=q.device)
+        poses = np.stack([gc.profile_pose(tables.joint_valid[d], tables.joint_limits[d], tables.default_joint_pos[d])
+                          for d in range(tables.n_designs)])
+        poses_t = torch.as_tensor(poses, dtype=q.dtype, device=q.device)[:, perm_t]
+        q = poses_t[env.scene_record["design_idx"]].clone()
     if tables is not None and getattr(env.cfg.anyrotate, "grasp_projected_canonical", False):
         from .scene.projected_hands import hand_id_of, slot_values
 
