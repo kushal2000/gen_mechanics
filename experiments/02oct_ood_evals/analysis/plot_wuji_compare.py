@@ -3,7 +3,7 @@
 Top: goals/min per condition. Bottom: the same as a fraction of each policy's OWN nominal -- how much of
 its skill survives the shift, which is the robustness comparison independent of how skilled it is.
 
-    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/analysis/plot_wuji_compare.py \
+    .venv_isaacsim/bin/python experiments/02oct_ood_evals/analysis/plot_wuji_compare.py \
         "Unified (8 hands), ep 6400=unified_ep_6400" "Wuji v2 only, ep 1600=wuji_only_ep_1600"
 """
 import json

@@ -5,7 +5,7 @@ randn(3) x cube mass x force_scale for one step (force_decay 0); no torque. Neit
 Bottom row: each policy relative to its own unpushed speed (force_scale 0), so robustness compares
 independently of how skilled the policy is.
 
-    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/analysis/plot_push_sweep.py
+    .venv_isaacsim/bin/python experiments/02oct_ood_evals/analysis/plot_push_sweep.py
 """
 import json
 import pathlib

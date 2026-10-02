@@ -13,7 +13,7 @@
 #   sbatch --export=ALL,HAND=wuji2,TARGET=wuji2,CKPT=<pth>,LABEL=<name>,AXIS=scale run_push_sweep.sub
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
-OUT=$REPO/experiments/01oct_embodiment_niches/results/push_sweep/$LABEL
+OUT=$REPO/experiments/02oct_ood_evals/results/push_sweep/$LABEL
 LOGS=$REPO/debug_outputs/embodiment_niches_push_sweep/logs/$LABEL
 mkdir -p $OUT $LOGS
 cd $REPO

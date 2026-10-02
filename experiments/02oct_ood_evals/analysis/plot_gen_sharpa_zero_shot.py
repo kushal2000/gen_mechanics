@@ -3,7 +3,7 @@ it, against gen-SHARPA's own policy. Nominal condition, 1024 envs x 60 s, greedy
 
 goals / episode = goals per minute / episodes per minute, an episode ending in a drop or a timeout.
 
-    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/analysis/plot_gen_sharpa_zero_shot.py
+    .venv_isaacsim/bin/python experiments/02oct_ood_evals/analysis/plot_gen_sharpa_zero_shot.py
 """
 import json
 import pathlib
@@ -18,7 +18,7 @@ R = HERE / "results"
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 POLICIES = [("Unified (8 hands)\nep 6400, zero-shot", R / "gen_sharpa_zero_shot/unified_ep_6400", "#2a78d6"),
             ("SHARPA only\nep 3600, zero-shot", R / "gen_sharpa_zero_shot/sharpa_only_ep_3600", "#eb6834"),
-            ("gen-SHARPA's own policy\n(trained on it)", R / "uniform_run2", "#1baf7a")]
+            ("gen-SHARPA's own policy\n(trained on it)", HERE.parent / "01oct_embodiment_niches/results/uniform_run2", "#1baf7a")]
 
 
 def main():
