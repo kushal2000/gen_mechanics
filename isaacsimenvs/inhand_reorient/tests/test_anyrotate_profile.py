@@ -223,3 +223,20 @@ def test_tip_sources_index_the_distal_link_sensor_and_drop_it_from_the_nontip_ma
     assert not nontip[1, all_names.index("f4_link0")] and nontip[1, all_names.index("f0_link2")]
     # the ghost markers never count as non-tip bodies (no collider; or the tip itself)
     assert not nontip[:, :5].any()
+
+
+def test_timer_goal_advance_runs_ahead_of_a_stalled_object():
+    """A/B option (not in the paper): with goal_advance=timer, a goal not
+    reached within the interval advances by the increment from the previous
+    goal, so a stalled object falls behind and r_kp decays."""
+    assert ar.goal_timer_due(torch.tensor([0, 29, 30, 31]), 1.5, 0.05).tolist() == [False, False, True, True]
+    axis = torch.tensor([[0.0, 0.0, 1.0]])
+    goal = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+    for _ in range(3):
+        goal = ar.next_goal(goal, axis, math.radians(30.0))
+    obj = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+    assert ar.rotation_about_axis(obj, goal, axis).item() == pytest.approx(math.radians(90.0), abs=1e-5)
+    offs = ar.keypoint_offsets(0.05)
+    lag = ar.keypoint_distance(torch.zeros(1, 3), obj, torch.zeros(1, 3), goal, offs)
+    one = ar.keypoint_distance(torch.zeros(1, 3), obj, torch.zeros(1, 3), ar.next_goal(obj, axis, math.radians(30.0)), offs)
+    assert ar.keypoint_reward(lag, 50.0, 2.0) < ar.keypoint_reward(one, 50.0, 2.0)

@@ -97,3 +97,8 @@ def test_z_axis_frame_defaults_to_the_palm_body_frame():
     """"palm" keeps the earlier runs' meaning (the palm body's +z);
     "world_up" is the paper's z (the palm normal of the palm-up hand)."""
     assert _task()["anyrotate"]["z_axis_frame"] == "palm"
+
+
+def test_goal_advance_defaults_to_the_papers_reach_rule():
+    a = _task()["anyrotate"]
+    assert a["goal_advance"] == "reach" and a["goal_timer_s"] > 0
