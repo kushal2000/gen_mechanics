@@ -79,7 +79,7 @@ def test_urdf_equivalent_placement_puts_the_mounts_where_the_urdf_hand_has_them(
     # spawn point: same world point
     s_u = t_u + R_u @ np.asarray(entry["spawn_offset_local"])
     s_g = t_g + R_g @ np.asarray(pl["spawn_offset"])
-    assert np.linalg.norm(s_u - s_g) < 1e-9
+    assert np.linalg.norm(s_u - s_g) < 1e-6  # quaternion round-off
     # default joints: the entry's, on their slots; thumb rotation 0.28
     assert pl["default_q"][slots["joint_12"]] == pytest.approx(0.28, abs=2e-3)
     assert pl["default_q"][slots["joint_1"]] == pytest.approx(0.0, abs=2e-3)
