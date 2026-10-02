@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 # Logged as goal_mode_code; the legacy modes are axis=0, delta=1, full=2.
-GOAL_MODE_CODE_ISAACLAB = 3.0
+from .design_scoring import GOAL_MODE_CODE_ISAACLAB  # noqa: E402
 
 
 def _limits(env):

@@ -328,7 +328,14 @@ def _snapshot_payload(env) -> dict:
     }
 
 
+GOAL_MODE_CODE_ISAACLAB = 3.0
+"""isaaclab_repose profile: NVIDIA's random goals, no goal curriculum (the
+legacy curriculum's modes are axis=0, delta=1, full=2)."""
+
+
 def _goal_mode_code_safe(env) -> int:
+    if getattr(env, "_repose", False):
+        return GOAL_MODE_CODE_ISAACLAB
     try:
         from .goal_curriculum import goal_curriculum_mode, goal_mode_code
 
