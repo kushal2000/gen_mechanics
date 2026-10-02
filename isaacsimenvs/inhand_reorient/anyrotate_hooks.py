@@ -201,6 +201,17 @@ def _apply_population_actuator(env) -> None:
     env.robot.write_joint_stiffness_to_sim(k)
     env.robot.write_joint_damping_to_sim(d)
     env.robot.write_joint_effort_limit_to_sim(e)
+    # The URDF hands' remaining actuator fields (velocity limit, armature, joint friction).
+    for field, writer, buf in (("hand_velocity_limit", "write_joint_velocity_limit_to_sim", "joint_vel_limits"),
+                               ("hand_armature", "write_joint_armature_to_sim", "joint_armature"),
+                               ("hand_joint_friction", "write_joint_friction_coefficient_to_sim",
+                                "joint_friction_coeff")):
+        v = float(getattr(a, field, -1.0))
+        cur = getattr(data, buf, None)
+        if v < 0 or cur is None:
+            continue
+        getattr(env.robot, writer)(torch.where(mask, torch.full_like(cur, v), cur))
+        values[field] = v
     for actuator in env.robot.actuators.values():
         ids = actuator.joint_indices
         cols = list(range(mask.shape[1]))[ids] if isinstance(ids, slice) else list(ids)

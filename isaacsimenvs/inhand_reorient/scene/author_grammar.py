@@ -125,6 +125,40 @@ def _author_body_and_collider(layer, path: str, *, length: float, radius: float,
         set_xform(mesh, (0.0, 0.0, length / 2.0), (1.0, 0.0, 0.0, 0.0))
 
 
+def _author_convex_hull(layer, path: str, points: np.ndarray, *, contact_offset: Optional[float],
+                        rest_offset: Optional[float], vertex_limit: int = 64) -> None:
+    """A convex-hull mesh collider at ``path`` (points in its parent body's
+    frame): the hull's triangles, PhysX ``convexHull`` approximation."""
+    from pxr import Gf, Sdf, Vt
+    from scipy.spatial import ConvexHull
+
+    from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define
+
+    hull = ConvexHull(np.asarray(points, dtype=float))
+    used = np.unique(hull.simplices)
+    remap = {int(v): i for i, v in enumerate(used)}
+    verts = hull.points[used]
+    tris = [[remap[int(i)] for i in tri] for tri in hull.simplices]
+    # Outward winding: flip any triangle whose normal points to the centroid.
+    centroid = verts.mean(axis=0)
+    for t in tris:
+        a, b, c = verts[t[0]], verts[t[1]], verts[t[2]]
+        if np.dot(np.cross(b - a, c - a), a - centroid) < 0:
+            t[1], t[2] = t[2], t[1]
+    apis = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI", "PhysxConvexHullCollisionAPI"]
+    mesh = define(layer, path, "Mesh", apis)
+    attr(mesh, "points", Sdf.ValueTypeNames.Point3fArray,
+         Vt.Vec3fArray([Gf.Vec3f(*[float(x) for x in v]) for v in verts]))
+    attr(mesh, "faceVertexCounts", Sdf.ValueTypeNames.IntArray, Vt.IntArray([3] * len(tris)))
+    attr(mesh, "faceVertexIndices", Sdf.ValueTypeNames.IntArray, Vt.IntArray([int(i) for t in tris for i in t]))
+    attr(mesh, "physics:approximation", Sdf.ValueTypeNames.Token, "convexHull")
+    attr(mesh, "physxConvexHullCollision:hullVertexLimit", Sdf.ValueTypeNames.Int, int(vertex_limit))
+    if contact_offset is not None:
+        attr(mesh, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float, float(contact_offset))
+    if rest_offset is not None:
+        attr(mesh, "physxCollision:restOffset", Sdf.ValueTypeNames.Float, float(rest_offset))
+
+
 def _author_joint(layer, joint_path: str, *, body0_path: str, body1_path: str,
                    frame0: np.ndarray, frame1: np.ndarray, limits_rad: Tuple[float, float],
                    valid: bool) -> None:
@@ -171,7 +205,9 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
                    base_rot_wxyz: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
                    world_anchor_pos: Optional[Sequence[float]] = None,
                    contact_offset: Optional[float] = None,
-                   rest_offset: Optional[float] = None) -> Dict[str, bool]:
+                   rest_offset: Optional[float] = None,
+                   collider_radius: Optional[float] = None,
+                   palm_hull_points: Optional[np.ndarray] = None) -> Dict[str, bool]:
     """Author one design's root/palm, palm carriers and 30 finger-joint
     slots under `root_path` (an already-`define`-d Xform). `base_pos`/
     `base_rot_wxyz` place the design's root BODY relative to `root_path`
@@ -188,7 +224,10 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
     setting it to `base_pos` alone (no env-origin offset) reproduced the
     IDENTICAL error, because most sampled envs sit away from the stage
     origin on the grid cloner's layout. The caller (`author_population`)
-    passes `world_anchor_pos = env_origin + base_pos`. Returns
+    passes `world_anchor_pos = env_origin + base_pos`. `collider_radius`
+    (> 0) replaces the design's capsule radius in every collider (masses
+    keep the design's); `palm_hull_points` (root frame) adds a convex palm
+    collider to the root body. Returns
     `{body_name: has_collider}` for every authored body -- a friction pass
     may use it (see `AssetsCfg.modify_asset_frictions`, not yet wired for
     populations here; see the Phase 2 report's known gaps)."""
@@ -261,14 +300,18 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
     root_body_path = f"{root_path}/{ROOT_BODY_NAME}"
     root_mass = max(math.pi * design.capsule_radius_m ** 2 * max(design.root_length_m, 1e-6)
                      * rpc.GEN_PALM_DENSITY_KG_M3, 1e-6)
+    col_r = float(collider_radius) if collider_radius is not None and collider_radius > 0 else design.capsule_radius_m
     _author_body_and_collider(
-        layer, root_body_path, length=design.root_length_m, radius=design.capsule_radius_m,
+        layer, root_body_path, length=design.root_length_m, radius=col_r,
         mass=root_mass,
         inertia_diag=_link_mass_props(design.root_length_m, design.capsule_radius_m, True)[1],
         com_z=design.root_length_m / 2.0, pos=base_pos, quat_wxyz=base_rot_wxyz, real=True,
         filtered_pair_targets=filtered_targets_of.get(root_body_path, ()),
         contact_offset=contact_offset, rest_offset=rest_offset,
     )
+    if palm_hull_points is not None and len(palm_hull_points) >= 4:
+        _author_convex_hull(layer, f"{root_body_path}/collisions/palm_hull", palm_hull_points,
+                            contact_offset=contact_offset, rest_offset=rest_offset)
     colliders[ROOT_BODY_NAME] = True
 
     # A `PhysicsFixedJoint` (body1 = root, body0 UNSET = world) anchors the
@@ -316,7 +359,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
             mass, inertia = _link_mass_props(max(ref_length, ge.GHOST_LENGTH_M), design.capsule_radius_m, True)
         pos, quat = _slot_pos_quat(slot)
         _author_body_and_collider(
-            layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
+            layer, body_path, length=length, radius=col_r, mass=mass,
             inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
             filtered_pair_targets=filtered_targets_of.get(body_path, ()),
             contact_offset=contact_offset, rest_offset=rest_offset,
@@ -339,7 +382,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
             mass, inertia = _link_mass_props(length, design.capsule_radius_m, valid)
             pos, quat = _slot_pos_quat(slot)
             _author_body_and_collider(
-                layer, body_path, length=length, radius=design.capsule_radius_m, mass=mass,
+                layer, body_path, length=length, radius=col_r, mass=mass,
                 inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
                 filtered_pair_targets=filtered_targets_of.get(body_path, ()),
                 contact_offset=contact_offset, rest_offset=rest_offset,
@@ -371,7 +414,8 @@ above the ground plane, identical for every env/design (the design only
 varies `base_rot`, from its own `palm_up` calibration)."""
 
 
-def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndarray) -> Dict[int, Dict[str, bool]]:
+def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndarray,
+                      base_pos_by_design: Optional[np.ndarray] = None) -> Dict[int, Dict[str, bool]]:
     """One `Robot` prim per env, authored from `population`, `design_idx[env_id]`
     picking which design. Hard-asserts `replicate_physics=False` and
     `clone_in_fabric=False` (the caller must have set these; this function
@@ -401,6 +445,20 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
     # instead of silently falling back to PhysX's own per-shape defaults.
     contact_offset = float(env.cfg.physics.contact_offset)
     rest_offset = float(env.cfg.physics.rest_offset)
+    a = getattr(env.cfg, "anyrotate", None)
+    radius_override = float(getattr(a, "population_capsule_radius", -1.0)) if a is not None else -1.0
+    palm_mode = getattr(a, "population_palm_collider", "capsule") if a is not None else "capsule"
+    if palm_mode not in ("capsule", "mount_hull"):
+        raise ValueError(f"anyrotate.population_palm_collider={palm_mode!r}; expected 'capsule' or 'mount_hull'")
+    hull_by_design: Dict[int, np.ndarray] = {}
+    if palm_mode == "mount_hull":
+        from .projected_hands import palm_hull_points
+
+        for i, d in enumerate(population.designs):
+            r = radius_override if radius_override > 0 else d.capsule_radius_m
+            hull_by_design[i] = palm_hull_points(d, r)
+    if base_pos_by_design is None:
+        base_pos_by_design = np.tile(np.asarray(HAND_BASE_POS_M, dtype=float), (population.n_designs, 1))
 
     with Sdf.ChangeBlock():
         for env_path in env_paths:
@@ -409,10 +467,13 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
             root_path = f"{env_path}/Robot"
             design = population.designs[idx]
             base_rot = tuple(float(v) for v in population.base_rot[idx])
-            world_anchor = tuple(float(v) for v in (env_origins[env_id] + base_pos_np))
+            base_pos = tuple(float(v) for v in base_pos_by_design[idx])
+            world_anchor = tuple(float(v) for v in (env_origins[env_id] + np.asarray(base_pos)))
             authored = author_design(
-                layer, root_path, design, base_pos=HAND_BASE_POS_M, base_rot_wxyz=base_rot,
+                layer, root_path, design, base_pos=base_pos, base_rot_wxyz=base_rot,
                 world_anchor_pos=world_anchor, contact_offset=contact_offset, rest_offset=rest_offset,
+                collider_radius=radius_override if radius_override > 0 else None,
+                palm_hull_points=hull_by_design.get(idx),
             )
             collider_links.setdefault(idx, authored)
 
@@ -478,6 +539,34 @@ def build_hand_population_spec(population: ge.GrammarPopulation, template_idx: i
     )
 
 
+def _apply_projected_poses(env, population: ge.GrammarPopulation) -> Optional[np.ndarray]:
+    """``anyrotate.population_projected_pose``: projected commercial hands
+    with a ``hand_pose_file`` entry stand where their single-hand URDF asset
+    does (``projected_hands.urdf_equivalent_placement``); edits
+    ``population`` in place and returns the per-design base positions (None
+    when off)."""
+    a = getattr(env.cfg, "anyrotate", None)
+    if a is None or not getattr(a, "population_projected_pose", False):
+        return None
+    from ..palm_calibration import load_repose_hand_poses, resolve_repose_hand_pose_path
+    from .projected_hands import hand_id_of, urdf_equivalent_placement
+
+    poses = load_repose_hand_poses(resolve_repose_hand_pose_path(a.hand_pose_file))
+    base_pos = np.tile(np.asarray(HAND_BASE_POS_M, dtype=float), (population.n_designs, 1))
+    for i, d in enumerate(population.designs):
+        hand_id = hand_id_of(d.source)
+        if hand_id is None or hand_id not in poses:
+            continue
+        pl = urdf_equivalent_placement(d, hand_id, poses[hand_id])
+        population.base_rot[i] = np.asarray(pl["base_rot_wxyz"])
+        population.spawn_offset[i] = np.asarray(pl["spawn_offset"])
+        population.default_joint_pos[i] = pl["default_q"]
+        base_pos[i] = np.asarray(pl["base_pos"])
+        print(f"[inhand_reorient] {d.source}: URDF-equivalent pose base_pos={pl['base_pos']} "
+              f"base_rot={tuple(round(v, 6) for v in pl['base_rot_wxyz'])} spawn={pl['spawn_offset']}", flush=True)
+    return base_pos
+
+
 def setup_grammar_robot(env) -> None:
     """Env-hook entry point: load `env.cfg.assets.hand_population`, author it
     into every env, and set `env.hand_spec`/`env.scene_record`/
@@ -496,6 +585,7 @@ def setup_grammar_robot(env) -> None:
     print(f"[inhand_reorient] loaded grammar population: {population.n_designs} designs from "
           f"{env.cfg.assets.hand_population}", flush=True)
 
+    base_pos_by_design = _apply_projected_poses(env, population)
     idx = design_index(
         env.num_envs, population.n_designs,
         rank=int(os.environ.get("RANK", "0")), world_size=int(os.environ.get("WORLD_SIZE", "1")),
@@ -514,7 +604,7 @@ def setup_grammar_robot(env) -> None:
     # the scene-wide CFG template's own limits/defaults (always mutually
     # consistent, since both come from the SAME `template_idx`) no longer
     # need env 0 to be any particular design.
-    collider_links = author_population(env, population, idx)
+    collider_links = author_population(env, population, idx, base_pos_by_design)
 
     env.hand_spec = build_hand_population_spec(population, int(idx[0]), population.base_rot[int(idx[0])])
     env.hand_tables = population

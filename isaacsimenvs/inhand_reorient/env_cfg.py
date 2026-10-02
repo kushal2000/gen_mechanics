@@ -453,6 +453,22 @@ class AnyRotateCfg:
     hand_effort_limit: float = 0.5
     hand_velocity_limit: float = 6.283
     population_hand_actuator: bool = False
+    population_palm_collider: str = "capsule"
+    """Population path: "capsule" (default: the root capsule only) or
+    "mount_hull" (also a convex palm spanning the root capsule and every
+    finger mount, ``projected_hands.palm_hull_points``)."""
+    population_capsule_radius: float = -1.0
+    """> 0: collider radius of every real link and the root (masses keep the
+    design's radius). -1: the design's own (projections: 0.01 m)."""
+    population_projected_pose: bool = False
+    """Population path: a projected commercial hand with an entry in
+    ``hand_pose_file`` stands where its single-hand URDF asset does (pose,
+    spawn point, default joints; ``projected_hands.urdf_equivalent_placement``)
+    instead of at its analytic palm-up calibration."""
+    grasp_projected_canonical: bool = False
+    """Grasp search: a projected commercial hand starts from its single-hand
+    canonical grasp pose (``grasp_cache.CANONICAL_GRASP_POSES``, mapped onto
+    its slots) instead of its palm-up curl."""
     """Population path: give every real joint of every design the actuator
     above (hand_stiffness, hand_damping, hand_effort_limit; for the hora
     profile HORA's Allegro PD 3.0 / 0.1, torque clip 0.5 N m) instead of the

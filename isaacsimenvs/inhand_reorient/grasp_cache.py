@@ -139,6 +139,12 @@ def object_signature(a) -> dict:
         out[name] = round(float(v), 9) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
     if getattr(a, "population_hand_actuator", False):
         out["population_hand_actuator"] = True  # absent when off: older caches keep matching
+    if getattr(a, "population_palm_collider", "capsule") != "capsule":
+        out["population_palm_collider"] = a.population_palm_collider
+    if float(getattr(a, "population_capsule_radius", -1.0)) > 0:
+        out["population_capsule_radius"] = round(float(a.population_capsule_radius), 9)
+    if getattr(a, "population_projected_pose", False):
+        out["population_projected_pose"] = True
     return out
 
 

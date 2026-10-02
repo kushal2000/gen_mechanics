@@ -90,7 +90,22 @@ def canonical_grasp_pose(env) -> torch.Tensor:
 
     ids = torch.arange(env.num_envs, device=env.device)
     q = _population_default_joint_pos(env, ids).clone()
-    if getattr(env, "hand_tables", None) is None:
+    tables = getattr(env, "hand_tables", None)
+    if tables is not None and getattr(env.cfg.anyrotate, "grasp_projected_canonical", False):
+        from .scene.projected_hands import hand_id_of, slot_values
+
+        perm = env.scene_record.get("slot_of_phys_col")
+        col_of_slot = ({int(s): c for c, s in enumerate(perm.tolist())} if perm is not None
+                       else {i: i for i in range(q.shape[1])})
+        design_idx = env.scene_record["design_idx"]
+        for d, design in enumerate(tables.designs):
+            hand_id = hand_id_of(design.source)
+            if hand_id is None or hand_id not in gc.CANONICAL_GRASP_POSES:
+                continue
+            rows = (design_idx == d).nonzero(as_tuple=False).squeeze(-1)
+            for slot, v in slot_values(design, hand_id, gc.CANONICAL_GRASP_POSES[hand_id]).items():
+                q[rows, col_of_slot[slot]] = float(v)
+    if tables is None:
         named = gc.CANONICAL_GRASP_POSES.get(env.cfg.assets.hand_id, {})
         names = list(env.robot.data.joint_names)
         for jn, v in named.items():
