@@ -35,5 +35,24 @@
       "joint_15": 0.0
     },
     "source": "Isaac Lab 2.3.2 Isaac-Repose-Cube-Allegro-Direct-v0: ALLEGRO_HAND_CFG root pose (0, 0, 0.5), (0.257551, 0.283045, 0.683330, -0.621782); DexCube spawn (0, -0.17, 0.56); default joints 0 except thumb_joint_0 = 0.28. Our allegro_right (drake URDF) root frame aligned onto NVIDIA's Allegro USD by a rigid fit of the finger link origins at those joint angles (index/middle/ring links 1-3, thumb links 2-3; residual max 1.4 mm), measured in Kit 2026-10-01."
+  },
+  "sharpa": {
+    "base_pos": [
+      0.00162,
+      -0.02339,
+      0.50732
+    ],
+    "base_rot": [
+      0.478318,
+      0.522387,
+      -0.524732,
+      0.472208
+    ],
+    "spawn_offset_local": [
+      0.0685,
+      0.0003,
+      0.124
+    ],
+    "source": "Allegro-equivalent placement, not a reference env: SHARPA's root frame has the same convention as allegro_right's (fingers along +z, palm facing +x), so it takes allegro_right's isaaclab_repose rotation (palm up, fingers horizontal) and the cube sits where NVIDIA's sits relative to the Allegro finger bases: MCP centroid + (0.067, 0, 0.030) m in the root frame (SHARPA MCP centroid (0.0015, 0.0003, 0.094)). Joint defaults stay those of the palm-up calibration. 2026-10-01."
   }
 }
