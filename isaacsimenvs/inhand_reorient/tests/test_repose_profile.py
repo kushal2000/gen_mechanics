@@ -581,9 +581,9 @@ def test_apply_profile_to_cfg_sets_env_level_fields_and_leaves_legacy_alone():
         rp.is_repose(_cfg("isaaclab"))
 
 
-def test_task_yaml_defaults_to_the_repose_profile_and_keeps_legacy_values():
+def test_task_yaml_defaults_to_the_legacy_profile_and_keeps_legacy_values():
     task = _task_yaml()
-    assert task["task_profile"] == "isaaclab_repose"
+    assert task["task_profile"] == "legacy"
     # The legacy profile's own values are still the top-level ones.
     assert task["decimation"] == 2 and task["reward"]["drop_penalty"] == 50.0
     assert task["reset"]["goal_curriculum_stages"] == ["axis"]

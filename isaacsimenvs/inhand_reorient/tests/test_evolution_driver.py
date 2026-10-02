@@ -325,9 +325,10 @@ def test_repose_agent_entry_points_are_registered():
 
     kwargs = gym.spec(drv.TASK_ID).kwargs
     for key, name in (("rl_games_repose_pop_ppo_cfg_entry_point", "InHandReposeIsaacLabPopPPO.yaml"),
-                      ("rl_games_repose_ppo_cfg_entry_point", "InHandReposeIsaacLabPPO.yaml"),
-                      ("rl_games_cfg_entry_point", "InHandReposeIsaacLabPPO.yaml")):
+                      ("rl_games_repose_ppo_cfg_entry_point", "InHandReposeIsaacLabPPO.yaml")):
         assert Path(kwargs[key]).name == name and Path(kwargs[key]).is_file()
+    # train.py's default --agent stays unregistered for this task, as before.
+    assert "rl_games_cfg_entry_point" not in kwargs
     assert Path(kwargs["rl_games_sapg_cfg_entry_point"]).name == "InHandReorientSAPG.yaml"
 
 
