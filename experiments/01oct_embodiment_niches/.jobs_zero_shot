@@ -12,3 +12,4 @@ push sweep (wuji2): jobs 900599 900600 900601 900602 900604 900605
 after training 866192 ends, on the final checkpoint: push sweeps + Wuji ID/OOD: 900684 900685 900686
 cancelled wuji_only_ep_3600 push sweeps 900601 900605 (user: only Wuji ep 1600 vs latest unified)
 push sweeps CAPPED at 50 goals/ep, 240 s/point (uncapped 900599 900600 900602 900604 900684 900685 cancelled): 900833 900834 900835 900836 900837 900838 900839 900840
+Wuji ID/OOD CAPPED at 50 goals/ep, 240 s/condition: 900964 900967 900968 900969

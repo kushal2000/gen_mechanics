@@ -30,9 +30,11 @@ run() {   # run <condition> <seconds> <out name>
     f=$OUT/${HAND}__$3.json
     [ -s "$f" ] && { echo "skip $f"; return; }
     .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform \
-        --hand "$HAND" --condition "$1" --num-envs 1024 --seconds "$2" --out "$f" ${CKPT:+--checkpoint "$CKPT"} ${TARGET:+--target "$TARGET"} \
+        --hand "$HAND" --condition "$1" --num-envs 1024 --seconds "${EVAL_SECONDS:-$2}" ${MAX_GOALS:+--max-goals $MAX_GOALS} --out "$f" ${CKPT:+--checkpoint "$CKPT"} ${TARGET:+--target "$TARGET"} \
         > $LOGS/${HAND}__$3.log 2>&1 || echo "FAILED $HAND $3"
     [ -s "$f" ] && echo "done $HAND $3"
 }
 for c in nominal cube40 cube55 cube65 light heavy slippery push push_hard; do run $c 60 $c; done
-run nominal 300 nominal_5min
+# MAX_GOALS (e.g. 50, as training) caps episodes so results carry goals_per_episode; EVAL_SECONDS overrides the
+# 60 s window (a capped episode needs ~50 goals' time to finish). The 5-minute run is only for uncapped sets.
+[ -z "${MAX_GOALS:-}" ] && run nominal 300 nominal_5min

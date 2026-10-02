@@ -1,14 +1,17 @@
-"""Two policies on one hand: in-distribution (nominal) vs out-of-distribution evals, as grouped bars.
+"""Wuji v2, in-distribution vs out-of-distribution, in the training metric (goals per episode, cap 50).
 
-Top: goals/min per condition. Bottom: the same as a fraction of each policy's OWN nominal -- how much of
-its skill survives the shift, which is the robustness comparison independent of how skilled it is.
+Two comparisons, each the latest unified policy against one Wuji-only checkpoint (vs_wuji_ep1600: nearest in
+skill; vs_wuji_ep3600: converged), as grouped bars over the nominal condition and the 8 OOD conditions;
+absolute and relative to each policy's own nominal. One figure per plot, PDF + PNG, paper style.
 
-    .venv_isaacsim/bin/python experiments/02oct_ood_evals/analysis/plot_wuji_compare.py \
-        "Unified (8 hands), ep 6400=unified_ep_6400" "Wuji v2 only, ep 1600=wuji_only_ep_1600"
+Goals/episode is each env's first episode, ended by a drop, 10 s without a goal, or the 50-goal cap;
+1024 envs x 240 s per condition (results/wuji_compare_cap50, run_hand_uniform.sub MAX_GOALS=50).
+
+    .venv_isaacsim/bin/python experiments/02oct_ood_evals/analysis/plot_wuji_compare.py
+    -> plots/wuji_compare_cap50/<comparison>/id_vs_ood_{goals,relative}.{pdf,png}
 """
 import json
 import pathlib
-import sys
 
 import matplotlib
 
@@ -16,79 +19,83 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
+from matplotlib.patches import Patch  # noqa: E402
+
+import paper_style as ps  # noqa: E402
+
 HERE = pathlib.Path(__file__).resolve().parent.parent
-RES = HERE / "results/wuji_compare"
-OUT = HERE / "plots/wuji_compare"
-SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
-SERIES = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100")  # categorical slots 1-4 of the validated default palette
-CONDS = [("nominal", "nominal\n(train)"), ("cube40", "cube\n40 mm"), ("cube55", "cube\n55 mm"),
-         ("cube65", "cube\n65 mm"), ("light", "light\ncube"), ("heavy", "heavy\ncube"),
-         ("slippery", "slippery\n(×0.5 μ)"), ("push", "push"), ("push_hard", "hard\npush")]
+RES = HERE / "results/wuji_compare_cap50"
+OUT = HERE / "plots/wuji_compare_cap50"
+CONDS = [("nominal", "Nominal"), ("cube40", "40 mm"), ("cube55", "55 mm"), ("cube65", "65 mm"),
+         ("light", "Light"), ("heavy", "Heavy"), ("slippery", "Slippery"), ("push", "Push"),
+         ("push_hard", "Hard\npush")]
+COMPARISONS = {
+    "vs_wuji_ep1600": ("Wuji Only", "wuji_only_ep_1600"),
+    "vs_wuji_ep3600": ("Wuji Only", "wuji_only_ep_3600"),
+}
 
 
-def goals_per_episode(r: dict) -> float:
-    """Goals per episode from an eval: goals/min over episodes/min. With max_consecutive_successes off, an
-    episode ends only in a drop or a timeout."""
-    eps = r["drops_per_min"] + r["timeouts_per_min"]
-    return r["goals_per_min"] / eps if eps else float("nan")
+def latest_unified():
+    d = RES / "unified_final"
+    if d.exists() and any(d.iterdir()):
+        return "Unified Multi-Embodiment", "unified_final"
+    return "Unified Multi-Embodiment", "unified_ep_7827"
 
 
-def load(d):
+def load(label):
     out = {}
     for c, _ in CONDS:
-        f = RES / d / f"wuji2__{c}.json"
-        out[c] = goals_per_episode(json.loads(f.read_text())) if f.exists() else np.nan
+        f = RES / label / f"wuji2__{c}.json"
+        out[c] = json.loads(f.read_text())["goals_per_episode_first"] if f.exists() else np.nan
     return out
 
 
-def main():
-    pols = [a.split("=", 1) for a in sys.argv[1:]] or [
-        ("Unified (8 hands), ep 6400", "unified_ep_6400"), ("Wuji v2 only, ep 1600", "wuji_only_ep_1600")]
-    data = [(label, load(d)) for label, d in pols]
-    n, k = len(CONDS), len(data)
-    x = np.arange(n) + np.where(np.arange(n) > 0, 0.6, 0.0)      # a gap after the in-distribution group
+def plot(comp, relative):
+    pols = [(*latest_unified(), ps.COLORS["hero"]), (*COMPARISONS[comp], ps.COLORS["foil"])]
+    n, k = len(CONDS), len(pols)
+    x = np.arange(n) + np.where(np.arange(n) > 0, 0.5, 0.0)       # a gap after the in-distribution bar
     w = 0.8 / k
-    OUT.mkdir(parents=True, exist_ok=True)
-    for rel in (False, True):                                     # one PNG per plot
-        fig, ax = plt.subplots(figsize=(12, 4.8), facecolor=SURFACE)
-        ax.set_facecolor(SURFACE)
-        for i, (label, v) in enumerate(data):
-            y = np.array([v[c] for c, _ in CONDS])
-            if rel:
-                y = y / v["nominal"]
-            xs = x + (i - (k - 1) / 2) * w
-            ax.bar(xs, y, w * 0.92, color=SERIES[i], label=label, edgecolor=SURFACE, linewidth=1.5, zorder=3)
-            for xi, yi in zip(xs, y):
-                if np.isfinite(yi):
-                    ax.text(xi, yi, f"{yi:.2f}" if rel else f"{yi:.1f}", ha="center", va="bottom",
-                            fontsize=7.5, color=INK2)
-                else:
-                    ax.text(xi, 0, "pending", ha="center", va="bottom", fontsize=7, color=INK2, rotation=90)
-        ax.grid(axis="y", color=GRID, linewidth=0.8, zorder=0)
-        for s in ("top", "right", "left"):
-            ax.spines[s].set_visible(False)
-        ax.spines["bottom"].set_color(INK2)
-        ax.tick_params(colors=INK2, length=0)
-        ax.axvline((x[0] + x[1]) / 2, color=INK2, linewidth=0.8, linestyle=(0, (3, 3)))
-        top = ax.get_ylim()[1]
-        ax.text(x[0], top * 1.02, "in-distribution", ha="center", va="bottom", fontsize=9, color=INK)
-        ax.text(x[1:].mean(), top * 1.02, "out-of-distribution", ha="center", va="bottom", fontsize=9, color=INK)
-        if rel:
-            ax.axhline(1.0, color=INK2, linewidth=0.8)
-        ax.set_ylabel("fraction of own nominal goals / episode" if rel else "goals / episode", color=INK, fontsize=10)
-        ax.set_xticks(x, [lab for _, lab in CONDS], fontsize=9, color=INK)
-        ax.legend(frameon=False, fontsize=9, ncol=len(data), loc="lower left", bbox_to_anchor=(0.0, 1.09),
-                  labelcolor=INK)
-        ax.set_title("Wuji v2: unified vs Wuji-only policy" + (", relative to own nominal (1.0 = no loss)"
-                     if rel else ", goals per episode"), loc="left", fontsize=12, fontweight="bold", color=INK,
-                     pad=48)
-        fig.text(0.125, -0.02, "1024 envs × 60 s per condition, greedy actions", fontsize=8, color=INK2)
-        p = OUT / f"id_vs_ood_{'relative' if rel else 'goals'}.png"
-        fig.savefig(p, dpi=160, bbox_inches="tight", facecolor=SURFACE)
-        plt.close(fig)
-        print("->", p)
-    for label, v in data:
-        print(f"  {label:32s} " + " ".join(f"{c} {v[c]:.2f}" for c, _ in CONDS))
+    fig, ax = plt.subplots(figsize=(ps.TEXT_WIDTH * 0.62, 2.3))
+    handles = []
+    for i, (txt, label, color) in enumerate(pols):
+        v = load(label)
+        y = np.array([v[c] for c, _ in CONDS])
+        if relative:
+            y = y / v["nominal"]
+        xs = x + (i - (k - 1) / 2) * w
+        h = ax.bar(xs, np.nan_to_num(y), w * 0.9, color=color, alpha=ps.BAR_ALPHA, linewidth=0, label=txt)
+        handles.append(h)
+        for xi, yi in zip(xs, y):                       # value on top of each bar, as the reference does
+            if np.isfinite(yi):
+                ax.text(xi, yi, f"{yi:.2f}" if relative else f"{yi:.0f}", ha="center", va="bottom", fontsize=6,
+                        color=ps.COLORS["ink"])
+    ax.axvline((x[0] + x[1]) / 2, color=ps.COLORS["neutral"], linewidth=0.7, linestyle=(0, (3, 2)))
+    if relative:
+        ax.axhline(1.0, color=ps.COLORS["neutral"], linewidth=0.7, linestyle=(0, (3, 2)), zorder=0)
+        ax.set_ylim(0, 1.2)
+    else:
+        ax.set_ylim(0, 52)
+    ps.style_axis(ax)
+    ax.tick_params(axis="x", length=0)
+    ax.set_xticks(x, [lab for _, lab in CONDS])
+    ax.set_xlim(x[0] - 0.6, x[-1] + 0.6)
+    ax.set_ylabel("Relative goals / episode" if relative else "Goals / episode")
+    ax.set_title("In- vs Out-of-Distribution", fontweight="bold")
+    ps.bottom_legend(fig, [Patch(facecolor=c, alpha=ps.BAR_ALPHA) for _, _, c in pols],
+                     [t for t, _, _ in pols], y=-0.12, columnspacing=1.6, bold=("Unified Multi-Embodiment",))
+    paths = ps.save_figure(fig, OUT / comp / f"id_vs_ood_{'relative' if relative else 'goals'}")
+    plt.close(fig)
+    return paths
+
+
+def main():
+    ps.configure()
+    for comp in COMPARISONS:
+        for rel in (False, True):
+            plot(comp, rel)
+    for txt, label in [latest_unified(), *COMPARISONS.values()]:
+        v = load(label)
+        print(f"  {txt:30s} " + " ".join(f"{c} {v[c]:.1f}" for c, _ in CONDS))
 
 
 if __name__ == "__main__":
