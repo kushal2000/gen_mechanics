@@ -1064,9 +1064,11 @@ def _resolved_config(args: argparse.Namespace) -> dict:
 
 
 def _write_env(cache_path: Path) -> Dict[str, str]:
+    """The subprocess environment; a job-local ``OMNI_KIT_CACHE_PATH`` (the
+    cluster jobs set one) wins over ``cache_path``."""
     env = dict(os.environ)
     env["OMNI_KIT_ACCEPT_EULA"] = "YES"
-    env["OMNI_KIT_CACHE_PATH"] = str(cache_path)
+    env["OMNI_KIT_CACHE_PATH"] = os.environ.get("OMNI_KIT_CACHE_PATH") or str(cache_path)
     env["WANDB_MODE"] = "disabled"
     return env
 
