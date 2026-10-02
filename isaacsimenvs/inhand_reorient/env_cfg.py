@@ -309,7 +309,8 @@ class AnyRotateCfg:
     """adapt.: a settle phase in place of the paper's cached stable grasps:
     for this many steps after a reset the off-axis test is off, and at its
     end the axis-tilt reference and the first goal are re-made from the
-    settled object (``anyrotate_profile.axis_tilt``)."""
+    settled object (``anyrotate_profile.axis_tilt``). The episode's rotation
+    about k (the Rot metric and the fitness) counts only after it."""
 
     # --- action [Sec. 3.1] ---
     action_scale: float = 0.026  # Delta theta in [-0.026, 0.026] rad

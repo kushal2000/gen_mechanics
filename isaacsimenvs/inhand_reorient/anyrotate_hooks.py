@@ -196,7 +196,11 @@ def get_dones(env, nan_guard) -> tuple[torch.Tensor, torch.Tensor]:
     env._ar_rot_step = ar.rotation_about_axis(env._ar_prev_obj_quat_palm, env._obj_quat_palm, env._ar_axis)
     env._ar_rot_step = torch.where(env._nonfinite_mask, torch.zeros_like(env._ar_rot_step), env._ar_rot_step)
     env._ar_prev_obj_quat_palm = env._obj_quat_palm.clone()
-    env._ar_rotation_rad = env._ar_rotation_rad + env._ar_rot_step
+    # The episode's rotation about k (AnyRotate's Rot) counts from the end of
+    # the settle phase: a dropped object tumbles while it lands or falls off.
+    manipulating = env.episode_length_buf > a.axis_check_grace_steps
+    env._ar_rotation_rad = env._ar_rotation_rad + torch.where(
+        manipulating, env._ar_rot_step, torch.zeros_like(env._ar_rot_step))
     settled = (env.episode_length_buf == a.axis_check_grace_steps).nonzero(as_tuple=False).squeeze(-1)
     if settled.numel() > 0:
         # End of the settle phase: goal and axis reference from the settled object.
