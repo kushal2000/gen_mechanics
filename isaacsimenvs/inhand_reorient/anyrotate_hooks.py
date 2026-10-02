@@ -13,7 +13,9 @@ arithmetic, CPU-tested). Per control step (20 Hz):
   about k), the reward curriculum lambda_rew and the optional gravity
   curriculum, both from finished episodes.
 - ``_reset_idx``: canonical hand pose plus noise, the object at the hand's
-  palm-up spawn point in a random orientation, a new axis k and goal.
+  palm-up spawn point in a random orientation, a new axis k and goal; with
+  ``anyrotate.grasp_cache`` set, a cached stable grasp of the env's design
+  instead (``grasp_cache.py``; HORA's reset), when the design has one.
 
 The legacy buffers (``_successes``, ``_rot_error``, ``_termination_reasons``,
 ``_reward_terms``, ...) are filled with this profile's values, so
@@ -91,6 +93,7 @@ def allocate_buffers(env) -> None:
     env._current_success_tolerance = float(a.d_tol)
     _setup_contact_indices(env)
     randomize_object_physics(env)
+    _setup_grasp_cache(env)  # needs full gravity: before the curriculum zeroes it
     if a.gravity_curriculum:
         _set_gravity(env, 0.0)
 
@@ -127,6 +130,38 @@ def randomize_object_physics(env) -> None:
     env._ar_object_com = offset.to(env.device)
     dims = (a.capsule_radius, a.capsule_width) if a.object_shape == "capsule" else (a.box_size, a.box_size)
     env._ar_object_dims = torch.tensor(dims, device=env.device).expand(env.num_envs, 2).clone()
+
+
+def _setup_grasp_cache(env) -> None:
+    """``anyrotate.grasp_cache`` set: load (and, with
+    ``grasp_cache_generate``, complete) the stable-grasp cache. Per env:
+    ``_ar_grace`` is the settle phase (``grasp_settle_steps`` for an env
+    whose design has a cached grasp, ``axis_check_grace_steps``
+    otherwise) and ``_ar_q0`` the pose penalty's reference (HORA: the
+    episode's initial grasp pose). Without a cache every env keeps
+    ``axis_check_grace_steps`` and the canonical q0, as before."""
+    a = _cfg(env)
+    n = env.num_envs
+    env._ar_grasps = None
+    env._ar_grasp_has = None
+    env._ar_grasp_counts = None
+    env._ar_q0 = None
+    env._ar_grace = torch.full((n,), int(a.axis_check_grace_steps), dtype=torch.long, device=env.device)
+    if not a.grasp_cache:
+        return
+    from .grasp_cache_gen import ensure_grasp_table
+
+    table, design_idx, _sources, report = ensure_grasp_table(env)
+    env._ar_grasps = table
+    env._ar_grasp_design_idx = design_idx
+    env._ar_grasp_has = table.has_grasp
+    env._ar_grasp_counts = table.counts
+    env._ar_grasp_report = report
+    env._ar_grasp_env_ok = table.has_grasp[design_idx]
+    env._ar_grace = torch.where(env._ar_grasp_env_ok, torch.full_like(env._ar_grace, int(a.grasp_settle_steps)),
+                                env._ar_grace)
+    ids = torch.arange(n, device=env.device)
+    env._ar_q0 = _population_default_joint_pos(env, ids).clone()
 
 
 def _set_gravity(env, frac: float) -> None:
@@ -198,10 +233,10 @@ def get_dones(env, nan_guard) -> tuple[torch.Tensor, torch.Tensor]:
     env._ar_prev_obj_quat_palm = env._obj_quat_palm.clone()
     # The episode's rotation about k (AnyRotate's Rot) counts from the end of
     # the settle phase: a dropped object tumbles while it lands or falls off.
-    manipulating = env.episode_length_buf > a.axis_check_grace_steps
+    manipulating = env.episode_length_buf > env._ar_grace
     env._ar_rotation_rad = env._ar_rotation_rad + torch.where(
         manipulating, env._ar_rot_step, torch.zeros_like(env._ar_rot_step))
-    settled = (env.episode_length_buf == a.axis_check_grace_steps).nonzero(as_tuple=False).squeeze(-1)
+    settled = (env.episode_length_buf == env._ar_grace).nonzero(as_tuple=False).squeeze(-1)
     if settled.numel() > 0:
         # End of the settle phase: goal and axis reference from the settled object.
         _new_goal(env, settled, env._obj_quat_palm[settled], env._obj_pos_palm[settled])
@@ -211,7 +246,7 @@ def get_dones(env, nan_guard) -> tuple[torch.Tensor, torch.Tensor]:
         env._rot_error = env._ar_rot_dist
     tilt = ar.axis_tilt(env._obj_quat_palm, env._ar_axis_obj, env._ar_axis)
     env._ar_axis_tilt = tilt
-    valid = env.episode_length_buf > a.axis_check_grace_steps
+    valid = env.episode_length_buf > env._ar_grace
     dropped, off_axis = ar.terminations(env._ar_kp_dist, a.d_max, tilt, valid, math.radians(a.axis_dev_max_deg))
     time_out = env.episode_length_buf >= env.max_episode_length
     env._termination_reasons = {"drop": dropped, "off_axis": off_axis & ~dropped, "timeout": time_out}
@@ -268,6 +303,8 @@ def get_rewards(env) -> torch.Tensor:
     q0 = (env.scene_record.get("default_joint_pos") if getattr(env, "hand_tables", None) is not None
           else None)
     q0 = env.robot.data.default_joint_pos if q0 is None else q0
+    if env._ar_q0 is not None:
+        q0 = env._ar_q0  # grasp cache: the episode's initial pose (HORA)
     tau = env.robot.data.applied_torque
     nonfinite = env._nonfinite_mask
     goal_hit = ar.goal_reached(env._ar_kp_dist, env._ar_rot_dist, a.d_tol, a.goal_tol_metric) & ~nonfinite
@@ -361,28 +398,36 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     n, device = env_ids.numel(), env.device
     default_pos = _population_default_joint_pos(env, env_ids)
     lower, upper = _limits(env)
+    lo, hi = lower[env_ids], upper[env_ids]
     noise = (torch.rand_like(default_pos) * 2.0 - 1.0) * a.reset_joint_noise
-    q = torch.max(torch.min(default_pos + noise, upper[env_ids]), lower[env_ids])
+    q = torch.max(torch.min(default_pos + noise, hi), lo)
+    q_target = q
+
+    palm_pos_w = env.robot.data.body_pos_w[env_ids, env.palm_body_idx]
+    palm_q = env.robot.data.body_quat_w[env_ids, env.palm_body_idx]
+    obj_pos_palm = _object_spawn_offset(env, env_ids)
+    obj_pos_w = palm_pos_w + rp.quat_apply(palm_q, obj_pos_palm)
+    obj_q_w = torch.nn.functional.normalize(torch.randn(n, 4, device=device), dim=-1)
+    obj_q_palm = rp.quat_mul(rp.quat_conjugate(palm_q), obj_q_w)
+    if env._ar_grasps is not None:
+        q, q_target, obj_pos_palm, obj_q_palm, obj_pos_w, obj_q_w = _grasp_reset(
+            env, env_ids, q, palm_pos_w, palm_q, obj_pos_palm, obj_q_palm, obj_pos_w, obj_q_w, lo, hi)
+        env._ar_q0[env_ids] = torch.where(env._ar_grasp_env_ok[env_ids].unsqueeze(-1), q, default_pos)
+
     env.robot.write_joint_state_to_sim(q, torch.zeros_like(q), env_ids=env_ids)
-    env.robot.set_joint_position_target(q, env_ids=env_ids)
-    env._ar_target[env_ids] = q
+    env.robot.set_joint_position_target(q_target, env_ids=env_ids)
+    env._ar_target[env_ids] = q_target
     env._ar_prev_joint_pos[env_ids] = q
     env._ar_prev_action[env_ids] = 0.0
     env._prev_actions[env_ids] = 0.0
 
-    palm_pos_w = env.robot.data.body_pos_w[env_ids, env.palm_body_idx]
-    palm_q = env.robot.data.body_quat_w[env_ids, env.palm_body_idx]
-    offset = _object_spawn_offset(env, env_ids)
-    obj_pos_w = palm_pos_w + rp.quat_apply(palm_q, offset)
-    obj_q_w = torch.nn.functional.normalize(torch.randn(n, 4, device=device), dim=-1)
     env.object.write_root_state_to_sim(
         torch.cat([obj_pos_w, obj_q_w, torch.zeros(n, 6, device=device)], dim=-1), env_ids=env_ids)
-    env._spawn_obj_pos_palm[env_ids] = offset
+    env._spawn_obj_pos_palm[env_ids] = obj_pos_palm
 
     mode = a.axis_sampling if env._ar_axis_stage >= 1 else "z"
     env._ar_axis[env_ids] = ar.sample_axes(n, mode, device=device)
-    obj_q_palm = rp.quat_mul(rp.quat_conjugate(palm_q), obj_q_w)
-    _new_goal(env, env_ids, obj_q_palm, offset)
+    _new_goal(env, env_ids, obj_q_palm, obj_pos_palm)
     env.goal_viz.write_root_state_to_sim(
         torch.cat([obj_pos_w, env._goal_quat_w[env_ids], torch.zeros(n, 6, device=device)], dim=-1),
         env_ids=env_ids)
@@ -396,6 +441,37 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     env._prev_rot_error[env_ids] = 0.0
     refresh_geometry(env)
     design_scoring.reset_scoring_state(env, env_ids)
+
+
+def _grasp_reset(env, env_ids, q, palm_pos_w, palm_q, obj_pos_palm, obj_q_palm, obj_pos_w, obj_q_w, lo, hi):
+    """Envs whose design has cached grasps start from one, drawn uniformly
+    (HORA): joints at its settled positions, PD targets at the targets that
+    held it, the object at rest at its palm-frame pose. Optional U(-noise,
+    noise) on joints and object position (0 by default; neither paper adds
+    any). Other envs keep the drop reset."""
+    a = _cfg(env)
+    t = env._ar_grasps
+    rows, ok = t.sample(env._ar_grasp_design_idx[env_ids])
+    okc = ok.unsqueeze(-1)
+    gq, gqt = t.q[rows], t.q_target[rows]
+    if a.grasp_reset_joint_noise > 0:
+        jn = (torch.rand_like(gq) * 2.0 - 1.0) * a.grasp_reset_joint_noise
+        mask = _joint_valid_mask(env)
+        if mask is not None:
+            jn = jn * mask[env_ids]
+        gq = torch.max(torch.min(gq + jn, hi), lo)
+        gqt = torch.max(torch.min(gqt + jn, hi), lo)
+    gp = t.obj_pose[rows, :3]
+    if a.grasp_reset_obj_pos_noise > 0:
+        gp = gp + (torch.rand_like(gp) * 2.0 - 1.0) * a.grasp_reset_obj_pos_noise
+    gr = t.obj_pose[rows, 3:]
+    q_new = torch.where(okc, gq, q)
+    qt_new = torch.where(okc, gqt, q)
+    pos_palm = torch.where(okc, gp, obj_pos_palm)
+    quat_palm = torch.where(okc, gr, obj_q_palm)
+    pos_w = torch.where(okc, palm_pos_w + rp.quat_apply(palm_q, gp), obj_pos_w)
+    quat_w = torch.where(okc, rp.quat_mul(palm_q, gr), obj_q_w)
+    return q_new, qt_new, pos_palm, quat_palm, pos_w, quat_w
 
 
 # --------------------------------------------------------------------------

@@ -166,6 +166,14 @@ def allocate_scoring_buffers(env) -> None:
     env._score_nonfinite_sum = torch.zeros(n_designs, device=device)
     env._score_nonfinite_total = torch.zeros(n_designs, device=device)
 
+    # anyrotate grasp cache (``anyrotate_hooks._setup_grasp_cache``): per
+    # design, whether it has a stable grasp and how many are cached; None
+    # without a cache. A design without one is scored 0.
+    has = getattr(env, "_ar_grasp_has", None)
+    counts = getattr(env, "_ar_grasp_counts", None)
+    env._score_has_grasp = None if has is None else has.to(device=device, dtype=torch.bool)
+    env._score_grasp_counts = None if counts is None else counts.to(device=device)
+
     env._score_total_steps = 0
     env._score_window_steps = 0
     env._score_t0 = time.time()
@@ -237,6 +245,10 @@ def bank_done_episodes(env, reward: torch.Tensor) -> None:
         # rotation_progress := rotation about k (rad); time_held := time to terminate.
         rotation_progress, rot_term, time_term, fitness = anyrotate_fitness_components(
             goals, env._ar_rotation_rad[ids], time_held_s, episode_max_s)
+        has_grasp = getattr(env, "_score_has_grasp", None)
+        if has_grasp is not None:
+            rot_term, time_term, fitness = (
+                torch.where(has_grasp[d], x, torch.zeros_like(x)) for x in (rot_term, time_term, fitness))
     else:
         rot_term, time_term, fitness = graded_fitness_components(
             goals, rotation_progress, time_held_s, episode_max_s)
@@ -277,7 +289,11 @@ def _snapshot_payload(env) -> dict:
     nonfinite_total = env._score_nonfinite_total.cpu()
     design_idx = env._score_design_idx.cpu()
 
-    tables = getattr(env, "hand_tables", None)
+    has_grasp = getattr(env, "_score_has_grasp", None)
+    grasp_counts = getattr(env, "_score_grasp_counts", None)
+    has_grasp = None if has_grasp is None else has_grasp.cpu()
+    grasp_counts = None if grasp_counts is None else grasp_counts.cpu()
+
     designs_payload = {}
     for i in range(n_designs):
         n_ep = float(episodes[i])
@@ -312,6 +328,15 @@ def _snapshot_payload(env) -> dict:
             "nonfinite_resets": int(nonfinite_sum[i]),
             "nonfinite_resets_total": int(nonfinite_total[i]),
         }
+        if has_grasp is not None:
+            designs_payload[str(i)]["has_stable_grasp"] = bool(has_grasp[i])
+            designs_payload[str(i)]["grasps_cached"] = int(grasp_counts[i]) if grasp_counts is not None else 0
+
+    payload_grasp = {}
+    if has_grasp is not None:
+        payload_grasp = {"grasp_cache_viable": int(has_grasp.sum()),
+                         "grasp_cache_non_viable": [_design_source(env, i) for i in range(n_designs)
+                                                    if not bool(has_grasp[i])]}
 
     return {
         "rank": int(os.environ.get("RANK", "0")),
@@ -334,6 +359,7 @@ def _snapshot_payload(env) -> dict:
             f"+ {TIME_WEIGHT} * min(time_held_s / episode_max_s, 1), averaged over this window's episodes"
         ),
         "designs": designs_payload,
+        **payload_grasp,
     }
 
 
