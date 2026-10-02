@@ -555,3 +555,14 @@ def test_grasp_report_row_maps_sources_to_design_ids(tmp_path):
     assert row["grasps_by_design"] == {"g1-0001": 1000, "g1-0002": 0, "projected:allegro_right": 640}
     assert drv.read_grasp_report(tmp_path / "missing") is None
     assert drv.grasp_report_row(None, {}) is None
+
+
+def test_hora_profile_is_accepted_with_the_grasp_cache():
+    args = drv.parse_args(["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "hora",
+                           "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT, "--grasp-cache"])
+    assert args.task_profile == "hora" and args.grasp_cache
+    cmd = drv.build_train_cmd(
+        train_python="python", population_path=Path("/tmp/p.json"), num_envs=4096, max_epochs=10,
+        hydra_run_dir=Path("/tmp/r"), checkpoint=None, resume_success_tolerance=None, horizon_length=16,
+        agent_entry_point=drv.ANYROTATE_POP_AGENT_ENTRY_POINT, task_profile="hora")
+    assert "env.task_profile=hora" in cmd
