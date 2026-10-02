@@ -83,11 +83,17 @@ DEFAULT_MINIBATCH_CAP = 16384  # ... its `minibatch_size`
 # before the profile flag existed resumes unchanged; the profile is always
 # passed explicitly, so a later change of the env's own default cannot
 # silently change a resumed run.
-TASK_PROFILES: Tuple[str, ...] = ("legacy", "isaaclab_repose")
+TASK_PROFILES: Tuple[str, ...] = ("legacy", "isaaclab_repose", "anyrotate")
 DEFAULT_TASK_PROFILE = "legacy"
 SAPG_AGENT_ENTRY_POINTS: Tuple[str, ...] = (
     "rl_games_sapg_cfg_entry_point", "rl_games_sapg_pop_cfg_entry_point")
 REPOSE_POP_AGENT_ENTRY_POINT = "rl_games_repose_pop_ppo_cfg_entry_point"  # InHandReposeIsaacLabPopPPO.yaml
+ANYROTATE_POP_AGENT_ENTRY_POINT = "rl_games_anyrotate_pop_ppo_cfg_entry_point"  # InHandAnyRotatePopPPO.yaml
+# Agents whose YAML rolls out a different horizon than the SAPG configs' 16.
+AGENT_HORIZONS: Dict[str, int] = {
+    "rl_games_anyrotate_ppo_cfg_entry_point": 8,  # AnyRotate Table 5: rollout 8 steps
+    ANYROTATE_POP_AGENT_ENTRY_POINT: 8,
+}
 PPO_MINIBATCH_CAP = 32768  # InHandReposeIsaacLabPPO.yaml's (NVIDIA's) `minibatch_size`
 DEFAULT_PROBES: Tuple[str, ...] = ("allegro_right", "dclaw", "sharpa_left_on_iiwa14", "leap_right")
 
@@ -323,6 +329,12 @@ def _minibatch_and_block_size(num_envs: int, horizon_length: int) -> Tuple[int, 
     return minibatch_size, num_envs
 
 
+def agent_horizon(agent_entry_point: str, default: int) -> int:
+    """The rollout horizon the agent's YAML uses (``AGENT_HORIZONS``), else
+    ``default`` (``--horizon-length``)."""
+    return AGENT_HORIZONS.get(agent_entry_point, default)
+
+
 def is_sapg_agent(agent_entry_point: str) -> bool:
     """SAPG configs carry a central-value block and an exploration block
     size the driver must scale; the plain-PPO (isaaclab_repose) ones do not,
@@ -339,6 +351,7 @@ def build_train_cmd(
     if task_profile not in TASK_PROFILES:
         raise ValueError(f"task_profile={task_profile!r}; expected one of {TASK_PROFILES}")
     sapg = is_sapg_agent(agent_entry_point)
+    horizon_length = agent_horizon(agent_entry_point, horizon_length)
     minibatch_size, block_size = _minibatch_and_block_size(num_envs, horizon_length)
     if not sapg:
         batch_size = num_envs * horizon_length
@@ -876,8 +889,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     # --- training config / stability (I41) ---
     ap.add_argument("--task-profile", choices=TASK_PROFILES, default=DEFAULT_TASK_PROFILE,
                     help="env.task_profile for every generation: legacy (default; the spec runs before "
-                         "2026-10-01 used) or isaaclab_repose (NVIDIA's Isaac-Repose-Cube-Allegro spec; "
-                         f"pair it with --agent-entry-point {REPOSE_POP_AGENT_ENTRY_POINT})")
+                         "2026-10-01 used), anyrotate (AnyRotate, CoRL 2024; pair it with --agent-entry-point "
+                         f"{ANYROTATE_POP_AGENT_ENTRY_POINT}) or isaaclab_repose (NVIDIA's "
+                         f"Isaac-Repose-Cube-Allegro spec; --agent-entry-point {REPOSE_POP_AGENT_ENTRY_POINT})")
     ap.add_argument("--agent-entry-point", default=AGENT_ENTRY_POINT,
                     help="gym-registered rl_games config key for train.py's --agent (e.g. "
                          "rl_games_sapg_pop_cfg_entry_point for InHandReorientPopSAPG.yaml, "
@@ -983,7 +997,7 @@ def run_generation(
     population_doc = pf.write_population(population_path, plan.entries)
     select_build_s = time.time() - t_select0
 
-    total_steps_budget = max(1, args.epochs_per_gen * args.horizon_length)
+    total_steps_budget = max(1, args.epochs_per_gen * agent_horizon(args.agent_entry_point, args.horizon_length))
     write_every = max(1, total_steps_budget // max(10, args.target_windows))
 
     env_vars = _write_env(Path(f"/tmp/{os.environ.get('USER', 'user')}/ov_cache"))
