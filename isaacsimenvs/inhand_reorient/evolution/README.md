@@ -204,6 +204,31 @@ HORA's own simulation numbers (Table 1, within the training distribution): exper
 0.36 B agent steps (HORA trains 1.5 B). Rot counts every step, including any turning while the
 object falls (at most 1.5 cm before the episode ends).
 
+Population (`pop_v3s_32`, 4096 envs, 30 min, `rl_games_anyrotate_pop_ppo_cfg_entry_point`). The
+cache made under this profile's physics (`outputs/stability/pop_v3s_32_hora.grasps.npz`, 254 s,
+96,000 candidates, 1551 grasps) has 6 viable designs: the allegro_right, sharpa and leap projections
+(1000, 145, 243 grasps) and founders 4, 10 and 22 (19, 11, 121). Last scoring window:
+
+| Design | TTT (s) | Rot/ep | Fitness | with the gravity curriculum: TTT (s) | Rot/ep | Fitness |
+|---|---|---|---|---|---|---|
+| projected:allegro_right | 0.8 | 0.095 | 0.105 | 7.8 | 0.380 | 0.477 |
+| projected:sharpa_left_on_iiwa14 | 1.9 | 0.050 | 0.074 | 6.6 | 0.865 | 0.947 |
+| projected:leap_right | 0.4 | 0.031 | 0.036 | 2.9 | 0.055 | 0.092 |
+| founder 4 | 0.4 | 0.179 | 0.184 | 14.8 | 0.446 | 0.631 |
+| founder 10 | 0.2 | 0.011 | 0.013 | 16.9 | 0.322 | 0.533 |
+| founder 22 | 0.5 | 0.013 | 0.019 | 6.8 | 0.130 | 0.216 |
+| all 32 (mean, std, max) | | | 0.013, 0.038, 0.184 | | | 0.091, 0.224, 0.947 |
+
+Without the curriculum the shared policy does not learn the population in 30 min: viable designs
+hold for 0.2-1.9 s. The 26 non-viable designs keep the drop reset, and under HORA's 1.5 cm drop rule
+each of their episodes lasts 0.13 s, so they fill the batch with episodes that carry no signal;
+training only on viable designs is the obvious next step. With the curriculum (promotion on >= 0.25
+rotations per episode, `gravity_promote_metric: rotations`), the mean difficulty stalled at 0.9-1.0
+of 10, so gravity stayed at 0 except for a brief 0.98 m/s^2. The objects float, the hold times and
+rotations above are for (near) zero gravity, and the non-viable designs also hold for 10 s (scored
+0). The curriculum does not change which designs are viable, since the cache is made under full
+gravity.
+
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
 Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
