@@ -16,6 +16,7 @@ import json
 import math
 from types import SimpleNamespace
 
+import pytest
 import torch
 
 from isaacsimenvs.inhand_reorient import design_scoring as ds
@@ -226,7 +227,7 @@ def test_anyrotate_banks_rotation_about_the_axis_and_time_to_terminate():
     ttt = torch.tensor([30.0, 6.0])
     goals = torch.tensor([3.0, 0.0])
     rp, rot_term, time_term, fitness = ds.anyrotate_fitness_components(goals, rot, ttt, 30.0)
-    assert rp.tolist() == [2 * math.pi, -0.5]
-    assert rot_term.tolist() == [1.0, 0.0]
-    assert time_term.tolist() == [0.25, 0.05]
-    assert [round(v, 6) for v in fitness.tolist()] == [1.25, 0.05]
+    assert rp.tolist() == pytest.approx([2 * math.pi, -0.5])
+    assert rot_term.tolist() == pytest.approx([1.0, 0.0])
+    assert time_term.tolist() == pytest.approx([0.25, 0.05])
+    assert fitness.tolist() == pytest.approx([1.25, 0.05])

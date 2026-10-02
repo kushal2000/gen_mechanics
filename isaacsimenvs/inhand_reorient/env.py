@@ -16,7 +16,8 @@ from isaaclab.envs import DirectRLEnv
 
 from isaacsimenvs.pose_reaching_6d.env import PoseReachEnv
 
-from . import design_scoring, nan_guard, repose_hooks
+from . import anyrotate_hooks, design_scoring, nan_guard, repose_hooks
+from .anyrotate_profile import apply_anyrotate_to_cfg, is_anyrotate
 from .env_cfg import InHandReorientEnvCfg
 from .obs_utils import build_observations, compute_intermediate_values, pre_physics_step
 from .reset_utils import allocate_state_buffers, log_step_metrics, reset_env_state
@@ -35,7 +36,8 @@ class InHandReorientEnv(PoseReachEnv):
     """Reorient a cube in a fixed, palm-up hand towards a target orientation.
 
     ``cfg.task_profile`` selects the task spec: "legacy" (default, this
-    env's original spec) or "isaaclab_repose" (NVIDIA's
+    env's original spec), "anyrotate" (multi-axis rotation after AnyRotate,
+    CoRL 2024; ``anyrotate_hooks.py``) or "isaaclab_repose" (NVIDIA's
     Isaac-Repose-Cube-Allegro-Direct-v0 spec; ``repose_hooks.py``)."""
 
     cfg: InHandReorientEnvCfg
@@ -57,12 +59,16 @@ class InHandReorientEnv(PoseReachEnv):
         # latter calls pose_reaching_6d's own allocate_state_buffers/
         # finalize_scene after the super().__init__() that boots the sim.
         self._repose = is_repose(cfg)
-        apply_profile_to_cfg(cfg)  # no-op for the legacy profile
+        self._anyrotate = is_anyrotate(cfg)
+        apply_profile_to_cfg(cfg)  # each a no-op unless its profile is active
+        apply_anyrotate_to_cfg(cfg)
         DirectRLEnv.__init__(self, cfg, render_mode, **kwargs)
         allocate_state_buffers(self)
         finalize_scene(self)
         if self._repose:
             repose_hooks.allocate_repose_buffers(self)
+        if self._anyrotate:
+            anyrotate_hooks.allocate_buffers(self)
         design_scoring.allocate_scoring_buffers(self)
         nan_guard.allocate_guard_buffers(self)
 
@@ -77,11 +83,17 @@ class InHandReorientEnv(PoseReachEnv):
         if self._repose:
             repose_hooks.reset_env_state(self, env_ids)
             return
+        if self._anyrotate:
+            anyrotate_hooks.reset_env_state(self, env_ids)
+            return
         reset_env_state(self, env_ids)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         if self._repose:
             repose_hooks.pre_physics_step(self, actions)
+            return
+        if self._anyrotate:
+            anyrotate_hooks.pre_physics_step(self, actions)
             return
         pre_physics_step(self, actions)
 
@@ -89,11 +101,16 @@ class InHandReorientEnv(PoseReachEnv):
         if self._repose:
             repose_hooks.apply_action(self)
             return
+        if self._anyrotate:
+            anyrotate_hooks.apply_action(self)
+            return
         self.robot.set_joint_position_target(self._cur_targets)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         if self._repose:
             return self._get_dones_repose()
+        if self._anyrotate:
+            return anyrotate_hooks.get_dones(self, nan_guard)
         update_tolerance_curriculum(self)  # increments self._frame_counter
         update_goal_curriculum(self)  # reads it right after -- see its docstring
         compute_intermediate_values(self)
@@ -107,6 +124,13 @@ class InHandReorientEnv(PoseReachEnv):
     def _get_rewards(self) -> torch.Tensor:
         if self._repose:
             return self._get_rewards_repose()
+        if self._anyrotate:
+            reward = nan_guard.sanitize_reward(self, anyrotate_hooks.get_rewards(self))
+            design_scoring.bank_done_episodes(self, reward)  # before _reset_idx clears anything
+            log_step_metrics(self)
+            anyrotate_hooks.log_metrics(self)
+            self.extras["goal_mode_code"] = design_scoring.GOAL_MODE_CODE_ANYROTATE
+            return reward
         reward = nan_guard.sanitize_reward(self, compute_rewards(self))
         design_scoring.bank_done_episodes(self, reward)  # before _reset_idx clears anything
         log_step_metrics(self)
@@ -115,6 +139,8 @@ class InHandReorientEnv(PoseReachEnv):
     def _get_observations(self) -> dict[str, torch.Tensor]:
         if self._repose:
             return nan_guard.sanitize_observations(self, repose_hooks.build_observations(self))
+        if self._anyrotate:
+            return nan_guard.sanitize_observations(self, anyrotate_hooks.build_observations(self))
         return nan_guard.sanitize_observations(self, build_observations(self))
 
     # --- isaaclab_repose profile (NVIDIA's hook order; see repose_hooks) ---

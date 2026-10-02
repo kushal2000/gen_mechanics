@@ -233,7 +233,13 @@ def bank_done_episodes(env, reward: torch.Tensor) -> None:
     time_held_s = env._score_elapsed_steps[ids].float() * step_dt
     ep_return = env._score_return_running[ids]
 
-    rot_term, time_term, fitness = graded_fitness_components(goals, rotation_progress, time_held_s, episode_max_s)
+    if getattr(env, "_anyrotate", False):
+        # rotation_progress := rotation about k (rad); time_held := time to terminate.
+        rotation_progress, rot_term, time_term, fitness = anyrotate_fitness_components(
+            goals, env._ar_rotation_rad[ids], time_held_s, episode_max_s)
+    else:
+        rot_term, time_term, fitness = graded_fitness_components(
+            goals, rotation_progress, time_held_s, episode_max_s)
     rotation_progress_clamped = torch.clamp(rotation_progress, min=0.0)
 
     ones = torch.ones_like(goals)
@@ -321,6 +327,9 @@ def _snapshot_payload(env) -> dict:
         "nonfinite_resets": int(nonfinite_sum.sum().item()),
         "nonfinite_resets_total": int(nonfinite_total.sum().item()),
         "graded_fitness_formula": (
+            f"rotations about k (max(rotation_rad, 0) / 2 pi) + {TIME_WEIGHT} * min(time_to_terminate_s / "
+            f"episode_max_s, 1), averaged over this window's episodes (anyrotate)"
+            if getattr(env, "_anyrotate", False) else
             f"goals + {ROTATION_WEIGHT} * clip(rotation_progress / pi, 0, 1) "
             f"+ {TIME_WEIGHT} * min(time_held_s / episode_max_s, 1), averaged over this window's episodes"
         ),
@@ -331,9 +340,27 @@ def _snapshot_payload(env) -> dict:
 GOAL_MODE_CODE_ISAACLAB = 3.0
 """isaaclab_repose profile: NVIDIA's random goals, no goal curriculum (the
 legacy curriculum's modes are axis=0, delta=1, full=2)."""
+GOAL_MODE_CODE_ANYROTATE = 4.0
+"""anyrotate profile: auxiliary goals about a commanded axis."""
+
+
+def anyrotate_fitness_components(goals, rotation_rad, ttt_s, episode_max_s):
+    """anyrotate profile, per episode: ``(rotation_progress, rotation_term,
+    time_term, fitness)`` from AnyRotate's evaluation metrics (Sec. 4):
+    rotation about the commanded axis (rad; Rot = rad / 2 pi) and time to
+    terminate (TTT). fitness = Rot (negative counts as 0) + 0.25 x TTT /
+    episode length; ``goals`` are banked separately and do not enter it."""
+    from .anyrotate_profile import graded_rotation_fitness
+
+    rotation_term = torch.clamp(rotation_rad, min=0.0) / (2.0 * math.pi)
+    time_term = TIME_WEIGHT * torch.clamp(ttt_s / max(float(episode_max_s), 1e-6), 0.0, 1.0)
+    fitness = graded_rotation_fitness(rotation_rad, ttt_s, episode_max_s, TIME_WEIGHT)
+    return rotation_rad, rotation_term, time_term, fitness
 
 
 def _goal_mode_code_safe(env) -> int:
+    if getattr(env, "_anyrotate", False):
+        return GOAL_MODE_CODE_ANYROTATE
     if getattr(env, "_repose", False):
         return GOAL_MODE_CODE_ISAACLAB
     try:

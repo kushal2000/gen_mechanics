@@ -31,7 +31,19 @@ from . import hand_only
 from .hand_only import build_hand_only_spec
 from .obs_utils import derive_spaces
 from .palm_calibration import load_calibration
+from .anyrotate_profile import is_anyrotate
 from .repose_profile import is_repose
+
+
+def _profile_cfg(env):
+    """The active non-legacy profile's cfg block (``repose`` or
+    ``anyrotate``), or None for the legacy profile. Both carry the hand pose
+    file, collider and actuator fields this module reads."""
+    if is_repose(env.cfg):
+        return env.cfg.repose
+    if is_anyrotate(env.cfg):
+        return env.cfg.anyrotate
+    return None
 
 ROBOT_PATH = "/World/envs/env_.*/Robot"
 OBJECT_PATH = "/World/envs/env_.*/Object"
@@ -118,7 +130,7 @@ def _repose_hand_pose_entry(env):
     ``entry`` is None when the file has none."""
     from .palm_calibration import load_repose_hand_poses, resolve_repose_hand_pose_path
 
-    path = resolve_repose_hand_pose_path(env.cfg.repose.hand_pose_file)
+    path = resolve_repose_hand_pose_path(_profile_cfg(env).hand_pose_file)
     return path, load_repose_hand_poses(path).get(env.cfg.assets.hand_id)
 
 
@@ -213,7 +225,8 @@ def _repose_hand_props(r):
     return rigid, articulation
 
 
-def _hand_articulation_cfg(spec, usd_path: str | None, repose=None) -> ArticulationCfg:
+def _hand_articulation_cfg(spec, usd_path: str | None, repose=None,
+                           contact_sensors: bool = False) -> ArticulationCfg:
     """`usd_path=None` (the grammar-population path): the prims were already
     authored directly into the stage (`scene/author_grammar.py`), so this
     Articulation only needs to ATTACH to them, not spawn anything. Scene-
@@ -257,7 +270,8 @@ def _hand_articulation_cfg(spec, usd_path: str | None, repose=None) -> Articulat
         else:
             rigid, articulation = _repose_hand_props(repose)
             spawn = sim_utils.UsdFileCfg(
-                usd_path=usd_path, rigid_props=rigid, articulation_props=articulation)
+                usd_path=usd_path, rigid_props=rigid, articulation_props=articulation,
+                activate_contact_sensors=contact_sensors)
     return ArticulationCfg(
         prim_path=ROBOT_PATH,
         spawn=spawn,
@@ -325,8 +339,76 @@ def _repose_object_cfg(prim_path: str, r, *, kinematic: bool,
     return RigidObjectCfg(prim_path=prim_path, spawn=spawn)
 
 
+def _anyrotate_object_cfg(prim_path: str, a, *, kinematic: bool,
+                          color: tuple[float, float, float] = (0.2, 0.4, 0.9)) -> RigidObjectCfg:
+    """The anyrotate training object (Sec. 4: capsules and boxes; Table 4
+    sizes). Mass and centre of mass are randomised per env after the sim
+    starts (``anyrotate_hooks.randomize_object_physics``)."""
+    if kinematic:
+        rigid_props = sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True)
+        mass_props, collision_props = None, None
+    else:
+        rigid_props = sim_utils.RigidBodyPropertiesCfg(
+            kinematic_enabled=False, disable_gravity=False, solver_position_iteration_count=8,
+            solver_velocity_iteration_count=0, max_depenetration_velocity=1000.0)
+        mass_props = sim_utils.MassPropertiesCfg(mass=float(sum(a.mass_range) / 2.0))
+        collision_props = sim_utils.CollisionPropertiesCfg(
+            contact_offset=float(a.object_contact_offset), rest_offset=float(a.object_rest_offset))
+    material = sim_utils.PreviewSurfaceCfg(diffuse_color=color)
+    if a.object_shape == "capsule":
+        spawn = sim_utils.CapsuleCfg(
+            radius=float(a.capsule_radius), height=float(a.capsule_width), axis="Z",
+            rigid_props=rigid_props, mass_props=mass_props, collision_props=collision_props,
+            visual_material=material)
+    elif a.object_shape == "box":
+        size = float(a.box_size)
+        spawn = sim_utils.CuboidCfg(
+            size=(size, size, size), rigid_props=rigid_props, mass_props=mass_props,
+            collision_props=collision_props, visual_material=material)
+    else:
+        raise ValueError(f"anyrotate.object_shape={a.object_shape!r}; expected 'capsule' or 'box'")
+    return RigidObjectCfg(prim_path=prim_path, spawn=spawn)
+
+
+def _add_anyrotate_contact_sensor(env, fingertip_names) -> None:
+    """anyrotate only: one ContactSensor per hand body, filtered to the object
+    (PhysX needs one filter match per sensor body, so a multi-body sensor
+    cannot share the one object). Fingertip sensors also track contact
+    points -- touch (App. F); the others give the non-tip contact count
+    (Eq. 7). Body names come from env 0's Robot prim."""
+    if not is_anyrotate(env.cfg):
+        return
+    from isaacsim.core.utils.stage import get_current_stage
+    from isaaclab.sensors import ContactSensor, ContactSensorCfg
+    from pxr import UsdPhysics
+
+    root = get_current_stage().GetPrimAtPath(env.scene.env_prim_paths[0] + "/Robot")
+    bodies = [c.GetName() for c in root.GetChildren() if c.HasAPI(UsdPhysics.RigidBodyAPI)]
+    missing = [t for t in fingertip_names if t not in bodies]
+    if missing:
+        raise RuntimeError(f"fingertip bodies {missing} are not rigid bodies under {root.GetPath()}: {bodies}")
+
+    def _sensor(name, points):
+        return ContactSensor(ContactSensorCfg(
+            prim_path=f"{ROBOT_PATH}/{name}", filter_prim_paths_expr=[OBJECT_PATH],
+            track_contact_points=points, max_contact_data_count_per_prim=4, history_length=0))
+
+    env.ar_tip_sensors = [_sensor(t, True) for t in fingertip_names]
+    env.ar_nontip_sensors = [_sensor(b, False) for b in bodies if b not in fingertip_names]
+    for i, sensor in enumerate(env.ar_tip_sensors):
+        env.scene.sensors[f"ar_tip_{i}"] = sensor
+    for i, sensor in enumerate(env.ar_nontip_sensors):
+        env.scene.sensors[f"ar_body_{i}"] = sensor
+    print(f"[anyrotate] contact sensors: {len(env.ar_tip_sensors)} fingertips, "
+          f"{len(env.ar_nontip_sensors)} other hand bodies", flush=True)
+
+
 def _scene_objects(env, offsets: dict) -> tuple[RigidObject, RigidObject]:
     """``(object, goal marker)`` for the active task profile."""
+    if is_anyrotate(env.cfg):
+        a = env.cfg.anyrotate
+        return (RigidObject(_anyrotate_object_cfg(OBJECT_PATH, a, kinematic=False)),
+                RigidObject(_anyrotate_object_cfg(GOALVIZ_PATH, a, kinematic=True, color=(0.9, 0.3, 0.2))))
     if is_repose(env.cfg):
         r = env.cfg.repose
         return (RigidObject(_repose_object_cfg(OBJECT_PATH, r, kinematic=False)),
@@ -343,9 +425,11 @@ def _scene_objects(env, offsets: dict) -> tuple[RigidObject, RigidObject]:
 
 def _apply_repose_props_to_population(env) -> None:
     """The population path authors its robots itself (no spawner), so the
-    profile's hand properties are written onto every env's Robot afterwards."""
+    profile's hand properties (and, for anyrotate, contact reporting) are
+    written onto every env's Robot afterwards."""
     t0 = time.perf_counter()
-    rigid, articulation = _repose_hand_props(env.cfg.repose)
+    rigid, articulation = _repose_hand_props(_profile_cfg(env))
+    contact_sensors = is_anyrotate(env.cfg)
     from isaacsim.core.utils.stage import get_current_stage
 
     stage = get_current_stage()
@@ -354,7 +438,9 @@ def _apply_repose_props_to_population(env) -> None:
         robot_path = f"{env_path}/Robot"
         sim_utils.modify_rigid_body_properties(robot_path, rigid, stage=stage)
         sim_utils.modify_articulation_root_properties(robot_path, articulation, stage=stage)
-    print(f"[inhand_reorient] isaaclab_repose hand properties written to {len(env.scene.env_prim_paths)} "
+        if contact_sensors:
+            sim_utils.activate_contact_sensors(robot_path, threshold=0.0, stage=stage)
+    print(f"[inhand_reorient] {env.cfg.task_profile} hand properties written to {len(env.scene.env_prim_paths)} "
           f"robots ({time.perf_counter() - t0:.1f}s)", flush=True)
 
 
@@ -432,7 +518,7 @@ def _setup_scene_single_hand(env) -> None:
 
     spec, cut = build_hand_only_spec(env.cfg.assets.hand_id, out_dir=asset_dir)
     spec = apply_palm_calibration(env, spec)
-    if is_repose(env.cfg):
+    if _profile_cfg(env) is not None:
         spec = apply_repose_hand_pose(env, spec)
     derive_spaces(env.cfg, spec)
     print(f"[inhand_reorient] hand={env.cfg.assets.hand_id} joints={spec.num_hand_joints} "
@@ -442,8 +528,8 @@ def _setup_scene_single_hand(env) -> None:
     offsets = dict(contact_offset=env.cfg.physics.contact_offset,
                    rest_offset=env.cfg.physics.rest_offset)
     robot_urdf = spec.urdf_path
-    if is_repose(env.cfg) and (
-            env.cfg.repose.collision_from_visuals
+    if _profile_cfg(env) is not None and (
+            _profile_cfg(env).collision_from_visuals
             or bool((_repose_hand_pose_entry(env)[1] or {}).get("collision_from_visuals"))):
         from .collision_from_visuals import collisions_from_visuals
 
@@ -454,9 +540,10 @@ def _setup_scene_single_hand(env) -> None:
     robot_usd, _robot_root = _convert_fixed_robot(spec, robot_urdf, asset_dir / "usd", offsets)
     print(f"[inhand_reorient] converted hand USD ({time.perf_counter() - t0:.1f}s)", flush=True)
 
-    repose = env.cfg.repose if is_repose(env.cfg) else None
-    env.robot = Articulation(_hand_articulation_cfg(spec, robot_usd, repose=repose))
+    env.robot = Articulation(_hand_articulation_cfg(
+        spec, robot_usd, repose=_profile_cfg(env), contact_sensors=is_anyrotate(env.cfg)))
     env.object, env.goal_viz = _scene_objects(env, offsets)
+    _add_anyrotate_contact_sensor(env, spec.fingertip_body_names)
 
     spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
     light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
@@ -499,10 +586,11 @@ def _setup_scene_population(env) -> None:
           f"({time.perf_counter() - t0:.1f}s)", flush=True)
 
     offsets = dict(contact_offset=env.cfg.physics.contact_offset, rest_offset=env.cfg.physics.rest_offset)
-    if is_repose(env.cfg):
+    if _profile_cfg(env) is not None:
         _apply_repose_props_to_population(env)
     env.robot = Articulation(_hand_articulation_cfg(spec, usd_path=None))
     env.object, env.goal_viz = _scene_objects(env, offsets)
+    _add_anyrotate_contact_sensor(env, spec.fingertip_body_names)
 
     spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
     light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
