@@ -23,6 +23,16 @@ Resume: rerun the exact same command with the same ``--run-dir``; the
 driver loads ``<run-dir>/state.json`` (written atomically after every
 COMPLETED generation) and continues from the next one.
 
+Stable-grasp cache (``--grasp-cache``, anyrotate only, off by default): every
+generation's training launch gets ``env.anyrotate.grasp_cache=<run-dir>/
+grasp_cache.npz`` and ``grasp_cache_generate=true``; the env generates grasps
+at start for the designs the file lacks (new offspring and immigrants) and
+saves them, so unchanged elites and the probes reuse theirs by sha256 (no
+extra Kit launch). A design without a stable grasp scores 0
+(``design_scoring``); the per-generation log carries the cache report
+(``grasp_cache``: generation time, designs generated and reused, grasps per
+design, non-viable designs).
+
 Robustness (I41): a generation counts as completed only if ``train.py``
 exits 0 AND leaves a checkpoint whose tensors are all finite and whose
 GradScaler has not collapsed to 0. Otherwise it is retried once from the
@@ -913,7 +923,47 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap.add_argument("--train-retries", type=int, default=1,
                     help="retries of a failed generation (same population, same carried checkpoint) "
                          "before the driver stops")
-    return ap.parse_args(argv)
+    ap.add_argument("--grasp-cache", action="store_true",
+                    help="anyrotate only: start episodes from cached stable grasps (grasp_cache.py); "
+                         "grasps of new designs are generated inside each generation's training launch")
+    ap.add_argument("--grasp-cache-path", default=None,
+                    help="the run's grasp cache (default <run-dir>/grasp_cache.npz)")
+    args = ap.parse_args(argv)
+    if args.grasp_cache and args.task_profile != "anyrotate":
+        ap.error("--grasp-cache needs --task-profile anyrotate")
+    return args
+
+
+def grasp_cache_path(args: argparse.Namespace, run_dir: Path) -> Path:
+    return Path(args.grasp_cache_path) if args.grasp_cache_path else Path(run_dir) / "grasp_cache.npz"
+
+
+def grasp_cache_overrides(path: Path) -> List[str]:
+    """Hydra overrides for a generation's train.py: use the run's cache and
+    generate the designs it lacks at env start."""
+    return [f"env.anyrotate.grasp_cache={path}", "env.anyrotate.grasp_cache_generate=true"]
+
+
+def read_grasp_report(train_dir: Path) -> Optional[dict]:
+    """The env's ``grasp_cache_report.json`` (``grasp_cache_gen.
+    ensure_grasp_table``) in a generation's hydra run dir, or None."""
+    return _read_json_safely(Path(train_dir) / "grasp_cache_report.json")
+
+
+def grasp_report_row(report: Optional[dict], source_to_id: Dict[str, str]) -> Optional[dict]:
+    """The per-generation log's ``grasp_cache`` entry, with design ids in
+    place of population sources (probes keep their source)."""
+    if report is None:
+        return None
+    per = report.get("grasps_per_design", {})
+    gen = report.get("generation") or {}
+    return {
+        "gen_s": float(report.get("gen_s", 0.0)), "generated": int(report.get("generated", 0)),
+        "reused": int(report.get("reused", 0)), "rounds": gen.get("rounds", 0),
+        "viable": int(report.get("viable", 0)), "viable_frac": int(report.get("viable", 0)) / max(len(per), 1),
+        "non_viable": [source_to_id.get(src, src) for src in report.get("non_viable", [])],
+        "grasps_by_design": {source_to_id.get(src, src): int(n) for src, n in per.items()},
+    }
 
 
 def _resolved_config(args: argparse.Namespace) -> dict:
@@ -933,6 +983,8 @@ def _resolved_config(args: argparse.Namespace) -> dict:
     # existed keeps its config hash on resume.
     if args.task_profile != DEFAULT_TASK_PROFILE:
         config["task_profile"] = args.task_profile
+    if args.grasp_cache:
+        config["grasp_cache"] = True
     return config
 
 
@@ -1034,7 +1086,9 @@ def run_generation(
             max_epochs=args.epochs_per_gen, hydra_run_dir=train_dir, checkpoint=carry_path,
             resume_success_tolerance=(prev_tolerance if generation > 0 else None),
             horizon_length=args.horizon_length, agent_entry_point=args.agent_entry_point,
-            seed=args.train_seed + attempt, extra_overrides=args.train_override,
+            seed=args.train_seed + attempt,
+            extra_overrides=list(args.train_override) + (
+                grasp_cache_overrides(grasp_cache_path(args, run_dir)) if args.grasp_cache else []),
             task_profile=args.task_profile,
         )
         cmd = ["timeout", "-k", "30", str(args.gen_timeout_s)] + cmd
@@ -1102,6 +1156,12 @@ def run_generation(
         print(f"[driver] generation {generation}: non-finite physics resets by design: {nonfinite_by_design}",
               flush=True)
 
+    grasp_row = grasp_report_row(read_grasp_report(train_dir), source_to_id) if args.grasp_cache else None
+    if grasp_row is not None:
+        print(f"[driver] generation {generation}: grasp cache {grasp_row['generated']} design(s) generated in "
+              f"{grasp_row['gen_s']:.0f} s, {grasp_row['reused']} reused; {grasp_row['viable']} with a stable "
+              f"grasp; non-viable (scored 0): {grasp_row['non_viable']}", flush=True)
+
     summary = archive.summary()
     row = {
         "generation": generation,
@@ -1127,6 +1187,8 @@ def run_generation(
         "window_metrics": win_metrics,
         "nonfinite_by_design": nonfinite_by_design,
     }
+    if grasp_row is not None:
+        row["grasp_cache"] = grasp_row
     _append_jsonl(run_dir / "generations.jsonl", row)
     csv_row = {k: row[k] for k in CSV_COLUMNS if k in row}
     std = (trained_stats or {}).get("std") or {}
