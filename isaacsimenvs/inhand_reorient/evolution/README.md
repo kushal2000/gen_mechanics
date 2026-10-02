@@ -299,8 +299,21 @@ No shared controller learned to keep the object within these budgets. Two findin
 - Fewer designs (8 instead of 32) did not help within 95 min on an A6000: per-design sample count
   alone does not explain it. Projected allegro in the population path (own actuator 3.93 / 0.15 /
   1 N m, capsule links, grammar palm-up placement) is a different hand from the single-hand drake
-  allegro (HORA actuator, convex-hull colliders, NVIDIA placement); `allegro1` (job 2530462: that
-  design alone, 4096 envs) separates the population path from sharing.
+  allegro (HORA actuator, convex-hull colliders, NVIDIA placement). `allegro1` (job 2530462: that
+  design alone, 4096 envs, A6000, 31.6k fps) rose from 1.0 to 2.0 s TTT by 30 min and stayed there
+  (0.16 rotations per episode at 58 min, about 110 M samples), where the drake single hand held 17.8 s
+  and rotated 2.14 per 20-s episode. The main obstacle is how the population path builds a hand
+  (actuator, capsule colliders, palm-up placement, grasps), not sharing one controller across hands.
+
+Recommended before a grammar comparison (G_V1, G_V2S, G_V3S x seeds): make one grammar-path hand
+learn first (projected allegro with the HORA actuator and a convex-hull or capsule-friction check),
+then a viable population. When that holds, one run per variant and seed on one A6000 (main tier,
+`vision-pulkitag-a6000`), `--task-profile hora --grasp-cache --viable-only`, 4096 envs, N 32:
+generation 0 costs about 29 min of grasp search for G_V3S (founder viability 7.7-8.6% of drawn) and
+about three times that for G_V1 (3.3%; raise `--viable-max-batches` to 8), later generations one
+search launch (about 10 min at 66% offspring viability), plus 8 min of boot and the training time
+per generation (690 epochs = 15 min on an A6000). An array of 9 runs throttled to 4 GPUs
+(`--array 0-8%4`) with `--time` = (generation 0 + (G - 1) x later generation) x 1.2.
 
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
