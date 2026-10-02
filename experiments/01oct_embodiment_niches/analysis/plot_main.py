@@ -68,16 +68,19 @@ COMPOSITES = [
 def _rank(vals, higher):
     import numpy as np
     v = np.asarray(vals, dtype=float)
-    order = np.argsort(-v if higher else v, kind="stable")
-    r = np.empty(len(v))
-    r[order] = np.arange(1, len(v) + 1)
+    r = np.full(len(v), np.nan)                 # a missing value (an eval still running) is not ranked
+    ok = np.flatnonzero(np.isfinite(v))
+    order = ok[np.argsort(-v[ok] if higher else v[ok], kind="stable")]
+    r[order] = np.arange(1, len(order) + 1)
     return r
 
 
 def niche_map(R, hands):
     import numpy as np
     for h in hands:
-        R[f"{h}__nominal"]["_gbd"] = json.loads((D / f"{h}__nominal_5min.json").read_text())["goals_before_drop"]
+        f = D / f"{h}__nominal_5min.json"
+        R[f"{h}__nominal"]["_gbd"] = (json.loads(f.read_text())["goals_before_drop"] if f.exists()
+                                      else {"p5": float("nan")})       # pending: drawn as such, not ranked
     train = json.loads((D / "training_final.json").read_text())
     for h in hands:
         R[f"{h}__nominal"]["_train"] = train[h]["goals_per_episode"]
@@ -95,9 +98,9 @@ def niche_map(R, hands):
     for i in range(len(hands)):
         for j in range(len(cols)):
             win = ranks[i, j] == 1
-            ax.text(j, i - 0.13, f"{int(ranks[i, j])}", ha="center", va="center", fontsize=11 if win else 10,
+            ax.text(j, i - 0.13, f"{int(ranks[i, j])}" if np.isfinite(ranks[i, j]) else "–", ha="center", va="center", fontsize=11 if win else 10,
                     color="#ffffff" if win else INK, fontweight="semibold" if win else "normal")
-            ax.text(j, i + 0.2, f"({labels[j][i]})", ha="center", va="center", fontsize=8,
+            ax.text(j, i + 0.2, "(pending)" if "nan" in labels[j][i] else f"({labels[j][i]})", ha="center", va="center", fontsize=8,
                     color="#dbe8f8" if win else INK2)
     ax.set_xticks(range(len(cols)), [n for n, _ in cols], fontsize=10, color=INK, fontweight="semibold")
     ax.xaxis.tick_top()
