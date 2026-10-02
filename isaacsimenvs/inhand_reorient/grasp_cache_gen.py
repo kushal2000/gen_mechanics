@@ -121,16 +121,13 @@ def _control_step(env, targets: torch.Tensor) -> None:
         env.scene.update(dt=env.physics_dt)
 
 
-def _tip_force(env) -> torch.Tensor:
-    return torch.stack([torch.nan_to_num(s.data.force_matrix_w[:, 0, 0, :]).norm(dim=-1)
-                        for s in env.ar_tip_sensors], dim=1)
+def _contact_magnitudes(env) -> Tuple[torch.Tensor, torch.Tensor]:
+    """``(tip (n, k), nontip (n, m))`` contact force magnitudes, through
+    ``anyrotate_hooks.contact_forces`` (population tips: last real link)."""
+    from .anyrotate_hooks import contact_forces
 
-
-def _nontip_force(env) -> torch.Tensor:
-    if not env.ar_nontip_sensors:
-        return torch.zeros(env.num_envs, 0, device=env.device)
-    return torch.stack([torch.nan_to_num(s.data.force_matrix_w[:, 0, 0, :]).norm(dim=-1)
-                        for s in env.ar_nontip_sensors], dim=1)
+    tip_f, _pos, nontip = contact_forces(env)
+    return tip_f.norm(dim=-1), nontip
 
 
 def _thresholds(a) -> gc.StabilityThresholds:
@@ -253,8 +250,9 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
             d_tip = torch.nan_to_num(d_tip, nan=1e3) * tvalid_f
             max_tip_dist = torch.maximum(max_tip_dist, d_tip.max(dim=-1).values)
             if step >= hold_steps - contact_window:
-                tip_f = tip_f + _tip_force(env) / contact_window
-                nf = _nontip_force(env) / contact_window
+                tf, nf = _contact_magnitudes(env)
+                tip_f = tip_f + tf / contact_window
+                nf = nf / contact_window
                 nontip_f = nf if nontip_f is None else nontip_f + nf
         if a.grasp_gravity_cycle:
             _set_gravity((0.0, 0.0, -1.0))

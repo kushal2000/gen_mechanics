@@ -29,7 +29,7 @@ __all__ = [
     "quat_to_rotvec", "rotation_about_axis", "rotation_reward", "next_goal", "goal_reached",
     "contact_rewards", "angular_velocity_penalty", "pose_penalty", "work_penalty", "torque_penalty",
     "axis_deviation", "axis_in_object_frame", "axis_tilt", "terminations", "reward_curriculum_lambda", "relative_joint_targets",
-    "simulated_tactile", "sample_axes", "world_up_in_palm", "combine_rewards", "graded_rotation_fitness",
+    "simulated_tactile", "sample_axes", "world_up_in_palm", "distal_slots", "tip_sources", "combine_rewards", "graded_rotation_fitness",
 ]
 
 PROFILE_ANYROTATE = "anyrotate"
@@ -318,6 +318,41 @@ def sample_axes(n: int, mode: str, device=None, generator=None) -> torch.Tensor:
         out[:, 2] = 1.0
         return out
     raise ValueError(f"rotation axis sampling {mode!r}")
+
+
+def distal_slots(joint_valid_slots: torch.Tensor, n_fingers: int = 5, per_finger: int = 6) -> torch.Tensor:
+    """``(D, n_fingers)``: each finger's last real envelope slot (its real
+    chain fills a prefix of the finger's slots), -1 for a finger without
+    one. ``joint_valid_slots``: ``(D, >= n_fingers * per_finger)`` bool in
+    ``grammar_envelope.SLOT_NAMES`` order."""
+    v = joint_valid_slots[:, : n_fingers * per_finger].reshape(-1, n_fingers, per_finger)
+    return v.long().sum(dim=-1) - 1
+
+
+def tip_sources(distal: torch.Tensor, tip_names, nontip_names):
+    """Population fingertip contact (App. F's c, Eq. 6's r_gc) per env. The
+    envelope's fingertip markers ``f{f}_link5`` (``tip_names``) are ghosts
+    without colliders unless the finger fills all its slots, so finger f's
+    tip contact is read from the sensor on ``f{f}_link{distal[f]}``.
+    Returns ``(src, nontip)``: ``src`` ``(n, F)`` indexes the sensor list
+    ``tip_names + nontip_names`` (the marker itself for a finger without a
+    chain; masked elsewhere); ``nontip`` ``(n, len(tip) + len(nontip))``
+    marks the bodies Eq. 7 counts (every non-marker body that is not one of
+    this env's distal links)."""
+    all_names = list(tip_names) + list(nontip_names)
+    index = {name: i for i, name in enumerate(all_names)}
+    n, n_f = distal.shape
+    src = torch.zeros(n, n_f, dtype=torch.long, device=distal.device)
+    for f in range(n_f):
+        marker = index[tip_names[f]]
+        cand = torch.tensor([index.get(f"f{f}_link{d}", marker) for d in range(6)], device=distal.device)
+        src[:, f] = torch.where(distal[:, f] >= 0, cand[distal[:, f].clamp(min=0)], torch.full_like(distal[:, f], marker))
+    nontip = torch.ones(n, len(all_names), dtype=torch.bool, device=distal.device)
+    nontip[:, : len(tip_names)] = False
+    valid = distal >= 0
+    rows = torch.arange(n, device=distal.device).unsqueeze(-1).expand(n, n_f)
+    nontip[rows[valid], src[valid]] = False
+    return src, nontip
 
 
 def world_up_in_palm(palm_quat: torch.Tensor) -> torch.Tensor:

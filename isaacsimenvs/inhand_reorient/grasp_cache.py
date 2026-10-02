@@ -353,6 +353,10 @@ class GraspTable:
     def has_grasp(self) -> torch.Tensor:
         return self.counts > 0
 
+    @property
+    def total(self) -> int:
+        return int(self.q.shape[0])
+
     def sample(self, design_idx: torch.Tensor, generator: Optional[torch.Generator] = None
                ) -> Tuple[torch.Tensor, torch.Tensor]:
         """``(rows, ok)``: a uniformly drawn grasp row per env (HORA:

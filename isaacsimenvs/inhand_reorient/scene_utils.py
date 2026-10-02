@@ -394,8 +394,15 @@ def _add_anyrotate_contact_sensor(env, fingertip_names) -> None:
             track_contact_points=points,
             max_contact_data_count_per_prim=int(env.cfg.anyrotate.contact_data_per_prim), history_length=0))
 
+    # Population: a finger's real tip is its last real link (the f*_link5
+    # marker is a ghost without a collider), which is a "non-tip" body here,
+    # so finger links also track contact points (anyrotate_profile.tip_sources).
+    population = bool(env.cfg.assets.hand_population)
+    env.ar_tip_names = list(fingertip_names)
+    env.ar_nontip_names = [b for b in bodies if b not in fingertip_names]
+    env.ar_nontip_points = [population and b.startswith("f") and "_link" in b for b in env.ar_nontip_names]
     env.ar_tip_sensors = [_sensor(t, True) for t in fingertip_names]
-    env.ar_nontip_sensors = [_sensor(b, False) for b in bodies if b not in fingertip_names]
+    env.ar_nontip_sensors = [_sensor(b, pts) for b, pts in zip(env.ar_nontip_names, env.ar_nontip_points)]
     for i, sensor in enumerate(env.ar_tip_sensors):
         env.scene.sensors[f"ar_tip_{i}"] = sensor
     for i, sensor in enumerate(env.ar_nontip_sensors):

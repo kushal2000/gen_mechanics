@@ -100,9 +100,49 @@ def allocate_buffers(env) -> None:
 
 def _setup_contact_indices(env) -> None:
     """The per-body contact sensors are created in fingertip order
-    (``scene_utils._add_anyrotate_contact_sensor``); nothing to map."""
+    (``scene_utils._add_anyrotate_contact_sensor``). Population: finger f's
+    tip contact comes from the sensor on its last real link
+    (``anyrotate_profile.tip_sources``; the f*_link5 markers have no
+    collider), and those links leave the non-tip count."""
     if len(env.ar_tip_sensors) != len(env.fingertip_body_idx):
         raise RuntimeError("one fingertip contact sensor per fingertip body expected")
+    env._ar_tip_src = None
+    env._ar_nontip_mask = None
+    tables = getattr(env, "hand_tables", None)
+    if tables is None:
+        return
+    valid = torch.as_tensor(tables.joint_valid, dtype=torch.bool, device=env.device)
+    distal = ar.distal_slots(valid)[env.scene_record["design_idx"]]
+    env._ar_tip_src, env._ar_nontip_mask = ar.tip_sources(distal, env.ar_tip_names, env.ar_nontip_names)
+    points = [True] * len(env.ar_tip_names) + list(env.ar_nontip_points)
+    used = sorted(set(env._ar_tip_src.flatten().tolist()))
+    if not all(points[i] for i in used):
+        raise RuntimeError("a population fingertip source sensor does not track contact points")
+    print(f"[anyrotate] population fingertip contact from each finger's last real link "
+          f"({len(used)} distinct sensor bodies)", flush=True)
+
+
+def contact_forces(env):
+    """``(tip_force_w (n, k, 3), tip_contact_pos_w (n, k, 3), nontip_force
+    (n, m))``: object contact force on each fingertip, its contact point
+    (NaN where none) and the force magnitude on every body Eq. 7 counts."""
+    tip_f = torch.stack([torch.nan_to_num(s.data.force_matrix_w[:, 0, 0, :]) for s in env.ar_tip_sensors], dim=1)
+    tip_p = torch.stack([s.data.contact_pos_w[:, 0, 0, :] for s in env.ar_tip_sensors], dim=1)
+    if env.ar_nontip_sensors:
+        non_f = torch.stack([torch.nan_to_num(s.data.force_matrix_w[:, 0, 0, :])
+                             for s in env.ar_nontip_sensors], dim=1)
+    else:
+        non_f = torch.zeros(env.num_envs, 0, 3, device=env.device)
+    if env._ar_tip_src is None:
+        return tip_f, tip_p, non_f.norm(dim=-1)
+    nan = torch.full_like(tip_p[:, :1], float("nan"))
+    non_p = torch.stack([s.data.contact_pos_w[:, 0, 0, :] if pts else nan[:, 0]
+                         for s, pts in zip(env.ar_nontip_sensors, env.ar_nontip_points)], dim=1)
+    all_f = torch.cat([tip_f, non_f], dim=1)
+    all_p = torch.cat([tip_p, non_p], dim=1)
+    idx = env._ar_tip_src.unsqueeze(-1).expand(-1, -1, 3)
+    return (torch.gather(all_f, 1, idx), torch.gather(all_p, 1, idx),
+            all_f.norm(dim=-1) * env._ar_nontip_mask)
 
 
 def randomize_object_physics(env) -> None:
@@ -262,9 +302,7 @@ def get_dones(env, nan_guard) -> tuple[torch.Tensor, torch.Tensor]:
 def _update_touch(env) -> None:
     a = _cfg(env)
     n = env.num_envs
-    tip_force_w = torch.stack(
-        [torch.nan_to_num(s.data.force_matrix_w[:, 0, 0, :]) for s in env.ar_tip_sensors], dim=1)  # (n, k, 3)
-    cpos_w = torch.stack([s.data.contact_pos_w[:, 0, 0, :] for s in env.ar_tip_sensors], dim=1)
+    tip_force_w, cpos_w, nontip_force = contact_forces(env)  # (n, k, 3), (n, k, 3), (n, m)
     k = tip_force_w.shape[1]
     tip_q = env.robot.data.body_quat_w[:, env.fingertip_body_idx].reshape(n * k, 4)
     tip_p = env.robot.data.body_pos_w[:, env.fingertip_body_idx].reshape(n * k, 3)
@@ -283,11 +321,7 @@ def _update_touch(env) -> None:
         force = force * tip_mask
     env._ar_force_smooth = fs
     env._ar_contact, env._ar_contact_pose, env._ar_contact_force = c, pose, force
-    if env.ar_nontip_sensors:
-        f = torch.stack([torch.nan_to_num(s.data.force_matrix_w[:, 0, 0, :]) for s in env.ar_nontip_sensors], dim=1)
-        env._ar_nontip = (f.norm(dim=-1) > a.contact_threshold).float().sum(dim=-1)
-    else:
-        env._ar_nontip = torch.zeros(n, device=env.device)
+    env._ar_nontip = (nontip_force > a.contact_threshold).float().sum(dim=-1)
 
 
 def _weights(a) -> dict:
@@ -457,6 +491,8 @@ def _grasp_reset(env, env_ids, q, palm_pos_w, palm_q, obj_pos_palm, obj_q_palm, 
     a = _cfg(env)
     t = env._ar_grasps
     rows, ok = t.sample(env._ar_grasp_design_idx[env_ids])
+    if t.total == 0 or not bool(ok.any()):
+        return q, q, obj_pos_palm, obj_q_palm, obj_pos_w, obj_q_w
     okc = ok.unsqueeze(-1)
     gq, gqt = t.q[rows], t.q_target[rows]
     if a.grasp_reset_joint_noise > 0:
