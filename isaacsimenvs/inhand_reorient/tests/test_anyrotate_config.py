@@ -84,7 +84,7 @@ def test_grasp_cache_is_off_by_default_with_hora_and_anyrotate_numbers():
     """App. C (AnyRotate) and HORA's grasp generation; off unless a cache
     path is given, so the drop reset stays the default."""
     a = _task()["anyrotate"]
-    assert a["grasp_cache"] == "" and a["grasp_cache_generate"] is False
+    assert a["grasp_cache"] == "" and a["grasp_cache_generate"] is False and a["grasp_cache_prune"] is False
     assert a["grasp_joint_sample_noise"] == 0.3  # App. C: U(-0.3, 0.3) rad
     assert a["grasp_min_tip_contacts"] == 2 and a["grasp_max_tip_dist_m"] == 0.1  # HORA
     assert a["grasp_max_nontip_contacts"] == -1 and a["grasp_max_mean_tip_dist_m"] == -1.0  # AnyRotate tests: opt-in

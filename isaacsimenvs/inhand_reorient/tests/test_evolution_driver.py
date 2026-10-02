@@ -531,8 +531,11 @@ def test_grasp_cache_overrides_point_the_env_at_the_run_cache_and_generate_missi
     args = drv.parse_args(_AR + ["--grasp-cache"])
     path = drv.grasp_cache_path(args, tmp_path)
     assert path == tmp_path / "grasp_cache.npz"
+    # prune: the saved cache keeps only this generation's designs (every elite is
+    # resubmitted each generation, so nothing still needed is dropped).
     assert drv.grasp_cache_overrides(path) == [f"env.anyrotate.grasp_cache={path}",
-                                               "env.anyrotate.grasp_cache_generate=true"]
+                                               "env.anyrotate.grasp_cache_generate=true",
+                                               "env.anyrotate.grasp_cache_prune=true"]
     custom = drv.parse_args(_AR + ["--grasp-cache", "--grasp-cache-path", str(tmp_path / "shared.npz")])
     assert drv.grasp_cache_path(custom, tmp_path) == tmp_path / "shared.npz"
 

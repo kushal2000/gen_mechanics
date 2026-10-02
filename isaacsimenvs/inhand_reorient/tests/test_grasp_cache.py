@@ -261,3 +261,8 @@ def test_empty_table_samples_nothing():
     t = gc.build_table([None, None], ["a"])
     rows, ok = t.sample(torch.tensor([0, 1]))
     assert not ok.any() and t.q.shape == (0, 1)
+
+
+def test_prune_keeps_only_the_given_keys():
+    sets = {"a": _set(1), "b": _set(2), "c": _set(3)}
+    assert list(gc.prune_sets(sets, ["c", "a", "z"])) == ["a", "c"]
