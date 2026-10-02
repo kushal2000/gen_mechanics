@@ -271,6 +271,30 @@ anyrotate:
   contact_force_noise: 0.1
   reset_joint_noise: 0.1            # adapt.: no grasp cache (App. C)
   hand_orientation_randomization: false   # team decision: stationary palm-up hand
+  grasp_cache: ""                   # [App. C; HORA] .npz of stable grasps (grasp_cache.py); "" = drop reset
+  grasp_cache_generate: false       # generate missing designs' grasps at env start and save them
+  grasp_per_design: 1000            # AnyRotate 10000 per object, HORA 50000 per scale
+  grasp_gen_max_rounds: 30
+  grasp_gen_max_minutes: 15.0
+  grasp_gen_rounds_without_grasp: 6 # no stable grasp after this many rounds: non-viable
+  grasp_gen_seed: 0
+  grasp_hold_s: 3.0                 # HORA 3.3 s (50 steps, 15 Hz); AnyRotate 6 s
+  grasp_presettle_steps: 5          # adapt.: hand settles before the object is placed
+  grasp_joint_sample_noise: 0.3     # [App. C] U(-0.3, 0.3) rad; HORA 0.25
+  grasp_curl_frac: 0.5              # adapt.: share of candidates at a random curl of every joint
+  grasp_tip_place_frac: 0.5         # adapt.: share placed at the fingertip centroid (rest: spawn point)
+  grasp_obj_pos_noise: 0.01
+  grasp_max_disp_m: 0.02            # HORA: falls at most 1.5 cm
+  grasp_max_lin_speed: 0.05
+  grasp_max_ang_speed: 0.5
+  grasp_min_tip_contacts: 2         # HORA >= 2; AnyRotate > 2
+  grasp_max_nontip_contacts: -1     # -1 off (HORA); AnyRotate 0
+  grasp_max_tip_dist_m: 0.1         # HORA: every fingertip within 0.1 m
+  grasp_max_mean_tip_dist_m: -1.0   # -1 off; AnyRotate: total 0.2 over 4 tips
+  grasp_gravity_cycle: false        # AnyRotate: gravity along +-x, +-y, +-z during the hold
+  grasp_reset_joint_noise: 0.0      # HORA and AnyRotate add none at reset
+  grasp_reset_obj_pos_noise: 0.0
+  grasp_settle_steps: 0             # settle phase for grasp-initialised envs (none, as the paper)
   hand_pose_file: repose_hand_poses.json
   collision_from_visuals: false
   hand_disable_gravity: false       # [Sec. 4] gravity on hand and object

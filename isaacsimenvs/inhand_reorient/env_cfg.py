@@ -360,6 +360,58 @@ class AnyRotateCfg:
     """The paper samples the hand orientation per episode; the team keeps a
     stationary palm-up hand (not implemented: True raises)."""
 
+    # --- stable-grasp cache [App. C; HORA, CoRL 2022] (grasp_cache.py) ---
+    grasp_cache: str = ""
+    """Path of a grasp cache (.npz, ``grasp_cache.py``). Empty (default):
+    no cache, the object is dropped onto the hand as above. Set: every
+    reset starts from a cached stable grasp of the env's design (joint
+    positions, the PD targets that held it, object pose in the palm frame;
+    HORA's reset), the pose penalty's q0 is that episode's initial joint
+    pose (HORA's ``init_pose_buf``), and a design without a stable grasp
+    keeps the drop reset but scores 0 (``design_scoring``)."""
+    grasp_cache_generate: bool = False
+    """Generate grasps at env start for designs the cache lacks, and save
+    them into it (``grasp_cache_gen.generate``). False: a missing design
+    raises."""
+    grasp_per_design: int = 1000
+    """Grasps kept per design (AnyRotate: 10000 per object; HORA: 50000 per
+    object scale)."""
+    grasp_gen_max_rounds: int = 30
+    grasp_gen_max_minutes: float = 15.0
+    grasp_gen_rounds_without_grasp: int = 6
+    """A design with no stable grasp after this many rounds is non-viable."""
+    grasp_gen_seed: int = 0
+    grasp_hold_s: float = 3.0
+    """Hold with the PD targets fixed (HORA: 50 steps at 15 Hz = 3.3 s;
+    AnyRotate: 120 steps at 20 Hz = 6 s while turning gravity)."""
+    grasp_presettle_steps: int = 5
+    """adapt.: control steps for the hand to settle at its targets before
+    the object is placed (the fingertip centroid is read after them)."""
+    grasp_joint_sample_noise: float = 0.3  # [App. C: U(-0.3, 0.3) rad]; HORA 0.25
+    grasp_curl_frac: float = 0.5
+    """adapt.: share of candidates curled to a random fraction of every
+    joint's range instead of canonical + noise (grammar designs have no
+    hand-made grasp pose)."""
+    grasp_tip_place_frac: float = 0.5
+    """adapt.: share of candidates with the object at the fingertip
+    centroid; the rest at the hand's spawn point."""
+    grasp_obj_pos_noise: float = 0.01
+    grasp_max_disp_m: float = 0.02  # HORA: a fall of at most 1.5 cm
+    grasp_max_lin_speed: float = 0.05
+    grasp_max_ang_speed: float = 0.5
+    grasp_min_tip_contacts: int = 2  # HORA >= 2 (AnyRotate: "greater than 2")
+    grasp_max_nontip_contacts: int = -1  # -1 off (HORA); AnyRotate 0
+    grasp_max_tip_dist_m: float = 0.1  # HORA: every fingertip within 0.1 m
+    grasp_max_mean_tip_dist_m: float = -1.0  # -1 off; AnyRotate: total 0.2 over 4 tips
+    grasp_gravity_cycle: bool = False  # AnyRotate: gravity along +-x, +-y, +-z during the hold
+    grasp_reset_joint_noise: float = 0.0
+    """U(-noise, noise) rad on a cached grasp's joints and targets at reset.
+    0: neither HORA nor AnyRotate perturbs a cached grasp."""
+    grasp_reset_obj_pos_noise: float = 0.0
+    grasp_settle_steps: int = 0
+    """Settle phase (``axis_check_grace_steps``) for envs reset from a cached
+    grasp: none, as the paper (the grasp is already at rest)."""
+
     # --- hand (palm-up placement and actuator as in the isaaclab_repose port) ---
     hand_pose_file: str = "repose_hand_poses.json"
     collision_from_visuals: bool = False
