@@ -170,3 +170,15 @@ def test_sample_axes():
 def test_graded_rotation_fitness():
     f = ar.graded_rotation_fitness(torch.tensor([2 * math.pi, -1.0, 0.0]), torch.tensor([30.0, 15.0, 0.0]), 30.0)
     assert f.tolist() == pytest.approx([1.25, 0.125, 0.0])
+
+
+def test_axis_tilt_is_zero_for_rotation_about_the_axis_and_grows_with_tumbling():
+    k = torch.tensor([[0.0, 0.0, 1.0]])
+    q0 = _rot(0.7, [1.0, 1.0, 0.0])
+    axis_obj = ar.axis_in_object_frame(q0, k)
+    # any further rotation about k keeps the object's k-aligned axis on k
+    q1 = ar.next_goal(q0, k, 1.3)
+    assert float(ar.axis_tilt(q1, axis_obj, k)) == pytest.approx(0.0, abs=1e-5)
+    # a 60 degree tumble about x tilts it by 60 degrees
+    q2 = ar.next_goal(q0, torch.tensor([[1.0, 0.0, 0.0]]), math.radians(60))
+    assert float(ar.axis_tilt(q2, axis_obj, k)) == pytest.approx(math.radians(60), abs=1e-5)
