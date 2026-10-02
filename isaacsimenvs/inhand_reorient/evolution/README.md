@@ -91,7 +91,7 @@ uses its 8-step rollout for the minibatch and the scoring cadence.
 Fitness under this profile (`design_scoring.anyrotate_fitness_components`) is AnyRotate's own
 evaluation: rotations about the commanded axis per episode (Rot) + 0.25 x the fraction of the
 episode before termination (TTT / 30 s). Goals reached are banked but not scored. Rot counts
-from the end of the 10-step settle phase (since commit after e747ba9; runs before it also
+from the end of the 10-step settle phase (from commit 02c0637 on; runs before it also
 counted the tumbling of objects that landed or fell in the first 0.5 s).
 
 | Paper element | Paper | Port |
