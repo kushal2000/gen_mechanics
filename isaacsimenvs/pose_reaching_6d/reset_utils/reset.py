@@ -6,7 +6,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from isaaclab.utils.math import quat_apply, quat_apply_inverse, random_orientation
+from isaaclab.utils.math import quat_apply, quat_apply_inverse, quat_from_matrix, random_orientation
 
 from ..obs_utils import sample_log_uniform
 from .goal_sampling import sample_absolute_goal_pose, sample_delta_goal_pose
@@ -173,6 +173,21 @@ def allocate_state_buffers(env) -> None:
     env._palm_keypoints_local = _to("palm_keypoints", torch.float32)    # (N, 4, 3)
     if env._palm_keypoints_local.shape[1:] != (4, 3):
         raise RuntimeError(f"{spec.name}: spec carries no palm_keypoints")
+    # The palm's canonical frame (obs.canonical_palm_frame): build.palm_keypoints lays the slab out as
+    # [p0, p0+thickness, p0+width, p0+length], so its three edges ARE the axes -- x grasp normal,
+    # y width, z wrist to fingertip -- in the palm body's frame, whatever axes the vendor gave that body.
+    # Their lengths are the slab's extents, the palm's size in the same order.
+    kp = env._palm_keypoints_local
+    edges = (kp[:, 1:] - kp[:, :1])                                      # (N, 3 edges, 3)
+    env._palm_extents = edges.norm(dim=-1)                               # (N, 3) metres
+    axes = (edges / env._palm_extents.unsqueeze(-1)).transpose(1, 2)     # columns = canonical axes
+    if (torch.linalg.det(axes) - 1.0).abs().max() > 1e-3:
+        raise RuntimeError(f"{spec.name}: palm_keypoints edges are not a right-handed orthonormal frame")
+    env._palm_frame_quat = quat_from_matrix(axes)                        # canonical -> palm body, wxyz
+    # The slab as the policy sees it in that frame, from the palm centre: axis-aligned, centred at 0.
+    env._palm_keypoints_canon = quat_apply_inverse(
+        env._palm_frame_quat.unsqueeze(1).expand(-1, 4, -1),
+        kp - env._palm_center_offset.unsqueeze(1))
     if env.cfg.obs.geometry_origin not in ("palm_center", "ee"):
         raise ValueError(f"obs.geometry_origin must be 'palm_center' or 'ee', "
                          f"got {env.cfg.obs.geometry_origin!r}")

@@ -112,6 +112,12 @@ class ObsCfg:
     # palm centre, / hand_scale -- what every run before 2026-09-17 trained on;
     # a saved config without this key evaluates as it trained.
     geometry_origin: str = "palm_center"
+    # Every hand-relative position (tokens, keypoints_rel_ee, fingertip_pos_rel_ee, palm_keypoints) and
+    # ee_rot / palm_rot in the palm's CANONICAL frame -- x grasp normal, y width, z wrist to fingertip,
+    # read off palm_keypoints -- from the palm centre, in metres; ee_pos is the palm centre. Off, they
+    # are in the palm body's own frame, whose axes are whatever the hand's URDF chose: the same for
+    # every env of one hand, different between hands. For multi-hand scenes; supersedes geometry_origin.
+    canonical_palm_frame: bool = False
 
 
 @configclass

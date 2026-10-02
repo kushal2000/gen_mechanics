@@ -373,6 +373,16 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         geometry_origin_w, geometry_scale = palm_pos_w, torch.ones_like(env._hand_scale)
     else:
         geometry_origin_w, geometry_scale = palm_center_pos_w, env._hand_scale
+    # obs.canonical_palm_frame: one frame shared by every hand -- the palm's canonical axes at its
+    # centre, metres -- in place of the palm body's own (vendor-chosen) axes. ee_pos_w/ee_pos then name
+    # the palm centre, and palm_rot the canonical frame's orientation, for every reader below.
+    canonical = env.cfg.obs.canonical_palm_frame
+    ee_pos_w = palm_pos_w
+    if canonical:
+        palm_rot = quat_mul(palm_rot, env._palm_frame_quat)
+        ee_pos_w = geometry_origin_w = palm_center_pos_w
+        ee_pos = palm_pos
+        geometry_scale = torch.ones_like(env._hand_scale)
 
     # Fingertip pad centres. Dropping this field when the per-joint token fields
     # landed is what the MLP control arm regressed on: done_hand_far went from
@@ -389,7 +399,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         (ft_pos_pad_w - env_origins.unsqueeze(1)) - palm_pos.unsqueeze(1)
     ).reshape(env.num_envs, -1)
     fingertip_pos_rel_ee = _rotate_into(
-        palm_rot, ft_pos_pad_w - palm_pos_w.unsqueeze(1)
+        palm_rot, ft_pos_pad_w - ee_pos_w.unsqueeze(1)
     ).reshape(env.num_envs, -1)
 
     obj_pos = env.object.data.root_pos_w - env_origins
@@ -523,7 +533,9 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         # Static per design: the slab in link_7's frame. Constant like the
         # joint limits, and the only place the palm's size and position appear
         # once the geometry origin is the end effector.
-        "palm_keypoints": env._palm_keypoints_local.reshape(env.num_envs, -1),
+        "palm_keypoints": (env._palm_keypoints_canon if canonical
+                           else env._palm_keypoints_local).reshape(env.num_envs, -1),
+        "palm_extents": env._palm_extents,
         "keypoints_rel_ee": keypoints_rel_ee_clean,
         "object_rot": obj_rot_xyzw,
         "object_vel": obj_vel,

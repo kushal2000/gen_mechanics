@@ -34,6 +34,8 @@ def obs_field_sizes(spec) -> dict[str, int]:
         "hand_scale": 1,
         # The palm slab as four points in the end-effector frame; static per design.
         "palm_keypoints": 3 * JOINT_BOX_POINTS,
+        # The slab's thickness, width and length, metres; static per hand.
+        "palm_extents": 3,
         # Global task state. palm_* is measured at the design's palm centre,
         # ee_* at link_7's own origin; same body, different point.
         "palm_pos": 3,
