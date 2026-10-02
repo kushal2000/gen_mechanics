@@ -261,7 +261,7 @@ def test_state_round_trips_the_known_viability_map(tmp_path):
 def test_founders_cycle_through_several_variants():
     """A mixed population (e.g. G_V3S and G_V1 founders): founders are drawn
     round-robin over the distributions."""
-    dists = [drv.resolve_variant("G_V3S"), drv.resolve_variant("G_V1")]
+    dists = {"G_V3S": drv.resolve_variant("G_V3S"), "G_V1": drv.resolve_variant("G_V1")}
     rng = np.random.default_rng(0)
     seen = []
 
