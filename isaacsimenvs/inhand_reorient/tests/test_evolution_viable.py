@@ -272,4 +272,5 @@ def test_founders_cycle_through_several_variants():
     plan, report = vb.build_viable_generation(0, 6, [], dists, arch.Archive(), rng, drv.IdMinter(), known={},
                                               search=search, batch_size=6, max_batches=1)
     assert len(plan.entries) == 6
-    assert report["founder_variants"] == ["G_V3S", "G_V1", "G_V3S", "G_V1", "G_V3S", "G_V1"][: report["candidates_drawn"]]
+    # every draw (pre-filter rejects included) takes the next variant
+    assert report["founder_variants"] == [("G_V3S", "G_V1")[i % 2] for i in range(report["candidates_drawn"])]
