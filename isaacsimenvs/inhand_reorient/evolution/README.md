@@ -51,8 +51,11 @@ The env has two task specs, selected by `env.task_profile`:
   `Isaac-Repose-Cube-Allegro-Direct-v0` spec (Isaac Lab 2.3.2) ported to our hands
   (`isaacsimenvs/inhand_reorient/repose_profile.py`, numbers under `repose:` in
   `coevolution/cfg/task/InHandReorient.yaml`): 30 Hz policy, 10 s episodes, friction 1.0, a
-  7.2 cm cube, NVIDIA's reward, observation, joint-limit control and reset noise, random
-  goals, success at 0.2 rad with no curricula. Its agent configs are plain PPO with NVIDIA's
+  7.2 cm, 0.216 kg cube, NVIDIA's reward, observation, joint-limit control and reset noise,
+  random goals, success at 0.2 rad with no curricula, hand gravity off. A single hand is also
+  driven with NVIDIA's Allegro actuator (`repose.hand_*`) and, if it has an entry in
+  `repose_hand_poses.json` (allegro_right, sharpa), placed palm-up as NVIDIA's Allegro is; a
+  population's designs keep their own gains and palm-up calibration. Its agent configs are plain PPO with NVIDIA's
   hyperparameters: `InHandReposeIsaacLabPPO.yaml` (single hand) and
   `InHandReposeIsaacLabPopPPO.yaml` (the same plus the I41 log-std bound, for populations).
 - `legacy`: the spec every run before 2026-10-01 used (SAPG-era reward, tolerance and
