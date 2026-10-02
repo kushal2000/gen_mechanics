@@ -655,3 +655,12 @@ def test_repose_hand_actuator_defaults_are_nvidias_allegro():
     # Armature and velocity limit come from NVIDIA's USD (read in Kit: 0.0 and
     # 6.283 rad/s, i.e. physxJoint:maxJointVelocity 359.99 deg/s).
     assert r["hand_armature"] == 0.0 and r["hand_velocity_limit"] == pytest.approx(2 * math.pi, abs=1e-3)
+
+
+def test_allegro_right_collides_through_its_visual_meshes_under_repose():
+    from isaacsimenvs.inhand_reorient import palm_calibration as pc
+
+    poses = pc.load_repose_hand_poses(pc.resolve_repose_hand_pose_path(_task_yaml()["repose"]["hand_pose_file"]))
+    assert poses["allegro_right"]["collision_from_visuals"] is True
+    assert not poses["sharpa"].get("collision_from_visuals", False)  # SHARPA's URDF already collides through meshes
+    assert _task_yaml()["repose"]["collision_from_visuals"] is False
