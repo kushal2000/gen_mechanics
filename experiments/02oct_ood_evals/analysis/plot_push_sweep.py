@@ -44,9 +44,9 @@ COMPARISONS = {
 
 
 def latest_unified():
-    """The final checkpoint once its sweep has results, else ep 7827."""
+    """The final checkpoint once its sweeps are complete, else ep 7827."""
     d = R / "unified_final"
-    if d.exists() and any(d.iterdir()):
+    if d.exists() and len(list(d.glob("*.json"))) >= len(SCALES) + len(PROBS):
         return "Unified Multi-Embodiment", "unified_final"
     return "Unified Multi-Embodiment", "unified_ep_7827"
 
