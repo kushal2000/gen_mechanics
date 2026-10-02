@@ -9,3 +9,4 @@ converged, cancelled: sharpa 871441, allegro 871442, wuji2 871447; zero-shot swe
 wuji compare: unified ep 7086 (frozen copy) 894590
 wuji compare: unified ep 7827 (frozen copy) 896694
 push sweep (wuji2): jobs 900599 900600 900601 900602 900604 900605
+after training 866192 ends, on the final checkpoint: push sweeps + Wuji ID/OOD: 900684 900685 900686

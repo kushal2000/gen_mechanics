@@ -27,30 +27,31 @@ def main():
         r = json.loads((d / "gen_sharpa__nominal.json").read_text())
         eps = r["drops_per_min"] + r["timeouts_per_min"]
         rows.append((label, color, r["goals_per_min"] / eps if eps else float("nan"), r["drops_per_min"]))
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.6), facecolor=SURFACE, gridspec_kw={"wspace": 0.3})
-    for ax, (k, title) in zip(axes, ((2, "goals / episode  (higher is better)"),
-                                     (3, "drops / min  (lower is better)"))):
+    out_dir = HERE / "plots/gen_sharpa_zero_shot"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for k, name, title in ((2, "goals_per_episode", "goals / episode  (higher is better)"),
+                           (3, "drops_per_min", "drops / min  (lower is better)")):   # one PNG per plot
+        fig, ax = plt.subplots(figsize=(7.5, 4.6), facecolor=SURFACE)
         ax.set_facecolor(SURFACE)
         for i, row in enumerate(rows):
             ax.bar(i, row[k], 0.62, color=row[1], zorder=3)
             ax.text(i, row[k], f"{row[k]:.2f}" if row[k] < 10 else f"{row[k]:.1f}", ha="center", va="bottom",
                     fontsize=10, color=INK)
         ax.set_xticks(range(len(rows)), [r[0] for r in rows], fontsize=9, color=INK)
-        ax.set_title(title, loc="left", fontsize=11, color=INK)
         ax.grid(axis="y", color=GRID, linewidth=0.8, zorder=0)
         for s in ("top", "right", "left"):
             ax.spines[s].set_visible(False)
         ax.spines["bottom"].set_color(INK2)
         ax.tick_params(colors=INK2, length=0)
         ax.margins(y=0.15)
-    fig.suptitle("Zero-shot transfer to gen-SHARPA", x=0.06, ha="left", fontsize=13, fontweight="bold",
-                 color=INK, y=1.04)
-    fig.text(0.06, 0.95, "nominal condition, 1024 envs × 60 s, greedy actions · an episode ends in a drop or "
-             "a timeout", fontsize=9, color=INK2)
-    out = HERE / "plots/gen_sharpa_zero_shot.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=160, bbox_inches="tight", facecolor=SURFACE)
-    print("->", out)
+        ax.set_title(f"Zero-shot transfer to gen-SHARPA: {title}", loc="left", fontsize=12, fontweight="bold",
+                     color=INK, pad=22)
+        ax.text(0, 1.02, "nominal condition, 1024 envs × 60 s, greedy actions · an episode ends in a drop or a "
+                "timeout", transform=ax.transAxes, fontsize=8, color=INK2)
+        out = out_dir / f"{name}.png"
+        fig.savefig(out, dpi=160, bbox_inches="tight", facecolor=SURFACE)
+        plt.close(fig)
+        print("->", out)
     for label, _, g, dr in rows:
         print(f"  {label.splitlines()[0]:26s} goals/episode {g:.2f}  drops/min {dr:.2f}")
 

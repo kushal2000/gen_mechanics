@@ -41,9 +41,9 @@ def main():
     n, k = len(CONDS), len(data)
     x = np.arange(n) + np.where(np.arange(n) > 0, 0.6, 0.0)      # a gap after the in-distribution group
     w = 0.8 / k
-    fig, axes = plt.subplots(2, 1, figsize=(12, 7.6), facecolor=SURFACE, sharex=True,
-                             gridspec_kw={"height_ratios": [1.15, 1], "hspace": 0.12})
-    for ax, rel in zip(axes, (False, True)):
+    OUT.mkdir(parents=True, exist_ok=True)
+    for rel in (False, True):                                     # one PNG per plot
+        fig, ax = plt.subplots(figsize=(12, 4.8), facecolor=SURFACE)
         ax.set_facecolor(SURFACE)
         for i, (label, v) in enumerate(data):
             y = np.array([v[c] for c, _ in CONDS])
@@ -63,27 +63,23 @@ def main():
         ax.spines["bottom"].set_color(INK2)
         ax.tick_params(colors=INK2, length=0)
         ax.axvline((x[0] + x[1]) / 2, color=INK2, linewidth=0.8, linestyle=(0, (3, 3)))
+        top = ax.get_ylim()[1]
+        ax.text(x[0], top * 1.02, "in-distribution", ha="center", va="bottom", fontsize=9, color=INK)
+        ax.text(x[1:].mean(), top * 1.02, "out-of-distribution", ha="center", va="bottom", fontsize=9, color=INK)
         if rel:
             ax.axhline(1.0, color=INK2, linewidth=0.8)
-            ax.set_ylabel("fraction of own nominal", color=INK, fontsize=10)
-        else:
-            ax.set_ylabel("goals / min", color=INK, fontsize=10)
-            top = ax.get_ylim()[1]
-            ax.text(x[0], top * 1.02, "in-distribution", ha="center", va="bottom", fontsize=9, color=INK)
-            ax.text(x[1:].mean(), top * 1.02, "out-of-distribution", ha="center", va="bottom", fontsize=9,
-                    color=INK)
-    axes[1].set_xticks(x, [lab for _, lab in CONDS], fontsize=9, color=INK)
-    h, l = axes[0].get_legend_handles_labels()
-    fig.legend(h, l, frameon=False, fontsize=9, ncol=len(l), loc="upper left", bbox_to_anchor=(0.055, 0.995),
-               labelcolor=INK)
-    fig.suptitle("Wuji v2: unified policy vs Wuji-only policy (nearest saved checkpoint in skill)",
-                 x=0.06, ha="left", fontsize=13, fontweight="bold", color=INK, y=1.075)
-    fig.text(0.06, 1.03, "goals per minute, 1024 envs × 60 s per condition, greedy actions · bottom: each "
-             "policy relative to its own nominal (1.0 = no loss)", fontsize=9, color=INK2)
-    OUT.mkdir(parents=True, exist_ok=True)
-    p = OUT / "id_vs_ood.png"
-    fig.savefig(p, dpi=160, bbox_inches="tight", facecolor=SURFACE)
-    print("->", p)
+        ax.set_ylabel("fraction of own nominal" if rel else "goals / min", color=INK, fontsize=10)
+        ax.set_xticks(x, [lab for _, lab in CONDS], fontsize=9, color=INK)
+        ax.legend(frameon=False, fontsize=9, ncol=len(data), loc="lower left", bbox_to_anchor=(0.0, 1.09),
+                  labelcolor=INK)
+        ax.set_title("Wuji v2: unified vs Wuji-only policy" + (", relative to own nominal (1.0 = no loss)"
+                     if rel else ", goals per minute"), loc="left", fontsize=12, fontweight="bold", color=INK,
+                     pad=48)
+        fig.text(0.125, -0.02, "1024 envs × 60 s per condition, greedy actions", fontsize=8, color=INK2)
+        p = OUT / f"id_vs_ood_{'relative' if rel else 'goals'}.png"
+        fig.savefig(p, dpi=160, bbox_inches="tight", facecolor=SURFACE)
+        plt.close(fig)
+        print("->", p)
     for label, v in data:
         print(f"  {label:32s} " + " ".join(f"{c} {v[c]:.1f}" for c, _ in CONDS))
 
