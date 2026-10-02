@@ -198,6 +198,11 @@ class ReposeCfg:
     hand_effort_limit: float = -1.0
     hand_velocity_limit: float = -1.0
 
+    collision_from_visuals: bool = False
+    """Collide through convex hulls of the hand's visual meshes instead of
+    its URDF collision elements (``collision_from_visuals.py``), as NVIDIA's
+    Allegro USD does. Single-hand path only."""
+
     hand_asset: str = ""
     """"" (default): ``assets.hand_id`` from our manifest. "isaaclab_allegro":
     NVIDIA's Allegro USD and ALLEGRO_HAND_CFG, unchanged (fetched from their

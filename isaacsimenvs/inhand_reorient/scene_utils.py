@@ -435,7 +435,15 @@ def _setup_scene_single_hand(env) -> None:
 
     offsets = dict(contact_offset=env.cfg.physics.contact_offset,
                    rest_offset=env.cfg.physics.rest_offset)
-    robot_usd, _robot_root = _convert_fixed_robot(spec, spec.urdf_path, asset_dir / "usd", offsets)
+    robot_urdf = spec.urdf_path
+    if is_repose(env.cfg) and env.cfg.repose.collision_from_visuals:
+        from .collision_from_visuals import collisions_from_visuals
+
+        robot_urdf = str(asset_dir / f"{env.cfg.assets.hand_id}_visual_collisions.urdf")
+        n_links = collisions_from_visuals(spec.urdf_path, robot_urdf)
+        print(f"[inhand_reorient] repose.collision_from_visuals: {n_links} link(s) collide through "
+              f"their visual meshes (convex hulls)", flush=True)
+    robot_usd, _robot_root = _convert_fixed_robot(spec, robot_urdf, asset_dir / "usd", offsets)
     print(f"[inhand_reorient] converted hand USD ({time.perf_counter() - t0:.1f}s)", flush=True)
 
     repose = env.cfg.repose if is_repose(env.cfg) else None

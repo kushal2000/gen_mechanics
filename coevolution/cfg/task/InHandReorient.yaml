@@ -182,6 +182,7 @@ repose:
   hand_joint_friction: -1.0
   hand_effort_limit: -1.0
   hand_velocity_limit: -1.0
+  collision_from_visuals: false     # true: convex hulls of the visual meshes as colliders
   hand_asset: ""                    # "isaaclab_allegro": NVIDIA's Allegro USD (diagnostic)
   hand_pose_file: repose_hand_poses.json   # per-hand pose overrides (isaacsimenvs/inhand_reorient/); "" = palm-up calibration
   reset_position_noise: 0.01
