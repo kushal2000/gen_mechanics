@@ -97,7 +97,7 @@ counted the tumbling of objects that landed or fell in the first 0.5 s).
 | Paper element | Paper | Port |
 |---|---|---|
 | Task | rotate about commanded axis k (Sec. 3.1) | as paper; k in the palm frame, an observation |
-| Axis sampling | "arbitrary" axes; distribution not given | uniform on S^2 (`axis_sampling`; `principal`, `z`); optional z-first stage (`axis_curriculum_z_first`) |
+| Axis sampling | "arbitrary" axes; distribution not given | uniform on S^2 (`axis_sampling`; `principal`, `z`); optional z-first stage (`axis_curriculum_z_first`). "z" is the palm body's +z by default (`z_axis_frame: palm`); for allegro_right under NVIDIA's pose that runs along the fingers (horizontal), so its z-first runs before 2026-10-02 rotated about a horizontal axis. `z_axis_frame: world_up` uses the palm normal of the palm-up hand, the paper's z |
 | Auxiliary goal | current orientation rotated about k at regular intervals; new goal when reached | as paper, 30 deg increment (Table 9); goal position = object position when the goal is made |
 | Goal tolerance d_tol | 0.15 teacher, 0.25 student (Table 5), on keypoint distance | 0.15 read as rotation distance in rad: 0.15 m exceeds the paper's own drop threshold (kp_dist > 0.1 m) and a 30 deg goal moves the keypoints 0.017-0.026 m; `goal_tol_metric=kp_dist_m` applies it literally |
 | Keypoints | 6, 5 cm along the principal axes; kp_dist mean distance (App. B.1) | as paper |

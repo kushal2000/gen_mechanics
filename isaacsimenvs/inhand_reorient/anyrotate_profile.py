@@ -29,7 +29,7 @@ __all__ = [
     "quat_to_rotvec", "rotation_about_axis", "rotation_reward", "next_goal", "goal_reached",
     "contact_rewards", "angular_velocity_penalty", "pose_penalty", "work_penalty", "torque_penalty",
     "axis_deviation", "axis_in_object_frame", "axis_tilt", "terminations", "reward_curriculum_lambda", "relative_joint_targets",
-    "simulated_tactile", "sample_axes", "combine_rewards", "graded_rotation_fitness",
+    "simulated_tactile", "sample_axes", "world_up_in_palm", "combine_rewards", "graded_rotation_fitness",
 ]
 
 PROFILE_ANYROTATE = "anyrotate"
@@ -305,7 +305,8 @@ def relative_joint_targets(prev_target, action, prev_action, eta, action_scale, 
 def sample_axes(n: int, mode: str, device=None, generator=None) -> torch.Tensor:
     """Commanded rotation axes in the palm frame. "sphere": uniform on S^2
     ("arbitrary rotation axes"; the paper does not give its distribution);
-    "principal": one of +-x, +-y, +-z; "z": the palm normal (+z)."""
+    "principal": one of +-x, +-y, +-z; "z": the palm frame's +z (the palm
+    normal only if the palm body's +z points up; see ``world_up_in_palm``)."""
     if mode == "sphere":
         v = torch.randn(n, 3, device=device, generator=generator)
         return torch.nn.functional.normalize(v, dim=-1)
@@ -317,6 +318,18 @@ def sample_axes(n: int, mode: str, device=None, generator=None) -> torch.Tensor:
         out[:, 2] = 1.0
         return out
     raise ValueError(f"rotation axis sampling {mode!r}")
+
+
+def world_up_in_palm(palm_quat: torch.Tensor) -> torch.Tensor:
+    """World +z expressed in the palm frame, ``(n, 3)``: the palm normal of a
+    palm-up hand, the paper's z axis. The palm body's own +z is not it for
+    every hand (allegro_right under NVIDIA's pose: +z runs along the
+    fingers, +x points up)."""
+    from .repose_profile import quat_apply_inverse
+
+    up = torch.zeros(palm_quat.shape[0], 3, device=palm_quat.device, dtype=palm_quat.dtype)
+    up[:, 2] = 1.0
+    return torch.nn.functional.normalize(quat_apply_inverse(palm_quat, up), dim=-1)
 
 
 def simulated_tactile(force_tip, contact_dir_tip, force_prev, *, alpha, threshold, beta_f, f_max,

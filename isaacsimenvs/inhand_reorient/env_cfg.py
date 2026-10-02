@@ -272,6 +272,12 @@ class AnyRotateCfg:
     """adapt.: start with the z axis only, switch to ``axis_sampling`` once
     completed episodes average ``axis_curriculum_rotations`` rotations."""
     axis_curriculum_rotations: float = 0.5
+    z_axis_frame: str = "palm"
+    """What the "z" axis (``axis_sampling: z`` and the z-first stage) is:
+    "palm" (default, as before): the palm body's +z; "world_up": world +z in
+    the palm frame, the palm normal of the palm-up hand (the paper's z).
+    They differ for allegro_right under NVIDIA's pose, whose palm +z runs
+    along the fingers (horizontal)."""
     goal_increment_deg: float = 30.0  # [Table 9, theta = 30 deg]
     goal_tol_metric: str = "rotation_rad"
     """adapt.: see anyrotate_profile.goal_reached (d_tol = 0.15 cannot be a

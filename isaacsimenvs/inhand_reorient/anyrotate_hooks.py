@@ -426,7 +426,12 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     env._spawn_obj_pos_palm[env_ids] = obj_pos_palm
 
     mode = a.axis_sampling if env._ar_axis_stage >= 1 else "z"
-    env._ar_axis[env_ids] = ar.sample_axes(n, mode, device=device)
+    if mode == "z" and a.z_axis_frame == "world_up":
+        env._ar_axis[env_ids] = ar.world_up_in_palm(palm_q)
+    elif mode == "z" and a.z_axis_frame != "palm":
+        raise ValueError(f"anyrotate.z_axis_frame={a.z_axis_frame!r}; expected 'palm' or 'world_up'")
+    else:
+        env._ar_axis[env_ids] = ar.sample_axes(n, mode, device=device)
     _new_goal(env, env_ids, obj_q_palm, obj_pos_palm)
     env.goal_viz.write_root_state_to_sim(
         torch.cat([obj_pos_w, env._goal_quat_w[env_ids], torch.zeros(n, 6, device=device)], dim=-1),
