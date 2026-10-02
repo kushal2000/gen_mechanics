@@ -231,3 +231,48 @@ def test_anyrotate_banks_rotation_about_the_axis_and_time_to_terminate():
     assert rot_term.tolist() == pytest.approx([1.0, 0.0])
     assert time_term.tolist() == pytest.approx([0.25, 0.05])
     assert fitness.tolist() == pytest.approx([1.25, 0.05])
+
+
+def _anyrotate_env(design_idx, has_grasp=None, counts=None):
+    """A fake anyrotate env; ``has_grasp``/``counts`` mimic
+    ``anyrotate_hooks._setup_grasp_cache`` (set before scoring buffers)."""
+    env = SimpleNamespace(_anyrotate=True)
+    n = len(design_idx)
+    env.num_envs, env.device = n, DEVICE
+    env.cfg = SimpleNamespace(sim=SimpleNamespace(dt=1 / 60), decimation=3, episode_length_s=30.0)
+    env._rot_error = torch.zeros(n)
+    env._successes = torch.zeros(n, dtype=torch.long)
+    env.hand_tables = _FakeTables(int(max(design_idx) + 1))
+    env.scene_record = {"design_idx": torch.as_tensor(design_idx, dtype=torch.long)}
+    if has_grasp is not None:
+        env._ar_grasp_has = torch.as_tensor(has_grasp, dtype=torch.bool)
+        env._ar_grasp_counts = torch.as_tensor(counts, dtype=torch.long)
+    ds.allocate_scoring_buffers(env)
+    env._ar_rotation_rad = torch.full((n,), 2 * math.pi)
+    ds.reset_scoring_state(env, torch.arange(n))
+    for _ in range(600):
+        ds.step_scoring_state(env)
+    env._termination_reasons = {"timeout": torch.ones(n, dtype=torch.bool)}
+    ds.bank_done_episodes(env, torch.zeros(n))
+    return env
+
+
+def test_grasp_cache_scores_designs_without_a_stable_grasp_zero_and_reports_them():
+    env = _anyrotate_env([0, 1, 0, 1], has_grasp=[True, False], counts=[700, 0])
+    snap = ds.read_snapshot(env)
+    d0, d1 = snap["designs"]["0"], snap["designs"]["1"]
+    assert d0["graded_fitness"] == pytest.approx(1.25)  # 1 rotation + 0.25 x full episode
+    assert d1["graded_fitness"] == 0.0
+    assert d1["graded_fitness_components"]["rotation_term_mean"] == 0.0
+    assert d1["graded_fitness_components"]["time_term_mean"] == 0.0
+    assert d1["rotation_progress_mean_rad"] == pytest.approx(2 * math.pi)  # raw metric kept for diagnosis
+    assert (d0["has_stable_grasp"], d0["grasps_cached"]) == (True, 700)
+    assert (d1["has_stable_grasp"], d1["grasps_cached"]) == (False, 0)
+    assert snap["grasp_cache_viable"] == 1 and snap["grasp_cache_non_viable"] == ["design:1"]
+
+
+def test_without_a_grasp_cache_the_snapshot_has_no_grasp_fields():
+    env = _anyrotate_env([0, 1])
+    snap = ds.read_snapshot(env)
+    assert snap["designs"]["1"]["graded_fitness"] == pytest.approx(1.25)
+    assert "has_stable_grasp" not in snap["designs"]["0"] and "grasp_cache_viable" not in snap

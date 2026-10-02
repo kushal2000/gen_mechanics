@@ -503,3 +503,52 @@ def test_resumed_driver_rng_continues_the_exact_same_stream():
     resumed_rng.bit_generator.state = state
     resumed = [resumed_rng.integers(0, 1_000_000) for _ in range(5)]
     assert straight_through == resumed
+
+
+# --------------------------------------------------------------------------
+# --grasp-cache (anyrotate stable-grasp cache, generated inside the training launch)
+# --------------------------------------------------------------------------
+
+_AR = ["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "anyrotate",
+       "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT]
+
+
+def test_grasp_cache_flag_is_off_by_default_and_keeps_the_config_hash():
+    off = drv.parse_args(_AR)
+    assert off.grasp_cache is False
+    assert "grasp_cache" not in drv._resolved_config(off)
+    on = drv.parse_args(_AR + ["--grasp-cache"])
+    assert on.grasp_cache is True and drv._resolved_config(on)["grasp_cache"] is True
+    assert drv._config_hash(drv._resolved_config(on)) != drv._config_hash(drv._resolved_config(off))
+
+
+def test_grasp_cache_needs_the_anyrotate_profile():
+    with pytest.raises(SystemExit):
+        drv.parse_args(["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x", "--grasp-cache"])
+
+
+def test_grasp_cache_overrides_point_the_env_at_the_run_cache_and_generate_missing_designs(tmp_path):
+    args = drv.parse_args(_AR + ["--grasp-cache"])
+    path = drv.grasp_cache_path(args, tmp_path)
+    assert path == tmp_path / "grasp_cache.npz"
+    assert drv.grasp_cache_overrides(path) == [f"env.anyrotate.grasp_cache={path}",
+                                               "env.anyrotate.grasp_cache_generate=true"]
+    custom = drv.parse_args(_AR + ["--grasp-cache", "--grasp-cache-path", str(tmp_path / "shared.npz")])
+    assert drv.grasp_cache_path(custom, tmp_path) == tmp_path / "shared.npz"
+
+
+def test_grasp_report_row_maps_sources_to_design_ids(tmp_path):
+    import json
+
+    report = {"cache": "c.npz", "designs": 3, "reused": 1, "generated": 2, "gen_s": 41.5,
+              "grasps_per_design": {"arch:a": 1000, "arch:b": 0, "projected:allegro_right": 640},
+              "viable": 2, "non_viable": ["arch:b"], "generation": {"rounds": 6, "s_per_design": 20.7}}
+    (tmp_path / "grasp_cache_report.json").write_text(json.dumps(report))
+    loaded = drv.read_grasp_report(tmp_path)
+    row = drv.grasp_report_row(loaded, {"arch:a": "g1-0001", "arch:b": "g1-0002"})
+    assert row["gen_s"] == 41.5 and row["generated"] == 2 and row["reused"] == 1 and row["rounds"] == 6
+    assert row["viable"] == 2 and row["viable_frac"] == pytest.approx(2 / 3)
+    assert row["non_viable"] == ["g1-0002"]
+    assert row["grasps_by_design"] == {"g1-0001": 1000, "g1-0002": 0, "projected:allegro_right": 640}
+    assert drv.read_grasp_report(tmp_path / "missing") is None
+    assert drv.grasp_report_row(None, {}) is None
