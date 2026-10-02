@@ -35,9 +35,12 @@ def _field_width(name: str, spec) -> int:
         return 3 * spec.num_fingertips
     if name in OBS_FIELD_WIDTHS:
         return OBS_FIELD_WIDTHS[name]
-    # The isaaclab_repose profile's fields (repose_profile.REPOSE_OBS_FIELDS).
+    # The isaaclab_repose and anyrotate profiles' fields.
+    from .anyrotate_profile import ANYROTATE_OBS_FIELDS, ANYROTATE_PRIV_FIELDS, anyrotate_field_width
     from .repose_profile import repose_field_width
 
+    if name in ANYROTATE_OBS_FIELDS or name in ANYROTATE_PRIV_FIELDS:
+        return anyrotate_field_width(name, spec.num_hand_joints, spec.num_fingertips)
     return repose_field_width(name, spec.num_hand_joints, spec.num_fingertips)
 
 

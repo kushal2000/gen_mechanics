@@ -1,6 +1,11 @@
 # -----------------------------------------------------------------------------
 # Task profile
-#   legacy (default): this env's original spec -- every section except 9.
+#   anyrotate: multi-axis in-hand rotation after AnyRotate (Yang et al., CoRL
+#     2024, arXiv 2405.07391), section 10 below; anyrotate_profile.py lists the
+#     paper references and the adaptations. Overwrites decimation, sim.dt,
+#     sim.render_interval, episode_length_s, the default physics material and
+#     obs.obs_list/state_list at env construction.
+#   legacy (default): this env's original spec -- every section except 9 and 10.
 #   isaaclab_repose: NVIDIA's Isaac-Repose-Cube-Allegro-Direct-v0 spec (Isaac
 #     Lab 2.3.2), section 9 below; selectable, not adopted (2026-10-01). At env
 #     construction it overwrites decimation, sim.dt, sim.render_interval,
@@ -199,3 +204,88 @@ repose:
   av_factor: 0.1
   vel_obs_scale: 0.2
   act_moving_average: 1.0
+
+# -----------------------------------------------------------------------------
+# 10) anyrotate -- the anyrotate profile (AnyRotate, CoRL 2024). [..] = paper
+#     reference; "adapt." = a documented departure (anyrotate_profile.py,
+#     evolution/README.md).
+# -----------------------------------------------------------------------------
+anyrotate:
+  sim_dt: 0.016666666666666666      # [Sec. 4] 1/60 s
+  decimation: 3                     # [Sec. 4] 20 Hz control
+  episode_length_s: 30.0            # [Sec. 4] 600 steps
+  static_friction: 10.0             # [Table 4] object and hand friction
+  dynamic_friction: 10.0
+  restitution: 0.0
+  axis_sampling: sphere             # sphere | principal | z (paper: "arbitrary" axes)
+  axis_curriculum_z_first: false    # adapt.: z axis first, then axis_sampling
+  axis_curriculum_rotations: 0.5
+  goal_increment_deg: 30.0          # [Table 9]
+  goal_tol_metric: rotation_rad     # adapt.: d_tol read as radians (see goal_reached)
+  d_tol: 0.15                       # [Table 5, teacher]
+  keypoint_distance_m: 0.05         # [App. B.1] 6 keypoints, 5 cm
+  kp_a: 50.0                        # [Eq. 3]
+  kp_b: 2.0
+  kp_scale: 1.0                     # the undefined numerator d_kp of Eq. 3
+  rot_clip: 0.025                   # [Eq. 4] c1, rad
+  w_kp: 1.0                         # [App. B.1] reward weights
+  w_rot: 5.0
+  w_goal: 10.0
+  w_gc: 0.1
+  w_bc: 0.2
+  w_omega: 0.5
+  w_pose: 0.5
+  w_work: 0.1
+  w_torque: 0.05
+  w_penalty: 50.0
+  omega_max: 0.6                    # [Eq. 8]
+  reward_curriculum: true           # [App. B.3] lambda_rew over [g_min, g_max]
+  curriculum_g_min: 1.0
+  curriculum_g_max: 2.0
+  curriculum_ema: 0.01
+  d_max: 0.1                        # [Eq. 12] drop: kp_dist > 0.1
+  axis_dev_max_deg: 45.0            # [Eq. 12]
+  axis_check_grace_steps: 10        # adapt.: settle phase; then the axis reference and first goal are re-made
+  action_scale: 0.026               # [Sec. 3.1] Delta theta in [-0.026, 0.026] rad
+  action_eta: 0.5                   # adapt.: eta not given
+  contact_threshold: 0.25           # [App. F, Eq. 16] N
+  force_alpha: 0.5                  # [Eq. 17]
+  force_beta: 0.6                   # [Eq. 18]
+  force_max: 5.0
+  pose_beta: 0.6                    # [Eq. 19]
+  pose_max: 0.53
+  object_shape: box                 # adapt.: one shape per run (box | capsule); a capsule rolls off the open palm
+  capsule_radius: 0.0295            # [Table 4] midpoints of the ranges
+  capsule_width: 0.006
+  box_size: 0.0525
+  mass_range: [0.025, 0.2]          # [Table 4]
+  com_range: 0.01
+  object_contact_offset: 0.002
+  object_rest_offset: 0.0
+  obs_noise: true                   # [Table 4] observation noise
+  joint_noise: 0.03
+  tip_pos_noise: 0.005
+  tip_quat_noise: 0.01
+  contact_pose_noise: 0.0174
+  contact_force_noise: 0.1
+  reset_joint_noise: 0.1            # adapt.: no grasp cache (App. C)
+  hand_orientation_randomization: false   # team decision: stationary palm-up hand
+  hand_pose_file: repose_hand_poses.json
+  collision_from_visuals: false
+  hand_disable_gravity: false       # [Sec. 4] gravity on hand and object
+  hand_angular_damping: 0.01
+  hand_max_depenetration_velocity: 1000.0
+  hand_solver_position_iterations: 8
+  hand_solver_velocity_iterations: 0
+  hand_sleep_threshold: 0.005
+  hand_stabilization_threshold: 0.0005
+  hand_stiffness: 3.0               # adapt.: the paper system-identifies its Allegro (App. D)
+  hand_damping: 0.1
+  hand_armature: 0.0
+  hand_joint_friction: 0.01
+  hand_effort_limit: 0.5
+  hand_velocity_limit: 6.283
+  gravity_curriculum: false         # Isaac Lab Dexsuite ADR gravity curriculum (optional)
+  gravity_max_difficulty: 10
+  gravity_promote_goals: 1
+  gravity_promotion_only: false

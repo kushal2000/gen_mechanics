@@ -33,6 +33,10 @@ gym.register(
         # task_profile=isaaclab_repose (selectable, not the default): NVIDIA's
         # own agent for Isaac-Repose-Cube-Allegro-Direct-v0 (plain PPO, MLP),
         # and the same with the I41 log-std bound for population training.
+        # task_profile=anyrotate: AnyRotate's PPO (Table 5), and the same with
+        # the I41 log-std bound for population training.
+        "rl_games_anyrotate_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandAnyRotatePPO.yaml"),
+        "rl_games_anyrotate_pop_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandAnyRotatePopPPO.yaml"),
         "rl_games_repose_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPPO.yaml"),
         "rl_games_repose_pop_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPopPPO.yaml"),
     },

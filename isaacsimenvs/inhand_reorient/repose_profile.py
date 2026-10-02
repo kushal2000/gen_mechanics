@@ -48,7 +48,8 @@ __all__ = [
 
 PROFILE_ISAACLAB_REPOSE = "isaaclab_repose"
 PROFILE_LEGACY = "legacy"
-TASK_PROFILES = (PROFILE_ISAACLAB_REPOSE, PROFILE_LEGACY)
+PROFILE_ANYROTATE = "anyrotate"  # anyrotate_profile.py
+TASK_PROFILES = (PROFILE_ISAACLAB_REPOSE, PROFILE_LEGACY, PROFILE_ANYROTATE)
 
 # NVIDIA's "full" observation (compute_full_observations), field for field,
 # in their order. For Allegro (16 joints, 4 fingertips) this is 124 wide.

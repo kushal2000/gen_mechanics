@@ -24,15 +24,51 @@ import torch
 from .repose_profile import quat_apply, quat_conjugate, quat_from_angle_axis, quat_mul
 
 __all__ = [
-    "PROFILE_ANYROTATE", "ANYROTATE_OBS_FIELDS", "ANYROTATE_PRIV_FIELDS", "anyrotate_field_width",
+    "PROFILE_ANYROTATE", "is_anyrotate", "apply_anyrotate_to_cfg", "ANYROTATE_OBS_FIELDS", "ANYROTATE_PRIV_FIELDS", "anyrotate_field_width",
     "keypoint_offsets", "object_keypoints", "keypoint_distance", "keypoint_reward",
     "quat_to_rotvec", "rotation_about_axis", "rotation_reward", "next_goal", "goal_reached",
     "contact_rewards", "angular_velocity_penalty", "pose_penalty", "work_penalty", "torque_penalty",
-    "axis_deviation", "terminations", "reward_curriculum_lambda", "relative_joint_targets",
+    "axis_deviation", "axis_in_object_frame", "axis_tilt", "terminations", "reward_curriculum_lambda", "relative_joint_targets",
     "simulated_tactile", "sample_axes", "combine_rewards", "graded_rotation_fitness",
 ]
 
 PROFILE_ANYROTATE = "anyrotate"
+
+
+def is_anyrotate(cfg) -> bool:
+    from .repose_profile import TASK_PROFILES
+
+    profile = getattr(cfg, "task_profile", "legacy")
+    if profile not in TASK_PROFILES:
+        raise ValueError(f"task_profile={profile!r}; expected one of {TASK_PROFILES}")
+    return profile == PROFILE_ANYROTATE
+
+
+def apply_anyrotate_to_cfg(cfg) -> None:
+    """Write the profile's env-level numbers (Sec. 4: dt 1/60, decimation 3 for
+    20 Hz control, 30 s episodes; Table 4: friction 10) and its observation
+    lists onto the cfg before the sim is built. No-op for other profiles."""
+    if not is_anyrotate(cfg):
+        return
+    a = cfg.anyrotate
+    if a.hand_orientation_randomization:
+        raise NotImplementedError(
+            "anyrotate.hand_orientation_randomization: the team keeps a stationary palm-up hand; "
+            "per-episode hand orientations (the paper's gravity invariance) are not implemented yet")
+    cfg.decimation = int(a.decimation)
+    cfg.episode_length_s = float(a.episode_length_s)
+    cfg.sim.dt = float(a.sim_dt)
+    cfg.sim.render_interval = int(a.decimation)
+    cfg.sim.physics_material.static_friction = float(a.static_friction)
+    cfg.sim.physics_material.dynamic_friction = float(a.dynamic_friction)
+    cfg.sim.physics_material.restitution = float(a.restitution)
+    # Contact sensors resolve their envs from USD prims; clone_in_fabric
+    # clones env 1.. in Fabric only, so it must be off.
+    cfg.scene.clone_in_fabric = False
+    # Symmetric actor-critic over the teacher's input: o_t plus x_t.
+    fields = tuple(ANYROTATE_OBS_FIELDS) + tuple(ANYROTATE_PRIV_FIELDS)
+    cfg.obs.obs_list = fields
+    cfg.obs.state_list = fields
 
 # Teacher observation o_t (Table 2), per-joint fields J wide, per-fingertip
 # fields k wide (k = 4 for Allegro: 95 dims, the paper's "full touch" N=95).
@@ -200,6 +236,25 @@ def axis_deviation(ang_vel: torch.Tensor, axis: torch.Tensor, min_speed: float):
     speed = ang_vel.norm(dim=-1)
     cos = (ang_vel * axis).sum(dim=-1) / speed.clamp(min=1e-8)
     return torch.acos(cos.clamp(-1.0, 1.0)), speed >= min_speed
+
+
+def axis_in_object_frame(obj_quat: torch.Tensor, axis: torch.Tensor) -> torch.Tensor:
+    """The commanded axis expressed in the object's own frame."""
+    from .repose_profile import quat_apply_inverse
+
+    return quat_apply_inverse(obj_quat, axis)
+
+
+def axis_tilt(obj_quat: torch.Tensor, axis_obj: torch.Tensor, axis: torch.Tensor) -> torch.Tensor:
+    """Angle (rad) between ``axis`` and the object's body axis that lay along
+    it when ``axis_obj`` was recorded. A rotation about ``axis`` keeps it 0;
+    tumbling about any other axis grows it. Used for Eq. 12's "rotation axis
+    deviates from the target axis" (adapt.: the paper does not define the
+    object's rotation axis k_o; the direction of the instantaneous angular
+    velocity is noise whenever the object wobbles or settles)."""
+    k_o = quat_apply(obj_quat, axis_obj)
+    cos = (k_o * axis).sum(dim=-1) / (k_o.norm(dim=-1) * axis.norm(dim=-1)).clamp(min=1e-8)
+    return torch.acos(cos.clamp(-1.0, 1.0))
 
 
 def terminations(kp_dist, d_max, axis_dev, axis_valid, axis_dev_max):

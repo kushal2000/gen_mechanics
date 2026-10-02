@@ -248,6 +248,142 @@ class ReposeCfg:
     act_moving_average: float = 1.0
 
 
+@configclass
+class AnyRotateCfg:
+    """The ``anyrotate`` task profile: multi-axis in-hand object rotation,
+    after M. Yang et al., "AnyRotate", CoRL 2024 (arXiv 2405.07391v3). Paper
+    references in brackets; "adapt." marks a departure (see
+    ``anyrotate_profile.py`` and the evolution README's table). Read only
+    when ``task_profile == "anyrotate"``."""
+
+    # --- env / sim [Sec. 4: dt 1/60, 20 Hz control, 600 steps = 30 s] ---
+    sim_dt: float = 1.0 / 60.0
+    decimation: int = 3
+    episode_length_s: float = 30.0
+    static_friction: float = 10.0  # [Table 4: object and hand friction 10.0]
+    dynamic_friction: float = 10.0
+    restitution: float = 0.0
+
+    # --- task [Sec. 3.1, App. B.1, Table 9] ---
+    axis_sampling: str = "sphere"
+    """"sphere" (uniform on S^2; the paper trains on "arbitrary" axes without
+    giving the distribution), "principal" (+-x/y/z) or "z" (palm normal)."""
+    axis_curriculum_z_first: bool = False
+    """adapt.: start with the z axis only, switch to ``axis_sampling`` once
+    completed episodes average ``axis_curriculum_rotations`` rotations."""
+    axis_curriculum_rotations: float = 0.5
+    goal_increment_deg: float = 30.0  # [Table 9, theta = 30 deg]
+    goal_tol_metric: str = "rotation_rad"
+    """adapt.: see anyrotate_profile.goal_reached (d_tol = 0.15 cannot be a
+    keypoint distance in metres). "kp_dist_m" applies it literally."""
+    d_tol: float = 0.15  # [Table 5, teacher]
+    keypoint_distance_m: float = 0.05  # [App. B.1: N = 6 keypoints, 5 cm]
+    kp_a: float = 50.0
+    kp_b: float = 2.0
+    kp_scale: float = 1.0  # the undefined numerator d_kp of Eq. 3
+    rot_clip: float = 0.025  # [Eq. 4, c1]
+
+    # --- reward weights [App. B.1] ---
+    w_kp: float = 1.0
+    w_rot: float = 5.0
+    w_goal: float = 10.0
+    w_gc: float = 0.1
+    w_bc: float = 0.2
+    w_omega: float = 0.5
+    w_pose: float = 0.5
+    w_work: float = 0.1
+    w_torque: float = 0.05
+    w_penalty: float = 50.0
+    omega_max: float = 0.6  # [Eq. 8]
+    reward_curriculum: bool = True  # [App. B.3, lambda_rew]
+    curriculum_g_min: float = 1.0
+    curriculum_g_max: float = 2.0
+    curriculum_ema: float = 0.01
+    """Weight of each completed episode in the running mean of goals per
+    episode (g_eval); the paper does not say how g_eval is averaged."""
+
+    # --- terminations [Eq. 12] ---
+    d_max: float = 0.1
+    axis_dev_max_deg: float = 45.0
+    axis_check_grace_steps: int = 10
+    """adapt.: a settle phase in place of the paper's cached stable grasps:
+    for this many steps after a reset the off-axis test is off, and at its
+    end the axis-tilt reference and the first goal are re-made from the
+    settled object (``anyrotate_profile.axis_tilt``)."""
+
+    # --- action [Sec. 3.1] ---
+    action_scale: float = 0.026  # Delta theta in [-0.026, 0.026] rad
+    action_eta: float = 0.5  # adapt.: the EMA coefficient eta is not given
+
+    # --- simulated touch [App. F] ---
+    contact_threshold: float = 0.25  # N, Eq. 16
+    force_alpha: float = 0.5  # Eq. 17
+    force_beta: float = 0.6  # Eq. 18
+    force_max: float = 5.0
+    pose_beta: float = 0.6  # Eq. 19
+    pose_max: float = 0.53
+
+    # --- object [Sec. 4, Table 4] ---
+    object_shape: str = "box"
+    """adapt.: one shape per run ("box" or "capsule"), not the paper's mixed
+    capsule/box set with per-episode dimensions. Box by default: without the
+    paper's grasp cache the object is dropped onto the open palm, and a
+    capsule (radius 3 cm, nearly a ball) rolls off it (Kit check, 16 envs,
+    zero actions: 90 drops in 6 s vs 0 for the box)."""
+    capsule_radius: float = 0.0295  # Table 4 range [0.025, 0.034], midpoint
+    capsule_width: float = 0.006  # [0.000, 0.012]
+    box_size: float = 0.0525  # [0.045, 0.06]
+    mass_range: tuple[float, float] = (0.025, 0.2)
+    com_range: float = 0.01
+    object_contact_offset: float = 0.002
+    object_rest_offset: float = 0.0
+
+    # --- domain randomisation of observations [Table 4] ---
+    obs_noise: bool = True
+    joint_noise: float = 0.03
+    tip_pos_noise: float = 0.005
+    tip_quat_noise: float = 0.01
+    contact_pose_noise: float = 0.0174
+    contact_force_noise: float = 0.1
+
+    # --- reset ---
+    reset_joint_noise: float = 0.1
+    """adapt.: the paper starts episodes from a cache of stable grasps (App.
+    C); we drop the object onto the palm-up hand from its spawn point, joints
+    at the canonical pose plus U(-noise, noise)."""
+    hand_orientation_randomization: bool = False
+    """The paper samples the hand orientation per episode; the team keeps a
+    stationary palm-up hand (not implemented: True raises)."""
+
+    # --- hand (palm-up placement and actuator as in the isaaclab_repose port) ---
+    hand_pose_file: str = "repose_hand_poses.json"
+    collision_from_visuals: bool = False
+    hand_disable_gravity: bool = False  # [Sec. 4: "Gravity is enabled for both the hand and the object"]
+    hand_angular_damping: float = 0.01
+    hand_max_depenetration_velocity: float = 1000.0
+    hand_solver_position_iterations: int = 8
+    hand_solver_velocity_iterations: int = 0
+    hand_sleep_threshold: float = 0.005
+    hand_stabilization_threshold: float = 0.0005
+    hand_stiffness: float = 3.0
+    hand_damping: float = 0.1
+    hand_armature: float = 0.0
+    hand_joint_friction: float = 0.01
+    hand_effort_limit: float = 0.5
+    hand_velocity_limit: float = 6.283
+
+    # --- optional gravity curriculum (NVIDIA Dexsuite ADR, 2025) ---
+    gravity_curriculum: bool = False
+    """Isaac Lab Dexsuite's adr_curriculum: a per-env difficulty in
+    [0, gravity_max_difficulty] rises by 1 when an episode succeeds (>=
+    ``gravity_promote_goals`` goals) and falls by 1 otherwise; gravity =
+    (mean difficulty / max) x (0, 0, -9.81), left at 0 while that fraction is
+    below 0.1."""
+    gravity_max_difficulty: int = 10
+    gravity_promote_goals: int = 1
+    gravity_promotion_only: bool = False
+
+
 def _default_sim_cfg() -> SimulationCfg:
     return SimulationCfg(
         dt=1.0 / 120.0,
@@ -271,7 +407,8 @@ def _default_sim_cfg() -> SimulationCfg:
 @configclass
 class InHandReorientEnvCfg(DirectRLEnvCfg):
     task_profile: str = "legacy"
-    """"legacy" (default): this env's original spec (SAPG-era reward,
+    """"anyrotate": multi-axis rotation after AnyRotate (CoRL 2024; ``anyrotate``
+    below, ``anyrotate_profile.py``). "legacy" (default): this env's original spec (SAPG-era reward,
     tolerance and goal curricula, palm-normal-axis goals), every field
     outside ``repose`` exactly as before. "isaaclab_repose": NVIDIA's 2021
     in-hand cube reorientation spec (``repose`` below,
@@ -300,9 +437,10 @@ class InHandReorientEnvCfg(DirectRLEnvCfg):
     reset: ResetCfg = ResetCfg()
     termination: TerminationCfg = TerminationCfg()
     repose: ReposeCfg = ReposeCfg()
+    anyrotate: AnyRotateCfg = AnyRotateCfg()
 
 
 __all__ = [
     "InHandReorientEnvCfg", "AssetsCfg", "ObsCfg", "ActionCfg", "RewardCfg",
-    "PhysicsCfg", "ResetCfg", "ReposeCfg", "TerminationCfg",
+    "PhysicsCfg", "ResetCfg", "ReposeCfg", "AnyRotateCfg", "TerminationCfg",
 ]

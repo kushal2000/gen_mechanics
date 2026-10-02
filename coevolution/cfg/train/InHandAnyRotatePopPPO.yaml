@@ -1,0 +1,103 @@
+# gen_mechanics rl_games PPO config for POPULATION training under the anyrotate
+# profile: InHandAnyRotatePPO.yaml plus the I41 population safeguards
+# (inhand_actor_critic with logstd_max 0.0, no entropy bonus). Based on:
+# gen_mechanics rl_games PPO config for the anyrotate task profile:
+# AnyRotate (Yang et al., CoRL 2024) Table 5, teacher column:
+#   policy MLP [512, 256, 128] ELU, lr 5e-3, 8192 envs, rollout 8 steps,
+#   minibatch 32768, 5 mini-epochs, discount 0.99, GAE tau 0.95, clip 0.2,
+#   KL threshold 0.02, gradient norm 1.0, Adam.
+# Adaptations (marked "adapt."):
+#  - one MLP over [o_t, x_t]: the paper encodes the privileged x_t with an
+#    MLP [256, 128, 8] (ReLU) into an 8-dim latent for later student
+#    distillation; the teacher alone sees the same information.
+#  - unspecified in the paper, set as our other PPO configs: normalized
+#    inputs and values, reward scale 0.01, critic coef 4, value clipping,
+#    bounds loss 1e-4, adaptive lr schedule (implied by the KL threshold).
+#  - fork: fixed_sigma 'fixed', "<int>_" name, expl_type/use_others_experience none.
+# Pass env.scene.num_envs=8192 for the paper's env count.
+
+params:
+  seed: 42
+
+  env:
+    clip_observations: 10.0
+    clip_actions: 1.0
+
+  algo:
+    name: a2c_continuous
+
+  model:
+    name: continuous_a2c_logstd
+
+  network:
+    name: inhand_actor_critic         # I41: actor_critic + projected log-std bound
+    separate: False
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: 0
+        fixed_sigma: 'fixed'
+        logstd_max: 0.0               # I41: std <= 1
+    mlp:
+      units: [512, 256, 128]
+      activation: elu
+      d2rl: False
+      initializer:
+        name: default
+      regularizer:
+        name: None
+
+  load_checkpoint: False
+  load_path: ''
+
+  config:
+    name: 0_inhand_anyrotate_pop
+    full_experiment_name: ${.name}
+    env_name: rlgpu
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    multi_gpu: False
+    ppo: True
+    mixed_precision: False
+    normalize_input: True
+    normalize_value: True
+    value_bootstrap: True
+    num_actors: ${....env.scene.num_envs}
+    reward_shaper:
+      scale_value: 0.01
+    normalize_advantage: True
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 0.005
+    lr_schedule: adaptive
+    schedule_type: standard
+    kl_threshold: 0.02
+    score_to_win: 1000000
+    max_epochs: 1000000
+    save_best_after: 100
+    save_frequency: 200
+    print_stats: True
+    grad_norm: 1.0
+    entropy_coef: 0.0
+    truncate_grads: True
+    e_clip: 0.2
+    horizon_length: 8
+    minibatch_size: 32768
+    mini_epochs: 5
+    critic_coef: 4
+    clip_value: True
+    seq_length: 4
+    bounds_loss_coef: 0.0001
+
+    expl_type: none
+    use_others_experience: none
+
+    player:
+      deterministic: True
+      games_num: 100000
+      print_stats: True
