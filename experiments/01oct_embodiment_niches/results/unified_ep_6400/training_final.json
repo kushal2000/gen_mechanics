@@ -1,42 +1,42 @@
 {
  "allegro": {
   "study": "left_multi_uniform_canon (unified)",
-  "goals_per_episode": 7.26351001739502,
-  "last_epoch": 7038.0
+  "goals_per_episode": 7.852973327636719,
+  "last_epoch": 7389.0
  },
  "dex3": {
   "study": "left_multi_uniform_canon (unified)",
-  "goals_per_episode": 2.3053733325004577,
-  "last_epoch": 7038.0
+  "goals_per_episode": 2.0794766664505007,
+  "last_epoch": 7389.0
  },
  "leap": {
   "study": "left_multi_uniform_canon (unified)",
-  "goals_per_episode": 5.749333329200745,
-  "last_epoch": 7038.0
+  "goals_per_episode": 6.270413346290589,
+  "last_epoch": 7389.0
  },
  "shadow": {
   "study": "left_multi_uniform_canon (unified)",
-  "goals_per_episode": 11.422120008468628,
-  "last_epoch": 7038.0
+  "goals_per_episode": 13.215180063247681,
+  "last_epoch": 7389.0
  },
  "sharpa": {
   "study": "left_multi_uniform_canon (unified)",
-  "goals_per_episode": 9.444379978179931,
-  "last_epoch": 7038.0
+  "goals_per_episode": 10.033616666793824,
+  "last_epoch": 7389.0
  },
  "tesollo": {
   "study": "left_multi_uniform_canon (unified)",
-  "goals_per_episode": 6.378093318939209,
-  "last_epoch": 7038.0
+  "goals_per_episode": 6.779199976921081,
+  "last_epoch": 7389.0
  },
  "wuji2": {
   "study": "left_multi_uniform_canon (unified)",
-  "goals_per_episode": 14.88323673248291,
-  "last_epoch": 7038.0
+  "goals_per_episode": 16.64158344268799,
+  "last_epoch": 7389.0
  },
  "xhand": {
   "study": "left_multi_uniform_canon (unified)",
-  "goals_per_episode": 5.605493321418762,
-  "last_epoch": 7038.0
+  "goals_per_episode": 5.996079983711243,
+  "last_epoch": 7389.0
  }
 }

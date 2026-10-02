@@ -1,0 +1,57 @@
+allegro     7.85 goals/episode @ 7389
+dex3        2.08 goals/episode @ 7389
+leap        6.27 goals/episode @ 7389
+shadow     13.22 goals/episode @ 7389
+sharpa     10.03 goals/episode @ 7389
+tesollo     6.78 goals/episode @ 7389
+wuji2      16.64 goals/episode @ 7389
+xhand       6.00 goals/episode @ 7389
+-> /share/portal/kk837/gen_mechanics/experiments/01oct_embodiment_niches/results/unified_ep_6400/training_final.json
+72 results; nominal for 8 hands: ['sharpa', 'allegro', 'leap', 'shadow', 'tesollo', 'dex3', 'xhand', 'wuji2']
+
+== nominal, rank in brackets (1 = best)
+metric                             sharpa      allegro         leap       shadow      tesollo         dex3        xhand        wuji2
+goals / min                      16.8 (3)     14.2 (4)     14.1 (5)     19.5 (2)     11.2 (7)     7.27 (8)     12.5 (6)     22.9 (1)
+goals per drop                   75.2 (4)     48.6 (6)     40.9 (7)      148 (3)      225 (1)     24.2 (8)      213 (2)     60.1 (5)
+median s / goal                  2.27 (3)     2.32 (4)     2.67 (5)        2 (2)     2.85 (7)     3.68 (8)     2.78 (6)     1.93 (1)
+path efficiency                0.0777 (3)   0.0757 (4)   0.0668 (7)   0.0897 (1)   0.0752 (5)   0.0611 (8)   0.0692 (6)   0.0878 (2)
+work / goal (J)                  13.5 (2)     25.3 (5)       30 (7)     13.4 (1)     33.5 (8)     27.5 (6)     20.6 (4)     15.7 (3)
+mean power (W)                   3.78 (2)     6.01 (6)     7.02 (8)     4.36 (4)     6.25 (7)     3.34 (1)     4.28 (3)     5.99 (5)
+action rate (rad/s/joint)        20.2 (1)     20.6 (2)       31 (6)     21.6 (3)     37.8 (7)     22.5 (4)     27.1 (5)     51.2 (8)
+time at speed cap               0.818 (6)    0.605 (2)    0.701 (3)    0.847 (7)    0.761 (4)    0.588 (1)    0.809 (5)    0.957 (8)
+cube speed (m/s)                0.266 (5)    0.279 (6)    0.298 (7)    0.263 (4)     0.22 (1)     0.26 (3)    0.253 (2)    0.312 (8)
+cube accel (m/s^2)               14.8 (3)     15.9 (5)     17.1 (7)     16.3 (6)     13.5 (1)     15.5 (4)     13.8 (2)       20 (8)
+cube wander (mm, std)            9.04 (3)       11 (7)     11.8 (8)     10.1 (5)     8.51 (2)     10.3 (6)     9.38 (4)      8.4 (1)
+joints used (PR / J)            0.513 (8)    0.708 (2)    0.614 (6)    0.546 (7)    0.681 (5)    0.888 (1)    0.687 (4)    0.701 (3)
+
+== robustness: goals/min relative to nominal (drops/min in brackets)
+condition           sharpa       allegro          leap        shadow       tesollo          dex3         xhand         wuji2
+cube40          0.84 ( 0.4)    0.79 ( 0.9)    0.85 ( 0.8)    0.69 ( 0.2)    0.91 ( 0.2)    0.84 ( 0.4)    0.75 ( 0.5)    0.79 ( 1.4)
+cube55          0.39 ( 0.5)    0.54 ( 0.1)    0.63 ( 0.4)    0.25 ( 0.2)    0.36 ( 0.0)    0.26 ( 1.1)    0.40 ( 0.4)    0.56 ( 0.1)
+cube65          0.06 ( 1.2)    0.07 ( 0.4)    0.14 ( 1.5)    0.03 ( 0.7)    0.05 ( 0.2)    0.02 ( 3.3)    0.04 ( 2.8)    0.17 ( 0.2)
+light           1.05 ( 0.5)    1.07 ( 0.7)    1.05 ( 0.8)    1.03 ( 0.3)    1.15 ( 0.2)    1.08 ( 0.6)    1.04 ( 0.2)    1.01 ( 0.8)
+heavy           0.86 ( 0.2)    0.77 ( 0.1)    0.77 ( 0.2)    0.83 ( 0.1)    0.73 ( 0.0)    0.66 ( 0.2)    0.82 ( 0.0)    0.89 ( 0.3)
+slippery        0.91 ( 0.3)    0.93 ( 0.5)    0.88 ( 0.5)    0.94 ( 0.2)    0.91 ( 0.1)    0.88 ( 0.6)    0.84 ( 0.1)    0.95 ( 0.6)
+push            1.00 ( 0.7)    1.00 ( 0.6)    0.99 ( 0.7)    1.02 ( 0.4)    1.05 ( 0.2)    0.98 ( 1.1)    1.01 ( 0.4)    0.99 ( 0.7)
+push_hard       0.89 ( 6.7)    0.92 ( 4.9)    0.89 ( 4.3)    0.93 ( 4.7)    0.96 ( 4.1)    0.86 ( 7.9)    0.91 ( 4.8)    0.92 ( 4.3)
+
+== Pareto fronts (non-dominated hands)
+         goals / min vs work / goal (J)       : ['shadow', 'wuji2']
+         goals / min vs goals per drop        : ['shadow', 'tesollo', 'xhand', 'wuji2']
+         goals / min vs cube accel (m/s^2)    : ['sharpa', 'shadow', 'tesollo', 'xhand', 'wuji2']
+     work / goal (J) vs goals per drop        : ['shadow', 'tesollo', 'xhand']
+     path efficiency vs goals / min           : ['shadow', 'wuji2']
+
+== first place somewhere
+  sharpa      ['action rate (rad/s/joint)']
+  allegro     []
+  leap        ['robust: cube55']
+  shadow      ['path efficiency', 'work / goal (J)']
+  tesollo     ['goals per drop', 'cube speed (m/s)', 'cube accel (m/s^2)', 'robust: cube40', 'robust: light', 'robust: push', 'robust: push_hard']
+  dex3        ['mean power (W)', 'time at speed cap', 'joints used (PR / J)']
+  xhand       []
+  wuji2       ['goals / min', 'median s / goal', 'cube wander (mm, std)', 'robust: cube65', 'robust: heavy', 'robust: slippery']
+
+-> /share/portal/kk837/gen_mechanics/experiments/01oct_embodiment_niches/results/unified_ep_6400/summary.json
+-> /share/portal/kk837/gen_mechanics/experiments/01oct_embodiment_niches/plots/unified_ep_6400/details
+-> /share/portal/kk837/gen_mechanics/experiments/01oct_embodiment_niches/plots/unified_ep_6400
