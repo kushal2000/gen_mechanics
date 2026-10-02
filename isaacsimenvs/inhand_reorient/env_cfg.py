@@ -386,10 +386,13 @@ class AnyRotateCfg:
     grasp_per_design: int = 1000
     """Grasps kept per design (AnyRotate: 10000 per object; HORA: 50000 per
     object scale)."""
-    grasp_gen_max_rounds: int = 30
+    grasp_gen_max_rounds: int = 60
     grasp_gen_max_minutes: float = 15.0
-    grasp_gen_rounds_without_grasp: int = 6
-    """A design with no stable grasp after this many rounds is non-viable."""
+    grasp_gen_rounds_without_grasp: int = 15
+    """A design with no stable grasp after this many rounds is non-viable
+    (15 rounds at 128 envs per design: 1920 candidates; a design with a
+    0.2% yield then has a 2% chance of being declared non-viable, 22% at
+    6 rounds)."""
     grasp_gen_seed: int = 0
     grasp_hold_s: float = 3.0
     """Hold with the PD targets fixed (HORA: 50 steps at 15 Hz = 3.3 s;
@@ -398,13 +401,15 @@ class AnyRotateCfg:
     """adapt.: control steps for the hand to settle at its targets before
     the object is placed (the fingertip centroid is read after them)."""
     grasp_joint_sample_noise: float = 0.3  # [App. C: U(-0.3, 0.3) rad]; HORA 0.25
-    grasp_curl_frac: float = 0.5
+    grasp_curl_frac: float = 0.75
     """adapt.: share of candidates curled to a random fraction of every
     joint's range instead of canonical + noise (grammar designs have no
-    hand-made grasp pose)."""
-    grasp_tip_place_frac: float = 0.5
+    hand-made grasp pose). pop_v3s_32: 2.9% of curled candidates with the
+    object at the fingertips held it, 0.43% of canonical ones."""
+    grasp_tip_place_frac: float = 0.9
     """adapt.: share of candidates with the object at the fingertip
-    centroid; the rest at the hand's spawn point."""
+    centroid; the rest at the hand's spawn point (pop_v3s_32: 1.7% vs
+    0.03% held; allegro_right: 3.6% vs 0.5%)."""
     grasp_obj_pos_noise: float = 0.01
     grasp_max_disp_m: float = 0.02  # HORA: a fall of at most 1.5 cm
     grasp_max_lin_speed: float = 0.05
