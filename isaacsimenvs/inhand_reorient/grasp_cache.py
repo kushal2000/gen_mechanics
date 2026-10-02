@@ -315,11 +315,17 @@ class StabilityThresholds:
     max_nontip_contacts: int = -1  # -1: no test (HORA); AnyRotate: 0
     max_tip_dist_m: float = 0.1  # HORA: every fingertip within 0.1 m of the object (whole hold)
     max_mean_tip_dist_m: float = -1.0  # AnyRotate: total < 0.2 over 4 tips = mean 0.05; -1: no test
+    max_joint_speed: float = -1.0
+    """Peak real-joint speed (rad/s) over the hold; -1: no test. A hand that
+    vibrates while holding is not at rest (2026-10-02: two grammar designs
+    dominated population training with per-step work penalties of -24 to
+    -125)."""
 
 
 def stable_mask(*, max_disp: torch.Tensor, lin_speed: torch.Tensor, ang_speed: torch.Tensor,
                 tip_contacts: torch.Tensor, nontip_contacts: torch.Tensor, max_tip_dist: torch.Tensor,
                 mean_tip_dist: torch.Tensor, finite: Optional[torch.Tensor] = None,
+                joint_speed: Optional[torch.Tensor] = None,
                 th: StabilityThresholds = StabilityThresholds()) -> torch.Tensor:
     """``(n,)`` bool: which candidates pass every test. ``max_tip_dist`` is
     the largest valid-fingertip distance to the object over the hold,
@@ -330,6 +336,8 @@ def stable_mask(*, max_disp: torch.Tensor, lin_speed: torch.Tensor, ang_speed: t
         ok = ok & (nontip_contacts <= th.max_nontip_contacts)
     if th.max_mean_tip_dist_m > 0:
         ok = ok & (mean_tip_dist <= th.max_mean_tip_dist_m)
+    if th.max_joint_speed > 0 and joint_speed is not None:
+        ok = ok & (joint_speed <= th.max_joint_speed)
     if finite is not None:
         ok = ok & finite
     return ok

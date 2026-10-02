@@ -135,7 +135,7 @@ def _thresholds(a) -> gc.StabilityThresholds:
         max_disp_m=float(a.grasp_max_disp_m), max_lin_speed=float(a.grasp_max_lin_speed),
         max_ang_speed=float(a.grasp_max_ang_speed), min_tip_contacts=int(a.grasp_min_tip_contacts),
         max_nontip_contacts=int(a.grasp_max_nontip_contacts), max_tip_dist_m=float(a.grasp_max_tip_dist_m),
-        max_mean_tip_dist_m=float(a.grasp_max_mean_tip_dist_m))
+        max_mean_tip_dist_m=float(a.grasp_max_mean_tip_dist_m), max_joint_speed=float(a.grasp_max_joint_speed))
 
 
 # --------------------------------------------------------------------------
@@ -188,7 +188,8 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
     cand_mode = torch.zeros(n_designs, 4, dtype=torch.long)
     pass_mode = torch.zeros(n_designs, 4, dtype=torch.long)
     fails = {name: torch.zeros(n_designs, dtype=torch.long) for name in
-             ("disp", "speed", "tip_contacts", "tip_dist", "nontip", "mean_tip_dist", "nonfinite")}
+             ("disp", "speed", "tip_contacts", "tip_dist", "nontip", "mean_tip_dist", "joint_speed", "nonfinite")}
+    jspeed_stable = {d: [] for d in wanted}  # peak joint speed of each stable grasp (before the joint test)
     rounds = 0
     gravity_now = getattr(env, "_ar_gravity", torch.tensor([0.0, 0.0, -GRAVITY], device=dev))
     _set_gravity((0.0, 0.0, -1.0))
@@ -232,6 +233,7 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
         # 4. Hold.
         max_disp = torch.zeros(n, device=dev)
         max_tip_dist = torch.zeros(n, device=dev)
+        max_jspeed = torch.zeros(n, device=dev)
         finite = torch.ones(n, dtype=torch.bool, device=dev)
         tip_f = torch.zeros(n, k_tips, device=dev)
         nontip_f = None
@@ -249,6 +251,10 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
             d_tip = (env.robot.data.body_pos_w[:, env.fingertip_body_idx] - obj_w.unsqueeze(1)).norm(dim=-1)
             d_tip = torch.nan_to_num(d_tip, nan=1e3) * tvalid_f
             max_tip_dist = torch.maximum(max_tip_dist, d_tip.max(dim=-1).values)
+            qd = torch.nan_to_num(env.robot.data.joint_vel.abs(), nan=1e3)
+            if jvalid is not None:
+                qd = qd * jvalid
+            max_jspeed = torch.maximum(max_jspeed, qd.max(dim=-1).values)
             if step >= hold_steps - contact_window:
                 tf, nf = _contact_magnitudes(env)
                 tip_f = tip_f + tf / contact_window
@@ -268,7 +274,14 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
         mean_tip = torch.nan_to_num((d_end * tvalid_f).sum(dim=-1) / n_valid_tips, nan=1e3)
         ok = gc.stable_mask(max_disp=max_disp, lin_speed=lin, ang_speed=ang, tip_contacts=tip_c,
                             nontip_contacts=nontip_c, max_tip_dist=max_tip_dist, mean_tip_dist=mean_tip,
-                            finite=finite, th=th) & active
+                            finite=finite, joint_speed=max_jspeed, th=th) & active
+        no_joint = gc.StabilityThresholds(**{**vars(th), "max_joint_speed": -1.0})
+        ok_object = gc.stable_mask(max_disp=max_disp, lin_speed=lin, ang_speed=ang, tip_contacts=tip_c,
+                                   nontip_contacts=nontip_c, max_tip_dist=max_tip_dist, mean_tip_dist=mean_tip,
+                                   finite=finite, th=no_joint) & active
+        for d_i, js in zip(design_idx[ok_object].tolist(), max_jspeed[ok_object].tolist()):
+            if d_i in jspeed_stable:
+                jspeed_stable[d_i].append(js)
 
         d_cpu = design_idx.cpu()
         act_cpu = active.cpu()
@@ -284,6 +297,8 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
                           ("nontip", (nontip_c > th.max_nontip_contacts) if th.max_nontip_contacts >= 0
                            else torch.zeros_like(finite)),
                           ("mean_tip_dist", (mean_tip > th.max_mean_tip_dist_m) if th.max_mean_tip_dist_m > 0
+                           else torch.zeros_like(finite)),
+                          ("joint_speed", (max_jspeed > th.max_joint_speed) if th.max_joint_speed > 0
                            else torch.zeros_like(finite)),
                           ("nonfinite", ~finite)):
             fails[name] += torch.bincount(d_cpu[(bad & active).cpu()], minlength=n_designs)
@@ -317,6 +332,10 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
                  "pass_rate": float(n_found[d]) / max(int(candidates[d]), 1),
                  "fails": {name: int(v[d]) for name, v in fails.items()},
                  "candidates_by_mode": {m: int(cand_mode[d, i]) for i, m in enumerate(modes)},
+                 "joint_speed_of_object_stable": (
+                     {"n": len(jspeed_stable[d]), "median": float(np.median(jspeed_stable[d])),
+                      "p90": float(np.percentile(jspeed_stable[d], 90)), "max": float(np.max(jspeed_stable[d]))}
+                     if jspeed_stable[d] else None),
                  "stable_by_mode": {m: int(pass_mode[d, i]) for i, m in enumerate(modes)},
                  "gen_s_shared": round(gen_s, 1), "created": gc.now_iso()}
         if found[d]:

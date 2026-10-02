@@ -296,6 +296,7 @@ anyrotate:
   grasp_max_tip_dist_m: 0.1         # HORA: every fingertip within 0.1 m
   grasp_max_mean_tip_dist_m: -1.0   # -1 off; AnyRotate: total 0.2 over 4 tips
   grasp_gravity_cycle: false        # AnyRotate: gravity along +-x, +-y, +-z during the hold
+  grasp_max_joint_speed: -1.0       # peak real-joint speed over the hold (rad/s); -1 off (recorded either way)
   grasp_reset_joint_noise: 0.0      # HORA and AnyRotate add none at reset
   grasp_reset_obj_pos_noise: 0.0
   grasp_settle_steps: 0             # settle phase for grasp-initialised envs (none, as the paper)

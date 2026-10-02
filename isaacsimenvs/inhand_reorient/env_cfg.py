@@ -425,6 +425,9 @@ class AnyRotateCfg:
     grasp_max_tip_dist_m: float = 0.1  # HORA: every fingertip within 0.1 m
     grasp_max_mean_tip_dist_m: float = -1.0  # -1 off; AnyRotate: total 0.2 over 4 tips
     grasp_gravity_cycle: bool = False  # AnyRotate: gravity along +-x, +-y, +-z during the hold
+    grasp_max_joint_speed: float = -1.0
+    """Peak real-joint speed (rad/s) allowed over the hold; -1 off. The
+    report records it per design either way."""
     grasp_reset_joint_noise: float = 0.0
     """U(-noise, noise) rad on a cached grasp's joints and targets at reset.
     0: neither HORA nor AnyRotate perturbs a cached grasp."""
