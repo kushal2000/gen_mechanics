@@ -266,3 +266,10 @@ def test_empty_table_samples_nothing():
 def test_prune_keeps_only_the_given_keys():
     sets = {"a": _set(1), "b": _set(2), "c": _set(3)}
     assert list(gc.prune_sets(sets, ["c", "a", "z"])) == ["a", "c"]
+
+
+def test_table_with_no_grasp_at_all_reports_no_design_viable():
+    """Every design non-viable (an empty table): sampling must not index it."""
+    t = gc.build_table([gc.GraspSet.empty(("a",)), None], ["a"])
+    rows, ok = t.sample(torch.tensor([0, 1, 0]))
+    assert not ok.any() and t.total == 0
