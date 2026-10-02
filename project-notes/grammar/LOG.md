@@ -339,3 +339,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - AnyRotate (CoRL 2024) ported from the paper (35 commits, 352 tests); not ported: grasp cache, student distillation, hand-orientation randomisation. allegro z-first: 0.13 rotations/episode plateau (paper 1.8-2.2); S2 axes: no learning; sharpa 0.05, dclaw 0.20.
 - 32-design population: under every spec the object drops within ~0.3 s from the palm-up spawn; Dexsuite gravity curriculum: drop 99% -> 65%, fitness 0.086 -> 0.195, gravity never ramped above 0.
 - Next: AnyRotate grasp cache (stable initial grasps per design) -- also a principled viability criterion.
+
+## Grasp cache (2026-10-02)
+
+- HORA-style grasp cache ported (canonical-pose perturbation plus random-curl candidates, 3 s hold, HORA acceptance tests, noise-free reset, held PD targets restored). allegro: drops 13% -> 0%, episodes run the full 30 s; population (G_V3S + 4 probes): 7/32 designs have stable grasps (allegro, sharpa, leap projections + 4 founders); 4.2 s per design.
+- Fixed: population fingertip contacts always 0; allegro "z" axis runs along the fingers.
+- Rotation not learned: 0.10-0.13 rotations/episode with or without the cache (paper 1.8-2.2). Holding near the first goal earns ~111 of 150 reward per episode; rotation 2.5, goals 12. Next: one fix cycle on goal advance and kp scale, else port HORA's released code exactly.
