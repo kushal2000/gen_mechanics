@@ -266,6 +266,42 @@ the CPU (228 single-digit, 69 without a reachable tip), 192 searched in 3 launch
 plus the allegro, sharpa and leap probes. Founder viability: G_V3S 8.6% of drawn (16.4% of
 searched), G_V1 3.3% (12.5%).
 
+### Viable-only results (2026-10-02; local 4090 until 13:20, then the CSAIL cluster, A6000)
+
+Driver, `--task-profile hora --grasp-cache --viable-only`, G_V3S, N 32, 4096 envs, 690 epochs (15 min
+of training on an A6000), job 2529931 (`runs/viable/driver_timing_2529931`):
+
+| Generation | Grasp search | Launches | Boot | Train | Total |
+|---|---|---|---|---|---|
+| 0 | 1718 s | 3 (196 searched, 183 pre-filtered of 375 founders; 7.7% of drawn founders viable) | 486 s | 757 s | 50 min |
+| 1 | 550 s | 1 (64 searched, 4 pre-filtered of 68 offspring; 66% of drawn offspring viable) | 477 s | 760 s | 30 min |
+
+dclaw was dropped as a probe in both generations; generation 1 searched 45 viable offspring for 22
+slots (23 unused). A search launch takes 550-610 s on an A6000 (275-300 s on the 4090).
+
+Population learning (HORA, own actuators unless noted, 4096 envs, last 5 min of scoring windows):
+
+| Run | Designs (envs each) | Training | TTT (s) | Rot/ep | Notes |
+|---|---|---|---|---|---|
+| mixed32, 4090 | 32 (128) | 15 / 30 min | 0.4 / 0.4 | 0.044 / 0.041 | stopped at 42 min |
+| mixed32_act, A6000 (job 2529922_0) | 32 (128), HORA actuator | 38 min | 0.4 | 0.06 | 29/32 viable under the 0.5 N m actuator; stopped |
+| sub8, A6000 (job 2529922_1) | 8 (512) | 20 / 50 / 80 min | 0.4 / 0.4 / 0.4 | 0.050 / 0.055 / 0.054 | projected allegro 0.6-0.7 s throughout |
+| single-hand allegro (drake, convex hulls), 4090 | 1 (8192) | 15 / 30 / 60 min | 3.8 / 15.6 / 17.8 | 0.35 / 1.64 / 2.14 | 0.57 / 0.66 / 0.75 rad/s |
+
+No shared controller learned to keep the object within these budgets. Two findings:
+
+- Three designs (founders 373, 420, 101) dominated the batch with per-step returns of -33 to -125
+  (median -0.2): every one of their "stable" grasps had a joint at the 10 rad/s velocity limit
+  during the hold, with constant targets (`grasp_cache_report.json`, `joint_speed_of_object_stable`,
+  job 2530319); the other designs hold at medians of 0.05-4 rad/s. The hand vibrates, and HORA's
+  (tau . qdot)^2 work penalty explodes. The viable-only search now rejects such grasps
+  (`--viable-max-joint-speed`, default 5 rad/s); HORA's actuator alone only shrinks them (-38).
+- Fewer designs (8 instead of 32) did not help within 95 min on an A6000: per-design sample count
+  alone does not explain it. Projected allegro in the population path (own actuator 3.93 / 0.15 /
+  1 N m, capsule links, grammar palm-up placement) is a different hand from the single-hand drake
+  allegro (HORA actuator, convex-hull colliders, NVIDIA placement); `allegro1` (job 2530462: that
+  design alone, 4096 envs) separates the population path from sharing.
+
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
 Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
