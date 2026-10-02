@@ -32,6 +32,15 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from viser_unified import NAMES, TASK, _face_cube  # noqa: E402
 
 LOGS = REPO / "debug_outputs/train_logs"
+# gen-SHARPA is a generated design, not a registered spec: its scene comes from the design file and its
+# actuator is set to the uniform one, as its training run and eval_niches.py --target gen_sharpa do.
+GEN_SHARPA_POP = REPO / "assets/populations/sharpa_capsule.json"
+GEN_SHARPA_ACTUATOR = {"hand_effort_limit": 0.5, "hand_velocity_limit": 10.0, "hand_stiffness": 3.0,
+                       "hand_damping": 0.0775, "hand_armature": 0.00058}
+
+
+def spec_ref(hand: str) -> str:
+    return f"handonly:{GEN_SHARPA_POP}" if hand == "gen_sharpa" else f"{hand}_left_uniform_handonly"
 
 
 def newest(pattern: str) -> str:
@@ -52,6 +61,14 @@ def parse():
     ap.add_argument("--wport", type=int, default=0)
     ap.add_argument("--authkey", default="")
     a = ap.parse_known_args()[0]
+    if not a.policy and a.hand == "gen_sharpa":
+        # gen-SHARPA has no policy of the same observation; compare against SHARPA's, its source hand.
+        a.policy = [
+            "Unified (8 hands)=" + newest(f"{LOGS}/01oct_unified_rl/0_scale_train_left_multi_uniform_canon_c01_*"
+                                          "/rank_0/*/nn/last_*.pth"),
+            "SHARPA only=" + newest(
+                f"{LOGS}/01oct_uniform_dynamics/0_scale_train_left_sharpa_uniform_canon_c01_*/rank_0/*/nn/last_*.pth"),
+        ]
     if not a.policy:
         a.policy = [
             "Unified (8 hands)=" + newest(f"{LOGS}/01oct_unified_rl/0_scale_train_left_multi_uniform_canon_c01_*"
@@ -91,12 +108,15 @@ def _loop(args, conn):
     from coevolution.eval.rl_player import RlPlayer
     from coevolution.utils.hydra_utils import hydra_task_config_with_yaml
 
-    spec_name = f"{args.hand}_left_uniform_handonly"
+    spec_name = spec_ref(args.hand)
     pols = []
     for p in args.policy:
         label, ck = p.split("=", 1)
         saved = OmegaConf.load(pathlib.Path(ck).parents[3] / "rank_0/.hydra/config.yaml")
         saved.env.assets.robot_spec = spec_name           # the network is built for THIS hand's joints
+        if args.hand == "gen_sharpa":
+            for k, v in GEN_SHARPA_ACTUATOR.items():
+                saved.env.physics[k] = v
         pols.append((label, ck, saved))
     obs_lists = {tuple(s.env.obs.obs_list) for _, _, s in pols}
     frames = {bool(s.env.obs.canonical_palm_frame) for _, _, s in pols}
@@ -128,9 +148,10 @@ def _loop(args, conn):
         spec = env.scene_record.robot_spec
         dims = (env.scene_record.object_scale * env._object_scale_multiplier
                 * float(env.cfg.reward.object_base_size))
-        conn.send({"kind": "ready", "urdf": str(REPO / spec.urdf_path), "joints": list(spec.joint_names_canonical),
+        conn.send({"kind": "ready", "urdf": str(REPO / spec.urdf_path) if spec.urdf_path else "",
+                   "joints": list(spec.joint_names_canonical),
                    "base_pos": list(map(float, spec.base_pos)), "base_rot": list(map(float, spec.base_rot)),
-                   "cube": dims[0].tolist(), "hand": NAMES.get(args.hand, args.hand),
+                   "cube": dims[0].tolist(), "hand": {"gen_sharpa": "gen-SHARPA"}.get(args.hand, NAMES.get(args.hand, args.hand)),
                    "labels": [f"{l}  (ep {pathlib.Path(c).name.split('_ep_')[-1].split('_')[0]})" for l, c, _ in pols]})
 
         origins = env.scene.env_origins
@@ -222,6 +243,13 @@ def main(args):
                     raise SystemExit(1)
                 elif m["kind"] == "ready":
                     info = m
+                    if not m["urdf"]:
+                        # A generated design: author its capsule URDF here (Kit-free), as viser_play does.
+                        from coevolution.eval import viser_play as vp
+                        from hand_sampler import population_io
+                        hand = population_io.load_population(str(GEN_SHARPA_POP))[0]
+                        m["urdf"] = str(vp._viewing_urdf(hand, spec_ref(args.hand),
+                                                         pathlib.Path(tempfile.mkdtemp()) / "hand.urdf"))
                     n = len(m["labels"])
                     for i in range(n):
                         off = (args.spacing * (i - (n - 1) / 2), 0.0, 0.0)
