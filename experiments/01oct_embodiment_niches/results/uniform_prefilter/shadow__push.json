@@ -1,0 +1,88 @@
+{
+ "hand": "shadow",
+ "set": "uniform",
+ "condition": "push",
+ "condition_desc": "random pushes ~2 g, ~1.2 per second",
+ "checkpoint": "/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/01oct_uniform_dynamics/0_scale_train_left_shadow_uniform_c01_d64_l4_e12288_b114688_s100_801574_0_lbrjHC/rank_0/0_scale_train_left_shadow_uniform_c01_d64_l4_e12288_b114688_s100_801574_0/nn/last_0_scale_train_left_shadow_uniform_c01_d64_l4_e12288_b114688_s100_801574_0_ep_5000_rew__49298.44_.pth",
+ "num_envs": 1024,
+ "seconds": 60.0,
+ "dt": 0.01666666666,
+ "env_seconds": 61439.999975424,
+ "wall_s": 127.18792271614075,
+ "joints": 22,
+ "hand_mass_kg": 0.5520176291465759,
+ "cube_mass_kg": 0.0455624982714653,
+ "vel_limit_rad_s": [
+  9.999999046325684,
+  9.999999046325684
+ ],
+ "goals_per_min": 44.38964845525586,
+ "drops_per_min": 0.6679687502671875,
+ "timeouts_per_min": 0.018554687507421876,
+ "goals_per_drop": 66.4546783625731,
+ "counts": {
+  "goals": 45455,
+  "drops": 684,
+  "timeouts": 19,
+  "hand_far": 0
+ },
+ "time_per_goal_s": {
+  "n": 43769,
+  "mean": 1.3068415996965965,
+  "median": 1.09999999956,
+  "p10": 0.46666666648,
+  "p90": 2.39999999904
+ },
+ "first_goal_after_reset_s": {
+  "n": 1686,
+  "mean": 1.3895512054544603,
+  "median": 1.1666666662,
+  "p10": 0.54999999978,
+  "p90": 2.38333333238
+ },
+ "goal_angle_deg": {
+  "n": 43769,
+  "mean": 125.86956350391472,
+  "median": 131.7363720316505,
+  "p10": 71.89619269046318,
+  "p90": 170.8618921863206
+ },
+ "path_efficiency": 0.16134241564720914,
+ "failed_segment_s": {
+  "n": 703,
+  "mean": 1.3046941673301848,
+  "median": 0.833333333,
+  "p10": 0.48333333314,
+  "p90": 2.21666666578
+ },
+ "goals_before_drop": {
+  "episodes": 1727,
+  "drops": 684,
+  "min": 0,
+  "drops_before_first_goal": 23,
+  "p1": 0,
+  "p5": 3,
+  "p10": 6,
+  "p25": 19,
+  "p50": 47,
+  "max_observed_streak": 61
+ },
+ "work_per_goal_J": 3.955533611759341,
+ "mean_power_W_per_env": 2.9264124413157613,
+ "torque_sq_rate": 0.1075797569217953,
+ "pd_work_per_goal_J": 47.24237893156594,
+ "pd_torque_sq_rate": 2.4466761003689674,
+ "target_rate_rad_s_per_joint": 22.005109069004455,
+ "joint_acc_rms": 455.5642579277578,
+ "joint_speed_saturated_frac": 0.9425911458333334,
+ "obj_speed_mean": 0.2975291031595507,
+ "obj_speed_rms": 0.3482418848538882,
+ "obj_spin_mean": 10.455698334492954,
+ "obj_acc_mean": 16.109920180892264,
+ "palm_dist_mean": 0.0926461876089949,
+ "palm_dist_std": 0.011277070534407336,
+ "participation_ratio": 12.605157689928378,
+ "participation_frac": 0.5729617131785626,
+ "pcs_for_90pct": 16,
+ "joints_for_80pct_motion": 15
+}

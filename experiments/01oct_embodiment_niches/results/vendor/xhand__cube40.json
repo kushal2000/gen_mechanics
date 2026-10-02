@@ -1,0 +1,75 @@
+{
+ "hand": "xhand",
+ "condition": "cube40",
+ "condition_desc": "40 mm cube",
+ "checkpoint": "/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/30sep_ten_hands/0_scale_train_left_xhand_c01_d64_l4_e12288_b114688_s100_696968_0_ltoNrs/rank_0/0_scale_train_left_xhand_c01_d64_l4_e12288_b114688_s100_696968_0/nn/last_0_scale_train_left_xhand_c01_d64_l4_e12288_b114688_s100_696968_0_ep_5000_rew__52178.824_.pth",
+ "num_envs": 1024,
+ "seconds": 60.0,
+ "dt": 0.01666666666,
+ "env_seconds": 61439.999975424,
+ "wall_s": 73.89941024780273,
+ "joints": 12,
+ "hand_mass_kg": 1.1222537755966187,
+ "cube_mass_kg": 0.03200000151991844,
+ "vel_limit_rad_s": [
+  8.629999160766602,
+  14.379999160766602
+ ],
+ "goals_per_min": 51.382812520553124,
+ "drops_per_min": 0.3115234376246094,
+ "timeouts_per_min": 0.273437500109375,
+ "goals_per_drop": 164.94043887147336,
+ "counts": {
+  "goals": 52616,
+  "drops": 319,
+  "timeouts": 280,
+  "hand_far": 0
+ },
+ "time_per_goal_s": {
+  "n": 51023,
+  "mean": 1.0845700300752887,
+  "median": 0.93333333296,
+  "p10": 0.43333333316,
+  "p90": 1.8999999992399998
+ },
+ "first_goal_after_reset_s": {
+  "n": 1593,
+  "mean": 1.2124293780461015,
+  "median": 1.0833333329,
+  "p10": 0.5833333331,
+  "p90": 1.9999999992
+ },
+ "goal_angle_deg": {
+  "n": 51023,
+  "mean": 126.40602898308221,
+  "median": 132.15842308084393,
+  "p10": 72.45598406653475,
+  "p90": 171.07885724341958
+ },
+ "path_efficiency": 0.18767704998165985,
+ "failed_segment_s": {
+  "n": 599,
+  "mean": 5.306733442507245,
+  "median": 2.499999999,
+  "p10": 0.5466666664480001,
+  "p90": 9.999999996
+ },
+ "work_per_goal_J": 4.747286877907436,
+ "mean_power_W_per_env": 4.0654825271466635,
+ "torque_sq_rate": 0.7120155951655952,
+ "pd_work_per_goal_J": 33.171023686590765,
+ "pd_torque_sq_rate": 3.893628511399858,
+ "target_rate_rad_s_per_joint": 22.273741045009107,
+ "joint_acc_rms": 325.1602047949442,
+ "joint_speed_saturated_frac": 0.6499883355034722,
+ "obj_speed_mean": 0.2714444135777727,
+ "obj_speed_rms": 0.3177815758892563,
+ "obj_spin_mean": 10.399854261300272,
+ "obj_acc_mean": 14.158754971395322,
+ "palm_dist_mean": 0.07571578314442781,
+ "palm_dist_std": 0.01168404738073774,
+ "participation_ratio": 7.654935255355762,
+ "participation_frac": 0.6379112712796469,
+ "pcs_for_90pct": 9,
+ "joints_for_80pct_motion": 8
+}

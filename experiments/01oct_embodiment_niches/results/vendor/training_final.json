@@ -1,0 +1,47 @@
+{
+ "sharpa": {
+  "study": "left_sharpa",
+  "goals_per_episode": 46.21633979797363,
+  "last_epoch": 4986.0
+ },
+ "gen_sharpa": {
+  "study": "left_gen_sharpa",
+  "goals_per_episode": 40.439640007019044,
+  "last_epoch": 4988.0
+ },
+ "allegro": {
+  "study": "left_allegro_v10",
+  "goals_per_episode": 47.77976650238037,
+  "last_epoch": 4980.0
+ },
+ "leap": {
+  "study": "left_leap_v10",
+  "goals_per_episode": 47.29399990081787,
+  "last_epoch": 4997.0
+ },
+ "shadow": {
+  "study": "left_shadow_v10",
+  "goals_per_episode": 46.62673671722412,
+  "last_epoch": 4988.0
+ },
+ "tesollo": {
+  "study": "left_tesollo_v10",
+  "goals_per_episode": 46.582529907226565,
+  "last_epoch": 4981.0
+ },
+ "dex3": {
+  "study": "left_dex3",
+  "goals_per_episode": 45.80998645782471,
+  "last_epoch": 4953.0
+ },
+ "xhand": {
+  "study": "left_xhand",
+  "goals_per_episode": 44.59181983947754,
+  "last_epoch": 4962.0
+ },
+ "wuji2": {
+  "study": "left_wuji2",
+  "goals_per_episode": 42.458853492736814,
+  "last_epoch": 4980.0
+ }
+}
