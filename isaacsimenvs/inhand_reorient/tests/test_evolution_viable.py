@@ -320,3 +320,43 @@ def test_grasp_search_command_bounds_the_peak_joint_speed(tmp_path):
     off = drv.parse_args(base + ["--viable-max-joint-speed", "-1"])
     assert "env.anyrotate.grasp_max_joint_speed=-1.0" in drv.grasp_search_cmd(off, tmp_path / "p.json",
                                                                              tmp_path / "c.npz", tmp_path / "s")
+
+
+def test_surplus_viable_designs_become_spares_drawn_first_next_generation():
+    """Viable designs beyond the target are returned as spares; the next
+    generation proposes them first (known viable: no search)."""
+    dist = drv.resolve_variant("G_V1")
+    rng = np.random.default_rng(2)
+    known = {}
+
+    def search_all(batch):
+        return {p.sha256: 2 for p in batch}, 1.0
+
+    plan0, report0 = vb.build_viable_generation(0, 3, [], dist, arch.Archive(), rng, drv.IdMinter(), known=known,
+                                                search=search_all, batch_size=6, max_batches=1)
+    spares = report0["spares"]
+    assert len(plan0.entries) == 3 and len(spares) >= 1
+    assert {"derivation_dict", "design_id", "role", "founder_id", "parent_id", "generation_born", "digit_count",
+            "joint_count"} <= set(spares[0])
+    searched = []
+
+    def search1(batch):
+        searched.extend(p.meta.design_id for p in batch)
+        return {p.sha256: 2 for p in batch}, 1.0
+
+    plan1, report1 = vb.build_viable_generation(1, 2, [], dist, arch.Archive(), rng, drv.IdMinter(1000), known=known,
+                                                search=search1, batch_size=4, max_batches=1, spares=spares)
+    ids = [m.design_id for m in plan1.metas]
+    assert ids[: min(2, len(spares))] == [s["design_id"] for s in spares][: min(2, len(spares))]
+    assert not set(ids) & set(searched)  # spares were not searched again
+    assert report1["spares_used"] == min(2, len(spares))
+
+
+def test_spare_pool_is_capped_and_round_trips_through_state(tmp_path):
+    spares = [{"design_id": f"s{i}"} for i in range(100)]
+    assert len(vb.cap_spares(spares, 64)) == 64 and vb.cap_spares(spares, 64)[0]["design_id"] == "s36"
+    a = arch.Archive()
+    path = tmp_path / "state.json"
+    drv.save_state(path, archive=a, driver_rng=np.random.default_rng(0), generation_completed=0, last_checkpoint=None,
+                   prev_tolerance=0.0, minter=drv.IdMinter(), config={}, known_viability={}, spares=spares[:2])
+    assert drv.load_state(path)["spares"] == spares[:2]
