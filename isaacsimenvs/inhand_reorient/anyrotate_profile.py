@@ -26,7 +26,7 @@ from .repose_profile import quat_apply, quat_conjugate, quat_from_angle_axis, qu
 __all__ = [
     "PROFILE_ANYROTATE", "is_anyrotate", "apply_anyrotate_to_cfg", "ANYROTATE_OBS_FIELDS", "ANYROTATE_PRIV_FIELDS", "anyrotate_field_width",
     "keypoint_offsets", "object_keypoints", "keypoint_distance", "keypoint_reward",
-    "quat_to_rotvec", "rotation_about_axis", "rotation_reward", "next_goal", "goal_reached",
+    "quat_to_rotvec", "rotation_about_axis", "rotation_reward", "next_goal", "goal_timer_due", "goal_reached",
     "contact_rewards", "angular_velocity_penalty", "pose_penalty", "work_penalty", "torque_penalty",
     "axis_deviation", "axis_in_object_frame", "axis_tilt", "terminations", "reward_curriculum_lambda", "relative_joint_targets",
     "simulated_tactile", "sample_axes", "world_up_in_palm", "distal_slots", "tip_sources", "combine_rewards", "graded_rotation_fitness",
@@ -164,6 +164,13 @@ def next_goal(obj_quat: torch.Tensor, axis: torch.Tensor, increment: float) -> t
     about ``axis`` (same frame as ``obj_quat``)."""
     angle = torch.full((obj_quat.shape[0],), float(increment), device=obj_quat.device)
     return quat_mul(quat_from_angle_axis(angle, axis), obj_quat)
+
+
+def goal_timer_due(age_steps: torch.Tensor, timer_s: float, step_dt: float) -> torch.Tensor:
+    """A/B option ``goal_advance=timer`` (not in the paper, which advances
+    a goal only when it is reached): whether a goal has been pending for
+    ``timer_s`` seconds."""
+    return age_steps >= int(round(float(timer_s) / float(step_dt)))
 
 
 def goal_reached(kp_dist: torch.Tensor, rot_dist: torch.Tensor, d_tol: float, metric: str) -> torch.Tensor:

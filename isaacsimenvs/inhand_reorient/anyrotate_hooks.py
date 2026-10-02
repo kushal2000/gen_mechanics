@@ -70,6 +70,8 @@ def allocate_buffers(env) -> None:
     env._ar_prev_action = torch.zeros(n, j, device=device)
     env._ar_prev_joint_pos = env.robot.data.default_joint_pos.clone()
     env._ar_goal_pos_palm = torch.zeros(n, 3, device=device)
+    env._ar_goal_age = torch.zeros(n, dtype=torch.long, device=device)
+    env._ar_timer_goals = torch.zeros(n, device=device)
     env._ar_axis_obj = env._ar_axis.clone()
     env._ar_axis_tilt = torch.zeros(n, device=device)
     env._ar_prev_obj_quat_palm = torch.zeros(n, 4, device=device)
@@ -375,6 +377,15 @@ def get_rewards(env) -> torch.Tensor:
     ids = goal_hit.nonzero(as_tuple=False).squeeze(-1)
     if ids.numel() > 0:
         _new_goal(env, ids, env._obj_quat_palm[ids], env._obj_pos_palm[ids])
+    env._ar_goal_age += 1
+    if a.goal_advance == "timer":
+        due = ar.goal_timer_due(env._ar_goal_age, a.goal_timer_s, float(env.step_dt)) & ~goal_hit
+        due = due & (env.episode_length_buf > env._ar_grace)
+        tids = due.nonzero(as_tuple=False).squeeze(-1)
+        if tids.numel() > 0:
+            _advance_goal(env, tids)
+    elif a.goal_advance != "reach":
+        raise ValueError(f"anyrotate.goal_advance={a.goal_advance!r}; expected 'reach' or 'timer'")
     _update_curricula(env)
     return reward
 
@@ -387,8 +398,23 @@ def _new_goal(env, env_ids, obj_quat_palm, obj_pos_palm) -> None:
     env._goal_quat_w[env_ids] = rp.quat_mul(_palm_quat(env)[env_ids], goal_palm)
     env._ar_goal_pos_palm[env_ids] = obj_pos_palm
     env._goal_quat_palm = rp.quat_mul(rp.quat_conjugate(_palm_quat(env)), env._goal_quat_w)
+    env._ar_goal_age[env_ids] = 0
     # Re-anchor the axis-tilt reference: the object's body axis along k now.
     env._ar_axis_obj[env_ids] = ar.axis_in_object_frame(obj_quat_palm, env._ar_axis[env_ids])
+
+
+def _advance_goal(env, env_ids) -> None:
+    """``goal_advance=timer``: the pending goal moves on by the increment
+    about k from where it was (not from the object), so a stalled object
+    falls behind. The axis-tilt reference is left alone."""
+    a = _cfg(env)
+    palm_q = _palm_quat(env)[env_ids]
+    goal_palm = rp.quat_mul(rp.quat_conjugate(palm_q), env._goal_quat_w[env_ids])
+    goal_palm = ar.next_goal(goal_palm, env._ar_axis[env_ids], math.radians(a.goal_increment_deg))
+    env._goal_quat_w[env_ids] = rp.quat_mul(palm_q, goal_palm)
+    env._goal_quat_palm = rp.quat_mul(rp.quat_conjugate(_palm_quat(env)), env._goal_quat_w)
+    env._ar_goal_age[env_ids] = 0
+    env._ar_timer_goals[env_ids] += 1.0
 
 
 def _update_curricula(env) -> None:
@@ -475,6 +501,7 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     env._successes[env_ids] = 0
     env._consec_success_steps[env_ids] = 0
     env._ar_rotation_rad[env_ids] = 0.0
+    env._ar_timer_goals[env_ids] = 0.0
     env._ar_force_smooth[env_ids] = 0.0
     env._ar_prev_obj_quat_palm[env_ids] = obj_q_palm
     env._prev_rot_error[env_ids] = 0.0
@@ -575,6 +602,8 @@ def log_metrics(env) -> None:
     ep["rotation_rad"] = env._ar_rotation_rad.clone()
     ep["rotations"] = env._ar_rotation_rad / (2.0 * math.pi)
     ep["ttt_s"] = env.episode_length_buf.float() * dt
+    if a.goal_advance == "timer":
+        ep["timer_goal_advances"] = env._ar_timer_goals.clone()
     env.extras["lambda_rew"] = float(env._ar_lambda)
     env.extras["g_eval"] = float(env._ar_g_eval)
     env.extras["rotations_eval"] = float(env._ar_rot_eval)

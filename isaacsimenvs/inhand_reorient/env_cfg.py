@@ -279,6 +279,12 @@ class AnyRotateCfg:
     They differ for allegro_right under NVIDIA's pose, whose palm +z runs
     along the fingers (horizontal)."""
     goal_increment_deg: float = 30.0  # [Table 9, theta = 30 deg]
+    goal_advance: str = "reach"
+    """"reach" (the paper: a new goal only when the pending one is reached;
+    the "regular intervals" of Sec. 3.1 are the angular increment, Table 9).
+    "timer" (A/B option): a goal pending ``goal_timer_s`` advances by the
+    increment from where it was, so a stalled object falls behind."""
+    goal_timer_s: float = 1.5
     goal_tol_metric: str = "rotation_rad"
     """adapt.: see anyrotate_profile.goal_reached (d_tol = 0.15 cannot be a
     keypoint distance in metres). "kp_dist_m" applies it literally."""
