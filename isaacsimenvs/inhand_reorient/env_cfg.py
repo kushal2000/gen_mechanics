@@ -188,6 +188,21 @@ class ReposeCfg:
     hand_sleep_threshold: float = 0.005
     hand_stabilization_threshold: float = 0.0005
 
+    # --- hand actuator overrides (negative: keep the hand's own value) ---
+    # NVIDIA's Allegro: stiffness 3.0, damping 0.1, joint friction 0.01,
+    # effort 0.5 N m, armature 0 (its USD), velocity limit 2 pi rad/s (its USD).
+    hand_stiffness: float = -1.0
+    hand_damping: float = -1.0
+    hand_armature: float = -1.0
+    hand_joint_friction: float = -1.0
+    hand_effort_limit: float = -1.0
+    hand_velocity_limit: float = -1.0
+
+    hand_asset: str = ""
+    """"" (default): ``assets.hand_id`` from our manifest. "isaaclab_allegro":
+    NVIDIA's Allegro USD and ALLEGRO_HAND_CFG, unchanged (fetched from their
+    asset server), to separate asset effects from env effects."""
+
     # --- hand pose ---
     hand_pose_file: str = "repose_hand_poses.json"
     """Per-hand pose overrides (``palm_calibration.REPOSE_HAND_POSES_PATH``;

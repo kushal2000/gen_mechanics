@@ -219,15 +219,22 @@ def _hand_articulation_cfg(spec, usd_path: str | None, repose=None) -> Articulat
     `default_joint_pos`."""
     carrier_names = [n for n in _CARRIER_JOINT_NAMES if n in spec.hand_joint_names]
     hand_names = [n for n in spec.hand_joint_names if n not in carrier_names]
-    actuators = {
-        "hand": ImplicitActuatorCfg(
-            joint_names_expr=hand_names,
-            stiffness={n: spec.hand_stiffness[n] for n in hand_names},
-            damping={n: spec.hand_damping[n] for n in hand_names},
-            armature={n: spec.hand_armature[n] for n in hand_names},
-            friction=0.0,
-        ),
-    }
+    hand_kwargs = dict(
+        stiffness={n: spec.hand_stiffness[n] for n in hand_names},
+        damping={n: spec.hand_damping[n] for n in hand_names},
+        armature={n: spec.hand_armature[n] for n in hand_names},
+        friction=0.0,
+    )
+    if repose is not None:
+        # Optional uniform overrides (a negative value keeps the hand's own).
+        for field, key in (("hand_stiffness", "stiffness"), ("hand_damping", "damping"),
+                           ("hand_armature", "armature"), ("hand_joint_friction", "friction"),
+                           ("hand_effort_limit", "effort_limit_sim"),
+                           ("hand_velocity_limit", "velocity_limit_sim")):
+            value = float(getattr(repose, field, -1.0))
+            if value >= 0.0:
+                hand_kwargs[key] = value
+    actuators = {"hand": ImplicitActuatorCfg(joint_names_expr=hand_names, **hand_kwargs)}
     if carrier_names:
         actuators["carrier"] = ImplicitActuatorCfg(
             joint_names_expr=carrier_names,
@@ -352,7 +359,68 @@ def setup_scene(env) -> None:
     _setup_scene_single_hand(env)
 
 
+# NVIDIA's Allegro USD as used by Isaac-Repose-Cube-Allegro-Direct-v0, for
+# separating asset effects from env effects (repose.hand_asset).
+_ISAACLAB_ALLEGRO_JOINTS = (
+    "index_joint_0", "middle_joint_0", "ring_joint_0", "thumb_joint_0",
+    "index_joint_1", "index_joint_2", "index_joint_3", "middle_joint_1", "middle_joint_2",
+    "middle_joint_3", "ring_joint_1", "ring_joint_2", "ring_joint_3", "thumb_joint_1",
+    "thumb_joint_2", "thumb_joint_3",
+)
+_ISAACLAB_ALLEGRO_TIPS = ("index_link_3", "middle_link_3", "ring_link_3", "thumb_link_3")
+
+
+def _setup_isaaclab_allegro(env) -> None:
+    """``repose.hand_asset=isaaclab_allegro``: NVIDIA's Allegro USD and
+    ``ALLEGRO_HAND_CFG`` unchanged (pose, joint defaults, gains, rigid and
+    articulation props), in place of our manifest hand. The palm frame is
+    the articulation root (``allegro_mount``); the cube spawns where
+    NVIDIA's does, (0, -0.17, 0.56) in the env frame. Diagnostic only: it
+    fetches NVIDIA's asset from their server."""
+    from isaaclab.utils.math import quat_apply_inverse
+    from isaaclab_assets.robots.allegro import ALLEGRO_HAND_CFG
+    import torch
+
+    from .hand_only import HandOnlySpec
+
+    robot_cfg = ALLEGRO_HAND_CFG.replace(prim_path=ROBOT_PATH)
+    root_pos = torch.tensor([robot_cfg.init_state.pos])
+    root_rot = torch.tensor([robot_cfg.init_state.rot])
+    spawn = quat_apply_inverse(root_rot, torch.tensor([[0.0, -0.17, 0.56]]) - root_pos)[0]
+    env.cfg.reset.object_spawn_offset = tuple(float(v) for v in spawn)
+    defaults = {n: (0.28 if n == "thumb_joint_0" else 0.0) for n in _ISAACLAB_ALLEGRO_JOINTS}
+    nan_limits = tuple((-float("inf"), float("inf")) for _ in _ISAACLAB_ALLEGRO_JOINTS)
+    spec = HandOnlySpec(
+        name="isaaclab_allegro", hand_name="isaaclab_allegro", urdf_path="", hand_root="allegro_mount",
+        hand_joint_names=_ISAACLAB_ALLEGRO_JOINTS, hand_joint_limits=nan_limits,
+        palm_body_name="allegro_mount", fingertip_body_names=_ISAACLAB_ALLEGRO_TIPS,
+        # Informational only: ALLEGRO_HAND_CFG's own actuator sets the gains.
+        hand_stiffness={n: 3.0 for n in _ISAACLAB_ALLEGRO_JOINTS},
+        hand_damping={n: 0.1 for n in _ISAACLAB_ALLEGRO_JOINTS},
+        hand_armature={n: 0.0 for n in _ISAACLAB_ALLEGRO_JOINTS}, hand_default_joint_pos=defaults,
+        palm_center_offset=(0.0, 0.0, 0.0), adjacent_links={"allegro_mount": []},
+        base_pos=tuple(robot_cfg.init_state.pos), base_rot=tuple(robot_cfg.init_state.rot),
+    )
+    derive_spaces(env.cfg, spec)
+    env.robot = Articulation(robot_cfg)
+    env.object, env.goal_viz = _scene_objects(env, {})
+    spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+    light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
+    light_cfg.func("/World/Light", light_cfg)
+    env.scene.clone_environments(copy_from_source=False)
+    env.scene.articulations["robot"] = env.robot
+    env.scene.rigid_objects["object"] = env.object
+    env.scene.rigid_objects["goal_viz"] = env.goal_viz
+    env.hand_spec = spec
+    env.hand_cut = None
+    print(f"[inhand_reorient] hand=isaaclab_allegro (NVIDIA's USD, ALLEGRO_HAND_CFG); "
+          f"spawn_offset_local={env.cfg.reset.object_spawn_offset}", flush=True)
+
+
 def _setup_scene_single_hand(env) -> None:
+    if is_repose(env.cfg) and env.cfg.repose.hand_asset == "isaaclab_allegro":
+        _setup_isaaclab_allegro(env)
+        return
     t0 = time.perf_counter()
     asset_dir = Path(tempfile.mkdtemp(prefix="inhand_reorient_"))
 
