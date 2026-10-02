@@ -306,8 +306,8 @@ class AnyRotateCfg:
     d_max: float = 0.1
     axis_dev_max_deg: float = 45.0
     axis_check_grace_steps: int = 10
-    """adapt.: a settle phase in place of the paper's cached stable grasps:
-    for this many steps after a reset the off-axis test is off, and at its
+    """adapt.: a settle phase for the drop reset (envs reset from a cached
+    grasp use ``grasp_settle_steps``): for this many steps after a reset the off-axis test is off, and at its
     end the axis-tilt reference and the first goal are re-made from the
     settled object (``anyrotate_profile.axis_tilt``). The episode's rotation
     about k (the Rot metric and the fitness) counts only after it."""
@@ -353,9 +353,10 @@ class AnyRotateCfg:
 
     # --- reset ---
     reset_joint_noise: float = 0.1
-    """adapt.: the paper starts episodes from a cache of stable grasps (App.
-    C); we drop the object onto the palm-up hand from its spawn point, joints
-    at the canonical pose plus U(-noise, noise)."""
+    """Drop reset (no ``grasp_cache``, or a design without a stable grasp):
+    the object dropped onto the palm-up hand from its spawn point, joints at
+    the canonical pose plus U(-noise, noise). The paper starts episodes from
+    a cache of stable grasps (App. C; ``grasp_cache`` below)."""
     hand_orientation_randomization: bool = False
     """The paper samples the hand orientation per episode; the team keeps a
     stationary palm-up hand (not implemented: True raises)."""

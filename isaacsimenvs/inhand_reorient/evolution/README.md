@@ -107,7 +107,7 @@ counted the tumbling of objects that landed or fell in the first 0.5 s).
 | r_gc | 1 if >= 2 tip contacts (Eq. 6) | as paper; tip contact = App. F binary contact |
 | r_bc | 1 if non-tip contacts ">= 0" (Eq. 7), a penalty | `> 0` (the printed `>= 0` always holds) |
 | r_omega | -min(\|w\| - 0.6, 0) (Eq. 8), "penalises exceeding the maximum" | -max(\|w\| - 0.6, 0), the stated intent |
-| r_pose | -\|q - q0\| (Eq. 9) | as paper; q0 = the hand's canonical (calibrated) pose |
+| r_pose | -\|q - q0\| (Eq. 9) | as paper; q0 = the hand's canonical (calibrated) pose; with the grasp cache, the episode's initial grasp pose (HORA's `init_pose_buf`) |
 | r_work | -tau^T q-bar (Eq. 10), "controller work done" | -\|tau^T Delta q\| over the step |
 | r_torque | -\|tau\| (Eq. 11) | as paper (Isaac Lab's applied torque) |
 | r_terminate | -1 x 50 on drop or off-axis (Eq. 12) | as paper |
@@ -125,12 +125,68 @@ counted the tumbling of objects that landed or fell in the first 0.5 s).
 | Student, TCN, d_tol 0.25 | Sec. 3.2, Table 5 | not ported (teacher only) |
 | Objects | capsules and boxes, sizes and mass/CoM ranges (Table 4) | one shape per run, default a 5.25 cm box: without the grasp cache a capsule rolls off the open palm; mass U(0.025, 0.2), CoM U(+-0.01) per env |
 | Friction | object and hand 10.0 (Table 4) | as paper (default physics material) |
-| Grasp initialisation | cache of stable grasps (App. C) | not ported: object dropped onto the palm-up hand at its spawn point, joints at the canonical pose + U(+-0.1); 10-step settle phase |
+| Grasp initialisation | cache of stable grasps (App. C) | `anyrotate.grasp_cache` (off by default; see "Grasp cache" below): HORA's generation and reset, AnyRotate's U(+-0.3) joint sampling; without it the object is dropped onto the palm-up hand, joints at the canonical pose + U(+-0.1), 10-step settle phase |
 | Hand orientation | random per episode, gravity invariance | stationary palm-up hand (team decision); `hand_orientation_randomization` raises |
 | Hand | Allegro, system-identified (App. D), gravity on | each hand's palm-up placement (`repose_hand_poses.json`: NVIDIA's for allegro_right), NVIDIA's Allegro actuator, gravity on |
 | Observation noise | joint 0.03, tip pos 0.005, tip orientation 0.01, contact pose 0.0174, force 0.1 (Table 4) | as paper (Gaussian std) |
 | PD and disturbance randomisation | x U(0.9, 1.1) gains; disturbance scale 2, p 0.25, decay 0.99 (Table 4) | not ported |
 | Gravity curriculum | (not in AnyRotate) | optional: Isaac Lab Dexsuite's ADR gravity (difficulty 0..10, +-1 per episode at >= 1 goal, gravity = fraction x 9.81, 0 below 0.1); `anyrotate.gravity_curriculum` |
+
+## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
+
+Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
+(H. Qi et al., CoRL 2022; `hora/tasks/allegro_hand_grasp.py`, `scripts/gen_grasp.sh`).
+`grasp_cache.py` (Kit-free: sampling, acceptance, storage, keys; `tests/test_grasp_cache.py`) and
+`grasp_cache_gen.py` (generation in a live env, and its Kit entry point).
+
+What HORA does: 20000 envs, canonical grasp pose + 0.25 x U(-1, 1) rad per joint, the object at a
+fixed point in the hand, PD targets held (zero actions) for 50 control steps at 15 Hz with gravity
+on. A candidate is reset as soon as a fingertip is more than 0.1 m from the object, fewer than 2
+fingertips touch it, or it falls more than 1.5 cm; the joint positions and object pose of the
+survivors at the end of the hold are saved, 50k per object scale. At reset an episode copies one
+saved state with no noise (joint positions and PD targets both set to the saved joint positions);
+the pose penalty uses that state as its reference. AnyRotate App. C: object 13 cm above the hand
+base in a random orientation, canonical pose + U(-0.3, 0.3) rad, 120 steps (6 s) while gravity
+turns through the hand's +-x, +-y, +-z; kept when > 2 tip contacts, no non-tip contact, total
+fingertip-to-object distance < 0.2 and the object stays stable; 10000 grasps per object.
+
+How it is adapted here (all numbers are `anyrotate.grasp_*` fields):
+
+| Element | HORA / AnyRotate | Port |
+|---|---|---|
+| Canonical pose | HORA's Allegro grasp pose | allegro_right: HORA's pose mapped onto the drake joint names (`CANONICAL_GRASP_POSES`); other hands and grammar designs: their calibrated default pose (`palm_up` curl) |
+| Joint sampling | + 0.25 U(-1, 1) (HORA), U(-0.3, 0.3) (AnyRotate) | U(-0.3, 0.3); a `grasp_curl_frac` share instead curls every joint to one random fraction U(0.15, 0.85) of its range (+- 0.1), because a design has no hand-made grasp pose |
+| Object placement | fixed point in the hand; random orientation (AnyRotate) | the hand's spawn point or, for a `grasp_tip_place_frac` share, the centroid of its valid fingertips after the hand has settled 5 steps at its targets (+- 1 cm); uniformly random orientation |
+| Hold | 3.3 s at fixed gravity (HORA); 6 s with gravity along 6 axes (AnyRotate) | 3 s (60 steps at 20 Hz), gravity down (the hand never turns); `grasp_gravity_cycle` turns it through +-x, +-y, +-z |
+| Acceptance | see above | HORA's: displacement <= 2 cm and every valid fingertip within 0.1 m at every step, >= 2 tip contacts (App. F force > 0.25 N, mean of the last 3 steps); plus speed <= 0.05 m/s and 0.5 rad/s at the end. AnyRotate's no-non-tip-contact and mean-distance tests are options (`grasp_max_nontip_contacts`, `grasp_max_mean_tip_dist_m`): with a 5.25 cm cube the mean-distance test (0.05 m) rejected 6088 of 6144 allegro candidates |
+| Stored | joint positions, object pose (world) | per design: settled joint positions, the PD targets that held the grasp, object pose in the palm frame, tip/non-tip contact counts, mass, displacement |
+| Reset | copy, no noise; targets = settled joints | copy, no noise by default (`grasp_reset_*_noise`); targets = the held targets (HORA's choice drops the squeeze that held the object); no settle phase (`grasp_settle_steps` 0) |
+| Count | 50k (HORA), 10k (AnyRotate) | `grasp_per_design` (default 1000; 10000 for the single allegro run) |
+
+Keys: a population design by its entry sha256 (`design:<sha256>`), a single hand by its id and a
+sha256 over its palm-up calibration, pose-file entry and collider source (`hand:<id>:<sha16>`). A
+cache also records the physics it was made with (`grasp_cache.object_signature`: object shape and
+size, friction, dt, decimation, hand gains); loading it into an env with other physics raises. A
+population's default file is its sidecar `<stem>.grasps.npz`.
+
+A design with no stable grasp (none after `grasp_gen_rounds_without_grasp` rounds) is non-viable:
+its envs keep the drop reset (shapes stay fixed) but `design_scoring` scores its episodes 0 and
+reports `has_stable_grasp: false` (per design, with `grasps_cached`; snapshot-level
+`grasp_cache_viable` and `grasp_cache_non_viable`).
+
+Generate (one Kit launch; all envs of all designs run candidates in parallel):
+
+```
+OMNI_KIT_ACCEPT_EULA=YES OMNI_KIT_CACHE_PATH=/tmp/$USER/ov_cache WANDB_MODE=disabled timeout -k 30 1800 \
+  .venv_isaacsim/bin/python -m isaacsimenvs.inhand_reorient.grasp_cache_gen \
+  --population outputs/stability/pop_v3s_32.json --num-envs 4096          # or --hand-id allegro_right
+```
+
+and train with `env.anyrotate.grasp_cache=<file>` (add `env.anyrotate.grasp_cache_generate=true` to
+generate missing designs at env start instead). The evolution driver's `--grasp-cache` does the
+latter in every generation's training launch, on `<run-dir>/grasp_cache.npz` pruned to the current
+population (`grasp_cache_prune`), so elites and probes reuse their grasps and only new designs cost
+generation time; `generations.jsonl` gets a `grasp_cache` entry per generation.
 
 ## File layout
 

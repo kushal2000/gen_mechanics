@@ -269,7 +269,7 @@ anyrotate:
   tip_quat_noise: 0.01
   contact_pose_noise: 0.0174
   contact_force_noise: 0.1
-  reset_joint_noise: 0.1            # adapt.: no grasp cache (App. C)
+  reset_joint_noise: 0.1            # drop reset (no grasp_cache, or a design without a stable grasp)
   hand_orientation_randomization: false   # team decision: stationary palm-up hand
   grasp_cache: ""                   # [App. C; HORA] .npz of stable grasps (grasp_cache.py); "" = drop reset
   grasp_cache_generate: false       # generate missing designs' grasps at env start and save them
