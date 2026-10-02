@@ -18,6 +18,14 @@ LOGS=$REPO/debug_outputs/embodiment_niches_uniform/logs
 mkdir -p $OUT $LOGS
 cd $REPO
 export OMNI_KIT_ACCEPT_EULA=YES
+# CKPT may be left empty with RUN_GLOB set: the newest checkpoint matching it when the job STARTS (for a
+# job chained after a training run whose final checkpoint does not exist yet).
+if [ -z "${CKPT:-}" ] && [ -n "${RUN_GLOB:-}" ]; then
+    CKPT=$(ls -t $RUN_GLOB 2>/dev/null | head -1)
+    # Never fall through to eval_niches' default (the hand's own single-hand policy) by accident.
+    [ -n "$CKPT" ] || { echo "no checkpoint matches $RUN_GLOB"; exit 1; }
+    echo "checkpoint $CKPT"
+fi
 run() {   # run <condition> <seconds> <out name>
     f=$OUT/${HAND}__$3.json
     [ -s "$f" ] && { echo "skip $f"; return; }

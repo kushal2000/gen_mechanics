@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=niche_unified_plots
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=16000
+#SBATCH --time=00:30:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+# After the unified policy's per-hand niche evals: training scores, then the niche map and bar plots.
+#   sbatch --dependency=afterany:<eval jobs> --export=ALL,SET=unified_final,RUN_GLOB='<run dir glob>' run_unified_niche_plots.sub
+set -uo pipefail
+cd /share/portal/kk837/gen_mechanics
+P=.venv_isaacsim/bin/python; A=experiments/01oct_embodiment_niches/analysis
+$P $A/unified_training_final.py --set=$SET --run-glob="$RUN_GLOB"
+for s in aggregate plot_bars plot_main; do $P $A/$s.py --set=$SET; done

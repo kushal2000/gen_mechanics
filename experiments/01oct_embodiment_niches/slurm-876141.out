@@ -1,0 +1,2 @@
+policy sharpa_canon_ep_400: /share/portal/kk837/gen_mechanics/debug_outputs/train_logs/01oct_uniform_dynamics/0_scale_train_left_sharpa_uniform_canon_c01_d64_l4_e12288_b114688_s100_871441_0_UkhVQU/rank_0/0_scale_train_left_sharpa_uniform_canon_c01_d64_l4_e12288_b114688_s100_871441_0/nn/last_0_scale_train_left_sharpa_uniform_canon_c01_d64_l4_e12288_b114688_s100_871441_0_ep_400_rew_236.30685.pth
+[2026-10-02T09:02:05.112] error: *** JOB 876141 ON portal-compute-03 CANCELLED AT 2026-10-02T09:02:05 DUE to SIGNAL Terminated ***
