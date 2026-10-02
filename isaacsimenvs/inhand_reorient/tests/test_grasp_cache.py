@@ -288,3 +288,16 @@ def test_signature_records_the_population_actuator_override_only_when_on():
     on = gc.object_signature(SimpleNamespace(**base, population_hand_actuator=True))
     assert "population_hand_actuator" not in off and on["population_hand_actuator"] is True
     assert gc.signature_mismatches(off, on)
+
+
+def test_optional_joint_speed_bound_rejects_a_vibrating_hand():
+    """A stable grasp should also leave the hand at rest: the peak real-joint
+    speed over the hold, bounded by max_joint_speed (off by default)."""
+    base = gc.StabilityThresholds()
+    assert base.max_joint_speed < 0
+    ok = _ok_inputs()
+    assert gc.stable_mask(**ok, joint_speed=torch.tensor([50.0]), th=base).item()
+    th = gc.StabilityThresholds(max_joint_speed=5.0)
+    assert not gc.stable_mask(**ok, joint_speed=torch.tensor([50.0]), th=th).item()
+    assert gc.stable_mask(**ok, joint_speed=torch.tensor([1.0]), th=th).item()
+    assert gc.stable_mask(**ok, th=th).item()  # not measured: no test

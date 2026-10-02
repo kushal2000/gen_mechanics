@@ -111,3 +111,7 @@ def test_gravity_promotion_defaults_to_goals():
 
 def test_population_hand_actuator_override_is_off_by_default():
     assert _task()["anyrotate"]["population_hand_actuator"] is False
+
+
+def test_joint_speed_bound_is_off_by_default():
+    assert _task()["anyrotate"]["grasp_max_joint_speed"] < 0
