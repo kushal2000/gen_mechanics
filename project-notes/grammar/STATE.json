@@ -41,7 +41,8 @@
     "Cluster budget phase 1: <=200 GPU-hours, main tier, <=4 GPUs in flight; preemptible tiers only after resume is verified and with Martin's OK; follow ~/research/slurm/CLAUDE.md etiquette; the agent never attempts cluster logins.",
     "Plan revision (Martin, 2026-09-27): replace E-R1 with a CPU grammar screen (viability + diversity) followed by an evolution pilot (MAP-Elites, shared controller with carried weights, graded fitness, 2 grammar variants x 2 seeds, ~20 GPU-h); E-R0 reduced to local gates + a cluster smoke. See plan-rl-grammar-tuning.md 'Revision, 2026-09-27'.",
     "GPU budget (Martin, 2026-10-01): may exceed 200 GPU-h; do not hog -- match the lab's usage: 4 GPUs continuously on main (SLURM cap) plus resumable runs on the preemptible free-cycles tier as a throttled array (<= 8 in flight); avoid the outlier pattern of dozens of GPUs.",
-    "Task spec (Martin, 2026-10-01): use a recent established in-hand rotation task, not our own variant and not the 2021 repose-cube benchmark. Chosen: AnyRotate (Yang et al., CoRL 2024, arXiv 2405.07391): multi-axis rotation about a commanded axis with rolling goals, keypoint + rotation + goal + contact + stability rewards, 20 Hz, 30 s episodes, PPO (rl_games, 8192 envs). Ported from the paper (no code released), palm-up stationary hand, variable hands padded/masked. Optional: NVIDIA Dexsuite (Isaac Lab 2.3, 2025) ADR gravity curriculum behind a flag. Web search budget for this session is exhausted; a 2025-2026 survey needs Martin to raise CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION."
+    "Task spec (Martin, 2026-10-01): use a recent established in-hand rotation task, not our own variant and not the 2021 repose-cube benchmark. Chosen: AnyRotate (Yang et al., CoRL 2024, arXiv 2405.07391): multi-axis rotation about a commanded axis with rolling goals, keypoint + rotation + goal + contact + stability rewards, 20 Hz, 30 s episodes, PPO (rl_games, 8192 envs). Ported from the paper (no code released), palm-up stationary hand, variable hands padded/masked. Optional: NVIDIA Dexsuite (Isaac Lab 2.3, 2025) ADR gravity curriculum behind a flag. Web search budget for this session is exhausted; a 2025-2026 survey needs Martin to raise CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION.",
+    "Task (2026-10-02): task_profile hora -- HORA (Qi et al., CoRL 2022) ported from its released code (z-axis rotation reward clip(w.k, +-0.5) with linvel/pose/torque/work penalties, 1.5 cm fall or 20 s episodes, 20 Hz delta targets a/24, 3-frame proprio history + privileged obs, HORA PPO) plus HORA-style grasp cache. allegro reaches 2.14 rotations per 20 s episode (0.75 rad/s) in 60 min, about HORA's sim level. AnyRotate kept as a faithful port but its lambda_rew curriculum prevents learning here."
   ],
   "issues": [
     {
@@ -333,10 +334,17 @@
     },
     {
       "id": "I42",
-      "status": "open",
+      "status": "resolved (single hand)",
       "hypothesis": "Task-spec study (Opus worker, 2026-10-02): (1) NVIDIA Isaac-Repose-Cube-Allegro-Direct-v0 reference learns to 12.9 successes/episode in 60 min on the 4090; our env with NVIDIA's Allegro USD learns at near the same rate, so the env is sound; our drake allegro_right URDF was ~5x slower mainly from box/sphere colliders (convex hulls from visual meshes closed the gap), plus pose and actuator; legacy friction fields were never wired (0.5 everywhere). (2) AnyRotate port (paper-faithful except grasp cache, student distillation, hand-orientation randomisation): allegro z-first plateaus at 0.13 rotations/episode (paper 1.8-2.2), S2 axes fail. (3) Population under every spec: objects drop within ~0.3 s from the palm-up spawn; Dexsuite gravity curriculum lowers drops 99% -> 65% but gravity never ramped. Next: port AnyRotate's grasp cache (stable initial grasps per design). UPDATE grasp cache (48310ec..7beae4f, 383 tests): HORA-style stable-grasp cache works (allegro drops 13% -> 0%, 3.7% of candidates stable, 99 s; population 7/32 designs viable incl. allegro/sharpa/leap projections, 4.2 s/design); driver --grasp-cache folds generation into train.py (+~130 s/gen). Bugs fixed: population fingertip contacts were always 0 (ghost markers); allegro palm +z runs along the fingers (z_axis_frame world_up option). Rotation still 0.10-0.13/episode vs paper 1.8-2.2: keypoint term pays ~111/150 per episode for holding near the first goal vs 2.5 rotation + 12 goals; suspect goal-advance semantics and the undefined d_kp scale.",
-      "decision": null,
+      "decision": "HORA profile rotates on allegro (dbac661..983c5de). Populations: only 6/32 designs have stable grasps under HORA physics; non-viable designs end episodes in 0.13 s and swamp training -> next: viable-only populations (I43).",
       "evidence": "outputs/isaaclab_repose/; isaacsimenvs/inhand_reorient/evolution/README.md (AnyRotate profile table)"
+    },
+    {
+      "id": "I43",
+      "status": "in_progress",
+      "hypothesis": "Populations under HORA: train only on designs with a stable grasp; per-generation grasp search with offspring viability logged as a grammar metric; validate that a shared controller learns rotation across viable hands.",
+      "decision": null,
+      "evidence": "outputs/isaaclab_repose/pop_hora_gc*"
     }
   ],
   "last_green_commit": "3acff20",

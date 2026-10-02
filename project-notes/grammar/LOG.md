@@ -345,3 +345,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - HORA-style grasp cache ported (canonical-pose perturbation plus random-curl candidates, 3 s hold, HORA acceptance tests, noise-free reset, held PD targets restored). allegro: drops 13% -> 0%, episodes run the full 30 s; population (G_V3S + 4 probes): 7/32 designs have stable grasps (allegro, sharpa, leap projections + 4 founders); 4.2 s per design.
 - Fixed: population fingertip contacts always 0; allegro "z" axis runs along the fingers.
 - Rotation not learned: 0.10-0.13 rotations/episode with or without the cache (paper 1.8-2.2). Holding near the first goal earns ~111 of 150 reward per episode; rotation 2.5, goals 12. Next: one fix cycle on goal advance and kp scale, else port HORA's released code exactly.
+
+## HORA adopted (2026-10-02 ~12:30)
+
+- AnyRotate fix cycle: goals do advance only on reach (paper confirmed); the keypoint term is not the cause; the lambda_rew curriculum turns on stability/contact penalties before rotation is learned. Best AnyRotate variant 0.38 rotations/episode.
+- HORA ported from its released code as task_profile hora: allegro 0.35 / 1.64 / 2.14 rotations per 20 s episode at 15 / 30 / 60 min (0.75 rad/s, drops 14%), about HORA's own simulation level after 0.36 B steps.
+- Population (32 designs): 6 viable under HORA physics (allegro, sharpa, leap projections + 3 founders); no learning in 30 min because non-viable designs fill the batch. Next: viable-only populations.
