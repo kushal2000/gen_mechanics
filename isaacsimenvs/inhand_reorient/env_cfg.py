@@ -270,12 +270,14 @@ def _default_sim_cfg() -> SimulationCfg:
 
 @configclass
 class InHandReorientEnvCfg(DirectRLEnvCfg):
-    task_profile: str = "isaaclab_repose"
-    """"isaaclab_repose" (default): NVIDIA's in-hand cube reorientation spec
-    (``repose`` below, ``repose_profile.py``). "legacy": this env's original
-    spec (SAPG-era reward, tolerance and goal curricula, palm-normal-axis
-    goals), every field outside ``repose`` exactly as before; select it with
-    ``env.task_profile=legacy`` to reproduce or resume earlier runs."""
+    task_profile: str = "legacy"
+    """"legacy" (default): this env's original spec (SAPG-era reward,
+    tolerance and goal curricula, palm-normal-axis goals), every field
+    outside ``repose`` exactly as before. "isaaclab_repose": NVIDIA's 2021
+    in-hand cube reorientation spec (``repose`` below,
+    ``repose_profile.py``), selectable with ``env.task_profile=
+    isaaclab_repose`` but not adopted (2026-10-01: the team chose a newer
+    spec); kept as a verified port and framework sanity check."""
     decimation: int = 2
     episode_length_s: float = 10.0
     action_space: int = 0        # 0 = derive from the hand spec in setup_scene

@@ -80,8 +80,9 @@ DEFAULT_MINIBATCH_CAP = 16384  # ... its `minibatch_size`
 
 # Task profile (env.task_profile) and the agent configs that go with it. The
 # driver defaults to the LEGACY profile and the SAPG agent, so a run started
-# before the isaaclab_repose profile existed resumes unchanged; the env's own
-# default is isaaclab_repose, which is why the profile is always passed.
+# before the profile flag existed resumes unchanged; the profile is always
+# passed explicitly, so a later change of the env's own default cannot
+# silently change a resumed run.
 TASK_PROFILES: Tuple[str, ...] = ("legacy", "isaaclab_repose")
 DEFAULT_TASK_PROFILE = "legacy"
 SAPG_AGENT_ENTRY_POINTS: Tuple[str, ...] = (

@@ -1,16 +1,14 @@
 # -----------------------------------------------------------------------------
 # Task profile
-#   isaaclab_repose (default): NVIDIA's Isaac-Repose-Cube-Allegro-Direct-v0 spec
-#     (Isaac Lab 2.3.2), section 9 below. At env construction it overwrites
-#     decimation, sim.dt, sim.render_interval, episode_length_s, the default
-#     physics material and obs.obs_list/state_list with its own values, and
-#     ignores the action/reward/reset/termination sections. Override its
-#     numbers under env.repose.*.
-#   legacy: this env's original spec -- every section except 9, unchanged.
-#     Select with env.task_profile=legacy to reproduce or resume earlier runs
-#     (the evolution driver passes it by default; see evolution/README.md).
+#   legacy (default): this env's original spec -- every section except 9.
+#   isaaclab_repose: NVIDIA's Isaac-Repose-Cube-Allegro-Direct-v0 spec (Isaac
+#     Lab 2.3.2), section 9 below; selectable, not adopted (2026-10-01). At env
+#     construction it overwrites decimation, sim.dt, sim.render_interval,
+#     episode_length_s, the default physics material and obs.obs_list/
+#     state_list with its own values, and ignores the action/reward/reset/
+#     termination sections. Override its numbers under env.repose.*.
 # -----------------------------------------------------------------------------
-task_profile: isaaclab_repose
+task_profile: legacy
 
 # -----------------------------------------------------------------------------
 # DirectRLEnvCfg top-level required fields (legacy profile values)

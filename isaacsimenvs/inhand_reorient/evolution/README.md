@@ -47,7 +47,7 @@ Key flags (see `driver.py`'s `parse_args` for the full list and defaults):
 
 The env has two task specs, selected by `env.task_profile`:
 
-- `isaaclab_repose`, the env's default since 2026-10-01: NVIDIA's
+- `isaaclab_repose` (selectable; not adopted, 2026-10-01: the team chose a newer spec): NVIDIA's
   `Isaac-Repose-Cube-Allegro-Direct-v0` spec (Isaac Lab 2.3.2) ported to our hands
   (`isaacsimenvs/inhand_reorient/repose_profile.py`, numbers under `repose:` in
   `coevolution/cfg/task/InHandReorient.yaml`): 30 Hz policy, 10 s episodes, friction 1.0, a
@@ -58,12 +58,12 @@ The env has two task specs, selected by `env.task_profile`:
   population's designs keep their own gains and palm-up calibration. Its agent configs are plain PPO with NVIDIA's
   hyperparameters: `InHandReposeIsaacLabPPO.yaml` (single hand) and
   `InHandReposeIsaacLabPopPPO.yaml` (the same plus the I41 log-std bound, for populations).
-- `legacy`: the spec every run before 2026-10-01 used (SAPG-era reward, tolerance and
-  palm-normal-axis goal curricula).
+- `legacy`, the env's default: the spec every run before 2026-10-01 used (SAPG-era reward,
+  tolerance and palm-normal-axis goal curricula).
 
 The driver defaults to the legacy spec and the SAPG agent, so runs started before the
-profile existed resume unchanged; it always passes `env.task_profile=...` explicitly, since
-the env's own default changed. To evolve under the new spec:
+profile existed resume unchanged; it always passes `env.task_profile=...` explicitly, so a
+later change of the env's own default cannot change a resumed run. To evolve under the new spec:
 
 ```
 python -m isaacsimenvs.inhand_reorient.evolution.driver ... \

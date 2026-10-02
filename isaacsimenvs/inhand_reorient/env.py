@@ -34,9 +34,9 @@ __all__ = ["InHandReorientEnv", "InHandReorientEnvCfg"]
 class InHandReorientEnv(PoseReachEnv):
     """Reorient a cube in a fixed, palm-up hand towards a target orientation.
 
-    ``cfg.task_profile`` selects the task spec: "isaaclab_repose" (default,
-    NVIDIA's Isaac-Repose-Cube-Allegro-Direct-v0 spec; ``repose_hooks.py``)
-    or "legacy" (this env's original spec, unchanged)."""
+    ``cfg.task_profile`` selects the task spec: "legacy" (default, this
+    env's original spec) or "isaaclab_repose" (NVIDIA's
+    Isaac-Repose-Cube-Allegro-Direct-v0 spec; ``repose_hooks.py``)."""
 
     cfg: InHandReorientEnvCfg
 
