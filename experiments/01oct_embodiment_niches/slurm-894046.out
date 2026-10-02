@@ -1,1 +1,10 @@
 done gen_sharpa nominal
+done gen_sharpa cube40
+done gen_sharpa cube55
+done gen_sharpa cube65
+done gen_sharpa light
+done gen_sharpa heavy
+done gen_sharpa slippery
+done gen_sharpa push
+done gen_sharpa push_hard
+done gen_sharpa nominal_5min

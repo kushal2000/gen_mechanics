@@ -20,7 +20,7 @@ HERE = pathlib.Path(__file__).resolve().parent.parent
 RES = HERE / "results/wuji_compare"
 OUT = HERE / "plots/wuji_compare"
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
-SERIES = ("#2a78d6", "#eb6834")                       # categorical slots 1, 2 (validated default pair)
+SERIES = ("#2a78d6", "#eb6834", "#1baf7a")            # categorical slots 1-3 of the validated default palette
 CONDS = [("nominal", "nominal\n(train)"), ("cube40", "cube\n40 mm"), ("cube55", "cube\n55 mm"),
          ("cube65", "cube\n65 mm"), ("light", "light\ncube"), ("heavy", "heavy\ncube"),
          ("slippery", "slippery\n(×0.5 μ)"), ("push", "push"), ("push_hard", "hard\npush")]
@@ -73,10 +73,12 @@ def main():
             ax.text(x[1:].mean(), top * 1.02, "out-of-distribution", ha="center", va="bottom", fontsize=9,
                     color=INK)
     axes[1].set_xticks(x, [lab for _, lab in CONDS], fontsize=9, color=INK)
-    axes[0].legend(frameon=False, fontsize=9, ncol=2, loc="lower right", bbox_to_anchor=(1.0, 1.07), labelcolor=INK)
+    h, l = axes[0].get_legend_handles_labels()
+    fig.legend(h, l, frameon=False, fontsize=9, ncol=len(l), loc="upper left", bbox_to_anchor=(0.055, 0.995),
+               labelcolor=INK)
     fig.suptitle("Wuji v2: unified policy vs Wuji-only policy (nearest saved checkpoint in skill)",
-                 x=0.06, ha="left", fontsize=13, fontweight="bold", color=INK, y=0.995)
-    fig.text(0.06, 0.945, "goals per minute, 1024 envs × 60 s per condition, greedy actions · bottom: each "
+                 x=0.06, ha="left", fontsize=13, fontweight="bold", color=INK, y=1.075)
+    fig.text(0.06, 1.03, "goals per minute, 1024 envs × 60 s per condition, greedy actions · bottom: each "
              "policy relative to its own nominal (1.0 = no loss)", fontsize=9, color=INK2)
     OUT.mkdir(parents=True, exist_ok=True)
     p = OUT / "id_vs_ood.png"
