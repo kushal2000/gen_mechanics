@@ -315,6 +315,74 @@ search launch (about 10 min at 66% offspring viability), plus 8 min of boot and 
 per generation (690 epochs = 15 min on an A6000). An array of 9 runs throttled to 4 GPUs
 (`--array 0-8%4`) with `--time` = (generation 0 + (G - 1) x later generation) x 1.2.
 
+## Grammar-path allegro vs URDF allegro under HORA (2026-10-02, cluster)
+
+The projected allegro (`projected:allegro_right`, authored by `scene/author_grammar.py`) against the
+URDF allegro (drake URDF, convex hulls of its visual meshes, NVIDIA's pose), alone, 4096 envs, HORA,
+the single-hand agent, the same 40-min Kit budget per run (boot and grasp generation included) on
+`ada6000-shared` (RTX 6000 Ada), one seed each. Grasp generation is matched across runs: HORA's
+canonical pose (`grasp_projected_canonical` maps it onto the projected slots), the object at the
+fingertip centroid, up to 4000 grasps, 80 rounds.
+
+What differs between the two hands (`scene/projected_hands.py`, measured on CPU):
+
+| Factor | URDF allegro | Grammar allegro | Option |
+|---|---|---|---|
+| Palm collision | box 4.1 x 11.3 x 9.5 cm (convex hull of its mesh) | root capsule r 1 cm, 9.6 cm long; `grammar.geometry`'s palm cells add nothing (one palm body) | `population_palm_collider: mount_hull` (convex hull over the root capsule and every finger mount, +-r, 3.6 x 10.7 x 10.6 cm) |
+| Link colliders | convex hulls; finger 1.96 x 2.75 cm, tip sphere r 1.2 cm | capsules r 1.0 cm | `population_capsule_radius` |
+| Actuator | 3.0 / 0.1, 0.5 N m, 6.28 rad/s, armature 0, friction 0.01 | 3.93 / 0.15, 1.0 N m, 10 rad/s, armature 0.0017, friction 0 | `population_hand_actuator` (now also velocity limit, armature, joint friction) |
+| Joint limits | URDF | identical | - |
+| Link masses (4 fingers) | 0.472 kg | 0.482 kg (capsules, aluminium) | - |
+| Friction, contact offsets | default material (1.0), 2 mm / 0 | the same | - |
+| Placement | NVIDIA's pose; spawn 6.7 cm above the root axis | analytic palm-up (fingers tilted up); spawn over the fingertips | `population_projected_pose` (the projection's root is the URDF root turned by `root_transform`; mounts land within 2 mm) |
+
+Grasps (factor 6, `grasp_cache.npz`): URDF 6.6% yield, 73% of grasps with 2 tip contacts, 13%
+fingertip-only, object 8.5 cm out along the palm normal; grammar 7.0%, 61% / 72% fingertip-only,
+object 11.3 cm out: with no palm surface it holds the object up by the fingertips.
+
+A/B (holding time TTT in s, rotations per 20-s episode, drop share, and per-episode reward terms,
+at minutes of training wall time; one seed each, 4096 envs, RTX 6000 Ada):
+
+| Run | Change | 10 min | 20 min | 30 min | r_rot / r_pose / r_work at 30 min | Grasps (yield) |
+|---|---|---|---|---|---|---|
+| urdf_control (job 2531282) | URDF allegro | 2.4 s, 0.28 | 4.1 s, 0.46 | 1.4 s, 0.20 (1.1 at 36) | 11.4 / -5.0 / -4.2 | 4000 (6.6%) |
+| gram_base (2531293_1) | grammar allegro, matched grasps | 3.7 s, 0.36 | 5.6 s, 0.52 | 10.9 s, 0.98 (9.8 at 36) | 84.1 / -42.1 / -3.5 | 4000 (7.0%) |
+| gram_pose (2531317_3) | + URDF placement | 2.7 s, 0.27 | 9.4 s, 0.86 | 4.3 s, 0.38 | 31.7 / -19.3 / -1.2 | 4000 (7.1%) |
+| gram_all (2531293_6) | + placement, palm hull, HORA actuator, r 1.2 cm | 0.16 s, 0.02 | 0.15 s, 0.02 | stopped | 0.65 / -0.48 / -23.5 (at 20) | 537 (0.16%) |
+| gram_base_popagent (2531936_7) | population agent (log-std bound) | 4.3 s, 0.41 | 6.3 s, 0.58 | 4.3 s, 0.39 | 32.5 / -17.2 / -1.2 | 4000 |
+| gram_base_defaultgrasp (2532296_8) | population grasp defaults (palm-up curl, 64 grasps) | 1.1 s, 0.16 | 1.4 s, 0.19 (at 15) | stopped at 25 min | - | 64 (12.6%) |
+
+Findings. (1) The grammar allegro learns as well as the URDF allegro here once its grasp cache
+starts from HORA's canonical pose with the object at the fingertips: 10.9 s and 0.98 rotations at
+30 min (the URDF control 1.4-4.1 s; the 8192-env 4090 URDF run 15.6 s and 1.64). (2) With the
+population defaults (palm-up curl, 64 grasps) the same hand stays at 1.1-1.4 s, as `allegro1` did
+(about 2 s): the 2-s plateau came from the grasps, not from the hand's construction. (3) Placement
+and agent change little. (4) Combining placement, palm hull, HORA actuator and radius 1.2 cm
+collapses grasp yield to 0.16% and training to 0.15 s with a large work penalty (the hand
+vibrates); which of the three causes it is in the single-factor runs below. (5) 4096-env runs are
+noisy (the control and gram_pose peaked and fell), so differences under about 2x are within one
+seed's spread.
+
+A generic grasp pose for grammar designs (`grasp_canonical_profile: hora_like`, HORA's allegro
+pose as range fractions 0.6 / 0.8 / 0.25 / 0.25 per finger) does not substitute for HORA's own
+pose: on the same grammar allegro (job 2532464_13) grasp yield fell to 1.5% and training stayed at
+1.6-1.8 s through 35 min. HORA's thumb sits at about (0.74, 1.0, 0.62, 0.01) of its range (thumb
+q ≈ 1.08 / 1.07 / 1.01 / -0.07 in the cached grasps), the profile's at (0.6, 0.8, 0.25, 0.25)
+(0.40 / 0.36 at the distal joints), and its grasps hold the object 2 cm off centre. The opposing
+thumb is what makes HORA's pose work, and a per-finger profile cannot express it without knowing
+which digit opposes.
+
+Populations, 4096 envs, the single-hand agent, HORA:
+
+| Run | Population | Grasps | 10 / 20 / 30 min TTT | Notes |
+|---|---|---|---|---|
+| pop_mixed32_fix (2532123_9) | 32 (incl. 5 non-viable) | palm-up, tip placement, 1000, joint speed <= 5 | 0.3 / 0.3 s | stopped: founder 373 (non-viable, vibrating) still in training at -314 per step |
+| pop_viable27_fix (2532326_11) | 27 viable | the same | 0.4 / 0.4 s | stopped at 20 min |
+| pop_viable27_horalike (2532462_12) | 27 (18 viable under hora_like) | hora_like, 1000 | 0.2 / 0.2 s | stopped at 31 min |
+
+Non-viable designs keep the drop reset and still feed PPO (the driver's `--viable-only` excludes them
+before training; a manual population run does not).
+
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
 Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
