@@ -273,3 +273,18 @@ def test_table_with_no_grasp_at_all_reports_no_design_viable():
     t = gc.build_table([gc.GraspSet.empty(("a",)), None], ["a"])
     rows, ok = t.sample(torch.tensor([0, 1, 0]))
     assert not ok.any() and t.total == 0
+
+
+def test_signature_records_the_population_actuator_override_only_when_on():
+    """Caches made before the option existed keep loading (no key when off);
+    a cache made with the override does not load without it."""
+    from types import SimpleNamespace
+
+    base = dict(object_shape="box", box_size=0.0525, capsule_radius=0.0295, capsule_width=0.006,
+                static_friction=1.0, dynamic_friction=1.0, sim_dt=1 / 120, decimation=6, hand_disable_gravity=False,
+                hand_stiffness=3.0, hand_damping=0.1, hand_effort_limit=0.5, object_contact_offset=0.002,
+                object_rest_offset=0.0)
+    off = gc.object_signature(SimpleNamespace(**base, population_hand_actuator=False))
+    on = gc.object_signature(SimpleNamespace(**base, population_hand_actuator=True))
+    assert "population_hand_actuator" not in off and on["population_hand_actuator"] is True
+    assert gc.signature_mismatches(off, on)
