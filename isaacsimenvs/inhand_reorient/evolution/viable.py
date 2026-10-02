@@ -214,15 +214,22 @@ def _proposal_from(entry: "pf.PopulationEntry", meta, model, min_tip_contacts: i
 
 
 def build_viable_generation(
-    generation: int, n_designs: int, probe_hand_ids: Sequence[str], dist: Distribution,
+    generation: int, n_designs: int, probe_hand_ids: Sequence[str], dist,
     archive: "arch.Archive", driver_rng: np.random.Generator, minter, *, known: Dict[str, int],
     search: Callable[[List[Proposal]], Tuple[Dict[str, int], float]], batch_size: int, max_batches: int,
     max_offspring_retries: int = 16, min_tip_contacts: int = 2,
 ):
     """The viable-only counterpart of ``driver.build_generation_population``:
     ``(GenerationPlan, report)`` with elites, viable probes and newly drawn
-    viable designs; ``report`` is the generation's ``viability`` log entry."""
+    viable designs; ``report`` is the generation's ``viability`` log entry.
+    ``dist`` is a Distribution or a ``{variant name: Distribution}`` dict;
+    founders and immigrants cycle through the dict (a mixed population),
+    mutation uses its first entry."""
     from . import driver as drv
+
+    named = dict(dist) if isinstance(dist, dict) else {"": dist}
+    variant_names, dists = list(named), list(named.values())
+    drawn_variants: List[str] = []
 
     t0 = time.time()
     probes: List[Proposal] = []
@@ -253,21 +260,26 @@ def build_viable_generation(
             role="elite", source=source))
         known.setdefault(entry.sha256, 1)  # an elite trained, so it had grasps
 
+    def founder():
+        k = len(drawn_variants) % len(dists)
+        drawn_variants.append(variant_names[k])
+        return drv.sample_new_founder(dists[k], driver_rng)
+
     def propose() -> Proposal:
         if generation == 0 or not elites:
-            derivation, design = drv.sample_new_founder(dist, driver_rng)
+            derivation, design = founder()
             role, design_id = "founder", minter.mint(generation, "founder")
             founder_id, parent_id = design_id, None
         else:
             parent = archive.sample_parent(driver_rng)
-            result = drv.try_offspring(derivation_from_dict(parent.derivation_dict), dist, driver_rng,
+            result = drv.try_offspring(derivation_from_dict(parent.derivation_dict), dists[0], driver_rng,
                                        max_retries=max_offspring_retries)
             if result is not None:
                 derivation, design = result
                 role, design_id = "offspring", minter.mint(generation, "off")
                 founder_id, parent_id = parent.founder_id, parent.design_id
             else:
-                derivation, design = drv.sample_new_founder(dist, driver_rng)
+                derivation, design = founder()
                 role, design_id = "immigrant", minter.mint(generation, "imm")
                 founder_id, parent_id = design_id, None
         digit_count, joint_count = drv._design_counts(design)
@@ -290,5 +302,64 @@ def build_viable_generation(
         "probes_viable": [p.meta.design_id for p in res.forced_viable],
         "probes_dropped": [p.meta.design_id for p in res.forced_non_viable],
         "assembly_s": round(time.time() - t0, 1),
+        "founder_variants": list(drawn_variants),
     })
     return drv.GenerationPlan(entries=entries, metas=metas), report
+
+
+def main(argv=None) -> int:
+    """Build one viable population (no training): founders round-robin over
+    ``--variants``, plus probes, grasp-searched in batches until
+    ``--designs`` are viable. Writes ``<out-dir>/population.json``, the
+    grasp cache ``<out-dir>/grasp_cache.npz`` and ``viability.json``."""
+    import argparse
+    import json
+    from pathlib import Path
+
+    from . import driver as drv
+
+    ap = argparse.ArgumentParser(description=main.__doc__)
+    ap.add_argument("--variants", required=True, help="comma-separated, e.g. G_V3S,G_V1")
+    ap.add_argument("--probes", default="allegro_right,sharpa_left_on_iiwa14,leap_right")
+    ap.add_argument("--designs", type=int, default=32)
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--task-profile", default="hora", choices=("hora", "anyrotate"))
+    ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--search-envs", type=int, default=4096)
+    ap.add_argument("--max-batches", type=int, default=6)
+    ap.add_argument("--search-rounds", type=int, default=40)
+    ap.add_argument("--grasps-per-design", type=int, default=64)
+    ap.add_argument("--search-timeout-s", type=int, default=1500)
+    ap.add_argument("--train-python", default=str(drv.REPO_ROOT / ".venv_isaacsim" / "bin" / "python3"))
+    a = ap.parse_args(argv)
+    out = Path(a.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    args = argparse.Namespace(
+        train_python=a.train_python, task_profile=a.task_profile, viable_search_envs=a.search_envs,
+        viable_search_timeout_s=a.search_timeout_s, viable_grasps_per_design=a.grasps_per_design,
+        viable_search_rounds=a.search_rounds, train_override=[], grasp_cache_path=str(out / "grasp_cache.npz"))
+    counter = {"i": 0}
+
+    def search(batch):
+        counter["i"] += 1
+        return drv.run_grasp_search(batch, args=args, run_dir=out, gen_dir=out, index=counter["i"])
+
+    dists = {v: drv.resolve_variant(v) for v in a.variants.split(",")}
+    plan, report = build_viable_generation(
+        0, a.designs, [h for h in a.probes.split(",") if h], dists, arch.Archive(), np.random.default_rng(a.seed),
+        drv.IdMinter(), known={}, search=search, batch_size=a.batch_size, max_batches=a.max_batches)
+    doc = pf.write_population(out / "population.json", plan.entries)
+    report["population_sha256"] = doc["population_sha256"]
+    report["designs"] = [{"source": m.source, "role": m.role, "digit_count": m.digit_count,
+                          "joint_count": m.joint_count} for m in plan.metas]
+    (out / "viability.json").write_text(json.dumps(report, indent=1))
+    print(f"[viable] {len(plan.entries)} viable design(s) -> {out / 'population.json'}; searched "
+          f"{report['candidates_searched']} in {report['grasp_search_s']:.0f} s over {report['batches']} launch(es); "
+          f"founder viability {report['founder_viability_rate']}; dropped probes {report['probes_dropped']}",
+          flush=True)
+    return 0 if report["short_by"] == 0 else 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
