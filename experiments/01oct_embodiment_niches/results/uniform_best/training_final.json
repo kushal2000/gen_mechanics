@@ -1,0 +1,56 @@
+{
+ "allegro": {
+  "study": "left_allegro_uniform",
+  "job": "814021",
+  "goals_per_episode": 42.85794319152832,
+  "last_epoch": 4994
+ },
+ "dex3": {
+  "study": "left_dex3_uniform",
+  "job": "801575",
+  "goals_per_episode": 45.56601673126221,
+  "last_epoch": 4943
+ },
+ "gen_sharpa": {
+  "study": "left_gen_sharpa_uniform",
+  "job": "802158",
+  "goals_per_episode": 2.014370002746582,
+  "last_epoch": 4988
+ },
+ "leap": {
+  "study": "left_leap_uniform",
+  "job": "809803",
+  "goals_per_episode": 15.541630010604859,
+  "last_epoch": 4980
+ },
+ "shadow": {
+  "study": "left_shadow_uniform",
+  "job": "801574",
+  "goals_per_episode": 42.25095333099365,
+  "last_epoch": 4980
+ },
+ "sharpa": {
+  "study": "left_sharpa_uniform",
+  "job": "801571",
+  "goals_per_episode": 39.951780128479,
+  "last_epoch": 4988
+ },
+ "tesollo": {
+  "study": "left_tesollo_uniform",
+  "job": "801576",
+  "goals_per_episode": 44.30070663452148,
+  "last_epoch": 4992
+ },
+ "wuji2": {
+  "study": "left_wuji2_uniform",
+  "job": "801577",
+  "goals_per_episode": 46.4258833694458,
+  "last_epoch": 4986
+ },
+ "xhand": {
+  "study": "left_xhand_uniform",
+  "job": "866050",
+  "goals_per_episode": 17.585266647338866,
+  "last_epoch": 4988
+ }
+}

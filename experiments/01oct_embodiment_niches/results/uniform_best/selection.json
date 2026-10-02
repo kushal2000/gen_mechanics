@@ -5,18 +5,23 @@
   "candidates": {
    "uniform_run2": {
     "job": "814021",
-    "train_goals": 42.81,
+    "train_goals": 42.86,
     "epoch": 4994
    }
   }
  },
  "dex3": {
-  "picked": "uniform_run2",
-  "job": "866044",
+  "picked": "uniform_run1",
+  "job": "801575",
   "candidates": {
+   "uniform_run1": {
+    "job": "801575",
+    "train_goals": 45.57,
+    "epoch": 4943
+   },
    "uniform_run2": {
     "job": "866044",
-    "train_goals": 5.4,
+    "train_goals": 5.14,
     "epoch": 4994
    }
   }
@@ -27,7 +32,7 @@
   "candidates": {
    "uniform_run2": {
     "job": "802158",
-    "train_goals": 2.03,
+    "train_goals": 2.01,
     "epoch": 4988
    }
   }
@@ -38,7 +43,7 @@
   "candidates": {
    "uniform_run2": {
     "job": "809803",
-    "train_goals": 16.34,
+    "train_goals": 15.54,
     "epoch": 4980
    }
   }
@@ -49,8 +54,19 @@
   "candidates": {
    "uniform_run1": {
     "job": "801574",
-    "train_goals": 42.47,
+    "train_goals": 42.25,
     "epoch": 4980
+   }
+  }
+ },
+ "sharpa": {
+  "picked": "uniform_run1",
+  "job": "801571",
+  "candidates": {
+   "uniform_run1": {
+    "job": "801571",
+    "train_goals": 39.95,
+    "epoch": 4988
    }
   }
  },
@@ -60,7 +76,7 @@
   "candidates": {
    "uniform_run1": {
     "job": "801576",
-    "train_goals": 44.86,
+    "train_goals": 44.3,
     "epoch": 4992
    }
   }
@@ -71,7 +87,7 @@
   "candidates": {
    "uniform_run1": {
     "job": "801577",
-    "train_goals": 46.49,
+    "train_goals": 46.43,
     "epoch": 4986
    }
   }
@@ -82,7 +98,7 @@
   "candidates": {
    "uniform_run2": {
     "job": "866050",
-    "train_goals": 18.23,
+    "train_goals": 17.59,
     "epoch": 4988
    }
   }
