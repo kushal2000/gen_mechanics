@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --job-name=niche_u
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=06:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+# Niche evaluation of ONE hand's UNIFORM-dynamics policy: every condition + the 5-minute nominal
+# (goals before drop). Submitted with --dependency=afterok:<its training job>.
+#   sbatch --job-name=niche_u_<hand> --export=ALL,HAND=<hand> run_hand_uniform.sub
+set -uo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+OUT=$REPO/debug_outputs/embodiment_niches_uniform
+mkdir -p $OUT/logs
+cd $REPO
+export OMNI_KIT_ACCEPT_EULA=YES
+run() {   # run <condition> <seconds> <out name>
+    f=$OUT/${HAND}__$3.json
+    [ -s "$f" ] && { echo "skip $f"; return; }
+    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform \
+        --hand "$HAND" --condition "$1" --num-envs 1024 --seconds "$2" --out "$f" \
+        > $OUT/logs/${HAND}__$3.log 2>&1 || echo "FAILED $HAND $3"
+    [ -s "$f" ] && echo "done $HAND $3"
+}
+for c in nominal cube40 cube55 cube65 light heavy slippery push push_hard; do run $c 60 $c; done
+run nominal 300 nominal_5min

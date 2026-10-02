@@ -38,7 +38,8 @@ CONDITIONS = {
     "cube65":   ("65 mm cube", [("assets.object_pool", "cube1_65mm")]),
     "light":    ("cube mass x0.5", [("assets.object_density_scale", 0.5)]),
     "heavy":    ("cube mass x2", [("assets.object_density_scale", 2.0)]),
-    "slippery": ("cube friction x0.5", [("assets.object_friction", 0.5)]),
+    # Relative: half of whatever the run trained with (1.0 for the vendor-dynamics runs, 0.5 uniform).
+    "slippery": ("cube friction x0.5", [("assets.object_friction", "x0.5")]),
     # force = N(0,1) x cube mass x force_scale for one 1/60 s step; ~1 g (10) did nothing measurable
     "push":     ("random pushes ~2 g, ~1.2 per second",
                  [("domain_randomization.force_scale", 20.0),
@@ -87,6 +88,8 @@ def _streaks(ST) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--hand", required=True)
+    ap.add_argument("--set", default="vendor", choices=("vendor", "uniform"),
+                    help="which runs: the ten-hands vendor/10 rad/s runs, or the uniform-dynamics runs")
     ap.add_argument("--condition", default="nominal", choices=list(CONDITIONS))
     ap.add_argument("--num-envs", type=int, default=1024)
     ap.add_argument("--seconds", type=float, default=60.0, help="sim time per env")
@@ -114,10 +117,16 @@ def main() -> None:
     from coevolution.eval.rl_player import RlPlayer
     from coevolution.utils.hydra_utils import hydra_task_config_with_yaml
     from isaacsimenvs.pose_reaching_6d.obs_utils.observations import _quat_angle
-    from viser_zero_shot import HANDS, latest_checkpoint
-
-    spec_ref, study, _ = HANDS[args.hand]
-    ckpt = pathlib.Path(args.checkpoint) if args.checkpoint else latest_checkpoint(study)
+    if args.set == "uniform":
+        # The uniform-dynamics runs (experiments/01oct_uniform_dynamics): each hand's newest checkpoint.
+        import glob, os
+        logs = REPO / "debug_outputs/train_logs/01oct_uniform_dynamics"
+        pths = glob.glob(f"{logs}/0_scale_train_left_{args.hand}_uniform_c01_*/rank_0/*/nn/*.pth")
+        ckpt = pathlib.Path(args.checkpoint) if args.checkpoint else pathlib.Path(max(pths, key=os.path.getmtime))
+    else:
+        from viser_zero_shot import HANDS, latest_checkpoint
+        spec_ref, study, _ = HANDS[args.hand]
+        ckpt = pathlib.Path(args.checkpoint) if args.checkpoint else latest_checkpoint(study)
     run_dir = ckpt.parents[3]
     saved = OmegaConf.load(run_dir / "rank_0/.hydra/config.yaml")
     sys.argv = [sys.argv[0]]
@@ -133,6 +142,12 @@ def main() -> None:
         env_cfg.seed = args.seed
         env_cfg.termination.max_consecutive_successes = 0
         for path, val in CONDITIONS[args.condition][1]:
+            if isinstance(val, str) and val.startswith("x"):        # relative to the trained value
+                *head, leaf = path.split(".")
+                obj = env_cfg
+                for h in head:
+                    obj = getattr(obj, h)
+                val = getattr(obj, leaf) * float(val[1:])
             _set(env_cfg, path, val)
 
         env = gym.make(TASK, cfg=env_cfg)
@@ -260,7 +275,7 @@ def main() -> None:
         first = S[S[:, 4] == 1] if len(S) else S      # first goal after a reset (includes settling)
 
         result.update({
-            "hand": args.hand, "condition": args.condition, "condition_desc": CONDITIONS[args.condition][0],
+            "hand": args.hand, "set": args.set, "condition": args.condition, "condition_desc": CONDITIONS[args.condition][0],
             "checkpoint": str(ckpt), "num_envs": N, "seconds": args.seconds, "dt": dt, "env_seconds": env_s,
             "wall_s": wall, "joints": J, "hand_mass_kg": float(inner.robot.data.default_mass[0].sum()),
             "cube_mass_kg": float(inner._object_mass[0]),
