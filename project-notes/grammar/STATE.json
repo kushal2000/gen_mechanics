@@ -401,13 +401,12 @@
       "summary": "V3S > V1 on median elite fitness in every seed (0.39-0.44 vs 0.16-0.35) and lower founder dominance; QD/coverage/best within seed variance; probes rose to 0.3-0.5 for both"
     },
     "pilot3": {
-      "status": "cluster runs continue on the old (legacy) task spec; local runs stopped 2026-10-01 to free the GPU for the task port (G_V1 s2 reached 20 generations; G_V3S s2 extension partial, resumable)",
-      "design": "3 grammars (G_V1, G_V2S, G_V3S) x 4 seeds (0-3), 20 generations, 32 designs, 1200 epochs/gen, pop config; pilot-2 runs extended 12 -> 20 generations",
-      "cluster": "array 2511386 (ext: G_V1 s0/s1, G_V3S s0/s1 in runs/evolution_pilot/pilot2, --time 4:45:00) and 2511387 (new: G_V2S s0-3 in runs/evolution_pilot/pilot3, --time 11:15:00); main tier, A6000, <= 4 GPUs in flight",
-      "local": "G_V1 s2, G_V3S s2 (extend, outputs/evolution_pilot/pilot2), then G_V1 s3, G_V3S s3 (new, outputs/evolution_pilot/pilot3)"
+      "status": "done (legacy task spec)",
+      "report": "project-notes/grammar/experiments/pilot3/README.md",
+      "summary": "median elite fitness V3S (0.47-0.50) > V2S (0.24-0.56) > V1 (0.20-0.36); V3S lowest variance; coverage 11-14/30 for all; probes similar except sharpa best under V3S"
     }
   },
-  "gpu_hours_used": 35.43,
+  "gpu_hours_used": 87.7,
   "cluster_jobs": [
     {
       "id": 2364675,
