@@ -373,6 +373,9 @@ class AnyRotateCfg:
     """Generate grasps at env start for designs the cache lacks, and save
     them into it (``grasp_cache_gen.generate``). False: a missing design
     raises."""
+    grasp_cache_prune: bool = False
+    """Save only this env's designs back into the cache (the evolution
+    driver: every elite is in every generation's population)."""
     grasp_per_design: int = 1000
     """Grasps kept per design (AnyRotate: 10000 per object; HORA: 50000 per
     object scale)."""

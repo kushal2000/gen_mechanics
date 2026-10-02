@@ -939,9 +939,11 @@ def grasp_cache_path(args: argparse.Namespace, run_dir: Path) -> Path:
 
 
 def grasp_cache_overrides(path: Path) -> List[str]:
-    """Hydra overrides for a generation's train.py: use the run's cache and
-    generate the designs it lacks at env start."""
-    return [f"env.anyrotate.grasp_cache={path}", "env.anyrotate.grasp_cache_generate=true"]
+    """Hydra overrides for a generation's train.py: use the run's cache,
+    generate the designs it lacks at env start, and keep only this
+    generation's designs in it (every elite is resubmitted each generation)."""
+    return [f"env.anyrotate.grasp_cache={path}", "env.anyrotate.grasp_cache_generate=true",
+            "env.anyrotate.grasp_cache_prune=true"]
 
 
 def read_grasp_report(train_dir: Path) -> Optional[dict]:

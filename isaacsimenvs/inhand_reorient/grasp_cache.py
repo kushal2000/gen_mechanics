@@ -57,7 +57,7 @@ import torch
 __all__ = [
     "CACHE_SCHEMA", "HORA_CANONICAL_ALLEGRO", "CANONICAL_GRASP_POSES", "GraspSet", "GraspTable",
     "StabilityThresholds", "design_key", "hand_key", "hand_calibration_sha", "sidecar_path",
-    "object_signature", "signature_mismatches", "save_cache", "load_cache", "merge_sets",
+    "object_signature", "signature_mismatches", "save_cache", "load_cache", "merge_sets", "prune_sets",
     "sample_joint_candidates", "random_quats", "stable_mask", "build_table", "cache_summary",
 ]
 
@@ -238,6 +238,12 @@ def merge_sets(base: Mapping[str, GraspSet], new: Mapping[str, GraspSet], overwr
         if overwrite or k not in out:
             out[k] = s
     return out
+
+
+def prune_sets(sets: Mapping[str, GraspSet], keep: Sequence[str]) -> Dict[str, GraspSet]:
+    """Only the entries named in ``keep`` (in the cache's own order)."""
+    keep = set(keep)
+    return {k: s for k, s in sets.items() if k in keep}
 
 
 def cache_summary(sets: Mapping[str, GraspSet]) -> dict:

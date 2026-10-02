@@ -273,6 +273,7 @@ anyrotate:
   hand_orientation_randomization: false   # team decision: stationary palm-up hand
   grasp_cache: ""                   # [App. C; HORA] .npz of stable grasps (grasp_cache.py); "" = drop reset
   grasp_cache_generate: false       # generate missing designs' grasps at env start and save them
+  grasp_cache_prune: false          # keep only this env's designs in the saved cache (evolution driver)
   grasp_per_design: 1000            # AnyRotate 10000 per object, HORA 50000 per scale
   grasp_gen_max_rounds: 30
   grasp_gen_max_minutes: 15.0

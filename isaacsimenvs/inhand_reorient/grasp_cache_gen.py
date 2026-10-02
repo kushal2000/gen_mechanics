@@ -371,6 +371,7 @@ def ensure_grasp_table(env) -> Tuple[gc.GraspTable, torch.Tensor, List[str], dic
     missing = [i for i, k in enumerate(keys) if k not in sets]
     report = {"cache": str(path), "designs": len(keys), "reused": len(keys) - len(missing), "generated": 0,
               "gen_s": 0.0}
+    runs = list(doc.get("runs", []))
     if missing:
         if not a.grasp_cache_generate:
             raise FileNotFoundError(
@@ -379,9 +380,14 @@ def ensure_grasp_table(env) -> Tuple[gc.GraspTable, torch.Tensor, List[str], dic
                 f"env.anyrotate.grasp_cache_generate=true")
         new, gen_report = generate(env, missing, keys, sources, design_idx, seed=int(a.grasp_gen_seed))
         sets = gc.merge_sets(sets, new)
-        runs = list(doc.get("runs", [])) + [{k: v for k, v in gen_report.items() if k != "per_design"}]
-        gc.save_cache(path, sets, {"object_signature": signature, "runs": runs, "updated": gc.now_iso()})
+        runs.append({k: v for k, v in gen_report.items() if k != "per_design"})
         report.update(generated=len(missing), gen_s=gen_report["gen_s"], generation=gen_report)
+    stale = [k for k in sets if k not in keys]
+    if a.grasp_cache_prune and stale:
+        sets = gc.prune_sets(sets, keys)
+        report["pruned"] = len(stale)
+    if missing or (a.grasp_cache_prune and stale):
+        gc.save_cache(path, sets, {"object_signature": signature, "runs": runs, "updated": gc.now_iso()})
         print(f"[grasp_cache] saved {len(sets)} entr(ies) -> {path}", flush=True)
     per = [sets[k] for k in keys]
     table = gc.build_table(per, list(env.robot.data.joint_names), device=env.device,
