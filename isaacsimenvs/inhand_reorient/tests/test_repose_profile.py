@@ -631,3 +631,15 @@ def test_repose_cube_mass_is_nvidias_effective_mass():
     r = _task_yaml()["repose"]
     assert r["object_mass_kg"] == 0.216
     assert 400.0 * r["object_size_m"] ** 3 == pytest.approx(0.1493, abs=1e-4)
+
+
+def test_every_repose_hand_pose_spawns_the_cube_above_the_palm():
+    from isaacsimenvs.inhand_reorient import palm_calibration as pc
+
+    poses = pc.load_repose_hand_poses(pc.resolve_repose_hand_pose_path(_task_yaml()["repose"]["hand_pose_file"]))
+    assert {"allegro_right", "sharpa"} <= set(poses)
+    for hand, entry in poses.items():
+        rot = torch.tensor([entry["base_rot"]], dtype=torch.float64)
+        lift = rp.quat_apply(rot, torch.tensor([entry["spawn_offset_local"]], dtype=torch.float64))[0, 2]
+        assert lift >= pc.MIN_SPAWN_HEIGHT_ABOVE_PALM_M, hand
+        assert entry["source"], hand
