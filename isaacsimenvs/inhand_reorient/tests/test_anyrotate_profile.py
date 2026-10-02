@@ -240,3 +240,14 @@ def test_timer_goal_advance_runs_ahead_of_a_stalled_object():
     lag = ar.keypoint_distance(torch.zeros(1, 3), obj, torch.zeros(1, 3), goal, offs)
     one = ar.keypoint_distance(torch.zeros(1, 3), obj, torch.zeros(1, 3), ar.next_goal(obj, axis, math.radians(30.0)), offs)
     assert ar.keypoint_reward(lag, 50.0, 2.0) < ar.keypoint_reward(one, 50.0, 2.0)
+
+
+def test_gravity_promotion_by_goals_or_by_rotations():
+    """Dexsuite promotes on success (>= 1 goal); the hora profile has no
+    goals, so promotion can count rotations about k per episode instead."""
+    goals = torch.tensor([0.0, 1.0, 3.0])
+    rotations = torch.tensor([0.5, 0.0, 0.1])
+    assert ar.gravity_promoted(goals, rotations, "goals", 1, 0.25).tolist() == [False, True, True]
+    assert ar.gravity_promoted(goals, rotations, "rotations", 1, 0.25).tolist() == [True, False, False]
+    with pytest.raises(ValueError):
+        ar.gravity_promoted(goals, rotations, "other", 1, 0.25)

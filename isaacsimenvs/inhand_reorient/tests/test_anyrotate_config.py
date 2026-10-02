@@ -102,3 +102,8 @@ def test_z_axis_frame_defaults_to_the_palm_body_frame():
 def test_goal_advance_defaults_to_the_papers_reach_rule():
     a = _task()["anyrotate"]
     assert a["goal_advance"] == "reach" and a["goal_timer_s"] > 0
+
+
+def test_gravity_promotion_defaults_to_goals():
+    a = _task()["anyrotate"]
+    assert a["gravity_promote_metric"] == "goals" and a["gravity_promote_rotations"] > 0
