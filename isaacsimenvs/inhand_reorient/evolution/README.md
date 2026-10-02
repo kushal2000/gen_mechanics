@@ -188,6 +188,62 @@ latter in every generation's training launch, on `<run-dir>/grasp_cache.npz` pru
 population (`grasp_cache_prune`), so elites and probes reuse their grasps and only new designs cost
 generation time; `generations.jsonl` gets a `grasp_cache` entry per generation.
 
+### Grasp cache results (2026-10-02, RTX 4090)
+
+Generation (HORA's acceptance tests, 3 s hold):
+
+| Hand(s) | Envs | Candidates | Stable | Viable | Time |
+|---|---|---|---|---|---|
+| allegro_right (HORA pose, object at the fingertips) | 8192 | 278,528 (34 rounds) | 3.7% (10,000 kept) | 1/1 | 99 s (111 s with boot) |
+| pop_v3s_32, before the population touch fix | 4096 | 24,576 (6 rounds) | 0 | 0/32 | 12 s |
+| pop_v3s_32, first defaults (50% curls, 50% at the fingertips, 6 empty rounds) | 4096 | 43,008 (30 rounds) | 366 | 6/32 | 64 s (196 s with boot) |
+| pop_v3s_32, current defaults | 4096 | 101,248 (60 rounds) | 1780 | 7/32 | 136 s (264 s with boot) |
+
+Viable under the current defaults: the allegro_right, sharpa and leap projections (1000, 186 and 445
+grasps) and 4 of 28 G_V3S founders (11-76 grasps); the dclaw projection and 24 founders have none.
+Placing the object at the fingertip centroid of a randomly curled hand produced 1704 of the 1780
+grasps (2.5% of such candidates); placing it at the spawn point produced 1 in 10,051. Of the
+allegro grasps, 75% have 2 tip contacts, 22% 3 and 3% 4, and 10% touch no other hand body
+(AnyRotate's condition).
+
+Training, 8192 envs (allegro) or 4096 envs (population), z-first, PPO as Table 5. Rot counts after
+the settle phase from commit 02c0637 on; the "before 02c0637" runs also counted the landing tumble.
+
+| Run | z axis | Cache | Rot/episode | Goals/episode | TTT (s) | Drop | Off-axis | rad/s |
+|---|---|---|---|---|---|---|---|---|
+| allegro, 60 min, before 02c0637 (`ar_allegro_zfirst_8192`) | palm +z | no | 0.129 | 1.24 | 24.9 | 16.8% | 4.4% | 0.033 |
+| allegro, 20 min, current code (`ar_allegro_zfirst_nocache_ctrl_8192`) | palm +z | no | 0.126 | 1.17 | 25.6 | 13.4% | 4.2% | 0.028 |
+| allegro, 60 min (`ar_allegro_zfirst_gc_8192`) | palm +z | yes | 0.100 | 1.21 | 29.4 | 0.2% | 2.8% | 0.021 |
+| allegro, 60 min (`ar_allegro_zup_gc_8192`) | world up | yes | 0.126 | 1.39 | 29.6 | 0.0% | 2.4% | 0.026 |
+| AnyRotate (paper) | | | 1.8-2.2 | | | | | |
+
+At 19 min the three cached or current-code runs read 0.126 (no cache), 0.103 (cache) and 0.134
+(cache, world up) rotations per episode. The cache removes the drops and keeps the object for the
+whole episode, but rotation does not learn in 60 min with or without it: every run is flat from 5 min on, so the z stage never ended
+and the S^2 stage never started. The per-episode reward is dominated by the keypoint term
+(about 111 of a possible 150 for holding the object near its first goal) against 2.5 for rotation
+and 12 for goals; `kp_scale` (the paper's undefined d_kp, 1.0 here) is the first suspect.
+
+Population, `pop_v3s_32`, 30 min, z-first (palm +z), current code (`ar_pop32_zfirst_tipfix_4096`
+without the cache, `ar_pop32_zfirst_gc2_4096` with the first-defaults cache). The 6 designs viable
+under that cache, last scoring window (200 steps):
+
+| | TTT (s) | Rot/episode | Goals/episode | Fitness, all 32 designs (mean, std, max) |
+|---|---|---|---|---|
+| no cache | 3.9 | 0.011 | 0.01 | 0.013, 0.030, 0.126 |
+| cache, first defaults | 9.7 | 0.044 | 0.02 | 0.023, 0.052, 0.189 (26 non-viable designs at 0) |
+| cache, current defaults (`ar_pop32_zfirst_gc3_4096`; 7 viable: 9.1 s, 0.058, 0.03) | 9.4 | 0.052 | 0.04 | 0.029, 0.058, 0.198 (25 at 0) |
+
+Aggregate drop rates stay at 98-99% in both, because the non-viable designs keep the drop reset
+and finish most episodes.
+
+Evolution driver (`--grasp-cache`, 32 designs, 4096 envs, `outputs/evolution_pilot/gc_timing_*`):
+a generation's train.py boot rose from 138 s to 267 s; grasp generation took 134 s in generation 0
+(32 designs, 7 viable) and 133 s in generation 1 (18 new designs, 14 reused by sha256, 10 viable).
+The time is set by the round cap, not by how many designs are new (every env runs candidates in
+parallel); `grasp_gen_max_rounds` trades it against grasps per low-yield design. The pruned run
+cache is 395 KB.
+
 ## File layout
 
 ```
