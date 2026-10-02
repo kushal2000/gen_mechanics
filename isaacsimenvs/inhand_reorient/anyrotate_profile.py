@@ -28,7 +28,7 @@ __all__ = [
     "keypoint_offsets", "object_keypoints", "keypoint_distance", "keypoint_reward",
     "quat_to_rotvec", "rotation_about_axis", "rotation_reward", "next_goal", "goal_timer_due", "goal_reached",
     "contact_rewards", "angular_velocity_penalty", "pose_penalty", "work_penalty", "torque_penalty",
-    "axis_deviation", "axis_in_object_frame", "axis_tilt", "terminations", "reward_curriculum_lambda", "relative_joint_targets",
+    "axis_deviation", "axis_in_object_frame", "axis_tilt", "terminations", "reward_curriculum_lambda", "relative_joint_targets", "gravity_promoted",
     "simulated_tactile", "sample_axes", "world_up_in_palm", "distal_slots", "tip_sources", "combine_rewards", "graded_rotation_fitness",
 ]
 
@@ -285,6 +285,17 @@ def terminations(kp_dist, d_max, axis_dev, axis_valid, axis_dev_max):
     dropped = kp_dist > d_max
     off_axis = axis_valid & (axis_dev > axis_dev_max)
     return dropped, off_axis
+
+
+def gravity_promoted(goals, rotations, metric: str, min_goals: float, min_rotations: float):
+    """Dexsuite gravity curriculum: which finished episodes promote. "goals":
+    >= ``min_goals`` goals (Dexsuite's success); "rotations": >= ``min_rotations``
+    rotations about k (for the hora profile, which has no goals)."""
+    if metric == "goals":
+        return goals >= min_goals
+    if metric == "rotations":
+        return rotations >= min_rotations
+    raise ValueError(f"gravity_promote_metric {metric!r}; expected 'goals' or 'rotations'")
 
 
 def reward_curriculum_lambda(g_eval: float, g_min: float, g_max: float) -> float:

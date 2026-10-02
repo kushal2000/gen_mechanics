@@ -495,7 +495,8 @@ def _update_curricula(env) -> None:
         print(f"[anyrotate] axis curriculum: z only -> {a.axis_sampling} at frame {env._frame_counter} "
               f"(rotations/episode {env._ar_rot_eval:.2f})", flush=True)
     if a.gravity_curriculum:
-        promote = goals >= a.gravity_promote_goals
+        promote = ar.gravity_promoted(goals, rotations, a.gravity_promote_metric, a.gravity_promote_goals,
+                                      a.gravity_promote_rotations)
         cur = env._ar_difficulty[done]
         down = cur if a.gravity_promotion_only else cur - 1
         env._ar_difficulty[done] = torch.where(promote, cur + 1, down).clamp(0, a.gravity_max_difficulty)

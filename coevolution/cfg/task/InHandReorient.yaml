@@ -317,6 +317,8 @@ anyrotate:
   gravity_curriculum: false         # Isaac Lab Dexsuite ADR gravity curriculum (optional)
   gravity_max_difficulty: 10
   gravity_promote_goals: 1
+  gravity_promote_metric: goals     # goals (Dexsuite success) | rotations (per episode; for the hora profile)
+  gravity_promote_rotations: 0.25
   gravity_promotion_only: false
 
 # -----------------------------------------------------------------------------

@@ -459,6 +459,10 @@ class AnyRotateCfg:
     below 0.1."""
     gravity_max_difficulty: int = 10
     gravity_promote_goals: int = 1
+    gravity_promote_metric: str = "goals"
+    """"goals" (Dexsuite: success) or "rotations" (>= ``gravity_promote_rotations``
+    rotations about k per episode; the hora profile has no goals)."""
+    gravity_promote_rotations: float = 0.25
     gravity_promotion_only: bool = False
 
 
