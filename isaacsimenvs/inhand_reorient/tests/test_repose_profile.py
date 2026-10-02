@@ -643,3 +643,15 @@ def test_every_repose_hand_pose_spawns_the_cube_above_the_palm():
         lift = rp.quat_apply(rot, torch.tensor([entry["spawn_offset_local"]], dtype=torch.float64))[0, 2]
         assert lift >= pc.MIN_SPAWN_HEIGHT_ABOVE_PALM_M, hand
         assert entry["source"], hand
+
+
+def test_repose_hand_actuator_defaults_are_nvidias_allegro():
+    src = _nvidia_paths()["asset"].read_text()
+    r = _task_yaml()["repose"]
+    for text in ("stiffness=3.0", "damping=0.1", "friction=0.01", "effort_limit_sim=0.5"):
+        assert text in src, text
+    assert (r["hand_stiffness"], r["hand_damping"], r["hand_joint_friction"], r["hand_effort_limit"]) == (
+        3.0, 0.1, 0.01, 0.5)
+    # Armature and velocity limit come from NVIDIA's USD (read in Kit: 0.0 and
+    # 6.283 rad/s, i.e. physxJoint:maxJointVelocity 359.99 deg/s).
+    assert r["hand_armature"] == 0.0 and r["hand_velocity_limit"] == pytest.approx(2 * math.pi, abs=1e-3)
