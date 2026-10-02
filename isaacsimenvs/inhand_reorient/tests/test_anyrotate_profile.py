@@ -182,3 +182,16 @@ def test_axis_tilt_is_zero_for_rotation_about_the_axis_and_grows_with_tumbling()
     # a 60 degree tumble about x tilts it by 60 degrees
     q2 = ar.next_goal(q0, torch.tensor([[1.0, 0.0, 0.0]]), math.radians(60))
     assert float(ar.axis_tilt(q2, axis_obj, k)) == pytest.approx(math.radians(60), abs=1e-5)
+
+
+def test_world_up_in_the_palm_frame_is_the_palm_normal_of_a_palm_up_hand():
+    """The paper's z axis is the palm normal. For allegro_right under
+    NVIDIA's pose (repose_hand_poses.json) the palm body's +z runs along the
+    fingers (horizontal) and its +x points up, so "z" must be world up
+    expressed in the palm frame, not the palm frame's own +z."""
+    ident = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+    assert torch.allclose(ar.world_up_in_palm(ident), torch.tensor([[0.0, 0.0, 1.0]]))
+    nvidia_allegro = torch.tensor([[0.478318, 0.522387, -0.524732, 0.472208]])
+    up = ar.world_up_in_palm(nvidia_allegro)
+    assert torch.allclose(up, torch.tensor([[0.995, 0.004, -0.096]]), atol=2e-3)
+    assert up.norm().item() == pytest.approx(1.0, abs=1e-5)

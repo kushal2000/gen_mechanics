@@ -91,3 +91,9 @@ def test_grasp_cache_is_off_by_default_with_hora_and_anyrotate_numbers():
     assert a["grasp_reset_joint_noise"] == 0.0 and a["grasp_reset_obj_pos_noise"] == 0.0  # neither adds noise
     assert a["grasp_gravity_cycle"] is False and a["grasp_settle_steps"] == 0
     assert 3.0 <= a["grasp_hold_s"] <= 6.0  # HORA 3.3 s, AnyRotate 6 s
+
+
+def test_z_axis_frame_defaults_to_the_palm_body_frame():
+    """"palm" keeps the earlier runs' meaning (the palm body's +z);
+    "world_up" is the paper's z (the palm normal of the palm-up hand)."""
+    assert _task()["anyrotate"]["z_axis_frame"] == "palm"
