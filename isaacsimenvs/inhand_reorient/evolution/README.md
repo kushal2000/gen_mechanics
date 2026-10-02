@@ -77,6 +77,59 @@ With a non-SAPG agent the driver leaves out the SAPG-only overrides
 only when it is not `legacy`. `evaluate_population.py` has no such flag: pass
 `env.task_profile=legacy` to it when evaluating a legacy checkpoint.
 
+## AnyRotate profile (`--task-profile anyrotate`, 2026-10-02)
+
+`env.task_profile=anyrotate` ports multi-axis in-hand rotation from M. Yang et al., "AnyRotate:
+Gravity-Invariant In-Hand Object Rotation with Sim-to-Real Touch" (CoRL 2024, arXiv 2405.07391v3).
+No code is released; `anyrotate_profile.py` (CPU-tested arithmetic), `anyrotate_hooks.py` (env
+hooks) and the `anyrotate:` block of `coevolution/cfg/task/InHandReorient.yaml` cite the paper
+for every element. Agents: `rl_games_anyrotate_ppo_cfg_entry_point` (single hand,
+`InHandAnyRotatePPO.yaml`) and `rl_games_anyrotate_pop_ppo_cfg_entry_point` (population,
+`InHandAnyRotatePopPPO.yaml`, plus the I41 log-std bound). With the population agent the driver
+uses its 8-step rollout for the minibatch and the scoring cadence.
+
+Fitness under this profile (`design_scoring.anyrotate_fitness_components`) is AnyRotate's own
+evaluation: rotations about the commanded axis per episode (Rot) + 0.25 x the fraction of the
+episode before termination (TTT / 30 s). Goals reached are banked but not scored.
+
+| Paper element | Paper | Port |
+|---|---|---|
+| Task | rotate about commanded axis k (Sec. 3.1) | as paper; k in the palm frame, an observation |
+| Axis sampling | "arbitrary" axes; distribution not given | uniform on S^2 (`axis_sampling`; `principal`, `z`); optional z-first stage (`axis_curriculum_z_first`) |
+| Auxiliary goal | current orientation rotated about k at regular intervals; new goal when reached | as paper, 30 deg increment (Table 9); goal position = object position when the goal is made |
+| Goal tolerance d_tol | 0.15 teacher, 0.25 student (Table 5), on keypoint distance | 0.15 read as rotation distance in rad: 0.15 m exceeds the paper's own drop threshold (kp_dist > 0.1 m) and a 30 deg goal moves the keypoints 0.017-0.026 m; `goal_tol_metric=kp_dist_m` applies it literally |
+| Keypoints | 6, 5 cm along the principal axes; kp_dist mean distance (App. B.1) | as paper |
+| r_kp | d_kp / (e^{ax} + b + e^{-ax}), a 50, b 2 (Eq. 3) | as paper; d_kp undefined, `kp_scale` 1.0 |
+| r_rot | clip(Delta Theta . k, +-0.025) (Eq. 4) | as paper, per 20 Hz step |
+| r_goal | 1 if goal reached (Eq. 5) | as paper |
+| r_gc | 1 if >= 2 tip contacts (Eq. 6) | as paper; tip contact = App. F binary contact |
+| r_bc | 1 if non-tip contacts ">= 0" (Eq. 7), a penalty | `> 0` (the printed `>= 0` always holds) |
+| r_omega | -min(\|w\| - 0.6, 0) (Eq. 8), "penalises exceeding the maximum" | -max(\|w\| - 0.6, 0), the stated intent |
+| r_pose | -\|q - q0\| (Eq. 9) | as paper; q0 = the hand's canonical (calibrated) pose |
+| r_work | -tau^T q-bar (Eq. 10), "controller work done" | -\|tau^T Delta q\| over the step |
+| r_torque | -\|tau\| (Eq. 11) | as paper (Isaac Lab's applied torque) |
+| r_terminate | -1 x 50 on drop or off-axis (Eq. 12) | as paper |
+| Weights | 1, 5, 10, 0.1, 0.2, 0.5, 0.5, 0.1, 0.05, 50 | as paper |
+| lambda_rew curriculum | linear in goals/episode over [1, 2] (Eq. 15) | as paper; g_eval = running mean over finished episodes (EMA weight 0.01 per episode, not given) |
+| Drop termination | kp_dist > 0.1 (Eq. 12) | as paper |
+| Off-axis termination | object rotation axis > 45 deg from k (Eq. 12); k_o undefined | tilt of the object's body axis that lay along k at the episode start or last goal; off for a 10-step settle phase |
+| Episode | 600 steps, 30 s, dt 1/60, 20 Hz (Sec. 4) | as paper |
+| Action | relative targets, Delta theta in [-0.026, 0.026], EMA eta (Sec. 3.1) | as paper; eta not given, 0.5 |
+| Observation o_t | q, f^p, f^o, a_{t-1}, q-bar, c, P, F, k (Table 2; 95 for Allegro) | as paper, palm frame; per-joint fields over the hand's joints, per-tip over its fingertips (masked for populations) |
+| Privileged x_t | object pos, orientation, ang. vel., dims, CoM, mass, gravity, goal pos/orientation (Table 3) | as paper, palm frame; gravity / 9.81 |
+| Simulated touch | threshold 0.25 N, force EMA 0.5, clip/scale 5 N x 0.6, pose +-0.53 rad x 0.6, masked (App. F) | as paper; one contact sensor per hand body filtered to the object; contact pose = tilt angles of the contact point about the fingertip's x and y axes |
+| Teacher network | privileged MLP [256, 128, 8] ReLU + policy MLP [512, 256, 128] ELU (Table 5) | one MLP [512, 256, 128] ELU over [o_t, x_t] (no student distillation here) |
+| PPO | 8192 envs, rollout 8, minibatch 32768, 5 epochs, lr 5e-3, gamma 0.99, tau 0.95, clip 0.2, KL 0.02, grad norm 1 (Table 5) | as paper; unspecified (normalisation, reward scale 0.01, critic 4, bounds loss) as our other PPO configs |
+| Student, TCN, d_tol 0.25 | Sec. 3.2, Table 5 | not ported (teacher only) |
+| Objects | capsules and boxes, sizes and mass/CoM ranges (Table 4) | one shape per run, default a 5.25 cm box: without the grasp cache a capsule rolls off the open palm; mass U(0.025, 0.2), CoM U(+-0.01) per env |
+| Friction | object and hand 10.0 (Table 4) | as paper (default physics material) |
+| Grasp initialisation | cache of stable grasps (App. C) | not ported: object dropped onto the palm-up hand at its spawn point, joints at the canonical pose + U(+-0.1); 10-step settle phase |
+| Hand orientation | random per episode, gravity invariance | stationary palm-up hand (team decision); `hand_orientation_randomization` raises |
+| Hand | Allegro, system-identified (App. D), gravity on | each hand's palm-up placement (`repose_hand_poses.json`: NVIDIA's for allegro_right), NVIDIA's Allegro actuator, gravity on |
+| Observation noise | joint 0.03, tip pos 0.005, tip orientation 0.01, contact pose 0.0174, force 0.1 (Table 4) | as paper (Gaussian std) |
+| PD and disturbance randomisation | x U(0.9, 1.1) gains; disturbance scale 2, p 0.25, decay 0.99 (Table 4) | not ported |
+| Gravity curriculum | (not in AnyRotate) | optional: Isaac Lab Dexsuite's ADR gravity (difficulty 0..10, +-1 per episode at >= 1 goal, gravity = fraction x 9.81, 0 below 0.1); `anyrotate.gravity_curriculum` |
+
 ## File layout
 
 ```
