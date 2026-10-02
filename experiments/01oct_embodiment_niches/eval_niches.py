@@ -103,6 +103,9 @@ def main() -> None:
     ap.add_argument("--target", default="",
                     help="zero-shot: run --hand's policy on this uniform hand instead (e.g. allegro); the "
                          "network is rebuilt for the target's joints and sigma resized")
+    ap.add_argument("--override", action="append", default=[],
+                    help="extra env setting applied after the condition, dotted.path=python_literal "
+                         "(e.g. domain_randomization.force_scale=80.0); repeatable")
     ap.add_argument("--out", required=True)
     ap.add_argument("--device", default="cuda:0")
     args = ap.parse_args()
@@ -167,6 +170,10 @@ def main() -> None:
                     obj = getattr(obj, h)
                 val = getattr(obj, leaf) * float(val[1:])
             _set(env_cfg, path, val)
+        import ast
+        for o in args.override:
+            path, val = o.split("=", 1)
+            _set(env_cfg, path.strip(), ast.literal_eval(val.strip()))
 
         env = gym.make(TASK, cfg=env_cfg)
         inner = env.unwrapped
@@ -297,7 +304,7 @@ def main() -> None:
         first = S[S[:, 4] == 1] if len(S) else S      # first goal after a reset (includes settling)
 
         result.update({
-            "hand": args.hand, "target": args.target or args.hand, "set": args.set, "condition": args.condition, "condition_desc": CONDITIONS[args.condition][0],
+            "hand": args.hand, "target": args.target or args.hand, "set": args.set, "overrides": args.override, "condition": args.condition, "condition_desc": CONDITIONS[args.condition][0],
             "checkpoint": str(ckpt), "num_envs": N, "seconds": args.seconds, "dt": dt, "env_seconds": env_s,
             "wall_s": wall, "joints": J, "hand_mass_kg": float(inner.robot.data.default_mass[0].sum()),
             "cube_mass_kg": float(inner._object_mass[0]),

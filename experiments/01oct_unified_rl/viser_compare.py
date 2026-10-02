@@ -157,6 +157,12 @@ def _loop(args, conn):
         origins = env.scene.env_origins
         goals = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
         running, speed, t_next = True, 1.0, time.time()
+        # Pushes: the env's own wrench DR, live. Off until the GUI turns them on.
+        dr = env.cfg.domain_randomization
+        dr.force_scale, dr.torque_scale = 0.0, 0.0
+        push_prob, push_now = 0.02, False
+        env._random_force_prob[:] = push_prob
+        drops = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
         while True:
             while conn.poll():
                 m = conn.recv()
@@ -169,21 +175,38 @@ def _loop(args, conn):
                 elif m["cmd"] == "reset":
                     obs, _ = env.reset()
                     goals.zero_()
+                    drops.zero_()
+                elif m["cmd"] == "force_scale":
+                    dr.force_scale = float(m["value"])
+                elif m["cmd"] == "push_prob":
+                    push_prob = float(m["value"])
+                elif m["cmd"] == "push_now":
+                    push_now = True
             if not running:
                 time.sleep(0.05)
                 continue
             with torch.no_grad():
                 acts = [pl.get_normalized_action(obs["policy"], deterministic_actions=True) for pl in players]
             act = torch.stack([acts[i][i] for i in range(len(players))])     # env i <- policy i
+            # The env resamples each env's push probability at reset; hold it at the slider's value.
+            env._random_force_prob[:] = 1.0 if push_now else push_prob
+            if push_now and dr.force_scale == 0.0:
+                dr.force_scale, restore_scale = 50.0, True                       # a one-off ~5 g kick
+            else:
+                restore_scale = False
             obs, *_ = env.step(act)
+            if restore_scale:
+                dr.force_scale = 0.0
+            push_now = False
             goals += env._is_success.long()
+            drops += env._termination_reasons["fall"].long()
             q = env.robot.data.joint_pos[:, env._perm_lab_to_canon]
             conn.send({"kind": "frame", "q": q.tolist(),
                        "obj_pos": (env.object.data.root_pos_w - origins).tolist(),
                        "obj_quat": env.object.data.root_quat_w.tolist(),
                        "goal_pos": (env.goal_viz.data.root_pos_w - origins).tolist(),
                        "goal_quat": env.goal_viz.data.root_quat_w.tolist(),
-                       "goals": goals.tolist()})
+                       "goals": goals.tolist(), "drops": drops.tolist()})
             t_next += float(env.step_dt) / max(speed, 1e-3)
             time.sleep(max(0.0, t_next - time.time()))
             t_next = max(t_next, time.time() - 0.1)
@@ -215,7 +238,19 @@ def main(args):
         b_reset = server.gui.add_button("reset all")
         s_speed = server.gui.add_slider("speed (x real time)", 0.1, 2.0, 0.05, 1.0)
         g_labels = server.gui.add_checkbox("show labels", True)
+    with server.gui.add_folder("pushes (wrench DR)"):
+        s_force = server.gui.add_slider("force_scale (≈ /10 g)", 0.0, 150.0, 5.0, 0.0)
+        s_prob = server.gui.add_slider("push prob / step", 0.0, 0.2, 0.005, 0.02)
+        b_push = server.gui.add_button("push now (all envs)")
+        md_push = server.gui.add_markdown("pushes off")
     md = server.gui.add_markdown("waiting for Kit...")
+
+    def _push_status(_=None):
+        md_push.content = ("pushes off" if s_force.value == 0 else
+                           f"~{s_force.value / 10:.0f} g pushes, {60 * s_prob.value:.1f} per second")
+    s_force.on_update(lambda _: (outbox.put({"cmd": "force_scale", "value": float(s_force.value)}), _push_status()))
+    s_prob.on_update(lambda _: (outbox.put({"cmd": "push_prob", "value": float(s_prob.value)}), _push_status()))
+    b_push.on_click(lambda _: outbox.put({"cmd": "push_now"}))
     b_pause.on_click(lambda _: outbox.put({"cmd": "toggle"}))
     b_reset.on_click(lambda _: outbox.put({"cmd": "reset"}))
     s_speed.on_update(lambda _: outbox.put({"cmd": "speed", "value": float(s_speed.value)}))
@@ -269,7 +304,7 @@ def main(args):
                 goals_[i].position, goals_[i].wxyz = tuple(frame["goal_pos"][i]), tuple(frame["goal_quat"][i])
                 gp = frame["goal_pos"][i]
                 labels[i].position = (gp[0], gp[1], gp[2] + 0.09)
-                labels[i].text = f"{info['labels'][i]}  ·  {frame['goals'][i]} goals"
+                labels[i].text = f"{info['labels'][i]}  ·  {frame['goals'][i]} goals  ·  {frame['drops'][i]} drops"
                 labels[i].visible = bool(g_labels.value)
     except (EOFError, ConnectionResetError):
         print("[compare] worker closed the connection", flush=True)

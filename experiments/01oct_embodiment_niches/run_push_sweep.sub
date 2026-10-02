@@ -1,0 +1,32 @@
+#!/bin/bash
+#SBATCH --job-name=pushsweep
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=06:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+# Push-robustness sweep of ONE policy on HAND: AXIS=scale varies force_scale at push prob 0.02/step;
+# AXIS=prob varies the per-step push probability at force_scale 50. 1024 envs x 60 s per point.
+#   sbatch --export=ALL,HAND=wuji2,TARGET=wuji2,CKPT=<pth>,LABEL=<name>,AXIS=scale run_push_sweep.sub
+set -uo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+OUT=$REPO/experiments/01oct_embodiment_niches/results/push_sweep/$LABEL
+LOGS=$REPO/debug_outputs/embodiment_niches_push_sweep/logs/$LABEL
+mkdir -p $OUT $LOGS
+cd $REPO
+export OMNI_KIT_ACCEPT_EULA=YES
+if [ "$AXIS" = scale ]; then VALUES="0 10 20 35 50 75 100 150"; else VALUES="0.005 0.01 0.02 0.05 0.1 0.2"; fi
+for v in $VALUES; do
+    if [ "$AXIS" = scale ]; then s=$v; p=0.02; else s=50; p=$v; fi
+    f=$OUT/${AXIS}_${v}.json
+    [ -s "$f" ] && { echo "skip $f"; continue; }
+    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform --hand "$HAND" \
+        ${TARGET:+--target "$TARGET"} --checkpoint "$CKPT" --condition nominal --num-envs 1024 --seconds 60 \
+        --override "domain_randomization.force_scale=${s}.0" \
+        --override "domain_randomization.force_prob_range=($p, $p)" \
+        --out "$f" > $LOGS/${AXIS}_${v}.log 2>&1 || echo "FAILED $LABEL $AXIS $v"
+    grep -h "\[niches\]" $LOGS/${AXIS}_${v}.log
+done

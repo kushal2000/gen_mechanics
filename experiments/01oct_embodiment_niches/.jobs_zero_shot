@@ -8,3 +8,4 @@ gen-SHARPA zero-shot: unified ep6400 894045, sharpa-only 894046
 converged, cancelled: sharpa 871441, allegro 871442, wuji2 871447; zero-shot sweep 876142 replaced by 894315 on ep_3600
 wuji compare: unified ep 7086 (frozen copy) 894590
 wuji compare: unified ep 7827 (frozen copy) 896694
+push sweep (wuji2): jobs 900599 900600 900601 900602 900604 900605
