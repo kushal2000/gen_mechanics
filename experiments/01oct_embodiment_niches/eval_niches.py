@@ -85,6 +85,11 @@ def _streaks(ST) -> dict:
     return out
 
 
+# gen-SHARPA's uniform actuator (experiments/01oct_uniform_dynamics/make_runs.py UNIFORM_ACTUATOR).
+GEN_SHARPA_ACTUATOR = {"hand_effort_limit": 0.5, "hand_velocity_limit": 10.0, "hand_stiffness": 3.0,
+                       "hand_damping": 0.0775, "hand_armature": 0.00058}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--hand", required=True)
@@ -95,6 +100,9 @@ def main() -> None:
     ap.add_argument("--seconds", type=float, default=60.0, help="sim time per env")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--checkpoint", default="", help="default: the hand's latest checkpoint")
+    ap.add_argument("--target", default="",
+                    help="zero-shot: run --hand's policy on this uniform hand instead (e.g. allegro); the "
+                         "network is rebuilt for the target's joints and sigma resized")
     ap.add_argument("--out", required=True)
     ap.add_argument("--device", default="cuda:0")
     args = ap.parse_args()
@@ -131,6 +139,16 @@ def main() -> None:
     saved = OmegaConf.load(run_dir / "rank_0/.hydra/config.yaml")
     sys.argv = [sys.argv[0]]
     result = {}
+    if args.target:
+        # Zero-shot: the target hand's scene, under the policy's own observation and task settings. The
+        # network reads its layout through env.assets.robot_spec, so pointing that at the target builds it
+        # for the target's joints; every weight is shared across joint tokens.
+        if args.target == "gen_sharpa":
+            saved.env.assets.robot_spec = f"handonly:{REPO}/assets/populations/sharpa_capsule.json"
+            for k, v in GEN_SHARPA_ACTUATOR.items():         # the uniform actuator, as its training run set
+                saved.env.physics[k] = v
+        else:
+            saved.env.assets.robot_spec = f"{args.target}_left_uniform_handonly"
 
     @hydra_task_config_with_yaml(TASK, "rl_games_joint_transformer_cfg_entry_point")
     def _run(env_cfg, agent_cfg):
@@ -159,7 +177,11 @@ def main() -> None:
         f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
         yaml.safe_dump({"train": acfg}, f)
         f.close()
-        player = RlPlayer(obs["policy"].shape[-1], inner.action_space.shape[-1], f.name, str(ckpt),
+        ck_path = str(ckpt)
+        if args.target:
+            from coevolution.eval._play_worker import _resize_sigma
+            ck_path = _resize_sigma(ck_path, int(inner.action_space.shape[-1]))
+        player = RlPlayer(obs["policy"].shape[-1], inner.action_space.shape[-1], f.name, ck_path,
                           device=args.device, sapg_expl_coef=0.0, num_envs=inner.num_envs)
 
         N, dev, dt = inner.num_envs, inner.device, float(inner.step_dt)
@@ -275,7 +297,7 @@ def main() -> None:
         first = S[S[:, 4] == 1] if len(S) else S      # first goal after a reset (includes settling)
 
         result.update({
-            "hand": args.hand, "set": args.set, "condition": args.condition, "condition_desc": CONDITIONS[args.condition][0],
+            "hand": args.hand, "target": args.target or args.hand, "set": args.set, "condition": args.condition, "condition_desc": CONDITIONS[args.condition][0],
             "checkpoint": str(ckpt), "num_envs": N, "seconds": args.seconds, "dt": dt, "env_seconds": env_s,
             "wall_s": wall, "joints": J, "hand_mass_kg": float(inner.robot.data.default_mass[0].sum()),
             "cube_mass_kg": float(inner._object_mass[0]),
@@ -322,7 +344,7 @@ def main() -> None:
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=1))
-    print(f"[niches] {args.hand}/{args.condition}: {result.get('goals_per_min', float('nan')):.1f} goals/min, "
+    print(f"[niches] {args.hand}{' -> ' + args.target if args.target else ''}/{args.condition}: {result.get('goals_per_min', float('nan')):.1f} goals/min, "
           f"{result.get('drops_per_min', float('nan')):.2f} drops/min, "
           f"{result.get('work_per_goal_J', float('nan')):.3f} J/goal -> {out}", flush=True)
     app.close()

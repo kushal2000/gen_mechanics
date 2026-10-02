@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH --job-name=zeroshot
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=06:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+# Zero-shot transfer: ONE policy (HAND's checkpoint CKPT, or the newest one under RUN_GLOB at start) on
+# every uniform-dynamics hand, nominal condition, 60 s x 1024 envs each. Results: results/zero_shot/$LABEL/.
+#   sbatch --export=ALL,HAND=sharpa,LABEL=sharpa_uniform,CKPT=<pth> run_zero_shot.sub
+set -uo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+OUT=$REPO/experiments/01oct_embodiment_niches/results/zero_shot/$LABEL
+LOGS=$REPO/debug_outputs/embodiment_niches_zero_shot/logs/$LABEL
+mkdir -p $OUT $LOGS
+cd $REPO
+export OMNI_KIT_ACCEPT_EULA=YES
+if [ -z "${CKPT:-}" ]; then CKPT=$(ls -t $RUN_GLOB | head -1); fi
+echo "policy $LABEL: $CKPT"
+for t in sharpa allegro leap shadow dex3 tesollo wuji2 xhand gen_sharpa; do
+    f=$OUT/$t.json
+    [ -s "$f" ] && { echo "skip $t"; continue; }
+    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform --hand "$HAND" \
+        --target "$t" --checkpoint "$CKPT" --condition nominal --num-envs 1024 --seconds 60 --out "$f" \
+        > $LOGS/$t.log 2>&1 || echo "FAILED $t"
+    grep -h "\[niches\]" $LOGS/$t.log
+done
