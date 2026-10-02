@@ -21,10 +21,11 @@ HERE = pathlib.Path(__file__).resolve().parent.parent
 R = HERE / "results/push_sweep"
 OUT = HERE / "plots/push_sweep"
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
-POLICIES = [("Unified (8 hands), ep 7827", "unified_ep_7827", "#2a78d6"),
-            ("Wuji v2 only, ep 1600", "wuji_only_ep_1600", "#eb6834"),
-            ("Wuji v2 only, ep 3600 (converged)", "wuji_only_ep_3600", "#1baf7a"),
-            ("Unified (8 hands), final ep 10000", "unified_final", "#eda100")]
+# The latest unified policy against the Wuji-only checkpoint nearest it in skill. The final unified checkpoint
+# replaces ep 7827 as soon as its sweep has results.
+_LATEST = ("Unified (8 hands), final ep 10000", "unified_final") if (R / "unified_final").exists() and any(
+    (R / "unified_final").iterdir()) else ("Unified (8 hands), ep 7827", "unified_ep_7827")
+POLICIES = [(*_LATEST, "#2a78d6"), ("Wuji v2 only, ep 1600", "wuji_only_ep_1600", "#eb6834")]
 SCALES = [0, 10, 20, 35, 50, 75, 100, 150]
 PROBS = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2]
 AXES = {
@@ -35,9 +36,16 @@ AXES = {
 }
 
 
+def goals_per_episode(r: dict) -> float:
+    """Goals per episode from an eval: goals/min over episodes/min. With max_consecutive_successes off, an
+    episode ends only in a drop or a timeout."""
+    eps = r["drops_per_min"] + r["timeouts_per_min"]
+    return r["goals_per_min"] / eps if eps else float("nan")
+
+
 def gpm(label, axis, v):
     f = R / label / f"{axis}_{v}.json"
-    return json.loads(f.read_text())["goals_per_min"] if f.exists() else np.nan
+    return goals_per_episode(json.loads(f.read_text())) if f.exists() else np.nan
 
 
 def plot(name, relative):
@@ -69,9 +77,9 @@ def plot(name, relative):
         ax.spines[s].set_color(INK2)
     ax.tick_params(colors=INK2)
     ax.set_xlabel(xlabel, color=INK, fontsize=10)
-    ax.set_ylabel("fraction of own unpushed speed" if relative else "goals / min", color=INK, fontsize=10)
+    ax.set_ylabel("fraction of own unpushed goals / episode" if relative else "goals / episode", color=INK, fontsize=10)
     ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="lower left")
-    ax.set_title(title + (" (relative to own unpushed speed)" if relative else ""), loc="left", fontsize=12,
+    ax.set_title(title + (" (relative to own unpushed)" if relative else ""), loc="left", fontsize=12,
                  fontweight="bold", color=INK, pad=24)
     ax.text(0, 1.02, "1024 envs × 60 s per point, greedy actions · push = randn(3) × cube mass × force_scale "
             "for one 1/60 s step", transform=ax.transAxes, fontsize=8, color=INK2)
@@ -87,8 +95,8 @@ def main():
         for rel in (False, True):
             print("->", plot(name, rel))
     for txt, label, _ in POLICIES:
-        print(f"  {txt:36s} scale: " + " ".join(f"{gpm(label, 'scale', v):.1f}" for v in SCALES)
-              + " | prob: " + " ".join(f"{gpm(label, 'prob', v):.1f}" for v in PROBS))
+        print(f"  {txt:36s} scale: " + " ".join(f"{gpm(label, 'scale', v):.2f}" for v in SCALES)
+              + " | prob: " + " ".join(f"{gpm(label, 'prob', v):.2f}" for v in PROBS))
 
 
 if __name__ == "__main__":

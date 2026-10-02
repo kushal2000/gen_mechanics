@@ -106,6 +106,9 @@ def main() -> None:
     ap.add_argument("--override", action="append", default=[],
                     help="extra env setting applied after the condition, dotted.path=python_literal "
                          "(e.g. domain_randomization.force_scale=80.0); repeatable")
+    ap.add_argument("--max-goals", type=int, default=0,
+                    help="end an episode at this many goals, as training does (50); 0 = uncapped. With a cap the "
+                         "result carries goals_per_episode, the training metric: goals per COMPLETED episode")
     ap.add_argument("--out", required=True)
     ap.add_argument("--device", default="cuda:0")
     args = ap.parse_args()
@@ -161,7 +164,7 @@ def main() -> None:
         env_cfg.from_dict(env_d)
         env_cfg.scene.num_envs = args.num_envs
         env_cfg.seed = args.seed
-        env_cfg.termination.max_consecutive_successes = 0
+        env_cfg.termination.max_consecutive_successes = args.max_goals
         for path, val in CONDITIONS[args.condition][1]:
             if isinstance(val, str) and val.startswith("x"):        # relative to the trained value
                 *head, leaf = path.split(".")
@@ -221,6 +224,10 @@ def main() -> None:
         prev_qd = inner.robot.data.joint_vel[:, jid].clone()
         prev_tgt = inner._cur_targets[:, jid].clone()
         n_succ = n_fall = n_tout = n_far = 0
+        ep_done = ep_goals = n_capped = 0           # completed episodes, their goals, how many hit the cap
+        # Each env's FIRST episode: every env starts at reset together, so this sample is not biased toward
+        # short episodes the way "every episode that ended inside the window" is.
+        first_goals = torch.full((N,), -1, dtype=torch.long, device=dev)
         t0 = time.time()
         for k in range(steps):
             with torch.no_grad():
@@ -257,7 +264,8 @@ def main() -> None:
             succ = inner._is_success.bool()
             r = inner._termination_reasons
             fall, tout, far = r["fall"].bool(), r["timeout"].bool(), r["hand_far"].bool()
-            ended = fall | tout | far
+            capped = r["max_successes"].bool()
+            ended = fall | tout | far | capped
             th_now = angle_now().double()
             if succ.any():
                 i = succ.nonzero().squeeze(-1)
@@ -274,6 +282,11 @@ def main() -> None:
                 i = ended.nonzero().squeeze(-1)
                 # Only a drop is the failure; a timeout or hand_far ends the episode without one.
                 streak_rec.append(torch.stack([streak[i], fall[i].long()], -1).cpu())
+                ep_done += int(i.numel())
+                fresh = i[first_goals[i] < 0]
+                first_goals[fresh] = streak[fresh]
+                ep_goals += int(streak[i].sum())
+                n_capped += int(capped[i].sum())
                 streak = torch.where(ended, torch.zeros_like(streak), streak)
             new = succ | ended
             if new.any():
@@ -314,6 +327,14 @@ def main() -> None:
             "drops_per_min": 60.0 * n_fall / env_s,
             "timeouts_per_min": 60.0 * n_tout / env_s,
             "goals_per_drop": n_succ / max(n_fall, 1),
+            # The training metric under --max-goals: goals per episode, over episodes that ENDED inside the run
+            # (drop, 10 s without a goal, or the cap). Episodes still running at the end are not counted.
+            "max_goals": args.max_goals,
+            "goals_per_episode": ep_goals / ep_done if ep_done else float("nan"),
+            "episodes_completed": ep_done, "episodes_capped": n_capped,
+            "goals_per_episode_first": (float(first_goals[first_goals >= 0].double().mean())
+                                        if (first_goals >= 0).any() else float("nan")),
+            "first_episode_unfinished_frac": float((first_goals < 0).double().mean()),
             "counts": {"goals": n_succ, "drops": n_fall, "timeouts": n_tout, "hand_far": n_far},
             "time_per_goal_s": _summ(mid[:, 0]),
             "first_goal_after_reset_s": _summ(first[:, 0]),

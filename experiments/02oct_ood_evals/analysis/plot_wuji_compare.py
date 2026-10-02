@@ -26,11 +26,18 @@ CONDS = [("nominal", "nominal\n(train)"), ("cube40", "cube\n40 mm"), ("cube55", 
          ("slippery", "slippery\n(×0.5 μ)"), ("push", "push"), ("push_hard", "hard\npush")]
 
 
+def goals_per_episode(r: dict) -> float:
+    """Goals per episode from an eval: goals/min over episodes/min. With max_consecutive_successes off, an
+    episode ends only in a drop or a timeout."""
+    eps = r["drops_per_min"] + r["timeouts_per_min"]
+    return r["goals_per_min"] / eps if eps else float("nan")
+
+
 def load(d):
     out = {}
     for c, _ in CONDS:
         f = RES / d / f"wuji2__{c}.json"
-        out[c] = json.loads(f.read_text())["goals_per_min"] if f.exists() else np.nan
+        out[c] = goals_per_episode(json.loads(f.read_text())) if f.exists() else np.nan
     return out
 
 
@@ -53,7 +60,7 @@ def main():
             ax.bar(xs, y, w * 0.92, color=SERIES[i], label=label, edgecolor=SURFACE, linewidth=1.5, zorder=3)
             for xi, yi in zip(xs, y):
                 if np.isfinite(yi):
-                    ax.text(xi, yi, f"{yi:.2f}" if rel else f"{yi:.0f}", ha="center", va="bottom",
+                    ax.text(xi, yi, f"{yi:.2f}" if rel else f"{yi:.1f}", ha="center", va="bottom",
                             fontsize=7.5, color=INK2)
                 else:
                     ax.text(xi, 0, "pending", ha="center", va="bottom", fontsize=7, color=INK2, rotation=90)
@@ -68,12 +75,12 @@ def main():
         ax.text(x[1:].mean(), top * 1.02, "out-of-distribution", ha="center", va="bottom", fontsize=9, color=INK)
         if rel:
             ax.axhline(1.0, color=INK2, linewidth=0.8)
-        ax.set_ylabel("fraction of own nominal" if rel else "goals / min", color=INK, fontsize=10)
+        ax.set_ylabel("fraction of own nominal goals / episode" if rel else "goals / episode", color=INK, fontsize=10)
         ax.set_xticks(x, [lab for _, lab in CONDS], fontsize=9, color=INK)
         ax.legend(frameon=False, fontsize=9, ncol=len(data), loc="lower left", bbox_to_anchor=(0.0, 1.09),
                   labelcolor=INK)
         ax.set_title("Wuji v2: unified vs Wuji-only policy" + (", relative to own nominal (1.0 = no loss)"
-                     if rel else ", goals per minute"), loc="left", fontsize=12, fontweight="bold", color=INK,
+                     if rel else ", goals per episode"), loc="left", fontsize=12, fontweight="bold", color=INK,
                      pad=48)
         fig.text(0.125, -0.02, "1024 envs × 60 s per condition, greedy actions", fontsize=8, color=INK2)
         p = OUT / f"id_vs_ood_{'relative' if rel else 'goals'}.png"
@@ -81,7 +88,7 @@ def main():
         plt.close(fig)
         print("->", p)
     for label, v in data:
-        print(f"  {label:32s} " + " ".join(f"{c} {v[c]:.1f}" for c, _ in CONDS))
+        print(f"  {label:32s} " + " ".join(f"{c} {v[c]:.2f}" for c, _ in CONDS))
 
 
 if __name__ == "__main__":
