@@ -301,3 +301,26 @@ def test_optional_joint_speed_bound_rejects_a_vibrating_hand():
     assert not gc.stable_mask(**ok, joint_speed=torch.tensor([50.0]), th=th).item()
     assert gc.stable_mask(**ok, joint_speed=torch.tensor([1.0]), th=th).item()
     assert gc.stable_mask(**ok, th=th).item()  # not measured: no test
+
+
+def test_hora_like_profile_reproduces_horas_allegro_pose_as_range_fractions():
+    """HORA's allegro grasp pose is, per finger and as a fraction of each
+    joint's range, about [0.6, 0.8, 0.25, 0.25]: abduction centred, the
+    first flexion joint strongly bent, the distal ones a little. The
+    hora_like profile applies those fractions to any design's fingers."""
+    lim = np.array([[-0.47, 0.47], [-0.196, 1.61], [-0.174, 1.709], [-0.227, 1.618]])
+    valid = np.zeros(32, dtype=bool)
+    limits = np.zeros((32, 2))
+    valid[0:4] = True
+    limits[0:4] = lim
+    valid[6:8] = True  # a two-joint finger
+    limits[6:8] = [[0.0, 1.0], [0.0, 2.0]]
+    valid[30] = True  # a real palm carrier keeps its default
+    limits[30] = [-1.0, 1.0]
+    default = np.full(32, 0.123)
+    q = gc.profile_pose(valid, limits, default, gc.HORA_LIKE_PROFILE)
+    hora_index = [0.082, 1.244, 0.265, 0.298]
+    assert np.allclose(q[0:4], hora_index, atol=0.1)  # within 0.1 rad of HORA's
+    assert q[6] == pytest.approx(0.6) and q[7] == pytest.approx(1.6)
+    assert q[30] == 0.123 and q[4] == 0.123  # carrier and ghost slots untouched
+    assert gc.HORA_LIKE_PROFILE[:4] == (0.6, 0.8, 0.25, 0.25)

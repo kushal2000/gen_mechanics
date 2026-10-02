@@ -115,3 +115,7 @@ def test_population_hand_actuator_override_is_off_by_default():
 
 def test_joint_speed_bound_is_off_by_default():
     assert _task()["anyrotate"]["grasp_max_joint_speed"] < 0
+
+
+def test_canonical_profile_defaults_to_palm_up():
+    assert _task()["anyrotate"]["grasp_canonical_profile"] == "palm_up"
