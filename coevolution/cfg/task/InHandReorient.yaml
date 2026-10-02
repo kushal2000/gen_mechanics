@@ -176,12 +176,12 @@ repose:
   hand_solver_velocity_iterations: 0
   hand_sleep_threshold: 0.005
   hand_stabilization_threshold: 0.0005
-  hand_stiffness: -1.0              # actuator overrides, all joints; < 0 keeps the hand's own.
-  hand_damping: -1.0                #   NVIDIA's Allegro: 3.0, 0.1, armature 0.0, friction 0.01,
-  hand_armature: -1.0               #   effort 0.5 N m, velocity 6.283 rad/s
-  hand_joint_friction: -1.0
-  hand_effort_limit: -1.0
-  hand_velocity_limit: -1.0
+  hand_stiffness: 3.0               # actuator of every joint of a single hand: NVIDIA's Allegro
+  hand_damping: 0.1                 #   (ALLEGRO_HAND_CFG + its USD). < 0 keeps the hand's own value.
+  hand_armature: 0.0                #   Not applied on the grammar-population path.
+  hand_joint_friction: 0.01
+  hand_effort_limit: 0.5
+  hand_velocity_limit: 6.283
   collision_from_visuals: false     # true: convex hulls of the visual meshes as colliders
   hand_asset: ""                    # "isaaclab_allegro": NVIDIA's Allegro USD (diagnostic)
   hand_pose_file: repose_hand_poses.json   # per-hand pose overrides (isaacsimenvs/inhand_reorient/); "" = palm-up calibration

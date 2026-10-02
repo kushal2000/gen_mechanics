@@ -188,15 +188,19 @@ class ReposeCfg:
     hand_sleep_threshold: float = 0.005
     hand_stabilization_threshold: float = 0.0005
 
-    # --- hand actuator overrides (negative: keep the hand's own value) ---
-    # NVIDIA's Allegro: stiffness 3.0, damping 0.1, joint friction 0.01,
-    # effort 0.5 N m, armature 0 (its USD), velocity limit 2 pi rad/s (its USD).
-    hand_stiffness: float = -1.0
-    hand_damping: float = -1.0
-    hand_armature: float = -1.0
-    hand_joint_friction: float = -1.0
-    hand_effort_limit: float = -1.0
-    hand_velocity_limit: float = -1.0
+    # --- hand actuator, every joint of a single hand (negative: keep the
+    # hand's own value). Defaults: NVIDIA's Allegro (ALLEGRO_HAND_CFG
+    # stiffness 3.0, damping 0.1, friction 0.01, effort 0.5 N m; armature 0
+    # and velocity limit 2 pi rad/s from its USD). Measured 2026-10-01: with
+    # the hands' own gains, allegro_right learned half as fast and SHARPA
+    # (up to 3.3 N m) knocked the cube off within 6 steps and did not learn
+    # in 10 min. The grammar-population path keeps its designs' own gains.
+    hand_stiffness: float = 3.0
+    hand_damping: float = 0.1
+    hand_armature: float = 0.0
+    hand_joint_friction: float = 0.01
+    hand_effort_limit: float = 0.5
+    hand_velocity_limit: float = 6.283
 
     collision_from_visuals: bool = False
     """Collide through convex hulls of the hand's visual meshes instead of
