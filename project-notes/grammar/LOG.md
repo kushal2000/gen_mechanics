@@ -330,3 +330,5 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Martin: the task spec is the main issue; use an existing good in-hand cube task. Chosen: NVIDIA Isaac Lab's `Isaac-Repose-Cube-Allegro-Direct-v0` (in our installed Isaac Lab 2.3.2; the IsaacGymEnvs Allegro/Shadow reorientation benchmark): 30 Hz control, 10 s episodes, full random goal orientations, success within 0.2 rad, reward = -10 dist + 1/(|rot|+0.1) + 250 goal bonus - 0.0002 |a|^2, plain PPO (MLP 1024-512-256-128, fixed sigma, 8192 envs). Alternative noted: HORA (Qi et al., CoRL 2022) continuous z-axis rotation in Isaac Gym.
 - Local pilot-3 runs stopped to free the 4090; cluster pilot-3 runs continue on the legacy spec.
+
+- Revised (Martin: "pick something super up to date"): AnyRotate (CoRL 2024) replaces the 2021 repose-cube spec; Dexsuite (2025) gravity curriculum as an option. The same Opus worker was redirected.
