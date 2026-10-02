@@ -87,3 +87,4 @@ assets/populations/*
 # The niche evaluations are small JSON tables (per hand x condition) that the tracked figures are
 # regenerated from -- keep them with the experiment, unlike bulky results/ elsewhere.
 !experiments/01oct_embodiment_niches/results/
+experiments/**/slurm-*.out
