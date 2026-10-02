@@ -6,6 +6,7 @@ per-role viability rates. The grasp search (a Kit launch) is faked."""
 from __future__ import annotations
 
 import numpy as np
+from pathlib import Path
 import pytest
 
 from isaacsimenvs.inhand_reorient.evolution import archive as arch
@@ -274,3 +275,31 @@ def test_founders_cycle_through_several_variants():
     assert len(plan.entries) == 6
     # every draw (pre-filter rejects included) takes the next variant
     assert report["founder_variants"] == [("G_V3S", "G_V1")[i % 2] for i in range(report["candidates_drawn"])]
+
+
+def test_kit_cache_path_follows_the_job_environment(monkeypatch, tmp_path):
+    """On the cluster each job sets a node-local OMNI_KIT_CACHE_PATH; the
+    driver's subprocesses keep it. Unset: /tmp/$USER/ov_cache as before."""
+    monkeypatch.setenv("OMNI_KIT_CACHE_PATH", str(tmp_path / "kit"))
+    assert drv._write_env(Path("/tmp/x/ov_cache"))["OMNI_KIT_CACHE_PATH"] == str(tmp_path / "kit")
+    monkeypatch.delenv("OMNI_KIT_CACHE_PATH")
+    assert drv._write_env(Path("/tmp/x/ov_cache"))["OMNI_KIT_CACHE_PATH"] == "/tmp/x/ov_cache"
+
+
+def test_design_score_poller_appends_each_new_window(tmp_path):
+    import json
+    import os
+
+    from isaacsimenvs.inhand_reorient.tools import poll_design_scores as poll
+
+    src, out = tmp_path / "scores.json", tmp_path / "windows.jsonl"
+    state = {}
+    assert poll.poll_once(src, out, state) is False  # nothing yet
+    src.write_text(json.dumps({"steps": 1, "designs": {}}))
+    assert poll.poll_once(src, out, state) is True
+    assert poll.poll_once(src, out, state) is False  # unchanged
+    src.write_text(json.dumps({"steps": 2, "designs": {}}))
+    os.utime(src, (state["mtime"] + 5, state["mtime"] + 5))
+    assert poll.poll_once(src, out, state) is True
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    assert [r["steps"] for r in rows] == [1, 2] and all("_t" in r for r in rows)
