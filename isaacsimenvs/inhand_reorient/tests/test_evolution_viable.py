@@ -256,3 +256,20 @@ def test_state_round_trips_the_known_viability_map(tmp_path):
     drv.save_state(path, archive=a, driver_rng=rng, generation_completed=0, last_checkpoint=None,
                    prev_tolerance=0.0, minter=drv.IdMinter(), config={}, known_viability={"abc": 3, "def": 0})
     assert drv.load_state(path)["known_viability"] == {"abc": 3, "def": 0}
+
+
+def test_founders_cycle_through_several_variants():
+    """A mixed population (e.g. G_V3S and G_V1 founders): founders are drawn
+    round-robin over the distributions."""
+    dists = [drv.resolve_variant("G_V3S"), drv.resolve_variant("G_V1")]
+    rng = np.random.default_rng(0)
+    seen = []
+
+    def search(batch):
+        seen.extend(p.meta.design_id for p in batch)
+        return {p.sha256: 1 for p in batch}, 0.0
+
+    plan, report = vb.build_viable_generation(0, 6, [], dists, arch.Archive(), rng, drv.IdMinter(), known={},
+                                              search=search, batch_size=6, max_batches=1)
+    assert len(plan.entries) == 6
+    assert report["founder_variants"] == ["G_V3S", "G_V1", "G_V3S", "G_V1", "G_V3S", "G_V1"][: report["candidates_drawn"]]
