@@ -93,7 +93,7 @@ DEFAULT_MINIBATCH_CAP = 16384  # ... its `minibatch_size`
 # before the profile flag existed resumes unchanged; the profile is always
 # passed explicitly, so a later change of the env's own default cannot
 # silently change a resumed run.
-TASK_PROFILES: Tuple[str, ...] = ("legacy", "isaaclab_repose", "anyrotate")
+TASK_PROFILES: Tuple[str, ...] = ("legacy", "isaaclab_repose", "anyrotate", "hora")
 DEFAULT_TASK_PROFILE = "legacy"
 SAPG_AGENT_ENTRY_POINTS: Tuple[str, ...] = (
     "rl_games_sapg_cfg_entry_point", "rl_games_sapg_pop_cfg_entry_point")
@@ -929,8 +929,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap.add_argument("--grasp-cache-path", default=None,
                     help="the run's grasp cache (default <run-dir>/grasp_cache.npz)")
     args = ap.parse_args(argv)
-    if args.grasp_cache and args.task_profile != "anyrotate":
-        ap.error("--grasp-cache needs --task-profile anyrotate")
+    if args.grasp_cache and args.task_profile not in ("anyrotate", "hora"):
+        ap.error("--grasp-cache needs --task-profile anyrotate or hora")
     return args
 
 
