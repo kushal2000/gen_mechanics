@@ -331,6 +331,7 @@ def main(argv=None) -> int:
     ap.add_argument("--search-rounds", type=int, default=40)
     ap.add_argument("--grasps-per-design", type=int, default=64)
     ap.add_argument("--search-timeout-s", type=int, default=1500)
+    ap.add_argument("--max-joint-speed", type=float, default=5.0, help="grasp_max_joint_speed (rad/s; -1 off)")
     ap.add_argument("--train-python", default=str(drv.REPO_ROOT / ".venv_isaacsim" / "bin" / "python3"))
     a = ap.parse_args(argv)
     out = Path(a.out_dir)
@@ -338,7 +339,8 @@ def main(argv=None) -> int:
     args = argparse.Namespace(
         train_python=a.train_python, task_profile=a.task_profile, viable_search_envs=a.search_envs,
         viable_search_timeout_s=a.search_timeout_s, viable_grasps_per_design=a.grasps_per_design,
-        viable_search_rounds=a.search_rounds, train_override=[], grasp_cache_path=str(out / "grasp_cache.npz"))
+        viable_search_rounds=a.search_rounds, train_override=[], grasp_cache_path=str(out / "grasp_cache.npz"),
+        viable_max_joint_speed=a.max_joint_speed)
     counter = {"i": 0}
 
     def search(batch):

@@ -953,6 +953,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap.add_argument("--viable-grasps-per-design", type=int, default=64,
                     help="grasp_per_design of a search (a design stops searching once it has this many)")
     ap.add_argument("--viable-search-timeout-s", type=int, default=1500, help="timeout -k 30 <this> per search")
+    ap.add_argument("--viable-max-joint-speed", type=float, default=5.0,
+                    help="grasp_max_joint_speed of a search (rad/s; -1 off): a grasp whose hand vibrates is not "
+                         "stable (designs with joints at the 10 rad/s limit dominated population training)")
     args = ap.parse_args(argv)
     if args.grasp_cache and args.task_profile not in ("anyrotate", "hora"):
         ap.error("--grasp-cache needs --task-profile anyrotate or hora")
@@ -969,6 +972,20 @@ def csv_columns(args: argparse.Namespace) -> List[str]:
     return list(CSV_COLUMNS) + (list(VIABLE_CSV_COLUMNS) if getattr(args, "viable_only", False) else [])
 
 
+def grasp_search_cmd(args: argparse.Namespace, pop_path: Path, cache_path: Path, search_dir: Path) -> List[str]:
+    """The ``grasp_cache_gen`` launch of one viable-only search batch."""
+    physics = [o for o in args.train_override if o.startswith("env.")]
+    return [
+        "timeout", "-k", "30", str(args.viable_search_timeout_s), str(args.train_python), "-m",
+        "isaacsimenvs.inhand_reorient.grasp_cache_gen", "--task-profile", args.task_profile,
+        "--population", str(pop_path), "--num-envs", str(args.viable_search_envs), "--out", str(cache_path),
+        f"env.anyrotate.grasp_per_design={args.viable_grasps_per_design}",
+        f"env.anyrotate.grasp_gen_max_rounds={args.viable_search_rounds}",
+        f"env.anyrotate.grasp_max_joint_speed={float(getattr(args, 'viable_max_joint_speed', -1.0))}",
+        *physics, f"hydra.run.dir={search_dir}",
+    ]
+
+
 def run_grasp_search(batch, *, args: argparse.Namespace, run_dir: Path, gen_dir: Path, index: int
                      ) -> Tuple[Dict[str, int], float]:
     """One grasp-search Kit launch over ``batch`` (``viable.Proposal``s):
@@ -978,16 +995,7 @@ def run_grasp_search(batch, *, args: argparse.Namespace, run_dir: Path, gen_dir:
     search_dir = gen_dir / f"search_{index}"
     pop_path = gen_dir / f"search_{index}.json"
     pf.write_population(pop_path, [p.entry for p in batch])
-    physics = [o for o in args.train_override if o.startswith("env.")]
-    cmd = [
-        "timeout", "-k", "30", str(args.viable_search_timeout_s), str(args.train_python), "-m",
-        "isaacsimenvs.inhand_reorient.grasp_cache_gen", "--task-profile", args.task_profile,
-        "--population", str(pop_path), "--num-envs", str(args.viable_search_envs),
-        "--out", str(grasp_cache_path(args, run_dir)),
-        f"env.anyrotate.grasp_per_design={args.viable_grasps_per_design}",
-        f"env.anyrotate.grasp_gen_max_rounds={args.viable_search_rounds}",
-        *physics, f"hydra.run.dir={search_dir}",
-    ]
+    cmd = grasp_search_cmd(args, pop_path, grasp_cache_path(args, run_dir), search_dir)
     print(f"[driver] grasp search {index}: {len(batch)} design(s) on {args.viable_search_envs} envs", flush=True)
     env_vars = _write_env(Path(f"/tmp/{os.environ.get('USER', 'user')}/ov_cache"))
     with open(gen_dir / f"search_{index}.log", "w") as log:
@@ -1059,7 +1067,7 @@ def _resolved_config(args: argparse.Namespace) -> dict:
         config["viable_only"] = True
         config["viable"] = {k: getattr(args, k) for k in (
             "viable_batch_size", "viable_search_envs", "viable_max_batches", "viable_search_rounds",
-            "viable_grasps_per_design")}
+            "viable_grasps_per_design", "viable_max_joint_speed")}
     return config
 
 
