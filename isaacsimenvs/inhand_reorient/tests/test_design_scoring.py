@@ -213,3 +213,20 @@ def test_snapshot_goal_mode_code_is_isaaclab_under_the_repose_profile():
     unused stage."""
     env = SimpleNamespace(_repose=True)
     assert ds._goal_mode_code_safe(env) == 3.0
+
+
+def test_anyrotate_banks_rotation_about_the_axis_and_time_to_terminate():
+    """Under the anyrotate profile the graded fitness is AnyRotate's own two
+    metrics: rotations about k (rotation_progress = the episode's rotation
+    about k, rad) plus 0.25 x the fraction of the episode before termination;
+    goals are still counted but not in the fitness."""
+    env = SimpleNamespace(_anyrotate=True)
+    assert ds._goal_mode_code_safe(env) == 4.0
+    rot = torch.tensor([2 * math.pi, -0.5])
+    ttt = torch.tensor([30.0, 6.0])
+    goals = torch.tensor([3.0, 0.0])
+    rp, rot_term, time_term, fitness = ds.anyrotate_fitness_components(goals, rot, ttt, 30.0)
+    assert rp.tolist() == [2 * math.pi, -0.5]
+    assert rot_term.tolist() == [1.0, 0.0]
+    assert time_term.tolist() == [0.25, 0.05]
+    assert [round(v, 6) for v in fitness.tolist()] == [1.25, 0.05]
