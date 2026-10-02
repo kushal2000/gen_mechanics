@@ -205,3 +205,11 @@ def test_reset_scoring_state_only_touches_the_given_env_ids():
     # envs 1-3 untouched.
     assert env._score_start_error[1].item() == 1.0
     assert env._score_elapsed_steps[1].item() == 1
+
+
+def test_snapshot_goal_mode_code_is_isaaclab_under_the_repose_profile():
+    """The isaaclab_repose profile has no goal curriculum; its snapshots
+    report goal mode 3 (NVIDIA's random goals), not the legacy curriculum's
+    unused stage."""
+    env = SimpleNamespace(_repose=True)
+    assert ds._goal_mode_code_safe(env) == 3.0
