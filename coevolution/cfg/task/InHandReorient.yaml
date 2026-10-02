@@ -314,6 +314,7 @@ anyrotate:
   hand_joint_friction: 0.01
   hand_effort_limit: 0.5
   hand_velocity_limit: 6.283
+  population_hand_actuator: false   # population: every real joint gets the actuator above (default: designs' own)
   gravity_curriculum: false         # Isaac Lab Dexsuite ADR gravity curriculum (optional)
   gravity_max_difficulty: 10
   gravity_promote_goals: 1

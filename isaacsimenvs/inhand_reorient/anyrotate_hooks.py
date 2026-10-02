@@ -103,6 +103,7 @@ def allocate_buffers(env) -> None:
         env._hora_rotate = torch.zeros(n, device=device)
     _setup_contact_indices(env)
     randomize_object_physics(env)
+    _apply_population_actuator(env)  # before the grasp search: grasps under the training actuator
     _setup_grasp_cache(env)  # needs full gravity: before the curriculum zeroes it
     if a.gravity_curriculum:
         _set_gravity(env, 0.0)
@@ -180,6 +181,37 @@ def randomize_object_physics(env) -> None:
     env._ar_object_com = offset.to(env.device)
     dims = (a.capsule_radius, a.capsule_width) if a.object_shape == "capsule" else (a.box_size, a.box_size)
     env._ar_object_dims = torch.tensor(dims, device=env.device).expand(env.num_envs, 2).clone()
+
+
+def _apply_population_actuator(env) -> None:
+    """``population_hand_actuator``: every real joint (``_joint_valid_mask``)
+    of every design gets hand_stiffness / hand_damping / hand_effort_limit,
+    in the simulation and in Isaac Lab's actuator model (which computes the
+    applied torque the penalties read). Ghost joints keep theirs."""
+    a = _cfg(env)
+    if not a.population_hand_actuator or getattr(env, "hand_tables", None) is None:
+        return
+    mask = _joint_valid_mask(env)
+    values = {"stiffness": float(a.hand_stiffness), "damping": float(a.hand_damping),
+              "effort": float(a.hand_effort_limit)}
+    data = env.robot.data
+    k = torch.where(mask, torch.full_like(data.joint_stiffness, values["stiffness"]), data.joint_stiffness)
+    d = torch.where(mask, torch.full_like(data.joint_damping, values["damping"]), data.joint_damping)
+    e = torch.where(mask, torch.full_like(data.joint_effort_limits, values["effort"]), data.joint_effort_limits)
+    env.robot.write_joint_stiffness_to_sim(k)
+    env.robot.write_joint_damping_to_sim(d)
+    env.robot.write_joint_effort_limit_to_sim(e)
+    for actuator in env.robot.actuators.values():
+        ids = actuator.joint_indices
+        cols = list(range(mask.shape[1]))[ids] if isinstance(ids, slice) else list(ids)
+        m = mask[:, cols]
+        for attr, v in (("stiffness", values["stiffness"]), ("damping", values["damping"]),
+                        ("effort_limit", values["effort"]), ("effort_limit_sim", values["effort"])):
+            t = getattr(actuator, attr, None)
+            if isinstance(t, torch.Tensor) and t.shape == m.shape:
+                t[:] = torch.where(m, torch.full_like(t, v), t)
+    print(f"[anyrotate] population actuator: {int(mask.sum())} real joint(s) set to stiffness "
+          f"{values['stiffness']}, damping {values['damping']}, effort {values['effort']} N m", flush=True)
 
 
 def _setup_grasp_cache(env) -> None:

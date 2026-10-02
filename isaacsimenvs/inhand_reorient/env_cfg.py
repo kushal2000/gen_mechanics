@@ -449,6 +449,11 @@ class AnyRotateCfg:
     hand_joint_friction: float = 0.01
     hand_effort_limit: float = 0.5
     hand_velocity_limit: float = 6.283
+    population_hand_actuator: bool = False
+    """Population path: give every real joint of every design the actuator
+    above (hand_stiffness, hand_damping, hand_effort_limit; for the hora
+    profile HORA's Allegro PD 3.0 / 0.1, torque clip 0.5 N m) instead of the
+    designs' own (3.93 / 0.15, 1.0 N m). False (default): own gains."""
 
     # --- optional gravity curriculum (NVIDIA Dexsuite ADR, 2025) ---
     gravity_curriculum: bool = False

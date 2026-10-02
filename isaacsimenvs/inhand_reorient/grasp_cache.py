@@ -137,6 +137,8 @@ def object_signature(a) -> dict:
     for name in _SIGNATURE_FIELDS:
         v = getattr(a, name)
         out[name] = round(float(v), 9) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
+    if getattr(a, "population_hand_actuator", False):
+        out["population_hand_actuator"] = True  # absent when off: older caches keep matching
     return out
 
 
