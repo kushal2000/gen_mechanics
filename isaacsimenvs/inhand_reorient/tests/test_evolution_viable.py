@@ -303,3 +303,20 @@ def test_design_score_poller_appends_each_new_window(tmp_path):
     assert poll.poll_once(src, out, state) is True
     rows = [json.loads(line) for line in out.read_text().splitlines()]
     assert [r["steps"] for r in rows] == [1, 2] and all("_t" in r for r in rows)
+
+
+def test_grasp_search_command_bounds_the_peak_joint_speed(tmp_path):
+    """--viable-max-joint-speed (default 5 rad/s): a design whose joints sit at
+    the 10 rad/s velocity limit while holding is not viable (2026-10-02:
+    founders 373, 420, 101 dominated population training)."""
+    base = ["--variant", "G_V3S", "--generations", "1", "--run-dir", str(tmp_path), "--task-profile", "hora",
+            "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT, "--grasp-cache", "--viable-only"]
+    args = drv.parse_args(base)
+    assert args.viable_max_joint_speed == 5.0
+    cmd = drv.grasp_search_cmd(args, tmp_path / "p.json", tmp_path / "c.npz", tmp_path / "s")
+    assert "env.anyrotate.grasp_max_joint_speed=5.0" in cmd
+    assert "--task-profile" in cmd and cmd[cmd.index("--task-profile") + 1] == "hora"
+    assert cmd[:3] == ["timeout", "-k", "30"]
+    off = drv.parse_args(base + ["--viable-max-joint-speed", "-1"])
+    assert "env.anyrotate.grasp_max_joint_speed=-1.0" in drv.grasp_search_cmd(off, tmp_path / "p.json",
+                                                                             tmp_path / "c.npz", tmp_path / "s")
