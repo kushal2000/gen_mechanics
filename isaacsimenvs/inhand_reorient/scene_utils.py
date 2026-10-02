@@ -391,7 +391,8 @@ def _add_anyrotate_contact_sensor(env, fingertip_names) -> None:
     def _sensor(name, points):
         return ContactSensor(ContactSensorCfg(
             prim_path=f"{ROBOT_PATH}/{name}", filter_prim_paths_expr=[OBJECT_PATH],
-            track_contact_points=points, max_contact_data_count_per_prim=4, history_length=0))
+            track_contact_points=points,
+            max_contact_data_count_per_prim=int(env.cfg.anyrotate.contact_data_per_prim), history_length=0))
 
     env.ar_tip_sensors = [_sensor(t, True) for t in fingertip_names]
     env.ar_nontip_sensors = [_sensor(b, False) for b in bodies if b not in fingertip_names]

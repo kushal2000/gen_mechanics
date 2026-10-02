@@ -254,6 +254,7 @@ anyrotate:
   force_max: 5.0
   pose_beta: 0.6                    # [Eq. 19]
   pose_max: 0.53
+  contact_data_per_prim: 32         # contact-point buffer per body (4 overflowed for SHARPA meshes)
   object_shape: box                 # adapt.: one shape per run (box | capsule); a capsule rolls off the open palm
   capsule_radius: 0.0295            # [Table 4] midpoints of the ranges
   capsule_width: 0.006

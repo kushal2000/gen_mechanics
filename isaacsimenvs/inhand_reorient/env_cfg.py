@@ -322,6 +322,10 @@ class AnyRotateCfg:
     force_max: float = 5.0
     pose_beta: float = 0.6  # Eq. 19
     pose_max: float = 0.53
+    contact_data_per_prim: int = 32
+    """Contact-point buffer per sensor body and env (Isaac Lab's
+    max_contact_data_count_per_prim). 4 overflowed (CUDA device assert) for
+    SHARPA's mesh colliders at 8192 envs."""
 
     # --- object [Sec. 4, Table 4] ---
     object_shape: str = "box"
