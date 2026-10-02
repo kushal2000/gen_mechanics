@@ -111,7 +111,7 @@ def _worker_loop(args, conn):
         hand_of_env = env.scene_record.robot_design_index.tolist()
         envs = [hand_of_env.index(h) for h in range(hs.n_hands)]
         dims = (env.scene_record.object_scale * env._object_scale_multiplier
-                * float(env.cfg.assets.object_base_size))
+                * float(env.cfg.reward.object_base_size))
         hands = []
         for h, (spec, e) in enumerate(zip(hs.specs, envs)):
             hands.append({"name": NAMES.get(spec.hand_name, spec.hand_name),
