@@ -19,11 +19,11 @@ SEED_JOINTS = (1, 2)
 """One or two joints per finger, so a hand starts with 2 to 4 motors."""
 
 SEED_THETAS = (0.0, math.pi / 2)   # pure flexion, pure abduction
-SEED_LENGTHS = (0.030, 0.035, 0.040, 0.045, 0.050)
+SEED_LENGTHS = (0.035, 0.040, 0.045, 0.050)
 SEED_PALM = (
-    (0.020, 0.050, 0.050),
-    (0.025, 0.060, 0.060),
-    (0.025, 0.070, 0.060),
+    (design_space.PALM_THICKNESS, 0.050, 0.050),
+    (design_space.PALM_THICKNESS, 0.060, 0.060),
+    (design_space.PALM_THICKNESS, 0.070, 0.060),
 )
 
 

@@ -25,6 +25,16 @@ OPERATORS: tuple[str, ...] = (
 
 STRUCTURAL: tuple[str, ...] = OPERATORS[:4]
 
+_STEPS: tuple[int, ...] = (-1, 0, 1)
+"""Per-element step for the three whole-hand perturbations.
+
+The ``0`` lets an element hold still, which is what makes these moves local again:
+without it a 20-joint hand could never change one axis and leave the rest alone.
+It also means every element can draw ``0`` and return the hand untouched -- a child
+identical to its parent that is NOT a MutationImpossible, so it would inflate the
+null rate invisibly. Each operator rejects that draw and redraws.
+"""
+
 _REDRAWS = 8
 """How many independent draws a whole-hand operator tries before giving up."""
 
@@ -69,10 +79,16 @@ def split_link(rng: random.Random, hand: design_space.Hand) -> design_space.Hand
     for fi, finger in enumerate(hand.fingers):
         if finger.n_joints >= design_space.MAX_JOINTS_PER_FINGER:
             continue
+        last = finger.n_joints - 1
         for si, seg in enumerate(finger.segments):
-            n_lo = round(design_space.MIN_LINK_LENGTH / design_space.LINK_QUANTUM)
+            # Splitting makes the proximal half carry a motor whatever it was
+            # before; only the distal half can still be a motor-free fingertip.
+            lo_a = round(design_space.MIN_LINK_LENGTH / design_space.LINK_QUANTUM)
+            lo_b = round((design_space.MIN_DISTAL_LINK_LENGTH if si == last
+                          else design_space.MIN_LINK_LENGTH)
+                         / design_space.LINK_QUANTUM)
             n_tot = round(seg.length / design_space.LINK_QUANTUM)
-            for n_a in range(n_lo, n_tot - n_lo + 1):
+            for n_a in range(lo_a, n_tot - lo_b + 1):
                 moves.append((fi, si, n_a * design_space.LINK_QUANTUM))
     if not moves:
         raise MutationImpossible("no link is long enough to divide")
@@ -165,14 +181,18 @@ def _new_finger(rng: random.Random, hand: design_space.Hand) -> design_space.Han
     if not sites:
         return None
 
-    n_len = round((design_space.MAX_LINK_LENGTH - design_space.MIN_LINK_LENGTH) / design_space.LINK_QUANTUM)
+    # A fresh finger has a single segment, which is therefore terminal: its own
+    # joint is driven from the palm, and it has no child joint to carry a motor.
+    n_len = round((design_space.MAX_LINK_LENGTH - design_space.MIN_DISTAL_LINK_LENGTH)
+                  / design_space.LINK_QUANTUM)
     rng.shuffle(sites)
     for face, u, v in sites:
         finger = design_space.Finger(
             mount=design_space.Mount(face, u, v),
             segments=(design_space.Segment(
                 design_space.Joint(theta=_draw_theta(rng), phi=math.pi / 2),
-                length=design_space.MIN_LINK_LENGTH + rng.randint(0, n_len) * design_space.LINK_QUANTUM),),
+                length=design_space.MIN_DISTAL_LINK_LENGTH
+                + rng.randint(0, n_len) * design_space.LINK_QUANTUM),),
         )
         out = replace(hand, fingers=hand.fingers + (finger,))
         if validate_design.is_valid(out):
@@ -189,7 +209,6 @@ def _free_mount_sites(hand: design_space.Hand) -> list[tuple[str, float, float]]
     if not hand.fingers:
         return []
     existing = np.array([mount_position(f.mount, hand.palm) for f in hand.fingers])
-    same_face = np.array([f.mount.face for f in hand.fingers])
     sites: list[tuple[str, float, float]] = []
 
     for face in design_space.FINGER_FACES:
@@ -209,9 +228,7 @@ def _free_mount_sites(hand: design_space.Hand) -> list[tuple[str, float, float]]
                + np.outer((flat_v - 0.5) * span_v, t_v))
 
         d = np.linalg.norm(pos[:, None, :] - existing[None, :, :], axis=2)
-        floors = np.where(same_face == face,
-                          design_space.MIN_SAME_FACE_SEPARATION, design_space.MIN_MOUNT_SEPARATION)
-        ok = (d >= floors[None, :]).all(axis=1)
+        ok = (d >= design_space.MIN_MOUNT_SEPARATION).all(axis=1)
 
         sites.extend((face, float(u), float(v))
                      for u, v in zip(flat_u[ok], flat_v[ok]))
@@ -221,40 +238,48 @@ def _free_mount_sites(hand: design_space.Hand) -> list[tuple[str, float, float]]
 # --- parametric -------------------------------------------------------------
 
 def perturb_axis(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step EVERY joint's theta by one quantum, each independently up or down."""
+    """Step EVERY joint's theta by one quantum, each independently up, down or not
+    at all."""
     for _ in range(_REDRAWS):
         fingers = []
         for f in hand.fingers:
             segments = tuple(
                 design_space.Segment(
                     design_space.Joint(snap(wrap_theta(sg.joint.theta
-                                            + design_space.ANGLE_QUANTUM * rng.choice((-1, 1))),
+                                            + design_space.ANGLE_QUANTUM * rng.choice(_STEPS)),
                                  design_space.ANGLE_QUANTUM) % math.pi,
                             sg.joint.phi, sg.joint.offset),
                     sg.length)
                 for sg in f.segments)
             fingers.append(replace(f, segments=segments))
         out = replace(hand, fingers=tuple(fingers))
-        if validate_design.is_valid(out):
+        if out != hand and validate_design.is_valid(out):   # see _STEPS
             return out
     raise MutationImpossible("no whole-hand axis perturbation validated")
 
 
 def perturb_length(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step EVERY link by one quantum, each independently up or down."""
+    """Step EVERY link by one quantum, each independently up, down or not at all.
+
+    Each length reflects into its OWN range: the last link of a finger has the
+    motor-free floor, every other link the motor-carrying one.
+    """
     for _ in range(_REDRAWS):
         fingers = []
         for f in hand.fingers:
+            last = f.n_joints - 1
             segments = tuple(
                 design_space.Segment(sg.joint,
                           snap(reflect(sg.length
-                                       + design_space.LINK_QUANTUM * rng.choice((-1, 1)),
-                                       design_space.MIN_LINK_LENGTH, design_space.MAX_LINK_LENGTH),
+                                       + design_space.LINK_QUANTUM * rng.choice(_STEPS),
+                                       design_space.MIN_DISTAL_LINK_LENGTH if k == last
+                                       else design_space.MIN_LINK_LENGTH,
+                                       design_space.MAX_LINK_LENGTH),
                                design_space.LINK_QUANTUM))
-                for sg in f.segments)
+                for k, sg in enumerate(f.segments))
             fingers.append(replace(f, segments=segments))
         out = replace(hand, fingers=tuple(fingers))
-        if validate_design.is_valid(out):
+        if out != hand and validate_design.is_valid(out):   # see _STEPS
             return out
     raise MutationImpossible("no whole-hand length perturbation validated")
 
@@ -265,9 +290,9 @@ def move_mount(rng: random.Random, hand: design_space.Hand) -> design_space.Hand
     rng.shuffle(order)
     for fi in order:
         finger = hand.fingers[fi]
-        du_m = MOUNT_STEP_M * rng.choice((-1, 0, 1))
+        du_m = 0.0          # u is pinned to the midplane; only v is free
         dv_m = MOUNT_STEP_M * rng.choice((-1, 0, 1))
-        if du_m == 0.0 and dv_m == 0.0:
+        if dv_m == 0.0:
             continue
 
         mount = _step_mount(finger.mount, hand.palm, du_m, dv_m)
@@ -314,7 +339,8 @@ def _step_mount(mount: design_space.Mount, palm: design_space.Palm, du_m: float,
 
 
 def perturb_offset(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step EVERY joint's zero offset by one quantum, independently up or down."""
+    """Step EVERY joint's zero offset by one quantum, independently up, down or
+    not at all."""
     lo, hi = design_space.JOINT_LIMIT
     for _ in range(_REDRAWS):
         fingers = []
@@ -323,13 +349,13 @@ def perturb_offset(rng: random.Random, hand: design_space.Hand) -> design_space.
                 design_space.Segment(
                     design_space.Joint(sg.joint.theta, sg.joint.phi,
                             snap(reflect(sg.joint.offset
-                                         + design_space.ANGLE_QUANTUM * rng.choice((-1, 1)),
+                                         + design_space.ANGLE_QUANTUM * rng.choice(_STEPS),
                                          lo, hi), design_space.ANGLE_QUANTUM)),
                     sg.length)
                 for sg in f.segments)
             fingers.append(replace(f, segments=segments))
         out = replace(hand, fingers=tuple(fingers))
-        if validate_design.is_valid(out):
+        if out != hand and validate_design.is_valid(out):   # see _STEPS
             return out
     raise MutationImpossible("no whole-hand offset perturbation validated")
 

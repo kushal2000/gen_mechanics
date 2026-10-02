@@ -19,6 +19,7 @@ from hand_sampler import design_space
 from hand_sampler import robot_param_constants as rpc
 from hand_sampler import mutate_design
 from hand_sampler import gen_init_pop
+from hand_sampler import commercial
 from hand_sampler.design_space import face_frame
 
 # assets/urdf/table_narrow.urdf, at reset.table_reset_z. Surface at z = 0.53.
@@ -171,6 +172,8 @@ def main() -> None:
         btn_mutate = server.gui.add_button("mutate")
         btn_undo = server.gui.add_button("undo")
         btn_reseed = server.gui.add_button("new seed")
+        hand_picker = server.gui.add_dropdown(
+            "commercial hand", ("(generated)",) + commercial.HANDS)
         cb_context = server.gui.add_checkbox("show arm + table", True)
 
     with server.gui.add_folder("pose"):
@@ -359,6 +362,27 @@ def main() -> None:
         state["last_op"] = None
         state["angles"] = {}
         refresh(f"seed {state['seed']}")
+
+    @hand_picker.on_update
+    def _(_) -> None:
+        """Load a vendor hand as fitted into this design space.
+
+        It is a real design here, not an imported mesh -- same genotype, same
+        validator, same build path -- so it can be mutated from, and run as a
+        baseline against generated hands in the same envelope.
+        """
+        name = hand_picker.value
+        if name == "(generated)":
+            return
+        hand, notes = commercial.fit(name)
+        state["hand"] = hand
+        state["lineage"].clear()
+        state["last_op"] = None
+        state["angles"] = {}
+        cost = [n for n in notes if "curl" in n or "truncated" in n or "dropped" in n]
+        refresh(f"**{name}** as fitted: {hand.n_fingers} fingers, "
+                f"{hand.n_joints} joints"
+                + ("  \n" + "  \n".join(cost) if cost else "  \nno structure lost"))
 
     # Once, before anything else draws: refresh() rebuilds only the hand, so
     # without this the table, the grid and the /robot base frame the URDF hangs

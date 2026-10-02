@@ -18,7 +18,16 @@ PALM_QUANTUM = 0.005
 
 PALM_STEP = 0.010
 """How far one ``perturb_palm`` moves a dimension -- twice the grid."""
-PALM_THICKNESS_RANGE = (0.015, 0.040)   # x -- NOT MUTATED, see below
+PALM_THICKNESS = 0.025
+"""Fixed for every hand: not sampled, not mutated, not a design variable.
+
+``u`` runs along the thickness axis on every face, so thickness alone decides how
+far a mount sits from the palm's two large faces -- but every finger originates on
+the MIDPLANE now, so that is not a design variable and thickness only has to house
+each finger's BASE motor, which sits in the palm rather than in any link. The
+XM335's smallest dimension is 19 mm, so 25 mm clears it.
+"""
+PALM_THICKNESS_RANGE = (PALM_THICKNESS, PALM_THICKNESS)   # x -- a single point now
 PALM_WIDTH_RANGE = (0.040, 0.100)       # y
 PALM_LENGTH_RANGE = (0.040, 0.100)      # z, wrist face at z = 0
 
@@ -28,14 +37,45 @@ MUTABLE_PALM_DIMS: tuple[str, ...] = ("width", "length")
 # --- links ------------------------------------------------------------------
 
 LINK_QUANTUM = 0.005
-CAPSULE_RADIUS = 0.010
-"""Fixed, on evidence: `radius_scale` scored Spearman -0.005 across a 2x range in the..."""
+CAPSULE_RADIUS = 0.015
+"""Set by the actuator, not by the search.
 
-MIN_LINK_LENGTH = 0.015
-"""The closest two joint axes can sit -- there is exactly one joint per link."""
+Every joint carries one XM335-T323-T (19.0 x 35.0 x 22.0 mm). Running its 35 mm
+axis along the link leaves a 19 x 22 mm cross-section, whose smallest enclosing
+circle has radius 14.5 mm; rounded up to the 5 mm grid. A link's radius was never
+really a free parameter -- a motor lives inside it.
+"""
+
+MIN_LINK_LENGTH = 0.020
+"""The closest two joint axes can sit, for a link that carries a motor.
+
+The XM335 is 19.0 x 35.0 x 22.0 mm, so 20 mm is its shortest dimension rounded to
+the grid: the orientation with that axis along the link is the one that packs two
+joints closest together.
+
+NOTE the capsule does NOT enclose the motor at this length. That orientation
+leaves a 35 x 22 mm cross-section, which needs a 20.7 mm radius against the
+15 mm CAPSULE_RADIUS here. The capsule is a nominal collision proxy, not a motor
+housing -- the real link bulges where the motor sits, and packaging is resolved
+when a design is actually built. Set deliberately: a radius wide enough to
+enclose the motor in every orientation would force 55 mm mount separation, which
+leaves room for only three fingers on a maximal palm.
+"""
+
+MIN_DISTAL_LINK_LENGTH = 0.015
+"""The floor for the LAST link of a finger, which drives no child joint.
+
+It carries no motor, so it only has to be long enough to be a fingertip. Its own
+joint's motor sits in the link proximal to it, or in the palm when the finger has
+a single joint.
+"""
 
 MAX_LINK_LENGTH = 0.080
-"""Deliberately loose."""
+"""Deliberately loose. Stall torque never binds it: a 3-link, 35 mm finger holds
+itself horizontal on 7.5% of the XM335's 1.03 N.m."""
+
+MAX_FINGER_LENGTH = 0.200
+"""Fully-extended mount-to-tip. MAX_LINK_LENGTH alone allowed 4 x 80 = 320 mm."""
 
 # --- joints -----------------------------------------------------------------
 
@@ -43,25 +83,34 @@ ANGLE_QUANTUM = math.radians(15.0)
 """Grid for every angle in the genotype: joint theta and offset."""
 
 JOINT_LIMIT = (math.radians(-90.0), math.radians(90.0))
-"""Symmetric, for every joint regardless of axis."""
+"""Symmetric, for every joint regardless of axis.
+
+Travel is centred on the joint's own zero offset, so the usable span is 120 deg
+placed anywhere the offset can reach -- asymmetric ranges are expressed by moving
+the offset, not by widening this. Well inside what the actuator allows; the limit
+is a design choice about reach into the palm, not a hardware bound.
+"""
 
 # --- the envelope -----------------------------------------------------------
 
 MIN_FINGERS = 2
 """A one-finger hand cannot oppose anything, so it is excluded rather than left for..."""
 
-MAX_FINGERS = 5
-MAX_JOINTS_PER_FINGER = 6
+MAX_FINGERS = 6
+MAX_JOINTS_PER_FINGER = 5
 """The articulation envelope: a HARD cap, not a rail."""
 
-MIN_MOUNT_SEPARATION = 0.015
-"""Centre-to-centre floor between mounts on DIFFERENT faces."""
+MIN_MOUNT_SEPARATION = 2.0 * CAPSULE_RADIUS + 0.005
+"""Centre-to-centre floor between ANY two mounts, whatever faces they sit on.
+
+Two capsules running parallel are tangent at 2r, so a floor below that lets
+same-face fingers intersect outright; the extra 5 mm is shell-to-shell clearance.
+One derived number replaces the earlier pair of chosen ones (a loose across-face
+floor and a separate same-face floor).
+"""
 
 MOUNT_EDGE_MARGIN = CAPSULE_RADIUS
 """How far a mount stays from its face boundary, or half the base capsule hangs off the..."""
-
-MIN_SAME_FACE_SEPARATION = 2.5 * CAPSULE_RADIUS
-"""Floor between mounts on the SAME face, where fingers run parallel and their base..."""
 
 FINGER_FACES: tuple[str, ...] = ("+z", "+y", "-y")
 """The three THIN faces."""
@@ -281,12 +330,18 @@ def face_from_normal(n: np.ndarray) -> str | None:
 
 
 def mount_uv_bounds(face: str, palm: Palm) -> tuple[float, float, float, float]:
-    """``(u_lo, u_hi, v_lo, v_hi)`` -- the normalised box a mount may occupy."""
-    _, _, _, _, span_u, span_v = face_frame(face, palm)
+    """``(u_lo, u_hi, v_lo, v_hi)`` -- the normalised box a mount may occupy.
+
+    ``u`` is PINNED at 0.5: every finger originates on the palm's midplane, so a
+    mount's only freedom is ``v``, along the face. Pinned here rather than left to
+    fall out of the margin arithmetic -- at the current thickness the two edge
+    margins already overlap and would centre it anyway, but that is a coincidence
+    of the numbers, and a later thickness change would silently hand ``u`` back.
+    """
+    _, _, _, _, _, span_v = face_frame(face, palm)
     m = MOUNT_EDGE_MARGIN
-    lo_u, hi_u = ((m / span_u, 1.0 - m / span_u) if span_u > 2 * m else (0.5, 0.5))
     lo_v, hi_v = ((m / span_v, 1.0 - m / span_v) if span_v > 2 * m else (0.5, 0.5))
-    return lo_u, hi_u, lo_v, hi_v
+    return 0.5, 0.5, lo_v, hi_v
 
 
 def mount_position(mount: Mount, palm: Palm) -> np.ndarray:

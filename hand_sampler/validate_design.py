@@ -35,13 +35,20 @@ def check_palm(palm: design_space.Palm) -> list[str]:
     return out
 
 
-def check_segment(seg: design_space.Segment, where: str) -> list[str]:
+def check_segment(seg: design_space.Segment, where: str, terminal: bool) -> list[str]:
+    """``terminal`` is required, not defaulted: the same link is legal in one
+    position and illegal in another, and a default would decide that silently."""
     out: list[str] = []
 
-    # One joint per link, so every length is a real link -- no zero-length coincident-joint case...
-    if not design_space.MIN_LINK_LENGTH - _TOL <= seg.length <= design_space.MAX_LINK_LENGTH + _TOL:
+    # One joint per link, so every length is a real link. The floor depends on
+    # whether the link seats a motor: every link drives the joint distal to it,
+    # except the last, which has no child joint to drive.
+    floor = (design_space.MIN_DISTAL_LINK_LENGTH if terminal
+             else design_space.MIN_LINK_LENGTH)
+    if not floor - _TOL <= seg.length <= design_space.MAX_LINK_LENGTH + _TOL:
         out.append(f"{where}.length = {seg.length:.4f} outside "
-                   f"[{design_space.MIN_LINK_LENGTH}, {design_space.MAX_LINK_LENGTH}]")
+                   f"[{floor}, {design_space.MAX_LINK_LENGTH}]"
+                   + ("" if terminal else " for a motor-carrying link"))
     if not _on_grid(seg.length, design_space.LINK_QUANTUM):
         out.append(f"{where}.length = {seg.length:.4f} off the "
                    f"{design_space.LINK_QUANTUM} m grid")
@@ -84,26 +91,33 @@ def check_finger(finger: design_space.Finger, i: int, palm: design_space.Palm) -
                        f"{design_space.MOUNT_EDGE_MARGIN * 1000:.0f} mm from the face edge "
                        f"or its capsule hangs off the palm")
 
+    if finger.reach > design_space.MAX_FINGER_LENGTH + _TOL:
+        out.append(f"{where} reaches {finger.reach * 1000:.0f} mm fully extended, "
+                   f"maximum is {design_space.MAX_FINGER_LENGTH * 1000:.0f} mm")
+
+    last = finger.n_joints - 1
     for j, seg in enumerate(finger.segments):
-        out.extend(check_segment(seg, f"{where}.segment[{j}]"))
+        out.extend(check_segment(seg, f"{where}.segment[{j}]", terminal=(j == last)))
     return out
 
 
 def check_packing(hand: design_space.Hand) -> list[str]:
-    """Mount separation -- two floors, because the geometry differs by face."""
+    """One separation floor for every pair of mounts, whatever faces they are on.
+
+    A NECESSARY condition, not a sufficient one: whether fingers intersect along
+    their length depends on configuration, which is the gate's job. What this
+    rules out is the pair that cannot work at any configuration, because their
+    base capsules already overlap where they leave the palm.
+    """
     out: list[str] = []
-    pos = [(f.mount.face, mount_position(f.mount, hand.palm)) for f in hand.fingers]
-    for (face_a, pa), (face_b, pb) in combinations(pos, 2):
+    floor = design_space.MIN_MOUNT_SEPARATION
+    pos = [mount_position(f.mount, hand.palm) for f in hand.fingers]
+    for pa, pb in combinations(pos, 2):
         d = float(np.linalg.norm(pa - pb))
-        same = face_a == face_b
-        floor = design_space.MIN_SAME_FACE_SEPARATION if same else design_space.MIN_MOUNT_SEPARATION
         if d < floor - _TOL:
-            out.append(
-                f"two mounts {d * 1000:.1f} mm apart"
-                + (f" on {face_a}, minimum is {floor * 1000:.0f} mm "
-                   f"(capsules touch at {2 * design_space.CAPSULE_RADIUS * 1000:.0f} mm)"
-                   if same else
-                   f" across faces, minimum is {floor * 1000:.0f} mm"))
+            out.append(f"two mounts {d * 1000:.1f} mm apart, minimum is "
+                       f"{floor * 1000:.0f} mm (capsules touch at "
+                       f"{2 * design_space.CAPSULE_RADIUS * 1000:.0f} mm)")
             return out
 
     out += check_base_clearance(hand)
