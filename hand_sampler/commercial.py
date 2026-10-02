@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 import xml.etree.ElementTree as ET
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -113,12 +114,70 @@ def read_chains(path: Path) -> list[Chain]:
 
 # --- fitting ----------------------------------------------------------------
 
+def _frame_from(axis: np.ndarray, ref: np.ndarray) -> np.ndarray:
+    """``design_space._frame_from_axis`` with the roll reference supplied.
+
+    The roll about a finger's own axis is gauge in this design space, absorbed
+    into theta -- but only per finger. Across a ROW of fingers it is the thing
+    that decides whether they flex in one plane or four, so the real hand needs
+    a frame whose roll is tied to its palm rather than to GRASP_DIR, which means
+    nothing in the vendor's coordinates.
+    """
+    a = axis / np.linalg.norm(axis)
+    if np.linalg.norm(np.cross(a, ref)) < 1e-6:
+        ref = np.eye(3)[int(np.argmin(np.abs(a)))]
+    fe = np.cross(a, ref)
+    fe /= np.linalg.norm(fe)
+    return np.column_stack([a, np.cross(fe, a), fe])
+
+
+def _row_frame(chains: list, idx: list, sign: float) -> np.ndarray:
+    """ONE frame for every finger in the row.
+
+    Fitting each finger in its own base frame -- which is what this did first --
+    is correct per finger and wrong for the hand: each vendor finger leaves at a
+    slightly different angle, so the same physical hinge axis lands on a
+    different theta, and fingers that flex in one plane in reality end up flexing
+    in four. Measured on sharpa and shadow, one finger per hand came out 45 deg
+    out of plane and swept straight through its neighbour.
+
+    The roll is tied to the palm: the row of bases gives the spread direction,
+    and its cross product with the pointing direction is the palm normal, which
+    is what GRASP_DIR means here. Its sign is not recoverable from geometry
+    alone, so the caller tries both.
+    """
+    fwd = np.mean([_base_dir(chains[i]) for i in idx], axis=0)
+    fwd /= np.linalg.norm(fwd)
+    base = np.array([chains[i].positions[0] for i in idx])
+    spread = np.linalg.svd(base - base.mean(axis=0))[2][0]
+    n = np.cross(spread, fwd)
+    return _frame_from(fwd, sign * n / max(float(np.linalg.norm(n)), 1e-12))
+
+
+def _base_dir(chain: Chain) -> np.ndarray:
+    """Which way the finger leaves its base.
+
+    The FIRST non-degenerate link, not simply the first: sharpa and shadow place
+    two joints at the same point to make a universal joint, so their base link
+    has zero length and no direction at all. Normalising it gives a frame built
+    from noise, and every finger sharing that frame inherits it.
+    """
+    pts = list(chain.positions) + [chain.tip]
+    for i in range(len(pts) - 1):
+        d = pts[i + 1] - pts[i]
+        n = float(np.linalg.norm(d))
+        if n > 1e-6:
+            return d / n
+    return np.array([1.0, 0.0, 0.0])
+
+
 def _snap_angle(x: float) -> float:
     return round(x / D.ANGLE_QUANTUM) * D.ANGLE_QUANTUM
 
 
-def _fit_finger(chain: Chain, face: str, v: float, palm: D.Palm,
-                curl: float = 1.0) -> tuple[D.Finger, list[str]]:
+def _fit_finger(chain: Chain, face: str, u: float, v: float, palm: D.Palm,
+                curl: float, R_real: np.ndarray,
+                pin_base: bool = True) -> tuple[D.Finger, list[str], float]:
     """Lengths snapped to the grid; theta and offset chosen per joint by search.
 
     Sequential and greedy: joint i's frame depends on every joint before it, so
@@ -144,9 +203,8 @@ def _fit_finger(chain: Chain, face: str, v: float, palm: D.Palm,
             notes.append(f"link {i}: {L*1000:.1f} -> {q*1000:.0f} mm")
         lengths.append(q)
 
-    # the real chain expressed in its own base frame, so the vendor's global
-    # convention drops out
-    R_real = D._frame_from_axis(dirs[0])
+    # expressed in the frame the caller supplies -- shared across a row, so
+    # fingers that flex together in reality flex together here
     tgt_axis = [R_real.T @ a for a in chain.axes]
     tgt_dir = [R_real.T @ d for d in dirs]
 
@@ -156,8 +214,9 @@ def _fit_finger(chain: Chain, face: str, v: float, palm: D.Palm,
     segments = []
     lo, hi = D.JOINT_LIMIT
     n_off = int(round((hi - lo) / D.ANGLE_QUANTUM))
+    err = 0.0
     for i in range(n):
-        best = None
+        R_prev, best = R_fit, None
         for k in range(int(round(math.pi / D.ANGLE_QUANTUM))):
             th = k * D.ANGLE_QUANTUM
             a_local = D.axis_of(D.Joint(th, math.pi / 2))
@@ -168,7 +227,7 @@ def _fit_finger(chain: Chain, face: str, v: float, palm: D.Palm,
             # reproduces the vendor's rest pose on OUR layout, which lands fingers
             # inside one another. Every other offset is the finger's own curl and
             # is fitted.
-            offs = (0.0,) if i == 0 else tuple(
+            offs = (0.0,) if (i == 0 and pin_base) else tuple(
                 _snap_angle((lo + m * D.ANGLE_QUANTUM) * curl)
                 for m in range(n_off + 1))
             for off in offs:
@@ -178,49 +237,77 @@ def _fit_finger(chain: Chain, face: str, v: float, palm: D.Palm,
                 if best is None or err < best[0]:
                     best = (err, th, off, Rn)
         _, th, off, R_fit = best
+        # WORST joint, not the sum: a variant that fixes one axis and spoils three
+        # has a better sum and a worse hand. This is the quantity "do the axes
+        # point the same way" actually asks about.
+        err = max(err, 1.0 - abs(float(np.dot(
+            R_prev @ D.axis_of(D.Joint(th, math.pi / 2)), tgt_axis[i]))))
         segments.append(D.Segment(D.Joint(th, math.pi / 2, off), lengths[i]))
-    return D.Finger(D.Mount(face, 0.5, v), tuple(segments)), notes
+    return D.Finger(D.Mount(face, u, v), tuple(segments)), notes, err
 
 
-def _slots(palm: D.Palm) -> dict:
-    """Legal mount positions per face: the v grid the separation actually allows.
+def _thumb_index(chains: list) -> int:
+    """Which digit is the thumb: the one pointing furthest from the rest.
 
-    ``u`` is pinned to the midplane, so a face is a line, and the mounts on it are
-    whatever fits between the two edge margins at MIN_MOUNT_SEPARATION.
+    DIRECTION, not base position. An earlier version took the base furthest off
+    the line the other bases form, which sounds equivalent and is not: a thumb's
+    base often sits close to that line, and on four of the five hands here the
+    positional test picked an ordinary finger. Leap was the clearest -- its three
+    fingers deviate 19.5 deg from the mean direction and its thumb 91, while by
+    base position the thumb looked unremarkable, so the thumb was fitted into the
+    row and a finger onto the thumb's face.
+
+    Joint count would also work for sharpa and shadow, whose thumbs carry an
+    extra joint, and fail for tesollo and wuji2 where every digit has four.
     """
-    out = {}
-    for face in D.FINGER_FACES:
-        _, _, _, _, _, span_v = D.face_frame(face, palm)
-        lo, hi = D.mount_uv_bounds(face, palm)[2:]
-        usable = (hi - lo) * span_v
-        n = int(usable // D.MIN_MOUNT_SEPARATION) + 1
-        out[face] = [lo if n == 1 else lo + i * (hi - lo) / (n - 1) for i in range(n)]
-    return out
+    dirs = np.array([_base_dir(c) for c in chains])
+    mean = dirs.mean(axis=0)
+    mean /= max(float(np.linalg.norm(mean)), 1e-12)
+    return int(np.argmax(np.arccos(np.clip(dirs @ mean, -1.0, 1.0))))
 
 
-def _layout(k: int, palm: D.Palm) -> list[tuple[str, float]]:
-    """Where k fingers mount: one opposed on -y, the rest filling +z then +y.
+def _row_order(chains: list, thumb: int) -> list:
+    """The non-thumb digits, index first and little finger last.
 
-    A thumb-and-fingers arrangement, not the vendor's exact placement -- mounts
-    here are confined to three faces, a midplane and a 35 mm separation, so an
-    exact copy is not available at any palm size. Candidates are taken in that
-    order and kept only if they clear every mount already placed, so the result
-    is legal by construction rather than by retry.
+    Three things have to be right at once, and each was wrong in turn:
+
+    * WHICH POINT. Not the chain's base. A digit carrying an extra proximal
+      joint -- sharpa's pinky CMC, shadow's little-finger metacarpal -- starts
+      its chain at a different depth from its neighbours, and shadow's lands
+      65 mm behind the other knuckles. Chains are aligned from the TIP instead,
+      so every digit is compared at the same anatomical joint.
+    * WHICH AXIS. The principal direction through those knuckles, not distance
+      from the thumb: on shadow and tesollo the digits are not equidistant and
+      a distance sort scrambles them.
+    * WHICH WAY. An SVD axis has an arbitrary sign, so the row came out mirrored
+      about half the time. It is signed to point away from the thumb.
+
+    Low ``v`` on +z is the side the thumb's -y face is on, so slot 0 is the
+    digit nearest the thumb.
     """
-    slots = _slots(palm)
-    order = ([("-y", v) for v in slots["-y"][len(slots["-y"]) // 2:]]
-             + [("+z", v) for v in slots["+z"]]
-             + [("+y", v) for v in slots["+y"]]
-             + [("-y", v) for v in slots["-y"]])
-    placed: list[tuple[str, float]] = []
-    pos: list[np.ndarray] = []
-    for face, v in order:
-        p = D.mount_position(D.Mount(face, 0.5, v), palm)
-        if all(np.linalg.norm(p - q) >= D.MIN_MOUNT_SEPARATION - 1e-9 for q in pos):
-            placed.append((face, v)); pos.append(p)
-        if len(placed) == k:
-            break
-    return placed
+    idx = [i for i in range(len(chains)) if i != thumb]
+    modal = Counter(len(chains[i].positions) for i in idx).most_common(1)[0][0]
+    knuckle = np.array([chains[i].positions[len(chains[i].positions) - modal]
+                        for i in idx])
+    centre = knuckle.mean(axis=0)
+    d = np.linalg.svd(knuckle - centre)[2][0]
+    if (centre - chains[thumb].positions[0]) @ d < 0:
+        d = -d
+    return [idx[k] for k in np.argsort((knuckle - centre) @ d)]
+
+
+def _layout(n_row: int, palm: D.Palm) -> tuple[list, tuple]:
+    """A row of mounts across +z, plus one opposed on -y.
+
+    This is the arrangement every hand in the set actually has, so it is built
+    rather than searched: a packer that merely satisfies the separation rule
+    spreads fingers over three faces pointing three different ways, which is
+    legal and looks nothing like a hand.
+    """
+    lo_v, hi_v = D.mount_uv_bounds("+z", palm)[2:]
+    vs = ([0.5] if n_row == 1
+          else [lo_v + i * (hi_v - lo_v) / (n_row - 1) for i in range(n_row)])
+    return [("+z", v) for v in vs], ("-y", 0.5)
 
 
 def fit(name: str) -> tuple[D.Hand, list[str]]:
@@ -242,31 +329,97 @@ def fit(name: str) -> tuple[D.Hand, list[str]]:
                     if len(c.positions) > D.MAX_JOINTS_PER_FINGER else c.tip)
               for c in chains]
 
-    palm = D.Palm(D.PALM_THICKNESS, 0.100, 0.100)
-    places = _layout(len(chains), palm)
-    if len(places) < len(chains):
-        notes.append(f"palm holds only {len(places)} mounts; "
-                     f"{len(chains) - len(places)} finger(s) dropped")
-        chains = chains[:len(places)]
+    # Wide enough for the row, on the grid, within the range.
+    n_row = len(chains) - 1
+    need = (n_row - 1) * D.MIN_MOUNT_SEPARATION + 2 * D.MOUNT_EDGE_MARGIN
+    width = min(max(math.ceil(need / D.PALM_QUANTUM) * D.PALM_QUANTUM,
+                    D.PALM_WIDTH_RANGE[0]), D.PALM_WIDTH_RANGE[1])
+    # Length from the vendor, not a constant: it is how far the thumb sits from
+    # the row, which is the only palm dimension the hand's own geometry fixes.
+    # Width cannot be taken the same way -- vendors space fingers 20-25 mm and
+    # MIN_MOUNT_SEPARATION is 35, so the row sets the width whatever they did.
+    rowc = np.mean([chains[i].positions[0] for i in range(len(chains))
+                    if i != _thumb_index(chains)], axis=0)
+    reach = float(np.linalg.norm(chains[_thumb_index(chains)].positions[0] - rowc))
+    length = min(max(round(reach / D.PALM_QUANTUM) * D.PALM_QUANTUM,
+                     D.PALM_LENGTH_RANGE[0]), D.PALM_LENGTH_RANGE[1])
+    if width < need - 1e-9:
+        notes.append(f"row needs {need*1000:.0f} mm of palm, capped at {width*1000:.0f}")
 
-    # Mount separation is a rule about where fingers START. Two fingers 35 mm
-    # apart whose links curl inward still converge, and the validator checks
-    # every link pair, not just the proximal ones. So the curl is relaxed only
-    # as far as it has to be, and how far is reported.
-    for curl in (1.0, 0.8, 0.6, 0.4, 0.2, 0.0):
-        fingers, fnotes = [], []
-        for c, (face, v) in zip(chains, places):
-            f, fn = _fit_finger(c, face, v, palm, curl)
-            fingers.append(f)
-            fnotes += [f"finger {len(fingers)-1}: {m}" for m in fn]
-        hand = D.Hand(palm, tuple(fingers))
-        bad = validate_design.check(hand)
-        if not bad:
-            if curl < 1.0:
-                notes.append(f"rest curl relaxed to {curl:.0%} to clear "
-                             f"finger-finger contact")
-            return hand, notes + fnotes
-    notes.append(f"INVALID even with no curl: {bad[0]}")
+    thumb = _thumb_index(chains)
+    order = _row_order(chains, thumb)
+
+    # Three nested searches, outermost first.
+    #
+    # LENGTH starts at the vendor's own thumb-to-row distance and grows only if
+    # it has to. It usually has to: the vendor puts its thumb closer to the row
+    # than 35 mm mount separation and 30 mm link clearance allow, so a palm that
+    # is faithful in length leaves the thumb intersecting the fingers.
+    #
+    # SIGN is the palm normal, which the vendor geometry does not determine.
+    #
+    # CURL is relaxed last and least, because a row of parallel fingers curling
+    # together stays clear -- a hand that needs heavy relaxation is usually
+    # telling you its axes are wrong, not that its pose is impossible.
+    best, grown = None, 0
+    while best is None and length <= D.PALM_LENGTH_RANGE[1] + 1e-9:
+        palm = D.Palm(D.PALM_THICKNESS, width, length)
+        row_places, thumb_place = _layout(len(order), palm)
+        for sign in (1.0, -1.0):
+            R_row = _row_frame(chains, order, sign)
+            R_thumb = _frame_from(_base_dir(chains[thumb]), R_row[:, 2])
+            for curl in (1.0, 0.8, 0.6, 0.4, 0.2, 0.0):
+                fingers, fnotes = [], []
+                for ci, (face, v), R in [(c, pl, R_row)
+                                         for c, pl in zip(order, row_places)]:
+                    f, fn, _ = _fit_finger(chains[ci], face, 0.5, v, palm, curl, R)
+                    fingers.append(f)
+                    fnotes += [f"finger {len(fingers)-1}: {m}" for m in fn]
+                # The thumb's base offset is the one place pinning is wrong. A row
+                # finger should leave perpendicular to its face; a thumb has to be
+                # AIMED, and the base joint's zero offset is the grammar's only
+                # mechanism for that. Which option wins is not predictable per
+                # hand, so both are fitted and the lower axis error kept.
+                # The thumb's base offset is the one place pinning is wrong. A
+                # row finger should leave perpendicular to its face; a thumb has
+                # to be AIMED, and the base joint's zero offset is the grammar's
+                # only mechanism for that.
+                pface, vv = thumb_place
+                picked = None
+                for pin in (True, False):
+                    f, fn, e = _fit_finger(chains[thumb], pface, 0.5, vv, palm,
+                                           curl, R_thumb, pin)
+                    if validate_design.check(D.Hand(palm, tuple(fingers) + (f,))):
+                        continue
+                    if picked is None or e < picked[0]:
+                        picked = (e, f, fn, pface, pin)
+                if picked is None:
+                    continue
+                _, f, fn, pface, pin = picked
+                fingers.append(f)
+                fnotes += [f"thumb: {m}" for m in fn]
+                if not pin:
+                    fnotes.append("thumb aimed by its base offset")
+                hand = D.Hand(palm, tuple(fingers))
+                if not validate_design.check(hand):
+                    fnotes.append(f"palm-normal sign {sign:+.0f}")
+                    best = (curl, hand, fnotes)
+                    break
+            if best:
+                break
+        if best is None:
+            length += D.PALM_QUANTUM
+            grown += 1
+
+    if best is None:
+        notes.append("no palm length in range gave a valid hand")
+        return hand, notes + fnotes
+    curl, hand, fnotes = best
+    if grown:
+        notes.append(f"palm lengthened {grown * D.PALM_QUANTUM * 1000:.0f} mm past the "
+                     f"vendor's thumb offset to clear the row")
+    if curl < 1.0:
+        notes.append(f"rest curl relaxed to {curl:.0%} to clear finger-finger contact")
     return hand, notes + fnotes
 
 

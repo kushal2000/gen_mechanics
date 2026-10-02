@@ -18,17 +18,10 @@ PALM_QUANTUM = 0.005
 
 PALM_STEP = 0.010
 """How far one ``perturb_palm`` moves a dimension -- twice the grid."""
-PALM_THICKNESS = 0.025
-"""Fixed for every hand: not sampled, not mutated, not a design variable.
-
-``u`` runs along the thickness axis on every face, so thickness alone decides how
-far a mount sits from the palm's two large faces -- but every finger originates on
-the MIDPLANE now, so that is not a design variable and thickness only has to house
-each finger's BASE motor, which sits in the palm rather than in any link. The
-XM335's smallest dimension is 19 mm, so 25 mm clears it.
-"""
-PALM_THICKNESS_RANGE = (PALM_THICKNESS, PALM_THICKNESS)   # x -- a single point now
-PALM_WIDTH_RANGE = (0.040, 0.100)       # y
+PALM_WIDTH_RANGE = (0.040, 0.140)       # y -- 4 fingers in a row need
+# 3 x MIN_MOUNT_SEPARATION + 2 x MOUNT_EDGE_MARGIN = 135 mm. Wide next to a
+# human palm, but our fingers are 30 mm across where a human's are ~20, so a
+# row of four simply occupies more width.
 PALM_LENGTH_RANGE = (0.040, 0.100)      # z, wrist face at z = 0
 
 # Thickness is seeded and never mutated: it is the dimension geometry cares least about, while...
@@ -45,6 +38,19 @@ axis along the link leaves a 19 x 22 mm cross-section, whose smallest enclosing
 circle has radius 14.5 mm; rounded up to the 5 mm grid. A link's radius was never
 really a free parameter -- a motor lives inside it.
 """
+
+# Defined here rather than with the other palm constants: it is tied to the
+# link, so it has to follow CAPSULE_RADIUS.
+PALM_THICKNESS = 2.0 * CAPSULE_RADIUS
+"""Fixed for every hand: not sampled, not mutated, not a design variable.
+
+``u`` runs along the thickness axis on every face, so thickness alone decides how
+far a mount sits from the palm's two large faces -- but every finger originates on
+the MIDPLANE now, so that is not a design variable and thickness only has to house
+each finger's BASE motor, which sits in the palm rather than in any link. The
+XM335's smallest dimension is 19 mm, so 25 mm clears it.
+"""
+PALM_THICKNESS_RANGE = (PALM_THICKNESS, PALM_THICKNESS)   # x -- a single point now
 
 MIN_LINK_LENGTH = 0.020
 """The closest two joint axes can sit, for a link that carries a motor.

@@ -576,21 +576,35 @@ GEN_LINK_DENSITY_KG_M3: float = TIER_MASS_KG["pp"] / (
 # are actuated (Unitree G1: knee 120, hip 88, ankle 50, wrist 8) -- so a
 # generated hand is NOT actuated like SHARPA, deliberately.
 
-# Hardware ceilings. 1.0 N.m sits between SHARPA's PIP (0.638) and MCP (1.864).
-GEN_JOINT_EFFORT_NM: float = 1.0
-GEN_JOINT_VELOCITY_RAD_S: float = 10.0
+# Hardware ceilings, from the one actuator every generated joint carries:
+# the XM335-T323-T, 1.03 N.m stall and 53 rpm = 5.55 rad/s at no load. The
+# ceilings sit just under both, since no-load speed is not a working speed.
+GEN_JOINT_EFFORT_NM: float = 0.5
+GEN_JOINT_VELOCITY_RAD_S: float = 5.0
 
 # Control, not hardware: these say how the joint tracks a target, and are ours
-# to tune. kp = 1.0 is matched to the torque ceiling -- the actuator saturates
-# at ~1 rad of error, about the joint's full travel, so it can use its whole
-# range without sitting permanently clipped. kd keeps SHARPA's damping ratio,
-# which is kd/kp ~ 0.045 at every one of its joints.
-GEN_JOINT_STIFFNESS: float = 1.0
+# to tune. kp is matched to the torque ceiling -- the actuator saturates at
+# ~1 rad of error, about the joint's full travel, so it can use its whole range
+# without sitting permanently clipped. That makes kp track GEN_JOINT_EFFORT_NM:
+# at a 0.5 N.m ceiling, kp = 1.0 would saturate at half a radian instead.
+GEN_JOINT_STIFFNESS: float = 0.5
 
-# Hardware again, and it scales with the actuator's torque in SHARPA:
-# armature/effort averages 0.00116 across its five tiers. Joint friction is not
-# modelled at all -- see HAND_FRICTION below.
-GEN_JOINT_ARMATURE: float = 0.00116 * GEN_JOINT_EFFORT_NM
+# Hardware, and NOT a function of the effort ceiling.
+#
+# An earlier form scaled this with torque (armature/effort averages 0.00116
+# across SHARPA's five tiers). That is a motor-SELECTION law: it holds for a
+# hand that fits a bigger actuator where it needs more torque, which is what
+# SHARPA does. Generated hands carry one fixed actuator at every joint, so the
+# rotor inertia is hardware -- de-rating the torque ceiling in software does not
+# make the rotor lighter, and tying the two would silently halve the simulated
+# inertia of a motor that had not changed.
+#
+# Reflected inertia N^2 J for the XM335-T323-T: N = 323.04, and its rotor turns
+# at 53 x 323 = 17,119 rpm at no load, so J is coreless-class, ~2-4e-8 kg.m^2,
+# giving 0.002-0.004. SHARPA's two largest actuators sit at 0.00265 and 0.00320,
+# which is the same band. Good to roughly a factor of two: ROBOTIS does not
+# publish rotor inertia, and a bench spin-down would settle it.
+GEN_JOINT_ARMATURE: float = 0.003
 
 
 # Critically damped against the joint's own inertia, which is what SHARPA is:
