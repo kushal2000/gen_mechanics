@@ -297,6 +297,26 @@ def test_build_train_cmd_repose_profile_with_the_ppo_agent_skips_sapg_overrides(
     assert "agent.params.config.minibatch_size=8192" in small  # 512 * 16 < 32768
 
 
+def test_anyrotate_profile_uses_its_own_ppo_horizon():
+    """InHandAnyRotatePopPPO.yaml rolls out 8 steps (AnyRotate Table 5): the
+    minibatch and the scoring-window cadence must use 8, not the SAPG 16."""
+    assert "anyrotate" in drv.TASK_PROFILES
+    assert drv.agent_horizon(drv.ANYROTATE_POP_AGENT_ENTRY_POINT, 16) == 8
+    assert drv.agent_horizon("rl_games_sapg_pop_cfg_entry_point", 16) == 16
+    cmd = drv.build_train_cmd(
+        train_python="python3", population_path=Path("/tmp/pop.json"), num_envs=256, max_epochs=30,
+        hydra_run_dir=Path("/tmp/run"), checkpoint=None, resume_success_tolerance=None, horizon_length=16,
+        agent_entry_point=drv.ANYROTATE_POP_AGENT_ENTRY_POINT, task_profile="anyrotate",
+    )
+    assert "env.task_profile=anyrotate" in cmd
+    assert "agent.params.config.minibatch_size=2048" in cmd  # 256 envs x 8 steps
+    assert "expl_coef_block_size" not in " ".join(cmd)
+    args = drv.parse_args(["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x",
+                           "--task-profile", "anyrotate", "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT])
+    assert drv._resolved_config(args)["task_profile"] == "anyrotate"
+    assert drv.parse_args(["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x"]).task_profile == "legacy"
+
+
 def test_build_train_cmd_rejects_an_unknown_profile():
     with pytest.raises(ValueError):
         drv.build_train_cmd(
