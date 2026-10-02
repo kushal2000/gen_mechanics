@@ -34,7 +34,9 @@
       "joint_14": 0.0,
       "joint_15": 0.0
     },
-    "source": "Isaac Lab 2.3.2 Isaac-Repose-Cube-Allegro-Direct-v0: ALLEGRO_HAND_CFG root pose (0, 0, 0.5), (0.257551, 0.283045, 0.683330, -0.621782); DexCube spawn (0, -0.17, 0.56); default joints 0 except thumb_joint_0 = 0.28. Our allegro_right (drake URDF) root frame aligned onto NVIDIA's Allegro USD by a rigid fit of the finger link origins at those joint angles (index/middle/ring links 1-3, thumb links 2-3; residual max 1.4 mm), measured in Kit 2026-10-01."
+    "source": "Isaac Lab 2.3.2 Isaac-Repose-Cube-Allegro-Direct-v0: ALLEGRO_HAND_CFG root pose (0, 0, 0.5), (0.257551, 0.283045, 0.683330, -0.621782); DexCube spawn (0, -0.17, 0.56); default joints 0 except thumb_joint_0 = 0.28. Our allegro_right (drake URDF) root frame aligned onto NVIDIA's Allegro USD by a rigid fit of the finger link origins at those joint angles (index/middle/ring links 1-3, thumb links 2-3; residual max 1.4 mm), measured in Kit 2026-10-01.",
+    "collision_from_visuals": true,
+    "collision_note": "The drake URDF collides through boxes and 12 mm tip spheres; NVIDIA's Allegro USD through convex hulls of the link meshes. With convex hulls of our visual meshes, allegro_right reached 5.4 goals per episode at 10 min vs 0.8 with the URDF primitives (NVIDIA's reference: 4.5), 2026-10-01."
   },
   "sharpa": {
     "base_pos": [

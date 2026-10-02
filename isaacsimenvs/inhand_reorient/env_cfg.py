@@ -205,7 +205,10 @@ class ReposeCfg:
     collision_from_visuals: bool = False
     """Collide through convex hulls of the hand's visual meshes instead of
     its URDF collision elements (``collision_from_visuals.py``), as NVIDIA's
-    Allegro USD does. Single-hand path only."""
+    Allegro USD does, for every single hand. A hand's entry in
+    ``hand_pose_file`` can also turn it on for that hand alone
+    (allegro_right's does: its URDF collides through boxes and 12 mm tip
+    spheres). Single-hand path only."""
 
     hand_asset: str = ""
     """"" (default): ``assets.hand_id`` from our manifest. "isaaclab_allegro":

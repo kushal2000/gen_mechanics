@@ -113,17 +113,23 @@ def apply_palm_calibration(env, spec):
         spec, base_rot=base_rot, hand_default_joint_pos=hand_default_joint_pos)
 
 
+def _repose_hand_pose_entry(env):
+    """``(path, entry)`` of ``cfg.repose.hand_pose_file`` for this hand;
+    ``entry`` is None when the file has none."""
+    from .palm_calibration import load_repose_hand_poses, resolve_repose_hand_pose_path
+
+    path = resolve_repose_hand_pose_path(env.cfg.repose.hand_pose_file)
+    return path, load_repose_hand_poses(path).get(env.cfg.assets.hand_id)
+
+
 def apply_repose_hand_pose(env, spec):
     """isaaclab_repose profile only: if ``cfg.repose.hand_pose_file`` has an
     entry for this hand, place the hand and its cube as that entry says
     (``base_pos``, ``base_rot``, ``spawn_offset_local``,
     ``hand_default_joint_pos``), overriding the palm-up calibration that
     ``apply_palm_calibration`` applied. Other hands are returned unchanged."""
-    from .palm_calibration import load_repose_hand_poses, resolve_repose_hand_pose_path
-
     hand_id = env.cfg.assets.hand_id
-    path = resolve_repose_hand_pose_path(env.cfg.repose.hand_pose_file)
-    entry = load_repose_hand_poses(path).get(hand_id)
+    path, entry = _repose_hand_pose_entry(env)
     if entry is None:
         return spec
     env.cfg.reset.object_spawn_offset = tuple(float(v) for v in entry["spawn_offset_local"])
@@ -436,7 +442,9 @@ def _setup_scene_single_hand(env) -> None:
     offsets = dict(contact_offset=env.cfg.physics.contact_offset,
                    rest_offset=env.cfg.physics.rest_offset)
     robot_urdf = spec.urdf_path
-    if is_repose(env.cfg) and env.cfg.repose.collision_from_visuals:
+    if is_repose(env.cfg) and (
+            env.cfg.repose.collision_from_visuals
+            or bool((_repose_hand_pose_entry(env)[1] or {}).get("collision_from_visuals"))):
         from .collision_from_visuals import collisions_from_visuals
 
         robot_urdf = str(asset_dir / f"{env.cfg.assets.hand_id}_visual_collisions.urdf")
