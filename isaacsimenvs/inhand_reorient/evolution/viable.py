@@ -38,7 +38,14 @@ from ..scene import population_file as pf
 from . import archive as arch
 
 __all__ = ["prefilter_report", "Proposal", "FillStats", "FillResult", "fill_viable", "build_viable_generation",
-           "VIABLE_CSV_COLUMNS"]
+           "VIABLE_CSV_COLUMNS", "cap_spares", "MAX_SPARES"]
+
+MAX_SPARES = 64
+
+
+def cap_spares(spares: Sequence[dict], cap: int = MAX_SPARES) -> List[dict]:
+    """The newest ``cap`` spares (the pool is appended in draw order)."""
+    return list(spares)[-cap:] if cap > 0 else []
 
 VIABLE_CSV_COLUMNS = [
     "n_designs_trained", "short_by", "offspring_viability_rate", "immigrant_viability_rate",
@@ -75,6 +82,7 @@ class FillStats:
     searched_by_role: Counter = field(default_factory=Counter)
     viable_by_role: Counter = field(default_factory=Counter)
     known_by_role: Counter = field(default_factory=Counter)
+    known_viable_by_role: Counter = field(default_factory=Counter)
     batches: int = 0
     searched: int = 0
     search_s: float = 0.0
@@ -83,13 +91,14 @@ class FillStats:
     short_by: int = 0
 
     def viability_rate(self, role: Optional[str] = None) -> Optional[float]:
-        """Viable / drawn (pre-filter rejects count as drawn and non-viable);
-        None when nothing of that role was drawn."""
+        """Viable / drawn this generation (pre-filter rejects count as drawn
+        and non-viable; designs known from earlier generations, e.g. spares,
+        are left out); None when nothing of that role was judged."""
         roles = [role] if role else [r for r in ROLES if r != "probe"]
-        drawn = sum(self.drawn_by_role[r] for r in roles)
-        if drawn == 0:
+        drawn = sum(self.drawn_by_role[r] - self.known_by_role[r] for r in roles)
+        if drawn <= 0:
             return None
-        return sum(self.viable_by_role[r] for r in roles) / drawn
+        return sum(self.viable_by_role[r] - self.known_viable_by_role[r] for r in roles) / drawn
 
     def log_row(self) -> dict:
         new_roles = [r for r in ROLES if r != "probe"]
@@ -120,6 +129,7 @@ class FillResult:
     forced_viable: List[Proposal]
     forced_non_viable: List[Proposal]
     stats: FillStats
+    unused: List[Proposal] = field(default_factory=list)
 
 
 def _record_non_viable(stats: FillStats, p: Proposal, reason: str) -> None:
@@ -135,6 +145,7 @@ def fill_viable(*, target: int, forced: Sequence[Proposal], propose: Callable[[]
     ``known`` (sha256 -> n_grasps) is read and updated."""
     stats = FillStats()
     chosen: List[Proposal] = []
+    unused: List[Proposal] = []
     forced_viable: List[Proposal] = []
     forced_non_viable: List[Proposal] = []
     pending_forced: List[Proposal] = []
@@ -144,6 +155,7 @@ def fill_viable(*, target: int, forced: Sequence[Proposal], propose: Callable[[]
             stats.known_by_role[p.meta.role] += 1
             if known[p.sha256] > 0:
                 stats.viable_by_role[p.meta.role] += 1
+                stats.known_viable_by_role[p.meta.role] += 1
                 forced_viable.append(p)
             else:
                 forced_non_viable.append(p)
@@ -168,6 +180,7 @@ def fill_viable(*, target: int, forced: Sequence[Proposal], propose: Callable[[]
                 stats.known_by_role[p.meta.role] += 1
                 if known[p.sha256] > 0:
                     stats.viable_by_role[p.meta.role] += 1
+                    stats.known_viable_by_role[p.meta.role] += 1
                     chosen.append(p)
                 else:
                     _record_non_viable(stats, p, "known_non_viable")
@@ -199,11 +212,12 @@ def fill_viable(*, target: int, forced: Sequence[Proposal], propose: Callable[[]
                     chosen.append(p)
                 else:
                     stats.unused_viable.append(p.meta.design_id)
+                    unused.append(p)
             else:
                 _record_non_viable(stats, p, "no_stable_grasp")
     stats.short_by = max(0, need())
     return FillResult(chosen=chosen, forced_viable=forced_viable, forced_non_viable=forced_non_viable,
-                      stats=stats)
+                      stats=stats, unused=unused)
 
 
 def _proposal_from(entry: "pf.PopulationEntry", meta, model, min_tip_contacts: int, check: bool) -> Proposal:
@@ -217,7 +231,7 @@ def build_viable_generation(
     generation: int, n_designs: int, probe_hand_ids: Sequence[str], dist,
     archive: "arch.Archive", driver_rng: np.random.Generator, minter, *, known: Dict[str, int],
     search: Callable[[List[Proposal]], Tuple[Dict[str, int], float]], batch_size: int, max_batches: int,
-    max_offspring_retries: int = 16, min_tip_contacts: int = 2,
+    max_offspring_retries: int = 16, min_tip_contacts: int = 2, spares: Sequence[dict] = (),
 ):
     """The viable-only counterpart of ``driver.build_generation_population``:
     ``(GenerationPlan, report)`` with elites, viable probes and newly drawn
@@ -265,7 +279,25 @@ def build_viable_generation(
         drawn_variants.append(variant_names[k])
         return drv.sample_new_founder(dists[k], driver_rng)
 
+    pool = list(spares)
+    spares_used = {"n": 0}
+
+    def from_spare(s: dict) -> Proposal:
+        derivation = derivation_from_dict(s["derivation_dict"])
+        model = derive(derivation)
+        source = f"arch:{s['design_id']}"
+        entry = pf.make_entry(source, derivation, model)
+        meta = drv.DesignMeta(design_id=s["design_id"], founder_id=s["founder_id"], parent_id=s.get("parent_id"),
+                              generation_born=int(s["generation_born"]), digit_count=int(s["digit_count"]),
+                              joint_count=int(s["joint_count"]), role=s["role"], source=source)
+        spares_used["n"] += 1
+        return Proposal(entry=entry, meta=meta, sha256=entry.sha256)
+
     def propose() -> Proposal:
+        while pool:
+            p = from_spare(pool.pop(0))
+            if p.sha256 in known:  # a spare is known viable; anything else is drawn fresh
+                return p
         if generation == 0 or not elites:
             derivation, design = founder()
             role, design_id = "founder", minter.mint(generation, "founder")
@@ -303,6 +335,11 @@ def build_viable_generation(
         "probes_dropped": [p.meta.design_id for p in res.forced_non_viable],
         "assembly_s": round(time.time() - t0, 1),
         "founder_variants": list(drawn_variants),
+        "spares_used": spares_used["n"],
+        "spares": [{"derivation_dict": p.entry.derivation_dict, "design_id": p.meta.design_id, "role": p.meta.role,
+                    "founder_id": p.meta.founder_id, "parent_id": p.meta.parent_id,
+                    "generation_born": p.meta.generation_born, "digit_count": p.meta.digit_count,
+                    "joint_count": p.meta.joint_count} for p in res.unused] + pool,
     })
     return drv.GenerationPlan(entries=entries, metas=metas), report
 

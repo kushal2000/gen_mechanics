@@ -854,7 +854,7 @@ def _config_hash(cfg: dict) -> str:
 def save_state(
     path: Path, *, archive: "arch.Archive", driver_rng: np.random.Generator, generation_completed: int,
     last_checkpoint: Optional[str], prev_tolerance: float, minter: IdMinter, config: dict,
-    known_viability: Optional[Dict[str, int]] = None,
+    known_viability: Optional[Dict[str, int]] = None, spares: Optional[List[dict]] = None,
 ) -> None:
     doc = {
         "schema": STATE_SCHEMA,
@@ -869,6 +869,8 @@ def save_state(
     }
     if known_viability is not None:
         doc["known_viability"] = dict(known_viability)
+    if spares is not None:
+        doc["spares"] = list(spares)
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_suffix(out_path.suffix + ".tmp")
@@ -1120,6 +1122,7 @@ def run_generation(
     generation: int, args: argparse.Namespace, run_dir: Path, dist: Distribution, archive: "arch.Archive",
     driver_rng: np.random.Generator, minter: IdMinter, last_checkpoint: Optional[Path], prev_tolerance: float,
     probe_hand_ids: Sequence[str], known_viability: Optional[Dict[str, int]] = None,
+    spares: Optional[List[dict]] = None,
 ) -> Tuple[Optional[Path], float]:
     gen_dir = run_dir / f"gen_{generation}"
     train_dir = gen_dir / "train"
@@ -1140,7 +1143,13 @@ def run_generation(
             generation, args.designs, probe_hand_ids, dist, archive, driver_rng, minter,
             known=known_viability if known_viability is not None else {}, search=_search,
             batch_size=args.viable_batch_size, max_batches=args.viable_max_batches,
-            max_offspring_retries=args.max_offspring_retries)
+            max_offspring_retries=args.max_offspring_retries, spares=list(spares or []))
+        if spares is not None:
+            from .viable import cap_spares
+
+            spares[:] = cap_spares(viability.pop("spares"))
+        else:
+            viability.pop("spares", None)
         print(f"[driver] generation {generation}: {viability['n_designs']} viable design(s) "
               f"({viability['n_elites']} elites, {viability['n_new']} new, probes {viability['probes_viable']}; "
               f"dropped probes {viability['probes_dropped']}); offspring viability "
@@ -1355,6 +1364,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     last_checkpoint: Optional[Path] = None
     prev_tolerance = 0.0
     known_viability: Dict[str, int] = {}
+    spares: List[dict] = []
 
     if state_path.exists():
         state = load_state(state_path)
@@ -1370,6 +1380,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         prev_tolerance = float(state.get("prev_tolerance", 0.0))
         start_generation = int(state["generation_completed"]) + 1
         known_viability = {k: int(v) for k, v in state.get("known_viability", {}).items()}
+        spares = list(state.get("spares", []))
         print(f"[driver] resuming {run_dir} from generation {start_generation} "
               f"(archive coverage {archive.coverage()}/{arch.N_CELLS}, checkpoint={last_checkpoint})",
               flush=True)
@@ -1387,6 +1398,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             last_checkpoint, prev_tolerance = run_generation(
                 generation, args, run_dir, dist, archive, driver_rng, minter, last_checkpoint, prev_tolerance,
                 probe_hand_ids, known_viability=known_viability if args.viable_only else None,
+                spares=spares if args.viable_only else None,
             )
         except (GenerationFailed, NonFiniteCheckpoint) as exc:
             # state.json is deliberately NOT rewritten: it still describes the
@@ -1400,6 +1412,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             state_path, archive=archive, driver_rng=driver_rng, generation_completed=generation,
             last_checkpoint=str(last_checkpoint) if last_checkpoint else None, prev_tolerance=prev_tolerance,
             minter=minter, config=config, known_viability=known_viability if args.viable_only else None,
+            spares=spares if args.viable_only else None,
         )
         print(f"[driver] generation {generation} complete: coverage={archive.coverage()}/{arch.N_CELLS} "
               f"qd_score={archive.qd_score():.3f} best={archive.best_fitness()}", flush=True)
