@@ -351,3 +351,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - AnyRotate fix cycle: goals do advance only on reach (paper confirmed); the keypoint term is not the cause; the lambda_rew curriculum turns on stability/contact penalties before rotation is learned. Best AnyRotate variant 0.38 rotations/episode.
 - HORA ported from its released code as task_profile hora: allegro 0.35 / 1.64 / 2.14 rotations per 20 s episode at 15 / 30 / 60 min (0.75 rad/s, drops 14%), about HORA's own simulation level after 0.36 B steps.
 - Population (32 designs): 6 viable under HORA physics (allegro, sharpa, leap projections + 3 founders); no learning in 30 min because non-viable designs fill the batch. Next: viable-only populations.
+
+## Viable-only populations on the cluster (2026-10-02 ~16:40)
+
+- --viable-only implemented and run on the cluster (jobs 2529872-2530462, ~5.3 GPU-h; code snapshots gm_<sha>). Founder viability under HORA physics: G_V3S 8.6%, G_V1 3.3%; offspring of viable parents 66%.
+- No shared controller learned (mixed32 and sub8 hold ~0.4 s). Control: the grammar-path allegro alone plateaus at ~2 s holding vs 17.8 s for the URDF allegro, so the grammar-path hand construction, not controller sharing, is the bottleneck. Next: A/B the construction factors on the projected allegro.
