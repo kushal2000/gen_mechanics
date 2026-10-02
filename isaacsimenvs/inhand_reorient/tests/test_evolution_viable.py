@@ -360,3 +360,12 @@ def test_spare_pool_is_capped_and_round_trips_through_state(tmp_path):
     drv.save_state(path, archive=a, driver_rng=np.random.default_rng(0), generation_completed=0, last_checkpoint=None,
                    prev_tolerance=0.0, minter=drv.IdMinter(), config={}, known_viability={}, spares=spares[:2])
     assert drv.load_state(path)["spares"] == spares[:2]
+
+
+def test_known_designs_do_not_count_in_this_generations_viability_rate():
+    """A spare or a previously searched design was judged earlier: the rate
+    counts only designs pre-filtered or searched this generation."""
+    search = _Search(viable={2})
+    res = vb.fill_viable(target=2, forced=[], propose=_Proposer(), search=search, known={"sha0": 7, "sha1": 0},
+                         batch_size=1, max_batches=2)
+    assert res.stats.viability_rate("offspring") == pytest.approx(1.0)  # d2 only: searched, viable
