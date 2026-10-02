@@ -20,7 +20,7 @@ HERE = pathlib.Path(__file__).resolve().parent.parent
 RES = HERE / "results/wuji_compare"
 OUT = HERE / "plots/wuji_compare"
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
-SERIES = ("#2a78d6", "#eb6834", "#1baf7a")            # categorical slots 1-3 of the validated default palette
+SERIES = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100")  # categorical slots 1-4 of the validated default palette
 CONDS = [("nominal", "nominal\n(train)"), ("cube40", "cube\n40 mm"), ("cube55", "cube\n55 mm"),
          ("cube65", "cube\n65 mm"), ("light", "light\ncube"), ("heavy", "heavy\ncube"),
          ("slippery", "slippery\n(×0.5 μ)"), ("push", "push"), ("push_hard", "hard\npush")]

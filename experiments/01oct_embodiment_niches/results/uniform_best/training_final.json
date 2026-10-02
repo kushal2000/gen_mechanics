@@ -37,9 +37,9 @@
  },
  "tesollo": {
   "study": "left_tesollo_uniform",
-  "job": "801576",
-  "goals_per_episode": 44.30070663452148,
-  "last_epoch": 4992
+  "job": "866046",
+  "goals_per_episode": 45.05712333679199,
+  "last_epoch": 4991
  },
  "wuji2": {
   "study": "left_wuji2_uniform",
