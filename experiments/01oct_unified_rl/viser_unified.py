@@ -160,6 +160,33 @@ def _worker_loop(args, conn):
 
 
 # ----------------------------------------------------------------------------------------- parent (viser)
+# One colour per face (+x, -x, +y, -y, +z, -z), as on a Rubik's cube, so the cube's orientation -- the
+# whole task -- reads at a glance, and the goal in the same colours shows which way it must turn.
+FACE_RGB = ((200, 30, 30), (255, 140, 0), (0, 90, 200), (0, 160, 70), (245, 245, 245), (250, 210, 0))
+
+
+def _face_cube(server, name: str, dims, opacity: float):
+    """A frame holding a dark core and six thin coloured plates on its faces; returns the frame."""
+    frame = server.scene.add_frame(name, show_axes=False)
+    d = [float(v) for v in dims]
+    t = 0.0015                                          # plate thickness
+    server.scene.add_box(f"{name}/core", dimensions=tuple(v - 2 * t for v in d), color=(40, 40, 40),
+                         opacity=opacity)
+    k = 0
+    for ax in range(3):
+        for sign in (1.0, -1.0):
+            size = list(d)
+            size[ax] = t
+            pos = [0.0, 0.0, 0.0]
+            pos[ax] = sign * (d[ax] / 2 - t / 2)
+            # Inset each plate a hair on its other axes so neighbouring faces do not z-fight at the edges.
+            size = [v if i == ax else v - 0.002 for i, v in enumerate(size)]
+            server.scene.add_box(f"{name}/f{k}", dimensions=tuple(size), position=tuple(pos),
+                                 color=FACE_RGB[k], opacity=opacity)
+            k += 1
+    return frame
+
+
 def main(args):
     import viser
     from viser.extras import ViserUrdf
@@ -220,10 +247,8 @@ def main(args):
                         base = server.scene.add_frame(f"/h{h}/base", position=tuple(hd["base_pos"]),
                                                       wxyz=tuple(hd["base_rot"]), show_axes=False)
                         urdfs.append(ViserUrdf(server, pathlib.Path(hd["urdf"]), root_node_name=f"/h{h}/base/robot"))
-                        objs.append(server.scene.add_box(f"/h{h}/obj", dimensions=tuple(hd["cube"]),
-                                                         color=(230, 120, 40)))
-                        goals_.append(server.scene.add_box(f"/h{h}/goal", dimensions=tuple(hd["cube"]),
-                                                           color=(64, 200, 100), opacity=0.35))
+                        objs.append(_face_cube(server, f"/h{h}/obj", hd["cube"], opacity=1.0))
+                        goals_.append(_face_cube(server, f"/h{h}/goal", hd["cube"], opacity=0.35))
                         labels.append(server.scene.add_label(f"/h{h}/label", hd["name"],
                                                              position=(0.0, 0.0, 0.0)))
                         del slot, base
