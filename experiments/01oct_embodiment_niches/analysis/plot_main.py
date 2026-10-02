@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import pathlib
 
 import matplotlib
@@ -19,8 +20,9 @@ from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
 from plot_bars import BAR, BEST, CONDS, GRID, INK, INK2, METRICS, NAMES, SURFACE  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-D = REPO / "debug_outputs/embodiment_niches"
-OUT = pathlib.Path(__file__).resolve().parent.parent / "plots"
+SET = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--set=")), "vendor")
+D = REPO / "experiments/01oct_embodiment_niches/results" / SET
+OUT = pathlib.Path(__file__).resolve().parent.parent / "plots" / SET
 # Sequential blue ramp from the reference palette, light (worse) -> dark (better).
 RAMP = LinearSegmentedColormap.from_list("blue", ["#f0f6fe", "#cde2fb", "#86b6ef", "#3987e5",
                                                   "#256abf", "#184f95", "#0d366b"])

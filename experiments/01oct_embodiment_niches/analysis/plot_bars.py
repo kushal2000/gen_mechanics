@@ -10,6 +10,7 @@ hand per metric is the darker bar.
 from __future__ import annotations
 
 import json
+import sys
 import pathlib
 
 import matplotlib
@@ -17,8 +18,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-D = REPO / "debug_outputs/embodiment_niches"
-OUT = pathlib.Path(__file__).resolve().parent.parent / "plots" / "details"
+SET = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--set=")), "vendor")
+D = REPO / "experiments/01oct_embodiment_niches/results" / SET
+OUT = pathlib.Path(__file__).resolve().parent.parent / "plots" / SET / "details"
 
 NAMES = {"sharpa": "SHARPA", "gen_sharpa": "gen-SHARPA", "allegro": "Allegro", "leap": "LEAP",
          "shadow": "Shadow", "tesollo": "Tesollo", "dex3": "Dex3", "xhand": "XHAND", "wuji2": "Wuji v2"}

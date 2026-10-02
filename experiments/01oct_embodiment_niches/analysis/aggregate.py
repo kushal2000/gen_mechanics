@@ -9,9 +9,13 @@ import pathlib
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-D = REPO / "debug_outputs/embodiment_niches"
+# Results live next to the experiment: results/vendor (the ten-hands vendor/10 rad/s policies) and
+# results/uniform (the uniform-dynamics policies). Pick with --set; default vendor.
+SET = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--set=")), "vendor")
+D = REPO / "experiments/01oct_embodiment_niches/results" / SET
 
 HANDS = ["sharpa", "gen_sharpa", "allegro", "leap", "shadow", "tesollo", "dex3", "xhand", "wuji2"]
+HANDS_PRESENT = None  # filled from what exists
 CONDS = ["nominal", "cube40", "cube55", "cube65", "light", "heavy", "slippery", "push", "push_hard"]
 
 # metric -> (label, higher is better?, getter)

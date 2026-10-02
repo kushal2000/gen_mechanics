@@ -13,8 +13,9 @@
 #   sbatch --job-name=niche_u_<hand> --export=ALL,HAND=<hand> run_hand_uniform.sub
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
-OUT=$REPO/debug_outputs/embodiment_niches_uniform
-mkdir -p $OUT/logs
+OUT=$REPO/experiments/01oct_embodiment_niches/results/uniform
+LOGS=$REPO/debug_outputs/embodiment_niches_uniform/logs
+mkdir -p $OUT $LOGS
 cd $REPO
 export OMNI_KIT_ACCEPT_EULA=YES
 run() {   # run <condition> <seconds> <out name>
@@ -22,7 +23,7 @@ run() {   # run <condition> <seconds> <out name>
     [ -s "$f" ] && { echo "skip $f"; return; }
     .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform \
         --hand "$HAND" --condition "$1" --num-envs 1024 --seconds "$2" --out "$f" \
-        > $OUT/logs/${HAND}__$3.log 2>&1 || echo "FAILED $HAND $3"
+        > $LOGS/${HAND}__$3.log 2>&1 || echo "FAILED $HAND $3"
     [ -s "$f" ] && echo "done $HAND $3"
 }
 for c in nominal cube40 cube55 cube65 light heavy slippery push push_hard; do run $c 60 $c; done

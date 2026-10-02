@@ -6,7 +6,7 @@ same final policies on other axes and look for rank reversals and non-dominated 
 
 `eval_niches.py` -- one hand x one condition per Kit process, 1024 envs x 60 s sim, greedy
 policy, no 50-goal cap. `run_hand.sub` runs every condition for one hand; jobs in `.jobs`;
-JSON in `debug_outputs/embodiment_niches/`.
+JSON in `results/vendor/` (moved from debug_outputs/embodiment_niches).
 
 Metrics: goals/min, drops/min, goals per drop, time per goal, path efficiency (goal angle /
 cube rotation travelled), work per goal and power (PhysX joint forces; the PD-law estimate is
@@ -26,7 +26,7 @@ cube rotates ~3.7x the required angle -- the policy is near bang-bang.
 
 ## Results (81/81 runs, 1 Oct)
 
-Full tables: `analysis/aggregate.py` -> `debug_outputs/embodiment_niches/summary.json`.
+Full tables: `analysis/aggregate.py` -> `results/vendor/summary.json`.
 
 - **Throughput: Allegro wins every condition in absolute goals/min** (113 nominal; best under
   every size, mass, friction and push condition). No robustness niche in absolute terms.
@@ -41,11 +41,11 @@ Full tables: `analysis/aggregate.py` -> `debug_outputs/embodiment_niches/summary
 - Confounds: torque limits differ ~50x across vendors (wuji2 0.2-0.3 N.m, allegro 10) and speed
   caps differ; energy winners are also the weakest hands. Policies were trained for goals only.
 
-Bar charts (one per metric, one bar per hand; darker = best): `plots/details/`, made by `analysis/plot_bars.py`.
+Bar charts (one per metric, one bar per hand; darker = best): `plots/vendor/details/`, made by `analysis/plot_bars.py`.
 
-Main figures: `plots/niche_map.png` (rank of every hand on every metric), `plots/speed_vs_energy.png`
-(Pareto front), `plots/robustness.png` (throughput kept per perturbation) -- `analysis/plot_main.py`.
-Per-metric bar charts: `plots/details/`.
+Main figures: `plots/vendor/niche_map.png` (rank of every hand on every metric), `plots/vendor/speed_vs_energy.png`
+(Pareto front), `plots/vendor/robustness.png` (throughput kept per perturbation) -- `analysis/plot_main.py`.
+Per-metric bar charts: `plots/vendor/details/`.
 
 ## Goals before drop (5-minute nominal runs, `<hand>__nominal_5min.json`)
 
@@ -54,5 +54,14 @@ is 4. Worst-5% of episodes (Kaplan-Meier, censored episodes counted): allegro 59
 sharpa 31, tesollo 31, xhand 29, shadow 27, wuji2 13, gen-SHARPA 9. Allegro's failures are mostly
 stalls (1579 timeouts vs 509 drops in 5 min); LEAP has the fewest of both (274 / 420).
 
-Niche map (`plots/niche_map.png`): one metric per column -- goals/min, goals before drop (worst
+Niche map (`plots/vendor/niche_map.png`): one metric per column -- goals/min, goals before drop (worst
 5%), joint work per goal, path efficiency, action rate, cube travel per goal.
+
+## Layout (2 Oct)
+
+Results next to the experiment: `results/vendor/` (the ten-hands vendor / 10 rad/s policies, above) and
+`results/uniform/` (the uniform-dynamics policies, experiments/01oct_uniform_dynamics, incl. gen-SHARPA).
+Figures in `plots/<set>/`. Every analysis script takes `--set=vendor|uniform` (default vendor).
+The uniform evaluation is queued per hand after its training job (`run_hand_uniform.sub`, `.jobs_uniform`);
+'slippery' halves the trained cube friction (uniform nominal is 0.5, so 0.25). Run logs stay in
+debug_outputs/embodiment_niches_uniform/logs.

@@ -1,9 +1,10 @@
 sharpa 843001 now
-allegro 843002 --dependency=afterok:814021
-leap 843003 --dependency=afterok:809803
-shadow 843004 --dependency=afterok:801574
+allegro 843511 --dependency=afterok:814021
+leap 843513 --dependency=afterok:809803
+shadow 843514 --dependency=afterok:801574
 dex3 843005 now
-tesollo 843006 --dependency=afterok:801576
-wuji2 843007 --dependency=afterok:801577
+tesollo 843519 --dependency=afterok:801576
+wuji2 843522 --dependency=afterok:801577
 xhand 843008 now
-gen_sharpa 843009 --dependency=afterok:802158
+gen_sharpa 843524 --dependency=afterok:802158
+copy_running 843627 afterany:843001:843005:843008

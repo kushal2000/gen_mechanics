@@ -20,6 +20,6 @@ for hand, (_, study, _) in HANDS.items():
     last = [x.value for x in s[-100:]]
     out[hand] = {"study": study, "goals_per_episode": sum(last) / len(last), "last_epoch": s[-1].step / 196608}
     print(f"{hand:11s} {out[hand]['goals_per_episode']:6.2f} goals/episode (mean of last 100) @ {out[hand]['last_epoch']:.0f}")
-p = REPO / "debug_outputs/embodiment_niches/training_final.json"
+p = REPO / "experiments/01oct_embodiment_niches/results/vendor/training_final.json"
 p.write_text(json.dumps(out, indent=1))
 print("->", p)
