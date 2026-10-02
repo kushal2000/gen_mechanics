@@ -229,6 +229,43 @@ rotations above are for (near) zero gravity, and the non-viable designs also hol
 0). The curriculum does not change which designs are viable, since the cache is made under full
 gravity.
 
+## Viable-only populations (`--viable-only`, 2026-10-02)
+
+`--viable-only` (needs `--grasp-cache`; off by default) trains only designs with at least one stable
+grasp (`evolution/viable.py`, `tests/test_evolution_viable.py`). Per generation:
+
+1. Elites are kept (viable by construction; their grasps stay in the run cache). Probes are
+   searched once; one without a stable grasp (e.g. dclaw under HORA physics) is dropped from
+   training and listed under `probes_dropped`.
+2. New designs are drawn as before (founders in generation 0, else offspring of archive elites or
+   an immigrant when a mutation fails) and pre-filtered on the CPU (0.04 s per design):
+   `viability_report` admitted, at least `min_tip_contacts` (2) digits, at least one reachable
+   fingertip. One finger gives at most one tip contact, so a design failing this can never pass
+   the search; requiring two reachable tips would have dropped a viable founder.
+3. Survivors are grasp-searched in batches, one `grasp_cache_gen` Kit launch each
+   (`--viable-batch-size` 64 designs over `--viable-search-envs` 4096 envs, `--viable-search-rounds`
+   40, `--viable-grasps-per-design` 64, at most `--viable-max-batches` 4 launches), until `--designs`
+   viable designs are filled. The search cannot run inside the training launch: a design is authored
+   into the scene at boot, and the candidates that fail are exactly the ones training must not see.
+4. Designs searched before are not searched again (`known_viability`, sha256 -> grasps, in
+   state.json). A design without a stable grasp is recorded non-viable (fitness 0, never in the
+   archive).
+
+`generations.jsonl` gets a `viability` entry per generation (rates per role, candidates drawn /
+pre-filter rejected / searched, grasp-search seconds and launches, non-viable designs with reasons,
+dropped probes) and `timings.grasp_search_s`; `generations.csv` adds `offspring_viability_rate`,
+`immigrant_viability_rate`, `founder_viability_rate`, `viability_rate`, `candidates_drawn`,
+`candidates_searched`, `prefilter_rejected`, `grasp_search_s`, `search_batches`, `n_non_viable`,
+`n_unused_viable`, `n_designs_trained`, `short_by` and `probes_dropped` (legacy runs keep their
+columns). The same assembly builds a single population without training:
+`python -m isaacsimenvs.inhand_reorient.evolution.viable --variants G_V3S,G_V1 --designs 32 --out-dir DIR`
+(founders round-robin over the variants).
+
+A 32-design mixed population (`outputs/viable/mixed32`, 4090): 489 founders drawn, 297 rejected on
+the CPU (228 single-digit, 69 without a reachable tip), 192 searched in 3 launches (850 s), 29 viable
+plus the allegro, sharpa and leap probes. Founder viability: G_V3S 8.6% of drawn (16.4% of
+searched), G_V1 3.3% (12.5%).
+
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
 Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
