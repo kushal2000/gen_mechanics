@@ -60,7 +60,7 @@ Niche map (`plots/vendor/niche_map.png`): one metric per column -- goals/min, go
 ## Layout (2 Oct)
 
 Results next to the experiment: `results/vendor/` (the ten-hands vendor / 10 rad/s policies, above) and
-`results/uniform/` (the uniform-dynamics policies, experiments/01oct_uniform_dynamics, incl. gen-SHARPA).
+`results/uniform_run1/`, `results/uniform_run2/`: the uniform-dynamics policies (experiments/01oct_uniform_dynamics, incl. gen-SHARPA), two identical-config training runs per hand; `results/uniform` links to run2 for evals still queued. `results/uniform_best/` (analysis/select_best.py) takes each hand's better run by TRAINING score; plot with `--set=uniform_best`.
 Figures in `plots/<set>/`. Every analysis script takes `--set=vendor|uniform` (default vendor).
 The uniform evaluation is queued per hand after its training job (`run_hand_uniform.sub`, `.jobs_uniform`);
 'slippery' halves the trained cube friction (uniform nominal is 0.5, so 0.25). Run logs stay in

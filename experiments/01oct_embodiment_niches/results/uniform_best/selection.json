@@ -1,0 +1,90 @@
+{
+ "allegro": {
+  "picked": "uniform_run2",
+  "job": "814021",
+  "candidates": {
+   "uniform_run2": {
+    "job": "814021",
+    "train_goals": 42.81,
+    "epoch": 4994
+   }
+  }
+ },
+ "dex3": {
+  "picked": "uniform_run2",
+  "job": "866044",
+  "candidates": {
+   "uniform_run2": {
+    "job": "866044",
+    "train_goals": 5.4,
+    "epoch": 4994
+   }
+  }
+ },
+ "gen_sharpa": {
+  "picked": "uniform_run2",
+  "job": "802158",
+  "candidates": {
+   "uniform_run2": {
+    "job": "802158",
+    "train_goals": 2.03,
+    "epoch": 4988
+   }
+  }
+ },
+ "leap": {
+  "picked": "uniform_run2",
+  "job": "809803",
+  "candidates": {
+   "uniform_run2": {
+    "job": "809803",
+    "train_goals": 16.34,
+    "epoch": 4980
+   }
+  }
+ },
+ "shadow": {
+  "picked": "uniform_run1",
+  "job": "801574",
+  "candidates": {
+   "uniform_run1": {
+    "job": "801574",
+    "train_goals": 42.47,
+    "epoch": 4980
+   }
+  }
+ },
+ "tesollo": {
+  "picked": "uniform_run1",
+  "job": "801576",
+  "candidates": {
+   "uniform_run1": {
+    "job": "801576",
+    "train_goals": 44.86,
+    "epoch": 4992
+   }
+  }
+ },
+ "wuji2": {
+  "picked": "uniform_run1",
+  "job": "801577",
+  "candidates": {
+   "uniform_run1": {
+    "job": "801577",
+    "train_goals": 46.49,
+    "epoch": 4986
+   }
+  }
+ },
+ "xhand": {
+  "picked": "uniform_run2",
+  "job": "866050",
+  "candidates": {
+   "uniform_run2": {
+    "job": "866050",
+    "train_goals": 18.23,
+    "epoch": 4988
+   }
+  }
+ }
+}

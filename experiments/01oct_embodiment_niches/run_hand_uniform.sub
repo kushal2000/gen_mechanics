@@ -13,7 +13,7 @@
 #   sbatch --job-name=niche_u_<hand> --export=ALL,HAND=<hand> run_hand_uniform.sub
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
-OUT=$REPO/experiments/01oct_embodiment_niches/results/uniform
+OUT=${OUT:-$REPO/experiments/01oct_embodiment_niches/results/uniform_run2}
 LOGS=$REPO/debug_outputs/embodiment_niches_uniform/logs
 mkdir -p $OUT $LOGS
 cd $REPO
@@ -22,7 +22,7 @@ run() {   # run <condition> <seconds> <out name>
     f=$OUT/${HAND}__$3.json
     [ -s "$f" ] && { echo "skip $f"; return; }
     .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform \
-        --hand "$HAND" --condition "$1" --num-envs 1024 --seconds "$2" --out "$f" \
+        --hand "$HAND" --condition "$1" --num-envs 1024 --seconds "$2" --out "$f" ${CKPT:+--checkpoint "$CKPT"} \
         > $LOGS/${HAND}__$3.log 2>&1 || echo "FAILED $HAND $3"
     [ -s "$f" ] && echo "done $HAND $3"
 }
