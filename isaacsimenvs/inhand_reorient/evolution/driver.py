@@ -33,6 +33,19 @@ extra Kit launch). A design without a stable grasp scores 0
 (``grasp_cache``: generation time, designs generated and reused, grasps per
 design, non-viable designs).
 
+Viable-only populations (``--viable-only``, needs ``--grasp-cache``; off by
+default): only designs with at least one stable grasp are trained
+(``viable.py``). New designs are pre-filtered on the CPU
+(``viability_report``) and grasp-searched in batches (``--viable-batch-size``
+designs over ``--viable-search-envs`` envs per Kit launch of
+``grasp_cache_gen``, at most ``--viable-max-batches`` launches) until
+``--designs`` viable ones are filled; the non-viable get fitness 0 and stay
+out of the archive. Elites and known designs (``known_viability`` in
+state.json, by sha256) are not searched again; probes without a stable grasp
+are dropped from training and listed. generations.jsonl gets a ``viability``
+entry and generations.csv the ``viable.VIABLE_CSV_COLUMNS`` (offspring
+viability rate, candidates searched, grasp-search time, ...).
+
 Robustness (I41): a generation counts as completed only if ``train.py``
 exits 0 AND leaves a checkpoint whose tensors are all finite and whose
 GradScaler has not collapsed to 0. Otherwise it is retried once from the
@@ -841,6 +854,7 @@ def _config_hash(cfg: dict) -> str:
 def save_state(
     path: Path, *, archive: "arch.Archive", driver_rng: np.random.Generator, generation_completed: int,
     last_checkpoint: Optional[str], prev_tolerance: float, minter: IdMinter, config: dict,
+    known_viability: Optional[Dict[str, int]] = None,
 ) -> None:
     doc = {
         "schema": STATE_SCHEMA,
@@ -853,6 +867,8 @@ def save_state(
         "config": config,
         "config_hash": _config_hash(config),
     }
+    if known_viability is not None:
+        doc["known_viability"] = dict(known_viability)
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_suffix(out_path.suffix + ".tmp")
@@ -928,10 +944,62 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                          "grasps of new designs are generated inside each generation's training launch")
     ap.add_argument("--grasp-cache-path", default=None,
                     help="the run's grasp cache (default <run-dir>/grasp_cache.npz)")
+    ap.add_argument("--viable-only", action="store_true",
+                    help="train only designs with a stable grasp (needs --grasp-cache; see viable.py)")
+    ap.add_argument("--viable-batch-size", type=int, default=64, help="new designs per grasp-search launch")
+    ap.add_argument("--viable-search-envs", type=int, default=4096, help="envs of a grasp-search launch")
+    ap.add_argument("--viable-max-batches", type=int, default=4, help="grasp-search launches per generation")
+    ap.add_argument("--viable-search-rounds", type=int, default=40, help="grasp_gen_max_rounds of a search")
+    ap.add_argument("--viable-grasps-per-design", type=int, default=64,
+                    help="grasp_per_design of a search (a design stops searching once it has this many)")
+    ap.add_argument("--viable-search-timeout-s", type=int, default=1500, help="timeout -k 30 <this> per search")
     args = ap.parse_args(argv)
     if args.grasp_cache and args.task_profile not in ("anyrotate", "hora"):
         ap.error("--grasp-cache needs --task-profile anyrotate or hora")
+    if args.viable_only and not args.grasp_cache:
+        ap.error("--viable-only needs --grasp-cache")
     return args
+
+
+def csv_columns(args: argparse.Namespace) -> List[str]:
+    """generations.csv columns: the legacy ones, plus the viability ones
+    under --viable-only (a run keeps one header from its first generation)."""
+    from .viable import VIABLE_CSV_COLUMNS
+
+    return list(CSV_COLUMNS) + (list(VIABLE_CSV_COLUMNS) if getattr(args, "viable_only", False) else [])
+
+
+def run_grasp_search(batch, *, args: argparse.Namespace, run_dir: Path, gen_dir: Path, index: int
+                     ) -> Tuple[Dict[str, int], float]:
+    """One grasp-search Kit launch over ``batch`` (``viable.Proposal``s):
+    writes their population file, runs ``grasp_cache_gen`` into the run's
+    cache, returns ``({sha256: n_grasps}, wall seconds)``."""
+    t0 = time.time()
+    search_dir = gen_dir / f"search_{index}"
+    pop_path = gen_dir / f"search_{index}.json"
+    pf.write_population(pop_path, [p.entry for p in batch])
+    physics = [o for o in args.train_override if o.startswith("env.")]
+    cmd = [
+        "timeout", "-k", "30", str(args.viable_search_timeout_s), str(args.train_python), "-m",
+        "isaacsimenvs.inhand_reorient.grasp_cache_gen", "--task-profile", args.task_profile,
+        "--population", str(pop_path), "--num-envs", str(args.viable_search_envs),
+        "--out", str(grasp_cache_path(args, run_dir)),
+        f"env.anyrotate.grasp_per_design={args.viable_grasps_per_design}",
+        f"env.anyrotate.grasp_gen_max_rounds={args.viable_search_rounds}",
+        *physics, f"hydra.run.dir={search_dir}",
+    ]
+    print(f"[driver] grasp search {index}: {len(batch)} design(s) on {args.viable_search_envs} envs", flush=True)
+    env_vars = _write_env(Path(f"/tmp/{os.environ.get('USER', 'user')}/ov_cache"))
+    with open(gen_dir / f"search_{index}.log", "w") as log:
+        rc = subprocess.run(cmd, cwd=REPO_ROOT, env=env_vars, stdout=log, stderr=subprocess.STDOUT).returncode
+    report = _read_json_safely(search_dir / "grasp_cache_report.json")
+    if rc != 0 or report is None:
+        raise GenerationFailed(f"grasp search {index} failed (exit {rc}; log {gen_dir / f'search_{index}.log'})")
+    per_source = report.get("grasps_per_design", {})
+    secs = time.time() - t0
+    print(f"[driver] grasp search {index}: {sum(1 for p in batch if per_source.get(p.meta.source, 0) > 0)}/"
+          f"{len(batch)} viable in {secs:.0f} s", flush=True)
+    return {p.sha256: int(per_source.get(p.meta.source, 0)) for p in batch}, secs
 
 
 def grasp_cache_path(args: argparse.Namespace, run_dir: Path) -> Path:
@@ -987,6 +1055,11 @@ def _resolved_config(args: argparse.Namespace) -> dict:
         config["task_profile"] = args.task_profile
     if args.grasp_cache:
         config["grasp_cache"] = True
+    if getattr(args, "viable_only", False):
+        config["viable_only"] = True
+        config["viable"] = {k: getattr(args, k) for k in (
+            "viable_batch_size", "viable_search_envs", "viable_max_batches", "viable_search_rounds",
+            "viable_grasps_per_design")}
     return config
 
 
@@ -1012,13 +1085,13 @@ CSV_COLUMNS = [
 ]
 
 
-def _append_csv(path: Path, row: dict) -> None:
+def _append_csv(path: Path, row: dict, columns: Sequence[str] = CSV_COLUMNS) -> None:
     write_header = not path.exists()
     with open(path, "a", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        w = csv.DictWriter(f, fieldnames=list(columns))
         if write_header:
             w.writeheader()
-        w.writerow({k: row.get(k) for k in CSV_COLUMNS})
+        w.writerow({k: row.get(k) for k in columns})
 
 
 def _set_aside_failed_attempt(gen_dir: Path, attempt: int) -> None:
@@ -1036,17 +1109,41 @@ def _set_aside_failed_attempt(gen_dir: Path, attempt: int) -> None:
 def run_generation(
     generation: int, args: argparse.Namespace, run_dir: Path, dist: Distribution, archive: "arch.Archive",
     driver_rng: np.random.Generator, minter: IdMinter, last_checkpoint: Optional[Path], prev_tolerance: float,
-    probe_hand_ids: Sequence[str],
+    probe_hand_ids: Sequence[str], known_viability: Optional[Dict[str, int]] = None,
 ) -> Tuple[Optional[Path], float]:
     gen_dir = run_dir / f"gen_{generation}"
     train_dir = gen_dir / "train"
     gen_dir.mkdir(parents=True, exist_ok=True)
 
     t_select0 = time.time()
-    plan = build_generation_population(
-        generation, args.designs, probe_hand_ids, dist, archive, driver_rng, minter,
-        max_offspring_retries=args.max_offspring_retries,
-    )
+    viability: Optional[dict] = None
+    if getattr(args, "viable_only", False):
+        from .viable import build_viable_generation
+
+        counter = {"i": 0}
+
+        def _search(batch):
+            counter["i"] += 1
+            return run_grasp_search(batch, args=args, run_dir=run_dir, gen_dir=gen_dir, index=counter["i"])
+
+        plan, viability = build_viable_generation(
+            generation, args.designs, probe_hand_ids, dist, archive, driver_rng, minter,
+            known=known_viability if known_viability is not None else {}, search=_search,
+            batch_size=args.viable_batch_size, max_batches=args.viable_max_batches,
+            max_offspring_retries=args.max_offspring_retries)
+        print(f"[driver] generation {generation}: {viability['n_designs']} viable design(s) "
+              f"({viability['n_elites']} elites, {viability['n_new']} new, probes {viability['probes_viable']}; "
+              f"dropped probes {viability['probes_dropped']}); offspring viability "
+              f"{viability['offspring_viability_rate']}, {viability['candidates_searched']} searched in "
+              f"{viability['grasp_search_s']:.0f} s over {viability['batches']} launch(es), short by "
+              f"{viability['short_by']}", flush=True)
+        if not plan.entries:
+            raise GenerationFailed(f"generation {generation}: no viable design to train")
+    else:
+        plan = build_generation_population(
+            generation, args.designs, probe_hand_ids, dist, archive, driver_rng, minter,
+            max_offspring_retries=args.max_offspring_retries,
+        )
     population_path = gen_dir / "population.json"
     population_doc = pf.write_population(population_path, plan.entries)
     select_build_s = time.time() - t_select0
@@ -1095,7 +1192,8 @@ def run_generation(
         )
         cmd = ["timeout", "-k", "30", str(args.gen_timeout_s)] + cmd
         print(f"[driver] generation {generation} attempt {attempt}: {len(plan.entries)} designs "
-              f"({args.designs - len(probe_hand_ids)} archive + {len(probe_hand_ids)} probes), "
+              f"({sum(1 for m in plan.metas if m.role != 'probe')} archive + "
+              f"{sum(1 for m in plan.metas if m.role == 'probe')} probes), "
               f"write_every={write_every} steps, cmd={' '.join(cmd)}", flush=True)
         result = run_training_subprocess(
             cmd, cwd=REPO_ROOT, extra_env=env_vars, log_path=log_path, score_path=score_path,
@@ -1191,6 +1289,9 @@ def run_generation(
     }
     if grasp_row is not None:
         row["grasp_cache"] = grasp_row
+    if viability is not None:
+        row["viability"] = viability
+        row["timings"]["grasp_search_s"] = viability["grasp_search_s"]
     _append_jsonl(run_dir / "generations.jsonl", row)
     csv_row = {k: row[k] for k in CSV_COLUMNS if k in row}
     std = (trained_stats or {}).get("std") or {}
@@ -1203,7 +1304,14 @@ def run_generation(
         tb_rot_error_mean=train_metrics.get("rot_error_mean", {}).get("tail"),
         nonfinite_resets=sum(nonfinite.values()), n_attempts=len(attempts),
     )
-    _append_csv(run_dir / "generations.csv", csv_row)
+    if viability is not None:
+        csv_row.update({k: viability.get(k) for k in (
+            "short_by", "offspring_viability_rate", "immigrant_viability_rate", "founder_viability_rate",
+            "viability_rate", "candidates_drawn", "candidates_searched", "prefilter_rejected", "grasp_search_s",
+            "n_non_viable", "n_unused_viable")})
+        csv_row.update(n_designs_trained=viability["n_designs"], search_batches=viability["batches"],
+                       probes_dropped=";".join(viability["probes_dropped"]))
+    _append_csv(run_dir / "generations.csv", csv_row, csv_columns(args))
 
     return new_checkpoint, new_tolerance
 
@@ -1236,6 +1344,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     minter = IdMinter()
     last_checkpoint: Optional[Path] = None
     prev_tolerance = 0.0
+    known_viability: Dict[str, int] = {}
 
     if state_path.exists():
         state = load_state(state_path)
@@ -1250,6 +1359,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         last_checkpoint = Path(state["last_checkpoint"]) if state.get("last_checkpoint") else None
         prev_tolerance = float(state.get("prev_tolerance", 0.0))
         start_generation = int(state["generation_completed"]) + 1
+        known_viability = {k: int(v) for k, v in state.get("known_viability", {}).items()}
         print(f"[driver] resuming {run_dir} from generation {start_generation} "
               f"(archive coverage {archive.coverage()}/{arch.N_CELLS}, checkpoint={last_checkpoint})",
               flush=True)
@@ -1266,7 +1376,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         try:
             last_checkpoint, prev_tolerance = run_generation(
                 generation, args, run_dir, dist, archive, driver_rng, minter, last_checkpoint, prev_tolerance,
-                probe_hand_ids,
+                probe_hand_ids, known_viability=known_viability if args.viable_only else None,
             )
         except (GenerationFailed, NonFiniteCheckpoint) as exc:
             # state.json is deliberately NOT rewritten: it still describes the
@@ -1279,7 +1389,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         save_state(
             state_path, archive=archive, driver_rng=driver_rng, generation_completed=generation,
             last_checkpoint=str(last_checkpoint) if last_checkpoint else None, prev_tolerance=prev_tolerance,
-            minter=minter, config=config,
+            minter=minter, config=config, known_viability=known_viability if args.viable_only else None,
         )
         print(f"[driver] generation {generation} complete: coverage={archive.coverage()}/{arch.N_CELLS} "
               f"qd_score={archive.qd_score():.3f} best={archive.best_fitness()}", flush=True)
