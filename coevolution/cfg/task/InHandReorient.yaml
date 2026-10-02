@@ -318,3 +318,25 @@ anyrotate:
   gravity_max_difficulty: 10
   gravity_promote_goals: 1
   gravity_promotion_only: false
+
+# -----------------------------------------------------------------------------
+# 11) hora -- the hora profile (HORA, Qi et al., CoRL 2022; hora_profile.py):
+#     HORA's reward, termination, observation and control on the anyrotate
+#     scene, object, hand and grasp cache (section 10).
+# -----------------------------------------------------------------------------
+hora:
+  sim_dt: 0.008333333333333333      # sim.dt
+  decimation: 6                     # controlFrequencyInv: 20 Hz
+  episode_length_s: 20.0            # episodeLength 400
+  action_scale: 0.041666666666666664  # targets = prev + 1/24 * a
+  friction: 1.0                     # adapt.: HORA U(0.3, 3.0) per env
+  angvel_clip_min: -0.5
+  angvel_clip_max: 0.5
+  rotate_reward_scale: 1.0
+  obj_linvel_penalty_scale: -0.3
+  pose_diff_penalty_scale: -0.3
+  torque_penalty_scale: -0.1
+  work_penalty_scale: -2.0
+  joint_noise_scale: 0.02
+  drop_dz: 0.015                    # adapt.: HORA's absolute reset_height_threshold, relative here
+  z_axis_frame: world_up

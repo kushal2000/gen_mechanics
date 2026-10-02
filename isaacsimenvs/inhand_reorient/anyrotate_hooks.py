@@ -32,6 +32,7 @@ import torch
 
 from . import anyrotate_profile as ar
 from . import design_scoring
+from . import hora_profile as hp
 from . import repose_profile as rp
 from .obs_utils import _fingertip_valid_mask, _joint_valid_mask, update_palm_frame_geometry
 from .reset_utils import _object_spawn_offset, _population_default_joint_pos
@@ -93,6 +94,13 @@ def allocate_buffers(env) -> None:
     env._ar_difficulty = torch.zeros(n, device=device)
     env._ar_gravity = torch.tensor([0.0, 0.0, -GRAVITY], device=device)
     env._current_success_tolerance = float(a.d_tol)
+    env._hora = hp.is_hora(env.cfg)
+    if env._hora:
+        env._hora_hist = torch.zeros(n, hp.HISTORY_LEN, 2 * j, device=device)
+        env._hora_q_init = env.robot.data.default_joint_pos.clone()
+        env._hora_z0 = torch.zeros(n, device=device)
+        env._hora_obj_pos_prev = torch.zeros(n, 3, device=device)
+        env._hora_rotate = torch.zeros(n, device=device)
     _setup_contact_indices(env)
     randomize_object_physics(env)
     _setup_grasp_cache(env)  # needs full gravity: before the curriculum zeroes it
@@ -230,8 +238,13 @@ def pre_physics_step(env, actions: torch.Tensor) -> None:
         act = torch.where(joint_mask, act, torch.zeros_like(act))
     env._ar_prev_joint_pos = env.robot.data.joint_pos.clone()
     lower, upper = _limits(env)
-    env._ar_target, _ = ar.relative_joint_targets(
-        env._ar_target, act, env._ar_prev_action, a.action_eta, a.action_scale, lower, upper)
+    if env._hora:
+        # HORA: targets = prev_targets + 1/24 * actions, clamped; no smoothing.
+        env._ar_target = torch.max(torch.min(env._ar_target + act * a.action_scale, upper), lower)
+        env._hora_obj_pos_prev = env.object.data.root_pos_w.clone()
+    else:
+        env._ar_target, _ = ar.relative_joint_targets(
+            env._ar_target, act, env._ar_prev_action, a.action_eta, a.action_scale, lower, upper)
     env._prev_actions_this_step = env._prev_actions
     env._prev_actions = act
     env._ar_prev_action = act
@@ -273,6 +286,8 @@ def get_dones(env, nan_guard) -> tuple[torch.Tensor, torch.Tensor]:
     env._ar_rot_step = ar.rotation_about_axis(env._ar_prev_obj_quat_palm, env._obj_quat_palm, env._ar_axis)
     env._ar_rot_step = torch.where(env._nonfinite_mask, torch.zeros_like(env._ar_rot_step), env._ar_rot_step)
     env._ar_prev_obj_quat_palm = env._obj_quat_palm.clone()
+    if env._hora:
+        return _hora_dones(env, nan_guard)
     # The episode's rotation about k (AnyRotate's Rot) counts from the end of
     # the settle phase: a dropped object tumbles while it lands or falls off.
     manipulating = env.episode_length_buf > env._ar_grace
@@ -294,6 +309,46 @@ def get_dones(env, nan_guard) -> tuple[torch.Tensor, torch.Tensor]:
     env._termination_reasons = {"drop": dropped, "off_axis": off_axis & ~dropped, "timeout": time_out}
     terminated = nan_guard.add_nonfinite_termination(env, dropped | off_axis)
     return terminated, time_out
+
+
+def _hora_dones(env, nan_guard):
+    """HORA's check_termination: the object below its start height, or the
+    episode length. Rotation about k counts from the first step."""
+    h = env.cfg.hora
+    env._ar_rotation_rad = env._ar_rotation_rad + env._ar_rot_step
+    env._hora_rotate = (env._ar_rot_step / float(env.step_dt)).clamp(h.angvel_clip_min, h.angvel_clip_max)
+    dropped = hp.dropped(env.object.data.root_pos_w[:, 2], env._hora_z0, h.drop_dz)
+    time_out = env.episode_length_buf >= env.max_episode_length
+    env._ar_axis_tilt = ar.axis_tilt(env._obj_quat_palm, env._ar_axis_obj, env._ar_axis)
+    env._termination_reasons = {"drop": dropped, "off_axis": torch.zeros_like(dropped), "timeout": time_out}
+    terminated = nan_guard.add_nonfinite_termination(env, dropped)
+    return terminated, time_out
+
+
+def _hora_rewards(env) -> torch.Tensor:
+    """HORA's compute_reward (``hora_profile``)."""
+    h = env.cfg.hora
+    mask = _joint_valid_mask(env)
+    tau = env.robot.data.applied_torque
+    terms = {
+        "rotate": env._hora_rotate,
+        "linvel": hp.linvel_penalty(env._hora_obj_pos_prev, env.object.data.root_pos_w, float(env.step_dt)),
+        "pose": hp.pose_diff_penalty(env.robot.data.joint_pos, env._hora_q_init, mask),
+        "torque": hp.torque_penalty(tau, mask),
+        "work": hp.work_penalty(tau, env.robot.data.joint_vel, mask),
+    }
+    scales = dict(rotate=h.rotate_reward_scale, linvel=h.obj_linvel_penalty_scale, pose=h.pose_diff_penalty_scale,
+                  torque=h.torque_penalty_scale, work=h.work_penalty_scale)
+    terms = {k: torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0) for k, v in terms.items()}
+    reward = hp.combine_reward(terms, scales)
+    env._reward_terms = {
+        "rotation_rew": scales["rotate"] * terms["rotate"], "linvel_penalty": scales["linvel"] * terms["linvel"],
+        "pose_penalty": scales["pose"] * terms["pose"], "torque_penalty": scales["torque"] * terms["torque"],
+        "work_penalty": scales["work"] * terms["work"], "total_reward": reward,
+    }
+    env._is_success = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    _update_curricula(env)
+    return reward
 
 
 # --------------------------------------------------------------------------
@@ -334,6 +389,8 @@ def _weights(a) -> dict:
 def get_rewards(env) -> torch.Tensor:
     a = _cfg(env)
     _update_touch(env)
+    if env._hora:
+        return _hora_rewards(env)
     joint_mask = _joint_valid_mask(env)
     q = env.robot.data.joint_pos
     q0 = (env.scene_record.get("default_joint_pos") if getattr(env, "hand_tables", None) is not None
@@ -505,6 +562,12 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     env._ar_force_smooth[env_ids] = 0.0
     env._ar_prev_obj_quat_palm[env_ids] = obj_q_palm
     env._prev_rot_error[env_ids] = 0.0
+    if env._hora:
+        env._hora_q_init[env_ids] = q
+        env._hora_z0[env_ids] = obj_pos_w[:, 2]
+        env._hora_obj_pos_prev[env_ids] = obj_pos_w
+        frame = torch.cat([hp.unscale(q, lo, hi), q_target], dim=-1)
+        env._hora_hist = hp.fill_history(env._hora_hist, env_ids, frame)
     refresh_geometry(env)
     design_scoring.reset_scoring_state(env, env_ids)
 
@@ -551,8 +614,32 @@ def _noise(x: torch.Tensor, std: float, on: bool) -> torch.Tensor:
     return x + torch.randn_like(x) * std if on and std > 0 else x
 
 
+def _hora_observations(env) -> dict[str, torch.Tensor]:
+    """HORA's compute_observations: the last 3 frames of [unscaled joint
+    positions + U(-1, 1) x jointNoiseScale, joint targets], plus its 9
+    privileged values (object position, scale, mass, friction, CoM)."""
+    h = env.cfg.hora
+    a = _cfg(env)
+    lower, upper = _limits(env)
+    q = env.robot.data.joint_pos
+    noise = (torch.rand_like(q) * 2.0 - 1.0) * h.joint_noise_scale
+    frame = torch.cat([hp.unscale(q + noise, lower, upper), env._ar_target], dim=-1)
+    mask = _joint_valid_mask(env)
+    if mask is not None:
+        frame = frame * torch.cat([mask, mask], dim=-1)
+    env._hora_hist = hp.push_history(env._hora_hist, frame)
+    n = env.num_envs
+    priv = torch.cat([
+        env._obj_pos_palm, env._ar_object_dims[:, :1], env._ar_object_mass.unsqueeze(-1),
+        torch.full((n, 1), float(a.static_friction), device=env.device), env._ar_object_com], dim=-1)
+    obs = torch.cat([env._hora_hist.reshape(n, -1), priv], dim=-1)
+    return {"policy": obs, "critic": obs}
+
+
 def build_observations(env) -> dict[str, torch.Tensor]:
     a = _cfg(env)
+    if env._hora:
+        return _hora_observations(env)
     noisy = bool(a.obs_noise)
     joint_mask = _joint_valid_mask(env)
     tip_mask = _fingertip_valid_mask(env)

@@ -462,6 +462,36 @@ class AnyRotateCfg:
     gravity_promotion_only: bool = False
 
 
+@configclass
+class HoraCfg:
+    """The ``hora`` task profile: HORA (Qi et al., CoRL 2022), numbers from
+    its released ``configs/task/AllegroHandHora.yaml`` and
+    ``allegro_hand_hora.py`` (``hora_profile.py``). The scene, object, hand
+    and grasp cache are the anyrotate block's; ``apply_anyrotate_to_cfg``
+    writes this block's timing, friction and action scale into it."""
+
+    sim_dt: float = 1.0 / 120.0  # sim.dt 0.0083333
+    decimation: int = 6  # controlFrequencyInv 6: 20 Hz
+    episode_length_s: float = 20.0  # episodeLength 400 steps
+    action_scale: float = 1.0 / 24.0  # targets = prev_targets + 1/24 * actions
+    friction: float = 1.0
+    """adapt.: HORA randomises friction U(0.3, 3.0) per env; one value here."""
+    angvel_clip_min: float = -0.5
+    angvel_clip_max: float = 0.5
+    rotate_reward_scale: float = 1.0
+    obj_linvel_penalty_scale: float = -0.3
+    pose_diff_penalty_scale: float = -0.3
+    torque_penalty_scale: float = -0.1
+    work_penalty_scale: float = -2.0
+    joint_noise_scale: float = 0.02  # randomization.jointNoiseScale, U(-1, 1) x 0.02
+    drop_dz: float = 0.015
+    """adapt.: HORA ends an episode below an absolute height
+    (reset_height_threshold 0.645 m; objects start at 0.65-0.66 m); here a fall
+    of ``drop_dz`` below the episode's start height."""
+    z_axis_frame: str = "world_up"
+    """The rotation axis: the palm normal of the palm-up hand (HORA: world z)."""
+
+
 def _default_sim_cfg() -> SimulationCfg:
     return SimulationCfg(
         dt=1.0 / 120.0,
@@ -516,9 +546,10 @@ class InHandReorientEnvCfg(DirectRLEnvCfg):
     termination: TerminationCfg = TerminationCfg()
     repose: ReposeCfg = ReposeCfg()
     anyrotate: AnyRotateCfg = AnyRotateCfg()
+    hora: HoraCfg = HoraCfg()
 
 
 __all__ = [
     "InHandReorientEnvCfg", "AssetsCfg", "ObsCfg", "ActionCfg", "RewardCfg",
-    "PhysicsCfg", "ResetCfg", "ReposeCfg", "AnyRotateCfg", "TerminationCfg",
+    "PhysicsCfg", "ResetCfg", "ReposeCfg", "AnyRotateCfg", "HoraCfg", "TerminationCfg",
 ]

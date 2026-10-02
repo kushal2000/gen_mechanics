@@ -39,7 +39,7 @@ def _field_width(name: str, spec) -> int:
     from .anyrotate_profile import ANYROTATE_OBS_FIELDS, ANYROTATE_PRIV_FIELDS, anyrotate_field_width
     from .repose_profile import repose_field_width
 
-    if name in ANYROTATE_OBS_FIELDS or name in ANYROTATE_PRIV_FIELDS:
+    if name in ANYROTATE_OBS_FIELDS or name in ANYROTATE_PRIV_FIELDS or name.startswith("hora_"):
         return anyrotate_field_width(name, spec.num_hand_joints, spec.num_fingertips)
     return repose_field_width(name, spec.num_hand_joints, spec.num_fingertips)
 

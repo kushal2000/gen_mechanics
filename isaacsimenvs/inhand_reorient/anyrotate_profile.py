@@ -36,12 +36,15 @@ PROFILE_ANYROTATE = "anyrotate"
 
 
 def is_anyrotate(cfg) -> bool:
+    """The anyrotate family: "anyrotate" and "hora" (HORA's reward,
+    termination, observation and control on the anyrotate scene, object,
+    hand, contact sensors, grasp cache and scoring; ``hora_profile.py``)."""
     from .repose_profile import TASK_PROFILES
 
     profile = getattr(cfg, "task_profile", "legacy")
     if profile not in TASK_PROFILES:
         raise ValueError(f"task_profile={profile!r}; expected one of {TASK_PROFILES}")
-    return profile == PROFILE_ANYROTATE
+    return profile in (PROFILE_ANYROTATE, "hora")
 
 
 def apply_anyrotate_to_cfg(cfg) -> None:
@@ -51,6 +54,15 @@ def apply_anyrotate_to_cfg(cfg) -> None:
     if not is_anyrotate(cfg):
         return
     a = cfg.anyrotate
+    if cfg.task_profile == "hora":
+        # HORA's timing and friction go into the anyrotate block, which the
+        # scene, the grasp cache signature and the scoring read.
+        h = cfg.hora
+        a.sim_dt, a.decimation, a.episode_length_s = float(h.sim_dt), int(h.decimation), float(h.episode_length_s)
+        a.static_friction = a.dynamic_friction = float(h.friction)
+        a.action_scale = float(h.action_scale)
+        a.axis_sampling, a.z_axis_frame, a.axis_curriculum_z_first = "z", str(h.z_axis_frame), False
+        a.axis_check_grace_steps = 0
     if a.hand_orientation_randomization:
         raise NotImplementedError(
             "anyrotate.hand_orientation_randomization: the team keeps a stationary palm-up hand; "
@@ -65,8 +77,11 @@ def apply_anyrotate_to_cfg(cfg) -> None:
     # Contact sensors resolve their envs from USD prims; clone_in_fabric
     # clones env 1.. in Fabric only, so it must be off.
     cfg.scene.clone_in_fabric = False
-    # Symmetric actor-critic over the teacher's input: o_t plus x_t.
+    # Symmetric actor-critic over the teacher's input: o_t plus x_t (HORA:
+    # its proprioceptive history plus its 9 privileged values).
     fields = tuple(ANYROTATE_OBS_FIELDS) + tuple(ANYROTATE_PRIV_FIELDS)
+    if cfg.task_profile == "hora":
+        fields = ("hora_proprio_hist", "hora_priv")
     cfg.obs.obs_list = fields
     cfg.obs.state_list = fields
 
@@ -88,12 +103,12 @@ ANYROTATE_PRIV_FIELDS = (
     "object_pos_palm", "object_quat_palm", "object_ang_vel_palm", "object_dims", "object_com",
     "object_mass", "gravity_palm", "goal_pos_palm", "goal_quat_palm",
 )
-_PER_JOINT = {"joint_pos": 1, "prev_actions": 1, "target_joint_pos": 1}
+_PER_JOINT = {"joint_pos": 1, "prev_actions": 1, "target_joint_pos": 1, "hora_proprio_hist": 6}
 _PER_TIP = {"fingertip_pos_palm": 3, "fingertip_quat_palm": 4, "tip_contact": 1, "tip_contact_pose": 2,
             "tip_contact_force": 1}
 _FIXED = {"rotation_axis": 3, "object_pos_palm": 3, "object_quat_palm": 4, "object_ang_vel_palm": 3,
           "object_dims": 2, "object_com": 3, "object_mass": 1, "gravity_palm": 3, "goal_pos_palm": 3,
-          "goal_quat_palm": 4}
+          "goal_quat_palm": 4, "hora_priv": 9}
 
 
 def anyrotate_field_width(name: str, num_joints: int, num_fingertips: int) -> int:

@@ -419,6 +419,8 @@ def main() -> None:
     group.add_argument("--population", help="grammar population JSON (cache: its sidecar by default)")
     group.add_argument("--hand-id", help="single manifest hand, e.g. allegro_right")
     parser.add_argument("--num-envs", type=int, default=4096)
+    parser.add_argument("--task-profile", default="anyrotate", choices=("anyrotate", "hora"),
+                        help="the profile whose physics (timing, friction) the grasps are made under")
     parser.add_argument("--out", default=None, help="cache path (.npz)")
     parser.add_argument("--force", action="store_true", help="regenerate every key (ignore an existing file)")
     AppLauncher.add_app_launcher_args(parser)
@@ -444,7 +446,7 @@ def main() -> None:
 
     @hydra_task_config_with_yaml(args.task, "rl_games_anyrotate_ppo_cfg_entry_point")
     def run(env_cfg, agent_cfg) -> None:
-        env_cfg.task_profile = "anyrotate"
+        env_cfg.task_profile = args.task_profile
         env_cfg.scene.num_envs = int(args.num_envs)
         if args.population:
             env_cfg.assets.hand_population = str(args.population)
