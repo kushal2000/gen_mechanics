@@ -332,3 +332,10 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Local pilot-3 runs stopped to free the 4090; cluster pilot-3 runs continue on the legacy spec.
 
 - Revised (Martin: "pick something super up to date"): AnyRotate (CoRL 2024) replaces the 2021 repose-cube spec; Dexsuite (2025) gravity curriculum as an option. The same Opus worker was redirected.
+
+## Task-spec study results (2026-10-02 ~00:30)
+
+- NVIDIA repose reference (unmodified, 8192 envs, 4090): 0.24 / 7.2 / 12.9 successes per episode at 5 / 15 / 60 min. Our env + NVIDIA's Allegro USD: 6.9 at 20 min (reference 8.9). Our allegro_right URDF: ~5x slower, mostly its box/sphere colliders; convex hulls from visual meshes recover reference-like learning. Legacy friction config was never wired (0.5 everywhere).
+- AnyRotate (CoRL 2024) ported from the paper (35 commits, 352 tests); not ported: grasp cache, student distillation, hand-orientation randomisation. allegro z-first: 0.13 rotations/episode plateau (paper 1.8-2.2); S2 axes: no learning; sharpa 0.05, dclaw 0.20.
+- 32-design population: under every spec the object drops within ~0.3 s from the palm-up spawn; Dexsuite gravity curriculum: drop 99% -> 65%, fitness 0.086 -> 0.195, gravity never ramped above 0.
+- Next: AnyRotate grasp cache (stable initial grasps per design) -- also a principled viability criterion.

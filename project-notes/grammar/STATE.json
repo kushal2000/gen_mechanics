@@ -330,10 +330,17 @@
       "hypothesis": "Shared controller does not learn on populations: action log-std (a2c_network.sigma, std=exp) explodes in population training (std 15 after gen 0, 46 after gen 2, ~245 after gen 6 of G_V2S_s0) vs 0.7-3.0 in single-hand runs that learn; weight carry compounds it. The controller is near-random, so pilot fitness mostly measures passive holding; best and probe fitness are flat. Also a gen-7 crash (std NaN at the first action, after NaN warnings in gen 6) that the driver wrongly scored. Cluster pilot 2371572 runs the same flawed setup (kept running for pipeline and coverage data, ~8 GPU-h more). Opus worker root-causing and fixing (sigma handling, SAPG exploration settings, driver retry/NaN checks, env NaN guard).",
       "decision": "Root cause: SAPG expl_reward_type=entropy silently applies an entropy coefficient 0.001 (a2c_common.py:345, a2c_continuous.py:159-163) overriding entropy_coef 0; in populations most action dims are ghost slots whose noise does not affect the advantage, actions saturate beyond std 1, and adaptive lr climbs to 1e-2, so log-std drifts up without bound; weight growth then overflowed fp16 (mu 5.85e5), GradScaler collapsed to scale 0, and PyTorch's unscale_ turned 0*inf into NaN weights at gen 7. No design produced non-finite physics. Fix: InHandReorientPopSAPG.yaml (expl_reward_type none; inhand_actor_critic network with logstd_max 0), driver retry/finite-checkpoint/scaler-reset/sigma-on-carry/norm-count-cap, env NaN guard. 3-gen validation: std 1.00 -> 0.73, probes roughly doubled, successes .019 -> .074. Competence still low (holding more than rotating).",
       "evidence": "outputs/evolution_pilot/pilot/G_V2S_s0, timing_run2, single-hand checkpoints"
+    },
+    {
+      "id": "I42",
+      "status": "open",
+      "hypothesis": "Task-spec study (Opus worker, 2026-10-02): (1) NVIDIA Isaac-Repose-Cube-Allegro-Direct-v0 reference learns to 12.9 successes/episode in 60 min on the 4090; our env with NVIDIA's Allegro USD learns at near the same rate, so the env is sound; our drake allegro_right URDF was ~5x slower mainly from box/sphere colliders (convex hulls from visual meshes closed the gap), plus pose and actuator; legacy friction fields were never wired (0.5 everywhere). (2) AnyRotate port (paper-faithful except grasp cache, student distillation, hand-orientation randomisation): allegro z-first plateaus at 0.13 rotations/episode (paper 1.8-2.2), S2 axes fail. (3) Population under every spec: objects drop within ~0.3 s from the palm-up spawn; Dexsuite gravity curriculum lowers drops 99% -> 65% but gravity never ramped. Next: port AnyRotate's grasp cache (stable initial grasps per design).",
+      "decision": null,
+      "evidence": "outputs/isaaclab_repose/; isaacsimenvs/inhand_reorient/evolution/README.md (AnyRotate profile table)"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Opus worker: reference baseline of Isaac-Repose-Cube-Allegro-Direct-v0 on the 4090, port its spec into inhand_reorient as task_profile isaaclab_repose with a plain-PPO yaml, equivalence check on Allegro, then sharpa/dclaw and a 32-design population smoke; driver flags.",
+  "next_action": "Grasp-cache worker: per-design stable-grasp search and grasp-initialised resets for the anyrotate profile (single-hand and population); validate allegro rotation vs paper; then population. Pilot 3 (legacy spec) finishes on the cluster ~07:00; analyse as a legacy-spec record.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
