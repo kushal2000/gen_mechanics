@@ -82,6 +82,8 @@ def apply_anyrotate_to_cfg(cfg) -> None:
     fields = tuple(ANYROTATE_OBS_FIELDS) + tuple(ANYROTATE_PRIV_FIELDS)
     if cfg.task_profile == "hora":
         fields = ("hora_proprio_hist", "hora_priv") + (("hora_morph",) if cfg.hora.morph_obs else ())
+        if int(cfg.hora.design_id_obs) > 0:  # before the slot signs (policy_network.per_design_nets)
+            fields = fields + (f"hora_design_id_{int(cfg.hora.design_id_obs)}",)
         if cfg.hora.ghost_action_mask:  # last: the network reads the trailing slot signs
             fields = fields + ("hora_slot_sign",)
     cfg.obs.obs_list = fields
@@ -116,6 +118,8 @@ _FIXED = {"rotation_axis": 3, "object_pos_palm": 3, "object_quat_palm": 4, "obje
 def anyrotate_field_width(name: str, num_joints: int, num_fingertips: int) -> int:
     if name == "hora_morph":  # per joint 10 static + canonical pose; per tip position + mask; 3 hand scalars
         return 11 * num_joints + 4 * num_fingertips + 3
+    if name.startswith("hora_design_id_"):  # a one-hot as wide as the name says (hora.design_id_obs)
+        return int(name.rsplit("_", 1)[1])
     if name in _PER_JOINT:
         return _PER_JOINT[name] * num_joints
     if name in _PER_TIP:

@@ -382,6 +382,9 @@ def _setup_hora_sharing(env) -> None:
     n_designs = int(tables.n_designs) if tables is not None else 1
     env._hora_rscale = (hp.DesignRewardScale(n_designs, h.reward_norm_decay, h.reward_norm_floor, env.device)
                         if h.per_design_reward_norm else None)
+    if 0 < int(h.design_id_obs) < n_designs:
+        raise ValueError(f"hora.design_id_obs={int(h.design_id_obs)} is narrower than the population "
+                         f"({n_designs} designs)")
     env._hora_morph_static = None
     env._hora_pol_of_phys = env._hora_phys_of_pol = None
     if (h.morph_obs or h.disjoint_slots) and tables is None:
@@ -762,6 +765,8 @@ def _hora_observations(env) -> dict[str, torch.Tensor]:
         J = env.robot.data.joint_pos.shape[1]
         parts += [static[:, : 11 * J], torch.cat([tips, tip_mask.unsqueeze(-1)], dim=-1).reshape(n, 4 * k),
                   static[:, 11 * J:]]
+    if int(h.design_id_obs) > 0:  # policy_network.per_design_nets reads it
+        parts.append(hp.design_onehot(_design_idx(env), int(h.design_id_obs)))
     if h.ghost_action_mask:  # +1 real joint / -1 ghost slot, last (policy_network.ghost_mask_tail)
         mask = _joint_valid_mask(env)
         J = env.robot.data.joint_pos.shape[1]

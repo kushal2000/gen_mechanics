@@ -202,3 +202,12 @@ def to_policy_columns(x: torch.Tensor, phys_of_pol: torch.Tensor) -> torch.Tenso
 def to_phys_columns(x: torch.Tensor, pol_of_phys: torch.Tensor) -> torch.Tensor:
     """Per-joint values ``(n, J)`` in policy order -> articulation order."""
     return x.gather(1, pol_of_phys)
+
+
+def design_onehot(design_idx: torch.Tensor, width: int) -> torch.Tensor:
+    """``(n, width)`` float one-hot of each env's design index (``hora.design_id_obs``)."""
+    design_idx = design_idx.long()
+    if design_idx.numel() and int(design_idx.max()) >= width:
+        raise ValueError(f"hora.design_id_obs={width} is narrower than the population "
+                         f"({int(design_idx.max()) + 1} designs)")
+    return torch.nn.functional.one_hot(design_idx, width).float()

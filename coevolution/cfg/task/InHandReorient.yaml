@@ -355,3 +355,4 @@ hora:
   reward_norm_decay: 0.999
   reward_norm_floor: 0.05
   disjoint_slots: false            # population: each design's real joints in their own policy columns
+  design_id_obs: 0                  # population: one-hot design index this wide (per_design_nets), 0 = off

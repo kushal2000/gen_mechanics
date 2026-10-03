@@ -546,6 +546,10 @@ class HoraCfg:
     (``hora_profile.DesignRewardScale``)."""
     reward_norm_decay: float = 0.999
     reward_norm_floor: float = 0.05
+    design_id_obs: int = 0
+    """Population path: append a one-hot of each env's design index, this
+    wide (>= the population size; 0 = off), before the slot signs. Read by
+    ``policy_network``'s ``per_design_nets``."""
     disjoint_slots: bool = False
     """Population path: give every design its own policy columns for its
     real joints (``hora_profile.disjoint_slot_map``; per-joint
