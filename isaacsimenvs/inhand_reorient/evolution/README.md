@@ -507,6 +507,21 @@ Findings:
   10.4 s, allegro alone). Founder 174 alone also stops at 2.7 s: the rotation reward pays for motion
   that costs the grasp, and the shared policy settles on that behaviour for both hands.
 
+Normaliser and exploration arms (2026-10-03, config only, same pair, seed 42, 40 min):
+
+| Run | Job | allegro 10 | allegro 20 | allegro 30 | allegro 40 | 174 10 | 174 20 | 174 30 | 174 40 |
+|---|---|---|---|---|---|---|---|---|---|
+| pair baseline (normalisers on, log-std init 0) | 2532582_14 | 1.4 s / 0.18 | 1.4 s / 0.15 | 1.6 s / 0.16 | - | 2.1 s / 0.18 | 1.8 s / 0.17 | 2.1 s / 0.19 | - |
+| + initial log-std -1.75 | 2534943_27 | 1.6 s / 0.14 | 1.6 s / 0.15 | 1.8 s / 0.16 | - | 1.8 s / 0.16 | 2.0 s / 0.18 | 2.1 s / 0.18 | - |
+| + normalize_value off, normalize_input off | 2534945_28 | 1.5 s / 0.15 | 1.6 s / 0.15 | 1.5 s / 0.15 | - | 1.8 s / 0.15 | 1.8 s / 0.16 | 1.8 s / 0.15 | - |
+
+- With the initial log-std at -1.75 every column stays between -1.5 and -2.5 to the end, including
+  allegro's own columns, and allegro still holds only 1.6 to 1.8 s. Exploration noise is not what
+  drops the object: the policy's mean actions do.
+- With the value and input normalisers off, allegro holds 1.5 to 1.6 s, the baseline level.
+- Per-design advantage normalisation inside PPO needs a change to the vendored rl_games (group ids
+  from the env infos into `prepare_dataset`); it was not run.
+
 Not run, because the 2-hand target was not met: the 4- and 8-hand scaling and the 32-design driver
 smoke. Directions that address a shared trunk directly: per-joint policies whose weights are shared
 across joints and read each joint's own morphology (W. Huang et al., ICML 2020; A. Gupta et al., ICLR
