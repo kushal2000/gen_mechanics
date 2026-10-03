@@ -40,6 +40,14 @@ model, one batch, one optimiser and one adaptive learning rate; only the
 weights are separate. Design 0 is this network's own layers, so with K <= 1
 the parameters are the stock ones.
 
+``per_design_input_norm: K`` (under ``network``) normalises the observation
+body (everything before the design one-hot) again with each design's own
+running mean and variance (``GroupRunningNorm``, updated in training mode
+like rl_games' input normaliser) before the network, shared or per design.
+rl_games' input normaliser pools all designs, so a hand whose joints are
+ghosts for half the batch sees its own inputs shifted and compressed; the
+second, per-design normalisation is affine on top of it and undoes that.
+
 Only the ``nn.Parameter`` log-std of ``fixed_sigma: fixed | coef_cond`` is
 bounded; a state-dependent sigma head is left alone. Checkpoints are
 interchangeable with the stock ``actor_critic`` (same parameters, same
@@ -56,6 +64,43 @@ from rl_games.algos_torch.network_builder import A2CBuilder
 __all__ = ["NETWORK_NAME", "BoundedSigmaA2CBuilder"]
 
 NETWORK_NAME = "inhand_actor_critic"
+
+
+class GroupRunningNorm(nn.Module):
+    """Running mean and variance per group (``k`` groups of ``dim`` values),
+    updated from each training-mode batch (the parallel update rl_games'
+    ``RunningMeanStd`` uses); output (x - mean[g]) / sqrt(var[g] + eps),
+    clipped to +-clip."""
+
+    def __init__(self, k: int, dim: int, eps: float = 1e-5, clip: float = 5.0):
+        super().__init__()
+        self.eps, self.clip = float(eps), float(clip)
+        self.register_buffer("mean", torch.zeros(k, dim))
+        self.register_buffer("var", torch.ones(k, dim))
+        self.register_buffer("count", torch.full((k,), 1e-4))
+
+    @torch.no_grad()
+    def _update(self, x: torch.Tensor, g: torch.Tensor) -> None:
+        k = self.mean.shape[0]
+        n = torch.zeros(k, device=x.device).index_add_(0, g, torch.ones(len(g), device=x.device))
+        has = n > 0
+        nc = n.clamp(min=1).unsqueeze(-1)
+        bmean = torch.zeros_like(self.mean).index_add_(0, g, x) / nc
+        bvar = torch.zeros_like(self.var).index_add_(0, g, (x - bmean[g]) ** 2) / nc
+        tot = (self.count + n).unsqueeze(-1)
+        delta = bmean - self.mean
+        mean = self.mean + delta * n.unsqueeze(-1) / tot
+        m2 = self.var * self.count.unsqueeze(-1) + bvar * n.unsqueeze(-1) + delta ** 2 * (self.count * n).unsqueeze(-1) / tot
+        h = has.unsqueeze(-1)
+        self.mean.copy_(torch.where(h, mean, self.mean))
+        self.var.copy_(torch.where(h, m2 / tot, self.var))
+        self.count.copy_(torch.where(has, self.count + n, self.count))
+
+    def forward(self, x: torch.Tensor, g: torch.Tensor) -> torch.Tensor:
+        g = g.long()
+        if self.training:
+            self._update(x, g)
+        return ((x - self.mean[g]) / torch.sqrt(self.var[g] + self.eps)).clamp(-self.clip, self.clip)
 
 
 class _DesignNet(A2CBuilder.Network):
@@ -76,6 +121,14 @@ class BoundedSigmaA2CBuilder(A2CBuilder):
             self.logstd_max = None if hi is None else float(hi)
             self.ghost_mask_tail = int(continuous.get("ghost_mask_tail") or 0)
             self.per_design_nets = int(params.get("per_design_nets") or 0)
+            self.per_design_input_norm = int(params.get("per_design_input_norm") or 0)
+            self.input_norm = None
+            if self.per_design_input_norm > 0:
+                if self.per_design_nets > 1 and self.per_design_nets != self.per_design_input_norm:
+                    raise ValueError("per_design_input_norm and per_design_nets read the same one-hot: set both to K")
+                n_obs = int(kwargs["input_shape"][0])
+                self.input_norm = GroupRunningNorm(
+                    self.per_design_input_norm, n_obs - self.ghost_mask_tail - self.per_design_input_norm)
             self.design_nets = None
             if self.per_design_nets > 1:
                 if self.is_rnn():
@@ -89,6 +142,14 @@ class BoundedSigmaA2CBuilder(A2CBuilder):
         def own_parameters(self) -> list:
             extra = {id(p) for p in self.design_nets.parameters()} if self.design_nets is not None else set()
             return [p for p in self.parameters() if id(p) not in extra]
+
+        def design_normalised_obs(self, obs: torch.Tensor):
+            """(body normalised per design, tail unchanged): the tail is the
+            design one-hot and the slot signs."""
+            k = self.per_design_input_norm
+            end = obs.shape[1] - self.ghost_mask_tail
+            design = obs[:, end - k:end].argmax(dim=1)
+            return self.input_norm(obs[:, :end - k], design), obs[:, end - k:]
 
         def design_forward(self, d: int, obs_dict):
             """Design d's actor-critic on the whole batch (no routing, no ghost mask)."""
@@ -123,6 +184,9 @@ class BoundedSigmaA2CBuilder(A2CBuilder):
 
         def forward(self, obs_dict):
             self.project_sigma()
+            if self.input_norm is not None:
+                body, tail = self.design_normalised_obs(obs_dict["obs"])
+                obs_dict = dict(obs_dict, obs=torch.cat([body, tail], dim=-1))
             out = self._routed_forward(obs_dict) if self.design_nets is not None else super().forward(obs_dict)
             n = self.ghost_mask_tail
             if n <= 0 or not self.is_continuous or len(out) != 4:
