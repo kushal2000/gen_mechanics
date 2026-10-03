@@ -475,6 +475,8 @@ around each minute mark; "-" where the run had ended):
 | + separate actor/critic | 2534244_19 | 1.3 s / 0.17 | 1.5 s / 0.18 | - | - | 1.9 s / 0.17 | 2.7 s / 0.19 | - | - |
 | + disjoint_slots | 2534375_21 | 1.5 s / 0.19 | 1.6 s / 0.18 | 1.7 s / 0.19 | - | 2.1 s / 0.19 | 2.4 s / 0.20 | 2.3 s / 0.20 | - |
 | + disjoint_slots + ghost_action_mask | 2534377_22 | 1.6 s / 0.18 | 2.1 s / 0.20 | 1.9 s / 0.20 | - | 2.0 s / 0.17 | 2.0 s / 0.17 | 2.1 s / 0.18 | - |
+| + disjoint_slots + ghost_action_mask + separate | 2534678_24 | 1.3 s / 0.17 | 1.6 s / 0.17 | 1.7 s / 0.18 | - | 1.7 s / 0.17 | 2.6 s / 0.18 | 2.8 s / 0.18 | - |
+| allegro + leap (leap non-viable) | 2534680_26 | 1.8 s / 0.19 | 1.9 s / 0.19 | 1.8 s / 0.18 | - | - | - | - | - |
 
 Findings:
 
@@ -485,10 +487,16 @@ Findings:
   already visible to the network through the ghost pattern in the joint history.
 - With `disjoint_slots` and the ghost mask together the two hands share no observation column, no
   action column and no action-output gradient, and allegro still stalls at 1.6 to 2.1 s. The
-  interference is in what remains shared: the MLP trunk, the critic, the input and value
-  normalisers, and the KL-adaptive learning rate (2.4e-4 in the pair at 30 min against 3.4e-4
-  alone). A separate critic (`network.separate: True`) and twice the gradient steps per update
-  (minibatch 16384) did not help either.
+  interference is in what remains shared: the MLP trunk, the critic, and the input and value
+  normalisers. A separate critic on top (`network.separate: True`, job 2534678_24) still stalls at
+  1.7 s. The KL-adaptive learning rate tracks the solo runs (6 to 10e-4 at 10 min, 3.5 to 6.5e-4 at
+  20 min, against 6.3 to 8.1e-4 and 3.9 to 4.5e-4 alone), and twice the gradient steps per update
+  (minibatch 16384) did not help.
+- A partner that never holds the object stalls allegro as much. In the allegro + LEAP pair (job
+  2534680_26) the grasp search under the allegro flags found no stable LEAP grasp, so every LEAP
+  episode is a 0.1 s drop from the spawn pose. Allegro still holds only 1.8 to 1.9 s at 10 to 30
+  min. This points at sharing the batch with another design's samples rather than at learning a
+  second behaviour (one seed per variant throughout).
 - Learned log-std at the last checkpoint (epoch 1800; founder 174 alone epoch 800): on the 6 columns allegro shares with founder 174 the pair settles
   at founder 174's level (mean -2.15; 174 alone -2.19, allegro alone -1.52); on allegro's 10 own
   columns it stays at -0.84 against -1.41 alone. Allegro's own joints keep exploring because its
