@@ -175,3 +175,39 @@ def test_opposition_poses_put_one_finger_in_horas_thumb_pose():
 def test_hora_block_defaults_keep_the_port():
     h = yaml.safe_load((REPO_ROOT / "coevolution/cfg/task/InHandReorient.yaml").read_text())["hora"]
     assert h["morph_obs"] is False and h["per_design_reward_norm"] is False
+    assert h["disjoint_slots"] is False
+
+
+def test_disjoint_slot_map_gives_each_design_its_own_policy_columns():
+    valid = np.zeros((3, 8), dtype=bool)
+    valid[0, [0, 1, 2, 3]] = True  # the first design keeps its columns
+    valid[1, [0, 1]] = True        # overlaps design 0: moved to free columns
+    valid[2, [3, 7]] = True        # 3 is taken, 7 is free
+    pol = hp.disjoint_slot_map(valid)  # (D, J): the policy column of each phys column
+    assert pol.shape == (3, 8)
+    for d in range(3):
+        assert sorted(pol[d].tolist()) == list(range(8))  # a permutation
+    assert pol[0, [0, 1, 2, 3]].tolist() == [0, 1, 2, 3]
+    assert pol[2, 7] == 7
+    real_cols = [set(pol[d, valid[d]].tolist()) for d in range(3)]
+    assert sum(len(c) for c in real_cols) == len(set().union(*real_cols)) == 8  # disjoint
+
+
+def test_disjoint_slot_map_needs_enough_columns():
+    valid = np.ones((2, 4), dtype=bool)
+    with pytest.raises(ValueError):
+        hp.disjoint_slot_map(valid)
+
+
+def test_policy_column_remap_round_trip():
+    valid = np.zeros((2, 5), dtype=bool)
+    valid[0, [0, 1]] = True
+    valid[1, [0, 2]] = True
+    pol = torch.as_tensor(hp.disjoint_slot_map(valid))
+    design_idx = torch.tensor([0, 1, 1])
+    pol_of_phys = pol[design_idx]
+    phys_of_pol = torch.argsort(pol_of_phys, dim=1)
+    x = torch.arange(15, dtype=torch.float32).reshape(3, 5)  # phys order
+    xp = hp.to_policy_columns(x, phys_of_pol)
+    assert torch.equal(hp.to_phys_columns(xp, pol_of_phys), x)
+    assert xp[1, int(pol_of_phys[1, 2])] == x[1, 2]
