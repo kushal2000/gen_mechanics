@@ -412,6 +412,29 @@ Next, in order:
 3. Rebuild the palm hull with filtering against the first links and an exclusion around the
    thumb base, then rerun that factor.
 
+## One controller over several hands (hora options, 2026-10-02)
+
+All off by default (`hora:` and `anyrotate:` blocks of `InHandReorient.yaml`; tests in
+`test_hora_profile.py`, `test_projected_hands.py`):
+
+- `hora.morph_obs`: a morphology context for actor and critic (`hora_morph`, population path). Per
+  slot (articulation order): validity, joint axis and origin in the palm frame at q = 0, link length,
+  limits (`hora_profile.morphology_table`), and the design's canonical grasp (its mean cached grasp
+  target). Per fingertip: palm-frame position at the current q and its mask. Per hand: digit count,
+  hand scale, capsule radius. 11 x 32 + 4 x 5 + 3 = 375 values on top of HORA's 201.
+- `hora.per_design_reward_norm`: each env's reward divided by its design's running per-step reward
+  RMS (EMA `reward_norm_decay` 0.999, floor `reward_norm_floor` 0.05; `hora_profile.
+  DesignRewardScale`). rl_games normalises values and advantages over the whole batch
+  (`normalize_value`, `normalize_advantage`), so one hand's large returns (HORA's work penalty
+  reached -314 per step on a vibrating design) set the scale for all.
+- `anyrotate.grasp_canonical_profile: opposition`: one candidate pose per finger as the opposing
+  digit (HORA's thumb as range fractions, 0.74 / 1.0 / 0.62 / 0.01; the other fingers at 0.6 / 0.8 /
+  0.25 / 0.25; `grasp_cache.opposition_poses`). Each candidate draws an opposing finger, and a
+  design keeps the grasps of the finger that held the most (`stable_by_opposing_finger`,
+  `opposing_finger` in the cache stats).
+- `anyrotate.population_palm_collider: mount_hull_filtered`: the mount-spanning palm hull,
+  collision-filtered against each finger's first two links.
+
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
 Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
