@@ -40,6 +40,10 @@ model, one batch, one optimiser and one adaptive learning rate; only the
 weights are separate. Design 0 is this network's own layers, so with K <= 1
 the parameters are the stock ones.
 
+``per_design_heads: K`` (under ``network``) is the middle ground: one shared
+trunk, and per design its own mean head, log-std and value head (same
+routing; shared-trunk MLPs with ``fixed_sigma: fixed`` only).
+
 ``per_design_input_norm: K`` (under ``network``) normalises the observation
 body (everything before the design one-hot) again with each design's own
 running mean and variance (``GroupRunningNorm``, updated in training mode
@@ -129,12 +133,48 @@ class BoundedSigmaA2CBuilder(A2CBuilder):
                 n_obs = int(kwargs["input_shape"][0])
                 self.input_norm = GroupRunningNorm(
                     self.per_design_input_norm, n_obs - self.ghost_mask_tail - self.per_design_input_norm)
+            self.per_design_heads = int(params.get("per_design_heads") or 0)
+            self.mu_heads = self.value_heads = self.sigma_heads = None
+            if self.per_design_heads > 1:
+                if self.separate or self.is_rnn() or self.fixed_sigma != "fixed" or self.per_design_nets > 1:
+                    raise NotImplementedError("per_design_heads: shared-trunk MLP, fixed sigma, no per_design_nets")
+                k = self.per_design_heads
+                self.mu_heads = nn.ModuleList(
+                    [nn.Linear(self.mu.in_features, self.mu.out_features) for _ in range(k - 1)])
+                self.value_heads = nn.ModuleList(
+                    [nn.Linear(self.value.in_features, self.value.out_features) for _ in range(k - 1)])
+                self.sigma_heads = nn.ParameterList(
+                    [nn.Parameter(self.sigma.detach().clone()) for _ in range(k - 1)])
+                self._trunk_out = None
+                self.actor_mlp.register_forward_hook(self._keep_trunk_out)
             self.design_nets = None
             if self.per_design_nets > 1:
                 if self.is_rnn():
                     raise NotImplementedError("per_design_nets: MLP networks only")
                 self.design_nets = nn.ModuleList(
                     [_DesignNet(params, **kwargs) for _ in range(self.per_design_nets - 1)])
+
+        def _keep_trunk_out(self, _module, _inp, out) -> None:
+            self._trunk_out = out
+
+        def _design_of(self, obs: torch.Tensor, k: int) -> torch.Tensor:
+            end = obs.shape[1] - self.ghost_mask_tail
+            return obs[:, end - k:end].argmax(dim=1)
+
+        @staticmethod
+        def _select(outs: list, design: torch.Tensor) -> torch.Tensor:
+            x = torch.stack(outs, dim=0)
+            idx = design.view(1, -1, *([1] * (x.dim() - 2))).expand(1, *x.shape[1:])
+            return x.gather(0, idx)[0]
+
+        def _heads_forward(self, obs_dict):
+            mu0, sigma0, value0, states = A2CBuilder.Network.forward(self, obs_dict)
+            out = self._trunk_out
+            design = self._design_of(obs_dict["obs"], self.per_design_heads)
+            mus = [mu0] + [self.mu_act(h(out)) for h in self.mu_heads]
+            sigmas = [sigma0] + [mu0 * 0.0 + self.sigma_act(p) for p in self.sigma_heads]
+            values = [value0] + [self.value_act(h(out)) for h in self.value_heads]
+            return self._select(mus, design), self._select(sigmas, design), self._select(values, design), states
 
         def design_subnets(self) -> list:
             return [self] + list(self.design_nets or [])
@@ -160,8 +200,8 @@ class BoundedSigmaA2CBuilder(A2CBuilder):
         def project_sigma(self) -> None:
             if self.logstd_min is None and self.logstd_max is None:
                 return
-            for net in self.design_subnets():
-                sigma = getattr(net, "sigma", None)
+            sigmas = [getattr(net, "sigma", None) for net in self.design_subnets()] + list(self.sigma_heads or [])
+            for sigma in sigmas:
                 if isinstance(sigma, nn.Parameter):
                     with torch.no_grad():
                         sigma.clamp_(min=self.logstd_min, max=self.logstd_max)
@@ -187,7 +227,12 @@ class BoundedSigmaA2CBuilder(A2CBuilder):
             if self.input_norm is not None:
                 body, tail = self.design_normalised_obs(obs_dict["obs"])
                 obs_dict = dict(obs_dict, obs=torch.cat([body, tail], dim=-1))
-            out = self._routed_forward(obs_dict) if self.design_nets is not None else super().forward(obs_dict)
+            if self.design_nets is not None:
+                out = self._routed_forward(obs_dict)
+            elif self.mu_heads is not None:
+                out = self._heads_forward(obs_dict)
+            else:
+                out = super().forward(obs_dict)
             n = self.ghost_mask_tail
             if n <= 0 or not self.is_continuous or len(out) != 4:
                 return out
