@@ -373,3 +373,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Founders sampled until 16 hold a stable grasp under HORA physics (opposition-seeded grasp search, CPU pre-filter, grasp search): G_V1 4.3% (18/420), G_V2S 5.2% (16/309), G_V3S 12.4% (32/258). The structured grammar is ~2.9x more likely to produce a hand that can hold the object. Controls allegro_right and sharpa_left_on_iiwa14 both viable.
 - Next: train each design alone (50 runs: 16 per grammar + 2 controls, ~25 min each) and compare rotation and holding performance.
+
+## Shared-controller coupling located (2026-10-03)
+
+- Per-design networks alone: no change. Per-design input normalisation alone: no change. Both together: allegro in the pair reaches its solo level (14.2 s holding, 1.41 rotations at 30 min). The pooled input normaliser had compressed allegro's joint inputs 2-5x.
+- Remaining coupling is PPO's batch statistics: the partner (founder 174) slips 2.0 -> 1.0 s as allegro improves. Testing per-design advantage normalisation needs the rl_games edit the permission classifier blocked; awaiting Martin.
