@@ -165,3 +165,40 @@ def morphology_table(design) -> "np.ndarray":
         out[s, 7] = float(design.slot_length[s])
         out[s, 8:10] = design.slot_limits[s]
     return out
+
+
+def disjoint_slot_map(valid) -> "np.ndarray":
+    """``(D, J)`` int: the policy column of each design's articulation
+    column, such that no two designs share a policy column for a real
+    joint. Designs in order: each real joint keeps its own column when no
+    earlier design's real joint holds it, else takes the lowest free one;
+    the design's ghost joints fill its remaining columns in order. Raises
+    when the designs have more real joints than columns."""
+    import numpy as np
+
+    valid = np.asarray(valid, dtype=bool)
+    n_designs, n_cols = valid.shape
+    if int(valid.sum()) > n_cols:
+        raise ValueError(f"{int(valid.sum())} real joints over {n_designs} designs do not fit {n_cols} columns")
+    taken = np.zeros(n_cols, dtype=bool)
+    out = np.zeros((n_designs, n_cols), dtype=np.int64)
+    for d in range(n_designs):
+        used = np.zeros(n_cols, dtype=bool)
+        for p in np.flatnonzero(valid[d]):
+            c = p if not taken[p] else int(np.flatnonzero(~taken & ~used)[0])
+            out[d, p] = c
+            used[c] = taken[c] = True
+        free = iter(np.flatnonzero(~used))
+        for p in np.flatnonzero(~valid[d]):
+            out[d, p] = next(free)
+    return out
+
+
+def to_policy_columns(x: torch.Tensor, phys_of_pol: torch.Tensor) -> torch.Tensor:
+    """Per-joint values ``(n, J)`` in articulation order -> policy order."""
+    return x.gather(1, phys_of_pol)
+
+
+def to_phys_columns(x: torch.Tensor, pol_of_phys: torch.Tensor) -> torch.Tensor:
+    """Per-joint values ``(n, J)`` in policy order -> articulation order."""
+    return x.gather(1, pol_of_phys)

@@ -354,3 +354,4 @@ hora:
   per_design_reward_norm: false     # population: reward / running per-design reward RMS
   reward_norm_decay: 0.999
   reward_norm_floor: 0.05
+  disjoint_slots: false            # population: each design's real joints in their own policy columns

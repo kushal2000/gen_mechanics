@@ -546,6 +546,12 @@ class HoraCfg:
     (``hora_profile.DesignRewardScale``)."""
     reward_norm_decay: float = 0.999
     reward_norm_floor: float = 0.05
+    disjoint_slots: bool = False
+    """Population path: give every design its own policy columns for its
+    real joints (``hora_profile.disjoint_slot_map``; per-joint
+    observations and actions are permuted per env), so no two designs
+    share an observation or action column. Needs at most 32 real joints
+    over the whole population."""
 
 
 def _default_sim_cfg() -> SimulationCfg:

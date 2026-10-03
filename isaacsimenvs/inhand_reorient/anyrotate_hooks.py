@@ -278,6 +278,8 @@ def _set_gravity(env, frac: float) -> None:
 def pre_physics_step(env, actions: torch.Tensor) -> None:
     a = _cfg(env)
     act = actions.clone().clamp(-1.0, 1.0)
+    if getattr(env, "_hora_pol_of_phys", None) is not None:  # hora.disjoint_slots
+        act = hp.to_phys_columns(act, env._hora_pol_of_phys)
     joint_mask = _joint_valid_mask(env)
     if joint_mask is not None:
         act = torch.where(joint_mask, act, torch.zeros_like(act))
@@ -363,6 +365,15 @@ def _design_idx(env) -> torch.Tensor:
     return torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
 
 
+def _pol(env, x: torch.Tensor, env_ids=None) -> torch.Tensor:
+    """Per-joint values in articulation order -> this env's policy columns
+    (identity unless ``hora.disjoint_slots``)."""
+    p = getattr(env, "_hora_phys_of_pol", None)
+    if p is None:
+        return x
+    return hp.to_policy_columns(x, p if env_ids is None else p[env_ids])
+
+
 def _setup_hora_sharing(env) -> None:
     """Options for one controller over several hands: per-design reward
     scaling and the morphology observation's static part."""
@@ -372,14 +383,24 @@ def _setup_hora_sharing(env) -> None:
     env._hora_rscale = (hp.DesignRewardScale(n_designs, h.reward_norm_decay, h.reward_norm_floor, env.device)
                         if h.per_design_reward_norm else None)
     env._hora_morph_static = None
-    if not h.morph_obs:
-        return
+    env._hora_pol_of_phys = env._hora_phys_of_pol = None
+    if (h.morph_obs or h.disjoint_slots) and tables is None:
+        raise NotImplementedError("hora.morph_obs / disjoint_slots need a population (env.assets.hand_population)")
     if tables is None:
-        raise NotImplementedError("hora.morph_obs needs a population (env.assets.hand_population)")
+        return
     import numpy as np
 
     perm = env.scene_record.get("slot_of_phys_col")
     perm_np = perm.cpu().numpy() if perm is not None else np.arange(32)
+    if h.disjoint_slots:
+        pol = torch.as_tensor(hp.disjoint_slot_map(np.asarray(tables.joint_valid, dtype=bool)[:, perm_np]),
+                              dtype=torch.long, device=env.device)
+        env._hora_pol_of_phys = pol[_design_idx(env)]
+        env._hora_phys_of_pol = torch.argsort(env._hora_pol_of_phys, dim=1)
+        print(f"[hora] disjoint policy columns: {int(np.asarray(tables.joint_valid).sum())} real joints over "
+              f"{n_designs} design(s)", flush=True)
+    if not h.morph_obs:
+        return
     slot_tab = np.stack([hp.morphology_table(d) for d in tables.designs])[:, perm_np]  # (D, J, 10)
     J = slot_tab.shape[1]
     canon = torch.as_tensor(np.asarray(tables.default_joint_pos)[:, perm_np], dtype=torch.float32, device=env.device)
@@ -394,7 +415,13 @@ def _setup_hora_sharing(env) -> None:
                       float(d.capsule_radius_m)] for i, d in enumerate(tables.designs)])
     static = torch.cat([torch.as_tensor(slot_tab.reshape(n_designs, J * 10), dtype=torch.float32, device=env.device),
                         canon, torch.as_tensor(hand, dtype=torch.float32, device=env.device)], dim=-1)
-    env._hora_morph_static = static[_design_idx(env)]
+    static = static[_design_idx(env)]
+    if env._hora_phys_of_pol is not None:  # per-joint parts in each env's policy columns
+        p = env._hora_phys_of_pol
+        per_joint = static[:, : 10 * J].reshape(-1, J, 10).gather(1, p.unsqueeze(-1).expand(-1, -1, 10))
+        static = torch.cat([per_joint.reshape(-1, 10 * J), _pol(env, static[:, 10 * J: 11 * J]),
+                            static[:, 11 * J:]], dim=-1)
+    env._hora_morph_static = static
     print(f"[hora] morphology observation: {static.shape[1]} static values per design + 4 per fingertip", flush=True)
 
 
@@ -658,7 +685,7 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
         env._hora_q_init[env_ids] = q
         env._hora_z0[env_ids] = obj_pos_w[:, 2]
         env._hora_obj_pos_prev[env_ids] = obj_pos_w
-        frame = torch.cat([hp.unscale(q, lo, hi), q_target], dim=-1)
+        frame = torch.cat([_pol(env, hp.unscale(q, lo, hi), env_ids), _pol(env, q_target, env_ids)], dim=-1)
         env._hora_hist = hp.fill_history(env._hora_hist, env_ids, frame)
     refresh_geometry(env)
     design_scoring.reset_scoring_state(env, env_ids)
@@ -715,10 +742,11 @@ def _hora_observations(env) -> dict[str, torch.Tensor]:
     lower, upper = _limits(env)
     q = env.robot.data.joint_pos
     noise = (torch.rand_like(q) * 2.0 - 1.0) * h.joint_noise_scale
-    frame = torch.cat([hp.unscale(q + noise, lower, upper), env._ar_target], dim=-1)
+    qu, tgt = hp.unscale(q + noise, lower, upper), env._ar_target
     mask = _joint_valid_mask(env)
     if mask is not None:
-        frame = frame * torch.cat([mask, mask], dim=-1)
+        qu, tgt = qu * mask, tgt * mask
+    frame = torch.cat([_pol(env, qu), _pol(env, tgt)], dim=-1)
     env._hora_hist = hp.push_history(env._hora_hist, frame)
     n = env.num_envs
     priv = torch.cat([
@@ -738,7 +766,7 @@ def _hora_observations(env) -> dict[str, torch.Tensor]:
         mask = _joint_valid_mask(env)
         J = env.robot.data.joint_pos.shape[1]
         sign = torch.ones(n, J, device=env.device) if mask is None else mask.float() * 2.0 - 1.0
-        parts.append(sign)
+        parts.append(_pol(env, sign))
     obs = torch.cat(parts, dim=-1)
     return {"policy": obs, "critic": obs}
 
