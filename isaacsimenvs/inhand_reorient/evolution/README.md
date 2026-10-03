@@ -522,6 +522,49 @@ Normaliser and exploration arms (2026-10-03, config only, same pair, seed 42, 40
 - Per-design advantage normalisation inside PPO needs a change to the vendored rl_games (group ids
   from the env infos into `prepare_dataset`); it was not run.
 
+Network-level separation (2026-10-03, `policy_network.py`; same pair, seed 42, 40 min). Options,
+all off by default, under `network:` with `hora.design_id_obs: K` (a K-wide design one-hot before
+the slot signs, which routes each sample):
+
+- `per_design_nets: K`: K independent actor-critics in one model (trunk, mean, log-std, value).
+- `per_design_heads: K`: one trunk, per-design mean, log-std and value heads.
+- `per_design_input_norm: K`: the observation body normalised again by each design's own running
+  statistics (`GroupRunningNorm`) inside the network. rl_games' input normaliser pools both hands:
+  at the end of the per-design-network run, five of allegro's joint-position columns had a pooled
+  std of 0.40 to 0.66 where allegro alone has 0.09 to 0.19, so allegro's own inputs reached the
+  network compressed 2 to 5x and shifted.
+
+rl_games sees one model, one batch, one optimiser and one adaptive learning rate throughout.
+
+| Run | Job | allegro 10 | allegro 20 | allegro 30 | allegro 40 | 174 10 | 174 20 | 174 30 | 174 40 |
+|---|---|---|---|---|---|---|---|---|---|
+| solo allegro, 2048 envs (current code) | 2535209_31 | 7.0 s / 0.74 | 13.2 s / 1.40 | - | - | - | - | - | - |
+| solo 174, 2048 envs | 2533808_0 | - | - | - | - | 2.3 s / 0.17 | 2.7 s / 0.18 | - | - |
+| pair, shared network (baseline) | 2532582_14 | 1.4 s / 0.18 | 1.4 s / 0.15 | 1.6 s / 0.16 | - | 2.1 s / 0.18 | 1.8 s / 0.17 | 2.1 s / 0.19 | - |
+| per-design networks | 2535207_30 | 1.5 s / 0.18 | 1.8 s / 0.19 | 2.1 s / 0.19 | - | 1.0 s / 0.16 | 2.1 s / 0.20 | 1.7 s / 0.17 | - |
+| per-design networks, separate critics, advantage norm off | 2535513_32 | 1.5 s / 0.18 | - | - | - | 0.3 s / 0.03 | - | - | - |
+| per-design networks, separate critics, no pooled statistics | 2535447_33 | 1.1 s / 0.16 | 1.6 s / 0.17 | 0.4 s / 0.09 | - | 1.0 s / 0.16 | 1.5 s / 0.16 | 1.8 s / 0.17 | - |
+| shared network + per-design input norm | 2535816_35 | 1.7 s / 0.19 | 1.4 s / 0.16 | 1.6 s / 0.16 | - | 2.4 s / 0.20 | 2.6 s / 0.20 | 2.6 s / 0.20 | - |
+| per-design networks + per-design input norm | 2535772_34 | 2.3 s / 0.24 | 7.1 s / 0.64 | 14.2 s / 1.41 | - | 2.0 s / 0.17 | 1.6 s / 0.12 | 1.0 s / 0.08 | - |
+| shared trunk, per-design heads + per-design input norm | 2536167_38 | 2.0 s / 0.22 | 2.3 s / 0.24 | 2.9 s / 0.29 | - | 2.6 s / 0.21 | 2.0 s / 0.19 | 2.1 s / 0.15 | - |
+
+- Separate networks alone do not help (allegro 2.1 s at 30 min), and neither does per-design input
+  normalisation on a shared network (1.6 s). Together they do: allegro holds 7.1 s at 20 min and
+  14.2 s at 30 min, its solo level (13.2 s). Two couplings act at once: the shared weights and the
+  pooled input normaliser.
+- In that run founder 174 falls from 2.0 s to 1.0 s while allegro improves (its solo level is 2.3 to
+  2.7 s). What both hands still share is PPO's batch statistics: advantage and value normalisation,
+  the KL-adaptive learning rate, and the gradient-norm clip. Per-design advantage normalisation is the
+  next test; it needs the blocked rl_games change.
+- Turning those statistics off by config breaks learning on its own (allegro collapses to 0.4 s and,
+  without advantage normalisation, founder 174 to 0.3 s), so these arms do not isolate them.
+- A shared trunk with per-design heads and per-design input normalisation reaches 2.9 s at 30 min:
+  better than the shared network, well short of separate networks.
+- Four hands (allegro, founders 174, 234, 416; separate networks and per-design input
+  normalisation; 1024 envs per design so that the scene fits 10 GB; job 2536203_39): after 40 min
+  no hand exceeds 1.5 s. Each design gets half the pair's samples, and grasp generation for 234 and
+  416 used the first minutes, so this run does not yet test scaling.
+
 Not run, because the 2-hand target was not met: the 4- and 8-hand scaling and the 32-design driver
 smoke. Directions that address a shared trunk directly: per-joint policies whose weights are shared
 across joints and read each joint's own morphology (W. Huang et al., ICML 2020; A. Gupta et al., ICLR
