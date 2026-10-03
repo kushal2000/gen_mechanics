@@ -132,3 +132,12 @@ def test_signature_records_population_geometry_options_only_when_on():
     assert not any(k.startswith("population_") for k in off)
     assert on["population_palm_collider"] == "mount_hull" and on["population_capsule_radius"] == 0.012
     assert on["population_projected_pose"] is True
+
+
+def test_palm_filter_slots_are_each_fingers_first_two_real_links(allegro):
+    """mount_hull_filtered: the palm hull ignores each finger's first two
+    real links (they start inside or next to it at rest)."""
+    slots = ph.palm_filter_slots(allegro)
+    assert slots == sorted(slots)
+    assert {0, 1, 6, 7, 12, 13, 18, 19} == set(slots)  # four fingers x (d0, d1)
+    assert all(allegro.slot_valid[s] for s in slots)
