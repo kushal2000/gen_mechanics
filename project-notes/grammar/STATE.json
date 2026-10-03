@@ -346,10 +346,17 @@
       "hypothesis": "Populations under HORA: train only on designs with a stable grasp; per-generation grasp search with offspring viability logged as a grammar metric; validate that a shared controller learns rotation across viable hands. UPDATE (eeab80f..07a833b, 417 tests): --viable-only driver works on the cluster (gen 0 50 min incl. 29 min grasp search at 7.7% founder viability for G_V3S, later gens 30 min with 66% offspring viability). No shared controller learned (mixed32, sub8: holding ~0.4 s). Decisive control: the grammar-path allegro ALONE plateaus at ~2 s holding vs 17.8 s for the URDF allegro -> the grammar-path hand construction is the bottleneck (actuator, capsule colliders and radius 0.01 m, no palm colliders (I30), placement). Vibrating grasps now rejected (joint speed > 5 rad/s). UPDATE (5f89f06..cad1d6e, 429 tests, ~7.65 GPU-h on ada6000-shared): the grammar-path allegro learns alone when its grasp cache uses HORA's canonical pose (10.9 s holding, 0.98 rotations/episode at 30 min); construction factors were roughly neutral (HORA actuator vibrates on capsules; the palm hull as built blocks the thumb). Sharing is the blocker: allegro + founder 174 under one controller both stall at ~1-2 s. Next: morphology context in observations (the HORA port dropped the per-joint descriptors), per-design reward/advantage normalisation, per-design canonical grasp search.",
       "decision": null,
       "evidence": "outputs/isaaclab_repose/pop_hora_gc*"
+    },
+    {
+      "id": "I44",
+      "status": "open",
+      "hypothesis": "Shared HORA controller over two viable hands fails (14 variants, ~7.95 GPU-h): allegro in the pair <= 2.1 s holding vs 10.5 s solo at the same env count. Ruled out: env/multi-design path (zero-action holds 17 s / 13 s in the pair), morphology context, per-design reward norm, opposition grasps, ghost masks, disjoint policy columns + separate critic, minibatch, optimiser/KL. A non-viable partner (every episode a 0.1 s drop) hurts as much -> sharing the batch itself breaks learning. Trained policies hold for less time than zero actions; allegro's own log-std stays high (-0.84 vs -1.41 solo). Coordinator hypothesis: batch-global advantage normalisation (and value/input normalisers) rescales each design's signal; untested because it needs a flagged change in the vendored rl_games. Literature: GET-Zero (2024) handles multi-embodiment in-hand rotation by per-embodiment experts distilled into one graph transformer.",
+      "decision": null,
+      "evidence": "isaacsimenvs/inhand_reorient/evolution/README.md 'Shared controller A/B: allegro + founder 174'"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "A/B on the cluster: make the grammar-path allegro learn like the URDF allegro under HORA (palm colliders, capsule radius, actuator, friction/mass, placement, tips); then re-run a viable population; then the grammar comparison.",
+  "next_action": "Decision for Martin: (A) per-design advantage normalisation + low initial log-std (needs a flagged vendored rl_games change), (B) grammar comparison with per-design solo RL fitness (clean, no shared-controller confound, more GPU-h), (C) per-hand experts distilled into one student (GET-Zero style).",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -415,7 +422,7 @@
       "summary": "median elite fitness V3S (0.47-0.50) > V2S (0.24-0.56) > V1 (0.20-0.36); V3S lowest variance; coverage 11-14/30 for all; probes similar except sharpa best under V3S"
     }
   },
-  "gpu_hours_used": 100.7,
+  "gpu_hours_used": 108.7,
   "cluster_jobs": [
     {
       "id": 2364675,

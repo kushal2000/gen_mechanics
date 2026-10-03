@@ -362,3 +362,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - With grasps seeded from HORA's canonical pose (opposing thumb), the grammar-path allegro alone reaches 10.9 s holding / 0.98 rotations per episode at 30 min (A6000-class GPU), so hand construction was not the main problem; the initial grasp pose was.
 - One controller over two viable hands (allegro + founder 174) stalls both at ~1-2 s. Next: give the policy morphology context (per-slot joint geometry, masks, fingertip FK, hand scalars), normalise rewards per design, and search per-design canonical grasps; scale 2 -> 4 -> 8 hands, then a viable-only driver smoke.
 - Cluster: ~100.7 GPU-h in total.
+
+## Shared controller under HORA: not solved (2026-10-03)
+
+- 14 variants on allegro + founder 174 (~7.95 GPU-h): allegro <= 2.1 s holding in every pair vs 10.5 s solo. Zero-action control holds 17 s / 13 s in the pair, so the env is fine. Morphology context, per-design reward norm, opposition grasps, ghost masks, fully disjoint policy columns with a separate critic: no effect. A non-viable partner hurts as much, so sharing the batch itself breaks learning; allegro's exploration noise stays high.
+- Untested hypothesis: batch-global advantage/value/input normalisation. Options: per-design advantage normalisation (vendored rl_games change), per-design solo-RL fitness for the grammar comparison, or GET-Zero-style experts + distillation.
+- Cluster total ~108.6 GPU-h.
