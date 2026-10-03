@@ -252,3 +252,25 @@ def test_per_design_input_norm_normalises_the_body_and_keeps_the_tail():
         assert torch.allclose(body[d::2].mean(0), torch.zeros(6), atol=1e-3)
     mu, logstd, _v, _s = net(inp)
     assert torch.all(mu[ghost < 0] == 0)
+
+
+def test_per_design_heads_share_the_trunk_and_route_the_heads():
+    """per_design_heads K: one trunk, K mean heads, K log-std vectors and K
+    value heads; each sample uses its design's heads."""
+    k, n_act = 2, 3
+    obs = _design_obs([0, 1, 1], k)
+    params = _ppo_params()
+    params["per_design_heads"] = k
+    net, inp = _build_plain(params, obs, n_act)
+    with torch.no_grad():
+        net.sigma.fill_(-0.3)
+        net.sigma_heads[0].fill_(-1.7)
+    mu, logstd, value, _s = net(inp)
+    trunk = net.actor_mlp(obs)
+    assert torch.allclose(mu[0], net.mu(trunk)[0]) and torch.allclose(value[0], net.value(trunk)[0])
+    assert torch.allclose(mu[1], net.mu_heads[0](trunk)[1]) and torch.allclose(value[2], net.value_heads[0](trunk)[2])
+    assert torch.all(logstd[0] == -0.3) and torch.all(logstd[1:] == -1.7)
+    (mu[1].sum() + value[1].sum()).backward()
+    assert net.mu.weight.grad is None or torch.all(net.mu.weight.grad == 0)  # design 0's head untouched
+    assert torch.any(net.mu_heads[0].weight.grad != 0)
+    assert any(p.grad is not None and torch.any(p.grad != 0) for p in net.actor_mlp.parameters())  # shared trunk
