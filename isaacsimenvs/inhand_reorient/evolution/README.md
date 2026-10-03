@@ -434,6 +434,76 @@ All off by default (`hora:` and `anyrotate:` blocks of `InHandReorient.yaml`; te
   `opposing_finger` in the cache stats).
 - `anyrotate.population_palm_collider: mount_hull_filtered`: the mount-spanning palm hull,
   collision-filtered against each finger's first two links.
+- `hora.ghost_action_mask`: each action column's sign (+1 real joint, -1 ghost) as the last
+  observation values; with `network.name: inhand_actor_critic` and
+  `space.continuous.ghost_mask_tail: 32`, a column that is a ghost for this env's hand gets a
+  constant mean and log-std, so its samples give that column no gradient (`policy_network.py`).
+- `hora.disjoint_slots`: every design's real joints get their own policy columns
+  (`hora_profile.disjoint_slot_map`; the first design keeps its own, later ones move to free
+  columns), and per-joint observations and actions are permuted per env. No two designs then share
+  an observation or action column. Needs at most 32 real joints over the population, so it is a
+  diagnostic for small sets (pop4 has 45).
+- `tools/zero_action_check.py`: steps an env with zero actions from the cached grasps (targets
+  held) and writes per-design holding time.
+
+### Shared controller A/B: allegro + founder 174 (2026-10-02/03, cluster, RTX 6000 Ada)
+
+Setup: `task_profile: hora`, 4096 envs (2048 per hand), 40 min per run, seed 42. Allegro uses the
+same 4000 cached grasps as the solo allegro runs (`gram_base`), founder 174 its 289. Target: each
+hand at least half its solo holding time (allegro 5.25 s of 10.5 s, founder 174 about 1.3 s).
+
+Zero-action check first (job 2534026, 400 steps): allegro holds 17.1 s alone and 17.4 s in the
+pair, founder 174 13.1 s and 13.3 s. The multi-design env path gives each hand the same physics and
+resets it gets alone, so the gap below is a learning effect.
+
+Holding time (s) / rotations per episode per hand, from the per-design scoring windows (+-2.5 min
+around each minute mark; "-" where the run had ended):
+
+| Run | Job | allegro 10 | allegro 20 | allegro 30 | allegro 40 | 174 10 | 174 20 | 174 30 | 174 40 |
+|---|---|---|---|---|---|---|---|---|---|
+| solo allegro, 2048 envs | 2532776_15 | 3.5 s / 0.34 | 8.6 s / 0.86 | 7.9 s / 0.71 | - | - | - | - | - |
+| solo allegro, 4096 envs | 2531293_1 | 4.8 s / 0.47 | 5.2 s / 0.45 | 10.4 s / 0.93 | - | - | - | - | - |
+| solo 174, 2048 envs | 2533808_0 | - | - | - | - | 2.3 s / 0.17 | 2.7 s / 0.18 | - | - |
+| pair baseline | 2532582_14 | 1.4 s / 0.18 | 1.4 s / 0.15 | 1.6 s / 0.16 | - | 2.1 s / 0.18 | 1.8 s / 0.17 | 2.1 s / 0.19 | - |
+| + morph_obs | 2533662_1 | 1.5 s / 0.18 | 1.8 s / 0.18 | 1.8 s / 0.19 | - | 2.0 s / 0.18 | 2.2 s / 0.20 | 2.1 s / 0.20 | - |
+| + morph_obs (long) | 2533816_10 | 1.3 s / 0.17 | 1.8 s / 0.20 | 1.6 s / 0.19 | 1.4 s / 0.19 | 1.9 s / 0.17 | 2.0 s / 0.19 | 2.2 s / 0.19 | 2.1 s / 0.20 |
+| + per_design_reward_norm | 2533811_2 | 1.6 s / 0.19 | 1.8 s / 0.19 | - | - | 1.8 s / 0.17 | 2.1 s / 0.20 | - | - |
+| + opposition grasps | 2533813_3 | 1.4 s / 0.18 | - | - | - | 2.0 s / 0.17 | - | - | - |
+| + all three | 2533667_4 | 1.3 s / 0.16 | 1.5 s / 0.16 | 1.1 s / 0.12 | - | 1.6 s / 0.16 | 1.7 s / 0.15 | 2.2 s / 0.14 | - |
+| + ghost_action_mask | 2533898_13 | 1.6 s / 0.17 | 1.7 s / 0.18 | 1.4 s / 0.15 | - | 2.2 s / 0.18 | 2.4 s / 0.18 | 2.3 s / 0.20 | - |
+| + minibatch 16384 | 2534238_15 | 1.5 s / 0.19 | 1.8 s / 0.20 | - | - | 2.1 s / 0.20 | 2.3 s / 0.20 | - | - |
+| + separate actor/critic | 2534244_19 | 1.3 s / 0.17 | 1.5 s / 0.18 | - | - | 1.9 s / 0.17 | 2.7 s / 0.19 | - | - |
+| + disjoint_slots | 2534375_21 | 1.5 s / 0.19 | 1.6 s / 0.18 | 1.7 s / 0.19 | - | 2.1 s / 0.19 | 2.4 s / 0.20 | 2.3 s / 0.20 | - |
+| + disjoint_slots + ghost_action_mask | 2534377_22 | 1.6 s / 0.18 | 2.1 s / 0.20 | 1.9 s / 0.20 | - | 2.0 s / 0.17 | 2.0 s / 0.17 | 2.1 s / 0.18 | - |
+
+Findings:
+
+- No option, alone or combined, lifts allegro in the pair above 2.1 s up to 40 min (target 5.25 s).
+  Founder 174 stays near its solo level (1.6 to 2.7 s against 2.3 to 2.7 s), so it clears its bar in
+  every variant and allegro misses in every variant.
+- The observation context (`morph_obs`, 375 values) changes nothing measurable. Hand identity was
+  already visible to the network through the ghost pattern in the joint history.
+- With `disjoint_slots` and the ghost mask together the two hands share no observation column, no
+  action column and no action-output gradient, and allegro still stalls at 1.6 to 2.1 s. The
+  interference is in what remains shared: the MLP trunk, the critic, the input and value
+  normalisers, and the KL-adaptive learning rate (2.4e-4 in the pair at 30 min against 3.4e-4
+  alone). A separate critic (`network.separate: True`) and twice the gradient steps per update
+  (minibatch 16384) did not help either.
+- Learned log-std at the last checkpoint (epoch 1800; founder 174 alone epoch 800): on the 6 columns allegro shares with founder 174 the pair settles
+  at founder 174's level (mean -2.15; 174 alone -2.19, allegro alone -1.52); on allegro's 10 own
+  columns it stays at -0.84 against -1.41 alone. Allegro's own joints keep exploring because its
+  holding never improves.
+- Every pair episode ends in a drop (drop share 1.00 at 20 min); alone, allegro times out in 9 to 12%
+  of episodes by then.
+- Both hands hold far longer with zero actions (17 s, 13 s) than under any trained policy (best
+  10.4 s, allegro alone). Founder 174 alone also stops at 2.7 s: the rotation reward pays for motion
+  that costs the grasp, and the shared policy settles on that behaviour for both hands.
+
+Not run, because the 2-hand target was not met: the 4- and 8-hand scaling and the 32-design driver
+smoke. Directions that address a shared trunk directly: per-joint policies whose weights are shared
+across joints and read each joint's own morphology (W. Huang et al., ICML 2020; A. Gupta et al., ICLR
+2022 MetaMorph; A. Patel and S. Song, 2024 GET-Zero), gradient surgery between hands (T. Yu et al.,
+NeurIPS 2020 PCGrad), or one teacher per hand distilled into one student.
 
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
