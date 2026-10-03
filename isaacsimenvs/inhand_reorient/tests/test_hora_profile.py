@@ -98,3 +98,79 @@ def test_task_yaml_carries_horas_numbers():
     assert (h["rotate_reward_scale"], h["obj_linvel_penalty_scale"], h["pose_diff_penalty_scale"],
             h["torque_penalty_scale"], h["work_penalty_scale"]) == (1.0, -0.3, -0.3, -0.1, -2.0)
     assert h["joint_noise_scale"] == 0.02
+
+
+# --------------------------------------------------------------------------
+# Shared controllers across hands (2026-10-02)
+# --------------------------------------------------------------------------
+
+
+def test_per_design_reward_scale_tracks_each_designs_spread():
+    """Running per-design second moment of the per-step reward; each env's
+    reward divided by its design's RMS (floored), so a design with rewards in
+    the hundreds and one in the tenths contribute on the same scale."""
+    st = hp.DesignRewardScale(n_designs=2, decay=0.0, floor=0.05)
+    d = torch.tensor([0, 0, 1, 1])
+    r = torch.tensor([100.0, -100.0, 0.1, -0.1])
+    out = st.normalize(r, d)
+    assert out.tolist() == pytest.approx([1.0, -1.0, 1.0, -1.0], rel=1e-5)
+    # floor: a design with near-zero rewards is not blown up
+    st2 = hp.DesignRewardScale(n_designs=1, decay=0.0, floor=0.05)
+    assert st2.normalize(torch.tensor([0.001, -0.001]), torch.tensor([0, 0])).abs().max() <= 0.001 / 0.05 + 1e-6
+    # decay keeps a running estimate
+    st3 = hp.DesignRewardScale(n_designs=1, decay=0.9, floor=1e-3)
+    st3.normalize(torch.tensor([1.0]), torch.tensor([0]))
+    st3.normalize(torch.tensor([3.0]), torch.tensor([0]))
+    assert st3.rms[0].item() == pytest.approx(math.sqrt(0.9 * 1.0 + 0.1 * 9.0), rel=1e-5)
+
+
+def test_morphology_table_per_slot():
+    """Per slot: validity, joint axis and origin in the root (palm) frame at
+    q = 0, link length, limits (10 values); ghost slots all zero."""
+    from isaacsimenvs.inhand_reorient.scene import grammar_envelope as ge
+    from isaacsimenvs.inhand_reorient.scene import population_file as pf
+    from hand_sampler.grammar.derive import derivation_from_dict, derive
+
+    entry, status, _ = pf.projected_entry("allegro_right")
+    design = ge.canonicalize(derive(derivation_from_dict(entry.derivation_dict)), source=entry.source)
+    tab = hp.morphology_table(design)
+    assert tab.shape == (32, hp.MORPH_PER_SLOT) and hp.MORPH_PER_SLOT == 10
+    T0 = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
+    s = 1  # index finger, second joint
+    assert tab[s, 0] == 1.0
+    assert np.allclose(tab[s, 1:4], T0[s][:3, :3] @ design.slot_axis[s])
+    assert np.allclose(tab[s, 4:7], T0[s][:3, 3])
+    assert tab[s, 7] == pytest.approx(design.slot_length[s])
+    assert tuple(tab[s, 8:10]) == pytest.approx(tuple(design.slot_limits[s]))
+    assert np.all(tab[~design.slot_valid] == 0.0)
+
+
+def test_morph_observation_width():
+    # per joint: 10 static + canonical pose; per fingertip: position + mask; 3 hand scalars
+    assert ar.anyrotate_field_width("hora_morph", 32, 5) == 32 * 11 + 5 * 4 + 3
+    assert ar.anyrotate_field_width("hora_morph", 16, 4) == 16 * 11 + 4 * 4 + 3
+
+
+def test_opposition_poses_put_one_finger_in_horas_thumb_pose():
+    """One canonical pose per valid finger as the opposing digit: that finger
+    at HORA's thumb fractions, the others at its finger fractions."""
+    from isaacsimenvs.inhand_reorient import grasp_cache as gc
+
+    valid = np.zeros(32, dtype=bool)
+    limits = np.zeros((32, 2))
+    for f in (0, 3):
+        valid[f * 6: f * 6 + 4] = True
+        limits[f * 6: f * 6 + 4] = [0.0, 1.0]
+    default = np.zeros(32)
+    poses = gc.opposition_poses(valid, limits, default)
+    assert sorted(poses) == [0, 3]
+    assert np.allclose(poses[3][18:22], gc.HORA_THUMB_PROFILE[:4])
+    assert np.allclose(poses[3][0:4], gc.HORA_LIKE_PROFILE[:4])
+    assert np.allclose(poses[0][0:4], gc.HORA_THUMB_PROFILE[:4])
+    # HORA's allegro thumb as range fractions: (0.74, 1.0, 0.62, 0.01)
+    assert gc.HORA_THUMB_PROFILE[:4] == pytest.approx((0.74, 1.0, 0.62, 0.01), abs=0.01)
+
+
+def test_hora_block_defaults_keep_the_port():
+    h = yaml.safe_load((REPO_ROOT / "coevolution/cfg/task/InHandReorient.yaml").read_text())["hora"]
+    assert h["morph_obs"] is False and h["per_design_reward_norm"] is False
