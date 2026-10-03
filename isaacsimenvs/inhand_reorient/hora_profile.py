@@ -39,6 +39,7 @@ from .anyrotate_profile import quat_to_rotvec
 from .repose_profile import quat_conjugate, quat_mul
 
 __all__ = [
+    "DesignRewardScale", "morphology_table", "MORPH_PER_SLOT",
     "PROFILE_HORA", "is_hora", "rotate_reward", "linvel_penalty", "pose_diff_penalty", "torque_penalty",
     "work_penalty", "combine_reward", "unscale", "push_history", "fill_history", "dropped", "HORA_OBS_FIELDS",
 ]
@@ -109,3 +110,58 @@ def dropped(z, z0, drop_dz: float) -> torch.Tensor:
     """check_termination: object z below the threshold, here ``drop_dz``
     below the episode's start height."""
     return z < (z0 - float(drop_dz))
+
+
+# --------------------------------------------------------------------------
+# Shared controllers across hands (options; HORA trains one hand)
+# --------------------------------------------------------------------------
+
+
+class DesignRewardScale:
+    """Per-design reward scaling: a running (EMA over steps) second moment of
+    each design's per-step reward, and each env's reward divided by its
+    design's RMS, floored at ``floor``. Scale only (no mean shift), so the
+    sign of every term is kept."""
+
+    def __init__(self, n_designs: int, decay: float = 0.999, floor: float = 0.05, device=None):
+        self.decay, self.floor = float(decay), float(floor)
+        self.m2 = torch.zeros(n_designs, device=device)
+        self.seen = torch.zeros(n_designs, dtype=torch.bool, device=device)
+
+    @property
+    def rms(self) -> torch.Tensor:
+        return self.m2.sqrt()
+
+    def normalize(self, reward: torch.Tensor, design_idx: torch.Tensor) -> torch.Tensor:
+        n = self.m2.shape[0]
+        sq = torch.zeros(n, device=reward.device).index_add_(0, design_idx, reward.detach() ** 2)
+        cnt = torch.zeros(n, device=reward.device).index_add_(0, design_idx, torch.ones_like(reward))
+        has = cnt > 0
+        batch = torch.where(has, sq / cnt.clamp(min=1.0), self.m2)
+        first = has & ~self.seen
+        self.m2 = torch.where(first, batch, torch.where(has, self.decay * self.m2 + (1 - self.decay) * batch, self.m2))
+        self.seen = self.seen | has
+        return reward / self.rms.clamp(min=self.floor)[design_idx]
+
+
+MORPH_PER_SLOT = 10  # valid, axis (3), origin (3), length, lower, upper
+
+
+def morphology_table(design) -> "np.ndarray":
+    """``(32, 10)`` per envelope slot, root (palm) frame, q = 0: validity,
+    joint axis, joint origin, link length, joint limits; ghost slots 0."""
+    import numpy as np
+
+    from .scene import grammar_envelope as ge
+
+    T0 = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
+    out = np.zeros((ge.N_SLOTS, MORPH_PER_SLOT))
+    for s in range(ge.N_SLOTS):
+        if not design.slot_valid[s]:
+            continue
+        out[s, 0] = 1.0
+        out[s, 1:4] = T0[s][:3, :3] @ np.asarray(design.slot_axis[s], dtype=float)
+        out[s, 4:7] = T0[s][:3, 3]
+        out[s, 7] = float(design.slot_length[s])
+        out[s, 8:10] = design.slot_limits[s]
+    return out

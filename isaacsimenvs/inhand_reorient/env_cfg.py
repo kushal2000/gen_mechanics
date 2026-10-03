@@ -467,7 +467,9 @@ class AnyRotateCfg:
     instead of at its analytic palm-up calibration."""
     grasp_canonical_profile: str = "palm_up"
     """Population grasp search: "palm_up" (default, each design's calibrated
-    curl) or "hora_like" (every finger at HORA's allegro pose as range
+    curl), "opposition" (one candidate pose per finger as the opposing digit
+    at HORA's thumb fractions, the others at its finger fractions; a design
+    keeps the opposing finger that held the most grasps) or "hora_like" (every finger at HORA's allegro pose as range
     fractions, ``grasp_cache.HORA_LIKE_PROFILE``). 2026-10-02: the projected
     allegro learned from HORA-pose grasps (8-11 s held at 15-30 min) and not
     from palm-up ones (1.1-1.3 s)."""
@@ -524,6 +526,19 @@ class HoraCfg:
     of ``drop_dz`` below the episode's start height."""
     z_axis_frame: str = "world_up"
     """The rotation axis: the palm normal of the palm-up hand (HORA: world z)."""
+
+    # --- shared controllers across hands (options; HORA trains one hand) ---
+    morph_obs: bool = False
+    """Population path: add a morphology context to actor and critic
+    (``hora_morph``): per slot validity, joint axis and origin in the palm
+    frame at q = 0, link length, limits and the canonical grasp pose; per
+    fingertip its palm-frame position (current q) and mask; digit count,
+    hand scale, capsule radius."""
+    per_design_reward_norm: bool = False
+    """Divide each env's reward by its design's running reward RMS
+    (``hora_profile.DesignRewardScale``)."""
+    reward_norm_decay: float = 0.999
+    reward_norm_floor: float = 0.05
 
 
 def _default_sim_cfg() -> SimulationCfg:

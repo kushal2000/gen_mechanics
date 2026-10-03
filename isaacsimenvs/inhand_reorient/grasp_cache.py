@@ -59,7 +59,7 @@ __all__ = [
     "StabilityThresholds", "design_key", "hand_key", "hand_calibration_sha", "sidecar_path",
     "object_signature", "signature_mismatches", "save_cache", "load_cache", "merge_sets", "prune_sets",
     "sample_joint_candidates", "random_quats", "stable_mask", "build_table", "cache_summary", "profile_pose",
-    "HORA_LIKE_PROFILE",
+    "HORA_LIKE_PROFILE", "HORA_THUMB_PROFILE", "opposition_poses",
 ]
 
 CACHE_SCHEMA = "anyrotate_grasp_cache/0.1"
@@ -81,6 +81,28 @@ CANONICAL_GRASP_POSES: Dict[str, Dict[str, float]] = {"allegro_right": HORA_CANO
 # (0.53, 0.85, 0.24, 0.30). A generic "cage" for any design's fingers
 # (joints past the fourth keep 0.25).
 HORA_LIKE_PROFILE: Tuple[float, ...] = (0.6, 0.8, 0.25, 0.25, 0.25, 0.25)
+# HORA's allegro thumb as range fractions: (1.104, 1.163, 0.953, -0.138) in
+# limits (0.263-1.396, -0.105-1.163, -0.189-1.644, -0.162-1.719).
+HORA_THUMB_PROFILE: Tuple[float, ...] = (0.742, 1.0, 0.623, 0.013, 0.25, 0.25)
+
+
+def opposition_poses(joint_valid: np.ndarray, limits: np.ndarray, default: np.ndarray,
+                     n_fingers: int = 5, per_finger: int = 6) -> Dict[int, np.ndarray]:
+    """``{finger: (32,) pose}``: for every finger with a real chain, the
+    design's pose with that finger as the opposing digit (HORA's thumb
+    fractions) and every other finger at HORA's finger fractions."""
+    out: Dict[int, np.ndarray] = {}
+    base = profile_pose(joint_valid, limits, default, HORA_LIKE_PROFILE, n_fingers, per_finger)
+    for f in range(n_fingers):
+        slots = [f * per_finger + k for k in range(per_finger) if joint_valid[f * per_finger + k]]
+        if not slots:
+            continue
+        q = base.copy()
+        for d, s in enumerate(slots):
+            lo, hi = limits[s]
+            q[s] = lo + HORA_THUMB_PROFILE[min(d, len(HORA_THUMB_PROFILE) - 1)] * (hi - lo)
+        out[f] = q
+    return out
 
 
 def profile_pose(joint_valid: np.ndarray, limits: np.ndarray, default: np.ndarray,

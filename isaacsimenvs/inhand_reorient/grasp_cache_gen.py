@@ -92,8 +92,8 @@ def canonical_grasp_pose(env) -> torch.Tensor:
     q = _population_default_joint_pos(env, ids).clone()
     tables = getattr(env, "hand_tables", None)
     profile = getattr(env.cfg.anyrotate, "grasp_canonical_profile", "palm_up")
-    if profile not in ("palm_up", "hora_like"):
-        raise ValueError(f"anyrotate.grasp_canonical_profile={profile!r}; expected 'palm_up' or 'hora_like'")
+    if profile not in ("palm_up", "hora_like", "opposition"):
+        raise ValueError(f"anyrotate.grasp_canonical_profile={profile!r}; expected palm_up, hora_like or opposition")
     if tables is not None and profile == "hora_like":
         perm = env.scene_record.get("slot_of_phys_col")
         perm_t = perm if perm is not None else torch.arange(q.shape[1], device=q.device)
@@ -168,6 +168,27 @@ def _thresholds(a) -> gc.StabilityThresholds:
 # --------------------------------------------------------------------------
 
 
+def _opposition_tables(env) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+    """``grasp_canonical_profile: opposition``: ``(poses (D, 5, J), valid
+    (D, 5))`` in articulation column order, one canonical pose per design
+    and opposing finger (``grasp_cache.opposition_poses``); None otherwise."""
+    tables = getattr(env, "hand_tables", None)
+    if tables is None or getattr(env.cfg.anyrotate, "grasp_canonical_profile", "palm_up") != "opposition":
+        return None
+    perm = env.scene_record.get("slot_of_phys_col")
+    perm_np = perm.cpu().numpy() if perm is not None else np.arange(tables.joint_valid.shape[1])
+    D, J = tables.n_designs, len(perm_np)
+    poses = np.zeros((D, 5, J))
+    valid = np.zeros((D, 5), dtype=bool)
+    for d in range(D):
+        for f, q in gc.opposition_poses(tables.joint_valid[d], tables.joint_limits[d],
+                                        tables.default_joint_pos[d]).items():
+            poses[d, f] = q[perm_np]
+            valid[d, f] = True
+    return (torch.as_tensor(poses, dtype=torch.float32, device=env.device),
+            torch.as_tensor(valid, device=env.device))
+
+
 def generate(env, wanted: List[int], keys: List[str], sources: List[str], design_idx: torch.Tensor,
              seed: int = 0) -> Tuple[Dict[str, gc.GraspSet], dict]:
     """Grasps for the design indices ``wanted``; returns ``(sets, report)``."""
@@ -187,6 +208,8 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
     wanted_mask = torch.zeros(n_designs, dtype=torch.bool, device=dev)
     wanted_mask[torch.as_tensor(wanted, dtype=torch.long, device=dev)] = True
     canonical = canonical_grasp_pose(env)
+    opposition = _opposition_tables(env)
+    pass_assign = torch.zeros(n_designs, 5, dtype=torch.long)
     limits = env.robot.data.soft_joint_pos_limits
     lower, upper = limits[..., 0], limits[..., 1]
     jvalid = _joint_valid_mask(env)
@@ -233,8 +256,14 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
         active = active_d[design_idx]
 
         # 1-2. Candidate targets; the hand settles there with the object parked.
+        assign = torch.zeros(n, dtype=torch.long, device=dev)
+        canon_round = canonical
+        if opposition is not None:
+            poses_t, valid_t = opposition
+            assign = torch.multinomial(valid_t[design_idx].float(), 1, generator=gen).squeeze(-1)
+            canon_round = poses_t[design_idx, assign]
         q_t, curl = gc.sample_joint_candidates(
-            canonical, lower, upper, jvalid, noise=float(a.grasp_joint_sample_noise),
+            canon_round, lower, upper, jvalid, noise=float(a.grasp_joint_sample_noise),
             curl_frac=float(a.grasp_curl_frac), generator=gen, return_curl=True)
         env.robot.write_joint_state_to_sim(q_t, torch.zeros_like(q_t))
         env.object.write_root_state_to_sim(park)
@@ -332,8 +361,11 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
         if hit.numel() > 0:
             obj_q_palm = rp.quat_mul(rp.quat_conjugate(palm_q), env.object.data.root_quat_w)
             obj_p_palm = rp.quat_apply_inverse(palm_q, obj_w - palm_p)
+            pass_assign += torch.bincount((design_idx[hit] * 5 + assign[hit]).cpu(),
+                                          minlength=n_designs * 5).reshape(n_designs, 5)
             rows = {
                 "d": design_idx[hit].cpu().numpy(),
+                "a": assign[hit].cpu().numpy(),
                 "q": env.robot.data.joint_pos[hit].cpu().numpy(),
                 "qt": q_t[hit].cpu().numpy(),
                 "obj": torch.cat([obj_p_palm[hit], obj_q_palm[hit]], dim=-1).cpu().numpy(),
@@ -363,8 +395,16 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
                      if jspeed_stable[d] else None),
                  "stable_by_mode": {m: int(pass_mode[d, i]) for i, m in enumerate(modes)},
                  "gen_s_shared": round(gen_s, 1), "created": gc.now_iso()}
+        if opposition is not None:
+            stats["stable_by_opposing_finger"] = {int(f): int(pass_assign[d, f]) for f in range(5)
+                                                  if bool(opposition[1][d, f])}
         if found[d]:
-            cat = {k: np.concatenate([r[k] for r in found[d]], 0) for k in ("q", "qt", "obj", "info")}
+            cat = {k: np.concatenate([r[k] for r in found[d]], 0) for k in ("q", "qt", "obj", "info", "a")}
+            if opposition is not None:  # keep the opposing finger that held the most grasps
+                best = int(pass_assign[d].argmax())
+                stats["opposing_finger"] = best
+                keep = cat["a"] == best
+                cat = {k: v[keep] for k, v in cat.items()}
             s = gc.GraspSet(cat["q"], cat["qt"], cat["obj"], cat["info"], joint_names, sources[d], stats)
             sets[keys[d]] = s.truncated(k_target)
         else:

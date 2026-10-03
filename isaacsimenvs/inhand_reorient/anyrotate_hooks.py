@@ -105,6 +105,8 @@ def allocate_buffers(env) -> None:
     randomize_object_physics(env)
     _apply_population_actuator(env)  # before the grasp search: grasps under the training actuator
     _setup_grasp_cache(env)  # needs full gravity: before the curriculum zeroes it
+    if env._hora:
+        _setup_hora_sharing(env)
     if a.gravity_curriculum:
         _set_gravity(env, 0.0)
 
@@ -354,6 +356,48 @@ def get_dones(env, nan_guard) -> tuple[torch.Tensor, torch.Tensor]:
     return terminated, time_out
 
 
+def _design_idx(env) -> torch.Tensor:
+    rec = getattr(env, "scene_record", None)
+    if rec is not None and "design_idx" in rec:
+        return rec["design_idx"].to(torch.long)
+    return torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+
+
+def _setup_hora_sharing(env) -> None:
+    """Options for one controller over several hands: per-design reward
+    scaling and the morphology observation's static part."""
+    h = env.cfg.hora
+    tables = getattr(env, "hand_tables", None)
+    n_designs = int(tables.n_designs) if tables is not None else 1
+    env._hora_rscale = (hp.DesignRewardScale(n_designs, h.reward_norm_decay, h.reward_norm_floor, env.device)
+                        if h.per_design_reward_norm else None)
+    env._hora_morph_static = None
+    if not h.morph_obs:
+        return
+    if tables is None:
+        raise NotImplementedError("hora.morph_obs needs a population (env.assets.hand_population)")
+    import numpy as np
+
+    perm = env.scene_record.get("slot_of_phys_col")
+    perm_np = perm.cpu().numpy() if perm is not None else np.arange(32)
+    slot_tab = np.stack([hp.morphology_table(d) for d in tables.designs])[:, perm_np]  # (D, J, 10)
+    J = slot_tab.shape[1]
+    canon = torch.as_tensor(np.asarray(tables.default_joint_pos)[:, perm_np], dtype=torch.float32, device=env.device)
+    if env._ar_grasps is not None:  # each design's mean cached grasp target (its canonical grasp)
+        t = env._ar_grasps
+        for d in range(n_designs):
+            c = int(t.counts[d])
+            if c > 0:
+                o = int(t.offsets[d])
+                canon[d] = t.q_target[o:o + c].mean(dim=0)
+    hand = np.stack([[sum(1 for x in d.finger_digit_id if x is not None), float(tables.hand_scale[i]),
+                      float(d.capsule_radius_m)] for i, d in enumerate(tables.designs)])
+    static = torch.cat([torch.as_tensor(slot_tab.reshape(n_designs, J * 10), dtype=torch.float32, device=env.device),
+                        canon, torch.as_tensor(hand, dtype=torch.float32, device=env.device)], dim=-1)
+    env._hora_morph_static = static[_design_idx(env)]
+    print(f"[hora] morphology observation: {static.shape[1]} static values per design + 4 per fingertip", flush=True)
+
+
 def _hora_dones(env, nan_guard):
     """HORA's check_termination: the object below its start height, or the
     episode length. Rotation about k counts from the first step."""
@@ -384,6 +428,10 @@ def _hora_rewards(env) -> torch.Tensor:
                   torque=h.torque_penalty_scale, work=h.work_penalty_scale)
     terms = {k: torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0) for k, v in terms.items()}
     reward = hp.combine_reward(terms, scales)
+    if env._hora_rscale is not None:
+        reward = env._hora_rscale.normalize(reward, _design_idx(env))
+        env.extras["reward_rms_min"] = env._hora_rscale.rms.min()
+        env.extras["reward_rms_max"] = env._hora_rscale.rms.max()
     env._reward_terms = {
         "rotation_rew": scales["rotate"] * terms["rotate"], "linvel_penalty": scales["linvel"] * terms["linvel"],
         "pose_penalty": scales["pose"] * terms["pose"], "torque_penalty": scales["torque"] * terms["torque"],
@@ -676,7 +724,17 @@ def _hora_observations(env) -> dict[str, torch.Tensor]:
     priv = torch.cat([
         env._obj_pos_palm, env._ar_object_dims[:, :1], env._ar_object_mass.unsqueeze(-1),
         torch.full((n, 1), float(a.static_friction), device=env.device), env._ar_object_com], dim=-1)
-    obs = torch.cat([env._hora_hist.reshape(n, -1), priv], dim=-1)
+    parts = [env._hora_hist.reshape(n, -1), priv]
+    if env._hora_morph_static is not None:
+        k = len(env.fingertip_body_idx)
+        tip_mask = _fingertip_valid_mask(env)
+        tip_mask = torch.ones(n, k, device=env.device) if tip_mask is None else tip_mask.float()
+        tips = env._fingertip_pos_palm.reshape(n, k, 3) * tip_mask.unsqueeze(-1)
+        static = env._hora_morph_static
+        J = env.robot.data.joint_pos.shape[1]
+        parts += [static[:, : 11 * J], torch.cat([tips, tip_mask.unsqueeze(-1)], dim=-1).reshape(n, 4 * k),
+                  static[:, 11 * J:]]
+    obs = torch.cat(parts, dim=-1)
     return {"policy": obs, "critic": obs}
 
 
