@@ -217,3 +217,38 @@ def test_design_id_observation_field():
         hp.design_onehot(torch.tensor([0, 4]), 4)
     h = yaml.safe_load((CFG.parent / "task" / "InHandReorient.yaml").read_text())["hora"]
     assert h["design_id_obs"] == 0
+
+
+def test_group_running_norm_keeps_separate_statistics_per_design():
+    norm = pn.GroupRunningNorm(2, 3)
+    norm.train()
+    g = torch.tensor([0] * 200 + [1] * 200)
+    x = torch.cat([torch.randn(200, 3) * 0.1 + 0.5, torch.randn(200, 3) * 4.0 - 2.0])
+    y = norm(x, g)
+    for d in (0, 1):
+        assert torch.allclose(y[g == d].mean(0), torch.zeros(3), atol=0.05)
+        assert torch.allclose(y[g == d].std(0), torch.ones(3), atol=0.05)
+    norm.eval()  # eval: no update
+    before = norm.mean.clone()
+    norm(x * 3.0, g)
+    assert torch.equal(norm.mean, before)
+
+
+def test_per_design_input_norm_normalises_the_body_and_keeps_the_tail():
+    """per_design_input_norm: the observation body is normalised by each
+    design's own running statistics before the network (shared or
+    per-design); the design one-hot and slot-sign tail pass unchanged."""
+    k, n_act = 2, 3
+    ghost = torch.tensor([[1.0, -1.0, 1.0], [-1.0, 1.0, 1.0]]).repeat(50, 1)
+    obs = _design_obs([0, 1] * 50, k, ghost=ghost)
+    obs[1::2, :6] = obs[1::2, :6] * 10.0 + 3.0  # design 1's body on another scale
+    params = _design_params(None, ghost_tail=n_act)
+    params["per_design_input_norm"] = k
+    net, inp = _build_plain(params, obs, n_act)
+    net.train()
+    body, tail = net.design_normalised_obs(obs)
+    assert torch.equal(tail, obs[:, -(k + n_act):])
+    for d in (0, 1):
+        assert torch.allclose(body[d::2].mean(0), torch.zeros(6), atol=1e-3)
+    mu, logstd, _v, _s = net(inp)
+    assert torch.all(mu[ghost < 0] == 0)
