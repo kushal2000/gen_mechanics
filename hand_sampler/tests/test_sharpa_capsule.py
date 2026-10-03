@@ -15,6 +15,17 @@ def hand():
     return sharpa_capsule.sharpa_capsule()
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "The capsule SHARPA was built against the pre-motor constants and is no "
+    "longer a design the grammar would produce: 15 mm links against a 20 mm "
+    "floor, a mount at u = 0.6 when every mount is now on the midplane, and a "
+    "25 mm palm against a thickness tied to the capsule diameter. It is left "
+    "alone deliberately -- assets/populations/sharpa_capsule.json came from "
+    "this function and the uniform-dynamics training runs are trained on it, so "
+    "regenerating the hand would break comparability with results already "
+    "collected. hand_sampler.commercial.fit('sharpa') is the in-grammar SHARPA "
+    "under the current constants. Decide which of the two is the baseline "
+    "before deleting this."))
 def test_it_is_a_legal_design(hand):
     assert validate_design.check(hand) == []
 
