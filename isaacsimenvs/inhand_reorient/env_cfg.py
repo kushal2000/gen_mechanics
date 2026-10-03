@@ -454,9 +454,11 @@ class AnyRotateCfg:
     hand_velocity_limit: float = 6.283
     population_hand_actuator: bool = False
     population_palm_collider: str = "capsule"
-    """Population path: "capsule" (default: the root capsule only) or
+    """Population path: "capsule" (default: the root capsule only),
     "mount_hull" (also a convex palm spanning the root capsule and every
-    finger mount, ``projected_hands.palm_hull_points``)."""
+    finger mount, ``projected_hands.palm_hull_points``) or
+    "mount_hull_filtered" (the same, collision-filtered against each
+    finger's first two links)."""
     population_capsule_radius: float = -1.0
     """> 0: collider radius of every real link and the root (masses keep the
     design's radius). -1: the design's own (projections: 0.01 m)."""

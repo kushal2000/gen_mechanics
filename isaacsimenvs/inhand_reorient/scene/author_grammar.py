@@ -207,7 +207,8 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
                    contact_offset: Optional[float] = None,
                    rest_offset: Optional[float] = None,
                    collider_radius: Optional[float] = None,
-                   palm_hull_points: Optional[np.ndarray] = None) -> Dict[str, bool]:
+                   palm_hull_points: Optional[np.ndarray] = None,
+                   palm_filter_slots: Sequence[int] = ()) -> Dict[str, bool]:
     """Author one design's root/palm, palm carriers and 30 finger-joint
     slots under `root_path` (an already-`define`-d Xform). `base_pos`/
     `base_rot_wxyz` place the design's root BODY relative to `root_path`
@@ -294,6 +295,11 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
         pi, pj = _node_body_path(i), _node_body_path(j)
         filtered_targets_of.setdefault(pi, []).append(pj)
         filtered_targets_of.setdefault(pj, []).append(pi)
+    for s in palm_filter_slots:  # the palm hull ignores each finger's first links
+        pi, pj = _node_body_path(ge.ROOT_NODE), _node_body_path(int(s))
+        if pj not in filtered_targets_of.get(pi, []):
+            filtered_targets_of.setdefault(pi, []).append(pj)
+            filtered_targets_of.setdefault(pj, []).append(pi)
 
     # --- root/palm body: the design's own fixed-base anchor, authored
     # DIRECTLY at its world pose (base_pos/base_rot_wxyz) -------------------
@@ -448,15 +454,19 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
     a = getattr(env.cfg, "anyrotate", None)
     radius_override = float(getattr(a, "population_capsule_radius", -1.0)) if a is not None else -1.0
     palm_mode = getattr(a, "population_palm_collider", "capsule") if a is not None else "capsule"
-    if palm_mode not in ("capsule", "mount_hull"):
-        raise ValueError(f"anyrotate.population_palm_collider={palm_mode!r}; expected 'capsule' or 'mount_hull'")
+    if palm_mode not in ("capsule", "mount_hull", "mount_hull_filtered"):
+        raise ValueError(f"anyrotate.population_palm_collider={palm_mode!r}; expected capsule, mount_hull or "
+                         f"mount_hull_filtered")
     hull_by_design: Dict[int, np.ndarray] = {}
-    if palm_mode == "mount_hull":
-        from .projected_hands import palm_hull_points
+    palm_filter_by_design: Dict[int, List[int]] = {}
+    if palm_mode in ("mount_hull", "mount_hull_filtered"):
+        from .projected_hands import palm_filter_slots, palm_hull_points
 
         for i, d in enumerate(population.designs):
             r = radius_override if radius_override > 0 else d.capsule_radius_m
             hull_by_design[i] = palm_hull_points(d, r)
+            if palm_mode == "mount_hull_filtered":
+                palm_filter_by_design[i] = palm_filter_slots(d)
     if base_pos_by_design is None:
         base_pos_by_design = np.tile(np.asarray(HAND_BASE_POS_M, dtype=float), (population.n_designs, 1))
 
@@ -473,7 +483,7 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
                 layer, root_path, design, base_pos=base_pos, base_rot_wxyz=base_rot,
                 world_anchor_pos=world_anchor, contact_offset=contact_offset, rest_offset=rest_offset,
                 collider_radius=radius_override if radius_override > 0 else None,
-                palm_hull_points=hull_by_design.get(idx),
+                palm_hull_points=hull_by_design.get(idx), palm_filter_slots=palm_filter_by_design.get(idx, ()),
             )
             collider_links.setdefault(idx, authored)
 

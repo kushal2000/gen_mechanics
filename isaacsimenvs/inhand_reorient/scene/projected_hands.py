@@ -29,7 +29,19 @@ import numpy as np
 from . import grammar_envelope as ge
 
 __all__ = ["hand_id_of", "projection", "joint_slot_map", "slot_values", "urdf_equivalent_placement",
-           "palm_hull_points"]
+           "palm_hull_points", "palm_filter_slots"]
+
+
+def palm_filter_slots(design: "ge.EnvelopeDesign", links_per_finger: int = 2) -> list:
+    """Envelope slots the palm hull is collision-filtered against: each
+    finger's first ``links_per_finger`` real links (at rest they start
+    inside or next to the hull)."""
+    out = []
+    for f in range(ge.N_FINGERS):
+        real = [f * ge.N_JOINTS_PER_FINGER + k for k in range(ge.N_JOINTS_PER_FINGER)
+                if design.slot_valid[f * ge.N_JOINTS_PER_FINGER + k]]
+        out += real[:links_per_finger]
+    return sorted(out)
 
 PROJECTED_PREFIX = "projected:"
 

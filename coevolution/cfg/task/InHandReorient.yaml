@@ -316,7 +316,7 @@ anyrotate:
   hand_effort_limit: 0.5
   hand_velocity_limit: 6.283
   population_hand_actuator: false   # population: every real joint gets the actuator above (default: designs' own)
-  population_palm_collider: capsule # capsule | mount_hull (convex palm over the root capsule and finger mounts)
+  population_palm_collider: capsule # capsule | mount_hull | mount_hull_filtered (convex palm over the root capsule and finger mounts)
   population_capsule_radius: -1.0   # > 0: link and root collider radius (m); -1: the design's own
   population_projected_pose: false  # projected hands stand where their URDF asset does (hand_pose_file)
   grasp_canonical_profile: palm_up   # population grasp search: palm_up | opposition | hora_like
