@@ -350,7 +350,7 @@
     {
       "id": "I44",
       "status": "open",
-      "hypothesis": "Shared HORA controller over two viable hands fails (14 variants, ~7.95 GPU-h): allegro in the pair <= 2.1 s holding vs 10.5 s solo at the same env count. Ruled out: env/multi-design path (zero-action holds 17 s / 13 s in the pair), morphology context, per-design reward norm, opposition grasps, ghost masks, disjoint policy columns + separate critic, minibatch, optimiser/KL. A non-viable partner (every episode a 0.1 s drop) hurts as much -> sharing the batch itself breaks learning. Trained policies hold for less time than zero actions; allegro's own log-std stays high (-0.84 vs -1.41 solo). Coordinator hypothesis: batch-global advantage normalisation (and value/input normalisers) rescales each design's signal; untested because it needs a flagged change in the vendored rl_games. Literature: GET-Zero (2024) handles multi-embodiment in-hand rotation by per-embodiment experts distilled into one graph transformer.",
+      "hypothesis": "Shared HORA controller over two viable hands fails (14 variants, ~7.95 GPU-h): allegro in the pair <= 2.1 s holding vs 10.5 s solo at the same env count. Ruled out: env/multi-design path (zero-action holds 17 s / 13 s in the pair), morphology context, per-design reward norm, opposition grasps, ghost masks, disjoint policy columns + separate critic, minibatch, optimiser/KL. A non-viable partner (every episode a 0.1 s drop) hurts as much -> sharing the batch itself breaks learning. Trained policies hold for less time than zero actions; allegro's own log-std stays high (-0.84 vs -1.41 solo). Coordinator hypothesis: batch-global advantage normalisation (and value/input normalisers) rescales each design's signal; untested because it needs a flagged change in the vendored rl_games. Literature: GET-Zero (2024) handles multi-embodiment in-hand rotation by per-embodiment experts distilled into one graph transformer. UPDATE: editing third_party/rl_games (per-design advantage norm) was denied by the permission classifier; not retried, awaiting Martin. Config arms: low initial log-std (-1.75) and value/input normalisers off -> allegro still ~1.6-1.8 s; drops come from mean actions, not exploration noise. Next: per-design subnetworks inside our own policy_network.py to separate network interference from PPO-level coupling.",
       "decision": null,
       "evidence": "isaacsimenvs/inhand_reorient/evolution/README.md 'Shared controller A/B: allegro + founder 174'"
     }
@@ -422,7 +422,7 @@
       "summary": "median elite fitness V3S (0.47-0.50) > V2S (0.24-0.56) > V1 (0.20-0.36); V3S lowest variance; coverage 11-14/30 for all; probes similar except sharpa best under V3S"
     }
   },
-  "gpu_hours_used": 108.7,
+  "gpu_hours_used": 109.9,
   "cluster_jobs": [
     {
       "id": 2364675,
