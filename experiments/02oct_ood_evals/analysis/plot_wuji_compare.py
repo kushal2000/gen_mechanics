@@ -36,9 +36,12 @@ COMPARISONS = {
 
 
 def latest_unified():
-    d = RES / "unified_final"
-    if d.exists() and any(d.iterdir()):
-        return "Unified Multi-Embodiment", "unified_final"
+    """The newest unified checkpoint whose evals are complete: the 20k-epoch fine-tune, else the 10k final,
+    else ep 7827."""
+    for label in ("unified_20k", "unified_final"):
+        d = RES / label
+        if d.exists() and len(list(d.glob("*.json"))) >= len(CONDS):
+            return "Unified Multi-Embodiment", label
     return "Unified Multi-Embodiment", "unified_ep_7827"
 
 
