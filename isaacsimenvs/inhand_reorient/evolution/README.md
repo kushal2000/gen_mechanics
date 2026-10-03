@@ -383,6 +383,35 @@ Populations, 4096 envs, the single-hand agent, HORA:
 Non-viable designs keep the drop reset and still feed PPO (the driver's `--viable-only` excludes them
 before training; a manual population run does not).
 
+Single factors on the grammar allegro (matched grasp generation unless noted):
+
+| Run | Change | Grasps | Result |
+|---|---|---|---|
+| gram_actuator (2532616_4) | HORA's actuator on the grammar joints (3.0 / 0.1, 0.5 N m, 6.28 rad/s, armature 0, friction 0.01) | 4000 in 33 rounds (about 3%) | 0.26-0.34 s TTT at 5-13 min, all drops, work penalty -3.7 per 0.3-s episode (about 30x the baseline's rate): the capsule hand is unstable under these gains, which explains `gram_all` |
+| gram_palmhull (2532773_16) | mount-spanning palm hull | 0 of 61,440 candidates: every one fails the 0.1-m fingertip test | not trainable: the hull pushes a finger (most likely the thumb, mounted below the root axis) away; it needs collision filtering against the first links, or a hull that excludes the thumb base |
+| gram_radius | collider radius 1.2 cm | - | not run (Ada node memory held by other users' CPU jobs; only two of my jobs fit without preemption) |
+| gram_base_2048 (2532776_15) | the baseline at 2048 envs (minibatch 16384) | gram_base's cache | 3.5 / 8.6 / 7.9 / 10.5 s and 0.34 / 0.86 / 0.71 / 0.97 rotations at 10 / 20 / 30 / 35 min |
+| pop2_allegro_174 (2532582_14) | allegro + founder 174, 2048 envs each, one controller | allegro: gram_base's; 174: 289 | allegro 1.0 / 1.4 / 1.3 / 1.4 s and 0.16-0.18 rotations at 5 / 10 / 15 / 20 min; 174 1.5-2.1 s |
+
+Sharing one controller with a single other hand, not the halved env count, is what stops the
+allegro: at 2048 envs it learns alone (8.6 s and 0.86 rotations at 20 min) and not beside founder
+174 (1.4 s and 0.15).
+
+Summary. Against the target (at least half the URDF allegro's TTT and about 1 rotation per episode
+in the same wall time), the grammar-path allegro gets there once its grasp cache starts from HORA's
+pose: 10.9 s and 0.98 rotations at 30 min, where the same-GPU URDF control reached 1.4-4.1 s and
+the 4090 URDF run 15.6 s and 1.64. Of the construction factors, placement is neutral, the HORA
+actuator and the palm hull as built break it, and mass, friction, limits and contact offsets
+already match. A shared controller does not learn across hands yet: two hands at 2048 envs each
+learn neither, while one alone does.
+
+Next, in order:
+1. Track per-design returns or normalise advantages per design, so one hand's returns (HORA's
+   unbounded work penalty differs by orders of magnitude across designs) do not swamp the update.
+2. Find a grasp pose per design by search (the opposing digit matters) instead of `palm_up`.
+3. Rebuild the palm hull with filtering against the first links and an exclusion around the
+   thumb base, then rerun that factor.
+
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
 Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
