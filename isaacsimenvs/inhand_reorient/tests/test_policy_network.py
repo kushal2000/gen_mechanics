@@ -101,7 +101,8 @@ def _build_plain(params, obs, n_act):
     builder = pn.BoundedSigmaA2CBuilder()
     builder.load(params)
     net = builder.build("x", actions_num=n_act, input_shape=(obs.shape[1],), num_seqs=obs.shape[0], value_size=1)
-    states = tuple(s for s in net.get_default_rnn_state())
+    rnn = net.get_default_rnn_state()
+    states = tuple(rnn) if rnn is not None else None
     return net, {"obs": obs, "rnn_states": states, "is_train": False}
 
 
