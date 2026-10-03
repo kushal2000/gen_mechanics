@@ -144,3 +144,76 @@ def test_slot_sign_observation_width_and_default_off():
     assert ar.anyrotate_field_width("hora_slot_sign", 32, 5) == 32
     h = yaml.safe_load((CFG.parent / "task" / "InHandReorient.yaml").read_text())["hora"]
     assert h["ghost_action_mask"] is False
+
+
+def _design_params(k=None, ghost_tail=None):
+    params = _ppo_params(ghost_tail)
+    if k is not None:
+        params["per_design_nets"] = k
+    return params
+
+
+def _design_obs(designs, k, n_body=6, ghost=None):
+    """Body values, then a one-hot of width k (as rl_games' input
+    normalisation leaves it: positive for the env's design, negative
+    elsewhere), then an optional ghost-sign tail."""
+    n = len(designs)
+    onehot = torch.full((n, k), -0.8)
+    onehot[torch.arange(n), torch.tensor(designs)] = 1.3
+    parts = [torch.randn(n, n_body), onehot] + ([ghost] if ghost is not None else [])
+    return torch.cat(parts, dim=-1)
+
+
+def test_per_design_nets_route_each_sample_to_its_designs_network():
+    """per_design_nets K: K independent actor-critics (trunk, mean, log-std,
+    value); each sample uses the one its design one-hot selects."""
+    k, n_act = 3, 4
+    obs = _design_obs([0, 2, 1, 2], k)
+    net, inp = _build_plain(_design_params(k), obs, n_act)
+    with torch.no_grad():
+        for d, sub in enumerate(net.design_subnets()):
+            sub.sigma.fill_(-0.5 - d)
+    mu, logstd, value, _s = net(inp)
+    for i, d in enumerate([0, 2, 1, 2]):
+        mu_d, logstd_d, value_d, _ = net.design_forward(d, inp)
+        assert torch.allclose(mu[i], mu_d[i]) and torch.allclose(value[i], value_d[i])
+        assert torch.allclose(logstd[i], torch.full_like(logstd[i], -0.5 - d))
+    # design 1's samples train only design 1's network
+    (mu[2].sum() + value[2].sum() + logstd[2].sum()).backward()
+    for d, sub in enumerate(net.design_subnets()):
+        own = [p.grad for p in sub.own_parameters() if p.grad is not None and torch.any(p.grad != 0)]
+        assert (len(own) > 0) == (d == 1)
+
+
+def test_per_design_nets_with_ghost_mask_tail():
+    k, n_act = 2, 3
+    ghost = torch.tensor([[1.0, -1.0, 1.0], [-1.0, 1.0, 1.0]])
+    obs = _design_obs([1, 0], k, ghost=ghost)
+    net, inp = _build_plain(_design_params(k, ghost_tail=n_act), obs, n_act)
+    mu, logstd, _v, _s = net(inp)
+    assert torch.all(mu[ghost < 0] == 0) and torch.all(logstd[ghost < 0] == 0)
+    mu_1, _, _, _ = net.design_forward(1, inp)
+    assert torch.allclose(mu[0, ghost[0] > 0], mu_1[0, ghost[0] > 0])
+
+
+def test_per_design_nets_off_keeps_the_stock_parameters():
+    obs = torch.randn(2, 9)
+    stock, _ = _build_plain(_ppo_params(), obs, 3)
+    off, _ = _build_plain(_design_params(None), obs, 3)
+    one, _ = _build_plain(_design_params(1), obs, 3)
+    names = sorted(n for n, _ in stock.named_parameters())
+    assert sorted(n for n, _ in off.named_parameters()) == names
+    assert sorted(n for n, _ in one.named_parameters()) == names
+
+
+def test_design_id_observation_field():
+    from isaacsimenvs.inhand_reorient import anyrotate_profile as ar
+    from isaacsimenvs.inhand_reorient import hora_profile as hp
+
+    assert ar.anyrotate_field_width("hora_design_id_8", 32, 5) == 8
+    oh = hp.design_onehot(torch.tensor([0, 2, 1]), 4)
+    assert oh.tolist() == [[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0]]
+    with pytest.raises(ValueError):
+        hp.design_onehot(torch.tensor([0, 4]), 4)
+    h = yaml.safe_load((CFG.parent / "task" / "InHandReorient.yaml").read_text())["hora"]
+    assert h["design_id_obs"] == 0
