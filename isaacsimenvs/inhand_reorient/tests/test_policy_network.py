@@ -87,3 +87,59 @@ def test_population_config_uses_the_bounded_network():
     doc = yaml.safe_load((CFG / "InHandReorientPopSAPG.yaml").read_text())["params"]
     assert doc["network"]["name"] == pn.NETWORK_NAME
     assert doc["network"]["space"]["continuous"]["logstd_max"] <= 0.5
+
+
+def _ppo_params(ghost_tail=None):
+    params = copy.deepcopy(yaml.safe_load((CFG / "InHandAnyRotatePPO.yaml").read_text())["params"]["network"])
+    params["name"] = pn.NETWORK_NAME
+    if ghost_tail is not None:
+        params["space"]["continuous"]["ghost_mask_tail"] = ghost_tail
+    return params
+
+
+def _build_plain(params, obs, n_act):
+    builder = pn.BoundedSigmaA2CBuilder()
+    builder.load(params)
+    net = builder.build("x", actions_num=n_act, input_shape=(obs.shape[1],), num_seqs=obs.shape[0], value_size=1)
+    states = tuple(s for s in net.get_default_rnn_state())
+    return net, {"obs": obs, "rnn_states": states, "is_train": False}
+
+
+def test_ghost_action_dims_are_held_constant_and_carry_no_gradient():
+    """ghost_mask_tail N: the last N observation values are each action
+    slot's (normalised) sign, +1 real / -1 ghost; a slot reading < 0 gets
+    mean 0 and log-std 0 with no gradient, so a hand's ghost joints add
+    nothing to the PPO ratio or the update of another hand's real joints."""
+    n_act = 4
+    obs = torch.randn(3, 8 + n_act)
+    obs[:, -n_act:] = torch.tensor([[1.0, 1.0, -1.0, -1.0], [1.0, -1.0, 1.0, -1.0], [0.0, 0.0, 0.0, 0.0]])
+    net, inp = _build_plain(_ppo_params(ghost_tail=n_act), obs, n_act)
+    with torch.no_grad():
+        net.sigma.fill_(-0.7)
+    mu, logstd, _v, _s = net(inp)
+    ghost = obs[:, -n_act:] < 0
+    assert torch.all(mu[ghost] == 0.0) and torch.all(logstd[ghost] == 0.0)
+    assert torch.all(logstd[~ghost] == -0.7)
+    (mu[ghost].sum() + logstd[ghost].sum()).backward(retain_graph=True)
+    grads = [p.grad for p in net.parameters() if p.grad is not None]
+    assert all(torch.all(g == 0) for g in grads)
+    # a normalised sign of exactly 0 (the slot is the same for every env) counts as real
+    assert not ghost[2].any()
+
+
+def test_without_ghost_mask_all_dims_are_free():
+    n_act = 3
+    obs = torch.randn(2, 5 + n_act)
+    obs[:, -n_act:] = -1.0
+    net, inp = _build_plain(_ppo_params(), obs, n_act)
+    mu, logstd, _v, _s = net(inp)
+    mu.sum().backward()
+    assert any(p.grad is not None and torch.any(p.grad != 0) for p in net.parameters())
+
+
+def test_slot_sign_observation_width_and_default_off():
+    from isaacsimenvs.inhand_reorient import anyrotate_profile as ar
+
+    assert ar.anyrotate_field_width("hora_slot_sign", 32, 5) == 32
+    h = yaml.safe_load((CFG.parent / "task" / "InHandReorient.yaml").read_text())["hora"]
+    assert h["ghost_action_mask"] is False
