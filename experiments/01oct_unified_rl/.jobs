@@ -2,3 +2,4 @@ multi_uniform 810554
 multi_uniform_c02 842856 (after 810554, to 10000 epochs)
 866192
 multi_uniform_canon_c02 904314 (continues 866192 from its ep-10000 checkpoint, +10000 epochs)
+multi_uniform_canon c03 931540 (+10000 from the 20k checkpoint; chains c04 +10000 automatically -> 40k)
