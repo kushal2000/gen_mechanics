@@ -343,7 +343,7 @@
     {
       "id": "I43",
       "status": "in_progress",
-      "hypothesis": "Populations under HORA: train only on designs with a stable grasp; per-generation grasp search with offspring viability logged as a grammar metric; validate that a shared controller learns rotation across viable hands. UPDATE (eeab80f..07a833b, 417 tests): --viable-only driver works on the cluster (gen 0 50 min incl. 29 min grasp search at 7.7% founder viability for G_V3S, later gens 30 min with 66% offspring viability). No shared controller learned (mixed32, sub8: holding ~0.4 s). Decisive control: the grammar-path allegro ALONE plateaus at ~2 s holding vs 17.8 s for the URDF allegro -> the grammar-path hand construction is the bottleneck (actuator, capsule colliders and radius 0.01 m, no palm colliders (I30), placement). Vibrating grasps now rejected (joint speed > 5 rad/s).",
+      "hypothesis": "Populations under HORA: train only on designs with a stable grasp; per-generation grasp search with offspring viability logged as a grammar metric; validate that a shared controller learns rotation across viable hands. UPDATE (eeab80f..07a833b, 417 tests): --viable-only driver works on the cluster (gen 0 50 min incl. 29 min grasp search at 7.7% founder viability for G_V3S, later gens 30 min with 66% offspring viability). No shared controller learned (mixed32, sub8: holding ~0.4 s). Decisive control: the grammar-path allegro ALONE plateaus at ~2 s holding vs 17.8 s for the URDF allegro -> the grammar-path hand construction is the bottleneck (actuator, capsule colliders and radius 0.01 m, no palm colliders (I30), placement). Vibrating grasps now rejected (joint speed > 5 rad/s). UPDATE (5f89f06..cad1d6e, 429 tests, ~7.65 GPU-h on ada6000-shared): the grammar-path allegro learns alone when its grasp cache uses HORA's canonical pose (10.9 s holding, 0.98 rotations/episode at 30 min); construction factors were roughly neutral (HORA actuator vibrates on capsules; the palm hull as built blocks the thumb). Sharing is the blocker: allegro + founder 174 under one controller both stall at ~1-2 s. Next: morphology context in observations (the HORA port dropped the per-joint descriptors), per-design reward/advantage normalisation, per-design canonical grasp search.",
       "decision": null,
       "evidence": "outputs/isaaclab_repose/pop_hora_gc*"
     }
@@ -415,7 +415,7 @@
       "summary": "median elite fitness V3S (0.47-0.50) > V2S (0.24-0.56) > V1 (0.20-0.36); V3S lowest variance; coverage 11-14/30 for all; probes similar except sharpa best under V3S"
     }
   },
-  "gpu_hours_used": 93.0,
+  "gpu_hours_used": 100.7,
   "cluster_jobs": [
     {
       "id": 2364675,

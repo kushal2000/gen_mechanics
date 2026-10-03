@@ -356,3 +356,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - --viable-only implemented and run on the cluster (jobs 2529872-2530462, ~5.3 GPU-h; code snapshots gm_<sha>). Founder viability under HORA physics: G_V3S 8.6%, G_V1 3.3%; offspring of viable parents 66%.
 - No shared controller learned (mixed32 and sub8 hold ~0.4 s). Control: the grammar-path allegro alone plateaus at ~2 s holding vs 17.8 s for the URDF allegro, so the grammar-path hand construction, not controller sharing, is the bottleneck. Next: A/B the construction factors on the projected allegro.
+
+## Grammar-path allegro learns; sharing is the blocker (2026-10-02 ~20:30)
+
+- With grasps seeded from HORA's canonical pose (opposing thumb), the grammar-path allegro alone reaches 10.9 s holding / 0.98 rotations per episode at 30 min (A6000-class GPU), so hand construction was not the main problem; the initial grasp pose was.
+- One controller over two viable hands (allegro + founder 174) stalls both at ~1-2 s. Next: give the policy morphology context (per-slot joint geometry, masks, fingertip FK, hand scalars), normalise rewards per design, and search per-design canonical grasps; scale 2 -> 4 -> 8 hands, then a viable-only driver smoke.
+- Cluster: ~100.7 GPU-h in total.
