@@ -536,6 +536,11 @@ class HoraCfg:
     frame at q = 0, link length, limits and the canonical grasp pose; per
     fingertip its palm-frame position (current q) and mask; digit count,
     hand scale, capsule radius."""
+    ghost_action_mask: bool = False
+    """Append each action slot's sign (+1 real joint, -1 ghost) as the last
+    observation values, for ``policy_network``'s ``ghost_mask_tail`` (the
+    agent must use ``network.name: inhand_actor_critic`` with
+    ``space.continuous.ghost_mask_tail`` = the joint count)."""
     per_design_reward_norm: bool = False
     """Divide each env's reward by its design's running reward RMS
     (``hora_profile.DesignRewardScale``)."""

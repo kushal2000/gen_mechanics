@@ -734,6 +734,11 @@ def _hora_observations(env) -> dict[str, torch.Tensor]:
         J = env.robot.data.joint_pos.shape[1]
         parts += [static[:, : 11 * J], torch.cat([tips, tip_mask.unsqueeze(-1)], dim=-1).reshape(n, 4 * k),
                   static[:, 11 * J:]]
+    if h.ghost_action_mask:  # +1 real joint / -1 ghost slot, last (policy_network.ghost_mask_tail)
+        mask = _joint_valid_mask(env)
+        J = env.robot.data.joint_pos.shape[1]
+        sign = torch.ones(n, J, device=env.device) if mask is None else mask.float() * 2.0 - 1.0
+        parts.append(sign)
     obs = torch.cat(parts, dim=-1)
     return {"policy": obs, "critic": obs}
 

@@ -350,6 +350,7 @@ hora:
   drop_dz: 0.015                    # adapt.: HORA's absolute reset_height_threshold, relative here
   z_axis_frame: world_up
   morph_obs: false                  # population: morphology context in actor and critic observations
+  ghost_action_mask: false          # population: per-slot sign (+1 real / -1 ghost) last, for ghost_mask_tail
   per_design_reward_norm: false     # population: reward / running per-design reward RMS
   reward_norm_decay: 0.999
   reward_norm_floor: 0.05

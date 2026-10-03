@@ -82,6 +82,8 @@ def apply_anyrotate_to_cfg(cfg) -> None:
     fields = tuple(ANYROTATE_OBS_FIELDS) + tuple(ANYROTATE_PRIV_FIELDS)
     if cfg.task_profile == "hora":
         fields = ("hora_proprio_hist", "hora_priv") + (("hora_morph",) if cfg.hora.morph_obs else ())
+        if cfg.hora.ghost_action_mask:  # last: the network reads the trailing slot signs
+            fields = fields + ("hora_slot_sign",)
     cfg.obs.obs_list = fields
     cfg.obs.state_list = fields
 
@@ -103,7 +105,7 @@ ANYROTATE_PRIV_FIELDS = (
     "object_pos_palm", "object_quat_palm", "object_ang_vel_palm", "object_dims", "object_com",
     "object_mass", "gravity_palm", "goal_pos_palm", "goal_quat_palm",
 )
-_PER_JOINT = {"joint_pos": 1, "prev_actions": 1, "target_joint_pos": 1, "hora_proprio_hist": 6}
+_PER_JOINT = {"joint_pos": 1, "prev_actions": 1, "target_joint_pos": 1, "hora_proprio_hist": 6, "hora_slot_sign": 1}
 _PER_TIP = {"fingertip_pos_palm": 3, "fingertip_quat_palm": 4, "tip_contact": 1, "tip_contact_pose": 2,
             "tip_contact_force": 1}
 _FIXED = {"rotation_axis": 3, "object_pos_palm": 3, "object_quat_palm": 4, "object_ang_vel_palm": 3,

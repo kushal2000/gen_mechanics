@@ -18,6 +18,17 @@ clamping only the forward output) keeps its gradient alive inside the range:
 a hard clamp on the output alone would leave a parameter that overshot the
 bound with zero gradient, stuck there.
 
+A third optional key, ``ghost_mask_tail: N``, reads the last N observation
+values as each action slot's sign (+1 a real joint of this env's hand, -1 a
+ghost slot; ``hora.ghost_action_mask`` appends them) and holds every slot
+whose (normalised) sign is < 0 at mean 0 and log-std 0 with no gradient.
+With several hands on one controller, a slot that is real for one hand and
+a ghost for another otherwise feeds the second hand's samples into the
+first hand's update as pure noise, and perturbs the PPO ratio; with one
+hand, ghost slots are ghosts for every env and nothing changes. A slot that
+reads exactly 0 after rl_games' input normalisation is the same for every
+env and counts as real.
+
 Only the ``nn.Parameter`` log-std of ``fixed_sigma: fixed | coef_cond`` is
 bounded; a state-dependent sigma head is left alone. Checkpoints are
 interchangeable with the stock ``actor_critic`` (same parameters, same
@@ -45,6 +56,7 @@ class BoundedSigmaA2CBuilder(A2CBuilder):
             hi = continuous.get("logstd_max")
             self.logstd_min = None if lo is None else float(lo)
             self.logstd_max = None if hi is None else float(hi)
+            self.ghost_mask_tail = int(continuous.get("ghost_mask_tail") or 0)
 
         def project_sigma(self) -> None:
             sigma = getattr(self, "sigma", None)
@@ -57,7 +69,14 @@ class BoundedSigmaA2CBuilder(A2CBuilder):
 
         def forward(self, obs_dict):
             self.project_sigma()
-            return super().forward(obs_dict)
+            out = super().forward(obs_dict)
+            n = self.ghost_mask_tail
+            if n <= 0 or not self.is_continuous or len(out) != 4:
+                return out
+            mu, sigma, value, states = out
+            ghost = obs_dict["obs"][:, -n:] < 0
+            zero = torch.zeros_like(mu)
+            return torch.where(ghost, zero, mu), torch.where(ghost, zero, sigma), value, states
 
     def build(self, name, **kwargs):
         return BoundedSigmaA2CBuilder.Network(self.params, **kwargs)
