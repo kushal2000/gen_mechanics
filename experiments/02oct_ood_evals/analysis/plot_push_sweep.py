@@ -40,6 +40,8 @@ AXES = {    # name: (result prefix, values, x label, title)
 COMPARISONS = {
     "vs_wuji_ep1600": ("Wuji Only", "wuji_only_ep_1600"),
     "vs_wuji_ep3600": ("Wuji Only", "wuji_only_ep_3600"),
+    # Matched compute: both policies after ~10k epochs of 12288 envs (Wuji-only 908714 ep 6400 = 10162 total).
+    "vs_wuji_10k": ("Wuji Only", "wuji_only_10k", "unified_final"),
 }
 
 
@@ -60,7 +62,8 @@ def gpe(label, axis, v):
 
 def plot(comp, name, relative):
     axis, xs, xlabel, title = AXES[name]
-    pols = [(*latest_unified(), ps.COLORS["hero"], "o"), (*COMPARISONS[comp], ps.COLORS["foil"], "s")]
+    uni = ("Unified Multi-Embodiment", COMPARISONS[comp][2]) if len(COMPARISONS[comp]) > 2 else latest_unified()
+    pols = [(*uni, ps.COLORS["hero"], "o"), (*COMPARISONS[comp][:2], ps.COLORS["foil"], "s")]
     fig, ax = plt.subplots(figsize=(ps.COLUMN_WIDTH, 2.4))
     handles = []
     for txt, label, color, marker in pols:
@@ -106,7 +109,7 @@ def main():
         for name in AXES:
             for rel in (False, True):
                 plot(comp, name, rel)
-    for txt, label in [latest_unified(), *COMPARISONS.values()]:
+    for txt, label, *_ in [latest_unified(), *COMPARISONS.values()]:
         print(f"  {txt:30s} scale: " + " ".join(f"{gpe(label, 'scale', v):.1f}" for v in SCALES)
               + " | prob: " + " ".join(f"{gpe(label, 'prob', v):.1f}" for v in PROBS))
 

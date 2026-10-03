@@ -14,3 +14,4 @@ cancelled wuji_only_ep_3600 push sweeps 900601 900605 (user: only Wuji ep 1600 v
 push sweeps CAPPED at 50 goals/ep, 240 s/point (uncapped 900599 900600 900602 900604 900684 900685 cancelled): 900833 900834 900835 900836 900837 900838 900839 900840
 Wuji ID/OOD CAPPED at 50 goals/ep, 240 s/condition: 900964 900967 900968 900969
 after unified fine-tune 904314 (20k epochs total): push sweeps + capped Wuji ID/OOD: 925637 925638 925639
+Wuji-only at ~10k epochs (908714 ep 6400 = 10162 total): push sweeps + capped ID/OOD: 925660 925661 925662

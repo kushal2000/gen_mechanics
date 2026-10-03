@@ -32,6 +32,8 @@ CONDS = [("nominal", "Nominal"), ("cube40", "40 mm"), ("cube55", "55 mm"), ("cub
 COMPARISONS = {
     "vs_wuji_ep1600": ("Wuji Only", "wuji_only_ep_1600"),
     "vs_wuji_ep3600": ("Wuji Only", "wuji_only_ep_3600"),
+    # Matched compute: both policies after ~10k epochs of 12288 envs (Wuji-only 908714 ep 6400 = 10162 total).
+    "vs_wuji_10k": ("Wuji Only", "wuji_only_10k", "unified_final"),
 }
 
 
@@ -54,7 +56,8 @@ def load(label):
 
 
 def plot(comp, relative):
-    pols = [(*latest_unified(), ps.COLORS["hero"]), (*COMPARISONS[comp], ps.COLORS["foil"])]
+    uni = ("Unified Multi-Embodiment", COMPARISONS[comp][2]) if len(COMPARISONS[comp]) > 2 else latest_unified()
+    pols = [(*uni, ps.COLORS["hero"]), (*COMPARISONS[comp][:2], ps.COLORS["foil"])]
     n, k = len(CONDS), len(pols)
     x = np.arange(n) + np.where(np.arange(n) > 0, 0.5, 0.0)       # a gap after the in-distribution bar
     w = 0.8 / k
@@ -96,7 +99,7 @@ def main():
     for comp in COMPARISONS:
         for rel in (False, True):
             plot(comp, rel)
-    for txt, label in [latest_unified(), *COMPARISONS.values()]:
+    for txt, label, *_ in [latest_unified(), *COMPARISONS.values()]:
         v = load(label)
         print(f"  {txt:30s} " + " ".join(f"{c} {v[c]:.1f}" for c, _ in CONDS))
 
