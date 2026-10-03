@@ -368,3 +368,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - 14 variants on allegro + founder 174 (~7.95 GPU-h): allegro <= 2.1 s holding in every pair vs 10.5 s solo. Zero-action control holds 17 s / 13 s in the pair, so the env is fine. Morphology context, per-design reward norm, opposition grasps, ghost masks, fully disjoint policy columns with a separate critic: no effect. A non-viable partner hurts as much, so sharing the batch itself breaks learning; allegro's exploration noise stays high.
 - Untested hypothesis: batch-global advantage/value/input normalisation. Options: per-design advantage normalisation (vendored rl_games change), per-design solo-RL fitness for the grammar comparison, or GET-Zero-style experts + distillation.
 - Cluster total ~108.6 GPU-h.
+
+## Grammar viability under HORA physics (2026-10-03)
+
+- Founders sampled until 16 hold a stable grasp under HORA physics (opposition-seeded grasp search, CPU pre-filter, grasp search): G_V1 4.3% (18/420), G_V2S 5.2% (16/309), G_V3S 12.4% (32/258). The structured grammar is ~2.9x more likely to produce a hand that can hold the object. Controls allegro_right and sharpa_left_on_iiwa14 both viable.
+- Next: train each design alone (50 runs: 16 per grammar + 2 controls, ~25 min each) and compare rotation and holding performance.
