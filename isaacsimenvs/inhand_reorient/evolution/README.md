@@ -571,6 +571,40 @@ across joints and read each joint's own morphology (W. Huang et al., ICML 2020; 
 2022 MetaMorph; A. Patel and S. Song, 2024 GET-Zero), gradient surgery between hands (T. Yu et al.,
 NeurIPS 2020 PCGrad), or one teacher per hand distilled into one student.
 
+## Joint-token transformer under HORA (`hora.token_obs`, 2026-10-04)
+
+The team's per-joint token method (`coevolution/networks/joint_transformer.py`,
+`pose_reaching_6d/obs_utils/layout.py`) on the in-hand envelope, all off by default:
+`env.hora.token_obs=true` with `--agent rl_games_hora_token_ppo_cfg_entry_point`
+(`InHandHoraTokenPPO.yaml`: HORA's PPO, network `inhand_joint_transformer`, d64, 4 layers, 1 head,
+initial learning rate 5e-4, `normalize_input: False`).
+
+Token per articulation column of the 32-slot envelope (`token_layout.py`, 33 values; no arm):
+
+| Field | Width | Content |
+|---|---|---|
+| `q_hist` | 3 | joint position unscaled to [-1, 1] by its limits, with HORA's observation noise, at t, t-1, t-2 |
+| `target_hist` | 3 | PD target (rad) at t, t-1, t-2 |
+| `link_box` | 12 | the slot's link as 4 ordered box points (`grammar_envelope.token_boxes`), palm frame, current q (m) |
+| `limits` | 2 | lower and upper joint limit (rad) |
+| `enabled` | 1 | 1 real joint, 0 ghost slot; read raw as the attention mask |
+| `object_kp_rel` | 12 | object origin and +x, +y, +z keypoints (2 cm) relative to the link origin, palm frame (m) |
+
+A ghost token is all zeros. Global token (12): HORA's 9 privileged values (object position in the
+palm frame, scale, mass, friction, centre of mass) and 3 hand scalars (digit count, hand scale,
+capsule radius). `hora.design_id_obs: K` appends a design one-hot that the network uses only to
+pick per-design statistics. Fingertip contact is not included: the population scene has no
+contact sensors.
+
+Network (`token_policy.py`, a subclass of `JointTransformerNet`): the mask is the raw `enabled`
+column (rl_games' input normaliser is off, so nothing can push it below 0.5); token features are
+normalised per feature over valid tokens only (`MaskedRunningNorm`), the global vector by a running
+norm pooled or per design (`per_design_global_norm`, `GroupRunningNorm`); ghost tokens are masked
+from attention keys and pooling, and their actions are mean 0, log-std 0 with no gradient. Tests:
+`tests/test_token_policy.py` (layout, mask from the raw column under large inputs, ghost tokens
+change no valid output, valid-only statistics, per-design statistics, batch independence, token
+permutation equivariance).
+
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
 Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
