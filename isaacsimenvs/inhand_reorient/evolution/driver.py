@@ -112,10 +112,15 @@ SAPG_AGENT_ENTRY_POINTS: Tuple[str, ...] = (
     "rl_games_sapg_cfg_entry_point", "rl_games_sapg_pop_cfg_entry_point")
 REPOSE_POP_AGENT_ENTRY_POINT = "rl_games_repose_pop_ppo_cfg_entry_point"  # InHandReposeIsaacLabPopPPO.yaml
 ANYROTATE_POP_AGENT_ENTRY_POINT = "rl_games_anyrotate_pop_ppo_cfg_entry_point"  # InHandAnyRotatePopPPO.yaml
+# The default policy for task_profile hora: the team's per-joint token
+# transformer (InHandHoraTokenPPO.yaml, token_policy.py) with env.hora.token_obs.
+# The MLP configs stay selectable with --agent-entry-point to reproduce past runs.
+HORA_TOKEN_AGENT_ENTRY_POINT = "rl_games_hora_token_ppo_cfg_entry_point"
 # Agents whose YAML rolls out a different horizon than the SAPG configs' 16.
 AGENT_HORIZONS: Dict[str, int] = {
     "rl_games_anyrotate_ppo_cfg_entry_point": 8,  # AnyRotate Table 5: rollout 8 steps
     ANYROTATE_POP_AGENT_ENTRY_POINT: 8,
+    HORA_TOKEN_AGENT_ENTRY_POINT: 8,
 }
 PPO_MINIBATCH_CAP = 32768  # InHandReposeIsaacLabPPO.yaml's (NVIDIA's) `minibatch_size`
 DEFAULT_PROBES: Tuple[str, ...] = ("allegro_right", "dclaw", "sharpa_left_on_iiwa14", "leap_right")
@@ -385,6 +390,8 @@ def build_train_cmd(
     ]
     if checkpoint is not None:
         cmd += ["--checkpoint", str(checkpoint), "--checkpoint_load_mode", "weights"]
+    if agent_entry_point == HORA_TOKEN_AGENT_ENTRY_POINT:
+        cmd += ["env.hora.token_obs=true"]
     cmd += [
         f"env.task_profile={task_profile}",
         f"env.assets.hand_population={population_path}",
@@ -920,8 +927,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                          "2026-10-01 used), anyrotate (AnyRotate, CoRL 2024; pair it with --agent-entry-point "
                          f"{ANYROTATE_POP_AGENT_ENTRY_POINT}) or isaaclab_repose (NVIDIA's "
                          f"Isaac-Repose-Cube-Allegro spec; --agent-entry-point {REPOSE_POP_AGENT_ENTRY_POINT})")
-    ap.add_argument("--agent-entry-point", default=AGENT_ENTRY_POINT,
-                    help="gym-registered rl_games config key for train.py's --agent (e.g. "
+    ap.add_argument("--agent-entry-point", default=None,
+                    help="gym-registered rl_games config key for train.py's --agent (default: "
+                         f"{HORA_TOKEN_AGENT_ENTRY_POINT}, the joint-token transformer, for --task-profile hora; "
+                         f"{AGENT_ENTRY_POINT} otherwise; e.g. "
                          "rl_games_sapg_pop_cfg_entry_point for InHandReorientPopSAPG.yaml, "
                          f"{REPOSE_POP_AGENT_ENTRY_POINT} for InHandReposeIsaacLabPopPPO.yaml)")
     ap.add_argument("--train-override", action="append", default=[], metavar="KEY=VALUE",
@@ -959,6 +968,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                     help="grasp_max_joint_speed of a search (rad/s; -1 off): a grasp whose hand vibrates is not "
                          "stable (designs with joints at the 10 rad/s limit dominated population training)")
     args = ap.parse_args(argv)
+    if args.agent_entry_point is None:
+        args.agent_entry_point = HORA_TOKEN_AGENT_ENTRY_POINT if args.task_profile == "hora" else AGENT_ENTRY_POINT
     if args.grasp_cache and args.task_profile not in ("anyrotate", "hora"):
         ap.error("--grasp-cache needs --task-profile anyrotate or hora")
     if args.viable_only and not args.grasp_cache:
