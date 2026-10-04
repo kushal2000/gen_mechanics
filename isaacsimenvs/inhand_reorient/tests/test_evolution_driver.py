@@ -566,3 +566,29 @@ def test_hora_profile_is_accepted_with_the_grasp_cache():
         hydra_run_dir=Path("/tmp/r"), checkpoint=None, resume_success_tolerance=None, horizon_length=16,
         agent_entry_point=drv.ANYROTATE_POP_AGENT_ENTRY_POINT, task_profile="hora")
     assert "env.task_profile=hora" in cmd
+
+
+_ARGS = ["--variant", "V1", "--generations", "1", "--run-dir", "/tmp/x"]
+
+
+def test_hora_populations_default_to_the_joint_token_transformer():
+    """task_profile hora: the per-joint token transformer is the default
+    policy (agent rl_games_hora_token_ppo_cfg_entry_point, env.hora.token_obs);
+    an explicit --agent-entry-point still selects the old configs."""
+    args = drv.parse_args(_ARGS + ["--task-profile", "hora"])
+    assert args.agent_entry_point == drv.HORA_TOKEN_AGENT_ENTRY_POINT == "rl_games_hora_token_ppo_cfg_entry_point"
+    old = drv.parse_args(_ARGS + ["--task-profile", "hora", "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT])
+    assert old.agent_entry_point == drv.ANYROTATE_POP_AGENT_ENTRY_POINT
+    legacy = drv.parse_args(_ARGS)
+    assert legacy.agent_entry_point == drv.AGENT_ENTRY_POINT
+    cmd = drv.build_train_cmd(
+        train_python="python3", population_path=Path("/tmp/pop.json"), num_envs=4096, max_epochs=30,
+        hydra_run_dir=Path("/tmp/run"), checkpoint=None, resume_success_tolerance=None, horizon_length=16,
+        agent_entry_point=drv.HORA_TOKEN_AGENT_ENTRY_POINT, task_profile="hora")
+    assert "env.hora.token_obs=true" in cmd
+    assert "agent.params.config.minibatch_size=32768" in cmd  # horizon 8 (HORA's PPO)
+    mlp = drv.build_train_cmd(
+        train_python="python3", population_path=Path("/tmp/pop.json"), num_envs=4096, max_epochs=30,
+        hydra_run_dir=Path("/tmp/run"), checkpoint=None, resume_success_tolerance=None, horizon_length=16,
+        agent_entry_point=drv.ANYROTATE_POP_AGENT_ENTRY_POINT, task_profile="hora")
+    assert "env.hora.token_obs=true" not in mlp
