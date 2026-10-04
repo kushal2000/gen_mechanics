@@ -9,3 +9,4 @@ xhand canon train 871448
 gen_sharpa canon train 871449
 wuji2 canon c02 908714: continues 871447 from its ep-3762 checkpoint for 16250 epochs (total ~20000, matching the unified run's 10000 + 10000)
 wuji2 canon c03 931541 (after 908714 reaches ~20k; +10000, chains c04 +10000 -> ~40k)
+wuji2 canon: c02 908714 TIMED OUT at 15862 total epochs (ep 12100 of the link); c03 931541 cancelled (dependency never satisfiable). New chain 951172: 3 links x 8050 from 15862 -> ~40000

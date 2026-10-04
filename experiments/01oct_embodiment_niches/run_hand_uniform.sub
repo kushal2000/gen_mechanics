@@ -37,4 +37,4 @@ run() {   # run <condition> <seconds> <out name>
 for c in nominal cube40 cube55 cube65 light heavy slippery push push_hard; do run $c 60 $c; done
 # MAX_GOALS (e.g. 50, as training) caps episodes so results carry goals_per_episode; EVAL_SECONDS overrides the
 # 60 s window (a capped episode needs ~50 goals' time to finish). The 5-minute run is only for uncapped sets.
-[ -z "${MAX_GOALS:-}" ] && run nominal 300 nominal_5min
+if [ -z "${MAX_GOALS:-}" ]; then run nominal 300 nominal_5min; fi
