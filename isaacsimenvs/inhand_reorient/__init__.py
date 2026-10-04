@@ -37,6 +37,7 @@ gym.register(
         # the I41 log-std bound for population training.
         "rl_games_anyrotate_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandAnyRotatePPO.yaml"),
         "rl_games_anyrotate_pop_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandAnyRotatePopPPO.yaml"),
+        "rl_games_hora_token_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandHoraTokenPPO.yaml"),
         "rl_games_repose_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPPO.yaml"),
         "rl_games_repose_pop_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPopPPO.yaml"),
     },
@@ -47,6 +48,7 @@ gym.register(
 # CPU tool environment without it simply skips the registration.
 try:
     from . import policy_network  # noqa: F401
+    from . import token_policy  # noqa: F401  (`inhand_joint_transformer`)
 except ModuleNotFoundError as _exc:  # pragma: no cover - depends on the environment
     if _exc.name is None or not _exc.name.startswith("rl_games"):
         raise

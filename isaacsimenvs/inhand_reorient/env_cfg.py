@@ -546,6 +546,11 @@ class HoraCfg:
     (``hora_profile.DesignRewardScale``)."""
     reward_norm_decay: float = 0.999
     reward_norm_floor: float = 0.05
+    token_obs: bool = False
+    """Population path: the per-joint token observation of the team's
+    joint-token transformer (``token_layout.py``; agent
+    ``rl_games_hora_token_ppo_cfg_entry_point``) instead of HORA's flat
+    history and privileged values."""
     design_id_obs: int = 0
     """Population path: append a one-hot of each env's design index, this
     wide (>= the population size; 0 = off), before the slot signs. Read by

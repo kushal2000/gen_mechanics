@@ -387,14 +387,17 @@ def _setup_hora_sharing(env) -> None:
                          f"({n_designs} designs)")
     env._hora_morph_static = None
     env._hora_pol_of_phys = env._hora_phys_of_pol = None
-    if (h.morph_obs or h.disjoint_slots) and tables is None:
-        raise NotImplementedError("hora.morph_obs / disjoint_slots need a population (env.assets.hand_population)")
+    if (h.morph_obs or h.disjoint_slots or h.token_obs) and tables is None:
+        raise NotImplementedError("hora.morph_obs / disjoint_slots / token_obs need a population "
+                                  "(env.assets.hand_population)")
     if tables is None:
         return
     import numpy as np
 
     perm = env.scene_record.get("slot_of_phys_col")
     perm_np = perm.cpu().numpy() if perm is not None else np.arange(32)
+    if h.token_obs:
+        _setup_hora_tokens(env, tables, perm_np)
     if h.disjoint_slots:
         pol = torch.as_tensor(hp.disjoint_slot_map(np.asarray(tables.joint_valid, dtype=bool)[:, perm_np]),
                               dtype=torch.long, device=env.device)
@@ -426,6 +429,65 @@ def _setup_hora_sharing(env) -> None:
                             static[:, 11 * J:]], dim=-1)
     env._hora_morph_static = static
     print(f"[hora] morphology observation: {static.shape[1]} static values per design + 4 per fingertip", flush=True)
+
+
+def _setup_hora_tokens(env, tables, perm_np) -> None:
+    """``hora.token_obs``: each articulation column's child body, its link
+    box in that body's frame (``grammar_envelope.token_boxes``), and the
+    hand scalars, per env."""
+    import numpy as np
+
+    from . import token_layout as tl
+
+    names = list(env.robot.data.body_names)
+    env._tok_body_ids = torch.tensor([names.index(tl.slot_body_name(int(s))) for s in perm_np],
+                                     dtype=torch.long, device=env.device)
+    boxes = np.asarray(tables.joint_link_boxes, dtype=np.float32)[:, perm_np]  # (D, J, 4, 3)
+    idx = _design_idx(env)
+    env._tok_boxes = torch.as_tensor(boxes, device=env.device)[idx]
+    hand = np.array([[sum(1 for x in d.finger_digit_id if x is not None), float(tables.hand_scale[i]),
+                      float(d.capsule_radius_m)] for i, d in enumerate(tables.designs)], dtype=np.float32)
+    env._tok_hand = torch.as_tensor(hand, device=env.device)[idx]
+    print(f"[hora] token observation: {len(perm_np)} joint tokens x {tl.TOKEN_DIM} + global {tl.GLOBAL_DIM}",
+          flush=True)
+
+
+def _hora_token_observations(env, priv: torch.Tensor) -> dict[str, torch.Tensor]:
+    """``token_layout``: per articulation column [q (t, t-1, t-2), target
+    (t, t-1, t-2), link box in the palm frame, limits, enabled, object
+    keypoints relative to the link], ghost tokens zero; then the global
+    token [HORA's privileged values, hand scalars] and the optional design
+    one-hot."""
+    from . import token_layout as tl
+
+    h = env.cfg.hora
+    n = env.num_envs
+    J = env.robot.data.joint_pos.shape[1]
+    hist = env._hora_hist  # (n, L, 2J), oldest first
+    q_hist = hist[:, :, :J].flip(1).transpose(1, 2)
+    t_hist = hist[:, :, J:].flip(1).transpose(1, 2)
+    data = env.robot.data
+    palm_pos, palm_q = data.body_pos_w[:, env.palm_body_idx], data.body_quat_w[:, env.palm_body_idx]
+    bpos, bq = data.body_pos_w[:, env._tok_body_ids], data.body_quat_w[:, env._tok_body_ids]
+    palm_q_j = palm_q.unsqueeze(1).expand(n, J, 4)
+    body_palm = rp.quat_apply_inverse(palm_q_j, bpos - palm_pos.unsqueeze(1))  # (n, J, 3)
+    bq_palm = rp.quat_mul(rp.quat_conjugate(palm_q_j.reshape(-1, 4)), bq.reshape(-1, 4)).view(n, J, 4)
+    box = body_palm.unsqueeze(2) + rp.quat_apply(bq_palm.unsqueeze(2).expand(n, J, 4, 4), env._tok_boxes)
+    lower, upper = _limits(env)
+    mask = _joint_valid_mask(env)
+    if mask is None:
+        mask = torch.ones(n, J, dtype=torch.bool, device=env.device)
+    off = torch.cat([torch.zeros(1, 3, device=env.device), env._ar_offsets[:3]], dim=0)  # (4, 3)
+    kp = env._obj_pos_palm.unsqueeze(1) + rp.quat_apply(env._obj_quat_palm.unsqueeze(1).expand(n, 4, 4),
+                                                        off.unsqueeze(0).expand(n, 4, 3))
+    rel = kp.unsqueeze(1) - body_palm.unsqueeze(2)  # (n, J, 4, 3)
+    tokens = tl.assemble(q_hist, t_hist, box.reshape(n, J, 12), torch.stack([lower, upper], dim=-1), mask,
+                         rel.reshape(n, J, 3 * tl.NUM_KEYPOINTS))
+    parts = [tokens, priv, env._tok_hand]
+    if int(h.design_id_obs) > 0:
+        parts.append(hp.design_onehot(_design_idx(env), int(h.design_id_obs)))
+    obs = torch.cat(parts, dim=-1)
+    return {"policy": obs, "critic": obs}
 
 
 def _hora_dones(env, nan_guard):
@@ -755,6 +817,8 @@ def _hora_observations(env) -> dict[str, torch.Tensor]:
     priv = torch.cat([
         env._obj_pos_palm, env._ar_object_dims[:, :1], env._ar_object_mass.unsqueeze(-1),
         torch.full((n, 1), float(a.static_friction), device=env.device), env._ar_object_com], dim=-1)
+    if h.token_obs:
+        return _hora_token_observations(env, priv)
     parts = [env._hora_hist.reshape(n, -1), priv]
     if env._hora_morph_static is not None:
         k = len(env.fingertip_body_idx)
