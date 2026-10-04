@@ -43,7 +43,8 @@
     "GPU budget (Martin, 2026-10-01): may exceed 200 GPU-h; do not hog -- match the lab's usage: 4 GPUs continuously on main (SLURM cap) plus resumable runs on the preemptible free-cycles tier as a throttled array (<= 8 in flight); avoid the outlier pattern of dozens of GPUs.",
     "Task spec (Martin, 2026-10-01): use a recent established in-hand rotation task, not our own variant and not the 2021 repose-cube benchmark. Chosen: AnyRotate (Yang et al., CoRL 2024, arXiv 2405.07391): multi-axis rotation about a commanded axis with rolling goals, keypoint + rotation + goal + contact + stability rewards, 20 Hz, 30 s episodes, PPO (rl_games, 8192 envs). Ported from the paper (no code released), palm-up stationary hand, variable hands padded/masked. Optional: NVIDIA Dexsuite (Isaac Lab 2.3, 2025) ADR gravity curriculum behind a flag. Web search budget for this session is exhausted; a 2025-2026 survey needs Martin to raise CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION.",
     "Task (2026-10-02): task_profile hora -- HORA (Qi et al., CoRL 2022) ported from its released code (z-axis rotation reward clip(w.k, +-0.5) with linvel/pose/torque/work penalties, 1.5 cm fall or 20 s episodes, 20 Hz delta targets a/24, 3-frame proprio history + privileged obs, HORA PPO) plus HORA-style grasp cache. allegro reaches 2.14 rotations per 20 s episode (0.75 rad/s) in 60 min, about HORA's sim level. AnyRotate kept as a faithful port but its lambda_rew curriculum prevents learning here.",
-    "Compute location (Martin, 2026-10-02): run all GPU work on the CSAIL cluster; keep the local 4090 free for Martin's other work (CPU-only tests locally are fine). Jobs run from immutable per-commit code snapshots synced to /data/pulkitag/users/mpeticco/code/gm_<sha> with PYTHONPATH shadowing the shared venv's editable install; <= 4 GPUs on main."
+    "Compute location (Martin, 2026-10-02): run all GPU work on the CSAIL cluster; keep the local 4090 free for Martin's other work (CPU-only tests locally are fine). Jobs run from immutable per-commit code snapshots synced to /data/pulkitag/users/mpeticco/code/gm_<sha> with PYTHONPATH shadowing the shared venv's editable install; <= 4 GPUs on main.",
+    "Policy architecture (Martin, 2026-10-04): every multi-hand policy (shared controller, evolution populations) uses the team's per-joint token transformer (coevolution/networks/joint_transformer.py layout); padded-MLP multi-hand runs are dropped. Earlier MLP-based population/shared-controller results (pilots 1-3, I41-I44) are historical references only."
   ],
   "issues": [
     {
@@ -427,6 +428,9 @@
       "status": "done (legacy task spec)",
       "report": "project-notes/grammar/experiments/pilot3/README.md",
       "summary": "median elite fitness V3S (0.47-0.50) > V2S (0.24-0.56) > V1 (0.20-0.36); V3S lowest variance; coverage 11-14/30 for all; probes similar except sharpa best under V3S"
+    },
+    "grammar_solo": {
+      "status": "stopped: viability phase done (V1 4.3%, V2S 5.2%, V3S 12.4% under HORA physics); the per-design MLP training array 2535511 failed at start and is not rerun (MLP policy dropped)"
     }
   },
   "gpu_hours_used": 114.9,

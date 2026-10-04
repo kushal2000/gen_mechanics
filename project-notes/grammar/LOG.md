@@ -378,3 +378,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Per-design networks alone: no change. Per-design input normalisation alone: no change. Both together: allegro in the pair reaches its solo level (14.2 s holding, 1.41 rotations at 30 min). The pooled input normaliser had compressed allegro's joint inputs 2-5x.
 - Remaining coupling is PPO's batch statistics: the partner (founder 174) slips 2.0 -> 1.0 s as allegro improves. Testing per-design advantage normalisation needs the rl_games edit the permission classifier blocked; awaiting Martin.
+
+## Policy architecture: joint-token transformer only (2026-10-04)
+
+- Martin: multi-hand work must use the team's per-joint token transformer; all in-hand population and shared-controller experiments since Phase 1 used a padded MLP (or SAPG LSTM-MLP). From now on: transformer only; MLP results are historical references.
+- grammar_solo: the per-design MLP training array (2535511) had failed at start (all tasks within seconds) and is not rerun. Its viability results stand.
+- Transformer port and theory experiment (I45) running on the cluster (<= 4 GPUs).
