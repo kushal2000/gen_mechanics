@@ -23,6 +23,8 @@ hands:
   not an input feature).
 - Ghost tokens get no action: mean 0 and log-std 0, with no gradient.
 - The arm head is not used (no arm).
+- ``space.continuous.logstd_min`` / ``logstd_max`` project the log-std
+  parameter into a range before every forward (unset: unbounded).
 - ``mu_head_init_scale`` (default 1) scales the action head's last layer at
   init (bias 0), so the initial mean actions can start near 0.
 
@@ -103,6 +105,10 @@ class InhandJointTransformerNet(JointTransformerNet):
         self.design_id_width = int(params.get("design_id_obs") or 0)
         self.per_design_global_norm = bool(params.get("per_design_global_norm", False))
         self.mu_head_init_scale = float(params.get("mu_head_init_scale", 1.0))
+        cont = params.get("space", {}).get("continuous", {}) or {}
+        lo, hi = cont.get("logstd_min"), cont.get("logstd_max")
+        self.logstd_min = None if lo is None else float(lo)
+        self.logstd_max = None if hi is None else float(hi)
         if self.per_design_global_norm and self.design_id_width <= 0:
             raise ValueError("per_design_global_norm needs design_id_obs (the design one-hot width)")
 
@@ -138,6 +144,9 @@ class InhandJointTransformerNet(JointTransformerNet):
         return x[:, : self.n_hand], x[:, self.n_hand], glob, valid
 
     def forward(self, obs_dict):
+        if self.logstd_min is not None or self.logstd_max is not None:  # projected, as policy_network
+            with torch.no_grad():
+                self.sigma.clamp_(min=self.logstd_min, max=self.logstd_max)
         obs = obs_dict["obs"]
         joints, glob, glob_vec, valid = self._trunk(obs)
         w = valid.unsqueeze(-1).to(joints.dtype)
