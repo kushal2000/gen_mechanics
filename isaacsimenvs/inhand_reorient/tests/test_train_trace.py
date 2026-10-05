@@ -56,6 +56,7 @@ def test_explicit_columns_and_sapg_rows(tmp_path):
     doc = tt.trace(run, columns=[0, 1])
     rows = doc["checkpoints"][0]["rows"]
     assert len(rows) == 6 and rows[5]["mean"] == -6.0
+    assert doc["checkpoints"][0]["values"][5] == [-6.0] * 4 + [0.0] * 4  # every column, for other column sets
     assert doc["checkpoints"][0]["cols"] == [0, 1]
 
 
