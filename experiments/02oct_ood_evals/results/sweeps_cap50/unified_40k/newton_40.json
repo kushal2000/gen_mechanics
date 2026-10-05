@@ -1,0 +1,99 @@
+{
+ "hand": "wuji2",
+ "target": "wuji2",
+ "set": "uniform",
+ "overrides": [
+  "domain_randomization.force_magnitude_n=40.0",
+  "domain_randomization.force_prob_range=(0.03, 0.03)"
+ ],
+ "condition": "nominal",
+ "condition_desc": "as trained (45 mm cube)",
+ "checkpoint": "/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/01oct_unified_rl/0_scale_train_left_multi_uniform_canon_c04_d64_l4_e12288_b114688_s100_948509_0_MYUGfq/rank_0/0_scale_train_left_multi_uniform_canon_c04_d64_l4_e12288_b114688_s100_948509_0/nn/last_0_scale_train_left_multi_uniform_canon_c04_d64_l4_e12288_b114688_s100_948509_0_ep_10000_rew_46802.113.pth",
+ "num_envs": 100,
+ "seconds": 240.0,
+ "dt": 0.01666666666,
+ "env_seconds": 23999.9999904,
+ "wall_s": 414.0293872356415,
+ "joints": 20,
+ "hand_mass_kg": 0.5192663669586182,
+ "cube_mass_kg": 0.0455624982714653,
+ "vel_limit_rad_s": [
+  9.999999046325684,
+  9.999999046325684
+ ],
+ "goals_per_min": 57.097500022839,
+ "drops_per_min": 64.667500025867,
+ "timeouts_per_min": 0.0,
+ "goals_per_drop": 0.8829396528395252,
+ "max_goals": 50,
+ "goals_per_episode": 0.8793443383461553,
+ "episodes_completed": 25867,
+ "episodes_capped": 0,
+ "goals_per_episode_first": 0.8,
+ "first_episode_unfinished_frac": 0.0,
+ "counts": {
+  "goals": 22839,
+  "drops": 25867,
+  "timeouts": 0,
+  "hand_far": 0
+ },
+ "time_per_goal_s": {
+  "n": 11367,
+  "mean": 0.5662546550621994,
+  "median": 0.5166666664599999,
+  "p10": 0.23333333324,
+  "p90": 0.9499999996199999
+ },
+ "first_goal_after_reset_s": {
+  "n": 11472,
+  "mean": 0.6365876334041283,
+  "median": 0.5833333331,
+  "p10": 0.29999999988,
+  "p90": 1.0333333329199998
+ },
+ "goal_angle_deg": {
+  "n": 11367,
+  "mean": 119.71024590015844,
+  "median": 124.57632570586115,
+  "p10": 63.90951042603253,
+  "p90": 168.66188279050814
+ },
+ "path_efficiency": 0.2810049793042704,
+ "failed_segment_s": {
+  "n": 25858,
+  "mean": 0.395136256835268,
+  "median": 0.31666666654,
+  "p10": 0.08333333329999999,
+  "p90": 0.79999999968
+ },
+ "goals_before_drop": {
+  "episodes": 25967,
+  "drops": 25867,
+  "min": 0,
+  "drops_before_first_goal": 14450,
+  "p1": 0,
+  "p5": 0,
+  "p10": 0,
+  "p25": 0,
+  "p50": 0,
+  "max_observed_streak": 14
+ },
+ "work_per_goal_J": 6.6097108089759935,
+ "mean_power_W_per_env": 6.289966051107767,
+ "torque_sq_rate": 0.9316533491196939,
+ "pd_work_per_goal_J": 52.36102286506948,
+ "pd_torque_sq_rate": 3.3264554053946545,
+ "target_rate_rad_s_per_joint": 36.4259980249905,
+ "joint_acc_rms": 464.81926254226687,
+ "joint_speed_saturated_frac": 0.9711944444444445,
+ "obj_speed_mean": 0.6471582295451037,
+ "obj_speed_rms": 1.6633659033122237,
+ "obj_spin_mean": 15.425290498325195,
+ "obj_acc_mean": 41.5662554102979,
+ "palm_dist_mean": 0.07569130221277269,
+ "palm_dist_std": 0.030864630792554772,
+ "participation_ratio": 8.076862883621569,
+ "participation_frac": 0.4038431441810785,
+ "pcs_for_90pct": 15,
+ "joints_for_80pct_motion": 15
+}

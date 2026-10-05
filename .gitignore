@@ -88,3 +88,5 @@ assets/populations/*
 # regenerated from -- keep them with the experiment, unlike bulky results/ elsewhere.
 !experiments/01oct_embodiment_niches/results/
 experiments/**/slurm-*.out
+!experiments/02oct_ood_evals/results/
+!experiments/05oct_embodiment_generalization/results/
