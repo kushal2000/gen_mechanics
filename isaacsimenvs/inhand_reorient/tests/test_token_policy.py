@@ -223,3 +223,18 @@ def test_mu_head_init_scale_shrinks_the_initial_action_means():
     mu_s, *_ = small({"obs": obs})
     assert mu_s[enabled].abs().max() < 0.05 * mu_b[enabled].abs().max()
     assert torch.all(mu_s[~enabled] == 0)
+
+
+def test_logstd_floor_is_projected_and_ghosts_stay_masked():
+    """logstd_min / logstd_max (as policy_network's bounded sigma): the
+    log-std parameter is projected into the range before every forward,
+    keeping exploration from collapsing; ghost columns stay at 0."""
+    p = _params()
+    p["space"]["continuous"]["logstd_min"] = -1.5
+    net = _net(p).eval()
+    with torch.no_grad():
+        net.sigma.fill_(-3.0)
+    obs, enabled = _obs(7)
+    _mu, logstd, _v, _ = net({"obs": obs})
+    assert torch.all(logstd[enabled] == -1.5) and torch.all(logstd[~enabled] == 0)
+    assert torch.all(net.sigma == -1.5)
