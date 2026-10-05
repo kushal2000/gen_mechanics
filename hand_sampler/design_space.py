@@ -88,73 +88,85 @@ MAX_FINGER_LENGTH = 0.200
 ANGLE_QUANTUM = math.radians(15.0)
 """Grid for every angle in the genotype: joint theta and offset."""
 
-TILT_QUANTUM = math.radians(45.0)
-"""Grid for a segment's MOUNTING rotation -- how the link is bolted on.
+LEAN_QUANTUM = math.radians(45.0)
+"""How far a link may lean off the one before it.
 
-Coarser than ANGLE_QUANTUM because it is structure, not articulation: it says
-which way a bracket faces, and brackets come in right angles and half-right
-angles. The 45 degree grid on a direction is exactly the 26 ways to leave a cube
--- 6 through faces, 12 through edges, 8 through corners -- which is TILTS below.
+A link is a motor bolted to its parent, and a bracket either carries it straight
+on or tips it over by a fixed angle. 45 degrees is as far as a lean goes: a
+right angle between two links is not spelled by leaning twice, it is spelled by
+putting an abduction joint next to a flexion joint, which is the same corner and
+an ACTUATED one.
 """
 
 
-def _tilt_table() -> tuple[tuple[float, float, float], ...]:
-    """The 26 directions of the 45 degree grid, collinear (+x) first."""
-    out = [(1.0, 0.0, 0.0)]
-    for a in (1, 0, -1):
-        for b in (1, 0, -1):
-            for c in (1, 0, -1):
-                if (a, b, c) in ((0, 0, 0), (1, 0, 0)):
-                    continue
-                n = math.sqrt(a * a + b * b + c * c)
-                out.append((a / n, b / n, c / n))
-    return tuple(out)
+def _lean_table() -> tuple[tuple[float, float, float], ...]:
+    """Straight on, then tipped 45 degrees each of the four ways."""
+    c = math.cos(LEAN_QUANTUM)
+    s = math.sin(LEAN_QUANTUM)
+    return ((1.0, 0.0, 0.0),
+            (c, s, 0.0), (c, -s, 0.0),
+            (c, 0.0, s), (c, 0.0, -s))
 
 
-TILTS: tuple[tuple[float, float, float], ...] = _tilt_table()
-"""Where a segment's link may point, in its parent's frame. Index 0 is +x --
-straight on, which is what every link did before mounting rotations existed."""
+LEANS: tuple[tuple[float, float, float], ...] = _lean_table()
+"""Where a link may point in its parent's frame. Index 0 is straight on, which
+is what every link of LEAP does."""
 
-N_TILTS = len(TILTS)
-
-
-def _tilt_lattice() -> tuple[tuple[int, int, int], ...]:
-    """The same 26 directions as integer triples, in the same order."""
-    out = [(1, 0, 0)]
-    for a in (1, 0, -1):
-        for b in (1, 0, -1):
-            for c in (1, 0, -1):
-                if (a, b, c) not in ((0, 0, 0), (1, 0, 0)):
-                    out.append((a, b, c))
-    return tuple(out)
+N_LEANS = len(LEANS)
 
 
-TILT_LATTICE: tuple[tuple[int, int, int], ...] = _tilt_lattice()
+def _lean_neighbours() -> tuple[tuple[int, ...], ...]:
+    """Two leans are one step apart when they are within 60 degrees.
 
-
-def _tilt_neighbours() -> tuple[tuple[int, ...], ...]:
-    """One step is changing ONE of the three cube coordinates by one.
-
-    Face to edge to corner and back. The relation is symmetric by construction,
-    which is what makes the operator's inverse exact: if b is one step from a
-    then a is one step from b, so the walk can always be undone.
+    Straight on reaches all four tips; a tip reaches straight on and the two
+    tips perpendicular to it, but not the one opposite, which is 90 degrees away
+    and two steps. Symmetric by construction, so the move back is also one step.
     """
-    index = {v: i for i, v in enumerate(TILT_LATTICE)}
     out = []
-    for v in TILT_LATTICE:
-        near = []
-        for k in range(3):
-            for d in (-1, 1):
-                w = list(v)
-                w[k] += d
-                w = tuple(w)
-                if w in index:
-                    near.append(index[w])
-        out.append(tuple(sorted(near)))
+    for a in LEANS:
+        near = tuple(j for j, b in enumerate(LEANS)
+                     if b != a and float(np.dot(a, b)) > math.cos(math.radians(60.5)))
+        out.append(near)
     return tuple(out)
 
 
-TILT_NEIGHBOURS: tuple[tuple[int, ...], ...] = _tilt_neighbours()
+LEAN_NEIGHBOURS: tuple[tuple[int, ...], ...] = _lean_neighbours()
+
+ROLL, FLEXION, ABDUCTION = 0, 1, 2
+JOINT_KINDS: tuple[int, ...] = (ROLL, FLEXION, ABDUCTION)
+JOINT_KIND_NAMES: tuple[str, ...] = ("roll", "flexion", "abduction")
+
+JOINT_AXES: tuple[tuple[float, float, float], ...] = (
+    (1.0, 0.0, 0.0),    # ROLL -- along the link, so the link spins on its own axis
+    (0.0, 1.0, 0.0),    # ABDUCTION in the mount frame: the palm normal
+    (0.0, 0.0, 1.0),    # FLEXION in the mount frame: along the knuckle row
+)
+"""The hinge axis of each kind, in the joint's own frame, where the link is +x.
+
+Named for what they do at the MOUNT, where a +z face puts the link's local z
+along the knuckle row and its local y along the palm normal. A lean tips the
+frame, so after one the names drift by up to 45 degrees -- they are exact where
+it matters and approximate deeper in a leaning finger.
+"""
+_KIND_AXIS = {ROLL: JOINT_AXES[0], ABDUCTION: JOINT_AXES[1], FLEXION: JOINT_AXES[2]}
+
+
+def lean_rot(index: int) -> np.ndarray:
+    """The fixed rotation a lean applies, by the SHORTEST arc.
+
+    Shortest arc so the lean carries no spin of its own: spin about the link is
+    what a joint's own travel does, and two knobs for it is what this grammar
+    just stopped having.
+    """
+    d = np.asarray(LEANS[index % N_LEANS], dtype=float)
+    x = np.array([1.0, 0.0, 0.0])
+    v = np.cross(x, d)
+    s = float(np.linalg.norm(v))
+    c = float(x @ d)
+    if s < 1e-12:
+        return np.eye(3) if c > 0.0 else rodrigues(np.array([0.0, 0.0, 1.0]), math.pi)
+    return rodrigues(v, math.atan2(s, c))
+
 
 JOINT_LIMIT = (math.radians(-90.0), math.radians(90.0))
 """Symmetric, for every joint regardless of axis.
@@ -197,10 +209,15 @@ GRASP_DIR = np.array([1.0, 0.0, 0.0])
 
 @dataclass(frozen=True)
 class Joint:
-    """One revolute DOF; ``theta`` and ``phi`` in radians, see kinematics.axis_of."""
+    """One revolute DOF: which of the three kinds of hinge this is.
 
-    theta: float
-    phi: float = math.pi / 2
+    A generated joint is nothing but its kind. ``offset`` survives only for hands
+    that were MEASURED rather than drawn -- a vendor's assembly angle, which the
+    grammar itself no longer has a way to say and never mutates.
+    """
+
+    kind: int = FLEXION
+    # Import-only: a measured hand's assembly angle. Always 0 in a generated one.
     offset: float = 0.0
     # Set only by an imported hand, whose hinge is measured rather than drawn.
     axis_override: tuple[float, float, float] | None = None
@@ -219,8 +236,9 @@ class Joint:
             raise ValueError(f"axis_override must be 3 numbers, got {self.axis_override}")
         if not math.isfinite(self.offset):
             raise ValueError(f"non-finite joint offset {self.offset}")
-        if not math.isfinite(self.theta) or not math.isfinite(self.phi):
-            raise ValueError(f"non-finite joint angles ({self.theta}, {self.phi})")
+        if self.kind not in JOINT_KINDS:
+            raise ValueError(f"joint kind must be one of {JOINT_KINDS} "
+                             f"({', '.join(JOINT_KIND_NAMES)}), got {self.kind!r}")
 
 
 @dataclass(frozen=True)
@@ -229,12 +247,12 @@ class Segment:
 
     joint: Joint
     length: float
-    # Which way this link is bolted on, as an index into TILTS. 0 is straight on
-    # -- collinear with the link before it, or along the mount normal for the
-    # first segment of a finger. This is the ONE mounting knob: the palm uses it
-    # for the angle a finger leaves at, and every later segment uses it for the
-    # angle the next link turns through.
-    tilt: int = 0
+    # Which way this link leans off the one before it, as an index into LEANS.
+    # 0 is straight on -- collinear with the previous link, or along the mount
+    # normal for the first segment of a finger. One knob: the palm uses it for
+    # the angle a finger leaves at, every later segment for the angle the next
+    # link tips through.
+    lean: int = 0
     # (bend, axis) extents of the link box. None means the capsule a generated
     # design gets; an imported hand carries its measured cross-section instead.
     cross_section: tuple[float, float] | None = None
@@ -251,9 +269,9 @@ class Segment:
             raise ValueError(f"bad link length {self.length}")
         if self.cross_section is not None and len(self.cross_section) != 2:
             raise ValueError(f"cross_section must be (bend, axis), got {self.cross_section}")
-        if not isinstance(self.tilt, int) or not 0 <= self.tilt < N_TILTS:
-            raise ValueError(f"tilt must be an index into TILTS (0..{N_TILTS - 1}), "
-                             f"got {self.tilt!r}")
+        if not isinstance(self.lean, int) or not 0 <= self.lean < N_LEANS:
+            raise ValueError(f"lean must be an index into LEANS (0..{N_LEANS - 1}), "
+                             f"got {self.lean!r}")
 
     @property
     def box(self) -> tuple[float, float, float]:
@@ -364,26 +382,6 @@ def palm_center(palm: "Palm") -> tuple[float, float, float]:
 _EPS = 1e-9
 
 
-def tilt_rot(index: int) -> np.ndarray:
-    """The fixed rotation a mounting tilt applies, by the SHORTEST arc.
-
-    A link runs along +x of its own frame, so a tilt is fully described by where
-    +x ends up: the shortest arc carries no roll of its own, which keeps the
-    tilt and the joint's own ``theta`` from spelling the same thing twice. Any
-    roll a design wants is theta's job.
-    """
-    d = np.asarray(TILTS[index % N_TILTS], dtype=float)
-    x = np.array([1.0, 0.0, 0.0])
-    v = np.cross(x, d)
-    s = float(np.linalg.norm(v))
-    c = float(x @ d)
-    if s < 1e-12:                      # parallel or antiparallel to +x
-        if c > 0.0:
-            return np.eye(3)
-        return rodrigues(np.array([0.0, 0.0, 1.0]), math.pi)   # one fixed choice
-    return rodrigues(v, math.atan2(s, c))
-
-
 def rodrigues(axis: np.ndarray, angle: float) -> np.ndarray:
     """Rotation about ``axis`` by ``angle``. Axis need not be normalised."""
     a = axis / (np.linalg.norm(axis) + 1e-12)
@@ -400,9 +398,7 @@ def axis_of(joint: Joint) -> np.ndarray:
     if joint.axis_override is not None:
         a = np.asarray(joint.axis_override, dtype=float)
         return a / max(float(np.linalg.norm(a)), 1e-12)
-    ct, st = math.cos(joint.theta), math.sin(joint.theta)
-    cp, sp = math.cos(joint.phi), math.sin(joint.phi)
-    return np.array([cp, sp * st, sp * ct])
+    return np.array(_KIND_AXIS[joint.kind], dtype=float)
 
 
 # --- palm faces -------------------------------------------------------------
@@ -489,7 +485,7 @@ def forward_kinematics(finger: Finger, palm: Palm,
 
     for i, seg in enumerate(finger.segments):
         joints.append(p.copy())
-        R = R @ tilt_rot(seg.tilt)                      # bolt the link on
+        R = R @ lean_rot(seg.lean)                      # bolt the link on
         R = R @ rodrigues(axis_of(seg.joint),           # then the joint turns
                           seg.joint.offset + angles.get(i, 0.0))
         nxt = p + R[:, 0] * seg.length
@@ -508,7 +504,7 @@ def joint_axes(finger: Finger, palm: Palm,
     _, R = mount_frame(finger.mount, palm)
     out: list[np.ndarray] = []
     for i, seg in enumerate(finger.segments):
-        R = R @ tilt_rot(seg.tilt)
+        R = R @ lean_rot(seg.lean)
         a = axis_of(seg.joint)
         out.append(R @ a)
         R = R @ rodrigues(a, seg.joint.offset + angles.get(i, 0.0))
@@ -569,7 +565,7 @@ def base_capsules(hand: Hand) -> list[tuple[np.ndarray, np.ndarray]]:
     for f in hand.fingers:
         p0, R = mount_frame(f.mount, hand.palm)
         seg = f.segments[0]
-        R = R @ tilt_rot(seg.tilt)
+        R = R @ lean_rot(seg.lean)
         R = R @ rodrigues(axis_of(seg.joint), seg.joint.offset)
         out.append((p0, p0 + R[:, 0] * seg.length))
     return out
@@ -1024,7 +1020,7 @@ def hand_from_urdf(urdf, joint_names, *, base_dir=None, palm=None) -> "Hand":
             i = index[n]
             box = np.asarray(boxes[i], dtype=float)
             length = float(np.linalg.norm(box[1] - box[0]))
-            segs.append(Segment(joint=Joint(theta=0.0), length=max(length, 1e-6),
+            segs.append(Segment(joint=Joint(kind=FLEXION), length=max(length, 1e-6),
                                 token_box=tuple(map(tuple, box))))
         face = faces[k % len(faces)]
         u0, u1, v0, v1 = mount_uv_bounds(face, the_palm)

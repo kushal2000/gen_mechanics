@@ -315,10 +315,10 @@ def link_frames(hand: design_space.Hand) -> dict[tuple[int, int], np.ndarray]:
                 seg = finger.segments[d]
                 step = np.eye(4)
                 # Same order as forward_kinematics: step out along the previous
-                # link, bolt this one on at its tilt, then let the joint turn.
+                # link, bolt this one on at its lean, then let the joint turn.
                 # The hinge axis survives its own rotation, so the URDF axis
                 # written below is still right in the post-origin frame.
-                step[:3, :3] = design_space.tilt_rot(seg.tilt) @ design_space.rodrigues(
+                step[:3, :3] = design_space.lean_rot(seg.lean) @ design_space.rodrigues(
                     design_space.axis_of(seg.joint), seg.joint.offset)
                 if d:
                     step[:3, 3] = (finger.segments[d - 1].length, 0.0, 0.0)

@@ -36,7 +36,9 @@ def record(gen: int, pop: list, stats: mutate_design.Stats, nulls: int) -> dict:
         joints_hist={str(k): v for k, v in sorted(Counter(nj).items())},
         fingers_hist={str(k): v for k, v in sorted(Counter(nf).items())},
         link_mm=1000 * mean([s.length for s in segs]),
-        theta_deg=math.degrees(mean([s.joint.theta for s in segs])),
+        kinds={n: sum(1 for s in segs if s.joint.kind == k) / len(segs)
+               for k, n in zip(design_space.JOINT_KINDS, design_space.JOINT_KIND_NAMES)},
+        leaning=sum(1 for s in segs if s.lean) / len(segs),
         offset_deg=math.degrees(mean([abs(s.joint.offset) for s in segs])),
         palm_w_mm=1000 * mean([h.palm.width for h in pop]),
         palm_l_mm=1000 * mean([h.palm.length for h in pop]),

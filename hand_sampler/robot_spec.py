@@ -261,7 +261,7 @@ def robot_spec_from_hand(hand, *, name: str, urdf_path: str = "", hand_only: boo
         for d, seg in enumerate(finger.segments):
             jn = f"f{f}_j{d}"
             names.append(jn)
-            _e, _v, k, b, a = seg.joint.drive or rpc.gen_joint_drive(d, seg.joint.theta)
+            _e, _v, k, b, a = seg.joint.drive or rpc.gen_joint_drive(d, seg.joint.kind)
             stiffness[jn], damping[jn], armature[jn] = k, b, a
         tips.append(f"f{f}_link{finger.n_joints - 1}")
 

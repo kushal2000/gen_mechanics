@@ -18,7 +18,10 @@ SEED_FACE_PAIRS: tuple[tuple[str, str], ...] = (
 SEED_JOINTS = (1, 2)
 """One or two joints per finger, so a hand starts with 2 to 4 motors."""
 
-SEED_THETAS = (0.0, math.pi / 2)   # pure flexion, pure abduction
+SEED_KINDS = (design_space.FLEXION, design_space.ABDUCTION)
+"""Generation 0 draws hinges only. A roll joint spins its own link about its
+own axis, which a capsule cannot show and a one-joint finger cannot use, so a
+seed that drew one would be a wasted motor; mutation can still reach it."""
 SEED_LENGTHS = (0.035, 0.040, 0.045, 0.050)
 SEED_PALM = (
     (design_space.PALM_THICKNESS, 0.050, 0.050),
@@ -30,7 +33,7 @@ SEED_PALM = (
 def seed_finger(rng: random.Random, face: str, palm: design_space.Palm) -> design_space.Finger:
     n = rng.choice(SEED_JOINTS)
     segments = tuple(
-        design_space.Segment(design_space.Joint(theta=rng.choice(SEED_THETAS), phi=math.pi / 2),
+        design_space.Segment(design_space.Joint(kind=rng.choice(SEED_KINDS)),
                   length=rng.choice(SEED_LENGTHS))
         for _ in range(n)
     )

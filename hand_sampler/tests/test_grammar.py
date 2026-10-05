@@ -23,16 +23,18 @@ def pop():
 # --- kinematics -------------------------------------------------------------
 
 def test_axis_endpoints():
-    h = math.pi / 2
-    assert np.allclose(design_space.axis_of(design_space.Joint(0.0, h)), [0, 0, 1])      # flexion
-    assert np.allclose(design_space.axis_of(design_space.Joint(h, h)), [0, 1, 0])        # abduction
-    assert np.allclose(design_space.axis_of(design_space.Joint(0.0, 1e-12)), [1, 0, 0])  # twist
+    """There are three axes and no fourth: a joint is a kind, not an angle."""
+    assert np.allclose(design_space.axis_of(design_space.Joint(design_space.FLEXION)),
+                       [0, 0, 1])
+    assert np.allclose(design_space.axis_of(design_space.Joint(design_space.ABDUCTION)),
+                       [0, 1, 0])
+    assert np.allclose(design_space.axis_of(design_space.Joint(design_space.ROLL)),
+                       [1, 0, 0])
 
 
 def test_axis_is_unit():
-    for t in np.linspace(0, math.pi, 13):
-        for p in np.linspace(0.05, math.pi / 2, 7):
-            assert abs(np.linalg.norm(design_space.axis_of(design_space.Joint(t, p))) - 1) < 1e-12
+    for k in design_space.JOINT_KINDS:
+        assert abs(np.linalg.norm(design_space.axis_of(design_space.Joint(k))) - 1) < 1e-12
 
 
 def test_mount_frame_orthonormal_on_every_face():
@@ -50,8 +52,10 @@ def test_seeds_are_simple(pop):
     """Generation 0 starts at the conventional corner."""
     assert max(h.n_joints for h in pop) <= 4
     assert all(h.n_fingers == 2 for h in pop)
-    assert all(s.joint.phi == pytest.approx(math.pi / 2)
-               for h in pop for f in h.fingers for s in f.segments)
+    assert all(s.joint.kind in (design_space.FLEXION, design_space.ABDUCTION)
+               for h in pop for f in h.fingers for s in f.segments), \
+        "generation 0 draws hinges; a roll joint on a seed is a wasted motor"
+    assert all(s.lean == 0 for h in pop for f in h.fingers for s in f.segments)
 
 
 # --- operators --------------------------------------------------------------
@@ -241,10 +245,13 @@ def _hand(*fingers):
         design_space.Palm(design_space.PALM_THICKNESS, 0.100, 0.100), tuple(fingers))
 
 
+_KINDS = (design_space.FLEXION, design_space.ABDUCTION)
+
+
 def _finger(face, lengths, v=0.7):
     return design_space.Finger(
         design_space.Mount(face, 0.5, v),
-        tuple(design_space.Segment(design_space.Joint((i * design_space.ANGLE_QUANTUM) % math.pi, math.pi / 2), L)
+        tuple(design_space.Segment(design_space.Joint(_KINDS[i % 2]), L)
               for i, L in enumerate(lengths)))
 
 
@@ -297,7 +304,8 @@ def test_one_joint_per_link():
     """No two joints share a point."""
     palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
     bad = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
-                   (design_space.Segment(design_space.Joint(0.0), 0.0), design_space.Segment(design_space.Joint(0.0), 0.040)))
+                   (design_space.Segment(design_space.Joint(design_space.FLEXION), 0.0),
+                    design_space.Segment(design_space.Joint(design_space.FLEXION), 0.040)))
     assert validate_design.check_finger(bad, 0, palm), "a zero-length link must be rejected"
 
     rng = random.Random(1)
@@ -327,7 +335,7 @@ def test_capsules_carry_their_segment_index():
     """Each capsule reports which segment it belongs to."""
     palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
     finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
-                      tuple(design_space.Segment(design_space.Joint(i * design_space.ANGLE_QUANTUM % math.pi), 0.030)
+                      tuple(design_space.Segment(design_space.Joint(_KINDS[i % 2]), 0.030)
                             for i in range(3)))
     _, capsules = design_space.forward_kinematics(finger, palm)
     assert [c[3] for c in capsules] == [0, 1, 2]
@@ -337,9 +345,10 @@ def test_joint_axes_are_the_axes_the_joints_turn_about():
     """The viewer draws each joint as a cylinder along its reported axis, so the axis has..."""
     palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
     finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.6),
-                      (design_space.Segment(design_space.Joint(0.0, offset=0.3), 0.035),
-                       design_space.Segment(design_space.Joint(math.pi / 3), 0.030),
-                       design_space.Segment(design_space.Joint(math.pi / 2, offset=-0.2), 0.025)))
+                      (design_space.Segment(design_space.Joint(design_space.FLEXION), 0.035),
+                       design_space.Segment(design_space.Joint(design_space.ABDUCTION), 0.030,
+                                            lean=3),
+                       design_space.Segment(design_space.Joint(design_space.ROLL), 0.025)))
     rest, _ = design_space.forward_kinematics(finger, palm)
     axes = design_space.joint_axes(finger, palm)
     assert len(axes) == finger.n_joints
@@ -427,8 +436,9 @@ def test_min_link_length_allows_a_compact_knuckle():
 
     palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
     finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.7), (
-        design_space.Segment(design_space.Joint(0.0), design_space.MIN_LINK_LENGTH),
-        design_space.Segment(design_space.Joint(math.pi / 2), 0.040)))
+        design_space.Segment(design_space.Joint(design_space.FLEXION),
+                             design_space.MIN_LINK_LENGTH),
+        design_space.Segment(design_space.Joint(design_space.ABDUCTION), 0.040)))
     assert not validate_design.check_finger(finger, 0, palm), validate_design.check_finger(finger, 0, palm)
 
     joints, _ = design_space.forward_kinematics(finger, palm)
@@ -572,10 +582,10 @@ def test_every_genotype_field_is_validated():
         seg = f0.segments[0]
         if "s_len" in kw:
             seg = _replace(seg, length=kw["s_len"])
-        if "s_theta" in kw:
-            seg = _replace(seg, joint=_replace(seg.joint, theta=kw["s_theta"]))
-        if "s_phi" in kw:
-            seg = _replace(seg, joint=_replace(seg.joint, phi=kw["s_phi"]))
+        if "s_kind" in kw:
+            seg = _replace(seg, joint=_replace(seg.joint, kind=kw["s_kind"]))
+        if "s_lean" in kw:
+            seg = _replace(seg, lean=kw["s_lean"])
         if "s_offset" in kw:
             seg = _replace(seg, joint=_replace(seg.joint, offset=kw["s_offset"]))
         new_palm = _replace(palm, **{k[2:]: v for k, v in kw.items()
@@ -591,14 +601,10 @@ def test_every_genotype_field_is_validated():
         "link too short": variant(s_len=0.010),
         "link too long": variant(s_len=0.200),
         "link off grid": variant(s_len=0.0431),
-        "theta out of range": variant(s_theta=math.pi + 0.3),
-        "theta off grid": variant(s_theta=0.1),
-        "phi out of range": variant(s_phi=math.pi),
-        "phi off grid": variant(s_phi=0.1),
         "mount u past the margin": variant(m_u=0.99),
         "mount v past the margin": variant(m_v=0.99),
-        "offset outside joint travel": variant(s_offset=math.radians(120)),
-        "offset off grid": variant(s_offset=0.1),
+        # a generated joint has no assembly angle at all, so ANY offset is a fault
+        "offset on a generated joint": variant(s_offset=math.radians(15)),
         "too many fingers": design_space.Hand(palm, hand.fingers * 4),
         "too few fingers": design_space.Hand(palm, hand.fingers[:1]),
     }
@@ -623,66 +629,49 @@ def test_the_grammar_is_deterministic():
     assert walk(3) != walk(4)
 
 
-def test_offset_subsumes_a_mount_pointing_direction():
-    """A base-joint offset reproduces every rest direction a mount tilt could, and a..."""
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
-    face = "+y"
-    _, normal, t_u, t_v, _, _ = design_space.face_frame(face, palm)
-    _, R = design_space.mount_frame(design_space.Mount(face, 0.5, 0.5), palm)
+def test_a_joint_kind_and_a_lean_do_different_things():
+    """What replaced test_offset_subsumes_a_mount_pointing_direction and
+    test_offset_moves_the_link_but_theta_does_not.
 
-    reachable = np.array([
-        design_space.rodrigues(R @ design_space.axis_of(design_space.Joint(float(th), math.pi / 2)), float(d)) @ normal
-        for th in np.arange(0, math.pi, design_space.ANGLE_QUANTUM)
-        for d in np.arange(-math.pi / 2, math.pi / 2 + 1e-9, design_space.ANGLE_QUANTUM)])
-
-    for a in np.arange(0, math.pi / 2 + 1e-9, design_space.ANGLE_QUANTUM):
-        for b in np.arange(0, 2 * math.pi, design_space.ANGLE_QUANTUM):
-            want = (math.cos(a) * normal
-                    + math.sin(a) * (math.cos(b) * t_u + math.sin(b) * t_v))
-            gap = float(np.min(np.linalg.norm(reachable - want, axis=1)))
-            assert gap < 1e-9, f"alpha={math.degrees(a):.0f} deg uncovered"
-
-    curled = design_space.Finger(design_space.Mount(face, 0.5, 0.7), (
-        design_space.Segment(design_space.Joint(0.0, math.pi / 2), 0.04),
-        design_space.Segment(design_space.Joint(0.0, math.pi / 2, math.radians(60)), 0.04)))
-    straight = design_space.Finger(curled.mount, (curled.segments[0],
-                                       design_space.Segment(design_space.Joint(0.0), 0.04)))
-    assert float(np.linalg.norm(design_space.fingertip(curled, palm)
-                                - design_space.fingertip(straight, palm))) > 0.03
-
-
-def test_offset_moves_the_link_but_theta_does_not():
-    """The two per-joint angles do different things, which is why both exist."""
+    Both were about the zero offset, which is gone: a generated joint has no
+    assembly angle, and what used to aim a link is the LEAN. The property worth
+    keeping is that the two knobs that remain are not two spellings of one
+    thing. A kind turns the hinge and leaves the link where it was; a lean turns
+    the link and leaves the hinge pointing the same way relative to it.
+    """
     palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
 
-    def tip(theta_deg, offset_deg):
-        f = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
-                     (design_space.Segment(design_space.Joint(math.radians(theta_deg), math.pi / 2,
-                                        math.radians(offset_deg)), 0.05),))
+    def tip(kind, lean):
+        f = design_space.Finger(
+            design_space.Mount("+y", 0.5, 0.5),
+            (design_space.Segment(design_space.Joint(kind), 0.050, lean=lean),))
         return design_space.fingertip(f, palm)
 
-    assert np.allclose(tip(0, 0), tip(60, 0)), "theta moved the link at rest"
-    assert not np.allclose(tip(0, 0), tip(0, 45)), "offset did not move the link"
+    # the kind never moves the link at rest -- only which way it will turn
+    assert np.allclose(tip(design_space.FLEXION, 0), tip(design_space.ABDUCTION, 0))
+    assert np.allclose(tip(design_space.FLEXION, 0), tip(design_space.ROLL, 0))
+    # the lean does move it, and by the 45 degrees it says
+    for lean in range(1, design_space.N_LEANS):
+        assert not np.allclose(tip(design_space.FLEXION, 0),
+                               tip(design_space.FLEXION, lean))
 
+    # and the hinge follows the link it is bolted to -- EXCEPT when the lean
+    # turns about the hinge's own axis, which leaves it pointing where it was.
+    # Flexion's axis is +z, and lean 1 tips toward +y by rotating about +z.
+    def hinge(lean):
+        f = design_space.Finger(
+            design_space.Mount("+y", 0.5, 0.5),
+            (design_space.Segment(design_space.Joint(design_space.FLEXION),
+                                  0.050, lean=lean),))
+        return design_space.joint_axes(f, palm)[0]
 
-def test_crossing_a_face_rotates_the_finger_with_it():
-    """A finger leaves along its face normal, so crossing an edge rotates its world..."""
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
-    mount = design_space.Mount("+y", 0.5, 0.80)
-    before = design_space.mount_direction(mount, palm)
+    def gap(a, b):
+        return math.degrees(math.acos(float(np.clip(abs(a @ b), -1, 1))))
 
-    for _ in range(8):
-        nxt = mutate_design._step_mount(mount, palm, 0.0, +mutate_design.MOUNT_STEP_M)
-        if nxt is None or nxt == mount:
-            break
-        mount = nxt
-        if mount.face != "+y":
-            break
-    assert mount.face == "+z", "the walk never crossed"
-
-    after = design_space.mount_direction(mount, palm)
-    angle = math.degrees(math.acos(float(np.clip(before @ after, -1, 1))))
-    assert angle == pytest.approx(90.0, abs=1e-6)
+    assert gap(hinge(0), hinge(1)) == pytest.approx(0.0, abs=1e-6), \
+        "a lean about the hinge's OWN axis should leave the hinge alone"
+    assert gap(hinge(0), hinge(3)) == pytest.approx(45.0, abs=1e-6), \
+        "a lean across the hinge should carry it by the 45 degrees it tips"
 
 
 # --- one representation for generated and measured hands --------------------
@@ -835,20 +824,21 @@ def _distal_overlap():
     it stopped isolating the distal case. Such a hand cannot be found by mutating
     either -- the validator rejects it, so it never survives into a population.
     """
-    Q = design_space.ANGLE_QUANTUM
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.100, 0.100)
+    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
     lo, hi = design_space.mount_uv_bounds("+z", palm)[2:]
 
     def finger(v, spec):
         return design_space.Finger(
             design_space.Mount("+z", 0.5, v),
-            tuple(design_space.Segment(
-                design_space.Joint(t * Q % math.pi, math.pi / 2, o * Q), 0.040)
-                for t, o in spec))
+            tuple(design_space.Segment(design_space.Joint(kind), 0.040, lean=lean)
+                  for kind, lean in spec))
 
+    # (kind, lean) per segment. Found by search: the base links clear by 34.7 mm
+    # and finger 0's SECOND link comes within 23.9 mm of finger 1's first.
+    F, A, R = design_space.FLEXION, design_space.ABDUCTION, design_space.ROLL
     return design_space.Hand(palm, (
-        finger(lo, [(9, -1), (10, 0), (3, -1)]),
-        finger(hi, [(8, 2), (4, 1), (0, 1)]),
+        finger(lo, [(F, 3), (R, 2), (A, 3)]),
+        finger(hi, [(F, 2), (F, 2), (A, 1)]),
     ))
 
 
@@ -876,7 +866,8 @@ def test_clearance_checks_every_link_not_just_the_proximal_ones():
 
     complaints = validate_design.check_base_clearance(hand)
     assert complaints, "a distal link intersects another finger and was missed"
-    assert "finger 0 link 1" in complaints[0] and "finger 1 link 2" in complaints[0]
+    assert "finger 0 link 1" in complaints[0] and "finger 1 link 0" in complaints[0], \
+        complaints
 
 
 def test_rest_capsules_uses_the_authored_capsule_axis():

@@ -19,7 +19,7 @@ from hand_sampler import design_space
 from hand_sampler import robot_param_constants as rpc
 from hand_sampler import mutate_design
 from hand_sampler import gen_init_pop
-from hand_sampler import commercial
+from hand_sampler import leap_fit
 from hand_sampler.design_space import face_frame
 
 # assets/urdf/table_narrow.urdf, at reset.table_reset_z. Surface at z = 0.53.
@@ -73,11 +73,14 @@ def axis_mesh(centre: np.ndarray, axis: np.ndarray) -> trimesh.Trimesh:
     return mesh
 
 
-def theta_colour(theta: float) -> tuple[int, int, int]:
-    """Blue at pure flexion, orange at pure abduction, blended between."""
-    t = (theta % math.pi) / (math.pi / 2)
-    t = t if t <= 1.0 else 2.0 - t          # fold: theta and pi-theta look alike
-    rgb = [(1 - t) * a + t * b for a, b in zip(FLEXION_RGB, ABDUCTION_RGB)]
+ROLL_RGB = (0.45, 0.75, 0.45)
+
+
+def kind_colour(kind: int) -> tuple[int, int, int]:
+    """Blue for flexion, orange for abduction, green for roll."""
+    rgb = {design_space.FLEXION: FLEXION_RGB,
+           design_space.ABDUCTION: ABDUCTION_RGB,
+           design_space.ROLL: ROLL_RGB}[kind]
     return tuple(int(255 * c) for c in rgb)
 
 
@@ -94,19 +97,18 @@ def describe(hand: design_space.Hand, last_op: str | None) -> str:
         "",
     ]
     for i, f in enumerate(hand.fingers):
-        rolls = sum(1 for s in f.segments if abs(s.joint.phi) < 1e-9)
-        tilts = sum(1 for s in f.segments if s.tilt)
+        rolls = sum(1 for s in f.segments if s.joint.kind == design_space.ROLL)
+        leans = sum(1 for s in f.segments if s.lean)
         tags = ("" if not rolls else f"  **{rolls} roll**") \
-             + ("" if not tilts else f"  **{tilts} tilted**")
+             + ("" if not leans else f"  **{leans} leaning**")
         lines.append(
             f"`{i}` {f.mount.face} u={f.mount.u:.2f} v={f.mount.v:.2f} | "
             f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm{tags}")
-        # [theta d (+offset o) (~tilt) / length mm]; a roll joint prints as "roll"
+        # [kind (lean) / length mm]
         lines.append("   " + "  ".join(
-            ("[roll" if abs(s.joint.phi) < 1e-9
-             else f"[{math.degrees(s.joint.theta):.0f}d/{math.degrees(s.joint.phi):.0f}p")
+            "[" + design_space.JOINT_KIND_NAMES[s.joint.kind][:4]
+            + (f" lean{s.lean}" if s.lean else "")
             + (f"{math.degrees(s.joint.offset):+.0f}o" if s.joint.offset else "")
-            + (f" ~{s.tilt}" if s.tilt else "")
             + f"/{s.length*1000:.0f}mm]"
             for s in f.segments))
     if last_op:
@@ -178,7 +180,7 @@ def main() -> None:
         btn_undo = server.gui.add_button("undo")
         btn_reseed = server.gui.add_button("new seed")
         hand_picker = server.gui.add_dropdown(
-            "commercial hand", ("(generated)",) + commercial.HANDS)
+            "commercial hand", ("(generated)", "leap"))
         cb_context = server.gui.add_checkbox("show arm + table", True)
 
     with server.gui.add_folder("pose"):
@@ -268,7 +270,7 @@ def main() -> None:
         with joint_folder:
             for fi, finger in enumerate(state["hand"].fingers):
                 for si, seg in enumerate(finger.segments):
-                    label = f"f{fi}.j{si}  {math.degrees(seg.joint.theta):.0f}d"
+                    label = f"f{fi}.j{si}  {design_space.JOINT_KIND_NAMES[seg.joint.kind]}"
                     handle = server.gui.add_slider(
                         label, min=math.degrees(lo), max=math.degrees(hi),
                         step=1.0, initial_value=0.0)
@@ -379,7 +381,7 @@ def main() -> None:
         name = hand_picker.value
         if name == "(generated)":
             return
-        hand, notes = commercial.fit(name)
+        hand, notes = leap_fit.fit()
         state["hand"] = hand
         state["lineage"].clear()
         state["last_op"] = None
@@ -483,7 +485,7 @@ from hand_sampler import mutate_design                               # noqa: E40
 from hand_sampler import gen_init_pop                               # noqa: E402
 from hand_sampler.viewer import (                                  # noqa: E402
     JOINT_MARKER_LENGTH,
-    theta_colour,
+    kind_colour,
 )
 
 
@@ -507,14 +509,14 @@ def draw(ax, hand: design_space.Hand, title: str = "", flex: float = 0.0) -> Non
         joints, capsules = design_space.forward_kinematics(finger, hand.palm, angles)
         # colour by the segment the capsule BELONGS to, which is carried on the capsule -- capsule and...
         for p0, p1, _, si in capsules:
-            col = np.array(theta_colour(finger.segments[si].joint.theta)) / 255.0
+            col = np.array(kind_colour(finger.segments[si].joint.kind)) / 255.0
             ax.plot(*zip(p0, p1), color=col, linewidth=6.0, solid_capstyle="round")
 
         # a joint is a stub along its own hinge axis, so which way it turns is visible; an...
         axes = design_space.joint_axes(finger, hand.palm, angles)
         half = JOINT_MARKER_LENGTH / 2.0
         for si, (p, a) in enumerate(zip(joints[:-1], axes)):
-            perp = abs(finger.segments[si].joint.phi - math.pi / 2) < 1e-9
+            perp = finger.segments[si].joint.kind != design_space.ROLL
             ax.plot(*zip(p - half * a, p + half * a),
                     color="#1e1e23" if perp else "#d02828",
                     linewidth=3.0, solid_capstyle="round", zorder=5)

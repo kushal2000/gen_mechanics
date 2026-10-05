@@ -46,11 +46,11 @@ from hand_sampler import design_space as ds
 
 NAME = "sharpa_capsule"
 
-FLEXION, ABDUCTION = 0.0, 90.0
+FLEXION, ABDUCTION = ds.FLEXION, ds.ABDUCTION
 
 
-def _joint(theta_deg: float, offset_deg: float = 0.0) -> ds.Joint:
-    return ds.Joint(theta=math.radians(theta_deg), phi=math.pi / 2,
+def _joint(kind: int, offset_deg: float = 0.0) -> ds.Joint:
+    return ds.Joint(kind=kind,
                     offset=math.radians(offset_deg))
 
 

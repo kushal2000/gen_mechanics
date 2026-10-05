@@ -65,7 +65,7 @@ def test_optional_fields_survive(tmp_path):
         fingers=(design_space.Finger(
             mount=design_space.Mount("+z", 0.0, 0.0),
             segments=(design_space.Segment(
-                joint=design_space.Joint(theta=0.3, phi=1.1, offset=0.2,
+                joint=design_space.Joint(kind=design_space.ROLL, offset=0.2,
                                          axis_override=(0.0, 1.0, 0.0),
                                          limits=(-0.5, 0.9),
                                          drive=(1.0, 2.0, 3.0, 4.0, 5.0)),
@@ -84,11 +84,13 @@ def test_defaults_may_be_omitted_by_hand(hands):
     """The file is meant to be read and edited, so absent means default."""
     minimal = {"palm": {"thickness": 0.025, "width": 0.06, "length": 0.06},
                "fingers": [{"mount": {"face": "+z", "u": 0.0, "v": 0.0},
-                            "segments": [{"joint": {"theta": 0.0}, "length": 0.04}]}]}
+                            "segments": [{"joint": {"kind": "flexion"},
+                                          "length": 0.04}]}]}
     hand = population_io.hand_from_dict(minimal)
     joint = hand.fingers[0].segments[0].joint
-    assert (joint.phi, joint.offset, joint.limits, joint.drive) == (
-        design_space.Joint(0.0).phi, 0.0, None, None)
+    assert (joint.kind, joint.offset, joint.limits, joint.drive) == (
+        design_space.FLEXION, 0.0, None, None)
+    assert hand.fingers[0].segments[0].lean == 0
 
 
 # --- a population as data, not as a function of the code ---------------------
@@ -118,7 +120,7 @@ def test_a_file_pins_the_population_against_the_sampler(tmp_path):
         palm=design_space.Palm(0.02, 0.05, 0.05),
         fingers=(design_space.Finger(
             mount=design_space.Mount("+z", 0.0, 0.0),
-            segments=(design_space.Segment(design_space.Joint(0.0), 0.031),)),))
+            segments=(design_space.Segment(design_space.Joint(design_space.FLEXION), 0.031),)),))
     path = population_io.save_population(edited, tmp_path / "pinned.json", name="pinned")
 
     robot_spec._POPULATION_CACHE.clear()

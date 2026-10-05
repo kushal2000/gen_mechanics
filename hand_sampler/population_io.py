@@ -31,7 +31,7 @@ DEFAULT_DIR = REPO_ROOT / "assets" / "populations"
 # a hand-edited file can leave them out too.
 
 def _joint_to_dict(joint: design_space.Joint) -> dict:
-    out: dict = {"theta": joint.theta, "phi": joint.phi}
+    out: dict = {"kind": design_space.JOINT_KIND_NAMES[joint.kind]}
     if joint.offset:
         out["offset"] = joint.offset
     for name in ("axis_override", "limits", "drive"):
@@ -42,9 +42,19 @@ def _joint_to_dict(joint: design_space.Joint) -> dict:
 
 
 def _joint_from_dict(data: dict) -> design_space.Joint:
+    if "theta" in data:
+        raise ValueError(
+            "this joint carries 'theta', an axis angle the design space no "
+            "longer has: a joint is one of "
+            f"{design_space.JOINT_KIND_NAMES} now. Re-derive the population, or "
+            "convert it with the version that wrote it, where the conversion is "
+            "phi=0 -> roll, (theta=0, phi=pi/2) -> flexion, "
+            "(theta=pi/2, phi=pi/2) -> abduction, and nothing else was legal.")
+    kind = data["kind"]
+    if isinstance(kind, str):
+        kind = design_space.JOINT_KIND_NAMES.index(kind)
     return design_space.Joint(
-        theta=float(data["theta"]),
-        phi=float(data.get("phi", math.pi / 2)),
+        kind=int(kind),
         offset=float(data.get("offset", 0.0)),
         axis_override=_tuple(data.get("axis_override")),
         limits=_tuple(data.get("limits")),
@@ -59,8 +69,8 @@ def _tuple(value):
 def _segment_to_dict(segment: design_space.Segment) -> dict:
     out: dict = {"joint": _joint_to_dict(segment.joint), "length": segment.length}
     # Straight on is the overwhelming majority, so it stays out of the file.
-    if segment.tilt:
-        out["tilt"] = int(segment.tilt)
+    if segment.lean:
+        out["lean"] = int(segment.lean)
     if segment.cross_section is not None:
         out["cross_section"] = list(segment.cross_section)
     if segment.meshes is not None:
@@ -76,7 +86,7 @@ def _segment_from_dict(data: dict) -> design_space.Segment:
     return design_space.Segment(
         joint=_joint_from_dict(data["joint"]),
         length=float(data["length"]),
-        tilt=int(data.get("tilt", 0)),
+        lean=int(data.get("lean", 0)),
         cross_section=_tuple(data.get("cross_section")),
         meshes=_tuple(data.get("meshes")),
         token_box=None if token_box is None else tuple(tuple(row) for row in token_box),

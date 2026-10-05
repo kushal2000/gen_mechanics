@@ -53,32 +53,19 @@ def check_segment(seg: design_space.Segment, where: str, terminal: bool) -> list
         out.append(f"{where}.length = {seg.length:.4f} off the "
                    f"{design_space.LINK_QUANTUM} m grid")
 
-    # Outside these ranges a hand has more than one spelling, which breaks design identity...
-    if not 0.0 - _TOL <= seg.joint.theta < math.pi:
-        out.append(f"{where}.theta = {seg.joint.theta:.4f} outside [0, pi)")
-    # phi is free over [0, pi): 0 is a roll joint, pi/2 a hinge perpendicular to
-    # the link. LEAP needs one roll joint, in its thumb, so the pin is gone.
-    if not 0.0 - _TOL <= seg.joint.phi < math.pi:
-        out.append(f"{where}.phi = {seg.joint.phi:.4f} outside [0, pi)")
-    # At phi = 0 the axis is +x whatever theta says, so theta must be 0 there or
-    # a roll joint has 12 spellings and design identity goes with it.
-    if abs(seg.joint.phi) <= _TOL and abs(seg.joint.theta) > _TOL:
-        out.append(f"{where}.phi = 0 is a roll joint, whose axis is +x for any "
-                   f"theta; theta must be 0 there, not {seg.joint.theta:.4f}")
-    # The zero offset is where the link sits at neutral, so it must be an angle the joint could...
-    lo, hi = design_space.JOINT_LIMIT
-    if not lo - _TOL <= seg.joint.offset <= hi + _TOL:
-        out.append(f"{where}.offset = {seg.joint.offset:.4f} outside "
-                   f"the joint's own travel [{lo:.4f}, {hi:.4f}]")
+    if seg.joint.kind not in design_space.JOINT_KINDS:
+        out.append(f"{where}.joint.kind = {seg.joint.kind!r} is not one of "
+                   f"{design_space.JOINT_KIND_NAMES}")
+    # A generated joint has no assembly angle: travel is symmetric about the rest
+    # pose, and the link is aimed by its LEAN. offset survives only on hands that
+    # were measured rather than drawn, which carry an axis_override too.
+    if abs(seg.joint.offset) > _TOL and seg.joint.axis_override is None:
+        out.append(f"{where}.joint.offset = {seg.joint.offset:.4f}; a generated "
+                   f"joint has no assembly angle, the lean aims the link")
 
-    for name, value in (("theta", seg.joint.theta), ("phi", seg.joint.phi),
-                        ("offset", seg.joint.offset)):
-        if not _on_grid(value, design_space.ANGLE_QUANTUM):
-            out.append(f"{where}.{name} = {value:.4f} off the angle grid")
-
-    if not 0 <= seg.tilt < design_space.N_TILTS:
-        out.append(f"{where}.tilt = {seg.tilt} is not one of the "
-                   f"{design_space.N_TILTS} mounting directions")
+    if not 0 <= seg.lean < design_space.N_LEANS:
+        out.append(f"{where}.lean = {seg.lean} is not one of the "
+                   f"{design_space.N_LEANS} mounting directions")
     return out
 
 

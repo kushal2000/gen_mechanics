@@ -39,20 +39,19 @@ def test_it_has_sharpas_structure(hand):
 
 
 def test_every_joint_is_pure_flexion_or_abduction(hand):
-    """theta on {0, 90}, phi = 90: exactly what the sampler draws."""
+    """Hinges only, which is exactly what the sampler draws."""
     for finger in hand.fingers:
         for seg in finger.segments:
-            assert math.isclose(seg.joint.phi, math.pi / 2)
-            assert min(abs(seg.joint.theta), abs(seg.joint.theta - math.pi / 2)) < 1e-9
+            assert seg.joint.kind in (ds.FLEXION, ds.ABDUCTION)
+            assert seg.lean == 0, "the capsule's links are all straight on"
 
 
 def test_the_mcp_pattern_is_flexion_then_abduction(hand):
     """SHARPA's MCP_FE is the parent of MCP_AA on every finger; same here."""
+    F, A = ds.FLEXION, ds.ABDUCTION
     for finger in hand.fingers[1:]:
-        thetas = [round(math.degrees(s.joint.theta)) for s in finger.segments]
-        assert thetas == [0, 90, 0, 0]
-    thumb = [round(math.degrees(s.joint.theta)) for s in hand.fingers[0].segments]
-    assert thumb == [0, 90, 0, 90, 0]
+        assert [s.joint.kind for s in finger.segments] == [F, A, F, F]
+    assert [s.joint.kind for s in hand.fingers[0].segments] == [F, A, F, A, F]
 
 
 def test_everything_sits_on_the_grammars_grid(hand):

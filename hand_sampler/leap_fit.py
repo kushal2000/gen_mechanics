@@ -197,35 +197,19 @@ def _palm_axes(row: list[Digit]) -> np.ndarray:
     return np.column_stack([x, y, z])
 
 
-def _tilt_for(direction: np.ndarray) -> int:
-    """The tilt whose direction is closest to ``direction``, which is a unit
-    vector in the parent segment's own frame."""
-    dots = [float(direction @ np.asarray(t)) for t in D.TILTS]
-    return int(np.argmax(dots))
+def _lean_for(direction: np.ndarray) -> int:
+    """The lean closest to ``direction``, a unit vector in the parent's frame."""
+    return int(np.argmax([float(direction @ np.asarray(v)) for v in D.LEANS]))
 
 
-def _angles_for(axis: np.ndarray) -> tuple[float, float]:
-    """``(theta, phi)`` on the angle grid for a hinge ``axis`` in the joint frame.
+def _kind_for(axis: np.ndarray) -> int:
+    """Which of the three kinds of hinge ``axis`` is, in the joint's own frame.
 
-    An axis and its negative are the same hinge, so the sign is chosen to put
-    theta in [0, pi) -- one spelling per joint, which is what design identity
-    needs. At phi = 0 the axis is +x whatever theta says, so theta goes to 0.
+    An axis and its negative are the same hinge, so the comparison is on the
+    absolute dot product: there is one spelling per joint and no sign to pick.
     """
-    best = None
-    for sign in (1.0, -1.0):
-        a = sign * axis
-        phi = math.acos(float(np.clip(a[0], -1.0, 1.0)))
-        theta = math.atan2(float(a[1]), float(a[2]))
-        phi_q = round(phi / D.ANGLE_QUANTUM) * D.ANGLE_QUANTUM
-        theta_q = round(theta / D.ANGLE_QUANTUM) * D.ANGLE_QUANTUM
-        phi_q = min(max(phi_q, 0.0), math.pi - D.ANGLE_QUANTUM)
-        theta_q = theta_q % math.pi
-        if abs(phi_q) <= 1e-9:
-            theta_q = 0.0
-        err = float(np.linalg.norm(D.axis_of(D.Joint(theta_q, phi_q)) - a))
-        if best is None or err < best[0]:
-            best = (err, theta_q, phi_q)
-    return best[1], best[2]
+    return max(D.JOINT_KINDS,
+               key=lambda k: abs(float(axis @ D.axis_of(D.Joint(k)))))
 
 
 # --- the fit ----------------------------------------------------------------
@@ -295,15 +279,14 @@ def fit() -> tuple[D.Hand, list[str]]:
         for i in range(len(d.pos)):
             v_link = pts[i + 1] - pts[i]
             L = float(np.linalg.norm(v_link))
-            tilt = _tilt_for(R.T @ (v_link / max(L, 1e-12)))
-            R = R @ D.tilt_rot(tilt)
-            theta, phi = _angles_for(R.T @ axes[i])
+            lean = _lean_for(R.T @ (v_link / max(L, 1e-12)))
+            R = R @ D.lean_rot(lean)
+            kind = _kind_for(R.T @ axes[i])
             snapped = _snap_length(L)
             if abs(snapped - L) > D.LINK_QUANTUM / 2 + 1e-9:
                 notes.append(f"{d.name}: link {i} {L*1000:.1f} -> {snapped*1000:.0f} mm "
                              f"(the {D.MIN_LINK_LENGTH*1000:.0f} mm floor)")
-            segs.append(D.Segment(D.Joint(theta, phi, 0.0), snapped, tilt=tilt))
-            R = R @ D.rodrigues(D.axis_of(D.Joint(theta, phi)), 0.0)
+            segs.append(D.Segment(D.Joint(kind), snapped, lean=lean))
         fingers.append(D.Finger(mount, tuple(segs)))
 
     hand = D.Hand(palm, tuple(fingers))
