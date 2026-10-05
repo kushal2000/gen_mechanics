@@ -42,7 +42,7 @@ __all__ = [
     "DesignRewardScale", "morphology_table", "MORPH_PER_SLOT",
     "PROFILE_HORA", "is_hora", "rotate_reward", "linvel_penalty", "pose_diff_penalty", "torque_penalty",
     "work_penalty", "combine_reward", "unscale", "push_history", "fill_history", "dropped", "HORA_OBS_FIELDS",
-    "flat_observation",
+    "flat_observation", "survival_reward",
 ]
 
 PROFILE_HORA = "hora"
@@ -113,6 +113,14 @@ def flat_observation(hist: torch.Tensor, priv: torch.Tensor) -> torch.Tensor:
     per-hand MLP expert, and with ``hora.teacher_obs`` the ``teacher_obs``
     that the token env emits next to the tokens."""
     return torch.cat([hist.reshape(hist.shape[0], -1), priv], dim=-1)
+
+
+def survival_reward(dropped: torch.Tensor, fall_penalty: float, alive_bonus: float) -> torch.Tensor:
+    """``fall_penalty`` on the step the object drops, ``alive_bonus`` on
+    every other step (``hora.fall_penalty`` / ``hora.alive_bonus``; HORA has
+    neither)."""
+    d = dropped.to(torch.float32)
+    return float(fall_penalty) * d + float(alive_bonus) * (1.0 - d)
 
 
 def dropped(z, z0, drop_dz: float) -> torch.Tensor:

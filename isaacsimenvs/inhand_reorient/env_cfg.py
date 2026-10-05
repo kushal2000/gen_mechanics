@@ -555,6 +555,12 @@ class HoraCfg:
     joint-token transformer (``token_layout.py``; agent
     ``rl_games_hora_token_ppo_cfg_entry_point``) instead of HORA's flat
     history and privileged values."""
+    fall_penalty: float = 0.0
+    """Added to the reward on the step the object drops (HORA has no fall
+    penalty, so flicking the object and dropping it is a cheap local
+    optimum for a per-hand expert); e.g. -20. 0 = off."""
+    alive_bonus: float = 0.0
+    """Added to the reward on every step the object has not dropped. 0 = off."""
     teacher_obs: bool = False
     """With ``token_obs``: also emit, under the observation key
     ``teacher_obs``, the flat observation a per-hand MLP expert was trained

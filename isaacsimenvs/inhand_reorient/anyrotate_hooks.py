@@ -520,6 +520,10 @@ def _hora_rewards(env) -> torch.Tensor:
                   torque=h.torque_penalty_scale, work=h.work_penalty_scale)
     terms = {k: torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0) for k, v in terms.items()}
     reward = hp.combine_reward(terms, scales)
+    survival = None
+    if h.fall_penalty or h.alive_bonus:  # experts only: HORA has no fall penalty
+        survival = hp.survival_reward(env._termination_reasons["drop"], h.fall_penalty, h.alive_bonus)
+        reward = reward + survival
     if h.ppo_group_info:  # rl_games group_advantage_norm reads it from the step infos
         env.extras["ppo_group"] = _design_idx(env)
     if env._hora_rscale is not None:
@@ -531,6 +535,8 @@ def _hora_rewards(env) -> torch.Tensor:
         "pose_penalty": scales["pose"] * terms["pose"], "torque_penalty": scales["torque"] * terms["torque"],
         "work_penalty": scales["work"] * terms["work"], "total_reward": reward,
     }
+    if survival is not None:
+        env._reward_terms["survival"] = survival
     env._is_success = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
     _update_curricula(env)
     return reward

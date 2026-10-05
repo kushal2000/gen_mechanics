@@ -358,4 +358,6 @@ hora:
   ppo_group_info: false             # population: design index in the step infos (rl_games group_advantage_norm)
   token_obs: false                  # population: per-joint tokens + global token (token_layout.py, joint-token transformer)
   teacher_obs: false                # with token_obs: also the flat MLP observation under 'teacher_obs' (distill/)
+  fall_penalty: 0.0                 # added on the step the object drops (HORA: none)
+  alive_bonus: 0.0                  # added on every step the object has not dropped
   design_id_obs: 0                  # population: one-hot design index this wide (per_design_nets), 0 = off
