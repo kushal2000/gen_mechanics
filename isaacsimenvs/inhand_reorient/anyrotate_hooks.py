@@ -820,8 +820,11 @@ def _hora_observations(env) -> dict[str, torch.Tensor]:
         env._obj_pos_palm, env._ar_object_dims[:, :1], env._ar_object_mass.unsqueeze(-1),
         torch.full((n, 1), float(a.static_friction), device=env.device), env._ar_object_com], dim=-1)
     if h.token_obs:
-        return _hora_token_observations(env, priv)
-    parts = [env._hora_hist.reshape(n, -1), priv]
+        obs = _hora_token_observations(env, priv)
+        if h.teacher_obs:  # each env's per-hand MLP expert reads the flat observation (distill/)
+            obs["teacher_obs"] = hp.flat_observation(env._hora_hist, priv)
+        return obs
+    parts = [hp.flat_observation(env._hora_hist, priv)]
     if env._hora_morph_static is not None:
         k = len(env.fingertip_body_idx)
         tip_mask = _fingertip_valid_mask(env)

@@ -42,6 +42,8 @@ gym.register(
         # R1 plain PPO, R2 + SAPG with 6 exploration blocks (num_envs 12288).
         "rl_games_hora_token_team_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandHoraTokenTeamPPO.yaml"),
         "rl_games_hora_token_team_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "InHandHoraTokenTeamSAPG.yaml"),
+        # GET-Zero-style distillation of per-hand MLP experts into the transformer (distill/run.py).
+        "rl_games_hora_token_distill_cfg_entry_point": str(_CFG_DIR / "train" / "InHandHoraTokenDistill.yaml"),
         "rl_games_repose_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPPO.yaml"),
         "rl_games_repose_pop_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPopPPO.yaml"),
     },

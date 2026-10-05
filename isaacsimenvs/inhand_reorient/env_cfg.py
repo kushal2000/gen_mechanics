@@ -555,6 +555,12 @@ class HoraCfg:
     joint-token transformer (``token_layout.py``; agent
     ``rl_games_hora_token_ppo_cfg_entry_point``) instead of HORA's flat
     history and privileged values."""
+    teacher_obs: bool = False
+    """With ``token_obs``: also emit, under the observation key
+    ``teacher_obs``, the flat observation a per-hand MLP expert was trained
+    on (HORA's 3-frame joint history and its 9 privileged values,
+    ``hora_profile.flat_observation``; no design one-hot), so one env step
+    serves a token student and every env's own expert (``distill/``)."""
     design_id_obs: int = 0
     """Population path: append a one-hot of each env's design index, this
     wide (>= the population size; 0 = off), before the slot signs. Read by

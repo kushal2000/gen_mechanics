@@ -86,6 +86,8 @@ def apply_anyrotate_to_cfg(cfg) -> None:
             if cfg.hora.morph_obs or cfg.hora.ghost_action_mask or cfg.hora.disjoint_slots:
                 raise ValueError("hora.token_obs replaces morph_obs, ghost_action_mask and disjoint_slots")
             fields = ("hora_tokens", "hora_token_global")
+        if cfg.hora.teacher_obs and not cfg.hora.token_obs:
+            raise ValueError("hora.teacher_obs emits the flat MLP observation next to the tokens; it needs hora.token_obs")
         if int(cfg.hora.design_id_obs) > 0:  # before the slot signs (policy_network.per_design_nets)
             fields = fields + (f"hora_design_id_{int(cfg.hora.design_id_obs)}",)
         if cfg.hora.ghost_action_mask:  # last: the network reads the trailing slot signs

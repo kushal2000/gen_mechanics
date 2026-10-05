@@ -357,4 +357,5 @@ hora:
   disjoint_slots: false            # population: each design's real joints in their own policy columns
   ppo_group_info: false             # population: design index in the step infos (rl_games group_advantage_norm)
   token_obs: false                  # population: per-joint tokens + global token (token_layout.py, joint-token transformer)
+  teacher_obs: false                # with token_obs: also the flat MLP observation under 'teacher_obs' (distill/)
   design_id_obs: 0                  # population: one-hot design index this wide (per_design_nets), 0 = off

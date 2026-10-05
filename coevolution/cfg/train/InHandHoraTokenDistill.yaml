@@ -1,0 +1,125 @@
+# GET-Zero-style distillation (isaacsimenvs/inhand_reorient/distill/run.py):
+# per-hand MLP experts (InHandAnyRotatePPO.yaml, HORA's PPO, one solo run per
+# hand) distilled into the joint-token transformer by DAgger.
+#
+# Student network: the transformer of InHandHoraTokenTeamPPO.yaml (the
+# collaborator's d_model 128, 4 layers, 1 head, ff x4, value head [512, 256];
+# normalize_input False: the network normalises valid tokens and the global
+# vector itself and reads the RAW enabled column as the attention mask). The
+# PPO block is that config's, so a distilled student loads into rl_games
+# (player or RL fine-tuning) unchanged.
+#
+# distill: the DAgger loop (run.py). Per iteration every env steps
+# rollout_steps times; each env acts with its own design's expert with
+# probability beta (1 for warmup_iters, then linear to beta_min over
+# decay_iters), else with the student's mean; every visited state goes into
+# the aggregated dataset (a ring buffer of buffer_capacity rows) labelled with
+# the expert's deterministic mean action; then grad_steps Adam steps of the
+# masked action MSE (GET-Zero's L2 loss on the experts' actions) on
+# minibatches drawn from the dataset. Expert checkpoints come from
+# --experts (JSON: design source -> rl_games checkpoint), their network and
+# normalisers from expert_agent (the gym registry key of their train YAML).
+
+params:
+  seed: 42
+
+  env:
+    clip_observations: 10.0
+    clip_actions: 1.0
+
+  algo:
+    name: a2c_continuous
+
+  model:
+    name: continuous_a2c_logstd
+
+  network:
+    name: inhand_joint_transformer
+    separate: False
+    d_model: 128
+    n_layers: 4
+    n_heads: 1
+    ff_mult: 4
+    dropout: 0.0
+    compile_net: false
+    value_head_units: [512, 256]
+    arm_head_units: [8]
+    design_id_obs: 0
+    per_design_global_norm: false
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: 0
+        fixed_sigma: fixed
+        logstd_max: 0.0
+  load_checkpoint: False
+  load_path: ''
+
+  distill:
+    expert_agent: rl_games_anyrotate_ppo_cfg_entry_point
+    rollout_steps: 16
+    grad_steps: 16
+    minibatch: 4096
+    learning_rate: 0.0003
+    weight_decay: 0.0
+    grad_norm: 1.0
+    buffer_capacity: 1500000
+    warmup_iters: 100
+    decay_iters: 400
+    beta_min: 0.0
+    log_every_iters: 10
+    ckpt_every_iters: 50
+    eval_every_s: 600
+    eval_rounds: 1
+
+  config:
+    name: 0_inhand_hora_token_distill
+    full_experiment_name: ${.name}
+    env_name: rlgpu
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    multi_gpu: False
+    ppo: True
+    mixed_precision: True
+    normalize_input: False
+    normalize_value: True
+    value_bootstrap: True
+    num_actors: ${....env.scene.num_envs}
+    reward_shaper:
+      scale_value: 0.01
+    normalize_advantage: True
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 0.0001
+    lr_schedule: adaptive
+    schedule_type: standard
+    kl_threshold: 0.016
+    score_to_win: 1000000
+    max_epochs: 1000000
+    save_best_after: 100
+    save_frequency: 200
+    print_stats: True
+    grad_norm: 1.0
+    entropy_coef: 0.0
+    truncate_grads: True
+    e_clip: 0.1
+    horizon_length: 16
+    minibatch_size: 32768
+    mini_epochs: 2
+    critic_coef: 4.0
+    clip_value: True
+    seq_length: 16
+    bounds_loss_coef: 0.0001
+
+    expl_type: none
+    use_others_experience: none
+
+    player:
+      deterministic: True
+      games_num: 100000
+      print_stats: True
