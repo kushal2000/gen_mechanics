@@ -406,3 +406,7 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Fair test complete for solo allegro: R2 overtakes the MLP from 25k steps (2.46 vs 1.91 rotations); SAPG produced the turn (4 s -> 12.6 s holding between 19k and 22k steps). Multi-hand R2 runs (pair, pair + group advantage norm, solo 174) continue on the cluster unattended.
 - GET-Zero round 2: experts on six more hands still flick despite opposition-seeded grasps; low-noise expert tests queued. Next idea: SAPG and/or a drop penalty for the experts.
+
+## R2 transformer on two hands, interim (2026-10-05 ~13:00)
+
+- At matched per-hand samples, before the solo turn point: pair R2 allegro 1.0-1.7x solo holding / 0.94-1.30x rotations; founder 174 0.4-0.8x holding early, 2.5 s vs 2.9 s solo at the end. Pair R2 + group advantage norm: allegro 1.2-1.55x, 174 0.84-1.3x. No sign of the interference seen with the MLP pair so far. Both pair runs resumed for 6 h to pass the solo turn (~0.25 B samples per hand); solo 234 / 416 baselines running for the 4-hand test.
