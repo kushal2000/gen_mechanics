@@ -11,7 +11,7 @@
 #SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/embodiment_generalization/slurm-%A_%a.out
 # Embodiment-generalization sweep of ONE policy on HAND, in the training metric (goals per episode, 50-goal
 # max, each env's first episode; $NUM_ENVS envs, default 100, x $EVAL_SECONDS s, default 240):
-#   AXIS=finger   the full hand, then the hand with each finger removed in turn (thumb ... pinky):
+#   AXIS=finger   the full hand, then the hand with each finger removed in turn (thumb ... pinky; Allegro has 4):
 #                 <hand>_left_uniform_handonly_no_<finger>, from
 #                 assets/urdf/unified_dynamics_commercial_hands/make_missing_fingers.py
 #   AXIS=actnoise Gaussian noise of std 0/0.1/0.2/0.3/0.5/0.75/1.0 on every action, every step (normalized
@@ -21,7 +21,12 @@ set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
 NUM_ENVS=${NUM_ENVS:-100}; SECONDS_PER=${EVAL_SECONDS:-240}
 case "$AXIS" in
-    finger)   VALUES="none thumb index middle ring pinky"; OUT=$REPO/experiments/05oct_embodiment_generalization/results/missing_finger/$LABEL ;;
+    finger)
+        case "$HAND" in
+            allegro) VALUES="none index middle ring thumb" ;;            # 4 fingers
+            *)       VALUES="none thumb index middle ring pinky" ;;
+        esac
+        OUT=$REPO/experiments/05oct_embodiment_generalization/results/missing_finger/$HAND/$LABEL ;;
     actnoise) VALUES="0 0.1 0.2 0.3 0.5 0.75 1.0"; OUT=$REPO/experiments/05oct_embodiment_generalization/results/action_noise/$LABEL ;;
     *) echo "unknown AXIS $AXIS"; exit 1 ;;
 esac
