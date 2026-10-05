@@ -428,3 +428,21 @@ def test_expert_specs_carry_their_own_agent_config():
     assert dg.expert_spec({"path": "b.pth", "agent": "rl_games_hora_sapg_cfg_entry_point"}) == (
         "b.pth", "rl_games_hora_sapg_cfg_entry_point")
     assert dg.expert_spec(None) == (None, None)
+
+
+# --------------------------------------------------------------------------
+# Survival terms for experts (hora.fall_penalty, hora.alive_bonus)
+# --------------------------------------------------------------------------
+
+
+def test_survival_reward_charges_the_drop_and_pays_each_held_step():
+    from isaacsimenvs.inhand_reorient import hora_profile as hp
+
+    dropped = torch.tensor([False, True, False])
+    assert torch.equal(hp.survival_reward(dropped, -20.0, 0.0), torch.tensor([0.0, -20.0, 0.0]))
+    assert torch.equal(hp.survival_reward(dropped, 0.0, 0.05), torch.tensor([0.05, 0.0, 0.05]))
+    assert torch.allclose(hp.survival_reward(dropped, -20.0, 0.05), torch.tensor([0.05, -20.0, 0.05]))
+    h = yaml.safe_load((CFG / "task" / "InHandReorient.yaml").read_text())["hora"]
+    assert h["fall_penalty"] == 0.0 and h["alive_bonus"] == 0.0  # HORA has neither; off by default
+    src = (ROOT / "isaacsimenvs" / "inhand_reorient" / "anyrotate_hooks.py").read_text()
+    assert "hp.survival_reward(env._termination_reasons[\"drop\"], h.fall_penalty, h.alive_bonus)" in src
