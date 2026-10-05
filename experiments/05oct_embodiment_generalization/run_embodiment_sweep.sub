@@ -14,12 +14,15 @@
 #   AXIS=finger   the full hand, then the hand with each finger removed in turn (thumb ... pinky):
 #                 <hand>_left_uniform_handonly_no_<finger>, from
 #                 assets/urdf/unified_dynamics_commercial_hands/make_missing_fingers.py
+#   AXIS=actnoise Gaussian noise of std 0/0.1/0.2/0.3/0.5/0.75/1.0 on every action, every step (normalized
+#                 [-1, 1] action space, clipped; eval_niches.py --action-noise) -- the hand's actuation made noisy
 #   sbatch --export=ALL,HAND=wuji2,CKPT=<pth>,LABEL=<name>,AXIS=finger run_embodiment_sweep.sub
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
 NUM_ENVS=${NUM_ENVS:-100}; SECONDS_PER=${EVAL_SECONDS:-240}
 case "$AXIS" in
-    finger) VALUES="none thumb index middle ring pinky"; OUT=$REPO/experiments/05oct_embodiment_generalization/results/missing_finger/$LABEL ;;
+    finger)   VALUES="none thumb index middle ring pinky"; OUT=$REPO/experiments/05oct_embodiment_generalization/results/missing_finger/$LABEL ;;
+    actnoise) VALUES="0 0.1 0.2 0.3 0.5 0.75 1.0"; OUT=$REPO/experiments/05oct_embodiment_generalization/results/action_noise/$LABEL ;;
     *) echo "unknown AXIS $AXIS"; exit 1 ;;
 esac
 LOGS=$REPO/debug_outputs/embodiment_generalization/logs/$AXIS/$LABEL
@@ -27,13 +30,14 @@ mkdir -p $OUT $LOGS
 cd $REPO
 export OMNI_KIT_ACCEPT_EULA=YES
 for v in $VALUES; do
-    TGT=$HAND
-    [ "$v" != none ] && TGT=${HAND}_left_uniform_handonly_no_$v
+    TGT=$HAND; NOISE=()
+    [ "$AXIS" = finger ] && [ "$v" != none ] && TGT=${HAND}_left_uniform_handonly_no_$v
+    [ "$AXIS" = actnoise ] && NOISE=(--action-noise "$v")
     f=$OUT/${AXIS}_${v}.json
     [ -s "$f" ] && { echo "skip $f"; continue; }
     .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform --hand "$HAND" \
         --target "$TGT" --checkpoint "$CKPT" --condition nominal --num-envs $NUM_ENVS --seconds $SECONDS_PER \
-        --max-goals 50 --out "$f" > $LOGS/${AXIS}_${v}.log 2>&1 || echo "FAILED $LABEL $AXIS $v"
+        --max-goals 50 ${NOISE[@]+"${NOISE[@]}"} --out "$f" > $LOGS/${AXIS}_${v}.log 2>&1 || echo "FAILED $LABEL $AXIS $v"
     grep -h "\[niches\]" $LOGS/${AXIS}_${v}.log
 done
 exit 0

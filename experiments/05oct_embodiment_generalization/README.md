@@ -1,7 +1,7 @@
 # 05 Oct: embodiment generalization
 
 Does training one policy on 8 hands (`experiments/01oct_unified_rl`) make it robust to changes in the HAND?
-The object-side perturbations (push force, mass, friction, action noise) live in `experiments/02oct_ood_evals`;
+The object-side perturbations (push force, mass, friction) live in `experiments/02oct_ood_evals`;
 there the Wuji-only policy won everywhere. This folder perturbs the embodiment itself.
 
 ## Missing fingers (`results/missing_finger/`, `plots/missing_finger_*.png`)
@@ -21,6 +21,12 @@ Unified 40k vs Wuji-only ~32k, goals per episode (50-goal max, 100 first episode
 
 Without the ring or pinky finger the unified policy keeps 72-85% of its full-hand score; the Wuji-only policy
 collapses. Thumb and index are needed by both. Single training run per policy.
+
+## Action noise (`results/action_noise/`, `plots/action_noise_*.png`)
+
+Gaussian noise of std 0-1.0 added to every action, every step, in the normalized action space ([-1, 1] over each
+joint's range), then clipped (`eval_niches.py --action-noise`; `run_embodiment_sweep.sub AXIS=actnoise`): the
+hand's actuation made noisy. No action smoothing in these runs, so the noise reaches the joint targets directly.
 
 Protocol: as `experiments/02oct_ood_evals/README.md` (goals per episode as in training, each env's first
 episode, 240 s, greedy actions, uniform dynamics, palm-frame observations).

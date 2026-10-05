@@ -15,8 +15,6 @@
 #                  (domain_randomization.force_magnitude_n; independent of the cube's mass)
 #   AXIS=mass      cube of 45.6 (nominal)/40/30/20/10/5 g, same 45 mm size (assets.object_density_scale)
 #   AXIS=friction  cube, hand links and fingertips all at mu = 0.5/0.4/0.3/0.2/0.1/0.05/0 (trained: 0.5)
-#   AXIS=actnoise  Gaussian noise of std 0/0.1/0.2/0.3/0.5/0.75/1.0 on every action, every step (normalized
-#                  [-1, 1] action space, clipped), eval_niches.py --action-noise
 #   sbatch --export=ALL,HAND=wuji2,TARGET=wuji2,CKPT=<pth>,LABEL=<name>,AXIS=mass run_ood_sweep.sub
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
@@ -31,7 +29,6 @@ case "$AXIS" in
     newton)   VALUES="0 5 10 15 20 25" ;;
     mass)     VALUES="45.6 40 30 20 10 5" ;;
     friction) VALUES="0.5 0.4 0.3 0.2 0.1 0.05 0" ;;
-    actnoise) VALUES="0 0.1 0.2 0.3 0.5 0.75 1.0" ;;
     *) echo "unknown AXIS $AXIS"; exit 1 ;;
 esac
 for v in $VALUES; do
@@ -46,15 +43,13 @@ for v in $VALUES; do
         friction)
             OV=(--override "assets.object_friction=$v" --override "assets.robot_friction=$v"
                 --override "assets.finger_tip_friction=$v") ;;
-        actnoise)
-            OV=() ;;
     esac
     TGT=${TARGET:-}
     f=$OUT/${AXIS}_${v}.json
     [ -s "$f" ] && { echo "skip $f"; continue; }
     .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform --hand "$HAND" \
         ${TGT:+--target "$TGT"} --checkpoint "$CKPT" --condition nominal --num-envs $NUM_ENVS \
-        --seconds $SECONDS_PER --max-goals 50 ${OV[@]+"${OV[@]}"} $( [ "$AXIS" = actnoise ] && echo --action-noise $v ) --out "$f" > $LOGS/${AXIS}_${v}.log 2>&1 \
+        --seconds $SECONDS_PER --max-goals 50 ${OV[@]+"${OV[@]}"} --out "$f" > $LOGS/${AXIS}_${v}.log 2>&1 \
         || echo "FAILED $LABEL $AXIS $v"
     grep -h "\[niches\]" $LOGS/${AXIS}_${v}.log
 done
