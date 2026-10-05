@@ -1,0 +1,608 @@
+"""Zero-shot finger dropout: does one checkpoint drive a hand it never saw?
+
+Runs a policy trained on the intact 22-DoF SHARPA hand, unchanged, on six
+morphologies -- intact plus one per removed finger -- and reports goals hit
+over a fixed horizon.
+
+    python experiments/old_experiments/decentralized_control/eval/eval_finger_dropout.py \
+        --checkpoint debug_outputs/train_logs/<run>/0_pose_reach_jt_sapg/nn/<x>.pth \
+        --config     debug_outputs/train_logs/<run>/.hydra/config.yaml
+
+WHY THE SAME WEIGHTS FIT A SMALLER HAND. Every parameter of
+JointTransformerNet is independent of the hand joint count: token_dim is 32 and
+global_dim is 74 for any hand, mu_head is shared across tokens, arm_head and
+value_head read only the global vector, and attention is length-agnostic.
+Removing a finger changes only the NUMBER of tokens (22 -> 18 or 17). The two
+exceptions -- ``sigma`` and the observation normalizer -- are sliced by
+canonical index in finger_specs.remap_checkpoint. sigma's values are
+irrelevant under deterministic playback but its shape must satisfy
+load_state_dict; running_mean_std's values matter a great deal, so its columns
+are selected rather than reinitialised.
+
+The MLP baseline cannot be run this way at all -- its first layer is
+Linear(obs_dim + 32, 1024), so a different hand is a different network. That
+asymmetry is the result, not an oversight.
+
+THE METRIC. ``env._successes`` counts goals in the CURRENT episode and is
+zeroed on reset, so reading it once at the end would undercount every env that
+reset. Each env's count is banked at the reset boundary and added to whatever
+still stands at the end.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import sys
+import time
+
+
+def parse_args():
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--checkpoint", required=True,
+                   help=".pth trained on the intact hand")
+    p.add_argument("--config", default="",
+                   help="the run's .hydra/config.yaml; defaults to searching "
+                        "two levels above the checkpoint")
+    p.add_argument("--variants", default="intact,thumb,index,middle,ring,pinky")
+    p.add_argument("--num_envs", type=int, default=4096)
+    p.add_argument("--steps", type=int, default=6000)
+    p.add_argument("--num_assets_per_type", type=int, default=100)
+    p.add_argument("--seed", type=int, default=0)
+    # The env a checkpoint TRAINED in, when it differs from this harness's
+    # defaults. simtoolreal's shipped policy used 0.1 smoothing with delays and
+    # noise on; evaluating it at 1.0 with them off is a different environment,
+    # and the policy would look worse for reasons that are not the policy.
+    p.add_argument("--moving_average", type=float, default=1.0,
+                   help="arm and hand action smoothing; 0.1 for the simtoolreal policy")
+    p.add_argument("--domain_randomization", type=int, default=0,
+                   help="1 restores obs/action/object delays and noise")
+    p.add_argument("--sapg_expl_coef", type=float, default=50.0,
+                   help="trailing exploration column a SAPG checkpoint expects; "
+                        "pass a negative value for a plain PPO checkpoint")
+    p.add_argument("--success_tolerance", type=float, default=0.03,
+                   help="pins termination.eval_success_tolerance, which "
+                        "DISABLES the curriculum for the run. Without it the "
+                        "env starts at the curriculum's loosest bar (0.075) "
+                        "AND keeps tightening during evaluation, so the bar "
+                        "differs between variants by how well each does.")
+    p.add_argument("--pin_hand_scale", type=int, default=1,
+                   help="1 pins hand_scale to the INTACT hand's value. It is "
+                        "the longest link edge in the hand, so removing the "
+                        "thumb drops it 24% (0.0717 -> 0.0542) -- and it "
+                        "divides joint_link_bbox and object_keypoints_rel_joint, "
+                        "528 of the 778 columns. It was also 100%% "
+                        "zero-variance during training, so the policy has no "
+                        "capacity to interpret a changed value. It is a "
+                        "normalization constant, not a property to re-derive.")
+    p.add_argument("--policy_mode", default="native",
+                   choices=["native", "padded"],
+                   help="native: slice the checkpoint down to the reduced hand "
+                        "(joint_transformer -- every weight is joint-count "
+                        "independent, so this is lossless). padded: keep the "
+                        "full-width weights and adapt at runtime, scattering "
+                        "the reduced observation back into a full-width vector "
+                        "and slicing the actions. An MLP has one weight per "
+                        "input column, so padded is the ONLY option for it.")
+    p.add_argument("--pad_fill", default="mean", choices=["mean", "zero"],
+                   help="What a dropped column carries under --policy_mode "
+                        "padded. 'mean' writes the checkpoint's own "
+                        "running_mean, which is exactly zero AFTER rl_games "
+                        "normalises -- i.e. 'no information', and the most "
+                        "charitable control. 'zero' writes a literal 0, which "
+                        "post-normalisation is (0 - mean)/std, a value the "
+                        "policy may never have seen. Report which you used.")
+    p.add_argument("--video", type=int, default=0,
+                   help="Record one mp4 PER ENV from a single rollout.")
+    p.add_argument("--video_dir", default="debug_outputs/videos/finger_dropout")
+    p.add_argument("--video_res", default="640,480",
+                   help="WxH per view. Render cost scales with pixels and every "
+                        "step pays it num_envs times.")
+    p.add_argument("--cam_eye", default="",
+                   help="'x,y,z' camera offset from an env origin. Default: "
+                        "the value cfg.viewer already carries.")
+    p.add_argument("--cam_lookat", default="",
+                   help="'x,y,z' aim point offset from an env origin.")
+    p.add_argument("--cam_sweep", type=int, default=0,
+                   help="With --video_probe, also render a set of candidate "
+                        "framings around the MEASURED palm/object position and "
+                        "dump them as sweep_*.png, so the framing is chosen "
+                        "from the scene rather than guessed.")
+    p.add_argument("--video_probe", type=int, default=0,
+                   help="Render N steps, dump the last frame of each env as PNG, "
+                        "then exit. Use to check framing before a long run.")
+    p.add_argument("--sampled", action="store_true",
+                   help="sample actions instead of using mu")
+    p.add_argument("--out", default="debug_outputs/eval_logs/finger_dropout.json")
+    return p.parse_known_args()[0]
+
+
+def find_config(args) -> str:
+    if args.config:
+        return args.config
+    # .../<run>/<experiment>/nn/<ckpt>.pth  ->  .../<run>/.hydra/config.yaml
+    for parent in pathlib.Path(args.checkpoint).resolve().parents:
+        candidate = parent / ".hydra" / "config.yaml"
+        if candidate.is_file():
+            return str(candidate)
+    raise FileNotFoundError(
+        "could not find the run's .hydra/config.yaml above "
+        f"{args.checkpoint}; pass --config explicitly")
+
+
+def main() -> None:
+    args = parse_args()
+    repo = pathlib.Path(__file__).parents[4]
+    sys.path.insert(0, str(repo))
+    sys.path.insert(0, str(pathlib.Path(__file__).parent))
+    os.chdir(repo)   # urdf_path and the config path are repo-relative
+
+    run_config = find_config(args)
+    if not pathlib.Path(args.checkpoint).is_file():
+        # rl_games' restore silently keeps random weights for a missing path.
+        raise FileNotFoundError(f"checkpoint not found: {args.checkpoint}")
+
+    from isaaclab.app import AppLauncher
+    app_parser = argparse.ArgumentParser()
+    AppLauncher.add_app_launcher_args(app_parser)
+    app_args = app_parser.parse_args([])
+    app_args.headless = True
+    # rgb_array rendering needs the RTX renderer up; without this the sim runs
+    # in NO_RENDERING and render() raises rather than returning frames.
+    if args.video or args.video_probe:
+        app_args.enable_cameras = True
+    app = AppLauncher(app_args).app
+
+    import gymnasium as gym
+    import torch
+
+    import isaacsimenvs  # noqa: F401
+    import finger_specs
+    from coevolution.eval.rl_player import RlPlayer
+    from coevolution.population.run_config import (
+        load_run_config, synthesise_policy_config,
+    )
+    from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
+    from isaacsimenvs.pose_reaching_6d.scene_utils.robots import SHARPA_IIWA14
+
+    # RlPlayer reads cfg["train"]; a run stores the identical rl_games block
+    # under "agent". The repo already synthesises one from the other, and it
+    # resolves against the WHOLE config because num_actors interpolates out to
+    # env.scene.num_envs -- an agent-only save leaves a dangling key that fails
+    # minutes later, inside a Kit boot.
+    base_policy_config = synthesise_policy_config(
+        load_run_config(pathlib.Path(run_config).parent.parent),
+        pathlib.Path(args.out).parent / "policy_config.yaml", args.num_envs)
+    print(f"synthesised policy config from {run_config} -> {base_policy_config}",
+          flush=True)
+
+    # The intact hand's characteristic scale, read from its own URDF rather
+    # than hardcoded so it tracks the asset.
+    from hand_sampler.design_space import joint_link_boxes
+    intact_scale = float(joint_link_boxes(
+        SHARPA_IIWA14.urdf_path, SHARPA_IIWA14.hand_joint_names)[3])
+    print(f"intact hand_scale = {intact_scale:.6f}"
+          f"{' (pinned for every variant)' if args.pin_hand_scale else ''}",
+          flush=True)
+
+    # PoseReachEnvCfg() carries the CURRENT default obs/state lists, which
+    # happen to match the joint_transformer runs. A checkpoint trained on any
+    # other list (the 140-d MLP, say) would then be fed a differently-shaped
+    # and differently-ordered observation with no error anywhere -- the widths
+    # are only checked against the network, and the padded adapter would
+    # cheerfully scatter the wrong columns. Take the lists from the run that
+    # produced the checkpoint.
+    import yaml as _yaml
+    _run = _yaml.safe_load(open(run_config))["env"]["obs"]
+    ckpt_obs_list = tuple(_run["obs_list"])
+    ckpt_state_list = tuple(_run.get("state_list", ()))
+
+    coef = None if args.sapg_expl_coef < 0 else args.sapg_expl_coef
+    results = {}
+
+    for variant in (v.strip() for v in args.variants.split(",") if v.strip()):
+        spec = finger_specs.register(variant)
+        print(f"\n{'=' * 74}\n{variant}: {spec.num_hand_joints} hand joints, "
+              f"{spec.num_joints} actions, {spec.num_fingertips} fingertips"
+              f"\n  urdf {spec.urdf_path}\n{'=' * 74}", flush=True)
+
+        # A fresh cfg per variant: derive_spaces refuses to overwrite a
+        # non-zero action_space, so a reused cfg carries the previous hand's.
+        cfg = PoseReachEnvCfg()
+        cfg.obs.obs_list = ckpt_obs_list
+        if ckpt_state_list:
+            cfg.obs.state_list = ckpt_state_list
+        cfg.scene.num_envs = args.num_envs
+        cfg.assets.num_assets_per_type = args.num_assets_per_type
+        cfg.assets.robot_spec = spec.name
+        cfg.action.arm_moving_average = args.moving_average
+        cfg.action.hand_moving_average = args.moving_average
+        dr = cfg.domain_randomization
+        on = bool(args.domain_randomization)
+        dr.use_obs_delay = dr.use_action_delay = dr.use_object_state_delay_noise = on
+        if not on:
+            dr.joint_velocity_obs_noise_std = dr.force_scale = dr.torque_scale = 0.0
+        cfg.seed = args.seed
+        # Pin the success criterion. termination_utils: "Eval pins the success
+        # criterion" -- eval_success_tolerance overwrites
+        # _current_success_tolerance every step, so the curriculum cannot move
+        # it. Leaving it None would start every variant at 0.075 (the
+        # curriculum START, looser than the 0.0443 this checkpoint trained to)
+        # and let each variant tighten its own bar as it succeeds, which makes
+        # the six numbers incomparable.
+        cfg.termination.eval_success_tolerance = args.success_tolerance
+        if args.video or args.video_probe:
+            w, h = (int(x) for x in args.video_res.split(","))
+            cfg.viewer.resolution = (w, h)
+
+        boot = time.perf_counter()
+        env = gym.make(
+            "GenMech-PoseReach-Direct-v0", cfg=cfg,
+            render_mode="rgb_array" if (args.video or args.video_probe) else None)
+        inner = env.unwrapped
+        if args.pin_hand_scale:
+            # Written after construction: _joint_link_bbox_local holds RAW
+            # link-frame metres and the division happens per step in
+            # _joint_link_geometry_obs / _object_keypoints_rel_joint, both
+            # reading env._hand_scale. So overwriting it here fixes both
+            # divisions and the hand_scale observation column at once.
+            before = float(inner._hand_scale[0, 0])
+            inner._hand_scale = torch.full_like(inner._hand_scale, intact_scale)
+            if abs(before - intact_scale) > 1e-9:
+                print(f"  pinned hand_scale {before:.6f} -> {intact_scale:.6f} "
+                      f"(the value the policy trained under)", flush=True)
+        obs, _ = env.reset()
+        n_obs = obs["policy"].shape[1]
+        print(f"  booted in {time.perf_counter() - boot:.0f} s; "
+              f"obs {n_obs} actions {inner.cfg.action_space}", flush=True)
+
+        # Built with no checkpoint, then loaded through the remap: rl_games'
+        # restore is a strict load and would reject the resized sigma.
+        # The synthesised config carries the TRAINING run's robot_spec, and
+        # joint_transformer builds its token layout from that spec -- so
+        # without this the network builds 22 tokens (778-d) for a hand the env
+        # reports as 618-d, and _build_layout raises.
+        if args.policy_mode == "padded":
+            # The network keeps the intact hand's widths; only the adapter
+            # knows a finger is gone. robot_spec therefore stays the FULL spec.
+            import torch as _t
+            cols = finger_specs.obs_column_map(
+                SHARPA_IIWA14, spec, list(cfg.obs.obs_list))
+            full_obs = len(finger_specs.obs_column_map(
+                SHARPA_IIWA14, SHARPA_IIWA14, list(cfg.obs.obs_list)))
+            keep_act = ([i for i in range(SHARPA_IIWA14.num_arm_joints)]
+                        + [SHARPA_IIWA14.num_arm_joints
+                           + SHARPA_IIWA14.hand_joint_names.index(j)
+                           for j in spec.hand_joint_names])
+            if len(cols) != n_obs:
+                raise RuntimeError(
+                    f"{variant}: env reports {n_obs} obs but the column map "
+                    f"keeps {len(cols)} of {full_obs}")
+            # The training config already names the intact hand and the
+            # network keeps its training widths, so it is used verbatim -- no
+            # repointing, and nothing injected into an actor_critic block that
+            # never had a robot_spec key.
+            player = RlPlayer(
+                num_observations=full_obs, num_actions=SHARPA_IIWA14.num_joints,
+                config_path=base_policy_config, checkpoint_path=args.checkpoint,
+                device=str(inner.device), sapg_expl_coef=coef,
+                num_envs=args.num_envs)
+            if args.pad_fill == "mean":
+                rms = player.player.model.running_mean_std.running_mean
+                fill = rms.detach().clone().float()
+            else:
+                fill = _t.zeros(full_obs, dtype=_t.float32)
+            player = PaddedPolicy(player, cols, keep_act, full_obs, fill,
+                                  args.num_envs, inner.device)
+            print(f"  padded policy: {full_obs} obs in "
+                  f"({player.n_dropped} columns filled with {args.pad_fill}), "
+                  f"{SHARPA_IIWA14.num_joints} actions out -> "
+                  f"{len(keep_act)} used", flush=True)
+        else:
+            variant_config = _policy_config_for(base_policy_config, spec.name,
+                                                list(cfg.obs.obs_list))
+            player = RlPlayer(
+                num_observations=n_obs, num_actions=inner.cfg.action_space,
+                config_path=variant_config, checkpoint_path=None,
+                device=str(inner.device), sapg_expl_coef=coef,
+                num_envs=args.num_envs)
+            _load_remapped(player, args.checkpoint, SHARPA_IIWA14, spec,
+                           list(cfg.obs.obs_list), finger_specs)
+
+        recorder = None
+        if args.video or args.video_probe:
+            # env step is decimation * sim.dt seconds, so this fps plays back
+            # at wall-clock speed.
+            fps = round(1.0 / (cfg.sim.dt * cfg.decimation))
+            vdir = pathlib.Path(args.video_dir) / variant
+            eye = (tuple(float(x) for x in args.cam_eye.split(","))
+                   if args.cam_eye else tuple(cfg.viewer.eye))
+            look = (tuple(float(x) for x in args.cam_lookat.split(","))
+                    if args.cam_lookat else tuple(cfg.viewer.lookat))
+            recorder = PerEnvRecorder(inner, vdir, eye, look, fps)
+            print(f"  recording {recorder.n} views -> {vdir} "
+                  f"@ {fps} fps, {cfg.viewer.resolution}", flush=True)
+
+        if args.video_probe:
+            t = time.perf_counter()
+            for _ in range(args.video_probe):
+                a = player.get_normalized_action(
+                    obs=obs["policy"], deterministic_actions=not args.sampled)
+                obs, _, _, _, _ = env.step(a)
+                recorder.capture()
+            dt = time.perf_counter() - t
+            # Where the interesting things actually ARE, in env-local metres.
+            org = inner.scene.env_origins
+            palm = (inner.robot.data.body_state_w[:, inner._palm_body_id, 0:3]
+                    - org).mean(0).tolist()
+            objp = (inner.object.data.root_pos_w - org).mean(0).tolist()
+            print(f"  scene (env-local m): palm {[round(v,3) for v in palm]}  "
+                  f"object {[round(v,3) for v in objp]}", flush=True)
+            out = recorder.dump_pngs(pathlib.Path(args.video_dir) / f"probe_{variant}")
+            if args.cam_sweep:
+                aim = [(palm[i] + objp[i]) / 2 for i in range(3)]
+                offs = [(0.6, -0.6, 0.35), (0.9, -0.9, 0.50), (0.35, -0.45, 0.25),
+                        (0.0, -0.80, 0.40), (0.7, -0.40, 0.20), (0.0, -0.50, 0.80)]
+                sdir = pathlib.Path(args.video_dir) / f"sweep_{variant}"
+                sdir.mkdir(parents=True, exist_ok=True)
+                import imageio.v2 as _iio
+                o = recorder.origins[0]
+                for i, d in enumerate(offs):
+                    inner.sim.set_camera_view(
+                        tuple(o[k] + aim[k] + d[k] for k in range(3)),
+                        tuple(o[k] + aim[k] for k in range(3)))
+                    inner.render()
+                    _iio.imwrite(str(sdir / f"sweep{i}_eye{d[0]}_{d[1]}_{d[2]}.png"),
+                                 inner.render()[..., :3])
+                print(f"  aim (env-local) {[round(v,3) for v in aim]}; "
+                      f"sweep in {sdir}", flush=True)
+            recorder.close()
+            print(f"  probe: {args.video_probe} steps x {recorder.n} views in "
+                  f"{dt:.1f}s -> {args.video_probe / dt:.2f} steps/s; "
+                  f"{args.steps} steps would take "
+                  f"{args.steps / (args.video_probe / dt) / 60:.0f} min\n"
+                  f"  frames in {out}", flush=True)
+            env.close(); del env, player; torch.cuda.empty_cache()
+            continue
+
+        results[variant] = rollout(env, inner, player, args, spec, recorder)
+        if recorder is not None:
+            paths = recorder.close()
+            mb = sum(pth.stat().st_size for pth in paths) / 1e6
+            print(f"  wrote {len(paths)} videos ({mb:.0f} MB) to {paths[0].parent}",
+                  flush=True)
+        env.close()
+        del env, player
+        torch.cuda.empty_cache()
+
+    report(results, args, run_config)
+    app.close()
+    os._exit(0)
+
+
+def _policy_config_for(base_path: str, spec_name: str, obs_list) -> str:
+    """Copy the policy config with robot_spec repointed at this variant.
+
+    joint_transformer resolves its token layout from params.network.robot_spec,
+    NOT from the env, so a config still naming the training hand builds 22
+    tokens for a 17- or 18-joint hand and _build_layout raises. The asymmetric
+    critic has its own network block and inherits nothing, so both are set.
+    """
+    from omegaconf import OmegaConf
+
+    cfg = OmegaConf.load(base_path)
+    nodes = [cfg.train.params.network]
+    cv = cfg.train.params.config.get("central_value_config")
+    if cv is not None and "network" in cv:
+        nodes.append(cv.network)
+    for node in nodes:
+        node.robot_spec = spec_name
+        for key in ("obs_list", "state_list"):
+            if key in node:
+                node[key] = list(obs_list)
+    out = pathlib.Path(base_path).with_name(f"policy_config_{spec_name}.yaml")
+    OmegaConf.save(cfg, str(out))
+    return str(out)
+
+
+def _load_remapped(player, checkpoint, full_spec, spec, obs_list, finger_specs):
+    """Slice the intact-hand checkpoint onto this hand and load it."""
+    from rl_games.algos_torch import torch_ext
+
+    ckpt = torch_ext.load_checkpoint(checkpoint)
+    if 0 in ckpt:
+        ckpt = ckpt[0]
+    ckpt = finger_specs.remap_checkpoint(ckpt, full_spec, spec, obs_list)
+
+    model = player.player.model
+    missing, unexpected = model.load_state_dict(ckpt["model"], strict=False)
+    resized = [k for k in ckpt["model"]
+               if k in dict(model.named_parameters()) or k in dict(model.named_buffers())]
+    print(f"  loaded {len(resized)} tensors; {len(missing)} missing, "
+          f"{len(unexpected)} unexpected", flush=True)
+    for k in list(missing)[:5]:
+        print(f"      missing:    {k}", flush=True)
+    for k in list(unexpected)[:5]:
+        print(f"      unexpected: {k}", flush=True)
+    if player.player.normalize_input and "running_mean_std" in ckpt:
+        player.player.model.running_mean_std.load_state_dict(
+            ckpt["running_mean_std"])
+
+
+class PerEnvRecorder:
+    """One mp4 per env, from a single shared rollout.
+
+    DirectRLEnv owns exactly ONE render product, bound to
+    cfg.viewer.cam_prim_path (/OmniverseKit_Persp). So N views cost N
+    (move camera, render) pairs per step -- there is no batched path without
+    adding TiledCamera sensors to the scene cfg, and a sensor attached after
+    env init is exactly the pattern that OOM'd this repo before (see the note
+    in coevolution/train.py about attach_record_camera).
+
+    The per-view framing reuses cfg.viewer's tuned eye/lookat verbatim, read as
+    offsets from an env origin -- which is what they already are, since that
+    viewer was authored to frame the central env of a grid centred on the
+    world origin.
+    """
+
+    def __init__(self, inner, out_dir, eye, lookat, fps):
+        import imageio.v2 as imageio
+        self.inner = inner
+        self.sim = inner.sim
+        self.origins = inner.scene.env_origins.detach().cpu().numpy()
+        self.n = self.origins.shape[0]
+        self.eye = eye
+        self.lookat = lookat
+        out_dir.mkdir(parents=True, exist_ok=True)
+        self.paths = [out_dir / f"env{i:02d}.mp4" for i in range(self.n)]
+        self.writers = [
+            imageio.get_writer(str(pth), fps=fps, codec="libx264",
+                               quality=7, macro_block_size=8)
+            for pth in self.paths]
+        # The renderer returns empty data until it has warmed up; burn a couple
+        # of frames so frame 0 of every video is real.
+        for _ in range(2):
+            self._view(0)
+
+    def _view(self, i):
+        o = self.origins[i]
+        self.sim.set_camera_view(
+            (o[0] + self.eye[0], o[1] + self.eye[1], o[2] + self.eye[2]),
+            (o[0] + self.lookat[0], o[1] + self.lookat[1], o[2] + self.lookat[2]))
+        return self.inner.render()
+
+    def capture(self):
+        for i in range(self.n):
+            frame = self._view(i)
+            if frame is not None and getattr(frame, "size", 0):
+                self.writers[i].append_data(frame[..., :3])
+
+    def dump_pngs(self, out_dir):
+        import imageio.v2 as imageio
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for i in range(self.n):
+            frame = self._view(i)
+            imageio.imwrite(str(out_dir / f"env{i:02d}.png"), frame[..., :3])
+        return out_dir
+
+    def close(self):
+        for w in self.writers:
+            w.close()
+        return self.paths
+
+
+class PaddedPolicy:
+    """Runs a FULL-hand policy on a reduced-hand env.
+
+    An MLP's first layer has one weight column per observation element and its
+    mu head one row per action, so neither can be sliced the way
+    JointTransformerNet can -- there is no joint-count-independent weight to
+    reuse. The honest control is therefore to keep the trained network exactly
+    as it is and adapt around it: scatter the reduced observation back into the
+    full-width vector it was trained on, mark the missing finger's columns as
+    carrying no information, and drop the actions for joints the robot no
+    longer has.
+    """
+
+    def __init__(self, player, cols, keep_act, full_obs, fill, num_envs, device):
+        import torch
+        self.player = player
+        self.cols = torch.as_tensor(cols, dtype=torch.long, device=device)
+        self.keep_act = torch.as_tensor(keep_act, dtype=torch.long, device=device)
+        # One persistent buffer: the dropped columns keep their fill value for
+        # the whole rollout and only the live columns are overwritten per step.
+        self.buf = fill.to(device).view(1, full_obs).repeat(num_envs, 1)
+        self.n_dropped = full_obs - len(cols)
+
+    def reset(self):
+        self.player.reset()
+
+    def get_normalized_action(self, obs, deterministic_actions=True):
+        self.buf[:, self.cols] = obs
+        full = self.player.get_normalized_action(
+            obs=self.buf, deterministic_actions=deterministic_actions)
+        return full[:, self.keep_act]
+
+
+def rollout(env, inner, player, args, spec, recorder=None) -> dict:
+    import torch
+
+    device = inner.device
+    obs, _ = env.reset()
+    player.reset()
+    banked = torch.zeros(args.num_envs, dtype=torch.long, device=device)
+    episodes = torch.zeros(args.num_envs, dtype=torch.long, device=device)
+    prev = inner._successes.clone()
+
+    t0 = time.perf_counter()
+    for step in range(args.steps):
+        action = player.get_normalized_action(
+            obs=obs["policy"], deterministic_actions=not args.sampled)
+        obs, _, terminated, truncated, _ = env.step(action)
+        if recorder is not None:
+            recorder.capture()
+        done = terminated | truncated
+        if bool(done.any()):
+            banked += torch.where(done, prev, torch.zeros_like(prev))
+            episodes += done.long()
+        prev = inner._successes.clone()
+        if (step + 1) % 1000 == 0:
+            print(f"    step {step + 1:>5}/{args.steps}  "
+                  f"goals/env {(banked + prev).float().mean():6.3f}  "
+                  f"{(step + 1) / (time.perf_counter() - t0):5.0f} steps/s",
+                  flush=True)
+    total = (banked + prev).float()
+    out = {
+        "hand_joints": spec.num_hand_joints, "actions": spec.num_joints,
+        "fingertips": spec.num_fingertips,
+        "goals_per_env_mean": float(total.mean()),
+        "goals_per_env_std": float(total.std()),
+        "goals_total": float(total.sum()),
+        "frac_env_with_a_goal": float((total > 0).float().mean()),
+        "episodes_per_env": float(episodes.float().mean()),
+        "envs": args.num_envs, "steps": args.steps,
+    }
+    print(f"  -> {out['goals_per_env_mean']:.3f} goals/env "
+          f"({out['frac_env_with_a_goal'] * 100:.0f}% of envs scored at least one)",
+          flush=True)
+    return out
+
+
+def report(results, args, config_path) -> None:
+    print(f"\n{'=' * 88}")
+    print(f"ZERO-SHOT FINGER DROPOUT   {args.num_envs} envs x {args.steps} steps, "
+          f"{'sampled' if args.sampled else 'deterministic'}, "
+          f"success_tolerance {args.success_tolerance} m")
+    print(f"  checkpoint {args.checkpoint}")
+    print(f"  config     {config_path}")
+    print(f"{'=' * 88}")
+    hdr = (f"{'variant':<9} {'hand':>5} {'act':>4} {'tips':>5} {'goals/env':>10} "
+           f"{'std':>7} {'vs intact':>10} {'envs scoring':>13} {'episodes':>9}")
+    print(hdr + "\n" + "-" * len(hdr))
+    base = results.get("intact", {}).get("goals_per_env_mean")
+    for name, r in results.items():
+        rel = f"{r['goals_per_env_mean'] / base:9.2f}x" if base else f"{'-':>10}"
+        print(f"{name:<9} {r['hand_joints']:>5} {r['actions']:>4} "
+              f"{r['fingertips']:>5} {r['goals_per_env_mean']:>10.3f} "
+              f"{r['goals_per_env_std']:>7.3f} {rel:>10} "
+              f"{r['frac_env_with_a_goal'] * 100:>12.0f}% "
+              f"{r['episodes_per_env']:>9.1f}")
+    out = pathlib.Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(
+        {"checkpoint": args.checkpoint, "config": config_path,
+         "num_envs": args.num_envs, "steps": args.steps,
+         "deterministic": not args.sampled,
+         "success_tolerance": args.success_tolerance,
+         "pinned_hand_scale": bool(args.pin_hand_scale),
+         "policy_mode": args.policy_mode,
+         "pad_fill": args.pad_fill if args.policy_mode == "padded" else None,
+         "results": results}, indent=2))
+    print(f"\nwrote {out}")
+
+
+if __name__ == "__main__":
+    main()

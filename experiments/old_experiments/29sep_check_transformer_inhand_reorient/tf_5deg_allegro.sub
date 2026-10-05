@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH --job-name=tf5_allegro
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_check_transformer_inhand_reorient/tf_5deg_allegro-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_check_transformer_inhand_reorient/tf_5deg_allegro-%j.err
+
+# JOINT TRANSFORMER POLICY, 5 DEG GOAL TOLERANCE, ON THE REAL WONIK ALLEGRO HAND (16 DoF, real URDF).
+#
+# The transformer counterpart of experiments/old_experiments/29sep_check_mlp_inhand_reorient/: same hand, task, 5 deg
+# tolerance and fall penalty 200, but the ORIGINAL SAPG learner (PoseReachJointTransformerSAPG.yaml:
+# gamma 0.99, lr 1e-4 adaptive, 2 mini_epochs, horizon 16) instead of the MLP runs' 0.998 / 5e-4 / 5.
+# So a pair differs in network AND learner. No hand-global skip. Same wandb project, own log folder.
+# One of three identical runs that differ only in ROBOT_SPEC (see README.md).
+#
+#   sbatch experiments/old_experiments/29sep_check_transformer_inhand_reorient/tf_5deg_allegro.sub
+export USER_HYDRA="env.reward.fall_penalty=200.0"
+export ARCH=transformer   # d_model 64, 4 layers (common.sh defaults)
+set -euo pipefail
+
+export ROBOT_SPEC="${ROBOT_SPEC:-allegro_handonly}"
+export STUDY_ID="${STUDY_ID:-tf_5deg_allegro_fixed}"
+export SUCCESS_TOLERANCE_DEG=5
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_check_mlp_inhand_reorient}"
+export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_check_transformer_inhand_reorient}"
+
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/28sep_inhand_reorientation/common.sh
+run_and_chain "$0"

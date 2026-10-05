@@ -1,0 +1,78 @@
+#!/bin/bash
+#SBATCH --job-name=eval_pretrained
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=100000
+#SBATCH --time=01:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/eval_logs/eval_pretrained-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/eval_logs/eval_pretrained-%j.err
+
+# Does simtoolreal's shipped policy still work in this port?
+#
+# It is the only ground truth available: trained in ISAACGYM, weights and config
+# shipped together, and every physics question so far has been settled by
+# reading diffs. If it performs here as it did there, the port is faithful and
+# later questions have something to appeal to.
+#
+# Its env is NOT this harness's default, and the differences matter:
+#   * action smoothing 0.1, not 1.0 -- a policy trained with smoothing and run
+#     without it is being asked to do a different job
+#   * obs/action/object delays and noise ON
+#   * obsList is its own 10 fields (140-d), taken from its shipped config
+#   * SAPG exploration column at 50.0, which simtoolreal used
+#
+# Joint friction is zero everywhere, as it is in every run now: measured at
+# 27.780 goals/env against 27.691 with simtoolreal's table applied, which is
+# inside the noise. See env_cfg.AssetsCfg.
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+source .venv_isaacsim/bin/activate
+export OMNI_KIT_ACCEPT_EULA=YES PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OMNI_KIT_CACHE_PATH="/tmp/${USER}_evalpre_${SLURM_JOB_ID:-local}"
+export TORCHINDUCTOR_CACHE_DIR="/tmp/${USER}_evalpre_ind_${SLURM_JOB_ID:-local}"
+mkdir -p "$OMNI_KIT_CACHE_PATH" "$TORCHINDUCTOR_CACHE_DIR" debug_outputs/eval_logs
+
+# simtoolreal's config is isaacgym-shaped (task.env.obsList, train.params); the
+# harness reads a hydra run (env.obs.obs_list, agent). Translate it once.
+PRE=/share/portal/kk837/simtoolreal/pretrained_policy
+RUNDIR=debug_outputs/eval_logs/pretrained_run
+mkdir -p "$RUNDIR/.hydra"
+python - <<'TRANSLATE'
+import pathlib, yaml
+from coevolution.eval import rl_player_utils  # registers ${eval:} and friends
+from omegaconf import OmegaConf
+
+# Resolve against the ORIGINAL structure: train.params.seed and num_actors
+# interpolate to keys that only exist in the isaacgym layout, so flattening
+# first leaves them dangling.
+src = OmegaConf.to_container(
+    OmegaConf.load("/share/portal/kk837/simtoolreal/pretrained_policy/config.yaml"),
+    resolve=True)
+env = src["task"]["env"]
+out = {"env": {"obs": {"obs_list": list(env["obsList"]),
+                       "state_list": list(env["stateList"])},
+               "scene": {"num_envs": int(env["numEnvs"])}},
+       "agent": src["train"]}
+out["agent"]["params"]["config"]["num_actors"] = "${....env.scene.num_envs}"
+p = pathlib.Path("debug_outputs/eval_logs/pretrained_run/.hydra/config.yaml")
+p.parent.mkdir(parents=True, exist_ok=True)
+yaml.safe_dump(out, open(p, "w"), sort_keys=False)
+print(f"translated -> {p}: {len(out['env']['obs']['obs_list'])}-field obsList, "
+      f"network {out['agent']['params']['network']['name']}", flush=True)
+TRANSLATE
+
+python -u experiments/old_experiments/decentralized_control/eval/eval_finger_dropout.py \
+    --checkpoint "$PRE/model.pth" \
+    --config "$RUNDIR/.hydra/config.yaml" \
+    --variants intact \
+    --num_envs "${NUM_ENVS:-2048}" \
+    --steps "${STEPS:-3000}" \
+    --seed 0 \
+    --sapg_expl_coef 50.0 \
+    --moving_average 0.1 \
+    --domain_randomization 1 \
+    --out debug_outputs/eval_logs/pretrained_intact_${SLURM_JOB_ID:-local}.json

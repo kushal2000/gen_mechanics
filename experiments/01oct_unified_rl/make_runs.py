@@ -1,6 +1,6 @@
 """The single-policy run over every uniform-dynamics commercial hand (ROBOT_SPEC=multi:uniform).
 
-Same RL configuration as the single-hand runs (experiments/30sep_ten_hands/make_runs.py template): joint
+Same RL configuration as the single-hand runs (experiments/old_experiments/30sep_ten_hands/make_runs.py template): joint
 transformer d64 / 4 layers, no ghost mask, trimmed observation, no fall penalty, gamma 0.998, adaptive lr from
 5e-4, 5 mini-epochs, horizon 16, 5 deg tolerance; 12288 envs (1536 per hand); friction 0.5 everywhere.
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-sys.path.insert(0, str(REPO / "experiments/30sep_ten_hands"))
+sys.path.insert(0, str(REPO / "experiments/old_experiments/30sep_ten_hands"))
 from make_runs import OBS_LIST, TEMPLATE  # noqa: E402
 
 LOGS = REPO / "debug_outputs/train_logs/01oct_unified_rl"

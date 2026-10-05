@@ -3,7 +3,7 @@
 Dynamics from assets/urdf/unified_dynamics_commercial_hands (spec <hand>_left_uniform_handonly): every joint
 0.5 N.m / 10 rad/s, stiffness 3.0, damping 0.0775, armature 0.00058; finger links from collision hulls at
 1750 kg/m^3; canonical joint conventions. Friction 0.5 on every contact (hand links, fingertips, cube).
-Everything else is the ten-hands default (experiments/30sep_ten_hands/make_runs.py): joint transformer d64 /
+Everything else is the ten-hands default (experiments/old_experiments/30sep_ten_hands/make_runs.py): joint transformer d64 /
 4 layers, no ghost mask, trimmed observation, no fall penalty, gamma 0.998, adaptive lr from 5e-4,
 5 mini-epochs, horizon 16, 5 deg tolerance, joint units "range" (the established encoding).
 
@@ -18,7 +18,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-sys.path.insert(0, str(REPO / "experiments/30sep_ten_hands"))
+sys.path.insert(0, str(REPO / "experiments/old_experiments/30sep_ten_hands"))
 from make_runs import OBS_LIST, TEMPLATE  # noqa: E402  (the ten-hands template, unchanged)
 
 LOGS = REPO / "debug_outputs/train_logs/01oct_uniform_dynamics"

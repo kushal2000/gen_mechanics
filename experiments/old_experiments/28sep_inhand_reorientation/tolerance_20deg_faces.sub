@@ -1,0 +1,50 @@
+#!/bin/bash
+#SBATCH --job-name=inhand_tol20f
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/tol20deg_faces-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/tol20deg_faces-%j.err
+
+# IN-HAND REORIENTATION AT 20 DEGREES, WITH A MARKED CUBE.
+#
+# Same task configuration as tolerance_20deg.sub, re-run after the object gained
+# Rubik face colours. The config is byte-identical; what differs is that the
+# captured viewer is now readable.
+#
+# Why a whole run rather than a restart: the object URDF is written once at scene
+# setup and pose_viewer is imported at process start, so a job already in flight
+# keeps the unmarked brown cube for its whole life. 577945 cannot be upgraded in
+# place -- only a fresh process picks the faces up.
+#
+# What the viewer now shows, every CAPTURE_VIEWER_INTERVAL=250 epochs:
+#   * the object as a black cube with six coloured faces, so its orientation is
+#     readable at all -- an unmarked cube looks identical in 24 orientations
+#   * the goal pose as the SAME cube at 38% opacity rather than flattened to solid
+#     green, so "are the faces lined up" is answerable by eye
+#
+# The stickers are visual-only: 7 visuals, 1 collision, mass unchanged. Verified in
+# Isaac Sim at 64 envs before this was submitted, with 0% reset penetration.
+#
+#   sbatch tolerance_20deg_faces.sub
+#
+set -euo pipefail
+
+# gen-SHARPA -- SHARPA rebuilt inside the design grammar. handonly: is what drops
+# the 7 arm joints, and common.sh refuses a bare reference: the prefix has to be
+# on the spec string because the agent YAML interpolates the network's shape from
+# env.assets.robot_spec, so a separate flag would build a 37-joint policy against
+# a 30-joint robot.
+export ROBOT_SPEC="${ROBOT_SPEC:-handonly:/share/portal/kk837/gen_mechanics/assets/populations/sharpa_capsule.json}"
+export STUDY_ID="${STUDY_ID:-inhand_tol20_faces}"
+export SUCCESS_TOLERANCE_DEG=20
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/28sep_inhand_reorientation/common.sh
+run_and_chain "$0"

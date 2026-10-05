@@ -1,7 +1,7 @@
 # Embodiment niches, phase 1 (1 Oct 2026)
 
 Hypothesis (user): different embodiments have different niches. Goals/episode is saturated
-(40-48 of a 50-goal cap for all 9 left hands, `experiments/30sep_ten_hands`), so measure the
+(40-48 of a 50-goal cap for all 9 left hands, `experiments/old_experiments/30sep_ten_hands`), so measure the
 same final policies on other axes and look for rank reversals and non-dominated hands.
 
 `eval_niches.py` -- one hand x one condition per Kit process, 1024 envs x 60 s sim, greedy

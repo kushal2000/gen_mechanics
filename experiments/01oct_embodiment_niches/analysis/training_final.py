@@ -7,7 +7,7 @@ import glob, json, os, pathlib, sys
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator as EA
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO / "experiments/30sep_ten_hands"))
+sys.path.insert(0, str(REPO / "experiments/old_experiments/30sep_ten_hands"))
 from viser_zero_shot import HANDS, LOGS  # noqa: E402
 
 out = {}

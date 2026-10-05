@@ -1,0 +1,51 @@
+#!/bin/bash
+#SBATCH --job-name=tf5c_sharpa
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_mlp_learner_trimmed_obs/tf_5deg_sharpa_trimobs_nopen_lrcap-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_mlp_learner_trimmed_obs/tf_5deg_sharpa_trimobs_nopen_lrcap-%j.err
+
+# JOINT TRANSFORMER POLICY, 5 DEG GOAL TOLERANCE, ON THE REAL SHARPA HAND (registered fixed spec, real URDF).
+#
+# The EXACT transformer counterpart of experiments/old_experiments/29sep_check_mlp_inhand_reorient/mlp_5deg_<hand>.sub:
+# the same learner as the MLP runs (gamma 0.998, lr 5e-4 adaptive, 5 mini_epochs), so the pair differs
+# ONLY in the network. Sibling of tf_5deg_<hand>.sub, which uses the original SAPG learner instead.
+# No hand-global skip. Same wandb project, own log folder.
+# One of three identical runs that differ only in ROBOT_SPEC (see README.md).
+#
+# TRIMMED OBSERVATION (29sep_mlp_learner_trimmed_obs/README.md). Joint token: the joint's own state,
+# link box, limits and enabled flag -- NO object_keypoints_rel_joint. Global: only object keypoints
+# (keypoints_rel_ee), goal residual (keypoints_rel_goal) and object velocity, plus the SAPG coefficient.
+# Everything constant (mount pose/vel, palm keypoints, cube size, lift latch) and every critic-type
+# field (reward, successes, progress, best-so-far distances) is dropped -- from the value head too,
+# since there is no separate critic. MLP and transformer use the identical list and learner.
+#
+#   sbatch experiments/old_experiments/29sep_mlp_learner_trimmed_obs/tf_5deg_sharpa_trimobs_nopen_lrcap.sub
+# NO FALL PENALTY: identical to tf_5deg_sharpa_trimobs.sub except env.reward.fall_penalty stays at its
+# default 0 -- the transformer counterpart of mlp_5deg_sharpa_trimobs_nopen.sub.
+# LR CAP: identical to tf_5deg_sharpa_trimobs_nopen.sub except the adaptive schedule's ceiling is
+# 1e-3 instead of rl_games' hard-coded 1e-2 (SchedulerBoundsObserver). Every transformer run so far
+# pinned lr at 1e-2 while the MLP settled at 1.5e-4..5e-4; this tests whether the runaway hurts.
+export USER_HYDRA="agent.params.config.gamma=0.998 ++agent.params.config.max_lr=0.001"
+export OBS_LIST="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel]"
+export ARCH=transformer   # d_model 64, 4 layers (common.sh defaults)
+export LEARNING_RATE=0.0005
+export MINI_EPOCHS=5
+set -euo pipefail
+
+export ROBOT_SPEC="${ROBOT_SPEC:-sharpa_handonly}"
+export STUDY_ID="${STUDY_ID:-tf_5deg_sharpa_trimobs_kpfix_nopen_lrcap}"
+export SUCCESS_TOLERANCE_DEG=5
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_mlp_learner_trimmed_obs}"
+export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_mlp_learner_trimmed_obs}"
+
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/28sep_inhand_reorientation/common.sh
+run_and_chain "$0"

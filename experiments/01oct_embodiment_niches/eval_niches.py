@@ -26,7 +26,7 @@ import time
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "experiments/30sep_ten_hands"))
+sys.path.insert(0, str(REPO / "experiments/old_experiments/30sep_ten_hands"))
 
 TASK = "GenMech-InHandReorient-Direct-v0"
 

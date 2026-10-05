@@ -1,6 +1,6 @@
 """Uniform-dynamics board: every left-hand run ranked by epochs to 1 goal/episode, then goals at matched epochs.
 
-    .venv_isaacsim/bin/python experiments/30sep_ten_hands/status.py
+    .venv_isaacsim/bin/python experiments/old_experiments/30sep_ten_hands/status.py
 """
 import glob, os
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator as EA

@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH --job-name=allegro_tf_skip
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/allegro_tf_skip-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/allegro_tf_skip-%j.err
+
+# ALLEGRO AT A 20 DEGREE SUCCESS THRESHOLD -- the first commercial hand.
+#
+# Same task as tolerance_20deg.sub; the hand is what differs. This is the real Wonik
+# Allegro URDF, 16 DoF, with its real meshes, limits and vendor gains -- not a hand
+# from our design grammar and not a capsule approximation of one.
+#
+# The spec is a REGISTERED fixed hand, allegro_handonly, which declares
+# arm_joint_names=() itself. So it takes no "handonly:" prefix -- that prefix exists to
+# make a generated POPULATION hand-only, and is_population_ref would reject a registry
+# name carrying it. common.sh accepts the *_handonly naming convention instead.
+#
+# What to expect, and why the numbers are not comparable to SHARPA's run epoch for
+# epoch: 16 joints against 22, so a narrower action space and a different observation
+# width, and a policy trained from scratch rather than continued. The comparable
+# quantity is what the hand achieves, not how fast it gets there.
+#
+#   sbatch tolerance_20deg_allegro.sub
+#
+# MAKE THE TRANSFORMER WORK, T1: joint transformer on the fixed-reward recipe (fall penalty 200 + gamma 0.998 +
+# lr 5e-4 / 5 mini_epochs), with hand_global_skip: the shared per-joint action head also reads the global
+# token and the raw global vector. Hand-only => every action is mu_head(joint_token), and the goal and
+# object pose are GLOBAL-only fields, reachable by a joint only through one attention head. Control:
+# 620495 (same recipe, no skip): 0.056 goals/ep at e1898. MLP on the same recipe: ~46 goals/ep.
+export USER_HYDRA="env.reward.fall_penalty=200.0 agent.params.config.gamma=0.998"
+export LEARNING_RATE=0.0005
+export MINI_EPOCHS=5
+export HAND_GLOBAL_SKIP=true
+set -euo pipefail
+
+# gen-SHARPA -- SHARPA rebuilt inside the design grammar. handonly: is what drops
+# the 7 arm joints, and common.sh refuses a bare reference: the prefix has to be
+# on the spec string because the agent YAML interpolates the network's shape from
+# env.assets.robot_spec, so a separate flag would build a 37-joint policy against
+# a 30-joint robot.
+export ROBOT_SPEC="${ROBOT_SPEC:-allegro_handonly}"
+export STUDY_ID="${STUDY_ID:-inhand_allegro_tf_skip}"
+export SUCCESS_TOLERANCE_DEG=20
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/28sep_inhand_reorientation/common.sh
+run_and_chain "$0"

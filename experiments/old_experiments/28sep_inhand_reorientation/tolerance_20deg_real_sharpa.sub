@@ -1,0 +1,47 @@
+#!/bin/bash
+#SBATCH --job-name=realsharpa_tol20
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --signal=B:USR1@900
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/realsharpa_tol20-%j.log
+#SBATCH --error=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/28sep_inhand_reorientation/realsharpa_tol20-%j.err
+
+# THE REAL SHARPA AT A 20 DEGREE SUCCESS THRESHOLD.
+#
+# Same task and same threshold as tolerance_20deg.sub, but on the MEASURED hand rather
+# than a grammar rebuild of it. Every in-hand run before today trained on
+# sharpa_capsule.json, whose provenance reads `method: sharpa_capsule`: SHARPA
+# reconstructed inside the design grammar, where build.author_hand writes capsules and
+# never opens a mesh. A fine control for a generated design, but not this hand.
+#
+# So this is the baseline the Allegro run should actually be read against -- both are
+# real URDFs on the fixed-spec path, both hand-only, both at 5 degrees of palm tilt with
+# the palm centre on (0, 0, 0.50). 22 joints here against Allegro's 16.
+#
+# The spec is sharpa_handonly: arm_joint_names=(), palm body left_hand_C_MC, and the
+# palm's own frame used unchanged because it already IS our convention -- the unifier
+# asserts the removed mount chain composes to build.flange_to_palm, which is what makes
+# that claim checkable rather than asserted.
+#
+#   sbatch tolerance_20deg_real_sharpa.sub
+#
+set -euo pipefail
+
+# gen-SHARPA -- SHARPA rebuilt inside the design grammar. handonly: is what drops
+# the 7 arm joints, and common.sh refuses a bare reference: the prefix has to be
+# on the spec string because the agent YAML interpolates the network's shape from
+# env.assets.robot_spec, so a separate flag would build a 37-joint policy against
+# a 30-joint robot.
+export ROBOT_SPEC="${ROBOT_SPEC:-sharpa_handonly}"
+export STUDY_ID="${STUDY_ID:-inhand_realsharpa_tol20}"
+export SUCCESS_TOLERANCE_DEG=20
+export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
+
+source /share/portal/kk837/gen_mechanics/experiments/old_experiments/28sep_inhand_reorientation/common.sh
+run_and_chain "$0"

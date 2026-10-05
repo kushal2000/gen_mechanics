@@ -603,7 +603,7 @@ class InHandIsaacLabOurDefaultCfg(InHandIsaacLabSapgCfg):
 # learn-then-collapse; every single change applied alone to the reference did not. Each class
 # below is ourdefault with ONE GROUP of changes reverted to the reference. A group whose revert
 # keeps possession is one the break needs. Learner-side groups (gamma, PPO hyperparameters, SAPG)
-# are reverted by the .sub's flags, not here. See experiments/29sep_what_breaks_reference/.
+# are reverted by the .sub's flags, not here. See experiments/old_experiments/29sep_what_breaks_reference/.
 # ---------------------------------------------------------------------------------------------
 
 
