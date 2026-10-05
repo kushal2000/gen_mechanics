@@ -221,6 +221,12 @@ class A2CBase(BaseAlgorithm):
         self.normalize_rms_advantage = config.get('normalize_rms_advantage', False)
         self.normalize_input = self.config['normalize_input']
         self.normalize_value = self.config.get('normalize_value', False)
+        # Per-group advantage normalisation (default off): the env publishes a
+        # group id per env in its infos under `group_info_key`, and advantages
+        # are normalised within each group instead of over the whole batch.
+        self.group_advantage_norm = self.config.get('group_advantage_norm', False)
+        self.group_info_key = self.config.get('group_info_key', 'ppo_group')
+        self._ppo_group_buf = None
         self.truncate_grads = self.config.get('truncate_grads', False)
 
         if isinstance(self.observation_space, gym.spaces.Dict):
@@ -857,6 +863,19 @@ class A2CBase(BaseAlgorithm):
                 obs_batch = obs_batch.float() / 255.0
         return obs_batch
 
+    def _record_ppo_group(self, n, infos):
+        """Store step n's per-env group ids (group_advantage_norm)."""
+        if self.group_info_key not in infos:
+            raise KeyError(f"group_advantage_norm: the env infos have no '{self.group_info_key}' "
+                           f"(per-env group ids)")
+        if self._ppo_group_buf is None:
+            self._ppo_group_buf = torch.zeros((self.horizon_length, self.num_actors), dtype=torch.long,
+                                              device=self.ppo_device)
+        self._ppo_group_buf[n] = torch.as_tensor(infos[self.group_info_key], device=self.ppo_device).long().reshape(-1)
+
+    def _ppo_groups_batch(self):
+        return swap_and_flatten01(self._ppo_group_buf)
+
     def play_steps(self):
         update_list = self.update_list
         step_time = 0.0
@@ -898,6 +917,8 @@ class A2CBase(BaseAlgorithm):
             step_time_end = time.time()
 
             step_time += (step_time_end - step_time_start)
+            if self.group_advantage_norm:
+                self._record_ppo_group(n, infos)
 
             shaped_rewards = self.rewards_shaper(rewards)
             intr_rewards = self.rewards_shaper(intr_rewards)
@@ -952,6 +973,8 @@ class A2CBase(BaseAlgorithm):
         batch_dict = self.experience_buffer.get_transformed_list(swap_and_flatten01, self.tensor_list)
 
         batch_dict['returns'] = swap_and_flatten01(mb_returns)
+        if self.group_advantage_norm:
+            batch_dict['ppo_groups'] = self._ppo_groups_batch()
         batch_dict['played_frames'] = self.batch_size
         if self.is_rnn:
             states = []
@@ -1499,7 +1522,11 @@ class ContinuousA2CBase(A2CBase):
                 else:
                     advantages = torch_ext.normalization_with_masks(advantages, rnn_masks)
             else:
-                if self.normalize_rms_advantage:
+                if getattr(self, 'group_advantage_norm', False):
+                    if self.normalize_rms_advantage or (os.getenv("LOCAL_RANK") and os.getenv("WORLD_SIZE")):
+                        raise NotImplementedError("group_advantage_norm: single GPU, no normalize_rms_advantage")
+                    advantages = torch_ext.group_normalization(advantages, batch_dict['ppo_groups'])
+                elif self.normalize_rms_advantage:
                     advantages = self.advantage_mean_std(advantages)
                 else:
                     if os.getenv("LOCAL_RANK") and os.getenv("WORLD_SIZE"):

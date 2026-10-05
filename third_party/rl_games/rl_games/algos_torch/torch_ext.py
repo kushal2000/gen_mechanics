@@ -164,6 +164,19 @@ def dist_mean_var_count(mean: torch.Tensor, var: torch.Tensor, count: int):
     var = (square_sum - (mean ** 2) * count) / (count - 1)
     return mean, var, count
 
+def group_normalization(values, groups, eps=1e-8):
+    """(values - group mean) / (group std + eps), each sample by its own
+    group's statistics (``groups``: int ids, same length as ``values``). A
+    group with a single sample is only centred."""
+    groups = groups.reshape(-1).long()
+    n = int(groups.max().item()) + 1
+    count = torch.zeros(n, device=values.device, dtype=values.dtype).index_add_(0, groups, torch.ones_like(values))
+    mean = torch.zeros(n, device=values.device, dtype=values.dtype).index_add_(0, groups, values) / count.clamp(min=1)
+    centred = values - mean[groups]
+    sq = torch.zeros(n, device=values.device, dtype=values.dtype).index_add_(0, groups, centred ** 2)
+    std = torch.where(count > 1, (sq / (count - 1).clamp(min=1)).sqrt(), torch.zeros_like(sq))
+    return torch.where(count[groups] > 1, centred / (std[groups] + eps), centred)
+
 def normalization_with_masks(values, masks):
     if masks is None:
         if os.getenv("LOCAL_RANK") and os.getenv("WORLD_SIZE"): # multi-gpu
