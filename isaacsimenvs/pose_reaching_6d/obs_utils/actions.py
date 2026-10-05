@@ -113,7 +113,7 @@ def wrench_dr_enabled(env) -> bool:
     (all-zero) wrench to PhysX on every one of the ``decimation`` substeps.
     """
     dr = env.cfg.domain_randomization
-    return dr.force_scale != 0.0 or dr.torque_scale != 0.0
+    return dr.force_scale != 0.0 or dr.torque_scale != 0.0 or dr.force_magnitude_n > 0.0
 
 
 def apply_wrench_dr(env) -> None:
@@ -144,9 +144,14 @@ def apply_wrench_dr(env) -> None:
         torch.rand(env.num_envs, device=env.device) < env._random_torque_prob
     ).view(-1, 1, 1)
     mass = env._object_mass.unsqueeze(-1)  # (N, 1, 1)
-    new_force = (
-        torch.randn(env.num_envs, 1, 3, device=env.device) * mass * dr.force_scale
-    )
+    if dr.force_magnitude_n > 0.0:
+        # Fixed newtons, uniform direction: a normalised Gaussian is uniform on the sphere.
+        direction = torch.randn(env.num_envs, 1, 3, device=env.device)
+        new_force = direction / direction.norm(dim=-1, keepdim=True) * dr.force_magnitude_n
+    else:
+        new_force = (
+            torch.randn(env.num_envs, 1, 3, device=env.device) * mass * dr.force_scale
+        )
     new_torque = (
         torch.randn(env.num_envs, 1, 3, device=env.device) * mass * dr.torque_scale
     )

@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH --job-name=oodsweep
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=12:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/embodiment_niches_push_sweep/slurm-%j.out
+# One OOD severity sweep of ONE policy on HAND, in the training metric (goals per episode, 50-goal max, each
+# env's first episode; $NUM_ENVS envs, default 100, x $EVAL_SECONDS s, default 240):
+#   AXIS=newton    pushes of exactly 0/20/40/60/80/100 N, random direction, one 1/60 s step, 0.03 per step
+#                  (domain_randomization.force_magnitude_n; independent of the cube's mass)
+#   AXIS=mass      cube of 45.6 (nominal)/40/30/20/10/5 g, same 45 mm size (assets.object_density_scale)
+#   AXIS=friction  cube, hand links and fingertips all at mu = 0.5/0.4/0.3/0.2/0.1/0.05/0 (trained: 0.5)
+#   sbatch --export=ALL,HAND=wuji2,TARGET=wuji2,CKPT=<pth>,LABEL=<name>,AXIS=mass run_ood_sweep.sub
+set -uo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+NUM_ENVS=${NUM_ENVS:-100}; SECONDS_PER=${EVAL_SECONDS:-240}
+OUT=$REPO/experiments/02oct_ood_evals/results/sweeps_cap50/$LABEL
+LOGS=$REPO/debug_outputs/embodiment_niches_push_sweep/logs_sweeps/$LABEL
+mkdir -p $OUT $LOGS
+cd $REPO
+export OMNI_KIT_ACCEPT_EULA=YES
+NOMINAL_G=45.5625                       # 45 mm cube at 500 kg/m^3, as every policy trained
+case "$AXIS" in
+    newton)   VALUES="0 20 40 60 80 100" ;;
+    mass)     VALUES="45.6 40 30 20 10 5" ;;
+    friction) VALUES="0.5 0.4 0.3 0.2 0.1 0.05 0" ;;
+    *) echo "unknown AXIS $AXIS"; exit 1 ;;
+esac
+for v in $VALUES; do
+    case "$AXIS" in
+        newton)
+            if [ "$v" = 0 ]; then OV=(--override "domain_randomization.force_scale=0.0"); else
+            OV=(--override "domain_randomization.force_magnitude_n=${v}.0"
+                --override "domain_randomization.force_prob_range=(0.03, 0.03)"); fi ;;
+        mass)
+            s=$(python3 -c "print($v / $NOMINAL_G)")
+            OV=(--override "assets.object_density_scale=$s") ;;
+        friction)
+            OV=(--override "assets.object_friction=$v" --override "assets.robot_friction=$v"
+                --override "assets.finger_tip_friction=$v") ;;
+    esac
+    f=$OUT/${AXIS}_${v}.json
+    [ -s "$f" ] && { echo "skip $f"; continue; }
+    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform --hand "$HAND" \
+        ${TARGET:+--target "$TARGET"} --checkpoint "$CKPT" --condition nominal --num-envs $NUM_ENVS \
+        --seconds $SECONDS_PER --max-goals 50 "${OV[@]}" --out "$f" > $LOGS/${AXIS}_${v}.log 2>&1 \
+        || echo "FAILED $LABEL $AXIS $v"
+    grep -h "\[niches\]" $LOGS/${AXIS}_${v}.log
+done
+exit 0

@@ -308,6 +308,10 @@ class DomainRandomizationCfg:
 
     # Random wrench impulses on the object.
     force_scale: float = 20.0
+    # > 0: every push is exactly this many newtons, in a uniformly random direction, whatever the object
+    # weighs (force_scale is then unused). 0 keeps the default randn(3) x object mass x force_scale, whose
+    # newtons scale with the mass -- wrong for an eval that varies the mass or reports force in N.
+    force_magnitude_n: float = 0.0
     force_prob_range: tuple[float, float] = (0.001, 0.1)
     force_decay: float = 0.0
     force_decay_interval: float = 0.08

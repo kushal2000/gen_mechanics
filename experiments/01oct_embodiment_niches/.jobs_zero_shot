@@ -16,3 +16,4 @@ Wuji ID/OOD CAPPED at 50 goals/ep, 240 s/condition: 900964 900967 900968 900969
 after unified fine-tune 904314 (20k epochs total): push sweeps + capped Wuji ID/OOD: 925637 925638 925639
 Wuji-only at ~10k epochs (908714 ep 6400 = 10162 total): push sweeps + capped ID/OOD: 925660 925661 925662
 40k matched compute: unified 948509 ep-10000 ckpt now, Wuji-only after 990216: 990263 990264 990265 990266 990267 990268
+OOD sweeps (newton 0-100 N, mass 45.6-5 g, friction 0.5-0), 100 first episodes/point: unified 40k, Wuji-only ~32k (969180 end) and ~40k (after 990216): 990876 990877 990878 990879 990880 990881 990882 990883 990884
