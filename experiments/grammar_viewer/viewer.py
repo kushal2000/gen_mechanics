@@ -778,6 +778,19 @@ class GrammarViewer:
                  "tab shows the full oracle, which does count them.")
         r = ch.capsule_radius_m
         L.append(f"**Capsule radius**: {r * 1000:.1f} mm" if r is not None else "**Capsule radius**: n/a")
+        try:
+            from hand_sampler.grammar.coverage import coverage
+            cov = coverage(ch.derived, src.distribution(self.mut_variant))
+            def short(item: str) -> str:
+                key, _, rest = item.partition(":")
+                return f"{key} ({len(rest.split(','))})" if rest else key
+            oos = ", ".join(short(i) for i in cov.out_of_support)
+            L.append(f"**Support of {self.mut_variant}** (`coverage`, grid/choice-set check): topology expressible "
+                     f"{'yes' if cov.topology_expressible else 'no'}, in support "
+                     f"{'yes' if cov.in_support else 'no'}" + (f" ({len(cov.out_of_support)} item(s): {oos})"
+                                                               if cov.out_of_support else ""))
+        except Exception as exc:  # noqa: BLE001
+            L.append(f"coverage check failed: {exc}")
         L.append("**Dropped or approximated**:")
         L.extend(f"- {line}" for line in ch.approximations())
         if e.notes:
@@ -1192,6 +1205,8 @@ class GrammarViewer:
             btn_until = g.add_button("Mutate until viable")
             self.md_mut_status = g.add_markdown("")
             hist_btns = g.add_button_group("History", ["back", "forward"])
+            self.gui_jump = g.add_number("History entry", 0, min=0, step=1)
+            btn_jump = g.add_button("Go to entry")
             self.gui_ghost = g.add_checkbox("Show parent ghost", True)
             self.md_diff = g.add_markdown("")
             self.md_lineage = g.add_markdown("")
@@ -1347,6 +1362,8 @@ class GrammarViewer:
         @hist_btns.on_click
         def _(event):
             (self.back if event.target.value == "back" else self.forward)()
+
+        btn_jump.on_click(lambda _: self.jump(int(self.gui_jump.value)))
 
         @self.gui_ghost.on_update
         def _(_):
