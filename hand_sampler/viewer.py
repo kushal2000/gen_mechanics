@@ -85,9 +85,16 @@ def kind_colour(kind: int) -> tuple[int, int, int]:
 
 def describe(hand: design_space.Hand, last_op: str | None) -> str:
     seps = design_space.mount_separations(hand)
+    curl = design_space.curl_score(hand)
+    # the second-best finger, because a grasp needs two things closing
+    verdict = ("**cannot close**" if curl < 0.05
+               else "weak" if curl < 0.35 else "ok")
     lines = [
         f"**{hand.n_fingers} fingers, {hand.n_joints} joints, "
         f"{hand.n_motors} motors**",
+        "",
+        f"curl score  **{curl:.2f}**  ({verdict})"
+        "   *(LEAP 1.00, roll- or abduction-only 0.00)*",
         "",
         f"palm  {hand.palm.thickness*1000:.0f} x {hand.palm.width*1000:.0f} x "
         f"{hand.palm.length*1000:.0f} mm",
@@ -100,9 +107,11 @@ def describe(hand: design_space.Hand, last_op: str | None) -> str:
         leans = sum(1 for s in f.segments if s.lean)
         tags = ("" if not rolls else f"  **{rolls} roll**") \
              + ("" if not leans else f"  **{leans} leaning**")
+        curl_f = design_space.curl_authority(f, hand.palm)
         lines.append(
             f"`{i}` {f.mount.face} u={f.mount.u:.2f} v={f.mount.v:.2f} | "
-            f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm{tags}")
+            f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm | "
+            f"curl {curl_f:.2f}{'  **dead**' if curl_f < 0.05 else ''}{tags}")
         # [kind (lean) / length mm]
         lines.append("   " + "  ".join(
             "[" + design_space.JOINT_KIND_NAMES[s.joint.kind][:4]

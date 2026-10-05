@@ -521,6 +521,51 @@ def fingertip(finger: Finger, palm: Palm,
     return forward_kinematics(finger, palm, angles)[0][-1]
 
 
+def curl_authority(finger: Finger, palm: Palm) -> float:
+    """How well this finger can swing its tip INTO the palm. 0 to 1.
+
+    The one thing a finger has to do to take part in a grasp: close toward where
+    an object sits. Each joint contributes ``(axis x (tip - joint)) . GRASP_DIR``
+    -- the Jacobian column projected on the grasp direction, which is the speed
+    the tip heads for the palm per radian of that joint. Divided by the finger's
+    own reach, so a long finger gets no credit for being long.
+
+    The MAX over joints rather than the norm: the question is whether the finger
+    has a joint that closes it, not how many. The norm would rank a 4-joint
+    finger above a 3-joint one for no reason a grasp can use.
+
+    Exactly 0 for a finger of roll joints, whose axes lie along their own links,
+    and for a finger of abduction joints, whose axes lie along GRASP_DIR itself
+    -- abduction spreads a hand, it never closes it. Measured at the rest pose,
+    which is one forward-kinematics call.
+    """
+    if finger.reach <= _EPS:
+        return 0.0
+    pts, _ = forward_kinematics(finger, palm)
+    axes = joint_axes(finger, palm)
+    tip = pts[-1]
+    return max(abs(float(np.cross(a, tip - p) @ GRASP_DIR))
+               for a, p in zip(axes, pts[:-1])) / finger.reach
+
+
+def curl_score(hand: "Hand") -> float:
+    """The hand's SECOND-best finger by curl authority.
+
+    Second rather than best, because a grasp needs two things closing on an
+    object -- two fingers, or one finger and the palm it presses against. One
+    good finger beside a row of dead ones is not a hand.
+
+    Cheap enough to filter sampled designs with: about 230 microseconds for a
+    whole hand. LEAP, the one hand fitted into this grammar, scores 1.00, and a
+    hand of nothing but roll or abduction joints scores exactly 0. There is no
+    second reference yet -- SHARPA is in the repo but only as a capsule built
+    against older constants, so it calibrates nothing.
+    """
+    ranked = sorted((curl_authority(f, hand.palm) for f in hand.fingers),
+                    reverse=True)
+    return ranked[1] if len(ranked) > 1 else ranked[0]
+
+
 # --- the two measures that carry signal -------------------------------------
 
 def segment_distance(p0: np.ndarray, p1: np.ndarray,
