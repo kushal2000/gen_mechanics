@@ -605,6 +605,86 @@ from attention keys and pooling, and their actions are mean 0, log-std 0 with no
 change no valid output, valid-only statistics, per-design statistics, batch independence, token
 permutation equivariance).
 
+### Fair RL test: the collaborator's recipe (2026-10-05, cluster, RTX 6000 Ada)
+
+The 40-120 min token runs above used HORA's MLP-tuned PPO (lr 5e-4 adaptive, which sat at its
+1e-2 cap) and 0.06-0.2 B samples; solo allegro held 0.5-0.6 s. The collaborator trained this
+transformer on pose reaching (`PoseReachJointTransformerSAPG.yaml`) with lr 1e-4 adaptive (KL
+0.016), clip 0.1, 2 mini-epochs, horizon 16, d_model 128, SAPG with 6 blocks and about 2 B samples
+per generation. Two configs carry that recipe, all else as `InHandHoraTokenPPO.yaml`:
+
+- `InHandHoraTokenTeamPPO.yaml` (R1, `rl_games_hora_token_team_ppo_cfg_entry_point`): the
+  collaborator's numbers (lr, KL, clip, mini-epochs, horizon, seq_length 16, mixed precision,
+  d_model 128, 4 layers, 1 head, value head [512, 256], normalize_value), plain PPO, minibatch
+  32768, `logstd_max: 0.0` (the initial log-std; R1 and R2 then differ only by SAPG).
+  `normalize_input` stays off (the network normalises valid tokens itself); no asymmetric critic.
+- `InHandHoraTokenTeamSAPG.yaml` (R2, `rl_games_hora_token_team_sapg_cfg_entry_point`): R1 plus
+  the collaborator's SAPG block (leader-follower, learned coefficient embedding, entropy bonus
+  linspace(0.5, 0, 6) x 0.002, `fixed_sigma: coef_cond`), 6 blocks of 2048 envs (num_envs 12288).
+  `token_policy.py` now supports SAPG: the coefficient embedding joins the global vector and each
+  block reads its own log-std row; ghost columns stay at log-std 0 with no gradient in every row,
+  so the entropy bonus cannot inflate them (I41), and `logstd_max` bounds every row.
+
+Setup: projected allegro (grammar path), `task_profile: hora`, its 4000 cached grasps, 12288 envs,
+seed 42, one GPU per run, a 6 h limit (scene creation at 12288 envs takes 26 min, so about 5.5 h of
+training). MLP reference: `InHandAnyRotatePPO.yaml` at the same env count and length (jobs
+2555311_1 R1, 2555394_2 R2, 2555394_3 MLP). Peak GPU memory of 48 GB: R1 38.2 GB, R2 43.1 GB (the
+augmented SAPG batch), MLP 9.9 GB. Host RAM: 12 GB was too little at simulation start (two OOM
+kills); 20 GB works. Throughput: R1 29k, R2 22.8k, MLP 79k samples/s.
+
+Holding time / rotations per episode / rad/s while holding, from the scoring windows (+-700
+steps per env around each mark; steps per env x 12288 = samples):
+
+| Steps per env (samples) | MLP | R1 (PPO) | R2 (SAPG) |
+|---|---|---|---|
+| 2k (0.02 B) | 2.3 s / 0.25 / 0.70 | 0.4 s / 0.09 / 1.60 | 0.6 s / 0.12 / 1.17 |
+| 5k (0.06 B) | 15.2 s / 1.55 / 0.64 | 0.4 s / 0.12 / 2.07 | 1.2 s / 0.19 / 1.02 |
+| 10k (0.12 B) | 15.3 s / 1.65 / 0.68 | 1.2 s / 0.19 / 1.04 | 1.6 s / 0.22 / 0.88 |
+| 20k (0.25 B) | 15.6 s / 1.83 / 0.74 | 3.0 s / 0.30 / 0.64 | 5.5 s / 0.66 / 0.75 |
+| 22k (0.27 B) | 15.6 s / 1.85 / 0.74 | 3.5 s / 0.34 / 0.61 | 12.6 s / 1.66 / 0.83 |
+| 25k (0.31 B) | 15.6 s / 1.93 / 0.78 | 4.5 s / 0.40 / 0.57 | 14.3 s / 2.09 / 0.92 |
+| 34k (0.42 B) | 15.9 s / 1.91 / 0.75 | 5.7 s / 0.48 / 0.53 | 15.1 s / 2.46 / 1.02 (end) |
+| 45k (0.55 B) | 15.7 s / 1.91 / 0.76 | 7.9 s / 0.62 / 0.49 (end) | - |
+| end (MLP 126k, 1.55 B) | 14.5 s / 1.87 / 0.76 | | |
+
+Adaptive learning rate and mean log-std over allegro's 16 joints (transformers: from the policy
+entropy, ghost columns fixed at 0; MLP: its checkpoints, since its ghost columns also learn):
+
+| Steps per env | MLP lr, log-std | R1 lr, log-std | R2 lr, log-std |
+|---|---|---|---|
+| 5k | 2.9e-4, -1.52 (6.4k) | 7.6e-4, -0.06 | 2.2e-4, -0.14 |
+| 10k | 1.3e-4, -1.91 (14.4k) | 7.6e-4, -0.22 | 1.5e-4, -0.23 |
+| 20k | 8.7e-5, -2.19 (25.6k) | 3.4e-4, -0.92 | 6.7e-5, -0.36 |
+| 34k | 5.8e-5, -2.41 (40k) | 1.5e-4, -1.35 | 3.0e-5, -0.44 |
+| 45k | 8.7e-5, -2.41 (40k) | 2.2e-4, -1.56 | - |
+
+R2's checkpoint log-std per block (leader first) was -0.37 to -0.44 at 28.8k steps (single columns
+-0.98 to -0.01; ghost columns exactly 0): the entropy bonus raised no row above its initial 0. Over the runs the learning rate
+stayed within 1.0e-4 to 1.7e-3 (R1) and 2e-5 to 7.6e-4 (R2), far from the 1e-2 cap.
+
+Verdict (pass: at least half the MLP's rotations at equal steps, or clearly rising after the MLP's
+plateau): R2 passes. It holds 12.6 s with 1.66 rotations at 22k steps (90% of the MLP's 1.85) and
+ends above the MLP (2.46 rotations against 1.91 at 34k steps; holding 15.1 s against 15.9 s). R1
+does not reach half within 6 h: 0.62 rotations at 45k steps (32%), still rising by about 0.07
+rotations per 5k steps. One seed per arm.
+
+Diagnosis:
+
+- The recipe was the problem, not the architecture: with the collaborator's settings the
+  transformer learns HORA rotation on one hand. It needs more data than the MLP: the MLP reaches
+  1.5 rotations at 0.06 B samples, R2 at about 0.26 B (4x), and on one GPU 3.4 h against 0.2 h,
+  since the transformer also runs at 29-37% of the MLP's throughput.
+- The transformer starts from large mean actions. On unit-scale inputs its initial mean actions
+  have a standard deviation of 0.42-0.61 with per-joint offsets of 0.26-0.58 (3 seeds), the MLP's
+  0.08 (CPU probe). HORA integrates actions into the joint targets, so the offsets move every joint
+  steadily: the first scoring window holds 0.43-0.48 s against the MLP's 1.0 s. Both transformers
+  then spend 0.05-0.1 B samples flicking the object (holding under 1 s at 1-2 rad/s) before they
+  learn to hold.
+- SAPG decides the transition: R2 goes from 4 s to 12.6 s of holding between 19k and 22k steps; R1,
+  with more steps per hour, still holds 7.9 s at 45k. The transformers keep much more exploration
+  noise than the MLP (R2 log-std -0.44, std 0.64, against the MLP's -2.4), and R2 turns the object
+  faster (1.02 rad/s against 0.76).
+
 ## GET-Zero-style distillation (`distill/`, 2026-10-05)
 
 RL on the token transformer had not learned the task, even on one hand. GET-Zero (A. Patel and
