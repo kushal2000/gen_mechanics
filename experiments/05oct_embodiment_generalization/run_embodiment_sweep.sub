@@ -8,7 +8,7 @@
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:1
-#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/embodiment_generalization/slurm-%j.out
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/embodiment_generalization/slurm-%A_%a.out
 # Embodiment-generalization sweep of ONE policy on HAND, in the training metric (goals per episode, 50-goal
 # max, each env's first episode; $NUM_ENVS envs, default 100, x $EVAL_SECONDS s, default 240):
 #   AXIS=finger   the full hand, then the hand with each finger removed in turn (thumb ... pinky):
@@ -29,6 +29,8 @@ LOGS=$REPO/debug_outputs/embodiment_generalization/logs/$AXIS/$LABEL
 mkdir -p $OUT $LOGS
 cd $REPO
 export OMNI_KIT_ACCEPT_EULA=YES
+# As a SLURM array (sbatch --array=0-<n-1>), task i runs only the i-th value: one GPU job per point.
+if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then VALUES=$(echo $VALUES | cut -d' ' -f$((SLURM_ARRAY_TASK_ID + 1))); fi
 for v in $VALUES; do
     TGT=$HAND; NOISE=()
     [ "$AXIS" = finger ] && [ "$v" != none ] && TGT=${HAND}_left_uniform_handonly_no_$v
