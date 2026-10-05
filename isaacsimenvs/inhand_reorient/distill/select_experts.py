@@ -59,7 +59,7 @@ def select(evals: dict, zero: dict, maps: dict, rule: str = "getzero", min_hold_
     for e in evals.values():
         sources += [s for s in e if s not in sources]
     for s in sources:
-        cands = [(k, e.get(s) or {}) for k, e in evals.items()]
+        cands = [(k, e.get(s) or {}) for k, e in evals.items() if s in maps.get(k, {})]  # hands with a checkpoint
         cands = [(k, m) for k, m in cands if m.get("episodes")]
         if not cands:
             continue
