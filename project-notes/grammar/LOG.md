@@ -396,3 +396,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Six solo MLP experts (allegro, sharpa, leap, founders 416/204/234) distilled by DAgger into one token transformer (d128, L4): the student reaches 94-105% of every expert. Allegro: student 13.3 s holding / 1.27 rotations per episode vs expert 13.45 s / 1.33 -- the first transformer in this project to perform the task, ~8x the best RL-trained transformer.
 - Five experts never learned to hold (flick and drop in 0.3-1.8 s; doing nothing holds 14.5-18.9 s) because their grasp caches were palm-up seeded; the student copies them, and zero-shot on 6 unseen hands is 2-29% of the zero-action holding time.
 - Next: opposition-seeded grasp caches for every candidate, stricter expert keep rule, redistil on 8+ hands spanning all grammar variants.
+
+## Fair test: the token transformer learns with the collaborator's recipe (2026-10-05)
+
+- Solo allegro, 12288 envs, 6 h each on an RTX 6000 Ada: MLP 15.8 s / ~1.9 rotations (plateau); R2 transformer (lr 1e-4, e_clip 0.1, 2 mini-epochs, d128, SAPG 6 blocks) 15.1 s / 2.46 rotations at the end; R1 (same without SAPG) 7.9 s / 0.62, still rising. The earlier failures were the recipe and the budget, not the method.
+- Multi-hand R2 runs (pair; pair + group advantage norm; solo founder 174 for the fraction-of-solo metric) started.
