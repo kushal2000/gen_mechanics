@@ -447,7 +447,16 @@ def test_min_link_length_allows_a_compact_knuckle():
     assert gap < 2 * design_space.CAPSULE_RADIUS, "axes are not closer than the link is wide"
 
 def test_mounts_stay_clear_of_face_edges(pop):
-    """A mount within one capsule radius of an edge hangs the finger off the palm."""
+    """A mount within one capsule radius of an edge hangs the finger off the palm.
+
+    Along the face only. Across the THICKNESS the margin cannot be met and is
+    not meant to be: the palm is deliberately 25 mm, one quantum thinner than a
+    30 mm link capsule, so a base capsule overhangs each large face by 2.5 mm
+    whatever u does. u is pinned to the midplane for exactly that reason -- see
+    mount_uv_bounds, which predicted this and says a thickness change would
+    otherwise silently hand u back. The overhang is the capsule's conservative
+    bound showing, not a motor sticking out: the XM335 is 19 mm across.
+    """
     rng = random.Random(4)
     hand = pop[0]
     worst = float("inf")
@@ -456,10 +465,9 @@ def test_mounts_stay_clear_of_face_edges(pop):
         if child:
             hand = child
         for f in hand.fingers:
-            _, _, _, _, span_u, span_v = design_space.face_frame(f.mount.face, hand.palm)
-            worst = min(worst,
-                        min(f.mount.u, 1.0 - f.mount.u) * span_u,
-                        min(f.mount.v, 1.0 - f.mount.v) * span_v)
+            assert f.mount.u == 0.5, "u is pinned to the midplane"
+            _, _, _, _, _, span_v = design_space.face_frame(f.mount.face, hand.palm)
+            worst = min(worst, min(f.mount.v, 1.0 - f.mount.v) * span_v)
     assert worst >= design_space.MOUNT_EDGE_MARGIN - 1e-9, (
         f"a mount came {worst * 1000:.1f} mm from a face edge, margin is "
         f"{design_space.MOUNT_EDGE_MARGIN * 1000:.0f} mm")

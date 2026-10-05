@@ -41,7 +41,7 @@ really a free parameter -- a motor lives inside it.
 
 # Defined here rather than with the other palm constants: it is tied to the
 # link, so it has to follow CAPSULE_RADIUS.
-PALM_THICKNESS = 2.0 * CAPSULE_RADIUS
+PALM_THICKNESS = 2.0 * CAPSULE_RADIUS - 0.005
 """Fixed for every hand: not sampled, not mutated, not a design variable.
 
 ``u`` runs along the thickness axis on every face, so thickness alone decides how
@@ -49,6 +49,11 @@ far a mount sits from the palm's two large faces -- but every finger originates 
 the MIDPLANE now, so that is not a design variable and thickness only has to house
 each finger's BASE motor, which sits in the palm rather than in any link. The
 XM335's smallest dimension is 19 mm, so 25 mm clears it.
+
+A link's capsule is 30 mm across and the palm is deliberately THINNER than that,
+by one 5 mm quantum. A palm as thick as the fingers reads as a block with
+fingers on it rather than as a hand, and nothing needs the extra 5 mm: the base
+motor fits in 19.
 """
 PALM_THICKNESS_RANGE = (PALM_THICKNESS, PALM_THICKNESS)   # x -- a single point now
 
@@ -438,9 +443,15 @@ def mount_uv_bounds(face: str, palm: Palm) -> tuple[float, float, float, float]:
 
     ``u`` is PINNED at 0.5: every finger originates on the palm's midplane, so a
     mount's only freedom is ``v``, along the face. Pinned here rather than left to
-    fall out of the margin arithmetic -- at the current thickness the two edge
-    margins already overlap and would centre it anyway, but that is a coincidence
-    of the numbers, and a later thickness change would silently hand ``u`` back.
+    fall out of the margin arithmetic -- the palm is thinner than one margin can
+    span, so solving for ``u`` would find nothing and hand back whatever the
+    arithmetic degenerated to.
+
+    At PALM_THICKNESS = 25 mm against a 15 mm margin the two edge margins
+    OVERLAP, and a mount on the midplane sits 12.5 mm from each large face. That
+    is intended: the palm is deliberately a quantum thinner than a link, so a
+    base capsule overhangs it by 2.5 mm a side. The capsule is a conservative
+    bound on a 19 mm motor, so nothing real hangs off.
     """
     _, _, _, _, _, span_v = face_frame(face, palm)
     m = MOUNT_EDGE_MARGIN

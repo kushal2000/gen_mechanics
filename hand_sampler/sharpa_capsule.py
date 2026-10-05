@@ -16,10 +16,12 @@ edge, each MCP a coincident flexion+abduction pair, then PIP and DIP at 47 and
 proximal; a pinky with an extra roll joint at its base. 22 joints.
 
 Every deviation is forced by a specific rule, which is the point of writing it
-down -- it is also the list of things the grammar cannot express:
+down -- it is also the list of things the grammar cannot express.
 
-  palm thickness 25 mm, not 50    PALM_THICKNESS is a single point now, 2 x the
-                                  capsule radius; thickness is never a variable
+Its 25 mm palm used to be on this list, against a thickness that was then 50 and
+later 30. PALM_THICKNESS is 25 now, a quantum under the capsule diameter, so the
+capsule and the grammar agree on it exactly and it is no longer a deviation:
+
   palm width 100 mm, not 85       four mounts on one face at MIN_MOUNT_SEPARATION
                                   plus two MOUNT_EDGE_MARGINs need 95
   finger spacing 25 mm, not ~20   MIN_MOUNT_SEPARATION, which is 35 mm now
