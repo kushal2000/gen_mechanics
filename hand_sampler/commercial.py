@@ -35,16 +35,52 @@ from hand_sampler import validate_design
 _URDF_DIR = (Path(__file__).resolve().parents[1]
              / "assets/urdf/unified_dynamics_commercial_hands")
 
-HANDS: tuple[str, ...] = ("leap", "wuji2", "sharpa")
+HANDS: tuple[str, ...] = ("leap", "wuji2", "midas")
 """The vendor hands fitted into this grammar, in the order they were done.
 
 LEAP first because it fits almost exactly -- its own geometry is already what
-the grammar says a hand is. The others are harder and say so in their notes.
+the grammar says a hand is. wuji2 is harder and says so in its notes.
+
+SHARPA was fitted and then dropped. It needed the most distortion of any hand
+tried: knuckles at 17-20 mm centres spread to 35, joint axes 7.7 degrees off a
+coordinate direction at the median and 47.6 at worst, and a coincident MCP pair
+whose first link had to be invented at 20 mm. The result validated but did not
+look like SHARPA. hand_sampler.sharpa_capsule is the hand-built stand-in that
+the trained runs use; fitting the real one is unfinished work, not a solved
+problem.
 """
 
 
 def urdf_of(name: str) -> Path:
-    return _URDF_DIR / name / f"{name}_left.urdf"
+    """Most vendors here ship a left hand; MIDAS declares no handedness."""
+    for stem in (f"{name}_left", name):
+        p = _URDF_DIR / name / f"{stem}.urdf"
+        if p.exists():
+            return p
+    raise FileNotFoundError(f"no URDF for {name!r} under {_URDF_DIR}")
+
+
+TIP_FALLBACK: dict[str, dict[str, tuple[float, float, float]]] = {
+    "midas": {
+        "thumb_dip_joint": (-0.004, 0.023, -0.017),
+        "index_dip_joint": (0.0016, 0.021, -0.0085),
+        "middle_dip_joint": (0.0016, 0.021, -0.0085),
+        "ring_dip_joint": (0.0016, 0.021, -0.0085),
+    },
+}
+"""Where a finger ENDS, for vendors whose URDF does not say.
+
+MIDAS's chains stop at the last joint -- no tip link, no fixed frame -- so a
+finger would come out with a zero-length distal link. These offsets are the
+contact geometry from the vendor's own MuJoCo model, which is where it says the
+finger touches things: the `fingertip_contact` class for the three fingers and
+`thumb_dip_contact` for the thumb, both in the distal joint's frame.
+
+Kept here rather than patched into the vendored URDF so that file stays
+byte-identical to upstream. Estimating a tip from the link's centre of mass was
+tried instead and is not good enough -- against the hands that DO carry tip
+frames it is 14 mm short on wuji2 and 11 mm long on LEAP.
+"""
 
 
 URDF = urdf_of("leap")
@@ -80,6 +116,30 @@ def _read(path: Path) -> dict:
     return out
 
 
+def _longest_chain(J: dict, by_parent: dict, root: str) -> list[str]:
+    """The finger, when a link carries more than one revolute child.
+
+    MIDAS hangs a four-bar off each MCP pitch link, so that link has two
+    revolute children -- the PIP, which continues the finger, and a linkage
+    joint that closes a loop and goes nowhere. Taking the first child followed
+    whichever the file happened to list first. The finger is the longest way
+    down, and a closing linkage is always the shorter one.
+    """
+    best: list[str] = []
+    stack = [[root]]
+    while stack:
+        path = stack.pop()
+        kids = [x for x in by_parent.get(J[path[-1]]["child"], [])
+                if J[x]["type"] == "revolute" and x not in path]
+        if not kids:
+            if len(path) > len(best):
+                best = path
+            continue
+        for k in kids:
+            stack.append(path + [k])
+    return best
+
+
 def digits(name_or_path: "str | Path" = "leap") -> list[Digit]:
     """Every digit, in KINEMATIC order, with the palm as root."""
     path = (urdf_of(name_or_path) if isinstance(name_or_path, str)
@@ -93,14 +153,7 @@ def digits(name_or_path: "str | Path" = "leap") -> list[Digit]:
                                             for n in by_parent[k]))
     out = []
     for root_joint in [n for n in by_parent[palm] if J[n]["type"] == "revolute"]:
-        chain, cur = [], root_joint
-        while True:
-            chain.append(cur)
-            nxt = [x for x in by_parent.get(J[cur]["child"], [])
-                   if J[x]["type"] == "revolute"]
-            if not nxt:
-                break
-            cur = nxt[0]
+        chain = _longest_chain(J, by_parent, root_joint)
         T = np.eye(4)
         pos, axis = [], []
         for n in chain:
@@ -117,6 +170,10 @@ def digits(name_or_path: "str | Path" = "leap") -> list[Digit]:
         # Follow every fixed branch and keep the point furthest from the last
         # joint, which is the one that is actually a fingertip.
         tip = T[:3, 3].copy()
+        fallback = TIP_FALLBACK.get(
+            path.parent.name, {}).get(chain[-1])
+        if fallback is not None:
+            tip = (T @ np.append(np.asarray(fallback, dtype=float), 1.0))[:3]
         stack = [(T, J[chain[-1]]["child"])]
         while stack:
             frame, link = stack.pop()
@@ -304,7 +361,11 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
     # mm capsules plus clearance. Spreading the row is the only way to make such
     # a hand buildable, and it is a real distortion -- the notes say how much.
     want_y = q_base[:, 1].copy()
-    row_y = _push_apart(want_y, D.MIN_MOUNT_SEPARATION) if spread else want_y
+    # a hair over the floor: a mount is stored as a normalised v and comes back
+    # through the palm's own width, and that round trip lands hundreds of
+    # nanometres either side. Pushing to EXACTLY the floor failed the validator.
+    row_y = (_push_apart(want_y, D.MIN_MOUNT_SEPARATION + 1e-4)
+             if spread else want_y)
     centre_y = float(np.mean(row_y))
     half = float(np.max(np.abs(row_y - centre_y)))
     width = D.PALM_QUANTUM * math.ceil(
