@@ -154,7 +154,10 @@ def main() -> None:
             for k, v in GEN_SHARPA_ACTUATOR.items():         # the uniform actuator, as its training run set
                 saved.env.physics[k] = v
         else:
-            saved.env.assets.robot_spec = f"{args.target}_left_uniform_handonly"
+            # A bare hand name (wuji2) means its uniform spec; a full registered name (e.g. a missing-finger
+            # variant, wuji2_left_uniform_handonly_no_thumb) is taken as is.
+            saved.env.assets.robot_spec = (args.target if "_handonly" in args.target
+                                           else f"{args.target}_left_uniform_handonly")
 
     @hydra_task_config_with_yaml(TASK, "rl_games_joint_transformer_cfg_entry_point")
     def _run(env_cfg, agent_cfg):

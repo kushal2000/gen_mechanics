@@ -67,14 +67,50 @@ def plot(comp, name):
     return paths
 
 
+FINGERS = [("none", "None"), ("thumb", "Thumb"), ("index", "Index"), ("middle", "Middle"), ("ring", "Ring"),
+           ("pinky", "Pinky")]
+
+
+def plot_fingers(comp):
+    """Grouped bars: goals/episode with no finger missing, then with each finger removed."""
+    uni, wuji = COMPARISONS[comp]
+    pols = [("Unified Multi-Embodiment", uni, ps.COLORS["hero"]), ("Wuji Only", wuji, ps.COLORS["foil"])]
+    x = np.arange(len(FINGERS)) + np.where(np.arange(len(FINGERS)) > 0, 0.4, 0.0)   # gap after the full hand
+    w = 0.38
+    fig, ax = plt.subplots(figsize=(ps.COLUMN_WIDTH * 1.25, 2.4))
+    for i, (txt, label, color) in enumerate(pols):
+        y = np.array([gpe(label, "finger", k) for k, _ in FINGERS])
+        xs = x + (i - 0.5) * w
+        ax.bar(xs, np.nan_to_num(y), w * 0.92, color=color, alpha=ps.BAR_ALPHA, linewidth=0)
+        for xi, yi in zip(xs, y):
+            if np.isfinite(yi):
+                ax.text(xi, yi + 0.6, f"{yi:.0f}", ha="center", va="bottom", fontsize=6, color=ps.COLORS["ink"])
+    ax.axvline((x[0] + x[1]) / 2, color=ps.COLORS["neutral"], linewidth=0.7, linestyle=(0, (3, 2)))
+    ax.axhline(50, color=ps.COLORS["neutral"], linewidth=0.7, linestyle=(0, (3, 2)), zorder=0)
+    ax.set_ylim(0, 56)
+    ps.style_axis(ax)
+    ax.tick_params(axis="x", length=0)
+    ax.set_xticks(x, [lab for _, lab in FINGERS])
+    ax.set_xlabel("Missing finger")
+    ax.set_ylabel("Goals / episode")
+    ax.set_title("Robustness to Missing Fingers", fontweight="bold")
+    ps.bottom_legend(fig, [Patch(facecolor=c, alpha=ps.BAR_ALPHA) for _, _, c in pols], [t for t, *_ in pols],
+                     y=-0.14, columnspacing=1.6, bold=("Unified Multi-Embodiment",))
+    paths = ps.save_figure(fig, OUT / comp / "missing_finger")
+    plt.close(fig)
+    return paths
+
+
 def main():
     ps.configure()
     for comp in COMPARISONS:
         for name in AXES:
             plot(comp, name)
+        plot_fingers(comp)
     for label in ("unified_40k", "wuji_only_32k", "wuji_only_40k"):
         print(f"  {label:14s} " + " | ".join(
-            f"{name}: " + " ".join(f"{gpe(label, a[0], k):.1f}" for k in a[1]) for name, a in AXES.items()))
+            f"{name}: " + " ".join(f"{gpe(label, a[0], k):.1f}" for k in a[1]) for name, a in AXES.items())
+              + " | fingers: " + " ".join(f"{k} {gpe(label, 'finger', k):.1f}" for k, _ in FINGERS))
 
 
 if __name__ == "__main__":
