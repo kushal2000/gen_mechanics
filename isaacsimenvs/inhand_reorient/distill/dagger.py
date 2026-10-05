@@ -39,7 +39,7 @@ from torch import nn
 
 __all__ = [
     "AggregatedDataset", "ExpertBank", "FirstEpisodeTracker", "MeanPolicy", "add_sums", "append_jsonl", "beta_at",
-    "build_rlg_model", "checkpoint_weights", "load_checkpoint", "load_expert", "masked_action_mse", "mix_actions",
+    "build_rlg_model", "checkpoint_weights", "expert_spec", "sapg_blocks", "sapg_coef_ids", "load_checkpoint", "load_expert", "masked_action_mse", "mix_actions",
     "per_design_mean", "resolve_experts", "save_checkpoint", "seed_everything", "summarise", "valid_from_tokens",
 ]
 
@@ -154,18 +154,36 @@ class AggregatedDataset:
 # --------------------------------------------------------------------------
 
 
-def build_rlg_model(params: dict, obs_dim: int, actions_num: int):
+def build_rlg_model(params: dict, obs_dim: int, actions_num: int, sapg_blocks: int = 0, device="cpu"):
     """The rl_games model (``params['model']``, ``params['network']``) as
-    the rl_games agent builds it, with the config's normaliser switches."""
+    the rl_games agent builds it, with the config's normaliser switches.
+    ``sapg_blocks > 0``: SAPG's ``mixed_expl_learn_param`` network, whose
+    input carries one extra column (the block's coefficient,
+    linspace(50, 0, blocks)) that the input normaliser skips."""
     from rl_games.algos_torch import model_builder
 
     cfg = params.get("config", {})
     model = model_builder.ModelBuilder().load(params)
-    return model.build({
+    build = {
         "actions_num": int(actions_num), "input_shape": (int(obs_dim),), "num_seqs": 1, "value_size": 1,
         "normalize_value": bool(cfg.get("normalize_value", False)),
         "normalize_input": bool(cfg.get("normalize_input", False)),
-    })
+    }
+    if sapg_blocks:
+        build.update(type="extra_param", input_shape=(int(obs_dim) + 1,), coef_id_idx=int(obs_dim),
+                     coef_ids=sapg_coef_ids(sapg_blocks, device))
+    return model.build(build)
+
+
+def sapg_coef_ids(blocks: int, device="cpu") -> torch.Tensor:
+    """SAPG's per-block coefficient column values (``a2c_common``): block 0, the leader, is 50."""
+    return torch.linspace(50.0, 0.0, int(blocks), device=device)
+
+
+def sapg_blocks(weights: dict) -> int:
+    """Exploration blocks of a SAPG ``learn_param`` checkpoint (0: plain PPO)."""
+    p = (weights.get("model") or {}).get("a2c_network.extra_params")
+    return 0 if p is None else int(p.shape[0])
 
 
 def checkpoint_weights(path) -> dict:
@@ -181,30 +199,47 @@ class MeanPolicy(nn.Module):
     """Deterministic action of an rl_games continuous model as its player
     computes it: observations clipped (the env wrapper's
     ``clip_observations``), the model's own input normaliser, the network's
-    mean, clipped to the action bound."""
+    mean, clipped to the action bound. ``coef``: a SAPG model's coefficient
+    column, appended to every observation (the leader's, 50)."""
 
-    def __init__(self, model: nn.Module, obs_clip: float | None = None, action_clip: float = 1.0):
+    def __init__(self, model: nn.Module, obs_clip: float | None = None, action_clip: float = 1.0,
+                 coef: float | None = None):
         super().__init__()
         self.model = model
         self.obs_clip = None if obs_clip is None else float(obs_clip)
         self.action_clip = float(action_clip)
+        self.coef = None if coef is None else float(coef)
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         if self.obs_clip is not None:
             obs = obs.clamp(-self.obs_clip, self.obs_clip)
+        if self.coef is not None:
+            obs = torch.cat([obs, torch.full_like(obs[:, :1], self.coef)], dim=1)
         mu = self.model.a2c_network({"obs": self.model.norm_obs(obs)})[0]
         return mu.clamp(-self.action_clip, self.action_clip)
 
 
 def load_expert(params: dict, path, obs_dim: int, actions_num: int, device="cpu") -> MeanPolicy:
-    """A frozen expert in eval mode (its input normaliser does not update)."""
-    model = build_rlg_model(params, obs_dim, actions_num)
-    model.load_state_dict(checkpoint_weights(path)["model"])
+    """A frozen expert in eval mode (its input normaliser does not update);
+    a SAPG checkpoint acts as its leader block."""
+    w = checkpoint_weights(path)
+    blocks = sapg_blocks(w)
+    model = build_rlg_model(params, obs_dim, actions_num, sapg_blocks=blocks, device=device)
+    model.load_state_dict(w["model"])
     clip = params.get("env", {}).get("clip_observations")
-    pol = MeanPolicy(model, obs_clip=clip).to(device).eval()
+    pol = MeanPolicy(model, obs_clip=clip, coef=float(sapg_coef_ids(blocks)[0]) if blocks else None).to(device).eval()
     for p in pol.parameters():
         p.requires_grad_(False)
     return pol
+
+
+def expert_spec(value) -> tuple:
+    """An experts-JSON value: a checkpoint path, or ``{"path": ..., "agent":
+    <gym registry key of its train YAML>}`` for an expert trained with
+    another config (e.g. ``rl_games_hora_sapg_cfg_entry_point``)."""
+    if isinstance(value, dict):
+        return value.get("path"), value.get("agent")
+    return value, None
 
 
 def resolve_experts(sources: list[str], mapping: dict) -> list:

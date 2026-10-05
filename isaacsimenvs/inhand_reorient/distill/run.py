@@ -125,15 +125,17 @@ def main() -> None:
         bank = None
         if need_experts:
             mapping = json.loads(Path(args.experts).read_text())
-            paths = dg.resolve_experts(sources, mapping)
-            eyaml = gym.spec(args.task.split(":")[-1]).kwargs[dcfg.get("expert_agent", EXPERT_AGENT)]
-            eparams = yaml.safe_load(Path(eyaml).read_text())["params"]
+            specs = [dg.expert_spec(v) for v in dg.resolve_experts(sources, mapping)]
+            default_agent = dcfg.get("expert_agent", EXPERT_AGENT)
+            specs = [(p, a or default_agent) if p else (None, None) for p, a in specs]  # each expert's train YAML
+            kw = gym.spec(args.task.split(":")[-1]).kwargs
             t_dim = int(obs["teacher_obs"].shape[1])
-            uniq = sorted({p for p in paths if p})
-            experts = [dg.load_expert(eparams, p, t_dim, n_act, dev) for p in uniq]
-            bank = dg.ExpertBank(experts, design, [uniq.index(p) if p else None for p in paths])
+            uniq = sorted({sp for sp in specs if sp[0]})
+            experts = [dg.load_expert(yaml.safe_load(Path(kw[a]).read_text())["params"], p, t_dim, n_act, dev)
+                       for p, a in uniq]
+            bank = dg.ExpertBank(experts, design, [uniq.index(sp) if sp[0] else None for sp in specs])
             print(f"[distill] experts (teacher obs {t_dim}): "
-                  + ", ".join(f"{s} <- {p}" for s, p in zip(sources, paths)), flush=True)
+                  + ", ".join(f"{s} <- {p} ({a})" for s, (p, a) in zip(sources, specs)), flush=True)
             if args.mode == "train" and bank.missing:
                 raise SystemExit(f"no expert for {[sources[d] for d in bank.missing]}")
 

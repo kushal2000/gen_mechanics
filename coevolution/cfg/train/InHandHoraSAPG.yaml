@@ -1,0 +1,108 @@
+# HORA's MLP PPO (InHandAnyRotatePPO.yaml: MLP [512, 256, 128] ELU, lr 5e-3 adaptive at KL 0.02,
+# horizon 8, 5 mini-epochs, clip 0.2, critic 4, bounds loss 1e-4) plus SAPG with 6 exploration
+# blocks, the SAPG block of InHandHoraTokenTeamSAPG.yaml (the collaborator's recipe): leader-follower
+# off-policy update (use_others_experience lf, ratio 1), a learned per-block coefficient embedding
+# (mixed_expl_learn_param), one log-std row per block (fixed_sigma coef_cond), entropy bonus
+# linspace(0.5, 0, 6)[block] x 0.002.
+#
+# For per-hand experts that flick the object and drop it under plain PPO (GET-Zero round 2): the
+# fair test found SAPG turned the token transformer on allegro from flicking to holding.
+# - network inhand_actor_critic with logstd_max 0.0 (I41): the entropy bonus would otherwise inflate
+#   the log-std of the 32-slot envelope's ghost columns; actions are clipped to [-1, 1], so std > 1
+#   adds no exploration. Checkpoints load into the stock actor_critic.
+# - Blocks: num_envs = 6 x expl_coef_block_size = 12288. Augmented batch 12288 x 8 + 98304 / 6 =
+#   114688 = 7 minibatches of 16384.
+# - A distillation teacher built from this config needs the SAPG coefficient column; dagger.py
+#   appends the leader's (block 0, 50.0).
+
+params:
+  seed: 42
+
+  env:
+    clip_observations: 10.0
+    clip_actions: 1.0
+
+  algo:
+    name: a2c_continuous
+
+  model:
+    name: continuous_a2c_logstd
+
+  network:
+    name: inhand_actor_critic
+    separate: False
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: 0
+        fixed_sigma: coef_cond
+        logstd_max: 0.0
+    mlp:
+      units: [512, 256, 128]
+      activation: elu
+      d2rl: False
+      initializer:
+        name: default
+      regularizer:
+        name: None
+
+  load_checkpoint: False
+  load_path: ''
+
+  config:
+    name: 0_inhand_hora_sapg
+    full_experiment_name: ${.name}
+    env_name: rlgpu
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    multi_gpu: False
+    ppo: True
+    mixed_precision: False
+    normalize_input: True
+    normalize_value: True
+    value_bootstrap: True
+    num_actors: ${....env.scene.num_envs}
+    reward_shaper:
+      scale_value: 0.01
+    normalize_advantage: True
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 0.005
+    lr_schedule: adaptive
+    schedule_type: standard
+    kl_threshold: 0.02
+    score_to_win: 1000000
+    max_epochs: 1000000
+    save_best_after: 100
+    save_frequency: 200
+    print_stats: True
+    grad_norm: 1.0
+    entropy_coef: 0.0
+    truncate_grads: True
+    e_clip: 0.2
+    horizon_length: 8
+    minibatch_size: 16384
+    mini_epochs: 5
+    critic_coef: 4
+    clip_value: True
+    seq_length: 4
+    bounds_loss_coef: 0.0001
+
+    # === SAPG (InHandHoraTokenTeamSAPG.yaml) ===
+    use_others_experience: lf
+    off_policy_ratio: 1.0
+    expl_type: mixed_expl_learn_param
+    expl_reward_type: entropy
+    expl_reward_coef_embd_size: 32
+    expl_reward_coef_scale: 0.002
+    expl_coef_block_size: 2048   # 12288 envs / 6 blocks
+
+    player:
+      deterministic: True
+      games_num: 100000
+      print_stats: True
