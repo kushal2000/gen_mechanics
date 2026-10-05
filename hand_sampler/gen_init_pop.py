@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import random
 
 from hand_sampler import design_space

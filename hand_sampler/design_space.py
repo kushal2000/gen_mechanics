@@ -86,7 +86,12 @@ MAX_FINGER_LENGTH = 0.200
 # --- joints -----------------------------------------------------------------
 
 ANGLE_QUANTUM = math.radians(15.0)
-"""Grid for every angle in the genotype: joint theta and offset."""
+"""Grid for the one angle a hand can still carry: an IMPORTED joint's offset.
+
+A generated joint has no angle at all -- it is a kind and a lean, both of which
+have their own alphabets. This survives for measured hands, whose assembly
+angles come off a vendor URDF and are checked against this grid.
+"""
 
 LEAN_QUANTUM = math.radians(45.0)
 """How far a link may lean off the one before it.

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 
 from hand_sampler import design_space
@@ -39,7 +38,6 @@ def record(gen: int, pop: list, stats: mutate_design.Stats, nulls: int) -> dict:
         kinds={n: sum(1 for s in segs if s.joint.kind == k) / len(segs)
                for k, n in zip(design_space.JOINT_KINDS, design_space.JOINT_KIND_NAMES)},
         leaning=sum(1 for s in segs if s.lean) / len(segs),
-        offset_deg=math.degrees(mean([abs(s.joint.offset) for s in segs])),
         palm_w_mm=1000 * mean([h.palm.width for h in pop]),
         palm_l_mm=1000 * mean([h.palm.length for h in pop]),
         face_share={f: faces.get(f, 0) / n_faces for f in design_space.FINGER_FACES},

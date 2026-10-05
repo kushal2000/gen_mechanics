@@ -13,7 +13,6 @@ catches a file that has drifted from the sampler that wrote it.
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 
 from hand_sampler import design_space

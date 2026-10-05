@@ -612,10 +612,10 @@ GEN_JOINT_ARMATURE: float = 0.003
 GEN_JOINT_DAMPING: float = 2 * 0.929 * math.sqrt(GEN_JOINT_STIFFNESS * GEN_JOINT_ARMATURE)
 
 
-def gen_joint_drive(depth: int = 0, theta: float = 0.0):
+def gen_joint_drive(depth: int = 0, kind: int = 0):
     """``(effort, velocity, stiffness, damping, armature)`` for a joint.
 
-    Takes depth and theta so a caller need not know they are ignored; the whole
+    Takes depth and kind so a caller need not know they are ignored; the whole
     point is that every generated joint is identical.
     """
     return (GEN_JOINT_EFFORT_NM, GEN_JOINT_VELOCITY_RAD_S, GEN_JOINT_STIFFNESS,

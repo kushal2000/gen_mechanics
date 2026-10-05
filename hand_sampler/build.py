@@ -51,8 +51,8 @@ def hinge_to_z(axis) -> np.ndarray:
     load-bearing.
 
     Built from an orthonormal frame rather than the shortest arc, which is
-    ill-conditioned for a hinge near -z -- and ``wrap_theta`` makes that a
-    reachable design, since a hinge and its negation are the same joint.
+    ill-conditioned for a hinge near -z -- and a lean reaches one easily, since
+    a hinge and its negation are the same joint.
     """
     a = np.asarray(axis, dtype=float)
     a = a / max(float(np.linalg.norm(a)), 1e-12)

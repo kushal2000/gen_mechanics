@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import random
 from dataclasses import dataclass, field, replace
 
@@ -11,7 +10,7 @@ import numpy as np
 from hand_sampler import design_space
 from hand_sampler import validate_design
 from hand_sampler.design_space import (
-    face_frame, face_from_normal, mount_direction, mount_position,
+    face_frame, face_from_normal, mount_position,
     mount_uv_bounds,
 )
 
@@ -64,11 +63,6 @@ def reflect(x: float, lo: float, hi: float) -> float:
 
 def snap(x: float, quantum: float) -> float:
     return round(x / quantum) * quantum
-
-
-def wrap_theta(theta: float) -> float:
-    """theta is periodic with period pi -- a hinge and its negation coincide."""
-    return theta % math.pi
 
 
 # --- structural -------------------------------------------------------------

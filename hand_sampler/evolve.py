@@ -19,7 +19,7 @@ import json
 import random
 from pathlib import Path
 
-from hand_sampler import design_space, mutate_design, population_io, validate_design
+from hand_sampler import mutate_design, population_io, validate_design
 
 MUTATION_TRIES = 64
 """Independent draws before a survivor is copied unchanged instead of mutated.

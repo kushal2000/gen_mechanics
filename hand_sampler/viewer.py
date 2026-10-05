@@ -20,7 +20,6 @@ from hand_sampler import robot_param_constants as rpc
 from hand_sampler import mutate_design
 from hand_sampler import gen_init_pop
 from hand_sampler import leap_fit
-from hand_sampler.design_space import face_frame
 
 # assets/urdf/table_narrow.urdf, at reset.table_reset_z. Surface at z = 0.53.
 TABLE_EXTENTS = (0.475, 0.4, 0.3)

@@ -6,7 +6,6 @@ import json
 import subprocess
 import sys
 
-import pytest
 
 SCALE = ["--parents", "8", "--children", "4", "--seed", "5", "--every", "999"]
 

@@ -18,24 +18,33 @@ proximal; a pinky with an extra roll joint at its base. 22 joints.
 Every deviation is forced by a specific rule, which is the point of writing it
 down -- it is also the list of things the grammar cannot express:
 
-  palm thickness 25 mm, not 50    PALM_THICKNESS_RANGE caps at 40 and the sampler
-                                  only seeds 20-25; thickness is never mutated
-  palm width 100 mm, not 85       four mounts on one face at MIN_SAME_FACE_SEPARATION
-                                  (25 mm) plus two MOUNT_EDGE_MARGINs need 95
-  finger spacing 25 mm, not ~20   MIN_SAME_FACE_SEPARATION
+  palm thickness 25 mm, not 50    PALM_THICKNESS is a single point now, 2 x the
+                                  capsule radius; thickness is never a variable
+  palm width 100 mm, not 85       four mounts on one face at MIN_MOUNT_SEPARATION
+                                  plus two MOUNT_EDGE_MARGINs need 95
+  finger spacing 25 mm, not ~20   MIN_MOUNT_SEPARATION, which is 35 mm now
   MCP as two joints 15 mm apart   MIN_LINK_LENGTH; SHARPA's FE and AA are coincident
-  no pinky CMC (21 joints, not 22) it is a roll about the finger (phi = 0), and the
-                                  sampler fixes phi = 90 while mutation moves only theta
+  no pinky CMC (21 joints, not 22) a roll about the finger. The grammar HAS a roll
+                                  kind now, so this one is no longer forced -- it is
+                                  simply what was built before roll existed
   thumb on the -y face            SHARPA mounts it on the palm surface, 24 mm inboard;
                                   the grammar has only the three thin faces
-  thumb MCP hinges axis-aligned   the real ones are oblique; theta on the 15-degree
-                                  grid cannot tilt a hinge out of the y-z plane
+  thumb MCP hinges axis-aligned   the real ones are oblique, and a joint is one of
+                                  three kinds, so there is no oblique axis to reach
   lengths on the 5 mm grid        LINK_QUANTUM
 
+This hand also predates two constants it would now break: links of 15 mm against
+a 20 mm floor, and mounts off the grid. test_it_is_a_legal_design records that,
+and is expected to FAIL.
+
+It also carries assembly offsets -- the thumb's -60 degree abduction rest -- which
+a generated hand no longer has at all. They survive here because Joint.offset is
+kept for hands that were measured rather than drawn.
+
 What survives: five fingers, the flexion/abduction pattern of every joint, the
-proximal/middle/distal proportions, the thumb's opposition via a -60 degree rest
-offset on its abduction joint, and fingertips within 4-17 mm of SHARPA's on the
-four fingers and ~33 mm on the thumb.
+proximal/middle/distal proportions, the thumb's opposition via that -60 degree
+rest offset, and fingertips within 4-17 mm of SHARPA's on the four fingers and
+~33 mm on the thumb.
 """
 
 from __future__ import annotations
