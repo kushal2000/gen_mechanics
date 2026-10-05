@@ -57,6 +57,8 @@ def checkpoint_logstd(path: Path, columns=None) -> dict:
     import torch
 
     ck = torch.load(str(path), map_location="cpu", weights_only=False)
+    while isinstance(ck, dict) and 0 in ck:  # the vendored rl_games saves {policy index: state}
+        ck = ck[0]
     model = ck.get("model", ck)
     sigma = model["a2c_network.sigma"].float()
     rows = sigma.reshape(-1, sigma.shape[-1])
