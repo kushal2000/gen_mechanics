@@ -19,7 +19,7 @@ from hand_sampler import design_space
 from hand_sampler import robot_param_constants as rpc
 from hand_sampler import mutate_design
 from hand_sampler import gen_init_pop
-from hand_sampler import leap_fit
+from hand_sampler import commercial
 
 # assets/urdf/table_narrow.urdf, at reset.table_reset_z. Surface at z = 0.53.
 TABLE_EXTENTS = (0.475, 0.4, 0.3)
@@ -188,7 +188,7 @@ def main() -> None:
         btn_undo = server.gui.add_button("undo")
         btn_reseed = server.gui.add_button("new seed")
         hand_picker = server.gui.add_dropdown(
-            "commercial hand", ("(generated)", "leap"))
+            "commercial hand", ("(generated)",) + commercial.HANDS)
         cb_context = server.gui.add_checkbox("show arm + table", True)
 
     with server.gui.add_folder("pose"):
@@ -389,7 +389,7 @@ def main() -> None:
         name = hand_picker.value
         if name == "(generated)":
             return
-        hand, notes = leap_fit.fit()
+        hand, notes = commercial.fit(name)
         state["hand"] = hand
         state["lineage"].clear()
         state["last_op"] = None

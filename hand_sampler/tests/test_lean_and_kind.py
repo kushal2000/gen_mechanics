@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 from hand_sampler import design_space as D
-from hand_sampler import build, gen_init_pop, leap_fit, mutate_design, population_io
+from hand_sampler import build, gen_init_pop, commercial, mutate_design, population_io
 from hand_sampler import validate_design
 
 
@@ -224,7 +224,7 @@ def test_a_generated_hand_has_no_assembly_angle():
 
 @pytest.fixture(scope="module")
 def leap():
-    return leap_fit.fit()
+    return commercial.fit()
 
 
 def test_leap_is_a_legal_design(leap):
@@ -255,9 +255,9 @@ def test_leaps_links_need_no_lean(leap):
 def test_leap_keeps_its_own_kinematics(leap):
     """Per-digit fingertip, each measured from its OWN base, against the vendor."""
     hand, _ = leap
-    ds = [leap_fit._straighten(d) for d in leap_fit.digits()]
-    row, thumb = leap_fit._split(ds)
-    M = leap_fit._palm_axes(row)
+    ds = [commercial._straighten(d) for d in commercial.digits()]
+    row, thumb = commercial._split(ds)
+    M = commercial._palm_axes(row)
     for f, d in zip(hand.fingers, row + [thumb]):
         want = M.T @ (d.tip - d.pos[0])
         base, _ = D.mount_frame(f.mount, hand.palm)
@@ -267,9 +267,9 @@ def test_leap_keeps_its_own_kinematics(leap):
 
 def test_leap_keeps_its_own_joint_axes(leap):
     hand, _ = leap
-    ds = [leap_fit._straighten(d) for d in leap_fit.digits()]
-    row, thumb = leap_fit._split(ds)
-    M = leap_fit._palm_axes(row)
+    ds = [commercial._straighten(d) for d in commercial.digits()]
+    row, thumb = commercial._split(ds)
+    M = commercial._palm_axes(row)
     for f, d in zip(hand.fingers, row + [thumb]):
         for got, raw in zip(D.joint_axes(f, hand.palm), d.axis):
             want = M.T @ raw

@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from hand_sampler import design_space as D
-from hand_sampler import gen_init_pop, leap_fit, sharpa_capsule
+from hand_sampler import gen_init_pop, commercial, sharpa_capsule
 
 F, A, R = D.FLEXION, D.ABDUCTION, D.ROLL
 
@@ -72,7 +72,7 @@ def test_a_flexion_finger_scores_full_marks_on_every_face():
 def test_leap_passes():
     """The one hand actually fitted into this grammar, and so the only one whose
     score calibrates anything."""
-    assert D.curl_score(leap_fit.fit()[0]) == pytest.approx(1.0)
+    assert D.curl_score(commercial.fit()[0]) == pytest.approx(1.0)
 
 
 def test_the_sharpa_capsule_is_not_a_reference_but_still_scores():

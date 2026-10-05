@@ -32,8 +32,22 @@ from scipy.spatial.transform import Rotation as R
 from hand_sampler import design_space as D
 from hand_sampler import validate_design
 
-URDF = (Path(__file__).resolve().parents[1]
-        / "assets/urdf/unified_dynamics_commercial_hands/leap/leap_left.urdf")
+_URDF_DIR = (Path(__file__).resolve().parents[1]
+             / "assets/urdf/unified_dynamics_commercial_hands")
+
+HANDS: tuple[str, ...] = ("leap", "wuji2", "sharpa")
+"""The vendor hands fitted into this grammar, in the order they were done.
+
+LEAP first because it fits almost exactly -- its own geometry is already what
+the grammar says a hand is. The others are harder and say so in their notes.
+"""
+
+
+def urdf_of(name: str) -> Path:
+    return _URDF_DIR / name / f"{name}_left.urdf"
+
+
+URDF = urdf_of("leap")
 
 ROW_FACE = "+z"
 THUMB_FACE = "-y"
@@ -51,7 +65,7 @@ class Digit:
 
 # --- reading the vendor hand ------------------------------------------------
 
-def _read(path: Path = URDF) -> dict:
+def _read(path: Path) -> dict:
     root = ET.parse(path).getroot()
     out = {}
     for j in root.findall("joint"):
@@ -66,8 +80,10 @@ def _read(path: Path = URDF) -> dict:
     return out
 
 
-def digits(path: Path = URDF) -> list[Digit]:
+def digits(name_or_path: "str | Path" = "leap") -> list[Digit]:
     """Every digit, in KINEMATIC order, with the palm as root."""
+    path = (urdf_of(name_or_path) if isinstance(name_or_path, str)
+            else name_or_path)
     J = _read(path)
     by_parent: dict[str, list[str]] = {}
     for n, d in J.items():
@@ -95,15 +111,26 @@ def digits(path: Path = URDF) -> list[Digit]:
             T = T @ M
             pos.append(T[:3, 3].copy())
             axis.append(T[:3, :3] @ d["axis"])
-        fixed = [x for x in by_parent.get(J[chain[-1]]["child"], [])
-                 if J[x]["type"] == "fixed"]
+        # The fingertip can be SEVERAL fixed joints out, and a link can carry
+        # more than one: SHARPA goes DP -> elastomer -> fingertip, and wuji2
+        # hangs both a tip and a zero-offset sensor frame off its distal link.
+        # Follow every fixed branch and keep the point furthest from the last
+        # joint, which is the one that is actually a fingertip.
         tip = T[:3, 3].copy()
-        if fixed:
-            d = J[fixed[0]]
-            M = np.eye(4)
-            M[:3, :3] = R.from_euler("xyz", d["rpy"]).as_matrix()
-            M[:3, 3] = d["xyz"]
-            tip = (T @ M)[:3, 3]
+        stack = [(T, J[chain[-1]]["child"])]
+        while stack:
+            frame, link = stack.pop()
+            for x in by_parent.get(link, []):
+                if J[x]["type"] != "fixed":
+                    continue
+                d = J[x]
+                M = np.eye(4)
+                M[:3, :3] = R.from_euler("xyz", d["rpy"]).as_matrix()
+                M[:3, 3] = d["xyz"]
+                nxt = frame @ M
+                if np.linalg.norm(nxt[:3, 3] - T[:3, 3]) > np.linalg.norm(tip - T[:3, 3]):
+                    tip = nxt[:3, 3].copy()
+                stack.append((nxt, d["child"]))
         out.append(Digit(root_joint, tuple(chain), np.array(pos), np.array(axis), tip))
     return out
 
@@ -168,8 +195,19 @@ def _straighten(d: Digit) -> Digit:
 # --- the palm frame ---------------------------------------------------------
 
 def _first_dir(d: Digit) -> np.ndarray:
-    v = (d.pos[1] if len(d.pos) > 1 else d.tip) - d.pos[0]
-    return v / float(np.linalg.norm(v))
+    """Which way the digit leaves its base.
+
+    Skips degenerate links: SHARPA's MCP_FE and MCP_AA are coincident, so its
+    first link has no length and no direction. Taking it anyway divided by zero
+    and handed every digit a NaN, which made the thumb search pick whichever
+    digit happened to come first.
+    """
+    for q in list(d.pos[1:]) + [d.tip]:
+        v = q - d.pos[0]
+        n = float(np.linalg.norm(v))
+        if n > 1e-6:
+            return v / n
+    return np.array([1.0, 0.0, 0.0])
 
 
 def _split(ds: list[Digit]) -> tuple[list[Digit], Digit]:
@@ -229,9 +267,28 @@ def _v_for(face: str, palm: D.Palm, target: np.ndarray) -> float:
     return min(max(v, lo), hi)
 
 
-def fit() -> tuple[D.Hand, list[str]]:
-    """LEAP as a Hand, plus notes on every way it is not the vendor's hand."""
-    ds = [_straighten(d) for d in digits()]
+def _push_apart(ys: np.ndarray, floor: float) -> np.ndarray:
+    """Move values apart until adjacent ones clear ``floor``, as little as possible.
+
+    Sweep up enforcing the gap, sweep back down, then re-centre on where the row
+    started. Order is preserved and a row already clear of the floor is returned
+    untouched, so only hands that need spreading get spread.
+    """
+    order = np.argsort(ys)
+    v = ys[order].astype(float).copy()
+    for i in range(1, len(v)):
+        v[i] = max(v[i], v[i - 1] + floor)
+    for i in range(len(v) - 2, -1, -1):
+        v[i] = min(v[i], v[i + 1] - floor)
+    v += float(np.mean(ys)) - float(np.mean(v))
+    out = np.empty_like(v)
+    out[order] = v
+    return out
+
+
+def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
+    """A vendor hand as a Hand, plus notes on every way it is not the vendor's."""
+    ds = [_straighten(d) for d in digits(name)]
     row, thumb = _split(ds)
     M = _palm_axes(row)
 
@@ -242,7 +299,14 @@ def fit() -> tuple[D.Hand, list[str]]:
     centre_y = float(np.mean(q_base[:, 1]))
     front_z = float(np.mean(q_base[:, 2]))
 
-    half = float(np.max(np.abs(q_base[:, 1] - centre_y)))
+    # The knuckles may sit closer than a motor allows: wuji2 packs its row at
+    # 19-24 mm centres and SHARPA at 17-20, against a 35 mm floor set by two 30
+    # mm capsules plus clearance. Spreading the row is the only way to make such
+    # a hand buildable, and it is a real distortion -- the notes say how much.
+    want_y = q_base[:, 1].copy()
+    row_y = _push_apart(want_y, D.MIN_MOUNT_SEPARATION) if spread else want_y
+    centre_y = float(np.mean(row_y))
+    half = float(np.max(np.abs(row_y - centre_y)))
     width = D.PALM_QUANTUM * math.ceil(
         (2.0 * (half + D.MOUNT_EDGE_MARGIN)) / D.PALM_QUANTUM)
     width = min(max(width, D.PALM_WIDTH_RANGE[0]), D.PALM_WIDTH_RANGE[1])
@@ -261,11 +325,18 @@ def fit() -> tuple[D.Hand, list[str]]:
         return (p @ M) - origin
 
     notes: list[str] = []
+    moved = {id(d): float(row_y[i] - want_y[i]) for i, d in enumerate(row)}
     fingers = []
     for d, face in [(x, ROW_FACE) for x in row] + [(thumb, THUMB_FACE)]:
         pts = [to_palm(p) for p in d.pos] + [to_palm(d.tip)]
         axes = [M.T @ a for a in d.axis]
         want_base = pts[0]
+        shift = moved.get(id(d), 0.0)
+        if abs(shift) > 1e-4:
+            want_base = want_base + np.array([0.0, shift, 0.0])
+            notes.append(f"{d.name}: knuckle moved {abs(shift)*1000:.0f} mm "
+                         f"across the row to clear the "
+                         f"{D.MIN_MOUNT_SEPARATION*1000:.0f} mm motor floor")
         v = _v_for(face, palm, want_base)
         mount = D.Mount(face, 0.5, v)
         got_base = D.mount_position(mount, palm)
