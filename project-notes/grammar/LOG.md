@@ -416,3 +416,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Pair R2: allegro turns at ~0.29 B per-hand samples (solo ~0.26 B) and reaches ~14 s holding (solo level); with group advantage normalisation the turn comes earlier (~0.23 B). Rotations at 0.56 of solo and rising.
 - Founder 174 sits at its own solo R2 level (2.8-2.9 s, ~0.22 rotations), which is a flick: zero-action holds 13-15 s. Making grammar hands hold is now the main blocker, for both the shared transformer and the GET-Zero experts.
 - Next: 4-hand R2 and R2 + group advantage norm.
+
+## GET-Zero round 2: no expert recipe makes grammar hands hold and rotate (2026-10-05)
+
+- 15 expert runs, 7 recipes (HORA PPO, low initial noise, SAPG, drop penalty -20 / -5, survival bonus) on sharpa, leap and four grammar hands. Without a drop cost every hand flicks (holding 0.8-2.3 s vs 14-19 s doing nothing); with a -20 drop penalty they hold 7-10 s but barely rotate. Only allegro, whose grasps come from HORA's hand-tuned pose, does both.
+- Next: anneal the drop penalty after holding is learned; require gait-supporting grasps (>= 3 enclosing fingertip contacts with an opposing digit).
