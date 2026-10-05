@@ -335,3 +335,29 @@ def test_select_experts_picks_the_checkpoint_and_applies_the_keep_rule():
     assert not rows["c"]["kept"]  # 0.05 rad/s while holding: no full turn within 30 s
     assert se.keep(_row(1.0, 0.03), _row(15.0, 0.02)) is False  # below twice the zero-action rotation
     assert se.keep(_row(1.0, 0.05), _row(15.0, 0.02)) is True
+
+
+def test_hold_rule_needs_half_the_zero_action_holding_and_a_third_of_a_turn():
+    from isaacsimenvs.inhand_reorient.distill import select_experts as se
+
+    zero = _row(16.0, 0.01)
+    assert se.keep_hold(_row(8.0, 0.30), zero) and se.keep_hold(_row(13.0, 1.2), zero)
+    assert not se.keep_hold(_row(7.9, 1.0), zero)  # rotates but holds < 50% of the zero-action time
+    assert not se.keep_hold(_row(15.0, 0.29), zero)  # holds but turns < 0.3 per episode
+    assert not se.keep_hold(_row(1.5, 0.18), zero)  # a round-1 flick expert
+    assert se.keep_hold(_row(6.0, 0.5), zero, min_hold_frac=0.25)
+    evals = {"best": {"a": _row(8.5, 0.4), "b": _row(1.4, 0.17)}}
+    rows = se.select(evals, {"a": zero, "b": zero}, {"best": {"a": "a.pth", "b": "b.pth"}}, rule="hold")
+    assert rows["a"]["kept"] and not rows["b"]["kept"] and rows["a"]["rule"] == "hold"
+    assert se.select(evals, {"a": zero, "b": zero}, {"best": {"a": "a.pth", "b": "b.pth"}})["b"]["kept"]  # GET-Zero rule
+
+
+def test_seed_everything_makes_the_student_init_repeatable():
+    dg.seed_everything(7)
+    a = _small_student().state_dict()
+    dg.seed_everything(7)
+    b = _small_student().state_dict()
+    dg.seed_everything(8)
+    c = _small_student().state_dict()
+    k = next(k for k, v in a.items() if v.dtype.is_floating_point and v.numel() > 100)
+    assert torch.equal(a[k], b[k]) and not torch.equal(a[k], c[k])
