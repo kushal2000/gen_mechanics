@@ -53,7 +53,7 @@ VIABLE_RGB = (60, 180, 75)
 ADMITTED_NO_REACH_RGB = (240, 170, 40)
 PHYS_REJECT_RGB = (220, 60, 60)
 STRUCT_REJECT_RGB = (150, 150, 150)
-GHOST_RGB = (170, 170, 185)
+GHOST_RGB = (105, 105, 125)
 
 ORIENT_ROOT = "root frame"
 ORIENT_PALM_UP = "palm-up (env base_rot)"
@@ -658,7 +658,7 @@ class GrammarViewer:
         self.parent_view = gm.ModelView.build(pm, palm_normal=self.prep.view.palm_normal)
         cells = gm.palm_cells(pm) if self.gui_show_cells.value else None
         self.ghost.build(self.parent_view, cells, self._render_opts(
-            tint=GHOST_RGB, opacity=0.3, cell_opacity=0.12, joint_axes=False, tips=False, body_labels=False,
+            tint=GHOST_RGB, opacity=0.35, cell_opacity=0.12, joint_axes=False, tips=False, body_labels=False,
             joint_labels=False, root_frame=False))
 
     def _build_spawn(self) -> None:
