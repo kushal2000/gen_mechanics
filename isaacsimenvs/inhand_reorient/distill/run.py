@@ -103,6 +103,9 @@ def main() -> None:
         out.mkdir(parents=True, exist_ok=True)
         env_cfg.hora.token_obs = True
         env_cfg.hora.teacher_obs = bool(need_experts)
+        seed = int(params.get("seed", 42))  # agent.params.seed: the student's init, the env's randomness, the DAgger draws
+        env_cfg.seed = seed
+        dg.seed_everything(seed)
         env = gym.make(args.task, cfg=env_cfg)
         inner = env.unwrapped
         dev = inner.device

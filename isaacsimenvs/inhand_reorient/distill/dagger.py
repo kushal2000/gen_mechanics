@@ -40,10 +40,22 @@ from torch import nn
 __all__ = [
     "AggregatedDataset", "ExpertBank", "FirstEpisodeTracker", "MeanPolicy", "add_sums", "append_jsonl", "beta_at",
     "build_rlg_model", "checkpoint_weights", "load_checkpoint", "load_expert", "masked_action_mse", "mix_actions",
-    "per_design_mean", "resolve_experts", "save_checkpoint", "summarise", "valid_from_tokens",
+    "per_design_mean", "resolve_experts", "save_checkpoint", "seed_everything", "summarise", "valid_from_tokens",
 ]
 
 TWO_PI = 2.0 * math.pi
+
+
+def seed_everything(seed: int) -> None:
+    """Seed python, numpy and torch (CPU and CUDA): the student's initial
+    weights, the action mix and the minibatch draws."""
+    import random
+
+    import numpy as np
+
+    random.seed(int(seed))
+    np.random.seed(int(seed) % (2 ** 32))
+    torch.manual_seed(int(seed))
 
 
 # --------------------------------------------------------------------------

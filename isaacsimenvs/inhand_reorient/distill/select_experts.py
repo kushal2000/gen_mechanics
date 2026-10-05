@@ -4,12 +4,16 @@ once per checkpoint kind, and ``--policies zero`` for the floor). Kit-free.
 
 - Checkpoint: per design, the kind (e.g. ``best`` reward or ``last``) whose
   expert turns the object more per episode (ties: longer holding).
-- Keep rule, after GET-Zero's filter (an expert must complete a full turn
-  within 30 s): rad/s while holding >= 2 pi / 30, and rotations per episode
-  at least twice the zero-action level.
+- Keep rule ``getzero`` (default), after GET-Zero's filter (an expert must
+  complete a full turn within 30 s): rad/s while holding >= 2 pi / 30, and
+  rotations per episode at least twice the zero-action level.
+- Keep rule ``hold``: the expert holds for at least ``--min-hold-frac``
+  (0.5) of its zero-action holding time and turns the object at least
+  ``--min-rotations`` (0.3) times per episode. GET-Zero's rule admits a
+  policy that flicks the object and drops it; this one does not.
 
     python -m isaacsimenvs.inhand_reorient.distill.select_experts --evals best=EVAL_BEST last=EVAL_LAST \
-        --floors FLOORS --maps best=BEST.json last=LAST.json --population TRAIN.json --out DIR
+        --floors FLOORS --maps best=BEST.json last=LAST.json --population TRAIN.json --out DIR [--rule hold]
 
 Writes ``DIR/experts_sel.json`` (kept designs: source -> checkpoint),
 ``DIR/selection.json`` (every design's numbers and decision) and
@@ -24,6 +28,8 @@ from pathlib import Path
 
 MIN_RAD_PER_S = 2.0 * math.pi / 30.0
 FLOOR_FACTOR = 2.0
+MIN_HOLD_FRAC = 0.5
+MIN_ROTATIONS = 0.3
 
 
 def keep(expert: dict, zero: dict | None) -> bool:
@@ -32,9 +38,22 @@ def keep(expert: dict, zero: dict | None) -> bool:
     return float(expert["rad_per_s"]) >= MIN_RAD_PER_S and float(expert["rotations_mean"]) >= FLOOR_FACTOR * z
 
 
-def select(evals: dict, zero: dict, maps: dict) -> dict:
+def keep_hold(expert: dict, zero: dict | None, min_hold_frac: float = MIN_HOLD_FRAC,
+              min_rotations: float = MIN_ROTATIONS) -> bool:
+    """Holds at least ``min_hold_frac`` of the zero-action holding time and
+    turns the object at least ``min_rotations`` times per episode."""
+    z = float((zero or {}).get("ttt_mean_s") or 0.0)
+    return (float(expert["ttt_mean_s"]) >= min_hold_frac * z
+            and float(expert["rotations_mean"]) >= min_rotations)
+
+
+def select(evals: dict, zero: dict, maps: dict, rule: str = "getzero", min_hold_frac: float = MIN_HOLD_FRAC,
+           min_rotations: float = MIN_ROTATIONS) -> dict:
     """``evals[kind][source]`` and ``zero[source]``: ``dagger.summarise`` rows;
-    ``maps[kind][source]``: checkpoint paths. Returns ``source -> row``."""
+    ``maps[kind][source]``: checkpoint paths; ``rule``: ``getzero`` or
+    ``hold``. Returns ``source -> row``."""
+    if rule not in ("getzero", "hold"):
+        raise ValueError(f"rule={rule!r}; expected getzero or hold")
     rows = {}
     sources = []
     for e in evals.values():
@@ -45,8 +64,10 @@ def select(evals: dict, zero: dict, maps: dict) -> dict:
         if not cands:
             continue
         k, m = max(cands, key=lambda km: (km[1]["rotations_mean"], km[1]["ttt_mean_s"]))
+        kept = (keep(m, zero.get(s)) if rule == "getzero"
+                else keep_hold(m, zero.get(s), min_hold_frac, min_rotations))
         rows[s] = {"checkpoint": k, "path": maps[k][s], "expert": m, "zero": zero.get(s) or {},
-                   "kept": keep(m, zero.get(s)), "other": {kk: mm for kk, mm in cands if kk != k}}
+                   "kept": bool(kept), "rule": rule, "other": {kk: mm for kk, mm in cands if kk != k}}
     return rows
 
 
@@ -65,11 +86,14 @@ def main(argv=None) -> int:
     ap.add_argument("--maps", nargs="+", required=True, help="kind=EXPERTS.json")
     ap.add_argument("--population", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--rule", choices=("getzero", "hold"), default="getzero")
+    ap.add_argument("--min-hold-frac", type=float, default=MIN_HOLD_FRAC)
+    ap.add_argument("--min-rotations", type=float, default=MIN_ROTATIONS)
     a = ap.parse_args(argv)
     evals = {k: json.loads((Path(d) / "eval.json").read_text())["expert"] for k, d in _pairs(a.evals).items()}
     zero = json.loads((Path(a.floors) / "eval.json").read_text())["zero"]
     maps = {k: json.loads(Path(p).read_text()) for k, p in _pairs(a.maps).items()}
-    rows = select(evals, zero, maps)
+    rows = select(evals, zero, maps, a.rule, a.min_hold_frac, a.min_rotations)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "experts_sel.json").write_text(json.dumps({s: r["path"] for s, r in rows.items() if r["kept"]}, indent=1))
