@@ -45,7 +45,8 @@
     "Task (2026-10-02): task_profile hora -- HORA (Qi et al., CoRL 2022) ported from its released code (z-axis rotation reward clip(w.k, +-0.5) with linvel/pose/torque/work penalties, 1.5 cm fall or 20 s episodes, 20 Hz delta targets a/24, 3-frame proprio history + privileged obs, HORA PPO) plus HORA-style grasp cache. allegro reaches 2.14 rotations per 20 s episode (0.75 rad/s) in 60 min, about HORA's sim level. AnyRotate kept as a faithful port but its lambda_rew curriculum prevents learning here.",
     "Compute location (Martin, 2026-10-02): run all GPU work on the CSAIL cluster; keep the local 4090 free for Martin's other work (CPU-only tests locally are fine). Jobs run from immutable per-commit code snapshots synced to /data/pulkitag/users/mpeticco/code/gm_<sha> with PYTHONPATH shadowing the shared venv's editable install; <= 4 GPUs on main.",
     "Policy architecture (Martin, 2026-10-04): every multi-hand policy (shared controller, evolution populations) uses the team's per-joint token transformer (coevolution/networks/joint_transformer.py layout); padded-MLP multi-hand runs are dropped. Earlier MLP-based population/shared-controller results (pilots 1-3, I41-I44) are historical references only.",
-    "rl_games edit approved (Martin, 2026-10-04): flagged, default-off per-design advantage normalisation in third_party/rl_games, in its own 'rl_games (vendored): ...' commits; made via the Edit/Write tools under the project allow rule Edit(//.../third_party/rl_games/**)."
+    "rl_games edit approved (Martin, 2026-10-04): flagged, default-off per-design advantage normalisation in third_party/rl_games, in its own 'rl_games (vendored): ...' commits; made via the Edit/Write tools under the project allow rule Edit(//.../third_party/rl_games/**).",
+    "GET-Zero route approved (Martin, 2026-10-04: 'sure ill try anything at this point'): per-hand MLP experts are allowed as a training tool, distilled into the per-joint token transformer (the final multi-hand policy). GPU split: fair RL test <= 3, GET-Zero <= 3 (1 main + up to 2 ada only without preemption)."
   ],
   "issues": [
     {
@@ -362,6 +363,13 @@
       "hypothesis": "Shared-policy theories experiment (Martin, 2026-10-04): port the team's per-joint token + transformer policy (coevolution/networks/joint_transformer.py; 32 values per joint token: proprio history, link box, limits + enabled, object keypoints) to task_profile hora with a raw enabled mask and valid-token normalisation; compare T0 MLP, T1 transformer, T2 + per-design input stats, T3 hand curriculum / warm start, T4 more samples, T5 per-design advantage norm (only if Martin approves the rl_games edit), T6 GET-Zero-style distillation from grammar_solo experts; 2 -> 4 -> 8 hands, metric = fraction of each hand's solo performance; held-out zero-shot for the best arm. UPDATE 2026-10-04: token transformer ported (c973181 etc.) and made the driver default (3c3141b); 40-120 min runs with an MLP-tuned HORA recipe failed even solo (allegro 0.5-0.6 s); pair holds up to ~6-8 s with more samples but ~0.15 rotations. The collaborator's working recipe differs: lr 1e-4 (ours hit the 1e-2 cap), e_clip 0.1, 2 mini-epochs, d_model 128, SAPG 6 blocks, 24,576 envs, ~2 B steps per generation (ours ~0.06-0.2 B). Fair test launched: their recipe (R1 plain PPO, R2 + SAPG) on solo allegro for 6 h vs an MLP reference, then pair/4 hands incl. group advantage norm (e4dee41, a991fae).",
       "decision": null,
       "evidence": "project-notes/investigation-2026-09-21/README.md (method and the normaliser-mask bug)"
+    },
+    {
+      "id": "I46",
+      "status": "in_progress",
+      "hypothesis": "GET-Zero-style pipeline (Patel & Song 2024): ~8 training hands (allegro, sharpa, leap projections + ~5 viable grammar designs) get solo MLP experts under HORA; DAgger distillation into the token transformer; evaluate student vs expert on training hands and zero-shot vs zero-action floor on 2-4 held-out hands.",
+      "decision": null,
+      "evidence": ""
     }
   ],
   "last_green_commit": "3acff20",
