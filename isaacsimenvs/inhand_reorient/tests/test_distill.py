@@ -445,4 +445,55 @@ def test_survival_reward_charges_the_drop_and_pays_each_held_step():
     h = yaml.safe_load((CFG / "task" / "InHandReorient.yaml").read_text())["hora"]
     assert h["fall_penalty"] == 0.0 and h["alive_bonus"] == 0.0  # HORA has neither; off by default
     src = (ROOT / "isaacsimenvs" / "inhand_reorient" / "anyrotate_hooks.py").read_text()
-    assert "hp.survival_reward(env._termination_reasons[\"drop\"], h.fall_penalty, h.alive_bonus)" in src
+    assert "hp.survival_reward(env._termination_reasons[\"drop\"], fall, h.alive_bonus)" in src
+
+
+# --------------------------------------------------------------------------
+# Round 3: enclosing grasps and a fall-penalty schedule
+# --------------------------------------------------------------------------
+
+
+def _dirs(*deg, z=0.0):
+    return torch.tensor([[math.cos(math.radians(d)), math.sin(math.radians(d)), z] for d in deg])
+
+
+def test_enclosure_needs_contacts_around_the_object_with_one_digit_opposing():
+    from isaacsimenvs.inhand_reorient import grasp_cache as gc
+
+    rel = torch.stack([_dirs(0, 120, 240, 90) * 0.03, _dirs(0, 20, 40, 90) * 0.03, _dirs(0, 180, 90, 270) * 0.03])
+    contact = torch.tensor([[True, True, True, False], [True, True, True, False], [True, True, False, False]])
+    ok = gc.enclosure_mask(rel, contact, opposition_cos=0.5)
+    assert ok.tolist() == [True, False, True]  # three around; three bunched on one side; two opposite
+    allegro_like = torch.stack([_dirs(180, 10, 0, -10) * 0.03])  # a thumb against three fingers
+    assert bool(gc.enclosure_mask(allegro_like, torch.ones(1, 4, dtype=torch.bool), opposition_cos=0.5)[0])
+    assert not bool(gc.enclosure_mask(allegro_like, torch.ones(1, 4, dtype=torch.bool), 0.5, max_mean_norm=0.4)[0])
+    assert bool(gc.enclosure_mask(rel[1:2], contact[1:2], opposition_cos=-1.0)[0])  # the test off
+    a = yaml.safe_load((CFG / "task" / "InHandReorient.yaml").read_text())["anyrotate"]
+    assert a["grasp_opposition_cos"] == -1.0 and a["grasp_enclosure_max_mean"] == -1.0  # off by default
+    src = (ROOT / "isaacsimenvs" / "inhand_reorient" / "grasp_cache_gen.py").read_text()
+    assert "gc.enclosure_mask(" in src and '"enclosure"' in src
+
+
+def test_fall_penalty_schedules():
+    from isaacsimenvs.inhand_reorient import hora_profile as hp
+
+    lin = hp.FallPenaltySchedule(-20.0, "linear", decay_start=10, decay_steps=20)
+    vals = [lin.update(torch.tensor([])) for _ in range(40)]
+    assert vals[9] == -20.0 and vals[19] == pytest.approx(-10.0) and vals[29] == 0.0 and vals[-1] == 0.0
+    const = hp.FallPenaltySchedule(-20.0, "constant")
+    assert [const.update(torch.tensor([5.0])) for _ in range(3)] == [-20.0] * 3
+    g = hp.FallPenaltySchedule(-20.0, "hold_gated", decay_steps=10, gate_hold_s=7.0, ema=0.5)
+    assert g.update(torch.tensor([2.0])) == -20.0 and g.gate_step is None
+    for _ in range(5):
+        g.update(torch.tensor([]))  # no finished episode: the running hold time stays
+    assert g.gate_step is None and g.hold_ema == pytest.approx(2.0)
+    g.update(torch.tensor([12.0]))  # ema 7.0: the gate opens at this step
+    assert g.gate_step == g.step
+    vals = [g.update(torch.tensor([1.0])) for _ in range(12)]
+    assert vals[4] == pytest.approx(-10.0) and vals[-1] == 0.0  # decays even if holding later drops
+    with pytest.raises(ValueError):
+        hp.FallPenaltySchedule(-20.0, "sometimes")
+    h = yaml.safe_load((CFG / "task" / "InHandReorient.yaml").read_text())["hora"]
+    assert h["fall_penalty_schedule"] == "constant"
+    src = (ROOT / "isaacsimenvs" / "inhand_reorient" / "anyrotate_hooks.py").read_text()
+    assert "hp.FallPenaltySchedule(" in src
