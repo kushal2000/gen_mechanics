@@ -687,10 +687,12 @@ Diagnosis:
 
 ## GET-Zero-style distillation (`distill/`, 2026-10-05)
 
-RL on the token transformer had not learned the task, even on one hand. GET-Zero (A. Patel and
-S. Song, 2024, arXiv 2407.15002) does in-hand rotation across hand variants in three steps: one RL
-expert per embodiment, behaviour cloning of all experts into one embodiment-aware transformer, and
-zero-shot evaluation on held-out embodiments. The per-hand MLP experts here are a training tool
+When this started, RL on the token transformer with HORA's MLP-tuned PPO had not learned the task
+on any hand. (The fair test above has since shown that it does with the collaborator's recipe: R2,
+with SAPG, reaches 15.1 s and 2.46 rotations on solo allegro, at about 4x the MLP's samples.)
+GET-Zero (A. Patel and S. Song, 2024, arXiv 2407.15002) does in-hand rotation across hand variants
+in three steps: one RL expert per embodiment, behaviour cloning of all experts into one
+embodiment-aware transformer, and zero-shot evaluation on held-out embodiments. The per-hand MLP experts here are a training tool
 only; the policy that comes out is the token transformer.
 
 | | GET-Zero (paper) | Here |
@@ -801,10 +803,10 @@ On new hands the student behaves like five of its six teachers: it drops the obj
 None of the eight evaluation checkpoints from iteration 173 on changes this (held-out holding 0.3
 to 3.1 s throughout).
 
-The RL-trained token transformers under the same protocol (both `InHandHoraTokenPPO.yaml`, d_model
-64, HORA's PPO; `pop8_T1`: eight hands including allegro, leap, 416, 204, 234, 174, 228 and 404,
-job 2554676, its last checkpoint; `pair_T1`: allegro and 174, 120 min), holding time and rotations
-per episode:
+The RL-trained token transformers available then, under the same protocol (both
+`InHandHoraTokenPPO.yaml`, d_model 64, HORA's MLP-tuned PPO; `pop8_T1`: eight hands including
+allegro, leap, 416, 204, 234, 174, 228 and 404, job 2554676, its last checkpoint; `pair_T1`:
+allegro and 174, 120 min), holding time and rotations per episode:
 
 | Hand | Distilled student | RL pop8_T1 | RL pair_T1 | Zero action |
 |---|---|---|---|---|
@@ -821,9 +823,11 @@ per episode:
 | founder 195 | 3.1 s, 0.018 | 1.9 s, 0.01 | 1.6 s, 0.03 | 10.7 s, 0.013 |
 | founder 364 | 0.6 s, 0.023 | 0.4 s, 0.01 | 4.5 s, 0.04 | 18.9 s, 0.002 |
 
-On allegro the distilled student turns the object 8x more per episode than the best RL-trained
-transformer (1.25 against 0.15) and holds it 4.6x longer (13.0 s against 2.8 s); of the token
-transformers in this README it is the first to do the task on any hand. On every other hand each
+On allegro the distilled student turns the object 8x more per episode than the best of these
+RL-trained transformers (1.25 against 0.15) and holds it 4.6x longer (13.0 s against 2.8 s). The
+fair test's R2 run (solo allegro, collaborator's recipe, 0.42 B samples) reaches more in its
+training windows (15.1 s, 2.46 rotations, stochastic actions); the distilled student needed 87.5 M
+samples and one GPU for 90 min, after 60 min of MLP expert training. On every other hand each
 transformer, distilled or RL-trained, holds for less time than zero actions. The distilled one
 rotates 1.3 to 2.7x more than pop8_T1 on its five flick-expert hands, as its experts do; pair_T1
 holds longest on four of them (2.1 to 6.2 s) because it moves least (0.04 to 0.15 rad/s).
@@ -856,8 +860,9 @@ Next, in order:
    zero-action time while rotating.
 2. Redo the distillation on 8 or more hands with holding experts (the code and pipeline are
    unchanged), then judge zero-shot on the six unseen hands.
-3. Optional: RL fine-tuning of the distilled student (its checkpoint loads into rl_games with the
-   InHandHoraTokenDistill.yaml PPO block) and GET-Zero's graph attention bias.
+3. RL fine-tuning of the distilled student with the collaborator's R2 recipe (behaviour-cloning
+   initialisation, then SAPG PPO; the checkpoint loads into rl_games with the
+   InHandHoraTokenDistill.yaml network), and optionally GET-Zero's graph attention bias.
 
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
