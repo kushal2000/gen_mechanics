@@ -384,3 +384,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Martin: multi-hand work must use the team's per-joint token transformer; all in-hand population and shared-controller experiments since Phase 1 used a padded MLP (or SAPG LSTM-MLP). From now on: transformer only; MLP results are historical references.
 - grammar_solo: the per-design MLP training array (2535511) had failed at start (all tasks within seconds) and is not rerun. Its viability results stand.
 - Transformer port and theory experiment (I45) running on the cluster (<= 4 GPUs).
+
+## Transformer results and a fair test (2026-10-04)
+
+- Token transformer on HORA with an MLP-tuned recipe (lr hit the 1e-2 cap) and 40-120 min: fails solo; pair holds up to ~6-8 s, ~0.15 rotations; 4 and 8 hands do not learn; held-out zero-shot worse than doing nothing.
+- Collaborator's working recipe: lr 1e-4, e_clip 0.1, 2 mini-epochs, d_model 128, SAPG 6 blocks, 24,576 envs, ~2 B steps per generation. Fair test launched with that recipe, 6 h, solo allegro first, MLP reference at equal steps.
+- Committed the approved per-design advantage normalisation (e4dee41 rl_games vendored, a991fae env flag); 471 tests pass.

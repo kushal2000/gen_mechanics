@@ -359,13 +359,13 @@
     {
       "id": "I45",
       "status": "in_progress",
-      "hypothesis": "Shared-policy theories experiment (Martin, 2026-10-04): port the team's per-joint token + transformer policy (coevolution/networks/joint_transformer.py; 32 values per joint token: proprio history, link box, limits + enabled, object keypoints) to task_profile hora with a raw enabled mask and valid-token normalisation; compare T0 MLP, T1 transformer, T2 + per-design input stats, T3 hand curriculum / warm start, T4 more samples, T5 per-design advantage norm (only if Martin approves the rl_games edit), T6 GET-Zero-style distillation from grammar_solo experts; 2 -> 4 -> 8 hands, metric = fraction of each hand's solo performance; held-out zero-shot for the best arm.",
+      "hypothesis": "Shared-policy theories experiment (Martin, 2026-10-04): port the team's per-joint token + transformer policy (coevolution/networks/joint_transformer.py; 32 values per joint token: proprio history, link box, limits + enabled, object keypoints) to task_profile hora with a raw enabled mask and valid-token normalisation; compare T0 MLP, T1 transformer, T2 + per-design input stats, T3 hand curriculum / warm start, T4 more samples, T5 per-design advantage norm (only if Martin approves the rl_games edit), T6 GET-Zero-style distillation from grammar_solo experts; 2 -> 4 -> 8 hands, metric = fraction of each hand's solo performance; held-out zero-shot for the best arm. UPDATE 2026-10-04: token transformer ported (c973181 etc.) and made the driver default (3c3141b); 40-120 min runs with an MLP-tuned HORA recipe failed even solo (allegro 0.5-0.6 s); pair holds up to ~6-8 s with more samples but ~0.15 rotations. The collaborator's working recipe differs: lr 1e-4 (ours hit the 1e-2 cap), e_clip 0.1, 2 mini-epochs, d_model 128, SAPG 6 blocks, 24,576 envs, ~2 B steps per generation (ours ~0.06-0.2 B). Fair test launched: their recipe (R1 plain PPO, R2 + SAPG) on solo allegro for 6 h vs an MLP reference, then pair/4 hands incl. group advantage norm (e4dee41, a991fae).",
       "decision": null,
       "evidence": "project-notes/investigation-2026-09-21/README.md (method and the normaliser-mask bug)"
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Await Martin on the rl_games edit (per-design advantage normalisation). grammar_solo: 50 solo training runs on the cluster (2 GPUs).",
+  "next_action": "Fair transformer test on the cluster (Opus worker). Ask Martin about GET-Zero-style distillation (per-hand experts -> transformer student) as the published multi-embodiment route.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
