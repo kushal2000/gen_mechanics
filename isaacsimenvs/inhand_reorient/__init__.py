@@ -38,6 +38,10 @@ gym.register(
         "rl_games_anyrotate_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandAnyRotatePPO.yaml"),
         "rl_games_anyrotate_pop_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandAnyRotatePopPPO.yaml"),
         "rl_games_hora_token_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandHoraTokenPPO.yaml"),
+        # The same transformer with the collaborator's recipe (PoseReachJointTransformerSAPG.yaml):
+        # R1 plain PPO, R2 + SAPG with 6 exploration blocks (num_envs 12288).
+        "rl_games_hora_token_team_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandHoraTokenTeamPPO.yaml"),
+        "rl_games_hora_token_team_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "InHandHoraTokenTeamSAPG.yaml"),
         "rl_games_repose_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPPO.yaml"),
         "rl_games_repose_pop_ppo_cfg_entry_point": str(_CFG_DIR / "train" / "InHandReposeIsaacLabPopPPO.yaml"),
     },

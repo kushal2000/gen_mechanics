@@ -1,0 +1,104 @@
+# R1: the in-hand joint-token transformer (token_policy.py, env.hora.token_obs=true)
+# trained with the collaborator's PPO recipe from PoseReachJointTransformerSAPG.yaml
+# (the pose-reaching run on which this transformer learned), plain PPO.
+#
+# Taken from PoseReachJointTransformerSAPG.yaml: learning rate 1e-4 (adaptive,
+# KL threshold 0.016), clip 0.1, 2 mini-epochs, horizon 16, seq_length 16,
+# mixed precision, d_model 128, 4 layers, 1 head, ff x4, value head [512, 256],
+# normalize_value on; gamma, tau, critic coef, grad norm, bounds loss, reward
+# scale as there (and as HORA's).
+# Kept from InHandHoraTokenPPO.yaml (our port):
+#  - normalize_input False: the network normalises valid tokens and the global
+#    vector itself and reads the RAW enabled column as the attention mask.
+#  - no asymmetric critic: HORA's privileged values are already in the global token.
+# Added: logstd_max 0.0 (std <= 1; the initial log-std is 0), as in
+# InHandHoraTokenTeamSAPG.yaml, so R1 and R2 differ only by the SAPG block.
+# Minibatch 32768: 12288 envs x 16 steps = 196608 = 6 minibatches (and SAPG's
+# augmented 229376 = 7). Pass env.scene.num_envs=12288.
+
+params:
+  seed: 42
+
+  env:
+    clip_observations: 10.0
+    clip_actions: 1.0
+
+  algo:
+    name: a2c_continuous
+
+  model:
+    name: continuous_a2c_logstd
+
+  network:
+    name: inhand_joint_transformer
+    separate: False
+    d_model: 128
+    n_layers: 4
+    n_heads: 1
+    ff_mult: 4
+    dropout: 0.0
+    compile_net: false
+    value_head_units: [512, 256]
+    arm_head_units: [8]
+    design_id_obs: 0              # = env.hora.design_id_obs (one-hot width; per-design statistics)
+    per_design_global_norm: false
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: 0
+        fixed_sigma: fixed
+        logstd_max: 0.0
+  load_checkpoint: False
+  load_path: ''
+
+  config:
+    name: 0_inhand_hora_token_team
+    full_experiment_name: ${.name}
+    env_name: rlgpu
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    multi_gpu: False
+    ppo: True
+    mixed_precision: True
+    normalize_input: False   # the network normalises tokens (valid only) and the global vector itself
+    normalize_value: True
+    value_bootstrap: True
+    num_actors: ${....env.scene.num_envs}
+    reward_shaper:
+      scale_value: 0.01
+    normalize_advantage: True
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 0.0001
+    lr_schedule: adaptive
+    schedule_type: standard
+    kl_threshold: 0.016
+    score_to_win: 1000000
+    max_epochs: 1000000
+    save_best_after: 100
+    save_frequency: 200
+    print_stats: True
+    grad_norm: 1.0
+    entropy_coef: 0.0
+    truncate_grads: True
+    e_clip: 0.1
+    horizon_length: 16
+    minibatch_size: 32768
+    mini_epochs: 2
+    critic_coef: 4.0
+    clip_value: True
+    seq_length: 16
+    bounds_loss_coef: 0.0001
+
+    expl_type: none
+    use_others_experience: none
+
+    player:
+      deterministic: True
+      games_num: 100000
+      print_stats: True

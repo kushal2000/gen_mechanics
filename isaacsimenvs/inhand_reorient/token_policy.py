@@ -27,6 +27,12 @@ hands:
   parameter into a range before every forward (unset: unbounded).
 - ``mu_head_init_scale`` (default 1) scales the action head's last layer at
   init (bias 0), so the initial mean actions can start near 0.
+- SAPG (``expl_type: mixed_expl_learn_param``, ``fixed_sigma: coef_cond``),
+  as ``JointTransformerNet``: the exploration-coefficient column rl_games
+  appends becomes a learned per-block embedding on the (normalised) global
+  vector, and each block reads its own log-std row. Ghost columns of every
+  row stay at log-std 0 with no gradient, so SAPG's entropy bonus cannot
+  inflate them (I41); ``logstd_max`` bounds every row.
 
 Statistics update in training mode only (rl_games' PPO epochs), as rl_games'
 own ``RunningMeanStd`` does; the player runs in eval mode with them frozen.
@@ -124,6 +130,12 @@ class InhandJointTransformerNet(JointTransformerNet):
                 "token_columns": lay["token_columns"], "global_slices": [list(lay["global_slice"])],
                 "global_dim": tl.GLOBAL_DIM, "obs_dim": lay["obs_dim"]}
 
+    @staticmethod
+    def _block(obs: torch.Tensor, col: int, ids: torch.Tensor) -> torch.Tensor:
+        """SAPG block index of each row: exact match of the raw coefficient
+        column against the block ids (as ``network_builder.py``)."""
+        return (obs[:, col].reshape(-1, 1) == ids.to(obs.device)).float().argmax(dim=1)
+
     def _design(self, obs: torch.Tensor) -> torch.Tensor:
         if self.design_id_width <= 0 or not self.per_design_global_norm:
             return torch.zeros(obs.shape[0], dtype=torch.long, device=obs.device)
@@ -135,6 +147,8 @@ class InhandJointTransformerNet(JointTransformerNet):
         valid = raw[:, :, self.enabled_col] > 0.5  # RAW: no normaliser runs before this line
         tokens = self.token_proj(self.token_norm(raw, valid))
         glob = self.global_norm(torch.index_select(obs, 1, self.global_index), self._design(obs))
+        if self.net_type == "extra_param":  # SAPG: the block's learned embedding joins the global vector
+            glob = torch.cat([glob, self.extra_params[self._block(obs, self.pid_idx, self.param_ids)]], dim=-1)
         x = torch.cat([tokens, self.global_proj(glob).unsqueeze(1)], dim=1)
         key_mask = torch.cat([valid, torch.ones_like(valid[:, :1])], dim=1)
         for layer in self.layers:
@@ -153,7 +167,10 @@ class InhandJointTransformerNet(JointTransformerNet):
         pooled = (joints * w).sum(dim=1) / w.sum(dim=1).clamp(min=1.0)
         value = self.value_head(torch.cat([pooled, glob, glob_vec], dim=-1))
         mu = self.mu_act(self.mu_head(joints).squeeze(-1))
-        sigma = mu * 0 + self.sigma_act(self.sigma)
+        if self.fixed_sigma == "coef_cond":  # SAPG: one log-std row per exploration block
+            sigma = mu * 0 + self.sigma_act(self.sigma[self._block(obs, self.sigma_id_idx, self.sigma_ids)])
+        else:
+            sigma = mu * 0 + self.sigma_act(self.sigma)
         zero = torch.zeros_like(mu)
         return torch.where(valid, mu, zero), torch.where(valid, sigma, zero), value, None
 
