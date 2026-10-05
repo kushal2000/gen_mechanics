@@ -311,3 +311,27 @@ def test_entry_point_boots_kit_before_isaaclab_imports():
     first_heavy = next(n for n in imports if (getattr(n, "module", None) or n.names[0].name).split(".")[0]
                        not in {"argparse"})
     assert first_heavy.module == "isaaclab.app" and first_heavy.names[0].name == "AppLauncher"
+
+
+# --------------------------------------------------------------------------
+# Expert selection
+# --------------------------------------------------------------------------
+
+
+def _row(ttt, rot, n=100):
+    return {"episodes": n, "ttt_mean_s": ttt, "rotations_mean": rot, "rad_per_s": rot * 2 * math.pi / ttt}
+
+
+def test_select_experts_picks_the_checkpoint_and_applies_the_keep_rule():
+    from isaacsimenvs.inhand_reorient.distill import select_experts as se
+
+    evals = {"best": {"a": _row(13.45, 1.329), "b": _row(0.44, 0.058), "c": _row(15.0, 0.02)},
+             "last": {"a": _row(11.49, 1.319), "b": _row(0.52, 0.063), "c": _row(15.0, 0.019)}}
+    zero = {"a": _row(17.4, 0.009), "b": _row(18.9, 0.004), "c": _row(16.0, 0.012)}
+    maps = {k: {s: f"{k}/{s}.pth" for s in "abc"} for k in ("best", "last")}
+    rows = se.select(evals, zero, maps)
+    assert rows["a"]["checkpoint"] == "best" and rows["a"]["path"] == "best/a.pth" and rows["a"]["kept"]
+    assert rows["b"]["checkpoint"] == "last" and rows["b"]["kept"]  # a flick still turns a full turn in 30 s
+    assert not rows["c"]["kept"]  # 0.05 rad/s while holding: no full turn within 30 s
+    assert se.keep(_row(1.0, 0.03), _row(15.0, 0.02)) is False  # below twice the zero-action rotation
+    assert se.keep(_row(1.0, 0.05), _row(15.0, 0.02)) is True
