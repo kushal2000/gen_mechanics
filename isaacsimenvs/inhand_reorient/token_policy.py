@@ -23,6 +23,8 @@ hands:
   not an input feature).
 - Ghost tokens get no action: mean 0 and log-std 0, with no gradient.
 - The arm head is not used (no arm).
+- ``mu_head_init_scale`` (default 1) scales the action head's last layer at
+  init (bias 0), so the initial mean actions can start near 0.
 
 Statistics update in training mode only (rl_games' PPO epochs), as rl_games'
 own ``RunningMeanStd`` does; the player runs in eval mode with them frozen.
@@ -87,6 +89,11 @@ class InhandJointTransformerNet(JointTransformerNet):
         self.token_norm = MaskedRunningNorm(tl.TOKEN_DIM, skip_cols=(tl.ENABLED_COL,))
         k = self.design_id_width
         self.global_norm = GroupRunningNorm(k if (self.per_design_global_norm and k > 0) else 1, tl.GLOBAL_DIM)
+        if self.mu_head_init_scale != 1.0:  # small initial means: HORA integrates actions into the targets
+            last = self.mu_head[-1] if isinstance(self.mu_head, nn.Sequential) else self.mu_head
+            with torch.no_grad():
+                last.weight.mul_(self.mu_head_init_scale)
+                last.bias.zero_()
 
     def load(self, params):
         params = dict(params)
@@ -95,6 +102,7 @@ class InhandJointTransformerNet(JointTransformerNet):
         super().load(params)
         self.design_id_width = int(params.get("design_id_obs") or 0)
         self.per_design_global_norm = bool(params.get("per_design_global_norm", False))
+        self.mu_head_init_scale = float(params.get("mu_head_init_scale", 1.0))
         if self.per_design_global_norm and self.design_id_width <= 0:
             raise ValueError("per_design_global_norm needs design_id_obs (the design one-hot width)")
 
