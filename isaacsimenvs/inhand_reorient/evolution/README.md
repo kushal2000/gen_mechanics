@@ -864,6 +864,83 @@ Next, in order:
    initialisation, then SAPG PPO; the checkpoint loads into rl_games with the
    InHandHoraTokenDistill.yaml network), and optionally GET-Zero's graph attention bias.
 
+### Round 2: experts that hold (2026-10-05, cluster)
+
+Goal: experts that hold at least half their zero-action time and turn the object at least 0.3
+times per episode (`select_experts --rule hold`), on 8 or more hands, then distil again. No
+expert recipe reached that on any new hand, so there is no round-2 student.
+
+Hands (`viable_inputs_v8`): training candidates allegro (its HORA-pose cache and round-1 expert),
+sharpa, leap, founders 416, 204, 234, 174 and 228 (viable27), and two designs per grammar variant
+from the grammar_solo viable populations (G_V1 354 and 158, G_V2S 129 and 163, G_V3S 099 and 083);
+held out: G_V1 062 and 180, G_V2S 156 and 302, G_V3S 078 and 088. Founder numbers repeat across
+variants, so grammar_solo sources carry their variant (`arch:G_V1:gen0-founder-000354`; the sha256
+does not cover the source). Grasps: the grammar_solo viability preset (`grasp_canonical_profile:
+opposition`, `grasp_tip_place_frac: 1.0`, `grasp_curl_frac: 0`, `grasp_max_joint_speed: 5`, 1000
+per design, 60 rounds); sharpa and the grammar_solo designs reuse their caches from that phase,
+and the six viable27 hands were regenerated (job 2557572: leap 15, 416 658, 204 469, 234 866, 174
+617, 228 352 grasps). Allegro keeps HORA's canonical pose (only allegro has one).
+
+Experts, last scoring window (holding time / rotations per episode / rad/s; HORA PPO at 2048 envs
+unless noted; a run stops when its windows are flat for 20 min after 35 min; zero actions hold
+14-19 s on these hands):
+
+| Hand | Recipe | Training | Result |
+|---|---|---|---|
+| sharpa | HORA PPO (2 runs per GPU, half speed) | 36 min | 0.8 s / 0.09 / 0.70 |
+| sharpa | initial log-std -1 | 37 min | 1.5 s / 0.13 / 0.55 |
+| sharpa | initial log-std -2 | 41 min | 1.0 s / 0.09 / 0.56 |
+| sharpa | SAPG, 6 blocks, 12288 envs (`InHandHoraSAPG.yaml`) | 92 min, 0.36 B samples | 1.7 s / 0.19 / 0.71 |
+| sharpa | `hora.fall_penalty: -20` | 56 min | 8.7 s / 0.06 / 0.04 (9.7 s at 46 min) |
+| sharpa | `hora.fall_penalty: -5` | 34 min (job time limit) | 1.1 s / 0.12 / 0.64 |
+| sharpa | `hora.alive_bonus: 0.1` | 42 min | 1.7 s / 0.12 / 0.45 |
+| G_V3S 099 | HORA PPO | 37 min | 1.2 s / 0.12 / 0.60 |
+| G_V3S 099 | initial log-std -1 | 52 min | 1.2 s / 0.08 / 0.46 |
+| G_V3S 099 | SAPG, 6 blocks, 12288 envs (A6000) | 88 min, 0.3 B samples | 1.8 s / 0.14 / 0.46 |
+| G_V3S 099 | `hora.fall_penalty: -20` | 36 min | 6.8 s / 0.04 / 0.03 (9.5 s at 10 min) |
+| G_V2S 129 | HORA PPO (2 per GPU) | 36 min | 0.9 s / 0.01 / 0.10 |
+| G_V1 354 | HORA PPO | 37 min | 1.8 s / 0.13 / 0.44 |
+| G_V2S 163 | HORA PPO (2 per GPU) | 36 min | 0.9 s / 0.08 / 0.55 |
+| leap | HORA PPO (2 per GPU) | 47 min | 2.3 s / 0.24 / 0.66 |
+
+Not trained (parked once the first hands showed the same flick): 416, 204, 234, 174, 228, G_V3S
+083, G_V1 158.
+
+Findings:
+
+- Opposition-seeded grasps do not change the outcome: every hand learns the flick under HORA PPO,
+  as in round 1 (0.8 to 2.3 s, 0.01 to 0.24 rotations), including five-digit sharpa with 329 grasps.
+- Less initial exploration noise (log-std -1, -2) does not help.
+- SAPG (HORA's PPO with the R2 SAPG block, 12288 envs) turns no hand from flicking to holding
+  within 0.3-0.36 B samples, the range in which it turned the transformer on allegro (0.25 B).
+  Sharpa improves slowly (0.7 to 1.7 s, 0.10 to 0.19 rotations), G_V3S 099 is flat from 30 min.
+- A fall penalty of -20 removes the flick but also the rotation: both hands hold (sharpa 8.7 to 9.7
+  s, half of its 18.9-s floor; 099 6.8 to 9.5 s) and turn the object 0.04 to 0.09 times per
+  episode at 0.03 to 0.05 rad/s. At -5 the flick stays. A survival bonus of 0.1 per step does not
+  change the flick.
+- The two failure modes bracket the target: without a drop cost the cheapest reward is a flick;
+  with one, holding still is. No run reaches 0.3 rotations per episode (the best, leap, 0.24 at
+  2.3 s). Allegro, whose cache starts from HORA's own grasp, is still the only hand that holds and
+  rotates.
+
+Code (off by default): `InHandHoraSAPG.yaml` (`rl_games_hora_sapg_cfg_entry_point`; distill loads
+a SAPG expert as its leader block, and an experts JSON value may name its own train config:
+`{"path": ..., "agent": ...}`), `hora.fall_penalty`, `hora.alive_bonus`
+(`hora_profile.survival_reward`), `select_experts --rule hold`, seeded distillation runs. Tests in
+`tests/test_distill.py` (22).
+
+Compute: 12.7 GPU-h (jobs 2557572, 2557583, 2557585, 2557723, 2557725, 2557727, 2558729, 2558736,
+2559180, 2559185).
+
+Next, in order:
+1. Per-hand grasp poses that support a gait, not just a static hold: e.g. search the canonical
+   pose per design for HORA-like finger placement (object between three or more tips, thumb
+   opposing), as allegro's HORA pose does; the opposition preset only seeds which digit opposes.
+2. A schedule between the two failure modes: the fall penalty while the policy learns to hold,
+   then annealed to 0 so rotation pays again (or a smaller rotation clip early on).
+3. Per-hand experts trained with the collaborator's R2 transformer recipe directly (it learned
+   allegro at about 4x the MLP's samples), if MLP experts keep flicking.
+
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
 Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
