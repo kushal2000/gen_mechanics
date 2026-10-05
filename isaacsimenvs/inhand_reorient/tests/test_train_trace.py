@@ -9,7 +9,7 @@ import json
 import torch
 
 
-def _fake_run(tmp_path, sigma_by_epoch, n_scalar=30):
+def _fake_run(tmp_path, sigma_by_epoch, n_scalar=30, wrap=False):
     from tensorboardX import SummaryWriter
 
     exp = tmp_path / "0_x"
@@ -22,8 +22,8 @@ def _fake_run(tmp_path, sigma_by_epoch, n_scalar=30):
         w.add_scalar("other/ignored", 1.0, i * 100)
     w.close()
     for ep, sigma in sigma_by_epoch.items():
-        torch.save({"model": {"a2c_network.sigma": sigma, "a2c_network.w": torch.ones(3)}, "epoch": ep,
-                    "frame": ep * 1000}, exp / "nn" / f"last_0_x_ep_{ep}_rew_1.5.pth")
+        state = {"model": {"a2c_network.sigma": sigma, "a2c_network.w": torch.ones(3)}, "epoch": ep, "frame": ep * 1000}
+        torch.save({0: state} if wrap else state, exp / "nn" / f"last_0_x_ep_{ep}_rew_1.5.pth")
     torch.save({"model": {"a2c_network.sigma": sigma}, "epoch": 999, "frame": 1}, exp / "nn" / "0_x.pth")  # best: skipped
     return tmp_path
 
@@ -52,8 +52,9 @@ def test_explicit_columns_and_sapg_rows(tmp_path):
 
     s = torch.zeros(6, 8)
     s[:, :4] = -torch.arange(1, 7, dtype=torch.float32).unsqueeze(1)
-    run = _fake_run(tmp_path, {200: s})
+    run = _fake_run(tmp_path, {200: s}, wrap=True)  # {policy index: state}, as the vendored rl_games saves
     doc = tt.trace(run, columns=[0, 1])
+    assert doc["checkpoints"][0]["epoch"] == 200 and doc["checkpoints"][0]["frame"] == 200000
     rows = doc["checkpoints"][0]["rows"]
     assert len(rows) == 6 and rows[5]["mean"] == -6.0
     assert doc["checkpoints"][0]["values"][5] == [-6.0] * 4 + [0.0] * 4  # every column, for other column sets
