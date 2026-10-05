@@ -605,6 +605,180 @@ from attention keys and pooling, and their actions are mean 0, log-std 0 with no
 change no valid output, valid-only statistics, per-design statistics, batch independence, token
 permutation equivariance).
 
+## GET-Zero-style distillation (`distill/`, 2026-10-05)
+
+RL on the token transformer had not learned the task, even on one hand. GET-Zero (A. Patel and
+S. Song, 2024, arXiv 2407.15002) does in-hand rotation across hand variants in three steps: one RL
+expert per embodiment, behaviour cloning of all experts into one embodiment-aware transformer, and
+zero-shot evaluation on held-out embodiments. The per-hand MLP experts here are a training tool
+only; the policy that comes out is the token transformer.
+
+| | GET-Zero (paper) | Here |
+|---|---|---|
+| Experts | PPO per embodiment, proprioception in, delta joint targets out; best of 5 seeds | HORA MLP PPO (`InHandAnyRotatePPO.yaml`), one solo population of one design, 2048 envs, 1 seed, 60 min or until the scoring windows were flat for 20 min; checkpoint (best reward or last) picked by rotations per episode in the population env |
+| Expert filter | keep embodiments whose expert completes a full turn within 30 s (44 kept) | rad/s while holding >= 2 pi / 30, and rotations per episode >= 2x the zero-action level (`distill/select_experts.py`, fixed before the deterministic expert evaluations) |
+| Data | 7 h of expert demonstrations per embodiment, offline | DAgger: expert rollouts for 100 iterations (6.6 M samples), then each env takes the student's action with probability 1 - beta, beta linear from 1 to 0 over 400 iterations; every state is labelled by its own design's expert; aggregated dataset of 1.5 M rows (ring buffer) |
+| Loss | L2 on actions, plus a self-modeling head on each joint's forward-kinematics pose | MSE between the student's action means and the expert's deterministic clipped means, over real joints only; no self-modeling head (the token already carries each link's box at the current q) |
+| Embodiment encoding | joint tokens (state history, rest-pose joint position and rotation, limits), attention biased by shortest-path, parent and child distance | the team's joint tokens (`token_layout.py`), masked full attention, no graph bias |
+| Network | not reported | d_model 128, 4 layers, 1 head, ff x4 (`InHandHoraTokenTeamPPO.yaml`'s network) |
+| Optimiser | not reported | Adam 3e-4, minibatch 4096, 16 gradient steps per 16 env steps x 4096 envs, grad norm 1 |
+| Metric | yaw velocity (deg/s) over 42 min per embodiment, 5 seeds | deterministic actions; every env's first episode after a full reset, 2 resets (1024 to 2048 episodes per hand); holding time, rotations per episode, rad/s while holding; 1 seed |
+
+Code, all off by default: `env.hora.teacher_obs` (with `hora.token_obs`; each step also emits the
+flat 201-value MLP observation under `teacher_obs`, from the same `hora_profile.flat_observation`
+the MLP path uses), `distill/dagger.py` (Kit-free core), `distill/run.py` (Kit entry point,
+AppLauncher first; `--mode train` resumes from `OUT/student_last.pth`, `--mode eval` evaluates
+`zero`, `expert` or one or more `student` checkpoints, also another token config via `--agent`),
+`distill/select_experts.py` (checkpoint choice and keep rule),
+`coevolution/cfg/train/InHandHoraTokenDistill.yaml` (`rl_games_hora_token_distill_cfg_entry_point`;
+hyperparameters under `params.distill`). Student checkpoints are rl_games `{0: weights}` files with
+the transformer's own normalisers, so they load into the rl_games player or an RL fine-tune.
+Tests: `tests/test_distill.py` (16).
+
+```
+python -m isaacsimenvs.inhand_reorient.distill.run --mode train --out RUN --experts EXPERTS.json --minutes 90 \
+    env.task_profile=hora env.assets.hand_population=TRAIN.json env.scene.num_envs=4096 \
+    env.anyrotate.grasp_cache=CACHE.npz env.anyrotate.grasp_cache_generate=false env.anyrotate.grasp_per_design=4000 hydra.run.dir=RUN
+python -m isaacsimenvs.inhand_reorient.distill.run --mode eval --out EVAL --policies zero,expert,student \
+    --student RUN/student_last.pth --experts EXPERTS.json ...(same env overrides)
+```
+
+Hand sets (`viable_inputs_v7` on the cluster; populations from viable27, its grasp cache with
+allegro's 4000 HORA-pose grasps). Zero-action holding time is the floor (every env's first episode;
+1024 episodes per hand in the eight-hand env, 2048 in the four held-out hands' env):
+
+| Hand | Joints | Digits | Grasps | Zero action: holding, rotations | Role |
+|---|---|---|---|---|---|
+| projected:allegro_right | 16 | 4 | 4000 | 17.4 s, 0.009 | train |
+| projected:sharpa_left_on_iiwa14 | 22 | 5 | 73 | 18.9 s, 0.004 | train |
+| projected:leap_right | 16 | 4 | 281 | 18.5 s, 0.005 | train |
+| founder 416 | 8 | 2 | 555 | 16.2 s, 0.012 | train |
+| founder 204 | 10 | 3 | 398 | 14.5 s, 0.006 | train |
+| founder 234 | 15 | 3 | 344 | 16.1 s, 0.010 | train |
+| founder 174 | 6 | 2 | 289 | 14.9 s, 0.010 | planned for training; no expert (no GPU, see below), zero-shot |
+| founder 228 | 21 | 4 | 276 | 17.6 s, 0.011 | planned for training; no expert, zero-shot |
+| founder 404 | 5 | 2 | 133 | 15.3 s, 0.013 | held out |
+| founder 430 | 10 | 2 | 81 | 17.2 s, 0.007 | held out |
+| founder 195 | 6 | 2 | 74 | 10.7 s, 0.013 | held out |
+| founder 364 | 17 | 4 | 65 | 18.9 s, 0.002 | held out |
+
+Experts (solo training: last scoring window; deterministic: the six-hand population env, 1366
+first episodes per hand, the picked checkpoint). All six pass the filter, so none was dropped:
+
+| Hand | Trained | Solo, last window: holding, rot/ep | Deterministic: holding, rot/ep, rad/s | Checkpoint |
+|---|---|---|---|---|
+| allegro | 60 min (Ada) | 11.6 s, 1.28 | 13.45 s, 1.33, 0.62 | best reward |
+| sharpa | 46 min (Ada; flat) | 0.5 s, 0.06 | 0.52 s, 0.063, 0.76 | last |
+| leap | 60 min (A6000) | 0.4 s, 0.03 | 0.33 s, 0.028, 0.53 | last |
+| founder 416 | 60 min (Ada) | 1.4 s, 0.12 | 1.76 s, 0.175, 0.63 | best reward |
+| founder 204 | 60 min (Ada) | 1.3 s, 0.09 | 1.28 s, 0.105, 0.51 | best reward |
+| founder 234 | 36 min (Ada; flat) | 1.5 s, 0.12 | 1.45 s, 0.142, 0.61 | best reward |
+
+The allegro expert held 13.45 s and turned the object 1.33 times per episode in the six-hand env
+(its solo windows: 11.6 s and 1.28), so the teacher observation reaches each expert as in its solo
+training. Only allegro's expert learned the task. The other five rotate fast (0.5 to 0.8 rad/s)
+and drop the object within 0.3 to 1.8 s, while the same grasps held with zero actions last 14.5 to
+18.9 s: PPO found a flick that earns the rotation reward and loses the grasp. Their grasp caches
+come from the palm-up population search; allegro learned only after its cache was seeded from
+HORA's own pose (see "Grammar-path allegro vs URDF allegro"), which points at the grasps.
+
+Distillation (job 2556796, RTX A6000, 4096 envs over the six hands, 90 min, 1335 iterations, 87.5 M
+samples, 21,360 gradient steps). Student / expert ratio of holding time and rotations per episode
+(evaluations during training: 683 first episodes per hand; the last row: 1366):
+
+| Iteration (min) | beta | Loss | allegro | sharpa | leap | 416 | 204 | 234 |
+|---|---|---|---|---|---|---|---|---|
+| 173 (11) | 0.82 | 0.014 | 0.19, 0.07 | 1.23, 1.00 | 1.08, 0.96 | 0.63, 0.68 | 1.13, 0.97 | 0.84, 0.96 |
+| 336 (22) | 0.41 | 0.011 | 0.90, 0.77 | 0.94, 1.00 | 1.01, 0.93 | 0.91, 0.99 | 0.97, 0.99 | 1.05, 0.94 |
+| 499 (33) | 0.01 | 0.010 | 1.00, 0.77 | 1.17, 1.04 | 0.98, 0.97 | 0.99, 0.94 | 1.01, 1.03 | 1.05, 1.02 |
+| 662 (44) | 0 | 0.0065 | 0.98, 0.94 | 0.99, 1.10 | 1.03, 0.96 | 1.03, 1.03 | 1.10, 1.05 | 1.02, 1.04 |
+| 988 (67) | 0 | 0.0044 | 0.89, 0.90 | 0.98, 1.00 | 1.01, 1.01 | 1.05, 1.05 | 0.99, 0.98 | 0.96, 0.95 |
+| 1151 (78) | 0 | 0.0038 | 1.04, 1.00 | 1.09, 1.09 | 1.10, 0.96 | 1.01, 0.98 | 1.02, 1.03 | 1.00, 0.99 |
+| 1335 (92, final) | 0 | 0.0034 | 0.99, 0.96 | 0.96, 1.03 | 1.00, 0.94 | 1.01, 1.00 | 1.02, 1.03 | 1.05, 1.00 |
+
+The final student holds allegro for 13.3 s with 1.27 rotations per episode (0.60 rad/s; expert
+13.45 s, 1.33, 0.62) and matches the five flick experts within 6%. One transformer reproduces six
+experts with 6 to 22 joints at 94 to 105% of their holding time and rotations. Allegro, the only
+expert with a sustained gait, needed DAgger: after mostly expert rollouts (iteration 173, beta
+0.82) the student held it 2.6 s; once its own rollouts were labelled it reached 12.2 s (iteration
+336). The evaluations during training vary by about 10% between neighbouring checkpoints (allegro
+12.0 to 14.0 s), the size of one evaluation's noise.
+
+Zero-shot, against the zero-action floor (final student; 2 resets; 1024 first episodes per hand for
+174 and 228, 2048 for the held-out four):
+
+| Hand | Zero action: holding, rot/ep | Student: holding, rot/ep, rad/s |
+|---|---|---|
+| founder 174 (no expert) | 14.9 s, 0.010 | 0.4 s, 0.105, 1.57 |
+| founder 228 (no expert) | 17.6 s, 0.011 | 0.3 s, 0.047, 0.87 |
+| founder 404 | 15.3 s, 0.013 | 1.1 s, 0.028, 0.15 |
+| founder 430 | 17.2 s, 0.007 | 0.5 s, 0.034, 0.46 |
+| founder 195 | 10.7 s, 0.013 | 3.1 s, 0.018, 0.04 |
+| founder 364 | 18.9 s, 0.002 | 0.6 s, 0.023, 0.22 |
+
+On new hands the student behaves like five of its six teachers: it drops the object within 0.3 to
+3.1 s (2 to 30% of the zero-action holding time) and turns it 0.02 to 0.10 times per episode.
+None of the eight evaluation checkpoints from iteration 173 on changes this (held-out holding 0.3
+to 3.1 s throughout).
+
+The RL-trained token transformers under the same protocol (both `InHandHoraTokenPPO.yaml`, d_model
+64, HORA's PPO; `pop8_T1`: eight hands including allegro, leap, 416, 204, 234, 174, 228 and 404,
+job 2554676, its last checkpoint; `pair_T1`: allegro and 174, 120 min), holding time and rotations
+per episode:
+
+| Hand | Distilled student | RL pop8_T1 | RL pair_T1 | Zero action |
+|---|---|---|---|---|
+| allegro | 13.0 s, 1.25 | 0.3 s, 0.06 | 2.8 s, 0.15 | 17.4 s, 0.009 |
+| sharpa | 0.5 s, 0.063 | 3.2 s, 0.05 | 6.2 s, 0.05 | 18.9 s, 0.004 |
+| leap | 0.4 s, 0.027 | 0.4 s, 0.01 | 2.7 s, 0.02 | 18.5 s, 0.005 |
+| founder 416 | 1.8 s, 0.178 | 0.6 s, 0.09 | 4.4 s, 0.03 | 16.2 s, 0.012 |
+| founder 204 | 1.3 s, 0.107 | 0.5 s, 0.07 | 2.1 s, 0.05 | 14.5 s, 0.006 |
+| founder 234 | 1.5 s, 0.146 | 0.3 s, 0.08 | 1.2 s, 0.02 | 16.1 s, 0.010 |
+| founder 174 | 0.4 s, 0.105 | 0.6 s, 0.13 | 2.6 s, 0.15 | 14.9 s, 0.010 |
+| founder 228 | 0.3 s, 0.047 | 0.2 s, 0.02 | 1.5 s, 0.09 | 17.6 s, 0.011 |
+| founder 404 | 1.1 s, 0.028 | 1.0 s, 0.09 (a training hand) | 7.0 s, 0.03 | 15.3 s, 0.013 |
+| founder 430 | 0.5 s, 0.034 | 1.0 s, 0.01 | 2.0 s, 0.02 | 17.2 s, 0.007 |
+| founder 195 | 3.1 s, 0.018 | 1.9 s, 0.01 | 1.6 s, 0.03 | 10.7 s, 0.013 |
+| founder 364 | 0.6 s, 0.023 | 0.4 s, 0.01 | 4.5 s, 0.04 | 18.9 s, 0.002 |
+
+On allegro the distilled student turns the object 8x more per episode than the best RL-trained
+transformer (1.25 against 0.15) and holds it 4.6x longer (13.0 s against 2.8 s); of the token
+transformers in this README it is the first to do the task on any hand. On every other hand each
+transformer, distilled or RL-trained, holds for less time than zero actions. The distilled one
+rotates 1.3 to 2.7x more than pop8_T1 on its five flick-expert hands, as its experts do; pair_T1
+holds longest on four of them (2.1 to 6.2 s) because it moves least (0.04 to 0.15 rad/s).
+
+Findings:
+
+- The distillation step works: one joint-token transformer reproduces six per-hand experts (6 to
+  22 joints, two to five digits) at 94 to 105% of their holding time and rotations within 90 min on
+  one A6000, including allegro's full gait (13.0 s, 1.25 rotations per episode). DAgger mattered
+  for the one expert with a sustained gait.
+- The experts limit the result. Five of six learned a flick (0.3 to 1.8 s of holding against 14.5
+  to 18.9 s with zero actions), and the student, on its training hands and on six unseen hands,
+  inherits it: 0.3 to 3.1 s of holding and 0.02 to 0.10 rotations per episode on the unseen ones.
+  Zero-shot transfer of a useful behaviour cannot be judged until more than one training hand has
+  a holding expert; GET-Zero also trained on 44 embodiments where this run had six.
+- One seed throughout; the evaluations during training vary by about 10%.
+
+Costs and compute (cluster): experts on RTX 6000 Ada, 4.8 GPU-h (allegro 1.09, 416 1.08, 204 1.09,
+sharpa 0.85, 234 0.67; jobs 2555252, 2555253); the pipeline job 2556796 on an RTX A6000, 4.3 GPU-h
+(smoke on three hands, floors, leap's expert, expert evaluation and selection, 90-min DAgger run,
+final evaluations, RL-transformer evaluations). Expert training for 174 and 228 was cancelled before
+it started: the Ada node was full (a further GPU there would have preempted other users' jobs), and
+the main-tier slot went to the pipeline. Stopping two experts at their plateau released their
+GPUs to the queue, which is why leap trained inside the pipeline.
+
+Next, in order:
+1. Experts that hold. Seed each hand's grasp cache from an opposing-digit pose (the
+   `grasp_canonical_profile: opposition` search) or a per-design pose search, as allegro needed
+   HORA's pose; retrain the five flick experts and keep only those that hold at least half their
+   zero-action time while rotating.
+2. Redo the distillation on 8 or more hands with holding experts (the code and pipeline are
+   unchanged), then judge zero-shot on the six unseen hands.
+3. Optional: RL fine-tuning of the distilled student (its checkpoint loads into rl_games with the
+   InHandHoraTokenDistill.yaml PPO block) and GET-Zero's graph attention bias.
+
 ## Grasp cache (`anyrotate.grasp_cache`, 2026-10-02)
 
 Episodes start from cached stable grasps, as in AnyRotate (App. C) and the HORA code it builds on
