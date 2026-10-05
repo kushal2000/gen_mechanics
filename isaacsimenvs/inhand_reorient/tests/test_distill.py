@@ -350,6 +350,7 @@ def test_hold_rule_needs_half_the_zero_action_holding_and_a_third_of_a_turn():
     rows = se.select(evals, {"a": zero, "b": zero}, {"best": {"a": "a.pth", "b": "b.pth"}}, rule="hold")
     assert rows["a"]["kept"] and not rows["b"]["kept"] and rows["a"]["rule"] == "hold"
     assert se.select(evals, {"a": zero, "b": zero}, {"best": {"a": "a.pth", "b": "b.pth"}})["b"]["kept"]  # GET-Zero rule
+    assert set(se.select(evals, {"a": zero, "b": zero}, {"best": {"a": "a.pth"}}, rule="hold")) == {"a"}  # no checkpoint
 
 
 def test_seed_everything_makes_the_student_init_repeatable():
