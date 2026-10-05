@@ -362,3 +362,69 @@ def test_seed_everything_makes_the_student_init_repeatable():
     c = _small_student().state_dict()
     k = next(k for k, v in a.items() if v.dtype.is_floating_point and v.numel() > 100)
     assert torch.equal(a[k], b[k]) and not torch.equal(a[k], c[k])
+
+
+# --------------------------------------------------------------------------
+# SAPG MLP experts (InHandHoraSAPG.yaml)
+# --------------------------------------------------------------------------
+
+
+def test_hora_sapg_config_is_horas_ppo_plus_six_sapg_blocks():
+    import gymnasium as gym
+
+    import isaacsimenvs.inhand_reorient  # noqa: F401
+    s, ppo, team = _yaml("InHandHoraSAPG.yaml"), _yaml("InHandAnyRotatePPO.yaml"), _yaml("InHandHoraTokenTeamSAPG.yaml")
+    c, p = s["config"], ppo["config"]
+    for k in ("learning_rate", "lr_schedule", "kl_threshold", "gamma", "tau", "e_clip", "horizon_length", "mini_epochs",
+              "critic_coef", "bounds_loss_coef", "normalize_input", "normalize_value", "grad_norm"):
+        assert c[k] == p[k], k
+    assert s["network"]["mlp"] == ppo["network"]["mlp"]
+    for k in ("use_others_experience", "off_policy_ratio", "expl_type", "expl_reward_type", "expl_reward_coef_embd_size",
+              "expl_reward_coef_scale"):
+        assert c[k] == team["config"][k], k
+    n_envs, block = 12288, c["expl_coef_block_size"]
+    assert n_envs % block == 0 and n_envs // block == 6  # rl_games' player hardcodes 6 blocks
+    batch = n_envs * c["horizon_length"]
+    assert (batch + batch // 6) % c["minibatch_size"] == 0  # the leader-follower augmented batch
+    net = s["network"]
+    assert net["name"] == "inhand_actor_critic" and net["space"]["continuous"]["fixed_sigma"] == "coef_cond"
+    assert net["space"]["continuous"]["logstd_max"] == 0.0
+    kw = gym.spec("GenMech-InHandReorient-Direct-v0").kwargs
+    assert Path(kw["rl_games_hora_sapg_cfg_entry_point"]).name == "InHandHoraSAPG.yaml"
+
+
+def _sapg_expert(obs_dim=201, blocks=6, seed=0):
+    from isaacsimenvs.inhand_reorient import policy_network  # noqa: F401  registers inhand_actor_critic
+
+    torch.manual_seed(seed)
+    model = dg.build_rlg_model(_yaml("InHandHoraSAPG.yaml"), obs_dim, J, sapg_blocks=blocks)
+    model.train()
+    with torch.no_grad():
+        model.norm_obs(torch.cat([torch.randn(256, obs_dim) * 2 + 1, torch.full((256, 1), 50.0)], dim=1))
+        model.a2c_network.extra_params.normal_()
+    return model
+
+
+def test_sapg_expert_loads_and_acts_as_its_leader_block(tmp_path):
+    model = _sapg_expert()
+    path = tmp_path / "sapg.pth"
+    torch.save({0: {"model": model.state_dict()}}, path)
+    assert dg.sapg_blocks(dg.checkpoint_weights(path)) == 6
+    pol = dg.load_expert(_yaml("InHandHoraSAPG.yaml"), path, 201, J)
+    obs = torch.randn(32, 201)
+    model.eval()
+    with torch.no_grad():
+        lead = torch.cat([obs, torch.full((32, 1), 50.0)], dim=1)  # block 0's coefficient, linspace(50, 0, 6)[0]
+        ref = model.a2c_network({"obs": model.norm_obs(lead)})[0].clamp(-1, 1)
+        other = torch.cat([obs, torch.full((32, 1), 0.0)], dim=1)  # the last block
+        ref_last = model.a2c_network({"obs": model.norm_obs(other)})[0].clamp(-1, 1)
+        out = pol(obs)
+    assert out.shape == (32, J) and torch.allclose(out, ref, atol=1e-6) and not torch.allclose(out, ref_last)
+    assert dg.sapg_blocks({"model": {}}) == 0  # a plain PPO checkpoint
+
+
+def test_expert_specs_carry_their_own_agent_config():
+    assert dg.expert_spec("a.pth") == ("a.pth", None)
+    assert dg.expert_spec({"path": "b.pth", "agent": "rl_games_hora_sapg_cfg_entry_point"}) == (
+        "b.pth", "rl_games_hora_sapg_cfg_entry_point")
+    assert dg.expert_spec(None) == (None, None)
