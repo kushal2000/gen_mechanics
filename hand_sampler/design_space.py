@@ -22,7 +22,20 @@ PALM_WIDTH_RANGE = (0.040, 0.140)       # y -- 4 fingers in a row need
 # 3 x MIN_MOUNT_SEPARATION + 2 x MOUNT_EDGE_MARGIN = 135 mm. Wide next to a
 # human palm, but our fingers are 30 mm across where a human's are ~20, so a
 # row of four simply occupies more width.
-PALM_LENGTH_RANGE = (0.040, 0.100)      # z, wrist face at z = 0
+PALM_LENGTH_RANGE = (0.040, 0.120)      # z, wrist face at z = 0
+# A palm's LENGTH is what carries the thumb: the row sits on the +z face and the
+# thumb on a side face, where v runs along z, so the palm has to reach back to
+# where the thumb mounts. 120 rather than 100 to leave the search room for a
+# thumb set further back than any hand fitted so far -- LEAP's is 75 mm behind
+# its knuckle row and is the deepest of the three.
+#
+# This does NOT improve any current fit, and it was measured rather than assumed:
+# at a 100 mm cap every fitted thumb already landed with zero error along z. The
+# commercial fitter sizes length as depth + 2 x MOUNT_EDGE_MARGIN, which puts a
+# thumb inside its margins by construction, so the cap was never what bound it.
+# What is left of a fitted thumb's placement error -- 26 to 42 mm -- is all
+# ACROSS the palm: a mount has to sit on a face, so a thumb is pinned to
+# y = -width/2 wherever the vendor actually put it. No length changes that.
 
 # Thickness is seeded and never mutated: it is the dimension geometry cares least about, while...
 MUTABLE_PALM_DIMS: tuple[str, ...] = ("width", "length")
