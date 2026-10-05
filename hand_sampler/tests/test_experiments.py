@@ -38,14 +38,24 @@ def test_resuming_with_a_different_shape_is_refused(tmp_path):
     assert "was created with" in bad.stderr
 
 
-@pytest.mark.parametrize("mode", ("min_joints", "max_joints"))
-def test_selection_moves_joint_count_the_way_it_is_pointed(tmp_path, mode):
-    """The arms are a yardstick for how fast selection CAN move a statistic, so a run whose..."""
-    out = tmp_path / mode
-    assert run("--out", str(out), "--gens", "25", "--mode", mode, *SCALE).returncode == 0
-    rows = [json.loads(l) for l in (out / "stats.jsonl").read_text().splitlines()]
-    first, last = rows[0]["n_joints"], rows[-1]["n_joints"]
-    if mode == "max_joints":
-        assert last > first
-    else:
-        assert last <= first
+def test_selection_moves_joint_count_the_way_it_is_pointed(tmp_path):
+    """The arms are a yardstick for how fast selection CAN move a statistic.
+
+    What is asserted is the SEPARATION between them, not that each arm moves in
+    its own direction. The min arm has nowhere to go: generation 0 already sits
+    at about 2.2 joints and the smallest legal hand is 2 -- MIN_FINGERS fingers
+    of one joint each -- so across seeds it reads 2.12 to 2.41 and which side of
+    its start it lands on is noise. The max arm runs to 9.8-14.8 in the same 25
+    generations, and that gap is the real measurement.
+    """
+    ends = {}
+    for mode in ("min_joints", "max_joints"):
+        out = tmp_path / mode
+        assert run("--out", str(out), "--gens", "25", "--mode", mode, *SCALE).returncode == 0
+        rows = [json.loads(l) for l in (out / "stats.jsonl").read_text().splitlines()]
+        ends[mode] = (rows[0]["n_joints"], rows[-1]["n_joints"])
+
+    (_, lo_last), (hi_first, hi_last) = ends["min_joints"], ends["max_joints"]
+    assert hi_last > hi_first + 3.0, f"max arm barely moved: {ends['max_joints']}"
+    assert lo_last < hi_last / 2.0, f"the arms did not separate: {ends}"
+    assert lo_last < 3.0, f"min arm left the joint floor: {ends['min_joints']}"

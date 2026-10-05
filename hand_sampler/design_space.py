@@ -88,6 +88,74 @@ MAX_FINGER_LENGTH = 0.200
 ANGLE_QUANTUM = math.radians(15.0)
 """Grid for every angle in the genotype: joint theta and offset."""
 
+TILT_QUANTUM = math.radians(45.0)
+"""Grid for a segment's MOUNTING rotation -- how the link is bolted on.
+
+Coarser than ANGLE_QUANTUM because it is structure, not articulation: it says
+which way a bracket faces, and brackets come in right angles and half-right
+angles. The 45 degree grid on a direction is exactly the 26 ways to leave a cube
+-- 6 through faces, 12 through edges, 8 through corners -- which is TILTS below.
+"""
+
+
+def _tilt_table() -> tuple[tuple[float, float, float], ...]:
+    """The 26 directions of the 45 degree grid, collinear (+x) first."""
+    out = [(1.0, 0.0, 0.0)]
+    for a in (1, 0, -1):
+        for b in (1, 0, -1):
+            for c in (1, 0, -1):
+                if (a, b, c) in ((0, 0, 0), (1, 0, 0)):
+                    continue
+                n = math.sqrt(a * a + b * b + c * c)
+                out.append((a / n, b / n, c / n))
+    return tuple(out)
+
+
+TILTS: tuple[tuple[float, float, float], ...] = _tilt_table()
+"""Where a segment's link may point, in its parent's frame. Index 0 is +x --
+straight on, which is what every link did before mounting rotations existed."""
+
+N_TILTS = len(TILTS)
+
+
+def _tilt_lattice() -> tuple[tuple[int, int, int], ...]:
+    """The same 26 directions as integer triples, in the same order."""
+    out = [(1, 0, 0)]
+    for a in (1, 0, -1):
+        for b in (1, 0, -1):
+            for c in (1, 0, -1):
+                if (a, b, c) not in ((0, 0, 0), (1, 0, 0)):
+                    out.append((a, b, c))
+    return tuple(out)
+
+
+TILT_LATTICE: tuple[tuple[int, int, int], ...] = _tilt_lattice()
+
+
+def _tilt_neighbours() -> tuple[tuple[int, ...], ...]:
+    """One step is changing ONE of the three cube coordinates by one.
+
+    Face to edge to corner and back. The relation is symmetric by construction,
+    which is what makes the operator's inverse exact: if b is one step from a
+    then a is one step from b, so the walk can always be undone.
+    """
+    index = {v: i for i, v in enumerate(TILT_LATTICE)}
+    out = []
+    for v in TILT_LATTICE:
+        near = []
+        for k in range(3):
+            for d in (-1, 1):
+                w = list(v)
+                w[k] += d
+                w = tuple(w)
+                if w in index:
+                    near.append(index[w])
+        out.append(tuple(sorted(near)))
+    return tuple(out)
+
+
+TILT_NEIGHBOURS: tuple[tuple[int, ...], ...] = _tilt_neighbours()
+
 JOINT_LIMIT = (math.radians(-90.0), math.radians(90.0))
 """Symmetric, for every joint regardless of axis.
 
@@ -161,6 +229,12 @@ class Segment:
 
     joint: Joint
     length: float
+    # Which way this link is bolted on, as an index into TILTS. 0 is straight on
+    # -- collinear with the link before it, or along the mount normal for the
+    # first segment of a finger. This is the ONE mounting knob: the palm uses it
+    # for the angle a finger leaves at, and every later segment uses it for the
+    # angle the next link turns through.
+    tilt: int = 0
     # (bend, axis) extents of the link box. None means the capsule a generated
     # design gets; an imported hand carries its measured cross-section instead.
     cross_section: tuple[float, float] | None = None
@@ -177,6 +251,9 @@ class Segment:
             raise ValueError(f"bad link length {self.length}")
         if self.cross_section is not None and len(self.cross_section) != 2:
             raise ValueError(f"cross_section must be (bend, axis), got {self.cross_section}")
+        if not isinstance(self.tilt, int) or not 0 <= self.tilt < N_TILTS:
+            raise ValueError(f"tilt must be an index into TILTS (0..{N_TILTS - 1}), "
+                             f"got {self.tilt!r}")
 
     @property
     def box(self) -> tuple[float, float, float]:
@@ -287,6 +364,26 @@ def palm_center(palm: "Palm") -> tuple[float, float, float]:
 _EPS = 1e-9
 
 
+def tilt_rot(index: int) -> np.ndarray:
+    """The fixed rotation a mounting tilt applies, by the SHORTEST arc.
+
+    A link runs along +x of its own frame, so a tilt is fully described by where
+    +x ends up: the shortest arc carries no roll of its own, which keeps the
+    tilt and the joint's own ``theta`` from spelling the same thing twice. Any
+    roll a design wants is theta's job.
+    """
+    d = np.asarray(TILTS[index % N_TILTS], dtype=float)
+    x = np.array([1.0, 0.0, 0.0])
+    v = np.cross(x, d)
+    s = float(np.linalg.norm(v))
+    c = float(x @ d)
+    if s < 1e-12:                      # parallel or antiparallel to +x
+        if c > 0.0:
+            return np.eye(3)
+        return rodrigues(np.array([0.0, 0.0, 1.0]), math.pi)   # one fixed choice
+    return rodrigues(v, math.atan2(s, c))
+
+
 def rodrigues(axis: np.ndarray, angle: float) -> np.ndarray:
     """Rotation about ``axis`` by ``angle``. Axis need not be normalised."""
     a = axis / (np.linalg.norm(axis) + 1e-12)
@@ -392,7 +489,8 @@ def forward_kinematics(finger: Finger, palm: Palm,
 
     for i, seg in enumerate(finger.segments):
         joints.append(p.copy())
-        R = R @ rodrigues(axis_of(seg.joint),
+        R = R @ tilt_rot(seg.tilt)                      # bolt the link on
+        R = R @ rodrigues(axis_of(seg.joint),           # then the joint turns
                           seg.joint.offset + angles.get(i, 0.0))
         nxt = p + R[:, 0] * seg.length
         if seg.length > _EPS:
@@ -410,6 +508,7 @@ def joint_axes(finger: Finger, palm: Palm,
     _, R = mount_frame(finger.mount, palm)
     out: list[np.ndarray] = []
     for i, seg in enumerate(finger.segments):
+        R = R @ tilt_rot(seg.tilt)
         a = axis_of(seg.joint)
         out.append(R @ a)
         R = R @ rodrigues(a, seg.joint.offset + angles.get(i, 0.0))
@@ -470,6 +569,7 @@ def base_capsules(hand: Hand) -> list[tuple[np.ndarray, np.ndarray]]:
     for f in hand.fingers:
         p0, R = mount_frame(f.mount, hand.palm)
         seg = f.segments[0]
+        R = R @ tilt_rot(seg.tilt)
         R = R @ rodrigues(axis_of(seg.joint), seg.joint.offset)
         out.append((p0, p0 + R[:, 0] * seg.length))
     return out

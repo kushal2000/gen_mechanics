@@ -58,6 +58,9 @@ def _tuple(value):
 
 def _segment_to_dict(segment: design_space.Segment) -> dict:
     out: dict = {"joint": _joint_to_dict(segment.joint), "length": segment.length}
+    # Straight on is the overwhelming majority, so it stays out of the file.
+    if segment.tilt:
+        out["tilt"] = int(segment.tilt)
     if segment.cross_section is not None:
         out["cross_section"] = list(segment.cross_section)
     if segment.meshes is not None:
@@ -73,6 +76,7 @@ def _segment_from_dict(data: dict) -> design_space.Segment:
     return design_space.Segment(
         joint=_joint_from_dict(data["joint"]),
         length=float(data["length"]),
+        tilt=int(data.get("tilt", 0)),
         cross_section=_tuple(data.get("cross_section")),
         meshes=_tuple(data.get("meshes")),
         token_box=None if token_box is None else tuple(tuple(row) for row in token_box),

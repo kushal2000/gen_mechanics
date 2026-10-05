@@ -20,7 +20,7 @@ OPERATORS: tuple[str, ...] = (
     "split_link", "merge_links", "add_finger", "remove_finger",
     # parametric -- complexity fixed
     "perturb_axis", "perturb_offset", "perturb_length", "move_mount",
-    "perturb_palm",
+    "perturb_tilt", "perturb_palm",
 )
 
 STRUCTURAL: tuple[str, ...] = OPERATORS[:4]
@@ -237,20 +237,32 @@ def _free_mount_sites(hand: design_space.Hand) -> list[tuple[str, float, float]]
 
 # --- parametric -------------------------------------------------------------
 
+def _step_axis(joint: design_space.Joint, rng: random.Random) -> design_space.Joint:
+    """One quantum on theta and one on phi, each independently up, down or not.
+
+    phi reflects at the ends of [0, pi) rather than wrapping, because phi and
+    pi - phi name the same hinge and wrapping would give a joint two spellings.
+    At phi = 0 the axis is +x whatever theta says, so theta is forced to 0 there
+    -- the one place the two angles are not independent.
+    """
+    theta = snap(wrap_theta(joint.theta + design_space.ANGLE_QUANTUM * rng.choice(_STEPS)),
+                 design_space.ANGLE_QUANTUM) % math.pi
+    phi = snap(reflect(joint.phi + design_space.ANGLE_QUANTUM * rng.choice(_STEPS),
+                       0.0, math.pi - design_space.ANGLE_QUANTUM),
+               design_space.ANGLE_QUANTUM)
+    if abs(phi) <= 1e-9:
+        theta = 0.0
+    return replace(joint, theta=theta, phi=phi)
+
+
 def perturb_axis(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step EVERY joint's theta by one quantum, each independently up, down or not
-    at all."""
+    """Step EVERY joint's axis by one quantum, each independently up, down or not
+    at all. The axis is (theta, phi), so this reaches roll joints too."""
     for _ in range(_REDRAWS):
         fingers = []
         for f in hand.fingers:
-            segments = tuple(
-                design_space.Segment(
-                    design_space.Joint(snap(wrap_theta(sg.joint.theta
-                                            + design_space.ANGLE_QUANTUM * rng.choice(_STEPS)),
-                                 design_space.ANGLE_QUANTUM) % math.pi,
-                            sg.joint.phi, sg.joint.offset),
-                    sg.length)
-                for sg in f.segments)
+            segments = tuple(replace(sg, joint=_step_axis(sg.joint, rng))
+                             for sg in f.segments)
             fingers.append(replace(f, segments=segments))
         out = replace(hand, fingers=tuple(fingers))
         if out != hand and validate_design.is_valid(out):   # see _STEPS
@@ -338,6 +350,31 @@ def _step_mount(mount: design_space.Mount, palm: design_space.Palm, du_m: float,
     return design_space.Mount(face, u2, v2)
 
 
+def perturb_tilt(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
+    """Turn ONE segment's mounting one step on the tilt lattice.
+
+    Single-segment rather than whole-hand, like move_mount: a tilt moves the
+    whole sub-finger distal to it, so stepping them all at once almost never
+    validates. One step changes one cube coordinate, turning the link 35 to 45
+    degrees, and the relation is symmetric so the move back is also one step.
+    """
+    places = [(fi, si) for fi, f in enumerate(hand.fingers)
+              for si in range(f.n_joints)]
+    rng.shuffle(places)
+    for fi, si in places:
+        finger = hand.fingers[fi]
+        seg = finger.segments[si]
+        options = list(design_space.TILT_NEIGHBOURS[seg.tilt])
+        rng.shuffle(options)
+        for nxt in options:
+            segments = tuple(replace(s, tilt=nxt) if k == si else s
+                             for k, s in enumerate(finger.segments))
+            out = design_space.with_finger(hand, fi, replace(finger, segments=segments))
+            if validate_design.is_valid(out):
+                return out
+    raise MutationImpossible("no segment could be re-tilted without violating a bound")
+
+
 def perturb_offset(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
     """Step EVERY joint's zero offset by one quantum, independently up, down or
     not at all."""
@@ -383,8 +420,11 @@ _FUNCS = {
     "add_finger": add_finger, "remove_finger": remove_finger,
     "perturb_axis": perturb_axis, "perturb_length": perturb_length,
     "perturb_offset": perturb_offset,
-    "move_mount": move_mount, "perturb_palm": perturb_palm,
+    "move_mount": move_mount, "perturb_tilt": perturb_tilt,
+    "perturb_palm": perturb_palm,
 }
+assert set(_FUNCS) == set(OPERATORS), (
+    f"operator table and OPERATORS disagree: {set(OPERATORS) ^ set(_FUNCS)}")
 
 
 def _accept(hand: design_space.Hand, op: str) -> design_space.Hand:

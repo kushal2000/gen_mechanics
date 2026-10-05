@@ -94,14 +94,19 @@ def describe(hand: design_space.Hand, last_op: str | None) -> str:
         "",
     ]
     for i, f in enumerate(hand.fingers):
-        off = "" if all(abs(s.joint.phi - math.pi / 2) < 1e-9 for s in f.segments) \
-              else "  **phi off-perpendicular**"
+        rolls = sum(1 for s in f.segments if abs(s.joint.phi) < 1e-9)
+        tilts = sum(1 for s in f.segments if s.tilt)
+        tags = ("" if not rolls else f"  **{rolls} roll**") \
+             + ("" if not tilts else f"  **{tilts} tilted**")
         lines.append(
             f"`{i}` {f.mount.face} u={f.mount.u:.2f} v={f.mount.v:.2f} | "
-            f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm{off}")
+            f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm{tags}")
+        # [theta d (+offset o) (~tilt) / length mm]; a roll joint prints as "roll"
         lines.append("   " + "  ".join(
-            f"[{math.degrees(s.joint.theta):.0f}d"
+            ("[roll" if abs(s.joint.phi) < 1e-9
+             else f"[{math.degrees(s.joint.theta):.0f}d/{math.degrees(s.joint.phi):.0f}p")
             + (f"{math.degrees(s.joint.offset):+.0f}o" if s.joint.offset else "")
+            + (f" ~{s.tilt}" if s.tilt else "")
             + f"/{s.length*1000:.0f}mm]"
             for s in f.segments))
     if last_op:

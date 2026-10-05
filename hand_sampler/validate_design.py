@@ -56,10 +56,15 @@ def check_segment(seg: design_space.Segment, where: str, terminal: bool) -> list
     # Outside these ranges a hand has more than one spelling, which breaks design identity...
     if not 0.0 - _TOL <= seg.joint.theta < math.pi:
         out.append(f"{where}.theta = {seg.joint.theta:.4f} outside [0, pi)")
-    # phi is PINNED at pi/2 for now (DESIGN.md 11), so this is an equality rather than a range.
-    if abs(seg.joint.phi - math.pi / 2) > _TOL:
-        out.append(f"{where}.phi = {seg.joint.phi:.4f}; phi is pinned at pi/2 "
-                   f"(perpendicular hinges) until off-axis joints are enabled")
+    # phi is free over [0, pi): 0 is a roll joint, pi/2 a hinge perpendicular to
+    # the link. LEAP needs one roll joint, in its thumb, so the pin is gone.
+    if not 0.0 - _TOL <= seg.joint.phi < math.pi:
+        out.append(f"{where}.phi = {seg.joint.phi:.4f} outside [0, pi)")
+    # At phi = 0 the axis is +x whatever theta says, so theta must be 0 there or
+    # a roll joint has 12 spellings and design identity goes with it.
+    if abs(seg.joint.phi) <= _TOL and abs(seg.joint.theta) > _TOL:
+        out.append(f"{where}.phi = 0 is a roll joint, whose axis is +x for any "
+                   f"theta; theta must be 0 there, not {seg.joint.theta:.4f}")
     # The zero offset is where the link sits at neutral, so it must be an angle the joint could...
     lo, hi = design_space.JOINT_LIMIT
     if not lo - _TOL <= seg.joint.offset <= hi + _TOL:
@@ -70,6 +75,10 @@ def check_segment(seg: design_space.Segment, where: str, terminal: bool) -> list
                         ("offset", seg.joint.offset)):
         if not _on_grid(value, design_space.ANGLE_QUANTUM):
             out.append(f"{where}.{name} = {value:.4f} off the angle grid")
+
+    if not 0 <= seg.tilt < design_space.N_TILTS:
+        out.append(f"{where}.tilt = {seg.tilt} is not one of the "
+                   f"{design_space.N_TILTS} mounting directions")
     return out
 
 
