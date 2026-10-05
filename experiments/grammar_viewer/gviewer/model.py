@@ -28,10 +28,11 @@ TWIST_RGB = (190, 60, 200)
 PALM_JOINT_RGB = (40, 170, 160)
 PRISMATIC_RGB = (120, 120, 120)
 PALM_RGB = (150, 155, 165)
-OVERLAP_RGB = (230, 30, 30)
-DIGIT_PALETTE = (
-    (66, 135, 245), (240, 120, 40), (60, 175, 75), (215, 60, 120), (150, 100, 210),
-    (40, 180, 190), (200, 170, 40), (120, 90, 60), (90, 90, 90), (230, 90, 90),
+OVERLAP_RGB = (230, 30, 30)        # penetration deeper than the oracle's 3 mm gate
+OVERLAP_MINOR_RGB = (250, 160, 170)  # penetrating, but within the gate
+DIGIT_PALETTE = (  # no reds or pinks: those mark overlaps
+    (66, 135, 245), (240, 140, 40), (60, 175, 75), (150, 100, 210), (40, 180, 190),
+    (200, 170, 40), (140, 100, 70), (100, 100, 100), (90, 60, 160), (120, 180, 90),
 )
 
 CONTINUOUS_SLIDER_RANGE = (-math.pi, math.pi)

@@ -192,16 +192,17 @@ class HandRenderer:
             cols[i] = self.opts.tint or jp.rgb
         return pts, cols
 
-    def update(self, prims: Primitives, highlight: Iterable[str] = (),
+    def update(self, prims: Primitives, highlight: Optional[Dict[str, Tuple[int, int, int]]] = None,
                tip_colors: Optional[Dict[str, Tuple[int, int, int]]] = None) -> None:
-        hl = set(highlight)
+        """`highlight`: body -> colour override (overlap marking)."""
+        hl = dict(highlight or {})
         for name, h in self.caps.items():
             b = prims.bodies.get(name)
             if b is None:
                 continue
             wxyz, pos = _pose(b.T)
             h.wxyz, h.position = wxyz, pos
-            want = OVERLAP_RGB if name in hl else self.base_rgb[name]
+            want = hl.get(name, self.base_rgb[name])
             if self.cur_rgb.get(name) != want:
                 h.color = want
                 self.cur_rgb[name] = want
@@ -212,7 +213,7 @@ class HandRenderer:
             wxyz, pos = _pose(T)
             h.wxyz, h.position = wxyz, pos
             key = "cell:" + name
-            want = OVERLAP_RGB if (name in hl and name not in self.caps) else self.base_rgb[key]
+            want = hl[name] if (name in hl and name not in self.caps) else self.base_rgb[key]
             if self.cur_rgb.get(key) != want:
                 h.color = want
                 self.cur_rgb[key] = want

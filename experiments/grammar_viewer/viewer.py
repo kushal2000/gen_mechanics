@@ -102,6 +102,19 @@ def viability_word(report: dict) -> str:
     return "rejected (overlap/spawn)"
 
 
+def viability_short(report: dict) -> str:
+    """A few characters for gallery labels."""
+    if src.is_viable_report(report):
+        return f"viable {report['fingertips_reachable']}t"
+    if report.get("admitted"):
+        return f"adm {report.get('fingertips_reachable')}t"
+    if report.get("digit_count") is None:
+        return "struct"
+    text = " ".join(report.get("reasons", []))
+    kinds = [w for w, key in (("overlap", "rest-overlap"), ("spawn", "spawn height")) if key in text]
+    return "/".join(kinds) or "rejected"
+
+
 def shortest_rotation_wxyz(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     a = a / (np.linalg.norm(a) + 1e-12)
     b = b / (np.linalg.norm(b) + 1e-12)
@@ -167,12 +180,13 @@ class GrammarViewer:
         self.spread_labels: List[Any] = []
         self.spread_children: List[Tuple[Derivation, str, dict]] = []
         self.gallery_items: List[Tuple[Derivation, KinematicModel, str, Optional[int]]] = []
+        self._gallery_bounds: Optional[np.ndarray] = None
         self.mut_variant = variant
         self.last_messages: List[str] = []
 
         load_env_modules()
         server.scene.set_up_direction("+z")
-        server.scene.add_grid("/grid", width=1.0, height=1.0, cell_size=0.05, plane="xy",
+        server.scene.add_grid("/grid", width=2.0, height=2.0, cell_size=0.05, plane="xy",
                               position=(0.0, 0.0, -0.002))
         self.renderer = HandRenderer(server, "/hand")
         self.ghost = HandRenderer(server, "/ghost")
@@ -291,6 +305,7 @@ class GrammarViewer:
             self._update_orientation()
             self._render_pose()
             self._update_panels()
+            self._frame_camera()
         self._start_nearest()
 
     def show(self, cur: Current, history_mode: str = "reset", operator: Optional[str] = None, note: str = "") -> Prepared:
@@ -547,16 +562,23 @@ class GrammarViewer:
     def _q_full(self) -> Dict[str, float]:
         return gm.expand_q(self.prep.view.model, self.u)
 
-    def _highlight(self) -> Tuple[set, List[Tuple[str, str, float]]]:
+    def _highlight(self) -> Tuple[Dict[str, Tuple[int, int, int]], List[Tuple[str, str, float]]]:
+        """Body -> colour for overlapping capsule pairs: red beyond the oracle's
+        rest-penetration gate (3 mm), pink for shallower penetration."""
         a = self.prep.analysis
         mode = self.gui_overlap_mode.value
         if a.design is None or mode == OVERLAP_OFF:
-            return set(), []
+            return {}, []
         if mode == OVERLAP_CURRENT:
             pairs = an.overlaps_at(a.design, self._q_full())
         else:
             pairs = a.pairs_q0 + a.pairs_reset
-        return {b for p in pairs for b in p[:2]}, pairs
+        gate = load_env_modules().grammar_envelope.MAX_REST_PENETRATION_M
+        out: Dict[str, Tuple[int, int, int]] = {}
+        for b1, b2, pen in sorted(pairs, key=lambda p: p[2]):
+            col = gm.OVERLAP_RGB if pen > gate else gm.OVERLAP_MINOR_RGB
+            out[b1] = out[b2] = col
+        return out, pairs
 
     def _render_pose(self) -> None:
         if self.prep is None:
@@ -881,7 +903,6 @@ class GrammarViewer:
                     break
                 d, m = src.sample(v, seed)
                 rep = ge.viability_report(m)
-                word = viability_word(rep)
                 counts.setdefault(v, []).append(src.is_viable_report(rep))
                 pos = (c * spacing, -ri * spacing, 0.0)
                 idx = len(self.gallery_items)
@@ -894,14 +915,20 @@ class GrammarViewer:
                                     bool(self.gui_gal_cells.value), self.gui_gal_pose.value, pos, on_click)
                 self.gallery.append(r)
                 self.gallery_labels.append(self.server.scene.add_label(
-                    f"/gallery_labels/{k}", f"{v} s{seed}: {word}", position=(pos[0], pos[1] - 0.06, 0.0),
-                    font_screen_scale=0.6))
+                    f"/gallery_labels/{k}", f"s{seed} {viability_short(rep)}", position=(pos[0], pos[1] - 0.07, 0.0),
+                    font_screen_scale=0.8, anchor="top-center"))
+                if compare and c == 0:
+                    self.gallery_labels.append(self.server.scene.add_label(
+                        f"/gallery_labels/row{ri}", v, position=(pos[0] - 0.6 * spacing, pos[1], 0.0),
+                        font_screen_scale=1.0, anchor="center-right"))
                 self.md_gallery.content = f"built {k + 1}/{len(plan)}"
             summary = "; ".join(f"{v}: {sum(f)}/{len(f)} viable" for v, f in counts.items())
             self.md_gallery.content = (f"{summary}. Green viable, amber admitted but < 2 tips reach, red rejected "
                                        f"(overlap/spawn), grey structural reject. Click a hand to open it.")
-            self._look_at_points(np.array([[0, 0, 0], [(cols - 1) * spacing, -(max(rows, 2 if compare else rows) - 1) * spacing, 0]]),
-                                 "top")
+            n_rows = 2 if compare else rows
+            self._gallery_bounds = np.array([[-0.1, -(n_rows - 1) * spacing - 0.1, 0.0],
+                                             [(cols - 1) * spacing + 0.1, 0.1, 0.1]])
+            self._look_at_points(self._gallery_bounds, "top", set_initial=True)
 
         return self.run_job("gallery", job, wait=wait)
 
@@ -993,24 +1020,46 @@ class GrammarViewer:
         R = quat_to_mat(self._orientation())
         return pts @ R.T
 
-    def _look_at_points(self, pts: np.ndarray, preset: str, target: Optional[np.ndarray] = None) -> None:
+    def _look_at_points(self, pts: np.ndarray, preset: str, target: Optional[np.ndarray] = None,
+                        set_initial: bool = False) -> None:
         lo, hi = pts.min(axis=0), pts.max(axis=0)
         c = (lo + hi) / 2 if target is None else target
         size = max(float(np.linalg.norm(hi - lo)), 0.12)
-        d = 1.6 * size
+        d = 1.25 * size
         if preset == "top":
             pos = c + np.array([0.0, -0.02 * d, d])
         elif preset == "side":
             pos = c + np.array([d, 0.0, 0.12 * d])
         else:
             pos = c + np.array([0.45 * d, -0.55 * d, 0.75 * d])
+        if set_initial:
+            self.server.initial_camera.position = tuple(pos)
+            self.server.initial_camera.look_at = tuple(c)
         for client in self.server.get_clients().values():
             client.camera.up_direction = (0.0, 0.0, 1.0)
             client.camera.position = tuple(pos)
             client.camera.look_at = tuple(c)
 
+    def _frame_camera(self) -> None:
+        """Point the "reset view" camera at the new design and, when auto-frame
+        is on, move connected clients' cameras too."""
+        pts = self._world_points()
+        lo, hi = pts.min(axis=0), pts.max(axis=0)
+        c = (lo + hi) / 2
+        d = 1.25 * max(float(np.linalg.norm(hi - lo)), 0.12)
+        pos = c + np.array([0.75 * d, -0.75 * d, 0.55 * d])
+        self.server.initial_camera.position = tuple(pos)
+        self.server.initial_camera.look_at = tuple(c)
+        if self.gui_autoframe.value:
+            for client in self.server.get_clients().values():
+                client.camera.position = tuple(pos)
+                client.camera.look_at = tuple(c)
+
     def camera(self, preset: str) -> None:
         with self.lock:
+            if self.gallery and self._gallery_bounds is not None:
+                self._look_at_points(self._gallery_bounds, preset)
+                return
             if preset == "palm-up" and self.gui_orient.value != ORIENT_PALM_UP:
                 self.gui_orient.value = ORIENT_PALM_UP  # on_update re-orients
                 self._update_orientation()
@@ -1168,6 +1217,7 @@ class GrammarViewer:
         # ---- View ---------------------------------------------------------
         with tabs.add_tab("View"):
             cam_btns = g.add_button_group("Camera", ["top", "side", "palm-up"])
+            self.gui_autoframe = g.add_checkbox("Auto-frame camera on new design", True)
             self.gui_orient = g.add_dropdown("Orientation", [ORIENT_ROOT, ORIENT_PALM_UP])
             self.gui_capsule_mode = g.add_dropdown("Capsule convention", list(gm.CAPSULE_MODES),
                                                    hint="simulator: PhysX capsule spanning [0, L] (what the overlap "
@@ -1183,7 +1233,7 @@ class GrammarViewer:
             self.gui_lbl_joints = g.add_checkbox("Joint labels", False)
             g.add_markdown("Joint axes: blue flexion -> orange abduction (blend by angle), purple twist "
                            "(axis within 35 deg of its link), teal palm joint. Tips: green reach the spawn, "
-                           "orange do not. The envelope's ghost/padding slots are never drawn: the scene is the "
+                           "orange do not. Overlapping capsules: red beyond the oracle's 3 mm gate, pink shallower. The envelope's ghost/padding slots are never drawn: the scene is the "
                            "grammar model itself.")
 
         # ---- Gallery -------------------------------------------------------
