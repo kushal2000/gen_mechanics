@@ -283,3 +283,46 @@ def test_the_fit_says_what_it_cost(leap):
     assert any("27 mm off" in n for n in notes), notes
     assert any("20 mm floor" in n for n in notes), notes
     assert not any(n.startswith("NOT A LEGAL DESIGN") for n in notes), notes
+
+
+def test_perturb_kind_favours_flexion():
+    """The operator is biased on PURPOSE: flexion is the only kind that closes a
+    hand, so it is easier to enter than to leave.
+
+    Left to drift with no selection the kind mix settles near 20 / 45 / 35 roll
+    / flexion / abduction, against 33 each if the draw were uniform. The ceiling
+    is structural -- the operator must change the kind it lands on, so a flexion
+    joint always leaves flexion and no weight pushes it past about 47 percent.
+    """
+    from collections import Counter
+
+    rng = random.Random(0)
+    hand = gen_init_pop.seed_population(0, 1)[0]
+    for _ in range(300):                       # grow it so there is something to stir
+        child = mutate_design.mutate(rng, hand, "split_link")
+        if child:
+            hand = child
+        if hand.n_joints >= 12:
+            break
+
+    seen = Counter()
+    for _ in range(4000):
+        child = mutate_design.mutate(rng, hand, "perturb_kind")
+        if child:
+            hand = child
+        for f in hand.fingers:
+            for s in f.segments:
+                seen[s.joint.kind] += 1
+    total = sum(seen.values())
+    share = {k: seen[k] / total for k in D.JOINT_KINDS}
+
+    assert share[D.FLEXION] > 0.40, share
+    assert share[D.FLEXION] > share[D.ABDUCTION] > share[D.ROLL], share
+    # and every kind stays reachable -- a weight of zero would strand designs
+    assert share[D.ROLL] > 0.10, f"roll has become unreachable in practice: {share}"
+
+
+def test_the_weights_leave_nothing_unreachable():
+    assert set(mutate_design.KIND_WEIGHTS) == set(D.JOINT_KINDS)
+    assert all(w > 0 for w in mutate_design.KIND_WEIGHTS.values()), \
+        "a zero weight would make that kind unreachable and strand any design holding one"

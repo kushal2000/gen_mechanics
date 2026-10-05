@@ -232,12 +232,45 @@ def _free_mount_sites(hand: design_space.Hand) -> list[tuple[str, float, float]]
 
 # --- parametric -------------------------------------------------------------
 
+KIND_WEIGHTS: dict[int, int] = {design_space.ROLL: 1,
+                                design_space.FLEXION: 6,
+                                design_space.ABDUCTION: 2}
+"""How ``perturb_kind`` picks what a joint becomes. NOT a uniform draw.
+
+Flexion is the only kind that closes a hand, so it is favoured; roll is the kind
+that is useful least often -- LEAP spends one joint of sixteen on it -- so it is
+favoured least. This makes the operator BIASED on purpose: flexion is easier to
+enter than to leave, and a population left to drift with no selection settles at
+roughly 20 / 45 / 35 roll / flexion / abduction instead of 33 each.
+
+The ceiling is structural. The operator must change the kind it lands on, so a
+flexion joint always leaves flexion, and no weight pushes the resting share past
+about 47 percent -- well short of LEAP's 62. Getting there is selection's job,
+not the operator's.
+
+Note this bias is invisible to the balance tests, which measure JOINT COUNT, and
+perturb_kind does not change it.
+"""
+
+
+def _weighted_order(rng: random.Random, options: list[int]) -> list[int]:
+    """``options`` shuffled with KIND_WEIGHTS, best-weighted first most often."""
+    out = []
+    pool = list(options)
+    while pool:
+        w = [KIND_WEIGHTS[k] for k in pool]
+        pick = rng.choices(range(len(pool)), weights=w, k=1)[0]
+        out.append(pool.pop(pick))
+    return out
+
+
 def perturb_kind(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Change ONE joint to one of the other two kinds.
+    """Change ONE joint to one of the other two kinds, favouring flexion.
 
     There are only three, so a step is a jump rather than a nudge and there is
     no neighbourhood to respect: any kind reaches any other in one move, and the
-    move back is one move too.
+    move back is one move too -- though not at the same probability, see
+    KIND_WEIGHTS.
     """
     places = [(fi, si) for fi, f in enumerate(hand.fingers)
               for si in range(f.n_joints)]
@@ -245,8 +278,8 @@ def perturb_kind(rng: random.Random, hand: design_space.Hand) -> design_space.Ha
     for fi, si in places:
         finger = hand.fingers[fi]
         here = finger.segments[si].joint.kind
-        options = [k for k in design_space.JOINT_KINDS if k != here]
-        rng.shuffle(options)
+        options = _weighted_order(
+            rng, [k for k in design_space.JOINT_KINDS if k != here])
         for kind in options:
             segments = tuple(replace(s, joint=replace(s.joint, kind=kind)) if k == si else s
                              for k, s in enumerate(finger.segments))

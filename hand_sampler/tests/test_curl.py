@@ -127,18 +127,22 @@ def test_it_is_cheap_enough_to_filter_with():
 
 # --- what it says about generation 0 ----------------------------------------
 
-def test_generation_zero_is_mostly_unable_to_close():
-    """Recorded, not asserted as desirable: this is a SEEDING fault the filter
-    exposes. SEED_KINDS draws flexion or abduction evenly, and a seed finger of
-    one or two joints that happen to be abduction cannot close at all, so only
-    about a third of generation 0 has the two closing fingers a grasp needs.
+def test_most_of_generation_zero_can_close():
+    """This filter found a seeding fault and the fault is now fixed.
 
-    If seeding is fixed so every seed finger gets at least one flexion joint,
-    this test should start failing -- and the fix is to raise the bound, not to
-    loosen it.
+    Drawing flexion and abduction evenly, only 38 percent of generation 0 had
+    the two closing fingers a grasp needs, because abduction has no curl
+    authority at all. SEED_KIND_WEIGHTS favours flexion 3 to 1 and it is 74
+    percent. Not 100: seeding flexion alone would get there, and generation 0 is
+    meant to start somewhere plain rather than somewhere already solved.
     """
     pop = gen_init_pop.seed_population(0, 200)
     fraction = sum(1 for h in pop if D.curl_score(h) > 0.05) / len(pop)
-    assert fraction < 0.6, (
-        f"{fraction:.0%} of generation 0 can close; if seeding was fixed, "
-        f"raise this bound rather than removing the test")
+    assert fraction > 0.65, f"only {fraction:.0%} of generation 0 can close"
+
+
+def test_seeding_never_draws_a_roll_joint():
+    """A roll spins its own link about its own axis. On a one-joint finger that
+    is a motor that does nothing a capsule can see."""
+    pop = gen_init_pop.seed_population(0, 200)
+    assert all(s.joint.kind != R for h in pop for f in h.fingers for s in f.segments)
