@@ -410,3 +410,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 ## R2 transformer on two hands, interim (2026-10-05 ~13:00)
 
 - At matched per-hand samples, before the solo turn point: pair R2 allegro 1.0-1.7x solo holding / 0.94-1.30x rotations; founder 174 0.4-0.8x holding early, 2.5 s vs 2.9 s solo at the end. Pair R2 + group advantage norm: allegro 1.2-1.55x, 174 0.84-1.3x. No sign of the interference seen with the MLP pair so far. Both pair runs resumed for 6 h to pass the solo turn (~0.25 B samples per hand); solo 234 / 416 baselines running for the 4-hand test.
+
+## R2 transformer learns two hands at once (2026-10-05 ~17:00)
+
+- Pair R2: allegro turns at ~0.29 B per-hand samples (solo ~0.26 B) and reaches ~14 s holding (solo level); with group advantage normalisation the turn comes earlier (~0.23 B). Rotations at 0.56 of solo and rising.
+- Founder 174 sits at its own solo R2 level (2.8-2.9 s, ~0.22 rotations), which is a flick: zero-action holds 13-15 s. Making grammar hands hold is now the main blocker, for both the shared transformer and the GET-Zero experts.
+- Next: 4-hand R2 and R2 + group advantage norm.
