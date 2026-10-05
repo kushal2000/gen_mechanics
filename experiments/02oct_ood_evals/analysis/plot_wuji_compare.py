@@ -34,6 +34,8 @@ COMPARISONS = {
     "vs_wuji_ep3600": ("Wuji Only", "wuji_only_ep_3600"),
     # Matched compute: both policies after ~10k epochs of 12288 envs (Wuji-only 908714 ep 6400 = 10162 total).
     "vs_wuji_10k": ("Wuji Only", "wuji_only_10k", "unified_final"),
+    # Matched compute at ~40k epochs each (unified 948509 link 4; Wuji-only 990216 link 5).
+    "vs_wuji_40k": ("Wuji Only", "wuji_only_40k", "unified_40k"),
 }
 
 
