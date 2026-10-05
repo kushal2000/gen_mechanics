@@ -207,3 +207,19 @@ def test_train_config_bypasses_the_rl_games_input_normaliser():
     doc = yaml.safe_load((CFG / "train" / "InHandHoraTokenPPO.yaml").read_text())["params"]
     assert doc["network"]["name"] == "inhand_joint_transformer"
     assert doc["config"]["normalize_input"] is False
+
+
+def test_mu_head_init_scale_shrinks_the_initial_action_means():
+    """mu_head_init_scale s < 1: the action head's last layer starts at s x
+    its default weights and zero bias, so the initial mean actions (which
+    HORA integrates into the joint targets every step) start near 0;
+    default 1 keeps the team network's init."""
+    obs, enabled = _obs(12, n=64)
+    base = _net(_params()).eval()
+    p = _params()
+    p["mu_head_init_scale"] = 0.01
+    small = _net(p).eval()
+    mu_b, *_ = base({"obs": obs})
+    mu_s, *_ = small({"obs": obs})
+    assert mu_s[enabled].abs().max() < 0.05 * mu_b[enabled].abs().max()
+    assert torch.all(mu_s[~enabled] == 0)
