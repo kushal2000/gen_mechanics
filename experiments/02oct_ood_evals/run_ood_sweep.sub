@@ -11,7 +11,7 @@
 #SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/embodiment_niches_push_sweep/slurm-%j.out
 # One OOD severity sweep of ONE policy on HAND, in the training metric (goals per episode, 50-goal max, each
 # env's first episode; $NUM_ENVS envs, default 100, x $EVAL_SECONDS s, default 240):
-#   AXIS=newton    pushes of exactly 0/20/40/60/80/100 N, random direction, one 1/60 s step, 0.03 per step
+#   AXIS=newton    pushes of exactly 0/5/10/15/20/25 N, random direction, one 1/60 s step, 0.03 per step
 #                  (domain_randomization.force_magnitude_n; independent of the cube's mass)
 #   AXIS=mass      cube of 45.6 (nominal)/40/30/20/10/5 g, same 45 mm size (assets.object_density_scale)
 #   AXIS=friction  cube, hand links and fingertips all at mu = 0.5/0.4/0.3/0.2/0.1/0.05/0 (trained: 0.5)
@@ -26,7 +26,7 @@ cd $REPO
 export OMNI_KIT_ACCEPT_EULA=YES
 NOMINAL_G=45.5625                       # 45 mm cube at 500 kg/m^3, as every policy trained
 case "$AXIS" in
-    newton)   VALUES="0 20 40 60 80 100" ;;
+    newton)   VALUES="0 5 10 15 20 25" ;;
     mass)     VALUES="45.6 40 30 20 10 5" ;;
     friction) VALUES="0.5 0.4 0.3 0.2 0.1 0.05 0" ;;
     *) echo "unknown AXIS $AXIS"; exit 1 ;;

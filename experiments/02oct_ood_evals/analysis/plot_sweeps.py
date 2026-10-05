@@ -22,7 +22,7 @@ HERE = pathlib.Path(__file__).resolve().parent.parent
 R = HERE / "results/sweeps_cap50"
 OUT = HERE / "plots/sweeps_cap50"
 AXES = {    # name: (result prefix, values as written in file names, x values, x label, title, reverse x)
-    "force": ("newton", ["0", "20", "40", "60", "80", "100"], [0, 20, 40, 60, 80, 100],
+    "force": ("newton", ["0", "5", "10", "15", "20", "25"], [0, 5, 10, 15, 20, 25],
               "Push force (N)", "Robustness to Force Perturbations", False),
     "mass": ("mass", ["45.6", "40", "30", "20", "10", "5"], [45.6, 40, 30, 20, 10, 5],
              "Cube mass (g)", "Robustness to Lighter Objects", True),
