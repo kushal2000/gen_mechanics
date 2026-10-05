@@ -368,13 +368,13 @@
     {
       "id": "I46",
       "status": "in_progress",
-      "hypothesis": "GET-Zero-style pipeline (Patel & Song 2024): ~8 training hands (allegro, sharpa, leap projections + ~5 viable grammar designs) get solo MLP experts under HORA; DAgger distillation into the token transformer; evaluate student vs expert on training hands and zero-shot vs zero-action floor on 2-4 held-out hands. RESULT 1 (8087f66..2ed376e, ~9 GPU-h): DAgger distillation into the token transformer reaches 94-105% of each of 6 experts; allegro student 13.3 s / 1.27 rotations (first transformer to do the task; 8x the RL transformer). But 5/6 experts flick-and-drop (0.3-1.8 s vs 14.5-18.9 s zero-action) because their grasp caches were palm-up seeded, so held-out zero-shot is 2-29% of the zero-action time. Next: opposition-seeded grasp caches for all candidates, stricter expert keep rule (>= 50% of zero-action holding and >= 0.3 rotations), redistil on 8+ hands across all grammar variants, >= 4 held-out hands.",
+      "hypothesis": "GET-Zero-style pipeline (Patel & Song 2024): ~8 training hands (allegro, sharpa, leap projections + ~5 viable grammar designs) get solo MLP experts under HORA; DAgger distillation into the token transformer; evaluate student vs expert on training hands and zero-shot vs zero-action floor on 2-4 held-out hands. RESULT 1 (8087f66..2ed376e, ~9 GPU-h): DAgger distillation into the token transformer reaches 94-105% of each of 6 experts; allegro student 13.3 s / 1.27 rotations (first transformer to do the task; 8x the RL transformer). But 5/6 experts flick-and-drop (0.3-1.8 s vs 14.5-18.9 s zero-action) because their grasp caches were palm-up seeded, so held-out zero-shot is 2-29% of the zero-action time. Next: opposition-seeded grasp caches for all candidates, stricter expert keep rule (>= 50% of zero-action holding and >= 0.3 rotations), redistil on 8+ hands across all grammar variants, >= 4 held-out hands. ROUND 2 (in progress, paused by a lost ssh master 06:16): opposition-seeded grasps did not stop experts flicking (sharpa 0.8 s / 0.09, G_V2S 129 0.9 s, G_V3S 099 1.3 s, G_V1 354 1.8 s vs 14-19 s zero-action); worker queued lower initial log-std (-1, -2) tests; 7 hands parked. Coordinator ideas: SAPG for experts (SAPG produced the turn for the R2 transformer), or a drop penalty / survival bonus (HORA has no fall penalty).",
       "decision": null,
       "evidence": ""
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Fair transformer test on the cluster (Opus worker). Ask Martin about GET-Zero-style distillation (per-hand experts -> transformer student) as the published multi-embodiment route.",
+  "next_action": "Martin reconnects the cluster; resume both workers: fair test multi-hand R2 (pair, pair + T5, solo 174; then 4 hands) and GET-Zero round 2 experts (low-noise test, then SAPG experts / drop penalty if still flicking).",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",

@@ -401,3 +401,8 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - Solo allegro, 12288 envs, 6 h each on an RTX 6000 Ada: MLP 15.8 s / ~1.9 rotations (plateau); R2 transformer (lr 1e-4, e_clip 0.1, 2 mini-epochs, d128, SAPG 6 blocks) 15.1 s / 2.46 rotations at the end; R1 (same without SAPG) 7.9 s / 0.62, still rising. The earlier failures were the recipe and the budget, not the method.
 - Multi-hand R2 runs (pair; pair + group advantage norm; solo founder 174 for the fraction-of-solo metric) started.
+
+## Status at the 06:16 connection drop (2026-10-05)
+
+- Fair test complete for solo allegro: R2 overtakes the MLP from 25k steps (2.46 vs 1.91 rotations); SAPG produced the turn (4 s -> 12.6 s holding between 19k and 22k steps). Multi-hand R2 runs (pair, pair + group advantage norm, solo 174) continue on the cluster unattended.
+- GET-Zero round 2: experts on six more hands still flick despite opposition-seeded grasps; low-noise expert tests queued. Next idea: SAPG and/or a drop penalty for the experts.
