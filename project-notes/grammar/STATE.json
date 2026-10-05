@@ -374,7 +374,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "Wait for: GET-Zero round-2 expert recipe (low noise / SAPG / drop penalty) that makes grammar hands hold; fair-test 4-hand R2 (+T5). Then apply the holding fix to the shared R2 transformer and move to populations/evolution.",
+  "next_action": "RECENTER (2026-10-05): see project-notes/grammar/RECENTER-2026-10-05.md. Work splits into sessions A (grammar, CPU), B (task/experts: P1 hold+rotate on grammar hands), C (shared transformer scale: P2), D (evolution, later). Combined cluster cap 4 GPUs.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
