@@ -40,6 +40,9 @@ import time
 from pathlib import Path
 
 
+EXPERT_AGENT = "rl_games_anyrotate_ppo_cfg_entry_point"  # the per-hand MLP experts' train YAML (HORA's PPO)
+
+
 def main() -> None:
     import argparse
 
@@ -53,7 +56,8 @@ def main() -> None:
     ap.add_argument("--mode", choices=("train", "eval"), required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--experts", default=None, help="JSON: design source -> expert rl_games checkpoint")
-    ap.add_argument("--student", default=None, help="eval: student checkpoint; train: initial weights (fresh run)")
+    ap.add_argument("--student", default=None,
+                    help="eval: student checkpoint(s), comma-separated; train: initial weights (fresh run)")
     ap.add_argument("--policies", default="student", help="eval: comma list of zero, expert, student")
     ap.add_argument("--minutes", type=float, default=60.0, help="train: DAgger wall-clock budget, resumes included")
     ap.add_argument("--max-iters", type=int, default=0, help="train: stop after this many iterations (0: no cap)")
@@ -93,7 +97,8 @@ def main() -> None:
         if env_cfg.task_profile != "hora":
             raise SystemExit("distill.run needs env.task_profile=hora")
         params = agent_cfg["params"]
-        dcfg = params["distill"]
+        # eval mode also reads other token configs (e.g. an RL-trained transformer's own YAML via --agent)
+        dcfg = params["distill"] if args.mode == "train" else (params.get("distill") or {})
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
         env_cfg.hora.token_obs = True
@@ -118,7 +123,7 @@ def main() -> None:
         if need_experts:
             mapping = json.loads(Path(args.experts).read_text())
             paths = dg.resolve_experts(sources, mapping)
-            eyaml = gym.spec(args.task.split(":")[-1]).kwargs[dcfg["expert_agent"]]
+            eyaml = gym.spec(args.task.split(":")[-1]).kwargs[dcfg.get("expert_agent", EXPERT_AGENT)]
             eparams = yaml.safe_load(Path(eyaml).read_text())["params"]
             t_dim = int(obs["teacher_obs"].shape[1])
             uniq = sorted({p for p in paths if p})
@@ -156,15 +161,21 @@ def main() -> None:
             return dg.summarise(tot, sources), o
 
         if args.mode == "eval":
-            if args.student:
-                dg.load_checkpoint(args.student, student)
+            students = [s for s in (args.student or "").split(",") if s]
             res = {"populations": sources, "num_envs": int(inner.num_envs), "rounds": int(args.eval_rounds),
-                   "student": args.student, "experts": args.experts}
+                   "student": students[0] if students else None, "experts": args.experts}
             for name in policies:
-                t = time.time()
-                res[name], _ = evaluate(name, args.eval_rounds)
-                print(f"[distill] eval {name} ({time.time() - t:.0f} s): {json.dumps(res[name])}", flush=True)
-                (out / "eval.json").write_text(json.dumps(res, indent=1))
+                for k, ck in enumerate(students if name == "student" else [None]):
+                    if ck is not None:
+                        dg.load_checkpoint(ck, student)
+                    t = time.time()
+                    r, _ = evaluate(name, args.eval_rounds)
+                    if name == "student" and len(students) > 1:  # every checkpoint under its path, the first also as "student"
+                        res.setdefault("students", {})[ck] = r
+                    if k == 0:
+                        res[name] = r
+                    print(f"[distill] eval {name} {ck or ''} ({time.time() - t:.0f} s): {json.dumps(r)}", flush=True)
+                    (out / "eval.json").write_text(json.dumps(res, indent=1))
             return
 
         # ---------------------------------------------------------------- train
