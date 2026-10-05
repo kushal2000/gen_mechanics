@@ -296,6 +296,8 @@ anyrotate:
   grasp_max_tip_dist_m: 0.1         # HORA: every fingertip within 0.1 m
   grasp_max_mean_tip_dist_m: -1.0   # -1 off; AnyRotate: total 0.2 over 4 tips
   grasp_gravity_cycle: false        # AnyRotate: gravity along +-x, +-y, +-z during the hold
+  grasp_opposition_cos: -1.0        # -1 off; 0.5: a contacting tip opposes the others' mean direction (>= 120 deg)
+  grasp_enclosure_max_mean: -1.0    # -1 off; max length of the contacting tips' mean unit direction
   grasp_max_joint_speed: -1.0       # peak real-joint speed over the hold (rad/s); -1 off (recorded either way)
   grasp_reset_joint_noise: 0.0      # HORA and AnyRotate add none at reset
   grasp_reset_obj_pos_noise: 0.0
@@ -360,4 +362,9 @@ hora:
   teacher_obs: false                # with token_obs: also the flat MLP observation under 'teacher_obs' (distill/)
   fall_penalty: 0.0                 # added on the step the object drops (HORA: none)
   alive_bonus: 0.0                  # added on every step the object has not dropped
+  fall_penalty_schedule: constant   # constant | linear | hold_gated (decay of fall_penalty to 0)
+  fall_penalty_decay_start: 0       # linear: control steps at the full penalty
+  fall_penalty_decay_steps: 0       # linear / hold_gated: control steps of the decay to 0
+  fall_penalty_gate_hold_s: 0.0     # hold_gated: running mean holding time (s) that starts the decay
+  fall_penalty_hold_ema: 0.98       # per-step EMA of the finished episodes' mean holding time
   design_id_obs: 0                  # population: one-hot design index this wide (per_design_nets), 0 = off

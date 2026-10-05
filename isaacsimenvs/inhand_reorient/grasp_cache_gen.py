@@ -236,7 +236,8 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
     cand_mode = torch.zeros(n_designs, 4, dtype=torch.long)
     pass_mode = torch.zeros(n_designs, 4, dtype=torch.long)
     fails = {name: torch.zeros(n_designs, dtype=torch.long) for name in
-             ("disp", "speed", "tip_contacts", "tip_dist", "nontip", "mean_tip_dist", "joint_speed", "nonfinite")}
+             ("disp", "speed", "tip_contacts", "tip_dist", "nontip", "mean_tip_dist", "joint_speed", "nonfinite",
+              "enclosure")}
     jspeed_stable = {d: [] for d in wanted}  # peak joint speed of each stable grasp (before the joint test)
     rounds = 0
     gravity_now = getattr(env, "_ar_gravity", torch.tensor([0.0, 0.0, -GRAVITY], device=dev))
@@ -326,9 +327,15 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
         obj_w = env.object.data.root_pos_w
         d_end = (env.robot.data.body_pos_w[:, env.fingertip_body_idx] - obj_w.unsqueeze(1)).norm(dim=-1)
         mean_tip = torch.nan_to_num((d_end * tvalid_f).sum(dim=-1) / n_valid_tips, nan=1e3)
+        opp_cos, max_mean = float(getattr(a, "grasp_opposition_cos", -1.0)), float(getattr(a, "grasp_enclosure_max_mean", -1.0))
+        if opp_cos > -1.0 or max_mean > 0:  # the tips in contact enclose the object (round 3, off by default)
+            rel = torch.nan_to_num(env.robot.data.body_pos_w[:, env.fingertip_body_idx] - obj_w.unsqueeze(1))
+            enclosed = gc.enclosure_mask(rel, (tip_f > thr) & tvalid, opp_cos, max_mean)
+        else:
+            enclosed = torch.ones_like(finite)
         ok = gc.stable_mask(max_disp=max_disp, lin_speed=lin, ang_speed=ang, tip_contacts=tip_c,
                             nontip_contacts=nontip_c, max_tip_dist=max_tip_dist, mean_tip_dist=mean_tip,
-                            finite=finite, joint_speed=max_jspeed, th=th) & active
+                            finite=finite, joint_speed=max_jspeed, th=th) & active & enclosed
         no_joint = gc.StabilityThresholds(**{**vars(th), "max_joint_speed": -1.0})
         ok_object = gc.stable_mask(max_disp=max_disp, lin_speed=lin, ang_speed=ang, tip_contacts=tip_c,
                                    nontip_contacts=nontip_c, max_tip_dist=max_tip_dist, mean_tip_dist=mean_tip,
@@ -354,7 +361,7 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
                            else torch.zeros_like(finite)),
                           ("joint_speed", (max_jspeed > th.max_joint_speed) if th.max_joint_speed > 0
                            else torch.zeros_like(finite)),
-                          ("nonfinite", ~finite)):
+                          ("nonfinite", ~finite), ("enclosure", ~enclosed)):
             fails[name] += torch.bincount(d_cpu[(bad & active).cpu()], minlength=n_designs)
 
         hit = ok.nonzero(as_tuple=False).squeeze(-1)

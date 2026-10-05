@@ -58,7 +58,7 @@ __all__ = [
     "CACHE_SCHEMA", "HORA_CANONICAL_ALLEGRO", "CANONICAL_GRASP_POSES", "GraspSet", "GraspTable",
     "StabilityThresholds", "design_key", "hand_key", "hand_calibration_sha", "sidecar_path",
     "object_signature", "signature_mismatches", "save_cache", "load_cache", "merge_sets", "prune_sets",
-    "sample_joint_candidates", "random_quats", "stable_mask", "build_table", "cache_summary", "profile_pose",
+    "sample_joint_candidates", "random_quats", "stable_mask", "enclosure_mask", "build_table", "cache_summary", "profile_pose",
     "HORA_LIKE_PROFILE", "HORA_THUMB_PROFILE", "opposition_poses",
 ]
 
@@ -395,6 +395,33 @@ def stable_mask(*, max_disp: torch.Tensor, lin_speed: torch.Tensor, ang_speed: t
         ok = ok & (joint_speed <= th.max_joint_speed)
     if finite is not None:
         ok = ok & finite
+    return ok
+
+
+def enclosure_mask(rel: torch.Tensor, contact: torch.Tensor, opposition_cos: float = -1.0,
+                   max_mean_norm: float = -1.0) -> torch.Tensor:
+    """``(n,)`` bool: the contacting fingertips enclose the object, as
+    HORA's allegro pose does (a thumb against three fingers). ``rel``
+    ``(n, k, 3)``: fingertip minus object centre; ``contact`` ``(n, k)``.
+
+    - Opposition (``opposition_cos`` > -1): some contacting digit points
+      against the mean direction of the other contacting digits, with a
+      cosine <= -``opposition_cos`` (0.5: at least 120 degrees apart).
+    - Span (``max_mean_norm`` > 0): the mean of the contacting digits' unit
+      directions is at most this long (directions spread around the object).
+    """
+    c = contact.to(rel.dtype).unsqueeze(-1)
+    u = rel / rel.norm(dim=-1, keepdim=True).clamp(min=1e-9)
+    total = (u * c).sum(dim=1)  # (n, 3)
+    count = c.sum(dim=1).squeeze(-1)  # (n,)
+    ok = count >= 1
+    if opposition_cos > -1.0:
+        others = total.unsqueeze(1) - u * c  # (n, k, 3)
+        n_others = count.unsqueeze(1) - c.squeeze(-1)
+        cos = (u * (others / others.norm(dim=-1, keepdim=True).clamp(min=1e-9))).sum(dim=-1)
+        ok = ok & (contact & (n_others >= 1) & (cos <= -float(opposition_cos))).any(dim=1)
+    if max_mean_norm > 0:
+        ok = ok & ((total / count.clamp(min=1).unsqueeze(-1)).norm(dim=-1) <= float(max_mean_norm))
     return ok
 
 

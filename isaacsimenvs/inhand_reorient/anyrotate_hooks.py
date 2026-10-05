@@ -522,7 +522,20 @@ def _hora_rewards(env) -> torch.Tensor:
     reward = hp.combine_reward(terms, scales)
     survival = None
     if h.fall_penalty or h.alive_bonus:  # experts only: HORA has no fall penalty
-        survival = hp.survival_reward(env._termination_reasons["drop"], h.fall_penalty, h.alive_bonus)
+        fall = float(h.fall_penalty)
+        if h.fall_penalty_schedule != "constant":
+            sched = getattr(env, "_hora_fall_sched", None)
+            if sched is None:
+                sched = env._hora_fall_sched = hp.FallPenaltySchedule(
+                    h.fall_penalty, h.fall_penalty_schedule, h.fall_penalty_decay_start, h.fall_penalty_decay_steps,
+                    h.fall_penalty_gate_hold_s, h.fall_penalty_hold_ema)
+            r = env._termination_reasons
+            fall = sched.update(env.episode_length_buf[r["drop"] | r["timeout"]].float() * float(env.step_dt))
+            env.extras["fall_penalty"] = fall
+            if sched.step % 2000 == 1:
+                print(f"[hora] step {sched.step}: fall_penalty {fall:.2f}, running hold {sched.hold_ema or 0.0:.2f} s, "
+                      f"gate step {sched.gate_step}", flush=True)
+        survival = hp.survival_reward(env._termination_reasons["drop"], fall, h.alive_bonus)
         reward = reward + survival
     if h.ppo_group_info:  # rl_games group_advantage_norm reads it from the step infos
         env.extras["ppo_group"] = _design_idx(env)

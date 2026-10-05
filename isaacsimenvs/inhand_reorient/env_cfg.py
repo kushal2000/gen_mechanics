@@ -425,6 +425,14 @@ class AnyRotateCfg:
     grasp_max_tip_dist_m: float = 0.1  # HORA: every fingertip within 0.1 m
     grasp_max_mean_tip_dist_m: float = -1.0  # -1 off; AnyRotate: total 0.2 over 4 tips
     grasp_gravity_cycle: bool = False  # AnyRotate: gravity along +-x, +-y, +-z during the hold
+    grasp_opposition_cos: float = -1.0
+    """-1 off. Else a grasp needs a contacting fingertip that points against
+    the mean direction of the other contacting tips (seen from the object
+    centre) with cosine <= -this (0.5: >= 120 degrees), as HORA's thumb
+    opposes three fingers (``grasp_cache.enclosure_mask``)."""
+    grasp_enclosure_max_mean: float = -1.0
+    """-1 off. Else the mean unit direction of the contacting fingertips is at
+    most this long: contacts spread around the object."""
     grasp_max_joint_speed: float = -1.0
     """Peak real-joint speed (rad/s) allowed over the hold; -1 off. The
     report records it per design either way."""
@@ -561,6 +569,18 @@ class HoraCfg:
     optimum for a per-hand expert); e.g. -20. 0 = off."""
     alive_bonus: float = 0.0
     """Added to the reward on every step the object has not dropped. 0 = off."""
+    fall_penalty_schedule: str = "constant"
+    """``constant``; ``linear`` (``fall_penalty`` until ``fall_penalty_decay_start``
+    control steps, then linear to 0 over ``fall_penalty_decay_steps``);
+    ``hold_gated`` (``fall_penalty`` until the running mean holding time of
+    finished episodes reaches ``fall_penalty_gate_hold_s``, then linear to 0
+    over ``fall_penalty_decay_steps``). The penalty first teaches holding,
+    then its decay lets rotation pay again (``hora_profile.FallPenaltySchedule``)."""
+    fall_penalty_decay_start: int = 0
+    fall_penalty_decay_steps: int = 0
+    fall_penalty_gate_hold_s: float = 0.0
+    fall_penalty_hold_ema: float = 0.98
+    """Per-step EMA of the mean holding time of the episodes that end that step."""
     teacher_obs: bool = False
     """With ``token_obs``: also emit, under the observation key
     ``teacher_obs``, the flat observation a per-hand MLP expert was trained

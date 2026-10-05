@@ -42,7 +42,7 @@ __all__ = [
     "DesignRewardScale", "morphology_table", "MORPH_PER_SLOT",
     "PROFILE_HORA", "is_hora", "rotate_reward", "linvel_penalty", "pose_diff_penalty", "torque_penalty",
     "work_penalty", "combine_reward", "unscale", "push_history", "fill_history", "dropped", "HORA_OBS_FIELDS",
-    "flat_observation", "survival_reward",
+    "flat_observation", "survival_reward", "FallPenaltySchedule",
 ]
 
 PROFILE_HORA = "hora"
@@ -121,6 +121,54 @@ def survival_reward(dropped: torch.Tensor, fall_penalty: float, alive_bonus: flo
     neither)."""
     d = dropped.to(torch.float32)
     return float(fall_penalty) * d + float(alive_bonus) * (1.0 - d)
+
+
+class FallPenaltySchedule:
+    """The fall penalty over training (``hora.fall_penalty_schedule``):
+    ``constant``; ``linear`` (``base`` for ``decay_start`` control steps,
+    then linear to 0 over ``decay_steps``); ``hold_gated`` (``base`` until
+    the running mean holding time of finished episodes reaches
+    ``gate_hold_s``, then linear to 0 over ``decay_steps``; the decay does
+    not reverse if holding drops later). ``update`` once per control step
+    with the holding times of the episodes that end in it."""
+
+    MODES = ("constant", "linear", "hold_gated")
+
+    def __init__(self, base: float, mode: str = "constant", decay_start: int = 0, decay_steps: int = 0,
+                 gate_hold_s: float = 0.0, ema: float = 0.98):
+        if mode not in self.MODES:
+            raise ValueError(f"hora.fall_penalty_schedule={mode!r}; expected one of {self.MODES}")
+        self.base, self.mode = float(base), mode
+        self.decay_start, self.decay_steps = int(decay_start), int(decay_steps)
+        self.gate_hold_s, self.ema = float(gate_hold_s), float(ema)
+        self.step = 0
+        self.hold_ema = None
+        self.gate_step = None
+
+    def _decay(self, start: int) -> float:
+        if self.step < start:
+            return self.base
+        if self.decay_steps <= 0:
+            return 0.0
+        return self.base * max(0.0, 1.0 - (self.step - start) / float(self.decay_steps))
+
+    @property
+    def value(self) -> float:
+        if self.mode == "linear":
+            return self._decay(self.decay_start)
+        if self.mode == "hold_gated":
+            return self.base if self.gate_step is None else self._decay(self.gate_step)
+        return self.base
+
+    def update(self, done_hold_s: torch.Tensor) -> float:
+        self.step += 1
+        if done_hold_s.numel() > 0:
+            m = float(done_hold_s.float().mean())
+            self.hold_ema = m if self.hold_ema is None else self.ema * self.hold_ema + (1.0 - self.ema) * m
+        if (self.mode == "hold_gated" and self.gate_step is None and self.hold_ema is not None
+                and self.hold_ema >= self.gate_hold_s):
+            self.gate_step = self.step
+        return self.value
 
 
 def dropped(z, z0, drop_dz: float) -> torch.Tensor:
