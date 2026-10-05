@@ -30,7 +30,7 @@ run() {   # run <condition> <seconds> <out name>
     f=$OUT/${HAND}__$3.json
     [ -s "$f" ] && { echo "skip $f"; return; }
     .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform \
-        --hand "$HAND" --condition "$1" --num-envs 1024 --seconds "${EVAL_SECONDS:-$2}" ${MAX_GOALS:+--max-goals $MAX_GOALS} --out "$f" ${CKPT:+--checkpoint "$CKPT"} ${TARGET:+--target "$TARGET"} \
+        --hand "$HAND" --condition "$1" --num-envs ${NUM_ENVS:-100} --seconds "${EVAL_SECONDS:-$2}" ${MAX_GOALS:+--max-goals $MAX_GOALS} --out "$f" ${CKPT:+--checkpoint "$CKPT"} ${TARGET:+--target "$TARGET"} \
         > $LOGS/${HAND}__$3.log 2>&1 || echo "FAILED $HAND $3"
     [ -s "$f" ] && echo "done $HAND $3"
 }

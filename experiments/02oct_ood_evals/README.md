@@ -19,3 +19,13 @@ while training), kept next to it so every condition evaluates the same weights.
 
 Live viewer with push sliders, several policies side by side on one hand:
 `experiments/01oct_unified_rl/viser_compare.py --hand wuji2 --policy "Label=<pth>" ...`
+
+## Eval protocol (capped results: `results/*_cap50/`)
+
+- Wuji v2, uniform dynamics; greedy actions; each policy's own saved env config plus the condition's one change.
+- Metric: goals per episode as in training -- an episode ends at a drop, 10 s without a goal, or 50 goals
+  (`eval_niches.py --max-goals 50`) -- averaged over each env's FIRST episode (`goals_per_episode_first`), so
+  long episodes are not under-sampled. 240 s of sim per point; every first episode finishes inside it.
+- Episodes per point: results up to and including the 40k comparison used 1024 envs (1024 first episodes);
+  from 2026-10-05 the default is 100 envs (`NUM_ENVS`, both run_push_sweep.sub and run_hand_uniform.sub),
+  i.e. 100 episodes per point, about +-2 goals/episode of sampling noise.
