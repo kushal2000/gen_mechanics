@@ -20,3 +20,4 @@ OOD sweeps (newton 0-100 N, mass 45.6-5 g, friction 0.5-0), 100 first episodes/p
 cancelled earlier-protocol push sweeps (mass-scaled force) 990263 990264 990265 990266; kept capped ID/OOD 990267/990268
 force sweep now 0-25 N in 5 N steps: 992782 (unified 40k) 992783 (Wuji ~32k) 992784 (Wuji ~40k, after 990216); old 0-100 N Wuji-40k job 990878 cancelled
 missing-finger sweep (none/thumb/index/middle/ring/pinky): 996730 unified 40k, 996731 Wuji ~32k, 996732 Wuji ~40k (after 990216)
+action-noise sweep (std 0-1.0): 998306 unified 40k, 998307 Wuji ~32k, 998308 Wuji ~40k (after 990216)

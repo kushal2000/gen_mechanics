@@ -28,6 +28,8 @@ AXES = {    # name: (result prefix, values as written in file names, x values, x
              "Cube mass (g)", "Robustness to Lighter Objects", True),
     "friction": ("friction", ["0.5", "0.4", "0.3", "0.2", "0.1", "0.05", "0"], [0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0],
                  "Friction coefficient", "Robustness to Lower Friction", True),
+    "action_noise": ("actnoise", ["0", "0.1", "0.2", "0.3", "0.5", "0.75", "1.0"], [0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0],
+                     "Action noise (std, normalized)", "Robustness to Action Noise", False),
 }
 COMPARISONS = {   # folder: (unified label, Wuji-only label)
     "vs_wuji_32k": ("unified_40k", "wuji_only_32k"),

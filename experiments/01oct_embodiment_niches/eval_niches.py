@@ -109,6 +109,9 @@ def main() -> None:
     ap.add_argument("--max-goals", type=int, default=0,
                     help="end an episode at this many goals, as training does (50); 0 = uncapped. With a cap the "
                          "result carries goals_per_episode, the training metric: goals per COMPLETED episode")
+    ap.add_argument("--action-noise", type=float, default=0.0,
+                    help="std of i.i.d. Gaussian noise added to every policy action, every step, in the "
+                         "normalized action space ([-1, 1] over each joint's range), then clipped to [-1, 1]")
     ap.add_argument("--out", required=True)
     ap.add_argument("--device", default="cuda:0")
     args = ap.parse_args()
@@ -235,6 +238,8 @@ def main() -> None:
         for k in range(steps):
             with torch.no_grad():
                 act = player.get_normalized_action(obs["policy"], deterministic_actions=True)
+                if args.action_noise > 0.0:
+                    act = (act + args.action_noise * torch.randn_like(act)).clamp(-1.0, 1.0)
             obs, _, _, _, _ = env.step(act)
 
             qd = inner.robot.data.joint_vel[:, jid].double()
@@ -320,7 +325,7 @@ def main() -> None:
         first = S[S[:, 4] == 1] if len(S) else S      # first goal after a reset (includes settling)
 
         result.update({
-            "hand": args.hand, "target": args.target or args.hand, "set": args.set, "overrides": args.override, "condition": args.condition, "condition_desc": CONDITIONS[args.condition][0],
+            "hand": args.hand, "target": args.target or args.hand, "set": args.set, "overrides": args.override, "action_noise": args.action_noise, "condition": args.condition, "condition_desc": CONDITIONS[args.condition][0],
             "checkpoint": str(ckpt), "num_envs": N, "seconds": args.seconds, "dt": dt, "env_seconds": env_s,
             "wall_s": wall, "joints": J, "hand_mass_kg": float(inner.robot.data.default_mass[0].sum()),
             "cube_mass_kg": float(inner._object_mass[0]),
