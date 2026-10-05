@@ -39,6 +39,7 @@ def _agent(group_norm: bool):
     agent.is_rnn = False
     agent.has_central_value = False
     agent.group_advantage_norm = group_norm
+    agent._ppo_group_buf = None  # as A2CBase.__init__ sets it
     agent.dataset = SimpleNamespace(update_values_dict=lambda d: captured.update(d))
     return agent, captured
 

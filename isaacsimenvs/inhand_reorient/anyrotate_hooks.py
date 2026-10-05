@@ -520,6 +520,8 @@ def _hora_rewards(env) -> torch.Tensor:
                   torque=h.torque_penalty_scale, work=h.work_penalty_scale)
     terms = {k: torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0) for k, v in terms.items()}
     reward = hp.combine_reward(terms, scales)
+    if h.ppo_group_info:  # rl_games group_advantage_norm reads it from the step infos
+        env.extras["ppo_group"] = _design_idx(env)
     if env._hora_rscale is not None:
         reward = env._hora_rscale.normalize(reward, _design_idx(env))
         env.extras["reward_rms_min"] = env._hora_rscale.rms.min()

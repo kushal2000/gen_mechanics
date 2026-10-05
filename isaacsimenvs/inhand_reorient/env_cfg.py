@@ -546,6 +546,10 @@ class HoraCfg:
     (``hora_profile.DesignRewardScale``)."""
     reward_norm_decay: float = 0.999
     reward_norm_floor: float = 0.05
+    ppo_group_info: bool = False
+    """Publish each env's design index in the step infos (``extras
+    ["ppo_group"]``) for the vendored rl_games' ``group_advantage_norm``
+    (advantages normalised within each design)."""
     token_obs: bool = False
     """Population path: the per-joint token observation of the team's
     joint-token transformer (``token_layout.py``; agent
