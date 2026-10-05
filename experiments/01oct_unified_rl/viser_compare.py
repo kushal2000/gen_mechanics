@@ -40,7 +40,11 @@ GEN_SHARPA_ACTUATOR = {"hand_effort_limit": 0.5, "hand_velocity_limit": 10.0, "h
 
 
 def spec_ref(hand: str) -> str:
-    return f"handonly:{GEN_SHARPA_POP}" if hand == "gen_sharpa" else f"{hand}_left_uniform_handonly"
+    """A hand name (wuji2) -> its uniform spec; a full registered name (e.g. wuji2_left_uniform_handonly_no_ring,
+    a missing-finger variant) is used as is."""
+    if hand == "gen_sharpa":
+        return f"handonly:{GEN_SHARPA_POP}"
+    return hand if "_handonly" in hand else f"{hand}_left_uniform_handonly"
 
 
 def newest(pattern: str) -> str:
