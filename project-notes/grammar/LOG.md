@@ -390,3 +390,9 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 - Token transformer on HORA with an MLP-tuned recipe (lr hit the 1e-2 cap) and 40-120 min: fails solo; pair holds up to ~6-8 s, ~0.15 rotations; 4 and 8 hands do not learn; held-out zero-shot worse than doing nothing.
 - Collaborator's working recipe: lr 1e-4, e_clip 0.1, 2 mini-epochs, d_model 128, SAPG 6 blocks, 24,576 envs, ~2 B steps per generation. Fair test launched with that recipe, 6 h, solo allegro first, MLP reference at equal steps.
 - Committed the approved per-design advantage normalisation (e4dee41 rl_games vendored, a991fae env flag); 471 tests pass.
+
+## GET-Zero distillation, first round (2026-10-05)
+
+- Six solo MLP experts (allegro, sharpa, leap, founders 416/204/234) distilled by DAgger into one token transformer (d128, L4): the student reaches 94-105% of every expert. Allegro: student 13.3 s holding / 1.27 rotations per episode vs expert 13.45 s / 1.33 -- the first transformer in this project to perform the task, ~8x the best RL-trained transformer.
+- Five experts never learned to hold (flick and drop in 0.3-1.8 s; doing nothing holds 14.5-18.9 s) because their grasp caches were palm-up seeded; the student copies them, and zero-shot on 6 unseen hands is 2-29% of the zero-action holding time.
+- Next: opposition-seeded grasp caches for every candidate, stricter expert keep rule, redistil on 8+ hands spanning all grammar variants.

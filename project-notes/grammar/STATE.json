@@ -367,7 +367,7 @@
     {
       "id": "I46",
       "status": "in_progress",
-      "hypothesis": "GET-Zero-style pipeline (Patel & Song 2024): ~8 training hands (allegro, sharpa, leap projections + ~5 viable grammar designs) get solo MLP experts under HORA; DAgger distillation into the token transformer; evaluate student vs expert on training hands and zero-shot vs zero-action floor on 2-4 held-out hands.",
+      "hypothesis": "GET-Zero-style pipeline (Patel & Song 2024): ~8 training hands (allegro, sharpa, leap projections + ~5 viable grammar designs) get solo MLP experts under HORA; DAgger distillation into the token transformer; evaluate student vs expert on training hands and zero-shot vs zero-action floor on 2-4 held-out hands. RESULT 1 (8087f66..2ed376e, ~9 GPU-h): DAgger distillation into the token transformer reaches 94-105% of each of 6 experts; allegro student 13.3 s / 1.27 rotations (first transformer to do the task; 8x the RL transformer). But 5/6 experts flick-and-drop (0.3-1.8 s vs 14.5-18.9 s zero-action) because their grasp caches were palm-up seeded, so held-out zero-shot is 2-29% of the zero-action time. Next: opposition-seeded grasp caches for all candidates, stricter expert keep rule (>= 50% of zero-action holding and >= 0.3 rotations), redistil on 8+ hands across all grammar variants, >= 4 held-out hands.",
       "decision": null,
       "evidence": ""
     }
