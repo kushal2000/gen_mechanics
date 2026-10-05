@@ -8,7 +8,8 @@ periodic checkpoint (``<exp>/nn/last_<name>_ep_<E>_rew_<R>.pth``, every
 
     {"scalars": {tag: [[frame, value], ...]},          # every `every`-th point
      "checkpoints": [{"file", "epoch", "frame", "cols",
-                      "rows": [{"mean", "min", "max"}, ...]}]}
+                      "rows": [{"mean", "min", "max"}, ...],
+                      "values": [[log-std per action column], ...]}]}
 
 ``rows`` has one entry per log-std row: one for ``fixed_sigma: fixed``, one
 per SAPG exploration block for ``coef_cond``. ``cols`` are the action
@@ -68,7 +69,7 @@ def checkpoint_logstd(path: Path, columns=None) -> dict:
         v = r[cols] if cols else r
         stats.append({"mean": float(v.mean()), "min": float(v.min()), "max": float(v.max())})
     return {"file": Path(path).name, "epoch": int(ck.get("epoch", -1)), "frame": int(ck.get("frame", -1)),
-            "cols": cols, "rows": stats}
+            "cols": cols, "rows": stats, "values": [[round(float(x), 4) for x in r] for r in rows]}
 
 
 def _checkpoints(run_dir: Path) -> list[Path]:
