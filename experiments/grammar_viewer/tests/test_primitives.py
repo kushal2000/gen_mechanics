@@ -99,7 +99,7 @@ def test_capsule_conventions():
 def test_quaternion_roundtrip():
     rng = np.random.default_rng(1)
     from hand_sampler.grammar.fk import rpy_to_matrix
-    from viewer import quat_to_mat  # the viewer's inverse
+    from viewer_full import quat_to_mat  # the viewer's inverse
     for _ in range(50):
         R = rpy_to_matrix(rng.uniform(-math.pi, math.pi, 3))
         q = gm.mat_to_wxyz(R)

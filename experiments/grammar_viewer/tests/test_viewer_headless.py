@@ -8,7 +8,7 @@ import pytest
 
 viser = pytest.importorskip("viser")
 
-import viewer as V  # noqa: E402
+import viewer_full as V  # noqa: E402
 
 
 def _free_port() -> int:

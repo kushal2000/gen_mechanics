@@ -1,6 +1,8 @@
-"""Interactive viser viewer for the hand-kinematics grammar.
+"""Interactive viser viewer for the hand-kinematics grammar: the FULL version
+(seeds, gallery, mutation spread, analysis, export). `viewer.py` is the
+essential one.
 
-    .venv_viewer/bin/python experiments/grammar_viewer/viewer.py --port 8080 --host 127.0.0.1
+    .venv_viewer/bin/python experiments/grammar_viewer/viewer_full.py --port 8080 --host 127.0.0.1
 
 Then open http://127.0.0.1:8080. See README.md in this folder for the panels.
 CPU only: no Isaac, Kit or GPU is touched (the simulator's envelope oracle is
