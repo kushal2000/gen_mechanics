@@ -32,6 +32,7 @@ from hand_sampler.grammar import limits as L
 from hand_sampler.grammar.canonical import phenotype_hash
 from hand_sampler.grammar.derive import (
     EVOLUTION_OPERATORS,
+    EVOLUTION_OPERATORS_V1,
     MINIMAL_STRUCTURAL_OPERATORS,
     OPERATORS,
     SMALL_STEP_OPERATORS,
@@ -88,7 +89,9 @@ def _admitted(d) -> bool:
 # 1. limits=None is byte-identical; UNLIMITED equals None
 # ---------------------------------------------------------------------------
 
-POOLS = {"evo": EVOLUTION_OPERATORS, "default": None, "minimal": MINIMAL_STRUCTURAL_OPERATORS + SMALL_STEP_OPERATORS}
+# "evo" is the 17-operator pool the digests below were recorded with
+# (EVOLUTION_OPERATORS before step_segment_length was added).
+POOLS = {"evo": EVOLUTION_OPERATORS_V1, "default": None, "minimal": MINIMAL_STRUCTURAL_OPERATORS + SMALL_STEP_OPERATORS}
 
 
 def sample_digest(name, n, **kw):
@@ -125,12 +128,12 @@ def tracked_digest(name, n_chains, n_steps, **kw):
         rng = np.random.default_rng(2000 + c)
         d = sample_derivation(c, dist)
         for k in range(n_steps):
-            child, op = vary_tracked(d, rng, dist, EVOLUTION_OPERATORS, **kw)
+            child, op = vary_tracked(d, rng, dist, EVOLUTION_OPERATORS_V1, **kw)
             h.update(op.encode())
             if child is not None:
                 d = child
                 h.update(derivation_to_json(d).encode())
-            op2 = EVOLUTION_OPERATORS[k % len(EVOLUTION_OPERATORS)]
+            op2 = EVOLUTION_OPERATORS_V1[k % len(EVOLUTION_OPERATORS_V1)]
             res = apply_operator(d, rng, dist, op2, **kw)
             h.update(b"N" if res is None else derivation_to_json(res).encode())
     return h.hexdigest()[:16]
