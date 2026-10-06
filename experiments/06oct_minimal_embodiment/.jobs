@@ -1,1 +1,2 @@
 wuji2 only_thumb_index 11725, only_middle_ring 11726 (5000 epochs, from scratch, 1 seed)
+resubmitted after the launcher's spec-name guard was widened: thumb+index 11734, middle+ring 11735

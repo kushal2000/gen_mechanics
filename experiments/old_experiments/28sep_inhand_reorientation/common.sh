@@ -179,8 +179,9 @@ export NUM_ASSETS_PER_TYPE="${NUM_ASSETS_PER_TYPE:-100}"    # unused while OBJEC
 # the contract; assembly._verify_articulation_view is what actually catches a robot
 # with the wrong joint count.
 # multi:<spec>+<spec>+...  several registered hand-only specs in one scene (robots/multi_hand.py).
+# *_handonly_<tag>           a reduced variant of a hand-only spec (make_missing_fingers.py: no_<finger>, only_<a>_<b>).
 if [[ -n "${ROBOT_SPEC:-}" && "${ROBOT_SPEC}" != handonly:* && "${ROBOT_SPEC}" != *_handonly \
-      && "${ROBOT_SPEC}" != multi:* ]]; then
+      && "${ROBOT_SPEC}" != *_handonly_* && "${ROBOT_SPEC}" != multi:* ]]; then
     echo "[common] ROBOT_SPEC must be 'handonly:<population>' or a registered" \
          "'*_handonly' spec for this task; got ${ROBOT_SPEC}" >&2
     exit 1
