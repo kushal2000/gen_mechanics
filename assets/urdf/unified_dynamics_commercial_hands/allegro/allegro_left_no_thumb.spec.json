@@ -1,0 +1,258 @@
+{
+ "hand": "allegro_no_thumb",
+ "side": "left",
+ "urdf": "assets/urdf/unified_dynamics_commercial_hands/allegro/allegro_left_no_thumb.urdf",
+ "palm_body": "base_link",
+ "hand_joint_names": [
+  "joint_0_0",
+  "joint_1_0",
+  "joint_2_0",
+  "joint_3_0",
+  "joint_4_0",
+  "joint_5_0",
+  "joint_6_0",
+  "joint_7_0",
+  "joint_8_0",
+  "joint_9_0",
+  "joint_10_0",
+  "joint_11_0"
+ ],
+ "joint_limits": {
+  "joint_0_0": [
+   -0.47,
+   0.47
+  ],
+  "joint_1_0": [
+   -0.196,
+   1.61
+  ],
+  "joint_2_0": [
+   -0.174,
+   1.709
+  ],
+  "joint_3_0": [
+   -0.227,
+   1.618
+  ],
+  "joint_4_0": [
+   -0.47,
+   0.47
+  ],
+  "joint_5_0": [
+   -0.196,
+   1.61
+  ],
+  "joint_6_0": [
+   -0.174,
+   1.709
+  ],
+  "joint_7_0": [
+   -0.227,
+   1.618
+  ],
+  "joint_8_0": [
+   -0.47,
+   0.47
+  ],
+  "joint_9_0": [
+   -0.196,
+   1.61
+  ],
+  "joint_10_0": [
+   -0.174,
+   1.709
+  ],
+  "joint_11_0": [
+   -0.227,
+   1.618
+  ]
+ },
+ "hand_default_joint_pos": {
+  "joint_0_0": 0.0,
+  "joint_1_0": 0.0,
+  "joint_2_0": 0.0,
+  "joint_3_0": 0.0,
+  "joint_4_0": 0.0,
+  "joint_5_0": 0.0,
+  "joint_6_0": 0.0,
+  "joint_7_0": 0.0,
+  "joint_8_0": 0.0,
+  "joint_9_0": 0.0,
+  "joint_10_0": 0.0,
+  "joint_11_0": 0.0
+ },
+ "fingertip_body_names": [
+  "link_3_0",
+  "link_7_0",
+  "link_11_0"
+ ],
+ "fingertip_offsets": [
+  [
+   0.0,
+   0.0,
+   0.0387
+  ],
+  [
+   0.0,
+   0.0,
+   0.0387
+  ],
+  [
+   0.0,
+   0.0,
+   0.0387
+  ]
+ ],
+ "thumb_tip": null,
+ "palm_frame": [
+  [
+   1.0,
+   0.0,
+   0.0
+  ],
+  [
+   0.0,
+   1.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_frame_snapped": [
+  "x->+x",
+  "z->+z"
+ ],
+ "palm_centre_in_palm_body": [
+  -0.009149999999999998,
+  0.0,
+  -0.047920000000000004
+ ],
+ "palm_extents_ours": [
+  0.0417,
+  0.112,
+  0.09464
+ ],
+ "palm_centre_ours": [
+  -0.009149999999999998,
+  0.0,
+  -0.047920000000000004
+ ],
+ "adjacent_links": {
+  "base_link": [
+   "link_0_0",
+   "link_4_0",
+   "link_8_0",
+   "palm",
+   "link_9_0",
+   "link_5_0",
+   "link_1_0",
+   "wrist"
+  ],
+  "link_0_0": [
+   "base_link",
+   "link_1_0"
+  ],
+  "link_10_0": [
+   "link_11_0",
+   "link_9_0"
+  ],
+  "link_11_0": [
+   "link_10_0"
+  ],
+  "link_1_0": [
+   "link_0_0",
+   "link_2_0",
+   "base_link"
+  ],
+  "link_2_0": [
+   "link_1_0",
+   "link_3_0"
+  ],
+  "link_3_0": [
+   "link_2_0"
+  ],
+  "link_4_0": [
+   "base_link",
+   "link_5_0"
+  ],
+  "link_5_0": [
+   "link_4_0",
+   "link_6_0",
+   "base_link"
+  ],
+  "link_6_0": [
+   "link_5_0",
+   "link_7_0"
+  ],
+  "link_7_0": [
+   "link_6_0"
+  ],
+  "link_8_0": [
+   "base_link",
+   "link_9_0"
+  ],
+  "link_9_0": [
+   "link_10_0",
+   "link_8_0",
+   "base_link"
+  ],
+  "palm": [
+   "base_link"
+  ],
+  "wrist": [
+   "base_link"
+  ]
+ },
+ "overlap_at_home_mm": {},
+ "fingertip_pos_home_ours": {
+  "link_3_0": [
+   0.0091,
+   0.053,
+   0.1548
+  ],
+  "link_7_0": [
+   0.0091,
+   0.0,
+   0.1574
+  ],
+  "link_11_0": [
+   0.0091,
+   -0.053,
+   0.1548
+  ],
+  "link_15_0": [
+   0.0146,
+   -0.1231,
+   -0.0342
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.0775033248319064,
+ "armature": 0.00058,
+ "palm_filter_depth": 2,
+ "effort_limit": 0.5,
+ "velocity_limit": 10.0,
+ "link_density_kg_m3": 1750.0,
+ "friction": 0.5,
+ "missing_finger": {
+  "finger": "thumb",
+  "removed_joints": [
+   "joint_12_0",
+   "joint_13_0",
+   "joint_14_0",
+   "joint_15_0",
+   "joint_15_0_tip"
+  ],
+  "removed_links": [
+   "link_12_0",
+   "link_13_0",
+   "link_14_0",
+   "link_15_0",
+   "link_15_0_tip"
+  ]
+ }
+}
