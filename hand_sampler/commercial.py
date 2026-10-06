@@ -487,7 +487,10 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
                         f"{D.MIN_MOUNT_SEPARATION*1000:.0f} mm floor: at the floor "
                         f"this hand's LINKS still met")
     for k, ((d, _pts, _axes), mount) in enumerate(zip(prepared, mounts)):
-        slip = float(np.linalg.norm(D.mount_position(mount)[1:] - want[k])) * 1000
+        # `want` is about the base centroid, which is where PALM_CENTRE
+        # goes -- so take the standoff back out before comparing.
+        here = D.mount_position(mount)[1:] - D.PALM_CENTRE[1:]
+        slip = float(np.linalg.norm(here - want[k])) * 1000
         if slip > 1.0:
             notes.append(f"{d.name}: base {slip:.0f} mm from where the vendor "
                          f"puts it, after the grid and the motor floor")

@@ -51,10 +51,15 @@ def test_a_bigger_palm_weighs_more(hands):
 def test_the_palm_is_most_of_the_hands_mass(hands):
     """Not a detail: leaving it out removed the majority of the hand.
 
-    Per design it ranges from 38% to 80% of the total, so the floor is what to
-    pin -- it outweighs every link put together in 82% of the population, but
-    a small palm on long fingers does not, and asserting that per design is
-    simply false.
+    Per design it runs 33% to 61% of the total, so the floor is what to pin: a
+    small palm on long fingers does not outweigh its own links, and asserting
+    that per design is simply false.
+
+    It used to run 38% to 80%, and outweigh every link put together in 82% of
+    the population rather than 16%. The palm did not lose a job, it lost 20 mm
+    of plate outboard of every base -- PALM_RIM replaced growing the hull by
+    PALM_MIN_RADIUS, so the plate stops at the fingers instead of reaching a
+    whole first link past them.
     """
     fractions = []
     for hand in hands:
@@ -63,7 +68,7 @@ def test_the_palm_is_most_of_the_hands_mass(hands):
                     for f in hand.fingers for s in f.segments)
         fractions.append(palm / (palm + links))
     assert min(fractions) > 0.3, f"lightest palm is only {min(fractions):.1%} of its hand"
-    assert sorted(fractions)[len(fractions) // 2] > 0.5
+    assert sorted(fractions)[len(fractions) // 2] > 0.4
 
 
 def test_the_palm_box_sits_where_palm_center_offset_says(hands):
@@ -250,3 +255,46 @@ def test_sharpas_palm_keypoints_sit_at_its_measured_box():
     centre, edges = _box_from_keypoints(kp)
     assert centre[2] == pytest.approx(0.095 + rpc.PALM_BOX_CENTER_M[2], abs=1e-6)
     assert np.allclose(np.linalg.norm(edges, axis=1), rpc.PALM_EXTENTS_M, atol=1e-9)
+
+
+def test_no_legal_mount_can_put_the_palm_in_the_arm():
+    """Four constants keep the hand off the arm, and nothing checks them.
+
+    WRIST_STANDOFF slides the fingers forward of the flange, MAX_MOUNT_RADIUS
+    says how far back the ring still reaches, PALM_RIM adds to that, and
+    WRIST_NOGO trims the bearings where it would be worst. They are set in four
+    places and agree only by arithmetic: the hand went 17 mm into the arm when
+    they did not. So sweep the WHOLE legal grid against the one number the arm
+    owns -- its last surface, which measuring the iiwa14's meshes in this frame
+    puts at exactly -FLANGE_TO_PALM_Z_M.
+
+    On the outline rather than on the algebra, so it tests the palm that gets
+    built.
+    """
+    face = -rpc.FLANGE_TO_PALM_Z_M
+    q, a = design_space.PALM_QUANTUM, design_space.ANGLE_QUANTUM
+    n_r = int(round((design_space.MAX_MOUNT_RADIUS
+                     - design_space.PALM_MIN_RADIUS) / q))
+    worst, where = float("inf"), None
+    for i in range(n_r + 1):
+        r = design_space.PALM_MIN_RADIUS + i * q
+        for k in range(int(round(2.0 * np.pi / a))):
+            bearing = k * a
+            if design_space.in_wrist_nogo(bearing):
+                continue
+            hand = design_space.Hand(
+                design_space.Palm(design_space.PALM_THICKNESS),
+                (design_space.Finger(design_space.Mount(r, bearing, bearing),
+                                     (design_space.Segment(
+                                         design_space.Joint(design_space.FLEXION),
+                                         design_space.MIN_LINK_LENGTH),)),))
+            rear = float(design_space.palm_outline(hand)[:, 1].min())
+            if rear < worst:
+                worst, where = rear, (r, bearing)
+    assert worst > face, (
+        f"a mount at {where[0]*1000:.0f} mm, {np.degrees(where[1]):.0f} deg puts "
+        f"the palm at z = {worst*1000:.1f} mm, behind the arm's face at "
+        f"{face*1000:.0f} mm")
+    # And not merely by a hair: the margin is what the wedge is bought for.
+    assert worst - face > 0.005, \
+        f"only {(worst - face)*1000:.1f} mm of clearance at {where}"

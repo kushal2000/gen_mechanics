@@ -481,17 +481,38 @@ def test_min_link_length_allows_a_compact_knuckle():
     assert gap == pytest.approx(design_space.MIN_LINK_LENGTH)
     assert gap < 2 * design_space.CAPSULE_RADIUS, "axes are not closer than the link is wide"
 
+def _distance_to_outline(ring, point):
+    """Shortest distance from ``point`` to the closed polygon ``ring``.
+
+    To the EDGES, not to the vertices: a vertex is as far as 0.1 mm from the
+    true outline at the drawing resolution, and a nearest-vertex distance would
+    report that gap as a margin the palm does not have.
+    """
+    a, b = ring, np.roll(ring, -1, axis=0)
+    e = b - a
+    t = np.clip(((point - a) * e).sum(axis=1)
+                / np.maximum((e * e).sum(axis=1), 1e-18), 0.0, 1.0)
+    return float(np.min(np.linalg.norm(a + t[:, None] * e - point, axis=1)))
+
+
 def test_every_mount_stays_inside_the_palm():
     """What replaced test_mounts_stay_clear_of_face_edges.
 
-    There are no faces and no edge margin: the palm is the hull of the mounts
-    GROWN by PALM_MIN_RADIUS, so every mount is exactly that far inside the
-    outline by construction. This checks the construction holds under drift
-    rather than checking a margin that no longer exists.
+    There are no faces and no edge margin: the palm is the hull of its own disc
+    and of a PALM_RIM circle about each mount, so every mount is exactly one rim
+    inside the outline by construction. This checks the construction holds under
+    drift rather than checking a margin that no longer exists.
+
+    The rim is also what stops the plate from burying the first link, so how far
+    the outline reaches matters as much: it must stop one rim past the outermost
+    mount, and never grow out over its own fingers the way it used to. A mount
+    further in than the rim is fine and says nothing -- it is simply not on the
+    hull, which some thumb always is not.
     """
     rng = random.Random(4)
-    hand = pop[0] if False else gen_init_pop.seed_population(0, 1)[0]
-    worst = float("inf")
+    hand = gen_init_pop.seed_population(0, 1)[0]
+    sag = 1e-4                        # the hull of 32 samples is inscribed
+    worst, overgrown = float("inf"), 0.0
     for _ in range(1500):
         child = mutate_design.mutate(rng, hand)
         if child:
@@ -499,10 +520,17 @@ def test_every_mount_stays_inside_the_palm():
         ring = design_space.palm_outline(hand)
         for f in hand.fingers:
             here = design_space.mount_position(f.mount)[1:]
-            worst = min(worst, float(np.min(np.linalg.norm(ring - here, axis=1))))
-    assert worst >= design_space.PALM_MIN_RADIUS - 1e-9, (
-        f"a mount came {worst * 1000:.1f} mm from the palm edge, the palm is "
-        f"grown {design_space.PALM_MIN_RADIUS * 1000:.0f} mm past every one")
+            worst = min(worst, _distance_to_outline(ring, here))
+        reach = np.linalg.norm(ring - design_space.PALM_CENTRE[1:], axis=1).max()
+        room = max(max(f.mount.radius for f in hand.fingers),
+                   design_space.PALM_MIN_RADIUS) + design_space.PALM_RIM
+        overgrown = max(overgrown, float(reach) - room)
+    assert worst >= design_space.PALM_RIM - sag, (
+        f"a mount came {worst * 1000:.2f} mm from the palm edge, inside the "
+        f"{design_space.PALM_RIM * 1000:.0f} mm rim")
+    assert overgrown <= sag, (
+        f"the outline reached {overgrown * 1000:.1f} mm past the last mount's "
+        f"own rim: the palm is growing out over its fingers again")
 
 
 def test_move_mount_reaches_all_the_way_round_the_palm():
@@ -557,9 +585,13 @@ def test_a_mount_means_the_same_place_on_any_palm():
     so a mount means one place and finger legality never consults the palm.
     """
     mount = design_space.Mount(0.040, math.radians(30), math.radians(30))
+    # Polar about PALM_CENTRE, which is NOT the frame origin: the frame's origin
+    # is where the arm bolts on, and the fingers are centred WRIST_STANDOFF
+    # forward of it so the hand clears the arm.
     assert np.allclose(design_space.mount_position(mount),
-                       [0.0, 0.040 * math.sin(math.radians(30)),
-                        0.040 * math.cos(math.radians(30))])
+                       design_space.PALM_CENTRE
+                       + [0.0, 0.040 * math.sin(math.radians(30)),
+                          0.040 * math.cos(math.radians(30))])
     thin, thick = design_space.PALM_THICKNESS_RANGE
     for t in (thin, thick):
         hand = design_space.Hand(design_space.Palm(t), (design_space.Finger(

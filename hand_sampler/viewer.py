@@ -99,8 +99,9 @@ def describe(hand: design_space.Hand, last_op: str | None) -> str:
         f"palm  {design_space.palm_extents(hand)[0]*1000:.0f} thick, "
         f"{design_space.palm_extents(hand)[1]*1000:.0f} x "
         f"{design_space.palm_extents(hand)[2]*1000:.0f} mm across  "
-        f"*(derived: the hull of the mounts, grown "
-        f"{design_space.PALM_MIN_RADIUS*1000:.0f} mm)*",
+        f"*(derived: the hull of the "
+        f"{design_space.PALM_MIN_RADIUS*1000:.0f} mm disc and the mounts, "
+        f"+{design_space.PALM_RIM*1000:.0f} mm rim)*",
         f"mount separation  {', '.join(f'{d*1000:.0f}' for d in seps)} mm"
         + ("   *(optimum measured at 40-50 mm)*" if seps else ""),
         "",

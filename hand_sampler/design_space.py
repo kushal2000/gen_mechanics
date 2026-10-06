@@ -20,12 +20,25 @@ step ``move_mount`` takes."""
 PALM_MIN_RADIUS = 0.020
 """The palm's own disc: the smallest it can ever be, around its centre.
 
-A palm is not a stored shape any more. It is the convex hull of where the
-fingers START, grown outward by this radius -- so one finger gives a disc, two
-give a stadium, and more give a rounded convex blob. Growing the hull rather
-than fitting inside it is what makes the outline smooth with no corners to
-fillet, and it puts every mount exactly this far inside the edge, which is why
-there is no separate edge margin any more.
+A palm is not a stored shape any more. It is the convex hull of THIS DISC and
+of where the fingers START, so a hand with its fingers drawn in is just the
+disc, and spreading them pulls the outline out to meet them. The disc is in the
+hull rather than merely bounding the mounts, which is what gives a palm a body
+even when every finger crowds one side of it.
+
+Also the inner bound of the mount annulus: a finger starts on this disc's rim
+at the closest, never inside it.
+"""
+
+PALM_RIM = 0.005
+"""How far the plate carries PAST a finger's base, and the radius its corners
+are rounded to.
+
+The outline used to be grown by PALM_MIN_RADIUS, which left 20 mm of plate
+outboard of every base -- enough to bury a whole first link, since the shortest
+is 20 mm and a capsule only 15 mm wide. The palm stops at the bases now, with
+one quantum of rim: enough to round every corner and to leave a mount material
+to bolt to, not enough to hide what it carries.
 """
 
 MAX_MOUNT_RADIUS = 0.070
@@ -35,16 +48,37 @@ annulus a mount lives in.
 Replaces the old width and length bounds with one number, which is what polar
 coordinates make natural. 70 mm because the vendor hands need 62 (LEAP), 45
 (MIDAS) and 41 (wuji2) about their own base centroids.
+
+Tied to WRIST_STANDOFF and PALM_RIM, which is not obvious: those two and the
+50 mm the arm sits behind the palm frame add to exactly this 70 mm, so a base
+at the far rim pointing straight down the wrist bearing lands its rim exactly on
+the arm. Raising this without raising the standoff puts the far ring INSIDE the
+arm, and WRIST_NOGO is too blunt to catch it.
 """
 
-WRIST_NOGO = math.radians(60.0)
+WRIST_NOGO = math.radians(45.0)
 """A wedge facing the wrist where no finger may start -- the arm is there.
 
 Centred on WRIST_BEARING and this wide in total, so a bearing within half of it
-is refused. 60 degrees is a starting value and NOT yet reconciled with the
-vendor hands: measured about their own base centroids, LEAP's thumb sits 25
-degrees from the wrist direction and MIDAS's 27, so both would be refused by a
-60 degree wedge. wuji2's is 33 and survives.
+is refused. As narrow as it can be and still mean anything, which is narrower
+than it sounds: on the 15 degree angle grid a 45 degree wedge and the 60 degree
+one it replaces forbid the SAME three bearings -- 165, 180 and 195 -- so what
+narrowing buys is margin, not legal ground.
+
+The margin is the point. Every vendor thumb snaps to 30 degrees off the wrist,
+LEAP's and wuji2's and MIDAS's alike, so all three clear 45 degrees by half a
+quantum where 60 admitted them only on the strict inequality -- loosen the < in
+in_wrist_nogo to a <= and all three hands become unfittable.
+
+The three it does forbid are the three with no room. A base at
+MAX_MOUNT_RADIUS straight down the wrist bearing puts the palm's rim at exactly
+z = -50 mm, the arm's own face, because WRIST_STANDOFF - PALM_RIM + 50 mm comes
+to 70 mm on the nose; 165 and 195 clear by 2.4 mm, and the first bearing this
+wedge allows, 150, clears by 9.4.
+
+Keeping a hand out of the ARM is still WRIST_STANDOFF's job rather than this
+one. A wedge can only trim the worst bearings: it says nothing about how far out
+a base sits, and nothing at all about which way the finger then points.
 """
 
 WRIST_BEARING = math.pi
@@ -53,6 +87,23 @@ WRIST_BEARING = math.pi
 Bearings are measured from +z, the direction a row of fingers tends to point, so
 pi puts the wrist directly behind the hand.
 """
+
+WRIST_STANDOFF = 0.025
+"""How far forward of the palm FRAME the fingers are centred, along +z.
+
+The frame's origin is where the arm bolts on, and the arm's own last surface
+sits 50 mm behind it -- rpc.FLANGE_TO_PALM_Z_M, and measuring the iiwa14's
+meshes in this frame puts its frontmost vertex at exactly -50 mm. So everything
+the hand owns has to live forward of there, and centring the fingers on the
+origin did not: a hand whose thumb reaches back, which every vendor hand's
+does, put that thumb 17 mm inside the arm. Sliding the whole polar centre
+forward moves palm and fingers together and leaves the bolt pattern alone.
+"""
+
+PALM_CENTRE = np.array([0.0, 0.0, WRIST_STANDOFF])
+"""Where the fingers are centred, in the palm frame. Everything polar is about
+this point rather than about the frame's origin."""
+
 # --- links ------------------------------------------------------------------
 
 LINK_QUANTUM = 0.005
@@ -362,8 +413,8 @@ class Finger:
 class Palm:
     """All that is stored of a palm. Its OUTLINE is derived from the mounts.
 
-    See ``palm_outline``: a palm is the convex hull of where its fingers start,
-    grown by PALM_MIN_RADIUS. There is nothing here to mutate, which is why
+    See ``palm_outline``: a palm is the convex hull of its own minimum disc and
+    of where its fingers start. There is nothing here to mutate, which is why
     there is no longer a perturb_palm.
     """
 
@@ -475,12 +526,12 @@ def in_wrist_nogo(bearing: float) -> bool:
 def mount_position(mount: Mount) -> np.ndarray:
     """Where the finger starts, in the palm frame.
 
-    Polar about the palm centre, and always in the midplane: x is 0 because a
-    palm is a flat plate and a finger starts on it, not above or below it.
+    Polar about PALM_CENTRE, and always in the midplane: x is 0 because a palm
+    is a flat plate and a finger starts on it, not above or below it.
     """
-    return np.array([0.0,
-                     mount.radius * math.sin(mount.bearing),
-                     mount.radius * math.cos(mount.bearing)])
+    return PALM_CENTRE + np.array([0.0,
+                                   mount.radius * math.sin(mount.bearing),
+                                   mount.radius * math.cos(mount.bearing)])
 
 
 def mount_direction(mount: Mount) -> np.ndarray:
@@ -492,53 +543,38 @@ def mount_direction(mount: Mount) -> np.ndarray:
     return np.array([0.0, math.sin(mount.facing), math.cos(mount.facing)])
 
 
-def palm_outline(hand: "Hand", arc: int = 12) -> np.ndarray:
+def palm_outline(hand: "Hand", arc: int = 32) -> np.ndarray:
     """The palm as (y, z) vertices, counterclockwise. Derived, never stored.
 
-    The convex hull of where the fingers start, grown outward by
-    PALM_MIN_RADIUS. Growing it is what makes the shape smooth: every straight
-    run is an edge of the hull pushed out, and every join between two runs is a
-    circular arc about a hull vertex, so there is no corner anywhere and nothing
-    to fillet. One finger gives a disc and two give a stadium, both of which
-    fall out of the same construction rather than needing their own case.
+    The convex hull of two kinds of circle: the palm's own disc, of
+    PALM_MIN_RADIUS about PALM_CENTRE, and a disc of PALM_RIM about every place
+    a finger starts. So the plate always has a body, it reaches out to each
+    base, and it STOPS there -- one rim past the base, where it used to grow a
+    full 20 mm and swallow the first link whole. Hulling circles rather than
+    points is what keeps the outline smooth: there is no corner anywhere left
+    to fillet, and one finger or six fall out of the same construction.
 
-    ``arc`` is how many segments each corner arc is drawn with -- a drawing
-    resolution, not a design parameter.
+    ``arc`` is how many segments a full circle is drawn with -- a drawing
+    resolution, not a design parameter. The hull of the samples is inscribed in
+    the true outline, by 0.1 mm at the default.
     """
-    pts = np.array([mount_position(f.mount)[1:] for f in hand.fingers])
-    hull = _hull_ccw(pts)
-    r = PALM_MIN_RADIUS
-    if len(hull) == 1:                       # one finger: a disc about it
-        a = np.linspace(0.0, 2.0 * math.pi, 4 * arc, endpoint=False)
-        return hull[0] + r * np.column_stack([np.cos(a), np.sin(a)])
-
-    def outward(a, b):
-        """Outward normal of the edge a -> b of a counterclockwise hull."""
-        e = b - a
-        n = np.array([e[1], -e[0]])
-        return n / max(float(np.linalg.norm(n)), 1e-12)
-
-    out = []
-    n = len(hull)
-    for i, pt in enumerate(hull):
-        prv, nxt = hull[(i - 1) % n], hull[(i + 1) % n]
-        n_in = outward(prv, pt)              # the edge arriving here
-        n_out = outward(pt, nxt)             # the edge leaving
-        a_in = math.atan2(n_in[1], n_in[0])
-        sweep = (math.atan2(n_out[1], n_out[0]) - a_in) % (2.0 * math.pi)
-        # Two hull points are a stadium: the edges run there and back, so each
-        # cap is exactly half a turn and the formula above already says so.
-        for k in range(arc + 1):
-            a = a_in + sweep * k / arc
-            out.append(pt + r * np.array([math.cos(a), math.sin(a)]))
-    return np.array(out)
+    a = np.linspace(0.0, 2.0 * math.pi, arc, endpoint=False)
+    circle = np.column_stack([np.sin(a), np.cos(a)])
+    pts = [PALM_CENTRE[1:] + PALM_MIN_RADIUS * circle]
+    pts += [mount_position(f.mount)[1:] + PALM_RIM * circle
+            for f in hand.fingers]
+    return _hull_ccw(np.vstack(pts))
 
 
 def _hull_ccw(pts: np.ndarray) -> np.ndarray:
     """Convex hull of 2-D points, counterclockwise, duplicates dropped.
 
-    Monotone chain. Written out rather than taken from scipy because a hand can
-    have two fingers, and scipy's hull refuses anything it cannot triangulate.
+    Monotone chain. Kept hand-written rather than handed to scipy for the
+    winding: ``palm_hull`` extrudes this ring and its faces are wound off the
+    order the points come back in. It also used to be needed because a two
+    finger hand hulled two points and scipy refuses what it cannot triangulate,
+    which ``palm_outline`` no longer asks of it -- the minimum disc puts 32
+    points in whatever the hand has.
     """
     uniq = np.unique(np.round(pts, 9), axis=0)
     order = np.lexsort((uniq[:, 1], uniq[:, 0]))

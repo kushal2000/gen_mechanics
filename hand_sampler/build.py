@@ -573,8 +573,10 @@ def write_palm_mesh(hand: design_space.Hand, path) -> "pathlib.Path":
     Convex by construction, so a loader can take it as one collision shape.
     """
     verts, faces = design_space.palm_hull(hand)
-    lines = ["# generated palm: convex hull of the finger origins, grown by "
-             f"{design_space.PALM_MIN_RADIUS * 1000:.0f} mm"]
+    lines = ["# generated palm: convex hull of the "
+             f"{design_space.PALM_MIN_RADIUS * 1000:.0f} mm minimum disc and "
+             f"the finger origins, with a "
+             f"{design_space.PALM_RIM * 1000:.0f} mm rim"]
     lines += [f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}" for v in verts]
     lines += ["f " + " ".join(str(i + 1) for i in f) for f in faces]
     path = pathlib.Path(path)

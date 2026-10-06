@@ -220,8 +220,12 @@ def _free_mount_sites(hand: design_space.Hand) -> list[design_space.Mount]:
                 continue
             pos = design_space.mount_position(
                 design_space.Mount(r, bearing, bearing))
+            # The same tolerance check_packing uses. A bare >= is STRICTER
+            # than the validator by one epsilon, so a site sitting exactly on
+            # the floor was free or not depending on float noise -- and the
+            # noise moved when the polar centre did.
             if (np.linalg.norm(existing - pos, axis=1)
-                    >= design_space.MIN_MOUNT_SEPARATION).all():
+                    >= design_space.MIN_MOUNT_SEPARATION - 1e-9).all():
                 out.append(design_space.Mount(r, bearing, bearing))
     return out
 

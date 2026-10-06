@@ -60,8 +60,8 @@ def test_everything_sits_on_the_grammars_grid(hand):
             assert math.isclose(seg.length / ds.LINK_QUANTUM, round(seg.length / ds.LINK_QUANTUM))
             assert math.isclose(seg.joint.offset / ds.ANGLE_QUANTUM,
                                 round(seg.joint.offset / ds.ANGLE_QUANTUM), abs_tol=1e-9)
-    # the palm has no extents of its own to check: it is the hull of the mounts
-    # grown by PALM_MIN_RADIUS, so its size falls out of where they are
+    # the palm has no extents of its own to check: it is the hull of its own
+    # minimum disc and the mounts, so its size falls out of where they are
 
 
 def test_fingertips_land_near_sharpas(hand):
@@ -71,8 +71,12 @@ def test_fingertips_land_near_sharpas(hand):
     names = ("thumb", "index", "middle", "ring", "pinky")
     # SHARPA_TIPS_MM were measured with the WRIST at z = 0; a radial palm puts
     # its own centre there instead, so the whole hand sits one half-length
-    # further back. Compare shapes, not absolute positions.
-    shift = np.array([0.0, 0.0, 42.5])
+    # further back -- less WRIST_STANDOFF, which slides that centre forward
+    # again to keep the hand out of the arm. Compare shapes, not absolute
+    # positions. What is left is small: the best-fit shift of the five tips is
+    # 6 mm in z, so the standoff lands this hand about where SHARPA's own palm
+    # is, which is some corroboration that 25 mm is the right size for it.
+    shift = np.array([0.0, 0.0, 42.5 - ds.WRIST_STANDOFF * 1000.0])
     for name, finger in zip(names, hand.fingers):
         tip = ds.fingertip(finger, hand.palm) * 1000 + shift
         err = np.linalg.norm(tip - np.array(sharpa_capsule.SHARPA_TIPS_MM[name]))

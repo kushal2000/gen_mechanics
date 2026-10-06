@@ -103,6 +103,28 @@ def test_every_digit_has_a_real_fingertip(name):
 
 # --- what the fit costs, per hand -------------------------------------------
 
+@pytest.mark.parametrize("name", commercial.HANDS)
+def test_the_wrist_wedge_clears_every_vendor_thumb(name, fits):
+    """The wedge has to be narrow enough to admit the hands we are fitting.
+
+    Every vendor thumb snaps to exactly 30 degrees off the wrist bearing, so the
+    wedge's half-angle is what decides whether these hands exist in the grammar
+    at all. At 45 degrees total they clear by 7.5; at 60, the value this
+    replaced, they cleared only because in_wrist_nogo compares with a strict <.
+    """
+    hand, _ = fits[name]
+    for i, f in enumerate(hand.fingers):
+        gap = abs((f.mount.bearing - D.WRIST_BEARING + math.pi)
+                  % (2.0 * math.pi) - math.pi)
+        assert not D.in_wrist_nogo(f.mount.bearing), (
+            f"{name} finger {i} sits {math.degrees(gap):.0f} deg off the wrist, "
+            f"inside a {math.degrees(D.WRIST_NOGO):.0f} deg wedge")
+        assert gap > D.WRIST_NOGO / 2.0 + math.radians(5.0), (
+            f"{name} finger {i} clears the wedge by only "
+            f"{math.degrees(gap - D.WRIST_NOGO / 2.0):.1f} deg -- too close to "
+            f"call it admitted")
+
+
 def test_every_hand_needs_some_spreading_on_a_radial_palm():
     """A radial palm places a base at its OWN polar coordinate, snapped to a
     5 mm radius grid and a 15 deg bearing grid. The snap alone can move a base
