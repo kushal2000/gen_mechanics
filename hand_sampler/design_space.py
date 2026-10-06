@@ -160,11 +160,22 @@ MAX_FINGER_LENGTH = 0.200
 # --- joints -----------------------------------------------------------------
 
 ANGLE_QUANTUM = math.radians(15.0)
-"""Grid for the one angle a hand can still carry: an IMPORTED joint's offset.
+"""Grid for both of a mount's angles -- its BEARING and its FACING -- and for
+the one angle only an IMPORTED joint can carry, its offset.
 
-A generated joint has no angle at all -- it is a kind and a lean, both of which
-have their own alphabets. This survives for measured hands, whose assembly
-angles come off a vendor URDF and are checked against this grid.
+Chosen, not derived. A mount is polar and its two coordinates are gridded
+independently: the radius on PALM_QUANTUM, the bearing on this. So a mount
+position is NOT on any cartesian grid, and the resolution is not isotropic
+either -- one bearing step is 5.2 mm of arc at PALM_MIN_RADIUS, which is about
+the radial step, and 18.3 mm at MAX_MOUNT_RADIUS, which is 3.6 times coarser.
+A finger placed far out is sited less precisely than one placed close in. LEAP
+shows it unmixed, since its knuckles are already far enough apart to need no
+spreading and the grid is all that moves them: 1.9 mm of slip at r = 20 rising
+to 5.7 at r = 60. Where a hand DOES need spreading the grid is the small term --
+wuji2's pinky slips 20.5 mm in all and only 0.5 of that is this grid.
+
+Not what a generated JOINT carries: that is a kind and a lean, which have
+alphabets of their own rather than a grid.
 """
 
 LEAN_QUANTUM = math.radians(45.0)
