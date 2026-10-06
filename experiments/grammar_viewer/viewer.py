@@ -2,10 +2,12 @@
 
     .venv_viewer/bin/python experiments/grammar_viewer/viewer.py --port 8080 --host 127.0.0.1
 
-One panel: pick a grammar variant and draw a random design that passes the
-enabled viability checks, or load a commercial hand's grammar projection;
-switch each check on or off; apply the mutation operators; curl the hand.
-`viewer_full.py` keeps the full tool (seeds, gallery, analysis, export).
+One compact panel, one line per item (longer explanations are hover text):
+Grammar (variant, Random), Limits (the generation limits sampling and
+mutation obey by construction: a preset or custom values), Viability (the
+four physical checks generation cannot guarantee, each switchable),
+Commercial hand, Mutation (operator buttons, greyed out where the limits or
+the hand rule them out) and Pose (curl). `viewer_full.py` keeps the full tool.
 CPU only: the simulator's envelope oracle is loaded by file path
 (gviewer/envload.py), so Isaac is never imported.
 """
@@ -30,6 +32,7 @@ for _p in (str(HERE), str(REPO_ROOT)):
 import numpy as np  # noqa: E402
 import viser  # noqa: E402
 
+from hand_sampler.grammar import limits as glim  # noqa: E402
 from hand_sampler.grammar.derive import EVOLUTION_OPERATORS, Derivation, VariationImpossible, derive, vary  # noqa: E402
 from hand_sampler.grammar.kinematics import KinematicModel  # noqa: E402
 
@@ -37,6 +40,7 @@ from gviewer import analysis as an  # noqa: E402
 from gviewer import checks as ck  # noqa: E402
 from gviewer import commercial as com  # noqa: E402
 from gviewer import history as hist  # noqa: E402
+from gviewer import limitsui as lui  # noqa: E402
 from gviewer import meshes as gmesh  # noqa: E402
 from gviewer import model as gm  # noqa: E402
 from gviewer import sources as src  # noqa: E402
@@ -49,14 +53,14 @@ RESET_CURL = an.CURL_FRAC          # palm_up's default_q is this fraction of eve
 MAX_TRIES = 5000
 NO_HAND = "(none)"
 
-# One line per variant: what it adds relative to the variant it is built on
-# (hand_sampler/grammar/variants.py).
+# What each variant adds relative to the one it is built on
+# (hand_sampler/grammar/variants.py); shown as the dropdown's hover text.
 VARIANT_NOTES: Dict[str, str] = {
     "G_FULL": "The default grammar: 1-6 digits of 1-6 segments, 0-3 palm bodies, hinge, continuous, "
               "sliding and coupled joints, branching digits.",
     "G_SERIAL": "G_FULL without extra palm bodies, branches or palm joints (the old-sampler-like baseline).",
-    "G_V1": "G_FULL limited to what the simulator can build: hinges only, no branches, at most 2 palm bodies, "
-            "1-5 digits.",
+    "G_V1": "G_FULL restricted to what the simulator can build: hinges only, no branches, at most 2 palm "
+            "bodies, 1-5 digits.",
     "G_V2": "V1 + digit mounts on one host spaced at least 29 mm apart.",
     "G_V3": "V2 + curl prior (hinge-like axes, segments bend toward the palm) and a thumb-like opposing last "
             "digit (first version; V3s fixes its bugs).",
@@ -72,8 +76,8 @@ VARIANT_NOTES: Dict[str, str] = {
     "G_CONT": "G_FULL with joint limits drawn anywhere in +/-180 deg instead of a fixed menu.",
 }
 
-# Plain-English label and description for every operator in the evolution
-# driver's pool (derive.EVOLUTION_OPERATORS).
+# Button label and hover text for every operator in the evolution driver's
+# pool (derive.EVOLUTION_OPERATORS).
 OPERATOR_INFO: Dict[str, tuple] = {
     "add_minimal_digit": ("add a digit", "New one-segment digit (one hinge) on the root palm or a palm body."),
     "remove_digit_minimal": ("remove a short digit", "Removes a digit with 1-2 segments and no branches."),
@@ -81,7 +85,7 @@ OPERATOR_INFO: Dict[str, tuple] = {
     "delete_phalanx": ("remove a segment", "Deletes one segment of a digit that has at least 2; branches on it "
                                            "re-attach."),
     "add_palm_body": ("add a palm body", "Adds a palm piece on the root or another palm body, jointed with the "
-                                         "variant's palm-joint probability (55% in G_FULL)."),
+                                         "variant's palm-joint probability (55% in G_FULL) where the limits allow."),
     "remove_palm_body_empty": ("remove an empty palm body", "Removes a palm body that carries nothing (the exact "
                                                             "undo of 'add a palm body')."),
     "toggle_palm_joint": ("joint/unjoint a palm body", "Gives a rigid palm body a joint (new axis and limits), or "
@@ -106,48 +110,20 @@ OPERATOR_INFO: Dict[str, tuple] = {
 }
 assert set(OPERATOR_INFO) == set(EVOLUTION_OPERATORS), "OPERATOR_INFO must cover EVOLUTION_OPERATORS exactly"
 
-CHECK_SHORT: Dict[str, str] = {
-    "revolute_only": "revolute joints only",
-    "no_couplings": "no coupled joints",
-    "no_branches": "no branching digits",
-    "max_digits": "<= 5 digits",
-    "joints_per_digit": "<= 6 joints per digit",
-    "max_jointed_palm": "<= 2 jointed palm bodies",
-    "palm_not_nested": "no stacked palm joints",
-    "carrier_one_digit": "<= 1 digit per jointed palm body",
-    "finger_slots": "root digits + jointed palm <= 5",
-    "overlap_zero": "no overlap > 3 mm at zero pose",
-    "overlap_reset": "no overlap > 3 mm at reset pose",
-    "spawn_height": "spawn >= 20 mm above palm",
-    "reach": ">= 2 fingertips reach the cube",
-}
-assert set(CHECK_SHORT) == set(ck.CHECK_KEYS)
-
-
-def first_step_op(ops) -> Optional[str]:
-    """The first small-step operator (`step_*`) in the pool."""
-    return next((op for op in ops if op.startswith("step_")), None)
-
 
 def op_label(op: str) -> str:
     return OPERATOR_INFO.get(op, (op, ""))[0]
 
 
-def fidelity_line(ch: com.CommercialHand) -> str:
-    """One line: projection error against the URDF, and whether the simulator
-    accepts the projection (`admit(check_overlap=False)`, the projected-hand rule)."""
+def fidelity_line(ch: com.CommercialHand, limits: glim.GenerationLimits) -> str:
+    """One line: projection error against the URDF, and whether the projection
+    is within the current generation limits (which ones it breaks)."""
     parts = []
     f = ch.fidelity
     if f:
         pos = max(f["max_pos_mm"], f["max_tip_mm"] or 0.0)
-        parts.append(f"matches URDF within {pos:.2g} mm / {f['max_axis_deg']:.2g} deg")
-    if ch.fit is not None:
-        ok, reasons = ch.fit
-        if ok:
-            parts.append("fits simulator: yes (its rest overlaps are exempt)")
-        else:
-            more = f" +{len(reasons) - 1} more" if len(reasons) > 1 else ""
-            parts.append(f"fits simulator: no ({reasons[0]}{more})")
+        parts.append(f"URDF error {pos:.2g} mm / {f['max_axis_deg']:.2g} deg")
+    parts.append("within limits: " + glim.check(ch.projection.derivation, limits).summary())
     return "; ".join(parts)
 
 
@@ -162,6 +138,16 @@ def change_line(d: hist.DiffSummary) -> str:
         more = f" (+{len(params) - 1} more)" if len(params) > 1 else ""
         parts.append(params[0] + more)
     return "; ".join(parts) or "no visible change"
+
+
+def check_label(key: str, r: Optional[ck.CheckResult]) -> str:
+    c = ck.CHECK_BY_KEY[key]
+    star = "*" if c.provisional else ""
+    if r is None:
+        return f"{c.short}{star}"
+    word = {"pass": "PASS", "fail": "FAIL", "n/a": "n/a", "skipped": "-"}.get(r.status, r.status)
+    value = "" if r.status == ck.NA else f" {r.value}"
+    return f"{c.short}{star}: {word}{value}"
 
 
 @dataclass
@@ -199,6 +185,7 @@ class EssentialViewer:
         self.commercial_cache: Dict[str, com.CommercialHand] = {}
         self.mesh_cache: Dict[str, gmesh.MeshSet] = {}
         self.spawn_handles: List[Any] = []
+        self.op_status: Dict[str, str] = {}
         self._job_gate = threading.Lock()
         self._job_running = False
         self._job: Optional[threading.Thread] = None
@@ -224,7 +211,7 @@ class EssentialViewer:
     def run_job(self, name: str, fn: Callable[[], None], wait: bool = False) -> bool:
         with self._job_gate:
             if self._job_running:
-                self.md_status.content = f"busy: wait for the current job to finish ({name} ignored)"
+                self.md_status.content = f"busy: wait for the current job ({name} ignored)"
                 return False
             self._job_running = True
 
@@ -250,6 +237,83 @@ class EssentialViewer:
         return not self.busy()
 
     # ------------------------------------------------------------------
+    # Limits
+    # ------------------------------------------------------------------
+
+    def limits(self) -> glim.GenerationLimits:
+        """The generation limits the panel currently shows."""
+        return lui.build_limits(
+            {k: h.value for k, h in self.limit_ints.items()},
+            {k: bool(h.value) for k, h in self.limit_bools.items()},
+            self.gui_joint_types.value, bool(self.gui_coupled.value),
+        )
+
+    def _set_fields(self, limits: glim.GenerationLimits) -> None:
+        self._suppress = True
+        try:
+            for k, h in self.limit_ints.items():
+                h.value = lui.int_to_option(getattr(limits, k))
+            for k, h in self.limit_bools.items():
+                h.value = bool(getattr(limits, k))
+            self.gui_joint_types.value = lui.joint_types_option(limits)
+            self.gui_coupled.value = "Coupled" in limits.allowed_modules
+        finally:
+            self._suppress = False
+
+    def set_preset(self, name: str) -> None:
+        self.gui_preset.value = name          # fires on_update
+
+    def set_limit(self, key: str, value) -> None:
+        """Set one limit field (as the panel would), which switches the preset to Custom."""
+        if key in self.limit_ints:
+            self.limit_ints[key].value = lui.int_to_option(value) if not isinstance(value, str) else value
+        elif key in self.limit_bools:
+            self.limit_bools[key].value = bool(value)
+        elif key == "joint_types":
+            self.gui_joint_types.value = value
+        elif key == "coupled":
+            self.gui_coupled.value = bool(value)
+        else:
+            raise KeyError(key)
+
+    def _on_preset(self) -> None:
+        if self._suppress:
+            return
+        name = self.gui_preset.value
+        if name in glim.PRESETS:
+            self._set_fields(glim.PRESETS[name])
+        self._limits_changed()
+
+    def _on_field(self) -> None:
+        if self._suppress:
+            return
+        try:
+            lim = self.limits()
+        except ValueError as exc:
+            self.md_limits.content = f"invalid: {exc}"
+            return
+        self._suppress = True
+        try:
+            self.gui_preset.value = lui.preset_of(lim)
+        finally:
+            self._suppress = False
+        self._limits_changed()
+
+    def _limits_changed(self) -> None:
+        with self.lock:
+            self._update_limits_line()
+            self._update_operator_buttons()
+            if self.prep is not None and self.prep.shown.commercial is not None:
+                self.md_fidelity.content = fidelity_line(self.prep.shown.commercial, self.limits())
+
+    def _update_limits_line(self) -> None:
+        if self.prep is None:
+            return
+        rep = glim.check(self.prep.shown.derivation, self.limits())
+        self.md_limits.content = "this hand: " + ("within limits" if rep.ok else "outside: " + "; ".join(
+            rep.line(k) for k in rep.failing))
+
+    # ------------------------------------------------------------------
     # Viability checks
     # ------------------------------------------------------------------
 
@@ -268,18 +332,23 @@ class EssentialViewer:
             return
         ev = self.prep.ev
         for k in ck.CHECK_KEYS:
-            r = ev.results[k]
-            word = {"pass": "PASS", "fail": "**FAIL**", "n/a": "n/a"}.get(r.status, r.status)
-            self.check_rows[k].content = f"{word}: {r.value}"
+            self.check_boxes[k].label = check_label(k, ev.results.get(k))
+        self._update_status()
+
+    def _update_status(self) -> None:
+        if self.prep is None:
+            return
+        n_mut = self.history.cursor
+        head = f"**{self.history.entries[0].label}**" + (f" + {n_mut} mutation(s)" if n_mut else "")
+        ev = self.prep.ev
         failing = ev.failing(self.enabled())
-        if ev.unexplained:
-            verdict = "**rejected by the oracle for an unlisted reason:** " + "; ".join(ev.unexplained)
+        if not ev.buildable:
+            verdict = "viability n/a (outside the simulator)"
         elif failing:
-            verdict = "**fails:** " + "; ".join(CHECK_SHORT[k] for k in failing)
+            verdict = "fails " + ", ".join(ck.CHECK_BY_KEY[k].short for k in failing)
         else:
-            verdict = "**passes every enabled check**"
-        note = f"  \n_{ev.note}_" if ev.note else ""
-        self.md_verdict.content = verdict + note
+            verdict = "viable"
+        self.md_status.content = f"{head}: {verdict}"
 
     # ------------------------------------------------------------------
     # Showing a design
@@ -308,9 +377,8 @@ class EssentialViewer:
             self._build_overlay()
             self._render_pose()
             self._update_checks_panel()
-            n_mut = self.history.cursor
-            self.md_status.content = f"**{self.history.entries[0].label}**" + (
-                f" + {n_mut} mutation(s)" if n_mut else "")
+            self._update_limits_line()
+            self._update_operator_buttons()
             if frame:
                 self._frame_camera()
         return prep
@@ -404,10 +472,12 @@ class EssentialViewer:
 
     def random(self, variant: Optional[str] = None, start_seed: Optional[int] = None, max_tries: int = MAX_TRIES,
                wait: bool = False) -> bool:
-        """Draw designs from `variant` until every enabled check passes."""
+        """Sample designs from `variant` under the current limits until every
+        enabled viability check passes."""
         variant = variant or self.variant
         start = int(self.rng.integers(0, 1_000_000)) if start_seed is None else int(start_seed)
         enabled = self.enabled()
+        limits = self.limits()
 
         def job():
             self.variant = variant
@@ -416,13 +486,13 @@ class EssentialViewer:
             def progress(k):
                 self.md_random.content = f"searching {variant}: {k} tries ..."
 
-            res = ck.search(src.distribution(variant), enabled, start, max_tries=max_tries, progress=progress)
+            res = ck.search(src.distribution(variant), enabled, start, max_tries=max_tries, limits=limits,
+                            progress=progress)
             self.last_search = res
             if res.derivation is None:
-                self.md_random.content = (f"no design passed the {len(enabled)} enabled check(s) in {res.tries} "
-                                          f"tries; switch a check off or pick another variant")
+                self.md_random.content = f"none viable in {res.tries} tries; relax a check or the limits"
                 return
-            self.md_random.content = f"found after **{res.tries}** {'try' if res.tries == 1 else 'tries'} (seed {res.seed})"
+            self.md_random.content = f"found after {res.tries} {'try' if res.tries == 1 else 'tries'} (seed {res.seed})"
             self._clear_commercial_choice()
             self.show(Shown(res.derivation, res.model, f"{variant} seed {res.seed}", "sampled"))
 
@@ -441,8 +511,8 @@ class EssentialViewer:
                 links = [b.name for b in ch.imported.model.bodies]
                 self.mesh_cache[hand_id] = gmesh.load_link_meshes(ch.entry.mesh_path, links,
                                                                   fallback_dirs=self._mesh_fallbacks(ch))
-            self.md_fidelity.content = fidelity_line(ch)
-            self.show(Shown(ch.projection.derivation, ch.derived, f"{hand_id} (grammar projection)", "commercial",
+            self.md_fidelity.content = fidelity_line(ch, self.limits())
+            self.show(Shown(ch.projection.derivation, ch.derived, f"{hand_id} (projection)", "commercial",
                             commercial=ch))
 
         return self.run_job(f"load {hand_id}", job, wait=wait)
@@ -466,41 +536,50 @@ class EssentialViewer:
     # Mutation
     # ------------------------------------------------------------------
 
+    def _update_operator_buttons(self) -> None:
+        shown = self.shown
+        if shown is None:
+            return
+        self.op_status = lui.operator_status(shown.derivation, src.distribution(self.variant),
+                                             EVOLUTION_OPERATORS, self.limits())
+        for op, b in self.op_buttons.items():
+            st = self.op_status[op]
+            b.disabled = st != lui.OK
+            note = "" if st == lui.OK else f" Now: {st}."
+            b.hint = f"{op}: {OPERATOR_INFO[op][1]}{note}"
+
     def mutate(self, operator: Optional[str] = None, wait: bool = False) -> bool:
-        """Apply `operator`, or with None a random one from EVOLUTION_OPERATORS
-        (drawing again, without replacement, while the drawn one cannot apply)."""
+        """Apply `operator` under the current limits, or with None a random one
+        from EVOLUTION_OPERATORS (drawing again, without replacement, while the
+        drawn one cannot apply)."""
         def job():
             shown = self.shown
             if shown is None:
                 return
             dist = src.distribution(self.variant)
+            limits = self.limits()
             ops = [operator] if operator else [EVOLUTION_OPERATORS[i]
                                                for i in self.rng.permutation(len(EVOLUTION_OPERATORS))]
             child, used, why = None, None, ""
             for op in ops:
                 try:
-                    child = vary(shown.derivation, self.rng, dist, operator=op)
+                    child = vary(shown.derivation, self.rng, dist, operator=op, limits=limits)
                     used = op
                     break
                 except VariationImpossible:
-                    why = "nothing on this hand it can act on"
+                    why = lui.NOT_ALLOWED if self.op_status.get(op) == lui.NOT_ALLOWED else lui.NOTHING
                 except Exception as exc:  # noqa: BLE001 - e.g. a projected hand's value is off the variant's grid
                     why = f"{type(exc).__name__}: {exc}"
             if child is None:
-                if operator:
-                    self.md_mut.content = f"'{op_label(operator)}' cannot apply: {why}"
-                else:
-                    self.md_mut.content = "no operator could apply to this hand"
+                self.md_mut.content = (f"'{op_label(operator)}': {why}" if operator
+                                       else "no operator can apply to this hand")
                 return
             d = hist.diff(shown.derivation, child)
             model = derive(child)
             base = self.history.entries[0].label
             self.show(Shown(child, model, base, "mutant", commercial=None), "push", operator=used, frame=False)
-            failing = self.prep.ev.failing(self.enabled())
-            verdict = ("passes all enabled checks" if not failing
-                       else "fails: " + "; ".join(CHECK_SHORT[k] for k in failing))
             prefix = "random: " if not operator else ""
-            self.md_mut.content = f"{prefix}**{op_label(used)}**: {change_line(d)} ({verdict})"
+            self.md_mut.content = f"{prefix}{op_label(used)}: {change_line(d)}"
 
         return self.run_job(f"mutate {operator or 'random'}", job, wait=wait)
 
@@ -536,46 +615,61 @@ class EssentialViewer:
             names = src.variant_names()
             self._variant_by_label = {src.variant_label(n): n for n in names}
             self.gui_variant = g.add_dropdown("Variant", list(self._variant_by_label),
-                                              initial_value=src.variant_label(self.variant))
-            self.md_variant = g.add_markdown(VARIANT_NOTES.get(self.variant, ""))
-            btn_random = g.add_button("Random", hint="draw designs until every enabled viability check passes")
+                                              initial_value=src.variant_label(self.variant),
+                                              hint=VARIANT_NOTES.get(self.variant, ""))
+            btn_random = g.add_button("Random", hint="Sample designs under the limits until every enabled "
+                                                     "viability check passes.")
             self.md_random = g.add_markdown("")
+
+        with g.add_folder("Limits"):
+            self.gui_preset = g.add_dropdown("Preset", list(lui.PRESET_NAMES), initial_value="Simulator",
+                                             hint="Hard rules sampling and mutation obey by construction. "
+                                                  "Simulator: exactly what the simulator's 32-slot hand can build. "
+                                                  "Unlimited: the whole grammar. Editing a field makes it Custom.")
+            self.limit_ints: Dict[str, Any] = {}
+            for f in lui.INT_FIELDS:
+                self.limit_ints[f.key] = g.add_dropdown(f.label, list(f.options),
+                                                        initial_value=lui.int_to_option(getattr(glim.SIMULATOR, f.key)),
+                                                        hint=f.hint)
+            self.gui_joint_types = g.add_dropdown("Joint types", list(lui.JOINT_TYPE_OPTIONS),
+                                                  initial_value=lui.joint_types_option(glim.SIMULATOR),
+                                                  hint=lui.JOINT_TYPES_HINT)
+            self.gui_coupled = g.add_checkbox("Coupled joints", "Coupled" in glim.SIMULATOR.allowed_modules,
+                                              hint=lui.COUPLED_HINT)
+            self.limit_bools: Dict[str, Any] = {}
+            for key, label, hint in lui.BOOL_FIELDS:
+                self.limit_bools[key] = g.add_checkbox(label, bool(getattr(glim.SIMULATOR, key)), hint=hint)
+            self.md_limits = g.add_markdown("")
+
+        with g.add_folder("Viability"):
+            self.check_boxes: Dict[str, Any] = {}
+            for c in ck.CHECKS:
+                self.check_boxes[c.key] = g.add_checkbox(check_label(c.key, None), True,
+                                                         hint=c.why + " Untick to stop Random requiring it.")
+                if c.key == "reach":
+                    self.gui_show_reach = g.add_checkbox("show cube and reach", True,
+                                                         hint="Blue sphere: the cube's spawn point and size; wire "
+                                                              "sphere: 5 cm reach; tips green if they reach it.")
 
         with g.add_folder("Commercial hand"):
             hands = com.list_hands()
             self._hand_ids = {h.label: h.id for h in hands}
-            self.gui_hand = g.add_dropdown("Hand", [NO_HAND] + [h.label for h in hands], initial_value=NO_HAND)
+            self.gui_hand = g.add_dropdown("Hand", [NO_HAND] + [h.label for h in hands], initial_value=NO_HAND,
+                                           hint="A real hand's grammar projection, over its URDF meshes.")
             self.gui_meshes = g.add_checkbox("Show real meshes", True)
             self.md_fidelity = g.add_markdown("")
-
-        with g.add_folder("Viability checks"):
-            self.md_verdict = g.add_markdown("")
-            self.check_boxes: Dict[str, Any] = {}
-            self.check_rows: Dict[str, Any] = {}
-            g.add_markdown("_Simulator structure_")
-            for c in ck.CHECKS:
-                if c.key == ck.PHYSICAL_KEYS[0]:
-                    g.add_markdown("_Physical_")
-                self.check_boxes[c.key] = g.add_checkbox(CHECK_SHORT[c.key], True, hint=f"{c.label}. {c.why}")
-                self.check_rows[c.key] = g.add_markdown("")
-                if c.key == "reach":
-                    self.gui_show_reach = g.add_checkbox("show cube and reach", True,
-                                                         hint="blue sphere: the cube's spawn point and size; wire "
-                                                              "sphere: 5 cm reach; tips green if they reach it")
 
         with g.add_folder("Mutation"):
             btns = g.add_button_group("Mutate", ["Random mutation", "Back"])
             self.md_mut = g.add_markdown("")
-            op_buttons = []
-            for i, op in enumerate(EVOLUTION_OPERATORS):
-                if i == 0 or op == first_step_op(EVOLUTION_OPERATORS):
-                    g.add_markdown("_Grow / shrink_" if i == 0 else "_Small steps_")
-                op_buttons.append((op, g.add_button(OPERATOR_INFO[op][0], hint=f"{op}: {OPERATOR_INFO[op][1]}")))
+            self.op_buttons: Dict[str, Any] = {}
+            for op in EVOLUTION_OPERATORS:
+                self.op_buttons[op] = g.add_button(OPERATOR_INFO[op][0], hint=f"{op}: {OPERATOR_INFO[op][1]}")
 
         with g.add_folder("Pose"):
             self.gui_curl = g.add_slider("Curl", 0.0, 1.0, 0.01, RESET_CURL,
-                                         hint="fraction of every joint's range: 0 lower limits, 1 upper limits, "
-                                              f"{RESET_CURL} the pose every episode starts from")
+                                         hint="Fraction of every joint's range: 0 lower limits, 1 upper limits, "
+                                              f"{RESET_CURL} the pose every episode starts from.")
 
         # ---- callbacks ---------------------------------------------------
         btn_random.on_click(lambda _: self.random(self._variant_by_label[self.gui_variant.value]))
@@ -583,8 +677,13 @@ class EssentialViewer:
         @self.gui_variant.on_update
         def _(_):
             v = self._variant_by_label[self.gui_variant.value]
-            self.md_variant.content = VARIANT_NOTES.get(v, "")
+            self.gui_variant.hint = VARIANT_NOTES.get(v, "")
             self.random(v)
+
+        self.gui_preset.on_update(lambda _: self._on_preset())
+        for h in list(self.limit_ints.values()) + list(self.limit_bools.values()) + [self.gui_joint_types,
+                                                                                      self.gui_coupled]:
+            h.on_update(lambda _: self._on_field())
 
         @self.gui_hand.on_update
         def _(_):
@@ -594,7 +693,7 @@ class EssentialViewer:
         self.gui_meshes.on_update(lambda _: self.overlay.set_visible(bool(self.gui_meshes.value)))
 
         for cb in self.check_boxes.values():
-            cb.on_update(lambda _: self._update_checks_panel())
+            cb.on_update(lambda _: self._update_status())
 
         @self.gui_show_reach.on_update
         def _(_):
@@ -607,7 +706,7 @@ class EssentialViewer:
         def _(event):
             (self.mutate if event.target.value == "Random mutation" else self.back)()
 
-        for op, b in op_buttons:
+        for op, b in self.op_buttons.items():
             b.on_click(lambda _, op=op: self.mutate(op))
 
         @self.gui_curl.on_update
