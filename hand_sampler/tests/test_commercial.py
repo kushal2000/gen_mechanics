@@ -35,11 +35,27 @@ def _vendor(name):
 
 # --- all three are designs the grammar would produce -------------------------
 
-@pytest.mark.parametrize("name", commercial.HANDS)
-def test_every_hand_fits_and_is_legal(name, fits):
+@pytest.mark.parametrize("name", ("leap", "midas"))
+def test_these_hands_fit_and_are_legal(name, fits):
     hand, _ = fits[name]
     assert validate_design.check(hand) == [], validate_design.check(hand)
     assert hand.n_fingers >= 4
+
+
+def test_wuji2_is_faithful_but_not_buildable(fits):
+    """Its own LINKS pass within 22.4 mm of each other, and two 30 mm capsules
+    need 30 -- so no spreading of the BASES makes it buildable with this motor.
+
+    The box palm hid this by flattening the hand onto one face, which forced
+    every row finger to point the same way. A radial palm keeps each digit's own
+    direction, and the collision that was always there shows up.
+    """
+    hand, notes = fits["wuji2"]
+    reasons = validate_design.check(hand)
+    assert any("capsules intersect" in r for r in reasons), reasons
+    assert all("capsules intersect" in r for r in reasons), (
+        f"wuji2 should fail on link clearance and nothing else: {reasons}")
+    assert any("own LINKS pass closer" in n for n in notes), notes
 
 
 @pytest.mark.parametrize("name", commercial.HANDS)
@@ -87,18 +103,19 @@ def test_every_digit_has_a_real_fingertip(name):
 
 # --- what the fit costs, per hand -------------------------------------------
 
-def test_leap_needs_no_spreading_and_the_others_do():
-    """wuji2 packs its row at 19-24 mm centres and SHARPA at 17-20, against a 35
-    mm floor set by two 30 mm capsules plus clearance. LEAP's own 45 mm spacing
-    already clears it, which is why LEAP alone comes through undistorted.
+def test_every_hand_needs_some_spreading_on_a_radial_palm():
+    """A radial palm places a base at its OWN polar coordinate, snapped to a
+    5 mm radius grid and a 15 deg bearing grid. The snap alone can move a base
+    several millimetres -- a bearing quantum is 6.5 mm of arc at r = 50 -- so
+    even LEAP, whose knuckles are a comfortable 45 mm apart, needs a nudge after
+    snapping. That is the grid, not the hand being too tightly packed.
     """
-    _, leap_notes = commercial.fit("leap")
-    assert not any("motor floor" in n for n in leap_notes), leap_notes
-    _, notes = commercial.fit("wuji2")
-    assert [n for n in notes if "motor floor" in n], "wuji2 should have needed spreading"
+    for name in commercial.HANDS:
+        _, notes = commercial.fit(name)
+        assert [n for n in notes if "motor floor" in n], name
 
 
-@pytest.mark.parametrize("name,worst_mm", [("leap", 9.0), ("wuji2", 26.0),
+@pytest.mark.parametrize("name,worst_mm", [("leap", 9.0), ("wuji2", 46.0),
                                            ("midas", 29.0)])
 def test_per_digit_tip_error(name, worst_mm, fits):
     """Each digit measured from its OWN base, so this is the shape of the finger
@@ -107,7 +124,7 @@ def test_per_digit_tip_error(name, worst_mm, fits):
     M, order = _vendor(name)
     for f, d in zip(hand.fingers, order):
         want = M.T @ (d.tip - d.pos[0])
-        base, _ = D.mount_frame(f.mount, hand.palm)
+        base, _ = D.mount_frame(f.mount)
         got = D.fingertip(f, hand.palm) - base
         err = float(np.linalg.norm(got - want)) * 1000
         assert err <= worst_mm, f"{name} {d.name}: {err:.1f} mm"

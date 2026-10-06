@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, field, replace
 
@@ -10,16 +11,15 @@ import numpy as np
 from hand_sampler import design_space
 from hand_sampler import validate_design
 from hand_sampler.design_space import (
-    face_frame, face_from_normal, mount_position,
-    mount_uv_bounds,
+    mount_position,
 )
 
 OPERATORS: tuple[str, ...] = (
     # structural -- these move complexity, +-1 joint each
     "split_link", "merge_links", "add_finger", "remove_finger",
     # parametric -- complexity fixed
-    "perturb_kind", "perturb_length", "move_mount",
-    "perturb_lean", "perturb_palm",
+    "perturb_kind", "perturb_length", "move_mount", "aim_mount",
+    "perturb_lean",
 )
 
 STRUCTURAL: tuple[str, ...] = OPERATORS[:4]
@@ -181,9 +181,9 @@ def _new_finger(rng: random.Random, hand: design_space.Hand) -> design_space.Han
     n_len = round((design_space.MAX_LINK_LENGTH - design_space.MIN_DISTAL_LINK_LENGTH)
                   / design_space.LINK_QUANTUM)
     rng.shuffle(sites)
-    for face, u, v in sites:
+    for mount in sites:
         finger = design_space.Finger(
-            mount=design_space.Mount(face, u, v),
+            mount=mount,
             segments=(design_space.Segment(
                 design_space.Joint(kind=_draw_kind(rng)),
                 length=design_space.MIN_DISTAL_LINK_LENGTH
@@ -195,42 +195,36 @@ def _new_finger(rng: random.Random, hand: design_space.Hand) -> design_space.Han
     return None
 
 
-MOUNT_GRID_M = 0.005
-"""Spacing of candidate mount sites, in metres on the face."""
+def _free_mount_sites(hand: design_space.Hand) -> list[design_space.Mount]:
+    """Every place on the palm with room for another finger.
 
-
-def _free_mount_sites(hand: design_space.Hand) -> list[tuple[str, float, float]]:
-    """Every grid site on the palm with room for another mount."""
+    The ring between PALM_MIN_RADIUS and MAX_MOUNT_RADIUS, on the radius grid
+    and the angle grid, minus the wrist's wedge and minus anywhere too close to
+    a finger that is already there.
+    """
     if not hand.fingers:
         return []
-    existing = np.array([mount_position(f.mount, hand.palm) for f in hand.fingers])
-    sites: list[tuple[str, float, float]] = []
+    existing = np.array([mount_position(f.mount) for f in hand.fingers])
+    q = design_space.PALM_QUANTUM
+    turn = 2.0 * math.pi
+    n_r = int(round((design_space.MAX_MOUNT_RADIUS
+                     - design_space.PALM_MIN_RADIUS) / q))
+    n_a = int(round(turn / design_space.ANGLE_QUANTUM))
 
-    for face in design_space.FINGER_FACES:
-        centre, _, t_u, t_v, span_u, span_v = face_frame(face, hand.palm)
-        lo_u, hi_u, lo_v, hi_v = mount_uv_bounds(face, hand.palm)
-        n_u = max(1, int((hi_u - lo_u) * span_u / MOUNT_GRID_M))
-        n_v = max(1, int((hi_v - lo_v) * span_v / MOUNT_GRID_M))
+    out: list[design_space.Mount] = []
+    for i in range(n_r + 1):
+        r = design_space.PALM_MIN_RADIUS + i * q
+        for k in range(n_a):
+            bearing = k * design_space.ANGLE_QUANTUM
+            if design_space.in_wrist_nogo(bearing):
+                continue
+            pos = design_space.mount_position(
+                design_space.Mount(r, bearing, bearing))
+            if (np.linalg.norm(existing - pos, axis=1)
+                    >= design_space.MIN_MOUNT_SEPARATION).all():
+                out.append(design_space.Mount(r, bearing, bearing))
+    return out
 
-        us = np.linspace(lo_u, hi_u, n_u + 1)
-        vs = np.linspace(lo_v, hi_v, n_v + 1)
-        uu, vv = np.meshgrid(us, vs, indexing="ij")
-        flat_u, flat_v = uu.ravel(), vv.ravel()
-
-        # positions[k] = centre + (u-0.5) span_u t_u + (v-0.5) span_v t_v
-        pos = (centre
-               + np.outer((flat_u - 0.5) * span_u, t_u)
-               + np.outer((flat_v - 0.5) * span_v, t_v))
-
-        d = np.linalg.norm(pos[:, None, :] - existing[None, :, :], axis=2)
-        ok = (d >= design_space.MIN_MOUNT_SEPARATION).all(axis=1)
-
-        sites.extend((face, float(u), float(v))
-                     for u, v in zip(flat_u[ok], flat_v[ok]))
-    return sites
-
-
-# --- parametric -------------------------------------------------------------
 
 KIND_WEIGHTS: dict[int, int] = {design_space.ROLL: 1,
                                 design_space.FLEXION: 6,
@@ -316,57 +310,48 @@ def perturb_length(rng: random.Random, hand: design_space.Hand) -> design_space.
 
 
 def move_mount(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Slide one mount across the palm surface, CROSSING FACE EDGES."""
+    """Step ONE finger's base: one radius quantum out or in, or one angle
+    quantum around the palm.
+
+    Where it SITS only. Which way it points is aim_mount's job -- a thumb has to
+    be able to slide around the palm without swinging the finger with it.
+    """
+    q = design_space.PALM_QUANTUM
+    a = design_space.ANGLE_QUANTUM
+    steps = [(+q, 0.0), (-q, 0.0), (0.0, +a), (0.0, -a)]
     order = list(range(hand.n_fingers))
     rng.shuffle(order)
     for fi in order:
         finger = hand.fingers[fi]
-        du_m = 0.0          # u is pinned to the midplane; only v is free
-        dv_m = MOUNT_STEP_M * rng.choice((-1, 0, 1))
-        if dv_m == 0.0:
-            continue
-
-        mount = _step_mount(finger.mount, hand.palm, du_m, dv_m)
-        if mount is None or mount == finger.mount:
-            continue
-        out = design_space.with_finger(hand, fi, replace(finger, mount=mount))
-        if validate_design.is_valid(out):
-            return out
+        rng.shuffle(steps)
+        for dr, da in steps:
+            mount = replace(finger.mount,
+                            radius=snap(finger.mount.radius + dr, q),
+                            bearing=(finger.mount.bearing + da) % (2.0 * math.pi))
+            out = design_space.with_finger(hand, fi, replace(finger, mount=mount))
+            if validate_design.is_valid(out):
+                return out
     raise MutationImpossible("no mount could move without violating a bound")
 
 
-def _step_mount(mount: design_space.Mount, palm: design_space.Palm, du_m: float, dv_m: float
-                ) -> design_space.Mount | None:
-    """One step on the palm surface, wrapping onto a neighbouring face if needed."""
-    _, _, t_u, t_v, span_u, span_v = face_frame(mount.face, palm)
-    lo_u, hi_u, lo_v, hi_v = mount_uv_bounds(mount.face, palm)
-    u, v = mount.u + du_m / span_u, mount.v + dv_m / span_v
+def aim_mount(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
+    """Turn ONE finger one angle quantum about its own base, in the palm plane.
 
-    if lo_u <= u <= hi_u and lo_v <= v <= hi_v:
-        return replace(mount, u=u, v=v)
-
-    if u > hi_u:
-        cross, u = t_u, hi_u
-    elif u < lo_u:
-        cross, u = -t_u, lo_u
-    elif v > hi_v:
-        cross, v = t_v, hi_v
-    else:
-        cross, v = -t_v, lo_v
-
-    face = face_from_normal(cross)
-    if face is None:
-        # The step points at the wrist or a large face.
-        clamped = replace(mount, u=u, v=v)
-        return None if clamped == mount else clamped
-
-    landing = mount_position(replace(mount, u=u, v=v), palm)
-    centre, _, t_u2, t_v2, span_u2, span_v2 = face_frame(face, palm)
-    d = landing - centre
-    lo_u2, hi_u2, lo_v2, hi_v2 = mount_uv_bounds(face, palm)
-    u2 = min(max(0.5 + float(np.dot(d, t_u2)) / span_u2, lo_u2), hi_u2)
-    v2 = min(max(0.5 + float(np.dot(d, t_v2)) / span_v2, lo_v2), hi_v2)
-    return design_space.Mount(face, u2, v2)
+    Separate from move_mount because sitting somewhere and pointing somewhere
+    are different questions: a thumb reaches back across the palm from the side.
+    """
+    a = design_space.ANGLE_QUANTUM
+    order = list(range(hand.n_fingers))
+    rng.shuffle(order)
+    for fi in order:
+        finger = hand.fingers[fi]
+        for da in ([+a, -a] if rng.random() < 0.5 else [-a, +a]):
+            mount = replace(finger.mount,
+                            facing=(finger.mount.facing + da) % (2.0 * math.pi))
+            out = design_space.with_finger(hand, fi, replace(finger, mount=mount))
+            if validate_design.is_valid(out):
+                return out
+    raise MutationImpossible("no mount could be re-aimed without violating a bound")
 
 
 def perturb_lean(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
@@ -393,30 +378,14 @@ def perturb_lean(rng: random.Random, hand: design_space.Hand) -> design_space.Ha
     raise MutationImpossible("no segment could be re-leaned without violating a bound")
 
 
-def perturb_palm(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step one palm dimension."""
-    ranges = {"width": design_space.PALM_WIDTH_RANGE, "length": design_space.PALM_LENGTH_RANGE,
-              "thickness": design_space.PALM_THICKNESS_RANGE}
-    dims = list(design_space.MUTABLE_PALM_DIMS)
-    rng.shuffle(dims)
-    for name in dims:
-        lo, hi = ranges[name]
-        step = design_space.PALM_STEP * rng.choice((-1, 1))
-        value = snap(reflect(getattr(hand.palm, name) + step, lo, hi), design_space.PALM_QUANTUM)
-        out = replace(hand, palm=replace(hand.palm, **{name: value}))
-        if validate_design.is_valid(out):
-            return out
-    raise MutationImpossible("no palm dimension could be stepped")
-
-
 # --- dispatch and instrumentation -------------------------------------------
 
 _FUNCS = {
     "split_link": split_link, "merge_links": merge_links,
     "add_finger": add_finger, "remove_finger": remove_finger,
     "perturb_kind": perturb_kind, "perturb_length": perturb_length,
-    "move_mount": move_mount, "perturb_lean": perturb_lean,
-    "perturb_palm": perturb_palm,
+    "move_mount": move_mount, "aim_mount": aim_mount,
+    "perturb_lean": perturb_lean,
 }
 assert set(_FUNCS) == set(OPERATORS), (
     f"operator table and OPERATORS disagree: {set(OPERATORS) ^ set(_FUNCS)}")

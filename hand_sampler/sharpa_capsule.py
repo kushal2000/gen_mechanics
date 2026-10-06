@@ -29,8 +29,9 @@ capsule and the grammar agree on it exactly and it is no longer a deviation:
   no pinky CMC (21 joints, not 22) a roll about the finger. The grammar HAS a roll
                                   kind now, so this one is no longer forced -- it is
                                   simply what was built before roll existed
-  thumb on the -y face            SHARPA mounts it on the palm surface, 24 mm inboard;
-                                  the grammar has only the three thin faces
+  thumb 2.5 mm off the midplane   it was mounted at u = 0.6 on a box face; a
+       is lost                     polar mount has no such freedom and every
+                                  finger starts on the palm's own plane
   thumb MCP hinges axis-aligned   the real ones are oblique, and a joint is one of
                                   three kinds, so there is no oblique axis to reach
   lengths on the 5 mm grid        LINK_QUANTUM
@@ -65,7 +66,7 @@ def _joint(kind: int, offset_deg: float = 0.0) -> ds.Joint:
                     offset=math.radians(offset_deg))
 
 
-def _finger_on_edge(v: float) -> ds.Finger:
+def _finger_on_edge(radius: float, bearing_deg: float) -> ds.Finger:
     """Index / middle / ring / pinky: MCP flexion, MCP abduction, PIP, DIP, pad.
 
     SHARPA's MCP_FE and MCP_AA share one origin; the grammar wants 15 mm between
@@ -74,7 +75,8 @@ def _finger_on_edge(v: float) -> ds.Finger:
     against 47). 31.5 -> 30 and the 20 mm pad are on the grid already.
     """
     return ds.Finger(
-        mount=ds.Mount("+z", 0.5, v),
+        mount=ds.Mount(radius=radius, bearing=math.radians(bearing_deg) % (2 * math.pi),
+                       facing=0.0),
         segments=(
             ds.Segment(_joint(FLEXION), 0.015),
             ds.Segment(_joint(ABDUCTION), 0.030),
@@ -96,7 +98,8 @@ def _thumb() -> ds.Finger:
     (v = 0.25, i.e. 21 mm up an 85 mm palm) as SHARPA's is.
     """
     return ds.Finger(
-        mount=ds.Mount("-y", 0.6, 0.25),
+        mount=ds.Mount(radius=0.0543, bearing=math.radians(247.0),
+                       facing=math.radians(270.0)),
         segments=(
             ds.Segment(_joint(FLEXION), 0.015),
             ds.Segment(_joint(ABDUCTION, offset_deg=-60.0), 0.050),
@@ -109,14 +112,16 @@ def _thumb() -> ds.Finger:
 
 def sharpa_capsule() -> ds.Hand:
     """The hand. Thumb first, then index to pinky across the far edge."""
-    palm = ds.Palm(thickness=0.025, width=0.100, length=0.085)
-    # v runs across the width; 0.125 .. 0.875 is -37.5 .. +37.5 mm, 25 mm apart.
+    palm = ds.Palm(thickness=0.025)
+    # Converted from the box this was drawn on -- a 100 x 85 mm palm whose
+    # centre sat at z = 42.5 -- so the fingers have not moved. The four sat at
+    # y = -37.5 .. +37.5 across its far edge, 25 mm apart.
     return ds.Hand(palm=palm, fingers=(
         _thumb(),
-        _finger_on_edge(0.125),
-        _finger_on_edge(0.375),
-        _finger_on_edge(0.625),
-        _finger_on_edge(0.875),
+        _finger_on_edge(0.0567, 318.6),
+        _finger_on_edge(0.0443, 343.6),
+        _finger_on_edge(0.0443, 16.4),
+        _finger_on_edge(0.0567, 41.4),
     ))
 
 
@@ -149,7 +154,7 @@ def main() -> None:
         [hand], args.out or population_io.default_path(NAME), name=NAME,
         provenance=population_io.provenance(method="sharpa_capsule", source="hand_sampler.sharpa_capsule"))
     print(f"{NAME}: {hand.n_fingers} fingers, {hand.n_joints} joints, "
-          f"palm {tuple(round(v * 1000) for v in hand.palm.extents)} mm -> {out}")
+          f"palm {tuple(round(v * 1000) for v in ds.palm_extents(hand))} mm -> {out}")
 
 
 if __name__ == "__main__":

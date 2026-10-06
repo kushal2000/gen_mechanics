@@ -94,25 +94,42 @@ def _segment_from_dict(data: dict) -> design_space.Segment:
 
 def hand_to_dict(hand: design_space.Hand) -> dict:
     return {
-        "palm": {"thickness": hand.palm.thickness,
-                 "width": hand.palm.width,
-                 "length": hand.palm.length},
+        "palm": {"thickness": hand.palm.thickness},
         "fingers": [
-            {"mount": {"face": finger.mount.face, "u": finger.mount.u, "v": finger.mount.v},
+            {"mount": {"radius": finger.mount.radius,
+                       "bearing": finger.mount.bearing,
+                       "facing": finger.mount.facing},
              "segments": [_segment_to_dict(s) for s in finger.segments]}
             for finger in hand.fingers
         ],
     }
 
 
+def _mount_from_dict(data: dict) -> design_space.Mount:
+    if "face" in data:
+        raise ValueError(
+            "this mount carries 'face', 'u' and 'v', which placed a finger on "
+            "the surface of a BOX. A palm is a disc now and a mount is polar: "
+            "radius from the centre, bearing to where it sits, facing for which "
+            "way it leaves. Re-derive the population -- there is no exact "
+            "conversion, because a box face and a radius are different shapes.")
+    return design_space.Mount(radius=float(data["radius"]),
+                              bearing=float(data["bearing"]),
+                              facing=float(data["facing"]))
+
+
 def hand_from_dict(data: dict) -> design_space.Hand:
+    palm = dict(data["palm"])
+    if "width" in palm or "length" in palm:
+        raise ValueError(
+            "this palm carries a width and a length, which it no longer has: a "
+            "palm's outline is DERIVED from where its fingers start. Re-derive "
+            "the population.")
     return design_space.Hand(
-        palm=design_space.Palm(**{k: float(v) for k, v in data["palm"].items()}),
+        palm=design_space.Palm(**{k: float(v) for k, v in palm.items()}),
         fingers=tuple(
             design_space.Finger(
-                mount=design_space.Mount(face=finger["mount"]["face"],
-                                         u=float(finger["mount"]["u"]),
-                                         v=float(finger["mount"]["v"])),
+                mount=_mount_from_dict(finger["mount"]),
                 segments=tuple(_segment_from_dict(s) for s in finger["segments"]),
             )
             for finger in data["fingers"]

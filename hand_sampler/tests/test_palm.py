@@ -25,15 +25,26 @@ def _hand_with_palm(palm, hands):
     return replace(hands[0], palm=palm)
 
 
-def test_sharpas_palm_weighs_what_sharpa_weighs(hands):
-    """The density is back-derived from SHARPA, so this is the anchor."""
-    mass, _ = build.palm_mass_props(_hand_with_palm(design_space.Palm(*rpc.PALM_EXTENTS_M), hands))
+def test_a_palm_the_area_of_sharpas_weighs_what_sharpa_weighs(hands):
+    """The density is back-derived from SHARPA, so this is the anchor.
+
+    Taken on AREA now rather than on a bounding box: a radial palm is a rounded
+    hull, and the rectangle round it is a third bigger. A palm of SHARPA's own
+    footprint still weighs what SHARPA's does.
+    """
+    tx, ty, tz = rpc.PALM_EXTENTS_M
+    hand = _hand_with_palm(design_space.Palm(tx), hands)
+    mass = rpc.GEN_PALM_DENSITY_KG_M3 * tx * (ty * tz)
     assert mass == pytest.approx(rpc.PALM_MASS_KG, rel=1e-12)
+    # and the real one scales with the outline it actually has
+    got, _ = build.palm_mass_props(hand)
+    assert got == pytest.approx(
+        rpc.GEN_PALM_DENSITY_KG_M3 * tx * design_space.palm_area(hand), rel=1e-9)
 
 
 def test_a_bigger_palm_weighs_more(hands):
-    small, _ = build.palm_mass_props(_hand_with_palm(design_space.Palm(0.020, 0.050, 0.050), hands))
-    big, _ = build.palm_mass_props(_hand_with_palm(design_space.Palm(0.025, 0.070, 0.060), hands))
+    small, _ = build.palm_mass_props(_hand_with_palm(design_space.Palm(0.020), hands))
+    big, _ = build.palm_mass_props(_hand_with_palm(design_space.Palm(0.025), hands))
     assert big > small > 0.0
 
 
@@ -66,7 +77,7 @@ def test_the_palm_box_sits_where_palm_center_offset_says(hands):
 def test_the_palm_box_is_the_designs_own_extents(hands):
     for hand in hands:
         extents, _ = build.palm_box(hand)
-        assert extents == hand.palm.extents
+        assert extents == design_space.palm_extents(hand)
 
 
 # --- merging into link_7 -----------------------------------------------------
@@ -157,9 +168,10 @@ def test_the_viewer_draws_the_palm_on_the_flange(hands, tmp_path):
         root = ET.fromstring(pose_viewer._graft_hand_onto_arm(text, pose_viewer.ARM_URDF_PATH))
         flange = [l for l in root.findall("link")
                   if l.get("name") == rpc.ARM_TIP_LINK][0]
-        boxes = flange.findall("visual/geometry/box")
-        assert len(boxes) == 1, f"design {i}: palm missing from the flange"
-        assert [float(v) for v in boxes[0].get("size").split()] == list(hand.palm.extents)
+        # the palm is a convex hull MESH now, not a box
+        meshes = [m for m in flange.findall("visual/geometry/mesh")
+                  if "_palm.obj" in (m.get("filename") or "")]
+        assert len(meshes) == 1, f"design {i}: palm missing from the flange"
         # and the arm's own flange mesh survived the merge
         assert flange.findall("visual/geometry/mesh"), f"design {i}: arm geometry lost"
 
@@ -191,24 +203,43 @@ def test_palm_keypoints_are_the_authored_slab(hands):
 
 
 def test_palm_keypoints_are_in_the_end_effector_frame_not_the_palms(hands):
-    """The wrist face sits one flange stack out along link_7's z, whatever the
-    design -- the point of measuring from the end effector."""
-    z_wrist = rpc.LINK7_TO_FLANGE_Z_M + rpc.FLANGE_TO_PALM_Z_M
+    """Measured from the end effector, whatever the design.
+
+    There is no wrist FACE to anchor to any more: a radial palm is centred on
+    its own origin rather than growing forward from the wrist, so what is fixed
+    is the flange stack the palm hangs off, and the keypoints straddle the
+    palm's own centre by half its derived depth.
+    """
+    z_flange = rpc.LINK7_TO_FLANGE_Z_M + rpc.FLANGE_TO_PALM_Z_M
     for hand in hands:
         kp = build.palm_keypoints_of(hand)
-        assert kp[0, 2] == pytest.approx(z_wrist, abs=1e-6)              # the corner is on the wrist face
-        assert kp[3, 2] == pytest.approx(z_wrist + hand.palm.length, abs=1e-6)
+        depth = design_space.palm_extents(hand)[2]
+        centre_z = design_space.palm_center(hand)[2]
+        assert kp[0, 2] == pytest.approx(z_flange + centre_z - depth / 2.0, abs=1e-6)
+        assert kp[3, 2] == pytest.approx(z_flange + centre_z + depth / 2.0, abs=1e-6)
 
 
-def test_palm_keypoints_move_only_with_the_palm(hands):
-    """Two designs with the same palm and different fingers read identically;
-    a longer palm moves exactly one keypoint."""
+def test_palm_keypoints_move_with_the_mounts(hands):
+    """A palm IS where its fingers start, so its keypoints move when they do.
+
+    The old property -- two designs with the same palm reading identically --
+    has no referent: there is no palm to share. Identical mounts read
+    identically, and moving one moves the palm.
+    """
     from dataclasses import replace
-    a, b = hands[0], replace(hands[1], palm=hands[0].palm)
-    assert np.allclose(build.palm_keypoints_of(a), build.palm_keypoints_of(b))
-    longer = replace(a, palm=replace(a.palm, length=a.palm.length + 0.02))
-    d = build.palm_keypoints_of(longer) - build.palm_keypoints_of(a)
-    assert np.allclose(d[:3], 0.0) and d[3, 2] == pytest.approx(0.02, abs=1e-6)
+    a = hands[0]
+    same = replace(a, fingers=tuple(replace(f, segments=f.segments)
+                                    for f in a.fingers))
+    assert np.allclose(build.palm_keypoints_of(a), build.palm_keypoints_of(same))
+    # a palm has no length of its own; it changes when a MOUNT moves
+    moved = replace(a, fingers=(replace(a.fingers[0],
+                                        mount=replace(a.fingers[0].mount,
+                                                      radius=a.fingers[0].mount.radius
+                                                      + 0.010)),)
+                    + a.fingers[1:])
+    assert not np.allclose(build.palm_keypoints_of(moved),
+                           build.palm_keypoints_of(a)), \
+        "moving a mount should have moved the palm"
 
 
 def test_sharpas_palm_keypoints_sit_at_its_measured_box():

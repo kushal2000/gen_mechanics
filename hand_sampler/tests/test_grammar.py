@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import math
 import random
@@ -37,13 +38,15 @@ def test_axis_is_unit():
         assert abs(np.linalg.norm(design_space.axis_of(design_space.Joint(k))) - 1) < 1e-12
 
 
-def test_mount_frame_orthonormal_on_every_face():
-    """The frame degenerates when a finger points along GRASP_DIR, which a mount tilt can..."""
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
-    for face in design_space.FINGER_FACES:
-        _, R = design_space.mount_frame(design_space.Mount(face, 0.5, 0.5), palm)
-        assert np.allclose(R.T @ R, np.eye(3), atol=1e-9), face
-        assert abs(np.linalg.det(R) - 1.0) < 1e-9, face
+def test_mount_frame_orthonormal_in_every_direction():
+    """A palm is a disc, so a finger can leave in any of the 24 directions on
+    the angle grid -- including the two where it runs along GRASP_DIR and the
+    old face-tangent construction degenerated."""
+    for b in range(0, 360, 15):
+        _, R = design_space.mount_frame(
+            design_space.Mount(0.040, math.radians(b), math.radians(b)))
+        assert np.allclose(R.T @ R, np.eye(3), atol=1e-9), b
+        assert abs(np.linalg.det(R) - 1.0) < 1e-9, b
 def test_seeds_valid(pop):
     assert all(validate_design.is_valid(h) for h in pop)
 
@@ -111,7 +114,7 @@ def test_exact_inverse(pop, add, remove):
 def _grow(h):
     """Room for the fingers the test is about to add."""
     from dataclasses import replace
-    return replace(h, palm=design_space.Palm(design_space.PALM_THICKNESS, 0.140, 0.100))
+    return replace(h, palm=design_space.Palm(design_space.PALM_THICKNESS))
 
 
 def _balance(pop, target, seed=0):
@@ -159,21 +162,42 @@ def test_operators_are_unbiased(pop):
         assert 0.40 < p_up < 0.60, f"n={target}: P(up) = {p_up:.1%}"
 
 
-def test_a_full_palm_is_what_stops_complexity(pop):
-    """Complexity stops rising because there is nowhere to put a finger.
+def test_the_finger_cap_is_what_stops_complexity(pop):
+    """Complexity stops rising at the envelope cap, not for want of room.
 
-    The honest reading of a falling P(up): ``add_finger`` is gated by
-    MIN_MOUNT_SEPARATION, not by any asymmetry between the operators. Splitting
-    the structural moves by attach point is what makes this visible -- a pooled
-    add/remove node would keep succeeding under the same name while only its
-    split half still worked.
+    A stored palm had a width and a length, so a seed-sized one filled at about
+    three fingers and MIN_MOUNT_SEPARATION was what stopped a hand growing. A
+    radial palm has no size of its own -- it is the hull of wherever the fingers
+    went -- so what bounds complexity is the ANNULUS a mount may live in, and
+    that holds twelve mounts at the separation floor against a cap of six.
+    MAX_FINGERS binds first and geometry never gets the chance.
     """
-    p_up_small, add_small = _balance(pop, 10)
-    p_up_big, add_big = _balance([_grow(h) for h in pop], 10)
-    assert add_small < 0.15, f"expected a full palm, add_finger at {add_small:.0%}"
-    assert add_big > 3 * add_small, "a wider palm must restore the move"
-    assert p_up_big > p_up_small + 0.10, (
-        f"balance should recover with room: {p_up_small:.0%} -> {p_up_big:.0%}")
+    q, a = design_space.PALM_QUANTUM, design_space.ANGLE_QUANTUM
+    sites = []
+    for i in range(int(round((design_space.MAX_MOUNT_RADIUS
+                              - design_space.PALM_MIN_RADIUS) / q)) + 1):
+        r = design_space.PALM_MIN_RADIUS + i * q
+        for k in range(int(round(2 * math.pi / a))):
+            b = k * a
+            if design_space.in_wrist_nogo(b):
+                continue
+            here = np.array([r * math.sin(b), r * math.cos(b)])
+            if all(float(np.linalg.norm(here - s))
+                   >= design_space.MIN_MOUNT_SEPARATION - 1e-12 for s in sites):
+                sites.append(here)
+    assert len(sites) > design_space.MAX_FINGERS, (
+        f"the annulus holds {len(sites)} mounts against a cap of "
+        f"{design_space.MAX_FINGERS}; if this ever inverts, geometry is the "
+        f"bound again and the balance deviations must be re-read")
+
+    # and the choke on add_finger at high complexity is the cap, not placement:
+    # hands that still have room take a finger readily, hands at six never can.
+    low_p, low_add = _balance(pop, 4)
+    high_p, high_add = _balance(pop, 14)
+    assert low_add > 0.80, f"add_finger should be easy at n=4, acted {low_add:.0%}"
+    assert high_add < low_add / 2.0, (
+        f"add_finger should choke as hands fill: {low_add:.0%} -> {high_add:.0%}")
+    assert high_p < low_p, f"P(up) should sag at the cap: {low_p:.0%} -> {high_p:.0%}"
 
 
 def test_deep_fingers_are_reachable(pop):
@@ -192,7 +216,7 @@ def test_deep_fingers_are_reachable(pop):
 def test_identical_hands_compare_equal(pop):
     """Fitness memoisation and exact inverses both depend on this."""
     a = pop[0]
-    b = design_space.Hand(palm=design_space.Palm(*a.palm.extents), fingers=a.fingers)
+    b = design_space.Hand(palm=design_space.Palm(a.palm.thickness), fingers=a.fingers)
     assert a == b and hash(a) == hash(b)
 def _closest_approach(hand, starts=4):
     """How near two fingertips can be brought, over all joint angles."""
@@ -242,15 +266,16 @@ def _hand(*fingers):
     80 mm leaves the +y and +z mounts 33.9 mm apart, which cleared the old
     15 mm across-face floor and does not clear MIN_MOUNT_SEPARATION."""
     return design_space.Hand(
-        design_space.Palm(design_space.PALM_THICKNESS, 0.100, 0.100), tuple(fingers))
+        design_space.Palm(design_space.PALM_THICKNESS), tuple(fingers))
 
 
 _KINDS = (design_space.FLEXION, design_space.ABDUCTION)
 
 
-def _finger(face, lengths, v=0.7):
+def _finger(bearing_deg, lengths, radius=0.040):
     return design_space.Finger(
-        design_space.Mount(face, 0.5, v),
+        design_space.Mount(radius, math.radians(bearing_deg) % (2 * math.pi),
+                           math.radians(bearing_deg) % (2 * math.pi)),
         tuple(design_space.Segment(design_space.Joint(_KINDS[i % 2]), L)
               for i, L in enumerate(lengths)))
 
@@ -266,7 +291,7 @@ def _finger(face, lengths, v=0.7):
 ])
 def test_merge_links_handles_every_merge_case(lengths, note):
     """A joint must be removable whatever the link lengths around it."""
-    hand = _hand(_finger("+y", lengths), _finger("+z", [0.050]))
+    hand = _hand(_finger(90, lengths), _finger(0, [0.050]))
     assert validate_design.is_valid(hand), validate_design.check(hand)
 
     rng = random.Random(0)
@@ -281,7 +306,7 @@ def test_merge_links_handles_every_merge_case(lengths, note):
 
 def test_structural_removal_refuses_at_the_floor():
     """MIN_FINGERS single-joint fingers is the floor: neither removal can act."""
-    hand = _hand(_finger("+y", [0.050]), _finger("+z", [0.050]))
+    hand = _hand(_finger(90, [0.050]), _finger(0, [0.050]))
     assert hand.n_fingers == design_space.MIN_FINGERS
     rng = random.Random(0)
     for op in ("merge_links", "remove_finger"):
@@ -292,7 +317,7 @@ def test_structural_removal_refuses_at_the_floor():
 
 def test_merge_links_preserves_reach_unless_it_must_clamp():
     """Reach is preserved on every path split_link can produce; the clamp is unreachable..."""
-    hand = _hand(_finger("+y", [0.040, 0.040]), _finger("+z", [0.050]))
+    hand = _hand(_finger(90, [0.040, 0.040]), _finger(0, [0.050]))
     rng = random.Random(0)
     before = sum(f.reach for f in hand.fingers)
     for _ in range(100):
@@ -302,8 +327,8 @@ def test_merge_links_preserves_reach_unless_it_must_clamp():
 
 def test_one_joint_per_link():
     """No two joints share a point."""
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
-    bad = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
+    palm = design_space.Palm(design_space.PALM_THICKNESS)
+    bad = design_space.Finger(design_space.Mount(0.039, math.radians(90), math.radians(90)),
                    (design_space.Segment(design_space.Joint(design_space.FLEXION), 0.0),
                     design_space.Segment(design_space.Joint(design_space.FLEXION), 0.040)))
     assert validate_design.check_finger(bad, 0, palm), "a zero-length link must be rejected"
@@ -333,8 +358,8 @@ def test_one_joint_per_link():
 
 def test_capsules_carry_their_segment_index():
     """Each capsule reports which segment it belongs to."""
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
-    finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.7),
+    palm = design_space.Palm(design_space.PALM_THICKNESS)
+    finger = design_space.Finger(design_space.Mount(0.039, math.radians(90), math.radians(90)),
                       tuple(design_space.Segment(design_space.Joint(_KINDS[i % 2]), 0.030)
                             for i in range(3)))
     _, capsules = design_space.forward_kinematics(finger, palm)
@@ -343,8 +368,8 @@ def test_capsules_carry_their_segment_index():
 
 def test_joint_axes_are_the_axes_the_joints_turn_about():
     """The viewer draws each joint as a cylinder along its reported axis, so the axis has..."""
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
-    finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.6),
+    palm = design_space.Palm(design_space.PALM_THICKNESS)
+    finger = design_space.Finger(design_space.Mount(0.037, math.radians(90), math.radians(90)),
                       (design_space.Segment(design_space.Joint(design_space.FLEXION), 0.035),
                        design_space.Segment(design_space.Joint(design_space.ABDUCTION), 0.030,
                                             lean=3),
@@ -405,37 +430,47 @@ def test_mounts_keep_their_distance(pop):
         child = mutate_design.mutate(rng, hand)
         if child:
             hand = child
-        pos = [design_space.mount_position(f.mount, hand.palm) for f in hand.fingers]
+        pos = [design_space.mount_position(f.mount) for f in hand.fingers]
         for pa, pb in itertools.combinations(pos, 2):
             d = float(np.linalg.norm(pa - pb))
             assert d >= design_space.MIN_MOUNT_SEPARATION - 1e-9, (
                 f"two mounts {d * 1000:.1f} mm apart")
 
 def test_crowding_does_not_block_new_fingers():
-    """Adding fingers must stop because the palm is FULL, not because placement gave up..."""
-    def pack(palm):
-        hand = design_space.Hand(palm, gen_init_pop.seed_population(0, 1)[0].fingers)
-        for k in range(30):
-            out = mutate_design._new_finger(random.Random(k), hand)
-            if out is None or hand.n_fingers >= design_space.MAX_FINGERS:
-                break
-            hand = out
-        return hand.n_fingers
+    """Placement must keep finding room until the cap, and must still respect
+    the separation floor when it does.
 
-    assert pack(design_space.Palm(design_space.PALM_THICKNESS, 0.100, 0.100)) == design_space.MAX_FINGERS, \
-        "a large palm should reach the cap"
+    There is no small palm to contrast against: the annulus a mount may live in
+    is one global ring, so every hand has the same room. What is left to check
+    is that placement does not give up early, and that reaching the cap did not
+    come of ignoring MIN_MOUNT_SEPARATION or wandering into the wrist's wedge.
+    """
+    hand = gen_init_pop.seed_population(0, 1)[0]
+    for k in range(30):
+        if hand.n_fingers >= design_space.MAX_FINGERS:
+            break
+        out = mutate_design._new_finger(random.Random(k), hand)
+        if out is None:
+            break
+        hand = out
 
-    small = pack(design_space.Palm(design_space.PALM_THICKNESS, 0.050, 0.050))
-    assert 2 <= small < design_space.MAX_FINGERS, \
-        f"a small palm packed {small}; separation should bind before the cap"
+    assert hand.n_fingers == design_space.MAX_FINGERS, (
+        f"placement gave up at {hand.n_fingers} fingers with room left")
+    assert validate_design.check(hand) == [], validate_design.check(hand)
+    for f in hand.fingers:
+        assert not design_space.in_wrist_nogo(f.mount.bearing)
+    for a, b in itertools.combinations(hand.fingers, 2):
+        d = float(np.linalg.norm(design_space.mount_position(a.mount)
+                                 - design_space.mount_position(b.mount)))
+        assert d >= design_space.MIN_MOUNT_SEPARATION - 1e-9, f"{d*1000:.1f} mm apart"
 
 
 def test_min_link_length_allows_a_compact_knuckle():
     """Two axes may sit closer than a link's own diameter."""
     assert design_space.MIN_LINK_LENGTH < 2 * design_space.CAPSULE_RADIUS
 
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
-    finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.7), (
+    palm = design_space.Palm(design_space.PALM_THICKNESS)
+    finger = design_space.Finger(design_space.Mount(0.039, math.radians(90), math.radians(90)), (
         design_space.Segment(design_space.Joint(design_space.FLEXION),
                              design_space.MIN_LINK_LENGTH),
         design_space.Segment(design_space.Joint(design_space.ABDUCTION), 0.040)))
@@ -446,87 +481,116 @@ def test_min_link_length_allows_a_compact_knuckle():
     assert gap == pytest.approx(design_space.MIN_LINK_LENGTH)
     assert gap < 2 * design_space.CAPSULE_RADIUS, "axes are not closer than the link is wide"
 
-def test_mounts_stay_clear_of_face_edges(pop):
-    """A mount within one capsule radius of an edge hangs the finger off the palm.
+def test_every_mount_stays_inside_the_palm():
+    """What replaced test_mounts_stay_clear_of_face_edges.
 
-    Along the face only. Across the THICKNESS the margin cannot be met and is
-    not meant to be: the palm is deliberately 25 mm, one quantum thinner than a
-    30 mm link capsule, so a base capsule overhangs each large face by 2.5 mm
-    whatever u does. u is pinned to the midplane for exactly that reason -- see
-    mount_uv_bounds, which predicted this and says a thickness change would
-    otherwise silently hand u back. The overhang is the capsule's conservative
-    bound showing, not a motor sticking out: the XM335 is 19 mm across.
+    There are no faces and no edge margin: the palm is the hull of the mounts
+    GROWN by PALM_MIN_RADIUS, so every mount is exactly that far inside the
+    outline by construction. This checks the construction holds under drift
+    rather than checking a margin that no longer exists.
     """
     rng = random.Random(4)
-    hand = pop[0]
+    hand = pop[0] if False else gen_init_pop.seed_population(0, 1)[0]
     worst = float("inf")
-    for _ in range(4000):
+    for _ in range(1500):
         child = mutate_design.mutate(rng, hand)
         if child:
             hand = child
+        ring = design_space.palm_outline(hand)
         for f in hand.fingers:
-            assert f.mount.u == 0.5, "u is pinned to the midplane"
-            _, _, _, _, _, span_v = design_space.face_frame(f.mount.face, hand.palm)
-            worst = min(worst, min(f.mount.v, 1.0 - f.mount.v) * span_v)
-    assert worst >= design_space.MOUNT_EDGE_MARGIN - 1e-9, (
-        f"a mount came {worst * 1000:.1f} mm from a face edge, margin is "
-        f"{design_space.MOUNT_EDGE_MARGIN * 1000:.0f} mm")
+            here = design_space.mount_position(f.mount)[1:]
+            worst = min(worst, float(np.min(np.linalg.norm(ring - here, axis=1))))
+    assert worst >= design_space.PALM_MIN_RADIUS - 1e-9, (
+        f"a mount came {worst * 1000:.1f} mm from the palm edge, the palm is "
+        f"grown {design_space.PALM_MIN_RADIUS * 1000:.0f} mm past every one")
 
 
-def test_move_mount_still_crosses_faces_with_a_margin(pop):
-    """The margin must not disconnect the surface."""
-    for seed in range(3):
-        hand = pop[seed]
-        rng = random.Random(seed)
-        seen = {f.mount.face for f in hand.fingers}
-        for _ in range(3000):
-            child = mutate_design.mutate(rng, hand, "move_mount")
-            if child:
-                hand = child
-                seen |= {f.mount.face for f in hand.fingers}
-        assert seen == set(design_space.FINGER_FACES), f"only reached {sorted(seen)}"
+def test_move_mount_reaches_all_the_way_round_the_palm():
+    """What replaced test_move_mount_still_crosses_faces_with_a_margin.
 
-
-def test_perturb_palm_leaves_thickness_alone(pop):
-    """Thickness is seeded and never mutated; the step is twice the grid because..."""
-    rng = random.Random(1)
-    hand = pop[0]
-    seen_steps = set()
-    for _ in range(2000):
-        child = mutate_design.mutate(rng, hand, "perturb_palm")
+    There are no faces to cross. A bearing wraps, so a finger can walk the whole
+    circle -- except through the wedge the wrist occupies, which it must not
+    enter and must be able to go round.
+    """
+    rng = random.Random(8)
+    hand = gen_init_pop.seed_population(0, 1)[0]
+    seen = set()
+    for _ in range(4000):
+        child = mutate_design.mutate(rng, hand, "move_mount")
         if child is None:
             continue
-        assert child.palm.thickness == hand.palm.thickness, "thickness moved"
-        for dim in design_space.MUTABLE_PALM_DIMS:
-            delta = getattr(child.palm, dim) - getattr(hand.palm, dim)
-            if abs(delta) > 1e-9:
-                seen_steps.add(round(abs(delta), 6))
         hand = child
-    assert seen_steps == {round(design_space.PALM_STEP, 6)}, (
-        f"steps seen: {sorted(seen_steps)}, expected only {design_space.PALM_STEP}")
+        for f in hand.fingers:
+            seen.add(round(math.degrees(f.mount.bearing)))
+            assert not design_space.in_wrist_nogo(f.mount.bearing)
+    assert len(seen) >= 12, f"only reached {len(seen)} bearings: {sorted(seen)}"
 
 
-def test_check_finger_needs_the_real_palm():
-    """Mount bounds depend on the face spans, so the palm cannot be defaulted: the same..."""
-    finger = design_space.Finger(design_space.Mount("+y", 0.5, 0.83),
-                      (design_space.Segment(design_space.Joint(0.0), 0.040),))
-    assert validate_design.check_finger(finger, 0, design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080))
-    assert not validate_design.check_finger(finger, 0, design_space.Palm(design_space.PALM_THICKNESS, 0.100, 0.100))
-    with pytest.raises(TypeError):
-        validate_design.check_finger(finger, 0)
+def test_a_palm_has_nothing_left_to_perturb():
+    """What replaced test_perturb_palm_leaves_thickness_alone.
+
+    The operator is gone because the thing it moved is gone: a palm stores only
+    its thickness, which was never mutable, and its outline is derived from
+    where the fingers start. move_mount changes the palm now, by changing them.
+    """
+    assert "perturb_palm" not in mutate_design.OPERATORS
+    assert [f.name for f in dataclasses.fields(design_space.Palm)] == ["thickness"]
+
+    rng = random.Random(10)
+    hand = gen_init_pop.seed_population(0, 1)[0]
+    before = design_space.palm_extents(hand)
+    for _ in range(400):
+        child = mutate_design.mutate(rng, hand, "move_mount")
+        if child:
+            hand = child
+    assert hand.palm.thickness == design_space.PALM_THICKNESS
+    assert design_space.palm_extents(hand) != before, \
+        "moving a mount should have reshaped the palm"
+
+
+def test_a_mount_means_the_same_place_on_any_palm():
+    """What replaced test_check_finger_needs_the_real_palm.
+
+    A mount used to be (face, u, v) -- an offset along a box -- so the same
+    triple landed elsewhere on a palm of a different size. It is polar about the
+    palm's own centre now, and a palm has no size of its own to resolve against,
+    so a mount means one place and finger legality never consults the palm.
+    """
+    mount = design_space.Mount(0.040, math.radians(30), math.radians(30))
+    assert np.allclose(design_space.mount_position(mount),
+                       [0.0, 0.040 * math.sin(math.radians(30)),
+                        0.040 * math.cos(math.radians(30))])
+    thin, thick = design_space.PALM_THICKNESS_RANGE
+    for t in (thin, thick):
+        hand = design_space.Hand(design_space.Palm(t), (design_space.Finger(
+            mount, (design_space.Segment(design_space.Joint(design_space.FLEXION),
+                                         0.040),)),))
+        assert np.allclose(design_space.mount_position(hand.fingers[0].mount),
+                           design_space.mount_position(mount))
+    assert not validate_design.check_finger(design_space.Finger(
+        mount, (design_space.Segment(design_space.Joint(design_space.FLEXION),
+                                     0.040),)), 0, design_space.Palm(thin))
 
 
 def test_require_valid_reports_every_reason():
     """The loud counterpart to is_valid."""
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
+    palm = design_space.Palm(design_space.PALM_THICKNESS)
     good = gen_init_pop.seed_population(0, 1)[0]
     assert validate_design.require_valid(good) is good
 
-    bad = design_space.Hand(palm, (design_space.Finger(design_space.Mount("+y", 0.5, 0.99),
-                                 (design_space.Segment(design_space.Joint(0.0), 0.5),)),))
+    # one fault of each kind: a base off the radius grid, and a link far over
+    # MAX_LINK_LENGTH. Both must be named, not just the first one found.
+    off_grid = design_space.Mount(0.0412, math.radians(90), math.radians(90))
+    bad = design_space.Hand(palm, (
+        design_space.Finger(off_grid,
+                            (design_space.Segment(
+                                design_space.Joint(design_space.FLEXION), 0.5),)),
+        design_space.Finger(design_space.Mount(0.040, 0.0, 0.0),
+                            (design_space.Segment(
+                                design_space.Joint(design_space.FLEXION), 0.040),))))
     with pytest.raises(ValueError) as e:
         validate_design.require_valid(bad)
-    assert "length" in str(e.value) and "mount" in str(e.value)
+    assert "length" in str(e.value) and "mount" in str(e.value), str(e.value)
 
 
 def test_segment_distance_matches_brute_force():
@@ -556,26 +620,26 @@ def test_segment_distance_degenerate_cases(p0, p1, q0, q1, want):
     assert got == pytest.approx(want, abs=1e-9)
 
 
-def test_move_mount_slides_along_the_face_and_never_off_the_midplane(pop):
-    """``v`` moves, ``u`` does not.
+def test_move_mount_keeps_a_finger_on_the_palm_plane():
+    """What replaced test_move_mount_slides_along_the_face_and_never_off_the_midplane.
 
-    Every finger originates on the palm's midplane, so a mount has one freedom
-    rather than two. This asserted the opposite while ``u`` was free -- it is
-    kept inverted rather than deleted, because a ``u`` that starts moving again
-    means ``mount_uv_bounds`` has quietly stopped pinning it."""
-    rng = random.Random(0)
-    moved_u = moved_v = 0
-    for hand in pop[:40]:
-        for _ in range(40):
-            child = mutate_design.mutate(rng, hand, "move_mount")
-            if child is None:
-                continue
-            for a, b in zip(hand.fingers, child.fingers):
-                moved_u += abs(a.mount.u - b.mount.u) > 1e-12
-                moved_v += abs(a.mount.v - b.mount.v) > 1e-12
-            hand = child
-    assert moved_v > 0, "the finger never slid along its face"
-    assert moved_u == 0, "a mount left the midplane"
+    A mount is polar now, so there is no midplane to fall off -- x is zero by
+    construction. What is worth checking is that move_mount changes only WHERE a
+    finger sits, never which way it points, which is aim_mount's job.
+    """
+    rng = random.Random(6)
+    hand = gen_init_pop.seed_population(0, 1)[0]
+    moved = 0
+    for _ in range(300):
+        child = mutate_design.mutate(rng, hand, "move_mount")
+        if child is None:
+            continue
+        moved += 1
+        for a, b in zip(hand.fingers, child.fingers):
+            assert a.mount.facing == b.mount.facing, "move_mount turned a finger"
+            assert design_space.mount_position(b.mount)[0] == 0.0
+        hand = child
+    assert moved > 100, f"move_mount only acted {moved} times in 300"
 
 def test_every_genotype_field_is_validated():
     """No field may go out of bounds unnoticed."""
@@ -603,14 +667,15 @@ def test_every_genotype_field_is_validated():
                       + hand.fingers[1:])
 
     cases = {
-        "palm width out of range": variant(p_width=0.200),
-        "palm width off grid": variant(p_width=0.0623),
-        "palm length out of range": variant(p_length=0.010),
+        "palm thickness off grid": variant(p_thickness=0.0231),
+        "mount radius past the ring": variant(m_radius=0.200),
+        "mount radius off grid": variant(m_radius=0.0412),
+        "mount bearing off grid": variant(m_bearing=0.1),
+        "mount facing off grid": variant(m_facing=0.1),
+        "mount inside the wrist wedge": variant(m_bearing=math.pi),
         "link too short": variant(s_len=0.010),
         "link too long": variant(s_len=0.200),
         "link off grid": variant(s_len=0.0431),
-        "mount u past the margin": variant(m_u=0.99),
-        "mount v past the margin": variant(m_v=0.99),
         # a generated joint has no assembly angle at all, so ANY offset is a fault
         "offset on a generated joint": variant(s_offset=math.radians(15)),
         "too many fingers": design_space.Hand(palm, hand.fingers * 4),
@@ -647,11 +712,11 @@ def test_a_joint_kind_and_a_lean_do_different_things():
     thing. A kind turns the hinge and leaves the link where it was; a lean turns
     the link and leaves the hinge pointing the same way relative to it.
     """
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
+    palm = design_space.Palm(design_space.PALM_THICKNESS)
 
     def tip(kind, lean):
         f = design_space.Finger(
-            design_space.Mount("+y", 0.5, 0.5),
+            design_space.Mount(0.035, math.radians(90), math.radians(90)),
             (design_space.Segment(design_space.Joint(kind), 0.050, lean=lean),))
         return design_space.fingertip(f, palm)
 
@@ -668,7 +733,7 @@ def test_a_joint_kind_and_a_lean_do_different_things():
     # Flexion's axis is +z, and lean 1 tips toward +y by rotating about +z.
     def hinge(lean):
         f = design_space.Finger(
-            design_space.Mount("+y", 0.5, 0.5),
+            design_space.Mount(0.035, math.radians(90), math.radians(90)),
             (design_space.Segment(design_space.Joint(design_space.FLEXION),
                                   0.050, lean=lean),))
         return design_space.joint_axes(f, palm)[0]
@@ -832,21 +897,21 @@ def _distal_overlap():
     it stopped isolating the distal case. Such a hand cannot be found by mutating
     either -- the validator rejects it, so it never survives into a population.
     """
-    palm = design_space.Palm(design_space.PALM_THICKNESS, 0.080, 0.080)
-    lo, hi = design_space.mount_uv_bounds("+z", palm)[2:]
+    palm = design_space.Palm(design_space.PALM_THICKNESS)
 
-    def finger(v, spec):
+    def finger(radius, bearing_deg, spec):
         return design_space.Finger(
-            design_space.Mount("+z", 0.5, v),
+            design_space.Mount(radius, math.radians(bearing_deg) % (2 * math.pi),
+                               math.radians(bearing_deg) % (2 * math.pi)),
             tuple(design_space.Segment(design_space.Joint(kind), 0.040, lean=lean)
                   for kind, lean in spec))
 
-    # (kind, lean) per segment. Found by search: the base links clear by 34.7 mm
-    # and finger 0's SECOND link comes within 23.9 mm of finger 1's first.
+    # (kind, lean) per segment. Found by search: the BASE links clear by 48.7 mm
+    # and finger 0's second link comes within 20.2 mm of finger 1's third.
     F, A, R = design_space.FLEXION, design_space.ABDUCTION, design_space.ROLL
     return design_space.Hand(palm, (
-        finger(lo, [(F, 3), (R, 2), (A, 3)]),
-        finger(hi, [(F, 2), (F, 2), (A, 1)]),
+        finger(0.040, 345, [(R, 0), (R, 2), (R, 1)]),
+        finger(0.030, 60, [(R, 4), (F, 4), (R, 4)]),
     ))
 
 
@@ -874,7 +939,7 @@ def test_clearance_checks_every_link_not_just_the_proximal_ones():
 
     complaints = validate_design.check_base_clearance(hand)
     assert complaints, "a distal link intersects another finger and was missed"
-    assert "finger 0 link 1" in complaints[0] and "finger 1 link 0" in complaints[0], \
+    assert "finger 0 link 1" in complaints[0] and "finger 1 link 2" in complaints[0], \
         complaints
 
 

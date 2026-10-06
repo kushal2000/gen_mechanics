@@ -19,6 +19,7 @@ token. Names match ``population_spec``: body ``f{f}_link{d}``, joint
 from __future__ import annotations
 
 import math
+import pathlib
 
 import numpy as np
 from pathlib import Path as pathlib_Path
@@ -137,7 +138,7 @@ def palm_center_offset(hand: design_space.Hand) -> tuple[float, float, float]:
     two disagree, and the observation would silently report a palm that is not
     where the hand is.
     """
-    centre = np.append(np.asarray(design_space.palm_center(hand.palm), float), 1.0)
+    centre = np.append(np.asarray(design_space.palm_center(hand), float), 1.0)
     return tuple(float(v) for v in (flange_to_palm() @ centre)[:3])
 
 
@@ -150,9 +151,9 @@ def palm_box(hand: design_space.Hand) -> tuple[tuple, np.ndarray]:
     and ``palm_center_offset`` pointed the policy at a centre with no body at it.
     """
     pose = flange_to_palm().copy()
-    centre = np.append(np.asarray(design_space.palm_center(hand.palm), float), 1.0)
+    centre = np.append(np.asarray(design_space.palm_center(hand), float), 1.0)
     pose[:3, 3] = (flange_to_palm() @ centre)[:3]
-    return tuple(float(v) for v in hand.palm.extents), pose
+    return tuple(float(v) for v in design_space.palm_extents(hand)), pose
 
 
 def palm_keypoints(center, extents, frame=None) -> np.ndarray:
@@ -190,7 +191,7 @@ def palm_keypoints(center, extents, frame=None) -> np.ndarray:
 
 def palm_keypoints_of(hand: design_space.Hand) -> np.ndarray:
     """``palm_keypoints`` for a generated design."""
-    return palm_keypoints(design_space.palm_center(hand.palm), hand.palm.extents)
+    return palm_keypoints(design_space.palm_center(hand), design_space.palm_extents(hand))
 
 
 def palm_mass_props(hand: design_space.Hand) -> tuple[float, np.ndarray]:
@@ -200,8 +201,13 @@ def palm_mass_props(hand: design_space.Hand) -> tuple[float, np.ndarray]:
     was defined for and never used by: a bigger palm weighs more, and a palm
     the size of SHARPA's weighs what SHARPA's does.
     """
-    tx, ty, tz = hand.palm.extents
-    mass = rpc.GEN_PALM_DENSITY_KG_M3 * tx * ty * tz
+    # The palm is a derived outline now, not a box, so its mass follows its
+    # real AREA rather than a bounding box -- a four-fingered blob and the
+    # rectangle around it differ by a third. Inertia is still taken from the
+    # bounding box, which overstates a rounded shape slightly and is the
+    # conservative way to be wrong.
+    tx, ty, tz = design_space.palm_extents(hand)
+    mass = rpc.GEN_PALM_DENSITY_KG_M3 * tx * design_space.palm_area(hand)
     return mass, np.diag([mass * (ty * ty + tz * tz) / 12.0,
                           mass * (tx * tx + tz * tz) / 12.0,
                           mass * (tx * tx + ty * ty) / 12.0])
@@ -307,7 +313,7 @@ def link_frames(hand: design_space.Hand) -> dict[tuple[int, int], np.ndarray]:
             for d in range(D):
                 frames[(f, d)] = np.eye(4)
             continue
-        pos, rot = design_space.mount_frame(finger.mount, hand.palm)
+        pos, rot = design_space.mount_frame(finger.mount)
         acc = np.eye(4)
         acc[:3, :3], acc[:3, 3] = rot, pos
         for d in range(D):
@@ -519,21 +525,27 @@ def _author_palm(layer, root_path, hand, palm_body_path, link7_mass_props, colli
 
     from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, set_xform
 
-    extents, pose = palm_box(hand)
     mass, inertia_local = palm_mass_props(hand)
-    pos, quat = design_space.mat_to_pos_quat(pose)
+    pos, quat = design_space.mat_to_pos_quat(flange_to_palm())
 
     wrap = define(layer, f"{palm_body_path}/hand_palm", "Xform")
     set_xform(wrap, pos, quat)
-    shape = define(layer, f"{palm_body_path}/hand_palm/box", "Cube",
-                   ["PhysicsCollisionAPI", "PhysxCollisionAPI"])
-    lx, ly, lz = (float(v) for v in extents)
-    attr(shape, "size", Sdf.ValueTypeNames.Double, 1.0)
-    attr(shape, "xformOp:scale", Sdf.ValueTypeNames.Double3, Gf.Vec3d(lx, ly, lz))
-    attr(shape, "xformOpOrder", Sdf.ValueTypeNames.TokenArray, ["xformOp:scale"])
+    # A derived outline is a MESH, not a Cube. It is convex by construction, so
+    # the collider is told so and PhysX needs no decomposition.
+    verts, faces = design_space.palm_hull(hand)
+    shape = define(layer, f"{palm_body_path}/hand_palm/mesh", "Mesh",
+                   ["PhysicsCollisionAPI", "PhysxCollisionAPI",
+                    "PhysicsMeshCollisionAPI"])
+    attr(shape, "points", Sdf.ValueTypeNames.Point3fArray,
+         [Gf.Vec3f(*(float(c) for c in v)) for v in verts])
+    attr(shape, "faceVertexCounts", Sdf.ValueTypeNames.IntArray,
+         [len(f) for f in faces])
+    attr(shape, "faceVertexIndices", Sdf.ValueTypeNames.IntArray,
+         [int(i) for f in faces for i in f])
+    attr(shape, "physics:approximation", Sdf.ValueTypeNames.Token, "convexHull")
+    lo, hi = verts.min(axis=0), verts.max(axis=0)
     attr(shape, "extent", Sdf.ValueTypeNames.Float3Array,
-         [Gf.Vec3f(-0.5 * lx, -0.5 * ly, -0.5 * lz),
-          Gf.Vec3f(0.5 * lx, 0.5 * ly, 0.5 * lz)])
+         [Gf.Vec3f(*(float(c) for c in lo)), Gf.Vec3f(*(float(c) for c in hi))])
     colliders[rpc.ARM_TIP_LINK] = colliders.get(rpc.ARM_TIP_LINK, 0) + 1
 
     if link7_mass_props is None:
@@ -553,6 +565,22 @@ def _author_palm(layer, root_path, hand, palm_body_path, link7_mass_props, colli
          Gf.Vec3f(*[float(v) for v in diag]))
     attr(body, "physics:principalAxes", Sdf.ValueTypeNames.Quatf,
          Gf.Quatf(float(principal[0]), Gf.Vec3f(*[float(v) for v in principal[1:]])))
+
+
+def write_palm_mesh(hand: design_space.Hand, path) -> "pathlib.Path":
+    """The palm's outline, extruded, as a Wavefront OBJ.
+
+    Convex by construction, so a loader can take it as one collision shape.
+    """
+    verts, faces = design_space.palm_hull(hand)
+    lines = ["# generated palm: convex hull of the finger origins, grown by "
+             f"{design_space.PALM_MIN_RADIUS * 1000:.0f} mm"]
+    lines += [f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}" for v in verts]
+    lines += ["f " + " ".join(str(i + 1) for i in f) for f in faces]
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n")
+    return path
 
 
 def urdf_for_viewing(hand: design_space.Hand, out_path) -> "pathlib.Path":
@@ -588,7 +616,15 @@ def urdf_for_viewing(hand: design_space.Hand, out_path) -> "pathlib.Path":
     # The palm rides on the flange, the way it is authored: one link, and the
     # viewer showing what the simulator has rather than a hand floating free.
     flange = ET.SubElement(root, "link", {"name": rpc.ARM_TIP_LINK})
-    extents, palm_pose = palm_box(hand)
+    # The palm is a derived outline, so it goes in as a MESH -- one convex
+    # solid, which is what a physics engine wants and needs no decomposition.
+    # Absolute, because a generated URDF is written to a scratch directory and
+    # read back from wherever the caller happens to be: a relative name sent
+    # yourdfpy looking in the arm's own mesh directory and the palm vanished.
+    mesh_path = (pathlib.Path(out_path).parent
+                 / (pathlib.Path(out_path).with_suffix("").name + "_palm.obj"))
+    mesh_name = str(mesh_path.resolve())
+    palm_pose = flange_to_palm()
     palm_rpy = design_space.mat_to_rpy(palm_pose[:3, :3])
     for tag in ("visual", "collision"):
         node = ET.SubElement(flange, tag)
@@ -596,7 +632,7 @@ def urdf_for_viewing(hand: design_space.Hand, out_path) -> "pathlib.Path":
             "xyz": " ".join(f"{v}" for v in palm_pose[:3, 3]),
             "rpy": f"{palm_rpy[0]} {palm_rpy[1]} {palm_rpy[2]}"})
         ET.SubElement(ET.SubElement(node, "geometry"),
-                      "box", {"size": " ".join(f"{v}" for v in extents)})
+                      "mesh", {"filename": mesh_name})
 
     for f in range(F):
         finger = hand.fingers[f] if f < hand.n_fingers else None
@@ -663,5 +699,6 @@ def urdf_for_viewing(hand: design_space.Hand, out_path) -> "pathlib.Path":
 
     out_path = pathlib.Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    write_palm_mesh(hand, mesh_path)
     ET.ElementTree(root).write(out_path, encoding="utf-8", xml_declaration=True)
     return out_path

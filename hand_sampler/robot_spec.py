@@ -362,7 +362,7 @@ def population_spec(hands, *, name: str = "generated_population",
         hand_armature={n: a for n in names},
         hand_default_joint_pos={n: 0.0 for n in names},
         # The template's own offset is a placeholder: the palm centre depends on
-        # palm.length, so it is per design and lives in the tables below.
+        # where the fingers are mounted, so it is per design and lives below.
         palm_center_offset=(0.0, 0.0, 0.0),
         adjacent_links={**dict(rpc.ARM_ADJACENT_LINKS), **build.adjacent_links()},
         link_prim_regexes=(".*",),

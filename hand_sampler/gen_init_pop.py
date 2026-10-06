@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+import math
 import random
 
 from hand_sampler import design_space
 from hand_sampler import validate_design
-from hand_sampler.design_space import mount_uv_bounds
 
-SEED_FACE_PAIRS: tuple[tuple[str, str], ...] = (
-    ("+y", "+z"),
-    ("-y", "+z"),
+SEED_BEARING_PAIRS: tuple[tuple[float, float], ...] = (
+    (-30.0, 30.0),
+    (-45.0, 45.0),
+    (-60.0, 60.0),
+    (0.0, 90.0),
 )
-"""ADJACENT faces only; the opposite pair is excluded on measurement."""
+"""Where generation 0 puts its two fingers, as bearings in degrees from +z.
+
+Pairs rather than free draws so a seed starts somewhere plain and symmetric, and
+all well clear of the wrist wedge behind the hand. The last pair is the lopsided
+one, a finger forward and a thumb out to the side.
+"""
 
 SEED_JOINTS = (1, 2)
 """One or two joints per finger, so a hand starts with 2 to 4 motors."""
@@ -34,11 +41,9 @@ somewhere already solved.
 """
 SEED_KINDS = tuple(SEED_KIND_WEIGHTS)
 SEED_LENGTHS = (0.035, 0.040, 0.045, 0.050)
-SEED_PALM = (
-    (design_space.PALM_THICKNESS, 0.050, 0.050),
-    (design_space.PALM_THICKNESS, 0.060, 0.060),
-    (design_space.PALM_THICKNESS, 0.070, 0.060),
-)
+SEED_RADII = (0.025, 0.030, 0.035)
+"""How far from the centre a seed finger starts. Just outside the palm's own
+disc, so generation 0 is a small hand that mutation can grow outward."""
 
 
 def _draw_seed_kind(rng: random.Random) -> int:
@@ -46,31 +51,31 @@ def _draw_seed_kind(rng: random.Random) -> int:
     return rng.choices(kinds, weights=[SEED_KIND_WEIGHTS[k] for k in kinds], k=1)[0]
 
 
-def seed_finger(rng: random.Random, face: str, palm: design_space.Palm) -> design_space.Finger:
+def seed_finger(rng: random.Random, bearing_deg: float) -> design_space.Finger:
+    """One seed finger, sitting and pointing the same way.
+
+    A seed leaves along its own bearing -- straight out from the centre -- which
+    is the plain thing to do. Mutation separates the two angles later.
+    """
     n = rng.choice(SEED_JOINTS)
     segments = tuple(
         design_space.Segment(design_space.Joint(kind=_draw_seed_kind(rng)),
-                  length=rng.choice(SEED_LENGTHS))
+                             length=rng.choice(SEED_LENGTHS))
         for _ in range(n)
     )
-    return design_space.Finger(mount=design_space.Mount(face, *_seed_uv(rng, face, palm)),
-                    segments=segments)
-
-
-def _seed_uv(rng: random.Random, face: str, palm: design_space.Palm) -> tuple[float, float]:
-    """Where on a face a seed finger mounts -- NOT the same rule on every face."""
-    lo_u, hi_u, lo_v, hi_v = mount_uv_bounds(face, palm)
-    u = 0.5 * (lo_u + hi_u)
-    v = 0.5 * (lo_v + hi_v) if face == "+z" else rng.uniform(0.55, 0.85)
-    return u, min(max(v, lo_v), hi_v)
+    angle = math.radians(bearing_deg) % (2.0 * math.pi)
+    return design_space.Finger(
+        mount=design_space.Mount(radius=rng.choice(SEED_RADII),
+                                 bearing=angle, facing=angle),
+        segments=segments)
 
 
 def seed_hand(rng: random.Random) -> design_space.Hand:
     """One seed. Retries rather than repairs -- see `seed_population`."""
-    faces = SEED_FACE_PAIRS[rng.randrange(len(SEED_FACE_PAIRS))]
-    palm = design_space.Palm(*SEED_PALM[rng.randrange(len(SEED_PALM))])
-    return design_space.Hand(palm=palm,
-                  fingers=tuple(seed_finger(rng, f, palm) for f in faces))
+    bearings = SEED_BEARING_PAIRS[rng.randrange(len(SEED_BEARING_PAIRS))]
+    return design_space.Hand(
+        palm=design_space.Palm(design_space.PALM_THICKNESS),
+        fingers=tuple(seed_finger(rng, b) for b in bearings))
 
 
 def seed_population(seed: int, count: int, max_tries: int = 50) -> list[design_space.Hand]:

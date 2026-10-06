@@ -78,12 +78,12 @@ def test_a_lean_step_is_reversible_and_reaches_everything():
 def _leaning_hand():
     def seg(kind, lean, L):
         return D.Segment(D.Joint(kind), L, lean=lean)
-    return D.Hand(D.Palm(D.PALM_THICKNESS, 0.08, 0.08), (
-        D.Finger(D.Mount("+z", 0.5, 0.5),
+    return D.Hand(D.Palm(D.PALM_THICKNESS), (
+        D.Finger(D.Mount(0.035, math.radians(0), math.radians(0)),
                  (seg(D.FLEXION, 0, 0.040),
                   seg(D.ABDUCTION, 3, 0.030),
                   seg(D.ROLL, 0, 0.025))),
-        D.Finger(D.Mount("-y", 0.5, 0.5),
+        D.Finger(D.Mount(0.035, math.radians(270), math.radians(270)),
                  (seg(D.ABDUCTION, 1, 0.035),
                   seg(D.FLEXION, 2, 0.020)))))
 
@@ -123,12 +123,24 @@ def test_a_hand_survives_the_file():
 def test_a_file_written_before_this_is_refused_with_the_conversion():
     """Silently reading theta as a kind would be a population that looks fine
     and is a different set of hands."""
-    stale = {"palm": {"thickness": 0.03, "width": 0.06, "length": 0.06},
-             "fingers": [{"mount": {"face": "+z", "u": 0.5, "v": 0.5},
+    stale = {"palm": {"thickness": 0.025},
+             "fingers": [{"mount": {"radius": 0.03, "bearing": 0.0, "facing": 0.0},
                           "segments": [{"joint": {"theta": 0.0, "phi": math.pi / 2},
                                         "length": 0.04}]}]}
     with pytest.raises(ValueError, match="theta"):
         population_io.hand_from_dict(stale)
+
+    boxed = {"palm": {"thickness": 0.025, "width": 0.06, "length": 0.06},
+             "fingers": []}
+    with pytest.raises(ValueError, match="width"):
+        population_io.hand_from_dict(boxed)
+
+    faced = {"palm": {"thickness": 0.025},
+             "fingers": [{"mount": {"face": "+z", "u": 0.5, "v": 0.5},
+                          "segments": [{"joint": {"kind": "flexion"},
+                                        "length": 0.04}]}]}
+    with pytest.raises(ValueError, match="face"):
+        population_io.hand_from_dict(faced)
 
 
 # --- the operators ----------------------------------------------------------
@@ -136,8 +148,10 @@ def test_a_file_written_before_this_is_refused_with_the_conversion():
 def test_the_operator_set_is_the_minimal_one():
     assert mutate_design.OPERATORS == (
         "split_link", "merge_links", "add_finger", "remove_finger",
-        "perturb_kind", "perturb_length", "move_mount", "perturb_lean",
-        "perturb_palm")
+        "perturb_kind", "perturb_length", "move_mount", "aim_mount",
+        "perturb_lean")
+    assert "perturb_palm" not in mutate_design.OPERATORS, \
+        "a palm has nothing left to perturb -- its outline is derived"
 
 
 def test_perturb_kind_acts_and_only_moves_one_kind():
@@ -260,7 +274,7 @@ def test_leap_keeps_its_own_kinematics(leap):
     M = commercial._palm_axes(row)
     for f, d in zip(hand.fingers, row + [thumb]):
         want = M.T @ (d.tip - d.pos[0])
-        base, _ = D.mount_frame(f.mount, hand.palm)
+        base, _ = D.mount_frame(f.mount)
         got = D.fingertip(f, hand.palm) - base
         assert float(np.linalg.norm(got - want)) * 1000 < 10.0, d.name
 
@@ -280,7 +294,6 @@ def test_leap_keeps_its_own_joint_axes(leap):
 def test_the_fit_says_what_it_cost(leap):
     """The two prices of a BOX palm, both reported rather than hidden."""
     _, notes = leap
-    assert any("27 mm off" in n for n in notes), notes
     assert any("20 mm floor" in n for n in notes), notes
     assert not any(n.startswith("NOT A LEGAL DESIGN") for n in notes), notes
 

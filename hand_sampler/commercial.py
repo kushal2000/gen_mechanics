@@ -85,8 +85,6 @@ frames it is 14 mm short on wuji2 and 11 mm long on LEAP.
 
 URDF = urdf_of("leap")
 
-ROW_FACE = "+z"
-THUMB_FACE = "-y"
 
 
 @dataclass(frozen=True)
@@ -309,38 +307,91 @@ def _kind_for(axis: np.ndarray) -> int:
 
 # --- the fit ----------------------------------------------------------------
 
+def _snap(value: float, quantum: float) -> float:
+    return round(value / quantum) * quantum
+
+
 def _snap_length(metres: float) -> float:
     q = D.LINK_QUANTUM
     v = round(metres / q) * q
     return min(max(v, D.MIN_LINK_LENGTH), D.MAX_LINK_LENGTH)
 
 
-def _v_for(face: str, palm: D.Palm, target: np.ndarray) -> float:
-    """The ``v`` on ``face`` whose mount sits nearest ``target``, clamped to the
-    face's own margins."""
-    centre, _, _, t_v, _, span_v = D.face_frame(face, palm)
-    v = 0.5 + float((target - centre) @ t_v) / span_v
-    _, _, lo, hi = D.mount_uv_bounds(face, palm)
-    return min(max(v, lo), hi)
+def _separate_on_grid(mounts: list, floor: float, tries: int = 400) -> list:
+    """Nudge snapped mounts apart until every pair clears ``floor``.
 
+    Done AFTER snapping, not before, because the snap itself can close a gap:
+    a bearing rounded to 15 degrees moves a base by r times 0.13, which is 6.5 mm
+    out at r = 50. Pushing in continuous space and then snapping left wuji2 and
+    MIDAS a few tenths short of the floor.
 
-def _push_apart(ys: np.ndarray, floor: float) -> np.ndarray:
-    """Move values apart until adjacent ones clear ``floor``, as little as possible.
-
-    Sweep up enforcing the gap, sweep back down, then re-centre on where the row
-    started. Order is preserved and a row already clear of the floor is returned
-    untouched, so only hands that need spreading get spread.
+    Each step takes the closest offending pair and moves the OUTER one of the
+    two one grid step -- further out, or round by one bearing quantum, whichever
+    helps more and stays legal. Small moves, and only where needed.
     """
-    order = np.argsort(ys)
-    v = ys[order].astype(float).copy()
-    for i in range(1, len(v)):
-        v[i] = max(v[i], v[i - 1] + floor)
-    for i in range(len(v) - 2, -1, -1):
-        v[i] = min(v[i], v[i + 1] - floor)
-    v += float(np.mean(ys)) - float(np.mean(v))
-    out = np.empty_like(v)
-    out[order] = v
+    out = list(mounts)
+    q, a = D.PALM_QUANTUM, D.ANGLE_QUANTUM
+    for _ in range(tries):
+        pos = [D.mount_position(m) for m in out]
+        worst, pair = None, None
+        for i in range(len(out)):
+            for j in range(i + 1, len(out)):
+                d = float(np.linalg.norm(pos[i] - pos[j]))
+                if d < floor and (worst is None or d < worst):
+                    worst, pair = d, (i, j)
+        if pair is None:
+            return out
+        i, j = pair
+        k = i if out[i].radius >= out[j].radius else j      # move the outer one
+        best = None
+        for dr, da in ((q, 0.0), (0.0, a), (0.0, -a), (q, a), (q, -a)):
+            cand = replace(out[k],
+                           radius=min(out[k].radius + dr, D.MAX_MOUNT_RADIUS),
+                           bearing=(out[k].bearing + da) % (2.0 * math.pi))
+            if D.in_wrist_nogo(cand.bearing):
+                continue
+            trial = list(out)
+            trial[k] = cand
+            tp = [D.mount_position(m) for m in trial]
+            gap = min(float(np.linalg.norm(tp[x] - tp[y]))
+                      for x in range(len(trial)) for y in range(x + 1, len(trial)))
+            if best is None or gap > best[0]:
+                best = (gap, cand)
+        if best is None:
+            return out
+        out[k] = best[1]
     return out
+
+
+def _push_apart_2d(pts: np.ndarray, floor: float, rounds: int = 200) -> np.ndarray:
+    """Spread points in the plane until every pair clears ``floor``.
+
+    Relaxation rather than a row sweep: a radial palm has no row to push along,
+    so each pair that is too close pushes both of its points apart along the
+    line between them, repeatedly, until none is. The centroid is restored each
+    round so the hand does not drift off its own centre.
+    """
+    q = pts.astype(float).copy()
+    centre = q.mean(axis=0)
+    for _ in range(rounds):
+        worst = 0.0
+        for i in range(len(q)):
+            for j in range(i + 1, len(q)):
+                v = q[j] - q[i]
+                d = float(np.linalg.norm(v))
+                if d >= floor:
+                    continue
+                if d < 1e-9:              # exactly coincident: push along y
+                    v, d = np.array([1.0, 0.0]), 1e-9
+                push = (floor - d) / 2.0
+                step = v / d * push
+                q[i] -= step
+                q[j] += step
+                worst = max(worst, push)
+        q += centre - q.mean(axis=0)
+        if worst < 1e-9:
+            break
+    return q
 
 
 def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
@@ -349,79 +400,97 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
     row, thumb = _split(ds)
     M = _palm_axes(row)
 
-    # into the palm frame, with the row's knuckle plane forward and the row
-    # centred across the width
-    base = np.array([d.pos[0] for d in row])
-    q_base = base @ M
-    centre_y = float(np.mean(q_base[:, 1]))
-    front_z = float(np.mean(q_base[:, 2]))
-
-    # The knuckles may sit closer than a motor allows: wuji2 packs its row at
-    # 19-24 mm centres and SHARPA at 17-20, against a 35 mm floor set by two 30
-    # mm capsules plus clearance. Spreading the row is the only way to make such
-    # a hand buildable, and it is a real distortion -- the notes say how much.
-    want_y = q_base[:, 1].copy()
-    # a hair over the floor: a mount is stored as a normalised v and comes back
-    # through the palm's own width, and that round trip lands hundreds of
-    # nanometres either side. Pushing to EXACTLY the floor failed the validator.
-    row_y = (_push_apart(want_y, D.MIN_MOUNT_SEPARATION + 1e-4)
-             if spread else want_y)
-    centre_y = float(np.mean(row_y))
-    half = float(np.max(np.abs(row_y - centre_y)))
-    width = D.PALM_QUANTUM * math.ceil(
-        (2.0 * (half + D.MOUNT_EDGE_MARGIN)) / D.PALM_QUANTUM)
-    width = min(max(width, D.PALM_WIDTH_RANGE[0]), D.PALM_WIDTH_RANGE[1])
-
-    q_thumb = thumb.pos[0] @ M
-    depth = front_z - float(q_thumb[2])
-    length = D.PALM_QUANTUM * math.ceil(
-        (depth + 2 * D.MOUNT_EDGE_MARGIN) / D.PALM_QUANTUM)
-    length = min(max(length, D.PALM_LENGTH_RANGE[0]), D.PALM_LENGTH_RANGE[1])
-
-    palm = D.Palm(D.PALM_THICKNESS, width, length)
-    # origin: the row's knuckle plane lands on the +z face, the row on the midline
-    origin = np.array([0.0, centre_y, front_z - length])
+    # Into the palm frame, with the centre of the digit bases as the origin:
+    # a palm has no faces to anchor to any more, so the centre is simply where
+    # the fingers balance.
+    base = np.array([d.pos[0] for d in (row + [thumb])]) @ M
+    origin = base.mean(axis=0)
+    origin[0] = 0.0                       # the plate's own plane
 
     def to_palm(p):
         return (p @ M) - origin
 
-    notes: list[str] = []
-    moved = {id(d): float(row_y[i] - want_y[i]) for i, d in enumerate(row)}
-    fingers = []
-    for d, face in [(x, ROW_FACE) for x in row] + [(thumb, THUMB_FACE)]:
-        pts = [to_palm(p) for p in d.pos] + [to_palm(d.tip)]
-        axes = [M.T @ a for a in d.axis]
-        want_base = pts[0]
-        shift = moved.get(id(d), 0.0)
-        if abs(shift) > 1e-4:
-            want_base = want_base + np.array([0.0, shift, 0.0])
-            notes.append(f"{d.name}: knuckle moved {abs(shift)*1000:.0f} mm "
-                         f"across the row to clear the "
-                         f"{D.MIN_MOUNT_SEPARATION*1000:.0f} mm motor floor")
-        v = _v_for(face, palm, want_base)
-        mount = D.Mount(face, 0.5, v)
-        got_base = D.mount_position(mount, palm)
-        slip = float(np.linalg.norm(got_base - want_base)) * 1000
+    # A base may sit closer to another than a motor allows. Push the whole set
+    # apart in the plane rather than along a row axis, because a radial palm has
+    # no row to push along.
+    want = np.array([to_palm(d.pos[0])[1:] for d in (row + [thumb])])
+    digits_ = row + [thumb]
+    prepared = [( d, [to_palm(q) for q in d.pos] + [to_palm(d.tip)],
+                  [M.T @ a for a in d.axis] ) for d in digits_]
+
+    def place(floor: float) -> tuple[list, list[D.Mount], np.ndarray]:
+        """Mounts for a given separation floor, snapped and then separated."""
+        spread_pts = _push_apart_2d(want, floor + 1e-4) if spread else want
+        raw = []
+        for k, (d, pts, _axes) in enumerate(prepared):
+            y, z = float(spread_pts[k][0]), float(spread_pts[k][1])
+            radius = min(max(_snap(math.hypot(y, z), D.PALM_QUANTUM),
+                             D.PALM_MIN_RADIUS), D.MAX_MOUNT_RADIUS)
+            bearing = _snap(D.bearing_of(y, z), D.ANGLE_QUANTUM) % (2.0 * math.pi)
+            out_dir = pts[1] - pts[0] if len(pts) > 1 else np.array([0.0, y, z])
+            if float(np.hypot(out_dir[1], out_dir[2])) < 1e-9:
+                out_dir = np.array([0.0, y, z])
+            facing = _snap(D.bearing_of(float(out_dir[1]), float(out_dir[2])),
+                           D.ANGLE_QUANTUM) % (2.0 * math.pi)
+            raw.append(D.Mount(radius=radius, bearing=bearing, facing=facing))
+        return raw, (_separate_on_grid(raw, floor) if spread else raw), spread_pts
+
+    def build(mounts: list) -> tuple[D.Hand, list[str]]:
+        notes: list[str] = []
+        fingers = []
+        for (d, pts, axes), mount in zip(prepared, mounts):
+            if D.in_wrist_nogo(mount.bearing):
+                notes.append(f"{d.name}: base at "
+                             f"{math.degrees(mount.bearing):.0f} deg is inside "
+                             f"the wrist's {math.degrees(D.WRIST_NOGO):.0f} deg wedge")
+            _, R = D.mount_frame(mount)
+            segs = []
+            for i in range(len(d.pos)):
+                v_link = pts[i + 1] - pts[i]
+                L = float(np.linalg.norm(v_link))
+                lean = _lean_for(R.T @ (v_link / max(L, 1e-12)))
+                R = R @ D.lean_rot(lean)
+                kind = _kind_for(R.T @ axes[i])
+                snapped = _snap_length(L)
+                if abs(snapped - L) > D.LINK_QUANTUM / 2 + 1e-9:
+                    notes.append(f"{d.name}: link {i} {L*1000:.1f} -> "
+                                 f"{snapped*1000:.0f} mm "
+                                 f"(the {D.MIN_LINK_LENGTH*1000:.0f} mm floor)")
+                segs.append(D.Segment(D.Joint(kind), snapped, lean=lean))
+            fingers.append(D.Finger(mount, tuple(segs)))
+        return D.Hand(D.Palm(D.PALM_THICKNESS), tuple(fingers)), notes
+
+    # A margin ladder. MIN_MOUNT_SEPARATION keeps two PARALLEL base capsules
+    # apart, which is not enough when a hand splays its fingers -- wuji2's links
+    # still meet at 27 mm with its bases a legal 35 apart. Widen the floor until
+    # the whole hand clears, and stop at the first one that does.
+    best = None
+    for extra in (0.0, 0.005, 0.010, 0.015, 0.020, 0.025, 0.030):
+        floor = D.MIN_MOUNT_SEPARATION + extra
+        raw, mounts, spread_pts = place(floor)
+        hand, notes = build(mounts)
+        reasons = validate_design.check(hand)
+        if best is None:
+            best = (hand, notes, reasons, raw, mounts, spread_pts, floor)
+        if not reasons:
+            best = (hand, notes, reasons, raw, mounts, spread_pts, floor)
+            break
+
+    hand, notes, reasons, raw, mounts, spread_pts, floor = best
+    if any("capsules intersect" in r for r in reasons):
+        notes.insert(0, "this hand's own LINKS pass closer than two 30 mm "
+                        "capsules allow -- wuji2's come within 22 mm of each "
+                        "other before any fitting -- so no spreading of the "
+                        "BASES makes it buildable with this motor")
+    if floor > D.MIN_MOUNT_SEPARATION + 1e-9:
+        notes.insert(0, f"bases spread to {floor*1000:.0f} mm rather than the "
+                        f"{D.MIN_MOUNT_SEPARATION*1000:.0f} mm floor: at the floor "
+                        f"this hand's LINKS still met")
+    for k, ((d, _pts, _axes), mount) in enumerate(zip(prepared, mounts)):
+        slip = float(np.linalg.norm(D.mount_position(mount)[1:] - want[k])) * 1000
         if slip > 1.0:
-            notes.append(f"{d.name}: base {slip:.0f} mm off -- a mount lives on a "
-                         f"palm FACE and this one does not")
-
-        _, R = D.mount_frame(mount, palm)
-        segs = []
-        for i in range(len(d.pos)):
-            v_link = pts[i + 1] - pts[i]
-            L = float(np.linalg.norm(v_link))
-            lean = _lean_for(R.T @ (v_link / max(L, 1e-12)))
-            R = R @ D.lean_rot(lean)
-            kind = _kind_for(R.T @ axes[i])
-            snapped = _snap_length(L)
-            if abs(snapped - L) > D.LINK_QUANTUM / 2 + 1e-9:
-                notes.append(f"{d.name}: link {i} {L*1000:.1f} -> {snapped*1000:.0f} mm "
-                             f"(the {D.MIN_LINK_LENGTH*1000:.0f} mm floor)")
-            segs.append(D.Segment(D.Joint(kind), snapped, lean=lean))
-        fingers.append(D.Finger(mount, tuple(segs)))
-
-    hand = D.Hand(palm, tuple(fingers))
-    for reason in validate_design.check(hand):
+            notes.append(f"{d.name}: base {slip:.0f} mm from where the vendor "
+                         f"puts it, after the grid and the motor floor")
+    for reason in reasons:
         notes.append(f"NOT A LEGAL DESIGN: {reason}")
     return hand, notes

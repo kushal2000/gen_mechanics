@@ -14,32 +14,45 @@ from hand_sampler import resolve
 # --- palm ------------------------------------------------------------------- Mutable,...
 
 PALM_QUANTUM = 0.005
-"""Grid the palm dimensions must lie on."""
+"""Grid the finger origins lie on -- their radius from the palm centre, and the
+step ``move_mount`` takes."""
 
-PALM_STEP = 0.010
-"""How far one ``perturb_palm`` moves a dimension -- twice the grid."""
-PALM_WIDTH_RANGE = (0.040, 0.140)       # y -- 4 fingers in a row need
-# 3 x MIN_MOUNT_SEPARATION + 2 x MOUNT_EDGE_MARGIN = 135 mm. Wide next to a
-# human palm, but our fingers are 30 mm across where a human's are ~20, so a
-# row of four simply occupies more width.
-PALM_LENGTH_RANGE = (0.040, 0.120)      # z, wrist face at z = 0
-# A palm's LENGTH is what carries the thumb: the row sits on the +z face and the
-# thumb on a side face, where v runs along z, so the palm has to reach back to
-# where the thumb mounts. 120 rather than 100 to leave the search room for a
-# thumb set further back than any hand fitted so far -- LEAP's is 75 mm behind
-# its knuckle row and is the deepest of the three.
-#
-# This does NOT improve any current fit, and it was measured rather than assumed:
-# at a 100 mm cap every fitted thumb already landed with zero error along z. The
-# commercial fitter sizes length as depth + 2 x MOUNT_EDGE_MARGIN, which puts a
-# thumb inside its margins by construction, so the cap was never what bound it.
-# What is left of a fitted thumb's placement error -- 26 to 42 mm -- is all
-# ACROSS the palm: a mount has to sit on a face, so a thumb is pinned to
-# y = -width/2 wherever the vendor actually put it. No length changes that.
+PALM_MIN_RADIUS = 0.020
+"""The palm's own disc: the smallest it can ever be, around its centre.
 
-# Thickness is seeded and never mutated: it is the dimension geometry cares least about, while...
-MUTABLE_PALM_DIMS: tuple[str, ...] = ("width", "length")
+A palm is not a stored shape any more. It is the convex hull of where the
+fingers START, grown outward by this radius -- so one finger gives a disc, two
+give a stadium, and more give a rounded convex blob. Growing the hull rather
+than fitting inside it is what makes the outline smooth with no corners to
+fillet, and it puts every mount exactly this far inside the edge, which is why
+there is no separate edge margin any more.
+"""
 
+MAX_MOUNT_RADIUS = 0.070
+"""How far from the centre a finger may start. With PALM_MIN_RADIUS this is the
+annulus a mount lives in.
+
+Replaces the old width and length bounds with one number, which is what polar
+coordinates make natural. 70 mm because the vendor hands need 62 (LEAP), 45
+(MIDAS) and 41 (wuji2) about their own base centroids.
+"""
+
+WRIST_NOGO = math.radians(60.0)
+"""A wedge facing the wrist where no finger may start -- the arm is there.
+
+Centred on WRIST_BEARING and this wide in total, so a bearing within half of it
+is refused. 60 degrees is a starting value and NOT yet reconciled with the
+vendor hands: measured about their own base centroids, LEAP's thumb sits 25
+degrees from the wrist direction and MIDAS's 27, so both would be refused by a
+60 degree wedge. wuji2's is 33 and survives.
+"""
+
+WRIST_BEARING = math.pi
+"""Which way the wrist is, as a bearing in the palm plane.
+
+Bearings are measured from +z, the direction a row of fingers tends to point, so
+pi puts the wrist directly behind the hand.
+"""
 # --- links ------------------------------------------------------------------
 
 LINK_QUANTUM = 0.005
@@ -218,11 +231,6 @@ One derived number replaces the earlier pair of chosen ones (a loose across-face
 floor and a separate same-face floor).
 """
 
-MOUNT_EDGE_MARGIN = CAPSULE_RADIUS
-"""How far a mount stays from its face boundary, or half the base capsule hangs off the..."""
-
-FINGER_FACES: tuple[str, ...] = ("+z", "+y", "-y")
-"""The three THIN faces."""
 
 GRASP_DIR = np.array([1.0, 0.0, 0.0])
 """Fingers curl toward the palm surface (+x)."""
@@ -306,18 +314,29 @@ class Segment:
 
 @dataclass(frozen=True)
 class Mount:
-    """Where a finger attaches to the palm."""
+    """Where a finger starts, and which way it leaves. Polar, about the palm centre.
 
-    face: str
-    u: float
-    v: float
+    ``radius`` and ``bearing`` say WHERE on the palm plane the base sits;
+    ``facing`` says which way the finger leaves, also in that plane. The two
+    angles are separate on purpose: a thumb reaches across the palm, so where it
+    sits and where it points are not the same question.
+
+    ``facing`` and the first segment's ``lean`` overlap -- both turn the first
+    link -- which is accepted: ``facing`` turns it IN the palm plane and a lean
+    tips it OUT of that plane, so between them a finger can leave in any
+    direction without either knob doing the other's job alone.
+    """
+
+    radius: float
+    bearing: float
+    facing: float
 
     def __post_init__(self) -> None:
-        if self.face not in FINGER_FACES:
-            raise ValueError(f"{self.face!r} is not a finger face; use {FINGER_FACES}")
-        for name in ("u", "v"):
+        for name in ("radius", "bearing", "facing"):
             if not math.isfinite(getattr(self, name)):
                 raise ValueError(f"non-finite mount {name}")
+        if self.radius < 0.0:
+            raise ValueError(f"negative mount radius {self.radius}")
 
 
 @dataclass(frozen=True)
@@ -341,13 +360,14 @@ class Finger:
 
 @dataclass(frozen=True)
 class Palm:
-    thickness: float   # x
-    width: float       # y
-    length: float      # z
+    """All that is stored of a palm. Its OUTLINE is derived from the mounts.
 
-    @property
-    def extents(self) -> tuple[float, float, float]:
-        return (self.thickness, self.width, self.length)
+    See ``palm_outline``: a palm is the convex hull of where its fingers start,
+    grown by PALM_MIN_RADIUS. There is nothing here to mutate, which is why
+    there is no longer a perturb_palm.
+    """
+
+    thickness: float   # x, the one dimension the shape does not give us
 
 
 @dataclass(frozen=True)
@@ -389,15 +409,30 @@ def with_finger(hand: Hand, i: int, finger: Finger) -> Hand:
     return replace(hand, fingers=tuple(fingers))
 
 
-def palm_center(palm: "Palm") -> tuple[float, float, float]:
+def palm_center(hand: "Hand") -> tuple[float, float, float]:
     """Centre of the palm box, in the palm frame.
 
-    The wrist face is at z = 0 and the box grows outward, so the centre tracks
-    half the length. Unlike SHARPA's measured PALM_BOX_CENTER_M this is exactly
-    centred in x and y: a generated palm is a box we author, with no asymmetry
-    to record.
+    The centroid of the derived outline, not of a box: a radial palm has no
+    symmetry to assume, since where its fingers start decides its shape. In x it
+    is still exactly centred, because the plate is extruded evenly either way.
     """
-    return (0.0, 0.0, palm.length / 2.0)
+    ring = palm_outline(hand)
+    nxt = np.roll(ring, -1, axis=0)
+    cr = ring[:, 0] * nxt[:, 1] - nxt[:, 0] * ring[:, 1]
+    area = float(cr.sum()) / 2.0
+    if abs(area) < 1e-12:
+        c = ring.mean(axis=0)
+        return (0.0, float(c[0]), float(c[1]))
+    cy = float(((ring[:, 0] + nxt[:, 0]) * cr).sum()) / (6.0 * area)
+    cz = float(((ring[:, 1] + nxt[:, 1]) * cr).sum()) / (6.0 * area)
+    return (0.0, cy, cz)
+
+
+def palm_area(hand: "Hand") -> float:
+    """Area of the derived outline, for mass and inertia."""
+    ring = palm_outline(hand)
+    nxt = np.roll(ring, -1, axis=0)
+    return abs(float((ring[:, 0] * nxt[:, 1] - nxt[:, 0] * ring[:, 1]).sum())) / 2.0
 
 
 # --- geometry --------------------------------------------------------------- Joint axes,...
@@ -426,62 +461,131 @@ def axis_of(joint: Joint) -> np.ndarray:
 
 # --- palm faces -------------------------------------------------------------
 
-def face_frame(face: str, palm: Palm) -> tuple[np.ndarray, np.ndarray, np.ndarray,
-                                               np.ndarray, float, float]:
-    """``(centre, normal, t_u, t_v, span_u, span_v)`` for a palm face."""
-    t, w, l = palm.thickness, palm.width, palm.length
-    x = np.array([1.0, 0.0, 0.0])
-    y = np.array([0.0, 1.0, 0.0])
-    z = np.array([0.0, 0.0, 1.0])
-    table = {
-        "+y": (np.array([0.0, w / 2, l / 2]), y, x, z, t, l),
-        "-y": (np.array([0.0, -w / 2, l / 2]), -y, x, z, t, l),
-        "+z": (np.array([0.0, 0.0, l]), z, x, y, t, w),
-    }
-    if face not in table:
-        raise ValueError(f"{face!r} is not a finger face")
-    return table[face]
+def bearing_of(y: float, z: float) -> float:
+    """The bearing of a point in the palm plane, measured from +z, in [0, 2pi)."""
+    return math.atan2(y, z) % (2.0 * math.pi)
 
 
-def face_from_normal(n: np.ndarray) -> str | None:
-    """Which finger face has this outward normal, if any."""
-    axis = int(np.argmax(np.abs(n)))
-    sign = "+" if n[axis] > 0 else "-"
-    face = f"{sign}{'xyz'[axis]}"
-    return face if face in FINGER_FACES else None
+def in_wrist_nogo(bearing: float) -> bool:
+    """Is this bearing inside the wedge the arm occupies?"""
+    gap = abs((bearing - WRIST_BEARING + math.pi) % (2.0 * math.pi) - math.pi)
+    return gap < WRIST_NOGO / 2.0 - 1e-9
 
 
-def mount_uv_bounds(face: str, palm: Palm) -> tuple[float, float, float, float]:
-    """``(u_lo, u_hi, v_lo, v_hi)`` -- the normalised box a mount may occupy.
+def mount_position(mount: Mount) -> np.ndarray:
+    """Where the finger starts, in the palm frame.
 
-    ``u`` is PINNED at 0.5: every finger originates on the palm's midplane, so a
-    mount's only freedom is ``v``, along the face. Pinned here rather than left to
-    fall out of the margin arithmetic -- the palm is thinner than one margin can
-    span, so solving for ``u`` would find nothing and hand back whatever the
-    arithmetic degenerated to.
-
-    At PALM_THICKNESS = 25 mm against a 15 mm margin the two edge margins
-    OVERLAP, and a mount on the midplane sits 12.5 mm from each large face. That
-    is intended: the palm is deliberately a quantum thinner than a link, so a
-    base capsule overhangs it by 2.5 mm a side. The capsule is a conservative
-    bound on a 19 mm motor, so nothing real hangs off.
+    Polar about the palm centre, and always in the midplane: x is 0 because a
+    palm is a flat plate and a finger starts on it, not above or below it.
     """
-    _, _, _, _, _, span_v = face_frame(face, palm)
-    m = MOUNT_EDGE_MARGIN
-    lo_v, hi_v = ((m / span_v, 1.0 - m / span_v) if span_v > 2 * m else (0.5, 0.5))
-    return 0.5, 0.5, lo_v, hi_v
+    return np.array([0.0,
+                     mount.radius * math.sin(mount.bearing),
+                     mount.radius * math.cos(mount.bearing)])
 
 
-def mount_position(mount: Mount, palm: Palm) -> np.ndarray:
-    centre, _, t_u, t_v, span_u, span_v = face_frame(mount.face, palm)
-    return (centre
-            + (mount.u - 0.5) * span_u * t_u
-            + (mount.v - 0.5) * span_v * t_v)
+def mount_direction(mount: Mount) -> np.ndarray:
+    """Which way the finger leaves, in the palm frame.
+
+    Its own angle, NOT the direction it sits in. A thumb sits off one side and
+    reaches back across the palm, which a face normal could never say.
+    """
+    return np.array([0.0, math.sin(mount.facing), math.cos(mount.facing)])
 
 
-def mount_direction(mount: Mount, palm: Palm) -> np.ndarray:
-    """The face normal: a finger leaves perpendicular to the face it sits on."""
-    return face_frame(mount.face, palm)[1]
+def palm_outline(hand: "Hand", arc: int = 12) -> np.ndarray:
+    """The palm as (y, z) vertices, counterclockwise. Derived, never stored.
+
+    The convex hull of where the fingers start, grown outward by
+    PALM_MIN_RADIUS. Growing it is what makes the shape smooth: every straight
+    run is an edge of the hull pushed out, and every join between two runs is a
+    circular arc about a hull vertex, so there is no corner anywhere and nothing
+    to fillet. One finger gives a disc and two give a stadium, both of which
+    fall out of the same construction rather than needing their own case.
+
+    ``arc`` is how many segments each corner arc is drawn with -- a drawing
+    resolution, not a design parameter.
+    """
+    pts = np.array([mount_position(f.mount)[1:] for f in hand.fingers])
+    hull = _hull_ccw(pts)
+    r = PALM_MIN_RADIUS
+    if len(hull) == 1:                       # one finger: a disc about it
+        a = np.linspace(0.0, 2.0 * math.pi, 4 * arc, endpoint=False)
+        return hull[0] + r * np.column_stack([np.cos(a), np.sin(a)])
+
+    def outward(a, b):
+        """Outward normal of the edge a -> b of a counterclockwise hull."""
+        e = b - a
+        n = np.array([e[1], -e[0]])
+        return n / max(float(np.linalg.norm(n)), 1e-12)
+
+    out = []
+    n = len(hull)
+    for i, pt in enumerate(hull):
+        prv, nxt = hull[(i - 1) % n], hull[(i + 1) % n]
+        n_in = outward(prv, pt)              # the edge arriving here
+        n_out = outward(pt, nxt)             # the edge leaving
+        a_in = math.atan2(n_in[1], n_in[0])
+        sweep = (math.atan2(n_out[1], n_out[0]) - a_in) % (2.0 * math.pi)
+        # Two hull points are a stadium: the edges run there and back, so each
+        # cap is exactly half a turn and the formula above already says so.
+        for k in range(arc + 1):
+            a = a_in + sweep * k / arc
+            out.append(pt + r * np.array([math.cos(a), math.sin(a)]))
+    return np.array(out)
+
+
+def _hull_ccw(pts: np.ndarray) -> np.ndarray:
+    """Convex hull of 2-D points, counterclockwise, duplicates dropped.
+
+    Monotone chain. Written out rather than taken from scipy because a hand can
+    have two fingers, and scipy's hull refuses anything it cannot triangulate.
+    """
+    uniq = np.unique(np.round(pts, 9), axis=0)
+    order = np.lexsort((uniq[:, 1], uniq[:, 0]))
+    q = uniq[order]
+    if len(q) <= 2:
+        return q
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower = []
+    for v in q:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], v) <= 0:
+            lower.pop()
+        lower.append(v)
+    upper = []
+    for v in q[::-1]:
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], v) <= 0:
+            upper.pop()
+        upper.append(v)
+    return np.array(lower[:-1] + upper[:-1])
+
+
+def palm_hull(hand: "Hand") -> tuple[np.ndarray, list[tuple[int, ...]]]:
+    """The palm as ``(vertices, faces)``: the outline extruded through x.
+
+    ONE convex solid, which is what a physics engine wants -- no decomposition,
+    no union of parts, and the same shape the viewer draws.
+    """
+    ring = palm_outline(hand)
+    half = hand.palm.thickness / 2.0
+    n = len(ring)
+    verts = np.array([[-half, y, z] for y, z in ring]
+                     + [[half, y, z] for y, z in ring], dtype=float)
+    faces: list[tuple[int, ...]] = [tuple(range(n - 1, -1, -1)),
+                                    tuple(range(n, 2 * n))]
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append((i, j, j + n, i + n))
+    return verts, faces
+
+
+def palm_extents(hand: "Hand") -> tuple[float, float, float]:
+    """``(thickness, width, length)`` of the palm's bounding box."""
+    ring = palm_outline(hand)
+    lo, hi = ring.min(axis=0), ring.max(axis=0)
+    return (hand.palm.thickness, float(hi[0] - lo[0]), float(hi[1] - lo[1]))
 
 
 def _frame_from_axis(axis: np.ndarray) -> np.ndarray:
@@ -496,9 +600,9 @@ def _frame_from_axis(axis: np.ndarray) -> np.ndarray:
     return np.column_stack([a, aa, fe])
 
 
-def mount_frame(mount: Mount, palm: Palm) -> tuple[np.ndarray, np.ndarray]:
+def mount_frame(mount: Mount) -> tuple[np.ndarray, np.ndarray]:
     """``(position, R)`` for a finger's base, in the palm frame."""
-    return mount_position(mount, palm), _frame_from_axis(mount_direction(mount, palm))
+    return mount_position(mount), _frame_from_axis(mount_direction(mount))
 
 
 # --- forward kinematics -----------------------------------------------------
@@ -508,7 +612,7 @@ def forward_kinematics(finger: Finger, palm: Palm,
                        ) -> tuple[list[np.ndarray], list[tuple]]:
     """``(joint_positions, capsules)`` for one finger, in the palm frame."""
     angles = angles or {}
-    p, R = mount_frame(finger.mount, palm)
+    p, R = mount_frame(finger.mount)
     joints: list[np.ndarray] = []
     capsules: list[tuple] = []
 
@@ -530,7 +634,7 @@ def joint_axes(finger: Finger, palm: Palm,
                angles: dict[int, float] | None = None) -> list[np.ndarray]:
     """Each joint's hinge axis as a unit vector in the palm frame."""
     angles = angles or {}
-    _, R = mount_frame(finger.mount, palm)
+    _, R = mount_frame(finger.mount)
     out: list[np.ndarray] = []
     for i, seg in enumerate(finger.segments):
         R = R @ lean_rot(seg.lean)
@@ -637,7 +741,7 @@ def base_capsules(hand: Hand) -> list[tuple[np.ndarray, np.ndarray]]:
     """Each finger's proximal link at the rest pose, as a core segment."""
     out = []
     for f in hand.fingers:
-        p0, R = mount_frame(f.mount, hand.palm)
+        p0, R = mount_frame(f.mount)
         seg = f.segments[0]
         R = R @ lean_rot(seg.lean)
         R = R @ rodrigues(axis_of(seg.joint), seg.joint.offset)
@@ -686,7 +790,7 @@ def rest_capsules(hand: Hand) -> list[tuple[int, int, np.ndarray, np.ndarray]]:
 
 def mount_separations(hand: Hand) -> list[float]:
     """Pairwise distances between finger mounts, in metres."""
-    pos = [mount_position(f.mount, hand.palm) for f in hand.fingers]
+    pos = [mount_position(f.mount) for f in hand.fingers]
     return [float(np.linalg.norm(pos[i] - pos[j]))
             for i in range(len(pos)) for j in range(i + 1, len(pos))]
 
@@ -1086,8 +1190,8 @@ def hand_from_urdf(urdf, joint_names, *, base_dir=None, palm=None) -> "Hand":
         chains.append(chain)
 
     index = {n: i for i, n in enumerate(wanted)}
-    fingers, faces = [], list(FINGER_FACES)
-    the_palm = palm or Palm(thickness=0.020, width=0.060, length=0.060)
+    fingers = []
+    the_palm = palm or Palm(thickness=PALM_THICKNESS)
     for k, chain in enumerate(chains):
         segs = []
         for n in chain:
@@ -1096,8 +1200,10 @@ def hand_from_urdf(urdf, joint_names, *, base_dir=None, palm=None) -> "Hand":
             length = float(np.linalg.norm(box[1] - box[0]))
             segs.append(Segment(joint=Joint(kind=FLEXION), length=max(length, 1e-6),
                                 token_box=tuple(map(tuple, box))))
-        face = faces[k % len(faces)]
-        u0, u1, v0, v1 = mount_uv_bounds(face, the_palm)
-        fingers.append(Finger(mount=Mount(face=face, u=0.5 * (u0 + u1), v=0.5 * (v0 + v1)),
+        # A measured hand's real mount is whatever its URDF says; this only has
+        # to be a legal, distinct place to hang each chain from.
+        bearing = (2.0 * math.pi * k / max(len(chains), 1)) % (2.0 * math.pi)
+        fingers.append(Finger(mount=Mount(radius=PALM_MIN_RADIUS + MIN_MOUNT_SEPARATION,
+                                          bearing=bearing, facing=bearing),
                               segments=tuple(segs)))
     return Hand(palm=the_palm, fingers=tuple(fingers))

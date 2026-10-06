@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import math
 from itertools import combinations
 
 import numpy as np
 
 from hand_sampler import design_space
 from hand_sampler.design_space import (
-    base_capsules, mount_position, mount_uv_bounds, segment_distance,
+    base_capsules, mount_position, segment_distance,
 )
 
 _TOL = 1e-9
@@ -21,16 +22,49 @@ def _on_grid(value: float, quantum: float) -> bool:
 # --- individual rules -------------------------------------------------------
 
 def check_palm(palm: design_space.Palm) -> list[str]:
+    """Thickness is all a palm stores. Its outline is derived from the mounts,
+    so what used to be checked here is checked on them -- see check_layout."""
     out: list[str] = []
-    for name, value, (lo, hi) in (
-        ("thickness", palm.thickness, design_space.PALM_THICKNESS_RANGE),
-        ("width", palm.width, design_space.PALM_WIDTH_RANGE),
-        ("length", palm.length, design_space.PALM_LENGTH_RANGE),
-    ):
-        if not lo - _TOL <= value <= hi + _TOL:
-            out.append(f"palm.{name} = {value:.4f} outside [{lo}, {hi}]")
-        if not _on_grid(value, design_space.PALM_QUANTUM):
-            out.append(f"palm.{name} = {value:.4f} off the {design_space.PALM_QUANTUM} m grid")
+    lo, hi = design_space.PALM_THICKNESS_RANGE
+    if not lo - _TOL <= palm.thickness <= hi + _TOL:
+        out.append(f"palm.thickness = {palm.thickness:.4f} outside [{lo}, {hi}]")
+    if not _on_grid(palm.thickness, design_space.PALM_QUANTUM):
+        out.append(f"palm.thickness = {palm.thickness:.4f} off the "
+                   f"{design_space.PALM_QUANTUM} m grid")
+    return out
+
+
+def check_layout(hand: design_space.Hand) -> list[str]:
+    """Every mount in the annulus, on its grids, and clear of the wrist.
+
+    This is what bounds complexity now that a palm has no size of its own: a
+    finger starts between PALM_MIN_RADIUS and MAX_MOUNT_RADIUS of the centre,
+    and inside that ring MIN_MOUNT_SEPARATION decides how many will fit.
+    """
+    out: list[str] = []
+    turn = 2.0 * math.pi
+    for i, f in enumerate(hand.fingers):
+        m = f.mount
+        where = f"finger[{i}].mount"
+        if not design_space.PALM_MIN_RADIUS - _TOL <= m.radius <= \
+                design_space.MAX_MOUNT_RADIUS + _TOL:
+            out.append(f"{where}.radius = {m.radius * 1000:.0f} mm outside the "
+                       f"[{design_space.PALM_MIN_RADIUS * 1000:.0f}, "
+                       f"{design_space.MAX_MOUNT_RADIUS * 1000:.0f}] mm ring")
+        if not _on_grid(m.radius, design_space.PALM_QUANTUM):
+            out.append(f"{where}.radius = {m.radius:.4f} off the "
+                       f"{design_space.PALM_QUANTUM} m grid")
+        for name, value in (("bearing", m.bearing), ("facing", m.facing)):
+            if not -_TOL <= value < turn - _TOL:
+                out.append(f"{where}.{name} = {value:.4f} outside [0, 2pi); a "
+                           f"full turn is the same direction again and a hand "
+                           f"gets one spelling")
+            if not _on_grid(value, design_space.ANGLE_QUANTUM):
+                out.append(f"{where}.{name} = {value:.4f} off the angle grid")
+        if design_space.in_wrist_nogo(m.bearing):
+            out.append(f"{where}.bearing = {math.degrees(m.bearing):.0f} deg is "
+                       f"inside the {math.degrees(design_space.WRIST_NOGO):.0f} deg "
+                       f"wedge the wrist occupies")
     return out
 
 
@@ -77,15 +111,6 @@ def check_finger(finger: design_space.Finger, i: int, palm: design_space.Palm) -
         out.append(f"{where} has {finger.n_joints} joints, envelope allows "
                    f"{design_space.MAX_JOINTS_PER_FINGER}")
 
-    lo_u, hi_u, lo_v, hi_v = mount_uv_bounds(finger.mount.face, palm)
-    for name, value, lo, hi in (("u", finger.mount.u, lo_u, hi_u),
-                                ("v", finger.mount.v, lo_v, hi_v)):
-        if not lo - _TOL <= value <= hi + _TOL:
-            out.append(f"{where}.mount.{name} = {value:.4f} outside "
-                       f"[{lo:.3f}, {hi:.3f}]; a mount must stay "
-                       f"{design_space.MOUNT_EDGE_MARGIN * 1000:.0f} mm from the face edge "
-                       f"or its capsule hangs off the palm")
-
     if finger.reach > design_space.MAX_FINGER_LENGTH + _TOL:
         out.append(f"{where} reaches {finger.reach * 1000:.0f} mm fully extended, "
                    f"maximum is {design_space.MAX_FINGER_LENGTH * 1000:.0f} mm")
@@ -106,7 +131,7 @@ def check_packing(hand: design_space.Hand) -> list[str]:
     """
     out: list[str] = []
     floor = design_space.MIN_MOUNT_SEPARATION
-    pos = [mount_position(f.mount, hand.palm) for f in hand.fingers]
+    pos = [mount_position(f.mount) for f in hand.fingers]
     for pa, pb in combinations(pos, 2):
         d = float(np.linalg.norm(pa - pb))
         if d < floor - _TOL:
@@ -166,6 +191,7 @@ def check(hand: design_space.Hand) -> list[str]:
     """Every reason this hand is not a legal design. Empty means legal."""
     out = check_envelope(hand)
     out += check_palm(hand.palm)
+    out += check_layout(hand)
     for i, f in enumerate(hand.fingers):
         out += check_finger(f, i, hand.palm)
     out += check_packing(hand)

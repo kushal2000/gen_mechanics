@@ -11,6 +11,8 @@ can close from hands that cannot, and it is deliberately generous in between.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 
@@ -20,12 +22,18 @@ from hand_sampler import gen_init_pop, commercial, sharpa_capsule
 F, A, R = D.FLEXION, D.ABDUCTION, D.ROLL
 
 
-def _hand(kinds, n_fingers=3, lean=0, face="+z"):
-    palm = D.Palm(D.PALM_THICKNESS, 0.090, 0.080)
+BEARINGS = (0.0, 45.0, 315.0, 90.0, 270.0, 135.0)
+"""Spread round the palm and clear of the wrist wedge, in the order they are
+used, so a two-finger hand gets the two most opposed of them."""
+
+
+def _hand(kinds, n_fingers=3, lean=0, radius=0.040):
+    palm = D.Palm(D.PALM_THICKNESS)
     return D.Hand(palm, tuple(
-        D.Finger(D.Mount(face, 0.5, float(v)),
+        D.Finger(D.Mount(radius, math.radians(b) % (2 * math.pi),
+                         math.radians(b) % (2 * math.pi)),
                  tuple(D.Segment(D.Joint(k), 0.040, lean=lean) for k in kinds))
-        for v in np.linspace(0.25, 0.75, n_fingers)))
+        for b in BEARINGS[:n_fingers]))
 
 
 # --- what it must reject ----------------------------------------------------
@@ -37,12 +45,14 @@ def test_a_finger_of_roll_joints_cannot_close():
 
 def test_a_finger_of_abduction_joints_cannot_close():
     """Abduction's axis IS the grasp direction, so it spreads a hand and never
-    closes it. This is exact, not approximate, and it holds on every face."""
+    closes it. This is exact, not approximate, and it holds whichever way round
+    the palm the finger sits."""
     assert D.curl_score(_hand([A, A, A])) == pytest.approx(0.0, abs=1e-12)
-    palm = D.Palm(D.PALM_THICKNESS, 0.08, 0.08)
-    for face in D.FINGER_FACES:
-        f = D.Finger(D.Mount(face, 0.5, 0.5), (D.Segment(D.Joint(A), 0.040),))
-        assert D.curl_authority(f, palm) == pytest.approx(0.0, abs=1e-12), face
+    palm = D.Palm(D.PALM_THICKNESS)
+    for b in range(0, 360, 15):
+        f = D.Finger(D.Mount(0.040, math.radians(b), math.radians(b)),
+                     (D.Segment(D.Joint(A), 0.040),))
+        assert D.curl_authority(f, palm) == pytest.approx(0.0, abs=1e-12), b
 
 
 def test_leaning_a_finger_over_degrades_it_rather_than_killing_it():
@@ -62,11 +72,14 @@ def test_the_simplest_possible_hand_passes():
     assert D.curl_score(_hand([F], n_fingers=2)) == pytest.approx(1.0)
 
 
-def test_a_flexion_finger_scores_full_marks_on_every_face():
-    palm = D.Palm(D.PALM_THICKNESS, 0.08, 0.08)
-    for face in D.FINGER_FACES:
-        f = D.Finger(D.Mount(face, 0.5, 0.5), (D.Segment(D.Joint(F), 0.040),))
-        assert D.curl_authority(f, palm) == pytest.approx(1.0), face
+def test_a_flexion_finger_scores_full_marks_whichever_way_it_faces():
+    """A palm is a disc, so there is no privileged direction to sit in: a
+    flexion joint closes toward the grasp volume from anywhere on it."""
+    palm = D.Palm(D.PALM_THICKNESS)
+    for b in range(0, 360, 15):
+        f = D.Finger(D.Mount(0.040, math.radians(b), math.radians(b)),
+                     (D.Segment(D.Joint(F), 0.040),))
+        assert D.curl_authority(f, palm) == pytest.approx(1.0), b
 
 
 def test_leap_passes():
@@ -96,17 +109,17 @@ def test_more_joints_does_not_inflate_the_score():
 
 def test_a_longer_finger_gets_no_credit_for_being_long():
     """Divided by its own reach, so the score is about direction, not size."""
-    palm = D.Palm(D.PALM_THICKNESS, 0.08, 0.08)
-    short = D.Finger(D.Mount("+z", 0.5, 0.5), (D.Segment(D.Joint(F), 0.020),))
-    long_ = D.Finger(D.Mount("+z", 0.5, 0.5), (D.Segment(D.Joint(F), 0.080),))
+    palm = D.Palm(D.PALM_THICKNESS)
+    short = D.Finger(D.Mount(0.035, math.radians(0), math.radians(0)), (D.Segment(D.Joint(F), 0.020),))
+    long_ = D.Finger(D.Mount(0.035, math.radians(0), math.radians(0)), (D.Segment(D.Joint(F), 0.080),))
     assert D.curl_authority(short, palm) == pytest.approx(D.curl_authority(long_, palm))
 
 
 def test_the_score_is_the_second_finger_not_the_best():
     """One good finger beside a dead one is not a hand that grasps."""
-    palm = D.Palm(D.PALM_THICKNESS, 0.090, 0.080)
-    good = D.Finger(D.Mount("+z", 0.5, 0.3), (D.Segment(D.Joint(F), 0.040),))
-    dead = D.Finger(D.Mount("+z", 0.5, 0.7), (D.Segment(D.Joint(R), 0.040),))
+    palm = D.Palm(D.PALM_THICKNESS)
+    good = D.Finger(D.Mount(0.031, math.radians(0), math.radians(0)), (D.Segment(D.Joint(F), 0.040),))
+    dead = D.Finger(D.Mount(0.039, math.radians(0), math.radians(0)), (D.Segment(D.Joint(R), 0.040),))
     assert D.curl_authority(good, palm) == pytest.approx(1.0)
     assert D.curl_authority(dead, palm) == pytest.approx(0.0, abs=1e-12)
     assert D.curl_score(D.Hand(palm, (good, dead))) == pytest.approx(0.0, abs=1e-12)

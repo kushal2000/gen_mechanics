@@ -96,8 +96,11 @@ def describe(hand: design_space.Hand, last_op: str | None) -> str:
         f"curl score  **{curl:.2f}**  ({verdict})"
         "   *(LEAP 1.00, roll- or abduction-only 0.00)*",
         "",
-        f"palm  {hand.palm.thickness*1000:.0f} x {hand.palm.width*1000:.0f} x "
-        f"{hand.palm.length*1000:.0f} mm",
+        f"palm  {design_space.palm_extents(hand)[0]*1000:.0f} thick, "
+        f"{design_space.palm_extents(hand)[1]*1000:.0f} x "
+        f"{design_space.palm_extents(hand)[2]*1000:.0f} mm across  "
+        f"*(derived: the hull of the mounts, grown "
+        f"{design_space.PALM_MIN_RADIUS*1000:.0f} mm)*",
         f"mount separation  {', '.join(f'{d*1000:.0f}' for d in seps)} mm"
         + ("   *(optimum measured at 40-50 mm)*" if seps else ""),
         "",
@@ -109,7 +112,9 @@ def describe(hand: design_space.Hand, last_op: str | None) -> str:
              + ("" if not leans else f"  **{leans} leaning**")
         curl_f = design_space.curl_authority(f, hand.palm)
         lines.append(
-            f"`{i}` {f.mount.face} u={f.mount.u:.2f} v={f.mount.v:.2f} | "
+            f"`{i}` r={f.mount.radius*1000:.0f}mm "
+            f"@{math.degrees(f.mount.bearing):.0f}d "
+            f"facing {math.degrees(f.mount.facing):.0f}d | "
             f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm | "
             f"curl {curl_f:.2f}{'  **dead**' if curl_f < 0.05 else ''}{tags}")
         # [kind (lean) / length mm]
@@ -497,19 +502,15 @@ from hand_sampler.viewer import (                                  # noqa: E402
 )
 
 
-def _palm_faces(palm: design_space.Palm) -> list[np.ndarray]:
-    t, w, l = palm.extents
-    x, y = t / 2, w / 2
-    c = np.array([[-x, -y, 0], [x, -y, 0], [x, y, 0], [-x, y, 0],
-                  [-x, -y, l], [x, -y, l], [x, y, l], [-x, y, l]], float)
-    idx = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4),
-           (2, 3, 7, 6), (1, 2, 6, 5), (0, 3, 7, 4)]
-    return [c[list(f)] for f in idx]
+def _palm_faces(hand: design_space.Hand) -> list[np.ndarray]:
+    """The derived outline, extruded -- the same hull the simulator collides."""
+    verts, faces = design_space.palm_hull(hand)
+    return [verts[list(f)] for f in faces]
 
 
 def draw(ax, hand: design_space.Hand, title: str = "", flex: float = 0.0) -> None:
     ax.add_collection3d(Poly3DCollection(
-        _palm_faces(hand.palm), facecolor=(0.47, 0.49, 0.53), alpha=0.30,
+        _palm_faces(hand), facecolor=(0.47, 0.49, 0.53), alpha=0.30,
         edgecolor=(0.3, 0.3, 0.34), linewidths=0.5))
 
     for finger in hand.fingers:
@@ -551,6 +552,9 @@ def _grid(items, out: str, cols: int = 3, flex: float = 0.0) -> None:
     print(f"wrote {out}  ({len(items)} hands)")
 
 
+_SCRATCH = None
+
+
 def urdf_for(hand) -> "yourdfpy.URDF":
     """The design as the ARM + HAND articulation, ready for ViserUrdf.
 
@@ -565,8 +569,13 @@ def urdf_for(hand) -> "yourdfpy.URDF":
 
     from coevolution.pose_viewer import ARM_URDF_PATH, _graft_hand_onto_arm
 
-    with tempfile.TemporaryDirectory() as tmp:
-        text = build.urdf_for_viewing(hand, pathlib.Path(tmp) / "d.urdf").read_text()
+    # ONE scratch directory for the process, not a context manager: the URDF
+    # names a palm mesh beside it, and a TemporaryDirectory deletes that file
+    # before yourdfpy gets to read it, so the palm silently vanished.
+    global _SCRATCH
+    if _SCRATCH is None:
+        _SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="hand_viewer_"))
+    text = build.urdf_for_viewing(hand, _SCRATCH / "d.urdf").read_text()
     root = ET.fromstring(_graft_hand_onto_arm(text, ARM_URDF_PATH))
     # yourdfpy resolves a relative mesh against the file it loaded; there is no
     # file here, so make them absolute instead of writing into the asset tree.
