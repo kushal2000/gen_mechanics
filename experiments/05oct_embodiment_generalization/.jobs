@@ -2,3 +2,4 @@ missing-finger, Wuji-only ~40k (after 990216): 998349
 action noise (std 0-1.0): 998387 unified 40k, 998388 Wuji ~32k, 998389 Wuji ~40k (after 990216); the 02oct copies 998306-998308 cancelled
 as SLURM arrays (one GPU job per point): 998475 998476 998477 998478
 missing-finger on Shadow/Tesollo/XHAND/Allegro (unified 40k vs each hand's own palm-frame policy) + Wuji-only 40k (after 990216): 999908 999909 999910 999911 999914 999916 999917 999918 999919; 998478 cancelled
+Wuji-only 40k (990216 trained to the end but failed in post-processing after the folder move): finger 10994, action noise 11000

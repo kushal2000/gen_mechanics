@@ -23,3 +23,4 @@ missing-finger sweep (none/thumb/index/middle/ring/pinky): 996730 unified 40k, 9
 action-noise sweep (std 0-1.0): 998306 unified 40k, 998307 Wuji ~32k, 998308 Wuji ~40k (after 990216)
 missing-finger Wuji-40k job 996732 cancelled: moved to experiments/05oct_embodiment_generalization
 Wuji ~40k object sweeps as SLURM arrays (after 990216): 998479 998480 998481; replaced 992784 990884 990881
+Wuji-only 40k object sweeps: 11001 11002 11003, capped ID/OOD 11004 (1024 envs, as the unified 40k one)
