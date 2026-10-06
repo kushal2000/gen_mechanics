@@ -266,7 +266,7 @@
  "armature": 0.00058,
  "palm_filter_depth": 2,
  "effort_limit": 0.5,
- "velocity_limit": 10.0,
+ "velocity_limit": 5.0,
  "link_density_kg_m3": 1750.0,
  "friction": 0.5
 }

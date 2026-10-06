@@ -6,7 +6,7 @@ For each hand, reads its unified URDF (``../unified_commercial_hands/<hand>/``) 
 ``<hand>/<hand>_left.urdf`` here plus a ``<hand>_left.spec.json`` for the RobotSpec, changing ONLY
 dynamics, following the generated hands' rules (``hand_sampler/robot_param_constants.py``) at 0.5 N.m:
 
-  every joint     <limit effort=0.5 N.m velocity=10 rad/s>, <dynamics damping=DAMPING friction=0>;
+  every joint     <limit effort=0.5 N.m velocity=5 rad/s>, <dynamics damping=DAMPING friction=0>;
                   lower/upper (kinematics) untouched
   spec gains      stiffness 3.0, damping 0.078, armature 0.00058 (see EFFORT below) -- gains are the
                   actuator config, not the URDF
@@ -60,7 +60,8 @@ from hand_sampler import robot_param_constants as rpc  # noqa: E402
 # Peak joint acceleration (limit / armature ~ 860 rad/s^2) is gen-SHARPA's; damping 0.0775 is the same
 # damping ratio (~0.93) the converged runs had at stiffness 3.0 / armature 0.001.
 EFFORT = 0.5
-VELOCITY = rpc.GEN_JOINT_VELOCITY_RAD_S                  # 10 rad/s
+VELOCITY = 5.0     # rad/s: the XM335-T323-T's cap (53 rpm = 5.55 at no load), as 2026-10-02_physical_grammar's
+                   # GEN_JOINT_VELOCITY_RAD_S; 10 rad/s (the old gen-SHARPA value) before 6 Oct
 ARMATURE = 0.00116 * EFFORT
 STIFFNESS = 3.0
 DAMPING = 2 * 0.929 * (STIFFNESS * ARMATURE) ** 0.5

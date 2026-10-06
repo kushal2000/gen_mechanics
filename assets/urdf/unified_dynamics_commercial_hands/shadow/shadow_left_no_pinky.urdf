@@ -359,21 +359,21 @@
     <child link="ffknuckle" />
     <origin rpy="0 0 0" xyz="-0.033 0 0.095" />
     <axis xyz="0 1 0" />
-    <limit effort="0.5" lower="-0.34906585" upper="0.34906585" velocity="10.0" />
+    <limit effort="0.5" lower="-0.34906585" upper="0.34906585" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="FFJ3" type="revolute">
     <parent link="ffknuckle" />
     <child link="ffproximal" />
     <origin rpy="0 0 0" xyz="0 0 0" />
     <axis xyz="1 0 0" />
-    <limit effort="0.5" lower="-0.261799388" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="-0.261799388" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="FFJ2" type="revolute">
     <parent link="ffproximal" />
     <child link="ffmiddle" />
     <origin rpy="0 0 0" xyz="0 0 0.045" />
     <axis xyz="1 0 0" />
-    <limit effort="0.5" lower="0" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="0" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="FFJ1" type="revolute">
     <parent link="ffmiddle" />
@@ -381,7 +381,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.025" />
     <axis xyz="1 0 0" />
     
-    <limit effort="0.5" lower="0" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="0" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="FFtip" type="fixed">
     <parent link="ffdistal" />
@@ -394,21 +394,21 @@
     
     <origin rpy="0 0 0" xyz="-0.011 0 0.099" />
     <axis xyz="0 1 0" />
-    <limit effort="0.5" lower="-0.34906585" upper="0.34906585" velocity="10.0" />
+    <limit effort="0.5" lower="-0.34906585" upper="0.34906585" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="MFJ3" type="revolute">
     <parent link="mfknuckle" />
     <child link="mfproximal" />
     <origin rpy="0 0 0" xyz="0 0 0" />
     <axis xyz="1 0 0" />
-    <limit effort="0.5" lower="-0.261799388" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="-0.261799388" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="MFJ2" type="revolute">
     <parent link="mfproximal" />
     <child link="mfmiddle" />
     <origin rpy="0 0 0" xyz="0 0 0.045" />
     <axis xyz="1 0 0" />
-    <limit effort="0.5" lower="0" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="0" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="MFJ1" type="revolute">
     <parent link="mfmiddle" />
@@ -416,7 +416,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.025" />
     <axis xyz="1 0 0" />
     
-    <limit effort="0.5" lower="0" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="0" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="MFtip" type="fixed">
     <parent link="mfdistal" />
@@ -429,21 +429,21 @@
     
     <origin rpy="0 0 0" xyz="0.011 0 0.095" />
     <axis xyz="-0 1 -0" />
-    <limit effort="0.5" lower="-0.34906585" upper="0.34906585" velocity="10.0" />
+    <limit effort="0.5" lower="-0.34906585" upper="0.34906585" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="RFJ3" type="revolute">
     <parent link="rfknuckle" />
     <child link="rfproximal" />
     <origin rpy="0 0 0" xyz="0 0 0" />
     <axis xyz="1 0 0" />
-    <limit effort="0.5" lower="-0.261799388" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="-0.261799388" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="RFJ2" type="revolute">
     <parent link="rfproximal" />
     <child link="rfmiddle" />
     <origin rpy="0 0 0" xyz="0 0 0.045" />
     <axis xyz="1 0 0" />
-    <limit effort="0.5" lower="0" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="0" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="RFJ1" type="revolute">
     <parent link="rfmiddle" />
@@ -451,7 +451,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.025" />
     <axis xyz="1 0 0" />
     
-    <limit effort="0.5" lower="0" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="0" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="RFtip" type="fixed">
     <parent link="rfdistal" />
@@ -463,28 +463,28 @@
     <child link="thbase" />
     <origin rpy="-0.785398163397 0 1.57079632679" xyz="-0.034 -0.00858 0.029" />
     <axis xyz="0 0 1" />
-    <limit effort="0.5" lower="-1.04719755" upper="1.04719755" velocity="10.0" />
+    <limit effort="0.5" lower="-1.04719755" upper="1.04719755" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="THJ4" type="revolute">
     <parent link="thbase" />
     <child link="thproximal" />
     <origin rpy="0 0 0" xyz="0 0 0" />
     <axis xyz="0 -1 0" />
-    <limit effort="0.5" lower="0" upper="1.22173048" velocity="10.0" />
+    <limit effort="0.5" lower="0" upper="1.22173048" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="THJ3" type="revolute">
     <parent link="thproximal" />
     <child link="thhub" />
     <origin rpy="0 0 0" xyz="0 0 0.038" />
     <axis xyz="0 -1 0" />
-    <limit effort="0.5" lower="-0.20943951" upper="0.20943951" velocity="10.0" />
+    <limit effort="0.5" lower="-0.20943951" upper="0.20943951" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="THJ2" type="revolute">
     <parent link="thhub" />
     <child link="thmiddle" />
     <origin rpy="0 0 0" xyz="0 0 0" />
     <axis xyz="1 0 0" />
-    <limit effort="0.5" lower="-0.698131701" upper="0.698131701" velocity="10.0" />
+    <limit effort="0.5" lower="-0.698131701" upper="0.698131701" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   
   <joint name="THJ1" type="revolute">
@@ -492,7 +492,7 @@
     <child link="thdistal" />
     <origin rpy="0 0 0" xyz="0 0 0.032" />
     <axis xyz="1 0 0" />
-    <limit effort="0.5" lower="-0.261799388" upper="1.57079633" velocity="10.0" />
+    <limit effort="0.5" lower="-0.261799388" upper="1.57079633" velocity="5.0" />
     <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="THtip" type="fixed">
     <parent link="thdistal" />

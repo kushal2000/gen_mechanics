@@ -242,13 +242,13 @@
   </joint>
   <joint name="joint_0_0" type="revolute">
     <axis xyz="0 0 1" />
-    <limit effort="0.5" lower="-0.47" upper="0.47" velocity="10.0" />
+    <limit effort="0.5" lower="-0.47" upper="0.47" velocity="5.0" />
     <parent link="base_link" />
     <child link="link_0_0" />
     <origin rpy="-0.08726646255 0 0" xyz="0 0.0435 -0.001542" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="joint_1_0" type="revolute">
-    <limit effort="0.5" lower="-0.196" upper="1.61" velocity="10.0" />
+    <limit effort="0.5" lower="-0.196" upper="1.61" velocity="5.0" />
     <axis xyz="0 1 0" />
     <parent link="link_0_0" />
     <child link="link_1_0" />
@@ -256,14 +256,14 @@
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="joint_2_0" type="revolute">
     <axis xyz="0 1 0" />
-    <limit effort="0.5" lower="-0.174" upper="1.709" velocity="10.0" />
+    <limit effort="0.5" lower="-0.174" upper="1.709" velocity="5.0" />
     <parent link="link_1_0" />
     <child link="link_2_0" />
     <origin xyz="0 0 0.054" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="joint_3_0" type="revolute">
     <axis xyz="0 1 0" />
-    <limit effort="0.5" lower="-0.227" upper="1.618" velocity="10.0" />
+    <limit effort="0.5" lower="-0.227" upper="1.618" velocity="5.0" />
     <parent link="link_2_0" />
     <child link="link_3_0" />
     <origin xyz="0 0 0.0384" />
@@ -275,13 +275,13 @@
   </joint>
   <joint name="joint_4_0" type="revolute">
     <axis xyz="0 0 1" />
-    <limit effort="0.5" lower="-0.47" upper="0.47" velocity="10.0" />
+    <limit effort="0.5" lower="-0.47" upper="0.47" velocity="5.0" />
     <parent link="base_link" />
     <child link="link_4_0" />
     <origin rpy="0.0 0 0" xyz="0 0 0.0007" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="joint_5_0" type="revolute">
-    <limit effort="0.5" lower="-0.196" upper="1.61" velocity="10.0" />
+    <limit effort="0.5" lower="-0.196" upper="1.61" velocity="5.0" />
     <axis xyz="0 1 0" />
     <parent link="link_4_0" />
     <child link="link_5_0" />
@@ -289,14 +289,14 @@
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="joint_6_0" type="revolute">
     <axis xyz="0 1 0" />
-    <limit effort="0.5" lower="-0.174" upper="1.709" velocity="10.0" />
+    <limit effort="0.5" lower="-0.174" upper="1.709" velocity="5.0" />
     <parent link="link_5_0" />
     <child link="link_6_0" />
     <origin xyz="0 0 0.054" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="joint_7_0" type="revolute">
     <axis xyz="0 1 0" />
-    <limit effort="0.5" lower="-0.227" upper="1.618" velocity="10.0" />
+    <limit effort="0.5" lower="-0.227" upper="1.618" velocity="5.0" />
     <parent link="link_6_0" />
     <child link="link_7_0" />
     <origin xyz="0 0 0.0384" />
@@ -308,13 +308,13 @@
   </joint>
   <joint name="joint_8_0" type="revolute">
     <axis xyz="0 0 1" />
-    <limit effort="0.5" lower="-0.47" upper="0.47" velocity="10.0" />
+    <limit effort="0.5" lower="-0.47" upper="0.47" velocity="5.0" />
     <parent link="base_link" />
     <child link="link_8_0" />
     <origin rpy="0.08726646255 0 0" xyz="0 -0.0435 -0.001542" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="joint_9_0" type="revolute">
-    <limit effort="0.5" lower="-0.196" upper="1.61" velocity="10.0" />
+    <limit effort="0.5" lower="-0.196" upper="1.61" velocity="5.0" />
     <axis xyz="0 1 0" />
     <parent link="link_8_0" />
     <child link="link_9_0" />
@@ -322,14 +322,14 @@
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="joint_10_0" type="revolute">
     <axis xyz="0 1 0" />
-    <limit effort="0.5" lower="-0.174" upper="1.709" velocity="10.0" />
+    <limit effort="0.5" lower="-0.174" upper="1.709" velocity="5.0" />
     <parent link="link_9_0" />
     <child link="link_10_0" />
     <origin xyz="0 0 0.054" />
   <dynamics damping="0.0775033" friction="0" /></joint>
   <joint name="joint_11_0" type="revolute">
     <axis xyz="0 1 0" />
-    <limit effort="0.5" lower="-0.227" upper="1.618" velocity="10.0" />
+    <limit effort="0.5" lower="-0.227" upper="1.618" velocity="5.0" />
     <parent link="link_10_0" />
     <child link="link_11_0" />
     <origin xyz="0 0 0.0384" />
