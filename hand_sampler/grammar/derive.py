@@ -2361,6 +2361,76 @@ def _op_remove_branch_digit(rng, dist: Distribution, derivation: Derivation,
     return [_decrement_host(s) for s in kept]
 
 
+# --------------------------------------------------------------------------
+# Segment-length step (2026-10-06, Martin: "we should be able to lengthen or
+# shorten, and do so by a fixed amount like 5mm for now"). One existing
+# segment -- a phalanx's link or an extra palm body (the root palm has its own
+# ``step_root_length``) -- moves by exactly one length-grid step
+# (``dist.link_length_grid_m``, 5 mm in every variant), never past the
+# variant's range (``link_length_range_m`` for a phalanx,
+# ``palm_length_range_m`` for a palm body). Unlike ``perturb_parameter``
+# (whose step reflects off a bound, so it is not always exactly one step, and
+# which is not in ``EVOLUTION_OPERATORS``), a move that would leave the range
+# is simply not offered: the operator draws uniformly among the (segment,
+# direction) moves that stay inside it, and is inapplicable when there are
+# none. ``lengthen_segment``/``shorten_segment`` are the two directions on
+# their own: an exact inverse pair (both take ``target``, a segment's uid).
+# No generation limit concerns lengths, so limits never forbid it today; it
+# still runs under ``vary``'s limit check like every other operator.
+# --------------------------------------------------------------------------
+
+
+def _segment_length_moves(dist: Distribution, steps: Sequence[DerivationStep], signs: Sequence[int],
+                          target: Optional[int]) -> List[Tuple[int, float]]:
+    grid = dist.link_length_grid_m
+    moves: List[Tuple[int, float]] = []
+    for sign in signs:
+        for i, s in enumerate(steps):
+            if s.production == "Phalanx":
+                lo, hi = dist.link_length_range_m
+            elif s.production == "PalmBody":
+                lo, hi = dist.palm_length_range_m
+            else:
+                continue
+            if target is not None and s.params.get("uid") != target:
+                continue
+            new = round(float(s.params["length"]) + sign * grid, 10)
+            if lo - 1e-9 <= new <= hi + 1e-9:
+                moves.append((i, new))
+    return moves
+
+
+def _apply_length_move(rng, dist: Distribution, derivation: Derivation, signs: Sequence[int],
+                       target: Optional[int]) -> Optional[List[DerivationStep]]:
+    steps = list(derivation.steps)
+    moves = _segment_length_moves(dist, steps, signs, target)
+    if not moves:
+        return None
+    idx, new = moves[int(rng.integers(0, len(moves)))]
+    s = steps[idx]
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params={**s.params, "length": new})
+    return steps
+
+
+def _op_step_segment_length(rng, dist: Distribution, derivation: Derivation, target: Optional[int] = None,
+                            lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Lengthen or shorten one segment by exactly one grid step (5 mm), within
+    the variant's range; ``target``: restrict to the segment with that uid."""
+    return _apply_length_move(rng, dist, derivation, (1, -1), target)
+
+
+def _op_lengthen_segment(rng, dist: Distribution, derivation: Derivation, target: Optional[int] = None,
+                         lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """``step_segment_length``, lengthening only (inverse: ``shorten_segment``)."""
+    return _apply_length_move(rng, dist, derivation, (1,), target)
+
+
+def _op_shorten_segment(rng, dist: Distribution, derivation: Derivation, target: Optional[int] = None,
+                        lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """``step_segment_length``, shortening only (inverse: ``lengthen_segment``)."""
+    return _apply_length_move(rng, dist, derivation, (-1,), target)
+
+
 _OPERATOR_FNS = {
     "resample_parameter": _op_resample_parameter,
     "perturb_parameter": _op_perturb_parameter,
@@ -2386,6 +2456,9 @@ _OPERATOR_FNS = {
     "toggle_palm_joint": _op_toggle_palm_joint,
     "add_branch_digit": _op_add_branch_digit,
     "remove_branch_digit": _op_remove_branch_digit,
+    "step_segment_length": _op_step_segment_length,
+    "lengthen_segment": _op_lengthen_segment,
+    "shorten_segment": _op_shorten_segment,
 }
 
 # --------------------------------------------------------------------------
@@ -2418,19 +2491,32 @@ EVOLUTION_PAIRS: Tuple[Tuple[str, str], ...] = (
     ("add_branch_digit", "remove_branch_digit"),
 )
 
+# The segment-length step's two directions: an exact inverse pair (kept out
+# of ``EVOLUTION_PAIRS``, whose five structural grow/shrink pairs E2/E12
+# report on; the pool itself carries the combined ``step_segment_length``).
+LENGTH_STEP_PAIR: Tuple[str, str] = ("lengthen_segment", "shorten_segment")
+
 INVERSE_OF: Dict[str, str] = {}
-for _growth, _shrink in EVOLUTION_PAIRS:
+for _growth, _shrink in EVOLUTION_PAIRS + (LENGTH_STEP_PAIR,):
     INVERSE_OF[_growth] = _shrink
     INVERSE_OF[_shrink] = _growth
 del _growth, _shrink
 
-EVOLUTION_OPERATORS: Tuple[str, ...] = (
+# The pool as it was until 2026-10-06 (17 operators), frozen so runs made with
+# it (the evolution driver, E1/E2/E3/E12, the G0 screen) can be reproduced:
+# pass ``operators=EVOLUTION_OPERATORS_V1``.
+EVOLUTION_OPERATORS_V1: Tuple[str, ...] = (
     "add_minimal_digit", "remove_digit_minimal",
     "insert_phalanx", "delete_phalanx",
     "add_palm_body", "remove_palm_body_empty",
     "toggle_palm_joint",
     "add_branch_digit", "remove_branch_digit",
 ) + tuple(SMALL_STEP_OPERATORS)
+
+# The current pool: V1 plus ``step_segment_length`` (one segment +/- 5 mm),
+# so evolution can change an existing segment's length (before, only new
+# segments got a length, and only the root palm's length could step).
+EVOLUTION_OPERATORS: Tuple[str, ...] = EVOLUTION_OPERATORS_V1 + ("step_segment_length",)
 assert len(EVOLUTION_OPERATORS) == len(set(EVOLUTION_OPERATORS)), "EVOLUTION_OPERATORS has duplicates"
 
 # Shrink operators (and self-inverse ``toggle_palm_joint``) that accept an
@@ -2438,6 +2524,7 @@ assert len(EVOLUTION_OPERATORS) == len(set(EVOLUTION_OPERATORS)), "EVOLUTION_OPE
 TARGETABLE_OPERATORS = frozenset({
     "remove_digit_minimal", "delete_phalanx", "remove_palm_body", "remove_palm_body_empty",
     "toggle_palm_joint", "remove_branch_digit",
+    "step_segment_length", "lengthen_segment", "shorten_segment",
 })
 
 
