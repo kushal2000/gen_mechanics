@@ -52,12 +52,13 @@ UNIFORM_LEFT = {h: spec_from_json(UNIFORM_DIR / h / f"{h}_left.spec.json", name=
                 for h in LEFT_HANDS}
 UNIFORM_LEFT["sharpa"] = _sharpa_uniform()
 
-# Missing-finger variants (make_missing_fingers.py): the full hand minus one finger, everything else identical.
-# Registered as <hand>_left_uniform_handonly_no_<finger>.
+# Reduced variants (make_missing_fingers.py): the full hand minus some fingers, everything else identical --
+# <hand>_left_<tag>.spec.json next to the full hand, tag no_<finger> or only_<a>_<b>... Registered as
+# <hand>_left_uniform_handonly_<tag>.
 MISSING_FINGER = {}
-for _p in sorted(UNIFORM_DIR.glob("*/*_left_no_*.spec.json")):
-    _hand, _finger = _p.name[: -len(".spec.json")].split("_left_no_")
-    _name = f"{_hand}_left_uniform_handonly_no_{_finger}"
+for _p in sorted(UNIFORM_DIR.glob("*/*_left_*.spec.json")):
+    _hand, _tag = _p.name[: -len(".spec.json")].split("_left_", 1)
+    _name = f"{_hand}_left_uniform_handonly_{_tag}"
     MISSING_FINGER[_name] = spec_from_json(_p, name=_name)
 
 __all__ = ["MISSING_FINGER", "UNIFORM_LEFT"]

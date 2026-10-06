@@ -1,17 +1,9 @@
 {
- "hand": "wuji2_no_pinky",
+ "hand": "wuji2_only_middle_ring",
  "side": "left",
- "urdf": "assets/urdf/unified_dynamics_commercial_hands/wuji2/wuji2_left_no_pinky.urdf",
+ "urdf": "assets/urdf/unified_dynamics_commercial_hands/wuji2/wuji2_left_only_middle_ring.urdf",
  "palm_body": "l_wrist",
  "hand_joint_names": [
-  "l_thumb_cmc_flex",
-  "l_thumb_cmc_abd",
-  "l_thumb_mcp",
-  "l_thumb_ip",
-  "l_index_finger_mcp_flex",
-  "l_index_finger_mcp_abd",
-  "l_index_finger_pip",
-  "l_index_finger_dip",
   "l_middle_finger_mcp_flex",
   "l_middle_finger_mcp_abd",
   "l_middle_finger_pip",
@@ -22,38 +14,6 @@
   "l_ring_finger_dip"
  ],
  "joint_limits": {
-  "l_thumb_cmc_flex": [
-   -1.187,
-   1.291
-  ],
-  "l_thumb_cmc_abd": [
-   -1.484,
-   0.698
-  ],
-  "l_thumb_mcp": [
-   -1.047,
-   1.57
-  ],
-  "l_thumb_ip": [
-   -1.047,
-   1.57
-  ],
-  "l_index_finger_mcp_flex": [
-   -1.047,
-   1.57
-  ],
-  "l_index_finger_mcp_abd": [
-   -0.698,
-   0.698
-  ],
-  "l_index_finger_pip": [
-   -1.047,
-   2.094
-  ],
-  "l_index_finger_dip": [
-   -1.047,
-   1.57
-  ],
   "l_middle_finger_mcp_flex": [
    -1.047,
    1.57
@@ -88,14 +48,6 @@
   ]
  },
  "hand_default_joint_pos": {
-  "l_thumb_cmc_flex": 0.0,
-  "l_thumb_cmc_abd": 0.0,
-  "l_thumb_mcp": 0.0,
-  "l_thumb_ip": 0.0,
-  "l_index_finger_mcp_flex": 0.0,
-  "l_index_finger_mcp_abd": 0.0,
-  "l_index_finger_pip": 0.0,
-  "l_index_finger_dip": 0.0,
   "l_middle_finger_mcp_flex": 0.0,
   "l_middle_finger_mcp_abd": 0.0,
   "l_middle_finger_pip": 0.0,
@@ -106,22 +58,10 @@
   "l_ring_finger_dip": 0.0
  },
  "fingertip_body_names": [
-  "l_thumb_distal",
-  "l_index_finger_distal",
   "l_middle_finger_distal",
   "l_ring_finger_distal"
  ],
  "fingertip_offsets": [
-  [
-   0.0,
-   0.0,
-   -0.029787
-  ],
-  [
-   0.0,
-   0.0,
-   -0.02475
-  ],
   [
    0.0,
    0.0,
@@ -133,7 +73,7 @@
    -0.02475
   ]
  ],
- "thumb_tip": "l_thumb_distal",
+ "thumb_tip": null,
  "palm_frame": [
   [
    0.0,
@@ -172,22 +112,6 @@
   0.03698656568303704
  ],
  "adjacent_links": {
-  "l_index_finger_distal": [
-   "l_index_finger_middle"
-  ],
-  "l_index_finger_middle": [
-   "l_index_finger_distal",
-   "l_index_finger_proximal_abd"
-  ],
-  "l_index_finger_proximal": [
-   "l_index_finger_proximal_abd",
-   "l_wrist"
-  ],
-  "l_index_finger_proximal_abd": [
-   "l_index_finger_middle",
-   "l_index_finger_proximal",
-   "l_wrist"
-  ],
   "l_middle_finger_distal": [
    "l_middle_finger_middle"
   ],
@@ -220,31 +144,11 @@
    "l_ring_finger_proximal",
    "l_wrist"
   ],
-  "l_thumb_distal": [
-   "l_thumb_middle"
-  ],
-  "l_thumb_middle": [
-   "l_thumb_distal",
-   "l_thumb_proximal_abd"
-  ],
-  "l_thumb_proximal": [
-   "l_thumb_proximal_abd",
-   "l_wrist"
-  ],
-  "l_thumb_proximal_abd": [
-   "l_thumb_middle",
-   "l_thumb_proximal",
-   "l_wrist"
-  ],
   "l_wrist": [
-   "l_index_finger_proximal",
    "l_middle_finger_proximal",
    "l_ring_finger_proximal",
    "l_ring_finger_proximal_abd",
-   "l_thumb_proximal",
-   "l_middle_finger_proximal_abd",
-   "l_index_finger_proximal_abd",
-   "l_thumb_proximal_abd"
+   "l_middle_finger_proximal_abd"
   ]
  },
  "overlap_at_home_mm": {
@@ -287,28 +191,50 @@
  "link_density_kg_m3": 1750.0,
  "friction": 0.5,
  "missing_finger": {
-  "finger": "pinky",
+  "finger": "thumb+index+pinky",
   "kept_fingers": [
-   "thumb",
-   "index",
    "middle",
    "ring"
   ],
   "removed_joints": [
+   "l_index_finger_dip",
+   "l_index_finger_mcp_abd",
+   "l_index_finger_mcp_flex",
+   "l_index_finger_pip",
+   "l_index_finger_tip_fixed",
+   "l_index_finger_tip_sensor_frame_fixed",
    "l_pinky_dip",
    "l_pinky_mcp_abd",
    "l_pinky_mcp_flex",
    "l_pinky_pip",
    "l_pinky_tip_fixed",
-   "l_pinky_tip_sensor_frame_fixed"
+   "l_pinky_tip_sensor_frame_fixed",
+   "l_thumb_cmc_abd",
+   "l_thumb_cmc_flex",
+   "l_thumb_ip",
+   "l_thumb_mcp",
+   "l_thumb_tip_fixed",
+   "l_thumb_tip_sensor_frame_fixed"
   ],
   "removed_links": [
+   "l_index_finger_distal",
+   "l_index_finger_middle",
+   "l_index_finger_proximal",
+   "l_index_finger_proximal_abd",
+   "l_index_finger_tip",
+   "l_index_finger_tip_sensor_frame",
    "l_pinky_distal",
    "l_pinky_middle",
    "l_pinky_proximal",
    "l_pinky_proximal_abd",
    "l_pinky_tip",
-   "l_pinky_tip_sensor_frame"
+   "l_pinky_tip_sensor_frame",
+   "l_thumb_distal",
+   "l_thumb_middle",
+   "l_thumb_proximal",
+   "l_thumb_proximal_abd",
+   "l_thumb_tip",
+   "l_thumb_tip_sensor_frame"
   ]
  }
 }

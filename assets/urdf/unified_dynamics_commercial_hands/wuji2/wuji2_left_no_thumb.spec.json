@@ -288,6 +288,12 @@
  "friction": 0.5,
  "missing_finger": {
   "finger": "thumb",
+  "kept_fingers": [
+   "index",
+   "middle",
+   "ring",
+   "pinky"
+  ],
   "removed_joints": [
    "l_thumb_cmc_abd",
    "l_thumb_cmc_flex",
