@@ -179,8 +179,6 @@ def test_the_finger_cap_is_what_stops_complexity(pop):
         r = design_space.PALM_MIN_RADIUS + i * q
         for k in range(int(round(2 * math.pi / a))):
             b = k * a
-            if design_space.in_wrist_nogo(b):
-                continue
             here = np.array([r * math.sin(b), r * math.cos(b)])
             if all(float(np.linalg.norm(here - s))
                    >= design_space.MIN_MOUNT_SEPARATION - 1e-12 for s in sites):
@@ -443,7 +441,7 @@ def test_crowding_does_not_block_new_fingers():
     There is no small palm to contrast against: the annulus a mount may live in
     is one global ring, so every hand has the same room. What is left to check
     is that placement does not give up early, and that reaching the cap did not
-    come of ignoring MIN_MOUNT_SEPARATION or wandering into the wrist's wedge.
+    come of ignoring MIN_MOUNT_SEPARATION or putting a finger in the arm.
     """
     hand = gen_init_pop.seed_population(0, 1)[0]
     for k in range(30):
@@ -457,8 +455,6 @@ def test_crowding_does_not_block_new_fingers():
     assert hand.n_fingers == design_space.MAX_FINGERS, (
         f"placement gave up at {hand.n_fingers} fingers with room left")
     assert validate_design.check(hand) == [], validate_design.check(hand)
-    for f in hand.fingers:
-        assert not design_space.in_wrist_nogo(f.mount.bearing)
     for a, b in itertools.combinations(hand.fingers, 2):
         d = float(np.linalg.norm(design_space.mount_position(a.mount)
                                  - design_space.mount_position(b.mount)))
@@ -536,9 +532,10 @@ def test_every_mount_stays_inside_the_palm():
 def test_move_mount_reaches_all_the_way_round_the_palm():
     """What replaced test_move_mount_still_crosses_faces_with_a_margin.
 
-    There are no faces to cross. A bearing wraps, so a finger can walk the whole
-    circle -- except through the wedge the wrist occupies, which it must not
-    enter and must be able to go round.
+    There are no faces to cross, and no wedge left to go round either: a bearing
+    wraps, so a finger walks the whole circle. What stops it behind the hand is
+    not the bearing but the arm, and only when the finger actually reaches it --
+    which is why a mount directly behind the palm is legal at a small radius.
     """
     rng = random.Random(8)
     hand = gen_init_pop.seed_population(0, 1)[0]
@@ -550,8 +547,47 @@ def test_move_mount_reaches_all_the_way_round_the_palm():
         hand = child
         for f in hand.fingers:
             seen.add(round(math.degrees(f.mount.bearing)))
-            assert not design_space.in_wrist_nogo(f.mount.bearing)
     assert len(seen) >= 12, f"only reached {len(seen)} bearings: {sorted(seen)}"
+    assert any(135 <= b <= 225 for b in seen), (
+        f"never reached a bearing behind the hand: {sorted(seen)} -- the wedge "
+        f"that used to forbid those is gone")
+
+
+def test_no_mutation_walk_can_put_a_hand_in_the_arm():
+    """The regression this rule exists for.
+
+    Seeds were always clean -- they are drawn pointing forward -- so nothing
+    caught that 68% of the hands a walk reaches had something inside the arm,
+    as deep as 178 mm. One step from a LEGAL parent the rate is only 5.0%, which
+    is why the validator alone is enough: every operator already shuffles its
+    candidates and takes the first that validates, so the rule turns a bad draw
+    into a different draw rather than into a failure.
+
+    add_finger is the one that needs it most, at 31.7% against 4% or less for
+    everything else -- _free_mount_sites offers the whole ring, and a finger
+    grown backward off the far rim lands in the arm. It is also the operator the
+    complexity ratchet leans on, so the walk here mutates freely rather than
+    picking operators.
+    """
+    rng = random.Random(3)
+    deepest, where = float("inf"), None
+    for s in range(12):
+        hand = gen_init_pop.seed_population(s, 1)[0]
+        for _ in range(400):
+            child = mutate_design.mutate(rng, hand)
+            if child is None or validate_design.check(child):
+                continue
+            hand = child
+            z, who = design_space.rearmost(hand)
+            if z < deepest:
+                deepest, where = z, who
+    # The validator's own tolerance: a hand CAN sit exactly on the face, since
+    # the outer ring is tangent to it, and a bare >= then turns 5e-17 m of
+    # float noise into a failure.
+    assert deepest >= design_space.ARM_FACE_Z - 1e-9, (
+        f"a legal hand reached z = {deepest*1000:.0f} mm, "
+        f"{(design_space.ARM_FACE_Z - deepest)*1000:.0f} mm inside the arm, "
+        f"owned by {'the palm' if where is None else f'finger {where}'}")
 
 
 def test_a_palm_has_nothing_left_to_perturb():
@@ -704,7 +740,11 @@ def test_every_genotype_field_is_validated():
         "mount radius off grid": variant(m_radius=0.0412),
         "mount bearing off grid": variant(m_bearing=0.1),
         "mount facing off grid": variant(m_facing=0.1),
-        "mount inside the wrist wedge": variant(m_bearing=math.pi),
+        # No wedge any more; what is illegal behind the hand is reaching the
+        # ARM, which takes the far rim and a long link pointed back at it.
+        "finger reaching into the arm": variant(
+            m_radius=design_space.MAX_MOUNT_RADIUS, m_bearing=math.pi,
+            m_facing=math.pi, s_len=design_space.MAX_LINK_LENGTH),
         "link too short": variant(s_len=0.010),
         "link too long": variant(s_len=0.200),
         "link off grid": variant(s_len=0.0431),

@@ -348,8 +348,6 @@ def _separate_on_grid(mounts: list, floor: float, tries: int = 400) -> list:
             cand = replace(out[k],
                            radius=min(out[k].radius + dr, D.MAX_MOUNT_RADIUS),
                            bearing=(out[k].bearing + da) % (2.0 * math.pi))
-            if D.in_wrist_nogo(cand.bearing):
-                continue
             trial = list(out)
             trial[k] = cand
             tp = [D.mount_position(m) for m in trial]
@@ -439,10 +437,6 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
         notes: list[str] = []
         fingers = []
         for (d, pts, axes), mount in zip(prepared, mounts):
-            if D.in_wrist_nogo(mount.bearing):
-                notes.append(f"{d.name}: base at "
-                             f"{math.degrees(mount.bearing):.0f} deg is inside "
-                             f"the wrist's {math.degrees(D.WRIST_NOGO):.0f} deg wedge")
             _, R = D.mount_frame(mount)
             segs = []
             for i in range(len(d.pos)):

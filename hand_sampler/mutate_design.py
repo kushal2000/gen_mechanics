@@ -199,8 +199,12 @@ def _free_mount_sites(hand: design_space.Hand) -> list[design_space.Mount]:
     """Every place on the palm with room for another finger.
 
     The ring between PALM_MIN_RADIUS and MAX_MOUNT_RADIUS, on the radius grid
-    and the angle grid, minus the wrist's wedge and minus anywhere too close to
-    a finger that is already there.
+    and the angle grid, minus anywhere too close to a finger that is already
+    there.
+
+    ROOM only. Whether a finger put here would reach into the arm depends on the
+    finger, which does not exist yet -- _new_finger validates each site it tries
+    and moves on, so check_arm_clearance decides that where it can be decided.
     """
     if not hand.fingers:
         return []
@@ -216,8 +220,6 @@ def _free_mount_sites(hand: design_space.Hand) -> list[design_space.Mount]:
         r = design_space.PALM_MIN_RADIUS + i * q
         for k in range(n_a):
             bearing = k * design_space.ANGLE_QUANTUM
-            if design_space.in_wrist_nogo(bearing):
-                continue
             pos = design_space.mount_position(
                 design_space.Mount(r, bearing, bearing))
             # The same tolerance check_packing uses. A bare >= is STRICTER

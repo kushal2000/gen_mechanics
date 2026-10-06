@@ -17,7 +17,7 @@ SEED_BEARING_PAIRS: tuple[tuple[float, float], ...] = (
 """Where generation 0 puts its two fingers, as bearings in degrees from +z.
 
 Pairs rather than free draws so a seed starts somewhere plain and symmetric, and
-all well clear of the wrist wedge behind the hand. The last pair is the lopsided
+all well clear of the arm behind the hand. The last pair is the lopsided
 one, a finger forward and a thumb out to the side.
 """
 

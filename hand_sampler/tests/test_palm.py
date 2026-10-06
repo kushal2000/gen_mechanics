@@ -257,21 +257,22 @@ def test_sharpas_palm_keypoints_sit_at_its_measured_box():
     assert np.allclose(np.linalg.norm(edges, axis=1), rpc.PALM_EXTENTS_M, atol=1e-9)
 
 
-def test_no_legal_mount_can_put_the_palm_in_the_arm():
-    """Four constants keep the hand off the arm, and nothing checks them.
+def test_no_mount_on_the_grid_can_put_the_PALM_in_the_arm():
+    """The plate itself must fit wherever a mount is allowed to go.
 
-    WRIST_STANDOFF slides the fingers forward of the flange, MAX_MOUNT_RADIUS
-    says how far back the ring still reaches, PALM_RIM adds to that, and
-    WRIST_NOGO trims the bearings where it would be worst. They are set in four
-    places and agree only by arithmetic: the hand went 17 mm into the arm when
-    they did not. So sweep the WHOLE legal grid against the one number the arm
-    owns -- its last surface, which measuring the iiwa14's meshes in this frame
-    puts at exactly -FLANGE_TO_PALM_Z_M.
+    A FINGER that reaches the arm is refused and the operator tries elsewhere,
+    so the grammar can afford mounts whose fingers sometimes do not fit. The
+    PLATE has no such retry: it follows from the mount, so a mount whose own rim
+    lands in the arm would make every hand using that site illegal.
 
-    On the outline rather than on the algebra, so it tests the palm that gets
-    built.
+    Three constants decide it and they agree only by arithmetic --
+    WRIST_STANDOFF slides the centre forward, MAX_MOUNT_RADIUS says how far back
+    the ring reaches, PALM_RIM adds to it -- and they come to exactly the 50 mm
+    the arm sits behind the frame. So the outer ring is TANGENT to the arm at
+    the wrist bearing, and this sweep is what says so: measured on the outline
+    that gets built, not on the algebra.
     """
-    face = -rpc.FLANGE_TO_PALM_Z_M
+    face = design_space.ARM_FACE_Z
     q, a = design_space.PALM_QUANTUM, design_space.ANGLE_QUANTUM
     n_r = int(round((design_space.MAX_MOUNT_RADIUS
                      - design_space.PALM_MIN_RADIUS) / q))
@@ -280,8 +281,6 @@ def test_no_legal_mount_can_put_the_palm_in_the_arm():
         r = design_space.PALM_MIN_RADIUS + i * q
         for k in range(int(round(2.0 * np.pi / a))):
             bearing = k * a
-            if design_space.in_wrist_nogo(bearing):
-                continue
             hand = design_space.Hand(
                 design_space.Palm(design_space.PALM_THICKNESS),
                 (design_space.Finger(design_space.Mount(r, bearing, bearing),
@@ -291,10 +290,13 @@ def test_no_legal_mount_can_put_the_palm_in_the_arm():
             rear = float(design_space.palm_outline(hand)[:, 1].min())
             if rear < worst:
                 worst, where = rear, (r, bearing)
-    assert worst > face, (
+    assert worst >= face - 1e-9, (
         f"a mount at {where[0]*1000:.0f} mm, {np.degrees(where[1]):.0f} deg puts "
         f"the palm at z = {worst*1000:.1f} mm, behind the arm's face at "
         f"{face*1000:.0f} mm")
-    # And not merely by a hair: the margin is what the wedge is bought for.
-    assert worst - face > 0.005, \
-        f"only {(worst - face)*1000:.1f} mm of clearance at {where}"
+    # Tangent, not merely clear: the three constants add up exactly, and this is
+    # the assertion that fails if one of them moves on its own.
+    assert worst == pytest.approx(face, abs=2e-4), (
+        f"the outer ring clears the arm by {(worst - face)*1000:.1f} mm -- no "
+        f"longer tangent, so MAX_MOUNT_RADIUS, WRIST_STANDOFF and PALM_RIM have "
+        f"stopped adding up and nothing else says so")

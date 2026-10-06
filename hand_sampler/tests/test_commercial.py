@@ -104,25 +104,20 @@ def test_every_digit_has_a_real_fingertip(name):
 # --- what the fit costs, per hand -------------------------------------------
 
 @pytest.mark.parametrize("name", commercial.HANDS)
-def test_the_wrist_wedge_clears_every_vendor_thumb(name, fits):
-    """The wedge has to be narrow enough to admit the hands we are fitting.
+def test_every_vendor_hand_clears_the_arm(name, fits):
+    """These are the hands the clearance rule has to admit.
 
-    Every vendor thumb snaps to exactly 30 degrees off the wrist bearing, so the
-    wedge's half-angle is what decides whether these hands exist in the grammar
-    at all. At 45 degrees total they clear by 7.5; at 60, the value this
-    replaced, they cleared only because in_wrist_nogo compares with a strict <.
+    Every vendor hand reaches back: each has a thumb 30 degrees off the wrist
+    bearing, and before WRIST_STANDOFF LEAP's went 17 mm inside the arm. They
+    are the tightest cases the grammar has to accept, so they are what pins the
+    standoff -- LEAP clears by 8 mm, wuji2 by 14, MIDAS by 21.
     """
     hand, _ = fits[name]
-    for i, f in enumerate(hand.fingers):
-        gap = abs((f.mount.bearing - D.WRIST_BEARING + math.pi)
-                  % (2.0 * math.pi) - math.pi)
-        assert not D.in_wrist_nogo(f.mount.bearing), (
-            f"{name} finger {i} sits {math.degrees(gap):.0f} deg off the wrist, "
-            f"inside a {math.degrees(D.WRIST_NOGO):.0f} deg wedge")
-        assert gap > D.WRIST_NOGO / 2.0 + math.radians(5.0), (
-            f"{name} finger {i} clears the wedge by only "
-            f"{math.degrees(gap - D.WRIST_NOGO / 2.0):.1f} deg -- too close to "
-            f"call it admitted")
+    z, who = D.rearmost(hand)
+    assert z >= D.ARM_FACE_Z, (
+        f"{name}: {'the palm' if who is None else f'finger {who}'} reaches "
+        f"{(D.ARM_FACE_Z - z) * 1000:.0f} mm into the arm")
+    assert not validate_design.check_arm_clearance(hand)
 
 
 def test_every_hand_needs_some_spreading_on_a_radial_palm():

@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from hand_sampler import resolve
+from hand_sampler import robot_param_constants as rpc
 
 # --- palm ------------------------------------------------------------------- Mutable,...
 
@@ -51,41 +52,32 @@ coordinates make natural. 70 mm because the vendor hands need 62 (LEAP), 45
 
 Tied to WRIST_STANDOFF and PALM_RIM, which is not obvious: those two and the
 50 mm the arm sits behind the palm frame add to exactly this 70 mm, so a base
-at the far rim pointing straight down the wrist bearing lands its rim exactly on
-the arm. Raising this without raising the standoff puts the far ring INSIDE the
-arm, and WRIST_NOGO is too blunt to catch it.
+at the far rim pointing straight back at the wrist lands its rim exactly on
+ARM_FACE_Z. The outer ring is tangent to the arm, and raising this without
+raising the standoff puts part of it inside -- where check_arm_clearance will
+refuse every hand that tries to use it, rather than anything here saying so.
 """
 
-WRIST_NOGO = math.radians(45.0)
-"""A wedge facing the wrist where no finger may start -- the arm is there.
+ARM_FACE_Z = -rpc.FLANGE_TO_PALM_Z_M
+"""Where the ARM stops, in the palm frame. Nothing the hand owns may go behind.
 
-Centred on WRIST_BEARING and this wide in total, so a bearing within half of it
-is refused. As narrow as it can be and still mean anything, which is narrower
-than it sounds: on the 15 degree angle grid a 45 degree wedge and the 60 degree
-one it replaces forbid the SAME three bearings -- 165, 180 and 195 -- so what
-narrowing buys is margin, not legal ground.
+The palm frame's origin is bolted to the flange, and the arm is entirely behind
+it: measuring the iiwa14's own meshes in this frame puts its frontmost vertex at
+exactly -FLANGE_TO_PALM_Z_M, with nothing in front. So one plane is the whole
+rule, and validate_design.check_arm_clearance enforces it.
 
-The margin is the point. Every vendor thumb snaps to 30 degrees off the wrist,
-LEAP's and wuji2's and MIDAS's alike, so all three clear 45 degrees by half a
-quantum where 60 admitted them only on the strict inequality -- loosen the < in
-in_wrist_nogo to a <= and all three hands become unfittable.
+This REPLACED a wedge on the mount bearing, WRIST_NOGO, which was a proxy for
+the same thing and a bad one. A bearing says where a finger STARTS; what hits
+the arm is where it points and how far it reaches, and the bearing knows
+neither. With the wedge in force, 68% of the hands a mutation walk reached had
+something inside the arm.
 
-The three it does forbid are the three with no room. A base at
-MAX_MOUNT_RADIUS straight down the wrist bearing puts the palm's rim at exactly
-z = -50 mm, the arm's own face, because WRIST_STANDOFF - PALM_RIM + 50 mm comes
-to 70 mm on the nose; 165 and 195 clear by 2.4 mm, and the first bearing this
-wedge allows, 150, clears by 9.4.
-
-Keeping a hand out of the ARM is still WRIST_STANDOFF's job rather than this
-one. A wedge can only trim the worst bearings: it says nothing about how far out
-a base sits, and nothing at all about which way the finger then points.
-"""
-
-WRIST_BEARING = math.pi
-"""Which way the wrist is, as a bearing in the palm plane.
-
-Bearings are measured from +z, the direction a row of fingers tends to point, so
-pi puts the wrist directly behind the hand.
+A wedge on the FACING, the obvious next proxy, is not much better. Over 1200
+drifted hands it catches 57% of the ones in the arm at 45 degrees while refusing
+15% of the ones that are fine, and 100% at 135 degrees while refusing 53% --
+because whether a finger pointed backwards actually gets there depends on where
+it starts and how long it is. The plane is exact instead: it refuses every hand
+in the arm and nothing else.
 """
 
 WRIST_STANDOFF = 0.025
@@ -510,17 +502,15 @@ def axis_of(joint: Joint) -> np.ndarray:
     return np.array(_KIND_AXIS[joint.kind], dtype=float)
 
 
-# --- palm faces -------------------------------------------------------------
+# --- where things sit on the palm --------------------------------------------
 
 def bearing_of(y: float, z: float) -> float:
-    """The bearing of a point in the palm plane, measured from +z, in [0, 2pi)."""
+    """The bearing of a point in the palm plane, measured from +z, in [0, 2pi).
+
+    From +z because that is the direction a row of fingers tends to point, which
+    puts the arm at pi -- directly behind the hand.
+    """
     return math.atan2(y, z) % (2.0 * math.pi)
-
-
-def in_wrist_nogo(bearing: float) -> bool:
-    """Is this bearing inside the wedge the arm occupies?"""
-    gap = abs((bearing - WRIST_BEARING + math.pi) % (2.0 * math.pi) - math.pi)
-    return gap < WRIST_NOGO / 2.0 - 1e-9
 
 
 def mount_position(mount: Mount) -> np.ndarray:
@@ -683,6 +673,37 @@ def joint_axes(finger: Finger, palm: Palm,
 def fingertip(finger: Finger, palm: Palm,
               angles: dict[int, float] | None = None) -> np.ndarray:
     return forward_kinematics(finger, palm, angles)[0][-1]
+
+
+def rearmost(hand: "Hand", links=None) -> tuple[float, int | None]:
+    """``(z of the backmost point the hand owns, which finger owns it)``.
+
+    None for the finger means the palm plate owns it. At the REST pose, the same
+    convention check_base_clearance keeps: what a joint sweep then does is
+    configuration, which is the gate's business rather than the grammar's.
+
+    Exact, and cheap for both halves. The palm is the hull of circles, so its
+    backmost point is simply the backmost point of the backmost circle -- no
+    outline to build. A link is the AUTHORED capsule, whose axis is inset by a
+    radius at each end: taking the joint-to-joint span instead would call every
+    link 15 mm longer than the one the simulator builds, and refuse hands that
+    clear.
+
+    ``links`` takes a ``rest_capsules`` a caller already has. The validator runs
+    this beside check_base_clearance, which needs the same list, and walking the
+    kinematics twice per hand cost the test suite 60% of its runtime.
+    """
+    worst = PALM_CENTRE[2] - PALM_MIN_RADIUS
+    who = None
+    for i, finger in enumerate(hand.fingers):
+        z = float(mount_position(finger.mount)[2]) - PALM_RIM
+        if z < worst:
+            worst = z                     # still the PLATE, reaching that base
+    for fi, _si, a, b in (rest_capsules(hand) if links is None else links):
+        z = float(min(a[2], b[2])) - CAPSULE_RADIUS
+        if z < worst:
+            worst, who = z, fi
+    return worst, who
 
 
 def curl_authority(finger: Finger, palm: Palm) -> float:

@@ -35,7 +35,7 @@ def check_palm(palm: design_space.Palm) -> list[str]:
 
 
 def check_layout(hand: design_space.Hand) -> list[str]:
-    """Every mount in the annulus, on its grids, and clear of the wrist.
+    """Every mount in the annulus and on its grids.
 
     This is what bounds complexity now that a palm has no size of its own: a
     finger starts between PALM_MIN_RADIUS and MAX_MOUNT_RADIUS of the centre,
@@ -61,11 +61,40 @@ def check_layout(hand: design_space.Hand) -> list[str]:
                            f"gets one spelling")
             if not _on_grid(value, design_space.ANGLE_QUANTUM):
                 out.append(f"{where}.{name} = {value:.4f} off the angle grid")
-        if design_space.in_wrist_nogo(m.bearing):
-            out.append(f"{where}.bearing = {math.degrees(m.bearing):.0f} deg is "
-                       f"inside the {math.degrees(design_space.WRIST_NOGO):.0f} deg "
-                       f"wedge the wrist occupies")
     return out
+
+
+def check_arm_clearance(hand: design_space.Hand, links=None) -> list[str]:
+    """Nothing the hand owns may reach behind the arm's own face.
+
+    The arm is entirely behind ARM_FACE_Z in the palm frame and the hand is
+    bolted to its flange, so one plane settles it for the palm plate and every
+    link at once.
+
+    This is what a wedge on the mount BEARING could not do. A bearing says where
+    a finger starts; what reaches the arm is where it points and how far it
+    goes, and those are facing, lean and length. Without this rule 62% of the
+    hands a mutation walk reaches have something inside the arm after fifty
+    steps and 78% after four hundred, as deep as 178 mm -- and the wedge was
+    never what stood between: removing it moved that number by five points.
+
+    Nearly free, because every operator shuffles its candidates and takes the
+    first that validates: a site that would reach the arm becomes a different
+    site rather than a failed move. On one population of 60 parents the rule
+    costs 0.2 points of mutation success overall, and only perturb_length moves
+    at all.
+
+    A NECESSARY condition at the rest pose, like check_base_clearance: the arm's
+    own earlier links swing in this frame as its last joint turns, and what a
+    hand sweeps once its joints move is the gate's business.
+    """
+    z, who = design_space.rearmost(hand, links)
+    if z >= design_space.ARM_FACE_Z - _TOL:
+        return []
+    whose = "the palm" if who is None else f"finger {who}"
+    return [f"{whose} reaches to z = {z * 1000:.0f} mm, "
+            f"{(design_space.ARM_FACE_Z - z) * 1000:.0f} mm inside the arm, "
+            f"which stops at {design_space.ARM_FACE_Z * 1000:.0f} mm"]
 
 
 def check_segment(seg: design_space.Segment, where: str, terminal: bool) -> list[str]:
@@ -121,7 +150,7 @@ def check_finger(finger: design_space.Finger, i: int, palm: design_space.Palm) -
     return out
 
 
-def check_packing(hand: design_space.Hand) -> list[str]:
+def check_packing(hand: design_space.Hand, links=None) -> list[str]:
     """One separation floor for every pair of mounts, whatever faces they are on.
 
     A NECESSARY condition, not a sufficient one: whether fingers intersect along
@@ -140,11 +169,11 @@ def check_packing(hand: design_space.Hand) -> list[str]:
                        f"{2 * design_space.CAPSULE_RADIUS * 1000:.0f} mm)")
             return out
 
-    out += check_base_clearance(hand)
+    out += check_base_clearance(hand, links)
     return out
 
 
-def check_base_clearance(hand: design_space.Hand) -> list[str]:
+def check_base_clearance(hand: design_space.Hand, links=None) -> list[str]:
     """No two links may intersect at the rest pose.
 
     This used to look at ``base_capsules`` -- the proximal link of each finger
@@ -160,7 +189,7 @@ def check_base_clearance(hand: design_space.Hand) -> list[str]:
     design says.
     """
     out: list[str] = []
-    links = design_space.rest_capsules(hand)
+    links = design_space.rest_capsules(hand) if links is None else links
     floor = 2.0 * design_space.CAPSULE_RADIUS
     for (fi, si, p0, p1), (fj, sj, q0, q1) in combinations(links, 2):
         if fi == fj and abs(si - sj) <= 1:
@@ -194,7 +223,11 @@ def check(hand: design_space.Hand) -> list[str]:
     out += check_layout(hand)
     for i, f in enumerate(hand.fingers):
         out += check_finger(f, i, hand.palm)
-    out += check_packing(hand)
+    # Both of these walk every link at the rest pose, so the walk happens once
+    # here and they share it.
+    links = design_space.rest_capsules(hand)
+    out += check_packing(hand, links)
+    out += check_arm_clearance(hand, links)
     return out
 
 

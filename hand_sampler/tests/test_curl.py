@@ -23,7 +23,7 @@ F, A, R = D.FLEXION, D.ABDUCTION, D.ROLL
 
 
 BEARINGS = (0.0, 45.0, 315.0, 90.0, 270.0, 135.0)
-"""Spread round the palm and clear of the wrist wedge, in the order they are
+"""Spread round the palm and clear of the arm, in the order they are
 used, so a two-finger hand gets the two most opposed of them."""
 
 
