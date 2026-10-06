@@ -192,12 +192,58 @@ def digits(name_or_path: "str | Path" = "leap") -> list[Digit]:
 
 # --- taking out the free slides ---------------------------------------------
 
+def _worst_kink(d: Digit) -> float:
+    """The sharpest turn between two consecutive links, in radians.
+
+    How bent the chain IS, as against how far its links sit from a coordinate
+    axis -- which is what _straighten's cost term measures, and not the same
+    thing at all.
+    """
+    pts = list(d.pos) + [d.tip]
+    vs = [pts[i + 1] - pts[i] for i in range(len(pts) - 1)]
+    out = 0.0
+    for a, b in zip(vs, vs[1:]):
+        na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+        if na < 1e-9 or nb < 1e-9:
+            continue
+        out = max(out, math.acos(float(np.clip(np.dot(a, b) / (na * nb), -1.0, 1.0))))
+    return out
+
+
 def _straighten(d: Digit) -> Digit:
     """Slide each joint origin along its own axis until the links are straight.
 
     Kinematically exact: verified to 0.000 microns over random poses. What it
     changes is only which point of each axis LINE the frame is hung from.
+
+    A chain that is ALREADY straight is returned untouched. The cost below is
+    axis ALIGNMENT -- how near each link lies to a coordinate axis of the
+    digit's own frame -- which is the right proxy for an L-bracket and the wrong
+    one for a finger that is already a straight rod set at an ANGLE. wuji2's
+    whole row is exactly that, each finger straight to within 4.7 degrees but
+    mounted at -9, 0, +8 and +15, and the slide read the angle as something to
+    remove: it bent the row to as much as 16 degrees to buy 0.4 mm of first
+    link. Worse, the fit reads a mount's FACING off this first link, so the row
+    came out parallel and the hand lost the splay that is the first thing you
+    see on the real one.
+
+    The threshold is the grammar's own. Under half a LEAN_QUANTUM a chain
+    already spells as straight, so a slide has nothing to win and whatever it
+    does is loss; above it there is a real bend to place, and sliding is what
+    finds the straight description of it -- LEAP's 79 degree brackets come down
+    to 0.6 this way. Nothing sits near the line: wuji2's row is at 4.7 degrees
+    and the next digit up, MIDAS's fingers, at 29.6.
+
+    Deliberately NOT the wider rule "keep whichever is less bent". That one also
+    refuses the slide on MIDAS's thumb -- 55 degrees raw against 69 slid -- and
+    costs its fingertip 12 mm, because at that angle what decides is how the
+    chain lands on the lean grid, not how bent it is.
+
+    Refusing is always safe: both descriptions are the same mechanism.
     """
+    if _worst_kink(d) < D.LEAN_QUANTUM / 2.0:
+        return d
+
     P, A = d.pos, d.axis
     n = len(A)
 

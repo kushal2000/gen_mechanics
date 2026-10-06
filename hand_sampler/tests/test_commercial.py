@@ -150,13 +150,20 @@ def test_per_digit_tip_error(name, worst_mm, fits):
 @pytest.mark.parametrize("name", commercial.HANDS)
 def test_the_axis_error_is_the_vendors_own_obliquity(name, fits):
     """The fit snaps each hinge to the nearest of three kinds, so what is left
-    over is exactly how far the vendor's axis sat from a coordinate direction in
+    over is at most how far the vendor's axis sat from a coordinate direction in
     the first place -- nothing is lost in between.
 
     LEAP's axes are all coordinate directions and it fits them to 0 degrees.
-    wuji2's are 9.7 degrees off at the median and SHARPA's 7.7, and that is what
-    three kinds of joint cost on those hands. A finer grid would not help; only
-    allowing oblique axes would, which is the simplification being bought.
+    MIDAS's it matches exactly too. That is what three kinds of joint cost on
+    those hands, and a finer grid would not help; only allowing oblique axes
+    would, which is the simplification being bought.
+
+    An UPPER bound, not an equality, because wuji2 now comes in under it: its
+    obliquity is 10.2 degrees at the median and the fit lands at 6.4. A mount
+    carries a facing, and wuji2's row is mounted at -15, 0, 0 and +15 degrees --
+    its own splay -- which turns each mount frame and lets an axis that is
+    frame-aligned IN THAT FRAME sit closer to an oblique one than any palm axis
+    can. The equality held while the row was being fitted parallel.
     """
     hand, _ = fits[name]
     M, order = _vendor(name)
@@ -166,8 +173,9 @@ def test_the_axis_error_is_the_vendors_own_obliquity(name, fits):
             want = M.T @ raw
             fitted.append(math.degrees(math.acos(float(np.clip(abs(got @ want), -1, 1)))))
             vendor.append(math.degrees(math.acos(min(1.0, float(np.max(np.abs(want)))))))
-    assert np.median(fitted) == pytest.approx(np.median(vendor), abs=1.0), \
-        f"{name}: fit adds error beyond the vendor's own obliquity"
+    assert np.median(fitted) <= np.median(vendor) + 1.0, \
+        f"{name}: fit adds error beyond the vendor's own obliquity "\
+        f"({np.median(fitted):.1f} deg against {np.median(vendor):.1f})"
 
 
 def test_leap_is_the_only_exactly_axis_aligned_hand():
