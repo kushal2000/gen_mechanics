@@ -80,7 +80,7 @@ Only properties no generation rule can guarantee. They need the simulator's 32-s
 
 ## Mutation operators
 
-These are the 17 operators of `derive.EVOLUTION_OPERATORS`, the evolution driver's pool: five grow/shrink pairs (`toggle_palm_joint` is its own inverse) and eight small steps that move one value to its neighbour on the variant's menu. Under limits each one acts only in ways the limits allow; the last column says which limits can make it inapplicable (Simulator values).
+These are the 18 operators of `derive.EVOLUTION_OPERATORS`, the evolution driver's pool: five grow/shrink pairs (`toggle_palm_joint` is its own inverse) and nine small steps that move one value to its neighbour on the variant's menu. `step_segment_length` joined the pool on 2026-10-06; the earlier 17-operator pool is kept as `derive.EVOLUTION_OPERATORS_V1`, so runs made with it can be reproduced by passing `operators=EVOLUTION_OPERATORS_V1`. Under limits each one acts only in ways the limits allow; the last column says which limits can make it inapplicable (Simulator values).
 
 | Button | Operator | What it does | Limited by |
 |---|---|---|---|
@@ -101,8 +101,9 @@ These are the 17 operators of `derive.EVOLUTION_OPERATORS`, the evolution driver
 | thicken/thin every link | `step_radius` | moves the hand's single capsule radius to the neighbouring choice (8, 10 or 12 mm) | none |
 | change one rest bend angle | `step_bend_rpy` | steps one angle of one segment's rest bend (variants with a bend menu: `G_BEND`, V3, V3s) | none |
 | change one rest bend offset | `step_bend_offset` | steps one component of one segment's rest bend offset (only `G_BEND` has an offset menu) | none |
+| lengthen/shorten one segment (5 mm) | `step_segment_length` | changes one existing segment's length (a finger link or an extra palm body) by exactly one 5 mm grid step, within the variant's range (15-80 mm for links, 20-80 mm for palm bodies); a move past the range is never offered, and `lengthen_segment`/`shorten_segment` are its two directions as an exact inverse pair | none (no limit concerns lengths) |
 
-No operator in this pool changes the length of an existing segment or extra palm body; only the root palm's length moves (`step_root_length`). `derive.py` has a length step (`perturb_parameter`, 5 mm, also reachable as `step_length`), but it is outside `EVOLUTION_OPERATORS`: `step_length` was dropped from the small-step pool as a duplicate of `perturb_parameter`, which belongs only to the older default pool `OPERATORS`. A new segment gets a fresh length when it is inserted.
+Before `step_segment_length`, no operator in the pool changed an existing segment's length; only the root palm's moved (`step_root_length`). The older `perturb_parameter` (also reachable as `step_length`, outside the pool) reflects off a range bound, so its step is not always exactly 5 mm; `step_segment_length` only offers moves that stay in range.
 
 ## Full viewer panels
 

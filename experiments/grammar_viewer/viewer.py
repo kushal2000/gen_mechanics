@@ -107,6 +107,9 @@ OPERATOR_INFO: Dict[str, tuple] = {
                                                     "with a bend menu: G_BEND, V3, V3s)."),
     "step_bend_offset": ("change one rest bend offset", "Steps one component of one segment's rest bend offset "
                                                         "(needs a variant with an offset menu: G_BEND)."),
+    "step_segment_length": ("lengthen/shorten one segment (5 mm)", "Changes one segment's length (a finger link "
+                                                                   "or an extra palm body) by exactly 5 mm, within "
+                                                                   "the variant's range."),
 }
 assert set(OPERATOR_INFO) == set(EVOLUTION_OPERATORS), "OPERATOR_INFO must cover EVOLUTION_OPERATORS exactly"
 
