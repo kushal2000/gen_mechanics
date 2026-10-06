@@ -352,8 +352,19 @@ def sample_capsule_radius_m(rng: np.random.Generator, dist: Distribution) -> flo
     return float(dist.capsule_radius_choices_m[int(rng.integers(0, len(dist.capsule_radius_choices_m)))])
 
 
-def sample_module_kind(rng: np.random.Generator, dist: Distribution, allow_coupled: bool) -> str:
-    options = [(k, w) for k, w in dist.module_probabilities if allow_coupled or k != "Coupled"]
+def sample_module_kind(rng: np.random.Generator, dist: Distribution, allow_coupled: bool,
+                       allowed: Optional[Tuple[str, ...]] = None) -> str:
+    """``allowed`` (generation limits, ``limits.GenerationLimits.allowed_modules``;
+    default ``None`` = every kind): kinds outside it are dropped and the rest
+    renormalized, exactly like ``"Coupled"`` at a digit's first phalanx. With
+    ``None``, or an ``allowed`` that contains every kind ``dist`` offers, the
+    options and the single ``rng.random()`` draw are unchanged. If every
+    remaining kind has weight 0 in ``dist`` (a limit that keeps only kinds the
+    variant never samples), the remaining kinds are drawn uniformly."""
+    options = [(k, w) for k, w in dist.module_probabilities
+               if (allow_coupled or k != "Coupled") and (allowed is None or k in allowed)]
+    if allowed is not None and options and sum(w for _, w in options) <= 0.0:
+        options = [(k, 1.0) for k, _ in options]
     total = sum(w for _, w in options)
     r = float(rng.random()) * total
     acc = 0.0
@@ -365,7 +376,8 @@ def sample_module_kind(rng: np.random.Generator, dist: Distribution, allow_coupl
 
 
 def sample_module(rng: np.random.Generator, dist: Distribution, phalanx_index: int,
-                   revolute_source_indices: Optional[Tuple[int, ...]] = None) -> dict:
+                   revolute_source_indices: Optional[Tuple[int, ...]] = None,
+                   allowed: Optional[Tuple[str, ...]] = None) -> dict:
     """Sample a full module spec (dict, JSON-safe) for a phalanx at index
     ``phalanx_index`` (0-based) within its digit.
 
@@ -383,10 +395,14 @@ def sample_module(rng: np.random.Generator, dist: Distribution, phalanx_index: i
     0``) may omit it; it then defaults to ``range(phalanx_index)``, which is
     only correct when the caller already knows every earlier phalanx is
     revolute (true only for ``phalanx_index == 0``, where the range is
-    empty either way) -- every other caller must pass the real set."""
+    empty either way) -- every other caller must pass the real set.
+
+    ``allowed``: the generation limits' allowed module kinds (see
+    ``sample_module_kind``); ``None`` leaves sampling unchanged."""
     if revolute_source_indices is None:
         revolute_source_indices = tuple(range(phalanx_index))
-    kind = sample_module_kind(rng, dist, allow_coupled=phalanx_index > 0 and len(revolute_source_indices) > 0)
+    kind = sample_module_kind(rng, dist, allow_coupled=phalanx_index > 0 and len(revolute_source_indices) > 0,
+                              allowed=allowed)
     axis = sample_axis(rng, dist.digit_axis_elevation_band_deg)
     if kind == "R":
         return {"kind": "R", "axis": axis, "limits": sample_revolute_limits_rad(rng, dist)}

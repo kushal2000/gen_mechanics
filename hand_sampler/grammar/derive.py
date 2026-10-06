@@ -49,6 +49,8 @@ from .kinematics import (
     Pose,
     validate,
 )
+from .limits import GenerationLimits, LimitContext, Structure
+from .limits import context as _limit_context
 from .rules import GRAMMAR_VERSION
 
 DERIVATION_SCHEMA = "hand_grammar_derivation/0.1"
@@ -158,6 +160,7 @@ def _max_uid(steps: Sequence[DerivationStep]) -> int:
 
 def _plan_top_level_mounts(
     rng, dist: Distribution, mount_bodies: List[str], digit_count: int, host_length: Dict[str, float],
+    lim: Optional[LimitContext] = None,
 ) -> List[Tuple[str, float]]:
     """G0 screen, I29 mount-spacing rule (V2): ``digit_count`` (host,
     mount_frac) pairs for the top-level digits, spread across
@@ -190,8 +193,13 @@ def _plan_top_level_mounts(
     caps = {h: capacity(h) for h in mount_bodies}
     counts = {h: 0 for h in mount_bodies}
     for _ in range(digit_count):
-        host = max(mount_bodies, key=lambda h: (caps[h] - counts[h], -mount_bodies.index(h)))
+        # Generation limits: only hosts with room for another top-level digit
+        # (every host when ``lim`` is None or does not bind).
+        pool = mount_bodies if lim is None else (lim.eligible_hosts(mount_bodies) or mount_bodies)
+        host = max(pool, key=lambda h: (caps[h] - counts[h], -mount_bodies.index(h)))
         counts[host] += 1
+        if lim is not None:
+            lim.take_host(host)
 
     assignments: List[Tuple[str, float]] = []
     for host in mount_bodies:
@@ -251,7 +259,7 @@ def _host_transforms_from_steps(steps: Sequence[DerivationStep], root_length: fl
 
 def _plan_top_level_mounts_surface(
     rng, dist: Distribution, mount_bodies: List[str], digit_count: int, host_length: Dict[str, float],
-    host_radius_m: float, host_transforms: Dict[str, np.ndarray],
+    host_radius_m: float, host_transforms: Dict[str, np.ndarray], lim: Optional[LimitContext] = None,
 ) -> List[Tuple[str, float, float]]:
     """G0 screen (opus-review-g0.md item 2), V3s cross-host spacing:
     ``digit_count`` (host, mount_frac, azimuth_rad) triples for the
@@ -289,15 +297,35 @@ def _plan_top_level_mounts_surface(
 
     remaining = list(range(len(candidates)))
     chosen: List[int] = []
-    first = int(rng.integers(0, len(remaining)))
-    chosen.append(remaining.pop(first))
+
+    def eligible() -> List[int]:
+        # Generation limits: only grid points on hosts with room for another
+        # top-level digit. Without limits (or when they do not bind) this is
+        # ``remaining`` itself, so every draw below is unchanged.
+        if lim is None:
+            return remaining
+        room = {h: lim.host_has_room(h) for h in mount_bodies}
+        out = [r for r in remaining if room[candidates[r][0]]]
+        return out if len(out) < len(remaining) else remaining
+
+    def take(r: int) -> None:
+        remaining.remove(r)
+        chosen.append(r)
+        if lim is not None:
+            lim.take_host(candidates[r][0])
+
+    pool = eligible()
+    take(pool[int(rng.integers(0, len(pool)))])
     while len(chosen) < digit_count and remaining:
+        pool = eligible()
+        if not pool:
+            break
         chosen_pos = pos[chosen]
-        dists = np.array([np.min(np.linalg.norm(chosen_pos - pos[ridx], axis=1)) for ridx in remaining])
+        dists = np.array([np.min(np.linalg.norm(chosen_pos - pos[ridx], axis=1)) for ridx in pool])
         best = float(dists.max())
         best_local = [k for k, d in enumerate(dists) if d >= best - 1e-9]
         pick = best_local[int(rng.integers(0, len(best_local)))]
-        chosen.append(remaining.pop(pick))
+        take(pool[pick])
     # The grid always has >= n_frac * n_azimuth (>= 5*24=120) points per
     # host; digit_count is capped at 5 by the envelope, so this fallback
     # (repeat the last chosen point) is unreachable in practice but keeps
@@ -345,8 +373,15 @@ def _best_opposing_rpy(oppose_forward: np.ndarray) -> Tuple[float, float, float]
 
 
 def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str, p: int,
-                     depth: int, is_last: bool, next_uid: List[int], host_radius_m: float = 0.0) -> None:
-    module = sample_module(rng, dist, p, _revolute_source_indices(steps, digit_id, p))
+                     depth: int, is_last: bool, next_uid: List[int], host_radius_m: float = 0.0,
+                     lim: Optional[LimitContext] = None) -> None:
+    """``lim`` (generation limits, default ``None``): module kinds come from
+    the allowed set, and branch digits are spawned only when branches are
+    allowed and the digit's joint budget has room for them (each branch digit
+    needs at least ``phalanx_count_range[0]`` joints, reserved up front so
+    sibling branches always fit). ``None`` draws exactly as before."""
+    module = sample_module(rng, dist, p, _revolute_source_indices(steps, digit_id, p),
+                           allowed=None if lim is None else lim.allowed_modules)
     length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
     # Opus review of G0 (item 5 / V3s fix): ``curl_skip_first_phalanx`` never
     # touches ``rng`` for phalanx 0 -- it must not draw (and discard) a bend
@@ -370,8 +405,11 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
         # branch digits on its own (skipped entirely if the distribution's
         # ``max_branch_digits`` can't reach 2).
         min_branches = 2 if is_last else 1
-        if min_branches <= dist.max_branch_digits:
-            branch_digit_count = int(rng.integers(min_branches, dist.max_branch_digits + 1))
+        max_branches = dist.max_branch_digits
+        if lim is not None:
+            max_branches = lim.branch_cap(max_branches, _phalanx_unit(dist))
+        if min_branches <= max_branches:
+            branch_digit_count = int(rng.integers(min_branches, max_branches + 1))
     uid = next_uid[0]
     next_uid[0] += 1
     steps.append(DerivationStep(path=f"digit/{digit_id}/phalanx/{p}", production="Phalanx", params={
@@ -384,10 +422,14 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
         # joint), never on a palm body, so that body genuinely gets >= 2
         # child joints (its own next phalanx plus one per branch digit).
         phalanx_body = f"d{digit_id}p{p + 1}"
+        if lim is not None:
+            lim.reserve(branch_digit_count * _phalanx_unit(dist))
         for b in range(branch_digit_count):
             sub_id = f"{digit_id}p{p + 1}b{b}"
+            if lim is not None:
+                lim.release(_phalanx_unit(dist))
             _emit_digit(rng, dist, steps, sub_id, [phalanx_body], top_level=False, depth=depth + 1,
-                        next_uid=next_uid, host_radius_m=host_radius_m)
+                        next_uid=next_uid, host_radius_m=host_radius_m, lim=lim)
 
 
 def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str,
@@ -395,7 +437,8 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
                  forced_mount: Optional[Tuple] = None,
                  oppose_forward: Optional[np.ndarray] = None,
                  host_radius_m: float = 0.0,
-                 host_transforms: Optional[Dict[str, np.ndarray]] = None) -> None:
+                 host_transforms: Optional[Dict[str, np.ndarray]] = None,
+                 lim: Optional[LimitContext] = None) -> None:
     """``forced_mount``/``oppose_forward`` (G0 screen, I29/I30; both default
     ``None``) are used ONLY by ``sample_derivation``'s top-level digit loop
     when the corresponding prior is enabled -- every other caller (branch
@@ -415,14 +458,26 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
     one (``forced_mount``'s third element) or drawn i.i.d. from the same
     15-degree grid ``mount_rpy`` itself uses. ``False`` (default) draws no
     extra ``rng`` value at all and leaves ``mount_offset`` exactly
-    ``(0.0, 0.0)`` -- byte-identical to before this field existed."""
+    ``(0.0, 0.0)`` -- byte-identical to before this field existed.
+
+    ``lim`` (generation limits, default ``None``): a top-level digit without a
+    planned mount picks its host only among hosts with room
+    (``LimitContext.host_has_room``); the phalanx count is capped by the
+    digit's joint budget (``LimitContext.begin_digit``, set by the caller),
+    and the budget is passed down to the phalanges and branches. Hosts of
+    planned mounts were already booked by the planner."""
     forced_azimuth: Optional[float] = None
     if forced_mount is not None:
         mount, mount_frac = forced_mount[0], forced_mount[1]
         if len(forced_mount) > 2:
             forced_azimuth = forced_mount[2]
     else:
-        mount = mount_bodies[int(rng.integers(0, len(mount_bodies)))]
+        hosts = mount_bodies
+        if lim is not None and top_level:
+            hosts = lim.eligible_hosts(mount_bodies) or mount_bodies
+        mount = hosts[int(rng.integers(0, len(hosts)))]
+        if lim is not None and top_level:
+            lim.take_host(mount)
         mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
     if dist.mount_on_host_surface:
         azimuth = forced_azimuth if forced_azimuth is not None else sample_grid_angle_rad(rng)
@@ -443,7 +498,15 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
             mount_rpy = _best_opposing_rpy(oppose_forward)
     else:
         mount_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
-    phalanx_count = int(rng.integers(dist.phalanx_count_range[0], dist.phalanx_count_range[1] + 1))
+    lo, hi = dist.phalanx_count_range
+    if lim is not None:
+        cap = lim.phalanx_cap()
+        if cap is not None and cap < hi:
+            hi = max(1, cap)
+            lo = min(lo, hi)
+    phalanx_count = int(rng.integers(lo, hi + 1))
+    if lim is not None:
+        lim.spend(phalanx_count)
     uid = next_uid[0]
     next_uid[0] += 1
     steps.append(DerivationStep(path=f"digit/{digit_id}", production="Digit", params={
@@ -453,7 +516,7 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
     }))
     for p in range(phalanx_count):
         _sample_phalanx(rng, dist, steps, digit_id, p, depth, is_last=(p == phalanx_count - 1), next_uid=next_uid,
-                         host_radius_m=host_radius_m)
+                         host_radius_m=host_radius_m, lim=lim)
 
 
 def _sample_digit(rng, dist: Distribution, steps: List[DerivationStep], next_id: List[int],
@@ -461,24 +524,65 @@ def _sample_digit(rng, dist: Distribution, steps: List[DerivationStep], next_id:
                    forced_mount: Optional[Tuple] = None,
                    oppose_forward: Optional[np.ndarray] = None,
                    host_radius_m: float = 0.0,
-                   host_transforms: Optional[Dict[str, np.ndarray]] = None) -> None:
-    """Sample a fresh *top-level* digit (id is the next 1-based integer)."""
+                   host_transforms: Optional[Dict[str, np.ndarray]] = None,
+                   lim: Optional[LimitContext] = None) -> None:
+    """Sample a fresh *top-level* digit (id is the next 1-based integer).
+    With ``lim``, its joint budget starts at ``max_joints_per_digit``."""
     digit_id = str(next_id[0])
     next_id[0] += 1
+    if lim is not None:
+        lim.begin_digit(lim.limits.max_joints_per_digit)
     _emit_digit(rng, dist, steps, digit_id, mount_bodies, top_level=True, depth=0, next_uid=next_uid,
                 forced_mount=forced_mount, oppose_forward=oppose_forward, host_radius_m=host_radius_m,
-                host_transforms=host_transforms)
+                host_transforms=host_transforms, lim=lim)
 
 
-def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) -> Derivation:
+def _capped_range(lo: int, hi: int, cap) -> Tuple[int, int]:
+    """``(lo, hi)`` with ``hi`` lowered to ``cap`` (``lo`` too if needed);
+    unchanged when ``cap`` is ``None``/infinite or not below ``hi``."""
+    if cap is None or cap >= hi:
+        return lo, hi
+    hi = int(cap)
+    return min(lo, hi), hi
+
+
+def _phalanx_unit(dist: Distribution) -> int:
+    """Fewest joints a digit sampled from ``dist`` can have (joint budgets
+    reserve this much per pending branch digit)."""
+    return max(1, int(dist.phalanx_count_range[0]))
+
+
+def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION,
+                      limits: Optional[GenerationLimits] = None) -> Derivation:
+    """Sample one derivation from ``dist``.
+
+    ``limits`` (``limits.GenerationLimits``, default ``None``): hard
+    generation limits, obeyed constructively (see ``limits.py``): the digit
+    and palm-body counts are drawn from ranges capped by the limits, a palm
+    body gets a joint only where the limits allow one (no stacking, below the
+    cap, and leaving room for every digit), each top-level digit mounts on a
+    host with room, phalanx counts respect the per-digit joint budget, module
+    kinds come from the allowed set, and branches only when allowed. Every
+    draw is made in the same order as without limits, and a limit that does
+    not bind leaves its draw unchanged, so ``limits=None`` and ``UNLIMITED``
+    give byte-identical derivations. Where a limit binds, values are drawn
+    from the restricted options, so the result is not distributed like
+    rejection sampling would be."""
     seed, rng = _coerce_rng(rng_or_seed)
     steps: List[DerivationStep] = []
+    lim = _limit_context(limits, fresh=True)
 
-    digit_count = int(rng.integers(dist.digit_count_range[0], dist.digit_count_range[1] + 1))
+    lo, hi = dist.digit_count_range
+    if lim is not None:
+        lo, hi = _capped_range(lo, hi, lim.digit_cap())
+    digit_count = int(rng.integers(lo, hi + 1))
     # Additional palm bodies beyond the root -- the root is always a palm
     # body with a real segment of its own (root_length below), so a hand
     # never lacks a palm even when palm_body_count == 0.
-    palm_body_count = int(rng.integers(dist.palm_body_count_range[0], dist.palm_body_count_range[1] + 1))
+    lo, hi = dist.palm_body_count_range
+    if lim is not None:
+        lo, hi = _capped_range(lo, hi, lim.limits.max_palm_bodies)
+    palm_body_count = int(rng.integers(lo, hi + 1))
     root_length = sample_grid_length_m(rng, dist.palm_length_range_m, dist.link_length_grid_m)
     # One capsule radius per hand (iteration 7 / M2, geometry overlay -- see
     # rules.py's module note): stamped onto every Body.radius by ``derive``.
@@ -503,15 +607,19 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
         length = sample_grid_length_m(rng, dist.palm_length_range_m, dist.link_length_grid_m)
         direction_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
         has_joint = bool(float(rng.random()) < dist.palm_joint_probability)
+        if has_joint and lim is not None and not lim.can_add_jointed_palm(parent, digit_count):
+            has_joint = False
+        if lim is not None:
+            lim.add_palm(name, parent, has_joint)
         axis = sample_axis(rng)
-        limits: Optional[Tuple[float, float]] = None
+        joint_limits: Optional[Tuple[float, float]] = None
         if has_joint:
-            limits = sample_palm_joint_limits_rad(rng, dist)
+            joint_limits = sample_palm_joint_limits_rad(rng, dist)
         uid = next_uid[0]
         next_uid[0] += 1
         steps.append(DerivationStep(path=f"palm/{i}", production="PalmBody", params={
             "name": name, "parent": parent, "mount_frac": mount_frac, "length": length,
-            "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": limits,
+            "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": joint_limits,
             "uid": uid,
         }))
         palm_names.append(name)
@@ -542,10 +650,10 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
     if dist.mount_min_separation_m is not None and digit_count > 0:
         if dist.mount_on_host_surface:
             planned_mounts = _plan_top_level_mounts_surface(
-                rng, dist, mount_bodies, digit_count, host_length, capsule_radius_m, host_transforms,
+                rng, dist, mount_bodies, digit_count, host_length, capsule_radius_m, host_transforms, lim=lim,
             )
         else:
-            planned_mounts = _plan_top_level_mounts(rng, dist, mount_bodies, digit_count, host_length)
+            planned_mounts = _plan_top_level_mounts(rng, dist, mount_bodies, digit_count, host_length, lim=lim)
     for i in range(digit_count):
         forced_mount = planned_mounts[i] if planned_mounts is not None else None
         # G0 screen (I30): the LAST top-level digit, when the opposition
@@ -585,7 +693,7 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION) ->
                     oppose_forward = mean_fwd / norm
         _sample_digit(rng, dist, steps, next_id, mount_bodies, next_uid,
                       forced_mount=forced_mount, oppose_forward=oppose_forward, host_radius_m=capsule_radius_m,
-                      host_transforms=host_transforms if dist.opposition_use_host_frame else None)
+                      host_transforms=host_transforms if dist.opposition_use_host_frame else None, lim=lim)
 
     return Derivation(seed=seed, grammar_version=GRAMMAR_VERSION, steps=tuple(steps))
 
@@ -960,8 +1068,9 @@ def segment(model: KinematicModel, body: str) -> Tuple[Tuple[float, float, float
     return start, end
 
 
-def generate(seed, dist: Distribution = DEFAULT_DISTRIBUTION) -> Tuple[Derivation, KinematicModel]:
-    derivation = sample_derivation(seed, dist)
+def generate(seed, dist: Distribution = DEFAULT_DISTRIBUTION,
+             limits: Optional[GenerationLimits] = None) -> Tuple[Derivation, KinematicModel]:
+    derivation = sample_derivation(seed, dist, limits=limits)
     model = derive(derivation)
     return derivation, model
 
@@ -1054,7 +1163,11 @@ def _growth_dist(dist: Distribution) -> Distribution:
     return dist.insertion if dist.insertion is not None else dist
 
 
-def _op_resample_parameter(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_resample_parameter(rng, dist: Distribution, derivation: Derivation,
+                           lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """``lim``: a palm body keeps its joint state when the drawn one is not
+    allowed; a phalanx draws its module from the allowed kinds; a top-level
+    digit re-mounts only on a host with room."""
     steps = list(derivation.steps)
     idx = int(rng.integers(0, len(steps)))
     s = steps[idx]
@@ -1063,6 +1176,9 @@ def _op_resample_parameter(rng, dist: Distribution, derivation: Derivation) -> O
         length = sample_grid_length_m(rng, dist.palm_length_range_m, dist.link_length_grid_m)
         direction_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
         has_joint = bool(float(rng.random()) < dist.palm_joint_probability)
+        if (lim is not None and has_joint != bool(p["has_joint"])
+                and not lim.allows(lim.struct.with_joint(p["name"], has_joint))):
+            has_joint = bool(p["has_joint"])
         axis = sample_axis(rng)
         limits = sample_palm_joint_limits_rad(rng, dist) if has_joint else None
         p.update({"length": length, "direction_rpy": direction_rpy, "has_joint": has_joint,
@@ -1071,7 +1187,8 @@ def _op_resample_parameter(rng, dist: Distribution, derivation: Derivation) -> O
         return steps
     if s.production == "Phalanx":
         p = dict(s.params)
-        module = sample_module(rng, dist, p["p"], _revolute_source_indices(steps, p["digit_id"], p["p"]))
+        module = sample_module(rng, dist, p["p"], _revolute_source_indices(steps, p["digit_id"], p["p"]),
+                               allowed=None if lim is None else lim.allowed_modules)
         length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
         p.update({"module": module, "length": length})
         steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
@@ -1080,6 +1197,8 @@ def _op_resample_parameter(rng, dist: Distribution, derivation: Derivation) -> O
         p = dict(s.params)
         if p["top_level"]:
             mount_bodies = _mount_bodies_from_steps(steps)
+            if lim is not None:
+                mount_bodies = lim.eligible_hosts(mount_bodies, moving=p["digit_id"]) or [p["mount"]]
             p["mount"] = mount_bodies[int(rng.integers(0, len(mount_bodies)))]
         # A branch digit's mount is fixed to its host phalanx's body (it is
         # not a free choice); only its pose within that body is resampled.
@@ -1090,7 +1209,8 @@ def _op_resample_parameter(rng, dist: Distribution, derivation: Derivation) -> O
     return None
 
 
-def _op_perturb_parameter(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_perturb_parameter(rng, dist: Distribution, derivation: Derivation,
+                          lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     steps = list(derivation.steps)
     candidates = [i for i, s in enumerate(steps) if s.production in ("PalmBody", "Phalanx")]
     if not candidates:
@@ -1113,9 +1233,43 @@ def _op_perturb_parameter(rng, dist: Distribution, derivation: Derivation) -> Op
     return steps
 
 
-def _op_regrow_subtree(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _regrow_context(lim: LimitContext, steps: List[DerivationStep], digit_id: str,
+                    gdist: Distribution) -> Optional[LimitContext]:
+    """A ``LimitContext`` over ``steps`` without ``digit_id``'s subtree, with
+    the joint budget the regrown digit may use; ``None`` if it has no room
+    (fewer joints than a digit needs, or no host for a top-level digit)."""
+    kept = [st for st in steps if not _is_descendant_digit(digit_id, _step_digit_id(st))]
+    sub = LimitContext(lim.limits, kept, base=lim.base)
+    digit = next(st for st in steps if st.production == "Digit" and st.params["digit_id"] == digit_id)
+    if digit.params["top_level"]:
+        if not sub.eligible_hosts(_mount_bodies_from_steps(steps)):
+            return None
+        room = lim.limits.max_joints_per_digit
+    else:
+        owner = lim.struct.top_of().get(digit_id, digit_id)
+        room = None if lim.limits.max_joints_per_digit is None else (
+            lim.limits.max_joints_per_digit - sub.struct.joints_per_digit().get(owner, 0))
+    if room is not None and room < _phalanx_unit(gdist):
+        return None
+    sub.begin_digit(room)
+    return sub
+
+
+def _op_regrow_subtree(rng, dist: Distribution, derivation: Derivation,
+                       lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """``lim``: only digits that can be regrown within the limits are
+    candidates; the new subtree is sampled under them (joint budget, allowed
+    modules, branches, a top-level digit's host)."""
     steps = list(derivation.steps)
     digit_idxs = [i for i, s in enumerate(steps) if s.production == "Digit"]
+    sub_lim: Dict[int, LimitContext] = {}
+    if lim is not None:
+        for i in digit_idxs:
+            ctx = _regrow_context(lim, steps, steps[i].params["digit_id"], _growth_dist(dist))
+            if ctx is not None:
+                sub_lim[i] = ctx
+        if len(sub_lim) < len(digit_idxs):
+            digit_idxs = [i for i in digit_idxs if i in sub_lim]
     if not digit_idxs:
         return None
     idx = digit_idxs[int(rng.integers(0, len(digit_idxs)))]
@@ -1135,7 +1289,7 @@ def _op_regrow_subtree(rng, dist: Distribution, derivation: Derivation) -> Optio
     hand_params = next(st.params for st in steps if st.path == "hand")
     host_radius_m = hand_params.get("capsule_radius_m", 0.0)
     _emit_digit(rng, _growth_dist(dist), new_steps, digit_id, mount_bodies, top_level, depth, next_uid,
-                host_radius_m=host_radius_m)
+                host_radius_m=host_radius_m, lim=sub_lim.get(idx))
     return kept + new_steps
 
 
@@ -1165,10 +1319,15 @@ def _rename_branch_mounts(steps: List[DerivationStep], host_digit_id: str,
     return out
 
 
-def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation,
+                       lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """``lim``: only digits whose top-level digit has a joint to spare; the
+    new module from the allowed kinds."""
     steps = list(derivation.steps)
     digit_idxs = [i for i, s in enumerate(steps)
                   if s.production == "Digit" and s.params["phalanx_count"] < dist.phalanx_count_range[1]]
+    if lim is not None and lim.limits.max_joints_per_digit is not None:
+        digit_idxs = [i for i in digit_idxs if lim.joint_room(steps[i].params["digit_id"]) >= 1]
     if not digit_idxs:
         return None
     idx = digit_idxs[int(rng.integers(0, len(digit_idxs)))]
@@ -1202,7 +1361,8 @@ def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
     revolute_source_indices = tuple(
         old_p for old_p in range(ins_p) if phalanx_steps[old_p].params["module"]["kind"] == "R"
     )
-    module = sample_module(rng, dist, ins_p, revolute_source_indices)
+    module = sample_module(rng, dist, ins_p, revolute_source_indices,
+                           allowed=None if lim is None else lim.allowed_modules)
     length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
     bend_rpy, bend_offset = sample_bend(rng, dist)
     new_uid = _max_uid(steps) + 1
@@ -1218,7 +1378,8 @@ def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation) -> Optio
 
 
 def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation,
-                        target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+                        target: Optional[int] = None,
+                        lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """``target`` (grammar 0.5, reversibility): when given, the uid of the
     ``Phalanx`` step to delete -- restricts the candidate pool to exactly
     that phalanx (still subject to every safety check below) instead of
@@ -1323,7 +1484,7 @@ def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation,
             sp = mod["source_p"]
             if sp == del_p:
                 # Source phalanx removed: fall back to a fresh, non-Coupled module.
-                mod = sample_module(rng, dist, 0)
+                mod = sample_module(rng, dist, 0, allowed=None if lim is None else lim.allowed_modules)
             elif sp > del_p:
                 mod["source_p"] = sp - 1
         params["module"] = mod
@@ -1337,25 +1498,31 @@ def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation,
     return _rename_branch_mounts(result, digit_id, renumber)
 
 
-def _op_add_digit(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_add_digit(rng, dist: Distribution, derivation: Derivation,
+                  lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """``lim``: needs a host with room; the new digit is sampled under the
+    limits."""
     steps = list(derivation.steps)
     hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
     hand_params = steps[hand_idx].params
     if hand_params["digit_count"] >= dist.digit_count_range[1]:
         return None
     mount_bodies = _mount_bodies_from_steps(steps)
+    if lim is not None and not lim.eligible_hosts(mount_bodies):
+        return None
     top_ids = [int(s.params["digit_id"]) for s in steps if s.production == "Digit" and s.params.get("top_level")]
     next_id = [max(top_ids, default=0) + 1]
     new_steps: List[DerivationStep] = []
     next_uid = [_max_uid(steps) + 1]
-    _sample_digit(rng, _growth_dist(dist), new_steps, next_id, mount_bodies, next_uid)
+    _sample_digit(rng, _growth_dist(dist), new_steps, next_id, mount_bodies, next_uid, lim=lim)
     new_hand = DerivationStep(path="hand", production="Hand",
                                params={**hand_params, "digit_count": hand_params["digit_count"] + 1})
     rest = [s for i, s in enumerate(steps) if i != hand_idx]
     return rest + [new_hand] + new_steps
 
 
-def _op_remove_digit(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_remove_digit(rng, dist: Distribution, derivation: Derivation,
+                     lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     steps = list(derivation.steps)
     hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
     hand_params = steps[hand_idx].params
@@ -1435,7 +1602,8 @@ def _step_axis_value(rng, axis: Tuple[float, float, float]) -> Tuple[float, floa
     return (float(math.sin(el) * math.cos(az)), float(math.sin(el) * math.sin(az)), float(math.cos(el)))
 
 
-def _op_step_axis(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_step_axis(rng, dist: Distribution, derivation: Derivation,
+                  lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     steps = list(derivation.steps)
     candidates = [
         i for i, s in enumerate(steps)
@@ -1475,7 +1643,8 @@ def _step_choice_index(rng, idx: int, n: int) -> int:
     return max(0, min(n - 1, idx + direction))
 
 
-def _op_step_limits(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_step_limits(rng, dist: Distribution, derivation: Derivation,
+                    lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """I14 fix: ``dist.*_limit_choices_*`` are sorted HERE (a local copy, on
     every call) before finding/stepping the current choice's index, so a
     "neighbouring" choice is numerically adjacent (e.g. never jumps a
@@ -1555,7 +1724,8 @@ def _step_one_grid_angle(rng, current: float) -> float:
     return (new_k * ANGLE_STEP_DEG - 180.0) * DEG
 
 
-def _op_step_mount(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_step_mount(rng, dist: Distribution, derivation: Derivation,
+                   lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     steps = list(derivation.steps)
     candidates = [i for i, s in enumerate(steps) if s.production in ("Digit", "PalmBody")]
     if not candidates:
@@ -1586,7 +1756,8 @@ def _op_step_mount(rng, dist: Distribution, derivation: Derivation) -> Optional[
     return steps
 
 
-def _op_step_coupling(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_step_coupling(rng, dist: Distribution, derivation: Derivation,
+                      lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     steps = list(derivation.steps)
     candidates = [
         i for i, s in enumerate(steps)
@@ -1616,7 +1787,8 @@ def _op_step_coupling(rng, dist: Distribution, derivation: Derivation) -> Option
     return steps
 
 
-def _op_step_root_length(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_step_root_length(rng, dist: Distribution, derivation: Derivation,
+                         lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """I14 fix 5: the ``hand`` step's own ``root_length`` (the root/palm
     segment's length), previously never mutated by ANY operator, stepped by
     one ``dist.link_length_grid_m`` grid increment (up or down, clamped
@@ -1640,7 +1812,8 @@ def _op_step_root_length(rng, dist: Distribution, derivation: Derivation) -> Opt
     return steps
 
 
-def _op_step_radius(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_step_radius(rng, dist: Distribution, derivation: Derivation,
+                    lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """I14 fix 5: the ``hand`` step's own ``capsule_radius_m`` (one scalar
     stamped onto every ``Body.radius`` -- previously never mutated by any
     operator), stepped to a numerically-neighbouring choice in
@@ -1675,7 +1848,8 @@ def _bend_component_grid(choices, axis_index: int) -> List[float]:
     return sorted({c[axis_index] for c in choices})
 
 
-def _op_step_bend_rpy(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_step_bend_rpy(rng, dist: Distribution, derivation: Derivation,
+                      lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Grammar 0.5 (I16 priority 1): move ONE component (roll, pitch, or
     yaw) of one Phalanx step's own ``bend_rpy`` to its numerically
     neighbouring value on ``dist.bend_rpy_choices_rad``'s own per-component
@@ -1705,7 +1879,8 @@ def _op_step_bend_rpy(rng, dist: Distribution, derivation: Derivation) -> Option
     return steps
 
 
-def _op_step_bend_offset(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_step_bend_offset(rng, dist: Distribution, derivation: Derivation,
+                         lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Grammar 0.5 (I16 priority 1): the ``bend_offset`` counterpart of
     ``_op_step_bend_rpy`` -- moves ONE component (x or y) of one Phalanx
     step's own ``bend_offset`` to its numerically neighbouring value on
@@ -1752,7 +1927,8 @@ MINIMAL_STRUCTURAL_OPERATORS: Tuple[str, ...] = (
 )
 
 
-def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation,
+                          lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Add a new top-level digit with exactly one phalanx (module kind
     always ``"R"`` -- a single-phalanx digit has no earlier phalanx to
     couple to, so ``"Coupled"`` is never valid there anyway; forcing ``"R"``
@@ -1766,6 +1942,14 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation) -> Op
         return None
     gdist = _growth_dist(dist)
     mount_bodies = _mount_bodies_from_steps(steps)
+    if lim is not None:
+        # Generation limits: the new digit is one hinge, so "R" must be
+        # allowed, and it mounts only on a host with room.
+        if not lim.module_allowed("R"):
+            return None
+        mount_bodies = lim.eligible_hosts(mount_bodies)
+        if not mount_bodies:
+            return None
     top_ids = [int(s.params["digit_id"]) for s in steps if s.production == "Digit" and s.params.get("top_level")]
     digit_id = str(max(top_ids, default=0) + 1)
     mount = mount_bodies[int(rng.integers(0, len(mount_bodies)))]
@@ -1792,7 +1976,8 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation) -> Op
 
 
 def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation,
-                              target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+                              target: Optional[int] = None,
+                              lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Reversible counterpart of ``add_minimal_digit``: remove a top-level
     digit with 1 or 2 phalanges (I15 fix 4, widened from exactly 1 --
     ``add_minimal_digit`` itself only ever ADDS a 1-phalanx digit, but
@@ -1834,7 +2019,8 @@ def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation,
     return [s if s.path != "hand" else new_hand for s in kept]
 
 
-def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation,
+                      lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Add one new palm body (index ``palm_body_count``), sampled exactly
     like ``sample_derivation``'s own palm-body loop: a sampled parent among
     root and every existing palm body, a sampled mount fraction/length/
@@ -1847,6 +2033,8 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation) -> Option
     palm_body_count = hand_params["palm_body_count"]
     if palm_body_count >= dist.palm_body_count_range[1]:
         return None
+    if lim is not None and not lim.allows(lim.struct.with_palm("__new_palm", "root", False)):
+        return None             # generation limits: no room for another palm body
     gdist = _growth_dist(dist)
     palm_names = [f"palm{i}" for i in range(palm_body_count)]
     parent_choices = ["root"] + palm_names
@@ -1855,6 +2043,8 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation) -> Option
     length = sample_grid_length_m(rng, gdist.palm_length_range_m, gdist.link_length_grid_m)
     direction_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
     has_joint = bool(float(rng.random()) < gdist.palm_joint_probability)
+    if has_joint and lim is not None and not lim.allows(lim.struct.with_palm("__new_palm", parent, True)):
+        has_joint = False       # generation limits: a joint here is not allowed, so the body is rigid
     axis = sample_axis(rng)
     limits = sample_palm_joint_limits_rad(rng, gdist) if has_joint else None
     name = f"palm{palm_body_count}"
@@ -1870,7 +2060,8 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation) -> Option
 
 
 def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation,
-                          target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+                          target: Optional[int] = None,
+                          lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """``target`` (grammar 0.5, reversibility): when given, the uid of the
     ``PalmBody`` step to remove -- restricts the candidate pool to exactly
     that body instead of drawing uniformly, so a caller (the reversibility
@@ -1906,6 +2097,10 @@ def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation,
         candidates = list(palm_steps.keys())
     else:
         candidates = [name for name, s in palm_steps.items() if s.params.get("uid") == target]
+    if lim is not None:
+        # Generation limits: re-attaching the removed body's digits to its
+        # parent must not overfill the parent's finger chain or carrier.
+        candidates = [n for n in candidates if lim.allows(lim.struct.without_palm_reattach(n))]
     if not candidates:
         return None
     remove_name = candidates[int(rng.integers(0, len(candidates)))]
@@ -1949,7 +2144,8 @@ def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation,
 
 
 def _op_remove_palm_body_empty(rng, dist: Distribution, derivation: Derivation,
-                                target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+                                target: Optional[int] = None,
+                                lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Exact-inverse counterpart of ``add_palm_body`` (grammar 0.5, I18 fix
     2): remove a LEAF palm body -- one with no ``PalmBody`` child (no other
     palm body's ``parent`` names it) and no ``Digit`` mounted on it -- i.e.
@@ -2012,7 +2208,8 @@ def _op_remove_palm_body_empty(rng, dist: Distribution, derivation: Derivation,
 
 
 def _op_toggle_palm_joint(rng, dist: Distribution, derivation: Derivation,
-                           target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+                           target: Optional[int] = None,
+                           lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """On one existing (necessarily non-root -- the root has no ``PalmBody``
     step of its own) palm body, add a palm joint (sampled axis/limits) if
     absent, or remove it (``has_joint=False``, ``limits=None``) if present.
@@ -2030,6 +2227,12 @@ def _op_toggle_palm_joint(rng, dist: Distribution, derivation: Derivation,
     else:
         candidates = [i for i, s in enumerate(steps)
                       if s.production == "PalmBody" and s.params.get("uid") == target]
+    if lim is not None:
+        # Generation limits: only bodies whose joint may be added (cap, no
+        # stacking, carried digits, finger chains) or removed (its digits fit
+        # where they fall back to).
+        candidates = [i for i in candidates
+                      if lim.allows(lim.struct.with_joint(steps[i].params["name"], not steps[i].params["has_joint"]))]
     if not candidates:
         return None
     idx = candidates[int(rng.integers(0, len(candidates)))]
@@ -2061,7 +2264,8 @@ def _op_toggle_palm_joint(rng, dist: Distribution, derivation: Derivation,
 # --------------------------------------------------------------------------
 
 
-def _op_add_branch_digit(rng, dist: Distribution, derivation: Derivation) -> Optional[List[DerivationStep]]:
+def _op_add_branch_digit(rng, dist: Distribution, derivation: Derivation,
+                         lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Add one new branch digit (1 phalanx, mirrors ``add_minimal_digit``)
     on a uniformly sampled existing ``Phalanx`` step's own body, subject to
     ``dist.max_branch_depth`` (the host digit's own depth must still be
@@ -2069,6 +2273,8 @@ def _op_add_branch_digit(rng, dist: Distribution, derivation: Derivation) -> Opt
     already host the max). New material (module/length/bend/mount pose) is
     drawn from ``_growth_dist(dist)``, like every other growth operator."""
     steps = list(derivation.steps)
+    if lim is not None and not (lim.limits.allow_branches and lim.module_allowed("R")):
+        return None             # generation limits: no branches, or no hinge for the one-hinge branch digit
     digit_depth = {s.params["digit_id"]: s.params["depth"] for s in steps if s.production == "Digit"}
     candidates = [
         i for i, s in enumerate(steps)
@@ -2076,6 +2282,8 @@ def _op_add_branch_digit(rng, dist: Distribution, derivation: Derivation) -> Opt
         and digit_depth.get(s.params["digit_id"], 0) < dist.max_branch_depth
         and s.params["branch_digit_count"] < dist.max_branch_digits
     ]
+    if lim is not None and lim.limits.max_joints_per_digit is not None:
+        candidates = [i for i in candidates if lim.joint_room(steps[i].params["digit_id"]) >= 1]
     if not candidates:
         return None
     idx = candidates[int(rng.integers(0, len(candidates)))]
@@ -2112,7 +2320,8 @@ def _op_add_branch_digit(rng, dist: Distribution, derivation: Derivation) -> Opt
 
 
 def _op_remove_branch_digit(rng, dist: Distribution, derivation: Derivation,
-                             target: Optional[int] = None) -> Optional[List[DerivationStep]]:
+                             target: Optional[int] = None,
+                             lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Exact-inverse counterpart of ``add_branch_digit``: remove a branch
     digit (``top_level=False``) with exactly 1 phalanx and no sub-branches
     of its own, decrementing its HOST phalanx's ``branch_digit_count``.
@@ -2232,8 +2441,38 @@ TARGETABLE_OPERATORS = frozenset({
 })
 
 
+def _limit_base(derivation: Derivation, limits: Optional[GenerationLimits]) -> Optional[Dict[str, int]]:
+    """The parent's per-limit excess (``None`` without limits)."""
+    if limits is None:
+        return None
+    return Structure.from_steps(derivation.steps).excess(limits)
+
+
+def _call_operator(fn, operator: str, rng, dist: Distribution, derivation: Derivation,
+                   target: Optional[int], limits: Optional[GenerationLimits],
+                   base: Optional[Dict[str, int]]) -> Optional[List[DerivationStep]]:
+    """One raw application of an operator function, with a fresh
+    ``LimitContext`` when ``limits`` is given (``None``: called exactly as
+    before limits existed). Returns ``None`` when the operator has nothing to
+    act on, or (a safety net the constructive rules make unreachable for a
+    parent within the limits, see ``test_generation_limits.py``) when its
+    result would make a limit worse than the parent's."""
+    kwargs: Dict[str, Any] = {}
+    if operator in TARGETABLE_OPERATORS:
+        kwargs["target"] = target
+    ctx = None
+    if limits is not None:
+        ctx = LimitContext(limits, derivation.steps, base=base)
+        kwargs["lim"] = ctx
+    out = fn(rng, dist, derivation, **kwargs)
+    if out is not None and ctx is not None and not ctx.allows_steps(out):
+        return None
+    return out
+
+
 def apply_operator(derivation: Derivation, rng: np.random.Generator, dist: Distribution,
-                    operator: str, target: Optional[int] = None) -> Optional[Derivation]:
+                    operator: str, target: Optional[int] = None,
+                    limits: Optional[GenerationLimits] = None) -> Optional[Derivation]:
     """Apply ``operator`` exactly ONCE (unlike ``vary``: no 32-attempt retry
     loop, no re-drawing a different operator on failure) to ``derivation``,
     optionally passing ``target`` through to the underlying ``_op_*``
@@ -2244,14 +2483,16 @@ def apply_operator(derivation: Derivation, rng: np.random.Generator, dist: Distr
     ``None``, or the candidate failed to derive/validate) -- the caller
     decides what "not applicable" means for its own accounting (E1's
     ``VariationImpossible`` convention does not apply here, since this
-    function never retries)."""
+    function never retries).
+
+    ``limits`` (``limits.GenerationLimits``, default ``None``): the operator
+    acts only in ways the limits allow (see ``limits.py``); with no such
+    application it returns ``None``. ``None`` behaves exactly as before."""
     if operator not in _OPERATOR_FNS:
         raise ValueError(f"unknown vary operator {operator!r}")
     fn = _OPERATOR_FNS[operator]
-    if operator in TARGETABLE_OPERATORS:
-        candidate_steps = fn(rng, dist, derivation, target=target)
-    else:
-        candidate_steps = fn(rng, dist, derivation)
+    candidate_steps = _call_operator(fn, operator, rng, dist, derivation, target, limits,
+                                     _limit_base(derivation, limits))
     if candidate_steps is None:
         return None
     if tuple(candidate_steps) == derivation.steps:
@@ -2268,7 +2509,8 @@ def apply_operator(derivation: Derivation, rng: np.random.Generator, dist: Distr
 
 
 def vary(derivation: Derivation, rng: np.random.Generator, dist: Distribution = DEFAULT_DISTRIBUTION,
-         operator: Optional[str] = None, operators: Optional[Sequence[str]] = None) -> Derivation:
+         operator: Optional[str] = None, operators: Optional[Sequence[str]] = None,
+         limits: Optional[GenerationLimits] = None) -> Derivation:
     """Apply ``operator`` (random from ``operators`` if given, else random
     from ``OPERATORS`` -- unchanged default behaviour -- if both are
     omitted) to ``derivation``, retrying up to 32 times with fresh
@@ -2277,7 +2519,14 @@ def vary(derivation: Derivation, rng: np.random.Generator, dist: Distribution = 
     found. Passing ``operators=SMALL_STEP_OPERATORS`` (or any other
     explicit operator/pool) is the only way to reach an operator outside
     ``OPERATORS``; nothing here changes what a bare ``vary(derivation,
-    rng, dist)`` call does."""
+    rng, dist)`` call does.
+
+    ``limits`` (``limits.GenerationLimits``, default ``None``): the operator
+    acts only in ways the limits allow, constructively (see ``limits.py``);
+    an operator with no such application raises ``VariationImpossible`` like
+    one with nothing to act on, so a caller drawing operators at random just
+    draws again. A parent already outside the limits may still be mutated,
+    as long as no limit gets worse. ``None`` behaves exactly as before."""
     if operator is not None:
         op = operator
     else:
@@ -2286,8 +2535,9 @@ def vary(derivation: Derivation, rng: np.random.Generator, dist: Distribution = 
     if op not in _OPERATOR_FNS:
         raise ValueError(f"unknown vary operator {op!r}")
     fn = _OPERATOR_FNS[op]
+    base = _limit_base(derivation, limits)
     for _ in range(32):
-        candidate_steps = fn(rng, dist, derivation)
+        candidate_steps = _call_operator(fn, op, rng, dist, derivation, None, limits, base)
         if candidate_steps is None:
             continue
         if tuple(candidate_steps) == derivation.steps:
@@ -2306,7 +2556,8 @@ def vary(derivation: Derivation, rng: np.random.Generator, dist: Distribution = 
 
 
 def vary_tracked(derivation: Derivation, rng: np.random.Generator, dist: Distribution,
-                  operators: Sequence[str]) -> Tuple[Optional[Derivation], str]:
+                  operators: Sequence[str],
+                  limits: Optional[GenerationLimits] = None) -> Tuple[Optional[Derivation], str]:
     """Like ``vary(derivation, rng, dist, operators=operators)`` -- one
     operator drawn uniformly from ``operators``, retried up to 32 times via
     ``apply_operator`` (exactly ``vary``'s own per-attempt logic, since
@@ -2318,7 +2569,7 @@ def vary_tracked(derivation: Derivation, rng: np.random.Generator, dist: Distrib
     duplicating ``vary``'s algorithm."""
     op = operators[int(rng.integers(0, len(operators)))]
     for _ in range(32):
-        candidate = apply_operator(derivation, rng, dist, op)
+        candidate = apply_operator(derivation, rng, dist, op, limits=limits)
         if candidate is not None:
             return candidate, op
     return None, op
