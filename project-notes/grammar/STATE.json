@@ -374,7 +374,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "RECENTER (2026-10-05): see project-notes/grammar/RECENTER-2026-10-05.md. Work splits into sessions A (grammar, CPU), B (task/experts: P1 hold+rotate on grammar hands), C (shared transformer scale: P2), D (evolution, later). Combined cluster cap 4 GPUs.",
+  "next_action": "GRAMMAR LOCKED (2026-10-07): read project-notes/grammar/GRAMMAR-OVERVIEW.md (explanation and summary tables) and GRAMMAR-LOCK-2026-10-07.md (every decision with its reason). The old derivation grammar is removed (local tag grammar-v0.5-final); the simulator uses a 36-slot layout (6 finger slots x (palm-joint carrier + 5 joints)), so 32-slot populations, grasp caches and checkpoints no longer load. Isaac validation: isaac-validation-2026-10-07.md. Open: coupled-joint tokens (visible to the policy or not); C5 physics grasp check to raise after the grammar work; hardware buildability as a later selection step. Earlier recentering map: RECENTER-2026-10-05.md.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
