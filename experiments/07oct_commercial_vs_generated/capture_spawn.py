@@ -124,6 +124,14 @@ def main() -> None:
                   for i, n in enumerate(inner.robot.body_names)}
         tip_ids = getattr(inner, "_fingertip_body_ids", [])
         tips = [inner.robot.body_names[int(i)] for i in (tip_ids.tolist() if hasattr(tip_ids, "tolist") else tip_ids)]
+        # What reset.py's object_in_hand placement reads, so the cube's spawn position can be decomposed offline:
+        # the canonical palm frame (palm body quat x palm_frame_quat), fingertip PAD centres, which pads are real,
+        # and the palm slab keypoints (keypoint 1 - keypoint 0 is the thickness edge = grasp normal).
+        from isaaclab.utils.math import quat_apply, quat_mul
+        ft = R.body_state_w[e, inner._fingertip_body_ids, :]
+        offs = inner._fingertip_offsets[e] if inner._fingertip_offsets.dim() == 3 else inner._fingertip_offsets
+        pads_w = ft[:, 0:3] + quat_apply(ft[:, 3:7], offs)
+        canon_q = quat_mul(ps[e:e + 1, 3:7], inner._palm_frame_quat[e:e + 1])[0]
         out = {
             "name": args.name, "spec": args.spec, "config_run": str(pathlib.Path(run[0]).relative_to(REPO)),
             "seed": args.seed, "obs_list": obs_list, "obs_dim": int(pol.numel()), "terms": terms,
@@ -135,6 +143,22 @@ def main() -> None:
             "palm_body": inner.robot.body_names[int(inner._palm_body_id)],
             "palm_center": [float(v) for v in (palm_center_w[e] - org)],
             "fingertip_bodies": tips,
+            "fingertip_pads": (pads_w - org).tolist(),
+            "fingertip_valid": inner._fingertip_mask[e].tolist(),
+            "palm_frame_canonical_wxyz": canon_q.tolist(),
+            "palm_keypoints_local": inner._palm_keypoints_local[e].tolist(),
+            "joint_link_bodies": list(spec.joint_link_bodies),
+            # What joint_link_bbox is built from (observations._joint_link_geometry_obs), per hand joint in policy
+            # order: the body each box rides on, its 4 corners in that body's frame, and whether it is real.
+            "bbox_bodies": [inner.robot.body_names[int(i)] for i in inner._joint_link_body_ids.tolist()]
+            if hasattr(inner._joint_link_body_ids, "tolist") else
+            [inner.robot.body_names[int(i)] for i in inner._joint_link_body_ids],
+            "bbox_local": inner._joint_link_bbox_local[e].tolist(),
+            "bbox_valid": inner._joint_geometry_valid[e].tolist(),
+            "reset": {k: getattr(inner.cfg.reset, k) for k in ("object_in_hand", "in_hand_placement",
+                                                                "in_hand_fingertip_fraction", "in_hand_clearance",
+                                                                "in_hand_drop_margin")},
+            "object_size": list(inner.cfg.reward.fixed_size),
             "object": pose(inner.object.data.root_pos_w[e], inner.object.data.root_quat_w[e]),
             "goal": pose(inner.goal_viz.data.root_pos_w[e], inner.goal_viz.data.root_quat_w[e]),
         }

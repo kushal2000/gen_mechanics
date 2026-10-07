@@ -44,7 +44,31 @@ of the sim's) and tabulates the observation term by term. Per-joint terms pair t
   palm centre to the fingertip-pad centroid in the palm plane, and above the highest pad (or the palm face) by the
   cube's half-reach + 13 mm along the grasp normal.
 
+## Where the cube spawns, and why (analysis/decompose_spawn.py, after the Allegro fix below)
+
+The cube's centre relative to the palm differs by design, not by chance, and the decomposition is exact (predicted =
+measured to 0.1 mm). Canonical palm frame, mm, replica - vendor:
+
+| | height (grasp normal) | across (width) | along (length) | height comes from | length gap from where fingers start rel. palm centre |
+|---|---|---|---|---|---|
+| Wuji v2 | +18.9 | +0.1 | -5.9 | highest pad 20.9 -> 39.8 | -8.2 |
+| LEAP | -12.1 | +4.2 | -7.6 | highest pad 39.4 -> 27.3 | -10.2 |
+| Allegro | -26.6 | +1.1 | -9.5 | highest pad 42.8 -> 16.2 | -14.8 |
+
+* **Height is entirely the highest fingertip pad** at the reset pose; palm thickness never binds (every pad sits
+  above the palm face). Matching palm thickness would change `palm_extents` but not where the cube spawns.
+* **The in-plane gap is mostly along the palm's length**, from the palm CENTRE: the vendor palm box (the palm link's
+  mesh bounds, onboard.py) reaches back toward the wrist, the replica's palm stops 5 mm past its finger bases.
+
+The spawn table above was taken before the Allegro fix; its Allegro column is superseded.
+
 ## Fixed on the way
+
+`hand_sampler/commercial.py` `_palm_axes` took the palm normal from the ORDER of the vendor's finger bases, so for
+Allegro and MIDAS it faced the back of the hand: their replicas were built turned 180 degrees about the fingers
+(Allegro's thumb opposed from the wrong side, a 42 mm in-plane cube gap). The normal now points where the fingers
+flex (the larger side of each joint's travel). All four frames now agree with onboarding's (+1.00 per axis, MIDAS has
+no onboarded spec), overlay base errors are unchanged, 60/60 commercial tests pass. Replicas regenerated.
 
 `hand_sampler/build.py` `_author_palm` referenced a `pose` that the radial-palm commit (27b97c4) had removed:
 every generated hand failed to build in sim (NameError) on `2026-10-02_physical_grammar` and the merge. The palm's

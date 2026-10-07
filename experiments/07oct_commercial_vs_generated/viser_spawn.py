@@ -1,11 +1,16 @@
-"""Commercial hand vs its grammar replica, at the in-hand reorientation SPAWN state, in viser.
+"""Any two hands at the in-hand reorientation SPAWN state, in viser: pose them, and compare what the policy sees.
 
-Reads the JSONs capture_spawn.py writes (results/spawn/<name>.json; no simulator here). For the selected pair:
+Reads the JSONs capture_spawn.py writes (results/spawn/<name>.json; no simulator here).
 
-  * both hands drawn at their captured spawn pose -- joint positions from the sim, root at the sim's root body
-    pose -- with the cube, the goal (ghost) and each palm frame, side by side or overlaid;
-  * the policy observation term by term: dims, the two values (per joint where the term is per-joint), and the
-    difference. Terms whose layout differs between the hands (a different joint count) are listed per hand.
+  * Hand A and hand B: any two captures (vendor vs its replica, or any other pair), side by side or overlaid,
+    each with its cube, goal (green ghost) and canonical palm frame.
+  * Joint sliders for each hand, starting at the captured spawn angles. "B follows A" drives B's matching joint
+    (through the replica's joint map) to the same angle as A's.
+  * The policy observation, term by term, for the terms you tick: per-term and combined differences over the
+    entries that pair up (same label, or vendor joint -> replica slot through the joint map). As the sliders move,
+    joint_pos and joint_link_bbox are RECOMPUTED (forward kinematics, the env's own formulas -- checked against the
+    capture at the spawn pose); every other term stays at its spawn value (velocities, previous-step terms and
+    targets have no meaning for a slider pose, and nothing else depends on the fingers).
 
     .venv_isaacsim/bin/python experiments/07oct_commercial_vs_generated/viser_spawn.py --port 8084
 """
@@ -17,131 +22,184 @@ import pathlib
 import time
 
 import numpy as np
+from scipy.spatial.transform import Rotation as Rot
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 SPAWN = HERE / "results/spawn"
-URDF = {
-    "wuji2_commercial": REPO / "assets/urdf/unified_dynamics_commercial_hands/wuji2/wuji2_left.urdf",
-    "leap_commercial": REPO / "assets/urdf/unified_dynamics_commercial_hands/leap/leap_left.urdf",
-    "allegro_commercial": REPO / "assets/urdf/unified_dynamics_commercial_hands/allegro/allegro_left.urdf",
-    "wuji2_replica": REPO / "assets/urdf/unified_dynamics_commercial_hands_replicas/wuji2/wuji2_left_replica.urdf",
-    "leap_replica": REPO / "assets/urdf/unified_dynamics_commercial_hands_replicas/leap/leap_left_replica.urdf",
-    "allegro_replica": REPO / "assets/urdf/unified_dynamics_commercial_hands_replicas/allegro/allegro_left_replica.urdf",
-    "midas_replica": REPO / "assets/urdf/unified_dynamics_commercial_hands_replicas/midas/midas_replica.urdf",
-}
-COLORS = {"commercial": (0.85, 0.55, 0.2), "replica": (0.2, 0.45, 0.85)}
+COMMERCIAL = REPO / "assets/urdf/unified_dynamics_commercial_hands"
+REPLICAS = REPO / "assets/urdf/unified_dynamics_commercial_hands_replicas"
+STEM = {"wuji2": "wuji2_left", "leap": "leap_left", "allegro": "allegro_left", "midas": "midas"}
+LIVE = ("joint_pos", "joint_link_bbox")
+TOKEN_TERMS = {"joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel", "prev_action_targets",
+               "joint_link_bbox", "joint_lower", "joint_upper"}
+COLORS = {"A": (0.85, 0.55, 0.2), "B": (0.2, 0.45, 0.85)}
 
 
-def load(name: str) -> dict | None:
-    p = SPAWN / f"{name}.json"
-    return json.loads(p.read_text()) if p.exists() else None
+def urdf_of(name: str) -> pathlib.Path | None:
+    hand, _, kind = name.rpartition("_")
+    if hand not in STEM:
+        return None
+    p = (COMMERCIAL / hand / f"{STEM[hand]}.urdf" if kind == "commercial"
+         else REPLICAS / hand / f"{STEM[hand]}_replica.urdf")
+    return p if p.exists() else None
 
 
-def pairs() -> dict[str, tuple[str, str]]:
-    have = {p.stem for p in SPAWN.glob("*.json")}
-    out = {}
-    for hand in ("wuji2", "leap", "allegro"):
-        if f"{hand}_commercial" in have or f"{hand}_replica" in have:
-            out[hand] = (f"{hand}_commercial", f"{hand}_replica")
-    return out
+def load(name: str) -> dict:
+    return json.loads((SPAWN / f"{name}.json").read_text())
 
 
-def joint_map(replica_name: str) -> dict[str, str]:
-    """Vendor joint -> replica slot (make_replicas.py writes it next to the replica URDF)."""
-    u = URDF.get(replica_name)
-    p = u.with_suffix(".joint_map.json") if u is not None else None
-    return json.loads(p.read_text()) if p is not None and p.exists() else {}
+def label_map(a_name: str, b_name: str) -> dict[str, str]:
+    """A's joint names -> B's, when one is the other's replica (make_replicas.py's joint map); else {}."""
+    ha, _, ka = a_name.rpartition("_")
+    hb, _, kb = b_name.rpartition("_")
+    if ha != hb or ha not in STEM or {ka, kb} != {"commercial", "replica"}:
+        return {}
+    p = REPLICAS / ha / f"{STEM[ha]}_replica.joint_map.json"
+    if not p.exists():
+        return {}
+    m = json.loads(p.read_text())                       # vendor -> slot
+    return m if ka == "commercial" else {v: k for k, v in m.items()}
 
 
-def align(ta: dict, tb: dict, jmap: dict[str, str]) -> list[tuple[str, float, str, float]] | None:
-    """Entries of one term paired across the hands: (A label, A value, B label, B value), or None if not pairable.
+class Hand:
+    """One capture: its spawn state, forward kinematics, and the live joint-dependent observation terms."""
 
-    Same labels pair by label; otherwise A's vendor joint names go through the joint map ("name" or "name[i]")."""
+    def __init__(self, name: str):
+        import yourdfpy
+        self.name, self.d = name, load(name)
+        d = self.d
+        self.urdf_path = urdf_of(name)
+        self.fk = yourdfpy.URDF.load(str(self.urdf_path), load_meshes=False) if self.urdf_path else None
+        x, y, z, qw, qx, qy, qz = d["root"]
+        self.T_root = np.eye(4)
+        self.T_root[:3, :3] = Rot.from_quat([qx, qy, qz, qw]).as_matrix()
+        self.T_root[:3, 3] = [x, y, z]
+        w, cx, cy, cz = d["palm_frame_canonical_wxyz"]
+        self.R_canon = Rot.from_quat([cx, cy, cz, w]).as_matrix()
+        self.c = np.array(d["palm_center"])
+        self.limits = dict(zip(d["joint_names"], (tuple(l) for l in d["joint_limits"])))
+        self.spawn_q = dict(zip(d["joint_names"], d["joint_pos"]))
+        self.q = dict(self.spawn_q)
+        # movable = a real range (a generated hand's ghost slots carry (0, 1e-8))
+        self.movable = [j for j in d["hand_joint_names"] if self.limits[j][1] - self.limits[j][0] > 1e-6]
+
+    def body_T(self) -> dict[str, np.ndarray]:
+        self.fk.update_cfg({j: self.q.get(j, 0.0) for j in self.fk.actuated_joint_names})
+        return {b: self.T_root @ self.fk.get_transform(b, self.fk.base_link) for b in self.fk.link_map}
+
+    def terms(self) -> dict:
+        """d["terms"] with the LIVE terms recomputed at the current joint angles."""
+        out = {k: dict(v) for k, v in self.d["terms"].items()}
+        d = self.d
+        if "joint_pos" in out:                     # range units: 2 (q - lo) / (hi - lo) - 1, 0 on a ghost slot
+            vals = []
+            for j in d["canonical_joint_names"]:
+                lo, hi = self.limits[j]
+                vals.append(2.0 * (self.q[j] - lo) / (hi - lo) - 1.0 if hi - lo > 1e-6 else 0.0)
+            out["joint_pos"]["values"] = vals
+        if "joint_link_bbox" in out and self.fk is not None and "bbox_local" in d:
+            T = self.body_T()
+            vals = []
+            for body, corners, ok in zip(d["bbox_bodies"], d["bbox_local"], d["bbox_valid"]):
+                c = np.asarray(corners)
+                if not ok or body not in T:
+                    vals += [0.0] * c.size
+                    continue
+                w = (T[body][:3, :3] @ c.T).T + T[body][:3, 3]
+                vals += ((w - self.c) @ self.R_canon).ravel().tolist()
+            out["joint_link_bbox"]["values"] = vals
+        return out
+
+
+def pair(ta: dict, tb: dict, lmap: dict[str, str]):
+    """(A label, A value, B label, B value) for the entries that pair up, or None."""
     if ta["labels"] == tb["labels"]:
         return [(l, x, l, y) for l, x, y in zip(ta["labels"], ta["values"], tb["values"])]
-    if not jmap:
+    if not lmap:
         return None
     vb = dict(zip(tb["labels"], tb["values"]))
     out = []
     for lab, x in zip(ta["labels"], ta["values"]):
         base, _, rest = lab.partition("[")
-        lb = jmap.get(base, None)
-        lb = None if lb is None else (lb + ("[" + rest if rest else ""))
+        lb = lmap.get(base)
+        lb = None if lb is None else lb + ("[" + rest if rest else "")
         if lb is None or lb not in vb:
             return None
         out.append((lab, x, lb, vb[lb]))
     return out
 
 
-def _fmt(v: float) -> str:
-    return f"{v:+.3f}"
-
-
-def obs_table(a: dict | None, b: dict | None, jmap: dict[str, str]) -> str:
-    """Markdown: one row per observation term; differences over the entries that pair up (by label or joint map).
-    B-only entries are the replica's ghost slots (the grammar's 5 x 6 template); their largest |value| is shown."""
-    if a is None or b is None:
-        return "_capture both hands to compare_"
-    rows = ["| term | dim A / B | max abs diff | mean abs diff | B-only max abs |", "|---|---|---|---|---|"]
-    for f in a["obs_list"]:
-        ta, tb = a["terms"].get(f), b["terms"].get(f)
-        if tb is None:
-            rows.append(f"| `{f}` | {len(ta['values'])} / - | | only A |")
+def compare(TA: dict, TB: dict, selected: list[str], lmap) -> str:
+    rows = ["| term | dim A / B | max abs | mean abs | B-only max abs | |", "|---|---|---|---|---|---|"]
+    allv = []
+    for f in selected:
+        ta, tb = TA.get(f), TB.get(f)
+        live = "live" if f in LIVE else ""
+        if ta is None or tb is None:
+            rows.append(f"| `{f}` | {'-' if ta is None else len(ta['values'])} / "
+                        f"{'-' if tb is None else len(tb['values'])} | | | | missing |")
             continue
-        pairs_ = align(ta, tb, jmap)
-        if pairs_ is None:
-            rows.append(f"| `{f}` | {len(ta['values'])} / {len(tb['values'])} | - | - | not pairable |")
+        p = pair(ta, tb, lmap)
+        if p is None:
+            rows.append(f"| `{f}` | {len(ta['values'])} / {len(tb['values'])} | - | - | | not pairable |")
             continue
-        d = np.array([y - x for _, x, _, y in pairs_])
-        used = {lb for _, _, lb, _ in pairs_}
+        dlt = np.array([y - x for _, x, _, y in p])
+        allv.append(dlt)
+        used = {l for _, _, l, _ in p}
         extra = [abs(v) for l, v in zip(tb["labels"], tb["values"]) if l not in used]
-        rows.append(f"| `{f}` | {len(ta['values'])} / {len(tb['values'])} | {np.abs(d).max():.3f} | "
-                    f"{np.abs(d).mean():.3f} | {max(extra):.3f} |" if extra else
-                    f"| `{f}` | {len(ta['values'])} / {len(tb['values'])} | {np.abs(d).max():.3f} | "
-                    f"{np.abs(d).mean():.3f} | |")
-    return "\n".join(rows)
+        rows.append(f"| `{f}` | {len(ta['values'])} / {len(tb['values'])} | {np.abs(dlt).max():.3f} | "
+                    f"{np.abs(dlt).mean():.3f} | {f'{max(extra):.3f}' if extra else ''} | {live} |")
+    if allv:
+        v = np.concatenate(allv)
+        head = (f"**Selected terms combined** ({v.size} paired entries): L2 **{np.linalg.norm(v):.3f}**, "
+                f"max abs **{np.abs(v).max():.3f}**, mean abs **{np.abs(v).mean():.3f}**\n\n")
+    else:
+        head = "_no pairable term selected_\n\n"
+    return head + "\n".join(rows)
 
 
-def term_detail(a: dict | None, b: dict | None, f: str, jmap: dict[str, str]) -> str:
-    """Markdown: the selected term entry by entry, A next to B (aligned by label where both have it)."""
-    out = []
-    for tag, d in (("A", a), ("B", b)):
-        if d is None or f not in d["terms"]:
-            out.append(f"**{tag}**: not in this capture")
-    if a is None or b is None or f not in a["terms"] or f not in b["terms"]:
-        return "\n\n".join(out)
-    ta, tb = a["terms"][f], b["terms"][f]
-    la, lb = ta["labels"], tb["labels"]
-    pairs_ = align(ta, tb, jmap)
-    if pairs_ is not None:
-        rows = ["| A entry | B entry | A | B | B - A |", "|---|---|---|---|---|"]
-        for l1, x, l2, y in pairs_:
-            rows.append(f"| {l1} | {l2} | {_fmt(x)} | {_fmt(y)} | {_fmt(y - x)} |")
-        used = {l2 for _, _, l2, _ in pairs_}
-        for l2, y in zip(lb, tb["values"]):
-            if l2 not in used:
-                rows.append(f"| | {l2} (B only) | | {_fmt(y)} | |")
+def detail(TA: dict, TB: dict, f: str, lmap) -> str:
+    if f not in TA or f not in TB:
+        return "_not in both captures_"
+    ta, tb = TA[f], TB[f]
+    p = pair(ta, tb, lmap)
+    fmt = lambda v: f"{v:+.3f}"
+    if p is None:
+        n = max(len(ta["labels"]), len(tb["labels"]))
+        rows = ["| A entry | A | B entry | B |", "|---|---|---|---|"]
+        for i in range(n):
+            a = (ta["labels"][i], fmt(ta["values"][i])) if i < len(ta["labels"]) else ("", "")
+            b = (tb["labels"][i], fmt(tb["values"][i])) if i < len(tb["labels"]) else ("", "")
+            rows.append(f"| {a[0]} | {a[1]} | {b[0]} | {b[1]} |")
         return "\n".join(rows)
-    n = max(len(la), len(lb))
-    rows = ["| A entry | A | B entry | B |", "|---|---|---|---|"]
-    for i in range(n):
-        ca = (la[i], _fmt(ta["values"][i])) if i < len(la) else ("", "")
-        cb = (lb[i], _fmt(tb["values"][i])) if i < len(lb) else ("", "")
-        rows.append(f"| {ca[0]} | {ca[1]} | {cb[0]} | {cb[1]} |")
+    rows = ["| A entry | B entry | A | B | B - A |", "|---|---|---|---|---|"]
+    rows += [f"| {l1} | {l2} | {fmt(x)} | {fmt(y)} | {fmt(y - x)} |" for l1, x, l2, y in p]
+    used = {l for _, _, l, _ in p}
+    rows += [f"| | {l} (B only) | | {fmt(y)} | |" for l, y in zip(tb["labels"], tb["values"]) if l not in used]
     return "\n".join(rows)
 
 
-def spawn_summary(a: dict | None, b: dict | None) -> str:
-    def line(tag, d):
-        if d is None:
-            return f"* **{tag}**: no capture"
-        o, g = np.array(d["object"][:3]), np.array(d["goal"][:3])
-        pc = np.array(d["palm_center"])
-        return (f"* **{tag}** `{d['name']}`: obs {d['obs_dim']}, {len(d['hand_joint_names'])} hand joints; "
-                f"palm `{d['palm_body']}` root at {np.round(d['root'][:3], 3).tolist()}; "
-                f"cube {np.round(o, 3).tolist()}, {np.linalg.norm(o - pc) * 100:.1f} cm from palm centre")
-    return "\n".join([line("A", a), line("B", b)])
+def live_check(h: "Hand") -> float | None:
+    """Max |live recompute - capture| at the SPAWN angles: the formulas must reproduce what the sim reported."""
+    if "bbox_local" not in h.d:
+        return None
+    q0, h.q = h.q, dict(h.spawn_q)
+    t = h.terms()
+    h.q = q0
+    return max(float(np.abs(np.array(t[f]["values"]) - np.array(h.d["terms"][f]["values"])).max())
+               for f in LIVE if f in t)
+
+
+def summary(h: "Hand", tag: str) -> str:
+    d = h.d
+    cube = (np.array(d["object"][:3]) - h.c) @ h.R_canon
+    ext = (np.round(np.array(d["terms"]["palm_extents"]["values"]) * 1000).astype(int).tolist()
+           if "palm_extents" in d["terms"] else "-")
+    err = live_check(h)
+    chk = "" if err is None else f"; live-term check at spawn: max err {err:.1e}"
+    return (f"* **{tag}** `{h.name}`: obs {d['obs_dim']}, {len(h.movable)} movable joints; palm {ext} mm; "
+            f"cube centre in palm frame {np.round(cube * 1000, 1).tolist()} mm{chk}")
 
 
 def main() -> None:
@@ -152,90 +210,161 @@ def main() -> None:
     import viser
     from viser.extras import ViserUrdf
 
+    names = sorted(p.stem for p in SPAWN.glob("*.json"))
+    if not names:
+        raise SystemExit(f"no captures in {SPAWN}; run capture_spawn.py first")
+    a0 = "wuji2_commercial" if "wuji2_commercial" in names else names[0]
+    b0 = "wuji2_replica" if "wuji2_replica" in names else names[-1]
+
     server = viser.ViserServer(port=args.port)
     server.scene.set_up_direction("+z")
-    opts = pairs()
-    if not opts:
-        raise SystemExit(f"no captures in {SPAWN}; run capture_spawn.py first")
-    state: dict = {"nodes": [], "robots": [], "ab": (None, None), "jmap": {}}
+    st: dict = {"hands": {}, "robots": {}, "nodes": [], "sliders": {"A": {}, "B": {}}, "lmap": {}, "muted": False}
 
-    with server.gui.add_folder("pair"):
-        dd = server.gui.add_dropdown("hand", tuple(opts), initial_value=tuple(opts)[0])
+    with server.gui.add_folder("hands"):
+        dd_a = server.gui.add_dropdown("A", tuple(names), initial_value=a0)
+        dd_b = server.gui.add_dropdown("B", tuple(names), initial_value=b0)
         g_overlay = server.gui.add_checkbox("overlay (same place)", False)
         g_gap = server.gui.add_slider("side-by-side gap (m)", 0.0, 0.6, 0.01, 0.3)
         md_sum = server.gui.add_markdown("")
-    with server.gui.add_folder("observations at spawn (A commercial, B replica)"):
+    terms0 = load(a0)["obs_list"]
+    with server.gui.add_folder("observation terms to compare"):
+        b_all = server.gui.add_button("all terms")
+        b_tok = server.gui.add_button("joint tokens only")
+        b_glob = server.gui.add_button("global token only")
+        g_terms = {f: server.gui.add_checkbox(f + (" (live)" if f in LIVE else ""), True) for f in terms0}
+    with server.gui.add_folder("difference (B - A)"):
         md_tab = server.gui.add_markdown("")
-        dd_term = server.gui.add_dropdown("term", ("-",))
+        dd_term = server.gui.add_dropdown("term detail", tuple(terms0), initial_value=terms0[0])
         md_term = server.gui.add_markdown("")
+    with server.gui.add_folder("joints"):
+        g_follow = server.gui.add_checkbox("B follows A (joint map)", True)
+        b_reset = server.gui.add_button("reset both to spawn")
+        f_a = server.gui.add_folder("A joints")
+        f_b = server.gui.add_folder("B joints")
 
-    def clear():
-        for r in state["robots"]:
-            r.remove()
-        for n in state["nodes"]:
-            n.remove()
-        state["robots"], state["nodes"] = [], []
+    def selected():
+        return [f for f, cb in g_terms.items() if cb.value]
 
-    def draw(d: dict, tag: str, offset: np.ndarray):
-        kind = "commercial" if tag == "A" else "replica"
-        root = f"/{kind}"
-        state["nodes"].append(server.scene.add_frame(root, position=tuple(offset), show_axes=False))
+    def refresh_obs(_=None):
+        A, B = st["hands"].get("A"), st["hands"].get("B")
+        if A is None or B is None:
+            return
+        TA, TB = A.terms(), B.terms()
+        md_tab.content = compare(TA, TB, selected(), st["lmap"])
+        md_term.content = detail(TA, TB, dd_term.value, st["lmap"])
+
+    def pose(tag):
+        h, r = st["hands"][tag], st["robots"].get(tag)
+        if r is not None:
+            r.update_cfg(np.array([h.q.get(j, 0.0) for j in r.get_actuated_joint_names()]))
+
+    def on_slider(tag, joint, s):
+        def cb(_):
+            if st["muted"]:
+                return
+            st["hands"][tag].q[joint] = s.value
+            pose(tag)
+            if tag == "A" and g_follow.value and joint in st["lmap"]:
+                jb, hb = st["lmap"][joint], st["hands"]["B"]
+                if jb in st["sliders"]["B"]:
+                    v = float(np.clip(s.value, *hb.limits[jb]))
+                    st["muted"] = True
+                    st["sliders"]["B"][jb].value = v
+                    st["muted"] = False
+                    hb.q[jb] = v
+                    pose("B")
+            refresh_obs()
+        return cb
+
+    def build_sliders(tag, folder):
+        for s in st["sliders"][tag].values():
+            s.remove()
+        st["sliders"][tag] = {}
+        h = st["hands"][tag]
+        back = {v: k for k, v in st["lmap"].items()}
+        with folder:
+            for j in h.movable:
+                lo, hi = h.limits[j]
+                label = j if tag == "A" or j not in back else f"{j} = {back[j]}"
+                s = server.gui.add_slider(label, float(lo), float(hi), 0.01, float(np.clip(h.q[j], lo, hi)))
+                s.on_update(on_slider(tag, j, s))
+                st["sliders"][tag][j] = s
+
+    def draw(tag, offset):
+        h = st["hands"][tag]
+        d = h.d
+        root = f"/{tag}"
+        st["nodes"].append(server.scene.add_frame(root, position=tuple(offset), show_axes=False))
         x, y, z, qw, qx, qy, qz = d["root"]
-        state["nodes"].append(server.scene.add_frame(f"{root}/base", position=(x, y, z), wxyz=(qw, qx, qy, qz),
-                                                     show_axes=False))
-        urdf = URDF.get(d["name"])
-        if urdf is not None and urdf.exists():
-            r = ViserUrdf(server, urdf, root_node_name=f"{root}/base/hand",
-                          mesh_color_override=COLORS[kind] + (0.85,))
-            names = r.get_actuated_joint_names()
-            jp = dict(zip(d["joint_names"], d["joint_pos"]))
-            r.update_cfg(np.array([jp.get(n, 0.0) for n in names]))
-            state["robots"].append(r)
-        # every sim body's frame, so a viewer-URDF mismatch would show as frames off the meshes
-        for n, p in d["bodies"].items():
-            state["nodes"].append(server.scene.add_frame(f"{root}/bodies/{n}", position=tuple(p[:3]),
-                                                         wxyz=tuple(p[3:]), axes_length=0.012, axes_radius=0.0008))
-        pc = d["palm_center"]
-        state["nodes"].append(server.scene.add_icosphere(f"{root}/palm_center", radius=0.006, position=tuple(pc),
-                                                         color=(0.1, 0.1, 0.1)))
-        pb = d["bodies"][d["palm_body"]]
-        state["nodes"].append(server.scene.add_frame(f"{root}/palm_frame", position=tuple(pb[:3]),
-                                                     wxyz=tuple(pb[3:]), axes_length=0.05, axes_radius=0.002))
+        st["nodes"].append(server.scene.add_frame(f"{root}/base", position=(x, y, z), wxyz=(qw, qx, qy, qz),
+                                                  show_axes=False))
+        if h.urdf_path is not None:
+            st["robots"][tag] = ViserUrdf(server, h.urdf_path, root_node_name=f"{root}/base/hand",
+                                          mesh_color_override=COLORS[tag] + (0.85,))
+            pose(tag)
+        st["nodes"].append(server.scene.add_frame(f"{root}/palm_frame", position=tuple(h.c),
+                                                  wxyz=tuple(d["palm_frame_canonical_wxyz"]),
+                                                  axes_length=0.05, axes_radius=0.002))
         o, g = d["object"], d["goal"]
-        state["nodes"].append(server.scene.add_box(f"{root}/object", dimensions=(0.05, 0.05, 0.05),
-                                                   position=tuple(o[:3]), wxyz=tuple(o[3:]),
-                                                   color=COLORS[kind], opacity=0.6))
-        state["nodes"].append(server.scene.add_box(f"{root}/goal", dimensions=(0.05, 0.05, 0.05),
-                                                   position=tuple(g[:3]), wxyz=tuple(g[3:]),
-                                                   color=(0.3, 0.8, 0.3), opacity=0.25))
-        state["nodes"].append(server.scene.add_label(f"{root}/label", f"{tag}: {d['name']}",
-                                                     position=(o[0], o[1], o[2] + 0.12)))
+        size = tuple(d.get("object_size", (0.05, 0.05, 0.05)))
+        st["nodes"].append(server.scene.add_box(f"{root}/object", dimensions=size, position=tuple(o[:3]),
+                                                wxyz=tuple(o[3:]), color=COLORS[tag], opacity=0.6))
+        st["nodes"].append(server.scene.add_box(f"{root}/goal", dimensions=size, position=tuple(g[:3]),
+                                                wxyz=tuple(g[3:]), color=(0.3, 0.8, 0.3), opacity=0.25))
+        st["nodes"].append(server.scene.add_label(f"{root}/label", f"{tag}: {h.name}",
+                                                  position=(o[0], o[1], o[2] + 0.12)))
 
-    def render(_=None):
-        clear()
-        a_name, b_name = opts[dd.value]
-        a, b = load(a_name), load(b_name)
-        state["ab"] = (a, b)               # before touching dd_term: setting its value fires its callback
+    def rebuild(_=None):
+        for r in st["robots"].values():
+            r.remove()
+        for n in st["nodes"]:              # the /A and /B roots: removing one removes everything under it
+            if n.name.count("/") == 1:
+                n.remove()
+        st["robots"], st["nodes"] = {}, []
+        st["hands"] = {"A": Hand(dd_a.value), "B": Hand(dd_b.value)}
+        st["lmap"] = label_map(dd_a.value, dd_b.value)
         gap = 0.0 if g_overlay.value else g_gap.value
-        if a is not None:
-            draw(a, "A", np.array([0.0, -gap / 2, 0.0]))
-        if b is not None:
-            draw(b, "B", np.array([0.0, gap / 2, 0.0]))
-        md_sum.content = spawn_summary(a, b)
-        state["jmap"] = joint_map(b_name)
-        md_tab.content = obs_table(a, b, state["jmap"])
-        terms = tuple((a or b)["obs_list"])
-        dd_term.options = terms
-        if dd_term.value not in terms:
-            dd_term.value = terms[0]
-        md_term.content = term_detail(a, b, dd_term.value, state["jmap"])
+        draw("A", np.array([0.0, -gap / 2, 0.0]))
+        draw("B", np.array([0.0, gap / 2, 0.0]))
+        build_sliders("A", f_a)
+        build_sliders("B", f_b)
+        pairing = ("joints paired through the replica's joint map" if st["lmap"]
+                   else "no joint map between these two: per-joint terms pair only by identical labels")
+        md_sum.content = (summary(st["hands"]["A"], "A") + "\n" + summary(st["hands"]["B"], "B")
+                          + f"\n\n_{pairing}_")
+        refresh_obs()
 
-    dd.on_update(render)
-    g_overlay.on_update(render)
-    g_gap.on_update(render)
-    dd_term.on_update(lambda _: setattr(md_term, "content", term_detail(*state["ab"], dd_term.value, state["jmap"])))
-    render()
-    print(f"viser on port {args.port}: {', '.join(opts)}", flush=True)
+    def preset(which):
+        def cb(_):
+            for f, c in g_terms.items():
+                c.value = which == "all" or ((f in TOKEN_TERMS) == (which == "tok") and f != "joint_enabled")
+            refresh_obs()
+        return cb
+
+    def reset(_):
+        for tag in ("A", "B"):
+            h = st["hands"][tag]
+            h.q = dict(h.spawn_q)
+            st["muted"] = True
+            for j, s in st["sliders"][tag].items():
+                s.value = float(np.clip(h.q[j], *h.limits[j]))
+            st["muted"] = False
+            pose(tag)
+        refresh_obs()
+
+    dd_a.on_update(rebuild)
+    dd_b.on_update(rebuild)
+    g_overlay.on_update(rebuild)
+    g_gap.on_update(rebuild)
+    for c in g_terms.values():
+        c.on_update(refresh_obs)
+    dd_term.on_update(refresh_obs)
+    b_all.on_click(preset("all"))
+    b_tok.on_click(preset("tok"))
+    b_glob.on_click(preset("glob"))
+    b_reset.on_click(reset)
+    rebuild()
+    print(f"viser on port {args.port}: {len(names)} captures: {', '.join(names)}", flush=True)
     while True:
         time.sleep(1.0)
 
