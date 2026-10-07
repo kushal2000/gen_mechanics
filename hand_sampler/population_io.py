@@ -96,8 +96,8 @@ def hand_to_dict(hand: design_space.Hand) -> dict:
     return {
         "palm": {"thickness": hand.palm.thickness},
         "fingers": [
-            {"mount": {"radius": finger.mount.radius,
-                       "bearing": finger.mount.bearing,
+            {"mount": {"y": finger.mount.y,
+                       "z": finger.mount.z,
                        "facing": finger.mount.facing},
              "segments": [_segment_to_dict(s) for s in finger.segments]}
             for finger in hand.fingers
@@ -109,12 +109,23 @@ def _mount_from_dict(data: dict) -> design_space.Mount:
     if "face" in data:
         raise ValueError(
             "this mount carries 'face', 'u' and 'v', which placed a finger on "
-            "the surface of a BOX. A palm is a disc now and a mount is polar: "
-            "radius from the centre, bearing to where it sits, facing for which "
-            "way it leaves. Re-derive the population -- there is no exact "
-            "conversion, because a box face and a radius are different shapes.")
-    return design_space.Mount(radius=float(data["radius"]),
-                              bearing=float(data["bearing"]),
+            "the surface of a BOX. A palm is a disc now and a mount sits at a "
+            "(y, z) offset from its centre, with a facing for which way the "
+            "finger leaves. Re-derive the population -- there is no exact "
+            "conversion, because a box face and a disc are different shapes.")
+    if "radius" in data or "bearing" in data:
+        raise ValueError(
+            "this mount is POLAR -- a radius on the 5 mm grid and a bearing on "
+            "the 15 degree one -- and a mount is cartesian now, y and z both on "
+            "the 5 mm grid, because an angular grid sited a far finger three "
+            "and a half times more coarsely than a near one. The POSITION "
+            "converts exactly, y = radius * sin(bearing) and "
+            "z = radius * cos(bearing), and 'facing' is unchanged; but the "
+            "result does not generally land on the 5 mm grid, and snapping it "
+            "moves a base by up to 3.5 mm. Convert and re-snap deliberately "
+            "rather than having this do it silently.")
+    return design_space.Mount(y=float(data["y"]),
+                              z=float(data["z"]),
                               facing=float(data["facing"]))
 
 

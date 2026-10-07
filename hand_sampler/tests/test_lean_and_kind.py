@@ -79,11 +79,11 @@ def _leaning_hand():
     def seg(kind, lean, L):
         return D.Segment(D.Joint(kind), L, lean=lean)
     return D.Hand(D.Palm(D.PALM_THICKNESS), (
-        D.Finger(D.Mount(0.035, math.radians(0), math.radians(0)),
+        D.Finger(D.Mount.polar(0.035, math.radians(0), math.radians(0)),
                  (seg(D.FLEXION, 0, 0.040),
                   seg(D.ABDUCTION, 3, 0.030),
                   seg(D.ROLL, 0, 0.025))),
-        D.Finger(D.Mount(0.035, math.radians(270), math.radians(270)),
+        D.Finger(D.Mount.polar(0.035, math.radians(270), math.radians(270)),
                  (seg(D.ABDUCTION, 1, 0.035),
                   seg(D.FLEXION, 2, 0.020)))))
 
@@ -124,11 +124,20 @@ def test_a_file_written_before_this_is_refused_with_the_conversion():
     """Silently reading theta as a kind would be a population that looks fine
     and is a different set of hands."""
     stale = {"palm": {"thickness": 0.025},
-             "fingers": [{"mount": {"radius": 0.03, "bearing": 0.0, "facing": 0.0},
+             "fingers": [{"mount": {"y": 0.0, "z": 0.03, "facing": 0.0},
                           "segments": [{"joint": {"theta": 0.0, "phi": math.pi / 2},
                                         "length": 0.04}]}]}
     with pytest.raises(ValueError, match="theta"):
         population_io.hand_from_dict(stale)
+
+    # One stale feature per case, so each refusal is the one being tested: a
+    # real old file carries several and only the first is ever reported.
+    polar = {"palm": {"thickness": 0.025},
+             "fingers": [{"mount": {"radius": 0.03, "bearing": 0.0, "facing": 0.0},
+                          "segments": [{"joint": {"kind": "flexion"},
+                                        "length": 0.04}]}]}
+    with pytest.raises(ValueError, match="cartesian"):
+        population_io.hand_from_dict(polar)
 
     boxed = {"palm": {"thickness": 0.025, "width": 0.06, "length": 0.06},
              "fingers": []}

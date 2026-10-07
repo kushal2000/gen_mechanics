@@ -15,8 +15,13 @@ from hand_sampler import robot_param_constants as rpc
 # --- palm ------------------------------------------------------------------- Mutable,...
 
 PALM_QUANTUM = 0.005
-"""Grid the finger origins lie on -- their radius from the palm centre, and the
-step ``move_mount`` takes."""
+"""Grid the finger origins lie on: BOTH of a mount's coordinates, and the step
+``move_mount`` takes.
+
+One grid in both directions, so a site 70 mm out is placed as precisely as one
+20 mm out. It was a radius on this grid and a bearing on ANGLE_QUANTUM, which
+made the far ring three and a half times coarser than the near one.
+"""
 
 PALM_MIN_RADIUS = 0.020
 """The palm's own disc: the smallest it can ever be, around its centre.
@@ -46,9 +51,10 @@ MAX_MOUNT_RADIUS = 0.070
 """How far from the centre a finger may start. With PALM_MIN_RADIUS this is the
 annulus a mount lives in.
 
-Replaces the old width and length bounds with one number, which is what polar
-coordinates make natural. 70 mm because the vendor hands need 62 (LEAP), 45
-(MIDAS) and 41 (wuji2) about their own base centroids.
+A reach, so it stays a CIRCLE even though a mount is now spelled on a square
+grid: the bound is how far a finger can be from the palm's centre, which has no
+corners. 70 mm because the vendor hands need 62 (LEAP), 45 (MIDAS) and 41
+(wuji2) about their own base centroids.
 
 Tied to WRIST_STANDOFF and PALM_RIM, which is not obvious: those two and the
 50 mm the arm sits behind the palm frame add to exactly this 70 mm, so a base
@@ -160,19 +166,14 @@ MAX_FINGER_LENGTH = 0.200
 # --- joints -----------------------------------------------------------------
 
 ANGLE_QUANTUM = math.radians(15.0)
-"""Grid for both of a mount's angles -- its BEARING and its FACING -- and for
-the one angle only an IMPORTED joint can carry, its offset.
+"""Grid for a mount's FACING, and for the one angle only an IMPORTED joint can
+carry, its offset.
 
-Chosen, not derived. A mount is polar and its two coordinates are gridded
-independently: the radius on PALM_QUANTUM, the bearing on this. So a mount
-position is NOT on any cartesian grid, and the resolution is not isotropic
-either -- one bearing step is 5.2 mm of arc at PALM_MIN_RADIUS, which is about
-the radial step, and 18.3 mm at MAX_MOUNT_RADIUS, which is 3.6 times coarser.
-A finger placed far out is sited less precisely than one placed close in. LEAP
-shows it unmixed, since its knuckles are already far enough apart to need no
-spreading and the grid is all that moves them: 1.9 mm of slip at r = 20 rising
-to 5.7 at r = 60. Where a hand DOES need spreading the grid is the small term --
-wuji2's pinky slips 20.5 mm in all and only 0.5 of that is this grid.
+Chosen, not derived. It used to grid a mount's BEARING too, when where a finger
+sat was polar; WHERE is cartesian now and only which way it POINTS is an angle.
+That is what made the change worth making -- an angular grid sites a far finger
+coarsely and a near one finely, while an angular grid on a DIRECTION is the
+same 15 degrees wherever the finger is.
 
 Not what a generated JOINT carries: that is a kind and a lean, which have
 alphabets of their own rather than a grid.
@@ -368,12 +369,26 @@ class Segment:
 
 @dataclass(frozen=True)
 class Mount:
-    """Where a finger starts, and which way it leaves. Polar, about the palm centre.
+    """Where a finger starts, and which way it leaves. Both in the palm plane.
 
-    ``radius`` and ``bearing`` say WHERE on the palm plane the base sits;
-    ``facing`` says which way the finger leaves, also in that plane. The two
-    angles are separate on purpose: a thumb reaches across the palm, so where it
-    sits and where it points are not the same question.
+    ``y`` and ``z`` say WHERE the base sits, offset from PALM_CENTRE, each on
+    PALM_QUANTUM. ``facing`` says which way the finger leaves, as an angle on
+    ANGLE_QUANTUM. Where it sits and where it points are separate on purpose: a
+    thumb reaches across the palm, so they are not the same question.
+
+    CARTESIAN, where this used to be polar -- a radius on the 5 mm grid and a
+    bearing on the 15 degree one. Polar made the ring and MAX_MOUNT_RADIUS
+    natural, but it sited a finger less and less precisely the further out it
+    went: one bearing step is 5.2 mm of arc at the inner rim and 18.3 mm at the
+    outer, so the far ring was placed three and a half times more coarsely than
+    the near one. On one grid in both directions every site is 5 mm from its
+    neighbours wherever it is. The ring survives as a BOUND -- see
+    ``radius`` below and check_layout -- rather than as the way a mount is
+    spelled.
+
+    ``facing`` is absolute, measured from +z like any other bearing here, NOT
+    from the radial direction. A finger at facing 0 points away from the wrist
+    whatever side of the palm it sits on.
 
     ``facing`` and the first segment's ``lean`` overlap -- both turn the first
     link -- which is accepted: ``facing`` turns it IN the palm plane and a lean
@@ -381,16 +396,47 @@ class Mount:
     direction without either knob doing the other's job alone.
     """
 
-    radius: float
-    bearing: float
+    y: float
+    z: float
     facing: float
 
     def __post_init__(self) -> None:
-        for name in ("radius", "bearing", "facing"):
+        for name in ("y", "z", "facing"):
             if not math.isfinite(getattr(self, name)):
                 raise ValueError(f"non-finite mount {name}")
-        if self.radius < 0.0:
-            raise ValueError(f"negative mount radius {self.radius}")
+
+    @classmethod
+    def polar(cls, radius: float, bearing: float, facing: float,
+              *, snap: bool = True) -> "Mount":
+        """A mount from the polar pair, snapped onto the grid.
+
+        Where a finger goes is often natural to SAY in polar -- "40 mm out at
+        30 degrees" -- even though a mount is spelled in y and z. This is the
+        one place that conversion lives, so a seed, a measured hand and a test
+        all round the same way. ``snap=False`` keeps the exact point, for a hand
+        that is a measurement rather than a design.
+
+        It does not clamp: a radius outside the ring converts fine and
+        check_layout refuses it, which is the caller's business to handle.
+        """
+        y, z = radius * math.sin(bearing), radius * math.cos(bearing)
+        if snap:
+            y = round(y / PALM_QUANTUM) * PALM_QUANTUM
+            z = round(z / PALM_QUANTUM) * PALM_QUANTUM
+        return cls(y=y, z=z, facing=facing)
+
+    @property
+    def radius(self) -> float:
+        """How far out the base sits. Derived now, and still what the annulus
+        bounds -- MAX_MOUNT_RADIUS is a reach, so it stays a circle even though
+        the grid under it is square."""
+        return math.hypot(self.y, self.z)
+
+    @property
+    def bearing(self) -> float:
+        """Which way round the palm the base sits, from +z. Derived, and no
+        longer on any grid: it is read for reporting, not stored or snapped."""
+        return bearing_of(self.y, self.z)
 
 
 @dataclass(frozen=True)
@@ -527,12 +573,10 @@ def bearing_of(y: float, z: float) -> float:
 def mount_position(mount: Mount) -> np.ndarray:
     """Where the finger starts, in the palm frame.
 
-    Polar about PALM_CENTRE, and always in the midplane: x is 0 because a palm
+    Offset from PALM_CENTRE, and always in the midplane: x is 0 because a palm
     is a flat plate and a finger starts on it, not above or below it.
     """
-    return PALM_CENTRE + np.array([0.0,
-                                   mount.radius * math.sin(mount.bearing),
-                                   mount.radius * math.cos(mount.bearing)])
+    return PALM_CENTRE + np.array([0.0, mount.y, mount.z])
 
 
 def mount_direction(mount: Mount) -> np.ndarray:
@@ -1271,7 +1315,7 @@ def hand_from_urdf(urdf, joint_names, *, base_dir=None, palm=None) -> "Hand":
         # A measured hand's real mount is whatever its URDF says; this only has
         # to be a legal, distinct place to hang each chain from.
         bearing = (2.0 * math.pi * k / max(len(chains), 1)) % (2.0 * math.pi)
-        fingers.append(Finger(mount=Mount(radius=PALM_MIN_RADIUS + MIN_MOUNT_SEPARATION,
-                                          bearing=bearing, facing=bearing),
+        fingers.append(Finger(mount=Mount.polar(PALM_MIN_RADIUS + MIN_MOUNT_SEPARATION,
+                                                bearing, bearing),
                               segments=tuple(segs)))
     return Hand(palm=the_palm, fingers=tuple(fingers))

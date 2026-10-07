@@ -66,6 +66,21 @@ def _joint(kind: int, offset_deg: float = 0.0) -> ds.Joint:
                     offset=math.radians(offset_deg))
 
 
+def _polar_mount(radius: float, bearing_deg: float, facing: float) -> "ds.Mount":
+    """A mount from the polar pair this hand was MEASURED in.
+
+    A mount is cartesian now, but every number here came off SHARPA as a radius
+    and a bearing, and assets/populations/sharpa_capsule.json came from this
+    function -- so the measurement is kept in the units it was taken in and
+    converted here, rather than rewritten as y and z that match nothing on the
+    drawing. Deliberately NOT snapped to PALM_QUANTUM: this hand is already off
+    the grammar's grid in several ways (see the xfail in its test) and snapping
+    would move its bases as well, for no gain.
+    """
+    b = math.radians(bearing_deg) % (2.0 * math.pi)
+    return ds.Mount.polar(radius, b, facing, snap=False)
+
+
 def _finger_on_edge(radius: float, bearing_deg: float) -> ds.Finger:
     """Index / middle / ring / pinky: MCP flexion, MCP abduction, PIP, DIP, pad.
 
@@ -75,8 +90,7 @@ def _finger_on_edge(radius: float, bearing_deg: float) -> ds.Finger:
     against 47). 31.5 -> 30 and the 20 mm pad are on the grid already.
     """
     return ds.Finger(
-        mount=ds.Mount(radius=radius, bearing=math.radians(bearing_deg) % (2 * math.pi),
-                       facing=0.0),
+        mount=_polar_mount(radius, bearing_deg, 0.0),
         segments=(
             ds.Segment(_joint(FLEXION), 0.015),
             ds.Segment(_joint(ABDUCTION), 0.030),
@@ -98,8 +112,7 @@ def _thumb() -> ds.Finger:
     (v = 0.25, i.e. 21 mm up an 85 mm palm) as SHARPA's is.
     """
     return ds.Finger(
-        mount=ds.Mount(radius=0.0543, bearing=math.radians(247.0),
-                       facing=math.radians(270.0)),
+        mount=_polar_mount(0.0543, 247.0, math.radians(270.0)),
         segments=(
             ds.Segment(_joint(FLEXION), 0.015),
             ds.Segment(_joint(ABDUCTION, offset_deg=-60.0), 0.050),

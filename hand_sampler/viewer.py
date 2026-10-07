@@ -113,8 +113,8 @@ def describe(hand: design_space.Hand, last_op: str | None) -> str:
              + ("" if not leans else f"  **{leans} leaning**")
         curl_f = design_space.curl_authority(f, hand.palm)
         lines.append(
-            f"`{i}` r={f.mount.radius*1000:.0f}mm "
-            f"@{math.degrees(f.mount.bearing):.0f}d "
+            f"`{i}` ({f.mount.y*1000:+.0f}, {f.mount.z*1000:+.0f})mm "
+            f"r={f.mount.radius*1000:.0f}mm "
             f"facing {math.degrees(f.mount.facing):.0f}d | "
             f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm | "
             f"curl {curl_f:.2f}{'  **dead**' if curl_f < 0.05 else ''}{tags}")

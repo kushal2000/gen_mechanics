@@ -30,7 +30,7 @@ used, so a two-finger hand gets the two most opposed of them."""
 def _hand(kinds, n_fingers=3, lean=0, radius=0.040):
     palm = D.Palm(D.PALM_THICKNESS)
     return D.Hand(palm, tuple(
-        D.Finger(D.Mount(radius, math.radians(b) % (2 * math.pi),
+        D.Finger(D.Mount.polar(radius, math.radians(b) % (2 * math.pi),
                          math.radians(b) % (2 * math.pi)),
                  tuple(D.Segment(D.Joint(k), 0.040, lean=lean) for k in kinds))
         for b in BEARINGS[:n_fingers]))
@@ -50,7 +50,7 @@ def test_a_finger_of_abduction_joints_cannot_close():
     assert D.curl_score(_hand([A, A, A])) == pytest.approx(0.0, abs=1e-12)
     palm = D.Palm(D.PALM_THICKNESS)
     for b in range(0, 360, 15):
-        f = D.Finger(D.Mount(0.040, math.radians(b), math.radians(b)),
+        f = D.Finger(D.Mount.polar(0.040, math.radians(b), math.radians(b)),
                      (D.Segment(D.Joint(A), 0.040),))
         assert D.curl_authority(f, palm) == pytest.approx(0.0, abs=1e-12), b
 
@@ -77,7 +77,7 @@ def test_a_flexion_finger_scores_full_marks_whichever_way_it_faces():
     flexion joint closes toward the grasp volume from anywhere on it."""
     palm = D.Palm(D.PALM_THICKNESS)
     for b in range(0, 360, 15):
-        f = D.Finger(D.Mount(0.040, math.radians(b), math.radians(b)),
+        f = D.Finger(D.Mount.polar(0.040, math.radians(b), math.radians(b)),
                      (D.Segment(D.Joint(F), 0.040),))
         assert D.curl_authority(f, palm) == pytest.approx(1.0), b
 
@@ -110,16 +110,16 @@ def test_more_joints_does_not_inflate_the_score():
 def test_a_longer_finger_gets_no_credit_for_being_long():
     """Divided by its own reach, so the score is about direction, not size."""
     palm = D.Palm(D.PALM_THICKNESS)
-    short = D.Finger(D.Mount(0.035, math.radians(0), math.radians(0)), (D.Segment(D.Joint(F), 0.020),))
-    long_ = D.Finger(D.Mount(0.035, math.radians(0), math.radians(0)), (D.Segment(D.Joint(F), 0.080),))
+    short = D.Finger(D.Mount.polar(0.035, math.radians(0), math.radians(0)), (D.Segment(D.Joint(F), 0.020),))
+    long_ = D.Finger(D.Mount.polar(0.035, math.radians(0), math.radians(0)), (D.Segment(D.Joint(F), 0.080),))
     assert D.curl_authority(short, palm) == pytest.approx(D.curl_authority(long_, palm))
 
 
 def test_the_score_is_the_second_finger_not_the_best():
     """One good finger beside a dead one is not a hand that grasps."""
     palm = D.Palm(D.PALM_THICKNESS)
-    good = D.Finger(D.Mount(0.031, math.radians(0), math.radians(0)), (D.Segment(D.Joint(F), 0.040),))
-    dead = D.Finger(D.Mount(0.039, math.radians(0), math.radians(0)), (D.Segment(D.Joint(R), 0.040),))
+    good = D.Finger(D.Mount.polar(0.031, math.radians(0), math.radians(0)), (D.Segment(D.Joint(F), 0.040),))
+    dead = D.Finger(D.Mount.polar(0.039, math.radians(0), math.radians(0)), (D.Segment(D.Joint(R), 0.040),))
     assert D.curl_authority(good, palm) == pytest.approx(1.0)
     assert D.curl_authority(dead, palm) == pytest.approx(0.0, abs=1e-12)
     assert D.curl_score(D.Hand(palm, (good, dead))) == pytest.approx(0.0, abs=1e-12)

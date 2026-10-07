@@ -372,11 +372,11 @@ def _separate_on_grid(mounts: list, floor: float, tries: int = 400) -> list:
     MIDAS a few tenths short of the floor.
 
     Each step takes the closest offending pair and moves the OUTER one of the
-    two one grid step -- further out, or round by one bearing quantum, whichever
-    helps more and stays legal. Small moves, and only where needed.
+    two one grid step, in whichever of the four directions helps most and stays
+    legal. Small moves, and only where needed.
     """
     out = list(mounts)
-    q, a = D.PALM_QUANTUM, D.ANGLE_QUANTUM
+    q = D.PALM_QUANTUM
     for _ in range(tries):
         pos = [D.mount_position(m) for m in out]
         worst, pair = None, None
@@ -390,10 +390,12 @@ def _separate_on_grid(mounts: list, floor: float, tries: int = 400) -> list:
         i, j = pair
         k = i if out[i].radius >= out[j].radius else j      # move the outer one
         best = None
-        for dr, da in ((q, 0.0), (0.0, a), (0.0, -a), (q, a), (q, -a)):
-            cand = replace(out[k],
-                           radius=min(out[k].radius + dr, D.MAX_MOUNT_RADIUS),
-                           bearing=(out[k].bearing + da) % (2.0 * math.pi))
+        for dy, dz in ((q, 0.0), (-q, 0.0), (0.0, q), (0.0, -q),
+                       (q, q), (q, -q), (-q, q), (-q, -q)):
+            cand = replace(out[k], y=out[k].y + dy, z=out[k].z + dz)
+            if not (D.PALM_MIN_RADIUS - 1e-9 <= cand.radius
+                    <= D.MAX_MOUNT_RADIUS + 1e-9):
+                continue
             trial = list(out)
             trial[k] = cand
             tp = [D.mount_position(m) for m in trial]
@@ -468,15 +470,21 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
         raw = []
         for k, (d, pts, _axes) in enumerate(prepared):
             y, z = float(spread_pts[k][0]), float(spread_pts[k][1])
-            radius = min(max(_snap(math.hypot(y, z), D.PALM_QUANTUM),
-                             D.PALM_MIN_RADIUS), D.MAX_MOUNT_RADIUS)
-            bearing = _snap(D.bearing_of(y, z), D.ANGLE_QUANTUM) % (2.0 * math.pi)
+            gy, gz = _snap(y, D.PALM_QUANTUM), _snap(z, D.PALM_QUANTUM)
+            # The ring is a bound on the distance, so a snap that lands outside
+            # it is pushed back along its own radius and re-snapped.
+            r = math.hypot(gy, gz)
+            if r < D.PALM_MIN_RADIUS or r > D.MAX_MOUNT_RADIUS:
+                onto = min(max(r, D.PALM_MIN_RADIUS), D.MAX_MOUNT_RADIUS)
+                scale = onto / max(r, 1e-12)
+                gy = _snap(gy * scale, D.PALM_QUANTUM)
+                gz = _snap(gz * scale, D.PALM_QUANTUM)
             out_dir = pts[1] - pts[0] if len(pts) > 1 else np.array([0.0, y, z])
             if float(np.hypot(out_dir[1], out_dir[2])) < 1e-9:
                 out_dir = np.array([0.0, y, z])
             facing = _snap(D.bearing_of(float(out_dir[1]), float(out_dir[2])),
                            D.ANGLE_QUANTUM) % (2.0 * math.pi)
-            raw.append(D.Mount(radius=radius, bearing=bearing, facing=facing))
+            raw.append(D.Mount(y=gy, z=gz, facing=facing))
         return raw, (_separate_on_grid(raw, floor) if spread else raw), spread_pts
 
     def build(mounts: list) -> tuple[D.Hand, list[str]]:
@@ -518,10 +526,10 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
 
     hand, notes, reasons, raw, mounts, spread_pts, floor = best
     if any("capsules intersect" in r for r in reasons):
-        notes.insert(0, "this hand's own LINKS pass closer than two 30 mm "
-                        "capsules allow -- wuji2's come within 22 mm of each "
-                        "other before any fitting -- so no spreading of the "
-                        "BASES makes it buildable with this motor")
+        notes.insert(0, f"this hand's own LINKS pass closer than two "
+                        f"{2*D.CAPSULE_RADIUS*1000:.0f} mm capsules allow, so no "
+                        f"spreading of the BASES makes it buildable with this "
+                        f"motor")
     if floor > D.MIN_MOUNT_SEPARATION + 1e-9:
         notes.insert(0, f"bases spread to {floor*1000:.0f} mm rather than the "
                         f"{D.MIN_MOUNT_SEPARATION*1000:.0f} mm floor: at the floor "

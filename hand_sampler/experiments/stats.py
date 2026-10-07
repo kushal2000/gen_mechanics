@@ -12,7 +12,7 @@ from hand_sampler import mutate_design
 def topology(hand: design_space.Hand) -> tuple:
     """The discrete skeleton of a design -- what is left after forgetting every length and..."""
     return (tuple(sorted(f.n_joints for f in hand.fingers)),
-            tuple(sorted((round(f.mount.radius, 4), round(f.mount.bearing, 3),
+            tuple(sorted((round(f.mount.y, 4), round(f.mount.z, 4),
                           round(f.mount.facing, 3)) for f in hand.fingers)))
 
 

@@ -46,21 +46,23 @@ def check_layout(hand: design_space.Hand) -> list[str]:
     for i, f in enumerate(hand.fingers):
         m = f.mount
         where = f"finger[{i}].mount"
+        # The ring is a bound on the DISTANCE, which is why it survived the grid
+        # going cartesian: it is how far a finger may be from the centre.
         if not design_space.PALM_MIN_RADIUS - _TOL <= m.radius <= \
                 design_space.MAX_MOUNT_RADIUS + _TOL:
-            out.append(f"{where}.radius = {m.radius * 1000:.0f} mm outside the "
+            out.append(f"{where} sits {m.radius * 1000:.0f} mm out, outside the "
                        f"[{design_space.PALM_MIN_RADIUS * 1000:.0f}, "
                        f"{design_space.MAX_MOUNT_RADIUS * 1000:.0f}] mm ring")
-        if not _on_grid(m.radius, design_space.PALM_QUANTUM):
-            out.append(f"{where}.radius = {m.radius:.4f} off the "
-                       f"{design_space.PALM_QUANTUM} m grid")
-        for name, value in (("bearing", m.bearing), ("facing", m.facing)):
-            if not -_TOL <= value < turn - _TOL:
-                out.append(f"{where}.{name} = {value:.4f} outside [0, 2pi); a "
-                           f"full turn is the same direction again and a hand "
-                           f"gets one spelling")
-            if not _on_grid(value, design_space.ANGLE_QUANTUM):
-                out.append(f"{where}.{name} = {value:.4f} off the angle grid")
+        for name, value in (("y", m.y), ("z", m.z)):
+            if not _on_grid(value, design_space.PALM_QUANTUM):
+                out.append(f"{where}.{name} = {value:.4f} off the "
+                           f"{design_space.PALM_QUANTUM} m grid")
+        if not -_TOL <= m.facing < turn - _TOL:
+            out.append(f"{where}.facing = {m.facing:.4f} outside [0, 2pi); a "
+                       f"full turn is the same direction again and a hand "
+                       f"gets one spelling")
+        if not _on_grid(m.facing, design_space.ANGLE_QUANTUM):
+            out.append(f"{where}.facing = {m.facing:.4f} off the angle grid")
     return out
 
 

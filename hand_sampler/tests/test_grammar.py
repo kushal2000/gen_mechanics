@@ -44,7 +44,7 @@ def test_mount_frame_orthonormal_in_every_direction():
     old face-tangent construction degenerated."""
     for b in range(0, 360, 15):
         _, R = design_space.mount_frame(
-            design_space.Mount(0.040, math.radians(b), math.radians(b)))
+            design_space.Mount.polar(0.040, math.radians(b), math.radians(b)))
         assert np.allclose(R.T @ R, np.eye(3), atol=1e-9), b
         assert abs(np.linalg.det(R) - 1.0) < 1e-9, b
 def test_seeds_valid(pop):
@@ -272,7 +272,7 @@ _KINDS = (design_space.FLEXION, design_space.ABDUCTION)
 
 def _finger(bearing_deg, lengths, radius=0.040):
     return design_space.Finger(
-        design_space.Mount(radius, math.radians(bearing_deg) % (2 * math.pi),
+        design_space.Mount.polar(radius, math.radians(bearing_deg) % (2 * math.pi),
                            math.radians(bearing_deg) % (2 * math.pi)),
         tuple(design_space.Segment(design_space.Joint(_KINDS[i % 2]), L)
               for i, L in enumerate(lengths)))
@@ -326,7 +326,7 @@ def test_merge_links_preserves_reach_unless_it_must_clamp():
 def test_one_joint_per_link():
     """No two joints share a point."""
     palm = design_space.Palm(design_space.PALM_THICKNESS)
-    bad = design_space.Finger(design_space.Mount(0.039, math.radians(90), math.radians(90)),
+    bad = design_space.Finger(design_space.Mount.polar(0.039, math.radians(90), math.radians(90)),
                    (design_space.Segment(design_space.Joint(design_space.FLEXION), 0.0),
                     design_space.Segment(design_space.Joint(design_space.FLEXION), 0.040)))
     assert validate_design.check_finger(bad, 0, palm), "a zero-length link must be rejected"
@@ -357,7 +357,7 @@ def test_one_joint_per_link():
 def test_capsules_carry_their_segment_index():
     """Each capsule reports which segment it belongs to."""
     palm = design_space.Palm(design_space.PALM_THICKNESS)
-    finger = design_space.Finger(design_space.Mount(0.039, math.radians(90), math.radians(90)),
+    finger = design_space.Finger(design_space.Mount.polar(0.039, math.radians(90), math.radians(90)),
                       tuple(design_space.Segment(design_space.Joint(_KINDS[i % 2]), 0.030)
                             for i in range(3)))
     _, capsules = design_space.forward_kinematics(finger, palm)
@@ -367,7 +367,7 @@ def test_capsules_carry_their_segment_index():
 def test_joint_axes_are_the_axes_the_joints_turn_about():
     """The viewer draws each joint as a cylinder along its reported axis, so the axis has..."""
     palm = design_space.Palm(design_space.PALM_THICKNESS)
-    finger = design_space.Finger(design_space.Mount(0.037, math.radians(90), math.radians(90)),
+    finger = design_space.Finger(design_space.Mount.polar(0.037, math.radians(90), math.radians(90)),
                       (design_space.Segment(design_space.Joint(design_space.FLEXION), 0.035),
                        design_space.Segment(design_space.Joint(design_space.ABDUCTION), 0.030,
                                             lean=3),
@@ -466,7 +466,7 @@ def test_min_link_length_allows_a_compact_knuckle():
     assert design_space.MIN_LINK_LENGTH < 2 * design_space.CAPSULE_RADIUS
 
     palm = design_space.Palm(design_space.PALM_THICKNESS)
-    finger = design_space.Finger(design_space.Mount(0.039, math.radians(90), math.radians(90)), (
+    finger = design_space.Finger(design_space.Mount.polar(0.039, math.radians(90), math.radians(90)), (
         design_space.Segment(design_space.Joint(design_space.FLEXION),
                              design_space.MIN_LINK_LENGTH),
         design_space.Segment(design_space.Joint(design_space.ABDUCTION), 0.040)))
@@ -616,18 +616,20 @@ def test_a_mount_means_the_same_place_on_any_palm():
     """What replaced test_check_finger_needs_the_real_palm.
 
     A mount used to be (face, u, v) -- an offset along a box -- so the same
-    triple landed elsewhere on a palm of a different size. It is polar about the
-    palm's own centre now, and a palm has no size of its own to resolve against,
-    so a mount means one place and finger legality never consults the palm.
+    triple landed elsewhere on a palm of a different size. It is an offset from
+    the palm's own centre now, and a palm has no size of its own to resolve
+    against, so a mount means one place and finger legality never consults the
+    palm.
     """
-    mount = design_space.Mount(0.040, math.radians(30), math.radians(30))
-    # Polar about PALM_CENTRE, which is NOT the frame origin: the frame's origin
+    mount = design_space.Mount(y=0.020, z=0.035, facing=math.radians(30))
+    # Offset from PALM_CENTRE, which is NOT the frame origin: the frame's origin
     # is where the arm bolts on, and the fingers are centred WRIST_STANDOFF
     # forward of it so the hand clears the arm.
     assert np.allclose(design_space.mount_position(mount),
-                       design_space.PALM_CENTRE
-                       + [0.0, 0.040 * math.sin(math.radians(30)),
-                          0.040 * math.cos(math.radians(30))])
+                       design_space.PALM_CENTRE + [0.0, 0.020, 0.035])
+    # and Mount.polar is only a way of SAYING the same place
+    assert design_space.Mount.polar(0.040, math.radians(30),
+                                    math.radians(30)) == mount
     thin, thick = design_space.PALM_THICKNESS_RANGE
     for t in (thin, thick):
         hand = design_space.Hand(design_space.Palm(t), (design_space.Finger(
@@ -646,14 +648,14 @@ def test_require_valid_reports_every_reason():
     good = gen_init_pop.seed_population(0, 1)[0]
     assert validate_design.require_valid(good) is good
 
-    # one fault of each kind: a base off the radius grid, and a link far over
+    # one fault of each kind: a base off the position grid, and a link far over
     # MAX_LINK_LENGTH. Both must be named, not just the first one found.
-    off_grid = design_space.Mount(0.0412, math.radians(90), math.radians(90))
+    off_grid = design_space.Mount(y=0.0412, z=0.0, facing=math.radians(90))
     bad = design_space.Hand(palm, (
         design_space.Finger(off_grid,
                             (design_space.Segment(
                                 design_space.Joint(design_space.FLEXION), 0.5),)),
-        design_space.Finger(design_space.Mount(0.040, 0.0, 0.0),
+        design_space.Finger(design_space.Mount.polar(0.040, 0.0, 0.0),
                             (design_space.Segment(
                                 design_space.Joint(design_space.FLEXION), 0.040),))))
     with pytest.raises(ValueError) as e:
@@ -736,15 +738,16 @@ def test_every_genotype_field_is_validated():
 
     cases = {
         "palm thickness off grid": variant(p_thickness=0.0231),
-        "mount radius past the ring": variant(m_radius=0.200),
-        "mount radius off grid": variant(m_radius=0.0412),
-        "mount bearing off grid": variant(m_bearing=0.1),
+        "mount past the ring": variant(m_y=0.200, m_z=0.0),
+        "mount inside the palm's own disc": variant(m_y=0.010, m_z=0.005),
+        "mount y off grid": variant(m_y=0.0412),
+        "mount z off grid": variant(m_z=0.0412),
         "mount facing off grid": variant(m_facing=0.1),
         # No wedge any more; what is illegal behind the hand is reaching the
         # ARM, which takes the far rim and a long link pointed back at it.
         "finger reaching into the arm": variant(
-            m_radius=design_space.MAX_MOUNT_RADIUS, m_bearing=math.pi,
-            m_facing=math.pi, s_len=design_space.MAX_LINK_LENGTH),
+            m_y=0.0, m_z=-design_space.MAX_MOUNT_RADIUS, m_facing=math.pi,
+            s_len=design_space.MAX_LINK_LENGTH),
         "link too short": variant(s_len=0.010),
         "link too long": variant(s_len=0.200),
         "link off grid": variant(s_len=0.0431),
@@ -788,7 +791,7 @@ def test_a_joint_kind_and_a_lean_do_different_things():
 
     def tip(kind, lean):
         f = design_space.Finger(
-            design_space.Mount(0.035, math.radians(90), math.radians(90)),
+            design_space.Mount.polar(0.035, math.radians(90), math.radians(90)),
             (design_space.Segment(design_space.Joint(kind), 0.050, lean=lean),))
         return design_space.fingertip(f, palm)
 
@@ -805,7 +808,7 @@ def test_a_joint_kind_and_a_lean_do_different_things():
     # Flexion's axis is +z, and lean 1 tips toward +y by rotating about +z.
     def hinge(lean):
         f = design_space.Finger(
-            design_space.Mount(0.035, math.radians(90), math.radians(90)),
+            design_space.Mount.polar(0.035, math.radians(90), math.radians(90)),
             (design_space.Segment(design_space.Joint(design_space.FLEXION),
                                   0.050, lean=lean),))
         return design_space.joint_axes(f, palm)[0]
@@ -973,7 +976,7 @@ def _distal_overlap():
 
     def finger(radius, bearing_deg, spec):
         return design_space.Finger(
-            design_space.Mount(radius, math.radians(bearing_deg) % (2 * math.pi),
+            design_space.Mount.polar(radius, math.radians(bearing_deg) % (2 * math.pi),
                                math.radians(bearing_deg) % (2 * math.pi)),
             tuple(design_space.Segment(design_space.Joint(kind), 0.040, lean=lean)
                   for kind, lean in spec))

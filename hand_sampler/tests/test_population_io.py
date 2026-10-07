@@ -65,7 +65,7 @@ def test_optional_fields_survive(tmp_path):
     rich = design_space.Hand(
         palm=design_space.Palm(0.025),
         fingers=(design_space.Finger(
-            mount=design_space.Mount(0.025, math.radians(0), math.radians(0)),
+            mount=design_space.Mount.polar(0.025, math.radians(0), math.radians(0)),
             segments=(design_space.Segment(
                 joint=design_space.Joint(kind=design_space.ROLL, offset=0.2,
                                          axis_override=(0.0, 1.0, 0.0),
@@ -85,7 +85,7 @@ def test_optional_fields_survive(tmp_path):
 def test_defaults_may_be_omitted_by_hand(hands):
     """The file is meant to be read and edited, so absent means default."""
     minimal = {"palm": {"thickness": 0.025},
-               "fingers": [{"mount": {"radius": 0.030, "bearing": 0.0,
+               "fingers": [{"mount": {"y": 0.0, "z": 0.030,
                                       "facing": 0.0},
                             "segments": [{"joint": {"kind": "flexion"},
                                           "length": 0.04}]}]}
@@ -122,7 +122,7 @@ def test_a_file_pins_the_population_against_the_sampler(tmp_path):
     edited[3] = design_space.Hand(
         palm=design_space.Palm(0.02),
         fingers=(design_space.Finger(
-            mount=design_space.Mount(0.025, math.radians(0), math.radians(0)),
+            mount=design_space.Mount.polar(0.025, math.radians(0), math.radians(0)),
             segments=(design_space.Segment(design_space.Joint(design_space.FLEXION), 0.031),)),))
     path = population_io.save_population(edited, tmp_path / "pinned.json", name="pinned")
 

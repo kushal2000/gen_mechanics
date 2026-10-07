@@ -239,7 +239,7 @@ def test_palm_keypoints_move_with_the_mounts(hands):
     # a palm has no length of its own; it changes when a MOUNT moves
     moved = replace(a, fingers=(replace(a.fingers[0],
                                         mount=replace(a.fingers[0].mount,
-                                                      radius=a.fingers[0].mount.radius
+                                                      z=a.fingers[0].mount.z
                                                       + 0.010)),)
                     + a.fingers[1:])
     assert not np.allclose(build.palm_keypoints_of(moved),
@@ -283,7 +283,7 @@ def test_no_mount_on_the_grid_can_put_the_PALM_in_the_arm():
             bearing = k * a
             hand = design_space.Hand(
                 design_space.Palm(design_space.PALM_THICKNESS),
-                (design_space.Finger(design_space.Mount(r, bearing, bearing),
+                (design_space.Finger(design_space.Mount.polar(r, bearing, bearing),
                                      (design_space.Segment(
                                          design_space.Joint(design_space.FLEXION),
                                          design_space.MIN_LINK_LENGTH),)),))

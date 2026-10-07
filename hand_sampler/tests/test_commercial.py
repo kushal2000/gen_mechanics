@@ -5,8 +5,9 @@ grammar says a hand is. wuji2 is harder, in two specific ways that are
 properties of THAT HAND rather than failures of the fit, and both are asserted
 here so they stay visible:
 
-* its knuckles sit closer together than a 30 mm motor capsule allows, so the row
-  has to be spread to make it buildable at all, and
+* its knuckles sit 22 mm apart, closer than a 30 mm motor capsule allows, so the
+  row has to be spread 13 mm wider than the vendor's to clear at all -- and it
+  then clears by exactly nothing, which is its own test, and
 * its joint axes are genuinely oblique, which three kinds of joint cannot say.
 
 SHARPA was fitted and dropped; see commercial.HANDS for why.
@@ -14,6 +15,7 @@ SHARPA was fitted and dropped; see commercial.HANDS for why.
 
 from __future__ import annotations
 
+import itertools
 import math
 
 import numpy as np
@@ -42,20 +44,37 @@ def test_these_hands_fit_and_are_legal(name, fits):
     assert hand.n_fingers >= 4
 
 
-def test_wuji2_is_faithful_but_not_buildable(fits):
-    """Its own LINKS pass within 22.4 mm of each other, and two 30 mm capsules
-    need 30 -- so no spreading of the BASES makes it buildable with this motor.
+def test_wuji2_clears_its_own_links_by_nothing_at_all(fits):
+    """Legal, and only just: its closest two links sit EXACTLY on the 30 mm
+    floor, with zero microns to spare.
 
-    The box palm hid this by flattening the hand onto one face, which forced
-    every row finger to point the same way. A radial palm keeps each digit's own
-    direction, and the collision that was always there shows up.
+    Its own links pass within 22.4 mm of each other and two 30 mm capsules need
+    30, so the fit has to spread the bases until they clear -- and the separator
+    stops the moment they do, which on a 5 mm cartesian grid means landing on
+    the boundary exactly. It could not land there while a mount was polar: a
+    radius on one grid and a bearing on another put the bases at distances that
+    were never round numbers, so the hand missed the floor by 2.9 mm and was
+    refused outright.
+
+    So this is not a hand that became buildable. It is the same hand, now
+    describable to the last micron of the rule, and nobody should build two
+    capsules that touch. Asserted here so the zero is on the record rather than
+    reading as a pass.
+
+    Generated hands do not do this -- over 60 drifted designs none came within
+    0.1 mm of the floor and the median clearance was 13.6 mm -- because nothing
+    is pushing them to the boundary the way the fit's separator pushes wuji2.
     """
-    hand, notes = fits["wuji2"]
-    reasons = validate_design.check(hand)
-    assert any("capsules intersect" in r for r in reasons), reasons
-    assert all("capsules intersect" in r for r in reasons), (
-        f"wuji2 should fail on link clearance and nothing else: {reasons}")
-    assert any("own LINKS pass closer" in n for n in notes), notes
+    hand, _ = fits["wuji2"]
+    assert not validate_design.check(hand)
+    links = D.rest_capsules(hand)
+    gap = min(D.segment_distance(p0, p1, q0, q1)
+              for (fi, si, p0, p1), (fj, sj, q0, q1) in itertools.combinations(links, 2)
+              if not (fi == fj and abs(si - sj) <= 1))
+    assert gap == pytest.approx(2.0 * D.CAPSULE_RADIUS, abs=1e-6), (
+        f"wuji2's closest links are {gap * 1000:.3f} mm apart, not on the "
+        f"{2 * D.CAPSULE_RADIUS * 1000:.0f} mm floor -- if this has gained real "
+        f"clearance the fit has changed, and if it has lost any it is illegal")
 
 
 @pytest.mark.parametrize("name", commercial.HANDS)

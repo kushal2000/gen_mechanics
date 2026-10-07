@@ -198,9 +198,8 @@ def _new_finger(rng: random.Random, hand: design_space.Hand) -> design_space.Han
 def _free_mount_sites(hand: design_space.Hand) -> list[design_space.Mount]:
     """Every place on the palm with room for another finger.
 
-    The ring between PALM_MIN_RADIUS and MAX_MOUNT_RADIUS, on the radius grid
-    and the angle grid, minus anywhere too close to a finger that is already
-    there.
+    The ring between PALM_MIN_RADIUS and MAX_MOUNT_RADIUS, on one 5 mm grid in
+    both directions, minus anywhere too close to a finger that is already there.
 
     ROOM only. Whether a finger put here would reach into the arm depends on the
     finger, which does not exist yet -- _new_finger validates each site it tries
@@ -210,25 +209,29 @@ def _free_mount_sites(hand: design_space.Hand) -> list[design_space.Mount]:
         return []
     existing = np.array([mount_position(f.mount) for f in hand.fingers])
     q = design_space.PALM_QUANTUM
-    turn = 2.0 * math.pi
-    n_r = int(round((design_space.MAX_MOUNT_RADIUS
-                     - design_space.PALM_MIN_RADIUS) / q))
-    n_a = int(round(turn / design_space.ANGLE_QUANTUM))
+    n = int(math.floor(design_space.MAX_MOUNT_RADIUS / q))
 
     out: list[design_space.Mount] = []
-    for i in range(n_r + 1):
-        r = design_space.PALM_MIN_RADIUS + i * q
-        for k in range(n_a):
-            bearing = k * design_space.ANGLE_QUANTUM
-            pos = design_space.mount_position(
-                design_space.Mount(r, bearing, bearing))
+    for iy in range(-n, n + 1):
+        for iz in range(-n, n + 1):
+            y, z = iy * q, iz * q
+            r = math.hypot(y, z)
+            if not (design_space.PALM_MIN_RADIUS - 1e-9 <= r
+                    <= design_space.MAX_MOUNT_RADIUS + 1e-9):
+                continue
+            # A fresh finger leaves along its own radius, the plain thing to do,
+            # and aim_mount turns it afterwards.
+            facing = snap(design_space.bearing_of(y, z),
+                          design_space.ANGLE_QUANTUM) % (2.0 * math.pi)
+            site = design_space.Mount(y, z, facing)
+            pos = design_space.mount_position(site)
             # The same tolerance check_packing uses. A bare >= is STRICTER
             # than the validator by one epsilon, so a site sitting exactly on
             # the floor was free or not depending on float noise -- and the
             # noise moved when the polar centre did.
             if (np.linalg.norm(existing - pos, axis=1)
                     >= design_space.MIN_MOUNT_SEPARATION - 1e-9).all():
-                out.append(design_space.Mount(r, bearing, bearing))
+                out.append(site)
     return out
 
 
@@ -316,24 +319,27 @@ def perturb_length(rng: random.Random, hand: design_space.Hand) -> design_space.
 
 
 def move_mount(rng: random.Random, hand: design_space.Hand) -> design_space.Hand:
-    """Step ONE finger's base: one radius quantum out or in, or one angle
-    quantum around the palm.
+    """Step ONE finger's base one quantum, in any of the four directions.
 
     Where it SITS only. Which way it points is aim_mount's job -- a thumb has to
     be able to slide around the palm without swinging the finger with it.
+
+    Four neighbours rather than eight: a diagonal is two steps, which keeps
+    every move the same 5 mm and the walk isotropic. It used to be out/in along
+    the radius or round by a bearing quantum, where "round" was 5 mm of arc near
+    the centre and 18 mm at the rim.
     """
     q = design_space.PALM_QUANTUM
-    a = design_space.ANGLE_QUANTUM
-    steps = [(+q, 0.0), (-q, 0.0), (0.0, +a), (0.0, -a)]
+    steps = [(+q, 0.0), (-q, 0.0), (0.0, +q), (0.0, -q)]
     order = list(range(hand.n_fingers))
     rng.shuffle(order)
     for fi in order:
         finger = hand.fingers[fi]
         rng.shuffle(steps)
-        for dr, da in steps:
+        for dy, dz in steps:
             mount = replace(finger.mount,
-                            radius=snap(finger.mount.radius + dr, q),
-                            bearing=(finger.mount.bearing + da) % (2.0 * math.pi))
+                            y=snap(finger.mount.y + dy, q),
+                            z=snap(finger.mount.z + dz, q))
             out = design_space.with_finger(hand, fi, replace(finger, mount=mount))
             if validate_design.is_valid(out):
                 return out

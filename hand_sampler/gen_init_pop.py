@@ -64,10 +64,19 @@ def seed_finger(rng: random.Random, bearing_deg: float) -> design_space.Finger:
         for _ in range(n)
     )
     angle = math.radians(bearing_deg) % (2.0 * math.pi)
-    return design_space.Finger(
-        mount=design_space.Mount(radius=rng.choice(SEED_RADII),
-                                 bearing=angle, facing=angle),
-        segments=segments)
+    # A bearing is still the readable way to SAY where a seed goes; a mount is
+    # spelled on the 5 mm grid, so the polar pair is snapped onto it here. The
+    # snap moves a seed by up to 3.5 mm, which the ring bound then has to hold,
+    # hence the clamp.
+    r = rng.choice(SEED_RADII)
+    mount = design_space.Mount.polar(r, angle, angle)
+    # Snapping can pull a seed inside the ring -- (25 mm, 45 deg) lands at
+    # (20, 20), which is 28 out, but (20 mm, 45) lands at (15, 15), which is 21.
+    # Push it one ring out and re-snap rather than drawing again.
+    while mount.radius < design_space.PALM_MIN_RADIUS:
+        r += design_space.PALM_QUANTUM
+        mount = design_space.Mount.polar(r, angle, angle)
+    return design_space.Finger(mount=mount, segments=segments)
 
 
 def seed_hand(rng: random.Random) -> design_space.Hand:
