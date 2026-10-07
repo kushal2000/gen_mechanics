@@ -10,33 +10,300 @@ deliberately not — see §10.
 
 ---
 
-> ## ⚠ Sections 3–7 describe a grammar that no longer exists
+> **Read Part A for the grammar as it stands.** Sections 1–13 after it are the
+> original design document. They were written for the box-palm grammar and were
+> not updated through the rollback of 2026-10-02 or the radial palm that
+> followed, so their *rationale* still reads true while their *specifics* —
+> representation, palm, mount, joint axes, operators, constants — describe
+> something the code no longer does. §A9 lists exactly where they diverge.
 >
-> They were written for the box-palm grammar and were not updated through the
-> rollback of 2026-10-02 or the radial palm that followed. **Read the
-> docstrings in `design_space.py` as the specification**; they are current and
-> carry the measurements. What changed:
->
-> | this doc says | the grammar now |
-> |---|---|
-> | `Palm := box(w, l, t)`, width and length mutated | a palm stores only `thickness`; its outline is DERIVED as the convex hull of its own 20 mm disc and the finger bases, plus a 5 mm rim. `perturb_palm` is gone — there is nothing left to mutate |
-> | `Mount := face, (u, v)` on three thin faces, `MOUNT_EDGE_MARGIN` | `Mount := y, z, facing`, a (y, z) offset from the palm centre on one 5 mm grid, inside a 20–70 mm ring. No faces, no edge margin |
-> | `Joint := axis(theta, phi), offset`, theta on a 15° continuum | three KINDS — roll, flexion, abduction — plus a `lean` from five mounting directions (straight on, or 45° four ways). A generated joint carries no offset at all; `offset` survives only on an imported hand |
-> | operators `perturb_axis`, `perturb_offset`, `perturb_palm` | `perturb_kind`, `perturb_lean`, `aim_mount`. Still nine, and the four structural ones are unchanged |
-> | link floor 15 mm, radius 10 mm | floor 20 mm (15 mm for a distal link), radius 15 mm — both set by the XM335-T323-T actuator, not chosen |
-> | `MAX_FINGERS` 5, 6 joints per finger | 6 fingers, 5 joints per finger |
-> | mount separation: 15 mm across faces, 25 mm within one | one floor, `MIN_MOUNT_SEPARATION` = 2r + 5 mm = 35 mm |
-> | — | `ARM_FACE_Z`: nothing the hand owns may reach behind the arm's own face. New rule, no predecessor here |
->
-> §§1, 2, 8–13 are largely grammar-independent and still read true, with two
-> exceptions: §11's "held back" list is written in terms of faces and `phi`,
-> and several measured tables in §5 and §6 were taken under the old constants —
-> the joint-count distribution at a 15 mm floor, the `radius_scale` Spearman,
-> the add_finger balance that `perturb_palm` was said to relieve. Those numbers
-> were true of the space they were measured in and are not of this one.
->
-> Rewriting this properly means deciding which of that evidence to re-run
-> rather than retire, which is not a call to make inside a cleanup pass.
+> The docstrings in `design_space.py`, `validate_design.py` and
+> `mutate_design.py` are the authority; Part A is a map of them.
+
+---
+
+# Part A — the grammar as it stands
+
+## A1. The genotype
+
+```
+Hand    := Palm, [Finger]              2 to 6 fingers
+Palm    := thickness                   25 mm, fixed; the OUTLINE is derived
+Finger  := Mount, [Segment]            1 to 5 segments
+Mount   := y, z, facing                where the base sits, and which way it leaves
+Segment := Joint, length, lean         one joint per link
+Joint   := kind                        roll | flexion | abduction
+```
+
+The genotype, the kinematic tree and a per-joint policy's message-passing graph
+are still the same graph, which is §3's point and it survives unchanged. What
+changed is the alphabet at each node.
+
+A *generated* joint carries nothing but its kind. `Joint.offset`, `axis_override`,
+`limits` and `drive` exist on the dataclass for **imported** hands only — a
+vendor URDF has assembly angles and per-joint ranges, and `check_segment` makes
+any of them a fault on a generated design.
+
+## A2. Frames and conventions
+
+The palm is a flat plate in the **y–z plane**. `GRASP_DIR` is **+x**, the palm
+normal, the way fingers close. `+z` is away from the wrist; the arm comes in
+along `−z`.
+
+Angles in the plane — a `facing`, or the `bearing` of a point — are measured
+**from +z**, counterclockwise, in `[0, 2π)`. So the wrist lies at bearing π.
+
+Two constants place the hand on the arm:
+
+| | | |
+|---|---|---|
+| `WRIST_STANDOFF` | 25 mm | the fingers are centred this far **forward** of the palm frame's origin. The origin is where the arm bolts on |
+| `ARM_FACE_Z` | −50 mm | where the arm stops. Measuring the iiwa14's own meshes in this frame puts its frontmost vertex at exactly `−rpc.FLANGE_TO_PALM_Z_M` |
+
+`PALM_CENTRE = (0, 0, WRIST_STANDOFF)` is the point every mount is an offset
+from. It is *not* the frame origin, and the difference is what keeps a hand out
+of the arm: centred on the origin, every vendor hand's thumb went ~17 mm inside
+it.
+
+## A3. The palm
+
+**A palm stores one number, its thickness, and nothing else.** Its outline is
+derived: the convex hull of
+
+* the palm's own disc — `PALM_MIN_RADIUS` = 20 mm about `PALM_CENTRE` — and
+* a disc of `PALM_RIM` = 5 mm about each place a finger starts.
+
+So the plate always has a body whichever side the fingers crowd, it reaches out
+to every base, and it **stops there**. Hulling circles rather than points is
+what makes the outline smooth: there is no corner anywhere to fillet, and one
+finger or six fall out of the same construction. `palm_outline` samples each
+circle at 32 points, which inscribes the true shape by 0.1 mm.
+
+It used to be grown by the full 20 mm, which buried a whole first link — the
+shortest is 20 mm and a capsule only 15 mm wide.
+
+`PALM_THICKNESS` = 25 mm = `2 × CAPSULE_RADIUS − 5 mm`, a quantum thinner than a
+link is wide. `PALM_THICKNESS_RANGE` is degenerate, so thickness is not mutated
+and there is **no `perturb_palm`** — a palm has nothing left to mutate.
+
+Everything downstream is derived too: `palm_center` is the outline's centroid,
+`palm_area` feeds the mass, `palm_hull` extrudes the outline into **one convex
+mesh** that both the URDF and the USD author directly.
+
+## A4. The mount
+
+`Mount(y, z, facing)` — a (y, z) offset from `PALM_CENTRE`, plus the direction
+the finger leaves in.
+
+* **`y` and `z` are both on `PALM_QUANTUM` = 5 mm.** One grid in both
+  directions, so a site 70 mm out is placed as precisely as one 20 mm out. This
+  was polar until 2026-10-06 — a radius on the 5 mm grid and a bearing on the
+  15° one — which sited the far ring 3.6× more coarsely than the near one, a
+  bearing step being 5.2 mm of arc at the inner rim and 18.3 mm at the outer.
+* **The ring is a bound, not a spelling.** `PALM_MIN_RADIUS` ≤ `hypot(y, z)` ≤
+  `MAX_MOUNT_RADIUS` (20 to 70 mm). It stays a *circle* over a square grid
+  because `MAX_MOUNT_RADIUS` is a reach, which has no corners. `Mount.radius`
+  and `Mount.bearing` survive as derived properties, for reporting.
+* **`facing` is on `ANGLE_QUANTUM` = 15°, and it is absolute** — measured from
+  +z like any other bearing here, *not* from the radial direction. A finger at
+  facing 0 points away from the wrist whichever side of the palm it sits on,
+  which is what lets a thumb sit off one side and reach back across the palm.
+* Where a finger **sits** and where it **points** are independent. `move_mount`
+  moves one, `aim_mount` the other.
+
+`Mount.polar(radius, bearing, facing)` converts and snaps, for the places where
+polar is the natural way to *say* where a finger goes — seeds, a measured hand,
+tests. It is a constructor, not a representation.
+
+There is **no wedge**. A `WRIST_NOGO` sector used to forbid bearings pointing at
+the wrist; it was a proxy for the arm and a poor one, since a bearing says where
+a finger starts and what reaches the arm is where it points and how far. §A7's
+arm-clearance rule measures the real thing.
+
+## A5. Joints: three kinds and five leans
+
+In the joint's own frame, where the link runs along **+x**:
+
+| kind | axis | what it does |
+|---|---|---|
+| `ROLL` | (1, 0, 0) | spins the link about its own length |
+| `FLEXION` | (0, 0, 1) | closes the finger — the only kind with curl authority |
+| `ABDUCTION` | (0, 1, 0) | spreads the finger. Its axis **is** `GRASP_DIR`, so its curl authority is exactly 0 by construction |
+
+`JOINT_LIMIT` is symmetric **±90°** for every joint, which is what makes the
+absolute value in `curl_authority` sound.
+
+A **lean** is how a link is bolted to its parent: one of five mounting
+directions — straight on, or tipped `LEAN_QUANTUM` = 45° in four ways.
+`lean_rot` applies it by the **shortest arc**, so a lean carries no spin of its
+own; spin about the link is what a roll joint does, and two knobs for it is what
+this grammar stopped having. `LEAN_NEIGHBOURS` makes two leans one step apart
+when they are within 60°, so straight-on reaches all four tips and a tip reaches
+straight-on and the two tips perpendicular to it.
+
+45° is as far as a lean goes. A right angle between links is not two leans; it
+is an abduction joint next to a flexion joint — the same corner, and an
+**actuated** one.
+
+This replaces the old `axis(theta, phi)` continuum and the per-joint `offset`
+that aimed a finger. Three kinds and five leans are not a discretisation of that
+continuum, they are a different and smaller alphabet: a kind says how a joint
+sweeps, a lean says how the link is mounted, and the link body turns with it.
+
+## A6. Links, the motor, and the envelope
+
+Every constant below the grid is set by **one actuator**, the XM335-T323-T
+(19.0 × 35.0 × 22.0 mm), not chosen:
+
+| | | why |
+|---|---|---|
+| `CAPSULE_RADIUS` | 15 mm | running the 35 mm axis along the link leaves a 19 × 22 mm section, smallest enclosing circle 14.5 mm, up to the grid |
+| `MIN_LINK_LENGTH` | 20 mm | a motor has to fit between two joints |
+| `MIN_DISTAL_LINK_LENGTH` | 15 mm | the last link carries no child joint, so it needs no motor beyond its own |
+| `MIN_MOUNT_SEPARATION` | 35 mm | `2r + 5`: two parallel capsules are tangent at 2r, plus shell clearance |
+| `PALM_THICKNESS` | 25 mm | `2r − 5` |
+| `MAX_LINK_LENGTH` | 80 mm | unchanged |
+| `LINK_QUANTUM` | 5 mm | unchanged |
+
+Envelope: `MIN_FINGERS` 2, **`MAX_FINGERS` 6**, **`MAX_JOINTS_PER_FINGER` 5**.
+
+**The cap binds, not the geometry.** The ring holds 568 grid points, and greedy
+packing at the 35 mm floor fits 15 mounts in it against a cap of 6. This inverts
+§5's intent, where palm capacity was what stopped a hand growing.
+
+## A7. Validity
+
+`validate_design.check` returns every reason a hand is illegal, in this order:
+
+| rule | what it enforces |
+|---|---|
+| `check_envelope` | finger and joint counts inside the envelope |
+| `check_palm` | thickness in range and on the grid |
+| `check_layout` | every mount inside the ring, `y` and `z` on the 5 mm grid, `facing` in `[0, 2π)` and on the 15° grid |
+| `check_finger` | per segment, via `check_segment`: link lengths in range and on the grid, the distal floor, and **no offset on a generated joint** |
+| `check_packing` | every pair of mounts at least `MIN_MOUNT_SEPARATION` apart, then `check_base_clearance`: no two links closer than `2 × CAPSULE_RADIUS` at rest, consecutive links in one finger excluded |
+| `check_arm_clearance` | nothing the hand owns reaches behind `ARM_FACE_Z` — the palm plate or any link, at rest |
+
+The last two share one walk of the links, because doing it twice cost the test
+suite 60% of its runtime.
+
+`check_packing` and `check_arm_clearance` are **necessary conditions at the rest
+pose**, not sufficient ones: what a hand sweeps once its joints move is the
+collision gate's business, as §7 already says.
+
+## A8. Mutation and seeding
+
+Nine operators, four of them structural:
+
+| operator | step | scope |
+|---|---|---|
+| `split_link` | divide a link, inserting a joint | one finger |
+| `merge_links` | join two links, removing a joint | one finger |
+| `add_finger` | attach a new single-joint finger | one finger |
+| `remove_finger` | delete a single-joint finger | one finger |
+| `perturb_kind` | change one joint's kind | one joint |
+| `perturb_length` | ±1 quantum | every link |
+| `move_mount` | ±5 mm in one of four directions | one finger |
+| `aim_mount` | ±1 angle quantum of `facing` | one finger |
+| `perturb_lean` | to a neighbouring lean | one segment |
+
+`perturb_axis`, `perturb_offset` and `perturb_palm` are gone with the things
+they moved. `move_mount` takes four neighbours rather than eight, so every move
+is the same 5 mm and the walk stays isotropic; a diagonal is two steps.
+
+**Every operator shuffles its candidates and returns the first that validates**,
+which is why adding a rule is nearly free — a site that would reach the arm
+becomes a different site rather than a failed move. Adding `check_arm_clearance`
+cost 0.2 points of mutation success over 60 parents.
+
+`perturb_kind` is weighted, not uniform: `KIND_WEIGHTS` is roll 1, flexion 6,
+abduction 2. Flexion is the only kind that closes a hand; roll is the kind LEAP
+spends one joint of sixteen on.
+
+Seeding draws a pair of fingers at bearings ±30/±45/±60 or 0/90, radius 25–35 mm,
+1–2 joints, links 35–50 mm, kinds weighted flexion 3 to abduction 1. Seeds are
+drawn by **rejection, not repair**.
+
+## A9. The measures
+
+**`complexity(hand)` → `(n_motors, n_joints)`.** One motor per joint; couplings
+are deferred, so this is readable without a simulator.
+
+**`curl_score(hand)` → the second-best finger's `curl_authority`.** Each joint
+contributes `(axis × (tip − joint)) · GRASP_DIR` — the Jacobian column projected
+on the grasp direction — taking the max over joints and dividing by the finger's
+reach. Verified against a numerical derivative of the tip over 300 random
+fingers covering every kind, lean and facing: they agree to 0.013 nm/radian.
+
+Two things it does **not** say, both measured:
+
+* The max lands on the **base joint 86%** of the time, so it is close to asking
+  whether the first joint closes the finger.
+* A high score does not mean two fingers can **reach each other**. Each finger
+  is measured alone, so two fingers pointing opposite ways with their tips
+  300 mm apart both score 1.00. Of the hands this calls "ok" (≥ 0.35), 24%
+  cannot bring two fingertips within 60 mm at any uniform flex. A real
+  opposition test is a separate measure and nothing implements one yet.
+
+## A10. The commercial hands
+
+`commercial.fit(name)` reads a vendor URDF and returns a Hand in this grammar
+plus notes on every way it is not the vendor's.
+
+| | fingers/joints | curl | base slip mean/worst | shape error worst | legal |
+|---|---|---|---|---|---|
+| `leap` | 4 / 16 | 1.00 | 1.8 / 2.0 mm | 8.0 mm | yes |
+| `wuji2` | 5 / 20 | 1.00 | 10.4 / 21.0 mm | 17.5 mm | yes, by 0.0 µm |
+| `midas` | 4 / 16 | 0.78 | 4.3 / 6.0 mm | 27.8 mm | yes |
+| `allegro` | 4 / 16 | 0.87 | 2.2 / 3.0 mm | 27.4 mm | yes |
+
+Three things worth knowing before trusting a fit:
+
+* **`_straighten` slides joint origins along their own axes**, which is
+  kinematically exact and is what turns an L-bracket into a straight link —
+  LEAP's 79° brackets come down to 0.6°. It is **skipped** when a chain is
+  already straight on the grammar's own grid (under half a `LEAN_QUANTUM`),
+  because its cost term measures axis *alignment* and would otherwise read a
+  straight rod's mounting ANGLE as a bend to remove. That is what cost wuji2 its
+  splay.
+* **wuji2's knuckles are 22 mm apart against a 35 mm floor**, so the fit spreads
+  its row 13 mm wider than the vendor's. It then clears the link floor by
+  *exactly nothing* — 0.0 µm. It is not a hand anyone should build; the
+  separator simply stops the moment it clears. Generated hands do not do this:
+  over 60 drifted designs the median clearance was 13.6 mm.
+* **Allegro's base joints read `roll`, and that is correct.** Its axis is along
+  the finger's own direction, so at full extension that joint moves the tip
+  0.0 mm; driven ±20° it sweeps 41 mm at 15° of flex and 71 mm at 45°. The
+  grammar names a joint by its axis at the **rest pose**. LEAP's equivalent
+  joint is a true abduction, 94 mm with the finger straight out.
+
+## A11. Where §§1–13 still hold, and where they do not
+
+**Still true:** §1 (what this replaces), §2 (the ghosting constraint and why the
+envelope is a hard cost), §3's *argument* that genotype and phenotype should be
+one graph, §8 (policy interface) in structure, §9 (the four warnings — complexity
+versus policy exposure, sparse fitness, bloat, keep the Pareto archive), §10
+(the integration layer), §12, §13's method.
+
+**Superseded in detail:**
+
+| section | what it says | what is true now |
+|---|---|---|
+| §3 | `Palm := box(w,l,t)`, `Mount := face, (u,v)`, `Joint := axis(theta,phi), offset` | §A1 |
+| §4 | joint axes as a `theta`/`phi` continuum on a 15° grid; `offset` aims a finger | §A5 — three kinds and five leans; no offset on a generated joint |
+| §5 Palm | a box with a mutated width and length, 40–100 mm | §A3 — derived outline, thickness only |
+| §5 Mount | three thin faces, normalised `(u, v)`, `MOUNT_EDGE_MARGIN` | §A4 — a (y, z) offset in a ring, no faces, no margin |
+| §5 Links | floor 15 mm, radius 10 mm | §A6 — 20 mm and 15 mm, both set by the actuator |
+| §5 Fingers | `MAX_FINGERS` 5, 6 joints each, packing decides the count | §A6 — 6 and 5, and the **cap** decides the count |
+| §6 | `perturb_axis`, `perturb_offset`, `perturb_palm` | §A8 — `perturb_kind`, `perturb_lean`, `aim_mount` |
+| §7 | two mount-separation floors, 15 mm across faces and 25 mm within one | §A7 — one floor of 35 mm, plus the arm plane |
+| §11 | the "held back" list, written in terms of faces and `phi` | the entries still name real deferrals, but not in this grammar's words |
+
+**Measured tables taken in a space that no longer exists**, and so not evidence
+about this one: §5's joint-count distribution at a 15 mm floor, §5's
+`radius_scale` Spearman (radius is now set by the motor, not free), §6's
+`add_finger` balance table and the claim that `perturb_palm` relieves it.
+Re-running them is open work.
 
 ---
 
