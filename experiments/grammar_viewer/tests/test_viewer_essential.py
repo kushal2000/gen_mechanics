@@ -15,7 +15,7 @@ from gviewer import checks as ck  # noqa: E402
 from gviewer import limitsui as lui  # noqa: E402
 from gviewer import model as gm  # noqa: E402
 from gviewer import sources as src  # noqa: E402
-from hand_sampler.grammar.derive import EVOLUTION_OPERATORS, derive, sample_derivation  # noqa: E402
+from hand_sampler.grammar.derive import EVOLUTION_OPERATORS, EVOLUTION_OPERATORS_FINE, derive, sample_derivation  # noqa: E402,E501
 from hand_sampler.grammar.kinematics import ModelError  # noqa: E402
 from hand_sampler.grammar.limits import SIMULATOR, GenerationLimits, Structure, check  # noqa: E402
 from hand_sampler.grammar.variants import RULES, build_distribution  # noqa: E402
@@ -59,8 +59,10 @@ def simulator(app):
     app.reset_limits()
     app.set_all_checks(True)
     app.set_rules(**ALL_ON)
+    app.set_stage("coarse")
     yield app
     app.reset_limits()
+    app.set_stage("coarse")
     app.set_all_checks(True)
     app.set_rules(**ALL_ON)
 
@@ -103,10 +105,11 @@ def test_panel_is_essential(app):
     assert set(app.check_boxes) == set(ck.CHECK_KEYS)
     assert not hasattr(app, "gui_preset") and app.limits() == SIMULATOR
     assert "require_digit_on_palm_body" not in app.limit_bools
-    assert set(V.OPERATOR_INFO) == set(EVOLUTION_OPERATORS) == set(app.op_buttons)
+    assert set(V.OPERATOR_INFO) == set(EVOLUTION_OPERATORS) | set(EVOLUTION_OPERATORS_FINE) == set(app.op_buttons)
     assert tuple(app.rule_boxes) == RULES and not hasattr(app, "gui_variant")
+    assert "max_finger_length_mm" in app.limit_ints and app.stage() == "coarse"
     # no grammar codes or jargon in visible labels
-    visible = [V.RULE_INFO[r][0] for r in RULES] + [V.OPERATOR_INFO[o][0] for o in EVOLUTION_OPERATORS]
+    visible = [V.RULE_INFO[r][0] for r in RULES] + [V.OPERATOR_INFO[o][0] for o in V.OPERATOR_INFO]
     visible += [cb.label for cb in app.check_boxes.values()] + [lui_f.label for lui_f in lui.INT_FIELDS]
     for word in ("digit", "phalanx", "G_", "segment", "body", "capsule"):
         assert not any(word in v for v in visible), word
@@ -282,22 +285,30 @@ def test_commercial_hand(simulator):
     if com.hand_entry("allegro_right").availability != "available":
         pytest.skip("allegro URDF not available")
     assert app.random(start_seed=0, wait=True)
-    # default: the projection snapped onto the grammar's grids
+    # default: the projection snapped onto the grammar's fine grid
+    assert app.gui_version.value == "fine grid"
     assert app.load_commercial("allegro_right", wait=True)
     assert app.shown.kind == "commercial" and app.shown.conformed is not None and app.overlay.handles
     line = app.md_fidelity.content
-    assert line.startswith("snapped to the grammar:") and "within rules: yes" in line and "within limits: yes" in line
+    assert line.startswith("snapped to the grammar's fine grid:") and "within rules: yes" in line
+    assert "within limits: yes" in line
+    pos = app.shown.conformed.fidelity["max_pos_mm"]
+    assert pos <= 5.0                                                     # allegro: about 3 mm at the fine grid
     # the grid steps act on it
     assert app.op_buttons["step_limits"].visible and app.op_buttons["step_segment_length"].visible
     assert app.mutate("step_limits", wait=True) and app.history.cursor == 1
     assert app.mutate("insert_phalanx", wait=True) and app.history.cursor == 2
-    # the exact projection on request
-    app.gui_exact.value = True
+    # the coarse grid, and the exact projection, on request
+    app.gui_version.value = "coarse grid"
+    app.wait_idle()
+    assert app.md_fidelity.content.startswith("snapped to the grammar:") and app.history.cursor == 0
+    assert app.shown.conformed.fidelity["max_pos_mm"] > pos
+    app.gui_version.value = "exact (off-grid)"
     app.wait_idle()
     assert app.shown.conformed is None and app.history.cursor == 0
     line = app.md_fidelity.content
     assert line.startswith("exact projection:") and "within rules: no" in line
-    app.gui_exact.value = False
+    app.gui_version.value = "fine grid"
     app.wait_idle()
     assert app.shown.conformed is not None
     app.gui_meshes.value = False
@@ -329,3 +340,37 @@ def test_rule_toggles_redraw_with_the_rule(simulator):
     top = [s for s in app.shown.derivation.steps if s.production == "Digit" and s.params["top_level"]]
     assert all(s.params.get("mount_offset", (0.0, 0.0)) == (0.0, 0.0) for s in top)
     assert "sit on the palm surface" not in app.md_status.content
+
+
+def test_coarse_and_fine_steps(simulator):
+    app = simulator
+    assert app.random(start_seed=0, wait=True)
+    coarse = {op for op, b in app.op_buttons.items() if b.visible}
+    assert coarse and coarse <= set(EVOLUTION_OPERATORS)
+    app.set_stage("fine")
+    fine = {op for op, b in app.op_buttons.items() if b.visible}
+    assert fine and fine <= set(EVOLUTION_OPERATORS_FINE)
+    assert {"fine_step_axis", "fine_step_segment_length", "fine_slide_mount"} <= fine
+    assert app.op_buttons["fine_step_segment_length"].label == "lengthen/shorten a bone 1 mm"
+    for _ in range(5):                                   # random mutation draws from the fine pool
+        assert app.mutate(None, wait=True)
+        assert app.history.current.operator in EVOLUTION_OPERATORS_FINE
+        assert Structure.from_steps(app.shown.derivation.steps).digits == \
+            Structure.from_steps(app.history.entries[0].derivation.steps).digits    # never the structure
+    assert app.mutate("fine_step_axis", wait=True) and "tilt a joint axis 5°" in app.md_mut.content
+    app.set_stage("coarse")
+    assert {op for op, b in app.op_buttons.items() if b.visible} <= set(EVOLUTION_OPERATORS)
+
+
+def test_fine_steps_on_a_commercial_hand(simulator):
+    app = simulator
+    from gviewer import commercial as com
+    if com.hand_entry("leap_right").availability != "available":
+        pytest.skip("leap URDF not available")
+    assert app.load_commercial("leap_right", wait=True)
+    app.set_stage("fine")
+    shown = {op for op, b in app.op_buttons.items() if b.visible}
+    assert shown == set(EVOLUTION_OPERATORS_FINE), set(EVOLUTION_OPERATORS_FINE) - shown
+    assert app.mutate("fine_step_segment_length", wait=True) and app.history.cursor == 1
+    app.set_stage("coarse")
+    assert app.op_buttons["step_axis"].visible and app.op_buttons["insert_phalanx"].visible

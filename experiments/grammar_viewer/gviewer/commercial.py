@@ -201,16 +201,19 @@ class CommercialHand:
     def ok(self) -> bool:
         return self.derived is not None
 
-    def conformed(self, variant: str, dist) -> Conformed:
-        """The projection conformed to ``dist`` (cached per variant name)."""
-        hit = self.conformed_cache.get(variant)
+    def conformed(self, variant: str, dist, resolution: str = "coarse") -> Conformed:
+        """The projection conformed to ``dist`` at ``resolution`` ("coarse":
+        the grammar's grids; "fine": the refinement grid), cached per variant
+        name and resolution."""
+        key = variant if resolution == "coarse" else f"{variant} [{resolution}]"
+        hit = self.conformed_cache.get(key)
         if hit is None:
-            cd, rep = gconform.conform_to_grammar(self.projection.derivation, dist)
+            cd, rep = gconform.conform_to_grammar(self.projection.derivation, dist, resolution=resolution)
             derived = derive(cd)
             rt = rep.root_transform(self.projection.root_transform)
             fid = gconform.fidelity(self.imported.model, self.projection.name_map, rt, derived)
             hit = Conformed(variant, cd, rep, derived, fid, rt)
-            self.conformed_cache[variant] = hit
+            self.conformed_cache[key] = hit
         return hit
 
     @property

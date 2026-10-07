@@ -6,8 +6,9 @@ One compact panel, one line per item (longer explanations are hover text):
 Grammar (Random and three rule toggles), Limits (the simulator's limits, which sampling
 and mutation obey by construction; editable, with a reset), Viability (the
 four physical checks generation cannot guarantee, each switchable),
-Commercial hand, Mutation (only the operators that can act on this hand under
-these limits are shown) and Pose (curl, re-centre). `viewer_full.py` keeps the full tool.
+Commercial hand (on the fine grid by default), Mutation (coarse or fine steps; only
+the operators that can act on this hand under these limits are shown) and Pose
+(curl, re-centre). `viewer_full.py` keeps the full tool.
 CPU only: the simulator's envelope oracle is loaded by file path
 (gviewer/envload.py), so Isaac is never imported.
 """
@@ -35,7 +36,8 @@ import viser  # noqa: E402
 from hand_sampler.grammar import limits as glim  # noqa: E402
 from hand_sampler.grammar.coverage import coverage  # noqa: E402
 from hand_sampler.grammar.variants import RULES, build_distribution  # noqa: E402
-from hand_sampler.grammar.derive import EVOLUTION_OPERATORS, Derivation, VariationImpossible, derive, vary  # noqa: E402
+from hand_sampler.grammar.derive import (EVOLUTION_OPERATORS, EVOLUTION_OPERATORS_FINE, Derivation,  # noqa: E402
+                                         VariationImpossible, derive, vary)
 from hand_sampler.grammar.kinematics import KinematicModel  # noqa: E402
 
 from gviewer import analysis as an  # noqa: E402
@@ -109,8 +111,34 @@ OPERATOR_INFO: Dict[str, tuple] = {
     "step_segment_length": ("lengthen/shorten one bone (5 mm)",
                             "Changes one bone's (or palm part's) length by 5 mm within the grammar's range; the parts "
                             "beyond it move with it."),
+    # Fine steps (EVOLUTION_OPERATORS_FINE): one value by one fine unit, never the structure.
+    "fine_step_axis": ("tilt a joint axis 5°", "Tilts one joint's axis by 5 deg (up/down or around)."),
+    "fine_step_limits": ("move one end of a joint's range 5°",
+                         "Moves the lower or upper end of one joint's range by 5 deg."),
+    "fine_slide_mount": ("slide a mount 1% along its part",
+                         "Slides one finger or palm part along what it is attached to by 1% of that part's length "
+                         "(mounts are stored as a fraction of the part)."),
+    "fine_shift_mount": ("shift a mount 1 mm sideways",
+                         "Shifts one finger or palm part 1 mm across what it is attached to."),
+    "fine_turn_mount": ("turn a mount 5°", "Turns one finger or palm part 5 deg at its base."),
+    "fine_step_bend_rpy": ("change a rest bend 5°", "Turns the rest angle between two bones by 5 deg."),
+    "fine_step_root_length": ("lengthen/shorten the palm 1 mm", "Changes the palm's length by 1 mm."),
+    "fine_step_radius": ("thicker/thinner 1 mm (all links)", "Changes the shared link thickness by 1 mm (8-12 mm)."),
+    "fine_step_segment_length": ("lengthen/shorten a bone 1 mm",
+                                 "Changes one bone's (or palm part's) length by 1 mm; a bone may go down to 0 mm "
+                                 "(two joints at one point)."),
 }
-assert set(OPERATOR_INFO) == set(EVOLUTION_OPERATORS), "OPERATOR_INFO must cover EVOLUTION_OPERATORS exactly"
+STAGES: Dict[str, tuple] = {"coarse": tuple(EVOLUTION_OPERATORS), "fine": tuple(EVOLUTION_OPERATORS_FINE)}
+STAGE_HINT = ("Coarse: change the structure and take 5 mm / 15 deg steps, to find hands that work. Fine: refine one "
+              "value of the hand by 1 mm, 1% or 5 deg, never its structure.")
+assert set(OPERATOR_INFO) == set(EVOLUTION_OPERATORS) | set(EVOLUTION_OPERATORS_FINE), \
+    "OPERATOR_INFO must cover the coarse and fine pools exactly"
+
+# Commercial hands: how the projection is shown.
+VERSIONS: Dict[str, Optional[str]] = {"fine grid": "fine", "coarse grid": "coarse", "exact (off-grid)": None}
+VERSION_HINT = ("Fine grid (default): the hand snapped onto the grammar's fine grid (1 mm, 1% of a part, 5 deg), the "
+                "closest the grammar gets; coarse grid: its 5 mm / 15 deg grid. Both are genuine members of the "
+                "grammar that the operators can mutate. Exact: the off-grid projection.")
 
 
 def op_label(op: str, dist=None) -> str:
@@ -135,7 +163,7 @@ def rules_text(rules: Dict[str, bool]) -> str:
 
 
 def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], limits: glim.GenerationLimits,
-                  dist) -> str:
+                  dist, fine: bool = False) -> str:
     """One line: the shown expression's error against the URDF (E13's metric,
     target 5 mm / 10 deg), whether it is within the grammar's rules (the
     conformed one is; what snapping lost), and within the current limits."""
@@ -152,7 +180,8 @@ def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], 
         pos = max(f["max_pos_mm"], f["max_tip_mm"] or 0.0)
         lost = [CONFLICT_SHORT.get(k, k) for k in conformed.report.conflict_features()]
         rules = "yes" + (" (lost: " + ", ".join(lost) + ")" if lost else "")
-        head = f"snapped to the grammar: {pos:.0f} mm / {f['max_axis_deg']:.0f} deg"
+        grid = "the grammar's fine grid" if fine else "the grammar"
+        head = f"snapped to {grid}: {pos:.0f} mm / {f['max_axis_deg']:.0f} deg"
         deriv = conformed.derivation
     return f"{head}; within rules: {rules}; within limits: {glim.check(deriv, limits).summary()}"
 
@@ -328,7 +357,7 @@ class EssentialViewer:
             if self.prep is not None and self.prep.shown.commercial is not None:
                 sh = self.prep.shown
                 self.md_fidelity.content = fidelity_line(sh.commercial, sh.conformed, self.limits(),
-                                                         self.dist())
+                                                         self.dist(), VERSIONS[self.gui_version.value] == "fine")
 
     def _update_limits_line(self) -> None:
         if self.prep is None:
@@ -541,9 +570,11 @@ class EssentialViewer:
 
     def load_commercial(self, hand_id: str, wait: bool = False, frame: bool = True) -> bool:
         """Show a commercial hand: by default its projection conformed to the
-        grammar (a member of the grammar's space that every operator
-        can act on); with "exact, off-grid version" ticked, the exact projection."""
-        exact = bool(self.gui_exact.value)
+        grammar's fine grid (a member of the grammar's space that every
+        operator can act on); "coarse grid" conforms it to the coarse grid,
+        "exact (off-grid)" shows the exact projection."""
+        resolution = VERSIONS[self.gui_version.value]
+        exact = resolution is None
         rules = dict(self.rules)
 
         def job():
@@ -562,10 +593,11 @@ class EssentialViewer:
             if exact:
                 shown = Shown(ch.projection.derivation, ch.derived, f"{hand_id} (exact)", "commercial", commercial=ch)
             else:
-                conf = ch.conformed(rules_text(rules), dist)
-                shown = Shown(conf.derivation, conf.derived, f"{hand_id} (snapped to the grammar)", "commercial",
+                conf = ch.conformed(rules_text(rules), dist, resolution=resolution)
+                where = "the fine grid" if resolution == "fine" else "the grammar"
+                shown = Shown(conf.derivation, conf.derived, f"{hand_id} (snapped to {where})", "commercial",
                               commercial=ch, conformed=conf)
-            self.md_fidelity.content = fidelity_line(ch, shown.conformed, self.limits(), dist)
+            self.md_fidelity.content = fidelity_line(ch, shown.conformed, self.limits(), dist, resolution == "fine")
             self.current_hand = hand_id
             self.show(shown, frame=frame)
 
@@ -591,31 +623,40 @@ class EssentialViewer:
     # Mutation
     # ------------------------------------------------------------------
 
+    def stage(self) -> str:
+        """The mutation stage the panel shows: "coarse" or "fine"."""
+        return self.gui_stage.value.lower()
+
+    def set_stage(self, stage: str) -> None:
+        self.gui_stage.value = stage.capitalize()        # fires on_update -> buttons
+
     def _update_operator_buttons(self) -> None:
         shown = self.shown
         if shown is None:
             return
-        self.op_status = lui.operator_status(shown.derivation, self.dist(),
-                                             EVOLUTION_OPERATORS, self.limits())
+        pool = STAGES[self.stage()]
+        self.op_status = lui.operator_status(shown.derivation, self.dist(), pool, self.limits())
         dist = self.dist()
         for op, b in self.op_buttons.items():
-            st = self.op_status[op]
-            b.visible = st == lui.OK          # only what can act on this hand under these limits
+            st = self.op_status.get(op)
+            b.visible = st == lui.OK          # only this stage's steps that can act on this hand under these limits
             b.label = op_label(op, dist)
             b.hint = OPERATOR_INFO[op][1]
 
     def mutate(self, operator: Optional[str] = None, wait: bool = False) -> bool:
         """Apply `operator` under the current limits, or with None a random one
-        from EVOLUTION_OPERATORS (drawing again, without replacement, while the
-        drawn one cannot apply)."""
+        from the current stage's pool (coarse: EVOLUTION_OPERATORS, fine:
+        EVOLUTION_OPERATORS_FINE), drawing again, without replacement, while
+        the drawn one cannot apply."""
+        pool = STAGES[self.stage()]
+
         def job():
             shown = self.shown
             if shown is None:
                 return
             dist = self.dist()
             limits = self.limits()
-            ops = [operator] if operator else [EVOLUTION_OPERATORS[i]
-                                               for i in self.rng.permutation(len(EVOLUTION_OPERATORS))]
+            ops = [operator] if operator else [pool[i] for i in self.rng.permutation(len(pool))]
             child, used, why = None, None, ""
             for op in ops:
                 try:
@@ -714,19 +755,19 @@ class EssentialViewer:
             self._hand_ids = {h.label: h.id for h in hands}
             self.gui_hand = g.add_dropdown("Hand", [NO_HAND] + [h.label for h in hands], initial_value=NO_HAND,
                                            hint="A real hand's grammar projection, over its URDF meshes.")
-            self.gui_exact = g.add_checkbox("exact, off-grid version", False,
-                                            hint="Off: the hand snapped onto the grammar's grids (lengths 5 mm, "
-                                                 "angles 15 deg, limit menu, ...), a genuine member of the grammar "
-                                                 "that the operators can mutate. On: the exact, off-grid projection.")
+            self.gui_version = g.add_dropdown("shown as", list(VERSIONS), initial_value="fine grid", hint=VERSION_HINT)
+            g.add_markdown("Shown on the fine grid (1 mm, 5°): the closest the grammar gets.")
             self.gui_meshes = g.add_checkbox("show real hand meshes", True)
             self.md_fidelity = g.add_markdown("")
 
         with g.add_folder("Mutation"):
+            self.gui_stage = g.add_dropdown("steps", ["Coarse", "Fine"], initial_value="Coarse", hint=STAGE_HINT)
             btns = g.add_button_group("Mutate", ["Random mutation", "Back"])
             self.md_mut = g.add_markdown("")
             self.op_buttons: Dict[str, Any] = {}
-            for op in EVOLUTION_OPERATORS:
-                self.op_buttons[op] = g.add_button(op_label(op, self.dist()), hint=OPERATOR_INFO[op][1])
+            for op in EVOLUTION_OPERATORS + EVOLUTION_OPERATORS_FINE:
+                self.op_buttons[op] = g.add_button(op_label(op, self.dist()), hint=OPERATOR_INFO[op][1],
+                                                   visible=op in STAGES["coarse"])
 
         with g.add_folder("Pose"):
             self.gui_curl = g.add_slider("Curl", 0.0, 1.0, 0.01, RESET_CURL,
@@ -759,10 +800,15 @@ class EssentialViewer:
 
         self.gui_meshes.on_update(lambda _: self.overlay.set_visible(bool(self.gui_meshes.value)))
 
-        @self.gui_exact.on_update
+        @self.gui_version.on_update
         def _(_):
             if self.current_hand is not None:
                 self.load_commercial(self.current_hand, frame=False)
+
+        @self.gui_stage.on_update
+        def _(_):
+            with self.lock:
+                self._update_operator_buttons()
 
         def _check_toggled(_):
             with self.lock:
