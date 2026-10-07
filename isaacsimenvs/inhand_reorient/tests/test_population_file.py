@@ -113,7 +113,19 @@ def test_load_population_checks_envelope(tmp_path):
     raw = json.loads(path.read_text())
     raw["envelope"] = "not-the-real-envelope"
     path.write_text(json.dumps(raw))
-    with pytest.raises(ValueError, match="envelope"):
+    with pytest.raises(ValueError, match="articulation layout"):
+        pf.load_population(path)
+
+
+def test_a_32_slot_population_file_fails_loudly(tmp_path):
+    """A file built for the old 32-slot layout (envelope grammar_envelope/1)
+    is refused with a message that says what to do."""
+    assert pf.ENVELOPE_ID == "grammar_envelope/2"
+    path, doc, entries = _small_population(tmp_path)
+    raw = json.loads(path.read_text())
+    raw["envelope"] = "grammar_envelope/1"
+    path.write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match="'grammar_envelope/1'.*36 joint slots.*rebuild it"):
         pf.load_population(path)
 
 
@@ -212,6 +224,7 @@ def test_write_population_marks_projected_hands_exempt_at_both_poses(tmp_path):
     q0_pairs = {(i, j) for i, j, pen in ge.rest_overlap_pairs(design) if pen > 0.0}
     default_pairs = {(i, j) for i, j, pen in ge.rest_overlap_pairs(design, q=default_q) if pen > 0.0}
     # plus canonicalize's own pairs for every design: those joined through 0 mm
-    # bones and the palm against fingers on a ghost carrier
+    # bones, and each finger against the body it sits on through a locked or
+    # follower carrier
     assert set(entry.filtered_pairs) == (q0_pairs | default_pairs | set(ge.short_bone_pairs(design))
-                                         | set(ge.ghost_mount_pairs(design)))
+                                         | set(ge.mount_pairs(design)))

@@ -21,10 +21,12 @@
    fingertip reach); they live with the simulator's envelope oracle
    (``isaacsimenvs/inhand_reorient/scene/grammar_envelope.py``) and the viewer.
 
-There is one set of limits, ``SIMULATOR``: the shape of the simulator's
-padded 32-slot articulation (5 finger chains of 6 revolute slots plus 2
-palm-joint slots) plus a finger-length cap. Apart from the cap, a derivation
-is within ``SIMULATOR`` iff ``grammar_envelope._admit_structural(derive(d)).ok``
+There is one set of limits, ``SIMULATOR`` (the viewer's "Evolution Rules"):
+the shape of the simulator's padded 36-slot articulation (6 finger slots, each
+one palm joint plus up to 5 revolute finger joints, any split of the fingers
+over the palm and its palm parts), plus two ordinary rules: at most 2 palm
+joints and a finger-length cap. Without those two rules (``SIMULATOR_ENVELOPE``)
+a derivation is within it iff ``grammar_envelope._admit_structural(derive(d)).ok``
 (``grammar_bench/tests/test_generation_limits.py`` checks this equivalence on
 sampled and mutated designs, and that every design sampled or mutated under
 ``SIMULATOR`` passes ``_admit_structural``). Its fields can be edited
@@ -41,9 +43,13 @@ intended: limits shape the generator, they do not filter it.
 
 Definitions (they match ``_admit_structural`` and ``envelope.fits_envelope``):
 
-- a DIGIT is a top-level digit: a ``Digit`` mounted on the root or on a palm
-  body (branch digits mount on a phalanx body and belong to their top-level
-  digit);
+- a DIGIT (a finger) is a top-level digit: a ``Digit`` mounted on the root or
+  on a palm body (branch digits mount on a phalanx body and belong to their
+  top-level digit);
+- ``max_digits`` counts FINGER SLOTS: the digits, plus each jointed palm body
+  that carries no digit (in the simulator such a palm joint still needs a
+  finger slot of its own). Under the grammar's rule that every palm body
+  carries a digit this is just the number of digits;
 - the JOINTS OF A DIGIT are the phalanges (one joint each) of a top-level digit
   plus those of every branch digit nested under it;
 - a JOINTED palm body is a ``PalmBody`` with ``has_joint``; it is STACKED when
@@ -51,10 +57,7 @@ Definitions (they match ``_admit_structural`` and ``envelope.fits_envelope``):
 - a digit's CARRIER is the nearest jointed palm body on the path from its mount
   to the root (none for digits on the root or on rigid palm bodies attached
   rigidly to the root); a jointed palm body CARRIES the digits whose carrier
-  it is;
-- FINGER CHAINS are the digits without a carrier plus the jointed palm bodies:
-  in the simulator each such digit fills one of 5 finger chains, and each
-  jointed palm body reserves one (its carried digit, if any, goes there);
+  it is (any number of them);
 - a BRANCHING link is a phalanx body with two or more child joints;
 - a FINGER'S LENGTH is the longest sum of bone lengths from the finger's base
   to one of its fingertips, its branches included; a branch counts its host's
@@ -86,7 +89,8 @@ class GenerationLimits:
     # Branch digits (a digit growing off a phalanx, so that link carries two
     # child joints).
     allow_branches: bool = True
-    # Top-level digits.
+    # Top-level digits (fingers), plus jointed palm bodies without one (see
+    # the module docstring: each takes a finger slot).
     max_digits: Optional[int] = None
     # Joints (phalanges) in one top-level digit, branches included.
     max_joints_per_digit: Optional[int] = None
@@ -96,10 +100,6 @@ class GenerationLimits:
     max_jointed_palm_bodies: Optional[int] = None
     # A jointed palm body below another jointed palm body.
     allow_stacked_palm_joints: bool = True
-    # Digits carried by one jointed palm body.
-    max_digits_per_jointed_palm_body: Optional[int] = None
-    # Digits without a carrier plus jointed palm bodies.
-    max_finger_chains: Optional[int] = None
     # A finger's length in mm: the longest sum of bone lengths from its base
     # to a fingertip, branches included (see the module docstring).
     max_finger_length_mm: Optional[float] = None
@@ -113,9 +113,8 @@ class GenerationLimits:
             raise ValueError("allowed_modules needs at least one of R, C, P (a digit's first phalanx cannot be "
                              "Coupled, and Coupled needs an earlier R)")
         object.__setattr__(self, "allowed_modules", tuple(k for k in MODULE_KINDS if k in kinds))
-        for name, lo in (("max_digits", 1), ("max_joints_per_digit", 1), ("max_finger_chains", 1),
-                         ("max_palm_bodies", 0), ("max_jointed_palm_bodies", 0),
-                         ("max_digits_per_jointed_palm_body", 0)):
+        for name, lo in (("max_digits", 1), ("max_joints_per_digit", 1), ("max_palm_bodies", 0),
+                         ("max_jointed_palm_bodies", 0)):
             v = getattr(self, name)
             if v is not None and (not isinstance(v, int) or isinstance(v, bool) or v < lo):
                 raise ValueError(f"{name} must be None or an int >= {lo}, got {v!r}")
@@ -135,28 +134,27 @@ class GenerationLimits:
 # grammar_bench/manifest.json) x 1.1, rounded to a clean number.
 FINGER_LENGTH_CAP_MM = 250.0
 
-# The simulator's padded envelope (grammar_envelope.py: N_FINGERS = 5,
-# N_JOINTS_PER_FINGER = 6, MAX_JOINTED_PALM_BODIES = 2, revolute-only, no
-# couplings, no branching, jointed palm bodies hang off the root palm and carry
-# at most one digit each, root digits + jointed palm bodies <= 5), plus the
+# The simulator's padded envelope (grammar_envelope.py: N_FINGERS = 6 finger
+# slots of N_JOINTS_PER_FINGER = 5 joints, revolute-only, no couplings, no
+# branching, no jointed palm body below another; a palm joint carries any
+# number of fingers), plus two ordinary rules: at most 2 palm joints and the
 # finger-length cap. It puts no bound on rigid palm bodies (they fold into the
 # root or carrier transform).
 SIMULATOR = GenerationLimits(
     allowed_modules=("R",),
     allow_branches=False,
-    max_digits=5,
-    max_joints_per_digit=6,
+    max_digits=6,
+    max_joints_per_digit=5,
     max_palm_bodies=None,
     max_jointed_palm_bodies=2,
     allow_stacked_palm_joints=False,
-    max_digits_per_jointed_palm_body=1,
-    max_finger_chains=5,
     max_finger_length_mm=FINGER_LENGTH_CAP_MM,
 )
 
-# Internal (the equivalence tests): SIMULATOR without the finger-length cap,
-# which the envelope does not measure; exactly ``_admit_structural``.
-SIMULATOR_ENVELOPE = replace(SIMULATOR, max_finger_length_mm=None)
+# Internal (the equivalence tests): SIMULATOR without its two ordinary rules
+# (palm joints, finger length), which the envelope does not need; exactly
+# ``_admit_structural``.
+SIMULATOR_ENVELOPE = replace(SIMULATOR, max_finger_length_mm=None, max_jointed_palm_bodies=None)
 
 LIMIT_KEYS: Tuple[str, ...] = tuple(f.name for f in fields(GenerationLimits))
 
@@ -170,8 +168,6 @@ LIMIT_TEXT: Dict[str, str] = {
     "max_palm_bodies": "palm parts",
     "max_jointed_palm_bodies": "palm joints",
     "allow_stacked_palm_joints": "stacked palm joints",
-    "max_digits_per_jointed_palm_body": "fingers per palm joint",
-    "max_finger_chains": "finger slots (fingers on the rigid palm + palm joints)",
     "max_finger_length_mm": "finger length (mm)",
 }
 
@@ -359,6 +355,17 @@ class Structure:
     def carried_counts(self) -> Counter:
         return Counter(c for c in (self.carrier(self.digits[d][0]) for d in self.top_digits()) if c is not None)
 
+    def empty_palm_joints(self) -> int:
+        """Jointed palm bodies that carry no top-level digit."""
+        carried = self.carried_counts()
+        return sum(1 for j in self.jointed() if not carried[j])
+
+    def finger_slots(self) -> int:
+        """What ``max_digits`` counts: the top-level digits plus the jointed
+        palm bodies that carry none (each needs a finger slot of its own in
+        the simulator)."""
+        return len(self.top_digits()) + self.empty_palm_joints()
+
     def empty_palm_bodies(self) -> List[str]:
         """Palm bodies with no top-level digit on them or on any palm body
         below them."""
@@ -376,20 +383,15 @@ class Structure:
         parents = {par for par, _ in self.palm.values()}
         return [n for n in self.palm if n not in parents]
 
-    def finger_chains(self) -> int:
-        n_root = sum(1 for d in self.top_digits() if self.carrier(self.digits[d][0]) is None)
-        return n_root + len(self.jointed())
-
     # ---- measurement against limits ------------------------------------------
 
     def excess(self, limits: GenerationLimits) -> Dict[str, int]:
         """Per limit, how far this structure is over it (0 = within)."""
-        tops = self.top_digits()
         ex = {k: 0 for k in LIMIT_KEYS}
         ex["allowed_modules"] = sum(1 for k in self.kinds.values() if k not in limits.allowed_modules)
         if not limits.allow_branches:
             ex["allow_branches"] = len(self.branching_links())
-        ex["max_digits"] = int(max(0, len(tops) - _inf(limits.max_digits)))
+        ex["max_digits"] = int(max(0, self.finger_slots() - _inf(limits.max_digits)))
         if limits.max_joints_per_digit is not None:
             ex["max_joints_per_digit"] = sum(max(0, n - limits.max_joints_per_digit)
                                              for n in self.joints_per_digit().values())
@@ -397,10 +399,6 @@ class Structure:
         ex["max_jointed_palm_bodies"] = int(max(0, len(self.jointed()) - _inf(limits.max_jointed_palm_bodies)))
         if not limits.allow_stacked_palm_joints:
             ex["allow_stacked_palm_joints"] = len(self.stacked())
-        if limits.max_digits_per_jointed_palm_body is not None:
-            ex["max_digits_per_jointed_palm_body"] = sum(
-                max(0, c - limits.max_digits_per_jointed_palm_body) for c in self.carried_counts().values())
-        ex["max_finger_chains"] = int(max(0, self.finger_chains() - _inf(limits.max_finger_chains)))
         # micrometres over the cap, summed over fingers
         ex["max_finger_length_mm"] = self.finger_length_excess_um(limits.max_finger_length_mm)
         return ex
@@ -409,17 +407,15 @@ class Structure:
         """Per limit, the measured value as a short string (for reports)."""
         kinds = Counter(self.kinds.values())
         jpd = self.joints_per_digit()
-        carried = self.carried_counts()
+        empty = self.empty_palm_joints()
         return {
             "allowed_modules": " ".join(f"{k}x{kinds[k]}" for k in MODULE_KINDS if kinds[k]) or "none",
             "allow_branches": f"{len(self.branching_links())} branching",
-            "max_digits": str(len(self.top_digits())),
+            "max_digits": str(len(self.top_digits())) + (f" + {empty} empty palm joint(s)" if empty else ""),
             "max_joints_per_digit": str(max(jpd.values(), default=0)),
             "max_palm_bodies": str(len(self.palm)),
             "max_jointed_palm_bodies": str(len(self.jointed())),
             "allow_stacked_palm_joints": f"{len(self.stacked())} stacked",
-            "max_digits_per_jointed_palm_body": str(max(carried.values(), default=0)),
-            "max_finger_chains": str(self.finger_chains()),
             "max_finger_length_mm": f"{1000.0 * max(self.finger_lengths().values(), default=0.0):.0f}",
         }
 
@@ -620,20 +616,12 @@ class LimitContext:
             trial.digits["__room"] = (host, 1)
             if len(trial.empty_palm_bodies()) > self.base.get(EMPTY_PALM, 0):
                 return False
-        lim = self.limits
-        tops = st.top_digits()
-        if len(tops) + 1 > _inf(lim.max_digits) and len(tops) + 1 - _inf(lim.max_digits) > self.base["max_digits"]:
-            return False
-        c = st.carrier(host)
-        if c is None:
-            chains = st.finger_chains() + 1
-            if chains > _inf(lim.max_finger_chains) and chains - _inf(lim.max_finger_chains) > self.base["max_finger_chains"]:
-                return False
-        elif lim.max_digits_per_jointed_palm_body is not None:
-            counts = st.carried_counts()
-            new = counts[c] + 1
-            over = sum(max(0, v - lim.max_digits_per_jointed_palm_body) for v in counts.values())
-            if new > lim.max_digits_per_jointed_palm_body and over + 1 > self.base["max_digits_per_jointed_palm_body"]:
+        cap = self.limits.max_digits
+        if cap is not None:
+            trial = st.copy()
+            trial.digits["__room"] = (host, 1)
+            over = trial.finger_slots() - cap
+            if over > 0 and over > self.base["max_digits"]:
                 return False
         return True
 
@@ -653,36 +641,30 @@ class LimitContext:
         digits can still all be mounted within the limits?"""
         lim = self.limits
         n_j = len(self.struct.jointed()) + 1
-        if n_j > _inf(lim.max_jointed_palm_bodies) or n_j > _inf(lim.max_finger_chains):
+        if n_j > _inf(lim.max_jointed_palm_bodies):
             return False
         if not lim.allow_stacked_palm_joints and self.struct.carrier(parent) is not None:
             return False
-        capacity = (_inf(lim.max_finger_chains) - n_j) + n_j * _inf(lim.max_digits_per_jointed_palm_body)
-        return capacity >= digits_to_place
+        # Each jointed palm body takes a finger slot; with at least as many
+        # digits as palm joints every one of them can carry one.
+        return max(n_j, digits_to_place) <= _inf(lim.max_digits)
 
     def leaves_feasible(self, palm: Dict[str, Tuple[str, bool]], digits_to_place: int) -> bool:
         """While sampling a fresh hand under the no-empty-palm rule:
         can ``digits_to_place`` digits cover every palm leaf (one digit
         each, on the leaf) of this palm structure within the limits?"""
         st = Structure(palm=dict(palm))
-        lim = self.limits
         leaves = st.palm_leaves()
         if len(leaves) > digits_to_place:
             return False
-        demand = Counter(st.carrier(leaf) for leaf in leaves)
-        n_j = len(st.jointed())
-        if demand[None] + n_j > _inf(lim.max_finger_chains):
-            return False
-        if lim.max_digits_per_jointed_palm_body is not None:
-            if any(c is not None and k > lim.max_digits_per_jointed_palm_body for c, k in demand.items()):
-                return False
-        return True
+        for i, leaf in enumerate(leaves):
+            st.digits[f"__leaf{i}"] = (leaf, 1)
+        # The digits beyond one per leaf can fill palm joints left empty.
+        return max(st.finger_slots(), digits_to_place) <= _inf(self.limits.max_digits)
 
     def digit_cap(self) -> float:
-        """Most top-level digits a fresh hand may get. Every digit fills a
-        finger chain when no palm body is jointed, so this is
-        ``min(max_digits, max_finger_chains)``."""
-        return min(_inf(self.limits.max_digits), _inf(self.limits.max_finger_chains))
+        """Most top-level digits a fresh hand may get."""
+        return _inf(self.limits.max_digits)
 
     # ---- finger length ----------------------------------------------------------------------
 

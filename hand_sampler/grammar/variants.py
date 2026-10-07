@@ -351,7 +351,7 @@ def build_distribution(surface: bool = True, spacing: bool = True, curl_oppositi
     All three on is V1s + spacing + the V3s curl/opposition on the wide
     grids of ``GRAMMAR_BASE``; it is not byte-identical to ``G_V3S`` (whose
     base is G_V1's restricted counts and 5 mount fractions, without spacing).
-    Restrictions such as hinge-only joints, no branches or at most 5 fingers
+    Restrictions such as hinge-only joints, no branches or at most 6 fingers
     are generation limits (``limits.SIMULATOR``), not rules."""
     d = GRAMMAR_BASE
     if surface:

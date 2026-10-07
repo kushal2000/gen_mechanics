@@ -5,8 +5,9 @@ what the grammar can express and what the simulator can build.
    (digests of derivation JSON and phenotype hashes recorded on the parent
    commit e77d28a), and ``GenerationLimits()`` (or any limits that never
    bind) equals ``None``.
-2. ``SIMULATOR`` is exactly the simulator envelope plus a finger-length cap:
-   within ``SIMULATOR`` without the cap iff ``grammar_envelope._admit_structural``
+2. ``SIMULATOR`` is exactly the simulator envelope plus two ordinary rules
+   (at most 2 palm joints, a finger-length cap): within ``SIMULATOR_ENVELOPE``
+   (``SIMULATOR`` without them) iff ``grammar_envelope._admit_structural``
    admits the derived model.
 3. Every design sampled under ``SIMULATOR`` (2000 per variant) and every step
    of long random mutation chains passes ``_admit_structural``, and the
@@ -194,8 +195,7 @@ TRACKED = {'G_FULL': '4210b8b823591c1e', 'G_NOBRANCH_INS': '22a1fcf3100164f6', '
 
 # Limits that never bind on any of the hands above (every cap far beyond what
 # the variants sample or the chains reach): they must not perturb a single draw.
-LOOSE = GenerationLimits(max_digits=60, max_joints_per_digit=400, max_palm_bodies=60, max_jointed_palm_bodies=60,
-                         max_digits_per_jointed_palm_body=60, max_finger_chains=120)
+LOOSE = GenerationLimits(max_digits=60, max_joints_per_digit=400, max_palm_bodies=60, max_jointed_palm_bodies=60)
 
 LIMIT_ARGS = {"none": {}, "None": {"limits": None}, "UNLIMITED": {"limits": UNLIMITED}, "LOOSE": {"limits": LOOSE}}
 
@@ -232,15 +232,14 @@ def test_unlimited_is_the_default_and_limits_nothing():
 
 
 def test_simulator_preset_matches_envelope_constants():
-    assert SIMULATOR.max_digits == GE.MAX_DIGITS == GE.N_FINGERS
-    assert SIMULATOR.max_joints_per_digit == GE.MAX_JOINTS_PER_DIGIT == GE.N_JOINTS_PER_FINGER
-    assert SIMULATOR.max_jointed_palm_bodies == GE.MAX_JOINTED_PALM_BODIES
-    assert SIMULATOR.max_finger_chains == GE.N_FINGERS
+    assert SIMULATOR.max_digits == GE.MAX_DIGITS == GE.N_FINGERS == 6
+    assert SIMULATOR.max_joints_per_digit == GE.MAX_JOINTS_PER_DIGIT == GE.N_JOINTS_PER_FINGER == 5
     assert SIMULATOR.allowed_modules == ("R",) and not SIMULATOR.allow_branches
-    assert not SIMULATOR.allow_stacked_palm_joints and SIMULATOR.max_digits_per_jointed_palm_body == 1
-    # SIMULATOR adds the finger-length cap to the envelope's shape
-    assert SIMULATOR.max_finger_length_mm == 250.0 and SIMULATOR_ENVELOPE == replace(SIMULATOR,
-                                                                                     max_finger_length_mm=None)
+    assert not SIMULATOR.allow_stacked_palm_joints
+    assert not hasattr(SIMULATOR, "max_finger_chains") and not hasattr(SIMULATOR, "max_digits_per_jointed_palm_body")
+    # SIMULATOR adds two ordinary rules to the envelope's shape: 2 palm joints, the finger-length cap
+    assert SIMULATOR.max_jointed_palm_bodies == 2 and SIMULATOR.max_finger_length_mm == 250.0
+    assert SIMULATOR_ENVELOPE == replace(SIMULATOR, max_finger_length_mm=None, max_jointed_palm_bodies=None)
 
 
 def _equivalence_designs():
@@ -263,7 +262,7 @@ def _equivalence_designs():
 
 def test_simulator_limits_equal_admit_structural():
     """The envelope's shape is exactly SIMULATOR_ENVELOPE; SIMULATOR (which
-    also caps finger length) is inside it."""
+    also caps palm joints and finger length) is inside it."""
     n = n_ok = 0
     for d in _equivalence_designs():
         rep = L.check(d, SIMULATOR_ENVELOPE)
@@ -292,7 +291,7 @@ def test_simulator_sampling_always_admitted(name):
         assert L.check(d, SIMULATOR).ok
         assert _admitted(d), (name, seed, GE._admit_structural(derive(d)).reasons)
         digits.add(sum(1 for s in d.steps if s.production == "Digit"))
-    assert max(digits) == 5            # the caps are reached, not just respected
+    assert max(digits) == min(6, dist.digit_count_range[1])   # the caps are reached, not just respected
 
 
 @pytest.mark.parametrize("pool", ["evo", "wide"])
@@ -322,8 +321,7 @@ def test_operators_respect_limits_constructively(name):
     within the limits: no operator relies on rejection."""
     dist = _dist(name)
     for limits in (SIMULATOR, GenerationLimits(max_digits=3, max_joints_per_digit=4, max_jointed_palm_bodies=1,
-                                               allow_stacked_palm_joints=False, max_finger_chains=3,
-                                               max_digits_per_jointed_palm_body=1, max_palm_bodies=2)):
+                                               allow_stacked_palm_joints=False, max_palm_bodies=2)):
         rng = np.random.default_rng(7)
         for c in range(25):
             d = sample_derivation(c, dist, limits=limits)
@@ -356,7 +354,7 @@ def test_vary_tracked_and_apply_operator_take_limits():
 def test_operator_inapplicable_at_a_cap():
     """add_minimal_digit at the digit cap is inapplicable; under no limits it applies."""
     dist = _dist("G_V1")
-    lim = GenerationLimits(max_digits=2, max_finger_chains=5)
+    lim = GenerationLimits(max_digits=2)
     seed = next(s for s in range(200)
                 if sum(1 for st in sample_derivation(s, dist, limits=lim).steps
                        if st.production == "Digit") == 2)
@@ -396,8 +394,7 @@ def _measure(d):
         "palm": len(st.palm),
         "jointed": len(st.jointed()),
         "stacked": len(st.stacked()),
-        "carried": max(st.carried_counts().values(), default=0),
-        "chains": st.finger_chains(),
+        "slots": st.finger_slots(),
         "branches": len(st.branching_links()) + sum(1 for s in d.steps if s.production == "Digit"
                                                     and not s.params["top_level"]),
         "kinds": set(st.kinds.values()),
@@ -405,14 +402,12 @@ def _measure(d):
 
 
 SINGLE_LIMITS = [
-    (GenerationLimits(max_digits=3), lambda m: m["digits"] <= 3),
+    (GenerationLimits(max_digits=3), lambda m: m["digits"] <= 3 and m["slots"] <= 3),
     (GenerationLimits(max_joints_per_digit=3), lambda m: m["joints"] <= 3),
     (GenerationLimits(max_palm_bodies=1), lambda m: m["palm"] <= 1),
     (GenerationLimits(max_jointed_palm_bodies=1), lambda m: m["jointed"] <= 1),
     (GenerationLimits(max_jointed_palm_bodies=0), lambda m: m["jointed"] == 0),
     (GenerationLimits(allow_stacked_palm_joints=False), lambda m: m["stacked"] == 0),
-    (GenerationLimits(max_digits_per_jointed_palm_body=1), lambda m: m["carried"] <= 1),
-    (GenerationLimits(max_finger_chains=3), lambda m: m["chains"] <= 3),
     (GenerationLimits(allow_branches=False), lambda m: m["branches"] == 0),
     (GenerationLimits(allowed_modules=("R", "P")), lambda m: m["kinds"] <= {"R", "P"}),
     (GenerationLimits(allowed_modules=("R", "Coupled")), lambda m: m["kinds"] <= {"R", "Coupled"}),
@@ -580,19 +575,108 @@ def test_remove_a_finger_removes_any_finger():
 
 
 # ---------------------------------------------------------------------------
-# 6. Two fingers on one palm joint (on hold): the grammar side follows the
-#    envelope, and the slot layout of every design the envelope admits today
-#    is pinned, so a new layout can be checked for backward compatibility.
+# 6. Any split of the fingers over the palm and its palm parts (6 finger
+#    slots, any number of fingers per palm joint), every commercial hand, and
+#    the slot layout of every admitted design pinned.
 # ---------------------------------------------------------------------------
 
+# (fingers on the palm, fingers per palm part, which palm parts are jointed)
+SPLITS = {
+    "5 rigid": (5, ()),
+    "6 rigid": (6, ()),
+    "3+2+1": (3, (2, 1)),
+    "2+2": (2, (2,)),
+    "3+2 (SVH)": (3, (2,)),
+    "3+1+1 (arms_skel)": (3, (1, 1)),
+    "0+3+3": (0, (3, 3)),
+    "1+5": (1, (5,)),
+    "2+2 on a rigid part": (2, (2,), (False,)),
+    "3+2 rigid+1": (3, (2, 1), (False, True)),
+    "5 + an empty palm joint": (5, (0,)),
+}
 
-def test_simulator_fingers_per_palm_joint_follows_the_envelope():
-    """SIMULATOR's ``max_digits_per_jointed_palm_body`` is what one carrier
-    slot of the envelope can take: 1 today. A layout that carries several
-    finger chains per palm joint declares ``MAX_DIGITS_PER_CARRIER`` (None:
-    no cap, only the 5 chains bind); set SIMULATOR to match and the
-    equivalence test above checks the rest."""
-    assert SIMULATOR.max_digits_per_jointed_palm_body == getattr(GE, "MAX_DIGITS_PER_CARRIER", 1)
+
+def _split_tables(d):
+    return [d.slot_valid.tolist(), d.slot_tie.tolist(), np.round(d.slot_origin, 12).tolist(),
+            np.round(d.slot_axis, 12).tolist(), np.round(d.slot_limits, 12).tolist(),
+            list(d.slot_joint_name), list(d.slot_body_name), list(d.finger_digit_id), list(d.filtered_pairs)]
+
+
+@pytest.mark.parametrize("name", list(SPLITS))
+def test_every_finger_split_fits(name):
+    """Each split is admitted and within the limits (more than 2 palm joints
+    only breaks the ordinary palm-joint rule), and canonicalize assigns the
+    finger slots deterministically: the palm's fingers first by digit id,
+    then each palm joint's fingers, its leader first."""
+    from hand_sampler.grammar_bench.splits import split_hand
+
+    root, parts, *jointed = SPLITS[name]
+    jointed = list(jointed[0]) if jointed else [True] * len(parts)
+    d = split_hand(root, parts, jointed)
+    assert L.check(d, SIMULATOR_ENVELOPE).ok and _admitted(d), GE._admit_structural(derive(d)).reasons
+    assert L.check(d, SIMULATOR).ok == (sum(jointed) <= 2)
+    a, b = GE.canonicalize(derive(d)), GE.canonicalize(derive(d))
+    assert _split_tables(a) == _split_tables(b)
+    # expected roles: rigid-part fingers sit with the palm's, then each palm joint's group
+    roles, digits = [], []
+    n_rigid = root + sum(k for k, j in zip(parts, jointed) if not j)
+    roles += [GE.LOCKED] * n_rigid
+    for k, j in zip(parts, jointed):
+        if j:
+            roles += [GE.LEADER] + [GE.FOLLOWER] * (k - 1) if k else [GE.LEADER]
+    roles += [GE.LOCKED] * (GE.N_FINGERS - len(roles))
+    assert GE.carrier_roles(a) == tuple(roles)
+    ids = [int(x) for x in a.finger_digit_id if x is not None]
+    assert len(ids) == root + sum(parts)
+    assert ids[:n_rigid] == sorted(ids[:n_rigid])
+    # a follower is tied to its group's leader and shares its joint frame
+    for f, role in enumerate(roles):
+        c = GE.carrier_slot(f)
+        if role == GE.FOLLOWER:
+            lead = int(a.slot_tie[c])
+            assert GE.carrier_roles(a)[GE.slot_finger(lead)] == GE.LEADER
+            assert np.allclose(a.slot_origin[c], a.slot_origin[lead]) and np.allclose(a.slot_axis[c], a.slot_axis[lead])
+            assert np.allclose(a.slot_limits[c], a.slot_limits[lead])
+        else:
+            assert a.slot_tie[c] == -1
+
+
+def test_more_finger_slots_than_six_rejected():
+    from hand_sampler.grammar_bench.splits import split_hand
+
+    for root, parts in ((7, ()), (6, (0,)), (4, (2, 1))):
+        d = split_hand(root, parts)
+        assert not _admitted(d) and not L.check(d, SIMULATOR_ENVELOPE).ok
+        assert L.check(d, SIMULATOR_ENVELOPE).failing == ["max_digits"]
+
+
+def _commercial_projections():
+    from hand_sampler.grammar.adapters.projection import project_to_derivation
+    from hand_sampler.grammar.adapters.urdf import load_urdf
+    from hand_sampler.grammar.experiments import e13_representation as e13
+
+    out = {}
+    for hand, path, avail, _ in e13._cases(e13._load_manifest()):
+        if avail != "available":
+            continue
+        imp = load_urdf(path, hand_root=hand.get("hand_root"))
+        out[hand["id"]] = project_to_derivation(imp.model, palm_joints=hand.get("palm_joints", ()),
+                                                tip_frames=hand.get("tip_frames", {})).derivation
+    if len(out) < 15:
+        pytest.skip("local-only: not every manifest hand is available on this machine")
+    return out
+
+
+def test_every_commercial_projection_fits_the_simulator():
+    """All 15 exact projections, SVH (two fingers on one palm joint) and
+    arms_skel (two palm joints) included, are within SIMULATOR and admitted
+    (the fine-conformed hands: ``test_conform.py``)."""
+    hands = _commercial_projections()
+    for hand_id, d in hands.items():
+        assert L.check(d, SIMULATOR).ok, (hand_id, L.check(d, SIMULATOR).failing)
+        assert _admitted(d), (hand_id, GE._admit_structural(derive(d)).reasons)
+    svh = GE.canonicalize(derive(hands["svh_right"]))
+    assert GE.carrier_roles(svh).count(GE.FOLLOWER) == 1
 
 
 def _layout_digest(models):
@@ -606,22 +690,24 @@ def _layout_digest(models):
         payload = [d.slot_valid.astype(bool).tolist(), np.round(d.slot_origin, 9).tolist(),
                    np.round(d.slot_axis, 9).tolist(), np.round(d.slot_limits, 9).tolist(),
                    np.round(d.slot_length, 9).tolist(), list(d.slot_joint_name), list(d.slot_body_name),
-                   list(d.finger_digit_id)]
+                   list(d.finger_digit_id), d.slot_tie.tolist()]
         h.update(json.dumps(payload).encode())
         n += 1
     return h.hexdigest()[:16], n
 
 
-# (digest, admitted designs) of canonicalize's 32-slot tables, recorded on
-# 8b454cb and unchanged since: 300 samples per variant with limits=None
-# (byte-identical by section 1) and the exact projections of the manifest's
-# commercial hands.
+# (digest, admitted designs) of canonicalize's 36-slot tables
+# (population_file.ENVELOPE_ID grammar_envelope/2): 300 samples per variant
+# with limits=None (byte-identical by section 1) and the exact projections of
+# the manifest's commercial hands. Re-recorded for the 36-slot layout; the
+# 32-slot pins (recorded on 8b454cb) no longer apply.
 LAYOUTS = {
-    "G_FULL": ("70a058c378b82e1d", 7),
-    "G_V1": ("3b909d849986c38d", 230),
-    "G_V3S": ("3696e28272f00c78", 224),
-    "G_NOBRANCH": ("b986f4e7d69e6ee2", 15),
+    "G_FULL": ("67d24feae649ad54", 9),
+    "G_V1": ("425f4b1d100886e2", 164),
+    "G_V3S": ("d9c781a232a50b86", 172),
+    "G_NOBRANCH": ("27c1163d2fb60ef6", 17),
 }
+COMMERCIAL_LAYOUT = ("7416c3e1bca2d104", 15)
 
 
 @pytest.mark.parametrize("name", sorted(LAYOUTS))
@@ -630,18 +716,5 @@ def test_slot_layout_of_admitted_designs_unchanged(name):
 
 
 def test_slot_layout_of_commercial_hands_unchanged():
-    from hand_sampler.grammar.adapters.projection import project_to_derivation
-    from hand_sampler.grammar.adapters.urdf import load_urdf
-    from hand_sampler.grammar.experiments import e13_representation as e13
-
-    models = []
-    for hand, path, avail, _ in e13._cases(e13._load_manifest()):
-        if avail != "available":
-            continue
-        imp = load_urdf(path, hand_root=hand.get("hand_root"))
-        pr = project_to_derivation(imp.model, palm_joints=hand.get("palm_joints", ()),
-                                   tip_frames=hand.get("tip_frames", {}))
-        models.append(derive(pr.derivation))
-    if len(models) < 15:
-        pytest.skip("local-only: not every manifest hand is available on this machine")
-    assert _layout_digest(models) == ("f380213c7bf21cc7", 14)
+    models = [derive(d) for d in _commercial_projections().values()]
+    assert _layout_digest(models) == COMMERCIAL_LAYOUT

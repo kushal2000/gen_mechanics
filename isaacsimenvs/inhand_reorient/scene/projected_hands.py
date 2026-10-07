@@ -38,8 +38,7 @@ def palm_filter_slots(design: "ge.EnvelopeDesign", links_per_finger: int = 2) ->
     inside or next to the hull)."""
     out = []
     for f in range(ge.N_FINGERS):
-        real = [f * ge.N_JOINTS_PER_FINGER + k for k in range(ge.N_JOINTS_PER_FINGER)
-                if design.slot_valid[f * ge.N_JOINTS_PER_FINGER + k]]
+        real = [ge.finger_slot(f, d) for d in range(ge.N_JOINTS_PER_FINGER) if design.slot_valid[ge.finger_slot(f, d)]]
         out += real[:links_per_finger]
     return sorted(out)
 
@@ -100,8 +99,9 @@ def _quat_wxyz_to_mat(q) -> np.ndarray:
 def urdf_equivalent_placement(design: "ge.EnvelopeDesign", hand_id: str, pose_entry: Mapping) -> dict:
     """``{"base_pos", "base_rot_wxyz", "spawn_offset", "default_q"}`` putting
     the projected design where ``pose_entry`` (a ``repose_hand_poses.json``
-    entry for the URDF hand) puts the URDF hand. ``default_q`` is a (32,)
-    array: the design's own default with the entry's joints on their slots."""
+    entry for the URDF hand) puts the URDF hand. ``default_q`` is a (36,)
+    array: the design's own default with the entry's joints on their slots
+    (a follower carrier takes its leader's value)."""
     _, R = projection(hand_id)
     R = R[:3, :3]
     R_u = _quat_wxyz_to_mat(pose_entry["base_rot"])
@@ -114,6 +114,7 @@ def urdf_equivalent_placement(design: "ge.EnvelopeDesign", hand_id: str, pose_en
         lo, hi = design.slot_limits[slot]
         margin = min(1e-3, max(0.0, (hi - lo) / 2.0 - 1e-9))
         default_q[slot] = min(max(v, lo + margin), hi - margin)
+    default_q = ge.tied_q(design, default_q)
     return {"base_pos": tuple(float(v) for v in pose_entry["base_pos"]), "base_rot_wxyz": base_rot,
             "spawn_offset": tuple(float(v) for v in spawn), "default_q": default_q}
 
@@ -125,11 +126,7 @@ def palm_hull_points(design: "ge.EnvelopeDesign", radius: float) -> np.ndarray:
     reaches past max(root length, highest mount) along z."""
     T0 = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
     keys = [np.zeros(3), np.array([0.0, 0.0, float(design.root_length_m)])]
-    for f in range(ge.N_FINGERS):
-        s = f * ge.N_JOINTS_PER_FINGER
-        if design.slot_valid[s]:
-            keys.append(T0[s][:3, 3])
-    for s in (ge.PC0_SLOT, ge.PC1_SLOT):
+    for s in ge.FINGER_BASE_SLOTS + ge.CARRIER_SLOTS:   # finger mounts and palm joints
         if design.slot_valid[s]:
             keys.append(T0[s][:3, 3])
     r = float(radius)

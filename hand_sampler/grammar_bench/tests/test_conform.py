@@ -10,8 +10,9 @@
    snapping), so conform is the identity on the grammar's own hands.
 3. The grid-stepping operators that cannot act on an exact projection act on
    the conformed hand, and no operator raises on it.
-4. The report: SIMULATOR violations (SVH: two fingers on one palm joint),
-   rule conflicts (co-located joints, lateral finger offsets), fidelity
+4. The report: SIMULATOR violations (none: every hand fits the simulator,
+   SVH's two fingers on one palm joint included), rule conflicts (co-located
+   joints, lateral finger offsets), fidelity
    (G_WIDE closer to the hand than G_FULL).
 5. ``mount_lateral_grid_m``: off by default (sampling unchanged, see
    ``test_generation_limits``'s digests); when set, offsets on the grid for
@@ -210,7 +211,7 @@ def test_report_names_the_known_conflicts():
     if "svh_right" in HANDS:
         _, pr = HANDS["svh_right"]
         cd, rep = C.conform_to_grammar(pr.derivation, G_FULL, SIMULATOR)
-        assert rep.limits.failing == ["max_digits_per_jointed_palm_body"]
+        assert rep.limits.ok                  # two fingers on one palm joint fit the simulator
         assert "colocated_joints" in rep.conflict_features()
     if "allegro_right" in HANDS:
         _, pr = HANDS["allegro_right"]
@@ -360,8 +361,11 @@ def test_fine_conform_is_in_the_fine_grammar(hand_id):
     cov = coverage(derive(cd), GRAMMAR, resolution="fine")
     assert cov.in_support, cov.out_of_support
     _fine_on_grid(cd)
-    # within the simulator limits; SVH carries two fingers on one palm joint
-    assert rep.limits.ok or (hand_id == "svh_right" and rep.limits.failing == ["max_digits_per_jointed_palm_body"])
+    # within the simulator limits (SVH's two fingers on one palm joint included), and the
+    # simulator builds it
+    assert rep.limits.ok, rep.limits.failing
+    from hand_sampler.grammar_bench.tests.test_generation_limits import GE
+    assert GE._admit_structural(derive(cd)).ok, GE._admit_structural(derive(cd)).reasons
     assert not Structure.from_steps(cd.steps).empty_palm_bodies()          # the grammar's palm rule
     assert not rep.conflicts, rep.conflict_features()
 

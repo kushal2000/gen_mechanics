@@ -62,7 +62,13 @@ pose without changing the digest that was supposed to catch it.
 `load_population` requires both `derived_sha256` and this schema on every
 entry; an old file is rejected by the schema check below, not silently
 upgraded."""
-ENVELOPE_ID = "grammar_envelope/1"
+ENVELOPE_ID = "grammar_envelope/2"
+"""The articulation layout a population file was built for. `/1` was the
+32-slot layout (5 finger chains of 6 joints plus 2 palm-carrier slots); `/2`
+is 6 finger slots of 1 carrier (palm) joint plus 5 finger joints, 36 slots,
+with tied follower carriers and a fingertip body per finger slot
+(`grammar_envelope`'s module docstring). `load_population` refuses a file
+built for another layout."""
 
 # Revolute-only: only the "R" module kind ever gets sampled (see
 # distributions.Distribution.module_probabilities' docstring -- weights need
@@ -137,7 +143,7 @@ def _derived_digest(design: "ge.EnvelopeDesign") -> str:
         "slot_length": np.round(design.slot_length.astype(float), 12).tolist(),
         "capsule_radius_m": round(float(design.capsule_radius_m), 12),
         "root_length_m": round(float(design.root_length_m), 12),
-        "fingertip_marker_ok": design.fingertip_marker_ok.astype(bool).tolist(),
+        "slot_tie": design.slot_tie.astype(int).tolist(),
         "default_q": np.round(pu.default_q.astype(float), 12).tolist(),
         "spawn_offset": np.round(pu.spawn_offset.astype(float), 12).tolist(),
         "base_rot_wxyz": np.round(pu.base_rot_wxyz.astype(float), 12).tolist(),
@@ -376,7 +382,11 @@ def load_population(path) -> List["ge.EnvelopeDesign"]:
             f"{GRAMMAR_VERSION!r}: derive()/canonicalize() may disagree with what was admitted"
         )
     if doc.get("envelope") != ENVELOPE_ID:
-        raise ValueError(f"population envelope {doc.get('envelope')!r} != this checkout's {ENVELOPE_ID!r}")
+        raise ValueError(
+            f"{path}: population built for the articulation layout {doc.get('envelope')!r}, but this checkout "
+            f"uses {ENVELOPE_ID!r} ({ge.N_SLOTS} joint slots: {ge.N_FINGERS} finger slots of one palm joint and "
+            f"{ge.N_JOINTS_PER_FINGER} finger joints); rebuild it with make_grammar_population.py"
+        )
 
     designs_raw = doc.get("designs", [])
     expected_population_sha = _sha256_hex(_canonical_json_bytes([d["sha256"] for d in designs_raw]))

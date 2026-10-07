@@ -2,39 +2,51 @@
 simulator-ready per-design tables.
 
 See `project-notes/grammar/phase2-adapter-design.md` section 3-4 for the
-design this implements. Numpy + `hand_sampler` only: no `isaaclab`/`pxr`
-imports, so this module is importable and unit-testable without booting
-Kit (`isaacsimenvs/inhand_reorient/scene/author_grammar.py` does the lazy
-pxr USD authoring on top of it).
+original design. Numpy + `hand_sampler` only: no `isaaclab`/`pxr` imports, so
+this module is importable and unit-testable without booting Kit
+(`isaacsimenvs/inhand_reorient/scene/author_grammar.py` does the lazy pxr USD
+authoring on top of it).
 
 Envelope layout (fixed across every design so a whole population shares one
 articulation topology):
 
-    - 5 "finger" slots (0..4), 6 joint slots each (`f{f}_j{d}`), plus 2
-      "palm-carrier" slots (`pc0_j`, `pc1_j`) -- 32 joint slots total.
-    - finger slots 0, 1, 2 hang directly off root; finger slot 3 hangs off
-      `pc0_j`; finger slot 4 hangs off `pc1_j`. `pc0_j`/`pc1_j` hang off
-      root. This parent/child structure never changes between designs --
-      only each slot's origin/axis/limits/validity does.
-    - A design's finger may use fewer than 6 joint slots (its own digit has
-      fewer phalanges) or none at all (padding); a design may have 0, 1 or 2
-      real (jointed) palm carriers. Unused slots are "ghost": authored with
-      the old sampler's convention (tiny link, no collider, locked near
-      zero) so they never move and never collide, and the envelope's fixed
-      topology is preserved regardless.
+    - 6 finger slots. Finger slot `f` is one palm joint (its CARRIER, slot
+      `6 f`, joint `f{f}_cj`, body `f{f}_c`, a child of the root) followed by
+      up to 5 finger joints (slots `6 f + 1 + d`, joints `f{f}_j{d}`, bodies
+      `f{f}_link{d}`, a chain on the carrier) -- 36 joint slots. Each finger
+      slot also ends in a fingertip body `f{f}_tip`, fixed to `f{f}_link4`
+      at the real fingertip (`tip_offsets`).
+    - Each carrier has one of three roles in a design (`carrier_roles`):
+      LOCKED (a finger on the rigid palm, or an empty finger slot: ghost
+      limits, no collider, the finger's mount transform folded into the
+      finger's base origin), LEADER (the first finger slot of a jointed palm
+      part: the carrier IS that palm joint and carries the palm part's
+      collider; a jointed palm part without a finger is a leader with an
+      empty finger chain) or FOLLOWER (another finger on the same palm part:
+      same origin, axis and limits as its leader, tied to it so the part
+      moves as one piece -- `slot_tie` -- and no collider).
+    - Fingers are assigned to finger slots in a canonical order
+      (`canonicalize`): the fingers without a jointed palm part first (by
+      digit id), then each jointed palm part in palm-index order, its
+      fingers by digit id with the leader first. Any split of up to 6
+      fingers fits: 5 on a rigid palm, 3 + 2 + 1, 2 + 2, ...
+    - `slot_valid` marks the joints the policy controls: real finger joints
+      and leader carriers. Follower and locked carriers are not valid (their
+      tokens are disabled and their actions ignored); ghost slots (unused
+      finger joints) are authored with the old sampler's convention (tiny
+      link, no collider, locked near zero).
 
-Admission (`admit`) restricts a derived `KinematicModel` to designs this
-envelope can represent losslessly: revolute-only, no couplings, no in-digit
-branching, <= 5 digits, <= 6 joints per digit, <= 2 jointed palm bodies each
-carrying <= 1 digit with no jointed palm descendant, and few enough
-root-mounted digits to fit the 3 root-only slots plus whichever of the two
-carrier slots is not already spoken for by a real carrier.
+Admission (`_admit_structural`) restricts a derived `KinematicModel` to the
+designs this envelope represents losslessly: revolute only, no couplings, no
+in-digit branching, at most 5 joints per finger, no jointed palm part below
+another jointed palm part, and at most 6 finger slots in use (one per finger,
+plus one per jointed palm part that carries no finger). There is no cap on the
+fingers one palm joint carries.
 """
 
 from __future__ import annotations
 
 import math
-from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -53,52 +65,85 @@ from ..palm_calibration import MIN_SPAWN_HEIGHT_ABOVE_PALM_M
 # Envelope layout constants
 # --------------------------------------------------------------------------
 
-N_FINGERS = 5
-N_JOINTS_PER_FINGER = 6
-N_SLOTS = N_FINGERS * N_JOINTS_PER_FINGER + 2  # 32
-PC0_SLOT = N_FINGERS * N_JOINTS_PER_FINGER      # 30
-PC1_SLOT = PC0_SLOT + 1                          # 31
+N_FINGERS = 6                                  # finger slots
+N_JOINTS_PER_FINGER = 5                        # finger joints per finger slot
+SLOTS_PER_FINGER = 1 + N_JOINTS_PER_FINGER     # its carrier + its finger joints
+N_SLOTS = N_FINGERS * SLOTS_PER_FINGER         # 36
 ROOT_SENTINEL = -1
 
 MAX_DIGITS = N_FINGERS
 MAX_JOINTS_PER_DIGIT = N_JOINTS_PER_FINGER
-MAX_JOINTED_PALM_BODIES = 2
+
+LOCKED, LEADER, FOLLOWER = "locked", "leader", "follower"
 
 # Old-sampler ghost-slot convention (see hand_sampler/build.py): a tiny,
 # collider-less link that is locked near zero so it never moves and never
-# collides, used to pad every design to the fixed 32-slot topology.
+# collides, used to pad every design to the fixed 36-slot topology.
 GHOST_LENGTH_M = 1e-4
 GHOST_LIMITS = (0.0, 1e-8)
 GHOST_AXIS = (0.0, 0.0, 1.0)
 
 MAX_REST_PENETRATION_M = 0.003
-"""Default `admit(check_overlap=True)` rejection threshold -- moved here
-from `make_grammar_population.py` (which now imports it FROM here) so the
-gate lives with `admit` itself; see that module's own historical docstring
-for the Kit-traced blowup this threshold guards against."""
+"""Default `admit(check_overlap=True)` rejection threshold (deeper starting
+overlaps made PhysX push links apart at over 100 rad in one or two steps)."""
 
-SLOT_NAMES: Tuple[str, ...] = tuple(
-    [f"f{f}_j{d}" for f in range(N_FINGERS) for d in range(N_JOINTS_PER_FINGER)] + ["pc0_j", "pc1_j"]
-)
+
+def carrier_slot(f: int) -> int:
+    """Slot index of finger slot `f`'s carrier (palm) joint."""
+    return f * SLOTS_PER_FINGER
+
+
+def finger_slot(f: int, d: int) -> int:
+    """Slot index of finger joint `d` (0 = at the palm) of finger slot `f`."""
+    return f * SLOTS_PER_FINGER + 1 + d
+
+
+def slot_finger(idx: int) -> int:
+    """Finger slot of slot `idx`."""
+    return idx // SLOTS_PER_FINGER
+
+
+def slot_joint_index(idx: int) -> int:
+    """`-1` for a carrier slot, else the finger joint index `d` (0..4)."""
+    return idx % SLOTS_PER_FINGER - 1
+
+
+CARRIER_SLOTS: Tuple[int, ...] = tuple(carrier_slot(f) for f in range(N_FINGERS))
+FINGER_BASE_SLOTS: Tuple[int, ...] = tuple(finger_slot(f, 0) for f in range(N_FINGERS))
+LAST_FINGER_SLOTS: Tuple[int, ...] = tuple(finger_slot(f, N_JOINTS_PER_FINGER - 1) for f in range(N_FINGERS))
+
+
+def slot_name(idx: int) -> str:
+    """Joint name of slot `idx` (`author_grammar` authors it under this name)."""
+    f, d = slot_finger(idx), slot_joint_index(idx)
+    return f"f{f}_cj" if d < 0 else f"f{f}_j{d}"
+
+
+def slot_body(idx: int) -> str:
+    """Child body name of slot `idx`."""
+    f, d = slot_finger(idx), slot_joint_index(idx)
+    return f"f{f}_c" if d < 0 else f"f{f}_link{d}"
+
+
+def tip_body(f: int) -> str:
+    """Fingertip body of finger slot `f` (fixed to its last link)."""
+    return f"f{f}_tip"
+
+
+SLOT_NAMES: Tuple[str, ...] = tuple(slot_name(i) for i in range(N_SLOTS))
+SLOT_BODY_NAMES: Tuple[str, ...] = tuple(slot_body(i) for i in range(N_SLOTS))
+TIP_BODY_NAMES: Tuple[str, ...] = tuple(tip_body(f) for f in range(N_FINGERS))
 
 
 def _slot_parent(idx: int) -> int:
     """Envelope-fixed parent slot index, or `ROOT_SENTINEL` for root."""
-    if idx in (PC0_SLOT, PC1_SLOT):
-        return ROOT_SENTINEL
-    f, d = divmod(idx, N_JOINTS_PER_FINGER)
-    if d > 0:
-        return idx - 1
-    if f in (0, 1, 2):
-        return ROOT_SENTINEL
-    return PC0_SLOT if f == 3 else PC1_SLOT
+    d = slot_joint_index(idx)
+    return ROOT_SENTINEL if d < 0 else idx - 1
 
 
 SLOT_PARENT: Tuple[int, ...] = tuple(_slot_parent(i) for i in range(N_SLOTS))
-# Topological order: pc0, pc1 first (both root children), then every slot in
-# increasing index order (every finger slot's parent is either root, an
-# earlier same-finger slot, or pc0/pc1 -- all already emitted by then).
-TOPOLOGICAL_ORDER: Tuple[int, ...] = (PC0_SLOT, PC1_SLOT) + tuple(range(PC0_SLOT))
+# Every slot's parent is the root or an earlier slot of the same finger slot.
+TOPOLOGICAL_ORDER: Tuple[int, ...] = tuple(range(N_SLOTS))
 
 
 class AdmissionError(Exception):
@@ -214,8 +259,12 @@ def _palm_joint_by_child(model: KinematicModel) -> Dict[str, Joint]:
 
 
 def _carrier_of_mount(mount: str, jointed_children: set, palm_joint_by_child: Dict[str, Joint], root: str) -> Optional[str]:
+    """The nearest jointed palm body on the path from palm body `mount` to
+    the root (`mount` itself included), or None."""
     cur = mount
-    while True:
+    seen = set()
+    while cur not in seen:
+        seen.add(cur)
         if cur in jointed_children:
             return cur
         if cur == root:
@@ -224,6 +273,7 @@ def _carrier_of_mount(mount: str, jointed_children: set, palm_joint_by_child: Di
         if j is None:
             return None
         cur = j.parent
+    return None
 
 
 def _digit_id_of_mount_body(body: str) -> Optional[str]:
@@ -237,24 +287,57 @@ def _digit_id_of_mount_body(body: str) -> Optional[str]:
     return digit_id if digit_id.isdigit() else None
 
 
-def _palm_index(body: str) -> int:
-    """`"palm{i}"` -> `i`, used only to canonically order carriers."""
-    return int(body[len("palm"):])
+def _digit_key(j: Joint) -> Tuple[int, str]:
+    did = _digit_id_of_mount_body(j.child)
+    return (int(did), j.child) if did is not None else (1 << 30, j.child)
+
+
+def _palm_key(body: str) -> Tuple[int, str]:
+    """`"palm{i}"` -> `(i, name)`, used only to order palm parts canonically."""
+    rest = body[len("palm"):] if body.startswith("palm") else ""
+    return (int(rest), body) if rest.isdigit() else (1 << 30, body)
+
+
+@dataclass(frozen=True)
+class _Groups:
+    """The finger-slot grouping of a model: fingers without a jointed palm
+    part, and each jointed palm part with the fingers it carries."""
+
+    root_digits: Tuple[Joint, ...]
+    jointed: Tuple[Tuple[Joint, Tuple[Joint, ...]], ...]   # (palm joint, its digits' root joints)
+    palm_joint_by_child: Dict[str, Joint]
+
+    @property
+    def n_slots(self) -> int:
+        return len(self.root_digits) + sum(max(1, len(ds)) for _, ds in self.jointed)
+
+
+def _groups(model: KinematicModel) -> _Groups:
+    palm = _palm_body_names(model)
+    jointed = sorted(_jointed_palm_joints(model), key=lambda j: _palm_key(j.child))
+    palm_joint_by_child = _palm_joint_by_child(model)
+    jointed_children = {j.child for j in jointed}
+    digit_root_joints = [j for j in model.joints if j.parent in palm and j.child not in palm]
+    carrier_of = {j.name: _carrier_of_mount(j.parent, jointed_children, palm_joint_by_child, model.root)
+                  for j in digit_root_joints}
+    root_digits = tuple(sorted((j for j in digit_root_joints if carrier_of[j.name] is None), key=_digit_key))
+    groups = tuple(
+        (pj, tuple(sorted((j for j in digit_root_joints if carrier_of[j.name] == pj.child), key=_digit_key)))
+        for pj in jointed
+    )
+    return _Groups(root_digits=root_digits, jointed=groups, palm_joint_by_child=palm_joint_by_child)
 
 
 def _admit_structural(model: KinematicModel) -> AdmissionResult:
-    """`(ok, reasons)` -- whether `model` fits the padded envelope's SHAPE
-    losslessly (revolute-only, digit/joint counts, palm-carrier topology --
-    see the module docstring). Independent of rest-pose geometry (no rest-
-    overlap or spawn-height check -- those need a canonicalized design and a
-    per-caller policy on whether to enforce or merely report them, see the
-    public `admit` below, which wraps this). `canonicalize` calls THIS, not
-    `admit`, so canonicalizing a structurally-fine-but-overlapping design
-    (e.g. to inspect/report it, or before deciding whether to exempt it)
-    never recurses through the public gate."""
+    """`(ok, reasons)` -- whether `model` fits the envelope's SHAPE
+    losslessly (see the module docstring). Independent of rest-pose geometry
+    (no rest-overlap or spawn-height check -- the public `admit` below wraps
+    this with those). `canonicalize` calls THIS, not `admit`, so
+    canonicalizing a structurally fine but overlapping design never recurses
+    through the public gate."""
     reasons: List[str] = []
 
-    env_ok, env_reasons = fits_envelope(
+    _env_ok, env_reasons = fits_envelope(
         model, MAX_DIGITS, MAX_JOINTS_PER_DIGIT, allow_palm_joints=True, allow_branches=False
     )
     reasons.extend(env_reasons)
@@ -267,20 +350,13 @@ def _admit_structural(model: KinematicModel) -> AdmissionResult:
     if model.couplings:
         reasons.append(f"{len(model.couplings)} coupling(s) present; envelope requires revolute-only, no couplings")
 
-    palm = _palm_body_names(model)
     jointed = _jointed_palm_joints(model)
-    if len(jointed) > MAX_JOINTED_PALM_BODIES:
-        reasons.append(f"{len(jointed)} jointed palm bodies exceed max {MAX_JOINTED_PALM_BODIES}")
-
     palm_joint_by_child = _palm_joint_by_child(model)
     jointed_children = {j.child for j in jointed}
     for j in jointed:
-        cur = palm_joint_by_child.get(j.child)
-        cur = cur.parent if cur is not None else None
+        cur = j.parent
         seen = set()
-        while cur is not None:
-            if cur in seen:
-                break
+        while cur is not None and cur not in seen:
             seen.add(cur)
             if cur in jointed_children:
                 reasons.append(f"jointed palm body {j.child!r} has jointed palm ancestor {cur!r}")
@@ -288,22 +364,13 @@ def _admit_structural(model: KinematicModel) -> AdmissionResult:
             pj = palm_joint_by_child.get(cur)
             cur = pj.parent if pj is not None else None
 
-    digit_root_joints = [j for j in model.joints if j.parent in palm and j.child not in palm]
-    carrier_of = {
-        j.name: _carrier_of_mount(j.parent, jointed_children, palm_joint_by_child, model.root)
-        for j in digit_root_joints
-    }
-    counts = Counter(c for c in carrier_of.values() if c is not None)
-    for carrier, cnt in counts.items():
-        if cnt > 1:
-            reasons.append(f"jointed palm body {carrier!r} carries {cnt} digits, exceeds max 1")
-
-    n_carriers = len(jointed)
-    n_root_digits = sum(1 for c in carrier_of.values() if c is None)
-    if n_root_digits + n_carriers > N_FINGERS:
+    g = _groups(model)
+    n_digits = len(g.root_digits) + sum(len(ds) for _, ds in g.jointed)
+    n_empty = sum(1 for _, ds in g.jointed if not ds)
+    if n_empty and g.n_slots > N_FINGERS:
         reasons.append(
-            f"{n_root_digits} root-mounted digit(s) + {n_carriers} jointed palm carrier(s) "
-            f"exceed the {N_FINGERS}-finger envelope"
+            f"{n_digits} finger(s) and {n_empty} palm joint(s) without a finger need {g.n_slots} finger slots, "
+            f"exceeding the {N_FINGERS}-slot envelope"
         )
 
     return AdmissionResult(ok=len(reasons) == 0, reasons=tuple(reasons))
@@ -318,52 +385,90 @@ def _admit_structural(model: KinematicModel) -> AdmissionResult:
 class EnvelopeDesign:
     source: str
     model: KinematicModel
-    slot_valid: np.ndarray           # (32,) bool
-    slot_origin: np.ndarray          # (32,4,4) float64 -- joint origin, relative to the slot's ENVELOPE parent
-    slot_axis: np.ndarray            # (32,3) float64 -- in the slot's own (child) local frame
-    slot_limits: np.ndarray          # (32,2) float64
-    slot_length: np.ndarray          # (32,) float64 -- segment length (tip frame z-offset)
+    slot_valid: np.ndarray           # (36,) bool -- a joint the policy controls (finger joint or leader carrier)
+    slot_origin: np.ndarray          # (36,4,4) float64 -- joint origin, relative to the slot's ENVELOPE parent
+    slot_axis: np.ndarray            # (36,3) float64 -- in the slot's own (child) local frame
+    slot_limits: np.ndarray          # (36,2) float64
+    slot_length: np.ndarray          # (36,) float64 -- segment length (tip frame z-offset)
     slot_joint_name: Tuple[Optional[str], ...]
     slot_body_name: Tuple[Optional[str], ...]
     capsule_radius_m: float
     root_length_m: float
-    finger_digit_id: Tuple[Optional[str], ...]  # length 5
+    finger_digit_id: Tuple[Optional[str], ...]  # length 6
     grammar_version: str = ""
     reasons: Tuple[str, ...] = field(default_factory=tuple)  # empty iff admitted
-    fingertip_marker_ok: np.ndarray = field(default_factory=lambda: np.zeros(N_FINGERS, dtype=bool))
-    """(5,) bool -- see `canonicalize`'s `_fill_chain`: whether this finger's
-    envelope fingertip-body slot is a ghost placed exactly at the real tip
-    (review item 1). False (no ghost to place) for a finger whose real chain
-    fills all 6 slots -- `palm_up` masks such a finger's `fingertip_valid`."""
+    slot_tie: np.ndarray = field(default_factory=lambda: np.full(N_SLOTS, -1, dtype=int))
+    """(36,) int -- for a FOLLOWER carrier, the slot of the leader carrier it
+    is tied to (same origin, axis and limits; authored as a PhysX mimic
+    joint); -1 for every other slot."""
     filtered_pairs: Tuple[Tuple[int, int], ...] = field(default_factory=tuple)
-    """Slot-index pairs (root capsule uses -1) that authoring must
-    collision-filter: (1) bodies joined through a chain of short bones
-    (`short_bone_pairs`: a bone shorter than one capsule radius, e.g. a 0 mm
-    bone between two joints at one point, so the bodies on either side of
-    it meet at the joint like a parent and its child; set
-    by `canonicalize` for every design, empty for a design without such
-    bones); (2) the palm and the first link of every finger 3/4 that sits on
-    the palm through a ghost carrier (`ghost_mount_pairs`, also set by
-    `canonicalize`: PhysX only excludes a joint's own two bodies, and this
-    link's joint parent is the ghost carrier); (3) for EXEMPTED designs only (projected commercial hands --
-    `admit`'s `check_overlap=False` path, see its docstring), the pairs that
-    overlap at rest (`mark_filtered_pairs`), so PhysX's depenetration impulse
-    doesn't blow up the ghost/carrier joints at step 0. Sampled designs are
-    REJECTED on overlap instead, never exempted."""
+    """Node pairs (slot indices, the root capsule as `ROOT_NODE`) that
+    authoring must collision-filter: (1) bodies joined through a chain of
+    short bones (`short_bone_pairs`: a bone shorter than one capsule radius,
+    e.g. a 0 mm bone between two joints at one point, so the bodies on either
+    side of it meet at the joint like a parent and its child); (2) a finger's
+    first link and the body it really sits on, when its PhysX joint parent
+    (its own carrier) is a different body (`mount_pairs`: the palm for a
+    finger on a locked carrier, the leader's palm part for a follower's
+    finger -- PhysX only excludes a joint's own two bodies); both set by
+    `canonicalize` for every design; (3) for EXEMPTED designs only (projected
+    commercial hands, `admit(check_overlap=False)`), the pairs that overlap
+    at rest (`mark_filtered_pairs`). Sampled designs are REJECTED on overlap
+    instead, never exempted."""
     sha256: str = ""
     """This design's entry-level sha256 (over its raw derivation dict,
     `population_file._entry_sha256`) -- set by `population_file.
-    load_population`, empty for a design built directly by `canonicalize`
-    outside that path (e.g. most tests). Threaded through so per-design
-    graded-score reports (Part C) can cite it without needing the
-    population file's own JSON at report time."""
+    load_population`, empty for a design built directly by `canonicalize`."""
+
+
+def carrier_roles(design: EnvelopeDesign) -> Tuple[str, ...]:
+    """Per finger slot, its carrier's role: `LEADER`, `FOLLOWER` or `LOCKED`."""
+    out = []
+    for c in CARRIER_SLOTS:
+        if design.slot_valid[c]:
+            out.append(LEADER)
+        elif design.slot_tie[c] >= 0:
+            out.append(FOLLOWER)
+        else:
+            out.append(LOCKED)
+    return tuple(out)
+
+
+def tied_q(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
+    """`q` (`(36,)` or `(N,36)`) with every follower carrier's value replaced
+    by its leader's: the joint vector the tied articulation actually has."""
+    q = np.array(q, dtype=float, copy=True)
+    for s in np.nonzero(design.slot_tie >= 0)[0]:
+        q[..., s] = q[..., int(design.slot_tie[s])]
+    return q
+
+
+def tie_columns(joint_tie: np.ndarray, slot_of_col: Sequence[int]) -> np.ndarray:
+    """`(n, J)` int: for per-env tie rows in slot order (`(n, 36)`,
+    `GrammarPopulation.joint_tie[design_idx]`) and an articulation whose
+    column `c` holds slot `slot_of_col[c]`, the column whose value column `c`
+    takes when joint positions are written: its own, or its leader's for a
+    follower carrier (`obs_utils.tie_joints` gathers with it)."""
+    slot_of_col = np.asarray(slot_of_col, dtype=int)
+    col_of_slot = np.empty_like(slot_of_col)
+    col_of_slot[slot_of_col] = np.arange(len(slot_of_col))
+    tie = np.asarray(joint_tie, dtype=int)[:, slot_of_col]          # (n, J), in column order
+    own = np.broadcast_to(np.arange(len(slot_of_col)), tie.shape)
+    return np.where(tie >= 0, col_of_slot[np.clip(tie, 0, None)], own)
+
+
+def tip_offsets(design: EnvelopeDesign) -> np.ndarray:
+    """`(6,)`: per finger slot, the z offset of its fingertip body `f{f}_tip`
+    in the frame of its last link `f{f}_link4`: that link's length when it is
+    a real joint (a 5-joint finger), else 0 (`canonicalize` puts a shorter
+    finger's ghost tail at the real tip)."""
+    return np.array([float(design.slot_length[s]) if design.slot_valid[s] else 0.0 for s in LAST_FINGER_SLOTS])
 
 
 def _compose_palm_transform(mount_body: str, stop_body: str, palm_joint_by_child: Dict[str, Joint]) -> np.ndarray:
-    """Root-to-`mount_body` (or carrier-to-`mount_body`) transform, composed
-    from a chain of FIXED palm joints only (by construction the caller never
-    asks this to cross a jointed palm joint -- `admit` already rejects any
-    design where it would have to)."""
+    """`stop_body`-to-`mount_body` transform, composed from a chain of
+    FIXED palm joints only (by construction the caller never asks this to
+    cross a jointed palm joint)."""
     if mount_body == stop_body:
         return np.eye(4)
     chain = [mount_body]
@@ -376,7 +481,7 @@ def _compose_palm_transform(mount_body: str, stop_body: str, palm_joint_by_child
         chain.append(cur)
     chain.reverse()
     T = np.eye(4)
-    for parent_b, child_b in zip(chain[:-1], chain[1:]):
+    for _parent_b, child_b in zip(chain[:-1], chain[1:]):
         T = T @ pose_to_matrix(palm_joint_by_child[child_b].origin)
     return T
 
@@ -386,49 +491,36 @@ def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
     if not result.ok:
         raise AdmissionError(result.reasons)
 
-    palm = _palm_body_names(model)
-    jointed = _jointed_palm_joints(model)
-    jointed_sorted = sorted(jointed, key=lambda j: _palm_index(j.child))[:2]
-    palm_joint_by_child = _palm_joint_by_child(model)
-    jointed_children = {j.child for j in jointed}
-    carrier_body_to_pc = {j.child: i for i, j in enumerate(jointed_sorted)}
+    g = _groups(model)
+    pjbc = g.palm_joint_by_child
 
-    digit_root_joints = [j for j in model.joints if j.parent in palm and j.child not in palm]
-    carrier_of = {
-        j.name: _carrier_of_mount(j.parent, jointed_children, palm_joint_by_child, model.root)
-        for j in digit_root_joints
-    }
-
-    root_digits = sorted(
-        (j for j in digit_root_joints if carrier_of[j.name] is None),
-        key=lambda j: int(_digit_id_of_mount_body(j.child)),
-    )
-    carrier_digit: Dict[int, Optional[Joint]] = {i: None for i in range(len(jointed_sorted))}
-    for j in digit_root_joints:
-        c = carrier_of[j.name]
-        if c is not None and c in carrier_body_to_pc:
-            carrier_digit[carrier_body_to_pc[c]] = j
-
+    # Canonical finger-slot assignment (see the module docstring).
     finger_root_joint: List[Optional[Joint]] = [None] * N_FINGERS
-    finger_root_mount_transform: List[np.ndarray] = [np.eye(4)] * N_FINGERS
-    reserved_fingers = {3 + pc for pc in carrier_digit}
-    for pc, j in carrier_digit.items():
-        if j is not None:
-            carrier_body = jointed_sorted[pc].child
-            finger_root_joint[3 + pc] = j
-            finger_root_mount_transform[3 + pc] = _compose_palm_transform(j.parent, carrier_body, palm_joint_by_child)
-
-    free_slots = [f for f in range(N_FINGERS) if f not in reserved_fingers]
-    assert len(root_digits) <= len(free_slots), "admit() should have rejected this"
-    for slot, j in zip(free_slots, root_digits):
-        finger_root_joint[slot] = j
-        finger_root_mount_transform[slot] = _compose_palm_transform(j.parent, model.root, palm_joint_by_child)
+    finger_mount: List[np.ndarray] = [np.eye(4)] * N_FINGERS   # carrier frame -> the finger's mount body
+    palm_joint_of: List[Optional[Joint]] = [None] * N_FINGERS
+    leader_of: List[int] = [-1] * N_FINGERS
+    f = 0
+    for j in g.root_digits:
+        finger_root_joint[f] = j
+        finger_mount[f] = _compose_palm_transform(j.parent, model.root, pjbc)
+        f += 1
+    for pj, digits in g.jointed:
+        lead = f
+        for j in digits or (None,):
+            palm_joint_of[f] = pj
+            leader_of[f] = lead
+            if j is not None:
+                finger_root_joint[f] = j
+                finger_mount[f] = _compose_palm_transform(j.parent, pj.child, pjbc)
+            f += 1
+    assert f <= N_FINGERS, "_admit_structural should have rejected this"
 
     slot_valid = np.zeros(N_SLOTS, dtype=bool)
     slot_origin = np.tile(np.eye(4), (N_SLOTS, 1, 1))
     slot_axis = np.tile(np.array(GHOST_AXIS), (N_SLOTS, 1))
     slot_limits = np.tile(np.array(GHOST_LIMITS), (N_SLOTS, 1))
     slot_length = np.full(N_SLOTS, GHOST_LENGTH_M)
+    slot_tie = np.full(N_SLOTS, -1, dtype=int)
     slot_joint_name: List[Optional[str]] = [None] * N_SLOTS
     slot_body_name: List[Optional[str]] = [None] * N_SLOTS
     finger_digit_id: List[Optional[str]] = [None] * N_FINGERS
@@ -438,73 +530,56 @@ def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
         children_by_parent.setdefault(j.parent, []).append(j)
     frames_by_name = {fr.name: fr for fr in model.frames}
 
-    fingertip_marker_ok = np.zeros(N_FINGERS, dtype=bool)
+    def _length(body: str) -> float:
+        frame = frames_by_name.get(f"{body}_tip")
+        return float(frame.pose.xyz[2]) if frame is not None else GHOST_LENGTH_M
 
-    def _fill_chain(start_joint: Optional[Joint], base_slot: int, root_transform: np.ndarray) -> None:
-        if start_joint is None:
-            return
-        finger_digit_id[base_slot // N_JOINTS_PER_FINGER] = _digit_id_of_mount_body(start_joint.child)
+    for f in range(N_FINGERS):
+        pj = palm_joint_of[f]
+        c = carrier_slot(f)
+        if pj is not None:
+            pre = _compose_palm_transform(pj.parent, model.root, pjbc)
+            slot_origin[c] = pre @ pose_to_matrix(pj.origin)
+            slot_axis[c] = np.asarray(pj.axis, dtype=float)
+            slot_limits[c] = np.asarray(pj.limits, dtype=float)
+            slot_body_name[c] = pj.child
+            if leader_of[f] == f:
+                slot_valid[c] = True
+                slot_length[c] = _length(pj.child)
+                slot_joint_name[c] = pj.name
+            else:
+                slot_tie[c] = carrier_slot(leader_of[f])
+
+        start = finger_root_joint[f]
+        if start is None:
+            continue
+        finger_digit_id[f] = _digit_id_of_mount_body(start.child)
         chain: List[Joint] = []
-        cur: Optional[Joint] = start_joint
+        cur: Optional[Joint] = start
         while cur is not None and len(chain) < N_JOINTS_PER_FINGER:
             chain.append(cur)
             nxt = children_by_parent.get(cur.child, [])
             cur = nxt[0] if len(nxt) == 1 else None
-        cumulative = root_transform
         for d, j in enumerate(chain):
-            idx = base_slot + d
+            idx = finger_slot(f, d)
             slot_valid[idx] = True
-            slot_origin[idx] = cumulative @ pose_to_matrix(j.origin) if d == 0 else pose_to_matrix(j.origin)
+            slot_origin[idx] = finger_mount[f] @ pose_to_matrix(j.origin) if d == 0 else pose_to_matrix(j.origin)
             slot_axis[idx] = np.asarray(j.axis, dtype=float)
             slot_limits[idx] = np.asarray(j.limits, dtype=float)
-            frame = frames_by_name.get(f"{j.child}_tip")
-            slot_length[idx] = float(frame.pose.xyz[2]) if frame is not None else GHOST_LENGTH_M
+            slot_length[idx] = _length(j.child)
             slot_joint_name[idx] = j.name
             slot_body_name[idx] = j.child
-
-        # Review item 1 (fingertip one link short): a ghost slot's own
-        # `slot_origin` defaults to identity (see the `np.tile(np.eye(4), ...)`
-        # above), so with NO fix the first ghost slot after this finger's real
-        # chain sits at the BASE of the last real link (its parent's own
-        # origin), not that link's TIP -- and since every later ghost in the
-        # same finger is itself identity-offset from the one before it, the
-        # whole ghost tail (including `f{f}_link5`, whichever slot in this
-        # finger every population/observation caller treats as "the
-        # fingertip body") inherits that same wrong position. Translating
-        # ONLY this first ghost by the last real link's own length puts it
-        # (and everything chained after it) exactly at the real tip -- exact,
-        # not approximate, because a ghost's own length is negligible
-        # (`GHOST_LENGTH_M`) and its axis is the z-identity `GHOST_AXIS`, so
-        # `authored_fk`'s local transform for it is a pure translation.
-        if chain and len(chain) < N_JOINTS_PER_FINGER:
-            last_idx = base_slot + len(chain) - 1
-            first_ghost_idx = base_slot + len(chain)
+        # The first ghost slot after a finger's real chain is translated by
+        # the last real link's length, so it and the identity-chained ghost
+        # tail after it (up to `f{f}_link4`, which carries the fingertip
+        # body) sit exactly at the real tip: a ghost's own length is
+        # negligible and its axis is z, so its local transform at q = 0 is
+        # this pure translation.
+        if len(chain) < N_JOINTS_PER_FINGER:
+            last_idx = finger_slot(f, len(chain) - 1)
             tip_translation = np.eye(4)
             tip_translation[2, 3] = float(slot_length[last_idx])
-            slot_origin[first_ghost_idx] = tip_translation
-        # Whether THIS finger's envelope-fixed "fingertip body" slot
-        # (index `base_slot + N_JOINTS_PER_FINGER - 1`, e.g. `f{f}_link5`)
-        # is a ghost that the translation above places exactly at the real
-        # tip. False when the finger's real chain fills all
-        # `N_JOINTS_PER_FINGER` slots (no ghost left to translate) -- see
-        # `palm_up`'s `fingertip_valid`, which masks the runtime fingertip
-        # OBSERVATION (not this finger's existence) in that case.
-        fingertip_marker_ok[base_slot // N_JOINTS_PER_FINGER] = bool(chain) and len(chain) < N_JOINTS_PER_FINGER
-
-    for f in range(N_FINGERS):
-        _fill_chain(finger_root_joint[f], f * N_JOINTS_PER_FINGER, finger_root_mount_transform[f])
-
-    for pc, j in enumerate(jointed_sorted):
-        slot = PC0_SLOT + pc
-        pre = _compose_palm_transform(j.parent, model.root, palm_joint_by_child)
-        slot_valid[slot] = True
-        slot_origin[slot] = pre @ pose_to_matrix(j.origin)
-        slot_axis[slot] = np.asarray(j.axis, dtype=float)
-        slot_limits[slot] = np.asarray(j.limits, dtype=float)
-        frame = frames_by_name.get(f"{j.child}_tip")
-        slot_length[slot] = float(frame.pose.xyz[2]) if frame is not None else GHOST_LENGTH_M
-        slot_joint_name[slot] = j.name
-        slot_body_name[slot] = j.child
+            slot_origin[finger_slot(f, len(chain))] = tip_translation
 
     capsule_radius = next((b.radius for b in model.bodies if b.radius is not None), 0.01)
     root_frame = frames_by_name.get("root_tip")
@@ -515,9 +590,9 @@ def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
         slot_limits=slot_limits, slot_length=slot_length, slot_joint_name=tuple(slot_joint_name),
         slot_body_name=tuple(slot_body_name), capsule_radius_m=float(capsule_radius), root_length_m=root_length,
         finger_digit_id=tuple(finger_digit_id), grammar_version=getattr(model, "grammar_version", ""),
-        reasons=(), fingertip_marker_ok=fingertip_marker_ok, filtered_pairs=(),
+        reasons=(), slot_tie=slot_tie, filtered_pairs=(),
     )
-    design.filtered_pairs = tuple(sorted(set(short_bone_pairs(design)) | set(ghost_mount_pairs(design))))
+    design.filtered_pairs = tuple(sorted(set(short_bone_pairs(design)) | set(mount_pairs(design))))
     return design
 
 
@@ -661,7 +736,7 @@ def viability_report(model: KinematicModel) -> dict:
 
 
 def joint_local_frames(design: EnvelopeDesign) -> np.ndarray:
-    """`(32, 2, 4, 4)`: per slot, `(frame0, frame1)` such that the slot's
+    """`(36, 2, 4, 4)`: per slot, `(frame0, frame1)` such that the slot's
     child-body world transform is `parent_world @ frame0 @ Rz(q) @
     inv(frame1)` for any `q` -- i.e. a dual-frame authoring convention (as
     PhysX/USD physics joints use) that always rotates about the LOCAL Z axis,
@@ -672,9 +747,8 @@ def joint_local_frames(design: EnvelopeDesign) -> np.ndarray:
         frame1 = [R, 0; 0, 1]
 
     because `Rot(axis, q) == R @ Rz(q) @ inv(R)` for ANY rotation `R` with
-    `R @ ez == axis` (conjugation of `SO(3)` by `R` rotates the axis by `R`
-    and preserves the angle -- true for every such `R`, not just the
-    minimal-angle one `_shortest_rotation` happens to return)."""
+    `R @ ez == axis`. A follower carrier has its leader's origin and axis, so
+    its frames equal its leader's and the two bodies coincide at equal `q`."""
     out = np.zeros((N_SLOTS, 2, 4, 4))
     for idx in range(N_SLOTS):
         R = _shortest_rotation((0.0, 0.0, 1.0), design.slot_axis[idx])
@@ -686,12 +760,13 @@ def joint_local_frames(design: EnvelopeDesign) -> np.ndarray:
 
 
 def authored_fk(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
-    """`(32,4,4)` world (root-frame) transforms of every slot's child body,
-    at joint vector `q` (length 32, envelope slot order). Exact (not
-    approximate) reconstruction of `hand_sampler.grammar.fk.forward_kinematics`
+    """`(36,4,4)` world (root-frame) transforms of every slot's child body,
+    at joint vector `q` (length 36, envelope slot order), with every follower
+    carrier tied to its leader (`tied_q`). Exact (not approximate)
+    reconstruction of `hand_sampler.grammar.fk.forward_kinematics`
     restricted to this design's real joints -- see this module's tests."""
     frames = joint_local_frames(design)
-    q = np.asarray(q, dtype=float).reshape(N_SLOTS)
+    q = tied_q(design, np.asarray(q, dtype=float).reshape(N_SLOTS))
     T = [np.eye(4) for _ in range(N_SLOTS)]
     for idx in TOPOLOGICAL_ORDER:
         parent = SLOT_PARENT[idx]
@@ -703,9 +778,7 @@ def authored_fk(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
 
 
 def _rotz_batch(theta: np.ndarray) -> np.ndarray:
-    """`(N,4,4)` batched version of `_rotz` -- one Z-rotation matrix per
-    angle in `theta` (shape `(N,)`), via vectorized `cos`/`sin` instead of a
-    Python loop over `_rotz`."""
+    """`(N,4,4)` batched version of `_rotz`."""
     theta = np.asarray(theta, dtype=float)
     n = theta.shape[0]
     c, s = np.cos(theta), np.sin(theta)
@@ -718,16 +791,11 @@ def _rotz_batch(theta: np.ndarray) -> np.ndarray:
 
 
 def authored_fk_batch(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
-    """`(N,32,4,4)`: the SAME quantity as `authored_fk`, for `N` joint-vector
-    samples at once (`q` shape `(N,32)`), via numpy-broadcast batched matmul
-    instead of a per-sample Python loop over `authored_fk` -- opus review G0
-    item 4: the reach sweep's 200-sample loop (Python, one `authored_fk`
-    call per sample) was both too sparse (45%/34% of fingers "unreachable"
-    that a denser sweep reaches) and too slow to simply crank the sample
-    count up on; this is the batched-FK alternative the fix note allows, and
-    is what `palm_up`'s reach sweep now uses (>= 4000 samples/design)."""
-    frames = joint_local_frames(design)  # (32,2,4,4), independent of q
-    q = np.asarray(q, dtype=float)
+    """`(N,36,4,4)`: the SAME quantity as `authored_fk`, for `N` joint-vector
+    samples at once (`q` shape `(N,36)`), via numpy-broadcast batched matmul
+    (the reach sweep's >= 4000 samples per design)."""
+    frames = joint_local_frames(design)  # (36,2,4,4), independent of q
+    q = tied_q(design, np.asarray(q, dtype=float))
     n = q.shape[0]
     T: List[Optional[np.ndarray]] = [None] * N_SLOTS
     root_T = np.broadcast_to(np.eye(4), (n, 4, 4))
@@ -738,14 +806,23 @@ def authored_fk_batch(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
         Rz = _rotz_batch(q[:, idx])
         local = frame0[None, :, :] @ Rz @ np.linalg.inv(frame1)[None, :, :]
         T[idx] = parent_T @ local
-    return np.stack(T, axis=1)  # (n, 32, 4, 4)
+    return np.stack(T, axis=1)  # (n, 36, 4, 4)
+
+
+def tip_fk(design: EnvelopeDesign, T: np.ndarray) -> np.ndarray:
+    """`(..., 6, 3)` fingertip-body positions (root frame) from slot
+    transforms `T` (`(..., 36, 4, 4)`, `authored_fk`/`authored_fk_batch`)."""
+    last = T[..., list(LAST_FINGER_SLOTS), :, :]
+    off = tip_offsets(design)
+    return last[..., :3, 3] + last[..., :3, 2] * off[:, None]
 
 
 def grammar_fk_reference(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
-    """`(32,4,4)`: the SAME quantity as `authored_fk`, computed instead by
+    """`(36,4,4)`: the SAME quantity as `authored_fk`, computed instead by
     calling `hand_sampler.grammar.fk.forward_kinematics` directly on
-    `design.model` (ghost/invalid slots get identity). Used by tests as the
-    independent oracle `authored_fk` must match to 1e-9."""
+    `design.model` (ghost and locked slots get identity; a follower carrier
+    gets its palm part's pose). Used by tests as the independent oracle
+    `authored_fk` must match to 1e-9."""
     q = np.asarray(q, dtype=float).reshape(N_SLOTS)
     q_map = {}
     for idx in range(N_SLOTS):
@@ -769,10 +846,8 @@ def grammar_fk_reference(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
 def _capsule_box_vertices(length: float, radius: float) -> np.ndarray:
     """8 corners of a capsule's bounding box, in the child body's own local
     frame: the body's own segment runs `(0,0,0)` -> `(0,0,length)` (grammar's
-    "segments along +z" convention), cross-section `radius`. Mirrors what
-    `design_space.joint_link_boxes` would compute from real collision mesh
-    vertices -- grammar hands have no mesh, so this box IS the collision
-    geometry, not an approximation of it."""
+    "segments along +z" convention), cross-section `radius`. Grammar hands
+    have no mesh, so this box IS the collision geometry."""
     zs = (0.0, max(length, 1e-9))
     xs = (-radius, radius)
     ys = (-radius, radius)
@@ -780,9 +855,9 @@ def _capsule_box_vertices(length: float, radius: float) -> np.ndarray:
 
 
 def token_boxes(design: EnvelopeDesign) -> np.ndarray:
-    """`(32, 4, 3)` float32 ordered boxes, via `design_space._ordered_box`
-    on each slot's own capsule bounding box (ghost slots use the ghost
-    link's tiny dimensions)."""
+    """`(36, 4, 3)` float32 ordered boxes, via `design_space._ordered_box`
+    on each slot's own capsule bounding box (slots that are not valid use the
+    ghost link's tiny dimensions)."""
     out = np.zeros((N_SLOTS, 4, 3), dtype=np.float32)
     for idx in range(N_SLOTS):
         valid = bool(design.slot_valid[idx])
@@ -827,33 +902,26 @@ def mass_props(design: EnvelopeDesign, density: float = DEFAULT_DENSITY_KG_M3) -
 ROOT_NODE = -1
 """Pseudo slot-index for the root/palm capsule in `rest_overlap_pairs`'s
 output and `EnvelopeDesign.filtered_pairs` -- the root body is authored
-(`author_grammar.author_design`'s `root_body_path`) but is not one of the 32
+(`author_grammar.author_design`'s `root_body_path`) but is not one of the 36
 envelope joint SLOTS, so it has no slot index of its own."""
 
 
 def _effective_parent(design: EnvelopeDesign, idx: int) -> int:
-    """The slot (or `ROOT_NODE`) this VALID slot `idx` is actually mounted
-    on, for adjacency purposes -- i.e. what it is EXPECTED to touch and
-    should be excluded from the overlap check against. Usually just
-    `SLOT_PARENT[idx]` (finger continuation joints, and PC0_SLOT/PC1_SLOT,
-    whose own parent is always `ROOT_SENTINEL` -> `ROOT_NODE`). The one case
-    `SLOT_PARENT` gets structurally wrong for THIS purpose: a finger 3/4 base
-    slot (`d==0`) whose structural parent (PC0_SLOT/PC1_SLOT) is a GHOST
-    (padding-only carrier, no real jointed palm body there) -- `canonicalize`
-    already collapses that ghost's zero transform when composing this slot's
-    own `slot_origin` (`_compose_palm_transform` walks straight to
-    `model.root` in that case), so the slot is PHYSICALLY mounted directly on
-    root, not on the (non-existent, uncollidable) ghost carrier -- review
-    item 4's "pairs that meet across ghosts". A same-finger continuation
-    joint's parent is always the previous slot in the SAME finger, which
-    `canonicalize`'s contiguous-prefix fill guarantees is valid whenever
-    `idx` itself is valid, so this can only ever fire for a base (`d==0`)
-    slot."""
+    """The node (a valid slot or `ROOT_NODE`) VALID slot `idx` really sits
+    on, for adjacency: what it is EXPECTED to touch and is excluded from the
+    overlap check against. Usually `SLOT_PARENT[idx]`; for a finger's first
+    joint whose carrier is not valid it is the body the carrier stands in
+    for: the leader's palm part for a follower, the palm for a locked
+    carrier (`canonicalize` folds the finger's mount into its base origin).
+    A finger joint's previous joint in the same finger is always valid when
+    it is (contiguous chains), so only base slots ever take these branches."""
     parent = SLOT_PARENT[idx]
     if parent == ROOT_SENTINEL:
         return ROOT_NODE
     if design.slot_valid[parent]:
         return parent
+    if design.slot_tie[parent] >= 0:
+        return int(design.slot_tie[parent])
     return ROOT_NODE
 
 
@@ -912,21 +980,21 @@ def short_bone_pairs(design: EnvelopeDesign) -> Tuple[Tuple[int, int], ...]:
     return tuple(sorted(pairs))
 
 
-def ghost_mount_pairs(design: EnvelopeDesign) -> Tuple[Tuple[int, int], ...]:
-    """`(ROOT_NODE, base_slot)` for every finger 3/4 whose structural parent
-    (PC0_SLOT/PC1_SLOT) is a ghost carrier. Such a finger sits on the palm
-    (`_effective_parent` returns `ROOT_NODE`, so `rest_overlap_pairs` never
-    checks it against the palm), but its authored joint parent is the
-    collider-less ghost carrier, not the root body, so PhysX's automatic
-    parent/child exclusion does not cover the finger's first link and the
-    palm. Without a filter the two collide from step 0 wherever they overlap
-    at rest, which the overlap check allows. `canonicalize` puts these in
-    `filtered_pairs`, which `author_grammar` collision-filters."""
+def mount_pairs(design: EnvelopeDesign) -> Tuple[Tuple[int, int], ...]:
+    """`(node, base_slot)` for every finger whose PhysX joint parent (its own
+    carrier) is not the body it really sits on: the palm (`ROOT_NODE`) for a
+    finger on a locked carrier, the leader's carrier (the palm part) for a
+    follower's finger. `rest_overlap_pairs` treats the two as adjacent
+    (`_effective_parent`), but PhysX only excludes a joint's own two bodies,
+    and the carrier between them has no collider, so without a filter they
+    collide from step 0 wherever they overlap at rest. `canonicalize` puts
+    these in `filtered_pairs`, which `author_grammar` collision-filters."""
     pairs = []
-    for idx in range(N_SLOTS):
-        parent = SLOT_PARENT[idx]
-        if design.slot_valid[idx] and parent in (PC0_SLOT, PC1_SLOT) and not design.slot_valid[parent]:
-            pairs.append((ROOT_NODE, idx))
+    for b in FINGER_BASE_SLOTS:
+        c = SLOT_PARENT[b]
+        if design.slot_valid[b] and not design.slot_valid[c]:
+            node = int(design.slot_tie[c]) if design.slot_tie[c] >= 0 else ROOT_NODE
+            pairs.append((min(node, b), max(node, b)))
     return tuple(sorted(pairs))
 
 
@@ -935,55 +1003,30 @@ def capsule_core_endpoints_local(length: float, radius: float) -> Tuple[float, f
     segment between the two hemisphere-cap CENTERS, which is what a
     capsule-capsule distance query (PhysX's, and `segment_distance` below)
     actually operates on -- for a body whose nominal segment runs local
-    `(0,0,0) -> (0,0,length)` with cross-section `radius` (this module's
-    convention; see `_capsule_box_vertices`).
-
-    Opus review G0 item 1: `rest_overlap_pairs` used to model this core as
-    the FULL `[0, length]` segment, 2r longer than what PhysX actually
-    builds -- every same-digit, small-gap "overlap" it flagged on that basis
-    was false. Matches `author_grammar._author_body_and_collider` exactly:
-    the collider mesh is centered at local z=`length/2`
-    (`set_xform(mesh, (0, 0, length/2), ...)`), with a cylindrical part of
-    length `rpc.cylinder_part(length, radius) == max(length - 2r, 0)`
-    (`hand_sampler.robot_param_constants.cylinder_part`) and a hemispherical
-    cap of `radius` on each end -- so the cap centers (this core segment's
-    own endpoints) sit at `length/2 -+ cylinder_part(length, radius) / 2`.
-    When `length < 2r` the cylindrical part clamps to 0 and both endpoints
-    coincide at `length/2`: the capsule is really a single sphere of radius
-    `r` (its overall extent still reaches the full `[0, length]`, same as
-    PhysX's, just via the sphere's own radius rather than a nonzero core
-    segment)."""
+    `(0,0,0) -> (0,0,length)` with cross-section `radius`. Matches
+    `author_grammar._author_body_and_collider` exactly: the collider mesh is
+    centered at local z=`length/2`, with a cylindrical part of length
+    `rpc.cylinder_part(length, radius) == max(length - 2r, 0)` and a
+    hemispherical cap of `radius` on each end. When `length < 2r` both
+    endpoints coincide at `length/2` (a sphere of radius `r`)."""
     half_cyl = rpc.cylinder_part(max(float(length), 1e-6), float(radius)) / 2.0
     center = float(length) / 2.0
     return center - half_cyl, center + half_cyl
 
 
 def rest_overlap_pairs(design: EnvelopeDesign, q: Optional[np.ndarray] = None) -> List[Tuple[int, int, float]]:
-    """Capsule-capsule rest-pose self-penetration filter over the AUTHORED
-    geometry, at joint vector `q` (default `None` -> `q=0`, the design's
-    UN-curled pose; pass `palm_up(design, n_sweep=0).default_q` to check the
-    env's actual per-episode reset pose instead -- opus review G0 item 3:
-    the env resets to `default_q`, a ~35% curl, not q=0, and PhysX's own
-    depenetration at that pose is what actually risks the joint blowup this
-    filter guards against; `admit`/`viability_report` check BOTH poses, a
-    design must clear both): the root/palm capsule (`ROOT_NODE`) plus every
-    VALID joint slot, every pair whose capsule CORE segments
-    (`capsule_core_endpoints_local`, opus review G0 item 1 -- NOT the full
-    `[0, length]` nominal segment) overlap by more than their own radii
-    allow, EXCLUDING pairs that are expected to touch (envelope parent/
-    child, walked through any ghost carrier via `_effective_parent` --
-    review item 4 (phase2)'s two gaps: "it ignores the root capsule and
-    pairs that meet across ghosts" -- and bodies that meet through a chain
-    of bones shorter than one radius, e.g. the two neighbours of a 0 mm bone,
-    `adjacent_pairs`, which authoring collision-filters via
-    `filtered_pairs`). Returns `(slot_i, slot_j,
-    penetration_depth_m)` for each violating pair, `slot_i`/`slot_j`
-    possibly `ROOT_NODE`. Ghost slots themselves (other than the root
-    pseudo-node) are never checked -- they have no collider (see
-    `author_grammar._author_body_and_collider`'s `real=False` path) and are
-    physically incapable of a rest collision. This is a cheap capsule proxy
-    for true self-penetration (real palm-cell geometry can be tighter or
-    looser); see the design note's risk 4."""
+    """Capsule-capsule self-penetration filter over the AUTHORED geometry,
+    at joint vector `q` (default `None` -> `q=0`; pass `palm_up(design,
+    n_sweep=0).default_q` for the env's per-episode reset pose --
+    `admit`/`viability_report` check both): the root/palm capsule
+    (`ROOT_NODE`) plus every VALID joint slot (followers' and locked
+    carriers' bodies have no collider), every pair whose capsule CORE
+    segments (`capsule_core_endpoints_local`) overlap by more than their
+    radii allow, EXCLUDING pairs expected to touch (`adjacent_pairs`: parent
+    and child, a finger and the body it really sits on, and bodies that meet
+    through a chain of bones shorter than one radius). Returns `(slot_i,
+    slot_j, penetration_depth_m)` per violating pair, `slot_i`/`slot_j`
+    possibly `ROOT_NODE`. A cheap capsule proxy for true self-penetration."""
     from hand_sampler.design_space import segment_distance
 
     q_arr = np.zeros(N_SLOTS) if q is None else np.asarray(q, dtype=float).reshape(N_SLOTS)
@@ -1022,23 +1065,18 @@ def mark_filtered_pairs(
     design: EnvelopeDesign, max_penetration_m: float = 0.0, extra_qs: Sequence[np.ndarray] = (),
 ) -> EnvelopeDesign:
     """Return a copy of `design` with `filtered_pairs` set to its own pairs
-    (`canonicalize`'s short-bone pairs) plus the UNION,
-    over `q=0` and every pose in `extra_qs` (pass
-    `[palm_up(design, n_sweep=0).default_q]` so the design's own env reset
-    pose is covered too -- opus review G0 item 3's same q=0-vs-default_q gap
-    applies here: PhysX depenetrates whatever pose the articulation is
-    actually placed at, not only q=0), of every `rest_overlap_pairs` pair
-    deeper than `max_penetration_m` -- for designs EXEMPTED from overlap
-    rejection (projected commercial hands; see `admit`'s
-    `check_overlap=False` and this module's docstring on
-    `EnvelopeDesign.filtered_pairs`). `author_grammar.author_design` reads
-    this to collision-filter exactly these pairs at authoring time, instead
-    of relying on PhysX to resolve a real interpenetration itself (which, for
-    a design like this one, blows up the ghost/carrier joints on step 0 --
-    see this module's `MAX_REST_PENETRATION_M`)."""
+    (`canonicalize`'s short-bone and mount pairs) plus the UNION, over `q=0`
+    and every pose in `extra_qs` (pass `[palm_up(design, n_sweep=0).
+    default_q]` so the reset pose is covered too), of every
+    `rest_overlap_pairs` pair deeper than `max_penetration_m` -- for designs
+    EXEMPTED from overlap rejection (projected commercial hands; see
+    `admit`'s `check_overlap=False`). `author_grammar.author_design`
+    collision-filters exactly these pairs, instead of relying on PhysX to
+    resolve a real interpenetration itself (which blows up the joints on
+    step 0, see `MAX_REST_PENETRATION_M`)."""
     import dataclasses
 
-    pairs = set(design.filtered_pairs)          # keep canonicalize's short-bone pairs
+    pairs = set(design.filtered_pairs)          # keep canonicalize's own pairs
     for q in (None, *extra_qs):
         for i, j, pen in rest_overlap_pairs(design, q=q):
             if pen > max_penetration_m:
@@ -1055,12 +1093,17 @@ def mark_filtered_pairs(
 class PalmUpResult:
     normal: np.ndarray          # (3,) unit vector, local (root) frame
     base_rot_wxyz: np.ndarray   # (4,) quaternion mapping local -> world so `normal` -> world +Z
-    default_q: np.ndarray       # (32,) mild-curl default pose
+    default_q: np.ndarray       # (36,) mild-curl default pose (followers equal their leader)
     spawn_offset: np.ndarray    # (3,) local-frame spawn point for the object
-    fingertip_valid: np.ndarray  # (5,) bool
-    fingertip_offsets: np.ndarray  # (5,3) local-frame fingertip positions at default_q
+    fingertip_valid: np.ndarray  # (6,) bool: the finger slot holds a finger
+    fingertip_offsets: np.ndarray  # (6,3) local-frame fingertip positions at default_q
     reachable_fingertips: int   # CPU reachability metric (I24 lesson)
     n_swept: int
+
+
+def finger_valid(design: EnvelopeDesign) -> np.ndarray:
+    """`(6,)` bool: finger slot `f` holds a finger (its first joint is real)."""
+    return np.array([bool(design.slot_valid[b]) for b in FINGER_BASE_SLOTS])
 
 
 def palm_up(
@@ -1076,36 +1119,24 @@ def palm_up(
     object over the fingertip workspace with a mild default curl, not over
     the palm/root origin, and report a CPU reachability metric (number of
     fingertips that reach within `reach_tol_m` of the spawn point over a
-    dense (default 4000-sample, opus review G0 item 4) random joint sweep,
-    evaluated as one batched FK call via `authored_fk_batch`) instead of
-    assuming reachability."""
+    dense (default 4000-sample) random joint sweep, evaluated as one batched
+    FK call via `authored_fk_batch`) instead of assuming reachability.
+    Fingertips are the fingertip bodies (`tip_fk`)."""
     valid_slots = [i for i in range(N_SLOTS) if design.slot_valid[i]]
-    finger_valid = np.zeros(N_FINGERS, dtype=bool)
-    finger_last_slot: List[Optional[int]] = [None] * N_FINGERS
-    for f in range(N_FINGERS):
-        base = f * N_JOINTS_PER_FINGER
-        used = [base + d for d in range(N_JOINTS_PER_FINGER) if design.slot_valid[base + d]]
-        if used:
-            finger_valid[f] = True
-            finger_last_slot[f] = max(used)
+    fvalid = finger_valid(design)
 
     mid_q = np.zeros(N_SLOTS)
     for idx in valid_slots:
         lo, hi = design.slot_limits[idx]
         mid_q[idx] = lo + curl_frac * (hi - lo)
+    mid_q = tied_q(design, mid_q)
 
     T_mid = authored_fk(design, mid_q)
     T0 = authored_fk(design, np.zeros(N_SLOTS))
+    tips_mid = tip_fk(design, T_mid)
 
-    mount_pts = []
-    tip_pts_mid = []
-    for f in range(N_FINGERS):
-        base = f * N_JOINTS_PER_FINGER
-        if not finger_valid[f]:
-            continue
-        mount_pts.append(T0[base][:3, 3])
-        last = finger_last_slot[f]
-        tip_pts_mid.append((T_mid[last] @ np.array([0.0, 0.0, float(design.slot_length[last]), 1.0]))[:3])
+    mount_pts = [T0[b][:3, 3] for f, b in enumerate(FINGER_BASE_SLOTS) if fvalid[f]]
+    tip_pts_mid = [tips_mid[f] for f in range(N_FINGERS) if fvalid[f]]
 
     if mount_pts:
         mount_centroid = np.mean(np.stack(mount_pts), axis=0)
@@ -1134,22 +1165,14 @@ def palm_up(
     R_local_cols = np.column_stack([x_axis, y_axis, normal])  # local -> (x,y,n) frame
     base_rot = _mat3_to_quat_wxyz(R_local_cols.T)  # (x,y,n) frame -> world (ex,ey,ez)
 
-    # Spawn point (opus review G0 item 4): the fingertip centroid AT
-    # default_q, plus a clearance of the object half size and 5 mm along the
-    # calibrated palm normal -- NOT past the hull extent of the mid-curl
-    # fingertips (the previous `hull_extent` term put the spawn point beyond
-    # even a fully-extended finger's reach for 45%/34% of fingers; review
-    # item 4's "spawn point beyond the fingertips"). `spawn_height_above_
-    # palm_m`/`admit`'s spawn-height gate still separately guards against
-    # this landing at or below the palm.
+    # Spawn point: the fingertip centroid at default_q, plus a clearance of
+    # the object half size and 5 mm along the calibrated palm normal.
+    # `spawn_height_above_palm_m`/`admit`'s spawn-height gate separately
+    # guards against this landing at or below the palm.
     spawn_offset = tip_centroid + normal * (object_half_size + 0.005)
 
-    # Reach sweep (opus review G0 item 4): a dense (>= 4000 samples/design)
-    # BATCHED FK sweep, not a 200-sample Python loop -- the sparse sweep
-    # undercounted reach (45%/34% of fingers looked unreachable that a dense
-    # sweep reaches; LEAP failed the >= 2 criterion on it). `n_sweep <= 0`
-    # (e.g. `admit`'s cheap `palm_up(design, n_sweep=0)` call, which only
-    # needs `default_q`/`spawn_offset`, not reach) skips the sweep entirely.
+    # Reach sweep: a dense batched FK sweep. `n_sweep <= 0` (e.g. `admit`'s
+    # cheap call, which only needs `default_q`/`spawn_offset`) skips it.
     reach_count = np.zeros(N_FINGERS, dtype=int)
     if n_sweep > 0:
         rng = np.random.default_rng(seed)
@@ -1157,36 +1180,15 @@ def palm_up(
         for idx in valid_slots:
             lo, hi = design.slot_limits[idx]
             q_batch[:, idx] = rng.uniform(lo, hi, size=n_sweep)
-        T_batch = authored_fk_batch(design, q_batch)  # (n_sweep, 32, 4, 4)
-        for f in range(N_FINGERS):
-            if not finger_valid[f]:
-                continue
-            last = finger_last_slot[f]
-            local_tip = np.array([0.0, 0.0, float(design.slot_length[last]), 1.0])
-            tips = (T_batch[:, last] @ local_tip)[:, :3]  # (n_sweep, 3)
-            dist = np.linalg.norm(tips - spawn_offset[None, :], axis=1)
-            reach_count[f] = int(np.count_nonzero(dist <= reach_tol_m))
+        tips = tip_fk(design, authored_fk_batch(design, q_batch))  # (n_sweep, 6, 3)
+        dist = np.linalg.norm(tips - spawn_offset[None, None, :], axis=-1)
+        reach_count = np.where(fvalid, np.count_nonzero(dist <= reach_tol_m, axis=0), 0)
 
-    fingertip_offsets = np.zeros((N_FINGERS, 3))
-    for f in range(N_FINGERS):
-        if finger_valid[f]:
-            last = finger_last_slot[f]
-            fingertip_offsets[f] = (T_mid[last] @ np.array([0.0, 0.0, float(design.slot_length[last]), 1.0]))[:3]
-
-    # Review item 1: mask the exposed `fingertip_valid` (the runtime
-    # OBSERVATION flag -- see `obs_utils`) for a finger whose real chain
-    # fills every one of its 6 envelope slots, since then there is no ghost
-    # slot left for `canonicalize` to translate to the true tip (see its
-    # `fingertip_marker_ok`) -- the envelope-fixed "fingertip body"
-    # (`f{f}_link5`) would sit at that link's BASE, not its tip. `finger_valid`
-    # itself (this finger EXISTS) still gates every geometry computation
-    # above (mount/tip centroids, spawn point, reach sweep) -- unaffected,
-    # since those are pure FK and never depend on the marker-body trick.
-    fingertip_valid = finger_valid & design.fingertip_marker_ok
+    fingertip_offsets = np.where(fvalid[:, None], tips_mid, 0.0)
 
     return PalmUpResult(
         normal=normal, base_rot_wxyz=base_rot, default_q=mid_q, spawn_offset=spawn_offset,
-        fingertip_valid=fingertip_valid, fingertip_offsets=fingertip_offsets,
+        fingertip_valid=fvalid.copy(), fingertip_offsets=fingertip_offsets,
         reachable_fingertips=int(np.count_nonzero(reach_count > 0)), n_swept=n_sweep,
     )
 
@@ -1197,12 +1199,9 @@ def spawn_height_above_palm_m(design: EnvelopeDesign, pu: Optional[PalmUpResult]
     ONE convention `palm_calibration.MIN_SPAWN_HEIGHT_ABOVE_PALM_M`'s
     docstring pins down and `drop_detection.object_below_palm` (world z)
     checks every reset. `HAND_BASE_POS_M`/`env_origins` (author_grammar.py)
-    are the SAME constant additive offset for every design's palm origin and
-    every env's spawn point respectively, so they cancel out of this
-    difference -- computing it here, from `spawn_offset`/`base_rot` alone,
-    with no scene/env in scope, is exact, not an approximation of the
-    runtime quantity. `pu` lets a caller that already ran `palm_up` (e.g.
-    `admit`) reuse it instead of paying for another (possibly swept) call."""
+    are the SAME additive offset for the palm origin and the spawn point, so
+    they cancel out of this difference. `pu` lets a caller that already ran
+    `palm_up` reuse it."""
     pu = pu if pu is not None else palm_up(design, n_sweep=0)
     return float(_quat_apply_wxyz(pu.base_rot_wxyz, pu.spawn_offset)[2])
 
@@ -1216,13 +1215,15 @@ def spawn_height_above_palm_m(design: EnvelopeDesign, pu: Optional[PalmUpResult]
 class GrammarPopulation:
     n_designs: int
     sources: Tuple[str, ...]
-    joint_link_boxes: np.ndarray    # (n,32,4,3) float32
-    joint_valid: np.ndarray         # (n,32) bool
-    joint_limits: np.ndarray        # (n,32,2) float64
-    default_joint_pos: np.ndarray   # (n,32) float64
+    joint_link_boxes: np.ndarray    # (n,36,4,3) float32
+    joint_valid: np.ndarray         # (n,36) bool: joints the policy controls
+    joint_tie: np.ndarray           # (n,36) int: a follower carrier's leader slot, -1 otherwise
+    joint_limits: np.ndarray        # (n,36,2) float64
+    default_joint_pos: np.ndarray   # (n,36) float64
     hand_scale: np.ndarray          # (n,) float64
-    fingertip_valid: np.ndarray     # (n,5) bool
-    fingertip_offsets: np.ndarray   # (n,5,3) float64
+    fingertip_valid: np.ndarray     # (n,6) bool
+    fingertip_offsets: np.ndarray   # (n,6,3) float64
+    tip_offsets: np.ndarray         # (n,6) float64: fingertip body z offset on its last link
     palm_center: np.ndarray         # (n,3) float64
     palm_keypoints: np.ndarray      # (n,4,3) float64
     palm_frame: np.ndarray          # (n,7) float64 (xyz + wxyz quat)
@@ -1230,30 +1231,23 @@ class GrammarPopulation:
     spawn_offset: np.ndarray        # (n,3) float64
     designs: Tuple[EnvelopeDesign, ...]
     palm_up_results: Tuple[PalmUpResult, ...]
-    # Review item 11 (risk): a `drive` table (stiffness/damping/max_force
-    # placeholders, `(n,32,5)`) used to live here. Removed: it was never
-    # read anywhere (the AUTHORED USD joint drive uses hardcoded
-    # `robot_param_constants` values, and the RUNTIME actuator gains come
-    # from `hand_only.DEFAULT_HAND_STIFFNESS`/`DEFAULT_HAND_DAMPING`, scene-
-    # wide, plus this env's own per-env carrier-gain override
-    # (`scene_utils._apply_per_env_carrier_gains`) -- none of it consulted
-    # `population.drive`), and its own placeholder values (3.0/0.1/0.5)
-    # actively disagreed with the values that DO govern behavior (SHARPA-
-    # mean stiffness/damping, 1.0 Nm effort). Wiring it up as the real
-    # source of truth would mean per-design (not just per-carrier) runtime
-    # gain overrides across all 30 finger joints -- a larger, Kit-risky
-    # change deferred past this pass; see the worker report.
+    # Drive gains are not a population table: the authored USD drive uses
+    # `robot_param_constants` values and the runtime actuator gains come
+    # from `hand_only.DEFAULT_HAND_*`, plus `scene_utils`' per-env carrier
+    # gains (locked, leader, follower).
 
 
 def build_population(designs: Sequence[EnvelopeDesign], **palm_up_kwargs) -> GrammarPopulation:
     n = len(designs)
     joint_link_boxes = np.zeros((n, N_SLOTS, 4, 3), dtype=np.float32)
     joint_valid = np.zeros((n, N_SLOTS), dtype=bool)
+    joint_tie = np.full((n, N_SLOTS), -1, dtype=int)
     joint_limits = np.zeros((n, N_SLOTS, 2))
     default_joint_pos = np.zeros((n, N_SLOTS))
     hand_scale = np.zeros(n)
     fingertip_valid = np.zeros((n, N_FINGERS), dtype=bool)
     fingertip_offsets = np.zeros((n, N_FINGERS, 3))
+    tip_offs = np.zeros((n, N_FINGERS))
     palm_center = np.zeros((n, 3))
     palm_keypoints = np.zeros((n, 4, 3))
     palm_frame = np.zeros((n, 7))
@@ -1264,7 +1258,9 @@ def build_population(designs: Sequence[EnvelopeDesign], **palm_up_kwargs) -> Gra
     for i, design in enumerate(designs):
         joint_link_boxes[i] = token_boxes(design)
         joint_valid[i] = design.slot_valid
+        joint_tie[i] = design.slot_tie
         joint_limits[i] = design.slot_limits
+        tip_offs[i] = tip_offsets(design)
         lengths = design.slot_length[design.slot_valid]
         hand_scale[i] = float(lengths.max()) if lengths.size else GHOST_LENGTH_M
 
@@ -1277,7 +1273,7 @@ def build_population(designs: Sequence[EnvelopeDesign], **palm_up_kwargs) -> Gra
         spawn_offset[i] = pu.spawn_offset
 
         T0 = authored_fk(design, np.zeros(N_SLOTS))
-        finger_mounts = [T0[f * N_JOINTS_PER_FINGER][:3, 3] for f in range(N_FINGERS) if design.slot_valid[f * N_JOINTS_PER_FINGER]]
+        finger_mounts = [T0[b][:3, 3] for b in FINGER_BASE_SLOTS if design.slot_valid[b]]
         palm_center[i] = np.mean(np.stack(finger_mounts), axis=0) if finger_mounts else np.zeros(3)
         kp = [np.zeros(3), np.array([0.0, 0.0, design.root_length_m])]
         kp += finger_mounts[:2] if len(finger_mounts) >= 2 else [np.zeros(3)] * max(0, 2 - len(finger_mounts))
@@ -1287,8 +1283,9 @@ def build_population(designs: Sequence[EnvelopeDesign], **palm_up_kwargs) -> Gra
 
     return GrammarPopulation(
         n_designs=n, sources=tuple(d.source for d in designs), joint_link_boxes=joint_link_boxes,
-        joint_valid=joint_valid, joint_limits=joint_limits, default_joint_pos=default_joint_pos,
-        hand_scale=hand_scale, fingertip_valid=fingertip_valid, fingertip_offsets=fingertip_offsets,
-        palm_center=palm_center, palm_keypoints=palm_keypoints, palm_frame=palm_frame, base_rot=base_rot,
-        spawn_offset=spawn_offset, designs=tuple(designs), palm_up_results=tuple(palm_up_results),
+        joint_valid=joint_valid, joint_tie=joint_tie, joint_limits=joint_limits,
+        default_joint_pos=default_joint_pos, hand_scale=hand_scale, fingertip_valid=fingertip_valid,
+        fingertip_offsets=fingertip_offsets, tip_offsets=tip_offs, palm_center=palm_center,
+        palm_keypoints=palm_keypoints, palm_frame=palm_frame, base_rot=base_rot, spawn_offset=spawn_offset,
+        designs=tuple(designs), palm_up_results=tuple(palm_up_results),
     )

@@ -107,21 +107,34 @@ def test_fk_matches_grammar_reference_projected():
 
 
 # --------------------------------------------------------------------------
-# 2. Admission cases -- SVH rejected with a reason.
+# 2. Admission cases -- every hand with palm joints, SVH included.
 # --------------------------------------------------------------------------
 
 
-def test_svh_rejected_with_a_reason():
-    entry, status, reason = pf.projected_entry("svh_right")
-    assert entry is None
-    assert status == "rejected"
-    assert reason and "carries 2 digits" in reason
+def test_svh_admitted_with_a_follower_carrier():
+    """SVH carries two fingers on one palm joint: the first is the leader
+    (its carrier is the palm joint), the second a follower tied to it."""
+    design = _project_and_canonicalize("svh_right")
+    roles = ge.carrier_roles(design)
+    assert roles.count(ge.LEADER) == 1 and roles.count(ge.FOLLOWER) == 1
+    lead = ge.carrier_slot(roles.index(ge.LEADER))
+    fol = ge.carrier_slot(roles.index(ge.FOLLOWER))
+    assert design.slot_tie[fol] == lead and design.slot_valid[lead] and not design.slot_valid[fol]
+    assert roles.index(ge.FOLLOWER) == roles.index(ge.LEADER) + 1      # grouped, leader first
 
 
-@pytest.mark.parametrize("hand_id", ["sharpa_left_on_iiwa14", "shadow_right_local", "arms_skel"])
+@pytest.mark.parametrize("hand_id", ["sharpa_left_on_iiwa14", "shadow_right_local", "arms_skel", "svh_right"])
 def test_articulated_palm_hands_admitted(hand_id):
     entry, status, reason = pf.projected_entry(hand_id)
     assert status == "admitted", f"{hand_id}: expected admitted, got {status} ({reason})"
+
+
+@pytest.mark.parametrize("hand_id", PROJECTED_HAND_IDS)
+def test_every_projected_hand_admitted(hand_id):
+    entry, status, reason = pf.projected_entry(hand_id)
+    if status == "unavailable":
+        pytest.skip(reason)
+    assert status == "admitted", f"{hand_id}: {status} ({reason})"
 
 
 def test_admission_rates_in_a_sane_range():
@@ -159,24 +172,23 @@ def test_envelope_topology_is_fixed_across_designs():
         assert design.slot_origin.shape == (ge.N_SLOTS, 4, 4)
         assert design.slot_axis.shape == (ge.N_SLOTS, 3)
         assert design.slot_limits.shape == (ge.N_SLOTS, 2)
-    # Parent/child topology (SLOT_PARENT) never depends on the design.
-    assert ge.SLOT_PARENT[ge.PC0_SLOT] == ge.ROOT_SENTINEL
-    assert ge.SLOT_PARENT[ge.PC1_SLOT] == ge.ROOT_SENTINEL
-    for f in (0, 1, 2):
-        assert ge.SLOT_PARENT[f * 6] == ge.ROOT_SENTINEL
-    assert ge.SLOT_PARENT[3 * 6] == ge.PC0_SLOT
-    assert ge.SLOT_PARENT[4 * 6] == ge.PC1_SLOT
-    for idx in range(ge.N_SLOTS):
-        f, d = divmod(idx, 6) if idx < 30 else (None, None)
-        if f is not None and d > 0:
-            assert ge.SLOT_PARENT[idx] == idx - 1
+    # Parent/child topology (SLOT_PARENT) never depends on the design: 6
+    # finger slots, each a carrier on the root and a chain of 5 finger joints.
+    assert ge.N_SLOTS == 36 and ge.N_FINGERS == 6 and ge.N_JOINTS_PER_FINGER == 5
+    for f in range(ge.N_FINGERS):
+        assert ge.SLOT_PARENT[ge.carrier_slot(f)] == ge.ROOT_SENTINEL
+        assert ge.SLOT_PARENT[ge.finger_slot(f, 0)] == ge.carrier_slot(f)
+        for d in range(1, ge.N_JOINTS_PER_FINGER):
+            assert ge.SLOT_PARENT[ge.finger_slot(f, d)] == ge.finger_slot(f, d - 1)
+        assert ge.SLOT_NAMES[ge.carrier_slot(f)] == f"f{f}_cj" and ge.SLOT_NAMES[ge.finger_slot(f, 4)] == f"f{f}_j4"
+    assert len(set(ge.SLOT_NAMES)) == ge.N_SLOTS
 
 
 def test_ghost_slots_have_old_sampler_convention():
     designs = _some_designs()
     for design in designs:
         for idx in range(ge.N_SLOTS):
-            if not design.slot_valid[idx]:
+            if not design.slot_valid[idx] and design.slot_tie[idx] < 0:
                 lo, hi = design.slot_limits[idx]
                 assert (lo, hi) == ge.GHOST_LIMITS
                 assert design.slot_length[idx] == ge.GHOST_LENGTH_M
@@ -195,6 +207,8 @@ def test_build_population_table_shapes():
     n = len(designs)
     assert pop.joint_link_boxes.shape == (n, ge.N_SLOTS, 4, 3)
     assert pop.joint_valid.shape == (n, ge.N_SLOTS)
+    assert pop.joint_tie.shape == (n, ge.N_SLOTS)
+    assert pop.tip_offsets.shape == (n, ge.N_FINGERS)
     assert pop.joint_limits.shape == (n, ge.N_SLOTS, 2)
     assert pop.default_joint_pos.shape == (n, ge.N_SLOTS)
     assert pop.hand_scale.shape == (n,)
@@ -278,37 +292,42 @@ def test_ghost_tip_marker_sits_at_the_real_last_link_tip():
     checked = 0
     designs = [ge.canonicalize(m, source=f"probe:{s}") for s, m in _admitted_models(DEFAULT_R, n=300)]
     for design in designs:
-        T = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
+        rng = np.random.default_rng(0)
+        q = np.array([rng.uniform(*design.slot_limits[i]) if design.slot_valid[i] else 0.0
+                      for i in range(ge.N_SLOTS)])
+        for qq in (np.zeros(ge.N_SLOTS), q):
+            T = ge.authored_fk(design, qq)
+            tips = ge.tip_fk(design, T)
+            for f in range(ge.N_FINGERS):
+                used = [ge.finger_slot(f, d) for d in range(ge.N_JOINTS_PER_FINGER)
+                        if design.slot_valid[ge.finger_slot(f, d)]]
+                if not used:
+                    continue
+                last = max(used)
+                tip_of_last = (T[last] @ np.array([0.0, 0.0, float(design.slot_length[last]), 1.0]))[:3]
+                # the fingertip body sits at the real tip (`tip_offsets`), whatever the chain's length
+                assert np.allclose(tips[f], tip_of_last, atol=1e-9), (design.source, f, last)
+                if len(used) < ge.N_JOINTS_PER_FINGER:
+                    assert np.allclose(T[last + 1][:3, 3], tip_of_last, atol=1e-9)   # first ghost at the tip
+                checked += 1
+    assert checked > 40, f"only checked {checked} finger chains, want a real sample"
+
+
+def test_every_finger_has_a_fingertip_including_five_joint_fingers():
+    """Every finger slot ends in a fingertip body, so `fingertip_valid` is
+    True for every finger, including one whose 5 joints fill its slot (the
+    SHARPA and Shadow thumbs), whose fingertip body sits one link length
+    beyond its last link."""
+    for hand_id in ("sharpa_left_on_iiwa14", "shadow_right_local"):
+        design = _project_and_canonicalize(hand_id)
+        pu = ge.palm_up(design, n_sweep=0)
+        assert (pu.fingertip_valid == ge.finger_valid(design)).all()
+        full = [f for f in range(ge.N_FINGERS) if design.slot_valid[ge.LAST_FINGER_SLOTS[f]]]
+        assert full, hand_id
+        offs = ge.tip_offsets(design)
         for f in range(ge.N_FINGERS):
-            base = f * ge.N_JOINTS_PER_FINGER
-            used = [base + d for d in range(ge.N_JOINTS_PER_FINGER) if design.slot_valid[base + d]]
-            if not used:
-                continue
-            last = max(used)
-            has_room = len(used) < ge.N_JOINTS_PER_FINGER
-            assert design.fingertip_marker_ok[f] == has_room
-            if not has_room:
-                continue
-            ghost = last + 1
-            tip_of_last = (T[last] @ np.array([0.0, 0.0, float(design.slot_length[last]), 1.0]))[:3]
-            ghost_pos = T[ghost][:3, 3]
-            assert np.allclose(tip_of_last, ghost_pos, atol=1e-9), (design.source, f, last)
-            checked += 1
-    assert checked > 20, f"only checked {checked} finger chains, want a real sample"
-
-
-def test_fingertip_valid_masked_when_no_room_for_a_tip_marker():
-    """A finger whose real chain fills every one of its 6 slots has no ghost
-    left to translate to the tip -- `palm_up`'s exposed `fingertip_valid`
-    must be False for it even though the finger itself exists (unlike a
-    finger with zero real joints, which is also False but for a different
-    reason)."""
-    from dataclasses import replace as _replace
-
-    design = _some_designs(1)[0]
-    mutated = _replace(design, fingertip_marker_ok=np.array([False, True, True, True, True]))
-    result = ge.palm_up(mutated, n_sweep=0)
-    assert not result.fingertip_valid[0]
+            expected = float(design.slot_length[ge.LAST_FINGER_SLOTS[f]]) if f in full else 0.0
+            assert offs[f] == pytest.approx(expected)
 
 
 # --------------------------------------------------------------------------
@@ -326,13 +345,17 @@ def test_admit_includes_root_capsule_and_ghost_carrier_pairs():
     confirming the root capsule is actually being checked, not merely
     present in the code path."""
     seen_root_pair = False
-    for seed, model in _admitted_models(G_SERIAL_R, n=300):
+    for seed in range(300):
+        model = derive(sample_derivation(seed, G_SERIAL_R))
+        if not ge._admit_structural(model).ok:
+            continue
         design = ge.canonicalize(model, source=f"probe:{seed}")
         pairs = ge.rest_overlap_pairs(design)
         if any(i == ge.ROOT_NODE or j == ge.ROOT_NODE for i, j, _pen in pairs):
             seen_root_pair = True
             break
-    assert seen_root_pair, "no root-capsule overlap pair found in 300 admitted G_SERIAL_R designs"
+    assert seen_root_pair, "no root-capsule overlap pair found in 300 structurally admitted G_SERIAL_R designs"
+    assert not ge.admit(derive(sample_derivation(7, G_SERIAL_R))).ok
 
 
 def test_admit_check_overlap_false_exempts_but_records_pairs():
@@ -369,9 +392,12 @@ def test_viability_report_shape_admitted_and_rejected():
     assert rejected_report["max_rest_overlap_mm"] > ge.MAX_REST_PENETRATION_M * 1000.0
     assert rejected_report["digit_count"] is not None  # structural check passed
 
-    # A structurally-rejected design (SVH: one palm joint carries 2 digits).
-    svh_entry, svh_status, _reason = pf.projected_entry("svh_right")
-    assert svh_status == "rejected"
+    # A structurally-rejected design (7 fingers).
+    from hand_sampler.grammar_bench.splits import split_hand
+
+    seven = ge.viability_report(derive(split_hand(7)))
+    assert seven["admitted"] is False and seven["digit_count"] is None
+    assert any("digit_count 7" in r for r in seven["reasons"])
 
 
 def test_palm_up_base_rot_is_a_unit_quaternion():
@@ -526,8 +552,8 @@ def test_spawn_offset_is_tip_centroid_plus_clearance_no_overshoot():
         T_mid = ge.authored_fk(design, pu.default_q)
         tip_pts = []
         for f in range(ge.N_FINGERS):
-            base = f * ge.N_JOINTS_PER_FINGER
-            used = [base + d for d in range(ge.N_JOINTS_PER_FINGER) if design.slot_valid[base + d]]
+            used = [ge.finger_slot(f, d) for d in range(ge.N_JOINTS_PER_FINGER)
+                    if design.slot_valid[ge.finger_slot(f, d)]]
             if not used:
                 continue
             last = max(used)
@@ -595,7 +621,7 @@ def _hand_with_a_short_bone(length_m: float):
         if ge._admit_structural(model).ok:
             design = ge.canonicalize(model)
             f = next(i for i, x in enumerate(design.finger_digit_id) if x == did)
-            return design, f * ge.N_JOINTS_PER_FINGER
+            return design, ge.finger_slot(f, 0)
     raise AssertionError("no suitable hand")
 
 
@@ -646,7 +672,7 @@ def test_sampled_designs_keep_parent_child_adjacency_only():
             if not ge._admit_structural(model).ok:
                 continue
             design = ge.canonicalize(model)
-            assert design.filtered_pairs == ge.ghost_mount_pairs(design)
+            assert design.filtered_pairs == ge.mount_pairs(design)
             parent_only = set()
             for idx in range(ge.N_SLOTS):
                 if design.slot_valid[idx]:
@@ -673,34 +699,57 @@ def test_zero_length_link_mass_is_floored_at_a_sphere():
     assert ag._link_mass_props(0.0, 0.01, False) == (rpc.VIRTUAL_LINK_MASS_KG, (rpc.VIRTUAL_LINK_INERTIA,) * 3)
 
 
-def test_ghost_mounted_fingers_are_filtered_against_the_palm():
-    """A finger 3/4 on the palm through a ghost carrier is exempt from the
-    overlap check against the palm, and its authored joint parent is the
-    ghost carrier, so authoring must collision-filter it against the palm;
-    a finger on a real (jointed) carrier is excluded by PhysX itself and is
-    still overlap-checked against the palm, so it gets no pair."""
+def test_fingers_are_filtered_against_the_body_they_sit_on():
+    """A finger's PhysX joint parent is its own carrier. On a locked carrier
+    it really sits on the palm, on a follower carrier on the leader's palm
+    part; both are exempt from the overlap check against that body and
+    collision-filtered against it (`mount_pairs`). A leader's own finger
+    sits on the leader's body, its joint parent, which PhysX excludes
+    itself, so it gets no pair."""
+    from hand_sampler.grammar_bench.splits import split_hand
     from hand_sampler.grammar.limits import SIMULATOR
     from hand_sampler.grammar.variants import build_distribution
 
-    seen_ghost = seen_real = 0
-    for seed in range(300):
-        model = derive(sample_derivation(seed, build_distribution(), limits=SIMULATOR))
+    models = [derive(split_hand(r, p)) for r, p in ((3, (2, 1)), (2, (2,)), (0, (3, 3)), (5, ()))]
+    models += [derive(sample_derivation(s, build_distribution(), limits=SIMULATOR)) for s in range(200)]
+    seen = {ge.LOCKED: 0, ge.LEADER: 0, ge.FOLLOWER: 0}
+    for model in models:
         if not ge._admit_structural(model).ok:
             continue
         design = ge.canonicalize(model)
         pairs = set(design.filtered_pairs)
-        for f, pc in ((3, ge.PC0_SLOT), (4, ge.PC1_SLOT)):
-            base = f * ge.N_JOINTS_PER_FINGER
+        adjacent = ge.adjacent_pairs(design)
+        for f, role in enumerate(ge.carrier_roles(design)):
+            base, c = ge.finger_slot(f, 0), ge.carrier_slot(f)
             if not design.slot_valid[base]:
                 continue
-            if design.slot_valid[pc]:
-                seen_real += 1
-                assert (ge.ROOT_NODE, base) not in pairs
-                assert ge._effective_parent(design, base) == pc
-            else:
-                seen_ghost += 1
-                assert (ge.ROOT_NODE, base) in pairs
-                assert ge._effective_parent(design, base) == ge.ROOT_NODE
-        assert set(ge.ghost_mount_pairs(design)) <= pairs
-        assert all(i == ge.ROOT_NODE for i, _j in ge.ghost_mount_pairs(design))
-    assert seen_ghost > 0 and seen_real > 0
+            seen[role] += 1
+            on = {ge.LOCKED: ge.ROOT_NODE, ge.LEADER: c, ge.FOLLOWER: int(design.slot_tie[c])}[role]
+            assert ge._effective_parent(design, base) == on and (base, on) in adjacent
+            assert ((min(on, base), max(on, base)) in pairs) == (role != ge.LEADER)
+        assert set(ge.mount_pairs(design)) <= pairs
+    assert all(v > 0 for v in seen.values()), seen
+
+
+def test_followers_move_with_their_leader():
+    """A follower carrier has its leader's frame, so at any joint vector the
+    two bodies coincide (`authored_fk` ties the follower to the leader, as
+    the mimic joint does); its finger matches the grammar's FK."""
+    from hand_sampler.grammar_bench.splits import split_hand
+
+    design = ge.canonicalize(derive(split_hand(3, (2, 1))))
+    rng = np.random.default_rng(3)
+    for _ in range(5):
+        q = np.array([rng.uniform(*design.slot_limits[i]) if design.slot_valid[i] else 0.0
+                      for i in range(ge.N_SLOTS)])
+        q_bad = q.copy()
+        q_bad[design.slot_tie >= 0] = 1.234            # ignored: followers take their leader's value
+        Ta, Tb, Tr = ge.authored_fk(design, q), ge.authored_fk(design, q_bad), ge.grammar_fk_reference(design, q)
+        assert np.allclose(Ta, Tb)
+        real = [i for i in range(ge.N_SLOTS) if design.slot_body_name[i] is not None]
+        assert np.abs(Ta[real] - Tr[real]).max() < 1e-9
+        for s in np.nonzero(design.slot_tie >= 0)[0]:
+            assert np.allclose(Ta[s], Ta[design.slot_tie[s]])
+    pu = ge.palm_up(design, n_sweep=0)
+    fol = np.nonzero(design.slot_tie >= 0)[0]
+    assert np.allclose(pu.default_q[fol], pu.default_q[design.slot_tie[fol]])

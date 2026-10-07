@@ -47,8 +47,8 @@ def test_hand_id_of_source():
 def test_urdf_joints_map_onto_envelope_slots(allegro):
     m = ph.joint_slot_map(allegro, "allegro_right")
     assert len(m) == 16
-    assert m["joint_0"] == 0 and m["joint_3"] == 3  # index: finger 0
-    assert m["joint_12"] == 18 and m["joint_15"] == 21  # thumb: finger 3
+    assert m["joint_0"] == ge.finger_slot(0, 0) and m["joint_3"] == ge.finger_slot(0, 3)  # index: finger 0
+    assert m["joint_12"] == ge.finger_slot(3, 0) and m["joint_15"] == ge.finger_slot(3, 3)  # thumb: finger 3
     for name, slot in m.items():  # limits agree with the URDF
         lo, hi = allegro.slot_limits[slot]
         urdf = {j.get("name"): j for j in ET.parse(URDF).getroot().findall("joint")}
@@ -99,8 +99,7 @@ def test_mount_hull_spans_the_finger_mounts_without_reaching_past_them(allegro):
     pts = ph.palm_hull_points(allegro, radius=0.01)
     assert pts.shape[1] == 3 and len(pts) <= 64
     T0 = ge.authored_fk(allegro, np.zeros(ge.N_SLOTS))
-    mounts = np.stack([T0[f * ge.N_JOINTS_PER_FINGER][:3, 3] for f in range(ge.N_FINGERS)
-                       if allegro.slot_valid[f * ge.N_JOINTS_PER_FINGER]])
+    mounts = np.stack([T0[b][:3, 3] for b in ge.FINGER_BASE_SLOTS if allegro.slot_valid[b]])
     assert pts[:, 1].min() <= mounts[:, 1].min() - 0.0099 and pts[:, 1].max() >= mounts[:, 1].max() + 0.0099
     # nothing past the mount height along the root axis, where the second phalanges start
     assert pts[:, 2].max() <= max(allegro.root_length_m, mounts[:, 2].max()) + 1e-9
@@ -139,5 +138,5 @@ def test_palm_filter_slots_are_each_fingers_first_two_real_links(allegro):
     real links (they start inside or next to it at rest)."""
     slots = ph.palm_filter_slots(allegro)
     assert slots == sorted(slots)
-    assert {0, 1, 6, 7, 12, 13, 18, 19} == set(slots)  # four fingers x (d0, d1)
+    assert {ge.finger_slot(f, d) for f in range(4) for d in (0, 1)} == set(slots)  # four fingers x (d0, d1)
     assert all(allegro.slot_valid[s] for s in slots)

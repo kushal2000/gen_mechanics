@@ -2610,8 +2610,7 @@ def _op_toggle_palm_joint(rng, dist: Distribution, derivation: Derivation,
                       if s.production == "PalmBody" and s.params.get("uid") == target]
     if lim is not None:
         # Generation limits: only bodies whose joint may be added (cap, no
-        # stacking, carried digits, finger chains) or removed (its digits fit
-        # where they fall back to).
+        # stacking, finger slots) or removed.
         candidates = [i for i in candidates
                       if lim.allows(lim.struct.with_joint(steps[i].params["name"], not steps[i].params["has_joint"]))]
     if not candidates:
