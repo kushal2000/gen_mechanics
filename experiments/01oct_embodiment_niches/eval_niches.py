@@ -85,6 +85,22 @@ def _streaks(ST) -> dict:
     return out
 
 
+# Motor heating. Copper loss is I^2 R = (tau / k)^2 R at the joint, so heat goes as torque squared, per motor.
+# R / k^2 from the XM335-T323-T datasheet at 11.1 V: stall 1.03 N.m at 0.80 A -> R = 11.1 / 0.80 = 13.9 ohm and
+# k = 1.03 / 0.80 = 1.29 N.m/A at the output, so 8.4 W per (N.m)^2. A scale only: it changes no ranking.
+HEAT_W_PER_NM2 = 8.4
+# First-order thermal lag of a small servo's winding+case, order tens of seconds: the heat proxy is tau^2
+# averaged with this time constant, per motor, carried across episode resets (a motor does not cool between
+# episodes), and its peak tracks the temperature rise the hottest motor reaches.
+THERMAL_TAU_S = 30.0
+# Back-EMF-aware heating proxy. Neither torque above tracks a DC motor's current: the PD estimate is what the
+# drive DEMANDS (pinned at the cap whenever targets jump), the PhysX readback what the joint NEEDS (near zero
+# while cruising at the speed cap). A DC motor draws i = (V_cmd - k_e w) / R, so with u = PD torque / effort
+# limit as the drive's duty (clipped to [-1, 1]) and w / w_max as the back-EMF fraction of supply,
+#     h = (u - qd / w_max)^2      0 = cruising at full speed or idle, 1 = stall, up to 4 = reversal at full speed
+# is copper loss in units of stall heating. It needs only the command and the joint velocity.
+
+
 # gen-SHARPA's uniform actuator (experiments/01oct_uniform_dynamics/make_runs.py UNIFORM_ACTUATOR).
 GEN_SHARPA_ACTUATOR = {"hand_effort_limit": 0.5, "hand_velocity_limit": 10.0, "hand_stiffness": 3.0,
                        "hand_damping": 0.0775, "hand_armature": 0.00058}
@@ -207,6 +223,8 @@ def main() -> None:
         jid = hid[real]
         J = int(jid.numel())
         vlim = inner.robot.data.joint_vel_limits[0, jid]
+        elim = inner.robot.data.joint_effort_limits[0, jid].double()
+        jnames = [inner.robot.joint_names[i] for i in jid.tolist()]
         steps = int(round(args.seconds / dt))
 
         f64 = dict(device=dev, dtype=torch.float64)
@@ -216,6 +234,13 @@ def main() -> None:
             "obj_acc", "vel_sat", "n")}
         S1, S2 = torch.zeros(J, **f64), torch.zeros(J, J, **f64)
         absqd = torch.zeros(J, **f64)
+        # per-motor heating: tau^2 sums (measured and PD estimate), steps at the effort cap, thermal EMA
+        tau2_j, pd_tau2_j, tsat_j = torch.zeros(J, **f64), torch.zeros(J, **f64), torch.zeros(J, **f64)
+        heat_ema = torch.zeros(N, J, **f64)
+        heat_peak = torch.zeros(N, J, **f64)
+        bemf_j, bemf_over1_j = torch.zeros(J, **f64), torch.zeros(J, **f64)
+        bemf_ema, bemf_peak = torch.zeros(N, J, **f64), torch.zeros(N, J, **f64)
+        a_th = dt / THERMAL_TAU_S
         seg_start, seg_rot, seg_work = torch.zeros(N, dtype=torch.long, device=dev), z(), z()
         seg_from_reset = torch.ones(N, dtype=torch.bool, device=dev)
         streak = torch.zeros(N, dtype=torch.long, device=dev)    # goals since this episode began
@@ -248,6 +273,15 @@ def main() -> None:
             tau_m = inner.robot.root_physx_view.get_dof_projected_joint_forces()[:, jid].double()
             acc["work_m"] += (tau_m * qd).abs().sum() * dt
             acc["tau2_m"] += (tau_m ** 2).sum() * dt
+            t2 = tau_m ** 2
+            tau2_j += t2.sum(0); pd_tau2_j += (tau ** 2).sum(0)
+            tsat_j += (tau_m.abs() >= 0.95 * elim).double().sum(0)
+            heat_ema += (t2 - heat_ema) * a_th
+            torch.maximum(heat_peak, heat_ema, out=heat_peak)
+            h = ((tau / elim).clamp(-1.0, 1.0) - qd / vlim.double()) ** 2
+            bemf_j += h.sum(0); bemf_over1_j += (h > 1.0).double().sum(0)
+            bemf_ema += (h - bemf_ema) * a_th
+            torch.maximum(bemf_peak, bemf_ema, out=bemf_peak)
             tgt = inner._cur_targets[:, jid]
             v = inner.object.data.root_lin_vel_w
             w = inner.object.data.root_ang_vel_w
@@ -363,6 +397,33 @@ def main() -> None:
             "target_rate_rad_s_per_joint": float(acc["dtarget"]) / (n * J),
             "joint_acc_rms": float((acc["qacc2"] / (n * J)).sqrt()),
             "joint_speed_saturated_frac": float(acc["vel_sat"]) / n,
+            # motor heating, per motor: copper loss = HEAT_W_PER_NM2 x tau^2 (measured PhysX forces; pd_ = the
+            # PD-law estimate, an upper bound at the speed cap). "hottest" = the joint with the most heat; the
+            # thermal peak is tau^2 averaged with a THERMAL_TAU_S lag (a first-order temperature-rise proxy),
+            # carried across resets, its max over envs and its 90th percentile over envs for the hottest joint.
+            "heat_W_per_nm2": HEAT_W_PER_NM2, "thermal_tau_s": THERMAL_TAU_S,
+            "joint_names": jnames,
+            "joint_tau_rms": (tau2_j / (N * steps)).sqrt().tolist(),
+            "joint_heat_W": (HEAT_W_PER_NM2 * tau2_j / (N * steps)).tolist(),
+            "pd_joint_heat_W": (HEAT_W_PER_NM2 * pd_tau2_j / (N * steps)).tolist(),
+            "joint_effort_sat_frac": (tsat_j / (N * steps)).tolist(),
+            "heat_W_total": float(HEAT_W_PER_NM2 * tau2_j.sum() / (N * steps)),
+            "heat_W_hottest": float(HEAT_W_PER_NM2 * tau2_j.max() / (N * steps)),
+            "hottest_joint": jnames[int(tau2_j.argmax())],
+            "pd_heat_W_hottest": float(HEAT_W_PER_NM2 * pd_tau2_j.max() / (N * steps)),
+            "effort_sat_frac_max_joint": float((tsat_j / (N * steps)).max()),
+            "thermal_peak_W_hottest_max": float(HEAT_W_PER_NM2 * heat_peak.max()),
+            "thermal_peak_W_hottest_p90": float(HEAT_W_PER_NM2 * torch.quantile(heat_peak.max(dim=1).values, 0.9)),
+            "heat_J_per_goal": float(HEAT_W_PER_NM2 * tau2_j.sum() * dt) / max(n_succ, 1),
+            # back-EMF heating proxy h (see BEMF note at the top), in units of stall heating per motor
+            "bemf_heat_per_joint": (bemf_j / (N * steps)).tolist(),
+            "bemf_heat_mean": float(bemf_j.sum() / (N * steps * J)),
+            "bemf_heat_hottest": float(bemf_j.max() / (N * steps)),
+            "bemf_hottest_joint": jnames[int(bemf_j.argmax())],
+            "bemf_reversal_frac_per_joint": (bemf_over1_j / (N * steps)).tolist(),
+            "bemf_thermal_peak_hottest_max": float(bemf_peak.max()),
+            "bemf_thermal_peak_hottest_p90": float(torch.quantile(bemf_peak.max(dim=1).values, 0.9)),
+            "bemf_heat_per_goal_s": float(bemf_j.sum() * dt) / max(n_succ, 1),
             # object stability
             "obj_speed_mean": float(acc["lin"]) / n,
             "obj_speed_rms": float((acc["lin2"] / n).sqrt()),

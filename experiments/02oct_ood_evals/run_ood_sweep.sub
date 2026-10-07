@@ -19,7 +19,7 @@
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
 NUM_ENVS=${NUM_ENVS:-100}; SECONDS_PER=${EVAL_SECONDS:-240}
-OUT=$REPO/experiments/02oct_ood_evals/results/sweeps_cap50/$LABEL
+OUT=${OUT_DIR:-$REPO/experiments/02oct_ood_evals/results/sweeps_cap50}/$LABEL   # OUT_DIR: another experiment's results folder
 LOGS=$REPO/debug_outputs/embodiment_niches_push_sweep/logs_sweeps/$LABEL
 mkdir -p $OUT $LOGS
 cd $REPO

@@ -27,7 +27,8 @@ case "$AXIS" in
             *)       VALUES="none thumb index middle ring pinky" ;;
         esac
         OUT=$REPO/experiments/05oct_embodiment_generalization/results/missing_finger/$HAND/$LABEL ;;
-    actnoise) VALUES="0 0.1 0.2 0.3 0.5 0.75 1.0"; OUT=$REPO/experiments/05oct_embodiment_generalization/results/action_noise/$LABEL ;;
+    actnoise) VALUES="0 0.1 0.2 0.3 0.5 0.75 1.0"
+              OUT=${OUT_DIR:-$REPO/experiments/05oct_embodiment_generalization/results/action_noise}/$LABEL ;;   # OUT_DIR: another experiment's results folder
     *) echo "unknown AXIS $AXIS"; exit 1 ;;
 esac
 LOGS=$REPO/debug_outputs/embodiment_generalization/logs/$AXIS/$LABEL

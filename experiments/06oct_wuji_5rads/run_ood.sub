@@ -1,0 +1,35 @@
+#!/bin/bash
+#SBATCH --job-name=v5ood
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=12:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/06oct_wuji_5rads_ood/slurm-%A_%a.out
+# OOD sweeps of one 06oct_wuji_5rads policy, each on its OWN hand, through the existing sweep scripts
+# (same protocol: 100 envs x 240 s, 50-goal cap, goals/episode over each env's first episode):
+#   AXIS=newton    pushes of 0-25 N   (02oct_ood_evals/run_ood_sweep.sub, 6 points)
+#   AXIS=mass      cube 45.6-5 g      (02oct_ood_evals/run_ood_sweep.sub, 6 points)
+#   AXIS=actnoise  action noise 0-1.0 (05oct_embodiment_generalization/run_embodiment_sweep.sub, 7 points)
+# The checkpoint is resolved when the job STARTS, so a sweep can be queued behind its training job
+# (--dependency=afterok:<job>):
+#   sbatch --array=0-5 --export=ALL,RUN=wuji2_full_v5,SPEC=wuji2_left_uniform_handonly,AXIS=newton run_ood.sub
+# RUN is the run name (STUDY_ID without left_), SPEC its robot spec, EPOCH the checkpoint epoch (default 5000).
+# Results: experiments/06oct_wuji_5rads/results/<sweeps_cap50|action_noise>/<RUN>/<axis>_<value>.json
+set -uo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+EPOCH=${EPOCH:-5000}
+CKPT=$(ls $REPO/debug_outputs/train_logs/06oct_wuji_5rads/0_scale_train_left_${RUN}_c01_*/rank_0/*/nn/last_*_ep_${EPOCH}_rew*.pth 2>/dev/null | head -1)
+[ -f "$CKPT" ] || { echo "no epoch-$EPOCH checkpoint for $RUN"; exit 1; }
+echo "[$RUN] $AXIS on $SPEC from $CKPT"
+export CKPT LABEL=$RUN HAND=$SPEC
+case "$AXIS" in
+    newton|mass) export OUT_DIR=$REPO/experiments/06oct_wuji_5rads/results/sweeps_cap50 TARGET=""
+                 exec bash $REPO/experiments/02oct_ood_evals/run_ood_sweep.sub ;;
+    actnoise)    export OUT_DIR=$REPO/experiments/06oct_wuji_5rads/results/action_noise
+                 exec bash $REPO/experiments/05oct_embodiment_generalization/run_embodiment_sweep.sub ;;
+    *) echo "unknown AXIS $AXIS"; exit 1 ;;
+esac
