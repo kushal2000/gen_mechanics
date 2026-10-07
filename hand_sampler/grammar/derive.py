@@ -629,13 +629,15 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION,
     host with room, phalanx counts respect the per-digit joint budget, module
     kinds come from the allowed set, and branches only when allowed. Every
     draw is made in the same order as without limits, and a limit that does
-    not bind leaves its draw unchanged, so ``limits=None`` and ``UNLIMITED``
-    give byte-identical derivations. Where a limit binds, values are drawn
+    not bind leaves its draw unchanged, so ``limits=None`` and
+    ``GenerationLimits()`` give byte-identical derivations. The grammar's
+    no-empty-palm rule (``dist.palm_body_needs_digit``) is kept the same way,
+    with or without limits. Where a limit binds, values are drawn
     from the restricted options, so the result is not distributed like
     rejection sampling would be."""
     seed, rng = _coerce_rng(rng_or_seed)
     steps: List[DerivationStep] = []
-    lim = _limit_context(limits, fresh=True)
+    lim = _limit_context(limits, fresh=True, palm_digits=dist.palm_body_needs_digit)
 
     lo, hi = dist.digit_count_range
     if lim is not None:
@@ -664,7 +666,7 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION,
 
     palm_names: List[str] = []
     host_length: Dict[str, float] = {"root": root_length}
-    need_leaf_digits = lim is not None and lim.limits.require_digit_on_palm_body
+    need_leaf_digits = lim is not None and lim.palm_digits
     for i in range(palm_body_count):
         name = f"palm{i}"
         parent_choices = ["root"] + palm_names
@@ -1278,8 +1280,10 @@ def _op_resample_parameter(rng, dist: Distribution, derivation: Derivation,
         module = sample_module(rng, dist, p["p"], _revolute_source_indices(steps, p["digit_id"], p["p"]),
                                allowed=None if lim is None else lim.allowed_modules)
         room = None if lim is None else lim.length_room(p["digit_id"], int(p["p"]))
-        length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m,
-                                      max_m=None if room is None else float(p["length"]) + room)
+        max_m = None if room is None else float(p["length"]) + room
+        length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m, max_m=max_m)
+        if max_m is not None and length > max_m + 1e-12:
+            length = p["length"]        # finger-length cap: no sampled length fits, the bone keeps its own
         p.update({"module": module, "length": length})
         steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
         return steps
@@ -1333,7 +1337,7 @@ def _regrow_context(lim: LimitContext, steps: List[DerivationStep], digit_id: st
     the joint budget the regrown digit may use; ``None`` if it has no room
     (fewer joints than a digit needs, or no host for a top-level digit)."""
     kept = [st for st in steps if not _is_descendant_digit(digit_id, _step_digit_id(st))]
-    sub = LimitContext(lim.limits, kept, base=lim.base)
+    sub = LimitContext(lim.limits, kept, base=lim.base, palm_digits=lim.palm_digits)
     digit = next(st for st in steps if st.production == "Digit" and st.params["digit_id"] == digit_id)
     if digit.params["top_level"]:
         if not sub.eligible_hosts(_mount_bodies_from_steps(steps)):
@@ -1648,7 +1652,7 @@ def _remove_palm_leaf(steps: List[DerivationStep], remove_name: str) -> List[Der
 
 
 def _drop_empty_palm_bodies(steps: List[DerivationStep]) -> List[DerivationStep]:
-    """Generation limits (``require_digit_on_palm_body``): remove every palm
+    """The grammar's no-empty-palm rule (``palm_body_needs_digit``): remove every palm
     body left without a digit (leaves first, so a chain of palm bodies that
     only carried the removed digit goes entirely)."""
     while True:
@@ -1661,7 +1665,7 @@ def _drop_empty_palm_bodies(steps: List[DerivationStep]) -> List[DerivationStep]
 
 
 def _needs_palm_digits(lim: Optional[LimitContext]) -> bool:
-    return lim is not None and lim.limits.require_digit_on_palm_body
+    return lim is not None and lim.palm_digits
 
 
 def _op_add_digit(rng, dist: Distribution, derivation: Derivation,
@@ -1689,7 +1693,7 @@ def _op_add_digit(rng, dist: Distribution, derivation: Derivation,
 
 def _removal_allowed(lim: LimitContext, digit_id: str) -> bool:
     st = lim.struct.without_digit(digit_id)
-    if lim.limits.require_digit_on_palm_body:
+    if lim.palm_digits:
         st = st.without_empty_palm_bodies()
     return lim.allows(st)
 
@@ -1698,7 +1702,7 @@ def _op_remove_digit(rng, dist: Distribution, derivation: Derivation,
                      lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Remove any top-level digit (with its branches), drawn uniformly.
     ``lim``: only digits whose removal keeps the hand within the limits; with
-    ``require_digit_on_palm_body``, a palm body left without a digit is
+    the grammar's no-empty-palm rule, a palm body left without a digit is
     removed too."""
     steps = list(derivation.steps)
     hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
@@ -3177,13 +3181,12 @@ EVOLUTION_OPERATORS_V1: Tuple[str, ...] = (
 # - "remove a finger" is ``remove_digit`` (ANY top-level digit, with its
 #   branches) instead of ``remove_digit_minimal`` (only 1-2 phalanx digits),
 #   so the add/remove-finger pair is no longer an exact inverse;
-# - ``remove_palm_body_empty`` is dropped: under the generation limits'
-#   ``require_digit_on_palm_body`` (on in SIMULATOR and DEFAULT_LIMITS) no
+# - ``remove_palm_body_empty`` is dropped: under the grammar's no-empty-palm
+#   rule (``Distribution.palm_body_needs_digit``, on in the one grammar) no
 #   palm body is ever empty, ``add_palm_body`` adds its body with a one-joint
 #   digit, and removing a palm body's last digit removes the body.
-# Without limits nothing in this pool removes a palm body, so a caller that
-# evolves without limits should pass ``limits=DEFAULT_LIMITS`` (or keep
-# ``EVOLUTION_OPERATORS_V1``).
+# With a variant without that rule nothing in this pool removes a palm body,
+# so such a caller should keep ``EVOLUTION_OPERATORS_V1``.
 EVOLUTION_OPERATORS: Tuple[str, ...] = (
     "add_minimal_digit", "remove_digit",
     "insert_phalanx", "delete_phalanx",
@@ -3223,28 +3226,31 @@ TARGETABLE_OPERATORS = frozenset({
 })
 
 
-def _limit_base(derivation: Derivation, limits: Optional[GenerationLimits]) -> Optional[Dict[str, int]]:
-    """The parent's per-limit excess (``None`` without limits)."""
-    if limits is None:
-        return None
-    return Structure.from_steps(derivation.steps).excess(limits)
+def _limit_base(derivation: Derivation, limits: Optional[GenerationLimits],
+                dist: Optional[Distribution] = None) -> Optional[Dict[str, int]]:
+    """The parent's per-limit excess (``None`` without limits and without the
+    grammar's no-empty-palm rule)."""
+    ctx = _limit_context(limits, derivation.steps, palm_digits=dist is not None and dist.palm_body_needs_digit)
+    return None if ctx is None else ctx.base
 
 
 def _call_operator(fn, operator: str, rng, dist: Distribution, derivation: Derivation,
                    target: Optional[int], limits: Optional[GenerationLimits],
                    base: Optional[Dict[str, int]]) -> Optional[List[DerivationStep]]:
     """One raw application of an operator function, with a fresh
-    ``LimitContext`` when ``limits`` is given (``None``: called exactly as
-    before limits existed). Returns ``None`` when the operator has nothing to
-    act on, or (a safety net the constructive rules make unreachable for a
-    parent within the limits, see ``test_generation_limits.py``) when its
-    result would make a limit worse than the parent's."""
+    ``LimitContext`` when ``limits`` is given or ``dist`` has the
+    no-empty-palm rule (neither: called exactly as before limits existed).
+    Returns ``None`` when the operator has nothing to act on, or (a safety
+    net the constructive rules make unreachable for a parent within the
+    limits, see ``test_generation_limits.py``) when its result would make a
+    limit worse than the parent's."""
     kwargs: Dict[str, Any] = {}
     if operator in TARGETABLE_OPERATORS:
         kwargs["target"] = target
     ctx = None
-    if limits is not None:
-        ctx = LimitContext(limits, derivation.steps, base=base)
+    if base is not None:
+        ctx = LimitContext(limits if limits is not None else GenerationLimits(), derivation.steps, base=base,
+                           palm_digits=dist.palm_body_needs_digit)
         kwargs["lim"] = ctx
     out = fn(rng, dist, derivation, **kwargs)
     if out is not None and ctx is not None and not ctx.allows_steps(out):
@@ -3274,7 +3280,7 @@ def apply_operator(derivation: Derivation, rng: np.random.Generator, dist: Distr
         raise ValueError(f"unknown vary operator {operator!r}")
     fn = _OPERATOR_FNS[operator]
     candidate_steps = _call_operator(fn, operator, rng, dist, derivation, target, limits,
-                                     _limit_base(derivation, limits))
+                                     _limit_base(derivation, limits, dist))
     if candidate_steps is None:
         return None
     if tuple(candidate_steps) == derivation.steps:
@@ -3317,7 +3323,7 @@ def vary(derivation: Derivation, rng: np.random.Generator, dist: Distribution = 
     if op not in _OPERATOR_FNS:
         raise ValueError(f"unknown vary operator {op!r}")
     fn = _OPERATOR_FNS[op]
-    base = _limit_base(derivation, limits)
+    base = _limit_base(derivation, limits, dist)
     for _ in range(32):
         candidate_steps = _call_operator(fn, op, rng, dist, derivation, None, limits, base)
         if candidate_steps is None:

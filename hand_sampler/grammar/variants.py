@@ -307,6 +307,9 @@ G_WIDE: Distribution = replace(
 # palm parts from 20-80 mm; mutation and conform reach the whole support. The
 # finger-length limit (``limits.FINGER_LENGTH_CAP_MM``, 250 mm: DClaw's 221 mm
 # finger x 1.1) bounds what long bones add up to.
+#
+# Every palm part carries a finger (``palm_body_needs_digit``): a palm part
+# without a finger is not a palm. A rule of the grammar, not a limit.
 # --------------------------------------------------------------------------
 
 GRAMMAR_BASE: Distribution = replace(
@@ -321,6 +324,7 @@ GRAMMAR_BASE: Distribution = replace(
     link_length_support_m=(0.0, 0.090),
     root_length_support_m=(0.015, 0.160),
     palm_body_length_support_m=(0.010, 0.080),
+    palm_body_needs_digit=True,
 )
 
 RULES: Tuple[str, ...] = ("surface", "spacing", "curl_opposition")

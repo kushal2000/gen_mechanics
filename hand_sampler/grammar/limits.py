@@ -1,10 +1,12 @@
 """Generation limits: the second of the hand grammar's three layers.
 
-1. CAPABILITY is the grammar itself (``rules.py``, ``derive.py``,
-   ``distributions.py``): every hand the productions can express, including
-   several jointed palm bodies, stacked palm joints, coupled joints, branching
-   digits and any number of digits per palm body.
-2. GENERATION LIMITS (this module) are hard rules that sampling
+1. THE GRAMMAR (``rules.py``, ``derive.py``, ``distributions.py``, with its
+   rules in ``variants.build_distribution``): every hand the productions can
+   express, including several jointed palm bodies, stacked palm joints,
+   coupled joints, branching digits and any number of digits per palm body.
+   "Every palm part carries a finger" is one of its rules
+   (``Distribution.palm_body_needs_digit``), not a limit.
+2. THE SIMULATOR LIMITS (this module) are hard rules that sampling
    (``derive.sample_derivation``) and every mutation operator
    (``derive.vary``/``apply_operator``/``vary_tracked``) obey CONSTRUCTIVELY:
    they only ever choose among options that keep a hand within the limits
@@ -19,18 +21,19 @@
    fingertip reach); they live with the simulator's envelope oracle
    (``isaacsimenvs/inhand_reorient/scene/grammar_envelope.py``) and the viewer.
 
-``GenerationLimits()`` (``UNLIMITED``) limits nothing. ``SIMULATOR`` is
-exactly the shape of the simulator's padded 32-slot articulation (5 finger
-chains of 6 revolute slots plus 2 palm-joint slots): a derivation is within
-``SIMULATOR`` iff ``grammar_envelope._admit_structural(derive(d)).ok``
+There is one set of limits, ``SIMULATOR``: the shape of the simulator's
+padded 32-slot articulation (5 finger chains of 6 revolute slots plus 2
+palm-joint slots) plus a finger-length cap. Apart from the cap, a derivation
+is within ``SIMULATOR`` iff ``grammar_envelope._admit_structural(derive(d)).ok``
 (``grammar_bench/tests/test_generation_limits.py`` checks this equivalence on
 sampled and mutated designs, and that every design sampled or mutated under
-``SIMULATOR`` passes ``_admit_structural``).
+``SIMULATOR`` passes ``_admit_structural``). Its fields can be edited
+(``SIMULATOR.with_(...)``); ``GenerationLimits()`` limits nothing.
 
-Passing ``limits=None`` anywhere keeps the pre-limits behaviour byte for byte
-(same random draws, same derivations). A limit that does not bind on a given
-draw does not change that draw either, so ``UNLIMITED`` reproduces ``None``
-exactly. When a limit binds, the sampler draws from the restricted options
+Passing ``limits=None`` anywhere means no limits: the pre-limits behaviour
+byte for byte (same random draws, same derivations), for reproducing past
+runs. A limit that does not bind on a given draw does not change that draw
+either, so ``GenerationLimits()`` reproduces ``None`` exactly. When a limit binds, the sampler draws from the restricted options
 (for example uniformly among the allowed digit counts, or among the hosts with
 room), so the distribution of hands sampled under limits differs from what
 rejection sampling (sample freely, discard violators) would give. That is
@@ -100,11 +103,6 @@ class GenerationLimits:
     # A finger's length in mm: the longest sum of bone lengths from its base
     # to a fingertip, branches included (see the module docstring).
     max_finger_length_mm: Optional[float] = None
-    # Every palm body carries at least one digit, mounted on it or on a palm
-    # body below it (no empty palm parts). Sampling then never makes an empty
-    # palm body, ``add_palm_body`` adds the body together with a one-joint
-    # digit on it, and removing a palm body's last digit removes the body too.
-    require_digit_on_palm_body: bool = False
 
     def __post_init__(self):
         kinds = tuple(self.allowed_modules)
@@ -127,27 +125,22 @@ class GenerationLimits:
 
     @property
     def is_unlimited(self) -> bool:
-        return self == UNLIMITED
+        return self == GenerationLimits()
 
     def with_(self, **changes) -> "GenerationLimits":
         return replace(self, **changes)
 
 
-UNLIMITED = GenerationLimits()
-
 # The longest commercial finger (DClaw, 221 mm, measured on the projections of
 # grammar_bench/manifest.json) x 1.1, rounded to a clean number.
 FINGER_LENGTH_CAP_MM = 250.0
 
-# The whole grammar, except that a palm part must carry a finger and no finger
-# is longer than FINGER_LENGTH_CAP_MM.
-DEFAULT_LIMITS = GenerationLimits(require_digit_on_palm_body=True, max_finger_length_mm=FINGER_LENGTH_CAP_MM)
-
 # The simulator's padded envelope (grammar_envelope.py: N_FINGERS = 5,
 # N_JOINTS_PER_FINGER = 6, MAX_JOINTED_PALM_BODIES = 2, revolute-only, no
 # couplings, no branching, jointed palm bodies hang off the root palm and carry
-# at most one digit each, root digits + jointed palm bodies <= 5). It puts no
-# bound on rigid palm bodies (they fold into the root or carrier transform).
+# at most one digit each, root digits + jointed palm bodies <= 5), plus the
+# finger-length cap. It puts no bound on rigid palm bodies (they fold into the
+# root or carrier transform).
 SIMULATOR = GenerationLimits(
     allowed_modules=("R",),
     allow_branches=False,
@@ -159,15 +152,11 @@ SIMULATOR = GenerationLimits(
     max_digits_per_jointed_palm_body=1,
     max_finger_chains=5,
     max_finger_length_mm=FINGER_LENGTH_CAP_MM,
-    require_digit_on_palm_body=True,
 )
 
-# The simulator envelope's shape alone, without the no-empty-palm rule (the
-# envelope itself accepts empty palm bodies) and the finger-length cap (the
-# envelope does not measure lengths): exactly ``_admit_structural``.
-SIMULATOR_ENVELOPE = replace(SIMULATOR, require_digit_on_palm_body=False, max_finger_length_mm=None)
-
-PRESETS: Dict[str, GenerationLimits] = {"Simulator": SIMULATOR, "Default": DEFAULT_LIMITS, "Unlimited": UNLIMITED}
+# Internal (the equivalence tests): SIMULATOR without the finger-length cap,
+# which the envelope does not measure; exactly ``_admit_structural``.
+SIMULATOR_ENVELOPE = replace(SIMULATOR, max_finger_length_mm=None)
 
 LIMIT_KEYS: Tuple[str, ...] = tuple(f.name for f in fields(GenerationLimits))
 
@@ -184,7 +173,6 @@ LIMIT_TEXT: Dict[str, str] = {
     "max_digits_per_jointed_palm_body": "fingers per palm joint",
     "max_finger_chains": "finger slots (fingers on the rigid palm + palm joints)",
     "max_finger_length_mm": "finger length (mm)",
-    "require_digit_on_palm_body": "palm parts without a finger",
 }
 
 
@@ -415,8 +403,6 @@ class Structure:
         ex["max_finger_chains"] = int(max(0, self.finger_chains() - _inf(limits.max_finger_chains)))
         # micrometres over the cap, summed over fingers
         ex["max_finger_length_mm"] = self.finger_length_excess_um(limits.max_finger_length_mm)
-        if limits.require_digit_on_palm_body:
-            ex["require_digit_on_palm_body"] = len(self.empty_palm_bodies())
         return ex
 
     def measured(self) -> Dict[str, str]:
@@ -435,7 +421,6 @@ class Structure:
             "max_digits_per_jointed_palm_body": str(max(carried.values(), default=0)),
             "max_finger_chains": str(self.finger_chains()),
             "max_finger_length_mm": f"{1000.0 * max(self.finger_lengths().values(), default=0.0):.0f}",
-            "require_digit_on_palm_body": f"{len(self.empty_palm_bodies())} empty",
         }
 
     # ---- hypothetical edits (each returns a modified copy) -------------------
@@ -557,6 +542,10 @@ def within(derivation_or_steps, limits: Optional[GenerationLimits]) -> bool:
 # --------------------------------------------------------------------------
 
 
+# The grammar's no-empty-palm rule, tracked by a LimitContext next to the limits.
+EMPTY_PALM = "empty_palm_bodies"
+
+
 class LimitContext:
     """What ``derive.py`` consults while sampling or mutating under limits.
 
@@ -566,22 +555,35 @@ class LimitContext:
     hand already outside them (a projected commercial hand) may still be
     mutated as long as the mutation does not make any limit worse.
 
+    ``palm_digits``: the grammar's rule that every palm body carries a digit
+    (``Distribution.palm_body_needs_digit``). It is enforced through the same
+    machinery as the limits (its excess, ``EMPTY_PALM``, counts empty palm
+    bodies), so a context exists whenever limits are given or the rule is on.
+
     It also carries the running budgets of one sampling pass: which hosts have
     room for another top-level digit, and how many joints the digit being
     emitted (with its branches) may still use."""
 
-    def __init__(self, limits: GenerationLimits, steps: Sequence = (), base: Optional[Dict[str, int]] = None):
+    def __init__(self, limits: GenerationLimits, steps: Sequence = (), base: Optional[Dict[str, int]] = None,
+                 palm_digits: bool = False):
         self.limits = limits
+        self.palm_digits = bool(palm_digits)
         self.struct = Structure.from_steps(steps)
-        self.base = dict(base) if base is not None else self.struct.excess(limits)
+        self.base = dict(base) if base is not None else self.excess(self.struct)
         self.joint_left: Optional[int] = None
         self.joint_reserved = 0
         self._tmp = 0
 
     # ---- generic admissibility ------------------------------------------------
 
+    def excess(self, struct: Structure) -> Dict[str, int]:
+        ex = struct.excess(self.limits)
+        if self.palm_digits:
+            ex[EMPTY_PALM] = len(struct.empty_palm_bodies())
+        return ex
+
     def allows(self, struct: Structure) -> bool:
-        new = struct.excess(self.limits)
+        new = self.excess(struct)
         return all(new[k] <= self.base.get(k, 0) for k in new)
 
     def allows_steps(self, steps: Sequence) -> bool:
@@ -610,13 +612,13 @@ class LimitContext:
         if moving is not None and moving in st.digits:
             st = st.copy()
             del st.digits[moving]
-        if self.limits.require_digit_on_palm_body:
+        if self.palm_digits:
             # No palm body may be left (or stay) without a digit: a digit
             # leaving its palm body, or a regrown digit whose old palm body is
             # empty for now, must go where it keeps every palm body covered.
             trial = st.copy()
             trial.digits["__room"] = (host, 1)
-            if len(trial.empty_palm_bodies()) > self.base["require_digit_on_palm_body"]:
+            if len(trial.empty_palm_bodies()) > self.base.get(EMPTY_PALM, 0):
                 return False
         lim = self.limits
         tops = st.top_digits()
@@ -659,7 +661,7 @@ class LimitContext:
         return capacity >= digits_to_place
 
     def leaves_feasible(self, palm: Dict[str, Tuple[str, bool]], digits_to_place: int) -> bool:
-        """While sampling a fresh hand under ``require_digit_on_palm_body``:
+        """While sampling a fresh hand under the no-empty-palm rule:
         can ``digits_to_place`` digits cover every palm leaf (one digit
         each, on the leaf) of this palm structure within the limits?"""
         st = Structure(palm=dict(palm))
@@ -755,29 +757,29 @@ class LimitContext:
             self.joint_reserved -= n
 
 
-def context(limits: Optional[GenerationLimits], steps: Sequence = (), fresh: bool = False) -> Optional[LimitContext]:
-    """A ``LimitContext`` for ``limits`` (``None`` stays ``None``). ``fresh``:
-    sampling a new hand from scratch, so the baseline excess is zero."""
-    if limits is None:
+def context(limits: Optional[GenerationLimits], steps: Sequence = (), fresh: bool = False,
+            palm_digits: bool = False) -> Optional[LimitContext]:
+    """A ``LimitContext`` for ``limits`` and the grammar's no-empty-palm rule
+    (``palm_digits``); ``None`` when there are neither. ``fresh``: sampling a
+    new hand from scratch, so the baseline excess is zero."""
+    if limits is None and not palm_digits:
         return None
+    lim = limits if limits is not None else GenerationLimits()
     if fresh:
-        return LimitContext(limits, steps, base={k: 0 for k in LIMIT_KEYS})
-    return LimitContext(limits, steps)
+        return LimitContext(lim, steps, base={k: 0 for k in LIMIT_KEYS + (EMPTY_PALM,)}, palm_digits=palm_digits)
+    return LimitContext(lim, steps, palm_digits=palm_digits)
 
 
 __all__ = [
-    "DEFAULT_LIMITS",
+    "FINGER_LENGTH_CAP_MM",
     "GenerationLimits",
     "LIMIT_KEYS",
     "LIMIT_TEXT",
     "LimitContext",
     "LimitReport",
     "MODULE_KINDS",
-    "PRESETS",
     "SIMULATOR",
-    "SIMULATOR_ENVELOPE",
     "Structure",
-    "UNLIMITED",
     "check",
     "context",
     "within",

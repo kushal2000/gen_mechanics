@@ -310,6 +310,15 @@ class Distribution:
     root_length_support_m: Optional[Tuple[float, float]] = None
     palm_body_length_support_m: Optional[Tuple[float, float]] = None
 
+    # Every palm body carries a finger (2026-10-06; "a palm part without a
+    # finger isn't a palm"): a rule of the grammar, kept by sampling and every
+    # operator. Sampling mounts the first digits one on each palm leaf and
+    # attaches a palm body only where every leaf can still get one,
+    # ``add_palm_body`` adds the body with a one-joint digit on it, and removing
+    # a palm body's last digit removes the body too. ``False`` (default): no
+    # such rule, so every existing variant samples and mutates byte-identically.
+    palm_body_needs_digit: bool = False
+
 
 DEFAULT_DISTRIBUTION = Distribution()
 
