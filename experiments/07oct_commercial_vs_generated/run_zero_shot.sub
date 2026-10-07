@@ -17,6 +17,7 @@
 #   1  handonly:<replicas>/wuji2/wuji2_left_replica.json   its grammar replica -- the transfer being measured
 #   sbatch --array=0-1 experiments/07oct_commercial_vs_generated/run_zero_shot.sub
 #   sbatch --array=0-1 --export=ALL,LABEL=<name>,CKPT=<pth>,TARGETS="<t0> <t1> ..." run_zero_shot.sub
+#   SEED=<n> for another seed; EXTRA="--override obs.palm_extents_override=[t,w,l]" passes eval_niches flags
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
 NUM_ENVS=${NUM_ENVS:-256}; SECONDS_PER=${EVAL_SECONDS:-240}
@@ -37,7 +38,7 @@ for t in $TARGETS; do
     # --set uniform --hand wuji2: only names the run in the output; --checkpoint and --target decide what runs.
     .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform --hand wuji2 \
         --target "$t" --checkpoint "$CKPT" --condition nominal --num-envs $NUM_ENVS --seconds $SECONDS_PER \
-        --max-goals 50 --out "$f" > $LOGS/$name.log 2>&1 || echo "FAILED $LABEL $t"
+        --max-goals 50 --seed ${SEED:-0} ${EXTRA:-} --out "$f" > $LOGS/$name.log 2>&1 || echo "FAILED $LABEL $t"
     grep -h "\[niches\]" $LOGS/$name.log
     .venv_isaacsim/bin/python -c "import json; d = json.load(open('$f')); print('goals_per_episode_first', round(d['goals_per_episode_first'], 2), 'unfinished', round(d['first_episode_unfinished_frac'], 3), 'goals/min', round(d['goals_per_min'], 1), 'drops/min', round(d['drops_per_min'], 2))" 2>/dev/null
 done

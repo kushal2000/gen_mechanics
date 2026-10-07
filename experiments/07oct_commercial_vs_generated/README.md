@@ -78,6 +78,32 @@ epoch 5000), which never saw it, works on it about as well as on the vendor hand
 Baseline: transfer fails. The policy holds the cube on the replica (episodes end by the 10 s no-goal timeout, cube
 8 cm from the palm) but never turns it to a goal.
 
+## The clone, and what actually decides transfer (7 Oct afternoon)
+
+Built bases-first (commercial.CLONE: exact MCP bases, palm backed out of them with its centre on the vendor's,
+exact hinges and links, vendor link boxes, vendor collision exclusions + its own rest overlaps), the Wuji v2 clone
+matches the vendor at q = 0 to 0.0 mm in every hinge line, fingertip and link box. Its joints track in free space
+like the vendor's (analysis/sweep_joints.py: every flex/PIP/DIP 99% of range; the ring MCP stalled at 72 deg until
+the clone's own rest-overlapping ring/pinky first links were excluded).
+
+Zero-shot (52-hand policy, 31826 ep 5000; 256 envs x 240 s, first-episode goals) -- the palm_extents ablations
+(obs.palm_extents_override, TEST ONLY: changes the observation and nothing else):
+
+| hand (physics) | observed palm_extents | goals / first episode | goals / min |
+|---|---|---|---|
+| vendor Wuji (trained on) | its own (76.5 x 88.0 mm) | 23.4 (seed 1: 25.3) | 36.3 (36.5) |
+| vendor Wuji | the clone's derived 70.0 x 87.4 | **0.00** | 0.01 |
+| clone, vendor palm box | vendor's | 11.9 (seed 1: 12.0) | 26.1 (26.0) |
+| clone, vendor palm box | derived 70.0 x 87.4 | **0.00** | 0.03 |
+| clone (derived palm) | its own 70.0 x 87.4 | 0.00 | 0.04 |
+| **clone (derived palm)** | **vendor's** | **15.6** | **31.0** |
+
+**palm_extents alone decides it.** Every Wuji hand in that policy's training had the same palm, so the input was a
+constant (its normaliser variance is exactly 0): told the palm is 6.5 mm narrower, the policy holds the cube and
+never turns it -- on its own training hand too. The palm's collision shape does not matter. With the vendor's
+palm_extents the clone reaches 85% of the vendor's goals/min. Zero-shot transfer from this policy cannot judge a
+replica whose palm differs from Wuji's; that needs a policy without palm_extents, or one trained across palm sizes.
+
 ## Fixed on the way
 
 `hand_sampler/commercial.py` `_palm_axes` took the palm normal from the ORDER of the vendor's finger bases, so for

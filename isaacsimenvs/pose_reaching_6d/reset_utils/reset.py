@@ -184,6 +184,9 @@ def allocate_state_buffers(env) -> None:
     if (torch.linalg.det(axes) - 1.0).abs().max() > 1e-3:
         raise RuntimeError(f"{spec.name}: palm_keypoints edges are not a right-handed orthonormal frame")
     env._palm_frame_quat = quat_from_matrix(axes)                        # canonical -> palm body, wxyz
+    if getattr(env.cfg.obs, "palm_extents_override", None) is not None:   # TEST ONLY (ObsCfg): the observation alone
+        env._palm_extents = torch.as_tensor(env.cfg.obs.palm_extents_override, dtype=torch.float32,
+                                            device=env._palm_extents.device).expand_as(env._palm_extents).clone()
     # The slab as the policy sees it in that frame, from the palm centre: axis-aligned, centred at 0.
     env._palm_keypoints_canon = quat_apply_inverse(
         env._palm_frame_quat.unsqueeze(1).expand(-1, 4, -1),

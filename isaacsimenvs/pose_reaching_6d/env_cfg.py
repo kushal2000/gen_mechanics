@@ -118,6 +118,10 @@ class ObsCfg:
     # are in the palm body's own frame, whose axes are whatever the hand's URDF chose: the same for
     # every env of one hand, different between hands. For multi-hand scenes; supersedes geometry_origin.
     canonical_palm_frame: bool = False
+    # TEST ONLY: report these (thickness, width, length) metres as palm_extents instead of the hand's own. Changes the
+    # observation and nothing else (the canonical frame, the palm and the cube spawn come from the palm keypoints) --
+    # for telling apart what a palm's size does to a policy through its input from what its shape does in contact.
+    palm_extents_override: list | None = None
 
 
 @configclass
