@@ -10,7 +10,7 @@ from gviewer import sources as src
 from gviewer.envload import load_env_modules
 from hand_sampler.grammar.derive import derive, sample_derivation
 from hand_sampler.grammar.kinematics import ModelError
-from hand_sampler.grammar.limits import SIMULATOR, UNLIMITED, check
+from hand_sampler.grammar.limits import SIMULATOR, GenerationLimits, check
 
 # Sampled under the SIMULATOR limits, every design is buildable, so all four
 # physical checks are measured.
@@ -79,5 +79,5 @@ def test_search_respects_checks_and_limits():
     assert check(res.derivation, SIMULATOR).ok
     assert ck.search(dist, set(), 0, limits=SIMULATOR).tries == 1
     # under no limits every G_FULL draw is accepted at once with the checks off
-    res = ck.search(src.distribution("G_FULL"), set(), 3, limits=UNLIMITED)
+    res = ck.search(src.distribution("G_FULL"), set(), 3, limits=GenerationLimits())
     assert res.tries == 1 and res.seed == 3

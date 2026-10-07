@@ -17,11 +17,23 @@ from gviewer import model as gm  # noqa: E402
 from gviewer import sources as src  # noqa: E402
 from hand_sampler.grammar.derive import EVOLUTION_OPERATORS, derive, sample_derivation  # noqa: E402
 from hand_sampler.grammar.kinematics import ModelError  # noqa: E402
-from hand_sampler.grammar.limits import SIMULATOR, UNLIMITED, Structure, check  # noqa: E402
+from hand_sampler.grammar.limits import SIMULATOR, GenerationLimits, Structure, check  # noqa: E402
 from hand_sampler.grammar.variants import RULES, build_distribution  # noqa: E402
 
 ALL_ON = {r: True for r in RULES}
 ALL_OFF = {r: False for r in RULES}
+UNLIMITED = GenerationLimits()
+
+
+def unlimit(app):
+    """Set every limit field to 'no limit', as a user would in the panel."""
+    for f in lui.INT_FIELDS:
+        app.set_limit(f.key, lui.ANY)
+    for key, _, _ in lui.BOOL_FIELDS:
+        app.set_limit(key, True)
+    app.set_limit("joint_types", "hinge + continuous + sliding")
+    app.set_limit("coupled", True)
+    assert app.limits() == UNLIMITED
 
 
 def _free_port() -> int:
@@ -44,11 +56,11 @@ def app():
 
 @pytest.fixture
 def simulator(app):
-    app.set_preset("Simulator")
+    app.reset_limits()
     app.set_all_checks(True)
     app.set_rules(**ALL_ON)
     yield app
-    app.set_preset("Simulator")
+    app.reset_limits()
     app.set_all_checks(True)
     app.set_rules(**ALL_ON)
 
@@ -89,7 +101,8 @@ def test_http_and_initial_design(app):
 
 def test_panel_is_essential(app):
     assert set(app.check_boxes) == set(ck.CHECK_KEYS)
-    assert app.gui_preset.value == "Simulator" and app.limits() == SIMULATOR
+    assert not hasattr(app, "gui_preset") and app.limits() == SIMULATOR
+    assert "require_digit_on_palm_body" not in app.limit_bools
     assert set(V.OPERATOR_INFO) == set(EVOLUTION_OPERATORS) == set(app.op_buttons)
     assert tuple(app.rule_boxes) == RULES and not hasattr(app, "gui_variant")
     # no grammar codes or jargon in visible labels
@@ -104,22 +117,23 @@ def test_panel_is_essential(app):
     assert all(len(cb.label) <= 50 for cb in app.check_boxes.values())
 
 
-def test_presets_and_custom(simulator):
+def test_limit_fields_and_reset(simulator):
     app = simulator
-    app.set_preset("Unlimited")
-    assert app.limits() == UNLIMITED
+    assert app.limit_ints["max_finger_length_mm"].value == "250"
     app.set_limit("max_digits", 2)
-    assert app.gui_preset.value == "Custom" and app.limits().max_digits == 2
-    app.set_preset("Simulator")
+    app.set_limit("max_finger_length_mm", "150")
+    assert app.limits() == SIMULATOR.with_(max_digits=2, max_finger_length_mm=150.0)
+    app.reset_limits()
     assert app.limits() == SIMULATOR and app.limit_ints["max_digits"].value == "5"
-    app.set_limit("max_digits", "5")                 # same values as a preset: shown as that preset
-    assert app.gui_preset.value == "Simulator"
+    unlimit(app)
+    app.reset_limits()
+    assert app.limits() == SIMULATOR
 
 
 def test_random_uses_the_limits(simulator):
     app = simulator
     app.set_all_checks(False)
-    app.set_preset("Unlimited")
+    unlimit(app)
     app.set_limit("max_digits", 2)
     app.set_limit("max_joints_per_digit", 2)
     for seed in range(5):
@@ -172,7 +186,7 @@ def test_overlap_shown_in_red(simulator):
 
 def test_unbuildable_hand_reads_na(simulator):
     app = simulator
-    app.set_preset("Unlimited")
+    unlimit(app)
     app.set_all_checks(True)
     ge = __import__("gviewer.envload", fromlist=["x"]).load_env_modules().grammar_envelope
     seed = next(s for s in range(100)
@@ -182,7 +196,7 @@ def test_unbuildable_hand_reads_na(simulator):
     assert app.last_search.tries == 1 and not app.prep.ev.buildable
     assert all(": n/a" in app.check_boxes[k].label for k in ck.CHECK_KEYS)
     assert "the simulator cannot build this hand" in app.md_status.content
-    app.set_preset("Simulator")
+    app.reset_limits()
     assert app.md_limits.content.startswith("this hand: outside:")
 
 
@@ -230,8 +244,10 @@ def test_operator_buttons_follow_the_limits(simulator):
     assert app.op_buttons["add_palm_body"].label == "add a palm part with a short finger"
     assert app.mutate("add_branch_digit", wait=True)
     assert "not allowed by limits" in app.md_mut.content and app.history.cursor == 0
-    app.set_preset("Unlimited")
-    assert app.op_buttons["add_branch_digit"].visible and app.op_buttons["add_palm_body"].label == "add a palm part"
+    unlimit(app)
+    # a palm part comes with a finger: a rule of the grammar, not a limit
+    assert app.op_buttons["add_branch_digit"].visible
+    assert app.op_buttons["add_palm_body"].label == "add a palm part with a short finger"
     assert app.mutate("add_branch_digit", wait=True) and app.history.cursor == 1
 
 

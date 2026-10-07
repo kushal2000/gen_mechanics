@@ -1,6 +1,6 @@
-"""The viewer's side of the generation limits (hand_sampler/grammar/limits.py):
-the panel fields, presets, and which mutation operators can act on a hand
-under the current limits."""
+"""The viewer's side of the simulator limits (hand_sampler/grammar/limits.py):
+the panel fields (shown at the simulator's values, editable, with a reset),
+and which mutation operators can act on a hand under the current limits."""
 
 from __future__ import annotations
 
@@ -10,11 +10,9 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from hand_sampler.grammar.derive import Derivation, VariationImpossible, vary
-from hand_sampler.grammar.limits import PRESETS, SIMULATOR, UNLIMITED, GenerationLimits
+from hand_sampler.grammar.limits import SIMULATOR, GenerationLimits
 
 ANY = "any"
-CUSTOM = "Custom"
-PRESET_NAMES: Tuple[str, ...] = tuple(PRESETS) + (CUSTOM,)
 
 
 @dataclass(frozen=True)
@@ -49,9 +47,6 @@ INT_FIELDS: Tuple[IntField, ...] = (
 BOOL_FIELDS: Tuple[Tuple[str, str, str], ...] = (
     ("allow_branches", "allow branching fingers", "A finger may grow a branch finger off one of its bones."),
     ("allow_stacked_palm_joints", "allow stacked palm joints", "A jointed palm part may sit on another jointed one."),
-    ("require_digit_on_palm_body", "no empty palm parts",
-     "Every palm part carries a finger: a new palm part comes with a one-joint finger, and removing a palm "
-     "part's last finger removes the palm part."),
 )
 
 # Joint types other than Coupled, as one dropdown (plain label -> kinds);
@@ -86,13 +81,6 @@ def build_limits(ints: Dict[str, str], bools: Dict[str, bool], joint_types: str,
         **{k: option_to_int(v) for k, v in ints.items()},
         **bools,
     )
-
-
-def preset_of(limits: GenerationLimits) -> str:
-    for name, lim in PRESETS.items():
-        if lim == limits:
-            return name
-    return CUSTOM
 
 
 # --------------------------------------------------------------------------
@@ -130,7 +118,7 @@ def operator_status(derivation: Derivation, dist, ops: Sequence[str],
 
 
 __all__ = [
-    "ANY", "BOOL_FIELDS", "COUPLED_HINT", "CUSTOM", "INT_FIELDS", "JOINT_TYPES_HINT", "JOINT_TYPE_OPTIONS",
-    "NOTHING", "NOT_ALLOWED", "OK", "PRESET_NAMES", "SIMULATOR", "UNLIMITED", "build_limits", "int_to_option",
-    "joint_types_option", "operator_status", "option_to_int", "preset_of",
+    "ANY", "BOOL_FIELDS", "COUPLED_HINT", "INT_FIELDS", "JOINT_TYPES_HINT", "JOINT_TYPE_OPTIONS",
+    "NOTHING", "NOT_ALLOWED", "OK", "SIMULATOR", "build_limits", "int_to_option",
+    "joint_types_option", "operator_status", "option_to_int",
 ]

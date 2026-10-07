@@ -3,8 +3,8 @@
     .venv_viewer/bin/python experiments/grammar_viewer/viewer.py --port 8080 --host 127.0.0.1
 
 One compact panel, one line per item (longer explanations are hover text):
-Grammar (Random and three rule toggles), Limits (the generation limits sampling and
-mutation obey by construction: a preset or custom values), Viability (the
+Grammar (Random and three rule toggles), Limits (the simulator's limits, which sampling
+and mutation obey by construction; editable, with a reset), Viability (the
 four physical checks generation cannot guarantee, each switchable),
 Commercial hand, Mutation (only the operators that can act on this hand under
 these limits are shown) and Pose (curl, re-centre). `viewer_full.py` keeps the full tool.
@@ -113,8 +113,8 @@ OPERATOR_INFO: Dict[str, tuple] = {
 assert set(OPERATOR_INFO) == set(EVOLUTION_OPERATORS), "OPERATOR_INFO must cover EVOLUTION_OPERATORS exactly"
 
 
-def op_label(op: str, limits: Optional[glim.GenerationLimits] = None) -> str:
-    if op == "add_palm_body" and limits is not None and limits.require_digit_on_palm_body:
+def op_label(op: str, dist=None) -> str:
+    if op == "add_palm_body" and dist is not None and dist.palm_body_needs_digit:
         return "add a palm part with a short finger"
     return OPERATOR_INFO.get(op, (op, ""))[0]
 
@@ -293,11 +293,13 @@ class EssentialViewer:
         finally:
             self._suppress = False
 
-    def set_preset(self, name: str) -> None:
-        self.gui_preset.value = name          # fires on_update
+    def reset_limits(self) -> None:
+        """Put every limit field back to the simulator's value."""
+        self._set_fields(glim.SIMULATOR)
+        self._limits_changed()
 
     def set_limit(self, key: str, value) -> None:
-        """Set one limit field (as the panel would), which switches the preset to Custom."""
+        """Set one limit field (as the panel would)."""
         if key in self.limit_ints:
             self.limit_ints[key].value = lui.int_to_option(value) if not isinstance(value, str) else value
         elif key in self.limit_bools:
@@ -309,27 +311,14 @@ class EssentialViewer:
         else:
             raise KeyError(key)
 
-    def _on_preset(self) -> None:
-        if self._suppress:
-            return
-        name = self.gui_preset.value
-        if name in glim.PRESETS:
-            self._set_fields(glim.PRESETS[name])
-        self._limits_changed()
-
     def _on_field(self) -> None:
         if self._suppress:
             return
         try:
-            lim = self.limits()
+            self.limits()
         except ValueError as exc:
             self.md_limits.content = f"invalid: {exc}"
             return
-        self._suppress = True
-        try:
-            self.gui_preset.value = lui.preset_of(lim)
-        finally:
-            self._suppress = False
         self._limits_changed()
 
     def _limits_changed(self) -> None:
@@ -608,11 +597,11 @@ class EssentialViewer:
             return
         self.op_status = lui.operator_status(shown.derivation, self.dist(),
                                              EVOLUTION_OPERATORS, self.limits())
-        limits = self.limits()
+        dist = self.dist()
         for op, b in self.op_buttons.items():
             st = self.op_status[op]
             b.visible = st == lui.OK          # only what can act on this hand under these limits
-            b.label = op_label(op, limits)
+            b.label = op_label(op, dist)
             b.hint = OPERATOR_INFO[op][1]
 
     def mutate(self, operator: Optional[str] = None, wait: bool = False) -> bool:
@@ -638,7 +627,7 @@ class EssentialViewer:
                 except Exception as exc:  # noqa: BLE001 - e.g. a projected hand's value is off the grammar's grid
                     why = f"{type(exc).__name__}: {exc}"
             if child is None:
-                self.md_mut.content = (f"'{op_label(operator, limits)}': {why}" if operator
+                self.md_mut.content = (f"'{op_label(operator, dist)}': {why}" if operator
                                        else "no mutation can apply to this hand")
                 return
             d = hist.diff(shown.derivation, child)
@@ -646,7 +635,7 @@ class EssentialViewer:
             base = self.history.entries[0].label
             self.show(Shown(child, model, base, "mutant", commercial=None), "push", operator=used, frame=False)
             prefix = "random: " if not operator else ""
-            self.md_mut.content = f"{prefix}{op_label(used, limits)}: {change_line(d)}"
+            self.md_mut.content = f"{prefix}{op_label(used, dist)}: {change_line(d)}"
 
         return self.run_job(f"mutate {operator or 'random'}", job, wait=wait)
 
@@ -692,11 +681,8 @@ class EssentialViewer:
             self.md_random = g.add_markdown("")
 
         with g.add_folder("Limits"):
-            self.gui_preset = g.add_dropdown("Preset", list(lui.PRESET_NAMES), initial_value="Simulator",
-                                             hint="Rules every drawn or mutated hand obeys. Simulator: what the "
-                                                  "simulator's hand can build. Default: the whole grammar, no empty "
-                                                  "palm parts. Unlimited: the whole grammar. Editing a field makes "
-                                                  "it Custom.")
+            btn_reset = g.add_button("reset", hint="Every drawn or mutated hand obeys these limits. They start at "
+                                                   "what the simulator's hand can build; reset puts them back.")
             self.limit_ints: Dict[str, Any] = {}
             for f in lui.INT_FIELDS:
                 self.limit_ints[f.key] = g.add_dropdown(f.label, list(f.options),
@@ -740,7 +726,7 @@ class EssentialViewer:
             self.md_mut = g.add_markdown("")
             self.op_buttons: Dict[str, Any] = {}
             for op in EVOLUTION_OPERATORS:
-                self.op_buttons[op] = g.add_button(op_label(op, glim.SIMULATOR), hint=OPERATOR_INFO[op][1])
+                self.op_buttons[op] = g.add_button(op_label(op, self.dist()), hint=OPERATOR_INFO[op][1])
 
         with g.add_folder("Pose"):
             self.gui_curl = g.add_slider("Curl", 0.0, 1.0, 0.01, RESET_CURL,
@@ -761,7 +747,7 @@ class EssentialViewer:
         for cb in self.rule_boxes.values():
             cb.on_update(_rule_toggled)
 
-        self.gui_preset.on_update(lambda _: self._on_preset())
+        btn_reset.on_click(lambda _: self.reset_limits())
         for h in list(self.limit_ints.values()) + list(self.limit_bools.values()) + [self.gui_joint_types,
                                                                                       self.gui_coupled]:
             h.on_update(lambda _: self._on_field())
