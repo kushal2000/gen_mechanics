@@ -275,6 +275,20 @@ Three things worth knowing before trusting a fit:
   *exactly nothing* — 0.0 µm. It is not a hand anyone should build; the
   separator simply stops the moment it clears. Generated hands do not do this:
   over 60 drifted designs the median clearance was 13.6 mm.
+* **A big shape error can be a rest-pose disagreement rather than a wrong
+  mechanism.** MIDAS's thumb is 27.8 mm off at rest, against 2.6 for its own
+  fingers, which reads as a bad fit. It is not: drive its four joints and the
+  whole chain -- every joint position, not just the tip -- comes onto the
+  vendor's within 7.4 mm, on angles under 20 degrees, which is the same
+  residual MIDAS's fingers reach. The fit has the vendor's mechanism and
+  disagrees only about where zero is. That residual, 6 to 8 mm on every hand
+  here, is the snapped link lengths and the midplane projection; it is the
+  floor, and no amount of joint travel goes below it.
+
+  It does not generalise. wuji2's middle finger needs +80 and -86 degrees to
+  get from 20.4 mm to 16.2, which is a contortion rather than an offset, and
+  that digit really does not match.
+
 * **Every vendor's bases sit off the palm midplane** and a mount cannot say
   so — 6 mm across LEAP's row, 10 across MIDAS's, 18 on Allegro's thumb. A
   mount is a (y, z) offset in one plane, so that component is dropped. It is
