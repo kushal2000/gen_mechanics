@@ -1,0 +1,211 @@
+{
+ "format": 1,
+ "name": "wuji2_left_replica",
+ "count": 1,
+ "provenance": {
+  "created_at": "2026-10-07T15:26:25+00:00",
+  "git_commit": "aabccd215e7056ea11a007a54e2307f7fec2fa28",
+  "method": "commercial.fit",
+  "source": "hand_sampler.commercial",
+  "vendor_urdf": "assets/urdf/unified_dynamics_commercial_hands/wuji2/wuji2_left.urdf",
+  "notes": [
+   "l_index_finger_mcp_flex: link 0 14.5 -> 20 mm (the 20 mm floor)",
+   "l_middle_finger_mcp_flex: link 0 14.5 -> 20 mm (the 20 mm floor)",
+   "l_ring_finger_mcp_flex: link 0 14.5 -> 20 mm (the 20 mm floor)",
+   "l_pinky_mcp_flex: link 0 14.5 -> 20 mm (the 20 mm floor)",
+   "l_index_finger_mcp_flex: base 10 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_index_finger_mcp_flex: base 4 mm off the palm midplane, which a mount cannot express",
+   "l_middle_finger_mcp_flex: base 14 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_middle_finger_mcp_flex: base 1 mm off the palm midplane, which a mount cannot express",
+   "l_ring_finger_mcp_flex: base 6 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_pinky_mcp_flex: base 21 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_pinky_mcp_flex: base 4 mm off the palm midplane, which a mount cannot express",
+   "l_thumb_cmc_flex: base 1 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_thumb_cmc_flex: base 7 mm off the palm midplane, which a mount cannot express"
+  ],
+  "gen_joint_drive": [
+   0.5,
+   5.0,
+   3.0,
+   0.0775033248319064,
+   0.00058
+  ]
+ },
+ "designs": [
+  {
+   "palm": {
+    "thickness": 0.024999999999999998
+   },
+   "fingers": [
+    {
+     "mount": {
+      "y": -0.035,
+      "z": 0.005,
+      "facing": 6.021385919380436
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.02
+      },
+      {
+       "joint": {
+        "kind": "abduction"
+       },
+       "length": 0.04
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.03
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.025
+      }
+     ]
+    },
+    {
+     "mount": {
+      "y": -0.01,
+      "z": 0.03,
+      "facing": 0.0
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.02
+      },
+      {
+       "joint": {
+        "kind": "abduction"
+       },
+       "length": 0.04
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.03
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.025
+      }
+     ]
+    },
+    {
+     "mount": {
+      "y": 0.02,
+      "z": 0.005,
+      "facing": 0.0
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.02
+      },
+      {
+       "joint": {
+        "kind": "abduction"
+       },
+       "length": 0.04
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.03
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.025
+      }
+     ]
+    },
+    {
+     "mount": {
+      "y": 0.055,
+      "z": -0.005,
+      "facing": 0.2617993877991494
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.02
+      },
+      {
+       "joint": {
+        "kind": "abduction"
+       },
+       "length": 0.035
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.025
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.025
+      }
+     ]
+    },
+    {
+     "mount": {
+      "y": -0.02,
+      "z": -0.035,
+      "facing": 3.926990816987241
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.025,
+       "lean": 1
+      },
+      {
+       "joint": {
+        "kind": "abduction"
+       },
+       "length": 0.04,
+       "lean": 3
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.04,
+       "lean": 3
+      },
+      {
+       "joint": {
+        "kind": "flexion"
+       },
+       "length": 0.03
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
