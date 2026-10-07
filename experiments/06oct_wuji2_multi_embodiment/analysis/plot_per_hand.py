@@ -1,4 +1,5 @@
-"""Per-design performance of the 52-hand Wuji v2 policy: goals per minute for each finger set, left vs right hand.
+"""Per-design performance of the 52-hand Wuji v2 policy: goals in each env's first episode (goals per minute for
+older results without it) for each finger set, left vs right hand.
 
 Grouped bars by finger count (5, 4, 3, 2), best first within a group; PDF + PNG, paper style. Data: one
 results/eval_per_hand_ep<N>.json from eval_per_hand.py.
@@ -36,11 +37,13 @@ def fingers(hand: str) -> list[str]:
 
 def plot(src: pathlib.Path):
     d = json.loads(src.read_text())
+    first = "goals_per_episode_first" in next(iter(d["hands"].values()))
+    metric = "goals_per_episode_first" if first else "goals_per_min"
     rows = {}
     for hand, m in d["hands"].items():
         f = fingers(hand)
         rows.setdefault("+".join(x[0].upper() for x in f), {"n": len(f)})["R" if "_right" in hand else "L"] = \
-            m["goals_per_min"]
+            m[metric]
     order = sorted(rows, key=lambda k: (-rows[k]["n"], -(rows[k]["L"] + rows[k]["R"])))
     # one slot per design, plus a gap between finger-count groups
     x, pos, prev = [], 0.0, None
@@ -56,7 +59,7 @@ def plot(src: pathlib.Path):
     for i, (_, side, color) in enumerate(sides):
         ax.bar(x + (i - 0.5) * w, [rows[k][side] for k in order], w * 0.92, color=color, alpha=ps.BAR_ALPHA,
                linewidth=0)
-    top = max(max(r["L"], r["R"]) for r in rows.values())
+    top = max(max(r["L"], r["R"]) for r in rows.values())     # scaled to the data, not the 50-goal cap
     for n in (5, 4, 3, 2):
         xs = [xi for xi, k in zip(x, order) if rows[k]["n"] == n]
         ax.text((min(xs) + max(xs)) / 2, top * 1.08, "Full" if n == 5 else f"{n} Fingers", ha="center", va="bottom", fontsize=8,
@@ -70,7 +73,7 @@ def plot(src: pathlib.Path):
     ax.tick_params(axis="x", length=0)
     ax.set_xticks(x, order, rotation=90, fontsize=7)
     ax.set_xlabel("Fingers present (T thumb, I index, M middle, R ring, P pinky)")
-    ax.set_ylabel("Goals / min")
+    ax.set_ylabel("Goals / episode" if first else "Goals / min")
     ep = d["checkpoint"].split("_ep_")[1].split("_")[0]
     ax.set_title(f"One Policy, 52 Wuji Hands (epoch {ep})", fontweight="bold")
     ps.bottom_legend(fig, [Patch(facecolor=c, alpha=ps.BAR_ALPHA) for *_, c in sides], [t for t, *_ in sides],

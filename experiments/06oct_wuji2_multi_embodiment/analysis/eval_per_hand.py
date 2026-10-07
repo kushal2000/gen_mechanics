@@ -2,8 +2,12 @@
 
 The training run's per_hand/* curves average each hand's last 3000 episodes (rlgames_utils.py), which at
 ~236 envs per hand is a ~1000-epoch trailing window. This instead builds the run's own 52-hand scene (its saved
-config, every hand dealt round-robin as in training), runs a checkpoint greedily for a fixed sim time and
-splits goals and drops by hand.
+config, every hand dealt round-robin as in training), runs a checkpoint greedily and splits the results by hand.
+
+Headline: goals in each env's FIRST episode, averaged over the hand's envs (goals_per_episode_first, as in
+05oct's missing-finger plots). Every env starts at reset together, so this is not biased toward short (dropped)
+episodes the way an average over episodes that ended inside a window is. Runs until every env's first episode
+has ended, or --max-seconds of sim time; envs still in their first episode then are reported, not averaged.
 
     OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python \
         experiments/06oct_wuji2_multi_embodiment/analysis/eval_per_hand.py               # -> results/eval_per_hand_ep<N>.json
@@ -11,8 +15,7 @@ splits goals and drops by hand.
         experiments/06oct_wuji2_multi_embodiment/results/eval_per_hand_ep<N>.json     # -> plots/eval_per_hand_ep<N>.png
 
 Everything as trained (episode length, 50-goal cap, physics) except greedy actions (SAPG coefficient 0).
-Rates are per minute of sim time per env, so a hand that drops early and restarts is not credited for
-short episodes; goals/episode is over the episodes that ended inside the window.
+Also goals/min and drops/min per env over the whole window.
 """
 from __future__ import annotations
 
@@ -44,8 +47,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--job", default="31826")
     ap.add_argument("--checkpoint", default="", help="default: the job's highest-epoch checkpoint")
-    ap.add_argument("--envs-per-hand", type=int, default=40)
-    ap.add_argument("--seconds", type=float, default=90.0, help="sim time per env")
+    ap.add_argument("--envs-per-hand", type=int, default=64)
+    ap.add_argument("--max-seconds", type=float, default=600.0,
+                    help="sim-time cap; stops earlier once every env's first episode has ended")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="", help="default: results/eval_per_hand_ep<N>.json")
     ap.add_argument("--device", default="cuda:0")
@@ -69,7 +73,10 @@ def main() -> None:
     from coevolution.utils.hydra_utils import hydra_task_config_with_yaml
 
     ckpt = pathlib.Path(args.checkpoint) if args.checkpoint else newest_checkpoint(args.job)
-    saved = OmegaConf.load(ckpt.parents[2] / ".hydra/config.yaml")
+    # The run's config, not the checkpoint's folder: a copied checkpoint (e.g. a snapshot of the best-reward
+    # one, which training keeps overwriting) lives outside the run.
+    run = glob.glob(f"{LOGS}/0_scale_train_*_{args.job}_0_*/rank_0/.hydra/config.yaml")
+    saved = OmegaConf.load(run[0] if run else ckpt.parents[2] / ".hydra/config.yaml")
     sys.argv = [sys.argv[0]]
     print(f"[per_hand] checkpoint {ckpt.name}", flush=True)
     if not args.out:
@@ -107,11 +114,13 @@ def main() -> None:
                           device=args.device, sapg_expl_coef=0.0, num_envs=inner.num_envs)
 
         N, dev, dt = inner.num_envs, inner.device, float(inner.step_dt)
-        steps = int(round(args.seconds / dt))
-        goals, drops, ended, ep_goals = (torch.zeros(N, device=dev) for _ in range(4))
-        streak = torch.zeros(N, device=dev)
+        max_steps = int(round(args.max_seconds / dt))
+        goals, drops, streak = (torch.zeros(N, device=dev) for _ in range(3))
+        first_goals = torch.full((N,), -1.0, device=dev)       # goals in the first episode; -1 = still running
+        first_drop = torch.zeros(N, dtype=torch.bool, device=dev)
         t0 = time.time()
-        for k in range(steps):
+        k = 0
+        while k < max_steps and bool((first_goals < 0).any()):
             with torch.no_grad():
                 act = player.get_normalized_action(obs["policy"], deterministic_actions=True)
             obs, _, _, _, _ = env.step(act)
@@ -122,25 +131,29 @@ def main() -> None:
             goals += succ
             streak += succ
             drops += fall
-            ended += end
-            ep_goals += streak * end
+            fresh = (end > 0) & (first_goals < 0)
+            first_goals[fresh] = streak[fresh]
+            first_drop[fresh] = r["fall"].bool()[fresh]
             streak *= 1.0 - end
+            k += 1
             if k % 600 == 0:
-                print(f"[per_hand] step {k}/{steps} ({time.time() - t0:.0f} s)", flush=True)
+                print(f"[per_hand] step {k} ({k * dt:.0f} s sim, {time.time() - t0:.0f} s wall): "
+                      f"{int((first_goals < 0).sum())} of {N} envs still in their first episode", flush=True)
 
-        minutes = steps * dt / 60.0
-        out = {"checkpoint": str(ckpt), "seconds": steps * dt, "envs_per_hand": args.envs_per_hand, "hands": {}}
+        minutes = k * dt / 60.0
+        out = {"checkpoint": str(ckpt), "seconds": k * dt, "envs_per_hand": args.envs_per_hand, "hands": {}}
         for h, name in enumerate(hands):
             m = idx == h
             n = int(m.sum())
-            e = float(ended[m].sum())
+            done = m & (first_goals >= 0)
             out["hands"][name] = {
                 "envs": n,
+                "goals_per_episode_first": float(first_goals[done].mean()) if done.any() else float("nan"),
+                "goals_per_episode_first_std": float(first_goals[done].std()) if int(done.sum()) > 1 else float("nan"),
+                "first_episode_drop_frac": float(first_drop[done].float().mean()) if done.any() else float("nan"),
+                "first_episode_unfinished_frac": 1.0 - int(done.sum()) / n,
                 "goals_per_min": float(goals[m].sum()) / (n * minutes),
                 "drops_per_min": float(drops[m].sum()) / (n * minutes),
-                "episodes": e,
-                "goals_per_episode": float(ep_goals[m].sum()) / e if e else float("nan"),
-                "drop_frac": float(drops[m].sum()) / e if e else float("nan"),
             }
         pathlib.Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.out).write_text(json.dumps(out, indent=1))
