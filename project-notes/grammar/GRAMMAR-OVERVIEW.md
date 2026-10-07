@@ -54,7 +54,7 @@ Every limit comes from the commercial hands (their extremes with a 10% margin), 
 
 **Fingers.** 2 to 6. Each finger has a base position (y, z) on the plate, 10-160 mm from the wrist centre; a facing, the in-plane direction it leaves in; and a tilt out of the plate. Neighbouring bases are at least 19 mm (one link width) apart, which every commercial hand satisfies.
 
-**Joints.** 1 to 5 per finger. A joint's axis is a direction in its link's frame (two angles). Its kind is read off that direction: bend (closes the finger toward the palm), spread (swings it sideways) or twist (spins it about its length). The kind sets two things:
+**Joints.** 1 to 5 per finger. A joint's axis is a direction in its link's frame (two angles). Its kind is read off that direction: bend (closes the finger toward the grasp point, the spot above the palm where the object starts), spread (swings it sideways) or twist (spins it about its length). Each finger's closing direction points at the grasp point, so every finger curls toward the object wherever it sits and whichever way it faces. The kind sets two things:
 - the sign, following Kushal's convention: positive closes toward the grasp point, or spreads toward +y; zero is home;
 - the range: bend -30 to +90 degrees, spread +/-30, twist +/-90.
 
@@ -84,7 +84,9 @@ Coarse steps explore; fine steps refine a hand without changing its structure.
 
 ## Random hands
 
-Counts are drawn within the limits. Each joint starts exactly on a kind, drawn with the commercial mix (69% bend, 27% spread, 4% twist), and one finger is placed as an opposing thumb with the same probability as in the commercial set.
+Everything is drawn uniformly within the grammar's limits, with no hand-shaped template: finger bases anywhere on the allowed region (on the palm's rim), any facing, any tilt. Each joint starts exactly on a kind, drawn with the commercial mix (69% bend, 27% spread, 4% twist).
+
+Following Vatsal's method, generation and mutation keep hands physically sane: a random hand is built finger by finger, each finger redrawn until it clears the palm and every earlier finger at rest and in the start pose, and every mutation returns the first of its shuffled options that still passes the rules and C1. Of random hands, 74% are viable (C1 100%, C2 74%), 1.4 draws per viable hand; mutations return a viable child 96% of the time.
 
 ## Viability checks
 
@@ -95,7 +97,7 @@ The object starts at a fixed spot above the palm, set by the task.
 
 ## Commercial hands
 
-Eighteen hands: Ability, Allegro, ARMS (a human skeleton model), Barrett, DClaw, Dex1, Dex3, Inspire, LEAP, MIDAS, Orca, Shadow, SHARPA, SVH, Tesollo DG-5F, Wuji v1, Wuji v2 and XHand. Each is fitted onto the grammar's fine grid and checked against the 5 mm / 10 degree target: 17 of 19 (counting Wuji v2's left and right hands) fit, most within 2 mm and 4 degrees. The misses are ARMS (a human skeleton whose bases sit 15.8 mm apart, under the 19 mm spacing) and Wuji v1 (a 4.6 mm knuckle offset snapped to 0 mm and an out-of-plane base; 5.1 mm, 10.4 degrees). Wuji v2 fits within 1.6 mm.
+Eighteen hands: Ability, Allegro, ARMS (a human skeleton model), Barrett, DClaw, Dex1, Dex3, Inspire, LEAP, MIDAS, Orca, Shadow, SHARPA, SVH, Tesollo DG-5F, Wuji v1, Wuji v2 and XHand. Each is fitted onto the grammar's fine grid and checked against the 5 mm / 10 degree target: 17 of 19 (counting Wuji v2's left and right hands) fit, most within 2 mm and 4 degrees. The misses are ARMS (a human skeleton whose bases sit 15.8 mm apart, under the 19 mm spacing; 5.2 mm) and SVH (5.04 mm, its couplings held at 1.1). Wuji v1 fits at 4.0 mm and 3.4 degrees, and Wuji v2 within 1.6 mm. Dex3's thumb sits 22.5 mm inside the palm outline, against the 8 mm rim rule; it still loads in the simulator.
 
 ## In the simulator
 
