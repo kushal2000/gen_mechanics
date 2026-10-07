@@ -28,38 +28,42 @@ def _real_from_hand(hand: Hand) -> C.RealHand:
 @pytest.mark.parametrize("rules", [EVOLUTION_RULES, NO_RULES], ids=["evolution", "none"])
 def test_conform_round_trips_a_sampled_hand(seed, rules):
     """A sampled (and mutated) hand, exported to URDF and read back, conforms
-    to exactly itself, given its palm frame."""
+    to exactly itself, given its palm frame (a finger pointing straight out of
+    the plate may come back with an equivalent facing and axes)."""
     rng = np.random.default_rng(seed)
     h = ops.random_hand(rng, rules, "coarse")
     for _ in range(seed * 3):
         h, _, _ = ops.mutate(h, rng, rules, "fine" if seed % 2 else "coarse")
     fit = CF.conform(_real_from_hand(h), palm_frame=np.eye(4))
-    assert fit.hand == h
     assert fit.max_joint_mm < 1e-3 and fit.max_axis_deg < 1e-3 and fit.max_tip_mm < 1e-3
+    for f, g in zip(h.fingers, fit.hand.fingers):
+        if abs(f.tilt) == 90:
+            # a finger straight out of the plate: its facing only rolls the frame, which the axis
+            # directions absorb (and the derived signs follow), so equivalent values may come back
+            assert (g.y, g.z, g.tilt, g.palm_joint) == (f.y, f.z, f.tilt, f.palm_joint)
+            assert [j.length for j in g.joints] == [j.length for j in f.joints]
+        else:
+            assert g == f
+    assert fit.hand.palm_joints == h.palm_joints
 
 
-def test_conform_finds_the_palm_frame_of_a_typical_hand():
-    """Without the palm frame given: a row of bending fingers and a thumb
-    (the fingers close toward the grasp side, which fixes the normal) comes back
-    on the same plate (the in-plane direction of z follows the bases'
-    centroid, so it may turn) and within the fit target."""
-    rng = np.random.default_rng(100)
-    found = 0
-    for _ in range(40):
-        h = ops.random_hand(rng, EVOLUTION_RULES, "coarse")
-        nonthumb = [f for f in h.fingers if f.facing == 0]
-        flexing = [f for f in nonthumb if any(j.axis == (0, 0) for j in f.joints)]
-        if len(h.fingers) < 4 or len(flexing) < 3 or h.palm_joints:
-            continue
-        real = _real_from_hand(h)
-        for f, g in zip(real.fingers, h.fingers):
-            f.thumb = g.facing != 0
-        fit = CF.conform(real)
-        assert fit.within_target
-        assert np.allclose(fit.palm_T[:3, 0], [1.0, 0.0, 0.0], atol=1e-6)     # the same plate and normal
-        assert np.allclose(fit.palm_T[:3, 3], 0.0, atol=1e-9)                # the wrist centre
-        found += 1
-    assert found >= 3
+@pytest.mark.parametrize("hand_id", ["allegro_right", "leap_right", "shadow_right_local", "inspire_right"])
+def test_conform_finds_the_palm_frame_of_a_conformed_hand(hand_id):
+    """Without the palm frame given: a conformed commercial hand, exported to
+    URDF, comes back on the same plate (normal +x, origin at the wrist
+    centre; z may turn in the plate, it follows the bases' centroid) and
+    within the fit target."""
+    rec = BC.load().get(hand_id)
+    if rec is None:
+        pytest.skip(f"local-only:{hand_id} not in the committed file on this machine")
+    real = _real_from_hand(rec["hand"])
+    thumbs = set(rec["thumbs"])
+    for i, f in enumerate(real.fingers):
+        f.thumb = i in thumbs
+    fit = CF.conform(real)
+    assert fit.within_target
+    assert np.allclose(fit.palm_T[:3, 0], [1.0, 0.0, 0.0], atol=1e-6)
+    assert np.allclose(fit.palm_T[:3, 3], 0.0, atol=1e-9)
 
 
 # --------------------------------------------------------------------------

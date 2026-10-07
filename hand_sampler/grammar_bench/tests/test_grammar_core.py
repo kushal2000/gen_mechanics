@@ -270,11 +270,10 @@ def test_random_hands_keep_every_rule(rules, stage):
 def test_random_hands_start_on_kinds_with_the_mix():
     rng = np.random.default_rng(6)
     counts = {k: 0 for k in KIND_AXIS}
-    thumbs = palm = n = 0
+    palm = n = 0
     for _ in range(N_SAMPLES):
         h = ops.random_hand(rng, EVOLUTION_RULES)
         n += 1
-        thumbs += any(f.facing != 0 for f in h.fingers)
         palm += len(h.palm_joints) > 0
         for f in h.fingers:
             for jt in f.joints:
@@ -283,8 +282,26 @@ def test_random_hands_start_on_kinds_with_the_mix():
     total = sum(counts.values())
     assert abs(counts["flexion"] / total - 0.69) < 0.03
     assert abs(counts["abduction"] / total - 0.27) < 0.03
-    assert abs(thumbs / n - ops.P_THUMB) < 0.05
     assert abs(palm / n - ops.P_PALM_JOINT) < 0.05
+
+
+def test_random_hands_are_uniform_over_the_limits():
+    """No hand-shaped template: bases all around the wrist, facings and tilts
+    over their whole ranges, finger and joint counts over their ranges."""
+    rng = np.random.default_rng(16)
+    bearings, facings, tilts, nf, nj = [], set(), set(), set(), set()
+    for _ in range(N_SAMPLES // 2):
+        h = ops.random_hand(rng, EVOLUTION_RULES)
+        nf.add(len(h.fingers))
+        for f in h.fingers:
+            bearings.append(math.atan2(f.y, f.z))
+            facings.add(f.facing)
+            tilts.add(f.tilt)
+            nj.add(len(f.joints))
+    R = abs(np.mean(np.exp(1j * np.array(bearings))))
+    assert R < 0.1                                  # bases spread all around the wrist centre
+    assert facings == set(range(0, 360, 30)) and tilts == {-30, 0, 30, 60, 90}
+    assert nf == {2, 3, 4, 5, 6} and nj == {1, 2, 3, 4, 5}
 
 
 # --------------------------------------------------------------------------

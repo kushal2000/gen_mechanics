@@ -49,10 +49,8 @@ from .hand import (
 
 STAGES = ("coarse", "fine")
 
-# Random-draw priors (simple, within the limits).
-P_THUMB = 16 / 18
-"""Share of the commercial hands with a thumb (all but DClaw and Dex1; Wuji v2
-counted once)."""
+# Random-draw priors: uniform within the grammar's own limits, plus three
+# shares measured on the commercial hands.
 P_PALM_JOINT = 4 / 18
 """Share of the commercial hands with a palm joint (SHARPA, Shadow, SVH, ARMS)."""
 P_ZERO_LINK = 27 / 220
@@ -61,15 +59,6 @@ P_COUPLED = 18 / 180
 """Within-finger couplings per joint after a finger's first joint."""
 P_SLIDING = 2 / 265
 """Sliding joints per commercial joint (Dex1's two jaws), when allowed."""
-# From the conformed commercial hands (hand_sampler/grammar_bench/conformed_hands.json):
-LINK_PRIOR_MM = (15, 70)          # non-zero links between joints: 15-70 mm
-TIP_PRIOR_MM = (15, 55)           # fingertip links: 14-84 mm, 10-90th percentile 22-52
-ROW_DISTANCE_PRIOR_MM = (60, 140)  # non-thumb bases: 57-141 mm from the wrist centre
-ROW_SPACING_PRIOR_MM = (20, 45)   # nearest non-thumb neighbour: 19-105 mm, median 23
-THUMB_PRIOR = {"side_mm": (15, 35), "z_mm": (0, 50), "facing": (45, 90), "tilt": (0, 40)}
-"""Commercial thumbs: 14-34 mm to the side of the wrist centre, -30 to 78 mm
-along the palm (median 21), facing 40-95 degrees outward from +z on their own
-side (median 65), tilted -25 to 80 degrees (median 10)."""
 
 
 def step_of(stage: str) -> Tuple[int, int]:
@@ -506,22 +495,25 @@ def _draw_kind(rng: np.random.Generator, rules: Rules) -> str:
 
 
 def _draw_finger_joints(rng: np.random.Generator, rules: Rules, stage: str) -> Tuple[Joint, ...]:
+    """1 to the rules' maximum joints, uniformly; each joint exactly on a kind
+    drawn with the commercial mix; joints after the first coupled with
+    probability `P_COUPLED`; links uniform over 15-90 mm on the stage grid
+    (0 mm with probability `P_ZERO_LINK`), the fingertip link over 10-90 mm,
+    each drawn among the lengths that leave the rest of the finger room under
+    the finger-length cap."""
     mm = step_of(stage)[0]
     n = int(rng.integers(1, rules.max_joints + 1))
     budget = rules.max_finger_length_mm
     joints: List[Joint] = []
     for j in range(n):
         is_tip = j == n - 1
-        remaining_min = 0 if is_tip else TIP_MIN_MM   # the fingertip still needs 10 mm
-        cap = min(LINK_MAX_MM, budget - remaining_min)
-        lo, hi = TIP_PRIOR_MM if is_tip else LINK_PRIOR_MM
-        values = [v for v in _grid(lo, min(hi, cap), mm)]
-        if not is_tip and (rng.random() < P_ZERO_LINK or not values):
-            length = 0
-        else:
-            if not values:
-                values = [v for v in _grid(TIP_MIN_MM, cap, mm)] or [TIP_MIN_MM]
+        cap = min(LINK_MAX_MM, budget - (0 if is_tip else TIP_MIN_MM))   # the fingertip still needs 10 mm
+        if is_tip:
+            values = _grid(TIP_MIN_MM, cap, mm) or [TIP_MIN_MM]
             length = _pick(rng, values)
+        else:
+            values = _grid(LINK_MIN_MM, cap, mm)
+            length = 0 if (not values or rng.random() < P_ZERO_LINK) else _pick(rng, values)
         budget -= length
         kind = _draw_kind(rng, rules)
         jtype = "sliding" if kind == "sliding" else "hinge"
@@ -537,60 +529,35 @@ def _snap(v: float, step: int) -> int:
 
 
 def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse") -> Hand:
-    """A random hand within `rules`, on the stage's grid (priors from the
-    conformed commercial hands, uniform within their ranges):
+    """A random hand within `rules`, on the stage's grid, uniform within the
+    grammar's own limits (no hand-shaped template):
 
-    - 2 to the rules' maximum fingers, uniformly; with probability `P_THUMB`
-      one of them is a thumb.
-    - The other fingers stand in a row across the palm, 60-140 mm from the
-      wrist centre, spaced 20-45 mm, pointing away from the wrist (facing 0,
-      tilt 0).
-    - The thumb sits 15-35 mm to one side of the wrist centre, 0-50 mm up the
-      palm (at least 25 mm short of the row), faces 45-90 degrees outward
-      and tilts 0-40 degrees out of the plate, so it closes back across the
-      palm toward the fingers.
-    - 1 to the rules' maximum joints per finger, uniformly; each joint starts
-      exactly on a kind drawn with the commercial mix (69/27/4); joints after
-      the first are coupled with probability `P_COUPLED`.
-    - Links 15-70 mm (0 mm with probability `P_ZERO_LINK`), fingertips
-      15-55 mm, within the finger-length cap.
-    - With probability `P_PALM_JOINT`, the row's outermost finger opposite
-      the thumb sits on its own palm joint (`default_hinge`).
+    - 2 to the rules' maximum fingers, uniformly;
+    - each base uniform over the free grid points of the mount area (the
+      ring 10-160 mm around the wrist centre, in the plate), so the spacing
+      rule holds by construction;
+    - facing uniform over the full circle, tilt uniform over -30 to +90 deg;
+    - joints and links as `_draw_finger_joints` (kinds with the commercial
+      mix);
+    - with probability `P_PALM_JOINT`, one finger, chosen uniformly, on its
+      own palm joint (`default_hinge`).
     """
     mm, deg = step_of(stage)
-    lo_d, hi_d = rules.base_distance_mm
     n = int(rng.integers(rules.min_fingers, rules.max_fingers + 1))
-    thumb = rng.random() < P_THUMB
-    m = n - 1 if thumb else n
-    spacing = _pick(rng, _grid(max(ROW_SPACING_PRIOR_MM[0], rules.min_spacing_mm),
-                               max(ROW_SPACING_PRIOR_MM[1], rules.min_spacing_mm), mm))
-    half = (m - 1) * spacing / 2.0
-    row_lo = max(ROW_DISTANCE_PRIOR_MM[0], lo_d)
-    row_hi = min(ROW_DISTANCE_PRIOR_MM[1], int(math.sqrt(max(hi_d ** 2 - (half + mm) ** 2, 0.0))))
-    row = _pick(rng, _grid(row_lo, max(row_lo, row_hi), mm))
+    facings = _grid(0, 360 - deg, deg)
+    tilts = _grid(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1], deg)
     fingers: List[Finger] = []
-    for k in range(m):
-        y = PALM_ANCHOR_MM[0] + int(math.floor((k - (m - 1) / 2.0) * spacing / mm)) * mm
-        fingers.append(Finger(y=y, z=PALM_ANCHOR_MM[1] + row, facing=0, tilt=0,
-                              joints=_draw_finger_joints(rng, rules, stage)))
-    side = 1 if rng.random() < 0.5 else -1
-    if thumb:
-        y = side * _pick(rng, _grid(*THUMB_PRIOR["side_mm"], mm))
-        z = _pick(rng, _grid(THUMB_PRIOR["z_mm"][0], max(THUMB_PRIOR["z_mm"][0],
-                                                          min(THUMB_PRIOR["z_mm"][1], row - 25)), mm))
-        out = _pick(rng, _grid(*THUMB_PRIOR["facing"], deg))
-        tilt = _pick(rng, _grid(max(THUMB_PRIOR["tilt"][0], TILT_RANGE_DEG[0]),
-                                min(THUMB_PRIOR["tilt"][1], TILT_RANGE_DEG[1]), deg))
-        fingers.append(Finger(y=PALM_ANCHOR_MM[0] + y, z=PALM_ANCHOR_MM[1] + z,
-                              facing=out % 360 if side > 0 else (360 - out) % 360, tilt=tilt,
+    for _ in range(n):
+        spots = _free_spots(Hand(fingers=tuple(fingers)) if fingers else Hand(fingers=()), rules, stage)
+        y, z = _pick(rng, spots)
+        fingers.append(Finger(y=y, z=z, facing=_pick(rng, facings), tilt=_pick(rng, tilts),
                               joints=_draw_finger_joints(rng, rules, stage)))
     hand = Hand(fingers=tuple(fingers))
-    if rules.max_palm_joints > 0 and m >= 1 and rng.random() < P_PALM_JOINT:
-        outer = min(range(m), key=lambda k: side * fingers[k].y)    # the row finger farthest from the thumb
-        p = default_hinge([fingers[outer]], deg, mm)
-        hand = Hand(fingers=tuple(replace(f, palm_joint=0) if k == outer else f for k, f in enumerate(fingers)),
-                    palm_joints=(p,))
+    if rules.max_palm_joints > 0 and rng.random() < P_PALM_JOINT:
+        k = int(rng.integers(len(fingers)))
+        hand = Hand(fingers=tuple(replace(f, palm_joint=0) if i == k else f for i, f in enumerate(fingers)),
+                    palm_joints=(default_hinge([fingers[k]], deg, mm),))
     problems = check(hand, rules)
-    if problems:   # the priors keep every limit by construction; this guards the construction itself
+    if problems:   # every draw keeps the limits by construction; this guards the construction itself
         raise AssertionError(f"random_hand broke its rules: {problems}")
     return hand
