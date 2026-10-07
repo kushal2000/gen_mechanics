@@ -550,7 +550,9 @@ def _author_palm(layer, root_path, hand, palm_body_path, link7_mass_props, colli
 
     if link7_mass_props is None:
         return
-    # One body now, so the inertias add about the JOINT centre of mass.
+    # One body now, so the inertias add about the JOINT centre of mass. The palm's mass sits at its centre
+    # (palm_box), in the palm's axes: palm_mass_props' inertia is about that centre.
+    _, pose = palm_box(hand)
     arm_mass, arm_com, arm_inertia = link7_mass_props
     total, com, inertia = merge_rigid_bodies([
         (float(arm_mass), np.asarray(arm_com, float), np.asarray(arm_inertia, float), np.eye(3)),
