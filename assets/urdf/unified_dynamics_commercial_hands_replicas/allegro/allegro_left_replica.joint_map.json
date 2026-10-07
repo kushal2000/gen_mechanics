@@ -1,0 +1,18 @@
+{
+ "joint_0_0": "f0_j0",
+ "joint_1_0": "f0_j1",
+ "joint_2_0": "f0_j2",
+ "joint_3_0": "f0_j3",
+ "joint_4_0": "f1_j0",
+ "joint_5_0": "f1_j1",
+ "joint_6_0": "f1_j2",
+ "joint_7_0": "f1_j3",
+ "joint_8_0": "f2_j0",
+ "joint_9_0": "f2_j1",
+ "joint_10_0": "f2_j2",
+ "joint_11_0": "f2_j3",
+ "joint_12_0": "f3_j0",
+ "joint_13_0": "f3_j1",
+ "joint_14_0": "f3_j2",
+ "joint_15_0": "f3_j3"
+}

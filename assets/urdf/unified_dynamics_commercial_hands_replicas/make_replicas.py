@@ -7,6 +7,7 @@ returns the closest legal grammar design plus notes on every way it is not the v
   <hand>/<stem>_replica.urdf      hand_sampler.build.urdf_for_viewing: the viewer's URDF, NOT for simulation
   <hand>/<stem>_replica_palm.obj  its palm mesh (referenced relatively from the URDF)
   <hand>/<stem>_replica.notes.md  the fit's notes
+  <hand>/<stem>_replica.joint_map.json  vendor joint name -> grammar slot (f<finger>_j<depth>)
 
 <stem> is the vendor URDF's (leap_left, wuji2_left, midas, allegro_left). Dynamics are the uniform actuator:
 generated joints take hand_sampler.robot_param_constants.gen_joint_drive(), which since 2026-10-07 is the
@@ -15,6 +16,7 @@ make_uniform.py actuator every commercial hand trains with (0.5 N.m, 5 rad/s, kp
 
     .venv_isaacsim/bin/python assets/urdf/unified_dynamics_commercial_hands_replicas/make_replicas.py [hand ...]
 """
+import json
 import re
 import sys
 from pathlib import Path
@@ -48,6 +50,13 @@ def make(name: str) -> Path:
     text = re.sub(r'filename="[^"]*/(' + re.escape(stem) + r'_palm\.obj)"', r'filename="\1"', text)
     urdf.write_text(text)
     build.write_palm_mesh(hand, out / f"{stem}_palm.obj")
+    # Which grammar slot replicates which vendor joint: fit() builds finger i from (row + [thumb])[i] of the
+    # straightened digits, segment j from that digit's j-th joint. Checked against the fitted hand's joint counts.
+    row, thumb = commercial._split([commercial._straighten(d) for d in commercial.digits(name)])
+    order = row + [thumb]
+    assert [len(d.joints) for d in order] == [len(f.segments) for f in hand.fingers], name
+    joint_map = {j: f"f{i}_j{k}" for i, d in enumerate(order) for k, j in enumerate(d.joints)}
+    (out / f"{stem}.joint_map.json").write_text(json.dumps(joint_map, indent=1) + "\n")
     extents = tuple(round(v * 1000) for v in D.palm_extents(hand))
     (out / f"{stem}.notes.md").write_text(
         f"# {stem}\n\n`hand_sampler.commercial.fit('{name}')` of `{vendor.relative_to(REPO)}`: "
