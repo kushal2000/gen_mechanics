@@ -226,11 +226,16 @@ class GrammarViewer:
                 return
             rules, stage = self.rules(), self.stage()
             if operator is None:
-                child, name, mv = gops.mutate(self.hand, self.rng, rules, stage)
+                res = gops.mutate(self.hand, self.rng, rules, stage, tries=len(gops.OPERATORS))
+                if res is None:
+                    self.md_mut.content = "no operator has a child that keeps the rules and C1"
+                    return
+                child, name, mv = res
             else:
                 res = gops.apply_operator(self.hand, operator, self.rng, rules, stage)
                 if res is None:
-                    self.md_mut.content = f"'{gops.OPERATOR_BY_NAME[operator].label}' cannot act on this hand"
+                    self.md_mut.content = (f"'{gops.OPERATOR_BY_NAME[operator].label}' has no child that keeps the "
+                                           f"rules and C1")
                     return
                 (child, mv), name = res, operator
             self.last_change = f"{gops.OPERATOR_BY_NAME[name].label} ({stage}): {mv}"

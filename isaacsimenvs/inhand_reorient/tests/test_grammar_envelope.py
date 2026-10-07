@@ -33,7 +33,9 @@ def _random_hands(n, rules=NO_RULES, seed=0, mutate=0):
     for _ in range(n):
         h = gops.random_hand(rng, rules)
         for _ in range(mutate):
-            h, _, _ = gops.mutate(h, rng, rules)
+            res = gops.mutate(h, rng, rules)
+            if res is not None:
+                h = res[0]
         out.append(h)
     return out
 

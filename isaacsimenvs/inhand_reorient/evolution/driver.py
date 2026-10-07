@@ -202,9 +202,9 @@ def try_offspring(
     `stage`, within `rules`); the first viable child, or `None` (the caller
     then draws an immigrant)."""
     for _ in range(max_retries):
-        child, _op, _mv = gops.mutate(parent, driver_rng, rules, stage)
-        if _viable(child):
-            return child, ge.canonicalize(child)
+        res = gops.mutate(parent, driver_rng, rules, stage)
+        if res is not None and _viable(res[0]):
+            return res[0], ge.canonicalize(res[0])
     return None
 
 

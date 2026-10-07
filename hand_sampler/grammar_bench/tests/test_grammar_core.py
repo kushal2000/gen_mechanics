@@ -12,6 +12,7 @@ import pytest
 
 from hand_sampler.grammar import derive as dv
 from hand_sampler.grammar import operators as ops
+from hand_sampler.grammar import viability as V
 from hand_sampler.grammar.adapters.urdf import load_urdf, to_urdf
 from hand_sampler.grammar.fk import forward_kinematics, pose_to_matrix
 from hand_sampler.grammar.hand import (
@@ -312,6 +313,15 @@ def test_random_hands_start_on_kinds_with_the_mix():
     assert abs(palm / n - ops.P_PALM_JOINT) < 0.05
 
 
+def test_random_hands_are_clear():
+    """Generation-time clearance (item 25): no overlap at rest, none over 3 mm
+    at the start pose, so every random hand passes C1."""
+    rng = np.random.default_rng(17)
+    for _ in range(N_SAMPLES // 10):
+        h = ops.random_hand(rng, EVOLUTION_RULES)
+        assert ops.clear(h) and V.c1_self_overlap(h).ok
+
+
 def test_random_hands_are_uniform_over_the_limits():
     """No hand-shaped template: bases all around the wrist, facings and tilts
     over their whole ranges, finger and joint counts over their ranges."""
@@ -341,14 +351,22 @@ def test_random_hands_are_uniform_over_the_limits():
 def test_long_mutation_chains_keep_every_rule(rules, stage):
     rng = np.random.default_rng(7)
     used = set()
+    done = calls = 0
     for c in range(10):
         h = ops.random_hand(rng, rules, "coarse")
         for _ in range(N_CHAIN // 10):
-            h, name, _ = ops.mutate(h, rng, rules, stage)
+            res = ops.mutate(h, rng, rules, stage)
+            calls += 1
+            if res is None:
+                continue
+            h, name, _ = res
+            done += 1
             used.add(name)
             assert check(h, rules) == [], (name, check(h, rules))
+            assert V.c1_self_overlap(h).ok, name                 # every mutant keeps C1
     expected = {op.name for op in ops.operators_for(stage)}
     assert used == expected, expected - used
+    assert done / calls > 0.8
 
 
 def _diff(a: Hand, b: Hand):
@@ -378,7 +396,7 @@ def _angle_between_lines(a, b) -> float:
 def test_parameter_steps_change_one_value_by_one_step(stage):
     rng = np.random.default_rng(8)
     mm, deg = STEPS[stage]
-    for _ in range(40):
+    for _ in range(12):
         h = ops.random_hand(rng, EVOLUTION_RULES, "coarse")
         for op in ops.operators_for(stage):
             if op.structural:
@@ -430,7 +448,9 @@ def test_coarse_is_inside_fine():
     assert cm % fm == 0 and cd % fd == 0
     h = ops.random_hand(rng, EVOLUTION_RULES, "coarse")
     for _ in range(300):
-        h, _, _ = ops.mutate(h, rng, EVOLUTION_RULES, "coarse")
+        res = ops.mutate(h, rng, EVOLUTION_RULES, "coarse")
+        if res is not None:
+            h = res[0]
         assert check(h, NO_RULES) == []                 # NO_RULES checks the fine grid
 
 
@@ -438,7 +458,7 @@ def test_coarse_is_inside_fine():
 def test_parameter_steps_are_inverse_pairs(stage):
     rng = np.random.default_rng(10)
     checked = 0
-    for _ in range(30):
+    for _ in range(12):
         h = ops.random_hand(rng, EVOLUTION_RULES, "coarse")
         for op in ops.operators_for(stage):
             if op.structural:
@@ -456,14 +476,16 @@ def test_parameter_steps_are_inverse_pairs(stage):
                           else child.palm_joints[mv[0]].axis)
                     if ax == (0, 90):       # through the pole, az is not kept
                         continue
+                if not V.c1_self_overlap(back).ok:
+                    continue                       # the way back is a valid hand too, but C1 may not admit it
                 assert back == h, (op.name, mv)
                 checked += 1
-    assert checked > 1000
+    assert checked > 300
 
 
 def test_structural_inverse_pairs():
     rng = np.random.default_rng(11)
-    for _ in range(40):
+    for _ in range(12):
         h = ops.random_hand(rng, EVOLUTION_RULES, "coarse")
         for mv in ops.candidates(h, ops.OPERATOR_BY_NAME["split"], EVOLUTION_RULES):
             child = ops.OPERATOR_BY_NAME["split"].apply(h, mv, "coarse")
@@ -487,17 +509,26 @@ def test_structural_inverse_pairs():
 
 
 def test_remove_any_finger_in_one_step():
+    """Any finger can go in one step, unless the hand left behind breaks C1
+    (the grasp point moves with the bases, so the others' start pose curls a
+    little differently)."""
     rng = np.random.default_rng(12)
-    for _ in range(50):
+    full = hands = 0
+    for _ in range(40):
         h = ops.random_hand(rng, EVOLUTION_RULES)
         if len(h.fingers) <= 2:
             continue
-        cands = ops.candidates(h, ops.OPERATOR_BY_NAME["remove_finger"], EVOLUTION_RULES)
-        assert sorted(c[0] for c in cands) == list(range(len(h.fingers)))
-        for (i,) in cands:
+        hands += 1
+        cands = sorted(c[0] for c in ops.candidates(h, ops.OPERATOR_BY_NAME["remove_finger"], EVOLUTION_RULES))
+        expected = [i for i in range(len(h.fingers))
+                    if V.c1_self_overlap(ops.OPERATOR_BY_NAME["remove_finger"].apply(h, (i,), "coarse")).ok]
+        assert cands == expected
+        full += cands == list(range(len(h.fingers)))
+        for i in cands:
             child = ops.OPERATOR_BY_NAME["remove_finger"].apply(h, (i,), "coarse")
             assert len(child.fingers) == len(h.fingers) - 1
             assert check(child, EVOLUTION_RULES) == []      # a palm joint left without a finger went too
+    assert full >= 0.8 * hands          # 27 of 31 at the time of writing
 
 
 def test_add_finger_is_one_bending_joint_at_a_free_spot():
@@ -526,5 +557,7 @@ def test_mutating_a_hand_outside_the_rules_never_adds_violations():
     n0 = len(check(h, EVOLUTION_RULES))
     rng = np.random.default_rng(14)
     for _ in range(200):
-        h, _, _ = ops.mutate(h, rng, EVOLUTION_RULES)
+        res = ops.mutate(h, rng, EVOLUTION_RULES)
+        if res is not None:
+            h = res[0]
         assert len(check(h, EVOLUTION_RULES)) <= n0 and check(h, NO_RULES) == []

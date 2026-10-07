@@ -1,11 +1,14 @@
 """Random hands and mutation operators for the hand grammar.
 
-Every operator lists its applications (`candidates`) and offers only those
-whose result keeps the rules: nothing is generated and then rejected. An
-operator with no application cannot act (the viewer hides it). A hand that
-already breaks the rules (a commercial hand with a sliding joint, under the
-Evolution Rules) can still be mutated as long as it stays in the grammar and
-no rule gets broken more often.
+Every operator lists its applications, shuffles them and returns the first
+whose child keeps the rules and C1 (Vatsal's method; GRAMMAR-LOCK item 25):
+nothing out of the rules is ever produced. An operator with no such child
+cannot act (the viewer hides it). A hand that already breaks the rules (a
+commercial hand with a sliding joint, under the Evolution Rules) or C1 can
+still be mutated as long as it stays in the grammar and gets no worse.
+
+Random hands are built finger by finger, each finger redrawn until the hand
+is clear (`clear`: no overlap at rest, none over 3 mm at the start pose).
 
 Stages (GRAMMAR-LOCK item 17): every parameter steps by 10 mm or 30 degrees
 (coarse) or 1 mm or 5 degrees (fine). Structural operators belong to the
@@ -17,10 +20,13 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from . import derive as dv
+from . import viability as gvb
 from .hand import (
     KIND_AXIS,
     KIND_MIX,
@@ -81,6 +87,31 @@ def _admissible(child: Hand, parent_violations: Optional[int], rules: Rules) -> 
     if parent_violations is None or parent_violations == 0:
         return not v
     return len(v) <= parent_violations and not check(child, NO_RULES)
+
+
+@lru_cache(maxsize=4096)
+def _c1_worst(hand: Hand) -> float:
+    return gvb.c1_self_overlap(hand).worst_mm
+
+
+def _c1_keeps(child: Hand, parent_worst: float) -> bool:
+    """C1 for a mutant: a parent that passes C1 needs a child that passes it;
+    a parent that already fails it (a commercial or hand-made hand) needs a
+    child no worse."""
+    w = _c1_worst(child)
+    if parent_worst <= gvb.C1_MAX_OVERLAP_MM:
+        return w <= gvb.C1_MAX_OVERLAP_MM
+    return w <= parent_worst + 1e-6
+
+
+def clear(hand: Hand) -> bool:
+    """Generation-time clearance (GRAMMAR-LOCK item 25, Vatsal's rest
+    clearance on our rounded boxes): no two bodies that do not touch by
+    construction overlap at all at the zero pose, and none by more than 3 mm
+    at the start pose (C1)."""
+    if any(ov > 1e-6 for _, _, ov in gvb.overlaps(hand, None)):
+        return False
+    return all(ov <= gvb.C1_MAX_OVERLAP_MM for _, _, ov in gvb.overlaps(hand, dv.start_q(hand)))
 
 
 # --------------------------------------------------------------------------
@@ -427,58 +458,80 @@ def operators_for(stage: str) -> Tuple[Operator, ...]:
     return tuple(op for op in OPERATORS if stage == "coarse" or not op.structural)
 
 
-def candidates(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse") -> List[tuple]:
-    """Every application of `op` to `hand` whose result keeps `rules`."""
+def _weighted_order(rng: np.random.Generator, weights: Sequence[float]) -> List[int]:
+    """A random order in which item i comes early with weight w_i
+    (Efraimidis-Spirakis keys u ** (1 / w))."""
+    w = np.asarray(weights, dtype=float)
+    keys = rng.random(len(w)) ** (1.0 / np.maximum(w, 1e-12))
+    return list(np.argsort(-keys))
+
+
+def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse",
+               rng: Optional[np.random.Generator] = None):
+    """The applications of `op` whose child keeps `rules` and C1, as
+    `(move, child)`, in shuffled order when `rng` is given (a split's new
+    joint kind weighted by the commercial mix), else in list order. Lazy:
+    a caller that needs one stops at the first (Vatsal's method)."""
     if op.structural and stage != "coarse":
-        return []
+        return
+    moves = op.moves(hand, rules, stage)
+    if not moves:
+        return
+    if rng is not None:
+        if op.name == "split":
+            order = _weighted_order(rng, [KIND_MIX.get(m[3], P_SLIDING) for m in moves])
+        else:
+            order = list(rng.permutation(len(moves)))
+        moves = [moves[int(k)] for k in order]
     pv = len(check(hand, rules))
-    out = []
-    for mv in op.moves(hand, rules, stage):
+    parent_worst = None
+    for mv in moves:
         child = op.apply(hand, mv, stage)
-        if child != hand and _admissible(child, pv, rules):
-            out.append(mv)
-    return out
+        if child == hand or not _admissible(child, pv, rules):
+            continue
+        if parent_worst is None:
+            parent_worst = _c1_worst(hand)
+        if _c1_keeps(child, parent_worst):
+            yield mv, child
+
+
+def candidates(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse") -> List[tuple]:
+    """Every application of `op` to `hand` whose child keeps `rules` and C1
+    (exhaustive: for tests and analysis; `apply_operator` stops at the first)."""
+    return [mv for mv, _ in iter_valid(hand, op, rules, stage)]
 
 
 def can_act(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse") -> bool:
-    if op.structural and stage != "coarse":
-        return False
-    pv = len(check(hand, rules))
-    for mv in op.moves(hand, rules, stage):
-        child = op.apply(hand, mv, stage)
-        if child != hand and _admissible(child, pv, rules):
-            return True
-    return False
+    """Whether `op` has an application whose child keeps `rules` and C1
+    (stops at the first)."""
+    return next(iter_valid(hand, op, rules, stage), None) is not None
 
 
 def apply_operator(hand: Hand, name: str, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES,
                    stage: str = "coarse") -> Optional[Tuple[Hand, tuple]]:
-    """One random application of operator `name`: `(child, move)`, or None
-    if it cannot act. A split's new joint kind is drawn with the commercial
-    mix; every other choice is uniform."""
-    op = OPERATOR_BY_NAME[name]
-    cands = candidates(hand, op, rules, stage)
-    if not cands:
+    """Operator `name`'s candidates in random order; the first child that
+    keeps `rules` and C1, as `(child, move)`, or None."""
+    hit = next(iter_valid(hand, OPERATOR_BY_NAME[name], rules, stage, rng), None)
+    if hit is None:
         return None
-    if name == "split":
-        kinds = [c[3] for c in cands]
-        w = np.array([KIND_MIX.get(k, P_SLIDING) for k in kinds], dtype=float)
-        mv = cands[int(rng.choice(len(cands), p=w / w.sum()))]
-    else:
-        mv = _pick(rng, cands)
-    return op.apply(hand, mv, stage), mv
+    mv, child = hit
+    return child, mv
 
 
-def mutate(hand: Hand, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES,
-           stage: str = "coarse") -> Tuple[Hand, str, tuple]:
-    """One random mutation: an operator chosen uniformly among those that can
-    act, then one of its applications. Returns `(child, operator, move)`."""
-    ops = [op for op in operators_for(stage) if can_act(hand, op, rules, stage)]
-    if not ops:
-        raise ValueError("no operator can act on this hand under these rules")
-    op = _pick(rng, ops)
-    child, mv = apply_operator(hand, op.name, rng, rules, stage)
-    return child, op.name, mv
+def mutate(hand: Hand, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse",
+           tries: int = 1) -> Optional[Tuple[Hand, str, tuple]]:
+    """One random mutation: an operator chosen uniformly among those with an
+    application at this stage, its applications shuffled, the first child
+    that keeps the rules and C1. Returns `(child, operator, move)`, or None
+    when the operator has no such child; `tries` > 1 moves on to other
+    operators (in random order) before giving up."""
+    ops = [op for op in operators_for(stage) if op.moves(hand, rules, stage)]
+    for k in list(rng.permutation(len(ops)))[:max(1, tries)]:
+        op = ops[int(k)]
+        res = apply_operator(hand, op.name, rng, rules, stage)
+        if res is not None:
+            return res[0], op.name, res[1]
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -530,47 +583,70 @@ def _snap(v: float, step: int) -> int:
     return int(round(v / step) * step)
 
 
+MAX_FINGER_ATTEMPTS = 50
+MAX_HAND_ATTEMPTS = 20
+
+
+def _rim_spot(rng: np.random.Generator, fingers: List[Finger], rules: Rules, stage: str) -> Optional[Tuple[int, int]]:
+    """A random free grid spot that keeps every base on the palm's rim."""
+    spots = _free_spots(Hand(fingers=tuple(fingers)), rules, stage)
+    for idx in rng.permutation(len(spots)):
+        y, z = spots[int(idx)]
+        cand = Finger(y=y, z=z, facing=0, tilt=0, joints=(Joint(),))
+        if max(base_insets_mm(Hand(fingers=tuple(fingers) + (cand,)))) <= RIM_TOLERANCE_MM:
+            return y, z
+    return None
+
+
 def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse") -> Hand:
     """A random hand within `rules`, on the stage's grid, uniform within the
-    grammar's own limits (no hand-shaped template):
+    grammar's own limits (no hand-shaped template), built finger by finger:
 
     - 2 to the rules' maximum fingers, uniformly;
-    - each base uniform over the free grid points of the mount area (the
-      ring 10-160 mm around the wrist centre, in the plate) that keep every
-      base on the palm's rim (`hand.base_insets_mm`), so the spacing and rim
-      rules hold by construction;
-    - facing uniform over the full circle, tilt uniform over -30 to +90 deg;
-    - joints and links as `_draw_finger_joints` (kinds with the commercial
-      mix);
+    - each finger: a base drawn uniformly over the free grid points of the
+      mount ring (10-160 mm around the wrist centre) that keep every base on
+      the palm's rim; facing uniform over the full circle, tilt uniform over
+      -30..+90 deg; joints and links as `_draw_finger_joints` (kinds with the
+      commercial mix);
+    - a finger is kept only if the hand stays clear (`clear`: no overlap at
+      rest, none over 3 mm at the start pose); otherwise its placement,
+      facing, tilt and joints are drawn again, up to 50 times; a finger that
+      cannot be placed ends the hand there (fewer fingers), and a hand left
+      with fewer than the minimum is drawn again;
     - with probability `P_PALM_JOINT`, one finger, chosen uniformly among
-      those for which it keeps the rules, on its own palm joint
-      (`default_hinge`).
+      those for which it keeps the rules and the clearance, on its own palm
+      joint (`default_hinge`).
     """
     mm, deg = step_of(stage)
-    n = int(rng.integers(rules.min_fingers, rules.max_fingers + 1))
     facings = _grid(0, 360 - deg, deg)
     tilts = _grid(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1], deg)
     fingers: List[Finger] = []
-    for _ in range(n):
-        spots = _free_spots(Hand(fingers=tuple(fingers)), rules, stage)
-        new = None
-        for idx in rng.permutation(len(spots)):          # the first free spot that keeps every base on the rim
-            y, z = spots[int(idx)]
-            cand = Finger(y=y, z=z, facing=0, tilt=0, joints=(Joint(),))
-            if max(base_insets_mm(Hand(fingers=tuple(fingers) + (cand,)))) <= RIM_TOLERANCE_MM:
-                new = (y, z)
+    for _ in range(MAX_HAND_ATTEMPTS):
+        n = int(rng.integers(rules.min_fingers, rules.max_fingers + 1))
+        fingers = []
+        for _ in range(n):
+            placed = False
+            for _ in range(MAX_FINGER_ATTEMPTS):
+                spot = _rim_spot(rng, fingers, rules, stage)
+                if spot is None:
+                    break
+                f = Finger(y=spot[0], z=spot[1], facing=_pick(rng, facings), tilt=_pick(rng, tilts),
+                           joints=_draw_finger_joints(rng, rules, stage))
+                if clear(Hand(fingers=tuple(fingers) + (f,))):
+                    fingers.append(f)
+                    placed = True
+                    break
+            if not placed:
                 break
-        if new is None:
+        if len(fingers) >= rules.min_fingers:
             break
-        fingers.append(Finger(y=new[0], z=new[1], facing=_pick(rng, facings), tilt=_pick(rng, tilts),
-                              joints=_draw_finger_joints(rng, rules, stage)))
     hand = Hand(fingers=tuple(fingers))
     if rules.max_palm_joints > 0 and rng.random() < P_PALM_JOINT:
         for k in rng.permutation(len(fingers)):          # a finger whose own palm joint keeps the rules
             k = int(k)
             cand = Hand(fingers=tuple(replace(f, palm_joint=0) if i == k else f for i, f in enumerate(fingers)),
                         palm_joints=(default_hinge([fingers[k]], deg, mm),))
-            if not check(cand, rules):
+            if not check(cand, rules) and clear(cand):
                 hand = cand
                 break
     problems = check(hand, rules)

@@ -34,7 +34,9 @@ def test_conform_round_trips_a_sampled_hand(seed, rules):
     rng = np.random.default_rng(seed)
     h = ops.random_hand(rng, rules, "coarse")
     for _ in range(seed * 3):
-        h, _, _ = ops.mutate(h, rng, rules, "fine" if seed % 2 else "coarse")
+        res = ops.mutate(h, rng, rules, "fine" if seed % 2 else "coarse")
+        if res is not None:
+            h = res[0]
     fit = CF.conform(_real_from_hand(h), palm_frame=np.eye(4))
     assert fit.max_joint_mm < 1e-3 and fit.max_axis_deg < 1e-3 and fit.max_tip_mm < 1e-3
     for f, g in zip(h.fingers, fit.hand.fingers):
