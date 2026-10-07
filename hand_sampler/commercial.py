@@ -525,13 +525,21 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
                 L = float(np.linalg.norm(v_link))
                 lean = _lean_for(R.T @ (v_link / max(L, 1e-12)))
                 R = R @ D.lean_rot(lean)
-                kind = _kind_for(R.T @ axes[i])
+                local = R.T @ axes[i]
+                kind = _kind_for(local)
+                # The kind fixes the hinge LINE; its positive direction is the vendor's. Kinematically an axis and
+                # its negative are the same hinge, but not to a policy or a joint limit: dropping the sign turned
+                # every Wuji v2 and LEAP abduction joint (and LEAP's and Allegro's thumbs) the other way from the
+                # vendor's under the same command. A reversed axis rides on axis_override, which axis_of honours.
+                default = D.axis_of(D.Joint(kind))
+                joint = (D.Joint(kind) if float(local @ default) >= 0.0
+                         else D.Joint(kind, axis_override=tuple(float(v) for v in -default)))
                 snapped = _snap_length(L)
                 if abs(snapped - L) > D.LINK_QUANTUM / 2 + 1e-9:
                     notes.append(f"{d.name}: link {i} {L*1000:.1f} -> "
                                  f"{snapped*1000:.0f} mm "
                                  f"(the {D.MIN_LINK_LENGTH*1000:.0f} mm floor)")
-                segs.append(D.Segment(D.Joint(kind), snapped, lean=lean))
+                segs.append(D.Segment(joint, snapped, lean=lean))
             fingers.append(D.Finger(mount, tuple(segs)))
         return D.Hand(D.Palm(D.PALM_THICKNESS), tuple(fingers)), notes
 

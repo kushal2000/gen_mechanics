@@ -3,8 +3,8 @@
  "name": "midas_replica",
  "count": 1,
  "provenance": {
-  "created_at": "2026-10-07T16:03:59+00:00",
-  "git_commit": "9b0ff9edc9aca1925363978723827bd22ac5ab6f",
+  "created_at": "2026-10-07T16:11:36+00:00",
+  "git_commit": "142c6cd59019a830cf202bf0ffd0dd905e849401",
   "method": "commercial.fit",
   "source": "hand_sampler.commercial",
   "vendor_urdf": "assets/urdf/unified_dynamics_commercial_hands/midas/midas.urdf",
@@ -46,19 +46,34 @@
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.035
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.035
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.02
       }
@@ -79,19 +94,34 @@
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.035
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.035
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.02
       }
@@ -112,19 +142,34 @@
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.035
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.035
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.02
       }
@@ -145,20 +190,35 @@
       },
       {
        "joint": {
-        "kind": "abduction"
+        "kind": "abduction",
+        "axis_override": [
+         -0.0,
+         -1.0,
+         -0.0
+        ]
        },
        "length": 0.06
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.04,
        "lean": 4
       },
       {
        "joint": {
-        "kind": "flexion"
+        "kind": "flexion",
+        "axis_override": [
+         -0.0,
+         -0.0,
+         -1.0
+        ]
        },
        "length": 0.03,
        "lean": 4
