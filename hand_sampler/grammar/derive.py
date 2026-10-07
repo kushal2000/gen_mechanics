@@ -162,7 +162,7 @@ def _max_uid(steps: Sequence[DerivationStep]) -> int:
 
 def _plan_top_level_mounts(
     rng, dist: Distribution, mount_bodies: List[str], digit_count: int, host_length: Dict[str, float],
-    lim: Optional[LimitContext] = None,
+    lim: Optional[LimitContext] = None, required_hosts: Sequence[str] = (),
 ) -> List[Tuple[str, float]]:
     """G0 screen, I29 mount-spacing rule (V2): ``digit_count`` (host,
     mount_frac) pairs for the top-level digits, spread across
@@ -194,7 +194,12 @@ def _plan_top_level_mounts(
 
     caps = {h: capacity(h) for h in mount_bodies}
     counts = {h: 0 for h in mount_bodies}
-    for _ in range(digit_count):
+    # Generation limits (no empty palm bodies): one digit on every palm leaf first.
+    for host in required_hosts:
+        counts[host] += 1
+        if lim is not None:
+            lim.take_host(host)
+    for _ in range(digit_count - len(required_hosts)):
         # Generation limits: only hosts with room for another top-level digit
         # (every host when ``lim`` is None or does not bind).
         pool = mount_bodies if lim is None else (lim.eligible_hosts(mount_bodies) or mount_bodies)
@@ -262,6 +267,7 @@ def _host_transforms_from_steps(steps: Sequence[DerivationStep], root_length: fl
 def _plan_top_level_mounts_surface(
     rng, dist: Distribution, mount_bodies: List[str], digit_count: int, host_length: Dict[str, float],
     host_radius_m: float, host_transforms: Dict[str, np.ndarray], lim: Optional[LimitContext] = None,
+    required_hosts: Sequence[str] = (),
 ) -> List[Tuple[str, float, float]]:
     """G0 screen (opus-review-g0.md item 2), V3s cross-host spacing:
     ``digit_count`` (host, mount_frac, azimuth_rad) triples for the
@@ -316,8 +322,21 @@ def _plan_top_level_mounts_surface(
         if lim is not None:
             lim.take_host(candidates[r][0])
 
-    pool = eligible()
-    take(pool[int(rng.integers(0, len(pool)))])
+    def farthest(pool: List[int]) -> int:
+        chosen_pos = pos[chosen]
+        dists = np.array([np.min(np.linalg.norm(chosen_pos - pos[ridx], axis=1)) for ridx in pool])
+        best = float(dists.max())
+        best_local = [k for k, d in enumerate(dists) if d >= best - 1e-9]
+        return pool[best_local[int(rng.integers(0, len(best_local)))]]
+
+    # Generation limits (no empty palm bodies): one digit on every palm leaf
+    # first, each placed by the same farthest-point rule within its leaf.
+    for host in required_hosts:
+        pool = [r for r in remaining if candidates[r][0] == host]
+        take(pool[int(rng.integers(0, len(pool)))] if not chosen else farthest(pool))
+    if not chosen:
+        pool = eligible()
+        take(pool[int(rng.integers(0, len(pool)))])
     while len(chosen) < digit_count and remaining:
         pool = eligible()
         if not pool:
@@ -440,7 +459,7 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
                  oppose_forward: Optional[np.ndarray] = None,
                  host_radius_m: float = 0.0,
                  host_transforms: Optional[Dict[str, np.ndarray]] = None,
-                 lim: Optional[LimitContext] = None) -> None:
+                 lim: Optional[LimitContext] = None, forced_host: Optional[str] = None) -> None:
     """``forced_mount``/``oppose_forward`` (G0 screen, I29/I30; both default
     ``None``) are used ONLY by ``sample_derivation``'s top-level digit loop
     when the corresponding prior is enabled -- every other caller (branch
@@ -475,9 +494,12 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
             forced_azimuth = forced_mount[2]
     else:
         hosts = mount_bodies
-        if lim is not None and top_level:
+        if forced_host is not None:
+            # Generation limits (no empty palm bodies): this digit covers a palm leaf.
+            hosts = [forced_host]
+        elif lim is not None and top_level:
             hosts = lim.eligible_hosts(mount_bodies) or mount_bodies
-        mount = hosts[int(rng.integers(0, len(hosts)))]
+        mount = hosts[0] if forced_host is not None else hosts[int(rng.integers(0, len(hosts)))]
         if lim is not None and top_level:
             lim.take_host(mount)
         mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
@@ -530,7 +552,7 @@ def _sample_digit(rng, dist: Distribution, steps: List[DerivationStep], next_id:
                    oppose_forward: Optional[np.ndarray] = None,
                    host_radius_m: float = 0.0,
                    host_transforms: Optional[Dict[str, np.ndarray]] = None,
-                   lim: Optional[LimitContext] = None) -> None:
+                   lim: Optional[LimitContext] = None, forced_host: Optional[str] = None) -> None:
     """Sample a fresh *top-level* digit (id is the next 1-based integer).
     With ``lim``, its joint budget starts at ``max_joints_per_digit``."""
     digit_id = str(next_id[0])
@@ -539,7 +561,7 @@ def _sample_digit(rng, dist: Distribution, steps: List[DerivationStep], next_id:
         lim.begin_digit(lim.limits.max_joints_per_digit)
     _emit_digit(rng, dist, steps, digit_id, mount_bodies, top_level=True, depth=0, next_uid=next_uid,
                 forced_mount=forced_mount, oppose_forward=oppose_forward, host_radius_m=host_radius_m,
-                host_transforms=host_transforms, lim=lim)
+                host_transforms=host_transforms, lim=lim, forced_host=forced_host)
 
 
 def _capped_range(lo: int, hi: int, cap) -> Tuple[int, int]:
@@ -604,15 +626,26 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION,
 
     palm_names: List[str] = []
     host_length: Dict[str, float] = {"root": root_length}
+    need_leaf_digits = lim is not None and lim.limits.require_digit_on_palm_body
     for i in range(palm_body_count):
         name = f"palm{i}"
         parent_choices = ["root"] + palm_names
+        if need_leaf_digits:
+            # No empty palm bodies: only parents that leave every palm leaf
+            # coverable by a digit within the limits (attaching below an
+            # existing leaf always does).
+            parent_choices = [c for c in parent_choices
+                              if lim.leaves_feasible({**lim.struct.palm, name: (c, False)}, digit_count)] \
+                or parent_choices
         parent = parent_choices[int(rng.integers(0, len(parent_choices)))]
         mount_frac = float(dist.mount_frac_choices[int(rng.integers(0, len(dist.mount_frac_choices)))])
         length = sample_grid_length_m(rng, dist.palm_length_range_m, dist.link_length_grid_m)
         direction_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
         has_joint = bool(float(rng.random()) < dist.palm_joint_probability)
         if has_joint and lim is not None and not lim.can_add_jointed_palm(parent, digit_count):
+            has_joint = False
+        if has_joint and need_leaf_digits and not lim.leaves_feasible({**lim.struct.palm, name: (parent, True)},
+                                                                      digit_count):
             has_joint = False
         if lim is not None:
             lim.add_palm(name, parent, has_joint)
@@ -636,6 +669,10 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION,
 
     mount_bodies = ["root"] + palm_names
     next_id = [1]
+    # No empty palm bodies (generation limits): the first digits go one to
+    # each palm leaf (a palm body with no palm body below it), which covers
+    # every palm body.
+    leaf_hosts: List[str] = lim.struct.palm_leaves() if need_leaf_digits else []
 
     # Opus review of G0 (item 2 / V3s fix): a scratch root-frame transform
     # for "root" plus every palm body, computed once (only when a rule
@@ -660,9 +697,11 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION,
         if dist.mount_on_host_surface:
             planned_mounts = _plan_top_level_mounts_surface(
                 rng, dist, mount_bodies, digit_count, host_length, capsule_radius_m, host_transforms, lim=lim,
+                required_hosts=leaf_hosts,
             )
         else:
-            planned_mounts = _plan_top_level_mounts(rng, dist, mount_bodies, digit_count, host_length, lim=lim)
+            planned_mounts = _plan_top_level_mounts(rng, dist, mount_bodies, digit_count, host_length, lim=lim,
+                                                    required_hosts=leaf_hosts)
     for i in range(digit_count):
         forced_mount = planned_mounts[i] if planned_mounts is not None else None
         # G0 screen (I30): the LAST top-level digit, when the opposition
@@ -700,9 +739,11 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION,
                 norm = float(np.linalg.norm(mean_fwd))
                 if norm > 1e-9:
                     oppose_forward = mean_fwd / norm
+        forced_host = leaf_hosts[i] if planned_mounts is None and i < len(leaf_hosts) else None
         _sample_digit(rng, dist, steps, next_id, mount_bodies, next_uid,
                       forced_mount=forced_mount, oppose_forward=oppose_forward, host_radius_m=capsule_radius_m,
-                      host_transforms=host_transforms if dist.opposition_use_host_frame else None, lim=lim)
+                      host_transforms=host_transforms if dist.opposition_use_host_frame else None, lim=lim,
+                      forced_host=forced_host)
 
     return Derivation(seed=seed, grammar_version=GRAMMAR_VERSION, steps=tuple(steps))
 
@@ -1507,6 +1548,54 @@ def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation,
     return _rename_branch_mounts(result, digit_id, renumber)
 
 
+def _remove_palm_leaf(steps: List[DerivationStep], remove_name: str) -> List[DerivationStep]:
+    """``steps`` without palm body ``remove_name`` (a leaf with nothing
+    mounted on it); higher-numbered palm bodies are renumbered down by one,
+    exactly as ``_op_remove_palm_body_empty`` does."""
+    hand_params = next(s for s in steps if s.path == "hand").params
+    palm_body_count = hand_params["palm_body_count"]
+    remove_idx = int(remove_name[len("palm"):])
+    rename = {f"palm{i}": f"palm{i - 1}" for i in range(remove_idx + 1, palm_body_count)}
+    out: List[DerivationStep] = []
+    for s in steps:
+        if s.path == f"palm/{remove_idx}":
+            continue
+        if s.production == "PalmBody":
+            old_i = int(s.params["name"][len("palm"):])
+            new_i = old_i if old_i < remove_idx else old_i - 1
+            p = dict(s.params)
+            p["name"] = f"palm{new_i}"
+            if p["parent"] in rename:
+                p["parent"] = rename[p["parent"]]
+            out.append(DerivationStep(path=f"palm/{new_i}", production="PalmBody", params=p))
+        elif s.production == "Digit" and s.params.get("mount") in rename:
+            out.append(DerivationStep(path=s.path, production="Digit",
+                                      params={**s.params, "mount": rename[s.params["mount"]]}))
+        elif s.path == "hand":
+            out.append(DerivationStep(path="hand", production="Hand",
+                                      params={**hand_params, "palm_body_count": palm_body_count - 1}))
+        else:
+            out.append(s)
+    return out
+
+
+def _drop_empty_palm_bodies(steps: List[DerivationStep]) -> List[DerivationStep]:
+    """Generation limits (``require_digit_on_palm_body``): remove every palm
+    body left without a digit (leaves first, so a chain of palm bodies that
+    only carried the removed digit goes entirely)."""
+    while True:
+        st = Structure.from_steps(steps)
+        empty = sorted(set(st.empty_palm_bodies()) & set(st.palm_leaves()),
+                       key=lambda n: -int(n[len("palm"):]))
+        if not empty:
+            return steps
+        steps = _remove_palm_leaf(steps, empty[0])
+
+
+def _needs_palm_digits(lim: Optional[LimitContext]) -> bool:
+    return lim is not None and lim.limits.require_digit_on_palm_body
+
+
 def _op_add_digit(rng, dist: Distribution, derivation: Derivation,
                   lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """``lim``: needs a host with room; the new digit is sampled under the
@@ -1530,21 +1619,35 @@ def _op_add_digit(rng, dist: Distribution, derivation: Derivation,
     return rest + [new_hand] + new_steps
 
 
+def _removal_allowed(lim: LimitContext, digit_id: str) -> bool:
+    st = lim.struct.without_digit(digit_id)
+    if lim.limits.require_digit_on_palm_body:
+        st = st.without_empty_palm_bodies()
+    return lim.allows(st)
+
+
 def _op_remove_digit(rng, dist: Distribution, derivation: Derivation,
                      lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Remove any top-level digit (with its branches), drawn uniformly.
+    ``lim``: only digits whose removal keeps the hand within the limits; with
+    ``require_digit_on_palm_body``, a palm body left without a digit is
+    removed too."""
     steps = list(derivation.steps)
     hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
     hand_params = steps[hand_idx].params
     if hand_params["digit_count"] <= 1:
         return None
     top_ids = [s.params["digit_id"] for s in steps if s.production == "Digit" and s.params.get("top_level")]
+    if lim is not None:
+        top_ids = [d for d in top_ids if _removal_allowed(lim, d)]
     if not top_ids:
         return None
     digit_id = top_ids[int(rng.integers(0, len(top_ids)))]
     kept = [s for s in steps if not _is_descendant_digit(digit_id, _step_digit_id(s))]
     new_hand = DerivationStep(path="hand", production="Hand",
                                params={**hand_params, "digit_count": hand_params["digit_count"] - 1})
-    return [s if s.path != "hand" else new_hand for s in kept]
+    out = [s if s.path != "hand" else new_hand for s in kept]
+    return _drop_empty_palm_bodies(out) if _needs_palm_digits(lim) else out
 
 
 # --------------------------------------------------------------------------
@@ -2045,13 +2148,16 @@ def _op_remove_digit_minimal(rng, dist: Distribution, derivation: Derivation,
         and all(ph.params["branch_digit_count"] == 0 for ph in phalanx_by_digit.get(s.params["digit_id"], []))
         and (target is None or s.params.get("uid") == target)
     ]
+    if _needs_palm_digits(lim):
+        candidates = [d for d in candidates if _removal_allowed(lim, d)]
     if not candidates:
         return None
     digit_id = candidates[int(rng.integers(0, len(candidates)))]
     kept = [s for s in steps if not _is_descendant_digit(digit_id, _step_digit_id(s))]
     new_hand = DerivationStep(path="hand", production="Hand",
                                params={**hand_params, "digit_count": hand_params["digit_count"] - 1})
-    return [s if s.path != "hand" else new_hand for s in kept]
+    out = [s if s.path != "hand" else new_hand for s in kept]
+    return _drop_empty_palm_bodies(out) if _needs_palm_digits(lim) else out
 
 
 def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation,
@@ -2068,18 +2174,36 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation,
     palm_body_count = hand_params["palm_body_count"]
     if palm_body_count >= dist.palm_body_count_range[1]:
         return None
-    if lim is not None and not lim.allows(lim.struct.with_palm("__new_palm", "root", False)):
-        return None             # generation limits: no room for another palm body
+    with_digit = _needs_palm_digits(lim)
     gdist = _growth_dist(dist)
     palm_names = [f"palm{i}" for i in range(palm_body_count)]
     parent_choices = ["root"] + palm_names
+
+    def allowed(parent: str, jointed: bool) -> bool:
+        st = lim.struct.with_palm("__new_palm", parent, jointed)
+        if with_digit:
+            # No empty palm bodies: the new body comes with a one-joint digit.
+            st.digits["__new_digit"] = ("__new_palm", 1)
+            st.kinds[("__new_digit", 0)] = "R"
+        return lim.allows(st)
+
+    if with_digit:
+        if hand_params["digit_count"] >= dist.digit_count_range[1] or not lim.module_allowed("R"):
+            return None
+        parent_choices = [c for c in parent_choices if allowed(c, False) or allowed(c, True)]
+        if not parent_choices:
+            return None
+    elif lim is not None and not lim.allows(lim.struct.with_palm("__new_palm", "root", False)):
+        return None             # generation limits: no room for another palm body
     parent = parent_choices[int(rng.integers(0, len(parent_choices)))]
     mount_frac = float(gdist.mount_frac_choices[int(rng.integers(0, len(gdist.mount_frac_choices)))])
     length = sample_grid_length_m(rng, gdist.palm_length_range_m, gdist.link_length_grid_m)
     direction_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
     has_joint = bool(float(rng.random()) < gdist.palm_joint_probability)
-    if has_joint and lim is not None and not lim.allows(lim.struct.with_palm("__new_palm", parent, True)):
+    if has_joint and lim is not None and not allowed(parent, True):
         has_joint = False       # generation limits: a joint here is not allowed, so the body is rigid
+    if with_digit and not has_joint and not allowed(parent, False):
+        has_joint = True        # only a jointed body (carrying its own digit) fits here
     axis = sample_axis(rng)
     limits = sample_palm_joint_limits_rad(rng, gdist) if has_joint else None
     name = f"palm{palm_body_count}"
@@ -2091,10 +2215,36 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation,
     if gdist.mount_lateral_grid_m is not None:
         palm_params["mount_offset"] = sample_lateral_offset(rng, gdist)
     new_step = DerivationStep(path=f"palm/{palm_body_count}", production="PalmBody", params=palm_params)
-    new_hand = DerivationStep(path="hand", production="Hand",
-                               params={**hand_params, "palm_body_count": palm_body_count + 1})
     rest = [s for i, s in enumerate(steps) if i != hand_idx]
-    return rest + [new_hand, new_step]
+    if not with_digit:
+        new_hand = DerivationStep(path="hand", production="Hand",
+                                   params={**hand_params, "palm_body_count": palm_body_count + 1})
+        return rest + [new_hand, new_step]
+    # The one-joint digit on the new body (drawn like add_minimal_digit's).
+    top_ids = [int(s.params["digit_id"]) for s in steps if s.production == "Digit" and s.params.get("top_level")]
+    digit_id = str(max(top_ids, default=0) + 1)
+    d_frac = float(gdist.mount_frac_choices[int(rng.integers(0, len(gdist.mount_frac_choices)))])
+    d_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
+    d_axis = sample_axis(rng, gdist.digit_axis_elevation_band_deg)
+    d_limits = sample_revolute_limits_rad(rng, gdist)
+    d_length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m)
+    bend_rpy, bend_offset = ((0.0, 0.0, 0.0), (0.0, 0.0)) if gdist.curl_skip_first_phalanx else sample_bend(rng, gdist)
+    uid = palm_params["uid"] + 1
+    digit_params = {
+        "digit_id": digit_id, "mount": name, "mount_frac": d_frac, "mount_rpy": d_rpy,
+        "phalanx_count": 1, "top_level": True, "depth": 0, "uid": uid,
+    }
+    if gdist.mount_lateral_grid_m is not None and not gdist.mount_on_host_surface:
+        digit_params["mount_offset"] = sample_lateral_offset(rng, gdist)
+    digit_step = DerivationStep(path=f"digit/{digit_id}", production="Digit", params=digit_params)
+    phalanx_step = DerivationStep(path=f"digit/{digit_id}/phalanx/0", production="Phalanx", params={
+        "digit_id": digit_id, "p": 0, "module": {"kind": "R", "axis": d_axis, "limits": d_limits},
+        "length": d_length, "branch_digit_count": 0, "uid": uid + 1,
+        "bend_rpy": bend_rpy, "bend_offset": bend_offset,
+    })
+    new_hand = DerivationStep(path="hand", production="Hand", params={
+        **hand_params, "palm_body_count": palm_body_count + 1, "digit_count": hand_params["digit_count"] + 1})
+    return rest + [new_hand, new_step, digit_step, phalanx_step]
 
 
 def _op_remove_palm_body(rng, dist: Distribution, derivation: Derivation,
@@ -2551,10 +2701,27 @@ EVOLUTION_OPERATORS_V1: Tuple[str, ...] = (
     "add_branch_digit", "remove_branch_digit",
 ) + tuple(SMALL_STEP_OPERATORS)
 
-# The current pool: V1 plus ``step_segment_length`` (one segment +/- 5 mm),
-# so evolution can change an existing segment's length (before, only new
-# segments got a length, and only the root palm's length could step).
-EVOLUTION_OPERATORS: Tuple[str, ...] = EVOLUTION_OPERATORS_V1 + ("step_segment_length",)
+# The current pool (2026-10-06), changed from V1 in three ways:
+# - ``step_segment_length`` (one segment +/- 5 mm) joins, so evolution can
+#   change an existing segment's length (before, only new segments got a
+#   length, and only the root palm's length could step);
+# - "remove a finger" is ``remove_digit`` (ANY top-level digit, with its
+#   branches) instead of ``remove_digit_minimal`` (only 1-2 phalanx digits),
+#   so the add/remove-finger pair is no longer an exact inverse;
+# - ``remove_palm_body_empty`` is dropped: under the generation limits'
+#   ``require_digit_on_palm_body`` (on in SIMULATOR and DEFAULT_LIMITS) no
+#   palm body is ever empty, ``add_palm_body`` adds its body with a one-joint
+#   digit, and removing a palm body's last digit removes the body.
+# Without limits nothing in this pool removes a palm body, so a caller that
+# evolves without limits should pass ``limits=DEFAULT_LIMITS`` (or keep
+# ``EVOLUTION_OPERATORS_V1``).
+EVOLUTION_OPERATORS: Tuple[str, ...] = (
+    "add_minimal_digit", "remove_digit",
+    "insert_phalanx", "delete_phalanx",
+    "add_palm_body",
+    "toggle_palm_joint",
+    "add_branch_digit", "remove_branch_digit",
+) + tuple(SMALL_STEP_OPERATORS) + ("step_segment_length",)
 assert len(EVOLUTION_OPERATORS) == len(set(EVOLUTION_OPERATORS)), "EVOLUTION_OPERATORS has duplicates"
 
 # Shrink operators (and self-inverse ``toggle_palm_joint``) that accept an

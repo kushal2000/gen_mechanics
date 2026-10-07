@@ -93,6 +93,11 @@ class GenerationLimits:
     max_digits_per_jointed_palm_body: Optional[int] = None
     # Digits without a carrier plus jointed palm bodies.
     max_finger_chains: Optional[int] = None
+    # Every palm body carries at least one digit, mounted on it or on a palm
+    # body below it (no empty palm parts). Sampling then never makes an empty
+    # palm body, ``add_palm_body`` adds the body together with a one-joint
+    # digit on it, and removing a palm body's last digit removes the body too.
+    require_digit_on_palm_body: bool = False
 
     def __post_init__(self):
         kinds = tuple(self.allowed_modules)
@@ -120,6 +125,9 @@ class GenerationLimits:
 
 UNLIMITED = GenerationLimits()
 
+# The whole grammar, except that a palm part must carry a finger.
+DEFAULT_LIMITS = GenerationLimits(require_digit_on_palm_body=True)
+
 # The simulator's padded envelope (grammar_envelope.py: N_FINGERS = 5,
 # N_JOINTS_PER_FINGER = 6, MAX_JOINTED_PALM_BODIES = 2, revolute-only, no
 # couplings, no branching, jointed palm bodies hang off the root palm and carry
@@ -135,23 +143,30 @@ SIMULATOR = GenerationLimits(
     allow_stacked_palm_joints=False,
     max_digits_per_jointed_palm_body=1,
     max_finger_chains=5,
+    require_digit_on_palm_body=True,
 )
 
-PRESETS: Dict[str, GenerationLimits] = {"Simulator": SIMULATOR, "Unlimited": UNLIMITED}
+# The simulator envelope's shape alone, without the no-empty-palm rule (the
+# envelope itself accepts empty palm bodies): exactly ``_admit_structural``.
+SIMULATOR_ENVELOPE = replace(SIMULATOR, require_digit_on_palm_body=False)
+
+PRESETS: Dict[str, GenerationLimits] = {"Simulator": SIMULATOR, "Default": DEFAULT_LIMITS, "Unlimited": UNLIMITED}
 
 LIMIT_KEYS: Tuple[str, ...] = tuple(f.name for f in fields(GenerationLimits))
 
-# One short line per limit, for reports and the viewer.
+# One short line per limit, for reports and the viewer, in plain words
+# (finger = top-level digit, joint + bone = phalanx, palm part = palm body).
 LIMIT_TEXT: Dict[str, str] = {
-    "allowed_modules": "joint module kinds",
-    "allow_branches": "branching digits",
-    "max_digits": "digits",
-    "max_joints_per_digit": "joints per digit",
-    "max_palm_bodies": "extra palm bodies",
-    "max_jointed_palm_bodies": "jointed palm bodies",
+    "allowed_modules": "joint types",
+    "allow_branches": "branching fingers",
+    "max_digits": "fingers",
+    "max_joints_per_digit": "joints per finger",
+    "max_palm_bodies": "palm parts",
+    "max_jointed_palm_bodies": "palm joints",
     "allow_stacked_palm_joints": "stacked palm joints",
-    "max_digits_per_jointed_palm_body": "digits per jointed palm body",
-    "max_finger_chains": "finger chains (root digits + jointed palm bodies)",
+    "max_digits_per_jointed_palm_body": "fingers per palm joint",
+    "max_finger_chains": "finger slots (fingers on the rigid palm + palm joints)",
+    "require_digit_on_palm_body": "palm parts without a finger",
 }
 
 
@@ -263,6 +278,23 @@ class Structure:
     def carried_counts(self) -> Counter:
         return Counter(c for c in (self.carrier(self.digits[d][0]) for d in self.top_digits()) if c is not None)
 
+    def empty_palm_bodies(self) -> List[str]:
+        """Palm bodies with no top-level digit on them or on any palm body
+        below them."""
+        supported = set()
+        for d in self.top_digits():
+            cur, seen = self.digits[d][0], set()
+            while cur in self.palm and cur not in seen:
+                seen.add(cur)
+                supported.add(cur)
+                cur = self.palm[cur][0]
+        return [n for n in self.palm if n not in supported]
+
+    def palm_leaves(self) -> List[str]:
+        """Palm bodies with no palm body below them, in name order."""
+        parents = {par for par, _ in self.palm.values()}
+        return [n for n in self.palm if n not in parents]
+
     def finger_chains(self) -> int:
         n_root = sum(1 for d in self.top_digits() if self.carrier(self.digits[d][0]) is None)
         return n_root + len(self.jointed())
@@ -288,6 +320,8 @@ class Structure:
             ex["max_digits_per_jointed_palm_body"] = sum(
                 max(0, c - limits.max_digits_per_jointed_palm_body) for c in self.carried_counts().values())
         ex["max_finger_chains"] = int(max(0, self.finger_chains() - _inf(limits.max_finger_chains)))
+        if limits.require_digit_on_palm_body:
+            ex["require_digit_on_palm_body"] = len(self.empty_palm_bodies())
         return ex
 
     def measured(self) -> Dict[str, str]:
@@ -305,6 +339,7 @@ class Structure:
             "allow_stacked_palm_joints": f"{len(self.stacked())} stacked",
             "max_digits_per_jointed_palm_body": str(max(carried.values(), default=0)),
             "max_finger_chains": str(self.finger_chains()),
+            "require_digit_on_palm_body": f"{len(self.empty_palm_bodies())} empty",
         }
 
     # ---- hypothetical edits (each returns a modified copy) -------------------
@@ -318,6 +353,25 @@ class Structure:
         st = self.copy()
         st.palm[name] = (parent, bool(jointed))
         return st
+
+    def without_digit(self, digit_id: str) -> "Structure":
+        """The structure with a top-level digit (and its branches) removed."""
+        st = self.copy()
+        top = st.top_of()
+        for d in [d for d, t in top.items() if t == digit_id]:
+            n = st.digits.pop(d)[1]
+            for k in range(n):
+                st.kinds.pop((d, k), None)
+        return st
+
+    def without_empty_palm_bodies(self) -> "Structure":
+        st = self.copy()
+        while True:
+            empty = set(st.empty_palm_bodies()) & set(st.palm_leaves())
+            if not empty:
+                return st
+            for n in empty:
+                del st.palm[n]
 
     def without_palm_reattach(self, name: str) -> "Structure":
         """``derive._op_remove_palm_body``: children and digits of ``name``
@@ -436,6 +490,14 @@ class LimitContext:
         if moving is not None and moving in st.digits:
             st = st.copy()
             del st.digits[moving]
+        if self.limits.require_digit_on_palm_body:
+            # No palm body may be left (or stay) without a digit: a digit
+            # leaving its palm body, or a regrown digit whose old palm body is
+            # empty for now, must go where it keeps every palm body covered.
+            trial = st.copy()
+            trial.digits["__room"] = (host, 1)
+            if len(trial.empty_palm_bodies()) > self.base["require_digit_on_palm_body"]:
+                return False
         lim = self.limits
         tops = st.top_digits()
         if len(tops) + 1 > _inf(lim.max_digits) and len(tops) + 1 - _inf(lim.max_digits) > self.base["max_digits"]:
@@ -475,6 +537,24 @@ class LimitContext:
             return False
         capacity = (_inf(lim.max_finger_chains) - n_j) + n_j * _inf(lim.max_digits_per_jointed_palm_body)
         return capacity >= digits_to_place
+
+    def leaves_feasible(self, palm: Dict[str, Tuple[str, bool]], digits_to_place: int) -> bool:
+        """While sampling a fresh hand under ``require_digit_on_palm_body``:
+        can ``digits_to_place`` digits cover every palm leaf (one digit
+        each, on the leaf) of this palm structure within the limits?"""
+        st = Structure(palm=dict(palm))
+        lim = self.limits
+        leaves = st.palm_leaves()
+        if len(leaves) > digits_to_place:
+            return False
+        demand = Counter(st.carrier(leaf) for leaf in leaves)
+        n_j = len(st.jointed())
+        if demand[None] + n_j > _inf(lim.max_finger_chains):
+            return False
+        if lim.max_digits_per_jointed_palm_body is not None:
+            if any(c is not None and k > lim.max_digits_per_jointed_palm_body for c, k in demand.items()):
+                return False
+        return True
 
     def digit_cap(self) -> float:
         """Most top-level digits a fresh hand may get. Every digit fills a
@@ -539,6 +619,7 @@ def context(limits: Optional[GenerationLimits], steps: Sequence = (), fresh: boo
 
 
 __all__ = [
+    "DEFAULT_LIMITS",
     "GenerationLimits",
     "LIMIT_KEYS",
     "LIMIT_TEXT",
@@ -547,6 +628,7 @@ __all__ = [
     "MODULE_KINDS",
     "PRESETS",
     "SIMULATOR",
+    "SIMULATOR_ENVELOPE",
     "Structure",
     "UNLIMITED",
     "check",
