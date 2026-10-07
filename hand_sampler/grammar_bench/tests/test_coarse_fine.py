@@ -55,7 +55,7 @@ from hand_sampler.grammar.distributions import (
     root_length_support_m,
 )
 from hand_sampler.grammar.limits import FINGER_LENGTH_CAP_MM, SIMULATOR, GenerationLimits
-from hand_sampler.grammar.variants import G_FULL, G_V1, G_V3S, GRAMMAR_BASE, NAMED_DISTRIBUTIONS, build_distribution
+from hand_sampler.grammar.variants import G_FULL, G_V1, G_V3S, NAMED_DISTRIBUTIONS, build_distribution
 
 GRAMMAR = build_distribution()
 NO_SUPPORT = replace(GRAMMAR, link_length_support_m=None, root_length_support_m=None, palm_body_length_support_m=None)
