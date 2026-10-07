@@ -37,11 +37,12 @@ from . import grammar_envelope as ge
 from . import population_file as pf
 
 ROOT_BODY_NAME = "root"
-PC_BODY_NAMES = ("pc0", "pc1")
 
-
-def _finger_body_name(f: int, d: int) -> str:
-    return f"f{f}_link{d}"
+MIMIC_GEARING = -1.0
+"""PhysX mimic joints enforce `q + gearing * q_reference + offset = 0`, so a
+follower carrier that turns exactly with its leader has gearing -1, offset 0
+(Phase 0 of the 36-slot layout: tie error under 1.3e-3 rad with different
+ties per env in one articulation view)."""
 
 
 def _env_id_of(prim_path: str) -> int:
@@ -161,12 +162,18 @@ def _author_convex_hull(layer, path: str, points: np.ndarray, *, contact_offset:
 
 def _author_joint(layer, joint_path: str, *, body0_path: str, body1_path: str,
                    frame0: np.ndarray, frame1: np.ndarray, limits_rad: Tuple[float, float],
-                   valid: bool) -> None:
+                   mimic_of: Optional[str] = None) -> None:
+    """A revolute joint about its local z. `mimic_of` (a joint path): tie it
+    to that joint with a PhysX mimic joint (`MIMIC_GEARING`), for a follower
+    carrier."""
     from pxr import Gf, Sdf
 
     from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
 
-    j = define(layer, joint_path, "PhysicsRevoluteJoint", ["PhysicsDriveAPI:angular", "PhysxJointAPI"])
+    apis = ["PhysicsDriveAPI:angular", "PhysxJointAPI"]
+    if mimic_of is not None:
+        apis.append("PhysxMimicJointAPI:rotZ")
+    j = define(layer, joint_path, "PhysicsRevoluteJoint", apis)
     rel(j, "physics:body0", body0_path)
     rel(j, "physics:body1", body1_path)
     jpos, jquat = mat_to_pos_quat(frame0)
@@ -189,6 +196,27 @@ def _author_joint(layer, joint_path: str, *, body0_path: str, body1_path: str,
     attr(j, "drive:angular:physics:targetPosition", Sdf.ValueTypeNames.Float, 0.0)
     attr(j, "physxJoint:maxJointVelocity", Sdf.ValueTypeNames.Float,
          float(math.degrees(rpc.GEN_JOINT_VELOCITY_RAD_S)))
+    if mimic_of is not None:
+        rel(j, "physxMimicJoint:rotZ:referenceJoint", mimic_of)
+        attr(j, "physxMimicJoint:rotZ:gearing", Sdf.ValueTypeNames.Float, MIMIC_GEARING)
+        attr(j, "physxMimicJoint:rotZ:offset", Sdf.ValueTypeNames.Float, 0.0)
+
+
+def _author_fixed_joint(layer, joint_path: str, *, body0_path: str, body1_path: str,
+                         pos0: Sequence[float]) -> None:
+    """A fixed joint inside the articulation (no degree of freedom): body1's
+    origin at `pos0` in body0's frame, same orientation."""
+    from pxr import Gf, Sdf
+
+    from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
+
+    j = define(layer, joint_path, "PhysicsFixedJoint")
+    rel(j, "physics:body0", body0_path)
+    rel(j, "physics:body1", body1_path)
+    attr(j, "physics:localPos0", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(*[float(v) for v in pos0]))
+    attr(j, "physics:localRot0", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)))
+    attr(j, "physics:localPos1", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(0.0, 0.0, 0.0))
+    attr(j, "physics:localRot1", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)))
 
 
 def _link_mass_props(length: float, radius: float, real: bool) -> Tuple[float, Tuple[float, float, float]]:
@@ -219,8 +247,8 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
                    collider_radius: Optional[float] = None,
                    palm_hull_points: Optional[np.ndarray] = None,
                    palm_filter_slots: Sequence[int] = ()) -> Dict[str, bool]:
-    """Author one design's root/palm, palm carriers and 30 finger-joint
-    slots under `root_path` (an already-`define`-d Xform). `base_pos`/
+    """Author one design's root/palm, its 6 finger slots (a carrier joint,
+    5 finger joints and a fixed fingertip body each) under `root_path` (an already-`define`-d Xform). `base_pos`/
     `base_rot_wxyz` place the design's root BODY relative to `root_path`
     (its own env's Xform -- USD composes this with the env's own origin
     automatically, so this stays env-LOCAL). `world_anchor_pos` is the SAME
@@ -263,22 +291,17 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
     # (not nested under its own kinematic parent body), so each one's own
     # initial xform must be its ABSOLUTE (root_path-relative) rest pose, NOT
     # `design.slot_origin[slot]` (which is relative to the slot's KINEMATIC
-    # parent body -- only equal to the root_path-relative pose for a d==0
-    # finger slot mounted directly on root; wrong for every continuation
-    # joint d>=1, and for a carrier-mounted finger's own d==0 slot, whose
-    # origin is relative to pc0/pc1, not root_path). Confirmed by a Kit
-    # diagnostic: d==0 root-mounted slots read back with ~0 error, every
-    # continuation slot (d>=1) was off starting at its own joint, compounding
-    # down the chain. `T0[slot]` (`authored_fk` at q=0, ROOT-relative by
-    # construction) composed with the design's own base transform gives the
-    # correct root_path-relative pose for every slot uniformly.
+    # parent body -- only equal to the root_path-relative pose for a slot
+    # whose parent is the root). `T0[slot]` (`authored_fk` at q=0, ROOT-
+    # relative by construction) composed with the design's own base
+    # transform gives the correct root_path-relative pose for every slot.
     T0 = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
     T_base = np.eye(4)
     T_base[:3, :3] = Rotation.from_quat(
         [base_rot_wxyz[1], base_rot_wxyz[2], base_rot_wxyz[3], base_rot_wxyz[0]]
     ).as_matrix()
     T_base[:3, 3] = base_pos
-    T_slot_in_root_path = T_base @ T0  # (32,4,4), broadcasting T_base over all 32 slots
+    T_slot_in_root_path = T_base @ T0  # (36,4,4), broadcasting T_base over all 36 slots
 
     def _slot_pos_quat(slot: int) -> Tuple[Tuple[float, float, float], Tuple[float, float, float, float]]:
         return mat_to_pos_quat(T_slot_in_root_path[slot])
@@ -289,12 +312,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
         design's own authored body path."""
         if node == ge.ROOT_NODE:
             return f"{root_path}/{ROOT_BODY_NAME}"
-        if node == ge.PC0_SLOT:
-            return f"{root_path}/{PC_BODY_NAMES[0]}"
-        if node == ge.PC1_SLOT:
-            return f"{root_path}/{PC_BODY_NAMES[1]}"
-        f, d = divmod(node, ge.N_JOINTS_PER_FINGER)
-        return f"{root_path}/{_finger_body_name(f, d)}"
+        return f"{root_path}/{ge.slot_body(node)}"
 
     # Review item 4's exemption (projected commercial hands only -- see
     # `_author_body_and_collider`'s own comment): which authored body path
@@ -345,57 +363,47 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
     attr(fixed, "physics:localPos1", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(0.0, 0.0, 0.0))
     attr(fixed, "physics:localRot1", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)))
 
-    # --- palm-carrier bodies + joints (pc0_j, pc1_j) -----------------------
-    # A GHOST pc body attaches DIRECTLY to root, but -- unlike the old
-    # sampler's ghosts, which only ever carry OTHER ghosts at a finger's
-    # unused tail -- a padding-only pc0/pc1 (no real carrier in the source
-    # design) still carries an entire REAL finger chain when a root-mounted
-    # digit fills envelope slot 3/4 (`canonicalize`'s free-slot assignment).
-    # The mass ratio that actually destabilises the solver is ghost-vs-that-
-    # REAL-FINGER, not ghost-vs-root: the coordinator's diagnosis, confirmed
-    # by a Kit diagnostic (pc1_j on a G_SERIAL design, carrying finger 4,
-    # reached 114 rad/s within 2 steps) -- and unchanged by an earlier fix
-    # that only scaled the ghost mass against ROOT (1% of root was still
-    # negligible next to the real finger 4 chain hanging off it). Fixed by
-    # giving the ghost a REAL phalanx's mass/inertia (same density formula,
-    # using this SPECIFIC finger's own first real segment length as the
-    # reference -- "realistic", not "negligible", exactly because it is
-    # mechanically carrying that finger).
-    for pc in range(2):
-        slot = ge.PC0_SLOT + pc
-        body_path = f"{root_path}/{PC_BODY_NAMES[pc]}"
-        valid = bool(design.slot_valid[slot])
-        length = float(design.slot_length[slot])
-        if valid:
+    # --- finger slots: carrier, finger joints, fingertip body -----------------
+    # A carrier that is not a real palm joint (LOCKED, or a FOLLOWER tied to
+    # its leader) still carries a whole real finger, so it gets a real
+    # phalanx's mass and inertia (that finger's first link length as the
+    # reference): a near-massless body between the palm and a real finger
+    # destabilised the solver (a Kit diagnostic: 114 rad/s within 2 steps on
+    # a ghost carrier). Only a LEADER, the palm part itself, has a collider.
+    roles = ge.carrier_roles(design)
+    tips = ge.tip_offsets(design)
+    for f in range(ge.N_FINGERS):
+        c = ge.carrier_slot(f)
+        role = roles[f]
+        body_path = f"{root_path}/{ge.slot_body(c)}"
+        length = float(design.slot_length[c])
+        if role == ge.LEADER:
             mass, inertia = _link_mass_props(length, design.capsule_radius_m, True)
         else:
-            finger_f = 3 + pc
-            ref_length = float(design.slot_length[finger_f * ge.N_JOINTS_PER_FINGER])
-            if not design.slot_valid[finger_f * ge.N_JOINTS_PER_FINGER]:
-                ref_length = 0.0  # that finger slot is itself unused padding: no load to buffer
+            base = ge.finger_slot(f, 0)
+            ref_length = float(design.slot_length[base]) if design.slot_valid[base] else 0.0
             mass, inertia = _link_mass_props(max(ref_length, ge.GHOST_LENGTH_M), design.capsule_radius_m, True)
-        pos, quat = _slot_pos_quat(slot)
+        pos, quat = _slot_pos_quat(c)
         _author_body_and_collider(
             layer, body_path, length=length, radius=col_r, mass=mass,
-            inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
+            inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=role == ge.LEADER,
             filtered_pair_targets=filtered_targets_of.get(body_path, ()),
             contact_offset=contact_offset, rest_offset=rest_offset,
         )
-        colliders[PC_BODY_NAMES[pc]] = valid
-        limits = tuple(float(v) for v in design.slot_limits[slot]) if valid else ge.GHOST_LIMITS
+        colliders[ge.slot_body(c)] = role == ge.LEADER
+        limits = ge.GHOST_LIMITS if role == ge.LOCKED else tuple(float(v) for v in design.slot_limits[c])
+        mimic_of = (f"{root_path}/joints/{ge.SLOT_NAMES[int(design.slot_tie[c])]}"
+                    if role == ge.FOLLOWER else None)
         _author_joint(
-            layer, f"{root_path}/joints/{ge.SLOT_NAMES[slot]}", body0_path=root_body_path,
-            body1_path=body_path, frame0=frames[slot, 0], frame1=frames[slot, 1],
-            limits_rad=limits, valid=valid,
+            layer, f"{root_path}/joints/{ge.SLOT_NAMES[c]}", body0_path=root_body_path,
+            body1_path=body_path, frame0=frames[c, 0], frame1=frames[c, 1], limits_rad=limits, mimic_of=mimic_of,
         )
 
-    # --- finger joint slots (f0_j0..f4_j5) ----------------------------------
-    for f in range(ge.N_FINGERS):
         for d in range(ge.N_JOINTS_PER_FINGER):
-            slot = f * ge.N_JOINTS_PER_FINGER + d
+            slot = ge.finger_slot(f, d)
             valid = bool(design.slot_valid[slot])
             length = float(design.slot_length[slot])
-            body_path = f"{root_path}/{_finger_body_name(f, d)}"
+            body_path = f"{root_path}/{ge.slot_body(slot)}"
             mass, inertia = _link_mass_props(length, design.capsule_radius_m, valid)
             pos, quat = _slot_pos_quat(slot)
             _author_body_and_collider(
@@ -404,18 +412,28 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
                 filtered_pair_targets=filtered_targets_of.get(body_path, ()),
                 contact_offset=contact_offset, rest_offset=rest_offset,
             )
-            colliders[_finger_body_name(f, d)] = valid
-
-            if d == 0:
-                body0_path = root_body_path if f in (0, 1, 2) else f"{root_path}/{PC_BODY_NAMES[f - 3]}"
-            else:
-                body0_path = f"{root_path}/{_finger_body_name(f, d - 1)}"
+            colliders[ge.slot_body(slot)] = valid
             limits = tuple(float(v) for v in design.slot_limits[slot]) if valid else ge.GHOST_LIMITS
             _author_joint(
-                layer, f"{root_path}/joints/{ge.SLOT_NAMES[slot]}", body0_path=body0_path,
-                body1_path=body_path, frame0=frames[slot, 0], frame1=frames[slot, 1],
-                limits_rad=limits, valid=valid,
+                layer, f"{root_path}/joints/{ge.SLOT_NAMES[slot]}",
+                body0_path=f"{root_path}/{ge.slot_body(ge.SLOT_PARENT[slot])}",
+                body1_path=body_path, frame0=frames[slot, 0], frame1=frames[slot, 1], limits_rad=limits,
             )
+
+        # The fingertip body: fixed to the last link at the real fingertip.
+        last = ge.LAST_FINGER_SLOTS[f]
+        tip_path = f"{root_path}/{ge.tip_body(f)}"
+        offset = np.eye(4)
+        offset[2, 3] = float(tips[f])
+        pos, quat = mat_to_pos_quat(T_slot_in_root_path[last] @ offset)
+        _author_body_and_collider(
+            layer, tip_path, length=0.0, radius=col_r, mass=rpc.VIRTUAL_LINK_MASS_KG,
+            inertia_diag=(rpc.VIRTUAL_LINK_INERTIA,) * 3, com_z=0.0, pos=pos, quat_wxyz=quat, real=False,
+        )
+        colliders[ge.tip_body(f)] = False
+        _author_fixed_joint(layer, f"{root_path}/joints/{ge.tip_body(f)}_fixed",
+                            body0_path=f"{root_path}/{ge.slot_body(last)}", body1_path=tip_path,
+                            pos0=(0.0, 0.0, float(tips[f])))
 
     return colliders
 
@@ -503,32 +521,28 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
 
 def _adjacent_links_template() -> Dict[str, List[str]]:
     """Immediate parent/child body-name adjacency over the FIXED envelope
-    topology (same for every design; see `grammar_envelope.SLOT_PARENT`) --
-    enough for `HandOnlySpec.validate()`'s "self-collision would be
-    unfiltered" check. Real per-design self-collision filtering between
-    non-adjacent bodies is not attempted here (see the Phase 2 report's
-    known gaps)."""
-    def _body_name(slot: int) -> str:
-        if slot == ge.PC0_SLOT:
-            return PC_BODY_NAMES[0]
-        if slot == ge.PC1_SLOT:
-            return PC_BODY_NAMES[1]
-        f, d = divmod(slot, ge.N_JOINTS_PER_FINGER)
-        return _finger_body_name(f, d)
-
+    topology (same for every design; see `grammar_envelope.SLOT_PARENT`),
+    fingertip bodies included -- enough for `HandOnlySpec.validate()`'s
+    "self-collision would be unfiltered" check. Per-design pairs beyond
+    parent and child are collision-filtered at authoring time
+    (`EnvelopeDesign.filtered_pairs`)."""
     adjacency: Dict[str, List[str]] = {ROOT_BODY_NAME: []}
+
+    def _link(a: str, b: str) -> None:
+        adjacency.setdefault(a, []).append(b)
+        adjacency.setdefault(b, []).append(a)
+
     for slot in range(ge.N_SLOTS):
-        name = _body_name(slot)
         parent = ge.SLOT_PARENT[slot]
-        parent_name = ROOT_BODY_NAME if parent == ge.ROOT_SENTINEL else _body_name(parent)
-        adjacency.setdefault(name, []).append(parent_name)
-        adjacency.setdefault(parent_name, []).append(name)
+        _link(ge.slot_body(slot), ROOT_BODY_NAME if parent == ge.ROOT_SENTINEL else ge.slot_body(parent))
+    for f in range(ge.N_FINGERS):
+        _link(ge.tip_body(f), ge.slot_body(ge.LAST_FINGER_SLOTS[f]))
     return adjacency
 
 
 def build_hand_population_spec(population: ge.GrammarPopulation, template_idx: int, base_rot: Sequence[float]):
     """A `hand_only.HandOnlySpec`-shaped template describing the FIXED
-    32-joint envelope (same joint/body names and action-space size for
+    36-joint envelope (same joint/body names and action-space size for
     every design) -- lets `obs_utils.derive_spaces`/`reward_utils`/
     `reset_utils` (all spec-generic, keyed by field name) run unmodified for
     the population path. Per-design specifics (limits, validity, default
@@ -547,7 +561,7 @@ def build_hand_population_spec(population: ge.GrammarPopulation, template_idx: i
     limits = tuple(
         (float(lo), float(hi)) for lo, hi in population.joint_limits[template_idx]
     )
-    fingertip_names = tuple(_finger_body_name(f, ge.N_JOINTS_PER_FINGER - 1) for f in range(ge.N_FINGERS))
+    fingertip_names = ge.TIP_BODY_NAMES
 
     return hand_only.HandOnlySpec(
         name="grammar_population", hand_name="grammar_population", urdf_path="",

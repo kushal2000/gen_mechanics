@@ -135,9 +135,9 @@ def test_morphology_table_per_slot():
     entry, status, _ = pf.projected_entry("allegro_right")
     design = ge.canonicalize(derive(derivation_from_dict(entry.derivation_dict)), source=entry.source)
     tab = hp.morphology_table(design)
-    assert tab.shape == (32, hp.MORPH_PER_SLOT) and hp.MORPH_PER_SLOT == 10
+    assert tab.shape == (36, hp.MORPH_PER_SLOT) and hp.MORPH_PER_SLOT == 10
     T0 = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
-    s = 1  # index finger, second joint
+    s = ge.finger_slot(0, 1)  # first finger, second joint
     assert tab[s, 0] == 1.0
     assert np.allclose(tab[s, 1:4], T0[s][:3, :3] @ design.slot_axis[s])
     assert np.allclose(tab[s, 4:7], T0[s][:3, 3])
@@ -148,7 +148,7 @@ def test_morphology_table_per_slot():
 
 def test_morph_observation_width():
     # per joint: 10 static + canonical pose; per fingertip: position + mask; 3 hand scalars
-    assert ar.anyrotate_field_width("hora_morph", 32, 5) == 32 * 11 + 5 * 4 + 3
+    assert ar.anyrotate_field_width("hora_morph", 36, 6) == 36 * 11 + 6 * 4 + 3
     assert ar.anyrotate_field_width("hora_morph", 16, 4) == 16 * 11 + 4 * 4 + 3
 
 
@@ -157,17 +157,17 @@ def test_opposition_poses_put_one_finger_in_horas_thumb_pose():
     at HORA's thumb fractions, the others at its finger fractions."""
     from isaacsimenvs.inhand_reorient import grasp_cache as gc
 
-    valid = np.zeros(32, dtype=bool)
-    limits = np.zeros((32, 2))
+    valid = np.zeros(36, dtype=bool)
+    limits = np.zeros((36, 2))
     for f in (0, 3):
-        valid[f * 6: f * 6 + 4] = True
-        limits[f * 6: f * 6 + 4] = [0.0, 1.0]
-    default = np.zeros(32)
+        valid[f * 6 + 1: f * 6 + 5] = True   # finger slot f's joints 0-3 (slot 6 f is its carrier)
+        limits[f * 6 + 1: f * 6 + 5] = [0.0, 1.0]
+    default = np.zeros(36)
     poses = gc.opposition_poses(valid, limits, default)
     assert sorted(poses) == [0, 3]
-    assert np.allclose(poses[3][18:22], gc.HORA_THUMB_PROFILE[:4])
-    assert np.allclose(poses[3][0:4], gc.HORA_LIKE_PROFILE[:4])
-    assert np.allclose(poses[0][0:4], gc.HORA_THUMB_PROFILE[:4])
+    assert np.allclose(poses[3][19:23], gc.HORA_THUMB_PROFILE[:4])
+    assert np.allclose(poses[3][1:5], gc.HORA_LIKE_PROFILE[:4])
+    assert np.allclose(poses[0][1:5], gc.HORA_THUMB_PROFILE[:4])
     # HORA's allegro thumb as range fractions: (0.74, 1.0, 0.62, 0.01)
     assert gc.HORA_THUMB_PROFILE[:4] == pytest.approx((0.74, 1.0, 0.62, 0.01), abs=0.01)
 

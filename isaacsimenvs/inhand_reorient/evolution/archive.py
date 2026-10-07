@@ -12,11 +12,11 @@ unit-testable under plain ``python3`` / pytest, with no Kit boot. Callers
 ints on a ``Candidate`` -- this module never touches a ``KinematicModel`` or
 an ``EnvelopeDesign``.
 
-Descriptor: digit_count in {1..5} (5 bins, clamped) x joint_count in
-{1-5, 6-10, 11-15, 16-20, 21-25, 26-32} (6 bins, clamped) -- 30 cells, the
-envelope's own bounds (<=5 digits, <=32 joint slots total: 5 fingers * 6
-joints + 2 palm-carrier joints, see ``grammar_envelope.py``'s module
-docstring).
+Descriptor: digit_count in {1..6} (6 bins, clamped) x joint_count in
+{1-5, 6-10, 11-15, 16-20, 21-25, 26-36} (6 bins, clamped) -- 36 cells, the
+envelope's own bounds (<=6 fingers, <=36 joints: 6 finger slots of a palm
+joint and 5 finger joints, see ``grammar_envelope.py``'s module docstring;
+``joint_count`` counts finger joints and real palm joints).
 
 Insertion policy, per generation (``update_generation``): every candidate
 submitted this generation (each current elite RE-EVALUATED under the new
@@ -57,21 +57,21 @@ import numpy as np
 # Descriptor
 # --------------------------------------------------------------------------
 
-DIGIT_BINS: Tuple[int, ...] = (1, 2, 3, 4, 5)
+DIGIT_BINS: Tuple[int, ...] = (1, 2, 3, 4, 5, 6)
 JOINT_BIN_EDGES: Tuple[Tuple[int, int], ...] = (
-    (1, 5), (6, 10), (11, 15), (16, 20), (21, 25), (26, 32),
+    (1, 5), (6, 10), (11, 15), (16, 20), (21, 25), (26, 36),
 )
 N_DIGIT_BINS = len(DIGIT_BINS)
 N_JOINT_BINS = len(JOINT_BIN_EDGES)
 N_CELLS = N_DIGIT_BINS * N_JOINT_BINS
-assert N_CELLS == 30, "descriptor must have exactly 30 cells per the plan"
+assert N_CELLS == 36, "6 digit bins x 6 joint-count bins"
 
 Cell = Tuple[int, int]  # (digit_bin, joint_bin), both 0-based
 
 
 def digit_bin(digit_count: int) -> int:
-    """0-based bin index for ``digit_count`` (nominally 1..5). Clamped to
-    ``[1, 5]`` first -- guards a pathological caller (a test, or a probe
+    """0-based bin index for ``digit_count`` (nominally 1..6). Clamped to
+    ``[1, 6]`` first -- guards a pathological caller (a test, or a probe
     hand with 0 digits), never a real admitted grammar design (the
     envelope's own ``admit`` bounds digit_count to that range)."""
     d = max(1, min(int(digit_count), N_DIGIT_BINS))
@@ -80,8 +80,8 @@ def digit_bin(digit_count: int) -> int:
 
 def joint_count_bin(joint_count: int) -> int:
     """0-based bin index into ``JOINT_BIN_EDGES`` for ``joint_count``
-    (nominally 1..32). Clamped the same way: <= the first edge's high end
-    for anything <= 0, the last bin for anything above 32."""
+    (nominally 1..36). Clamped the same way: <= the first edge's high end
+    for anything <= 0, the last bin for anything above 36."""
     jc = int(joint_count)
     for i, (_lo, hi) in enumerate(JOINT_BIN_EDGES):
         if jc <= hi:

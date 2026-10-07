@@ -71,7 +71,7 @@ def restore_extra_curriculum_state(env, state: dict) -> None:
 
 
 def _joint_valid_mask(env) -> torch.Tensor | None:
-    """`(num_envs, 32)` bool, `True` where that env's own design has a REAL
+    """`(num_envs, 36)` bool, `True` where that env's own design has a REAL
     (non-ghost) joint in that envelope slot -- `None` for the single-hand
     path (`env.hand_tables` is only set by `scene/author_grammar.py`'s
     population path), so every existing single-hand call site is
@@ -82,7 +82,7 @@ def _joint_valid_mask(env) -> torch.Tensor | None:
         return None
     design_idx = env.scene_record["design_idx"]
     valid = torch.as_tensor(tables.joint_valid, device=env.device, dtype=torch.bool)
-    valid = valid[design_idx]  # (num_envs, 32), SLOT_NAMES order
+    valid = valid[design_idx]  # (num_envs, 36), SLOT_NAMES order
     perm = env.scene_record.get("slot_of_phys_col")
     if perm is not None:
         valid = valid[:, perm]  # reindex to the articulation view's own column order

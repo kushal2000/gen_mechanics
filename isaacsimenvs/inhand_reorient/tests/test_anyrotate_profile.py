@@ -198,31 +198,31 @@ def test_world_up_in_the_palm_frame_is_the_palm_normal_of_a_palm_up_hand():
 
 
 def test_distal_slots_are_the_last_real_slot_of_each_finger():
-    """Population fingertips: the envelope's fingertip marker f{f}_link5 is
-    a ghost without a collider unless the finger fills all 6 slots, so a
-    fingertip contact is a contact on the finger's last real link."""
-    valid = torch.zeros(2, 32, dtype=torch.bool)
-    valid[0, 0:3] = True      # finger 0: links 0-2 real -> distal 2
-    valid[0, 6:12] = True     # finger 1: all 6 real -> distal 5 (the marker itself)
-    valid[0, 30] = True       # a carrier slot does not count
-    valid[1, 24:25] = True    # finger 4: one link -> distal 0
+    """Population fingertips: the fingertip body f{f}_tip has no collider, so
+    a fingertip contact is a contact on the finger's last real link. Finger
+    slot f is slots 6 f (its carrier, never counted) to 6 f + 5."""
+    valid = torch.zeros(2, 36, dtype=torch.bool)
+    valid[0, 1:4] = True      # finger 0: joints 0-2 real -> distal 2
+    valid[0, 7:12] = True     # finger 1: all 5 real -> distal 4
+    valid[0, 12] = True       # a carrier slot (finger 2's) does not count
+    valid[1, 25:26] = True    # finger 4: one joint -> distal 0
     d = ar.distal_slots(valid)
-    assert d.tolist() == [[2, 5, -1, -1, -1], [-1, -1, -1, -1, 0]]
+    assert d.tolist() == [[2, 4, -1, -1, -1, -1], [-1, -1, -1, -1, 0, -1]]
 
 
 def test_tip_sources_index_the_distal_link_sensor_and_drop_it_from_the_nontip_mask():
-    tip_names = [f"f{f}_link5" for f in range(5)]
-    nontip_names = ["root", "pc0", "pc1"] + [f"f{f}_link{d}" for f in range(5) for d in range(5)]
-    distal = torch.tensor([[2, 5, -1, -1, -1], [-1, -1, -1, -1, 0]])
+    tip_names = [f"f{f}_tip" for f in range(6)]
+    nontip_names = ["root"] + [f"f{f}_c" for f in range(6)] + [f"f{f}_link{d}" for f in range(6) for d in range(5)]
+    distal = torch.tensor([[2, 4, -1, -1, -1, -1], [-1, -1, -1, -1, 0, -1]])
     src, nontip = ar.tip_sources(distal, tip_names, nontip_names)
     all_names = tip_names + nontip_names
-    assert [all_names[i] for i in src[0, :2].tolist()] == ["f0_link2", "f1_link5"]
+    assert [all_names[i] for i in src[0, :2].tolist()] == ["f0_link2", "f1_link4"]
     assert all_names[src[1, 4].item()] == "f4_link0"
-    assert not nontip[0, all_names.index("f0_link2")] and not nontip[0, all_names.index("f1_link5")]
+    assert not nontip[0, all_names.index("f0_link2")] and not nontip[0, all_names.index("f1_link4")]
     assert nontip[0, all_names.index("f0_link1")] and nontip[0, all_names.index("root")]
     assert not nontip[1, all_names.index("f4_link0")] and nontip[1, all_names.index("f0_link2")]
-    # the ghost markers never count as non-tip bodies (no collider; or the tip itself)
-    assert not nontip[:, :5].any()
+    # the fingertip bodies never count as non-tip bodies (no collider)
+    assert not nontip[:, :6].any()
 
 
 def test_timer_goal_advance_runs_ahead_of_a_stalled_object():

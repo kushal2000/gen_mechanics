@@ -2,9 +2,9 @@
 
 Default invocation (no args) writes the 16-design Kit-smoke test population
 the Phase 2 design note asks for: 8 G_SERIAL, 4 "carrier" designs (DEFAULT
-variant, admitted WITH a real jointed palm carrier -- i.e. finger slot 3
-and/or 4 is real, not a ghost), and the 4 projected commercial hands
-allegro_right, dclaw, sharpa_left_on_iiwa14, wuji_right.
+variant, admitted WITH a real jointed palm part, i.e. at least one leader
+carrier), and the 4 projected commercial hands allegro_right, dclaw,
+sharpa_left_on_iiwa14, wuji_right.
 
 Numpy + `hand_sampler` only (no `isaaclab`/`pxr`): runs under plain
 `python3`, same as `scene/grammar_envelope.py`/`scene/population_file.py` --
@@ -30,11 +30,11 @@ DEFAULT_COMMERCIAL_HANDS: tuple[str, ...] = ("allegro_right", "dclaw", "sharpa_l
 
 
 def _has_real_carrier(model) -> bool:
-    """Whether `model` (already admitted) uses a REAL jointed palm carrier
-    (finger slot 3 and/or 4 is a real joint, not a ghost) -- the "carrier
-    design" selection criterion for the 16-design test population."""
+    """Whether `model` (already admitted) has a real jointed palm part (a
+    leader carrier) -- the "carrier design" selection criterion for the
+    16-design test population."""
     design = ge.canonicalize(model, source="_probe")
-    return bool(design.slot_valid[ge.PC0_SLOT] or design.slot_valid[ge.PC1_SLOT])
+    return ge.LEADER in ge.carrier_roles(design)
 
 
 def collect_serial_entries(n: int, seed0: int = 0, max_seeds: int = 5000) -> List[pf.PopulationEntry]:

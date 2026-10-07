@@ -19,7 +19,7 @@ import yaml
 from isaacsimenvs.inhand_reorient import token_layout as tl
 
 CFG = Path(__file__).resolve().parents[3] / "coevolution" / "cfg"
-J = 32
+J = 36  # the envelope's joint slots
 
 
 def test_layout_constants_and_columns():
@@ -33,9 +33,9 @@ def test_layout_constants_and_columns():
 
 
 def test_slot_body_names_follow_the_authored_bodies():
-    assert tl.slot_body_name(0) == "f0_link0"
-    assert tl.slot_body_name(29) == "f4_link5"
-    assert tl.slot_body_name(30) == "pc0" and tl.slot_body_name(31) == "pc1"
+    assert tl.slot_body_name(0) == "f0_c" and tl.slot_body_name(1) == "f0_link0"
+    assert tl.slot_body_name(29) == "f4_link4"
+    assert tl.slot_body_name(30) == "f5_c" and tl.slot_body_name(35) == "f5_link4"
 
 
 def test_assemble_zeroes_ghost_tokens_and_keeps_enabled_raw():

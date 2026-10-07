@@ -52,9 +52,10 @@ def derive_spaces(cfg, spec) -> None:
 
 
 def _joint_valid_mask(env) -> torch.Tensor | None:
-    """`(num_envs, 32)` bool, `True` where that env's own design has a REAL
-    (non-ghost) joint in that envelope slot, in ARTICULATION-VIEW column
-    order -- `None` for the single-hand path. Same computation as
+    """`(num_envs, 36)` bool, `True` where that env's own design has a joint
+    the policy controls in that envelope slot (a real finger joint or a
+    leader palm joint; not a ghost, locked or follower carrier), in
+    ARTICULATION-VIEW column order -- `None` for the single-hand path. Same computation as
     `reward_utils._joint_valid_mask` (duplicated here, not imported: that
     module pulls in `isaacsimenvs.pose_reaching_6d`, which bootstraps Kit on
     import -- see this module's own lazy-import discipline elsewhere in the
@@ -132,18 +133,32 @@ def pre_physics_step(env, actions: torch.Tensor) -> None:
 
 
 def _fingertip_valid_mask(env) -> torch.Tensor | None:
-    """`(num_envs, 5)` bool, `True` where that env's own design's fingertip
-    marker for that finger is real (see `grammar_envelope.palm_up`'s
-    `fingertip_valid` -- False for a finger that does not exist AND for one
-    whose real chain fills all 6 envelope slots, leaving no ghost slot to
-    place a tip marker at, review item 1). `None` on the single-hand path,
-    same pattern as `reward_utils._joint_valid_mask`."""
+    """`(num_envs, 6)` bool, `True` where that env's own design has a finger
+    in that finger slot (every finger slot ends in a fingertip body `f{f}_tip`
+    at the real fingertip, see `grammar_envelope.tip_offsets`). `None` on the
+    single-hand path, same pattern as `reward_utils._joint_valid_mask`."""
     tables = getattr(env, "hand_tables", None)
     if tables is None:
         return None
     design_idx = env.scene_record["design_idx"]
     valid = torch.as_tensor(tables.fingertip_valid, device=env.device, dtype=torch.bool)
-    return valid[design_idx]  # (num_envs, 5)
+    return valid[design_idx]  # (num_envs, 6)
+
+
+def tie_joints(env, x: torch.Tensor, env_ids=None) -> torch.Tensor:
+    """`x` (`(n, num_joints)` per-joint values in articulation-view column
+    order, for `env_ids` or every env) with each follower carrier's column
+    set to its leader's: a mimic joint holds the two equal, so every write of
+    joint positions (resets) must too, or PhysX snaps them together. `x`
+    unchanged on the single-hand path."""
+    if getattr(env, "hand_tables", None) is None:
+        return x
+    idx = env.scene_record.get("tie_index")
+    if idx is None:
+        return x
+    if env_ids is not None:
+        idx = idx[env_ids]
+    return x.gather(1, idx)
 
 
 def update_palm_frame_geometry(env) -> None:

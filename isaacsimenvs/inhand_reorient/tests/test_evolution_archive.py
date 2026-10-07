@@ -38,14 +38,14 @@ def _cand(design_id, digit_count, joint_count, fitness, *, founder_id=None, pare
 # --------------------------------------------------------------------------
 
 
-def test_descriptor_cell_count_is_30():
-    assert arc.N_CELLS == 30
-    assert len(arc.all_cells()) == 30
+def test_descriptor_cell_count_is_36():
+    assert arc.N_CELLS == 36
+    assert len(arc.all_cells()) == 36
 
 
 @pytest.mark.parametrize("joint_count,expected_bin", [
     (1, 0), (5, 0), (6, 1), (10, 1), (11, 2), (15, 2), (16, 3), (20, 3),
-    (21, 4), (25, 4), (26, 5), (32, 5),
+    (21, 4), (25, 4), (26, 5), (32, 5), (36, 5),
 ])
 def test_joint_count_bin_edges(joint_count, expected_bin):
     assert arc.joint_count_bin(joint_count) == expected_bin
@@ -57,7 +57,7 @@ def test_joint_count_bin_clamps_out_of_range():
     assert arc.joint_count_bin(1000) == arc.N_JOINT_BINS - 1
 
 
-@pytest.mark.parametrize("digit_count,expected_bin", [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4)])
+@pytest.mark.parametrize("digit_count,expected_bin", [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5)])
 def test_digit_bin_edges(digit_count, expected_bin):
     assert arc.digit_bin(digit_count) == expected_bin
 
@@ -73,7 +73,7 @@ def test_descriptor_combines_both_bins():
 
 def test_cell_label_is_stable_and_readable():
     assert arc.cell_label((0, 0)) == "d1_j1-5"
-    assert arc.cell_label((4, 5)) == "d5_j26-32"
+    assert arc.cell_label((5, 5)) == "d6_j26-36"
 
 
 # --------------------------------------------------------------------------
@@ -197,7 +197,7 @@ def test_summary_and_qd_score_and_stats():
     assert a.median_fitness() == pytest.approx(2.0)
     summary = a.summary()
     assert summary["coverage"] == 2
-    assert summary["n_cells_total"] == 30
+    assert summary["n_cells_total"] == 36
     assert set(summary["cells"].keys()) == {arc.cell_label(arc.descriptor(1, 3)), arc.cell_label(arc.descriptor(4, 20))}
 
 

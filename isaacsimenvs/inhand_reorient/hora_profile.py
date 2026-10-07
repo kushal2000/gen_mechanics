@@ -213,8 +213,9 @@ MORPH_PER_SLOT = 10  # valid, axis (3), origin (3), length, lower, upper
 
 
 def morphology_table(design) -> "np.ndarray":
-    """``(32, 10)`` per envelope slot, root (palm) frame, q = 0: validity,
-    joint axis, joint origin, link length, joint limits; ghost slots 0."""
+    """``(36, 10)`` per envelope slot, root (palm) frame, q = 0: validity,
+    joint axis, joint origin, link length, joint limits; slots that are not
+    valid (ghost, locked or follower carrier) 0."""
     import numpy as np
 
     from .scene import grammar_envelope as ge

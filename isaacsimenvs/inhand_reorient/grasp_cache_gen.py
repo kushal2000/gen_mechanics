@@ -169,17 +169,19 @@ def _thresholds(a) -> gc.StabilityThresholds:
 
 
 def _opposition_tables(env) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
-    """``grasp_canonical_profile: opposition``: ``(poses (D, 5, J), valid
-    (D, 5))`` in articulation column order, one canonical pose per design
+    """``grasp_canonical_profile: opposition``: ``(poses (D, F, J), valid
+    (D, F))`` (F = 6 finger slots) in articulation column order, one canonical pose per design
     and opposing finger (``grasp_cache.opposition_poses``); None otherwise."""
     tables = getattr(env, "hand_tables", None)
     if tables is None or getattr(env.cfg.anyrotate, "grasp_canonical_profile", "palm_up") != "opposition":
         return None
     perm = env.scene_record.get("slot_of_phys_col")
     perm_np = perm.cpu().numpy() if perm is not None else np.arange(tables.joint_valid.shape[1])
-    D, J = tables.n_designs, len(perm_np)
-    poses = np.zeros((D, 5, J))
-    valid = np.zeros((D, 5), dtype=bool)
+    from .scene import grammar_envelope as ge
+
+    D, J, F = tables.n_designs, len(perm_np), ge.N_FINGERS
+    poses = np.zeros((D, F, J))
+    valid = np.zeros((D, F), dtype=bool)
     for d in range(D):
         for f, q in gc.opposition_poses(tables.joint_valid[d], tables.joint_limits[d],
                                         tables.default_joint_pos[d]).items():
@@ -192,7 +194,7 @@ def _opposition_tables(env) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
 def generate(env, wanted: List[int], keys: List[str], sources: List[str], design_idx: torch.Tensor,
              seed: int = 0) -> Tuple[Dict[str, gc.GraspSet], dict]:
     """Grasps for the design indices ``wanted``; returns ``(sets, report)``."""
-    from .obs_utils import _fingertip_valid_mask, _joint_valid_mask
+    from .obs_utils import _fingertip_valid_mask, _joint_valid_mask, tie_joints
     from .reset_utils import _object_spawn_offset
 
     a = env.cfg.anyrotate
@@ -209,7 +211,7 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
     wanted_mask[torch.as_tensor(wanted, dtype=torch.long, device=dev)] = True
     canonical = canonical_grasp_pose(env)
     opposition = _opposition_tables(env)
-    pass_assign = torch.zeros(n_designs, 5, dtype=torch.long)
+    pass_assign = torch.zeros(n_designs, opposition[1].shape[1] if opposition is not None else 1, dtype=torch.long)
     limits = env.robot.data.soft_joint_pos_limits
     lower, upper = limits[..., 0], limits[..., 1]
     jvalid = _joint_valid_mask(env)
@@ -266,6 +268,7 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
         q_t, curl = gc.sample_joint_candidates(
             canon_round, lower, upper, jvalid, noise=float(a.grasp_joint_sample_noise),
             curl_frac=float(a.grasp_curl_frac), generator=gen, return_curl=True)
+        q_t = tie_joints(env, q_t)  # follower carriers take their leader's position
         env.robot.write_joint_state_to_sim(q_t, torch.zeros_like(q_t))
         env.object.write_root_state_to_sim(park)
         for _ in range(int(a.grasp_presettle_steps)):
@@ -368,8 +371,9 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
         if hit.numel() > 0:
             obj_q_palm = rp.quat_mul(rp.quat_conjugate(palm_q), env.object.data.root_quat_w)
             obj_p_palm = rp.quat_apply_inverse(palm_q, obj_w - palm_p)
-            pass_assign += torch.bincount((design_idx[hit] * 5 + assign[hit]).cpu(),
-                                          minlength=n_designs * 5).reshape(n_designs, 5)
+            n_f = pass_assign.shape[1]
+            pass_assign += torch.bincount((design_idx[hit] * n_f + assign[hit]).cpu(),
+                                          minlength=n_designs * n_f).reshape(n_designs, n_f)
             rows = {
                 "d": design_idx[hit].cpu().numpy(),
                 "a": assign[hit].cpu().numpy(),
@@ -403,7 +407,7 @@ def generate(env, wanted: List[int], keys: List[str], sources: List[str], design
                  "stable_by_mode": {m: int(pass_mode[d, i]) for i, m in enumerate(modes)},
                  "gen_s_shared": round(gen_s, 1), "created": gc.now_iso()}
         if opposition is not None:
-            stats["stable_by_opposing_finger"] = {int(f): int(pass_assign[d, f]) for f in range(5)
+            stats["stable_by_opposing_finger"] = {int(f): int(pass_assign[d, f]) for f in range(pass_assign.shape[1])
                                                   if bool(opposition[1][d, f])}
         if found[d]:
             cat = {k: np.concatenate([r[k] for r in found[d]], 0) for k in ("q", "qt", "obj", "info", "a")}

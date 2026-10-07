@@ -1,7 +1,7 @@
 """The team's joint-token transformer (``coevolution/networks/joint_transformer``)
 on the in-hand envelope, registered as ``inhand_joint_transformer``.
 
-One token per articulation column of the 32-slot envelope, no arm, one
+One token per articulation column of the 36-slot envelope, no arm, one
 global token (``token_layout.py`` is the layout the env emits under
 ``hora.token_obs``). Full attention over valid joint tokens plus the global
 token; one shared per-joint action head; the value head reads the masked

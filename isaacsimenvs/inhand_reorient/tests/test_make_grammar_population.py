@@ -31,7 +31,7 @@ def test_carrier_entries_actually_use_a_real_carrier():
     for e in entries:
         model = derive(pf.derivation_from_dict(e.derivation_dict))
         design = ge.canonicalize(model, source=e.source)
-        assert design.slot_valid[ge.PC0_SLOT] or design.slot_valid[ge.PC1_SLOT]
+        assert ge.LEADER in ge.carrier_roles(design)
 
 
 def test_serial_entries_never_use_a_carrier():
@@ -39,8 +39,7 @@ def test_serial_entries_never_use_a_carrier():
     for e in entries:
         model = derive(pf.derivation_from_dict(e.derivation_dict))
         design = ge.canonicalize(model, source=e.source)
-        assert not design.slot_valid[ge.PC0_SLOT]
-        assert not design.slot_valid[ge.PC1_SLOT]
+        assert set(ge.carrier_roles(design)) == {ge.LOCKED}
 
 
 def test_write_test16_round_trips(tmp_path):

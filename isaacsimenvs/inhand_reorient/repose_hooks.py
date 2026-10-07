@@ -28,7 +28,7 @@ import torch
 
 from . import design_scoring
 from . import repose_profile as rp
-from .obs_utils import _fingertip_valid_mask, _joint_valid_mask, update_palm_frame_geometry
+from .obs_utils import _fingertip_valid_mask, _joint_valid_mask, tie_joints, update_palm_frame_geometry
 from .repose_profile import sample_uniform
 from .reset_utils import _object_spawn_offset, _population_default_joint_pos
 
@@ -203,6 +203,7 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
         default_pos, lower[env_ids], upper[env_ids], dof_pos_noise, r.reset_dof_pos_noise)
     dof_vel_noise = sample_uniform(-1.0, 1.0, (n, j), device=device)
     dof_vel = env.robot.data.default_joint_vel[env_ids] + r.reset_dof_vel_noise * dof_vel_noise
+    dof_pos, dof_vel = tie_joints(env, dof_pos, env_ids), tie_joints(env, dof_vel, env_ids)  # follower = leader
     env._repose_prev_targets[env_ids] = dof_pos
     env._repose_cur_targets[env_ids] = dof_pos
     env.robot.set_joint_position_target(dof_pos, env_ids=env_ids)

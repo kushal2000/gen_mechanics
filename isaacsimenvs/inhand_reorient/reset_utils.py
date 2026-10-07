@@ -149,6 +149,9 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     upper = env.robot.data.soft_joint_pos_limits[env_ids, :, 1]
     noise = (torch.rand_like(default_pos) * 2.0 - 1.0) * env.cfg.reset.joint_reset_noise
     joint_pos = torch.clamp(default_pos + noise, lower, upper)
+    from .obs_utils import tie_joints  # follower carriers take their leader's position
+
+    joint_pos = tie_joints(env, joint_pos, env_ids)
     joint_vel = torch.zeros_like(joint_pos)
     env.robot.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
     # ``_cur_targets`` is pre_physics_step's EMA state, not part of the

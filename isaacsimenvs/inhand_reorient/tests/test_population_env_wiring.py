@@ -191,8 +191,8 @@ def test_fingertip_fk_equals_the_real_tip_per_env():
         for f in range(ge.N_FINGERS):
             if not fingertip_valid_per_env[env_id, f]:
                 continue
-            base = f * ge.N_JOINTS_PER_FINGER
-            used = [base + j for j in range(ge.N_JOINTS_PER_FINGER) if design.slot_valid[base + j]]
+            used = [ge.finger_slot(f, j) for j in range(ge.N_JOINTS_PER_FINGER)
+                    if design.slot_valid[ge.finger_slot(f, j)]]
             last = max(used)
             tip = (T_mid[last] @ np.array([0.0, 0.0, float(design.slot_length[last]), 1.0]))[:3]
             row = fingertip_offsets_per_env[env_id, f].numpy()
@@ -232,3 +232,28 @@ def test_no_spawn_triggered_termination_per_env():
             f"env {env_id} design {d} ({design.source}): spawn point "
             f"{height_above_palm * 1000:.1f} mm above palm trips the drop check"
         )
+
+
+def test_follower_columns_take_their_leaders_value_under_a_shuffle():
+    """`scene_utils` gathers every written joint position with
+    `ge.tie_columns` (`obs_utils.tie_joints`): a follower carrier's column
+    takes its leader's value, every other column its own, under any
+    articulation column order."""
+    from hand_sampler.grammar_bench.splits import split_hand
+
+    designs = [ge.canonicalize(derive(split_hand(r, p))) for r, p in ((3, (2, 1)), (5, ()), (0, (3, 3)))]
+    population = ge.build_population(designs, n_sweep=0)
+    design_idx = design_index(N_ENVS, population.n_designs)
+    rng = np.random.default_rng(1)
+    order = rng.permutation(ge.N_SLOTS)                  # column c holds slot order[c]
+    idx = ge.tie_columns(population.joint_tie[design_idx], order)
+    q_slots = rng.normal(size=(N_ENVS, ge.N_SLOTS))
+    q_cols = torch.as_tensor(q_slots[:, order]).gather(1, torch.as_tensor(idx)).numpy()
+    n_followers = 0
+    for e in range(N_ENVS):
+        tie = population.joint_tie[design_idx[e]]
+        for c, slot in enumerate(order):
+            want = q_slots[e, tie[slot]] if tie[slot] >= 0 else q_slots[e, slot]
+            assert q_cols[e, c] == want
+            n_followers += tie[slot] >= 0
+    assert n_followers > 0

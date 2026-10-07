@@ -33,6 +33,7 @@ from .obs_utils import derive_spaces
 from .palm_calibration import load_calibration
 from .anyrotate_profile import is_anyrotate
 from .repose_profile import is_repose
+from .scene import grammar_envelope as ge
 
 
 def _profile_cfg(env):
@@ -161,26 +162,20 @@ def apply_repose_hand_pose(env, spec):
         base_rot=tuple(float(v) for v in entry["base_rot"]), hand_default_joint_pos=default)
 
 
-# Grammar envelope only (never present in a single-hand HandOnlySpec):
-# pc0_j/pc1_j are mechanically DIFFERENT from every other joint slot even
-# when they are themselves a GHOST -- a padding-only carrier still often
-# carries an entire REAL finger chain (envelope slot 3/4's root-mounted
-# digit, see grammar_envelope.canonicalize). A Kit smoke found the hand's
-# ordinary (SHARPA-derived) gains too weak to hold that load against
-# gravity through a near-massless ghost body: a bounded creep of the ghost
-# past its (0, 1e-8) limit (up to ~2.3 rad over 200 steps on wuji_right,
-# whose finger 3 hangs off a ghost pc0) -- distinct from, and discovered
-# only after fixing, the far more severe (100+ rad in 1-2 steps)
-# rest-self-penetration instability the same population had before
-# make_grammar_population.py started filtering on rest_overlap_pairs. This
-# carrier-only actuator group (500/20/0.01 vs the hand's own SHARPA-derived
-# ~3.9/0.15) brought the residual down to ~0.0125 rad max over 200 steps --
-# bounded and stable, but still above the design note's 1e-4 target; a 6x
-# stiffness increase (3000/80) made no further difference (bit-identical
-# result), so the residual is bounded by `physxJoint:maxJointVelocity`
-# (10 rad/s) during a brief initial transient, not by drive weakness --
-# left as a known gap, see the Phase 2 report.
-_CARRIER_JOINT_NAMES = ("pc0_j", "pc1_j")
+# Grammar envelope only (never present in a single-hand HandOnlySpec): the
+# carrier (palm) joints f{f}_cj are mechanically different from the finger
+# joints. A LOCKED carrier (ghost limits) carries a whole real finger on the
+# rigid palm. A Kit smoke (32-slot layout, ghost carriers) found the hand's
+# ordinary (SHARPA-derived) gains too weak to hold that load against gravity:
+# a bounded creep past the (0, 1e-8) limit (up to ~2.3 rad over 200 steps on
+# wuji_right). This carrier-only actuator group (500/20/0.01 vs the hand's
+# own ~3.9/0.15) brought the residual down to ~0.0125 rad max over 200 steps;
+# a 6x stiffer drive made no difference, so the residual is bounded by
+# `physxJoint:maxJointVelocity` (10 rad/s) during a brief initial transient.
+# `_apply_per_env_carrier_gains` then gives a LEADER carrier (a real palm
+# joint the policy controls) the hand's normal gains and a FOLLOWER carrier
+# (tied to its leader by a mimic joint, its actions ignored) no drive.
+_CARRIER_JOINT_NAMES = tuple(ge.SLOT_NAMES[c] for c in ge.CARRIER_SLOTS)
 _CARRIER_STIFFNESS = 500.0
 _CARRIER_DAMPING = 20.0
 _CARRIER_ARMATURE = 0.01
@@ -194,12 +189,10 @@ the torque output was capped at 1 Nm either way, not because 500/20 was
 already sufficient. `ImplicitActuatorCfg.effort_limit_sim` overrides that
 authored cap for this actuator group ONLY (the "hand" group keeps the
 authored 1 Nm), scene-wide default; `_apply_per_env_carrier_gains` below
-then restores the REAL-carrier envs' whole group (stiffness/damping/
-armature/effort) back to the hand's own normal per-joint values, since a
-REAL carrier is an actuated design joint the policy controls, not a
-mechanical support -- it should not get a stronger-than-normal torque
-budget or 128x stiffer gains (review risk 8's "SHARPA and carrier designs
-get a palm DOF 128x stiffer than their fingers")."""
+then gives each env's LEADER carriers the hand's own normal values (a real
+palm joint the policy controls should not get a stronger-than-normal torque
+budget or 128x stiffer gains, review risk 8) and its FOLLOWER carriers no
+drive at all (the mimic joint moves them)."""
 
 
 def _repose_hand_props(r):
@@ -394,8 +387,8 @@ def _add_anyrotate_contact_sensor(env, fingertip_names) -> None:
             track_contact_points=points,
             max_contact_data_count_per_prim=int(env.cfg.anyrotate.contact_data_per_prim), history_length=0))
 
-    # Population: a finger's real tip is its last real link (the f*_link5
-    # marker is a ghost without a collider), which is a "non-tip" body here,
+    # Population: a finger's real tip is its last real link (the f*_tip
+    # fingertip body has no collider), which is a "non-tip" body here,
     # so finger links also track contact points (anyrotate_profile.tip_sources).
     population = bool(env.cfg.assets.hand_population)
     env.ar_tip_names = list(fingertip_names)
@@ -654,7 +647,7 @@ def finalize_scene(env) -> None:
     # design is authored directly into its own USD subtree (author_grammar.py),
     # not cloned from one template like the single-hand path, so nothing but
     # this assertion catches a design whose AUTHORED topology silently
-    # diverged from the fixed 32-slot envelope (a body/joint count or type
+    # diverged from the fixed 36-slot envelope (a body/joint count or type
     # mismatch PhysX's own tensor API would otherwise either reject outright
     # or, worse, silently fall back to a per-env Python path for). `omni.
     # physics.tensors.ArticulationView.is_homogeneous`: "whether all the
@@ -662,7 +655,7 @@ def finalize_scene(env) -> None:
     if not env.robot.root_physx_view.is_homogeneous:
         raise RuntimeError(
             "articulation view is NOT homogeneous across envs -- some env's authored "
-            "topology diverged from the fixed 32-slot envelope (see grammar_envelope.py's "
+            "topology diverged from the fixed 36-slot envelope (see grammar_envelope.py's "
             "module docstring); this must never happen for any admitted population")
 
     if getattr(env, "hand_tables", None) is not None:
@@ -682,8 +675,6 @@ def _resolve_population_joint_permutation(env) -> None:
     name is missing -- exactly the silent-mispairing bug `diagnostics.py`
     warns about, now checked instead of risked."""
     import torch
-
-    from .scene import grammar_envelope as ge
 
     phys_names = list(env.robot.data.joint_names)
     missing = [n for n in phys_names if n not in ge.SLOT_NAMES]
@@ -711,7 +702,13 @@ def _resolve_population_joint_permutation(env) -> None:
     population = env.hand_tables
     design_idx = env.scene_record["design_idx"]
     default_pos = torch.as_tensor(population.default_joint_pos, device=env.device, dtype=torch.float32)
-    default_pos = default_pos[design_idx][:, perm_t]  # (num_envs, 32), phys column order
+    default_pos = default_pos[design_idx][:, perm_t]  # (num_envs, 36), phys column order
+    # Follower carriers are tied to their leader by a mimic joint: every
+    # write of joint positions must keep them equal (`obs_utils.tie_joints`).
+    # `tie_index[e, col]` is the column whose value column `col` takes.
+    tie_rows = population.joint_tie[design_idx.detach().cpu().numpy()]
+    env.scene_record["tie_index"] = torch.as_tensor(ge.tie_columns(tie_rows, perm), device=env.device,
+                                                    dtype=torch.long)
     env.robot.data.default_joint_pos[:] = default_pos
     env.robot.write_joint_state_to_sim(default_pos, torch.zeros_like(default_pos))
     # Review risk 11: cache it OUTSIDE Isaac Lab's own mutable buffer too --
@@ -729,19 +726,14 @@ def _resolve_population_joint_permutation(env) -> None:
 
 def _apply_per_env_carrier_gains(env, phys_names: list[str], design_idx) -> None:
     """Review risk 8: the scene-wide "carrier" `ImplicitActuatorCfg`
-    (`_hand_articulation_cfg`, stiff gains + a raised effort limit) is
-    meant for a GHOST pc0/pc1 (mechanically supporting a root-mounted
-    digit through a near-massless body, see this module's own comment
-    above `_CARRIER_JOINT_NAMES`) -- applied scene-wide, it ALSO lands on
-    every env whose pc0/pc1 is instead a REAL, policy-actuated design
-    joint (SHARPA, "carrier" designs), 128x stiffer and 5x the torque
-    budget of that same design's own fingers. Overwrite those envs' whole
-    carrier group back to the hand's normal per-joint gains, now that the
-    articulation view (and its own joint-order permutation) are live --
-    same per-env-override pattern as `default_joint_pos` just above."""
+    (`_hand_articulation_cfg`, stiff gains + a raised effort limit) is meant
+    for a LOCKED carrier (a finger on the rigid palm, see the comment above
+    `_CARRIER_JOINT_NAMES`). Per env, now that the articulation view and its
+    joint-order permutation are live (same pattern as `default_joint_pos`):
+    a LEADER carrier, a real palm joint the policy controls, gets the hand's
+    normal per-joint gains; a FOLLOWER carrier gets no drive (stiffness and
+    damping 0), so only its mimic joint moves it."""
     import torch
-
-    from .scene import grammar_envelope as ge
 
     carrier_cols = [i for i, n in enumerate(phys_names) if n in _CARRIER_JOINT_NAMES]
     if not carrier_cols:
@@ -749,25 +741,26 @@ def _apply_per_env_carrier_gains(env, phys_names: list[str], design_idx) -> None
     carrier_slots = [ge.SLOT_NAMES.index(phys_names[i]) for i in carrier_cols]
 
     population = env.hand_tables
-    joint_valid = torch.as_tensor(population.joint_valid, device=env.device, dtype=torch.bool)
-    real = joint_valid[design_idx][:, carrier_slots]  # (num_envs, len(carrier_cols)) bool
+    leader = torch.as_tensor(population.joint_valid, device=env.device, dtype=torch.bool)[design_idx][:, carrier_slots]
+    follower = torch.as_tensor(population.joint_tie, device=env.device)[design_idx][:, carrier_slots] >= 0
 
-    def _per_env(real_value: float, ghost_value: float) -> torch.Tensor:
-        ghost = torch.full_like(real, ghost_value, dtype=torch.float32)
-        real_t = torch.full_like(real, real_value, dtype=torch.float32)
-        return torch.where(real, real_t, ghost)
+    def _per_env(leader_value: float, follower_value: float, locked_value: float) -> torch.Tensor:
+        out = torch.full(leader.shape, locked_value, dtype=torch.float32, device=env.device)
+        out[leader] = leader_value
+        out[follower] = follower_value
+        return out
 
-    stiffness = _per_env(hand_only.DEFAULT_HAND_STIFFNESS, _CARRIER_STIFFNESS)
-    damping = _per_env(hand_only.DEFAULT_HAND_DAMPING, _CARRIER_DAMPING)
-    armature = _per_env(hand_only.DEFAULT_HAND_ARMATURE, _CARRIER_ARMATURE)
-    effort = _per_env(rpc.GEN_JOINT_EFFORT_NM, _CARRIER_EFFORT_LIMIT_NM)
+    hs, hd, ha = hand_only.DEFAULT_HAND_STIFFNESS, hand_only.DEFAULT_HAND_DAMPING, hand_only.DEFAULT_HAND_ARMATURE
+    stiffness = _per_env(hs, 0.0, _CARRIER_STIFFNESS)
+    damping = _per_env(hd, 0.0, _CARRIER_DAMPING)
+    armature = _per_env(ha, ha, _CARRIER_ARMATURE)
+    effort = _per_env(rpc.GEN_JOINT_EFFORT_NM, rpc.GEN_JOINT_EFFORT_NM, _CARRIER_EFFORT_LIMIT_NM)
 
     joint_ids = carrier_cols
     env.robot.write_joint_stiffness_to_sim(stiffness, joint_ids=joint_ids)
     env.robot.write_joint_damping_to_sim(damping, joint_ids=joint_ids)
     env.robot.write_joint_armature_to_sim(armature, joint_ids=joint_ids)
     env.robot.write_joint_effort_limit_to_sim(effort, joint_ids=joint_ids)
-    n_real_envs = int(real.any(dim=-1).sum())
-    print(f"[inhand_reorient] carrier gains: {n_real_envs}/{env.num_envs} envs have a REAL "
-          f"pc0/pc1 carrier and got the hand's normal gains restored; the rest keep the "
-          f"stiff ghost-carrier defaults", flush=True)
+    print(f"[inhand_reorient] carrier gains: {int(leader.sum())} leader (hand gains), {int(follower.sum())} "
+          f"follower (no drive, mimic-tied) and {int((~leader & ~follower).sum())} locked (stiff) carriers "
+          f"over {env.num_envs} envs", flush=True)

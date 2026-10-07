@@ -2,7 +2,7 @@
 
 The team's joint-token method (``coevolution/networks/joint_transformer.py``,
 ``pose_reaching_6d/obs_utils/layout.py``) on the in-hand envelope: one token
-per articulation column of the 32-slot envelope (no arm), one global token.
+per articulation column of the 36-slot envelope (no arm), one global token.
 Kit-free: the env computes the per-joint arrays and calls ``assemble``; the
 network (``token_policy.py``) reads the same layout.
 
@@ -14,8 +14,10 @@ Token features, in order (``TOKEN_FIELDS``):
 - ``link_box`` (12): the slot's child link as 4 ordered box points
   (``grammar_envelope.token_boxes``), in the palm frame at the current q (m).
 - ``limits`` (2): lower and upper joint limit (rad).
-- ``enabled`` (1): 1 for a real joint, 0 for a ghost slot. Read RAW by the
-  network as the attention mask; never normalised.
+- ``enabled`` (1): 1 for a joint the policy controls (a real finger joint or
+  a leader palm joint), 0 for a ghost slot and for a locked or follower
+  carrier (a follower is tied to its leader). Read RAW by the network as the
+  attention mask; never normalised.
 - ``object_kp_rel`` (12): 4 object keypoints (origin and +x, +y, +z at the
   keypoint distance) relative to the link's origin, in the palm frame (m).
 
@@ -50,12 +52,7 @@ def slot_body_name(slot: int) -> str:
     """The child body of envelope slot ``slot`` (``author_grammar`` naming)."""
     from .scene import grammar_envelope as ge
 
-    if slot == ge.PC0_SLOT:
-        return "pc0"
-    if slot == ge.PC1_SLOT:
-        return "pc1"
-    f, d = divmod(slot, ge.N_JOINTS_PER_FINGER)
-    return f"f{f}_link{d}"
+    return ge.slot_body(slot)
 
 
 def layout(n_tokens: int, design_id_width: int = 0) -> dict:

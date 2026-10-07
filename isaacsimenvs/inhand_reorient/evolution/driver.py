@@ -1,7 +1,7 @@
 r"""MAP-Elites evolution-pilot driver (plan-rl-grammar-tuning.md's
 "Revision, 2026-09-27", pilot E-R2'): one shared RL controller whose weights
 carry across generations, evolving a `hand_sampler` grammar population
-against a `archive.Archive` (digit_count x joint_count, 30 cells).
+against a `archive.Archive` (digit_count x joint_count, 36 cells).
 
 Runs entirely as a single Python process that shells out to
 ``coevolution/train.py`` once per generation (never self-resubmits to
@@ -865,6 +865,7 @@ def save_state(
 ) -> None:
     doc = {
         "schema": STATE_SCHEMA,
+        "envelope": pf.ENVELOPE_ID,
         "generation_completed": generation_completed,
         "archive": archive.to_dict(),
         "driver_rng_state": driver_rng.bit_generator.state,
@@ -889,6 +890,12 @@ def load_state(path: Path) -> dict:
     doc = json.loads(Path(path).read_text())
     if doc.get("schema") != STATE_SCHEMA:
         raise ValueError(f"unsupported state schema {doc.get('schema')!r}, expected {STATE_SCHEMA!r}")
+    envelope = doc.get("envelope", "grammar_envelope/1")
+    if envelope != pf.ENVELOPE_ID:
+        raise ValueError(
+            f"{path}: driver state from the articulation layout {envelope!r}, but this checkout uses "
+            f"{pf.ENVELOPE_ID!r} ({ge.N_SLOTS} joint slots); its checkpoint, viability record and populations "
+            f"do not carry over -- start a new run directory")
     return doc
 
 

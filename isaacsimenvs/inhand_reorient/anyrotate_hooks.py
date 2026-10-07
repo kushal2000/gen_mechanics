@@ -34,7 +34,7 @@ from . import anyrotate_profile as ar
 from . import design_scoring
 from . import hora_profile as hp
 from . import repose_profile as rp
-from .obs_utils import _fingertip_valid_mask, _joint_valid_mask, update_palm_frame_geometry
+from .obs_utils import _fingertip_valid_mask, _joint_valid_mask, tie_joints, update_palm_frame_geometry
 from .reset_utils import _object_spawn_offset, _population_default_joint_pos
 
 __all__ = [
@@ -115,7 +115,7 @@ def _setup_contact_indices(env) -> None:
     """The per-body contact sensors are created in fingertip order
     (``scene_utils._add_anyrotate_contact_sensor``). Population: finger f's
     tip contact comes from the sensor on its last real link
-    (``anyrotate_profile.tip_sources``; the f*_link5 markers have no
+    (``anyrotate_profile.tip_sources``; the f*_tip bodies have no
     collider), and those links leave the non-tip count."""
     if len(env.ar_tip_sensors) != len(env.fingertip_body_idx):
         raise RuntimeError("one fingertip contact sensor per fingertip body expected")
@@ -395,7 +395,7 @@ def _setup_hora_sharing(env) -> None:
     import numpy as np
 
     perm = env.scene_record.get("slot_of_phys_col")
-    perm_np = perm.cpu().numpy() if perm is not None else np.arange(32)
+    perm_np = perm.cpu().numpy() if perm is not None else np.arange(np.asarray(tables.joint_valid).shape[1])
     if h.token_obs:
         _setup_hora_tokens(env, tables, perm_np)
     if h.disjoint_slots:
@@ -736,6 +736,7 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
             env, env_ids, q, palm_pos_w, palm_q, obj_pos_palm, obj_q_palm, obj_pos_w, obj_q_w, lo, hi)
         env._ar_q0[env_ids] = torch.where(env._ar_grasp_env_ok[env_ids].unsqueeze(-1), q, default_pos)
 
+    q, q_target = tie_joints(env, q, env_ids), tie_joints(env, q_target, env_ids)  # follower = leader
     env.robot.write_joint_state_to_sim(q, torch.zeros_like(q), env_ids=env_ids)
     env.robot.set_joint_position_target(q_target, env_ids=env_ids)
     env._ar_target[env_ids] = q_target

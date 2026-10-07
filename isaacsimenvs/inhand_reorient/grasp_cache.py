@@ -86,15 +86,22 @@ HORA_LIKE_PROFILE: Tuple[float, ...] = (0.6, 0.8, 0.25, 0.25, 0.25, 0.25)
 HORA_THUMB_PROFILE: Tuple[float, ...] = (0.742, 1.0, 0.623, 0.013, 0.25, 0.25)
 
 
-def opposition_poses(joint_valid: np.ndarray, limits: np.ndarray, default: np.ndarray,
-                     n_fingers: int = 5, per_finger: int = 6) -> Dict[int, np.ndarray]:
-    """``{finger: (32,) pose}``: for every finger with a real chain, the
+def _finger_joint_slots(joint_valid: np.ndarray) -> List[List[int]]:
+    """Per finger slot of the envelope, its real finger-joint slots in order
+    (carrier slots excluded)."""
+    from .scene import grammar_envelope as ge
+
+    return [[ge.finger_slot(f, d) for d in range(ge.N_JOINTS_PER_FINGER) if joint_valid[ge.finger_slot(f, d)]]
+            for f in range(ge.N_FINGERS)]
+
+
+def opposition_poses(joint_valid: np.ndarray, limits: np.ndarray, default: np.ndarray) -> Dict[int, np.ndarray]:
+    """``{finger: (36,) pose}``: for every finger slot with a real chain, the
     design's pose with that finger as the opposing digit (HORA's thumb
     fractions) and every other finger at HORA's finger fractions."""
     out: Dict[int, np.ndarray] = {}
-    base = profile_pose(joint_valid, limits, default, HORA_LIKE_PROFILE, n_fingers, per_finger)
-    for f in range(n_fingers):
-        slots = [f * per_finger + k for k in range(per_finger) if joint_valid[f * per_finger + k]]
+    base = profile_pose(joint_valid, limits, default, HORA_LIKE_PROFILE)
+    for f, slots in enumerate(_finger_joint_slots(joint_valid)):
         if not slots:
             continue
         q = base.copy()
@@ -106,22 +113,16 @@ def opposition_poses(joint_valid: np.ndarray, limits: np.ndarray, default: np.nd
 
 
 def profile_pose(joint_valid: np.ndarray, limits: np.ndarray, default: np.ndarray,
-                 profile: Sequence[float] = HORA_LIKE_PROFILE, n_fingers: int = 5, per_finger: int = 6
-                 ) -> np.ndarray:
-    """``(32,)`` pose in envelope-slot order: the d-th real joint of each
-    finger at ``lo + profile[d] (hi - lo)``; carrier and ghost slots keep
-    ``default``."""
+                 profile: Sequence[float] = HORA_LIKE_PROFILE) -> np.ndarray:
+    """``(36,)`` pose in envelope-slot order: the d-th real joint of each
+    finger at ``lo + profile[d] (hi - lo)``; carrier (palm joint) and ghost
+    slots keep ``default``."""
     q = np.array(default, dtype=float, copy=True)
-    for f in range(n_fingers):
-        d = 0
-        for k in range(per_finger):
-            s = f * per_finger + k
-            if not joint_valid[s]:
-                continue
+    for slots in _finger_joint_slots(joint_valid):
+        for d, s in enumerate(slots):
             frac = profile[min(d, len(profile) - 1)]
             lo, hi = limits[s]
             q[s] = lo + frac * (hi - lo)
-            d += 1
     return q
 
 
@@ -474,7 +475,9 @@ def build_table(sets: Sequence[Optional[GraspSet]], env_joint_names: Sequence[st
             continue
         missing = [n for n in env_joint_names if n not in s.joint_names]
         if missing:
-            raise ValueError(f"grasp set {s.source!r} lacks joints {missing}")
+            raise ValueError(f"grasp set {s.source!r} lacks joints {missing}: it was built for another "
+                             f"articulation (for a population, the 32-slot layout before grammar_envelope/2); "
+                             f"regenerate it with grasp_cache_gen")
         cols = [s.joint_names.index(n) for n in env_joint_names]
         k = s.n if max_per_design <= 0 else min(s.n, max_per_design)
         qs.append(s.q[:k][:, cols])
