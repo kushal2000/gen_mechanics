@@ -4,6 +4,11 @@ The grammar combines our grammar (`martin/hand-grammar`), Vatsal's physical gram
 
 ## Decisions
 
+### Principle: limits come from the commercial hands, not from one motor
+- Every limit is chosen so that the smallest and the largest commercial hands fit. No limit is derived from a particular actuator (Dynamixel XM335, Feetech). Restricting evolution to designs our hardware can build is a later, separate step (a selection or an extra rule set), not part of the grammar or the Evolution Rules.
+- **Why (Martin, 2026-10-07):** the grammar must be able to express every commercial hand, and the shared policy has to work on all of them; hardware constraints can be imposed afterwards.
+
+
 ### 1. Palm: the convex hull of the finger bases, plus hinged sections only where a palm joint is needed
 - The main palm is rigid. Its outline is the convex hull of the finger bases plus a disc of 20 mm radius at the palm centre, so a hand with two fingers still has a palm for the object to rest on (Vatsal's construction).
 - An extra palm section exists only when the hand has a palm joint. It is hinged to the main palm, and its outline is the convex hull of its own finger bases and the hinge. A hand has at most 2 palm joints.
@@ -45,6 +50,9 @@ The grammar combines our grammar (`martin/hand-grammar`), Vatsal's physical gram
 
 ### 13. No arm-clearance rule
 - **Why:** the task is a fixed hand with no arm. Add Vatsal's rule when an arm comes back.
+
+### 10. Finger spacing: neighbouring finger bases at least one link width (19 mm) apart
+- **Why:** the commercial hands' closest non-thumb finger bases are 19.2-101.7 mm apart (Inspire 19.2, Ability 20.1, XHand 20.2, SHARPA 20.5, Wuji v2 20.9, Wuji v1 22.0, Shadow 22.4, SVH 23.3, Orca 23.4, Tesollo 24.8, MIDAS 31.0, ...). Spacing >= link width means bases cannot overlap and rejects no commercial hand (Inspire passes by 0.2 mm); width + 5 mm (24 mm) would reject 9 of 16, 29 mm 10 and Vatsal's 35 mm 11, because those hands' own fingers are 12-18 mm wide and the shared 19 mm width uses up their clearance. Only the ARMS skeleton model (15.8 mm) fails. Thumbs sit 42-113 mm from the nearest finger.
 
 ### 14. Kushal's uniform physical properties for every hand
 - 0.5 N m torque, 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, link density 1750 kg/m^3, friction 0.5, generated and commercial hands alike.
@@ -89,17 +97,17 @@ No coupling step (one global ratio, 7b). Every coarse value lies on the fine gri
 
 ### 6 (shape). Links are rounded boxes, one cross-section for every link of every hand
 - Built in the simulator as an 8-vertex convex hull of the core box (outer size minus 2r) with PhysX `restOffset = r` and `contactOffset = r + 2 mm`, mass and inertia authored explicitly.
-- The cross-section (width, height, corner radius) is the average of the commercial hands' finger links: study in progress, `project-notes/grammar/link-cross-section-study.md`.
+- **Cross-section: 19 mm wide (along the flexion axis) x 18 mm high (along the closing direction), corner radius 6 mm**, the median over 16 commercial hands (208 finger links, each hand weighted equally; IQR w 15.4-25.0, h 14.4-21.6, r 3.8-7.2 mm). Study: `project-notes/grammar/link-cross-section-study.md` (a29051c). Fingertip links are about 5 mm thinner than proximal ones on real hands; one global section ignores that, for simplicity. It cannot house an XM335 (19 x 22 mm body; a rounded box around it is at least 22.5 x 25.5 mm): by the principle above, buildability is a later step.
+- **Why rounded boxes (dynamics):** what matters for the shared policy is how an object rests and rolls on the fingers, not only the outline. Flat faces give stable contact patches like real finger pads, and rounded edges let the object roll over them; a capsule is round everywhere (no flat pad) and a sharp box catches on its edges. By outline alone the shapes differ little (mean IoU with the real slices: rounded box 0.632, 19 mm circle 0.628, sharp box 0.618), so the case rests on contact behaviour and the probe.
 - **Why (probe, Isaac Sim 5.1, RTX 4090, 4096 envs, ms per physics step):** capsule 5.1-5.3, sharp box 6.3-6.5, rounded box (hull + rest offset) 5.6. The hull version gave exact rounded-edge contact normals and no gap. The cheaper-looking alternative, a plain box collider with a rest offset, costs the same but is broken at edges against our box-shaped object: the object sank 4-5 mm into the rounded shell with no force, then was pushed along the box's face normals. One parameterisation covers capsule-like (Wuji), boxy (LEAP) and rounded (SHARPA) fingers; a rounded box is slimmer than a capsule around the same motor; the policy's per-link token features already describe links as boxes.
 - **Risks:** the grammar's overlap and reach checks and the viewer must switch from capsule distance to rounded-box distance so they match the simulator; the behaviour relies on PhysX's GPU convex-convex path, so add a regression test on edge normals; keep the core at least about 1 mm thick or hull cooking falls back to CPU.
 
-### 8. Link length: 0 mm, or 20 mm and up; never 0 mm for a fingertip link
-- A link is either 0 mm (two joints at one point) or at least 20 mm. The last link of a finger is at least 15 mm (Vatsal) and never 0 mm. Lengths between 1 and 19 mm are not allowed.
-- Length steps skip the gap: shortening a 20 mm link goes to 0 mm and lengthening a 0 mm link goes to 20 mm; above 20 mm the coarse and fine steps (10 mm and 1 mm) apply as usual.
-- **Why:** mechanically, two co-located joints are convenient (one two-axis module), while two joints only a few millimetres apart are awkward to build; from 20 mm up it is easy again, since motors stack in series. Co-located joints are also common in commercial hands (27 of 220 projected bones are 0 mm, e.g. knuckles with abduction and flexion at one point). The grammar's 0 mm bones are already handled in the simulator (adjacent-pair collision filtering, a mass floor).
+### 8. Link length: 0 mm or at least 15 mm; a fingertip link at least 10 mm, never 0 mm
+- A link between two joints is either 0 mm (two joints at one point) or at least 15 mm. A finger's last link is at least 10 mm. Lengths between 1 and 14 mm are not allowed; steps skip the gap (shortening 15 mm gives 0 mm, lengthening 0 mm gives 15 mm). Longest link 90 mm.
+- **Why:** mechanically, two co-located joints are convenient (one two-axis module) while joints a few millimetres apart are awkward, and longer links are easy again since motors stack in series (Martin). The floor is set by the commercial hands, not by a motor (principle above): Vatsal's motor-derived 20 mm floor would reject 13 real bones in 7 hands (Allegro 16.4, Inspire 16.8, XHand 17.8, LEAP 19.3, Wuji's thumb 16.1 mm, ...). With 15 mm every commercial bone fits except knuckle offsets of 4.6 mm (Wuji v1) and 5.0 mm (SHARPA), which snap to 0 mm within the 5 mm fit target, and the ARMS skeleton model's 9.3 mm. The shortest real fingertip link is SVH's 14.0 mm (the next is 25 mm), so the tip floor is 10 mm rather than Vatsal's 15 mm. The longest real link is DClaw's 84 mm. 27 of the 220 real bones are 0 mm.
 
 ## Still to decide
-10. Finger spacing: proposed at least the link width + 5 mm; Martin worries it will not fit commercial hands, so the cross-section study also measures every hand's finger spacing against candidate rules.
+- Mount area and palm plate thickness: from the commercial extremes (measured during the build), no motor numbers.
 16. Switching a joint's kind in place: in the kind grammar this is the only coarse axis step (the three kinds are 90 degrees apart and the fine tilt stops at 15), so it is not redundant with axis steps; proposed weighting by the commercial hands' mix of kinds (to be measured; expected about 70% flexion, 25% abduction, 5% roll).
 
 Checks come after the grammar and the Evolution Rules. Candidates: the overlap check, Vatsal's curl score, Martin's thumb-finger workspace overlap, and an opposition test (none exists yet).
