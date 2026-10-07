@@ -24,13 +24,13 @@ Open http://127.0.0.1:8080 (from a laptop: `ssh -L 8080:127.0.0.1:8080 <this mac
 One line per item; longer explanations are hover text.
 
 - **Grammar**: **Random** draws hands under the current rules until the ticked viability checks pass, and says "found after N tries" (every draw is within the rules by construction, so only the checks can reject).
-- **Rules**: **Evolution Rules** (what the simulator builds and evolution uses: hinge and coupled joints), **No Rules** (the whole grammar: sliding joints too) or **Custom Rules** (any field edited). The fields can only tighten the grammar: max fingers (2-6), max joints per finger (1-5), max palm joints (up to 6), coupled and sliding joints, max finger length (250 mm), min finger spacing (19 mm), max base distance from the wrist centre (160 mm). Link lengths are fixed by the grammar: 0 or 15-90 mm, fingertip at least 10 mm. The last line says whether the hand on screen follows the rules.
+- **Rules**: **Evolution Rules** (what the simulator builds and evolution uses: hinge and coupled joints), **No Rules** (the whole grammar: sliding joints too) or **Custom Rules** (any field edited). The fields can only tighten the grammar: max fingers (2-6), max joints per finger (1-5), max palm joints (up to 6), coupled and sliding joints, max finger length (250 mm), min finger spacing (19 mm), max base distance from the wrist centre (160 mm). Fixed by the grammar: link lengths 0 or 15-90 mm, fingertip at least 10 mm; every finger base on the rim of its plate (at most 8 mm inside the convex hull of the heel disc, the hinges and the bases on that plate), never in the middle of the palm. The last line says whether the hand on screen follows the rules.
 - **Viability**: the two checks, one line each with the measured value; untick one to stop Random requiring it.
   - **C1, no overlap**: no two links (rounded boxes; the palm plate counts) overlap by more than 3 mm, at the zero pose and at the episode start pose.
   - **C2, fingertips meet above the palm**: at least one pair of fingers whose fingertips' reachable regions come within 20 mm above the plate, over the palm.
 - **Commercial hand**: a commercial hand conformed onto the grammar's fine grid, drawn over its own URDF meshes (ghosted), with one line: fingers and joints, the fit (largest joint, axis and fingertip error) and whether it follows the rules. Curl 0 is the real hand's zero pose (the conformed hand at its zero-pose difference); the meshes follow the pose. Dex3, Wuji v2 and MIDAS have no meshes on this branch (only their URDFs were copied).
 - **Mutation**: **Coarse (10 mm / 30°)** or **Fine (1 mm / 5°)**, **Random mutation**, **Back**, and one button per operator, shown only when it can act on this hand under these rules. After a mutation, one line says what changed.
-- **Pose**: **curl** (bending joints at this fraction of their upper limit; 0.35 is the episode start pose; other joints stay at 0) and **re-centre view**.
+- **Pose**: **curl** (bending joints at this fraction of their upper limit; 0.35 is the episode start pose; other joints stay at 0), **palm bend** (every palm joint at this fraction of its ±30° range, so the hinged sections fold; shown only when the hand has a palm joint) and **re-centre view**.
 
 On screen: the palm plate (grey) from the heel disc at the wrist to the knuckles, hinged palm sections (darker grey), rounded-box links in one colour per finger, dark joint markers; links of a failing C1 pair in red. The palm faces up (+z) with the fingers along +x.
 
@@ -55,7 +55,7 @@ Per hand: what evolution changes. Global: one value for every hand.
 | fingers | per hand | 2-6 | add / remove a finger | - |
 | joints per finger | per finger | 1-5 | split / merge a link | - |
 | palm joints | per hand | 0-6, one per finger at most, never without a finger | give / move / remove | - |
-| base position (y, z) | per finger | 10-160 mm from the wrist centre; neighbours at least 19 mm apart | 10 mm | 1 mm |
+| base position (y, z) | per finger | 10-160 mm from the wrist centre; neighbours at least 19 mm apart; on the rim of its plate (at most 8 mm inside) | 10 mm | 1 mm |
 | facing | per finger | full circle | 30° | 5° |
 | tilt | per finger | -30° to +90° | 30° | 5° |
 | joint axis (two angles) | per joint | any direction (a line; its sign is derived) | 30° | 5° |

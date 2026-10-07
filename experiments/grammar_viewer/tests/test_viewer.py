@@ -141,3 +141,25 @@ def test_rounded_box_mesh_has_the_cross_section():
     assert ext[0] == pytest.approx(0.030 + 0.012, abs=2e-4)   # core 30 mm + two radii
     assert ext[1] == pytest.approx(0.018, abs=2e-4)          # height 18 mm
     assert ext[2] == pytest.approx(0.019, abs=2e-4)          # width 19 mm
+
+
+def test_palm_bend_folds_the_sections(evo):
+    from hand_sampler.grammar.hand import Finger, Hand, Joint, PalmJoint
+
+    h = Hand(fingers=(Finger(y=-30, z=90, joints=(Joint("hinge", (0, 0), 40),)),
+                      Finger(y=30, z=90, joints=(Joint("hinge", (0, 0), 40),), palm_joint=0)),
+             palm_joints=(PalmJoint(15, 45, (0, 0)),))
+    evo._set_hand(h, history="reset", commercial=None, viability=V.gvb.viability(h), frame=False)
+    assert evo.gui_palm_bend.visible
+    evo.gui_palm_bend.value = 0.0
+    evo._render_pose()
+    p0 = np.array(evo.drawing.links[(1, 0)].position)
+    q = evo.q()
+    k = [d.type for d in gdv.dofs(h)].index("palm")
+    evo.gui_palm_bend.value = 1.0
+    evo._render_pose()
+    assert evo.q()[k] == pytest.approx(np.radians(30))
+    assert np.linalg.norm(np.array(evo.drawing.links[(1, 0)].position) - p0) > 1e-3   # the section's finger moves
+    evo.gui_palm_bend.value = 0.0
+    evo.random(wait=True)
+    assert evo.gui_palm_bend.visible == bool(evo.hand.palm_joints)

@@ -6,7 +6,7 @@ Grammar (Random, "found after N tries"), Rules (Evolution Rules / No Rules /
 Custom Rules, the limits in plain words), Viability (C1 and C2, one line
 each), Commercial hand (the conformed hand over its URDF meshes, with its
 fit), Mutation (Coarse 10 mm / 30 deg, Fine 1 mm / 5 deg; only the operators
-that can act are shown) and Pose (curl, re-centre). CPU only; Isaac is never
+that can act are shown) and Pose (curl, palm bend, re-centre). CPU only; Isaac is never
 imported.
 """
 
@@ -38,7 +38,7 @@ from hand_sampler.grammar import operators as gops  # noqa: E402
 from hand_sampler.grammar import viability as gvb  # noqa: E402
 from hand_sampler.grammar.fk import forward_kinematics  # noqa: E402
 from hand_sampler.grammar.hand import (  # noqa: E402
-    BASE_DISTANCE_MM, EVOLUTION_RULES, NO_RULES, STEPS, Hand, Rules, check, parameter_count)
+    BASE_DISTANCE_MM, EVOLUTION_RULES, NO_RULES, RIM_TOLERANCE_MM, STEPS, Hand, Rules, check, parameter_count)
 
 from gviewer import draw  # noqa: E402
 from gviewer import meshes as gmesh  # noqa: E402
@@ -201,6 +201,9 @@ class GrammarViewer:
             self.overlay.set_visible(bool(self.gui_meshes.value))
             self._set_hand(rec["hand"], history="reset", commercial=rec, viability=gvb.viability(rec["hand"]),
                            frame=True)
+            self._suppress = True
+            self.gui_hand.value = hand_id
+            self._suppress = False
             n = parameter_count(rec["hand"])
             fit = (f"{rec['max_joint_mm']:.1f} mm joints, {rec['max_axis_deg']:.1f}° axes, {rec['max_tip_mm']:.1f} mm "
                    f"tips ({'within' if rec['within_target'] else 'outside'} 5 mm / 10°)")
@@ -272,8 +275,11 @@ class GrammarViewer:
             else:
                 self.commercial = commercial
             self.viability = viability
-            bad = [(a, b) for a, b, _ in viability.c1.pairs] if self.gui_c1.value else []
+            # commercial hands are exempt from C1 in the simulator (their overlaps come from the shared
+            # cross-section and are collision-filtered), so they are not painted red
+            bad = [(a, b) for a, b, _ in viability.c1.pairs] if self.gui_c1.value and commercial is None else []
             self.drawing.build(hand, highlight=bad)
+            self.gui_palm_bend.visible = bool(hand.palm_joints)
             self._render_pose()
             self._update_status()
             self._update_operator_buttons()
@@ -285,9 +291,13 @@ class GrammarViewer:
         limit (a commercial hand: added to its zero-pose difference, so curl 0
         is the real hand's zero pose)."""
         q = gdv.curl_q(self.hand, float(self.gui_curl.value))
+        bend = float(self.gui_palm_bend.value)
+        for k, d in enumerate(gdv.dofs(self.hand)):
+            if d.type == "palm":            # every palm joint at this fraction of its range (+/-30 deg)
+                q[k] = bend * d.limits[1]
         if self.commercial is not None:
-            q = gdv.tie(self.hand, q + self.commercial["q_off"])
-        return q
+            q = q + self.commercial["q_off"]
+        return gdv.tie(self.hand, q)
 
     def _render_pose(self) -> None:
         if self.hand is None:
@@ -308,7 +318,8 @@ class GrammarViewer:
         if self.hand is None:
             return
         v = self.viability
-        self.gui_c1.label = f"C1 no overlap (zero, start): {_verdict(v.c1.ok)} {v.c1.worst_mm:.1f} mm"
+        exempt = " (commercial: exempt)" if self.commercial is not None and not v.c1.ok else ""
+        self.gui_c1.label = f"C1 no overlap (zero, start): {_verdict(v.c1.ok)} {v.c1.worst_mm:.1f} mm{exempt}"
         best = "none" if not np.isfinite(v.c2.best_mm) else f"{v.c2.best_mm:.1f} mm"
         self.gui_c2.label = f"C2 fingertips meet above palm: {_verdict(v.c2.ok)} {best}"
         problems = check(self.hand, self.rules())
@@ -376,7 +387,8 @@ class GrammarViewer:
                                          min=BASE_DISTANCE_MM[0], max=BASE_DISTANCE_MM[1], step=1,
                                          hint=f"Finger bases sit {BASE_DISTANCE_MM[0]}-{BASE_DISTANCE_MM[1]} mm from "
                                               "the wrist centre on the plate (commercial hands x0.9 / x1.1).")
-            g.add_markdown("links: 0 or 15-90 mm, fingertip ≥ 10 mm")
+            g.add_markdown("links: 0 or 15-90 mm, fingertip ≥ 10 mm; finger bases on the palm's rim "
+                           f"(≤ {RIM_TOLERANCE_MM:g} mm inside)")
             self.md_rules = g.add_markdown("")
 
         with g.add_folder("Viability"):
@@ -406,6 +418,9 @@ class GrammarViewer:
             self.gui_curl = g.add_slider("curl", 0.0, 1.0, 0.01, gdv.START_CURL,
                                          hint="Bending joints at this fraction of their range (0.35: the pose every "
                                               "episode starts from); other joints at 0.")
+            self.gui_palm_bend = g.add_slider("palm bend", -1.0, 1.0, 0.05, 0.0,
+                                              hint="Every palm joint at this fraction of its range (±30°): the "
+                                                   "hinged palm sections fold. Shown when the hand has a palm joint.")
             btn_center = g.add_button("re-centre view", hint="Point the camera at the whole hand.")
 
         btn_random.on_click(lambda _: self.random())
@@ -439,6 +454,11 @@ class GrammarViewer:
             b.on_click(lambda _, name=name: self.mutate(name))
 
         @self.gui_curl.on_update
+        def _(_):
+            with self.lock:
+                self._render_pose()
+
+        @self.gui_palm_bend.on_update
         def _(_):
             with self.lock:
                 self._render_pose()

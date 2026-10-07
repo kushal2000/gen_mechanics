@@ -82,14 +82,30 @@ def test_conformed_file_covers_the_reference_set():
     assert len(doc["hands"]) >= 15
 
 
+RIM_EXCEPTIONS = {"dex3_left"}
+"""Commercial hands that break the rim rule (GRAMMAR-LOCK item 24): Dex3's
+thumb sits 22.5 mm inside the hull of its heel disc and finger bases."""
+
+
 def test_every_conformed_hand_is_in_the_grammar_on_the_fine_grid():
     for rid, rec in BC.load().items():
-        assert check(rec["hand"], NO_RULES) == [], (rid, check(rec["hand"], NO_RULES))
+        assert check(rec["hand"], NO_RULES, rim=False) == [], (rid, check(rec["hand"], NO_RULES, rim=False))
+        rim = [m for m in check(rec["hand"], NO_RULES) if "on the rim" in m]
+        assert bool(rim) == (rid in RIM_EXCEPTIONS), (rid, rim)
+
+
+def test_rim_tolerance_is_the_smallest_whole_mm_the_commercial_hands_pass():
+    from hand_sampler.grammar.hand import RIM_TOLERANCE_MM, base_insets_mm
+
+    worst = {rid: max(base_insets_mm(rec["hand"])) for rid, rec in BC.load().items()}
+    passing = {rid: w for rid, w in worst.items() if rid not in RIM_EXCEPTIONS}
+    assert max(passing.values()) <= RIM_TOLERANCE_MM < max(passing.values()) + 1
+    assert all(worst[r] > 10 for r in RIM_EXCEPTIONS if r in worst)
 
 
 def test_conformed_hands_follow_the_evolution_rules_except_sliding_joints():
     for rid, rec in BC.load().items():
-        v = check(rec["hand"], EVOLUTION_RULES)
+        v = check(rec["hand"], EVOLUTION_RULES, rim=False)
         assert all("sliding joints not allowed" in m for m in v), (rid, v)
         assert bool(v) == any(j.type == "sliding" for f in rec["hand"].fingers for j in f.joints)
 

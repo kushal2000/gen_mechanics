@@ -38,6 +38,8 @@ import math
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
+
 GRAMMAR_VERSION = "hand_grammar/1.0"
 
 # --------------------------------------------------------------------------
@@ -71,6 +73,14 @@ BASE_DISTANCE_MM = (10, 160)
 # five commercial palm joints' hinges, 20.0 mm (ARMS CMC5) x 0.9 and 98.1 mm
 # (Shadow LFJ5) x 1.1, rounded out to 5 mm).
 PALM_HINGE_DISTANCE_MM = (15, 110)
+# Fingers sit on the palm's rim (item 24): a base may lie at most this far
+# inside the convex hull of its plate's points (the heel disc, the hinges and
+# the bases on that plate), never further in. Calibrated on the commercial
+# hands: the smallest whole millimetre every one of them passes (Allegro's
+# thumb, 8.0 mm inside the hull of its heel disc and index base), except Dex3,
+# whose thumb sits 22.5 mm inside (reported, not accommodated: > 10 mm).
+RIM_TOLERANCE_MM = 8
+HEEL_POINTS = 32       # the heel disc as a regular polygon for the rim rule
 # Finger tilt out of the plate (commercial extremes x 1.1, rounded out to the
 # 5 degree grid: Barrett's thumb -25 and DClaw's fingers +90, which is the
 # most a tilt can be). Facing covers the full circle.
@@ -227,11 +237,12 @@ def link_length_ok(length: int, is_tip: bool, max_mm: int = LINK_MAX_MM) -> bool
     return length == 0 or LINK_MIN_MM <= length <= max_mm
 
 
-def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
+def check(hand: Hand, rules: Optional[Rules] = None, rim: bool = True) -> List[str]:
     """Every way `hand` breaks the grammar or `rules` (default: the grammar's
     own limits). Empty for a valid hand. Sampling and the operators never
     produce a hand with a violation; this is for tests, imports and the
-    viewer's status line."""
+    viewer's status line. `rim=False` skips the rim rule (the simulator can
+    build a commercial hand that breaks it, e.g. Dex3)."""
     r = rules or NO_RULES
     out: List[str] = []
     n = len(hand.fingers)
@@ -295,12 +306,75 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
         az, el = p.axis
         if not (_is_int(az) and _is_int(el)) or az % GRID_DEG or el % GRID_DEG or canonical_axis(az, el) != (az, el):
             out.append(f"palm joint {k}: axis {p.axis} off the grid or not canonical")
+    if rim and all(0 <= f.palm_joint < npj or f.palm_joint == -1 for f in hand.fingers):
+        for i, d in enumerate(base_insets_mm(hand)):
+            if d > RIM_TOLERANCE_MM + 1e-9:
+                out.append(f"finger {i}: base {d:.1f} mm inside its palm plate, not on the rim "
+                           f"(allowed {RIM_TOLERANCE_MM:g} mm)")
     for a in range(n):
         for b in range(a + 1, n):
             fa, fb = hand.fingers[a], hand.fingers[b]
             d = math.hypot(fa.y - fb.y, fa.z - fb.z)
             if d < r.min_spacing_mm:
                 out.append(f"fingers {a} and {b}: bases {d:.1f} mm apart, need {r.min_spacing_mm}")
+    return out
+
+
+def _hull2d(pts: np.ndarray) -> np.ndarray:
+    """Convex hull, counter-clockwise, of 2D points (monotone chain)."""
+    P = sorted(set((round(float(x), 9), round(float(y), 9)) for x, y in pts))
+    if len(P) <= 2:
+        return np.array(P, dtype=float)
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower, upper = [], []
+    for q in P:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], q) <= 0:
+            lower.pop()
+        lower.append(q)
+    for q in reversed(P):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], q) <= 0:
+            upper.pop()
+        upper.append(q)
+    return np.array(lower[:-1] + upper[:-1], dtype=float)
+
+
+def plate_rim_points_mm(hand: Hand, k: int) -> np.ndarray:
+    """The points whose convex hull is plate k's core for the rim rule: the
+    main plate (k = -1) is the heel disc, the hinges and its fingers' bases; a
+    palm joint's section is its hinge and its fingers' bases."""
+    if k < 0:
+        t = np.linspace(0.0, 2.0 * math.pi, HEEL_POINTS, endpoint=False)
+        pts = [np.stack([PALM_ANCHOR_MM[0] + PALM_DISC_RADIUS_MM * np.cos(t),
+                         PALM_ANCHOR_MM[1] + PALM_DISC_RADIUS_MM * np.sin(t)], axis=1)]
+        pts += [np.array([[p.y, p.z]], dtype=float) for p in hand.palm_joints]
+    else:
+        p = hand.palm_joints[k]
+        pts = [np.array([[p.y, p.z]], dtype=float)]
+    pts += [np.array([[f.y, f.z]], dtype=float) for f in hand.fingers if f.palm_joint == k]
+    return np.concatenate(pts, axis=0)
+
+
+def base_insets_mm(hand: Hand) -> List[float]:
+    """Per finger, how far its base lies inside the convex hull of its plate's
+    rim points (0 on the hull's boundary)."""
+    hulls: Dict[int, np.ndarray] = {}
+    out = []
+    for f in hand.fingers:
+        k = f.palm_joint if 0 <= f.palm_joint < len(hand.palm_joints) else -1
+        if k not in hulls:
+            hulls[k] = _hull2d(plate_rim_points_mm(hand, k))
+        H = hulls[k]
+        if len(H) < 3:
+            out.append(0.0)
+            continue
+        q = np.array([f.y, f.z], dtype=float)
+        e = np.roll(H, -1, axis=0) - H
+        n = np.stack([-e[:, 1], e[:, 0]], axis=1) / np.linalg.norm(e, axis=1)[:, None]   # inward for CCW
+        d = ((q[None] - H) * n).sum(axis=1)
+        out.append(max(0.0, float(d.min())))
     return out
 
 

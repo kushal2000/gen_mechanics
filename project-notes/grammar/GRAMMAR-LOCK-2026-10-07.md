@@ -129,6 +129,12 @@ No coupling step (one global ratio, 7b). Every coarse value lies on the fine gri
 - **Dropped:** the object-start-height check (the object starts at a fixed spot above the palm defined by the task, not by the fingertips); the old "2 fingertips within 5 cm of a spawn point" reach check (Martin disliked it); Vatsal's curl score as a check (positive rotation already closes toward the palm by convention; the score measures how much a finger can close, which C2 covers where it matters).
 - **Deferred:** C5, a physics grasp test (finding a stable grasp in simulation, like the HORA grasp cache). Bring it up again once the grammar work is done.
 
+### 24. Fingers sit on the palm's rim, never in the middle of the palm
+- Every finger base lies on the rim of its plate: at most 8 mm inside the convex hull of that plate's points (the main plate: the heel disc at the wrist centre, the palm-joint hinges and its fingers' bases; a palm joint's section: its hinge and its fingers' bases). A grammar rule, kept by construction like the spacing rule: random hands place each base only where every base stays on the rim, and mutations only offer moves, added fingers and palm-joint changes that keep it; removing a finger always keeps it.
+- **Tolerance 8 mm:** the smallest whole millimetre every commercial hand passes. Worst insets: Allegro's thumb 8.0 mm (inside the hull of its heel disc and index base), Inspire's thumb 5.6, ARMS's thumb 5.3, Wuji v2's thumbs 5.0 and 4.9, Tesollo 2.9, SVH 2.0, Wuji v1 1.3, every other hand 0 (middle knuckles of a straight row lie on the hull's edge). Dex3 breaks the rule: its thumb sits 22.5 mm inside (between the wrist and its two fingers on the palm's centre line), more than the 10 mm we allow a tolerance to grow for one hand, so it is reported, not accommodated; the simulator still admits it as a commercial hand.
+- **Why (Martin, 2026-10-07):** "the fingers should be able to be on any of the edges but not sticking out of the middle of the palm". With uniform random hands (878a3d4) bases could land anywhere on the plate.
+- Effect on random hands (Evolution Rules, coarse, 1000 hands): C1 37% -> 40%, C2 66% -> 64%, viable 16% -> 17% (6.1 -> 5.8 tries per viable hand).
+
 ## Still to decide
 - After the grammar work: raise C5 (physics grasp test) again.
 

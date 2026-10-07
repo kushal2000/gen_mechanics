@@ -145,12 +145,13 @@ def commercial_entry(hand_id: str) -> Tuple[Optional[PopulationEntry], str, Opti
     """`(entry_or_None, status, reason)` for a conformed commercial hand
     (`hand_sampler/grammar_bench/conformed_hands.json`). Commercial hands are
     exempt from the overlap check: their overlaps come from the shared link
-    cross-section, so the overlapping pairs are collision-filtered instead."""
+    cross-section, so the overlapping pairs are collision-filtered instead) and
+    from the rim rule (Dex3's thumb sits inside its palm)."""
     recs = build_conformed.load()
     rec = recs.get(hand_id)
     if rec is None:
         return None, "unavailable", f"{hand_id!r} is not in conformed_hands.json (not on the machine that built it?)"
-    result = ge.admit(rec["hand"], check_overlap=False)
+    result = ge.admit(rec["hand"], check_overlap=False, check_rim=False)
     if not result.ok:
         return None, "rejected", "; ".join(result.reasons)
     return make_entry(f"{COMMERCIAL_PREFIX}{hand_id}", rec["hand"], exempt_overlap=True), "admitted", None
@@ -194,7 +195,7 @@ def load_population(path) -> List["ge.EnvelopeDesign"]:
             raise ValueError(f"design {d.get('source')!r}: sha256 mismatch, entry tampered or corrupt")
         hand = hand_from_dict(d["hand"])
         exempt = bool(d.get("exempt_overlap", False))
-        result = ge.admit(hand, check_overlap=not exempt)
+        result = ge.admit(hand, check_overlap=not exempt, check_rim=not exempt)
         if not result.ok:
             raise ValueError(f"design {d.get('source')!r} fails re-admission: {'; '.join(result.reasons)}")
         design = _design(hand, d["source"], exempt)

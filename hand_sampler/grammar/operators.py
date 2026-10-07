@@ -32,6 +32,7 @@ from .hand import (
     STEPS,
     TILT_RANGE_DEG,
     TIP_MIN_MM,
+    RIM_TOLERANCE_MM,
     Finger,
     Hand,
     Joint,
@@ -39,6 +40,7 @@ from .hand import (
     Rules,
     EVOLUTION_RULES,
     NO_RULES,
+    base_insets_mm,
     canonical_axis,
     check,
     drop_unused_palm_joints,
@@ -534,13 +536,15 @@ def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES, stage:
 
     - 2 to the rules' maximum fingers, uniformly;
     - each base uniform over the free grid points of the mount area (the
-      ring 10-160 mm around the wrist centre, in the plate), so the spacing
-      rule holds by construction;
+      ring 10-160 mm around the wrist centre, in the plate) that keep every
+      base on the palm's rim (`hand.base_insets_mm`), so the spacing and rim
+      rules hold by construction;
     - facing uniform over the full circle, tilt uniform over -30 to +90 deg;
     - joints and links as `_draw_finger_joints` (kinds with the commercial
       mix);
-    - with probability `P_PALM_JOINT`, one finger, chosen uniformly, on its
-      own palm joint (`default_hinge`).
+    - with probability `P_PALM_JOINT`, one finger, chosen uniformly among
+      those for which it keeps the rules, on its own palm joint
+      (`default_hinge`).
     """
     mm, deg = step_of(stage)
     n = int(rng.integers(rules.min_fingers, rules.max_fingers + 1))
@@ -548,15 +552,27 @@ def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES, stage:
     tilts = _grid(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1], deg)
     fingers: List[Finger] = []
     for _ in range(n):
-        spots = _free_spots(Hand(fingers=tuple(fingers)) if fingers else Hand(fingers=()), rules, stage)
-        y, z = _pick(rng, spots)
-        fingers.append(Finger(y=y, z=z, facing=_pick(rng, facings), tilt=_pick(rng, tilts),
+        spots = _free_spots(Hand(fingers=tuple(fingers)), rules, stage)
+        new = None
+        for idx in rng.permutation(len(spots)):          # the first free spot that keeps every base on the rim
+            y, z = spots[int(idx)]
+            cand = Finger(y=y, z=z, facing=0, tilt=0, joints=(Joint(),))
+            if max(base_insets_mm(Hand(fingers=tuple(fingers) + (cand,)))) <= RIM_TOLERANCE_MM:
+                new = (y, z)
+                break
+        if new is None:
+            break
+        fingers.append(Finger(y=new[0], z=new[1], facing=_pick(rng, facings), tilt=_pick(rng, tilts),
                               joints=_draw_finger_joints(rng, rules, stage)))
     hand = Hand(fingers=tuple(fingers))
     if rules.max_palm_joints > 0 and rng.random() < P_PALM_JOINT:
-        k = int(rng.integers(len(fingers)))
-        hand = Hand(fingers=tuple(replace(f, palm_joint=0) if i == k else f for i, f in enumerate(fingers)),
-                    palm_joints=(default_hinge([fingers[k]], deg, mm),))
+        for k in rng.permutation(len(fingers)):          # a finger whose own palm joint keeps the rules
+            k = int(k)
+            cand = Hand(fingers=tuple(replace(f, palm_joint=0) if i == k else f for i, f in enumerate(fingers)),
+                        palm_joints=(default_hinge([fingers[k]], deg, mm),))
+            if not check(cand, rules):
+                hand = cand
+                break
     problems = check(hand, rules)
     if problems:   # every draw keeps the limits by construction; this guards the construction itself
         raise AssertionError(f"random_hand broke its rules: {problems}")

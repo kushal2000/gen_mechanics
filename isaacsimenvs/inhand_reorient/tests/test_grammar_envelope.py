@@ -204,7 +204,7 @@ def test_admit_is_c1_for_sampled_and_exempts_commercial():
                         Finger(y=19, z=80, facing=355, joints=(Joint("hinge", (0, 0), 50),))))
     assert not ge.admit(bad).ok and ge.admit(bad, check_overlap=False).ok
     for hid, rec in build_conformed.load().items():
-        assert ge.admit(rec["hand"], check_overlap=False).ok, hid
+        assert ge.admit(rec["hand"], check_overlap=False, check_rim=False).ok, hid
 
 
 def test_palm_up_is_exact():

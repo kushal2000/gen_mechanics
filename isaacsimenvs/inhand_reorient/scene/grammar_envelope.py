@@ -335,7 +335,7 @@ def _assign_slots(hand: Hand) -> Tuple[List[int], List[int], List[int]]:
 
 
 def canonicalize(hand: Hand, source: str = "") -> EnvelopeDesign:
-    problems = check(hand, NO_RULES)
+    problems = check(hand, NO_RULES, rim=False)
     if problems:
         raise AdmissionError(problems)
     if len(hand.fingers) > N_FINGERS or any(len(f.joints) > N_JOINTS_PER_FINGER for f in hand.fingers):
@@ -506,14 +506,15 @@ def dofs_to_slot_q(design: EnvelopeDesign, qd: np.ndarray) -> np.ndarray:
 # --------------------------------------------------------------------------
 
 
-def admit(hand: Hand, *, check_overlap: bool = True,
+def admit(hand: Hand, *, check_overlap: bool = True, check_rim: bool = True,
           max_rest_penetration_m: float = MAX_REST_PENETRATION_M) -> AdmissionResult:
     """Whether the simulator builds `hand`: it is in the grammar (every
     grammar hand fits the envelope) and, for a sampled design
     (`check_overlap`), passes C1 (no two bodies overlap by more than 3 mm at
     the zero or the start pose). Commercial hands pass `check_overlap=False`
-    and filter their overlapping pairs instead."""
-    problems = check(hand, NO_RULES)
+    and filter their overlapping pairs instead; they also pass `check_rim=False`
+    (the rim rule shapes generated hands; Dex3's thumb breaks it)."""
+    problems = check(hand, NO_RULES, rim=check_rim)
     if problems:
         return AdmissionResult(False, tuple(problems))
     if check_overlap:
