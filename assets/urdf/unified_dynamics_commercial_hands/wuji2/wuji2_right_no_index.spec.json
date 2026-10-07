@@ -1,0 +1,314 @@
+{
+ "hand": "wuji2_right_no_index",
+ "side": "right",
+ "urdf": "assets/urdf/unified_dynamics_commercial_hands/wuji2/wuji2_right_no_index.urdf",
+ "palm_body": "r_wrist",
+ "hand_joint_names": [
+  "r_thumb_cmc_flex",
+  "r_thumb_cmc_abd",
+  "r_thumb_mcp",
+  "r_thumb_ip",
+  "r_middle_finger_mcp_flex",
+  "r_middle_finger_mcp_abd",
+  "r_middle_finger_pip",
+  "r_middle_finger_dip",
+  "r_ring_finger_mcp_flex",
+  "r_ring_finger_mcp_abd",
+  "r_ring_finger_pip",
+  "r_ring_finger_dip",
+  "r_pinky_mcp_flex",
+  "r_pinky_mcp_abd",
+  "r_pinky_pip",
+  "r_pinky_dip"
+ ],
+ "joint_limits": {
+  "r_thumb_cmc_flex": [
+   -1.187,
+   1.291
+  ],
+  "r_thumb_cmc_abd": [
+   -1.484,
+   0.698
+  ],
+  "r_thumb_mcp": [
+   -1.047,
+   1.57
+  ],
+  "r_thumb_ip": [
+   -1.047,
+   1.57
+  ],
+  "r_middle_finger_mcp_flex": [
+   -1.047,
+   1.57
+  ],
+  "r_middle_finger_mcp_abd": [
+   -0.698,
+   0.698
+  ],
+  "r_middle_finger_pip": [
+   -1.047,
+   2.094
+  ],
+  "r_middle_finger_dip": [
+   -1.047,
+   1.57
+  ],
+  "r_ring_finger_mcp_flex": [
+   -1.047,
+   1.57
+  ],
+  "r_ring_finger_mcp_abd": [
+   -0.698,
+   0.698
+  ],
+  "r_ring_finger_pip": [
+   -1.047,
+   2.094
+  ],
+  "r_ring_finger_dip": [
+   -1.047,
+   1.57
+  ],
+  "r_pinky_mcp_flex": [
+   -1.047,
+   1.57
+  ],
+  "r_pinky_mcp_abd": [
+   -0.698,
+   0.698
+  ],
+  "r_pinky_pip": [
+   -1.047,
+   2.094
+  ],
+  "r_pinky_dip": [
+   -1.047,
+   1.57
+  ]
+ },
+ "hand_default_joint_pos": {
+  "r_thumb_cmc_flex": 0.0,
+  "r_thumb_cmc_abd": 0.0,
+  "r_thumb_mcp": 0.0,
+  "r_thumb_ip": 0.0,
+  "r_middle_finger_mcp_flex": 0.0,
+  "r_middle_finger_mcp_abd": 0.0,
+  "r_middle_finger_pip": 0.0,
+  "r_middle_finger_dip": 0.0,
+  "r_ring_finger_mcp_flex": 0.0,
+  "r_ring_finger_mcp_abd": 0.0,
+  "r_ring_finger_pip": 0.0,
+  "r_ring_finger_dip": 0.0,
+  "r_pinky_mcp_flex": 0.0,
+  "r_pinky_mcp_abd": 0.0,
+  "r_pinky_pip": 0.0,
+  "r_pinky_dip": 0.0
+ },
+ "fingertip_body_names": [
+  "r_thumb_distal",
+  "r_middle_finger_distal",
+  "r_ring_finger_distal",
+  "r_pinky_distal"
+ ],
+ "fingertip_offsets": [
+  [
+   0.0,
+   0.0,
+   -0.02978
+  ],
+  [
+   0.0,
+   0.0,
+   -0.02475
+  ],
+  [
+   0.0,
+   0.0,
+   -0.02475
+  ],
+  [
+   0.0,
+   0.0,
+   -0.02475
+  ]
+ ],
+ "thumb_tip": "r_thumb_distal",
+ "palm_frame": [
+  [
+   0.0,
+   1.0,
+   0.0
+  ],
+  [
+   1.0,
+   -0.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.0,
+   -1.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_frame_snapped": [
+  "x->+y",
+  "z->-z"
+ ],
+ "palm_centre_in_palm_body": [
+  -0.007282610051333904,
+  -0.0007228190079331398,
+  -0.03695552400313318
+ ],
+ "palm_extents_ours": [
+  0.03547428362071514,
+  0.07651257701218128,
+  0.08792115049436688
+ ],
+ "palm_centre_ours": [
+  -0.0007228190079331398,
+  -0.007282610051333904,
+  0.03695552400313318
+ ],
+ "adjacent_links": {
+  "r_middle_finger_distal": [
+   "r_middle_finger_middle"
+  ],
+  "r_middle_finger_middle": [
+   "r_middle_finger_distal",
+   "r_middle_finger_proximal_abd"
+  ],
+  "r_middle_finger_proximal": [
+   "r_middle_finger_proximal_abd",
+   "r_wrist"
+  ],
+  "r_middle_finger_proximal_abd": [
+   "r_middle_finger_middle",
+   "r_middle_finger_proximal",
+   "r_wrist"
+  ],
+  "r_pinky_distal": [
+   "r_pinky_middle"
+  ],
+  "r_pinky_middle": [
+   "r_pinky_distal",
+   "r_pinky_proximal_abd"
+  ],
+  "r_pinky_proximal": [
+   "r_pinky_proximal_abd",
+   "r_wrist"
+  ],
+  "r_pinky_proximal_abd": [
+   "r_pinky_middle",
+   "r_pinky_proximal",
+   "r_wrist"
+  ],
+  "r_ring_finger_distal": [
+   "r_ring_finger_middle"
+  ],
+  "r_ring_finger_middle": [
+   "r_ring_finger_distal",
+   "r_ring_finger_proximal_abd"
+  ],
+  "r_ring_finger_proximal": [
+   "r_ring_finger_proximal_abd",
+   "r_wrist"
+  ],
+  "r_ring_finger_proximal_abd": [
+   "r_ring_finger_middle",
+   "r_ring_finger_proximal",
+   "r_wrist"
+  ],
+  "r_thumb_distal": [
+   "r_thumb_middle"
+  ],
+  "r_thumb_middle": [
+   "r_thumb_distal",
+   "r_thumb_proximal_abd"
+  ],
+  "r_thumb_proximal": [
+   "r_thumb_proximal_abd",
+   "r_wrist"
+  ],
+  "r_thumb_proximal_abd": [
+   "r_thumb_middle",
+   "r_thumb_proximal",
+   "r_wrist"
+  ],
+  "r_wrist": [
+   "r_middle_finger_proximal",
+   "r_pinky_proximal",
+   "r_pinky_proximal_abd",
+   "r_ring_finger_proximal",
+   "r_ring_finger_proximal_abd",
+   "r_thumb_proximal",
+   "r_middle_finger_proximal_abd",
+   "r_thumb_proximal_abd"
+  ]
+ },
+ "overlap_at_home_mm": {
+  "r_wrist x r_pinky_proximal_abd": 1.42,
+  "r_wrist x r_ring_finger_proximal_abd": 1.18
+ },
+ "fingertip_pos_home_ours": {
+  "r_thumb_distal": [
+   0.0189,
+   0.0906,
+   0.0208
+  ],
+  "r_index_finger_distal": [
+   -0.0059,
+   0.0415,
+   0.1137
+  ],
+  "r_middle_finger_distal": [
+   -0.0115,
+   0.0073,
+   0.1185
+  ],
+  "r_ring_finger_distal": [
+   -0.0066,
+   -0.0241,
+   0.1092
+  ],
+  "r_pinky_distal": [
+   -0.0009,
+   -0.0489,
+   0.0916
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.0775033248319064,
+ "armature": 0.00058,
+ "palm_filter_depth": 2,
+ "effort_limit": 0.5,
+ "velocity_limit": 5.0,
+ "link_density_kg_m3": 1750.0,
+ "friction": 0.5,
+ "missing_finger": {
+  "finger": "index",
+  "kept_fingers": [
+   "thumb",
+   "middle",
+   "ring",
+   "pinky"
+  ],
+  "removed_joints": [
+   "r_index_finger_dip",
+   "r_index_finger_mcp_abd",
+   "r_index_finger_mcp_flex",
+   "r_index_finger_pip",
+   "r_index_finger_tip_fixed",
+   "r_index_finger_tip_sensor_frame_fixed"
+  ],
+  "removed_links": [
+   "r_index_finger_distal",
+   "r_index_finger_middle",
+   "r_index_finger_proximal",
+   "r_index_finger_proximal_abd",
+   "r_index_finger_tip",
+   "r_index_finger_tip_sensor_frame"
+  ]
+ }
+}

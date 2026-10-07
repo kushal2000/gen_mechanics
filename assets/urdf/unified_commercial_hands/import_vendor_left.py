@@ -1,4 +1,5 @@
-"""Import each hand's LEFT vendor URDF + only the meshes it references into <hand>/vendor_left/.
+"""Import each hand's LEFT vendor URDF + only the meshes it references into <hand>/vendor_left/
+(or, with --side right, the RIGHT one from RIGHT_SOURCES into <hand>/vendor_right/).
 
 Reproducible provenance: every source is a public repo pinned to a commit, fetched with a sparse
 git clone into a scratch dir, and recorded in <hand>/vendor_left/SOURCE.md. The URDF is copied
@@ -8,6 +9,7 @@ meshes somewhere other than where its URDF says (XHAND: URDF says meshes/, files
 Repairs (rooting, wrist joints, colliders, ...) belong to each hand's unify step, not here.
 
     python assets/urdf/unified_commercial_hands/import_vendor_left.py <scratch_dir>
+    python assets/urdf/unified_commercial_hands/import_vendor_left.py <scratch_dir> --side right [hand ...]
 """
 import os, re, shutil, subprocess, sys, xml.etree.ElementTree as ET
 from pathlib import Path
@@ -36,6 +38,14 @@ SOURCES = {
                 "Robot Era XHAND1 SolidWorks-exported URDF, redistributed in Meta's spider, whose repo LICENSE is CC BY-NC (copied); Robot Era's own terms for the model are unknown"),
 }
 
+# Right hands, same tuple layout. Wuji publishes both sides at the same commit; its right hand is the left's
+# mirror (y-negated joint origins, negated flexion axes, identical limits), modelled as its own CAD part.
+RIGHT_SOURCES = {
+    "wuji2":   ("wuji-technology/wuji-description", "c2cd7f8d1ef8b6dc8cb907c17daa5a88b4442d95",
+                "hand2/hand2_beta2/body/urdf/right.urdf", {}, None,
+                "Wuji official (wuji-description, MIT); Wuji Hand 2 Beta 2 -- the version wuji-mjlab deploys"),
+}
+
 def resolve(repo_dir: Path, urdf: Path, fn: str, pkgs: dict, fallback: str | None) -> Path:
     if fn.startswith("package://"):
         pkg, rest = fn[len("package://"):].split("/", 1)
@@ -45,13 +55,16 @@ def resolve(repo_dir: Path, urdf: Path, fn: str, pkgs: dict, fallback: str | Non
         p = repo_dir / fallback / Path(fn).name
     return p
 
-def main(scratch: Path):
-    for hand, (repo, sha, rel, pkgs, fallback, lic) in SOURCES.items():
+def main(scratch: Path, side: str = "left", only=()):
+    table = SOURCES if side == "left" else RIGHT_SOURCES
+    for hand, (repo, sha, rel, pkgs, fallback, lic) in table.items():
+        if only and hand not in only:
+            continue
         repo_dir = scratch / repo.replace("/", "_")
         head = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         assert head == sha, f"{hand}: {repo_dir} is at {head}, expected {sha}"
         urdf = repo_dir / rel
-        dest = HERE / hand / "vendor_left"
+        dest = HERE / hand / f"vendor_{side}"
         if dest.exists():
             shutil.rmtree(dest)
         (dest / "meshes").mkdir(parents=True)
@@ -83,10 +96,10 @@ def main(scratch: Path):
                 break
         for lf in lic_files:
             shutil.copy2(lf, dest / lf.name)
-        out = dest / f"{hand}_left.urdf"
+        out = dest / f"{hand}_{side}.urdf"
         tree.write(out, xml_declaration=True, encoding="utf-8")
         (dest / "SOURCE.md").write_text(
-            f"# {hand} left — vendor source\n\n- repo: https://github.com/{repo}\n- commit: {sha}\n"
+            f"# {hand} {side} — vendor source\n\n- repo: https://github.com/{repo}\n- commit: {sha}\n"
             f"- file: {rel}\n- licence: {lic}\n- licence file(s) copied: {[p.name for p in lic_files] or 'NONE FOUND'}"
             f" (from {lic_files[0].parent.relative_to(repo_dir) if lic_files else '-'})\n"
             f"- imported by: ../../import_vendor_left.py (mesh paths "
@@ -94,4 +107,9 @@ def main(scratch: Path):
         print(f"{hand:8s} -> {out.relative_to(HERE.parents[2])}  ({len(seen)} meshes)")
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    a = sys.argv[1:]
+    side = "left"
+    if "--side" in a:
+        i = a.index("--side"); side = a[i + 1]; a = a[:i] + a[i + 2:]
+    assert side in ("left", "right"), side
+    main(Path(a[0]), side, tuple(a[1:]))

@@ -5,7 +5,7 @@ tip to the palm body; the joint on that path whose parent is the palm is the fin
 link and joint below it are deleted from the URDF, and the spec JSON drops the finger's joints, fingertip, pad
 offset and self-collision pairs. The palm, the other fingers, every dynamic parameter and the palm frame are
 unchanged, so a variant differs from the full hand only by the finger. Written next to the full hand (mesh paths
-are relative to that folder) as ``<hand>_left_<tag>.{urdf,spec.json}`` (tag ``no_<finger>``, or ``only_<a>_<b>`` for a hand with only those
+are relative to that folder) as ``<hand>_<side>_<tag>.{urdf,spec.json}`` (tag ``no_<finger>``, or ``only_<a>_<b>`` for a hand with only those
 fingers kept); registered as ``<hand>_left_uniform_handonly_<tag>``.
 
     python3 assets/urdf/unified_dynamics_commercial_hands/make_missing_fingers.py [hand ...]
@@ -57,10 +57,16 @@ def subtree(root: ET.Element, first_joint: str) -> tuple[set[str], set[str]]:
     return links, joints
 
 
+def _name_side(hand: str) -> tuple[str, str]:
+    """'wuji2_right' -> ('wuji2', 'right'): the right hand (make_uniform.py's naming); otherwise left."""
+    return (hand[:-len("_right")], "right") if hand.endswith("_right") else (hand, "left")
+
+
 def remove_fingers(hand: str, fingers: list[str], tag: str) -> list[Path]:
-    """The full hand minus every finger in ``fingers``, written as ``<hand>_left_<tag>.{urdf,spec.json}``."""
-    src_urdf = HERE / hand / f"{hand}_left.urdf"
-    spec = json.loads((HERE / hand / f"{hand}_left.spec.json").read_text())
+    """The full hand minus every finger in ``fingers``, written as ``<hand>_<side>_<tag>.{urdf,spec.json}``."""
+    hand, side = _name_side(hand)
+    src_urdf = HERE / hand / f"{hand}_{side}.urdf"
+    spec = json.loads((HERE / hand / f"{hand}_{side}.spec.json").read_text())
     names = FINGER_NAMES[hand]
     tips = spec["fingertip_body_names"]
     if len(names) != len(tips):
@@ -81,12 +87,12 @@ def remove_fingers(hand: str, fingers: list[str], tag: str) -> list[Path]:
     for el in list(root):
         if (el.tag == "link" and el.get("name") in links) or (el.tag == "joint" and el.get("name") in joints):
             root.remove(el)
-    out_urdf = HERE / hand / f"{hand}_left_{tag}.urdf"
+    out_urdf = HERE / hand / f"{hand}_{side}_{tag}.urdf"
     tree.write(out_urdf, encoding="utf-8", xml_declaration=True)
 
     s = dict(spec)
     keep = [i for i, t in enumerate(tips) if t not in links]
-    s["hand"] = f"{hand}_{tag}"
+    s["hand"] = f"{spec['hand']}_{tag}"          # the full hand's own name: wuji2_no_pinky, wuji2_right_no_pinky
     s["urdf"] = str(out_urdf.relative_to(HERE.parents[2]))
     s["hand_joint_names"] = [j for j in spec["hand_joint_names"] if j not in joints]
     s["joint_limits"] = {k: v for k, v in spec["joint_limits"].items() if k not in joints}
@@ -100,10 +106,10 @@ def remove_fingers(hand: str, fingers: list[str], tag: str) -> list[Path]:
     kept = [n for n in names if n not in fingers]
     s["missing_finger"] = {"finger": "+".join(fingers), "kept_fingers": kept,
                            "removed_joints": sorted(joints), "removed_links": sorted(links)}
-    out_spec = HERE / hand / f"{hand}_left_{tag}.spec.json"
+    out_spec = HERE / hand / f"{hand}_{side}_{tag}.spec.json"
     out_spec.write_text(json.dumps(s, indent=1))
     n_rev = sum(1 for j in spec["hand_joint_names"] if j in joints)
-    print(f"{hand:8s} {tag:22s}: {len(s['hand_joint_names'])} joints ({n_rev} removed), "
+    print(f"{hand + ('_right' if side == 'right' else ''):12s} {tag:26s}: {len(s['hand_joint_names'])} joints ({n_rev} removed), "
           f"{len(s['fingertip_body_names'])} tips (kept {', '.join(kept)})")
     return [out_urdf, out_spec]
 
@@ -111,21 +117,41 @@ def remove_fingers(hand: str, fingers: list[str], tag: str) -> list[Path]:
 def make(hand: str) -> list[Path]:
     """One variant per finger: the hand without that finger (``<hand>_left_no_<finger>``)."""
     written = []
-    for finger in FINGER_NAMES[hand]:
+    for finger in FINGER_NAMES[_name_side(hand)[0]]:
         written += remove_fingers(hand, [finger], f"no_{finger}")
     return written
 
 
 def make_only(hand: str, keep: list[str]) -> list[Path]:
     """The hand with only the fingers in ``keep`` (``<hand>_left_only_<a>_<b>...``)."""
-    drop = [f for f in FINGER_NAMES[hand] if f not in keep]
-    return remove_fingers(hand, drop, "only_" + "_".join(keep))
+    names = FINGER_NAMES[_name_side(hand)[0]]
+    drop = [f for f in names if f not in keep]
+    return remove_fingers(hand, drop, "only_" + "_".join(f for f in names if f in keep))   # tag in finger order
+
+
+def make_all(hand: str, min_fingers: int = 2) -> list[Path]:
+    """Every proper subset with at least ``min_fingers`` fingers: one finger short -> no_<finger> (as make),
+    fewer -> only_<a>_<b>... The full hand itself is make_uniform.py's."""
+    import itertools
+    names = FINGER_NAMES[_name_side(hand)[0]]
+    written = []
+    for k in range(len(names) - 1, min_fingers - 1, -1):
+        for keep in itertools.combinations(names, k):
+            if k == len(names) - 1:
+                (missing,) = [f for f in names if f not in keep]
+                written += remove_fingers(hand, [missing], f"no_{missing}")
+            else:
+                written += make_only(hand, list(keep))
+    return written
 
 
 if __name__ == "__main__":
     # make_missing_fingers.py [hand ...]                     one variant per removed finger
     # make_missing_fingers.py --only wuji2 middle ring       only the listed fingers kept
-    if len(sys.argv) > 1 and sys.argv[1] == "--only":
+    # make_missing_fingers.py --all wuji2_right 2            every subset of >= 2 fingers (wuji2_right = right hand)
+    if len(sys.argv) > 1 and sys.argv[1] == "--all":
+        make_all(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 2)
+    elif len(sys.argv) > 1 and sys.argv[1] == "--only":
         make_only(sys.argv[2], sys.argv[3:])
     else:
         for h in sys.argv[1:] or ["wuji2"]:

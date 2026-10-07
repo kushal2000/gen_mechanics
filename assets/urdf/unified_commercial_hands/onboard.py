@@ -54,6 +54,11 @@ HANDS = {
     "wuji2": dict(vendor="wuji2/vendor_left/wuji2_left.urdf", palm="l_wrist",
                   tips=["l_thumb_distal", "l_index_finger_distal", "l_middle_finger_distal",
                         "l_ring_finger_distal", "l_pinky_distal"], thumb="thumb"),
+    # Wuji's own right hand (vendor_right, same repo and commit as the left): the left's mirror. Its palm frame
+    # comes out mirrored too -- x, z found geometrically, y = z cross x -- so the thumb sits at +y, not -y.
+    "wuji2_right": dict(vendor="wuji2/vendor_right/wuji2_right.urdf", palm="r_wrist",
+                        tips=["r_thumb_distal", "r_index_finger_distal", "r_middle_finger_distal",
+                              "r_ring_finger_distal", "r_pinky_distal"], thumb="thumb"),
     "xhand": dict(vendor="xhand/vendor_left/xhand_left.urdf", palm="left_hand_link",
                   tips=["left_hand_thumb_rota_link2", "left_hand_index_rota_link2", "left_hand_mid_link2",
                         "left_hand_ring_link2", "left_hand_pinky_link2"], thumb="thumb"),
@@ -83,7 +88,8 @@ def usd_name(name: str) -> str:
 def unify(hand: str, cfg: dict, side: str) -> Path:
     """Re-root the vendor URDF at the palm; keep only the palm's subtree. Mesh paths stay valid."""
     src = HERE / cfg["vendor"]
-    if "vendor_left" not in cfg["vendor"]:          # an already-unified hand (allegro right): use as is
+    vendor_dir = Path(cfg["vendor"]).parent.name   # vendor_left or vendor_right
+    if not vendor_dir.startswith("vendor_"):        # an already-unified hand (allegro right): use as is
         return src
     root = ET.parse(src).getroot()
     joints = root.findall("joint"); links = {l.get("name"): l for l in root.findall("link")}
@@ -115,8 +121,8 @@ def unify(hand: str, cfg: dict, side: str) -> Path:
         el.set("joint", usd_name(el.get("joint")))
     if renamed:
         out.insert(1, ET.Comment(" renamed to valid USD identifiers: " + ", ".join(f"{a} to {b}" for a, b in renamed.items()) + " "))
-    for m in out.iter("mesh"):                       # meshes live in vendor_left/meshes
-        m.set("filename", "vendor_left/" + m.get("filename"))
+    for m in out.iter("mesh"):                       # meshes live in vendor_<side>/meshes
+        m.set("filename", f"{vendor_dir}/" + m.get("filename"))
     for v in out.iter("visual"):                     # the wandb viewer has no Collada loader: .dae -> STL
         m = v.find("geometry/mesh")
         if m is not None and m.get("filename").lower().endswith(".dae"):
@@ -153,7 +159,7 @@ def body_meshes(robot, body: str, merged: dict) -> list[trimesh.Trimesh]:
 
 def measure(hand: str, cfg: dict, urdf: Path, side: str) -> dict:
     robot = yourdfpy.URDF.load(str(urdf), build_collision_scene_graph=True, load_collision_meshes=True)
-    unified_names = "vendor_left" in cfg["vendor"]
+    unified_names = "/vendor_" in cfg["vendor"]
     nm = usd_name if unified_names else (lambda x: x)
     palm = nm(cfg["palm"]); tips = [nm(t) for t in cfg["tips"]]; thumb = re.compile(cfg["thumb"])
     # post-merge bodies: a link is its own body unless its parent joint is fixed

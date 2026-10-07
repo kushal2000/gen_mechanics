@@ -22,7 +22,8 @@ dynamics, following the generated hands' rules (``hand_sampler/robot_param_const
 JOINT CONVENTIONS are canonicalised too (kinematics unchanged -- every link lands where it did): for
 each joint, the direction its link moves at +q is taken at the home pose in our palm frame (x = grasp
 normal, y = width, z = wrist -> fingertip). Mostly sideways (along y) -> a SPREAD joint, and +q must move
-toward +y (all hands are left hands in the same palm convention, so +y is the same anatomical side);
+toward +y (for left hands +y is the same anatomical side; a RIGHT hand's palm frame is the mirror -- onboard.py's
+y = z x x puts its thumb at +y -- so its spread joints follow the same GEOMETRIC rule, not the anatomical one);
 otherwise a FLEXION joint, and +q must move the fingertip toward the grasp point 5 cm in front of the palm
 centre (curling, for a finger; it also gives the thumb a direction). A joint that points the other way is flipped (axis and
 limits negated), and a joint whose 0 lies outside its range is re-zeroed at its home pose (the joint origin
@@ -73,6 +74,12 @@ PLACEHOLDER_MASS, PLACEHOLDER_I = 1e-3, 1e-8
 # hand -> source URDF (relative to SRC). SHARPA's unified URDF predates onboard.py's naming.
 HANDS = {h: f"{h}/{h}_left.urdf" for h in ("allegro", "leap", "shadow", "dex3", "tesollo", "wuji2", "xhand")}
 HANDS["sharpa"] = "sharpa/sharpa.urdf"
+HANDS["wuji2_right"] = "wuji2/wuji2_right.urdf"      # written as wuji2/wuji2_right.*
+
+
+def _name_side(hand: str) -> tuple[str, str]:
+    """'wuji2_right' -> ('wuji2', 'right'); anything else is a left hand."""
+    return (hand[:-len("_right")], "right") if hand.endswith("_right") else (hand, "left")
 SHARPA_PALM = "left_hand_C_MC"
 
 
@@ -136,7 +143,8 @@ def _mass_props(parts) -> tuple[float, np.ndarray, np.ndarray]:
 
 def _palm_frame(hand: str) -> np.ndarray:
     """Columns: our (normal, width, finger) axes in the palm body's frame (onboard.py's measurement)."""
-    spec = SRC / hand / f"{hand}_left.spec.json"
+    name, side = _name_side(hand)
+    spec = SRC / name / f"{name}_{side}.spec.json"
     if spec.is_file():
         return np.asarray(json.loads(spec.read_text())["palm_frame"], float)
     sys.path.insert(0, str(SRC))
@@ -147,7 +155,8 @@ def _palm_frame(hand: str) -> np.ndarray:
 
 def _tips(hand: str):
     """The spec's fingertip bodies and pad offsets (in each tip body's frame)."""
-    spec = SRC / hand / f"{hand}_left.spec.json"
+    name, side = _name_side(hand)
+    spec = SRC / name / f"{name}_{side}.spec.json"
     if spec.is_file():
         s = json.loads(spec.read_text())
         return list(s["fingertip_body_names"]), [np.asarray(o, float) for o in s["fingertip_offsets"]]
@@ -159,7 +168,8 @@ GRASP_OFFSET_M = 0.05   # the grasp point: 5 cm in front of the palm centre, whe
 
 
 def _palm_centre_ours(hand: str) -> np.ndarray:
-    spec = SRC / hand / f"{hand}_left.spec.json"
+    name, side = _name_side(hand)
+    spec = SRC / name / f"{name}_{side}.spec.json"
     if spec.is_file():
         return np.asarray(json.loads(spec.read_text())["palm_centre_ours"], float)
     sys.path.insert(0, str(SRC))
@@ -297,7 +307,8 @@ def palm_near_links(urdf: Path, depth: int = 2) -> tuple[str, list[str]]:
 
 def make(hand: str, rel: str) -> dict:
     src = SRC / rel
-    out_dir = HERE / hand
+    name, side = _name_side(hand)
+    out_dir = HERE / name
     out_dir.mkdir(exist_ok=True)
     root = ET.parse(src).getroot()
     cmap = canonical_map(src, _palm_frame(hand), *_tips(hand), _palm_centre_ours(hand))
@@ -346,10 +357,10 @@ def make(hand: str, rel: str) -> dict:
         f"kinematics and geometry unchanged; every joint effort {EFFORT} N.m, velocity {VELOCITY} rad/s, "
         f"damping {DAMPING:.4g}; link inertials from collision hulls at {DENSITY:.0f} kg/m^3 (palm kept). "
         "Do not hand-edit. "))
-    dst = out_dir / f"{hand}_left.urdf"
+    dst = out_dir / f"{name}_{side}.urdf"
     ET.ElementTree(root).write(dst, xml_declaration=True, encoding="utf-8")
 
-    spec_src = SRC / hand / f"{hand}_left.spec.json"
+    spec_src = SRC / name / f"{name}_{side}.spec.json"
     if spec_src.is_file():
         spec = json.loads(spec_src.read_text())
         spec["hand_default_joint_pos"] = {n: 0.0 for n in spec["hand_default_joint_pos"]}   # home is 0 now
@@ -368,23 +379,31 @@ def make(hand: str, rel: str) -> dict:
         spec.update({"urdf": str(dst.relative_to(REPO)), "stiffness": STIFFNESS, "damping": DAMPING,
                      "armature": ARMATURE, "effort_limit": EFFORT, "velocity_limit": VELOCITY,
                      "link_density_kg_m3": DENSITY, "friction": FRICTION})
-        (out_dir / f"{hand}_left.spec.json").write_text(json.dumps(spec, indent=1))
+        (out_dir / f"{name}_{side}.spec.json").write_text(json.dumps(spec, indent=1))
     summary.update({"joints": n_joints, "finger_mass_kg": round(sum(summary["links"].values()), 4),
                     "canonical": cmap})
     return summary
 
 
 if __name__ == "__main__":
+    # make_uniform.py [hand ...]: only those hands (e.g. wuji2_right); none = all. masses.json and
+    # canonical_map.json are MERGED, so a partial run leaves the other hands' entries as they were.
+    only = sys.argv[1:]
     report = {}
     for hand, rel in HANDS.items():
+        if only and hand not in only:
+            continue
         s = make(hand, rel)
         report[hand] = s
         ms = sorted(s["links"].values())
         print(f"{hand:8s} {s['joints']:2d} joints  finger links {len(ms):2d}  total {s['finger_mass_kg']:.3f} kg  "
               f"median {1000 * np.median(ms):5.1f} g  min {1000 * ms[0]:6.2f} g  palm '{s['palm']}' kept")
-    (HERE / "masses.json").write_text(json.dumps({h: {k: v for k, v in r.items() if k != "canonical"}
-                                                 for h, r in report.items()}, indent=1))
-    (HERE / "canonical_map.json").write_text(json.dumps({h: r["canonical"] for h, r in report.items()}, indent=1))
+    masses = json.loads((HERE / "masses.json").read_text()) if only else {}
+    canon = json.loads((HERE / "canonical_map.json").read_text()) if only else {}
+    masses.update({h: {k: v for k, v in r.items() if k != "canonical"} for h, r in report.items()})
+    canon.update({h: r["canonical"] for h, r in report.items()})
+    (HERE / "masses.json").write_text(json.dumps(masses, indent=1))
+    (HERE / "canonical_map.json").write_text(json.dumps(canon, indent=1))
     for h, r in report.items():
         c = r["canonical"]
         flips = [n for n, v in c.items() if v["sign"] < 0]
