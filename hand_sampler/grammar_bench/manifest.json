@@ -6,7 +6,8 @@
     "per-hand data annotations only; no per-hand code, tolerances or skips",
     "commit_allowed=false hands are referenced by path+sha256 and never copied into git",
     "held-out hands are used only by the coverage report, never to develop rules",
-    "changing any entry is a benchmark commit with a written reason"
+    "changing any entry is a benchmark commit with a written reason",
+    "reference_set: the grammar's commercial reference set (GRAMMAR-LOCK item 19); annotations tip_points, drop_joints and thumb_joint are per-hand data"
   ],
   "hands": [
     {
@@ -22,7 +23,8 @@
       "fixture_path": "fixtures/real/allegro_right/allegro_hand_description_right.urdf",
       "license_evidence": "fixtures/real/allegro_right/LICENSE_EVIDENCE_LICENSE.TXT",
       "source_path": "Allegro/urdf/allegro_hand_description_right.urdf",
-      "sha256": "f6da40348c71793d30a5d96b7e50db8e8234a05a6e66de550c95147d8e373c96"
+      "sha256": "f6da40348c71793d30a5d96b7e50db8e8234a05a6e66de550c95147d8e373c96",
+      "thumb_joint": "joint_12"
     },
     {
       "id": "leap_right",
@@ -37,7 +39,8 @@
       "fixture_path": "fixtures/real/leap_right/leap_hand_right.urdf",
       "license_evidence": "fixtures/real/leap_right/LICENSE_EVIDENCE_LICENSE.txt",
       "source_path": "Leap/leap_hand_right.urdf",
-      "sha256": "7170056b44553779af566a33a3f80fc44c431f739d85fff809e9a16ed4887f76"
+      "sha256": "7170056b44553779af566a33a3f80fc44c431f739d85fff809e9a16ed4887f76",
+      "thumb_joint": "12"
     },
     {
       "id": "barrett_bh",
@@ -47,12 +50,30 @@
       "commit_allowed": true,
       "source_url": "Barrett Technology bhand_model",
       "retrieved": "2026-09-25",
-      "notes": "Spread joints are physically coupled; the URDF declares no mimic. Not added as ground truth.",
+      "notes": "Spread joints are physically coupled; the URDF declares no mimic. Not added as ground truth. Fingertip: the far cap of meshes/visual/dist_link.obj (vertices within 10% of the farthest from the distal joint), measured 2026-10-07.",
       "hand_root": null,
       "fixture_path": "fixtures/real/barrett_bh/bhand_model.urdf",
       "license_evidence": "fixtures/real/barrett_bh/LICENSE_EVIDENCE_LICENSE",
       "source_path": "Barrett/bhand_model.urdf",
-      "sha256": "13cbfdb7715e54f4e10f9e1f2c7620db6c5f6b2b05adf9a16cdd795cda620fc1"
+      "sha256": "13cbfdb7715e54f4e10f9e1f2c7620db6c5f6b2b05adf9a16cdd795cda620fc1",
+      "tip_points": {
+        "finger_1_dist_joint": [
+          -0.0418,
+          0.0363,
+          0.0008
+        ],
+        "finger_2_dist_joint": [
+          -0.0418,
+          0.0363,
+          0.0008
+        ],
+        "finger_3_dist_joint": [
+          -0.0418,
+          0.0363,
+          0.0008
+        ]
+      },
+      "thumb_joint": "finger_3_med_joint"
     },
     {
       "id": "ability_right",
@@ -112,7 +133,8 @@
       "fixture_path": "fixtures/real/wuji_right/right.urdf",
       "license_evidence": "fixtures/real/wuji_right/LICENSE_EVIDENCE_package.xml",
       "source_path": "Wuji/urdf/right.urdf",
-      "sha256": "a6b802db342c878d8e50c7ef673668d1650e5f3b9edc7d0fa2e56877762ac623"
+      "sha256": "a6b802db342c878d8e50c7ef673668d1650e5f3b9edc7d0fa2e56877762ac623",
+      "thumb_joint": "right_finger1_joint1"
     },
     {
       "id": "xhand_right",
@@ -142,7 +164,8 @@
       "fixture_path": "fixtures/real/tesollo_dg5f_right/dg5f_right.urdf",
       "license_evidence": "fixtures/real/tesollo_dg5f_right/LICENSE_EVIDENCE_package.xml",
       "source_path": "Tessolo 5f/dg5f_description/urdf/dg5f_right.urdf",
-      "sha256": "69e7b1d97eea46b6bee468e63550dfb1b28d7f747b832cd3e0f2ffb48f89073a"
+      "sha256": "69e7b1d97eea46b6bee468e63550dfb1b28d7f747b832cd3e0f2ffb48f89073a",
+      "thumb_joint": "rj_dg_1_1"
     },
     {
       "id": "orca_right",
@@ -169,7 +192,9 @@
       "retrieved": "2026-09-25",
       "notes": "Arm links must be cut at hand_root.",
       "hand_root": "left_hand_C_MC",
-      "palm_joints": ["left_5_pinky_CMC"],
+      "palm_joints": [
+        "left_5_pinky_CMC"
+      ],
       "fixture_path": null,
       "license_evidence": "repo README (MIT project) and hand_sampler/robot_param_constants.py provenance comment",
       "source_path": "REPO:assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf",
@@ -200,11 +225,14 @@
       "retrieved": "2026-09-26",
       "notes": "GPL: local-only reference, never committed. Representation-check-only sibling of the excluded shadow_right entry (a separate local karma copy, hand_root cuts the wrist WRJ1/WRJ2 above rh_palm). rh_LFJ5 is an independent (uncoupled) articulated-palm joint, no mimic.",
       "hand_root": "rh_palm",
-      "palm_joints": ["rh_LFJ5"],
+      "palm_joints": [
+        "rh_LFJ5"
+      ],
       "fixture_path": null,
       "license_evidence": null,
       "source_path": "/home/singularity/karma/karma-hand-metric/robots/urdfs/shadowhand.urdf",
-      "sha256": "d8299fa683ae0885553e6e7f3168c94fe7ddbdea2705a7572d9d6d056de99440"
+      "sha256": "d8299fa683ae0885553e6e7f3168c94fe7ddbdea2705a7572d9d6d056de99440",
+      "thumb_joint": "rh_THJ5"
     },
     {
       "id": "svh_right",
@@ -216,10 +244,15 @@
       "retrieved": "2026-09-26",
       "notes": "20R + 11 mimic; licence unverified, local-only, never committed. right_hand_j5 (the articulated-palm thumb-opposition joint) mimics right_hand_Thumb_Opposition, and the index/ring spread joints mimic right_hand_Finger_Spread: both are cross-digit/cross-palm couplings the current projection schema does not represent as Coupled (expected coupling_not_in_structure / silently-independent palm joint; see E13 notes).",
       "hand_root": "right_hand_base_link",
-      "palm_joints": ["right_hand_j5"],
+      "palm_joints": [
+        "right_hand_j5"
+      ],
       "tip_frames": {
-        "right_hand_c": "thtip", "right_hand_t": "fftip", "right_hand_s": "mftip",
-        "right_hand_r": "rftip", "right_hand_q": "lftip"
+        "right_hand_c": "thtip",
+        "right_hand_t": "fftip",
+        "right_hand_s": "mftip",
+        "right_hand_r": "rftip",
+        "right_hand_q": "lftip"
       },
       "fixture_path": null,
       "license_evidence": null,
@@ -234,13 +267,18 @@
       "commit_allowed": false,
       "source_url": "ARMS skeleton model (repo asset under ~/karma)",
       "retrieved": "2026-09-26",
-      "notes": "Tendon-driven finger skeleton, no soft tissue; licence unverified, local-only, never committed. hand_root cuts the fixed world_orientation_joint above world_oriented. CMC5 mimics CMC4 (cross-palm coupling the current projection schema does not represent as Coupled; see E13 notes). Fingertip links (2distph/3distph/4distph/5distph/distal_thumb) have no fixed child beyond the last movable joint, so all 5 digits report fingertip_undefined -- expected for a bare skeleton.",
+      "notes": "Tendon-driven finger skeleton, no soft tissue; licence unverified, local-only, never committed. hand_root cuts the fixed world_orientation_joint above world_oriented. CMC5 mimics CMC4 (cross-palm coupling the current projection schema does not represent as Coupled; see E13 notes). Fingertip links (2distph/3distph/4distph/5distph/distal_thumb) have no fixed child beyond the last movable joint, so all 5 digits report fingertip_undefined -- expected for a bare skeleton. No meshes: the fingertip continues the last bone by the length of the one before it (tip_extend).",
       "hand_root": "world_oriented",
-      "palm_joints": ["CMC4", "CMC5"],
+      "palm_joints": [
+        "CMC4",
+        "CMC5"
+      ],
       "fixture_path": null,
       "license_evidence": null,
       "source_path": "/home/singularity/karma/karma-hand-metric/robots/urdfs/ARMS_skel.urdf",
-      "sha256": "5766a6539aabb353c00dc7f1e2290ae9c0df1c63970846c0c71893a88c6c2ee7"
+      "sha256": "5766a6539aabb353c00dc7f1e2290ae9c0df1c63970846c0c71893a88c6c2ee7",
+      "tip_extend": true,
+      "thumb_joint": "CMC1a"
     },
     {
       "id": "dex1",
@@ -256,6 +294,185 @@
       "license_evidence": null,
       "source_path": "Dex1/dex1_1.urdf",
       "sha256": "31f2fa154e78a6d84a3c857fab797567cd156b5bf75fda9b5a6498faf09ae161"
+    },
+    {
+      "id": "dex3_left",
+      "family": "F4_three_finger",
+      "split": "reference",
+      "license": "BSD-3-Clause (Unitree)",
+      "commit_allowed": true,
+      "source_url": "https://github.com/unitreerobotics/unitree_ros",
+      "retrieved": "2026-10-07",
+      "notes": "Kushal's unified URDF (2026-10-06-controlled_wuji_experiments@bbd0d95); kinematics only on this branch. Fingertips from his spec's fingertip_offsets.",
+      "hand_root": "left_hand_palm_link",
+      "fixture_path": null,
+      "license_evidence": "REPO:assets/urdf/unified_commercial_hands/dex3/vendor_left/LICENSE",
+      "source_path": "REPO:assets/urdf/unified_commercial_hands/dex3/dex3_left.urdf",
+      "sha256": "6658bcdf51c2bd49ed6ef83f2b41a79a90d893eca68528436b70ed11d94cc491",
+      "tip_points": {
+        "left_hand_thumb_2_joint": [
+          -0.002017147319153222,
+          -0.05129443653500997,
+          -4.010896483263283e-05
+        ],
+        "left_hand_middle_1_joint": [
+          0.05129443653500997,
+          0.002017147319153222,
+          4.010896483263283e-05
+        ],
+        "left_hand_index_1_joint": [
+          0.05129443653500997,
+          0.002017147319153222,
+          4.010896483263283e-05
+        ]
+      }
+    },
+    {
+      "id": "wuji2_left",
+      "family": "F2_five_finger_full",
+      "split": "reference",
+      "license": "MIT (Wuji)",
+      "commit_allowed": true,
+      "source_url": "https://github.com/wuji-technology/wuji-description",
+      "retrieved": "2026-10-07",
+      "notes": "Kushal's unified URDF (2026-10-06-controlled_wuji_experiments@bbd0d95); kinematics only on this branch. Fingertips from his spec's fingertip_offsets.",
+      "hand_root": "l_wrist",
+      "fixture_path": null,
+      "license_evidence": "REPO:assets/urdf/unified_commercial_hands/wuji2/vendor_left/LICENSE",
+      "source_path": "REPO:assets/urdf/unified_commercial_hands/wuji2/wuji2_left.urdf",
+      "sha256": "483d60b22d6c27074dd489593752b570f2ba28c9f9d81a7d97c7d1fc7fd9a765",
+      "tip_points": {
+        "l_thumb_ip": [
+          0.0,
+          0.0,
+          -0.029787
+        ],
+        "l_index_finger_dip": [
+          0.0,
+          0.0,
+          -0.02475
+        ],
+        "l_middle_finger_dip": [
+          0.0,
+          0.0,
+          -0.02475
+        ],
+        "l_ring_finger_dip": [
+          0.0,
+          0.0,
+          -0.02475
+        ],
+        "l_pinky_dip": [
+          0.0,
+          0.0,
+          -0.02475
+        ]
+      }
+    },
+    {
+      "id": "wuji2_right",
+      "family": "F2_five_finger_full",
+      "split": "reference",
+      "license": "MIT (Wuji)",
+      "commit_allowed": true,
+      "source_url": "https://github.com/wuji-technology/wuji-description",
+      "retrieved": "2026-10-07",
+      "notes": "Kushal's unified URDF (2026-10-06-controlled_wuji_experiments@bbd0d95); kinematics only on this branch. Fingertips from his spec's fingertip_offsets.",
+      "hand_root": "r_wrist",
+      "fixture_path": null,
+      "license_evidence": "REPO:assets/urdf/unified_commercial_hands/wuji2/vendor_right/LICENSE",
+      "source_path": "REPO:assets/urdf/unified_commercial_hands/wuji2/wuji2_right.urdf",
+      "sha256": "dc8de546def7f517649de31f838ceb1484e4b33b320b3583189f2926e67a61d9",
+      "tip_points": {
+        "r_thumb_ip": [
+          0.0,
+          0.0,
+          -0.02978
+        ],
+        "r_index_finger_dip": [
+          0.0,
+          0.0,
+          -0.02475
+        ],
+        "r_middle_finger_dip": [
+          0.0,
+          0.0,
+          -0.02475
+        ],
+        "r_ring_finger_dip": [
+          0.0,
+          0.0,
+          -0.02475
+        ],
+        "r_pinky_dip": [
+          0.0,
+          0.0,
+          -0.02475
+        ]
+      }
+    },
+    {
+      "id": "midas",
+      "family": "F2_four_finger_linkage",
+      "split": "reference",
+      "license": "MIT (MIDAS)",
+      "commit_allowed": true,
+      "source_url": "https://github.com/midas-hand-org/midas_hand_mujoco",
+      "retrieved": "2026-10-07",
+      "notes": "Vatsal's vendored URDF (2026-10-02_physical_grammar@d089694). The three *_dip_linkage_joint close four-bar loops and are dropped; fingertips from the vendor MuJoCo contact geometry (Vatsal's commercial.TIP_FALLBACK).",
+      "hand_root": "palm_base",
+      "fixture_path": null,
+      "license_evidence": "REPO:assets/urdf/unified_dynamics_commercial_hands/midas/LICENSE",
+      "source_path": "REPO:assets/urdf/unified_dynamics_commercial_hands/midas/midas.urdf",
+      "sha256": "4b71a7c09ec6dffa2d7b8653f78db690192c9d7840bb38f1fd866c54b1a1649f",
+      "drop_joints": [
+        "index_dip_linkage_joint",
+        "middle_dip_linkage_joint",
+        "ring_dip_linkage_joint"
+      ],
+      "tip_points": {
+        "thumb_dip_joint": [
+          -0.004,
+          0.023,
+          -0.017
+        ],
+        "index_dip_joint": [
+          0.0016,
+          0.021,
+          -0.0085
+        ],
+        "middle_dip_joint": [
+          0.0016,
+          0.021,
+          -0.0085
+        ],
+        "ring_dip_joint": [
+          0.0016,
+          0.021,
+          -0.0085
+        ]
+      }
     }
+  ],
+  "reference_set": [
+    "ability_right",
+    "allegro_right",
+    "arms_skel",
+    "barrett_bh",
+    "dclaw",
+    "dex1",
+    "inspire_right",
+    "leap_right",
+    "orca_right",
+    "shadow_right_local",
+    "sharpa_left_on_iiwa14",
+    "svh_right",
+    "tesollo_dg5f_right",
+    "wuji_right",
+    "xhand_right",
+    "dex3_left",
+    "wuji2_left",
+    "wuji2_right",
+    "midas"
   ]
 }
