@@ -40,6 +40,10 @@ INT_FIELDS: Tuple[IntField, ...] = (
     IntField("max_finger_chains", "max finger slots",
              "Fingers on the rigid palm plus palm joints: the simulator has 5 finger slots, and every palm joint "
              "takes one.", (ANY,) + tuple(str(i) for i in range(1, 9))),
+    IntField("max_finger_length_mm", "max finger length (mm)",
+             "Longest finger: the sum of its bone lengths from its base to its farthest fingertip, branch fingers "
+             "included. 250 mm is the longest commercial finger (DClaw, 221 mm) x 1.1.",
+             (ANY, "100", "150", "200", "250", "300", "400")),
 )
 
 BOOL_FIELDS: Tuple[Tuple[str, str, str], ...] = (
@@ -60,8 +64,10 @@ JOINT_TYPES_HINT = "Joint types that may be generated: hinge (limited range), co
 COUPLED_HINT = "Coupled joints: a hinge that follows an earlier hinge of the same finger (needs hinges)."
 
 
-def int_to_option(v: Optional[int]) -> str:
-    return ANY if v is None else str(v)
+def int_to_option(v: Optional[float]) -> str:
+    if v is None:
+        return ANY
+    return str(int(v)) if float(v).is_integer() else str(v)
 
 
 def option_to_int(s: str) -> Optional[int]:
