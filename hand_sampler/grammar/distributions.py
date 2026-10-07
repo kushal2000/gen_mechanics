@@ -248,8 +248,41 @@ class Distribution:
     # as before this field existed.
     opposition_use_host_frame: bool = False
 
+    # Lateral mounts (2026-10-06, commercial hands under the grammar's
+    # rules): real hands mount their fingers side by side across a palm
+    # 20-60 mm wide (and articulated palm pieces beside each other), but the
+    # grammar mounts a top-level digit or a palm body ON its host's axis (a
+    # digit, with ``mount_on_host_surface``, one capsule radius off it), so no
+    # conformed commercial hand can keep its finger spread. When set, the
+    # mount point of every top-level digit and palm body gets a lateral
+    # (x, y) offset in the host's frame, each component on this grid (metres)
+    # within +/- ``mount_lateral_max_m`` (the step's ``mount_offset``, which
+    # ``derive`` already applies). For digits, ``mount_on_host_surface``
+    # takes precedence when both are set. ``None`` (default): no offset and
+    # no random draw at all, so every existing variant samples
+    # byte-identically.
+    mount_lateral_grid_m: Optional[float] = None
+    mount_lateral_max_m: float = 0.05
+
 
 DEFAULT_DISTRIBUTION = Distribution()
+
+
+def lateral_offset_choices_m(dist: "Distribution") -> Tuple[float, ...]:
+    """The grid values one component of a lateral mount offset can take
+    (``Distribution.mount_lateral_grid_m``); ``(0.0,)`` when off."""
+    g = dist.mount_lateral_grid_m
+    if g is None:
+        return (0.0,)
+    n = int(math.floor(dist.mount_lateral_max_m / g + 1e-9))
+    return tuple(round(k * g, 10) for k in range(-n, n + 1))
+
+
+def sample_lateral_offset(rng: np.random.Generator, dist: "Distribution") -> Tuple[float, float]:
+    """A lateral mount offset (x, y) on the grid; two ``rng.integers``
+    draws. Only called when ``dist.mount_lateral_grid_m`` is set."""
+    choices = lateral_offset_choices_m(dist)
+    return (choices[int(rng.integers(0, len(choices)))], choices[int(rng.integers(0, len(choices)))])
 
 
 # --- Low-level grid samplers (each takes an explicit Generator) -------------

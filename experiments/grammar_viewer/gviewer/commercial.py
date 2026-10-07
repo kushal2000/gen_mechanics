@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from hand_sampler.grammar.adapters import conform as gconform
 from hand_sampler.grammar.adapters.projection import ProjectionFailure, ProjectionResult, project_to_derivation
 from hand_sampler.grammar.adapters.urdf import ImportResult, load_urdf
 from hand_sampler.grammar.derive import derive, validate_derivation
@@ -172,6 +173,18 @@ def projection_fidelity(model: KinematicModel, pr: ProjectionResult, derived: Ki
 
 
 @dataclass
+class Conformed:
+    """The projection snapped onto one variant's discretisation
+    (``adapters/conform.py``): a genuine member of that variant's space."""
+    variant: str
+    derivation: Any
+    report: Any                    # conform.ConformReport
+    derived: KinematicModel
+    fidelity: Dict[str, Any]       # conform.fidelity: max_pos_mm, max_axis_deg, max_tip_mm, within_target
+    root_transform: np.ndarray     # the projection's, composed with the conform root shift
+
+
+@dataclass
 class CommercialHand:
     entry: HandEntry
     imported: Optional[ImportResult] = None
@@ -182,10 +195,23 @@ class CommercialHand:
     error: Optional[str] = None
     sha_ok: Optional[bool] = None
     derived_to_orig_joint: Dict[str, str] = field(default_factory=dict)
+    conformed_cache: Dict[str, Conformed] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
         return self.derived is not None
+
+    def conformed(self, variant: str, dist) -> Conformed:
+        """The projection conformed to ``dist`` (cached per variant name)."""
+        hit = self.conformed_cache.get(variant)
+        if hit is None:
+            cd, rep = gconform.conform_to_grammar(self.projection.derivation, dist)
+            derived = derive(cd)
+            rt = rep.root_transform(self.projection.root_transform)
+            fid = gconform.fidelity(self.imported.model, self.projection.name_map, rt, derived)
+            hit = Conformed(variant, cd, rep, derived, fid, rt)
+            self.conformed_cache[variant] = hit
+        return hit
 
     @property
     def capsule_radius_m(self) -> Optional[float]:
@@ -231,14 +257,18 @@ class CommercialHand:
                      "nearest-spine hull cells")
         return lines
 
-    def orig_link_poses(self, u_derived: Dict[str, float]) -> Dict[str, np.ndarray]:
+    def orig_link_poses(self, u_derived: Dict[str, float],
+                        root_transform: Optional[np.ndarray] = None) -> Dict[str, np.ndarray]:
         """Original URDF link poses expressed in the DERIVED root frame, with
-        every original joint driven by its projected counterpart's value."""
+        every original joint driven by its projected counterpart's value.
+        ``root_transform``: the derived root frame (default: the projection's;
+        a conformed expression passes its own, see ``Conformed``)."""
         if self.imported is None or self.projection is None:
             return {}
         q_orig = {orig: float(u_derived.get(der, 0.0)) for der, orig in self.derived_to_orig_joint.items()}
         T = forward_kinematics(self.imported.model, q_orig)
-        inv_rt = np.linalg.inv(self.projection.root_transform)
+        rt = self.projection.root_transform if root_transform is None else root_transform
+        inv_rt = np.linalg.inv(rt)
         return {name: inv_rt @ M for name, M in T.items()}
 
 

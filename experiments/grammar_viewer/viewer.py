@@ -33,6 +33,7 @@ import numpy as np  # noqa: E402
 import viser  # noqa: E402
 
 from hand_sampler.grammar import limits as glim  # noqa: E402
+from hand_sampler.grammar.coverage import coverage  # noqa: E402
 from hand_sampler.grammar.derive import EVOLUTION_OPERATORS, Derivation, VariationImpossible, derive, vary  # noqa: E402
 from hand_sampler.grammar.kinematics import KinematicModel  # noqa: E402
 
@@ -74,6 +75,9 @@ VARIANT_NOTES: Dict[str, str] = {
     "G_NOBRANCH_INS": "G_NOBRANCH; growth mutations insert small pieces (1-3 segments).",
     "G_BEND": "G_FULL + a random rest bend (up to 30 deg, 5 mm) on 30% of segments.",
     "G_CONT": "G_FULL with joint limits drawn anywhere in +/-180 deg instead of a fixed menu.",
+    "G_WIDE": "G_FULL with rules widened to express the commercial hands: fingers mounted across the palm "
+              "(5 mm grid), a rest bend at any joint, continuous limits, mounts in 5% steps. A reference for "
+              "conforming real hands, not for sampling.",
 }
 
 # Button label and hover text for every operator in the evolution driver's
@@ -118,16 +122,37 @@ def op_label(op: str) -> str:
     return OPERATOR_INFO.get(op, (op, ""))[0]
 
 
-def fidelity_line(ch: com.CommercialHand, limits: glim.GenerationLimits) -> str:
-    """One line: projection error against the URDF, and whether the projection
-    is within the current generation limits (which ones it breaks)."""
-    parts = []
-    f = ch.fidelity
-    if f:
+# Short names for the rule conflicts conform reports (adapters/conform.py).
+CONFLICT_SHORT: Dict[str, str] = {
+    "lateral_mount_offset": "finger spread", "palm_mount_offset": "palm offsets", "rest_bend": "rest bends",
+    "forced_curl": "forced curl", "colocated_joints": "co-located joints", "limits_menu": "limits",
+    "link_length_range": "link lengths", "mount_off_segment": "mounts off palm", "axis_band": "axis band",
+    "module_kind": "joint kinds", "zero_length_palm": "zero-length palm", "digit_count": "digit count",
+    "phalanx_count": "joints per digit", "palm_body_count": "palm bodies",
+}
+
+
+def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], limits: glim.GenerationLimits,
+                  dist) -> str:
+    """One line: the shown expression's error against the URDF (E13's metric,
+    target 5 mm / 10 deg), whether it is within the grammar's rules (the
+    conformed one is; what snapping lost), and within the current limits."""
+    if conformed is None:
+        f = ch.fidelity or {}
+        pos = max(f.get("max_pos_mm", 0.0), f.get("max_tip_mm") or 0.0)
+        cov = coverage(ch.derived, dist)
+        why = sorted({r.split(":")[0].replace("_", " ") for r in cov.out_of_support})
+        rules = "yes" if cov.in_support else "no (" + ", ".join(why[:3]) + (", ..." if len(why) > 3 else "") + ")"
+        head = f"exact projection: {pos:.2g} mm / {f.get('max_axis_deg', 0.0):.2g} deg"
+        deriv = ch.projection.derivation
+    else:
+        f = conformed.fidelity
         pos = max(f["max_pos_mm"], f["max_tip_mm"] or 0.0)
-        parts.append(f"URDF error {pos:.2g} mm / {f['max_axis_deg']:.2g} deg")
-    parts.append("within limits: " + glim.check(ch.projection.derivation, limits).summary())
-    return "; ".join(parts)
+        lost = [CONFLICT_SHORT.get(k, k) for k in conformed.report.conflict_features()]
+        rules = "yes" + (" (lost: " + ", ".join(lost) + ")" if lost else "")
+        head = f"snapped to {conformed.variant}: {pos:.0f} mm / {f['max_axis_deg']:.0f} deg"
+        deriv = conformed.derivation
+    return f"{head}; within rules: {rules}; within limits: {glim.check(deriv, limits).summary()}"
 
 
 def change_line(d: hist.DiffSummary) -> str:
@@ -160,6 +185,7 @@ class Shown:
     label: str
     kind: str                                   # "sampled" | "commercial" | "mutant"
     commercial: Optional[com.CommercialHand] = None
+    conformed: Optional[com.Conformed] = None   # a commercial hand snapped to the variant (None: exact projection)
 
 
 @dataclass
@@ -189,6 +215,7 @@ class EssentialViewer:
         self.mesh_cache: Dict[str, gmesh.MeshSet] = {}
         self.spawn_handles: List[Any] = []
         self.op_status: Dict[str, str] = {}
+        self.current_hand: Optional[str] = None
         self._job_gate = threading.Lock()
         self._job_running = False
         self._job: Optional[threading.Thread] = None
@@ -307,7 +334,9 @@ class EssentialViewer:
             self._update_limits_line()
             self._update_operator_buttons()
             if self.prep is not None and self.prep.shown.commercial is not None:
-                self.md_fidelity.content = fidelity_line(self.prep.shown.commercial, self.limits())
+                sh = self.prep.shown
+                self.md_fidelity.content = fidelity_line(sh.commercial, sh.conformed, self.limits(),
+                                                         src.distribution(self.variant))
 
     def _update_limits_line(self) -> None:
         if self.prep is None:
@@ -420,7 +449,8 @@ class EssentialViewer:
                 self.ghost.update(self.parent_view.primitives(gm.curl_u(self.parent_view.ranges, self._curl())))
             ch = self.prep.shown.commercial
             if ch is not None and self.overlay.handles:
-                self.overlay.update(ch.orig_link_poses(u))
+                conf = self.prep.shown.conformed
+                self.overlay.update(ch.orig_link_poses(u, None if conf is None else conf.root_transform))
 
     def _build_ghost(self) -> None:
         self.ghost.clear()
@@ -502,6 +532,12 @@ class EssentialViewer:
         return self.run_job(f"random {variant}", job, wait=wait)
 
     def load_commercial(self, hand_id: str, wait: bool = False) -> bool:
+        """Show a commercial hand: by default its projection conformed to the
+        current variant (a member of the grammar's space that every operator
+        can act on); with "Exact projection" ticked, the exact projection."""
+        exact = bool(self.gui_exact.value)
+        variant = self.variant
+
         def job():
             ch = self.commercial_cache.get(hand_id)
             if ch is None:
@@ -514,9 +550,16 @@ class EssentialViewer:
                 links = [b.name for b in ch.imported.model.bodies]
                 self.mesh_cache[hand_id] = gmesh.load_link_meshes(ch.entry.mesh_path, links,
                                                                   fallback_dirs=self._mesh_fallbacks(ch))
-            self.md_fidelity.content = fidelity_line(ch, self.limits())
-            self.show(Shown(ch.projection.derivation, ch.derived, f"{hand_id} (projection)", "commercial",
-                            commercial=ch))
+            dist = src.distribution(variant)
+            if exact:
+                shown = Shown(ch.projection.derivation, ch.derived, f"{hand_id} (exact)", "commercial", commercial=ch)
+            else:
+                conf = ch.conformed(variant, dist)
+                shown = Shown(conf.derivation, conf.derived, f"{hand_id} (snapped to {variant})", "commercial",
+                              commercial=ch, conformed=conf)
+            self.md_fidelity.content = fidelity_line(ch, shown.conformed, self.limits(), dist)
+            self.current_hand = hand_id
+            self.show(shown)
 
         return self.run_job(f"load {hand_id}", job, wait=wait)
 
@@ -533,6 +576,7 @@ class EssentialViewer:
             self.gui_hand.value = NO_HAND
         finally:
             self._suppress = False
+        self.current_hand = None
         self.md_fidelity.content = ""
 
     # ------------------------------------------------------------------
@@ -659,6 +703,10 @@ class EssentialViewer:
             self._hand_ids = {h.label: h.id for h in hands}
             self.gui_hand = g.add_dropdown("Hand", [NO_HAND] + [h.label for h in hands], initial_value=NO_HAND,
                                            hint="A real hand's grammar projection, over its URDF meshes.")
+            self.gui_exact = g.add_checkbox("Exact projection", False,
+                                            hint="Off: the hand snapped onto the variant's grids (lengths 5 mm, "
+                                                 "angles 15 deg, limit menu, ...), a genuine member of the grammar "
+                                                 "that the operators can mutate. On: the exact, off-grid projection.")
             self.gui_meshes = g.add_checkbox("Show real meshes", True)
             self.md_fidelity = g.add_markdown("")
 
@@ -694,6 +742,11 @@ class EssentialViewer:
                 self.load_commercial(self._hand_ids[self.gui_hand.value])
 
         self.gui_meshes.on_update(lambda _: self.overlay.set_visible(bool(self.gui_meshes.value)))
+
+        @self.gui_exact.on_update
+        def _(_):
+            if self.current_hand is not None:
+                self.load_commercial(self.current_hand)
 
         for cb in self.check_boxes.values():
             cb.on_update(lambda _: self._update_status())

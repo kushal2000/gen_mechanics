@@ -33,7 +33,9 @@ from .distributions import (
     sample_bend,
     sample_capsule_radius_m,
     sample_grid_angle_rad,
+    lateral_offset_choices_m,
     sample_grid_length_m,
+    sample_lateral_offset,
     sample_module,
     sample_palm_joint_limits_rad,
     sample_revolute_limits_rad,
@@ -482,6 +484,9 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
     if dist.mount_on_host_surface:
         azimuth = forced_azimuth if forced_azimuth is not None else sample_grid_angle_rad(rng)
         mount_offset = (host_radius_m * math.cos(azimuth), host_radius_m * math.sin(azimuth))
+    elif top_level and dist.mount_lateral_grid_m is not None:
+        # Lateral digit mounts (off by default; see Distribution).
+        mount_offset = sample_lateral_offset(rng, dist)
     else:
         mount_offset = (0.0, 0.0)
     if oppose_forward is not None:
@@ -617,11 +622,15 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION,
             joint_limits = sample_palm_joint_limits_rad(rng, dist)
         uid = next_uid[0]
         next_uid[0] += 1
-        steps.append(DerivationStep(path=f"palm/{i}", production="PalmBody", params={
+        palm_params = {
             "name": name, "parent": parent, "mount_frac": mount_frac, "length": length,
             "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": joint_limits,
             "uid": uid,
-        }))
+        }
+        if dist.mount_lateral_grid_m is not None:
+            # Lateral mounts (off by default; see Distribution).
+            palm_params["mount_offset"] = sample_lateral_offset(rng, dist)
+        steps.append(DerivationStep(path=f"palm/{i}", production="PalmBody", params=palm_params))
         palm_names.append(name)
         host_length[name] = length
 
@@ -1737,7 +1746,30 @@ def _op_step_mount(rng, dist: Distribution, derivation: Derivation,
     # ``direction_rpy`` (the segment's own orientation) plays the analogous
     # role and is stepped the same way.
     rpy_field = "mount_rpy" if s.production == "Digit" else "direction_rpy"
-    step_frac = bool(rng.integers(0, 2))
+    if dist.mount_lateral_grid_m is not None and (
+            s.production == "PalmBody"
+            or (s.production == "Digit" and p.get("top_level") and not dist.mount_on_host_surface)):
+        # Lateral digit mounts (off by default): a third choice, one grid
+        # step of one offset component. Never reached for an existing
+        # variant, so their draws are unchanged.
+        which = int(rng.integers(0, 3))
+        if which == 2:
+            grid = list(lateral_offset_choices_m(dist))
+            off = list(p.get("mount_offset", (0.0, 0.0)))
+            comp = int(rng.integers(0, 2))
+            if off[comp] not in grid:
+                return None
+            ci = grid.index(off[comp])
+            new_ci = _step_choice_index(rng, ci, len(grid))
+            if new_ci == ci:
+                return None
+            off[comp] = grid[new_ci]
+            p["mount_offset"] = tuple(off)
+            steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+            return steps
+        step_frac = which == 1
+    else:
+        step_frac = bool(rng.integers(0, 2))
     if step_frac:
         choices = list(dist.mount_frac_choices)
         if p["mount_frac"] not in choices or len(choices) <= 1:
@@ -1960,10 +1992,13 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation,
     length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m)
     bend_rpy, bend_offset = sample_bend(rng, gdist)
     uid_base = _max_uid(steps) + 1
-    digit_step = DerivationStep(path=f"digit/{digit_id}", production="Digit", params={
+    digit_params = {
         "digit_id": digit_id, "mount": mount, "mount_frac": mount_frac, "mount_rpy": mount_rpy,
         "phalanx_count": 1, "top_level": True, "depth": 0, "uid": uid_base,
-    })
+    }
+    if gdist.mount_lateral_grid_m is not None and not gdist.mount_on_host_surface:
+        digit_params["mount_offset"] = sample_lateral_offset(rng, gdist)
+    digit_step = DerivationStep(path=f"digit/{digit_id}", production="Digit", params=digit_params)
     phalanx_step = DerivationStep(path=f"digit/{digit_id}/phalanx/0", production="Phalanx", params={
         "digit_id": digit_id, "p": 0, "module": {"kind": "R", "axis": axis, "limits": limits},
         "length": length, "branch_digit_count": 0, "uid": uid_base + 1,
@@ -2048,11 +2083,14 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation,
     axis = sample_axis(rng)
     limits = sample_palm_joint_limits_rad(rng, gdist) if has_joint else None
     name = f"palm{palm_body_count}"
-    new_step = DerivationStep(path=f"palm/{palm_body_count}", production="PalmBody", params={
+    palm_params = {
         "name": name, "parent": parent, "mount_frac": mount_frac, "length": length,
         "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": limits,
         "uid": _max_uid(steps) + 1,
-    })
+    }
+    if gdist.mount_lateral_grid_m is not None:
+        palm_params["mount_offset"] = sample_lateral_offset(rng, gdist)
+    new_step = DerivationStep(path=f"palm/{palm_body_count}", production="PalmBody", params=palm_params)
     new_hand = DerivationStep(path="hand", production="Hand",
                                params={**hand_params, "palm_body_count": palm_body_count + 1})
     rest = [s for i, s in enumerate(steps) if i != hand_idx]

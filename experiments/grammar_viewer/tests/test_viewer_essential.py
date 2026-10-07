@@ -221,10 +221,39 @@ def test_commercial_hand(simulator):
     from gviewer import commercial as com
     if com.hand_entry("allegro_right").availability != "available":
         pytest.skip("allegro URDF not available")
+    assert app.random("G_V1", start_seed=0, wait=True)
+    # default: the projection snapped onto the variant's grids
     assert app.load_commercial("allegro_right", wait=True)
-    assert app.shown.kind == "commercial" and app.overlay.handles
-    assert "URDF error" in app.md_fidelity.content and "within limits: yes" in app.md_fidelity.content
+    assert app.shown.kind == "commercial" and app.shown.conformed is not None and app.overlay.handles
+    line = app.md_fidelity.content
+    assert line.startswith("snapped to G_V1:") and "within rules: yes" in line and "within limits: yes" in line
+    # every grid step applies to it now (step_limits cannot act on the exact projection)
+    assert not app.op_buttons["step_limits"].disabled and not app.op_buttons["step_segment_length"].disabled
+    assert app.mutate("step_limits", wait=True) and app.history.cursor == 1
+    assert app.mutate("insert_phalanx", wait=True) and app.history.cursor == 2
+    # the exact projection on request
+    app.gui_exact.value = True
+    app.wait_idle()
+    assert app.shown.conformed is None and app.history.cursor == 0
+    line = app.md_fidelity.content
+    assert line.startswith("exact projection:") and "within rules: no" in line
+    assert app.op_buttons["step_limits"].disabled
+    app.gui_exact.value = False
+    app.wait_idle()
+    assert app.shown.conformed is not None
     app.gui_meshes.value = False
     assert not app.overlay.visible
     app.gui_meshes.value = True
     assert app.overlay.visible
+
+
+def test_commercial_hand_outside_the_limits(simulator):
+    app = simulator
+    from gviewer import commercial as com
+    if com.hand_entry("svh_right").availability != "available":
+        pytest.skip("svh URDF not available")
+    assert app.load_commercial("svh_right", wait=True)
+    assert "within limits: no (digits per jointed palm body 2 > 1)" in app.md_fidelity.content
+    assert app.md_limits.content.startswith("this hand: outside:")
+    # it can still be mutated, as long as no limit gets worse
+    assert app.mutate("step_segment_length", wait=True) and app.history.cursor == 1

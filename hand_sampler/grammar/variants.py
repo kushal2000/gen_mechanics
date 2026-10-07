@@ -253,6 +253,36 @@ G_V3S: Distribution = replace(
     curl_skip_first_phalanx=True,
 )
 
+# --------------------------------------------------------------------------
+# G_WIDE (2026-10-06): G_FULL with its RULES widened just enough to express the
+# commercial hands of grammar_bench/manifest.json (see
+# adapters/conform.py's rule-conflict report): lateral finger mounts across
+# the palm (the new, off-by-default ``mount_lateral_grid_m``: 5 mm grid,
+# up to 65 mm), a rest bend at any joint on the full 15 degree rotation grid
+# (roll and yaw all the way round, pitch -90..90; drawn with probability 0.2
+# when sampling), continuous joint limits anywhere in +/-180 deg on the
+# 15 degree step, and mount fractions in 5% steps. A reference for conforming
+# real hands and for weighing those extensions, not a proposal for sampling
+# (its random hands are bent at arbitrary angles).
+# --------------------------------------------------------------------------
+
+_WIDE_BEND_RPY_CHOICES_RAD: Tuple[Tuple[float, float, float], ...] = tuple(
+    (r * math.pi / 180.0, pch * math.pi / 180.0, y * math.pi / 180.0)
+    for r in range(-180, 180, 15) for pch in range(-90, 91, 15) for y in range(-180, 180, 15)
+)
+
+G_WIDE: Distribution = replace(
+    DEFAULT_DISTRIBUTION,
+    mount_lateral_grid_m=0.005,
+    mount_lateral_max_m=0.065,
+    bend_rpy_choices_rad=_WIDE_BEND_RPY_CHOICES_RAD,
+    bend_offset_choices_m=((0.0, 0.0),),
+    bend_probability=0.2,
+    limits_continuous=True,
+    revolute_limit_range_deg=(-180.0, 180.0),
+    mount_frac_choices=tuple(round(k * 0.05, 10) for k in range(21)),
+)
+
 # Every named Distribution variant above, for iteration by experiment code.
 NAMED_DISTRIBUTIONS = {
     "G_FULL": G_FULL,
@@ -270,6 +300,7 @@ NAMED_DISTRIBUTIONS = {
     "G_V1S": G_V1S,
     "G_V2S": G_V2S,
     "G_V3S": G_V3S,
+    "G_WIDE": G_WIDE,
 }
 
 # The G0 screen's own variant roster, named per the plan (V0 = G_SERIAL).
@@ -302,6 +333,7 @@ __all__ = [
     "G_V1S",
     "G_V2S",
     "G_V3S",
+    "G_WIDE",
     "NAMED_DISTRIBUTIONS",
     "G0_SCREEN_VARIANTS",
     "OPERATORS",
