@@ -112,12 +112,21 @@ No coupling step (one global ratio, 7b). Every coarse value lies on the fine gri
 ### 21. Palm plate thickness 37 mm; finger bases within 125 mm of the palm centre
 - Thickness: 37 mm, the median of 15 commercial palms (IQR 25-42 mm; DClaw's 6 mm mounting plate and Barrett's 86 mm motor housing are the extremes). Base distance from the palm centre, in the plate: 0-125 mm (SVH's thumb at 110.8 mm x 1.1, rounded; every other thumb is 48-77 mm and every non-thumb finger at most 62 mm). Study: `project-notes/grammar/palm-and-axis-study.md` (4108105).
 - **Why:** the principle above: limits from the commercial extremes with a 10% margin.
-- Open: where the palm centre (the hull's anchor disc) sits. The study's centre, the centroid of the non-thumb bases, lies on the knuckle row, so a disc there makes a palm that is only a strip along the knuckles; proposed: anchor at the wrist (the hand's mount point), so the hull spans wrist to knuckles like a real palm. The distance limit is re-measured from whichever anchor is chosen.
+- Superseded by item 22 (anchor at the wrist centre): The study's centre, the centroid of the non-thumb bases, lies on the knuckle row, so a disc there makes a palm that is only a strip along the knuckles; proposed: anchor at the wrist (the hand's mount point), so the hull spans wrist to knuckles like a real palm. The distance limit is re-measured from whichever anchor is chosen.
 
 ### 3 (evidence). The commercial axes support the unified axis design
 - Of 263 finger and thumb joints, after sliding each joint along its own axis onto the finger's centre line (exact for the motion): fingers lie within 15 degrees of a kind 96% of the time and within 30 degrees 99%; thumbs only 45% within 15 degrees, 85% within 30 and all within 45 (worst: thumb bases of Inspire, LEAP, SHARPA, ARMS, Allegro). Palm joints are often far from any kind (Shadow LFJ5 35, ARMS CMC4 45). A kind-plus-15-degree design would have missed most thumbs; directions stepped 30 / 5 degrees reach all of them. Kind mix for the random draw: flexion 69%, abduction 27%, roll 4%.
 
+### 22. Palm anchor: the centre of the wrist
+- The palm hull is the finger bases plus a heel disc at the wrist centre (the hand's mount point); finger positions (y, z) are measured from the wrist centre. The base-distance limit of item 21 is re-measured from the wrist.
+- **Why:** real palms run from the wrist to the knuckles, and that area is where the object rests; a disc at the knuckle row would make palms a strip along the knuckles.
+
+### 23. Viability checks: two
+- **C1, self-overlap:** no two links (rounded-box distance, the palm plate included) overlap by more than 3 mm at the zero pose or at the episode start pose. **Why:** deeper initial overlaps made PhysX push links apart at over 100 rad/s within a step or two.
+- **C2, fingertip workspace overlap (Martin's):** at least one pair of fingers whose fingertips' reachable regions intersect above the palm (above the plate, over its footprint). The tolerance is calibrated so every commercial hand passes. **Why:** a hand whose fingertips can never meet above the palm cannot hold or turn an object; this tests it from kinematics alone, cheaply.
+- **Dropped:** the object-start-height check (the object starts at a fixed spot above the palm defined by the task, not by the fingertips); the old "2 fingertips within 5 cm of a spawn point" reach check (Martin disliked it); Vatsal's curl score as a check (positive rotation already closes toward the palm by convention; the score measures how much a finger can close, which C2 covers where it matters).
+- **Deferred:** C5, a physics grasp test (finding a stable grasp in simulation, like the HORA grasp cache). Bring it up again once the grammar work is done.
+
 ## Still to decide
-- Palm anchor: where the palm centre disc sits (item 21).
-- Viability checks (proposed C1-C5, under discussion).
+- After the grammar work: raise C5 (physics grasp test) again.
 
