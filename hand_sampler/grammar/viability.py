@@ -20,7 +20,6 @@ calibrated so every commercial hand passes (see the grammar README).
 
 from __future__ import annotations
 
-import itertools
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -43,27 +42,73 @@ C2_SEED = 0
 # --------------------------------------------------------------------------
 
 
+def _closest_segment(a: np.ndarray, b: np.ndarray):
+    ab = b - a
+    t = -float(a @ ab) / max(float(ab @ ab), 1e-30)
+    if t <= 0.0:
+        return a, [a]
+    if t >= 1.0:
+        return b, [b]
+    return a + t * ab, [a, b]
+
+
+def _closest_triangle(a: np.ndarray, b: np.ndarray, c: np.ndarray):
+    """Closest point to the origin on triangle abc (Ericson, Real-Time
+    Collision Detection 5.1.5) and the vertices of the feature it lies on."""
+    ab, ac, ap = b - a, c - a, -a
+    d1, d2 = float(ab @ ap), float(ac @ ap)
+    if d1 <= 0.0 and d2 <= 0.0:
+        return a, [a]
+    bp = -b
+    d3, d4 = float(ab @ bp), float(ac @ bp)
+    if d3 >= 0.0 and d4 <= d3:
+        return b, [b]
+    vc = d1 * d4 - d3 * d2
+    if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+        v = d1 / (d1 - d3)
+        return a + v * ab, [a, b]
+    cp = -c
+    d5, d6 = float(ab @ cp), float(ac @ cp)
+    if d6 >= 0.0 and d5 <= d6:
+        return c, [c]
+    vb = d5 * d2 - d1 * d6
+    if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+        w = d2 / (d2 - d6)
+        return a + w * ac, [a, c]
+    va = d3 * d6 - d5 * d4
+    if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+        w = (d4 - d3) / ((d4 - d3) + (d5 - d6))
+        return b + w * (c - b), [b, c]
+    denom = 1.0 / (va + vb + vc)
+    v, w = vb * denom, vc * denom
+    return a + ab * v + ac * w, [a, b, c]
+
+
 def _closest_on_simplex(S: List[np.ndarray]) -> Tuple[np.ndarray, List[np.ndarray]]:
-    best_v, best_sub, best_n = None, None, math.inf
+    """The point of the simplex S (1-4 points) closest to the origin, and the
+    smallest sub-simplex containing it (a full tetrahedron: the origin is
+    inside, distance 0)."""
     k = len(S)
-    for r in range(1, k + 1):
-        for sub in itertools.combinations(range(k), r):
-            P = np.array([S[i] for i in sub])
-            if r == 1:
-                lam = np.array([1.0])
-            else:
-                D = (P[1:] - P[0]).T
-                if np.linalg.matrix_rank(D, tol=1e-12) < r - 1:
-                    continue
-                mu, *_ = np.linalg.lstsq(D, -P[0], rcond=None)
-                lam = np.concatenate([[1.0 - mu.sum()], mu])
-                if lam.min() < -1e-12:
-                    continue
-            v = lam @ P
-            n = float(v @ v)
-            if n < best_n - 1e-18:
-                best_v, best_sub, best_n = v, [S[i] for i in sub], n
-    return best_v, best_sub
+    if k == 1:
+        return S[0], [S[0]]
+    if k == 2:
+        return _closest_segment(S[0], S[1])
+    if k == 3:
+        return _closest_triangle(S[0], S[1], S[2])
+    a, b, c, d = S
+    best = None
+    for tri, other in (((a, b, c), d), ((a, b, d), c), ((a, c, d), b), ((b, c, d), a)):
+        n = np.cross(tri[1] - tri[0], tri[2] - tri[0])
+        s_origin = float(-tri[0] @ n)
+        s_other = float((other - tri[0]) @ n)
+        if s_origin * s_other < 0.0 or abs(s_other) < 1e-18:      # the origin is outside this face
+            p, sub = _closest_triangle(*tri)
+            dd = float(p @ p)
+            if best is None or dd < best[0]:
+                best = (dd, p, sub)
+    if best is None:
+        return np.zeros(3), list(S)
+    return best[1], best[2]
 
 
 def gjk_distance(A: np.ndarray, B: np.ndarray, max_iter: int = 64) -> float:
@@ -80,7 +125,7 @@ def gjk_distance(A: np.ndarray, B: np.ndarray, max_iter: int = 64) -> float:
             break
         S.append(w)
         v, S = _closest_on_simplex(S)
-        if len(S) == 4:
+        if len(S) == 4 or float(v @ v) < 1e-20:
             return 0.0
     return math.sqrt(float(v @ v))
 

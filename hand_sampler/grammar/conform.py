@@ -830,3 +830,32 @@ def conform_id(hand_id: str) -> HandFit:
 
 def fit_violations(fit: HandFit) -> List[str]:
     return check(fit.hand, NO_RULES)
+
+
+def urdf_joint_map(hand: Hand, palm_T: np.ndarray, q_off: np.ndarray, name_map: Dict[str, str],
+                   real: RealHand) -> Dict[str, Tuple[int, float]]:
+    """URDF joint name -> (index into `derive.dofs(hand)`, sign), so that a
+    grammar joint vector `q` puts the commercial hand in the matching pose:
+    q_urdf = sign * (q[index] - q_off[index]) (`urdf_joint_values`)."""
+    R, o = palm_T[:3, :3], palm_T[:3, 3]
+    ds = dv.dofs(hand)
+    pose = dv.fk(hand, q_off)
+    out = {}
+    for k, d in enumerate(ds):
+        urdf = name_map.get(d.name)
+        if urdf is None:
+            continue
+        try:
+            rj = real.joint(urdf)
+        except KeyError:
+            continue
+        if d.finger < 0:
+            a = dv.palm_axis(hand, d.index)
+        else:
+            a = pose.links[d.finger][d.index][:3, :3] @ dv.joint_axis(hand, d.finger, d.index)
+        out[urdf] = (k, 1.0 if float(a @ (R.T @ rj.axis)) >= 0 else -1.0)
+    return out
+
+
+def urdf_joint_values(jmap: Dict[str, Tuple[int, float]], q: np.ndarray, q_off: np.ndarray) -> Dict[str, float]:
+    return {n: s * float(q[k] - q_off[k]) for n, (k, s) in jmap.items()}

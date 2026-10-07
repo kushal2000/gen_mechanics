@@ -1,16 +1,13 @@
-"""Essential viser viewer for the hand-kinematics grammar.
+"""The grammar viewer (viser): one compact panel for the locked hand grammar.
 
     .venv_viewer/bin/python experiments/grammar_viewer/viewer.py --port 8080 --host 127.0.0.1
 
-One compact panel, one line per item (longer explanations are hover text):
-Grammar (Random and three rule toggles), Limits (the simulator's limits, which sampling
-and mutation obey by construction; editable, with a reset), Viability (the
-four physical checks generation cannot guarantee, each switchable),
-Commercial hand (on the fine grid by default), Mutation (coarse or fine steps; only
-the operators that can act on this hand under these limits are shown) and Pose
-(curl, re-centre). `viewer_full.py` keeps the full tool.
-CPU only: the simulator's envelope oracle is loaded by file path
-(gviewer/envload.py), so Isaac is never imported.
+Grammar (Random, "found after N tries"), Rules (Evolution Rules / No Rules /
+Custom Rules, the limits in plain words), Viability (C1 and C2, one line
+each), Commercial hand (the conformed hand over its URDF meshes, with its
+fit), Mutation (Coarse 10 mm / 30 deg, Fine 1 mm / 5 deg; only the operators
+that can act are shown) and Pose (curl, re-centre). CPU only; Isaac is never
+imported.
 """
 
 from __future__ import annotations
@@ -20,7 +17,7 @@ import sys
 import threading
 import time
 import traceback
-from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -33,258 +30,76 @@ for _p in (str(HERE), str(REPO_ROOT)):
 import numpy as np  # noqa: E402
 import viser  # noqa: E402
 
-from hand_sampler.grammar import limits as glim  # noqa: E402
-from hand_sampler.grammar.coverage import coverage  # noqa: E402
-from hand_sampler.grammar.variants import RULES, build_distribution  # noqa: E402
-from hand_sampler.grammar.derive import (EVOLUTION_OPERATORS, EVOLUTION_OPERATORS_FINE, Derivation,  # noqa: E402
-                                         VariationImpossible, derive, vary)
-from hand_sampler.grammar.kinematics import KinematicModel  # noqa: E402
+from hand_sampler.grammar import build_conformed  # noqa: E402
+from hand_sampler.grammar import commercial as gcom  # noqa: E402
+from hand_sampler.grammar import conform as gcf  # noqa: E402
+from hand_sampler.grammar import derive as gdv  # noqa: E402
+from hand_sampler.grammar import operators as gops  # noqa: E402
+from hand_sampler.grammar import viability as gvb  # noqa: E402
+from hand_sampler.grammar.fk import forward_kinematics  # noqa: E402
+from hand_sampler.grammar.hand import (  # noqa: E402
+    BASE_DISTANCE_MM, EVOLUTION_RULES, NO_RULES, STEPS, Hand, Rules, check, parameter_count)
 
-from gviewer import analysis as an  # noqa: E402
-from gviewer import checks as ck  # noqa: E402
-from gviewer import commercial as com  # noqa: E402
-from gviewer import history as hist  # noqa: E402
-from gviewer import limitsui as lui  # noqa: E402
+from gviewer import draw  # noqa: E402
 from gviewer import meshes as gmesh  # noqa: E402
-from gviewer import model as gm  # noqa: E402
-from gviewer.envload import load_env_modules  # noqa: E402
-from gviewer.scene import SPAWN_RGB, TIP_MISS_RGB, TIP_REACH_RGB, HandRenderer, MeshOverlay, RenderOptions  # noqa: E402
 
-GHOST_RGB = (105, 105, 125)
-# One colour per finger, neutral palm and joint markers, nothing else: no axis
-# arrows, no root frame; fingertips only with the reach display.
-HAND_RENDER = RenderOptions(joint_axes=False, joint_markers=True, tips=True, root_frame=False)
-MESH_OPACITY = 0.35
-RESET_CURL = an.CURL_FRAC          # palm_up's default_q is this fraction of every joint's range
-
-# The Rules dropdown: the simulator's limits, none, or the fields as edited.
-EVOLUTION_RULES, NO_RULES, CUSTOM_RULES = "Evolution Rules", "No Rules", "Custom Rules"
-RULE_SETS: Dict[str, Optional[glim.GenerationLimits]] = {
-    EVOLUTION_RULES: glim.SIMULATOR, NO_RULES: glim.GenerationLimits(), CUSTOM_RULES: None,
-}
-MAX_TRIES = 5000
+EVOLUTION, NONE, CUSTOM = "Evolution Rules", "No Rules", "Custom Rules"
+RULE_SETS: Dict[str, Optional[Rules]] = {EVOLUTION: EVOLUTION_RULES, NONE: NO_RULES, CUSTOM: None}
+STAGE_LABELS = {"Coarse (10 mm / 30°)": "coarse", "Fine (1 mm / 5°)": "fine"}
 NO_HAND = "(none)"
+MAX_TRIES = 2000
+MESH_OPACITY = 0.35
 
-# The three generation rules of the one grammar (variants.build_distribution):
-# panel line and hover text.
-RULE_INFO: Dict[str, tuple] = {
-    "surface": ("fingers sit on the palm surface",
-                "A finger's base sits on the surface of the palm or palm part (at a 15 deg angle around it), not on "
-                "its centre line. Was V1s."),
-    "spacing": ("fingers spaced apart",
-                "Finger bases are placed at least 29 mm apart (twice the thickest link + 5 mm), over the whole palm "
-                "in 3-D when fingers sit on the surface. Was V2/V2s."),
-    "curl_opposition": ("fingers curl and oppose",
-                        "Hinge axes roughly across the bone, every bone after a finger's first curled 15-45 deg "
-                        "toward the palm, and the last finger turned to face the others, like a thumb. Was V3s."),
-}
-assert tuple(RULE_INFO) == RULES
-
-# Button label and one line of hover text for every operator in the evolution
-# driver's pool (derive.EVOLUTION_OPERATORS). Plain words: a finger is a
-# top-level digit, a joint + bone is a phalanx, a palm part is a palm body.
-OPERATOR_INFO: Dict[str, tuple] = {
-    "add_minimal_digit": ("add a short finger (1 joint)",
-                          "Adds a new finger with one hinge joint and one bone, on the palm or a palm part."),
-    "remove_digit": ("remove a finger",
-                     "Removes one finger of any length, with its branch fingers; a palm part left without a finger "
-                     "goes too (no-empty-palm rule)."),
-    "insert_phalanx": ("add a joint to a finger",
-                       "Inserts a joint and bone at a random place in one finger; the bones beyond it move out by the "
-                       "new bone's length."),
-    "delete_phalanx": ("remove a joint from a finger",
-                       "Removes one joint and its bone; the bones beyond it move in and stay attached (a coupled joint "
-                       "that loses its driver becomes a new independent joint)."),
-    "add_palm_body": ("add a palm part",
-                      "Adds a palm part on the palm or another palm part, jointed or rigid at random where a joint is "
-                      "allowed."),
-    "toggle_palm_joint": ("make a palm part rigid/jointed",
-                          "Gives a rigid palm part a joint (random axis and range), or makes a jointed one rigid."),
-    "add_branch_digit": ("add a branch finger (1 joint)", "Adds a one-joint finger growing off a bone of a finger."),
-    "remove_branch_digit": ("remove a short branch finger", "Removes a branch finger that has one joint."),
-    "step_axis": ("tilt one joint axis", "Tilts one joint's axis (finger or palm joint) by 15 deg."),
-    "step_limits": ("change one joint's range", "Moves one joint's range to the neighbouring option, or one end by 15 deg."),
-    "step_mount": ("move a mount (finger or palm part)",
-                   "Slides one finger or palm part along what it is attached to, or turns it 15 deg at its base."),
-    "step_coupling": ("change one coupled joint", "Steps a coupled joint's ratio or offset to the next option."),
-    "step_root_length": ("lengthen/shorten the palm",
-                         "Changes the palm's length by 5 mm; the fingers keep their relative place along it, so they "
-                         "move with it."),
-    "step_radius": ("thicker/thinner (all links)",
-                    "Every link, palm included, shares one thickness; steps it to the next option (8, 10, 12 mm)."),
-    "step_bend_rpy": ("change one joint's rest bend", "Turns the rest angle between two bones by 15 deg."),
-    "step_bend_offset": ("shift one joint sideways", "Shifts one joint sideways by 5 mm on its bone."),
-    "step_segment_length": ("lengthen/shorten one bone (5 mm)",
-                            "Changes one bone's (or palm part's) length by 5 mm within the grammar's range; the parts "
-                            "beyond it move with it."),
-    # Fine steps (EVOLUTION_OPERATORS_FINE): one value by one fine unit, never the structure.
-    "fine_step_axis": ("tilt a joint axis 5°", "Tilts one joint's axis by 5 deg (up/down or around)."),
-    "fine_step_limits": ("move one end of a joint's range 5°",
-                         "Moves the lower or upper end of one joint's range by 5 deg."),
-    "fine_slide_mount": ("slide a mount 1% along its part",
-                         "Slides one finger or palm part along what it is attached to by 1% of that part's length "
-                         "(mounts are stored as a fraction of the part)."),
-    "fine_shift_mount": ("shift a mount 1 mm sideways",
-                         "Shifts one finger or palm part 1 mm across what it is attached to."),
-    "fine_turn_mount": ("turn a mount 5°", "Turns one finger or palm part 5 deg at its base."),
-    "fine_step_bend_rpy": ("change a rest bend 5°", "Turns the rest angle between two bones by 5 deg."),
-    "fine_step_root_length": ("lengthen/shorten the palm 1 mm", "Changes the palm's length by 1 mm."),
-    "fine_step_radius": ("thicker/thinner 1 mm (all links)", "Changes the shared link thickness by 1 mm (8-12 mm)."),
-    "fine_step_segment_length": ("lengthen/shorten a bone 1 mm",
-                                 "Changes one bone's (or palm part's) length by 1 mm; a bone may go down to 0 mm "
-                                 "(two joints at one point)."),
-}
-STAGES: Dict[str, tuple] = {"coarse": tuple(EVOLUTION_OPERATORS), "fine": tuple(EVOLUTION_OPERATORS_FINE)}
-STAGE_HINT = ("Coarse: change the structure and take 5 mm / 15 deg steps, to find hands that work. Fine: refine one "
-              "value of the hand by 1 mm, 1% or 5 deg, never its structure.")
-assert set(OPERATOR_INFO) == set(EVOLUTION_OPERATORS) | set(EVOLUTION_OPERATORS_FINE), \
-    "OPERATOR_INFO must cover the coarse and fine pools exactly"
-
-# Commercial hands: how the projection is shown.
-VERSIONS: Dict[str, Optional[str]] = {"fine grid": "fine", "coarse grid": "coarse", "exact (off-grid)": None}
-VERSION_NOTE: Dict[str, str] = {
-    "fine grid": "Fine grid (1 mm, 1%, 5°): the closest the grammar gets.",
-    "coarse grid": "Coarse grid (5 mm, 5%, 15°): where evolution starts.",
-    "exact (off-grid)": "Exact projection, off the grammar's grids.",
-}
-VERSION_HINT = ("Fine grid (default): the hand snapped onto the grammar's fine grid (1 mm, 1% of a part, 5 deg), the "
-                "closest the grammar gets; coarse grid: its 5 mm / 15 deg grid. Both are genuine members of the "
-                "grammar that the operators can mutate. Exact: the off-grid projection.")
+C1_HINT = ("No two links (rounded boxes; the palm plate counts as one) overlap by more than 3 mm, with every joint "
+           "at 0 and at the start pose (bending joints at 0.35 of their range). Deeper starting overlaps made the "
+           "physics engine push links apart at over 100 rad/s.")
+C2_HINT = ("At least one pair of fingers whose fingertips can meet above the palm: each fingertip is swept over its "
+           "own joints' ranges; only positions above the plate and over the palm count; two fingers pass if their "
+           "swept tips come within 20 mm. Every commercial hand passes.")
 
 
-def op_label(op: str, dist=None) -> str:
-    if op == "add_palm_body" and dist is not None and dist.palm_body_needs_digit:
-        return "add a palm part with a short finger"
-    return OPERATOR_INFO.get(op, (op, ""))[0]
+def _verdict(ok: Optional[bool]) -> str:
+    return "n/a" if ok is None else ("PASS" if ok else "FAIL")
 
 
-# Plain names for the rule conflicts conform reports (adapters/conform.py).
-CONFLICT_SHORT: Dict[str, str] = {
-    "lateral_mount_offset": "finger spread", "palm_mount_offset": "palm part offsets", "rest_bend": "rest bends",
-    "forced_curl": "forced curl", "colocated_joints": "joints at one point", "limits_menu": "joint ranges",
-    "link_length_range": "bone lengths", "mount_off_segment": "mounts off the palm", "axis_band": "joint axes",
-    "module_kind": "joint types", "zero_length_palm": "zero-length palm part", "digit_count": "finger count",
-    "phalanx_count": "joints per finger", "palm_body_count": "palm part count",
-}
+class GrammarViewer:
+    """State and callbacks. GUI callbacks call these public methods; tests can
+    call them directly (`wait=True` runs a job synchronously)."""
 
-
-def rules_text(rules: Dict[str, bool]) -> str:
-    on = [RULE_INFO[r][0].replace("fingers ", "") for r in RULES if rules.get(r)]
-    return "the grammar" + (" (" + ", ".join(on) + ")" if on else " (no rules)")
-
-
-def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], limits: glim.GenerationLimits,
-                  dist, fine: bool = False) -> str:
-    """One line: the shown expression's error against the URDF (E13's metric,
-    target 5 mm / 10 deg), whether it is in the grammar (the conformed one
-    is; what snapping lost), and whether it follows the current rules."""
-    if conformed is None:
-        f = ch.fidelity or {}
-        pos = max(f.get("max_pos_mm", 0.0), f.get("max_tip_mm") or 0.0)
-        cov = coverage(ch.derived, dist)
-        why = sorted({r.split(":")[0].replace("_", " ") for r in cov.out_of_support})
-        rules = "yes" if cov.in_support else "no (" + ", ".join(why[:3]) + (", ..." if len(why) > 3 else "") + ")"
-        head = f"exact projection: {pos:.2g} mm / {f.get('max_axis_deg', 0.0):.2g} deg"
-        deriv = ch.projection.derivation
-    else:
-        f = conformed.fidelity
-        pos = max(f["max_pos_mm"], f["max_tip_mm"] or 0.0)
-        lost = [CONFLICT_SHORT.get(k, k) for k in conformed.report.conflict_features()]
-        rules = "yes" + (" (lost: " + ", ".join(lost) + ")" if lost else "")
-        grid = "the grammar's fine grid" if fine else "the grammar"
-        head = f"snapped to {grid}: {pos:.0f} mm / {f['max_axis_deg']:.0f} deg"
-        deriv = conformed.derivation
-    return f"{head}; in the grammar: {rules}; follows the rules: {glim.check(deriv, limits).summary()}"
-
-
-def change_line(d: hist.DiffSummary) -> str:
-    """The parent -> child diff in one line."""
-    parts = []
-    for name, (a, b) in (("fingers", d.digits), ("joints", d.joints), ("palm parts", d.palm_bodies)):
-        if a != b:
-            parts.append(f"{name} {a} -> {b}")
-    params = [c for c in d.changed if "(renumbered)" not in c]
-    if params and not parts:
-        more = f" (+{len(params) - 1} more)" if len(params) > 1 else ""
-        parts.append(params[0] + more)
-    return "; ".join(parts) or "no visible change"
-
-
-def check_label(key: str, r: Optional[ck.CheckResult]) -> str:
-    c = ck.CHECK_BY_KEY[key]
-    star = "*" if c.provisional else ""
-    if r is None:
-        return f"{c.short}{star}"
-    word = {"pass": "PASS", "fail": "FAIL", "n/a": "n/a", "skipped": "-"}.get(r.status, r.status)
-    value = "" if r.status == ck.NA else f" {r.value}"
-    return f"{c.short}{star}: {word}{value}"
-
-
-@dataclass
-class Shown:
-    derivation: Derivation
-    model: KinematicModel
-    label: str
-    kind: str                                   # "sampled" | "commercial" | "mutant"
-    commercial: Optional[com.CommercialHand] = None
-    conformed: Optional[com.Conformed] = None   # a commercial hand snapped to the grammar (None: exact projection)
-
-
-@dataclass
-class Prepared:
-    shown: Shown
-    ev: ck.Evaluation
-    reach: List[an.FingerReach]
-    view: gm.ModelView
-    cells: Dict[str, gm.CellMesh]
-
-
-class EssentialViewer:
-    """State and callbacks. GUI callbacks call the public methods, which tests
-    can also call directly (`wait=True` runs the job synchronously)."""
-
-    def __init__(self, server: viser.ViserServer, *, rules: Optional[Dict[str, bool]] = None,
-                 start_seed: Optional[int] = None,
-                 build_initial: bool = True):
+    def __init__(self, server: viser.ViserServer, *, seed: int = 20261007, build_initial: bool = True):
         self.server = server
         self.lock = threading.RLock()
-        self.rng = np.random.default_rng(20261006)
-        self.history = hist.History()
-        self.prep: Optional[Prepared] = None
-        self.parent_view: Optional[gm.ModelView] = None
-        self.rules: Dict[str, bool] = {r: True for r in RULES} if rules is None else {r: bool(rules[r]) for r in RULES}
-        self.last_search: Optional[ck.SearchResult] = None
-        self.commercial_cache: Dict[str, com.CommercialHand] = {}
-        self.mesh_cache: Dict[str, gmesh.MeshSet] = {}
-        self.spawn_handles: List[Any] = []
-        self.op_status: Dict[str, str] = {}
-        self.current_hand: Optional[str] = None
-        self._job_gate = threading.Lock()
+        self.rng = np.random.default_rng(seed)
+        self.hand: Optional[Hand] = None
+        self.history: List[Hand] = []
+        self.commercial: Optional[dict] = None       # the conformed record shown, if any
+        self.real: Optional[gcom.RealHand] = None
+        self.jmap: Dict[str, Any] = {}
+        self.viability: Optional[gvb.Viability] = None
+        self.tries = 0
+        self.last_change = ""
         self._job_running = False
-        self._job: Optional[threading.Thread] = None
+        self._gate = threading.Lock()
         self._suppress = False
+        self.records = build_conformed.load()
 
-        load_env_modules()
         server.scene.set_up_direction("+z")
-        server.scene.add_grid("/grid", width=2.0, height=2.0, cell_size=0.05, plane="xy", position=(0.0, 0.0, -0.002))
-        self.renderer = HandRenderer(server, "/hand")
-        self.ghost = HandRenderer(server, "/ghost")
-        self.overlay = MeshOverlay(server, "/hand/urdf")
+        server.scene.add_grid("/grid", width=0.6, height=0.6, cell_size=0.02, plane="xy",
+                              position=(0.0, 0.0, -gdv.PALM_THICKNESS_MM / 2 * 1e-3 - 0.002))
+        self.drawing = draw.HandDrawing(server, "/hand")
+        self.overlay = draw.MeshOverlay(server, "/hand/urdf")
         self._build_gui()
         if build_initial:
-            self.random(start_seed=start_seed, wait=True)
+            self.random(wait=True)
 
-    # ------------------------------------------------------------------
-    # Jobs (one at a time, on a worker thread)
-    # ------------------------------------------------------------------
-
+    # ------------------------------------------------------------------ jobs
     def busy(self) -> bool:
         return self._job_running
 
     def run_job(self, name: str, fn: Callable[[], None], wait: bool = False) -> bool:
-        with self._job_gate:
+        with self._gate:
             if self._job_running:
-                self.md_status.content = f"busy: wait for the current job ({name} ignored)"
+                self.md_status.content = f"busy ({name} ignored)"
                 return False
             self._job_running = True
 
@@ -297,10 +112,10 @@ class EssentialViewer:
             finally:
                 self._job_running = False
 
-        self._job = threading.Thread(target=body, daemon=True)
-        self._job.start()
+        t = threading.Thread(target=body, daemon=True)
+        t.start()
         if wait:
-            self._job.join()
+            t.join()
         return True
 
     def wait_idle(self, timeout: float = 120.0) -> bool:
@@ -309,567 +124,319 @@ class EssentialViewer:
             time.sleep(0.02)
         return not self.busy()
 
-    # ------------------------------------------------------------------
-    # Limits
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ rules
+    def rules(self) -> Rules:
+        """The rules the panel shows (always inside the grammar's limits)."""
+        types = ("hinge",) + (("coupled",) if self.gui_coupled.value else ()) + (
+            ("sliding",) if self.gui_sliding.value else ())
+        return Rules(joint_types=types, max_fingers=int(self.gui_fingers.value), max_joints=int(self.gui_joints.value),
+                     max_palm_joints=int(self.gui_palm.value), max_finger_length_mm=int(self.gui_length.value),
+                     min_spacing_mm=int(self.gui_spacing.value),
+                     base_distance_mm=(BASE_DISTANCE_MM[0], int(self.gui_base.value))).clamp()
 
-    def limits(self) -> glim.GenerationLimits:
-        """The generation limits the panel currently shows."""
-        return lui.build_limits(
-            {k: h.value for k, h in self.limit_ints.items()},
-            {k: bool(h.value) for k, h in self.limit_bools.items()},
-            self.gui_joint_types.value, bool(self.gui_coupled.value),
-        )
-
-    def _set_fields(self, limits: glim.GenerationLimits) -> None:
+    def _show_rules(self, r: Rules) -> None:
         self._suppress = True
         try:
-            for k, h in self.limit_ints.items():
-                h.value = lui.int_to_option(getattr(limits, k))
-            for k, h in self.limit_bools.items():
-                h.value = bool(getattr(limits, k))
-            self.gui_joint_types.value = lui.joint_types_option(limits)
-            self.gui_coupled.value = "Coupled" in limits.allowed_modules
+            self.gui_fingers.value = r.max_fingers
+            self.gui_joints.value = r.max_joints
+            self.gui_palm.value = r.max_palm_joints
+            self.gui_coupled.value = "coupled" in r.joint_types
+            self.gui_sliding.value = "sliding" in r.joint_types
+            self.gui_length.value = r.max_finger_length_mm
+            self.gui_spacing.value = r.min_spacing_mm
+            self.gui_base.value = r.base_distance_mm[1]
         finally:
             self._suppress = False
 
-    def reset_limits(self) -> None:
-        """Put every field back to the Evolution Rules (the simulator's limits)."""
-        self.choose_rule_set(EVOLUTION_RULES)
-
-    def choose_rule_set(self, name: str) -> None:
-        """Choose Evolution Rules, No Rules or Custom Rules (as the dropdown would)."""
+    def choose_rules(self, name: str) -> None:
+        if RULE_SETS.get(name) is not None:
+            self._show_rules(RULE_SETS[name])
+        self._suppress = True
         self.gui_rules.value = name
-        self._on_rules()
-
-    def _on_rules(self) -> None:
-        if self._suppress:
-            return
-        preset = RULE_SETS[self.gui_rules.value]
-        if preset is not None:            # Custom Rules keeps the fields as they are
-            self._set_fields(preset)
-        self._limits_changed()
-
-    def _sync_rules_name(self) -> None:
-        """Name the fields' current values: Evolution Rules, No Rules or Custom Rules."""
-        lim = self.limits()
-        name = next((n for n, p in RULE_SETS.items() if p is not None and p == lim), CUSTOM_RULES)
-        if self.gui_rules.value != name:
-            self._suppress = True
-            try:
-                self.gui_rules.value = name
-            finally:
-                self._suppress = False
-
-    def set_limit(self, key: str, value) -> None:
-        """Set one limit field (as the panel would)."""
-        if key in self.limit_ints:
-            self.limit_ints[key].value = lui.int_to_option(value) if not isinstance(value, str) else value
-        elif key in self.limit_bools:
-            self.limit_bools[key].value = bool(value)
-        elif key == "joint_types":
-            self.gui_joint_types.value = value
-        elif key == "coupled":
-            self.gui_coupled.value = bool(value)
-        else:
-            raise KeyError(key)
+        self._suppress = False
+        self._after_rules()
 
     def _on_field(self) -> None:
         if self._suppress:
             return
-        try:
-            self.limits()
-        except ValueError as exc:
-            self.md_limits.content = f"invalid: {exc}"
-            return
-        self._sync_rules_name()
-        self._limits_changed()
-
-    def _limits_changed(self) -> None:
-        with self.lock:
-            self._update_limits_line()
-            self._update_operator_buttons()
-            if self.prep is not None and self.prep.shown.commercial is not None:
-                sh = self.prep.shown
-                self.md_fidelity.content = fidelity_line(sh.commercial, sh.conformed, self.limits(),
-                                                         self.dist(), VERSIONS[self.gui_version.value] == "fine")
-
-    def _update_limits_line(self) -> None:
-        if self.prep is None:
-            return
-        rep = glim.check(self.prep.shown.derivation, self.limits())
-        self.md_limits.content = "this hand: " + ("follows the rules" if rep.ok else "breaks: " + "; ".join(
-            rep.line(k) for k in rep.failing))
-
-    # ------------------------------------------------------------------
-    # Viability checks
-    # ------------------------------------------------------------------
-
-    def enabled(self) -> set:
-        return {k for k, cb in self.check_boxes.items() if cb.value}
-
-    def set_check(self, key: str, on: bool) -> None:
-        self.check_boxes[key].value = bool(on)   # fires on_update, which refreshes the readout
-
-    def set_all_checks(self, on: bool) -> None:
-        for k in ck.CHECK_KEYS:
-            self.set_check(k, on)
-
-    def _update_checks_panel(self) -> None:
-        if self.prep is None:
-            return
-        ev = self.prep.ev
-        for k in ck.CHECK_KEYS:
-            self.check_boxes[k].label = check_label(k, ev.results.get(k))
-        self._update_status()
-
-    def _update_status(self) -> None:
-        if self.prep is None:
-            return
-        n_mut = self.history.cursor
-        head = f"**{self.history.entries[0].label}**" + (f" + {n_mut} mutation(s)" if n_mut else "")
-        ev = self.prep.ev
-        failing = ev.failing(self.enabled())
-        if not ev.buildable:
-            verdict = "checks n/a (the simulator cannot build this hand)"
-        elif failing:
-            verdict = "fails: " + ", ".join(ck.CHECK_BY_KEY[k].short for k in failing)
-        else:
-            verdict = "passes the checks"
-        self.md_status.content = f"{head}: {verdict}"
-
-    # ------------------------------------------------------------------
-    # Showing a design
-    # ------------------------------------------------------------------
-
-    def _prepare(self, shown: Shown) -> Prepared:
-        ev = ck.evaluate(shown.model)
-        reach = an.finger_reach(ev.design, ev.pu) if ev.design is not None else []
-        normal = np.asarray(ev.pu.normal, dtype=float) if ev.pu is not None else None
-        view = gm.ModelView.build(shown.model, palm_normal=normal)
-        return Prepared(shown=shown, ev=ev, reach=reach, view=view, cells=gm.palm_cells(shown.model))
-
-    def show(self, shown: Shown, history_mode: str = "reset", operator: Optional[str] = None,
-             frame: bool = True) -> Prepared:
-        prep = self._prepare(shown)
-        with self.lock:
-            self.prep = prep
-            if history_mode == "reset":
-                self.history.reset(shown.derivation, shown.label)
-                self.history.current.payload = shown
-            elif history_mode == "push":
-                self.history.push(shown.derivation, operator or "?").payload = shown
-            self.renderer.build(prep.view, prep.cells, HAND_RENDER)
-            self.renderer.set_layer_visibility(tips=bool(self.gui_show_reach.value))
-            self._build_ghost()
-            self._build_spawn()
-            self._build_overlay()
-            self._render_pose()
-            self._update_checks_panel()
-            self._update_limits_line()
-            self._update_operator_buttons()
-            if frame:
-                self._frame_camera()
-        return prep
-
-    @property
-    def shown(self) -> Optional[Shown]:
-        return None if self.prep is None else self.prep.shown
-
-    def _curl(self) -> float:
-        return float(self.gui_curl.value)
-
-    def _highlight(self) -> Dict[str, tuple]:
-        """Bodies in a pair deeper than the 3 mm gate, for each failing overlap check."""
-        ev = self.prep.ev
-        gate = load_env_modules().grammar_envelope.MAX_REST_PENETRATION_M
-        out: Dict[str, tuple] = {}
-        enabled = self.enabled()
-        for key, pairs in (("overlap_zero", ev.pairs_q0), ("overlap_reset", ev.pairs_reset)):
-            if key not in enabled or ev.results[key].status != ck.FAIL:
-                continue
-            for b1, b2, pen in an.named_pairs(ev.design, pairs):
-                if pen > gate:
-                    out[b1] = out[b2] = gm.OVERLAP_RGB
-        return out
-
-    def _render_pose(self) -> None:
-        if self.prep is None:
-            return
-        view = self.prep.view
-        u = gm.curl_u(view.ranges, self._curl())
-        tips = {}
-        if self.gui_show_reach.value:
-            tips = {r.tip_body: (TIP_REACH_RGB if r.reaches else TIP_MISS_RGB) for r in self.prep.reach}
-        with self.server.atomic():
-            self.renderer.update(view.primitives(u), self._highlight(), tips)
-            if self.parent_view is not None:
-                self.ghost.update(self.parent_view.primitives(gm.curl_u(self.parent_view.ranges, self._curl())))
-            ch = self.prep.shown.commercial
-            if ch is not None and self.overlay.handles:
-                conf = self.prep.shown.conformed
-                self.overlay.update(ch.orig_link_poses(u, None if conf is None else conf.root_transform))
-
-    def _build_ghost(self) -> None:
-        self.ghost.clear()
-        self.parent_view = None
-        parent = self.history.parent
-        if parent is None:
-            return
-        pm = derive(parent.derivation)
-        self.parent_view = gm.ModelView.build(pm, palm_normal=self.prep.view.palm_normal)
-        self.ghost.build(self.parent_view, gm.palm_cells(pm), RenderOptions(
-            tint=GHOST_RGB, opacity=0.35, cell_opacity=0.12, joint_axes=False, tips=False, root_frame=False))
-
-    def _build_spawn(self) -> None:
-        for h in self.spawn_handles:
-            h.remove()
-        self.spawn_handles = []
-        pu = self.prep.ev.pu
-        if pu is None:
-            return
-        sp = np.asarray(pu.spawn_offset, dtype=float)
-        vis = bool(self.gui_show_reach.value)
-        s = self.server.scene
-        self.spawn_handles.append(s.add_icosphere("/hand/spawn/object", radius=an.OBJECT_HALF_SIZE_M,
-                                                  color=SPAWN_RGB, opacity=0.35, position=sp, visible=vis))
-        self.spawn_handles.append(s.add_icosphere("/hand/spawn/reach", radius=an.REACH_TOL_M, color=SPAWN_RGB,
-                                                  wireframe=True, opacity=0.25, position=sp, visible=vis,
-                                                  subdivisions=2))
-
-    def _build_overlay(self) -> None:
-        self.overlay.clear()
-        ch = self.prep.shown.commercial
-        if ch is None:
-            return
-        ms = self.mesh_cache.get(ch.entry.id)
-        if ms is not None:
-            self.overlay.build(ms, opacity=MESH_OPACITY, visible=bool(self.gui_meshes.value))
-
-    def _frame_camera(self) -> None:
-        lo, hi = self.prep.view.primitives(gm.curl_u(self.prep.view.ranges, self._curl())).bounds()
-        c = (np.asarray(lo) + np.asarray(hi)) / 2
-        d = 1.25 * max(float(np.linalg.norm(np.asarray(hi) - np.asarray(lo))), 0.12)
-        pos = c + np.array([0.75 * d, -0.75 * d, 0.55 * d])
-        self.server.initial_camera.position = tuple(pos)
-        self.server.initial_camera.look_at = tuple(c)
-        for client in self.server.get_clients().values():
-            client.camera.position = tuple(pos)
-            client.camera.look_at = tuple(c)
-
-    # ------------------------------------------------------------------
-    # Sources
-    # ------------------------------------------------------------------
-
-    def dist(self):
-        """The one grammar with the panel's rules (variants.build_distribution)."""
-        return build_distribution(**self.rules)
-
-    def set_rules(self, **rules: bool) -> None:
-        """Set rule toggles (as the panel would) without drawing a new hand."""
+        r = self.rules()
+        name = next((n for n, v in RULE_SETS.items() if v is not None and v == r), CUSTOM)
         self._suppress = True
-        try:
-            for r, v in rules.items():
-                self.rule_boxes[r].value = bool(v)
-                self.rules[r] = bool(v)
-        finally:
-            self._suppress = False
+        self.gui_rules.value = name
+        self._suppress = False
+        self._after_rules()
+
+    def _after_rules(self) -> None:
         with self.lock:
+            self._update_status()
             self._update_operator_buttons()
 
-    def random(self, start_seed: Optional[int] = None, max_tries: int = MAX_TRIES, wait: bool = False) -> bool:
-        """Sample designs from the grammar (current rules) under the current
-        limits until every enabled viability check passes."""
-        start = int(self.rng.integers(0, 1_000_000)) if start_seed is None else int(start_seed)
-        enabled = self.enabled()
-        limits = self.limits()
-        dist = self.dist()
-        label = rules_text(self.rules)
-
+    # ------------------------------------------------------------------ actions
+    def random(self, wait: bool = False, max_tries: int = MAX_TRIES) -> bool:
         def job():
-            self.md_random.content = "searching ..."
+            rules, stage = self.rules(), self.stage()
+            for n in range(1, max_tries + 1):
+                h = gops.random_hand(self.rng, rules, stage)
+                v = gvb.viability(h)
+                if self._required_ok(v):
+                    self.tries = n
+                    self._set_hand(h, history="reset", commercial=None, viability=v, frame=True)
+                    self.md_random.content = f"found after {n} {'try' if n == 1 else 'tries'}"
+                    return
+            self.md_random.content = f"no hand passed the checks in {max_tries} tries"
+        return self.run_job("random", job, wait)
 
-            def progress(k):
-                self.md_random.content = f"searching: {k} tries ..."
+    def _required_ok(self, v: gvb.Viability) -> bool:
+        return (not self.gui_c1.value or v.c1.ok) and (not self.gui_c2.value or v.c2.ok)
 
-            res = ck.search(dist, enabled, start, max_tries=max_tries, limits=limits, progress=progress)
-            self.last_search = res
-            if res.derivation is None:
-                self.md_random.content = f"none viable in {res.tries} tries; relax a check or the rules"
-                return
-            self.md_random.content = f"found after {res.tries} {'try' if res.tries == 1 else 'tries'} (seed {res.seed})"
-            self._clear_commercial_choice()
-            self.show(Shown(res.derivation, res.model, f"{label}, seed {res.seed}", "sampled"))
-
-        return self.run_job("random", job, wait=wait)
-
-    def load_commercial(self, hand_id: str, wait: bool = False, frame: bool = True) -> bool:
-        """Show a commercial hand: by default its projection conformed to the
-        grammar's fine grid (a member of the grammar's space that every
-        operator can act on); "coarse grid" conforms it to the coarse grid,
-        "exact (off-grid)" shows the exact projection."""
-        resolution = VERSIONS[self.gui_version.value]
-        exact = resolution is None
-        rules = dict(self.rules)
-
+    def load_commercial(self, hand_id: str, wait: bool = False) -> bool:
         def job():
-            ch = self.commercial_cache.get(hand_id)
-            if ch is None:
-                ch = com.load_commercial(hand_id)
-                self.commercial_cache[hand_id] = ch
-            if not ch.ok:
-                self.md_fidelity.content = f"{hand_id}: {ch.error}"
-                return
-            if hand_id not in self.mesh_cache:
-                links = [b.name for b in ch.imported.model.bodies]
-                self.mesh_cache[hand_id] = gmesh.load_link_meshes(ch.entry.mesh_path, links,
-                                                                  fallback_dirs=self._mesh_fallbacks(ch))
-            dist = build_distribution(**rules)
-            if exact:
-                shown = Shown(ch.projection.derivation, ch.derived, f"{hand_id} (exact)", "commercial", commercial=ch)
-            else:
-                conf = ch.conformed(rules_text(rules), dist, resolution=resolution)
-                where = "the fine grid" if resolution == "fine" else "the grammar"
-                shown = Shown(conf.derivation, conf.derived, f"{hand_id} (snapped to {where})", "commercial",
-                              commercial=ch, conformed=conf)
-            self.md_fidelity.content = fidelity_line(ch, shown.conformed, self.limits(), dist, resolution == "fine")
-            self.current_hand = hand_id
-            self.show(shown, frame=frame)
-
-        return self.run_job(f"load {hand_id}", job, wait=wait)
-
-    @staticmethod
-    def _mesh_fallbacks(ch: com.CommercialHand) -> List[Path]:
-        """Download folders for hands whose URDF mesh paths do not resolve (as in viewer_full)."""
-        root = Path(com.load_manifest().get("source_root") or "/")
-        table = {"svh_right": [root / "SVH"], "shadow_right_local": [root / "Shadow"]}
-        return [p for p in table.get(ch.entry.id, []) if p.is_dir()]
-
-    def _clear_commercial_choice(self) -> None:
-        self._suppress = True
-        try:
-            self.gui_hand.value = NO_HAND
-        finally:
-            self._suppress = False
-        self.current_hand = None
-        self.md_fidelity.content = ""
-
-    # ------------------------------------------------------------------
-    # Mutation
-    # ------------------------------------------------------------------
+            rec = self.records[hand_id]
+            real = gcom.load_real_hand(hand_id)
+            self.jmap = gcf.urdf_joint_map(rec["hand"], rec["palm_T"], rec["q_off"], rec["name_map"], real)
+            self.real = real
+            path = gcom.mesh_path(gcom.entry(hand_id))
+            ms = gmesh.load_link_meshes(path)
+            self.overlay.build(ms, MESH_OPACITY)
+            self.overlay.set_visible(bool(self.gui_meshes.value))
+            self._set_hand(rec["hand"], history="reset", commercial=rec, viability=gvb.viability(rec["hand"]),
+                           frame=True)
+            n = parameter_count(rec["hand"])
+            fit = (f"{rec['max_joint_mm']:.1f} mm joints, {rec['max_axis_deg']:.1f}° axes, {rec['max_tip_mm']:.1f} mm "
+                   f"tips ({'within' if rec['within_target'] else 'outside'} 5 mm / 10°)")
+            rules_note = "follows the rules" if not check(rec["hand"], self.rules()) else "outside these rules"
+            self.md_fit.content = (f"{len(rec['hand'].fingers)} fingers, {n['joints']} joints; fit: {fit}; "
+                                   f"{rules_note}. Meshes: {ms.summary()}")
+        return self.run_job("commercial", job, wait)
 
     def stage(self) -> str:
-        """The mutation stage the panel shows: "coarse" or "fine"."""
-        return self.gui_stage.value.lower()
+        return STAGE_LABELS[self.gui_stage.value]
 
     def set_stage(self, stage: str) -> None:
-        self.gui_stage.value = stage.capitalize()        # fires on_update -> buttons
-
-    def _update_operator_buttons(self) -> None:
-        shown = self.shown
-        if shown is None:
-            return
-        pool = STAGES[self.stage()]
-        self.op_status = lui.operator_status(shown.derivation, self.dist(), pool, self.limits())
-        dist = self.dist()
-        for op, b in self.op_buttons.items():
-            st = self.op_status.get(op)
-            b.visible = st == lui.OK          # only this stage's steps that can act on this hand under these limits
-            b.label = op_label(op, dist)
-            b.hint = OPERATOR_INFO[op][1]
+        self.gui_stage.value = next(k for k, v in STAGE_LABELS.items() if v == stage)
+        with self.lock:
+            self._update_operator_buttons()
 
     def mutate(self, operator: Optional[str] = None, wait: bool = False) -> bool:
-        """Apply `operator` under the current limits, or with None a random one
-        from the current stage's pool (coarse: EVOLUTION_OPERATORS, fine:
-        EVOLUTION_OPERATORS_FINE), drawing again, without replacement, while
-        the drawn one cannot apply."""
-        pool = STAGES[self.stage()]
-
         def job():
-            shown = self.shown
-            if shown is None:
+            if self.hand is None:
                 return
-            dist = self.dist()
-            limits = self.limits()
-            ops = [operator] if operator else [pool[i] for i in self.rng.permutation(len(pool))]
-            child, used, why = None, None, ""
-            for op in ops:
-                try:
-                    child = vary(shown.derivation, self.rng, dist, operator=op, limits=limits)
-                    used = op
-                    break
-                except VariationImpossible:
-                    why = lui.NOT_ALLOWED if self.op_status.get(op) == lui.NOT_ALLOWED else lui.NOTHING
-                except Exception as exc:  # noqa: BLE001 - e.g. a projected hand's value is off the grammar's grid
-                    why = f"{type(exc).__name__}: {exc}"
-            if child is None:
-                self.md_mut.content = (f"'{op_label(operator, dist)}': {why}" if operator
-                                       else "no mutation can apply to this hand")
-                return
-            d = hist.diff(shown.derivation, child)
-            model = derive(child)
-            base = self.history.entries[0].label
-            self.show(Shown(child, model, base, "mutant", commercial=None), "push", operator=used, frame=False)
-            prefix = "random: " if not operator else ""
-            self.md_mut.content = f"{prefix}{op_label(used, dist)}: {change_line(d)}"
-
-        return self.run_job(f"mutate {operator or 'random'}", job, wait=wait)
+            rules, stage = self.rules(), self.stage()
+            if operator is None:
+                child, name, mv = gops.mutate(self.hand, self.rng, rules, stage)
+            else:
+                res = gops.apply_operator(self.hand, operator, self.rng, rules, stage)
+                if res is None:
+                    self.md_mut.content = f"'{gops.OPERATOR_BY_NAME[operator].label}' cannot act on this hand"
+                    return
+                (child, mv), name = res, operator
+            self.last_change = f"{gops.OPERATOR_BY_NAME[name].label} ({stage}): {mv}"
+            self._set_hand(child, history="push", commercial=None,
+                           viability=gvb.viability(child), frame=False)
+            self.md_mut.content = self.last_change
+        return self.run_job("mutate", job, wait)
 
     def back(self, wait: bool = False) -> bool:
         def job():
-            if not self.history.can_back():
+            if len(self.history) < 2:
                 self.md_mut.content = "nothing to undo"
                 return
-            undone = self.history.current.operator
-            e = self.history.back()
-            self.show(e.payload, "keep", frame=False)
-            self.md_mut.content = f"undid '{op_label(undone)}'"
-
-        return self.run_job("back", job, wait=wait)
-
-    # ------------------------------------------------------------------
-    # Pose
-    # ------------------------------------------------------------------
-
-    def recentre(self) -> None:
-        with self.lock:
-            if self.prep is not None:
-                self._frame_camera()
+            self.history.pop()
+            h = self.history[-1]
+            self._set_hand(h, history="keep", commercial=None, viability=gvb.viability(h), frame=False)
+            self.md_mut.content = "back one step"
+        return self.run_job("back", job, wait)
 
     def set_curl(self, frac: float) -> None:
-        self.gui_curl.value = float(frac)     # fires on_update -> _render_pose
+        self.gui_curl.value = float(frac)
 
-    # ------------------------------------------------------------------
-    # GUI
-    # ------------------------------------------------------------------
+    def recentre(self) -> None:
+        self._frame_camera()
 
+    # ------------------------------------------------------------------ state
+    def _set_hand(self, hand: Hand, history: str, commercial: Optional[dict], viability: gvb.Viability,
+                  frame: bool) -> None:
+        with self.lock:
+            self.hand = hand
+            if history == "reset":
+                self.history = [hand]
+            elif history == "push":
+                self.history.append(hand)
+            if commercial is None:
+                self.commercial, self.real, self.jmap = None, None, {}
+                self.overlay.clear()
+                self.md_fit.content = ""
+                self._suppress = True
+                self.gui_hand.value = NO_HAND
+                self._suppress = False
+            else:
+                self.commercial = commercial
+            self.viability = viability
+            bad = [(a, b) for a, b, _ in viability.c1.pairs] if self.gui_c1.value else []
+            self.drawing.build(hand, highlight=bad)
+            self._render_pose()
+            self._update_status()
+            self._update_operator_buttons()
+            if frame:
+                self._frame_camera()
+
+    def q(self) -> np.ndarray:
+        """The joint vector on screen: flexion joints at curl x their upper
+        limit (a commercial hand: added to its zero-pose difference, so curl 0
+        is the real hand's zero pose)."""
+        q = gdv.curl_q(self.hand, float(self.gui_curl.value))
+        if self.commercial is not None:
+            q = gdv.tie(self.hand, q + self.commercial["q_off"])
+        return q
+
+    def _render_pose(self) -> None:
+        if self.hand is None:
+            return
+        q = self.q()
+        self.drawing.pose(q)
+        if self.commercial is not None and self.real is not None:
+            vals = gcf.urdf_joint_values(self.jmap, q, self.commercial["q_off"])
+            model = self.real.model
+            for c in model.couplings:                       # the URDF's own mimic joints
+                if c.dependent not in vals and c.source in vals:
+                    vals[c.dependent] = c.multiplier * vals[c.source] + c.offset
+            W = forward_kinematics(model, vals)
+            Pinv = np.linalg.inv(self.commercial["palm_T"])
+            self.overlay.update({link: Pinv @ T for link, T in W.items()})
+
+    def _update_status(self) -> None:
+        if self.hand is None:
+            return
+        v = self.viability
+        self.gui_c1.label = f"C1 no overlap (zero, start): {_verdict(v.c1.ok)} {v.c1.worst_mm:.1f} mm"
+        best = "none" if not np.isfinite(v.c2.best_mm) else f"{v.c2.best_mm:.1f} mm"
+        self.gui_c2.label = f"C2 fingertips meet above palm: {_verdict(v.c2.ok)} {best}"
+        problems = check(self.hand, self.rules())
+        n = parameter_count(self.hand)
+        follows = "follows the rules" if not problems else f"outside the rules: {problems[0]}"
+        self.md_rules.content = follows
+        self.md_status.content = (f"{len(self.hand.fingers)} fingers, {n['joints']} joints, "
+                                  f"{len(self.hand.palm_joints)} palm joints; {n['numbers']} numbers; {follows}")
+
+    def _update_operator_buttons(self) -> None:
+        if self.hand is None:
+            return
+        rules, stage = self.rules(), self.stage()
+        for name, b in self.op_buttons.items():
+            op = gops.OPERATOR_BY_NAME[name]
+            b.visible = gops.can_act(self.hand, op, rules, stage)
+
+    def _frame_camera(self, clients=None) -> None:
+        if self.hand is None:
+            return
+        c, r = self.drawing.bounds(self.q())
+        look = tuple(float(v) for v in c)
+        pos = tuple(float(v) for v in c + np.array([-1.2, -1.6, 1.4]) * r * 1.6)
+        try:                                   # clients that connect later start here
+            self.server.initial_camera.look_at = look
+            self.server.initial_camera.position = pos
+        except AttributeError:
+            pass
+        for client in (clients if clients is not None else self.server.get_clients().values()):
+            client.camera.look_at = look
+            client.camera.position = pos
+
+    # ------------------------------------------------------------------ GUI
     def _build_gui(self) -> None:
         g = self.server.gui
         g.configure_theme(control_width="medium")
         self.md_status = g.add_markdown("starting ...")
 
         with g.add_folder("Grammar"):
-            btn_random = g.add_button("Random", hint="Draw hands from the grammar, following the rules, until every "
-                                                     "enabled viability check passes.")
-            self.rule_boxes: Dict[str, Any] = {}
-            for r in RULES:
-                self.rule_boxes[r] = g.add_checkbox(RULE_INFO[r][0], self.rules[r], hint=RULE_INFO[r][1])
+            btn_random = g.add_button("Random", hint="Draw hands under the rules until the ticked viability checks pass.")
             self.md_random = g.add_markdown("")
 
         with g.add_folder("Rules"):
-            self.gui_rules = g.add_dropdown("rules", list(RULE_SETS), initial_value=EVOLUTION_RULES,
-                                            hint="Every drawn or mutated hand follows these rules. Evolution Rules is "
-                                                 "what the simulator's hand can build; No Rules is the whole grammar; "
-                                                 "editing a field below makes them Custom Rules.")
-            self.limit_ints: Dict[str, Any] = {}
-            for f in lui.INT_FIELDS:
-                self.limit_ints[f.key] = g.add_dropdown(f.label, list(f.options),
-                                                        initial_value=lui.int_to_option(getattr(glim.SIMULATOR, f.key)),
-                                                        hint=f.hint)
-            self.gui_joint_types = g.add_dropdown("joint types", list(lui.JOINT_TYPE_OPTIONS),
-                                                  initial_value=lui.joint_types_option(glim.SIMULATOR),
-                                                  hint=lui.JOINT_TYPES_HINT)
-            self.gui_coupled = g.add_checkbox("allow coupled joints", "Coupled" in glim.SIMULATOR.allowed_modules,
-                                              hint=lui.COUPLED_HINT)
-            self.limit_bools: Dict[str, Any] = {}
-            for key, label, hint in lui.BOOL_FIELDS:
-                self.limit_bools[key] = g.add_checkbox(label, bool(getattr(glim.SIMULATOR, key)), hint=hint)
-            self.md_limits = g.add_markdown("")
+            self.gui_rules = g.add_dropdown("rules", list(RULE_SETS), initial_value=EVOLUTION,
+                                            hint="Random hands and every mutation follow these rules. Evolution Rules: "
+                                                 "what the simulator builds and evolution uses (hinge and coupled "
+                                                 "joints). No Rules: the whole grammar (sliding joints too). Editing a "
+                                                 "field makes them Custom Rules; fields can only tighten the grammar.")
+            r = EVOLUTION_RULES
+            self.gui_fingers = g.add_slider("max fingers", 2, 6, 1, r.max_fingers, hint="Fingers per hand: 2-6.")
+            self.gui_joints = g.add_slider("max joints per finger", 1, 5, 1, r.max_joints,
+                                           hint="Joints per finger: 1-5.")
+            self.gui_palm = g.add_slider("max palm joints", 0, 6, 1, r.max_palm_joints,
+                                         hint="Hinged palm sections: at most 6, one per finger at most, never one "
+                                              "without a finger.")
+            self.gui_coupled = g.add_checkbox("coupled joints", True, hint="A coupled joint follows the joint before "
+                                                                           "it in its finger at 1.1 x its angle.")
+            self.gui_sliding = g.add_checkbox("sliding joints", False, hint="Sliding (prismatic) joints, like Dex1's "
+                                                                            "jaws: in the grammar, not in evolution.")
+            self.gui_length = g.add_number("max finger length (mm)", r.max_finger_length_mm, min=10, max=250, step=1,
+                                           hint="Sum of a finger's link lengths: at most 250 mm (DClaw's 221 x 1.1).")
+            self.gui_spacing = g.add_number("min finger spacing (mm)", r.min_spacing_mm, min=19, max=100, step=1,
+                                            hint="Neighbouring finger bases at least one link width (19 mm) apart.")
+            self.gui_base = g.add_number("max base distance from wrist (mm)", r.base_distance_mm[1],
+                                         min=BASE_DISTANCE_MM[0], max=BASE_DISTANCE_MM[1], step=1,
+                                         hint=f"Finger bases sit {BASE_DISTANCE_MM[0]}-{BASE_DISTANCE_MM[1]} mm from "
+                                              "the wrist centre on the plate (commercial hands x0.9 / x1.1).")
+            g.add_markdown("links: 0 or 15-90 mm, fingertip ≥ 10 mm")
+            self.md_rules = g.add_markdown("")
 
         with g.add_folder("Viability"):
-            self.check_boxes: Dict[str, Any] = {}
-            for c in ck.CHECKS:
-                self.check_boxes[c.key] = g.add_checkbox(check_label(c.key, None), True,
-                                                         hint=c.why + " Untick: Random stops requiring it.")
-                if c.key == "reach":
-                    self.gui_show_reach = g.add_checkbox("show object and reach", False,
-                                                         hint="Blue sphere: the object's start point and size; wire "
-                                                              "sphere: 5 cm reach; fingertips green if they reach "
-                                                              "it, orange if not.")
+            self.gui_c1 = g.add_checkbox("C1 no overlap", True, hint=C1_HINT + " Untick: Random stops requiring it.")
+            self.gui_c2 = g.add_checkbox("C2 fingertips meet above palm", True,
+                                         hint=C2_HINT + " Untick: Random stops requiring it.")
 
         with g.add_folder("Commercial hand"):
-            hands = com.list_hands()
-            self._hand_ids = {h.label: h.id for h in hands}
-            self.gui_hand = g.add_dropdown("Hand", [NO_HAND] + [h.label for h in hands], initial_value=NO_HAND,
-                                           hint="A real hand's grammar projection, over its URDF meshes.")
-            self.gui_version = g.add_dropdown("shown as", list(VERSIONS), initial_value="fine grid", hint=VERSION_HINT)
-            self.md_version = g.add_markdown(VERSION_NOTE["fine grid"])
-            self.gui_meshes = g.add_checkbox("show real hand meshes", True)
-            self.md_fidelity = g.add_markdown("")
+            ids = sorted(self.records)
+            self.gui_hand = g.add_dropdown("hand", [NO_HAND] + ids, initial_value=NO_HAND,
+                                           hint="A commercial hand conformed onto the grammar (fine grid), over its "
+                                                "own URDF meshes.")
+            self.gui_meshes = g.add_checkbox("show real meshes", True)
+            self.md_fit = g.add_markdown("")
 
         with g.add_folder("Mutation"):
-            self.gui_stage = g.add_dropdown("steps", ["Coarse", "Fine"], initial_value="Coarse", hint=STAGE_HINT)
-            btns = g.add_button_group("Mutate", ["Random mutation", "Back"])
+            self.gui_stage = g.add_dropdown("steps", list(STAGE_LABELS), initial_value=list(STAGE_LABELS)[0],
+                                            hint="Coarse: every value moves 10 mm or 30°, and fingers, joints and "
+                                                 "palm joints can be added or removed. Fine: 1 mm or 5°, values only.")
+            btns = g.add_button_group("mutate", ["Random mutation", "Back"])
             self.md_mut = g.add_markdown("")
             self.op_buttons: Dict[str, Any] = {}
-            for op in EVOLUTION_OPERATORS + EVOLUTION_OPERATORS_FINE:
-                self.op_buttons[op] = g.add_button(op_label(op, self.dist()), hint=OPERATOR_INFO[op][1],
-                                                   visible=op in STAGES["coarse"])
+            for op in gops.OPERATORS:
+                self.op_buttons[op.name] = g.add_button(op.label, hint=op.hover)
 
         with g.add_folder("Pose"):
-            self.gui_curl = g.add_slider("Curl", 0.0, 1.0, 0.01, RESET_CURL,
-                                         hint="Fraction of every joint's range: 0 lower limits, 1 upper limits, "
-                                              f"{RESET_CURL} the pose every episode starts from.")
-            btn_center = g.add_button("re-centre view", hint="Point the camera at the whole hand. The view only "
-                                                             "moves by itself for a new draw or a new real hand.")
+            self.gui_curl = g.add_slider("curl", 0.0, 1.0, 0.01, gdv.START_CURL,
+                                         hint="Bending joints at this fraction of their range (0.35: the pose every "
+                                              "episode starts from); other joints at 0.")
+            btn_center = g.add_button("re-centre view", hint="Point the camera at the whole hand.")
 
-        # ---- callbacks ---------------------------------------------------
         btn_random.on_click(lambda _: self.random())
-
-        def _rule_toggled(_):
-            if self._suppress:
-                return
-            self.rules = {r: bool(cb.value) for r, cb in self.rule_boxes.items()}
-            self.random()                    # a new draw shows what the rules do
-
-        for cb in self.rule_boxes.values():
-            cb.on_update(_rule_toggled)
-
-        self.gui_rules.on_update(lambda _: self._on_rules())
-        for h in list(self.limit_ints.values()) + list(self.limit_bools.values()) + [self.gui_joint_types,
-                                                                                      self.gui_coupled]:
+        self.gui_rules.on_update(lambda _: None if self._suppress else self.choose_rules(self.gui_rules.value))
+        for h in (self.gui_fingers, self.gui_joints, self.gui_palm, self.gui_coupled, self.gui_sliding,
+                  self.gui_length, self.gui_spacing, self.gui_base):
             h.on_update(lambda _: self._on_field())
 
         @self.gui_hand.on_update
         def _(_):
             if not self._suppress and self.gui_hand.value != NO_HAND:
-                self.load_commercial(self._hand_ids[self.gui_hand.value])
+                self.load_commercial(self.gui_hand.value)
 
         self.gui_meshes.on_update(lambda _: self.overlay.set_visible(bool(self.gui_meshes.value)))
+        self.gui_stage.on_update(lambda _: self._after_rules())
 
-        @self.gui_version.on_update
-        def _(_):
-            self.md_version.content = VERSION_NOTE[self.gui_version.value]
-            if self.current_hand is not None:
-                self.load_commercial(self.current_hand, frame=False)
-
-        @self.gui_stage.on_update
-        def _(_):
+        def _checks(_):
             with self.lock:
-                self._update_operator_buttons()
+                if self.hand is not None:
+                    self._set_hand(self.hand, history="keep", commercial=self.commercial, viability=self.viability,
+                                   frame=False)
 
-        def _check_toggled(_):
-            with self.lock:
-                self._update_status()
-                self._render_pose()          # red overlaps follow the enabled checks
-
-        for cb in self.check_boxes.values():
-            cb.on_update(_check_toggled)
-
-        @self.gui_show_reach.on_update
-        def _(_):
-            for h in self.spawn_handles:
-                h.visible = bool(self.gui_show_reach.value)
-            self.renderer.set_layer_visibility(tips=bool(self.gui_show_reach.value))
-            with self.lock:
-                self._render_pose()
+        self.gui_c1.on_update(_checks)
+        self.gui_c2.on_update(_checks)
 
         @btns.on_click
         def _(event):
             (self.mutate if event.target.value == "Random mutation" else self.back)()
 
-        for op, b in self.op_buttons.items():
-            b.on_click(lambda _, op=op: self.mutate(op))
+        for name, b in self.op_buttons.items():
+            b.on_click(lambda _, name=name: self.mutate(name))
 
         @self.gui_curl.on_update
         def _(_):
@@ -883,15 +450,12 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--rules", default="surface,spacing,curl_opposition",
-                    help="comma-separated generation rules switched on at start (of: " + ", ".join(RULES) + ")")
+    ap.add_argument("--hand", default="", help="start with this commercial hand (a manifest id) instead of a random one")
     args = ap.parse_args(argv)
     server = viser.ViserServer(host=args.host, port=args.port, label="grammar viewer")
-    on = {r.strip() for r in args.rules.split(",") if r.strip()}
-    unknown = on - set(RULES)
-    if unknown:
-        ap.error(f"unknown rule(s) {sorted(unknown)}")
-    EssentialViewer(server, rules={r: r in on for r in RULES})
+    app = GrammarViewer(server, build_initial=not args.hand)
+    if args.hand:
+        app.load_commercial(args.hand, wait=True)
     print(f"grammar viewer at http://{args.host}:{args.port}", flush=True)
     try:
         server.sleep_forever()
