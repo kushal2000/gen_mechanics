@@ -64,7 +64,7 @@ HAND_IDS = sorted(HANDS)
 VARIANTS = {"G_FULL": G_FULL, "G_V1": G_V1, "G_V3S": G_V3S, "G_WIDE": G_WIDE}
 
 if not HANDS:  # pragma: no cover
-    pytest.skip("no manifest hand available", allow_module_level=True)
+    pytest.skip("local-only: no manifest hand available on this machine", allow_module_level=True)
 
 
 def _on_grid(d, dist):
