@@ -35,11 +35,13 @@ from hand_sampler import validate_design
 _URDF_DIR = (Path(__file__).resolve().parents[1]
              / "assets/urdf/unified_dynamics_commercial_hands")
 
-HANDS: tuple[str, ...] = ("leap", "wuji2", "midas")
+HANDS: tuple[str, ...] = ("leap", "wuji2", "midas", "allegro")
 """The vendor hands fitted into this grammar, in the order they were done.
 
 LEAP first because it fits almost exactly -- its own geometry is already what
-the grammar says a hand is. wuji2 is harder and says so in its notes.
+the grammar says a hand is. wuji2 is harder and says so in its notes. Allegro
+fits best of all by base placement, 1 to 3 mm, because it IS a stack of servos:
+three identical straight fingers, no bracket anywhere in the row.
 
 SHARPA was fitted and then dropped. It needed the most distortion of any hand
 tried: knuckles at 17-20 mm centres spread to 35, joint axes 7.7 degrees off a

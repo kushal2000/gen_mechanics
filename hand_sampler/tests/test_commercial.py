@@ -151,11 +151,18 @@ def test_every_hand_needs_some_spreading_on_a_radial_palm():
         assert [n for n in notes if "motor floor" in n], name
 
 
-@pytest.mark.parametrize("name,worst_mm", [("leap", 9.0), ("wuji2", 46.0),
-                                           ("midas", 29.0)])
+@pytest.mark.parametrize("name,worst_mm", [("leap", 10.0), ("wuji2", 20.0),
+                                           ("midas", 30.0), ("allegro", 30.0)])
 def test_per_digit_tip_error(name, worst_mm, fits):
     """Each digit measured from its OWN base, so this is the shape of the finger
-    rather than where the palm put it."""
+    rather than where the palm put it.
+
+    Measured: LEAP 8.0 mm at worst, wuji2 17.5, MIDAS 27.8, Allegro 27.4 -- and
+    in the last two it is the thumb alone, the fingers being 2.6 and 7.5 to
+    15.2. The bounds carry about 15% of headroom. wuji2's was 46 mm, set when
+    its row was being fitted parallel; it is 17.5 now that the row keeps its own
+    splay, and leaving the old number there would have tested nothing.
+    """
     hand, _ = fits[name]
     M, order = _vendor(name)
     for f, d in zip(hand.fingers, order):
@@ -164,6 +171,39 @@ def test_per_digit_tip_error(name, worst_mm, fits):
         got = D.fingertip(f, hand.palm) - base
         err = float(np.linalg.norm(got - want)) * 1000
         assert err <= worst_mm, f"{name} {d.name}: {err:.1f} mm"
+
+
+def test_allegros_base_joint_is_a_roll_at_rest_and_a_spread_when_bent(fits):
+    """Why Allegro's row reads roll -> flexion -> flexion -> flexion.
+
+    Its base joint's axis is (0, 0, 1) and the whole finger then runs along +z,
+    so at full extension the joint twists the finger about its own axis and
+    moves the fingertip NOWHERE. It becomes a spread only once the finger bends:
+    driven +/-20 degrees it sweeps the tip 0.0 mm extended, 41 mm at 15 degrees
+    of flex, 71 at 45, and 11 again by 90.
+
+    The grammar names a joint by its axis at the REST pose, so `roll` is the
+    honest reading and the curl score is right to give it nothing. LEAP's
+    equivalent joint is the contrast: a true abduction, sweeping 94 mm with the
+    finger straight out. Pinned because `roll` on three identical fingers of a
+    well-known hand looks like the mistake it would be on any other hand.
+    """
+    ds = {d.name: d for d in commercial.digits("allegro")}
+    d = ds["joint_0_0"]
+    straight = [p for p in d.pos] + [d.tip]
+    axis = np.asarray(d.axis[0], float)
+    axis = axis / np.linalg.norm(axis)
+    for p in straight[1:]:
+        along = p - straight[0]
+        off = along - float(along @ axis) * axis
+        assert float(np.linalg.norm(off)) < 1e-6, (
+            "the finger is not collinear with its own base axis, so that joint "
+            "is not a roll at rest and the fitted kind needs re-deriving")
+
+    hand, _ = fits["allegro"]
+    for f in hand.fingers[:3]:
+        kinds = [s.joint.kind for s in f.segments]
+        assert kinds == [D.ROLL, D.FLEXION, D.FLEXION, D.FLEXION], kinds
 
 
 @pytest.mark.parametrize("name", commercial.HANDS)

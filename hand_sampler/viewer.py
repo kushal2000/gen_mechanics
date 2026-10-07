@@ -94,7 +94,8 @@ def describe(hand: design_space.Hand, last_op: str | None) -> str:
         f"{hand.n_motors} motors**",
         "",
         f"curl score  **{curl:.2f}**  ({verdict})"
-        "   *(LEAP 1.00, roll- or abduction-only 0.00)*",
+        "   *(LEAP 1.00, Allegro 0.87, MIDAS 0.78; "
+        "roll- or abduction-only 0.00)*",
         "",
         f"palm  {design_space.palm_extents(hand)[0]*1000:.0f} thick, "
         f"{design_space.palm_extents(hand)[1]*1000:.0f} x "
