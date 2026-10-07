@@ -3,8 +3,8 @@
  "name": "allegro_left_replica",
  "count": 1,
  "provenance": {
-  "created_at": "2026-10-07T15:41:53+00:00",
-  "git_commit": "ffd164ce9aa59251737992dcdb6046722fbab6ef",
+  "created_at": "2026-10-07T16:04:00+00:00",
+  "git_commit": "9b0ff9edc9aca1925363978723827bd22ac5ab6f",
   "method": "commercial.fit",
   "source": "hand_sampler.commercial",
   "vendor_urdf": "assets/urdf/unified_dynamics_commercial_hands/allegro/allegro_left.urdf",
@@ -34,7 +34,7 @@
    "fingers": [
     {
      "mount": {
-      "y": -0.05,
+      "y": 0.05,
       "z": 0.02,
       "facing": 0.0
      },
@@ -67,7 +67,7 @@
     },
     {
      "mount": {
-      "y": -0.005,
+      "y": 0.005,
       "z": 0.02,
       "facing": 0.0
      },
@@ -100,7 +100,7 @@
     },
     {
      "mount": {
-      "y": 0.04,
+      "y": -0.04,
       "z": 0.02,
       "facing": 0.0
      },
@@ -133,9 +133,9 @@
     },
     {
      "mount": {
-      "y": 0.01,
+      "y": -0.01,
       "z": -0.055,
-      "facing": 1.5707963267948966
+      "facing": 4.71238898038469
      },
      "segments": [
       {
@@ -149,14 +149,14 @@
         "kind": "roll"
        },
        "length": 0.02,
-       "lean": 2
+       "lean": 1
       },
       {
        "joint": {
         "kind": "abduction"
        },
        "length": 0.05,
-       "lean": 1
+       "lean": 2
       },
       {
        "joint": {

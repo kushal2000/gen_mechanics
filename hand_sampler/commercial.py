@@ -97,6 +97,7 @@ class Digit:
     pos: np.ndarray        # (n, 3) joint origins
     axis: np.ndarray       # (n, 3) unit hinge axes
     tip: np.ndarray        # (3,)
+    limits: tuple = ()     # (lower, upper) per joint, from the URDF: which way the finger flexes
 
 
 # --- reading the vendor hand ------------------------------------------------
@@ -112,6 +113,8 @@ def _read(path: Path) -> dict:
             rpy=np.array([float(v) for v in (o.get("rpy", "0 0 0")).split()]),
             axis=np.array([float(v) for v in
                            ((a.get("xyz", "0 0 1") if a is not None else "0 0 1")).split()]),
+            limit=((float(j.find("limit").get("lower", 0.0)), float(j.find("limit").get("upper", 0.0)))
+                   if j.find("limit") is not None else (0.0, 0.0)),
             type=j.get("type"))
     return out
 
@@ -188,7 +191,8 @@ def digits(name_or_path: "str | Path" = "leap") -> list[Digit]:
                 if np.linalg.norm(nxt[:3, 3] - T[:3, 3]) > np.linalg.norm(tip - T[:3, 3]):
                     tip = nxt[:3, 3].copy()
                 stack.append((nxt, d["child"]))
-        out.append(Digit(root_joint, tuple(chain), np.array(pos), np.array(axis), tip))
+        out.append(Digit(root_joint, tuple(chain), np.array(pos), np.array(axis), tip,
+                         tuple(J[n]["limit"] for n in chain)))
     return out
 
 
@@ -335,7 +339,28 @@ def _palm_axes(row: list[Digit]) -> np.ndarray:
     y = y - z * float(y @ z)
     y = y / float(np.linalg.norm(y))
     x = np.cross(y, z)
+    # y runs from the FIRST row base to the LAST, so the vendor's digit order alone decided whether x faced the
+    # grasp or the back of the hand. Allegro's and MIDAS's faced the back: their replicas were built turned 180
+    # degrees about the fingers, thumb opposing from the wrong side. x must point where the fingers close; turning
+    # about z (x and y both flip) keeps the frame right-handed and the hand unmirrored.
+    if float(x @ _grasp_side(row)) < 0.0:
+        x, y = -x, -y
     return np.column_stack([x, y, z])
+
+
+def _grasp_side(row: list[Digit]) -> np.ndarray:
+    """Which way the row's fingers CLOSE, a unit vector in vendor coordinates.
+
+    A finger flexes further than it hyper-extends, so the larger side of a joint's travel is flexion, and
+    turning that way moves the tip along ``axis x (tip - joint)``. Summed over every joint of the row; an
+    abduction joint's motion is sideways and a symmetric joint's sign is zero, so the flexion joints decide.
+    """
+    v = np.zeros(3)
+    for d in row:
+        for (lo, hi), pos, axis in zip(d.limits, d.pos, d.axis):
+            v += np.sign(lo + hi) * np.cross(axis, d.tip - pos)
+    n = float(np.linalg.norm(v))
+    return v / n if n > 1e-12 else v
 
 
 def _lean_for(direction: np.ndarray) -> int:

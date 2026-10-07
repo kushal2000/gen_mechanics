@@ -3,8 +3,8 @@
  "name": "midas_replica",
  "count": 1,
  "provenance": {
-  "created_at": "2026-10-07T15:41:51+00:00",
-  "git_commit": "ffd164ce9aa59251737992dcdb6046722fbab6ef",
+  "created_at": "2026-10-07T16:03:59+00:00",
+  "git_commit": "9b0ff9edc9aca1925363978723827bd22ac5ab6f",
   "method": "commercial.fit",
   "source": "hand_sampler.commercial",
   "vendor_urdf": "assets/urdf/unified_dynamics_commercial_hands/midas/midas.urdf",
@@ -33,7 +33,7 @@
    "fingers": [
     {
      "mount": {
-      "y": -0.03,
+      "y": 0.03,
       "z": 0.01,
       "facing": 0.0
      },
@@ -66,7 +66,7 @@
     },
     {
      "mount": {
-      "y": 0.005,
+      "y": -0.005,
       "z": 0.02,
       "facing": 0.0
      },
@@ -99,7 +99,7 @@
     },
     {
      "mount": {
-      "y": 0.04,
+      "y": -0.04,
       "z": 0.01,
       "facing": 0.0
      },
@@ -132,9 +132,9 @@
     },
     {
      "mount": {
-      "y": -0.02,
+      "y": 0.02,
       "z": -0.04,
-      "facing": 4.71238898038469
+      "facing": 1.5707963267948966
      },
      "segments": [
       {
@@ -154,14 +154,14 @@
         "kind": "flexion"
        },
        "length": 0.04,
-       "lean": 3
+       "lean": 4
       },
       {
        "joint": {
         "kind": "flexion"
        },
        "length": 0.03,
-       "lean": 3
+       "lean": 4
       }
      ]
     }
