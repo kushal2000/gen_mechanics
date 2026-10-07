@@ -773,9 +773,9 @@ class GrammarViewer:
                      f"**{'PASS' if f['passed'] else 'FAIL'}** at 5 mm / 10 deg. Pinocchio export check not run here.")
         ok, reasons = ch.fit
         if ok:
-            L.append("**32-slot simulator envelope**: fits (admit with check_overlap=False, the projected-hand rule)")
+            L.append("**36-slot simulator envelope**: fits (admit with check_overlap=False, the projected-hand rule)")
         else:
-            L.append("**32-slot simulator envelope**: does NOT fit: " + "; ".join(reasons))
+            L.append("**36-slot simulator envelope**: does NOT fit: " + "; ".join(reasons))
         L.append("Rest overlaps of projected hands are exempt in the simulator (filtered pairs); the Analysis "
                  "tab shows the full oracle, which does count them.")
         r = ch.capsule_radius_m

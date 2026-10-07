@@ -40,7 +40,7 @@ The panel uses plain words; the code and the rest of this README use the grammar
 | palm | the root body |
 | palm part | palm body (`PalmBody`) |
 | palm joint | the joint of a jointed palm body |
-| finger slot | finger chain of the simulator's 32-slot articulation |
+| finger slot | one of the 6 finger slots of the simulator's 36-slot articulation: a palm joint (carrier) and up to 5 finger joints |
 | hinge / continuous / sliding / coupled joint | module `R` / `C` / `P` / `Coupled` |
 | the grammar, its rules ("fingers sit on the palm surface", ...) | `variants.build_distribution(surface=, spacing=, curl_opposition=)` |
 | steps: Coarse / Fine | `derive.EVOLUTION_OPERATORS_COARSE` / `EVOLUTION_OPERATORS_FINE` |
@@ -53,19 +53,19 @@ The hand grammar separates what it can express from what the simulator can build
 2. **The simulator limits** (`hand_sampler/grammar/limits.py`, `SIMULATOR`): hard rules that sampling (`sample_derivation(..., limits=)`) and every mutation operator (`vary`, `apply_operator`, `vary_tracked`, all with `limits=`) obey by construction. They only choose among options that keep the hand within the limits (an allowed module kind, a digit count below the cap, a host with room, a palm joint only where one is allowed, a bone short enough for the finger-length cap), so nothing is generated and then rejected. An operator with no admissible application is inapplicable, exactly like one with nothing to act on. A limit that does not bind leaves the random draws unchanged; where one binds, the sampler draws from the restricted options, so the distribution differs from rejection sampling, which is intended. `limits=None` means no limits and reproduces past runs byte for byte.
 3. **Viability checks** (`gviewer/checks.py`): physical properties no generation rule can guarantee, measured with the simulator's own functions.
 
-`SIMULATOR` is the simulator's 32-slot articulation (5 finger chains of 6 revolute slots plus 2 palm-joint slots) plus the finger-length cap. Without the cap, a design is within it if and only if `grammar_envelope._admit_structural` admits it, and every design sampled or mutated under it is admitted (`hand_sampler/grammar_bench/tests/test_generation_limits.py`: 2000 samples per variant and 50 x 50 mutation chains, all admitted). In the viewer these are the **Evolution Rules**; **No Rules** is `limits=None` (the whole grammar), and editing any field makes them **Custom Rules**.
+`SIMULATOR` is the simulator's 36-slot articulation (6 finger slots, each a palm joint and up to 5 revolute finger joints) plus two ordinary rules: at most 2 palm joints and the finger-length cap. The fingers can be split freely over the palm and its palm parts: 5 on a rigid palm, 3 + 2 + 1, 2 + 2, SVH's 3 + 2 (two fingers on one palm joint), arms_skel's 3 + 1 + 1. Without the two ordinary rules (`SIMULATOR_ENVELOPE`), a design is within it if and only if `grammar_envelope._admit_structural` admits it, and every design sampled or mutated under it is admitted (`hand_sampler/grammar_bench/tests/test_generation_limits.py`: 2000 samples per variant and 50 x 50 mutation chains, all admitted). In the viewer these are the **Evolution Rules**; **No Rules** is `limits=None` (the whole grammar), and editing any field makes them **Custom Rules**.
+
+How the simulator builds a hand (`isaacsimenvs/inhand_reorient/scene/grammar_envelope.py`): each finger takes a finger slot, in a fixed order (the fingers on the palm and on rigid palm parts first, then each palm joint's fingers). A finger on the palm sits on a locked palm joint. The first finger on a jointed palm part (the leader) has that palm joint as its own; every other finger on the same part (a follower) has its own palm joint with the same origin and axis, tied to the leader's by a PhysX mimic joint, so the part moves as one piece. The policy controls the leader's palm joint only. Every finger slot ends in a fingertip body at the real fingertip.
 
 | Field | Panel | Simulator | Meaning |
 |---|---|---|---|
 | `allowed_modules` | joint types, allow coupled joints | hinge only | joint module kinds that may be generated |
 | `allow_branches` | allow branching fingers | no | a finger may grow a branch finger off a bone |
-| `max_digits` | max fingers | 5 | top-level digits |
-| `max_joints_per_digit` | max joints per finger | 6 | joints in one finger, its branches included |
+| `max_digits` | max fingers | 6 | top-level digits (a palm joint without a finger, possible only without the palm rule, takes a finger slot and counts here) |
+| `max_joints_per_digit` | max joints per finger | 5 | joints in one finger, its branches included |
 | `max_palm_bodies` | max palm parts | any | palm parts besides the palm (rigid ones fold into the palm in the simulator) |
-| `max_jointed_palm_bodies` | max palm joints | 2 | palm parts with their own joint |
+| `max_jointed_palm_bodies` | max palm joints | 2 (an ordinary rule; the simulator builds more) | palm parts with their own joint, each carrying any number of fingers |
 | `allow_stacked_palm_joints` | allow stacked palm joints | no | a jointed palm part below another jointed one |
-| `max_digits_per_jointed_palm_body` | fingers per palm joint | 1 | fingers carried by one palm joint (two: pending, see "Commercial hands") |
-| `max_finger_chains` | max finger slots | 5 | fingers on the rigid palm plus palm joints; each palm joint takes a slot |
 | `max_finger_length_mm` | max finger length (mm) | 250 | longest sum of bone lengths from a finger's base to one of its fingertips, branches included (a branch counts its host's bones up to the one it grows from, so moving a mount never changes it) |
 
 How they are enforced: the digit and palm-body counts are drawn from ranges capped by the limits; a palm body gets a joint only where it is allowed; digits go only to hosts with room; phalanx counts respect a per-digit joint budget that also covers branches; module kinds come from the allowed set; branches only when allowed; each bone is drawn among the lengths that leave the rest of its finger room under the length cap. Each operator applies the same rules to what it adds or changes: `add_minimal_digit` needs a host with room, `toggle_palm_joint` only toggles a body whose new state is allowed, `insert_phalanx` only grows a digit with a joint and the length to spare, lengthening steps stop at the cap. A hand already outside the limits (SVH) can still be mutated, as long as no limit gets worse.
@@ -119,7 +119,7 @@ One panel, one line per item; longer explanations are hover text.
 - **Grammar**: **Random**, which draws hands from the grammar under the current limits until every enabled viability check passes, the three rule checkboxes (switching one draws a new hand), and "found after N tries", which counts viability rejections only: every draw is within the limits by construction.
 - **Rules**: a dropdown with **Evolution Rules** (the simulator's limits, max finger length included), **No Rules** (no limits) and **Custom Rules**, then one dropdown or checkbox per limit; editing a field switches to Custom Rules. Sampling and mutation follow these rules. The last line says whether the hand on screen follows them.
 - **Viability**: the four physical checks, one line each ("fingers don't overlap (open): PASS 0.4 mm"), each with its own toggle. Unticking a check stops Random requiring it. "show object and reach" (off by default) shows the object's start sphere, the 5 cm reach sphere and the fingertip dots (green reaches, orange does not).
-- **Commercial hand**: a dropdown of the manifest hands, drawn over their real URDF meshes (a checkbox hides them). "shown as" picks the version: **fine grid** (default, the hand snapped onto the grammar's fine grid, the closest the grammar gets), **coarse grid**, or **exact (off-grid)**, the exact projection. One line gives the error against the URDF, whether the shown version is in the grammar, and whether it follows the current rules (SVH carries two fingers on one palm joint).
+- **Commercial hand**: a dropdown of the manifest hands, drawn over their real URDF meshes (a checkbox hides them). "shown as" picks the version: **fine grid** (default, the hand snapped onto the grammar's fine grid, the closest the grammar gets), **coarse grid**, or **exact (off-grid)**, the exact projection. One line gives the error against the URDF, whether the shown version is in the grammar, and whether it follows the current rules (every manifest hand follows the Evolution Rules).
 - **Mutation**: **steps: Coarse / Fine**, **Random mutation** (draws operators from the chosen stage until one applies), **Back** (undo), and one button per operator of that stage, shown only when it can act on this hand under these limits. After each mutation a line says what changed; the parent stays on screen as a faint grey ghost.
 - **Pose**: one curl slider (0 lower limits, 1 upper limits; the default 0.35 is the pose every episode starts from) and **re-centre view**.
 
@@ -127,7 +127,7 @@ What is on screen: one colour per finger (a branch finger a lighter shade of its
 
 ## Viability checks
 
-Only properties no generation rule can guarantee. They need the simulator's 32-slot model of the hand, which exists only for hands within the simulator's structural limits; on any other hand they read n/a and do not block Random. A design is viable when it passes all four; under the simulator limits that is exactly `viability_report`'s admitted flag plus "at least 2 fingertips reach" (`tests/test_checks.py`).
+Only properties no generation rule can guarantee. They need the simulator's 36-slot model of the hand, which exists only for hands within the simulator's structural limits; on any other hand they read n/a and do not block Random. A design is viable when it passes all four; under the simulator limits that is exactly `viability_report`'s admitted flag plus "at least 2 fingertips reach" (`tests/test_checks.py`).
 
 | Panel | Key | What it requires | Why |
 |---|---|---|---|
@@ -146,12 +146,12 @@ Only properties no generation rule can guarantee. They need the simulator's 32-s
 
 | Button | Operator | What it does | Limited by (simulator) |
 |---|---|---|---|
-| add a short finger (1 joint) | `add_minimal_digit` | new finger with one hinge joint and one bone, on the palm or a palm part | fingers, finger slots, fingers per palm joint; needs hinges |
+| add a short finger (1 joint) | `add_minimal_digit` | new finger with one hinge joint and one bone, on the palm or a palm part | fingers; needs hinges |
 | remove a finger | `remove_digit` | removes one finger of any length, with its branch fingers; a palm part left without a finger goes too | at least one finger stays; no limit may get worse |
 | add a joint to a finger | `insert_phalanx` | inserts a joint and bone at a random place in one finger; the bones beyond it move out | joints per finger, finger length |
 | remove a joint from a finger | `delete_phalanx` | removes one joint and its bone from a finger with at least 2; branch fingers on it re-attach to the neighbouring bone | none |
-| add a palm part with a short finger | `add_palm_body` | adds a palm part on the palm or another palm part, jointed or rigid at random where a joint is allowed, with a one-joint finger (the grammar's palm rule) | palm parts; palm joints, stacking, finger slots; room for its finger |
-| make a palm part rigid/jointed | `toggle_palm_joint` | gives a rigid palm part a joint with a new axis and range, or makes a jointed one rigid | palm joints, stacking, fingers per palm joint, finger slots |
+| add a palm part with a short finger | `add_palm_body` | adds a palm part on the palm or another palm part, jointed or rigid at random where a joint is allowed, with a one-joint finger (the grammar's palm rule) | palm parts; palm joints, stacking; room for its finger |
+| make a palm part rigid/jointed | `toggle_palm_joint` | gives a rigid palm part a joint with a new axis and range, or makes a jointed one rigid | palm joints, stacking |
 | add a branch finger (1 joint) | `add_branch_digit` | adds a one-joint finger growing off a bone of a finger | branching (never under the simulator limits), joints per finger, finger length |
 | remove a short branch finger | `remove_branch_digit` | removes a branch finger with one joint | none |
 | tilt one joint axis | `step_axis` | tilts one joint's axis by one 15 deg step | none |
@@ -198,13 +198,13 @@ Fidelity, E13's metric (zero plus 64 random configurations): max joint position 
 | orca_right | 18 / 8 / 17 | 9 / 8 / 13 | 2.9 / 1.3 / 2.4 | yes | 1.0 / 1.5 / 1.4 | yes |
 | sharpa_left_on_iiwa14 | 24 / 13 / 19 | 15 / 13 / 17 | 2.4 / 0.5 / 1.7 | yes | 1.3 / 1.6 / 1.9 | yes |
 | shadow_right_local | 20 / 6 / 21 | 10 / 6 / 12 | 1.6 / 0.9 / 1.9 | yes | 1.6 / 0.9 / 1.9 | yes |
-| svh_right | 32 / 5 / 26 | 9 / 5 / 13 | 1.7 / 1.4 / 2.5 | yes | 1.5 / 1.3 / 1.9 | no: 2 fingers on one palm joint |
+| svh_right | 32 / 5 / 26 | 9 / 5 / 13 | 1.7 / 1.4 / 2.5 | yes | 1.5 / 1.3 / 1.9 | yes (2 fingers on one palm joint) |
 | arms_skel | 30 / 14 / - | 16 / 14 / - | 2.7 / 6.0 / - | yes | 3.9 / 3.4 / - | yes |
 | coupled_finger (analytic) | 0 / 0 / - | 0 / 0 / - | 0 / 0 / - | yes | 0 / 0 / - | yes |
 
 At the fine resolution 14 of 15 hands are within 5 mm / 10 deg (most at 1.6-3 mm). DClaw misses (5.7 mm joint, 7.0 mm fingertip) because a small bend between two bones is not on the 5 deg rest-bend grid, whose angles from straight are 0, 5, 7.1, 10, ... deg whichever way the frames are turned, and near straight the only other freedom, a turn about the link, comes in 5 deg steps too, so the joint axis cannot be matched at the same time. DClaw's 2.8 deg bend between its middle bones becomes 0 deg with an accurate axis (the search prefers it: the axis has a 152 mm lever to the fingertip), which on a 68 mm bone puts the next joint 5 mm off at q = 0. A 1 mm lateral joint offset in the fine support (the `bend_offset` field `G_BEND` already has, within +/-5 mm) moves each joint onto its hand position and brings every hand inside the target (last column, measured without the beam search); a 2.5 deg bend grid would also do. Neither is in the grammar yet.
 
-Every conformed hand (fine) derives, lies on the fine grid, is in `coverage(..., resolution="fine")` support, keeps the palm rule, is within `SIMULATOR` except SVH, and every fine operator acts on it (`grammar_bench/tests/test_conform.py`). On hands conformed to the grammar the coarse operators that cannot act are the structural ones a drawn hand of the same shape also lacks (no branch finger, no coupled joint, no palm part to make rigid or jointed); "add a short finger" and "add a palm part" need a free finger slot.
+Every conformed hand (fine) derives, lies on the fine grid, is in `coverage(..., resolution="fine")` support, keeps the palm rule, is within `SIMULATOR` and admitted by the simulator (SVH included), and every fine operator acts on it (`grammar_bench/tests/test_conform.py`); so are the 15 exact projections (`test_generation_limits.py`). On hands conformed to the grammar the coarse operators that cannot act are the structural ones a drawn hand of the same shape also lacks (no branch finger, no coupled joint, no palm part to make rigid or jointed); "add a short finger" and "add a palm part" need a free finger slot.
 
 Features the real hands need, against the grammar before 2026-10-06, and their status:
 
@@ -219,13 +219,13 @@ Features the real hands need, against the grammar before 2026-10-06, and their s
 | the 15 deg grid for mounts, bends and axes | all | the fine stage (5 deg) | done; DClaw still needs a lateral joint offset or a finer bend grid (above) |
 | a mount beyond a palm part's ends | 1: svh | mount positions beyond [0, 1] on palm parts | reported only |
 | coupled (mimic) joints | 5: ability, inspire, svh, arms, coupled_finger | none for the simulator; elsewhere the projection could emit `Coupled` modules | reported |
-| two fingers on one palm joint (SVH's j5) | 1 | a carrier slot with two finger chains in the envelope | pending: no fixed 32-slot layout fits both SVH (2 fingers on one palm joint + 3 rigid) and arms_skel (2 palm joints with 1 finger each + 3 rigid); the options (keep 32 slots and move one chain, dropping "2 palm joints + 3 rigid fingers"; 6 chains x 5 joints + 2; 6 x 6 + 2 = 38) are Martin's call. `test_generation_limits.py` pins today's slot layout of every admitted design and makes SIMULATOR follow the envelope's `MAX_DIGITS_PER_CARRIER`, ready to switch on |
+| two fingers on one palm joint (SVH's j5) | 1 | every finger slot has its own palm joint; a palm part's other fingers sit on palm joints tied to the first by a PhysX mimic joint | in the envelope (36 slots: 6 finger slots of a palm joint and 5 finger joints) |
 
 ## Full viewer panels
 
 - **Source**
   - (a) Sample: variant dropdown (all of `NAMED_DISTRIBUTIONS`, G0 aliases in brackets), seed, prev/next/random. With "sample until viable" on, seeds are drawn upward (downward for prev) until `viability_report` admits a design with at least 2 fingertips reaching the spawn; the tries are shown.
-  - (b) Commercial hand: every manifest hand outside the `excluded` split. The E13 projection is drawn as capsules over the original URDF meshes (toggle, opacity). The readout gives the fidelity (E13's measurement replayed: zero plus 64 random configurations, joint position and axis errors, fingertip error, pass at 5 mm / 10 deg), the 32-slot envelope fit with its rejection reasons, the capsule radius, `coverage` against the mutation distribution, and every merge, approximation and importer loss.
+  - (b) Commercial hand: every manifest hand outside the `excluded` split. The E13 projection is drawn as capsules over the original URDF meshes (toggle, opacity). The readout gives the fidelity (E13's measurement replayed: zero plus 64 random configurations, joint position and axis errors, fingertip error, pass at 5 mm / 10 deg), the 36-slot envelope fit with its rejection reasons, the capsule radius, `coverage` against the mutation distribution, and every merge, approximation and importer loss.
   - (c) File: a derivation JSON, a `population.json` (`designs[].derivation`), a driver `state.json` (archive elites) or a bare archive, browsable by index. A state file also sets the mutation distribution to its run's variant.
 - **Pose**: a slider per independent joint (degrees, within its admissible range), curl-all (fraction of range), zero, env reset (`palm_up(...).default_q`), random, and an animated sweep (all joints together, or one joint at a time).
 - **Mutate**: one button per `EVOLUTION_OPERATORS` entry, random mutation (the driver's pool), mutate until viable, a mutation distribution, back/forward and go-to-entry over the history, a lineage list labelled by operator, the parent drawn as a grey ghost, a parent-to-child diff (digits, phalanges, joints, changed parameters matched by step uid), and the mutation spread (K random children on a ring, coloured by viability, click one to adopt it).
@@ -254,12 +254,12 @@ The essential viewer's colours are described under "The essential viewer". The f
 
 ## Known limitations
 
-- Not yet checked in Isaac: that the authored joints match the grammar's forward kinematics for hands with 0 mm bones, and that such a hand (and, once the layout is decided, one with two fingers on a palm joint) loads without self-collision blow-ups. The CPU side (adjacency, filtered pairs, mass floor) is tested.
+- Not yet checked in Isaac: that the authored joints match the grammar's forward kinematics for hands with 0 mm bones or with two fingers on a palm joint, and that they load without self-collision blow-ups. The CPU side (adjacency, filtered pairs, mass floor, ties) is tested.
 - The Pinocchio export cross-check of E13 is not run (it needs a separate interpreter); the readout says so.
 - `arms_skel` has no meshes at all. The SVH and Shadow URDFs in `karma-hand-metric` point at mesh files that do not exist; the viewer finds same-named `.dae` files in the downloads (`SVH/`, `Shadow/`) and marks them "alignment unverified". About 10 SVH meshes have no same-named file.
 - Mesh overlays are reduced by vertex clustering to at most 6000 faces per piece; they are a visual reference.
 - Projected hands use one capsule radius (10 mm, the projection's constant), so their rest overlaps are artefacts; the simulator exempts them, the overlap checks and the full viewer's Analysis tab still count them.
-- The viability checks need the simulator's 32-slot model, so a hand outside the simulator's structural limits reads n/a on all four.
+- The viability checks need the simulator's 36-slot model, so a hand outside the simulator's structural limits reads n/a on all four.
 - Nearest commercial: `phenotype_distance` aligns joints by name. Grammar and projection both name digit joints `d{k}p{i}_j`, but digit numbering is arbitrary and the two root frames follow different gauges, so treat it as a coarse similarity.
 - Joint classes are computed at the rest pose. Allegro's first finger joints read as twist because at rest they rotate the straight finger about its own axis.
 - The envelope's ghost and padding slots are never drawn: the scene is the grammar model, not the authored articulation.

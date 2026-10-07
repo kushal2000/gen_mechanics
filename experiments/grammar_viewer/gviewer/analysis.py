@@ -42,7 +42,7 @@ def archive_mod():
 
 @dataclass(frozen=True)
 class FingerReach:
-    slot: int                 # envelope finger slot 0..4
+    slot: int                 # envelope finger slot 0..5
     digit_id: Optional[str]
     tip_body: str             # last real body of that finger
     hits: int                 # sweep samples within REACH_TOL_M of the spawn point
@@ -104,7 +104,7 @@ def model_q_to_slot(design, q: Mapping[str, float]) -> np.ndarray:
     for idx, name in enumerate(design.slot_joint_name):
         if name is not None and design.slot_valid[idx]:
             out[idx] = float(q.get(name, 0.0))
-    return out
+    return g.tied_q(design, out)
 
 
 def _slot_body(design, idx: int) -> str:
@@ -134,23 +134,20 @@ def finger_reach(design, pu) -> List[FingerReach]:
     for idx in valid:
         lo, hi = design.slot_limits[idx]
         q_batch[:, idx] = rng.uniform(lo, hi, size=N_SWEEP)
-    T_batch = g.authored_fk_batch(design, q_batch)
-    T_mid = g.authored_fk(design, np.asarray(pu.default_q, dtype=float))
+    tips_all = g.tip_fk(design, g.authored_fk_batch(design, q_batch))          # (N, 6, 3)
+    tips_mid = g.tip_fk(design, g.authored_fk(design, np.asarray(pu.default_q, dtype=float)))
     spawn = np.asarray(pu.spawn_offset, dtype=float)
     out: List[FingerReach] = []
     for f in range(g.N_FINGERS):
-        base = f * g.N_JOINTS_PER_FINGER
-        used = [base + d for d in range(g.N_JOINTS_PER_FINGER) if design.slot_valid[base + d]]
+        used = [g.finger_slot(f, d) for d in range(g.N_JOINTS_PER_FINGER) if design.slot_valid[g.finger_slot(f, d)]]
         if not used:
             continue
         last = max(used)
-        local_tip = np.array([0.0, 0.0, float(design.slot_length[last]), 1.0])
-        tips = (T_batch[:, last] @ local_tip)[:, :3]
-        dist = np.linalg.norm(tips - spawn[None, :], axis=1)
+        dist = np.linalg.norm(tips_all[:, f] - spawn[None, :], axis=1)
         out.append(FingerReach(
             slot=f, digit_id=design.finger_digit_id[f], tip_body=design.slot_body_name[last] or "",
             hits=int(np.count_nonzero(dist <= REACH_TOL_M)), min_dist_m=float(dist.min()),
-            tip_at_reset=(T_mid[last] @ local_tip)[:3],
+            tip_at_reset=tips_mid[f],
         ))
     n_reach = sum(1 for r in out if r.reaches)
     if n_reach != int(pu.reachable_fingertips):
@@ -196,21 +193,19 @@ def analyze(model: KinematicModel, *, with_fit_without_overlap: bool = False) ->
 
 
 def slot_table(design) -> List[str]:
-    """One line per used envelope finger slot / palm carrier."""
+    """One line per envelope finger slot: its finger and its carrier (palm
+    joint) role."""
     g = ge()
     lines = []
-    for f in range(g.N_FINGERS):
-        base = f * g.N_JOINTS_PER_FINGER
-        used = [base + d for d in range(g.N_JOINTS_PER_FINGER) if design.slot_valid[base + d]]
+    for f, role in enumerate(g.carrier_roles(design)):
+        used = [g.finger_slot(f, d) for d in range(g.N_JOINTS_PER_FINGER) if design.slot_valid[g.finger_slot(f, d)]]
+        c = g.carrier_slot(f)
+        on = {g.LOCKED: "on the palm", g.LEADER: f"palm joint of {design.slot_body_name[c]}",
+              g.FOLLOWER: f"tied to f{g.slot_finger(int(design.slot_tie[c]))}'s palm joint"}[role]
         if not used:
-            lines.append(f"f{f}: padding")
+            lines.append(f"f{f}: " + ("padding" if role == g.LOCKED else f"no finger, {on}"))
             continue
-        via = " via pc%d" % (f - 3) if f >= 3 and design.slot_valid[g.PC0_SLOT + (f - 3)] else ""
-        lines.append(f"f{f}: digit {design.finger_digit_id[f]} ({len(used)} joints){via}")
-    for pc in range(2):
-        idx = g.PC0_SLOT + pc
-        if design.slot_valid[idx]:
-            lines.append(f"pc{pc}: carrier {design.slot_body_name[idx]}")
+        lines.append(f"f{f}: digit {design.finger_digit_id[f]} ({len(used)} joints), {on}")
     return lines
 
 

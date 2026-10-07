@@ -17,7 +17,7 @@ on a generated hand:
 Each is computed with the simulator's own functions and thresholds
 (`canonicalize`, `palm_up`, `rest_overlap_pairs`, `spawn_height_above_palm_m`
 from grammar_envelope.py, loaded by file path through envload), exactly as
-`viability_report` computes them. They need the simulator's 32-slot model of
+`viability_report` computes them. They need the simulator's 36-slot model of
 the hand, which exists only for hands within the SIMULATOR limits
 (`_admit_structural`); on any other hand (sampled under looser limits) they
 read n/a and do not block.

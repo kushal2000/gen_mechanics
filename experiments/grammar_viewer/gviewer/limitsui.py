@@ -24,20 +24,15 @@ class IntField:
 
 
 INT_FIELDS: Tuple[IntField, ...] = (
-    IntField("max_digits", "max fingers", "Most fingers on the hand (branch fingers not counted).",
-             (ANY,) + tuple(str(i) for i in range(1, 9))),
+    IntField("max_digits", "max fingers", "Most fingers on the hand (branch fingers not counted). The simulator has "
+             "6 finger slots, any split over the palm and its palm parts; a palm joint without a finger "
+             "(only without the palm rule) takes a slot too.", (ANY,) + tuple(str(i) for i in range(1, 9))),
     IntField("max_joints_per_digit", "max joints per finger", "Most joints in one finger, its branch fingers "
              "included.", (ANY,) + tuple(str(i) for i in range(1, 9))),
     IntField("max_palm_bodies", "max palm parts", "Most palm parts besides the main palm.",
              (ANY,) + tuple(str(i) for i in range(0, 5))),
-    IntField("max_jointed_palm_bodies", "max palm joints", "Most palm parts with their own joint.",
-             (ANY,) + tuple(str(i) for i in range(0, 5))),
-    IntField("max_digits_per_jointed_palm_body", "fingers per palm joint",
-             "Most fingers moved by one palm joint (on its palm part, or on rigid palm parts below it).",
-             (ANY,) + tuple(str(i) for i in range(0, 4))),
-    IntField("max_finger_chains", "max finger slots",
-             "Fingers on the rigid palm plus palm joints: the simulator has 5 finger slots, and every palm joint "
-             "takes one.", (ANY,) + tuple(str(i) for i in range(1, 9))),
+    IntField("max_jointed_palm_bodies", "max palm joints", "Most palm parts with their own joint (any number of "
+             "fingers each).", (ANY,) + tuple(str(i) for i in range(0, 5))),
     IntField("max_finger_length_mm", "max finger length (mm)",
              "Longest finger: the sum of its bone lengths from its base to its farthest fingertip, branch fingers "
              "included. 250 mm is the longest commercial finger (DClaw, 221 mm) x 1.1.",

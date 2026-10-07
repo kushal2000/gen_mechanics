@@ -82,7 +82,8 @@ def test_variation_impossible_is_a_message():
 
 
 def test_mutate_until_viable():
-    res = src.mutate_until_viable(_root(), src.distribution("G_V3S"), np.random.default_rng(5), max_tries=64)
+    root = src.sample("G_V3S", 44)[0]     # a viable 4-finger hand (seed 8 has a 6-joint finger: not admitted)
+    res = src.mutate_until_viable(root, src.distribution("G_V3S"), np.random.default_rng(5), max_tries=64)
     assert res.child is not None, res.message
     assert res.report["admitted"] and res.report["fingertips_reachable"] >= 2
 

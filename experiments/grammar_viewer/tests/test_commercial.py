@@ -57,9 +57,7 @@ def test_envelope_fit_and_readout(loaded):
         assert ch.sha_ok is True
     if "svh_right" in loaded:
         ch = loaded["svh_right"]
-        ok, reasons = ch.fit
-        assert not ok
-        assert any("carries 2 digits" in r for r in reasons)
+        assert ch.fit == (True, ())          # two fingers on one palm joint fit the 36-slot envelope
         assert any("made independent motors" in line for line in ch.approximations())
     if "sharpa_left_on_iiwa14" in loaded:
         ch = loaded["sharpa_left_on_iiwa14"]

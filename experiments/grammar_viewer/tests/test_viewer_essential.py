@@ -128,7 +128,7 @@ def test_limit_fields_and_reset(simulator):
     assert app.limits() == SIMULATOR.with_(max_digits=2, max_finger_length_mm=150.0)
     assert app.gui_rules.value == "Custom Rules"
     app.reset_limits()
-    assert app.limits() == SIMULATOR and app.limit_ints["max_digits"].value == "5"
+    assert app.limits() == SIMULATOR and app.limit_ints["max_digits"].value == "6"
     assert app.gui_rules.value == "Evolution Rules"
     unlimit(app)
     assert app.gui_rules.value == "No Rules"
@@ -341,7 +341,10 @@ def test_commercial_hand_outside_the_limits(simulator):
     if com.hand_entry("svh_right").availability != "available":
         pytest.skip("svh URDF not available")
     assert app.load_commercial("svh_right", wait=True)
-    assert "follows the rules: no (fingers per palm joint 2 > 1)" in app.md_fidelity.content
+    # two fingers on one palm joint fit the simulator's Evolution Rules
+    assert "follows the rules: yes" in app.md_fidelity.content
+    app.set_limit("max_jointed_palm_bodies", 0)
+    assert "follows the rules: no (palm joints 1 > 0)" in app.md_fidelity.content
     assert app.md_limits.content.startswith("this hand: breaks:")
     # it can still be mutated, as long as no limit gets worse
     assert app.mutate("step_segment_length", wait=True) and app.history.cursor == 1

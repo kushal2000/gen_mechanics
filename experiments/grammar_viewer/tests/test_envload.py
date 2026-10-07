@@ -16,7 +16,7 @@ def test_loads_without_isaac():
     assert "isaaclab" not in sys.modules
     assert getattr(sys.modules["isaacsimenvs"], "__gviewer_stub__", False)
     ge = mods.grammar_envelope
-    assert ge.N_SLOTS == 32
+    assert ge.N_SLOTS == 36
     assert ge.MIN_SPAWN_HEIGHT_ABOVE_PALM_M == mods.palm_calibration.MIN_SPAWN_HEIGHT_ABOVE_PALM_M
     # the relative `..palm_calibration` import resolved to the module loaded by path
     assert sys.modules["isaacsimenvs.inhand_reorient.palm_calibration"] is mods.palm_calibration
@@ -25,7 +25,7 @@ def test_loads_without_isaac():
 
 def test_archive_bins_match_driver():
     ar = load_env_modules().archive
-    assert ar.N_CELLS == 30
+    assert ar.N_CELLS == 36
     assert ar.descriptor(4, 14) == (3, 2)
     assert ar.cell_label((3, 2)) == "d4_j11-15"
     cell, label = an.descriptor_for(1, 5)
