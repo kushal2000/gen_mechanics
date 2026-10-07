@@ -32,6 +32,11 @@ from hand_sampler import commercial as C
 from hand_sampler import design_space as D
 from hand_sampler import viewer
 
+ORDER = ("leap", "allegro", "wuji2", "midas")
+"""Left to right. Not commercial.HANDS, which is the order they were fitted in:
+MIDAS goes last because it is the one hand with no vendor mesh to ghost, so the
+three that can be compared properly sit together."""
+
 GHOST = "#7d838d"
 GHOST_ALPHA = 0.10
 CLUSTER_PITCH = 0.003
@@ -195,33 +200,34 @@ def alignment_error(name: str, hand) -> tuple[np.ndarray, np.ndarray]:
 # --- the picture -------------------------------------------------------------
 
 def draw_overlay(ax, name: str, hand, meshes: bool = True,
-                 alpha: float = GHOST_ALPHA) -> str:
-    """The vendor in ghost, the fit solid on top. Returns what was drawn."""
+                 alpha: float = GHOST_ALPHA) -> bool:
+    """The vendor in ghost, the fit solid on top.
+
+    True when the ghost is the vendor's MESHES, False when it is only the
+    skeleton -- which is MIDAS, whose meshes are not vendored.
+    """
     T = vendor_to_palm(name)
     tris = vendor_triangles(name) if meshes else []
     if tris:
         ax.add_collection3d(Poly3DCollection(
             np.vstack([_apply(T, t.reshape(-1, 3)).reshape(-1, 3, 3) for t in tris]),
             facecolor=GHOST, alpha=alpha, edgecolor="none", zorder=0))
-        drew = "vendor meshes"
-    else:
-        drew = "vendor skeleton (its meshes are not vendored)"
     for poly in vendor_skeleton(name):
         p = _apply(T, poly)
         ax.plot(*p.T, color=GHOST, linewidth=2.0, alpha=0.9,
                 solid_capstyle="round", zorder=1)
         ax.scatter(*p[:-1].T, s=8, c=GHOST, depthshade=False, zorder=1)
-    return drew
+    return bool(tris)
 
 
 def figure(names=None, out: str = "overlay.png", meshes: bool = True,
            span: float = 0.22, alpha: float = GHOST_ALPHA) -> str:
-    names = list(names or C.HANDS)
+    names = list(names or ORDER)
     fig = plt.figure(figsize=(3.4 * len(names), 4.2), dpi=140)
     for i, name in enumerate(names):
         hand, _ = C.fit(name)
         ax = fig.add_subplot(1, len(names), i + 1, projection="3d")
-        drew = draw_overlay(ax, name, hand, meshes=meshes, alpha=alpha)
+        tris_drawn = draw_overlay(ax, name, hand, meshes=meshes, alpha=alpha)
         viewer.draw(ax, hand, "", 0.0)
         inplane, offplane = alignment_error(name, hand)
         print(f"  {name:8s} base in-plane " + " ".join(f"{e:5.1f}" for e in inplane)
@@ -232,13 +238,13 @@ def figure(names=None, out: str = "overlay.png", meshes: bool = True,
         ax.set_xlim(-span / 2, span / 2)
         ax.set_ylim(-span / 2, span / 2)
         ax.set_zlim(-span / 4, 3 * span / 4)
-        ax.set_title(f"{name}   {hand.n_fingers}f {hand.n_joints}j   "
-                     f"curl {D.curl_score(hand):.2f}\n{drew}\n"
-                     f"base in-plane {inplane.max():.0f} mm, "
-                     f"off-midplane {offplane.max():.0f} mm (worst)",
-                     fontsize=8, pad=-2)
-    fig.suptitle("the fit, solid, over the vendor it came from, in ghost",
-                 fontsize=11, y=0.98)
+        # Everything else this knows goes to stdout. The only thing the picture
+        # has to carry is which hand it is -- and, for MIDAS, that its ghost is
+        # a skeleton rather than a mesh, or it reads as a much thinner hand.
+        note = "" if tris_drawn else "   (no vendor mesh)"
+        ax.set_title(f"{name}   {hand.n_fingers}f {hand.n_joints}j{note}",
+                     fontsize=9, pad=-2)
+    fig.suptitle("fitted grammar, vendor in grey", fontsize=11, y=0.98)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(out, bbox_inches="tight", facecolor="white")
     print(f"wrote {out}  ({len(names)} hands)")
@@ -249,7 +255,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default="overlay.png")
     ap.add_argument("--hands", default=None,
-                    help="comma-separated; defaults to commercial.HANDS")
+                    help="comma-separated; defaults to ORDER")
     ap.add_argument("--no-meshes", action="store_true",
                     help="skeletons only, which is what the fit actually reads")
     ap.add_argument("--span", type=float, default=0.22, help="box side, in metres")
