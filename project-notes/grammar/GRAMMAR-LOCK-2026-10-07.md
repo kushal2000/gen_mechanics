@@ -63,18 +63,35 @@ The grammar combines our grammar (`martin/hand-grammar`), Vatsal's physical gram
 - **Why:** split and merge keep the finger's length and reach, so each step is a small change. Losing a finger must not take many steps, as it did when only single-joint fingers could be removed.
 
 ### 19. Commercial reference set: every hand any of us has
-- Ours: Ability, Allegro, ARMS (skeleton), Barrett, DClaw, Dex1, Inspire, LEAP, Orca, Shadow, SHARPA, SVH, Tesollo DG-5F, Wuji (v1), XHand. Kushal's: Dex3, Wuji v2 (left and right), plus his uniform-dynamics versions of the shared hands. Vatsal's: MIDAS.
+- Ours: Ability, Allegro, ARMS (skeleton), Barrett, DClaw, Dex1, Inspire, LEAP, Orca, Shadow, SHARPA, SVH, Tesollo DG-5F, Wuji (v1), XHand. Kushal's: Dex3, Wuji v2 (left and right), plus his uniform-dynamics versions of the shared hands. Vatsal's: MIDAS. Kushal's 52 Wuji v2 finger subsets are not included; the regular Wuji v2 is.
 - **Why:** as many real hands as possible, to test how well the grammar covers the market and to give the policy the most held-out hands.
 
 ### 20. Fit metric: revisit later
 - For now, ours (largest joint-position, axis and fingertip error against 5 mm / 10 degrees), counting a pure difference in the zero pose as a match (Vatsal). Martin expects a better similarity metric is needed.
+
+### 17. Coarse steps twice as coarse; fine steps as they were
+| Parameter | Coarse | Fine |
+|---|---|---|
+| link length | 10 mm | 1 mm |
+| finger position on the palm | 10 mm | 1 mm |
+| finger facing and tilt | 30 degrees | 5 degrees |
+| palm joint hinge position | 10 mm | 1 mm |
+| palm joint axis | 30 degrees | 5 degrees |
+| joint axis tilt (item 3) | none | 5 degrees, up to +/-15 |
+
+No coupling step (one global ratio, 7b). Every coarse value lies on the fine grid.
+- **Why:** Martin wanted the coarse stage coarser; the 2026-09-18 meeting noted that mutations were not large enough between generations, and the coarse stage is the one meant to explore.
+
+### 16 (partly). Coupling toggle, and split/merge for joints
+- A mutation can switch a joint between independent and coupled to the joint before it (ratio 1.1). Adding and removing joints is split and merge (item 15).
+- **Why:** with one global ratio, coupling is a yes/no property of a joint, so one toggle covers it.
+- Still open: switching a joint's kind in place (see below).
 
 ## Still to decide
 6, 8 and 10 wait for the link-shape check (capsule, box or rounded box), since the cross-section sets the radius, the shortest link and the finger spacing.
 6. Capsule radius (global): 15 mm from the XM335 motor (Vatsal) or 10 mm.
 8. Evolution Rules link length: 20-80 mm, last link at least 15 mm (a motor must fit between joints); the grammar keeps 0-90 mm for commercial hands.
 10. Finger spacing at least 2 x radius + 5 mm.
-16. Changing a joint (under discussion): switch its kind in place, and toggle coupling to the joint before it.
-17. Coarse / fine steps: Martin wants coarse steps coarser and fine as is (1 mm, 5 degrees); proposed coarse: 10 mm lengths and positions, 30 degrees for facing, tilt and palm-joint axes. No coupling step (one global ratio).
+16. Switching a joint's kind in place: in the kind grammar this is the only coarse axis step (the three kinds are 90 degrees apart and the fine tilt stops at 15), so it is not redundant with axis steps; proposed weighting by the commercial hands' mix of kinds (to be measured; expected about 70% flexion, 25% abduction, 5% roll).
 
 Checks come after the grammar and the Evolution Rules. Candidates: the overlap check, Vatsal's curl score, Martin's thumb-finger workspace overlap, and an opposition test (none exists yet).
