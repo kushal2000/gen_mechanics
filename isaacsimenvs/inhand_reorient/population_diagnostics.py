@@ -251,7 +251,7 @@ def _random_rollout_and_contacts(env, args, population, design_idx, ge) -> bool:
     nan_steps = 0
     q_max = qd_max = tie_max = 0.0
     tie_per_design = np.zeros(population.n_designs)
-    self_contacts = filtered_contacts = 0
+    self_contacts = filtered_contacts = other_contacts = 0
     filtered_examples = []
     for step in range(args.random_steps):
         env.step(torch.rand(n, env.hand_spec.num_hand_joints, device=device) * 2.0 - 1.0)
@@ -274,6 +274,8 @@ def _random_rollout_and_contacts(env, args, population, design_idx, ge) -> bool:
             for h in headers:
                 a0 = str(PhysicsSchemaTools.intToSdfPath(h.actor0)).split("/")
                 a1 = str(PhysicsSchemaTools.intToSdfPath(h.actor1)).split("/")
+                if ("Robot" in a0) != ("Robot" in a1):
+                    other_contacts += 1   # hand-object (or hand-ground): shows the reports work
                 if "Robot" not in a0 or "Robot" not in a1 or a0[:-1] != a1[:-1]:
                     continue  # not a self-contact of one env's robot
                 env_id = int(a0[-3][len("env_"):])
@@ -290,6 +292,8 @@ def _random_rollout_and_contacts(env, args, population, design_idx, ge) -> bool:
             print(f"    design {d} ({population.sources[d]}): tie error max {tie_per_design[d]:.2e} rad")
     ok = nan_steps == 0 and tie_max <= args.max_tie_error
     if contact_api is not None:
+        print(f"(g) hand contacts with other bodies reported: {other_contacts} (0: the report sees nothing, "
+              f"so the next line cannot show a filter failure)")
         print(f"(g) self-contacts reported: {self_contacts}; between collision-filtered pairs "
               f"({n_filtered_pairs} pairs over {n} envs): {filtered_contacts} {filtered_examples}")
         ok &= filtered_contacts == 0

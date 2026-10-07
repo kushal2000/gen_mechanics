@@ -421,3 +421,11 @@ Conventions: one entry per iteration; record commands, versions, seeds, artifact
 
 - 15 expert runs, 7 recipes (HORA PPO, low initial noise, SAPG, drop penalty -20 / -5, survival bonus) on sharpa, leap and four grammar hands. Without a drop cost every hand flicks (holding 0.8-2.3 s vs 14-19 s doing nothing); with a -20 drop penalty they hold 7-10 s but barely rotate. Only allegro, whose grasps come from HORA's hand-tuned pose, does both.
 - Next: anneal the drop penalty after holding is learned; require gait-supporting grasps (>= 3 enclosing fingertip contacts with an opposing digit).
+
+## The locked grammar built end to end (2026-10-07, 15:30-18:30)
+
+- Old grammar tagged locally as `grammar-v0.5-final` (4108105) and removed. New: `hand_sampler/grammar/{hand,derive,operators,viability,commercial,conform,build_conformed}.py`; simulator side in `isaacsimenvs/inhand_reorient/scene/` and the evolution driver (`--rules evolution|none`, `--stage coarse|fine`); viewer rewritten.
+- Limits measured on the conformed commercial hands: bases 10-160 mm from the wrist centre, tilt -30..+90, palm hinges 15-110 mm, rim tolerance 8 mm (Dex3 breaks it at 22.5 mm). C2 tolerance 20 mm (all commercial hands pass; Ability closest at 13.8 mm).
+- Commercial fit (fine grid): 17 of 19 within 5 mm / 10 deg; ARMS 5.1 mm and Wuji v1 5.1 mm / 10.4 deg miss narrowly.
+- Random hands (uniform prior + rim rule, Evolution Rules): C1 40%, C2 64%, viable 17%.
+- Isaac (RTX 4090, 64 envs, HORA, 3000 random steps): FK 0.0005 mm, mimic tie error <= 2.4e-3 rad, no cooking warnings, no NaN; token-transformer training smoke 150 epochs end to end. Notes: `isaac-validation-2026-10-07.md`.
