@@ -18,8 +18,8 @@ One process per hand (Isaac Sim builds one scene per process):
         --name wuji2_replica
     -> results/spawn/<name>.json
 
-Same --seed for both hands of a pair, but the reset draws are not guaranteed to line up across hands (a different
-joint count consumes the generator differently), so the object and goal poses are compared, not assumed equal.
+Use the same --seed for both hands of a pair. At seed 0 the object and goal orientations came out identical across
+all six hands captured on 2026-10-07; the viewer still compares the poses rather than assuming it.
 """
 from __future__ import annotations
 

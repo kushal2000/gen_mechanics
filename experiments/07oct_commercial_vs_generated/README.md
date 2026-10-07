@@ -38,8 +38,11 @@ of the sim's) and tabulates the observation term by term. Per-joint terms pair t
   vendor's has only its own joints. A policy reads them through different layouts.
 * Every replica palm is 25 mm thick (the grammar's palm), against 35-49 mm for the vendors.
 * Ghost slots show nonzero `joint_vel` at spawn (up to 0.42 on Wuji): unexplained, worth checking before training.
-* The cube and goal are drawn with the same seed but are NOT the same draw across hands (the joint count changes
-  how the generator is consumed); the spawn distance above is one sample, not a distribution.
+* The cube and goal ORIENTATIONS are the same draw for every hand at seed 0 (checked: identical quaternions), so
+  `keypoints_rel_goal` matches exactly and `keypoints_rel_ee` differs only in the cube's centre. That centre is set
+  by the design, not by chance: `reset.object_in_hand` with `in_hand_placement: fingertips` puts it halfway from the
+  palm centre to the fingertip-pad centroid in the palm plane, and above the highest pad (or the palm face) by the
+  cube's half-reach + 13 mm along the grasp normal.
 
 ## Fixed on the way
 
