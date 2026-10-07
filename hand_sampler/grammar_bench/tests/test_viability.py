@@ -50,22 +50,52 @@ def test_gjk_is_never_above_a_sampled_bound():
         assert d >= 0.0
 
 
-def _two_fingers(gap_mm: float) -> Hand:
-    """Two parallel straight fingers; their rounded links (19 mm wide) are
-    `gap_mm` apart side by side if positive, overlapping if negative."""
+def _two_fingers(gap_mm: float, axis=(0, 0)) -> Hand:
+    """Two parallel straight fingers, bases 19 mm + `gap_mm` apart side by
+    side (each link turned a little about itself by its closing direction)."""
     y = int(round(19 + gap_mm))
-    return Hand(fingers=(Finger(y=0, z=80, joints=(Joint("hinge", (0, 0), 50),)),
-                         Finger(y=y, z=80, joints=(Joint("hinge", (0, 0), 50),))))
+    return Hand(fingers=(Finger(y=0, z=80, joints=(Joint("hinge", axis, 50),)),
+                         Finger(y=y, z=80, joints=(Joint("hinge", axis, 50),))))
+
+
+def _side_by_side_overlap_mm(h: Hand) -> float:
+    """Independent overlap of `_two_fingers`: both links run along palm z
+    over the same span, so their distance is the 2-D distance between their
+    core cross-sections (rectangles turned about the link by the closing
+    direction toward the grasp point) in the palm's x-y plane."""
+    G = dv.grasp_point_m(h)
+    secs = []
+    for f in h.fingers:
+        B, b = dv.finger_frame(f, G), dv.mount_point_m(f)
+        secs.append([(b + sy * dv.CORE_HALF_Y_MM * 1e-3 * B[:, 1] + sz * dv.CORE_HALF_Z_MM * 1e-3 * B[:, 2])[:2]
+                     for sy, sz in ((-1, -1), (-1, 1), (1, 1), (1, -1))])
+
+    def seg(p, a, c):
+        t = np.clip(np.dot(p - a, c - a) / np.dot(c - a, c - a), 0.0, 1.0)
+        return float(np.linalg.norm(p - (a + t * (c - a))))
+
+    d = min(seg(p, Q[k], Q[(k + 1) % 4]) for P, Q in ((secs[0], secs[1]), (secs[1], secs[0])) for p in P
+            for k in range(4))
+    return 2 * V.LINK_RADIUS_MM - d * 1e3
 
 
 def test_c1_measures_rounded_box_overlap():
     for gap in (2, 0, -2, -3):
-        ov = V.overlaps(_two_fingers(gap))
-        assert ov == [] or max(o for _, _, o in ov) == pytest.approx(-gap, abs=1e-6)
+        h = _two_fingers(gap)
+        ov = V.overlaps(h)
+        expected = _side_by_side_overlap_mm(h)
+        if expected <= 0:
+            assert ov == []
+        else:
+            assert max(o for _, _, o in ov) == pytest.approx(expected, abs=1e-6)
 
 
 def test_c1_needs_more_than_3_mm():
-    assert V.c1_self_overlap(_two_fingers(-3)).ok
+    # spreading joints (they stay at 0 in the start pose), side by side: 2.8 and 3.8 mm
+    for gap in (-2, -3):
+        h = _two_fingers(gap, axis=(90, 0))
+        assert V.c1_self_overlap(h).ok == (_side_by_side_overlap_mm(h) <= 3.0)
+    assert V.c1_self_overlap(_two_fingers(-2, (90, 0))).ok and not V.c1_self_overlap(_two_fingers(-3, (90, 0))).ok
     h = Hand(fingers=(Finger(y=0, z=80, joints=(Joint("hinge", (0, 0), 50),)),
                       Finger(y=19, z=80, facing=355, joints=(Joint("hinge", (0, 0), 50),))))
     r = V.c1_self_overlap(h)

@@ -3,6 +3,9 @@ and ranges, forward kinematics (batched), the `KinematicModel`, the rounded
 link boxes and the palm outlines. Numpy only.
 
 Derived per joint (GRAMMAR-LOCK item 3):
+- the link frame: x along the finger, y the closing direction (square to x,
+  toward the grasp point, the object's start point above the palm), z = x
+  cross y;
 - kind: the nearest of flexion (link z), abduction (link y) and roll (link
   x); ties go to flexion, then abduction.
 - sign: + moves the fingertip toward +y of the link frame (the closing
@@ -20,6 +23,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -62,14 +66,46 @@ def direction(az_deg: float, el_deg: float) -> np.ndarray:
     return np.array([math.sin(e), math.cos(e) * math.sin(a), math.cos(e) * math.cos(a)])
 
 
-def finger_frame(f: Finger) -> np.ndarray:
-    """3x3, columns = the finger's link frame (x along the finger, y the
-    closing direction, z the flexion axis) in the palm frame, at q = 0."""
-    fa, t = f.facing * DEG, f.tilt * DEG
+def finger_direction(f: Finger) -> np.ndarray:
+    """The finger's direction at q = 0 (palm frame): `direction(facing, tilt)`."""
+    return direction(f.facing, f.tilt)
+
+
+def frame_toward(facing_deg: float, tilt_deg: float, base_m: np.ndarray, grasp_m: np.ndarray) -> np.ndarray:
+    """3x3, columns = a finger's link frame in the palm frame at q = 0: x along
+    the finger (`direction(facing, tilt)`), y the closing direction = the unit
+    vector square to x pointing toward the grasp point (+x of the palm, then
+    the tilt direction, when the finger points straight at it), z = x cross y
+    (the flexion axis)."""
+    fa, t = facing_deg * DEG, tilt_deg * DEG
     x = np.array([math.sin(t), math.cos(t) * math.sin(fa), math.cos(t) * math.cos(fa)])
-    y = np.array([math.cos(t), -math.sin(t) * math.sin(fa), -math.sin(t) * math.cos(fa)])
-    z = np.array([0.0, math.cos(fa), -math.sin(fa)])
-    return np.column_stack([x, y, z])
+    g = np.asarray(grasp_m, dtype=float) - np.asarray(base_m, dtype=float)
+    y = g - x * float(g @ x)
+    if np.linalg.norm(y) < 1e-6 * max(1.0, float(np.linalg.norm(g))) or np.linalg.norm(g) < 1e-9:
+        y = np.array([1.0, 0.0, 0.0]) - x * x[0]
+        if np.linalg.norm(y) < 1e-9:   # a finger along the palm normal, pointing at the grasp point
+            y = np.array([math.cos(t), -math.sin(t) * math.sin(fa), -math.sin(t) * math.cos(fa)])
+    y = y / np.linalg.norm(y)
+    return np.column_stack([x, y, np.cross(x, y)])
+
+
+@lru_cache(maxsize=8192)
+def _grasp_point_cached(hand: Hand) -> Tuple[float, float, float]:
+    return tuple(float(v) for v in object_start_m(hand))
+
+
+def grasp_point_m(hand: Hand) -> np.ndarray:
+    """The grasp point every finger closes toward: the object's start point
+    (`object_start_m`, above the main palm outline's centroid). It depends on
+    the finger bases and hinges only."""
+    return np.array(_grasp_point_cached(hand))
+
+
+def finger_frame(f: Finger, grasp_m: np.ndarray) -> np.ndarray:
+    """3x3, columns = the finger's link frame (x along the finger, y the
+    closing direction toward the grasp point, z the flexion axis) in the palm
+    frame, at q = 0."""
+    return frame_toward(f.facing, f.tilt, mount_point_m(f), grasp_m)
 
 
 def mount_point_m(f: Finger) -> np.ndarray:
@@ -109,7 +145,7 @@ def axis_sign(a: np.ndarray, B: np.ndarray, sliding: bool = False) -> float:
 def joint_sign(hand: Hand, i: int, j: int) -> float:
     f = hand.fingers[i]
     jt = f.joints[j]
-    return axis_sign(direction(*jt.axis), finger_frame(f), jt.type == "sliding")
+    return axis_sign(direction(*jt.axis), finger_frame(f, grasp_point_m(hand)), jt.type == "sliding")
 
 
 def joint_axis(hand: Hand, i: int, j: int) -> np.ndarray:
@@ -134,7 +170,7 @@ def palm_axis(hand: Hand, k: int) -> np.ndarray:
 
 def tip_zero_m(f: Finger) -> np.ndarray:
     """The fingertip at q = 0 (the finger is a straight line), palm frame."""
-    return mount_point_m(f) + finger_frame(f)[:, 0] * (sum(j.length for j in f.joints) * MM)
+    return mount_point_m(f) + finger_direction(f) * (sum(j.length for j in f.joints) * MM)
 
 
 def joint_limits(hand: Hand, i: int, j: int) -> Tuple[float, float]:
@@ -255,9 +291,10 @@ def fk(hand: Hand, q: Optional[np.ndarray] = None) -> Pose3:
     links: List[np.ndarray] = []
     tips = np.zeros((N, len(hand.fingers), 3))
     col = P
+    G = grasp_point_m(hand)
     for i, f in enumerate(hand.fingers):
         T = np.tile(np.eye(4), (N, 1, 1))
-        T[:, :3, :3] = finger_frame(f)
+        T[:, :3, :3] = finger_frame(f, G)
         T[:, :3, 3] = mount_point_m(f)
         if f.palm_joint >= 0:
             T = palm[:, f.palm_joint] @ T
@@ -302,6 +339,7 @@ def derive(hand: Hand, name: str = "grammar_hand") -> KinematicModel:
     joints: List[KJoint] = []
     frames: List[Frame] = []
     couplings: List[AffineCoupling] = []
+    G = grasp_point_m(hand)
     for k in range(len(hand.palm_joints)):
         bodies.append(Body(f"palm{k}", palm=True))
         joints.append(KJoint(f"palm{k}_joint", "revolute", "palm", f"palm{k}",
@@ -314,7 +352,7 @@ def derive(hand: Hand, name: str = "grammar_hand") -> KinematicModel:
             child = f"f{i}_link{j}"
             bodies.append(Body(child))
             if j == 0:
-                origin = Pose(xyz=tuple(float(v) for v in base), rpy=_matrix_to_rpy(finger_frame(f)))
+                origin = Pose(xyz=tuple(float(v) for v in base), rpy=_matrix_to_rpy(finger_frame(f, G)))
             else:
                 origin = Pose(xyz=(f.joints[j - 1].length * MM, 0.0, 0.0))
             jtype = "prismatic" if jt.type == "sliding" else "revolute"

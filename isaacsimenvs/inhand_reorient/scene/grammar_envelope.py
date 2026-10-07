@@ -376,7 +376,7 @@ def canonicalize(hand: Hand, source: str = "") -> EnvelopeDesign:
             continue
         fg = hand.fingers[i]
         base = np.eye(4)
-        base[:3, :3] = gdv.finger_frame(fg)
+        base[:3, :3] = gdv.finger_frame(fg, gdv.grasp_point_m(hand))
         base[:3, 3] = gdv.mount_point_m(fg) - hinge
         n = len(fg.joints)
         for d, jt in enumerate(fg.joints):

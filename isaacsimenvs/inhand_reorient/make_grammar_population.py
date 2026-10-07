@@ -61,10 +61,12 @@ FLEX, ABD, ROLL = (0, 0), (90, 0), (0, 90)
 def split_321_hand() -> Hand:
     """Six fingers: three on the main palm, two on one palm joint's section
     (the -y side of the row), and a thumb on its own palm joint (+y side):
-    the 3+2+1 split."""
+    the 3+2+1 split. The row splays 15 degrees per finger: every finger
+    closes toward the grasp point, so a parallel row would close into its
+    neighbours."""
     j3 = (("hinge", FLEX, 40), ("hinge", FLEX, 30), ("coupled", FLEX, 25))
-    row = [(-50, 90, 0), (-25, 95, 0), (0, 100, -1), (25, 95, -1), (50, 90, -1)]
-    fingers = [_finger(y, z, j3, palm_joint=k) for y, z, k in row]
+    row = [(-50, 90, 330, 0), (-25, 95, 345, 0), (0, 100, 0, -1), (25, 95, 15, -1), (50, 90, 30, -1)]
+    fingers = [_finger(y, z, j3, facing=fa, palm_joint=k) for y, z, fa, k in row]
     fingers.append(_finger(60, 35, (("hinge", ROLL, 0), ("hinge", FLEX, 40), ("hinge", FLEX, 30)), facing=60,
                            tilt=40, palm_joint=1))
     return Hand(fingers=tuple(fingers), palm_joints=(PalmJoint(-20, 45, (0, 0)), PalmJoint(30, 20, (0, 0))))
@@ -72,9 +74,10 @@ def split_321_hand() -> Hand:
 
 def zero_link_hand() -> Hand:
     """Knuckles with two joints at one point (0 mm links), a thumb with a
-    0 mm link in its middle."""
+    0 mm link in its middle. The outer fingers splay 15 degrees (they close
+    toward the grasp point)."""
     knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 45), ("hinge", FLEX, 0), ("hinge", FLEX, 25), ("hinge", FLEX, 20))
-    fingers = [_finger(y, 95, knuckle) for y in (-25, 0, 25)]
+    fingers = [_finger(y, 95, knuckle, facing=fa) for y, fa in ((-25, 345), (0, 0), (25, 15))]
     fingers.append(_finger(30, 30, (("hinge", ROLL, 0), ("hinge", FLEX, 40), ("hinge", FLEX, 0), ("hinge", ABD, 30)),
                            facing=70, tilt=20))
     return Hand(fingers=tuple(fingers))
@@ -83,7 +86,7 @@ def zero_link_hand() -> Hand:
 def oblique_hand() -> Hand:
     """Axes between kinds (a thumb base at 45 degrees, tilted finger joints)."""
     fingers = [_finger(y, 90, (("hinge", (15, -20), 40), ("hinge", (30, 0), 35), ("hinge", (0, 10), 25)), facing=f)
-               for y, f in ((-30, 350), (0, 0), (30, 10))]
+               for y, f in ((-30, 345), (0, 0), (30, 15))]
     fingers.append(_finger(45, 25, (("hinge", (45, 45), 30), ("hinge", (135, 30), 40), ("hinge", (60, 0), 30)),
                            facing=60, tilt=60))
     return Hand(fingers=tuple(fingers))

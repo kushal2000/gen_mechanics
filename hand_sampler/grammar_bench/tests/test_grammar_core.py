@@ -151,7 +151,7 @@ def test_derived_signs_close_or_spread():
     for _ in range(200):
         h = ops.random_hand(rng, NO_RULES)
         for i, f in enumerate(h.fingers):
-            B = dv.finger_frame(f)
+            B = dv.finger_frame(f, dv.grasp_point_m(h))
             for j, jt in enumerate(f.joints):
                 a = dv.joint_axis(h, i, j)
                 v = a if jt.type == "sliding" else np.array([0.0, a[2], -a[1]])   # tip velocity, link frame
@@ -161,6 +161,33 @@ def test_derived_signs_close_or_spread():
                     assert (B @ v)[1] > 0
                 elif np.linalg.norm(v) < 1e-9:
                     assert a[0] > 0
+
+
+def test_every_closing_joint_moves_the_tip_toward_the_grasp_point():
+    """The closing direction points at the grasp point (the object's start
+    point above the palm), so at the zero pose + on any joint that can close
+    the finger brings its tip nearer that point, whatever the facing and tilt."""
+    rng = np.random.default_rng(15)
+    n = 0
+    for _ in range(200):
+        h = ops.random_hand(rng, NO_RULES)
+        G = dv.grasp_point_m(h)
+        assert np.allclose(G, dv.object_start_m(h))
+        ds = dv.dofs(h)
+        q0 = np.zeros(len(ds))
+        tip0 = dv.fk(h, q0).tips
+        for k, d in enumerate(ds):
+            if d.finger < 0 or d.source >= 0 or d.type == "sliding":
+                continue
+            a = dv.direction(*h.fingers[d.finger].joints[d.index].axis)
+            if abs(a[2]) < 1e-9:          # cannot close: spreads or rolls
+                continue
+            q = q0.copy()
+            q[k] = 1e-4
+            tip = dv.fk(h, q).tips[d.finger]
+            assert np.linalg.norm(tip - G) < np.linalg.norm(tip0[d.finger] - G)
+            n += 1
+    assert n > 500
 
 
 def test_flexion_closes_toward_the_palm_normal():
@@ -198,7 +225,7 @@ def test_links_are_straight_at_zero():
         h = ops.random_hand(rng, NO_RULES)
         p = dv.fk(h)
         for i, f in enumerate(h.fingers):
-            x = dv.finger_frame(f)[:, 0]
+            x = dv.finger_direction(f)
             tip = dv.mount_point_m(f) + x * finger_length_mm(f) * 1e-3
             assert np.allclose(p.tips[i], tip, atol=1e-12)
 

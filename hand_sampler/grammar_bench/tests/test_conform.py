@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 
 import numpy as np
@@ -50,9 +51,10 @@ def test_conform_round_trips_a_sampled_hand(seed, rules):
 @pytest.mark.parametrize("hand_id", ["allegro_right", "leap_right", "shadow_right_local", "inspire_right"])
 def test_conform_finds_the_palm_frame_of_a_conformed_hand(hand_id):
     """Without the palm frame given: a conformed commercial hand, exported to
-    URDF, comes back on the same plate (normal +x, origin at the wrist
-    centre; z may turn in the plate, it follows the bases' centroid) and
-    within the fit target."""
+    URDF, comes back on the same plate (origin at the wrist centre, normal
+    within 2 degrees of +x; z may turn in the plate, it follows the bases'
+    centroid, and the plane search may then tilt the plate slightly to lower
+    the worst error) and within the fit target."""
     rec = BC.load().get(hand_id)
     if rec is None:
         pytest.skip(f"local-only:{hand_id} not in the committed file on this machine")
@@ -62,7 +64,7 @@ def test_conform_finds_the_palm_frame_of_a_conformed_hand(hand_id):
         f.thumb = i in thumbs
     fit = CF.conform(real)
     assert fit.within_target
-    assert np.allclose(fit.palm_T[:3, 0], [1.0, 0.0, 0.0], atol=1e-6)
+    assert math.degrees(math.acos(min(1.0, float(fit.palm_T[0, 0])))) < 2.0
     assert np.allclose(fit.palm_T[:3, 3], 0.0, atol=1e-9)
 
 
