@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from ..geometry import Capsule, Cell, GeometrySpec
 from ..kinematics import AffineCoupling, Body, Joint, KinematicModel, Pose, UnsupportedConstruct, validate
 
 import numpy as np
@@ -270,36 +269,11 @@ def _floats_to_attr(values) -> str:
     return " ".join(repr(float(v)) for v in values)
 
 
-def _add_capsule_collision(link_el: ET.Element, cap: Capsule) -> None:
-    """One ``<cylinder>`` plus two ``<sphere>`` (design note): ``cap.start``
-    is always ``(0,0,0)`` and ``cap.end`` always ``(0,0,L)`` in the link's
-    own frame (see ``geometry.py``'s module docstring), so no rotation is
-    ever needed here."""
-    start = np.asarray(cap.start, dtype=float)
-    end = np.asarray(cap.end, dtype=float)
-    mid = (start + end) / 2.0
-    length = float(np.linalg.norm(end - start))
-
+def _add_box_collision(link_el: ET.Element, centre, size) -> None:
     col = ET.SubElement(link_el, "collision")
-    ET.SubElement(col, "origin", {"xyz": _floats_to_attr(mid), "rpy": _floats_to_attr((0.0, 0.0, 0.0))})
+    ET.SubElement(col, "origin", {"xyz": _floats_to_attr(centre), "rpy": _floats_to_attr((0.0, 0.0, 0.0))})
     geom = ET.SubElement(col, "geometry")
-    ET.SubElement(geom, "cylinder", {"radius": repr(float(cap.radius)), "length": repr(length)})
-
-    for pt in (start, end):
-        col_s = ET.SubElement(link_el, "collision")
-        ET.SubElement(col_s, "origin", {"xyz": _floats_to_attr(pt), "rpy": _floats_to_attr((0.0, 0.0, 0.0))})
-        geom_s = ET.SubElement(col_s, "geometry")
-        ET.SubElement(geom_s, "sphere", {"radius": repr(float(cap.radius))})
-
-
-def _add_cell_collision(link_el: ET.Element, cell: Cell, robot_name: str) -> None:
-    """URDF has no convex-polytope primitive, so a palm cell is referenced as
-    a mesh -- the actual OBJ file is written separately by
-    ``geometry.write_geometry_meshes`` (design note)."""
-    col = ET.SubElement(link_el, "collision")
-    ET.SubElement(col, "origin", {"xyz": _floats_to_attr((0.0, 0.0, 0.0)), "rpy": _floats_to_attr((0.0, 0.0, 0.0))})
-    geom = ET.SubElement(col, "geometry")
-    ET.SubElement(geom, "mesh", {"filename": f"package://{robot_name}/meshes/{cell.body}_cell.obj"})
+    ET.SubElement(geom, "box", {"size": _floats_to_attr(size)})
 
 
 def to_urdf(
@@ -307,7 +281,7 @@ def to_urdf(
     *,
     actuation: Optional[Dict[str, dict]] = None,
     inertial: Optional[Dict[str, dict]] = None,
-    geometry: Optional[GeometrySpec] = None,
+    boxes: Optional[Dict[str, Tuple[Tuple[float, float, float], Tuple[float, float, float]]]] = None,
 ) -> Tuple[str, LossReport]:
     """Serialize ``model`` to URDF text. Returns ``(text, LossReport)``.
 
@@ -324,12 +298,10 @@ def to_urdf(
     expressed in URDF at all: they are omitted from the XML, listed in an
     ``<!-- -->`` comment, and named in ``LossReport.closures_dropped``.
 
-    ``geometry`` (iteration 7 / M2, optional): a ``geometry.GeometrySpec`` for
-    this same ``model``. When given, every body with a ``Capsule`` gets a
-    ``<collision>`` cylinder+2-spheres, and every body with a palm ``Cell``
-    gets a ``<collision>`` mesh (the OBJ file itself is written separately,
-    see ``geometry.write_geometry_meshes``). Omitting it (the default)
-    reproduces the exact pre-iteration-7 output byte-for-byte.
+    ``boxes`` (optional): body name -> (centre, size), one ``<collision>``
+    box per body in its own frame (URDF has no rounded box; the grammar's
+    rounded links are exported as their outer boxes). Omitting it writes no
+    collision geometry.
     """
     actuation = actuation or {}
     inertial = inertial or {}
@@ -338,13 +310,8 @@ def to_urdf(
 
     for b in model.bodies:
         link_el = ET.SubElement(robot, "link", {"name": b.name})
-        if geometry is not None:
-            cap = geometry.capsules.get(b.name)
-            cell = geometry.cells.get(b.name)
-            if cap is not None:
-                _add_capsule_collision(link_el, cap)
-            elif cell is not None:
-                _add_cell_collision(link_el, cell, model.name)
+        if boxes and b.name in boxes:
+            _add_box_collision(link_el, *boxes[b.name])
         entry = inertial.get(b.name)
         if entry:
             inertial_el = ET.SubElement(link_el, "inertial")
