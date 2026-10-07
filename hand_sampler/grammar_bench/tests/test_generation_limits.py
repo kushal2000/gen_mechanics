@@ -577,3 +577,71 @@ def test_remove_a_finger_removes_any_finger():
         (gone,) = set(a.top_digits()) - set(b.top_digits())
         lengths.add(a.digits[gone][1])
     assert max(lengths) >= 3
+
+
+# ---------------------------------------------------------------------------
+# 6. Two fingers on one palm joint (on hold): the grammar side follows the
+#    envelope, and the slot layout of every design the envelope admits today
+#    is pinned, so a new layout can be checked for backward compatibility.
+# ---------------------------------------------------------------------------
+
+
+def test_simulator_fingers_per_palm_joint_follows_the_envelope():
+    """SIMULATOR's ``max_digits_per_jointed_palm_body`` is what one carrier
+    slot of the envelope can take: 1 today. A layout that carries several
+    finger chains per palm joint declares ``MAX_DIGITS_PER_CARRIER`` (None:
+    no cap, only the 5 chains bind); set SIMULATOR to match and the
+    equivalence test above checks the rest."""
+    assert SIMULATOR.max_digits_per_jointed_palm_body == getattr(GE, "MAX_DIGITS_PER_CARRIER", 1)
+
+
+def _layout_digest(models):
+    import json
+    h, n = hashlib.sha256(), 0
+    for m in models:
+        if not GE._admit_structural(m).ok:
+            h.update(b"-")
+            continue
+        d = GE.canonicalize(m)
+        payload = [d.slot_valid.astype(bool).tolist(), np.round(d.slot_origin, 9).tolist(),
+                   np.round(d.slot_axis, 9).tolist(), np.round(d.slot_limits, 9).tolist(),
+                   np.round(d.slot_length, 9).tolist(), list(d.slot_joint_name), list(d.slot_body_name),
+                   list(d.finger_digit_id)]
+        h.update(json.dumps(payload).encode())
+        n += 1
+    return h.hexdigest()[:16], n
+
+
+# (digest, admitted designs) of canonicalize's 32-slot tables, recorded on
+# 8b454cb and unchanged since: 300 samples per variant with limits=None
+# (byte-identical by section 1) and the exact projections of the manifest's
+# commercial hands.
+LAYOUTS = {
+    "G_FULL": ("70a058c378b82e1d", 7),
+    "G_V1": ("3b909d849986c38d", 230),
+    "G_V3S": ("3696e28272f00c78", 224),
+    "G_NOBRANCH": ("b986f4e7d69e6ee2", 15),
+}
+
+
+@pytest.mark.parametrize("name", sorted(LAYOUTS))
+def test_slot_layout_of_admitted_designs_unchanged(name):
+    assert _layout_digest(derive(sample_derivation(s, _dist(name))) for s in range(300)) == LAYOUTS[name]
+
+
+def test_slot_layout_of_commercial_hands_unchanged():
+    from hand_sampler.grammar.adapters.projection import project_to_derivation
+    from hand_sampler.grammar.adapters.urdf import load_urdf
+    from hand_sampler.grammar.experiments import e13_representation as e13
+
+    models = []
+    for hand, path, avail, _ in e13._cases(e13._load_manifest()):
+        if avail != "available":
+            continue
+        imp = load_urdf(path, hand_root=hand.get("hand_root"))
+        pr = project_to_derivation(imp.model, palm_joints=hand.get("palm_joints", ()),
+                                   tip_frames=hand.get("tip_frames", {}))
+        models.append(derive(pr.derivation))
+    if len(models) < 15:
+        pytest.skip("local-only: not every manifest hand is available on this machine")
+    assert _layout_digest(models) == ("f380213c7bf21cc7", 14)
