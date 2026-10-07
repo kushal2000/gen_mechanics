@@ -44,6 +44,9 @@ def spec_ref(hand: str) -> str:
     a missing-finger variant) is used as is."""
     if hand == "gen_sharpa":
         return f"handonly:{GEN_SHARPA_POP}"
+    if hand.startswith("handonly:"):             # a population file (e.g. a grammar replica), relative to the repo
+        path = hand[len("handonly:"):]
+        return "handonly:" + (path if path.startswith("/") else str(REPO / path))
     return hand if "_handonly" in hand else f"{hand}_left_uniform_handonly"
 
 

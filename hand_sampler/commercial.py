@@ -365,6 +365,46 @@ def _grasp_side(row: list[Digit]) -> np.ndarray:
     return v / n if n > 1e-12 else v
 
 
+def _touching_at_rest(hand: D.Hand) -> tuple[tuple[str, str], ...]:
+    """Pairs of the replica's OWN links that already touch at q = 0 -- onboarding's rule for a vendor hand
+    (adjacent_links includes every pair overlapping at home), applied to the replica's capsules. A round capsule
+    bulges past the vendor's box: Wuji v2's ring and pinky first links overlap by 0.5 mm, and unfiltered they ground
+    together and stalled the ring MCP at 72 of its 90 degrees."""
+    from hand_sampler.validate_design import segment_distance
+    caps = []
+    for f, fin in enumerate(hand.fingers):
+        _, capsules = D.forward_kinematics(fin, hand.palm)
+        caps += [(f, i, p0, p1, r) for (p0, p1, r, i) in capsules]
+    out = []
+    for a in range(len(caps)):
+        for b in range(a + 1, len(caps)):
+            fa, ia, p0, p1, r = caps[a]
+            fb, ib, q0, q1, s = caps[b]
+            if fa == fb and abs(ia - ib) <= 1:
+                continue
+            if segment_distance(p0, p1, q0, q1) < r + s:
+                out.append(tuple(sorted((f"f{fa}_link{ia}", f"f{fb}_link{ib}"))))
+    return tuple(out)
+
+
+def _vendor_filter(name: str, digits_: list) -> tuple[tuple[str, str], ...]:
+    """The vendor's self-collision exclusions (onboarded spec adjacent_links), as replica link names: the body a
+    vendor joint moves is the replica's link for that joint's slot; the vendor's palm body is the replica's palm."""
+    from hand_sampler import robot_param_constants as rpc
+    spec = _onboarded_spec(name)
+    J = _read(urdf_of(name))
+    link_of = {spec["palm_body"]: rpc.ARM_TIP_LINK}
+    for f, d in enumerate(digits_):
+        for k, j in enumerate(d.joints):
+            link_of[J[j]["child"]] = f"f{f}_link{k}"
+    pairs = set()
+    for a, bs in spec["adjacent_links"].items():
+        for b in bs:
+            if a in link_of and b in link_of:
+                pairs.add(tuple(sorted((link_of[a], link_of[b]))))
+    return tuple(sorted(pairs))
+
+
 def _with_vendor_boxes(hand: D.Hand, name: str, digits_: list, vendor: dict, to_palm) -> D.Hand:
     """Each link carries the vendor link's box (Segment.token_box), moved into the replica's own link frame.
 
@@ -570,7 +610,7 @@ def _push_apart_2d(pts: np.ndarray, floor: float, rounds: int = 200) -> np.ndarr
 
 FIDELITY = ("limits", "axes", "zero", "palm", "links", "mounts")
 
-CLONE = ("limits", "axes", "zero", "links", "mounts", "derived_palm", "bolt", "boxes")
+CLONE = ("limits", "axes", "zero", "links", "mounts", "derived_palm", "bolt", "boxes", "filter")
 """The clone, built in the order one would build it by hand: fix every finger's base (MCP) where the vendor's is
 (mounts); back the palm out of those bases the grammar's own way -- the convex hull of its centre disc and a rim
 round each base, at the vendor's thickness (derived_palm, no imported box); place that disc so the derived palm's
@@ -579,7 +619,9 @@ measured from the palm centre (the frame the policy observes in); then finish th
 limits), each link bolted on at the vendor's exact direction (bolt, Segment.bolt) rather than the nearest lean
 plus a turn about its own hinge, which cannot reach every direction (Wuji v2's thumb was 9-23 mm off), and
 each link's box -- what the policy reads as joint_link_bbox -- is the vendor's own (boxes, Segment.token_box):
-a vendor link reaches past its joints, 8-14 mm longer than joint-to-joint (Wuji v2's PIPs and DIPs). Not
+a vendor link reaches past its joints, 8-14 mm longer than joint-to-joint (Wuji v2's PIPs and DIPs), and
+its self-collision exclusions are the vendor's (filter, Hand.collision_filter: the onboarded spec's
+adjacent_links -- jointed pairs and pairs touching at rest -- mapped onto the replica's links). Not
 cumulative with FIDELITY's "palm": derived_palm replaces it."""
 """What fit(..., fidelity=) may carry over from the vendor beyond the grammar's own description, cumulatively:
 
@@ -793,4 +835,7 @@ def fit(name: str = "leap", spread: bool = True,
         notes.append(f"NOT A LEGAL DESIGN: {reason}")
     if "boxes" in fidelity:
         hand = _with_vendor_boxes(hand, name, digits_, vendor, to_palm)
+    if "filter" in fidelity:
+        hand = replace(hand, collision_filter=tuple(sorted(set(_vendor_filter(name, digits_))
+                                                           | set(_touching_at_rest(hand)))))
     return hand, notes

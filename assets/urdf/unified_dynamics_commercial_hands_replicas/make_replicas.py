@@ -31,7 +31,7 @@ from hand_sampler import design_space as D  # noqa: E402
 from hand_sampler import robot_param_constants as rpc  # noqa: E402
 
 
-def make(name: str, fidelity: tuple[str, ...] = ()) -> Path:
+def make(name: str, fidelity: tuple[str, ...] = (), tag: str | None = None) -> Path:
     hand, notes = commercial.fit(name, fidelity=fidelity)
     problems = validate_design.check(hand)
     if problems:
@@ -39,7 +39,7 @@ def make(name: str, fidelity: tuple[str, ...] = ()) -> Path:
     vendor = commercial.urdf_of(name)
     # The grammar's own replica is <vendor>_replica; a fidelity variant (commercial.FIDELITY, cumulative) is
     # <vendor>_replica_<last level>, e.g. wuji2_left_replica_limits.
-    stem = f"{vendor.stem}_replica" + ("_clone" if fidelity == commercial.CLONE else
+    stem = f"{vendor.stem}_replica" + (f"_{tag}" if tag else "_clone" if fidelity == commercial.CLONE else
                                        f"_{fidelity[-1]}" if fidelity else "")
     out = HERE / name
     pop = population_io.save_population(
@@ -77,5 +77,7 @@ if __name__ == "__main__":
         fid, args = commercial.FIDELITY[:int(args[1])], args[2:]
     elif args[:1] == ["--clone"]:          # commercial.CLONE: bases first, palm backed out of them -> <vendor>_replica_clone
         fid, args = commercial.CLONE, args[1:]
+    elif args[:1] == ["--levels"]:         # any combination, named by --tag: --levels a,b,c --tag name wuji2
+        fid, tag, args = tuple(args[1].split(",")), args[3], args[4:]
     for name in args or commercial.HANDS:
-        make(name, fid)
+        make(name, fid, tag if "tag" in dir() else None)

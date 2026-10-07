@@ -496,6 +496,10 @@ class Palm:
 class Hand:
     palm: Palm
     fingers: tuple[Finger, ...]
+    # Import-only: extra self-collision exclusions, as pairs of envelope link names (f<f>_link<d>, the palm as
+    # ARM_TIP_LINK), on top of build.adjacent_links' joint pairs. A replica carries its vendor's: Wuji v2 excludes
+    # each finger's first TWO links from the palm (their joints sit at the palm), where a generated hand has one.
+    collision_filter: tuple[tuple[str, str], ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.fingers:

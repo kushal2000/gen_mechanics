@@ -105,7 +105,7 @@ def hand_to_dict(hand: design_space.Hand) -> dict:
              "segments": [_segment_to_dict(s) for s in finger.segments]}
             for finger in hand.fingers
         ],
-    }
+    } | ({} if hand.collision_filter is None else {"collision_filter": [list(p) for p in hand.collision_filter]})
 
 
 def _mount_from_dict(data: dict) -> design_space.Mount:
@@ -151,6 +151,8 @@ def hand_from_dict(data: dict) -> design_space.Hand:
             )
             for finger in data["fingers"]
         ),
+        collision_filter=(None if data.get("collision_filter") is None
+                          else tuple((str(a), str(b)) for a, b in data["collision_filter"])),
     )
 
 

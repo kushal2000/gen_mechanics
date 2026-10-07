@@ -3,8 +3,8 @@
  "name": "wuji2_left_replica_clone",
  "count": 1,
  "provenance": {
-  "created_at": "2026-10-07T17:01:15+00:00",
-  "git_commit": "411b4fffed421ae9f5e77d7710505935c271ea88",
+  "created_at": "2026-10-07T17:52:52+00:00",
+  "git_commit": "186c2ba848fb5944315d5997ccd90b03e43f02b0",
   "method": "commercial.fit",
   "source": "hand_sampler.commercial",
   "vendor_urdf": "assets/urdf/unified_dynamics_commercial_hands/wuji2/wuji2_left.urdf",
@@ -34,7 +34,8 @@
    "mounts",
    "derived_palm",
    "bolt",
-   "boxes"
+   "boxes",
+   "filter"
   ]
  },
  "designs": [
@@ -1137,6 +1138,112 @@
       }
      ]
     }
+   ],
+   "collision_filter": [
+    [
+     "f0_link0",
+     "f0_link1"
+    ],
+    [
+     "f0_link0",
+     "iiwa14_link_7"
+    ],
+    [
+     "f0_link1",
+     "f0_link2"
+    ],
+    [
+     "f0_link1",
+     "iiwa14_link_7"
+    ],
+    [
+     "f0_link2",
+     "f0_link3"
+    ],
+    [
+     "f1_link0",
+     "f1_link1"
+    ],
+    [
+     "f1_link0",
+     "iiwa14_link_7"
+    ],
+    [
+     "f1_link1",
+     "f1_link2"
+    ],
+    [
+     "f1_link1",
+     "iiwa14_link_7"
+    ],
+    [
+     "f1_link2",
+     "f1_link3"
+    ],
+    [
+     "f2_link0",
+     "f2_link1"
+    ],
+    [
+     "f2_link0",
+     "f3_link0"
+    ],
+    [
+     "f2_link0",
+     "iiwa14_link_7"
+    ],
+    [
+     "f2_link1",
+     "f2_link2"
+    ],
+    [
+     "f2_link1",
+     "iiwa14_link_7"
+    ],
+    [
+     "f2_link2",
+     "f2_link3"
+    ],
+    [
+     "f3_link0",
+     "f3_link1"
+    ],
+    [
+     "f3_link0",
+     "iiwa14_link_7"
+    ],
+    [
+     "f3_link1",
+     "f3_link2"
+    ],
+    [
+     "f3_link1",
+     "iiwa14_link_7"
+    ],
+    [
+     "f3_link2",
+     "f3_link3"
+    ],
+    [
+     "f4_link0",
+     "f4_link1"
+    ],
+    [
+     "f4_link0",
+     "iiwa14_link_7"
+    ],
+    [
+     "f4_link1",
+     "f4_link2"
+    ],
+    [
+     "f4_link1",
+     "iiwa14_link_7"
+    ],
+    [
+     "f4_link2",
+     "f4_link3"
+    ]
    ]
   }
  ]

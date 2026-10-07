@@ -430,6 +430,13 @@ def author_hand(layer, root_path: str, hand: design_space.Hand, *,
     frames = link_frames(hand)
     joint_frames = joint_local_frames(hand)
     pairs = filtered_pairs(root_path, palm_body_path)
+    if hand.collision_filter:              # an imported hand's own exclusions (Hand.collision_filter), both ways
+        path_of = lambda n: palm_body_path if n == rpc.ARM_TIP_LINK else f"{root_path}/{n}"
+        pairs = {k: list(v) for k, v in pairs.items()}
+        for a, b in hand.collision_filter:
+            for x, y in ((a, b), (b, a)):
+                if path_of(y) not in pairs.setdefault(x, []):
+                    pairs[x].append(path_of(y))
     colliders: dict[str, int] = {}
     define(layer, f"{root_path}/joints", "Scope")
 
