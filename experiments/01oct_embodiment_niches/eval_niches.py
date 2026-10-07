@@ -175,8 +175,13 @@ def main() -> None:
         else:
             # A bare hand name (wuji2) means its uniform spec; a full registered name (e.g. a missing-finger
             # variant, wuji2_left_uniform_handonly_no_thumb) is taken as is.
-            saved.env.assets.robot_spec = (args.target if "_handonly" in args.target
-                                           else f"{args.target}_left_uniform_handonly")
+            # handonly:<population .json> (e.g. a grammar replica) is a spec too; a relative path is the repo's.
+            if args.target.startswith("handonly:"):
+                path = args.target[len("handonly:"):]
+                saved.env.assets.robot_spec = "handonly:" + (path if path.startswith("/") else str(REPO / path))
+            else:
+                saved.env.assets.robot_spec = (args.target if "_handonly" in args.target
+                                               else f"{args.target}_left_uniform_handonly")
 
     @hydra_task_config_with_yaml(TASK, "rl_games_joint_transformer_cfg_entry_point")
     def _run(env_cfg, agent_cfg):

@@ -62,6 +62,22 @@ measured to 0.1 mm). Canonical palm frame, mm, replica - vendor:
 
 The spawn table above was taken before the Allegro fix; its Allegro column is superseded.
 
+## Zero-shot transfer: the goal for the replica
+
+The replica is good enough when the 52-hand Wuji v2 multi-embodiment policy (06oct_wuji2_multi_embodiment, 31826,
+epoch 5000), which never saw it, works on it about as well as on the vendor hand it trained on.
+`run_zero_shot.sub` (SLURM array, one target per task; eval_niches.py --target, 256 envs x 240 s, 50-goal cap):
+
+    sbatch --array=0-1 experiments/07oct_commercial_vs_generated/run_zero_shot.sub
+
+| target (job 48715, replica as of 8b3d79d) | goals in first episode | goals/min | drops/min | timeouts/min |
+|---|---|---|---|---|
+| Wuji v2 vendor (in training) | **23.4** | 36.3 | 0.50 | 0.68 |
+| Wuji v2 replica (zero-shot) | **0.004** | 0.003 | 0.85 | 5.74 |
+
+Baseline: transfer fails. The policy holds the cube on the replica (episodes end by the 10 s no-goal timeout, cube
+8 cm from the palm) but never turns it to a goal.
+
 ## Fixed on the way
 
 `hand_sampler/commercial.py` `_palm_axes` took the palm normal from the ORDER of the vendor's finger bases, so for

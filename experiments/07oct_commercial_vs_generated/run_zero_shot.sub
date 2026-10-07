@@ -1,0 +1,44 @@
+#!/bin/bash
+#SBATCH --job-name=zeroshot
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=04:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/commercial_vs_generated/slurm-%A_%a.out
+# Zero-shot transfer of ONE policy to each TARGET hand, in the training metric (goals per episode, 50-goal max, each
+# env's first episode; $NUM_ENVS envs, default 256, x $EVAL_SECONDS s, default 240), via eval_niches.py --target.
+# Default policy: the 52-hand Wuji v2 multi-embodiment run (06oct_wuji2_multi_embodiment, 31826, epoch 5000).
+# Default targets, one per array task:
+#   0  wuji2_left_uniform_handonly                  the vendor hand -- in the policy's training set: the reference
+#   1  handonly:<replicas>/wuji2/wuji2_left_replica.json   its grammar replica -- the transfer being measured
+#   sbatch --array=0-1 experiments/07oct_commercial_vs_generated/run_zero_shot.sub
+#   sbatch --array=0-1 --export=ALL,LABEL=<name>,CKPT=<pth>,TARGETS="<t0> <t1> ..." run_zero_shot.sub
+set -uo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+NUM_ENVS=${NUM_ENVS:-256}; SECONDS_PER=${EVAL_SECONDS:-240}
+CKPT=${CKPT:-$(ls $REPO/debug_outputs/train_logs/06oct_wuji2_multi_embodiment/0_scale_train_wuji2_lr_2plus_ema0.1_c01_*_31826_0_*/rank_0/*/nn/last_*_ep_5000_*.pth | head -1)}
+LABEL=${LABEL:-multi52_ep5000}
+TARGETS=${TARGETS:-"wuji2_left_uniform_handonly handonly:assets/urdf/unified_dynamics_commercial_hands_replicas/wuji2/wuji2_left_replica.json"}
+OUT=$REPO/experiments/07oct_commercial_vs_generated/results/zero_shot/$LABEL
+LOGS=$REPO/debug_outputs/commercial_vs_generated/logs/zero_shot/$LABEL
+mkdir -p $OUT $LOGS
+cd $REPO
+export OMNI_KIT_ACCEPT_EULA=YES
+[ -f "$CKPT" ] || { echo "no checkpoint $CKPT"; exit 1; }
+if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then TARGETS=$(echo $TARGETS | cut -d' ' -f$((SLURM_ARRAY_TASK_ID + 1))); fi
+for t in $TARGETS; do
+    name=$(basename "${t#handonly:}" .json)
+    f=$OUT/$name.json
+    echo "[$LABEL] $t -> $f  (checkpoint $CKPT)"
+    # --set uniform --hand wuji2: only names the run in the output; --checkpoint and --target decide what runs.
+    .venv_isaacsim/bin/python experiments/01oct_embodiment_niches/eval_niches.py --set uniform --hand wuji2 \
+        --target "$t" --checkpoint "$CKPT" --condition nominal --num-envs $NUM_ENVS --seconds $SECONDS_PER \
+        --max-goals 50 --out "$f" > $LOGS/$name.log 2>&1 || echo "FAILED $LABEL $t"
+    grep -h "\[niches\]" $LOGS/$name.log
+    .venv_isaacsim/bin/python -c "import json; d = json.load(open('$f')); print('goals_per_episode_first', round(d['goals_per_episode_first'], 2), 'unfinished', round(d['first_episode_unfinished_frac'], 3), 'goals/min', round(d['goals_per_min'], 1), 'drops/min', round(d['drops_per_min'], 2))" 2>/dev/null
+done
+exit 0
