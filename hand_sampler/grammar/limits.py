@@ -52,7 +52,11 @@ Definitions (they match ``_admit_structural`` and ``envelope.fits_envelope``):
 - FINGER CHAINS are the digits without a carrier plus the jointed palm bodies:
   in the simulator each such digit fills one of 5 finger chains, and each
   jointed palm body reserves one (its carried digit, if any, goes there);
-- a BRANCHING link is a phalanx body with two or more child joints.
+- a BRANCHING link is a phalanx body with two or more child joints;
+- a FINGER'S LENGTH is the longest sum of bone lengths from the finger's base
+  to one of its fingertips, its branches included; a branch counts its host's
+  bones up to and including the bone it grows from (wherever along that bone
+  it is mounted, so moving a mount never changes a finger's length).
 
 Stdlib only; works on any sequence of derivation steps (objects with
 ``production`` and ``params``), so it never imports ``derive.py``.
@@ -93,6 +97,9 @@ class GenerationLimits:
     max_digits_per_jointed_palm_body: Optional[int] = None
     # Digits without a carrier plus jointed palm bodies.
     max_finger_chains: Optional[int] = None
+    # A finger's length in mm: the longest sum of bone lengths from its base
+    # to a fingertip, branches included (see the module docstring).
+    max_finger_length_mm: Optional[float] = None
     # Every palm body carries at least one digit, mounted on it or on a palm
     # body below it (no empty palm parts). Sampling then never makes an empty
     # palm body, ``add_palm_body`` adds the body together with a one-joint
@@ -114,6 +121,9 @@ class GenerationLimits:
             v = getattr(self, name)
             if v is not None and (not isinstance(v, int) or isinstance(v, bool) or v < lo):
                 raise ValueError(f"{name} must be None or an int >= {lo}, got {v!r}")
+        v = self.max_finger_length_mm
+        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or not v > 0):
+            raise ValueError(f"max_finger_length_mm must be None or a number > 0, got {v!r}")
 
     @property
     def is_unlimited(self) -> bool:
@@ -125,8 +135,13 @@ class GenerationLimits:
 
 UNLIMITED = GenerationLimits()
 
-# The whole grammar, except that a palm part must carry a finger.
-DEFAULT_LIMITS = GenerationLimits(require_digit_on_palm_body=True)
+# The longest commercial finger (DClaw, 221 mm, measured on the projections of
+# grammar_bench/manifest.json) x 1.1, rounded to a clean number.
+FINGER_LENGTH_CAP_MM = 250.0
+
+# The whole grammar, except that a palm part must carry a finger and no finger
+# is longer than FINGER_LENGTH_CAP_MM.
+DEFAULT_LIMITS = GenerationLimits(require_digit_on_palm_body=True, max_finger_length_mm=FINGER_LENGTH_CAP_MM)
 
 # The simulator's padded envelope (grammar_envelope.py: N_FINGERS = 5,
 # N_JOINTS_PER_FINGER = 6, MAX_JOINTED_PALM_BODIES = 2, revolute-only, no
@@ -143,12 +158,14 @@ SIMULATOR = GenerationLimits(
     allow_stacked_palm_joints=False,
     max_digits_per_jointed_palm_body=1,
     max_finger_chains=5,
+    max_finger_length_mm=FINGER_LENGTH_CAP_MM,
     require_digit_on_palm_body=True,
 )
 
 # The simulator envelope's shape alone, without the no-empty-palm rule (the
-# envelope itself accepts empty palm bodies): exactly ``_admit_structural``.
-SIMULATOR_ENVELOPE = replace(SIMULATOR, require_digit_on_palm_body=False)
+# envelope itself accepts empty palm bodies) and the finger-length cap (the
+# envelope does not measure lengths): exactly ``_admit_structural``.
+SIMULATOR_ENVELOPE = replace(SIMULATOR, require_digit_on_palm_body=False, max_finger_length_mm=None)
 
 PRESETS: Dict[str, GenerationLimits] = {"Simulator": SIMULATOR, "Default": DEFAULT_LIMITS, "Unlimited": UNLIMITED}
 
@@ -166,6 +183,7 @@ LIMIT_TEXT: Dict[str, str] = {
     "allow_stacked_palm_joints": "stacked palm joints",
     "max_digits_per_jointed_palm_body": "fingers per palm joint",
     "max_finger_chains": "finger slots (fingers on the rigid palm + palm joints)",
+    "max_finger_length_mm": "finger length (mm)",
     "require_digit_on_palm_body": "palm parts without a finger",
 }
 
@@ -189,6 +207,7 @@ class Structure:
     palm: Dict[str, Tuple[str, bool]] = field(default_factory=dict)            # name -> (parent, jointed)
     digits: Dict[str, Tuple[str, int]] = field(default_factory=dict)           # id -> (mount, phalanx_count)
     kinds: Dict[Tuple[str, int], str] = field(default_factory=dict)            # (digit id, p) -> module kind
+    lengths: Dict[Tuple[str, int], float] = field(default_factory=dict)        # (digit id, p) -> bone length (m)
 
     @classmethod
     def from_steps(cls, steps: Iterable) -> "Structure":
@@ -201,10 +220,11 @@ class Structure:
                 st.digits[p["digit_id"]] = (p["mount"], int(p["phalanx_count"]))
             elif s.production == "Phalanx":
                 st.kinds[(p["digit_id"], int(p["p"]))] = p["module"]["kind"]
+                st.lengths[(p["digit_id"], int(p["p"]))] = float(p.get("length", 0.0))
         return st
 
     def copy(self) -> "Structure":
-        return Structure(dict(self.palm), dict(self.digits), dict(self.kinds))
+        return Structure(dict(self.palm), dict(self.digits), dict(self.kinds), dict(self.lengths))
 
     # ---- derived quantities ------------------------------------------------
 
@@ -275,6 +295,79 @@ class Structure:
                     out.append(body)
         return out
 
+    # ---- finger lengths ----------------------------------------------------
+
+    def _bone_of_body(self) -> Dict[str, Tuple[str, int]]:
+        return {f"d{d}p{k + 1}": (d, k) for d, (_, n) in self.digits.items() for k in range(n)}
+
+    def base_lengths(self) -> Dict[str, float]:
+        """digit id -> length (m) from its top-level digit's base to its own
+        base: 0 for a top-level digit; for a branch, its host's base length
+        plus the host's bones up to and including the one it grows from."""
+        bone = self._bone_of_body()
+        out: Dict[str, float] = {}
+
+        def base(d: str, seen: frozenset) -> float:
+            if d in out:
+                return out[d]
+            mount = self.digits[d][0]
+            b = 0.0
+            if mount in bone and d not in seen:
+                h, k = bone[mount]
+                if h in self.digits:
+                    b = base(h, seen | {d}) + sum(self.lengths.get((h, i), 0.0) for i in range(k + 1))
+            out[d] = b
+            return b
+
+        for d in self.digits:
+            base(d, frozenset())
+        return out
+
+    def tip_lengths(self) -> Dict[str, float]:
+        """digit id -> length (m) from its top-level digit's base to its own fingertip."""
+        base = self.base_lengths()
+        return {d: base[d] + sum(self.lengths.get((d, i), 0.0) for i in range(n))
+                for d, (_, n) in self.digits.items()}
+
+    def finger_lengths(self) -> Dict[str, float]:
+        """top-level digit id -> its length (m): the longest base-to-fingertip
+        sum of bone lengths, branches included."""
+        tip = self.tip_lengths()
+        out = {t: 0.0 for t in self.top_digits()}
+        for d, t in self.top_of().items():
+            if t in out:
+                out[t] = max(out[t], tip[d])
+        return out
+
+    def length_through(self, digit_id: str, k: int) -> float:
+        """The longest base-to-fingertip length (m) among the paths that run
+        through bone ``k`` of ``digit_id`` (``k == phalanx_count``: through a
+        bone appended after its last one). Lengthening that bone, or inserting
+        a bone at index ``k``, adds to exactly these paths."""
+        tip = self.tip_lengths()
+        bone = self._bone_of_body()
+        best = tip.get(digit_id, 0.0)
+        for e in self.digits:
+            if e == digit_id:
+                continue
+            cur, seen = e, set()
+            while cur in self.digits and cur not in seen:       # walk e's mounts up to digit_id
+                seen.add(cur)
+                hb = bone.get(self.digits[cur][0])
+                if hb is None:
+                    break
+                if hb[0] == digit_id:
+                    if hb[1] >= k:
+                        best = max(best, tip[e])
+                    break
+                cur = hb[0]
+        return best
+
+    def finger_length_excess_um(self, cap_mm: Optional[float]) -> int:
+        if cap_mm is None:
+            return 0
+        return sum(int(round(max(0.0, v * 1000.0 - cap_mm) * 1000.0)) for v in self.finger_lengths().values())
+
     def carried_counts(self) -> Counter:
         return Counter(c for c in (self.carrier(self.digits[d][0]) for d in self.top_digits()) if c is not None)
 
@@ -320,6 +413,8 @@ class Structure:
             ex["max_digits_per_jointed_palm_body"] = sum(
                 max(0, c - limits.max_digits_per_jointed_palm_body) for c in self.carried_counts().values())
         ex["max_finger_chains"] = int(max(0, self.finger_chains() - _inf(limits.max_finger_chains)))
+        # micrometres over the cap, summed over fingers
+        ex["max_finger_length_mm"] = self.finger_length_excess_um(limits.max_finger_length_mm)
         if limits.require_digit_on_palm_body:
             ex["require_digit_on_palm_body"] = len(self.empty_palm_bodies())
         return ex
@@ -339,6 +434,7 @@ class Structure:
             "allow_stacked_palm_joints": f"{len(self.stacked())} stacked",
             "max_digits_per_jointed_palm_body": str(max(carried.values(), default=0)),
             "max_finger_chains": str(self.finger_chains()),
+            "max_finger_length_mm": f"{1000.0 * max(self.finger_lengths().values(), default=0.0):.0f}",
             "require_digit_on_palm_body": f"{len(self.empty_palm_bodies())} empty",
         }
 
@@ -362,6 +458,28 @@ class Structure:
             n = st.digits.pop(d)[1]
             for k in range(n):
                 st.kinds.pop((d, k), None)
+                st.lengths.pop((d, k), None)
+        return st
+
+    def without_phalanx(self, digit_id: str, p: int) -> "Structure":
+        """``derive._op_delete_phalanx``: bone ``p`` of ``digit_id`` removed,
+        the branches on it re-attached to the previous bone (to the next one
+        when ``p == 0``), the later bones renumbered down."""
+        st = self.copy()
+        mount, n = st.digits[digit_id]
+        deleted = f"d{digit_id}p{p + 1}"
+        reattach = f"d{digit_id}p{p}" if p > 0 else f"d{digit_id}p{p + 2}"
+        rename = {f"d{digit_id}p{k + 1}": f"d{digit_id}p{k}" for k in range(p + 1, n)}
+        for e, (m, c) in list(st.digits.items()):
+            if m == deleted:
+                m = reattach
+            st.digits[e] = (rename.get(m, m), c)
+        for table in (st.kinds, st.lengths):
+            old = {k: table.pop((digit_id, k)) for k in range(n) if (digit_id, k) in table}
+            for k, v in old.items():
+                if k != p:
+                    table[(digit_id, k if k < p else k - 1)] = v
+        st.digits[digit_id] = (mount, n - 1)
         return st
 
     def without_empty_palm_bodies(self) -> "Structure":
@@ -413,6 +531,8 @@ class LimitReport:
         txt = LIMIT_TEXT[key]
         if key == "allowed_modules":
             return f"{txt} {self.measured[key]} (allowed {'/'.join(lim)})"
+        if key == "max_finger_length_mm":
+            return f"{txt} {self.measured[key]} > {lim:g}"
         if isinstance(lim, bool):
             return f"{txt}: {self.measured[key]}"
         return f"{txt} {self.measured[key]} > {lim}"
@@ -561,6 +681,33 @@ class LimitContext:
         finger chain when no palm body is jointed, so this is
         ``min(max_digits, max_finger_chains)``."""
         return min(_inf(self.limits.max_digits), _inf(self.limits.max_finger_chains))
+
+    # ---- finger length ----------------------------------------------------------------------
+
+    @property
+    def length_cap_m(self) -> Optional[float]:
+        v = self.limits.max_finger_length_mm
+        return None if v is None else v / 1000.0
+
+    def length_room(self, digit_id: str, k: int, struct: Optional[Structure] = None) -> Optional[float]:
+        """How much longer (m) bone ``k`` of ``digit_id`` may get, or how long a
+        bone inserted at index ``k`` may be, under the finger-length cap
+        (``None``: no cap). Negative when a path through it is already over."""
+        cap = self.length_cap_m
+        if cap is None:
+            return None
+        st = struct or self.struct
+        return cap - st.length_through(digit_id, k)
+
+    def branch_room(self, digit_id: str, k: int, struct: Optional[Structure] = None) -> Optional[float]:
+        """Length (m) a new branch growing from bone ``k`` of ``digit_id`` may
+        have under the cap (``None``: no cap)."""
+        cap = self.length_cap_m
+        if cap is None:
+            return None
+        st = struct or self.struct
+        return cap - st.base_lengths().get(digit_id, 0.0) - sum(st.lengths.get((digit_id, i), 0.0)
+                                                                 for i in range(k + 1))
 
     # ---- joints per digit ----------------------------------------------------------------
 

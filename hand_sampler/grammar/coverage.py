@@ -54,7 +54,9 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 from .canonical import normalize_axis_sign
 from .coords import CONTINUOUS_SAMPLE_RANGE
 from .kinematics import ALL_TYPES, KinematicModel, MOVABLE_TYPES
-from .distributions import Distribution, DEFAULT_DISTRIBUTION, ANGLE_STEP_DEG, DEG
+from .distributions import (Distribution, DEFAULT_DISTRIBUTION, ANGLE_STEP_DEG, DEG, FINE_ANGLE_STEP_DEG,
+                            FINE_LENGTH_STEP_M, RESOLUTIONS, link_length_support_m, palm_body_length_support_m,
+                            root_length_support_m)
 
 GRID_TOL = 1e-9          # length-grid / axis-grid tolerance, per spec ("... to 1e-9")
 UNIT_TOL = 1e-9          # axis unit-norm tolerance
@@ -562,20 +564,53 @@ def _movable_children(body_name: str, children: Dict[str, List]) -> List:
     return out
 
 
+def _fine_bend_ok(rpy: Tuple[float, float, float], dist: Distribution) -> bool:
+    """A rest bend in the fine support: each component a multiple of 5
+    degrees within the span of that component in the coarse bend support."""
+    from .derive import fine_bend_component_grid
+    for comp in range(3):
+        grid = fine_bend_component_grid(dist, comp)
+        if not any(abs(rpy[comp] - g) <= SET_TOL for g in grid):
+            return False
+    return True
+
+
+def _fine_limits_ok(limits: Tuple[float, float], dist: Distribution) -> bool:
+    """A revolute range in the fine support: both ends on the 5 degree grid
+    inside ``revolute_limit_range_deg``."""
+    lo_rad, hi_rad = (v * DEG for v in dist.revolute_limit_range_deg)
+    return ((lo_rad - SET_TOL) <= limits[0] < limits[1] <= (hi_rad + SET_TOL)
+            and all(_on_angle_grid_step(v, FINE_ANGLE_STEP_DEG) for v in limits))
+
+
 def coverage(
     model: KinematicModel,
     dist: Distribution = DEFAULT_DISTRIBUTION,
     relax: FrozenSet[str] = frozenset(),
+    resolution: str = "coarse",
 ) -> CoverageResult:
     """As before, plus an optional ``relax`` (E11): a set of named support
     widenings (``RELAX_NAMES``), each applied independently and cumulatively.
     ``relax=frozenset()`` (the default) reproduces every pre-E11 caller's
     behaviour exactly -- every relax-aware check below falls through to its
     original, non-relaxed form when its own name is absent. Unknown names in
-    ``relax`` are a caller error, not silently ignored."""
+    ``relax`` are a caller error, not silently ignored.
+
+    Lengths are judged against the distribution's support ranges
+    (``link_length_support_m`` and friends; the sampling ranges for every
+    variant that does not set one). ``resolution="fine"`` judges the fine
+    grid instead of the coarse one (``distributions.FINE_*``): lengths on
+    1 mm, axes on 5 degrees, rest bends with every component a multiple of 5
+    degrees within the bend support's span, revolute ranges with both ends
+    on 5 degrees inside the limit range (or anywhere in it, for a
+    distribution whose ranges are continuous). The fine grid contains the
+    coarse one, so a model in the coarse support is in the fine one."""
     unknown = set(relax) - set(RELAX_NAMES)
     if unknown:
         raise ValueError(f"coverage: unknown relax name(s): {sorted(unknown)}")
+    if resolution not in RESOLUTIONS:
+        raise ValueError(f"coverage: resolution must be one of {RESOLUTIONS}, got {resolution!r}")
+    fine = resolution == "fine"
     inv = inventory(model)
     missing: List[str] = []
     out: List[str] = []
@@ -816,9 +851,8 @@ def coverage(
                 abs(kid_rpy[0]) > SET_TOL or abs(kid_rpy[1]) > SET_TOL or abs(kid_rpy[2]) > SET_TOL
                 or abs(kid_offset[0]) > SET_TOL or abs(kid_offset[1]) > SET_TOL
             )
-            if has_bend and not (
-                _bend_rpy_ok(kid_rpy, dist, relax) and _bend_offset_ok(kid_offset, dist, relax)
-            ):
+            bend_ok = _bend_rpy_ok(kid_rpy, dist, relax) or (fine and _fine_bend_ok(kid_rpy, dist))
+            if has_bend and not (bend_ok and _bend_offset_ok(kid_offset, dist, relax)):
                 continuation_pose_issues.append(kid.name)
             run += 1
             cur = kid.child
@@ -884,9 +918,15 @@ def coverage(
         f.body: float(f.pose.xyz[2]) for f in model.frames if f.name == f"{f.body}_tip"
     }
     off_grid, out_of_range = [], []
+    length_grid = FINE_LENGTH_STEP_M if fine else dist.link_length_grid_m
     for name, length in body_tip_length.items():
-        base_range = dist.palm_length_range_m if name in palm_body_names else dist.link_length_range_m
-        in_range, on_grid = _length_ok(length, base_range, dist.link_length_grid_m, relax)
+        if name == model.root:
+            base_range = root_length_support_m(dist)
+        elif name in palm_body_names:
+            base_range = palm_body_length_support_m(dist)
+        else:
+            base_range = link_length_support_m(dist)
+        in_range, on_grid = _length_ok(length, base_range, length_grid, relax)
         if not in_range:
             out_of_range.append(name)
         elif not on_grid:
@@ -903,7 +943,8 @@ def coverage(
     # in steps that evenly divide 180, so ``-axis`` (elevation ``pi - el``,
     # azimuth ``az + pi``) is on-grid whenever ``axis`` is -- the check is
     # already sign-invariant by construction.
-    axis_off_grid = [j.name for j in model.joints if j.type in MOVABLE_TYPES and not _axis_ok(j.axis, relax)]
+    axis_off_grid = [j.name for j in model.joints if j.type in MOVABLE_TYPES and not _axis_ok(j.axis, relax)
+                     and not (fine and _axis_on_grid_step(j.axis, FINE_ANGLE_STEP_DEG))]
     if axis_off_grid:
         out.append("axis_off_grid:" + ",".join(sorted(axis_off_grid)))
 
@@ -928,7 +969,8 @@ def coverage(
         if j.name in dependents or j.limits is None:
             continue
         if j.type == "revolute":
-            if not _revolute_limits_ok(j.axis, j.limits, j.child in palm_body_names, dist, relax):
+            if not (_revolute_limits_ok(j.axis, j.limits, j.child in palm_body_names, dist, relax)
+                    or (fine and _fine_limits_ok(j.limits, dist))):
                 limits_not_in_set.append(j.name)
         elif j.type == "prismatic":
             if not _prismatic_limits_ok(j.axis, j.limits, dist, relax):

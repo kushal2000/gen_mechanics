@@ -26,6 +26,11 @@ from .distributions import (
     ANGLE_STEP_DEG,
     DEFAULT_DISTRIBUTION,
     DEG,
+    FINE_ANGLE_STEP_DEG,
+    FINE_LENGTH_STEP_M,
+    FINE_MOUNT_FRAC_STEP,
+    N_FINE_ANGLE_STEPS,
+    N_FINE_ELEVATION_STEPS,
     Distribution,
     N_ANGLE_STEPS,
     N_ELEVATION_STEPS,
@@ -34,6 +39,9 @@ from .distributions import (
     sample_capsule_radius_m,
     sample_grid_angle_rad,
     lateral_offset_choices_m,
+    link_length_support_m,
+    palm_body_length_support_m,
+    root_length_support_m,
     sample_grid_length_m,
     sample_lateral_offset,
     sample_module,
@@ -395,15 +403,22 @@ def _best_opposing_rpy(oppose_forward: np.ndarray) -> Tuple[float, float, float]
 
 def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str, p: int,
                      depth: int, is_last: bool, next_uid: List[int], host_radius_m: float = 0.0,
-                     lim: Optional[LimitContext] = None) -> None:
+                     lim: Optional[LimitContext] = None, max_len_m: Optional[float] = None,
+                     room_m: Optional[float] = None) -> float:
     """``lim`` (generation limits, default ``None``): module kinds come from
     the allowed set, and branch digits are spawned only when branches are
     allowed and the digit's joint budget has room for them (each branch digit
     needs at least ``phalanx_count_range[0]`` joints, reserved up front so
-    sibling branches always fit). ``None`` draws exactly as before."""
+    sibling branches always fit). ``None`` draws exactly as before.
+
+    ``max_len_m``/``room_m`` (the finger-length cap, ``None`` without one): the
+    longest this bone may be, and the length left for the path from this
+    bone's start to a fingertip; a branch grows here only if the room left
+    after this bone fits a branch of the shortest sampled length. Returns the
+    bone's length."""
     module = sample_module(rng, dist, p, _revolute_source_indices(steps, digit_id, p),
                            allowed=None if lim is None else lim.allowed_modules)
-    length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
+    length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m, max_m=max_len_m)
     # Opus review of G0 (item 5 / V3s fix): ``curl_skip_first_phalanx`` never
     # touches ``rng`` for phalanx 0 -- it must not draw (and discard) a bend
     # that would otherwise have been sampled, since that would desync the
@@ -429,6 +444,8 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
         max_branches = dist.max_branch_digits
         if lim is not None:
             max_branches = lim.branch_cap(max_branches, _phalanx_unit(dist))
+        if room_m is not None and room_m - length < _phalanx_unit(dist) * dist.link_length_range_m[0] - 1e-12:
+            max_branches = 0    # finger-length cap: no room for a branch here
         if min_branches <= max_branches:
             branch_digit_count = int(rng.integers(min_branches, max_branches + 1))
     uid = next_uid[0]
@@ -450,7 +467,9 @@ def _sample_phalanx(rng, dist: Distribution, steps: List[DerivationStep], digit_
             if lim is not None:
                 lim.release(_phalanx_unit(dist))
             _emit_digit(rng, dist, steps, sub_id, [phalanx_body], top_level=False, depth=depth + 1,
-                        next_uid=next_uid, host_radius_m=host_radius_m, lim=lim)
+                        next_uid=next_uid, host_radius_m=host_radius_m, lim=lim,
+                        length_room_m=None if room_m is None else room_m - length)
+    return length
 
 
 def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: str,
@@ -459,7 +478,8 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
                  oppose_forward: Optional[np.ndarray] = None,
                  host_radius_m: float = 0.0,
                  host_transforms: Optional[Dict[str, np.ndarray]] = None,
-                 lim: Optional[LimitContext] = None, forced_host: Optional[str] = None) -> None:
+                 lim: Optional[LimitContext] = None, forced_host: Optional[str] = None,
+                 length_room_m: Optional[float] = None) -> None:
     """``forced_mount``/``oppose_forward`` (G0 screen, I29/I30; both default
     ``None``) are used ONLY by ``sample_derivation``'s top-level digit loop
     when the corresponding prior is enabled -- every other caller (branch
@@ -486,7 +506,14 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
     (``LimitContext.host_has_room``); the phalanx count is capped by the
     digit's joint budget (``LimitContext.begin_digit``, set by the caller),
     and the budget is passed down to the phalanges and branches. Hosts of
-    planned mounts were already booked by the planner."""
+    planned mounts were already booked by the planner. Under a finger-length
+    cap (``max_finger_length_mm``), ``length_room_m`` is the length this
+    digit's path may still use (the whole cap for a top-level digit): the
+    phalanx count fits it at the shortest sampled bone length, and each bone
+    is drawn among the lengths that leave the later bones that much room, so
+    a cap that does not bind leaves every draw unchanged."""
+    if lim is not None and length_room_m is None and top_level:
+        length_room_m = lim.length_cap_m
     forced_azimuth: Optional[float] = None
     if forced_mount is not None:
         mount, mount_frac = forced_mount[0], forced_mount[1]
@@ -531,6 +558,12 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
         if cap is not None and cap < hi:
             hi = max(1, cap)
             lo = min(lo, hi)
+    l_min = dist.link_length_range_m[0]
+    if length_room_m is not None and l_min > 0:
+        fit = int(math.floor(length_room_m / l_min + 1e-9))
+        if fit < hi:
+            hi = max(1, fit)
+            lo = min(lo, hi)
     phalanx_count = int(rng.integers(lo, hi + 1))
     if lim is not None:
         lim.spend(phalanx_count)
@@ -541,9 +574,14 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
         "mount_offset": mount_offset,
         "phalanx_count": phalanx_count, "top_level": top_level, "depth": depth, "uid": uid,
     }))
+    room = length_room_m
     for p in range(phalanx_count):
-        _sample_phalanx(rng, dist, steps, digit_id, p, depth, is_last=(p == phalanx_count - 1), next_uid=next_uid,
-                         host_radius_m=host_radius_m, lim=lim)
+        max_len = None if room is None else room - (phalanx_count - 1 - p) * l_min
+        length = _sample_phalanx(rng, dist, steps, digit_id, p, depth, is_last=(p == phalanx_count - 1),
+                                 next_uid=next_uid, host_radius_m=host_radius_m, lim=lim, max_len_m=max_len,
+                                 room_m=room)
+        if room is not None:
+            room -= length
 
 
 def _sample_digit(rng, dist: Distribution, steps: List[DerivationStep], next_id: List[int],
@@ -1239,7 +1277,9 @@ def _op_resample_parameter(rng, dist: Distribution, derivation: Derivation,
         p = dict(s.params)
         module = sample_module(rng, dist, p["p"], _revolute_source_indices(steps, p["digit_id"], p["p"]),
                                allowed=None if lim is None else lim.allowed_modules)
-        length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
+        room = None if lim is None else lim.length_room(p["digit_id"], int(p["p"]))
+        length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m,
+                                      max_m=None if room is None else float(p["length"]) + room)
         p.update({"module": module, "length": length})
         steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
         return steps
@@ -1268,9 +1308,13 @@ def _op_perturb_parameter(rng, dist: Distribution, derivation: Derivation,
     idx = candidates[int(rng.integers(0, len(candidates)))]
     s = steps[idx]
     p = dict(s.params)
-    length_range = dist.palm_length_range_m if s.production == "PalmBody" else dist.link_length_range_m
+    length_range = palm_body_length_support_m(dist) if s.production == "PalmBody" else link_length_support_m(dist)
     grid = dist.link_length_grid_m
     lo, hi = length_range
+    if s.production == "Phalanx" and lim is not None:
+        room = lim.length_room(p["digit_id"], int(p["p"]))
+        if room is not None:
+            hi = min(hi, float(p["length"]) + room)     # finger-length cap: reflect off it like a range end
     direction = 1.0 if float(rng.random()) < 0.5 else -1.0
     new_len = p["length"] + direction * grid
     if new_len > hi:
@@ -1300,6 +1344,10 @@ def _regrow_context(lim: LimitContext, steps: List[DerivationStep], digit_id: st
         room = None if lim.limits.max_joints_per_digit is None else (
             lim.limits.max_joints_per_digit - sub.struct.joints_per_digit().get(owner, 0))
     if room is not None and room < _phalanx_unit(gdist):
+        return None
+    cap = lim.length_cap_m
+    if cap is not None and cap - lim.struct.base_lengths().get(digit_id, 0.0) < (
+            _phalanx_unit(gdist) * gdist.link_length_range_m[0] - 1e-12):
         return None
     sub.begin_digit(room)
     return sub
@@ -1338,8 +1386,12 @@ def _op_regrow_subtree(rng, dist: Distribution, derivation: Derivation,
     next_uid = [_max_uid(steps) + 1]
     hand_params = next(st.params for st in steps if st.path == "hand")
     host_radius_m = hand_params.get("capsule_radius_m", 0.0)
+    ctx = sub_lim.get(idx)
+    length_room = None
+    if ctx is not None and ctx.length_cap_m is not None:
+        length_room = ctx.length_cap_m - lim.struct.base_lengths().get(digit_id, 0.0)
     _emit_digit(rng, _growth_dist(dist), new_steps, digit_id, mount_bodies, top_level, depth, next_uid,
-                host_radius_m=host_radius_m, lim=sub_lim.get(idx))
+                host_radius_m=host_radius_m, lim=ctx, length_room_m=length_room)
     return kept + new_steps
 
 
@@ -1378,13 +1430,24 @@ def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation,
                   if s.production == "Digit" and s.params["phalanx_count"] < dist.phalanx_count_range[1]]
     if lim is not None and lim.limits.max_joints_per_digit is not None:
         digit_idxs = [i for i in digit_idxs if lim.joint_room(steps[i].params["digit_id"]) >= 1]
+    l_min = dist.link_length_range_m[0]
+    capped = lim is not None and lim.length_cap_m is not None
+    if capped:
+        # Finger-length cap: a bone of the shortest sampled length must fit
+        # (appending after the last bone leaves the most room).
+        digit_idxs = [i for i in digit_idxs
+                      if lim.length_room(steps[i].params["digit_id"], steps[i].params["phalanx_count"])
+                      >= l_min - 1e-12]
     if not digit_idxs:
         return None
     idx = digit_idxs[int(rng.integers(0, len(digit_idxs)))]
     dstep = steps[idx]
     digit_id = dstep.params["digit_id"]
     old_count = dstep.params["phalanx_count"]
-    ins_p = int(rng.integers(0, old_count + 1))
+    positions = list(range(old_count + 1))
+    if capped:
+        positions = [k for k in positions if lim.length_room(digit_id, k) >= l_min - 1e-12]
+    ins_p = positions[int(rng.integers(0, len(positions)))]
 
     others = [st for st in steps if st is not dstep]
     phalanx_steps = {st.params["p"]: st for st in others
@@ -1413,7 +1476,8 @@ def _op_insert_phalanx(rng, dist: Distribution, derivation: Derivation,
     )
     module = sample_module(rng, dist, ins_p, revolute_source_indices,
                            allowed=None if lim is None else lim.allowed_modules)
-    length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m)
+    length = sample_grid_length_m(rng, dist.link_length_range_m, dist.link_length_grid_m,
+                                  max_m=lim.length_room(digit_id, ins_p) if capped else None)
     bend_rpy, bend_offset = sample_bend(rng, dist)
     new_uid = _max_uid(steps) + 1
     new_phalanx_list.append(DerivationStep(path=f"digit/{digit_id}/phalanx/{ins_p}", production="Phalanx", params={
@@ -1478,6 +1542,10 @@ def _op_delete_phalanx(rng, dist: Distribution, derivation: Derivation,
             if (p_idx != last_idx or last_deletion_safe)
             and (target is None or phalanx_by_p[p_idx].params.get("uid") == target)
         ]
+        if lim is not None and lim.length_cap_m is not None:
+            # Finger-length cap: a branch on the first bone re-attaches to the
+            # second, which may be longer.
+            deletable = [p_idx for p_idx in deletable if lim.allows(lim.struct.without_phalanx(digit_id, p_idx))]
         if deletable:
             candidates.append((i, deletable))
     if not candidates:
@@ -1965,7 +2033,7 @@ def _op_step_root_length(rng, dist: Distribution, derivation: Derivation,
     steps = list(derivation.steps)
     hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
     hand = steps[hand_idx]
-    lo, hi = dist.palm_length_range_m
+    lo, hi = root_length_support_m(dist)
     grid = dist.link_length_grid_m
     n = int(round((hi - lo) / grid))
     cur = hand.params["root_length"]
@@ -2128,7 +2196,8 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation,
     mount_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
     axis = sample_axis(rng)
     limits = sample_revolute_limits_rad(rng, gdist)
-    length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m)
+    length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m,
+                                  max_m=None if lim is None else lim.length_cap_m)
     bend_rpy, bend_offset = sample_bend(rng, gdist)
     uid_base = _max_uid(steps) + 1
     digit_params = {
@@ -2264,7 +2333,8 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation,
     d_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
     d_axis = sample_axis(rng, gdist.digit_axis_elevation_band_deg)
     d_limits = sample_revolute_limits_rad(rng, gdist)
-    d_length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m)
+    d_length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m,
+                                    max_m=None if lim is None else lim.length_cap_m)
     bend_rpy, bend_offset = ((0.0, 0.0, 0.0), (0.0, 0.0)) if gdist.curl_skip_first_phalanx else sample_bend(rng, gdist)
     uid = palm_params["uid"] + 1
     digit_params = {
@@ -2510,6 +2580,12 @@ def _op_add_branch_digit(rng, dist: Distribution, derivation: Derivation,
     ]
     if lim is not None and lim.limits.max_joints_per_digit is not None:
         candidates = [i for i in candidates if lim.joint_room(steps[i].params["digit_id"]) >= 1]
+    gdist = _growth_dist(dist)
+    if lim is not None and lim.length_cap_m is not None:
+        # Finger-length cap: the new branch's bone must fit after its host's bones.
+        candidates = [i for i in candidates
+                      if lim.branch_room(steps[i].params["digit_id"], int(steps[i].params["p"]))
+                      >= gdist.link_length_range_m[0] - 1e-12]
     if not candidates:
         return None
     idx = candidates[int(rng.integers(0, len(candidates)))]
@@ -2521,12 +2597,12 @@ def _op_add_branch_digit(rng, dist: Distribution, derivation: Derivation,
     sub_id = f"{host_digit_id}p{host_p + 1}b{slot}"
     depth = digit_depth[host_digit_id] + 1
 
-    gdist = _growth_dist(dist)
     mount_frac = float(gdist.mount_frac_choices[int(rng.integers(0, len(gdist.mount_frac_choices)))])
     mount_rpy = (sample_grid_angle_rad(rng), sample_grid_angle_rad(rng), sample_grid_angle_rad(rng))
     axis = sample_axis(rng)
     limits = sample_revolute_limits_rad(rng, gdist)
-    length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m)
+    length = sample_grid_length_m(rng, gdist.link_length_range_m, gdist.link_length_grid_m,
+                                  max_m=None if lim is None else lim.branch_room(host_digit_id, int(host_p)))
     bend_rpy, bend_offset = sample_bend(rng, gdist)
     uid_base = _max_uid(steps) + 1
 
@@ -2607,29 +2683,40 @@ def _op_remove_branch_digit(rng, dist: Distribution, derivation: Derivation,
 
 
 def _segment_length_moves(dist: Distribution, steps: Sequence[DerivationStep], signs: Sequence[int],
-                          target: Optional[int]) -> List[Tuple[int, float]]:
-    grid = dist.link_length_grid_m
+                          target: Optional[int], lim: Optional[LimitContext] = None,
+                          step_m: Optional[float] = None) -> List[Tuple[int, float]]:
+    """(step index, new length) for every segment that can move by
+    ``step_m`` (default: the coarse grid) in one of ``signs`` within its
+    support range and, under a finger-length cap, without making a finger
+    longer than the cap."""
+    grid = dist.link_length_grid_m if step_m is None else step_m
     moves: List[Tuple[int, float]] = []
     for sign in signs:
         for i, s in enumerate(steps):
             if s.production == "Phalanx":
-                lo, hi = dist.link_length_range_m
+                lo, hi = link_length_support_m(dist)
             elif s.production == "PalmBody":
-                lo, hi = dist.palm_length_range_m
+                lo, hi = palm_body_length_support_m(dist)
             else:
                 continue
             if target is not None and s.params.get("uid") != target:
                 continue
             new = round(float(s.params["length"]) + sign * grid, 10)
-            if lo - 1e-9 <= new <= hi + 1e-9:
-                moves.append((i, new))
+            if not lo - 1e-9 <= new <= hi + 1e-9:
+                continue
+            if sign > 0 and s.production == "Phalanx" and lim is not None:
+                room = lim.length_room(s.params["digit_id"], int(s.params["p"]))
+                if room is not None and new - float(s.params["length"]) > room + 1e-9:
+                    continue
+            moves.append((i, new))
     return moves
 
 
 def _apply_length_move(rng, dist: Distribution, derivation: Derivation, signs: Sequence[int],
-                       target: Optional[int]) -> Optional[List[DerivationStep]]:
+                       target: Optional[int], lim: Optional[LimitContext] = None,
+                       step_m: Optional[float] = None) -> Optional[List[DerivationStep]]:
     steps = list(derivation.steps)
-    moves = _segment_length_moves(dist, steps, signs, target)
+    moves = _segment_length_moves(dist, steps, signs, target, lim, step_m)
     if not moves:
         return None
     idx, new = moves[int(rng.integers(0, len(moves)))]
@@ -2642,19 +2729,350 @@ def _op_step_segment_length(rng, dist: Distribution, derivation: Derivation, tar
                             lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """Lengthen or shorten one segment by exactly one grid step (5 mm), within
     the variant's range; ``target``: restrict to the segment with that uid."""
-    return _apply_length_move(rng, dist, derivation, (1, -1), target)
+    return _apply_length_move(rng, dist, derivation, (1, -1), target, lim)
 
 
 def _op_lengthen_segment(rng, dist: Distribution, derivation: Derivation, target: Optional[int] = None,
                          lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """``step_segment_length``, lengthening only (inverse: ``shorten_segment``)."""
-    return _apply_length_move(rng, dist, derivation, (1,), target)
+    return _apply_length_move(rng, dist, derivation, (1,), target, lim)
 
 
 def _op_shorten_segment(rng, dist: Distribution, derivation: Derivation, target: Optional[int] = None,
                         lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """``step_segment_length``, shortening only (inverse: ``lengthen_segment``)."""
-    return _apply_length_move(rng, dist, derivation, (-1,), target)
+    return _apply_length_move(rng, dist, derivation, (-1,), target, lim)
+
+
+# --------------------------------------------------------------------------
+# Fine operators (2026-10-06, coarse and fine stages). The coarse stage is the
+# grammar as it was: structural operators plus the coarse steps (5 mm lengths,
+# 15 degree axes, bends and mount turns, the mount grid, the joint-range
+# menu), for generating and evolving hands that work. The fine stage refines
+# a hand without changing its structure: each operator below moves ONE
+# parameter of one existing part by exactly ONE unit of the fine grid
+# (``distributions.FINE_*``): 1 mm for bone, palm and palm-part lengths, the
+# lateral mount offset and the capsule radius; 1% of the host's length for a
+# mount's position along it (mount positions are stored as fractions of the
+# host, so a fixed millimetre step would leave the grid whenever the host's
+# length changes); 5 degrees for joint axes, mount and palm-part orientations,
+# rest bends and joint-range ends. Each stays inside the support (the length
+# support ranges, +/- ``mount_lateral_max_m``, the capsule radius menu's span,
+# the joint-limit range, the bend support's span) and, under a finger-length
+# cap, keeps every finger within it. A value moves by one unit from wherever
+# it is: a value on the fine grid stays on it, and one that is not (a
+# surface-mounted finger's offset, radius x cos/sin of its azimuth; an exact
+# projection) keeps its offset from the grid. Every coarse grid value is on
+# the fine grid, so a coarse hand is a valid fine hand.
+# --------------------------------------------------------------------------
+
+
+def _on_step(value: float, step: float) -> bool:
+    k = value / step
+    return abs(k - round(k)) < 1e-6
+
+
+def _fine_angle_index(rad: float) -> Optional[int]:
+    """Index (0..71) of ``rad`` on the 5 degree circle grid starting at -180, or
+    ``None`` if it is off the grid."""
+    deg = rad / DEG
+    if not _on_step(deg, FINE_ANGLE_STEP_DEG):
+        return None
+    return int(round((deg + 180.0) / FINE_ANGLE_STEP_DEG)) % N_FINE_ANGLE_STEPS
+
+
+def _fine_angle(k: int) -> float:
+    return (k * FINE_ANGLE_STEP_DEG - 180.0) * DEG
+
+
+def _wrap_rad(a: float) -> float:
+    return (a + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def _fine_turn(rad: float, direction: int) -> float:
+    """``rad`` turned by 5 degrees, wrapped into [-180, 180) (a grid value
+    lands exactly on the grid's float)."""
+    k = _fine_angle_index(rad)
+    if k is not None:
+        return _fine_angle((k + direction) % N_FINE_ANGLE_STEPS)
+    return _wrap_rad(rad + direction * FINE_ANGLE_STEP_DEG * DEG)
+
+
+def fine_axis_indices(axis: Sequence[float]) -> Optional[Tuple[int, int]]:
+    """(elevation, azimuth) indices of ``axis`` on the 5 degree spherical grid
+    (elevation 0..36 from +z, azimuth 0..71 from -180), or ``None`` if it is
+    off the grid. At a pole the azimuth index is 36 (azimuth 0)."""
+    x, y, z = (float(v) for v in axis)
+    n = math.sqrt(x * x + y * y + z * z)
+    if n < 1e-12:
+        return None
+    el = math.degrees(math.acos(max(-1.0, min(1.0, z / n))))
+    if not _on_step(el, FINE_ANGLE_STEP_DEG):
+        return None
+    el_k = int(round(el / FINE_ANGLE_STEP_DEG))
+    if el_k in (0, N_FINE_ELEVATION_STEPS - 1):
+        return el_k, N_FINE_ANGLE_STEPS // 2
+    az = math.degrees(math.atan2(y, x))
+    if not _on_step(az, FINE_ANGLE_STEP_DEG):
+        return None
+    return el_k, int(round((az + 180.0) / FINE_ANGLE_STEP_DEG)) % N_FINE_ANGLE_STEPS
+
+
+def fine_axis(el_k: int, az_k: int) -> Tuple[float, float, float]:
+    el = el_k * FINE_ANGLE_STEP_DEG * DEG
+    az = (az_k * FINE_ANGLE_STEP_DEG - 180.0) * DEG
+    return (float(math.sin(el) * math.cos(az)), float(math.sin(el) * math.sin(az)), float(math.cos(el)))
+
+
+def fine_bend_component_grid(dist: Distribution, comp: int) -> List[float]:
+    """The fine (5 degree) values one rest-bend component (roll, pitch, yaw)
+    may take: every multiple of 5 degrees between the smallest and largest
+    value of that component in the coarse bend support (no bend, the sampled
+    bend menu and the support-only bends), the whole circle when the coarse
+    values go all the way round."""
+    vals = [0.0] + [c[comp] for c in dist.bend_rpy_choices_rad] + [c[comp] for c in dist.bend_support_rpy_choices_rad]
+    lo_deg, hi_deg = min(vals) / DEG, max(vals) / DEG
+    if hi_deg - lo_deg >= 360.0 - ANGLE_STEP_DEG - 1e-6:
+        lo_deg, hi_deg = -180.0, 180.0 - FINE_ANGLE_STEP_DEG
+    k0 = int(math.ceil(lo_deg / FINE_ANGLE_STEP_DEG - 1e-9))
+    k1 = int(math.floor(hi_deg / FINE_ANGLE_STEP_DEG + 1e-9))
+    return [k * FINE_ANGLE_STEP_DEG * DEG for k in range(k0, k1 + 1)]
+
+
+def fine_radius_range_m(dist: Distribution) -> Tuple[float, float]:
+    return min(dist.capsule_radius_choices_m), max(dist.capsule_radius_choices_m)
+
+
+def _lateral_steppable(dist: Distribution, s: DerivationStep) -> bool:
+    """Whether ``s`` (a Digit or PalmBody step) has a lateral mount offset
+    on ``dist``'s lateral grid (mirrors ``_op_step_mount``)."""
+    return dist.mount_lateral_grid_m is not None and (
+        s.production == "PalmBody"
+        or (s.production == "Digit" and s.params.get("top_level")
+            and (not dist.mount_on_host_surface or not dist.mount_lateral_sampled)))
+
+
+def _op_fine_step_axis(rng, dist: Distribution, derivation: Derivation,
+                       lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Tilt one joint axis by 5 degrees in elevation (not past a pole) or
+    azimuth (wrapped; not at a pole, where azimuth means nothing)."""
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps)
+                  if (s.production == "PalmBody" and s.params.get("has_joint")) or s.production == "Phalanx"]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    p = dict(s.params)
+    axis = p["axis"] if s.production == "PalmBody" else p["module"]["axis"]
+    step_elevation = bool(rng.integers(0, 2))
+    direction = 1 if bool(rng.integers(0, 2)) else -1
+    ij = fine_axis_indices(axis)
+    if ij is not None:
+        el_k, az_k = ij
+        if step_elevation:
+            if not 0 <= el_k + direction < N_FINE_ELEVATION_STEPS:
+                return None
+            el_k += direction
+        else:
+            if el_k in (0, N_FINE_ELEVATION_STEPS - 1):
+                return None                     # azimuth is meaningless at a pole
+            az_k = (az_k + direction) % N_FINE_ANGLE_STEPS
+        new_axis = fine_axis(el_k, az_k)
+    else:
+        a = np.asarray(axis, dtype=float)
+        a = a / max(float(np.linalg.norm(a)), 1e-12)
+        el, az = math.acos(max(-1.0, min(1.0, float(a[2])))), math.atan2(float(a[1]), float(a[0]))
+        step = FINE_ANGLE_STEP_DEG * DEG
+        if step_elevation:
+            el += direction * step
+            if not -1e-9 <= el <= math.pi + 1e-9:
+                return None
+        else:
+            if math.sin(el) < 1e-9:
+                return None
+            az += direction * step
+        new_axis = (float(math.sin(el) * math.cos(az)), float(math.sin(el) * math.sin(az)), float(math.cos(el)))
+    if s.production == "PalmBody":
+        p["axis"] = new_axis
+    else:
+        p["module"] = {**p["module"], "axis": new_axis}
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+    return steps
+
+
+def _op_fine_step_limits(rng, dist: Distribution, derivation: Derivation,
+                         lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Move one end of one revolute joint's range (a hinge or a palm joint)
+    by 5 degrees, inside ``dist.revolute_limit_range_deg`` and never past the
+    other end."""
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps)
+                  if (s.production == "PalmBody" and s.params.get("has_joint"))
+                  or (s.production == "Phalanx" and s.params["module"]["kind"] == "R")]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    p = dict(s.params)
+    lo, hi = (p["limits"] if s.production == "PalmBody" else p["module"]["limits"])
+    range_lo, range_hi = (v * DEG for v in dist.revolute_limit_range_deg)
+    step = FINE_ANGLE_STEP_DEG * DEG
+    move_lo = bool(rng.integers(0, 2))
+    direction = 1.0 if bool(rng.integers(0, 2)) else -1.0
+    if move_lo:
+        new_lo = round(lo + direction * step, 12)
+        if new_lo < range_lo - 1e-9 or new_lo >= hi - 1e-9:
+            return None
+        new = (new_lo, hi)
+    else:
+        new_hi = round(hi + direction * step, 12)
+        if new_hi > range_hi + 1e-9 or new_hi <= lo + 1e-9:
+            return None
+        new = (lo, new_hi)
+    if s.production == "PalmBody":
+        p["limits"] = new
+    else:
+        p["module"] = {**p["module"], "limits": new}
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+    return steps
+
+
+def _op_fine_slide_mount(rng, dist: Distribution, derivation: Derivation,
+                         lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Slide one finger's or palm part's mount along its host by 1% of the
+    host's length, within the host's ends."""
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps) if s.production in ("Digit", "PalmBody")]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    new = round(float(s.params["mount_frac"]) + (1 if bool(rng.integers(0, 2)) else -1) * FINE_MOUNT_FRAC_STEP, 10)
+    if not -1e-9 <= new <= 1.0 + 1e-9:
+        return None
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params={**s.params, "mount_frac": new})
+    return steps
+
+
+def _op_fine_shift_mount(rng, dist: Distribution, derivation: Derivation,
+                         lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Shift one finger's or palm part's mount across its host by 1 mm in x
+    or y, within +/- ``mount_lateral_max_m`` (only where the grammar has a
+    lateral mount grid)."""
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps)
+                  if s.production in ("Digit", "PalmBody") and _lateral_steppable(dist, s)]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    off = list(s.params.get("mount_offset", (0.0, 0.0)))
+    comp = int(rng.integers(0, 2))
+    new = round(off[comp] + (1 if bool(rng.integers(0, 2)) else -1) * FINE_LENGTH_STEP_M, 10)
+    if abs(new) > dist.mount_lateral_max_m + 1e-9:
+        return None
+    off[comp] = new
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params={**s.params, "mount_offset": tuple(off)})
+    return steps
+
+
+def _op_fine_turn_mount(rng, dist: Distribution, derivation: Derivation,
+                        lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Turn one finger's mount (or a palm part's direction) by 5 degrees about
+    one of its roll, pitch and yaw angles (wrapped)."""
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps) if s.production in ("Digit", "PalmBody")]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    rpy_field = "mount_rpy" if s.production == "Digit" else "direction_rpy"
+    rpy = list(s.params[rpy_field])
+    comp = int(rng.integers(0, 3))
+    rpy[comp] = _fine_turn(rpy[comp], 1 if bool(rng.integers(0, 2)) else -1)
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params={**s.params, rpy_field: tuple(rpy)})
+    return steps
+
+
+def _op_fine_step_bend_rpy(rng, dist: Distribution, derivation: Derivation,
+                           lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Turn one joint's rest bend by 5 degrees about one axis, within the
+    span of the grammar's bend support (``fine_bend_component_grid``)."""
+    steps = list(derivation.steps)
+    candidates = [i for i, s in enumerate(steps) if s.production == "Phalanx"]
+    if not candidates:
+        return None
+    idx = candidates[int(rng.integers(0, len(candidates)))]
+    s = steps[idx]
+    bend = list(s.params.get("bend_rpy", (0.0, 0.0, 0.0)))
+    comp = int(rng.integers(0, 3))
+    grid = fine_bend_component_grid(dist, comp)
+    direction = 1 if bool(rng.integers(0, 2)) else -1
+    if len(grid) <= 1:
+        return None
+    hit = [i for i, v in enumerate(grid) if abs(v - bend[comp]) < 1e-9]
+    if hit:
+        new_i = hit[0] + direction
+        if not 0 <= new_i < len(grid):
+            return None
+        bend[comp] = grid[new_i]
+    else:
+        new = bend[comp] + direction * FINE_ANGLE_STEP_DEG * DEG
+        if not grid[0] - 1e-9 <= new <= grid[-1] + 1e-9:
+            return None
+        bend[comp] = new
+    steps[idx] = DerivationStep(path=s.path, production=s.production, params={**s.params, "bend_rpy": tuple(bend)})
+    return steps
+
+
+def _op_fine_step_root_length(rng, dist: Distribution, derivation: Derivation,
+                              lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Lengthen or shorten the palm by 1 mm within its support range."""
+    steps = list(derivation.steps)
+    hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
+    hand = steps[hand_idx]
+    lo, hi = root_length_support_m(dist)
+    new = round(float(hand.params["root_length"]) + (1 if bool(rng.integers(0, 2)) else -1) * FINE_LENGTH_STEP_M, 10)
+    if not lo - 1e-9 <= new <= hi + 1e-9:
+        return None
+    steps[hand_idx] = DerivationStep(path="hand", production="Hand", params={**hand.params, "root_length": new})
+    return steps
+
+
+def _op_fine_step_radius(rng, dist: Distribution, derivation: Derivation,
+                         lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Make every link 1 mm thicker or thinner, within the span of the
+    capsule radius menu."""
+    steps = list(derivation.steps)
+    hand_idx = next(i for i, s in enumerate(steps) if s.path == "hand")
+    hand = steps[hand_idx]
+    cur = float(hand.params["capsule_radius_m"])
+    lo, hi = fine_radius_range_m(dist)
+    new = round(cur + (1 if bool(rng.integers(0, 2)) else -1) * FINE_LENGTH_STEP_M, 10)
+    if not lo - 1e-9 <= new <= hi + 1e-9:
+        return None
+    steps[hand_idx] = DerivationStep(path="hand", production="Hand", params={**hand.params, "capsule_radius_m": new})
+    return steps
+
+
+def _op_fine_step_segment_length(rng, dist: Distribution, derivation: Derivation, target: Optional[int] = None,
+                                 lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """Lengthen or shorten one bone or palm part by exactly 1 mm, within its
+    support range and the finger-length cap; ``target``: that segment's uid."""
+    return _apply_length_move(rng, dist, derivation, (1, -1), target, lim, FINE_LENGTH_STEP_M)
+
+
+def _op_fine_lengthen_segment(rng, dist: Distribution, derivation: Derivation, target: Optional[int] = None,
+                              lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """``fine_step_segment_length``, lengthening only (inverse: ``fine_shorten_segment``)."""
+    return _apply_length_move(rng, dist, derivation, (1,), target, lim, FINE_LENGTH_STEP_M)
+
+
+def _op_fine_shorten_segment(rng, dist: Distribution, derivation: Derivation, target: Optional[int] = None,
+                             lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
+    """``fine_step_segment_length``, shortening only (inverse: ``fine_lengthen_segment``)."""
+    return _apply_length_move(rng, dist, derivation, (-1,), target, lim, FINE_LENGTH_STEP_M)
 
 
 _OPERATOR_FNS = {
@@ -2685,6 +3103,17 @@ _OPERATOR_FNS = {
     "step_segment_length": _op_step_segment_length,
     "lengthen_segment": _op_lengthen_segment,
     "shorten_segment": _op_shorten_segment,
+    "fine_step_axis": _op_fine_step_axis,
+    "fine_step_limits": _op_fine_step_limits,
+    "fine_slide_mount": _op_fine_slide_mount,
+    "fine_shift_mount": _op_fine_shift_mount,
+    "fine_turn_mount": _op_fine_turn_mount,
+    "fine_step_bend_rpy": _op_fine_step_bend_rpy,
+    "fine_step_root_length": _op_fine_step_root_length,
+    "fine_step_radius": _op_fine_step_radius,
+    "fine_step_segment_length": _op_fine_step_segment_length,
+    "fine_lengthen_segment": _op_fine_lengthen_segment,
+    "fine_shorten_segment": _op_fine_shorten_segment,
 }
 
 # --------------------------------------------------------------------------
@@ -2721,9 +3150,11 @@ EVOLUTION_PAIRS: Tuple[Tuple[str, str], ...] = (
 # of ``EVOLUTION_PAIRS``, whose five structural grow/shrink pairs E2/E12
 # report on; the pool itself carries the combined ``step_segment_length``).
 LENGTH_STEP_PAIR: Tuple[str, str] = ("lengthen_segment", "shorten_segment")
+# Its fine (1 mm) counterpart.
+FINE_LENGTH_STEP_PAIR: Tuple[str, str] = ("fine_lengthen_segment", "fine_shorten_segment")
 
 INVERSE_OF: Dict[str, str] = {}
-for _growth, _shrink in EVOLUTION_PAIRS + (LENGTH_STEP_PAIR,):
+for _growth, _shrink in EVOLUTION_PAIRS + (LENGTH_STEP_PAIR, FINE_LENGTH_STEP_PAIR):
     INVERSE_OF[_growth] = _shrink
     INVERSE_OF[_shrink] = _growth
 del _growth, _shrink
@@ -2762,12 +3193,33 @@ EVOLUTION_OPERATORS: Tuple[str, ...] = (
 ) + tuple(SMALL_STEP_OPERATORS) + ("step_segment_length",)
 assert len(EVOLUTION_OPERATORS) == len(set(EVOLUTION_OPERATORS)), "EVOLUTION_OPERATORS has duplicates"
 
+# The two stages (2026-10-06). COARSE is the pool above, for generating and
+# evolving hands that work (``EVOLUTION_OPERATORS`` stays its name). FINE
+# refines a hand's parameters on the fine grid without changing its
+# structure: every operator moves one parameter by one fine unit (see the
+# fine operators above).
+EVOLUTION_OPERATORS_COARSE: Tuple[str, ...] = EVOLUTION_OPERATORS
+EVOLUTION_OPERATORS_FINE: Tuple[str, ...] = (
+    "fine_step_axis",
+    "fine_step_limits",
+    "fine_slide_mount",
+    "fine_shift_mount",
+    "fine_turn_mount",
+    "fine_step_bend_rpy",
+    "fine_step_root_length",
+    "fine_step_radius",
+    "fine_step_segment_length",
+)
+STAGE_OPERATORS: Dict[str, Tuple[str, ...]] = {"coarse": EVOLUTION_OPERATORS_COARSE,
+                                               "fine": EVOLUTION_OPERATORS_FINE}
+
 # Shrink operators (and self-inverse ``toggle_palm_joint``) that accept an
 # optional ``target`` uid, per ``_OPERATOR_FNS`` above.
 TARGETABLE_OPERATORS = frozenset({
     "remove_digit_minimal", "delete_phalanx", "remove_palm_body", "remove_palm_body_empty",
     "toggle_palm_joint", "remove_branch_digit",
     "step_segment_length", "lengthen_segment", "shorten_segment",
+    "fine_step_segment_length", "fine_lengthen_segment", "fine_shorten_segment",
 })
 
 

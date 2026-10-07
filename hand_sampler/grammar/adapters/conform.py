@@ -64,7 +64,8 @@ import numpy as np
 
 from ..derive import Derivation, DerivationStep, VariationImpossible, derive, vary
 from ..distributions import (ANGLE_STEP_DEG, DEG, N_ANGLE_STEPS, N_ELEVATION_STEPS, Distribution,
-                             lateral_offset_choices_m)
+                             lateral_offset_choices_m, link_length_support_m, palm_body_length_support_m,
+                             root_length_support_m)
 from ..fk import forward_kinematics, matrix_to_rpy, pose_to_matrix, rpy_to_matrix
 from ..kinematics import MOVABLE_TYPES, KinematicModel, ModelError
 from ..limits import GenerationLimits, LimitReport, check as check_limits
@@ -294,8 +295,8 @@ class ConformReport:
 
 
 CONFLICT_TEXT = {
-    "colocated_joints": "co-located joints (a zero-length link), grammar links are 15-80 mm",
-    "zero_length_palm": "zero-length palm body, grammar palm bodies are 20-80 mm",
+    "colocated_joints": "co-located joints (a zero-length link) in a variant without 0 mm bones",
+    "zero_length_palm": "zero-length palm body, below the variant's palm-part lengths",
     "lateral_mount_offset": "finger mounted off the host's axis (palm width), the grammar mounts on the axis "
                             "or on the capsule surface",
     "palm_mount_offset": "palm body mounted off its parent's axis",
@@ -391,7 +392,8 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
     steps = list(derivation.steps)
     grid = dist.link_length_grid_m
     fracs = sorted(set(dist.mount_frac_choices))
-    lrange, prange = dist.link_length_range_m, dist.palm_length_range_m
+    lrange, prange = link_length_support_m(dist), root_length_support_m(dist)
+    bodyrange = palm_body_length_support_m(dist)
     band = dist.digit_axis_elevation_band_deg
     hand_i = next(i for i, s in enumerate(steps) if s.path == "hand")
     hand = dict(steps[hand_i].params)
@@ -464,7 +466,7 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
             return L0
         L = _choose_host_length(L0, axial, rng_m, grid, fracs)
         rep.bump("length_mm", abs(L - L0) * 1000)
-        if L0 < 1e-3:
+        if L0 < 1e-3 and rng_m[0] > 1e-9:
             rep.conflicts.append(RuleConflict("zero_length_palm", host, f"{L0 * 1000:.1f} mm -> {L * 1000:.0f} mm"))
         return L
 
@@ -551,7 +553,7 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
                             *(math.degrees(v) for v in tuple(p["limits"]) + new_lim))))
                 p["limits"] = new_lim
                 rep.bump("limits_deg", math.degrees(e))
-            host_len[name] = choose_host_length(name, float(steps[i].params["length"]), prange)
+            host_len[name] = choose_host_length(name, float(steps[i].params["length"]), bodyrange)
             p["length"] = host_len[name]
             steps[i] = DerivationStep(path=steps[i].path, production="PalmBody", params=p)
             placed.add(name)
@@ -707,7 +709,7 @@ def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len,
         else:
             L = _snap_length(reach, lrange, grid)
             rep.bump("length_mm", abs(L - L0) * 1000)
-            if L0 < 1e-3:
+            if L0 < 1e-3 and lrange[0] > 1e-9:
                 rep.conflicts.append(RuleConflict("colocated_joints", f"{body}_j and the next joint",
                                                   f"{L0 * 1000:.1f} mm link -> {L * 1000:.0f} mm"))
             elif not lrange[0] - CONFLICT_MM / 1000 <= L0 <= lrange[1] + CONFLICT_MM / 1000:

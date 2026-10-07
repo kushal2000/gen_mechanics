@@ -298,6 +298,15 @@ G_WIDE: Distribution = replace(
 # and joint ranges anywhere in +/-180 deg. The last three are support only:
 # mutation reaches them and a conformed real hand may use them, but random
 # sampling never draws them (distributions.py's support fields).
+#
+# Length support (2026-10-06), from the 14 commercial projections: bones
+# 0-90 mm (they measure 0-84 mm; 27 of 220 are 0 mm, two joints at one point;
+# DClaw's reach 84 mm), the palm 15-160 mm (18-144 mm), palm parts 10-80 mm
+# (10-66 mm; the top stays at the sampled 80 mm so the support contains the
+# sampling range). Sampling still draws bones from 15-80 mm and the palm and
+# palm parts from 20-80 mm; mutation and conform reach the whole support. The
+# finger-length limit (``limits.FINGER_LENGTH_CAP_MM``, 250 mm: DClaw's 221 mm
+# finger x 1.1) bounds what long bones add up to.
 # --------------------------------------------------------------------------
 
 GRAMMAR_BASE: Distribution = replace(
@@ -309,6 +318,9 @@ GRAMMAR_BASE: Distribution = replace(
     bend_support_rpy_choices_rad=_WIDE_BEND_RPY_CHOICES_RAD,
     limits_support_continuous=True,
     revolute_limit_range_deg=(-180.0, 180.0),
+    link_length_support_m=(0.0, 0.090),
+    root_length_support_m=(0.015, 0.160),
+    palm_body_length_support_m=(0.010, 0.080),
 )
 
 RULES: Tuple[str, ...] = ("surface", "spacing", "curl_opposition")

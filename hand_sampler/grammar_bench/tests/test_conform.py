@@ -40,7 +40,8 @@ from hand_sampler.grammar.derive import (
     sample_derivation,
     vary,
 )
-from hand_sampler.grammar.distributions import DEG, lateral_offset_choices_m
+from hand_sampler.grammar.distributions import (DEG, lateral_offset_choices_m, link_length_support_m,
+                                                palm_body_length_support_m, root_length_support_m)
 from hand_sampler.grammar.experiments import e13_representation as e13
 from hand_sampler.grammar.fk import forward_kinematics
 from hand_sampler.grammar.limits import SIMULATOR
@@ -80,12 +81,12 @@ def _on_grid(d, dist):
         assert abs(k - round(k)) < 1e-9 and rng[0] - 1e-9 <= v <= rng[1] + 1e-9, (v, rng)
 
     hand = next(s for s in d.steps if s.path == "hand").params
-    on_len(hand["root_length"], dist.palm_length_range_m)
+    on_len(hand["root_length"], root_length_support_m(dist))
     assert hand["capsule_radius_m"] in dist.capsule_radius_choices_m
     for s in d.steps:
         p = s.params
         if s.production == "PalmBody":
-            on_len(p["length"], dist.palm_length_range_m)
+            on_len(p["length"], palm_body_length_support_m(dist))
             assert p["mount_frac"] in fracs
             assert all(round(a, 12) in angles for a in p["direction_rpy"])
             _axis_grid_indices(p["axis"])
@@ -105,7 +106,7 @@ def _on_grid(d, dist):
             else:
                 assert all(v in lat for v in off)
         elif s.production == "Phalanx":
-            on_len(p["length"], dist.link_length_range_m)
+            on_len(p["length"], link_length_support_m(dist))
             mod = p["module"]
             _axis_grid_indices(mod["axis"])
             if mod["kind"] == "R":
@@ -125,7 +126,10 @@ def _on_grid(d, dist):
 def test_conformed_hand_is_in_the_grammar(hand_id, variant):
     dist = VARIANTS[variant]
     model, pr = HANDS[hand_id]
-    assert not coverage(derive(pr.derivation), dist).in_support          # the exact projection is not
+    if not (hand_id == "coupled_finger" and variant == "GRAMMAR"):
+        # the exact projection is not (the analytic coupled finger's only
+        # off-support value was its 0 mm bone, which the grammar now has)
+        assert not coverage(derive(pr.derivation), dist).in_support
     cd, rep = C.conform_to_grammar(pr.derivation, dist, SIMULATOR)
     assert rep.valid, rep.error
     cov = coverage(derive(cd), dist)

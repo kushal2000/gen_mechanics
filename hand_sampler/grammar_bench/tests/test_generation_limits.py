@@ -232,7 +232,7 @@ def test_simulator_preset_matches_envelope_constants():
     assert not SIMULATOR.allow_stacked_palm_joints and SIMULATOR.max_digits_per_jointed_palm_body == 1
     # SIMULATOR adds the no-empty-palm-part rule to the envelope's shape
     assert SIMULATOR.require_digit_on_palm_body and not SIMULATOR_ENVELOPE.require_digit_on_palm_body
-    assert DEFAULT_LIMITS == GenerationLimits(require_digit_on_palm_body=True)
+    assert DEFAULT_LIMITS == GenerationLimits(require_digit_on_palm_body=True, max_finger_length_mm=250.0)
 
 
 def _equivalence_designs():

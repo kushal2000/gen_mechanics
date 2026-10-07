@@ -23,6 +23,19 @@ ANGLE_STEP_DEG = 15.0
 N_ANGLE_STEPS = 360 // int(ANGLE_STEP_DEG)  # 24 choices spanning [-180, 180)
 N_ELEVATION_STEPS = 180 // int(ANGLE_STEP_DEG) + 1  # 13 choices spanning [0, 180]
 
+# The fine grid (2026-10-06, coarse and fine stages): the refinement operators
+# (``derive.EVOLUTION_OPERATORS_FINE``) and ``adapters/conform.py`` at
+# ``resolution="fine"`` move and snap parameters on this grid. Every coarse
+# grid value is on it (5 mm lengths are whole millimetres, 15 degree angles
+# are multiples of 5 degrees, 5% mount fractions are whole percents), so a
+# hand on the coarse grid is also on the fine one.
+FINE_LENGTH_STEP_M = 0.001        # bone, palm and palm-part lengths; lateral mount offsets; capsule radius
+FINE_ANGLE_STEP_DEG = 5.0         # joint axes, mount and palm-part orientations, rest bends, joint-limit ends
+FINE_MOUNT_FRAC_STEP = 0.01       # mount position along the host, as a fraction of its length
+N_FINE_ANGLE_STEPS = 360 // int(FINE_ANGLE_STEP_DEG)          # 72 choices spanning [-180, 180)
+N_FINE_ELEVATION_STEPS = 180 // int(FINE_ANGLE_STEP_DEG) + 1  # 37 choices spanning [0, 180]
+RESOLUTIONS = ("coarse", "fine")
+
 
 @dataclass(frozen=True)
 class Distribution:
@@ -285,8 +298,39 @@ class Distribution:
     # the range menus.
     limits_support_continuous: bool = False
 
+    # Length capability ranges (2026-10-06, measured on the commercial hands):
+    # the lengths a mutation may reach and a conformed real hand may take,
+    # wider than the sampling ranges above (``link_length_range_m``,
+    # ``palm_length_range_m``), which stay the priors random sampling draws
+    # from. ``None`` (default): the support is the sampling range, so every
+    # existing variant samples and mutates byte-identically. A support range
+    # always contains its sampling range. Bones may be 0 mm long (two joints
+    # at one point, e.g. an abduction and a flexion joint in one knuckle).
+    link_length_support_m: Optional[Tuple[float, float]] = None
+    root_length_support_m: Optional[Tuple[float, float]] = None
+    palm_body_length_support_m: Optional[Tuple[float, float]] = None
+
 
 DEFAULT_DISTRIBUTION = Distribution()
+
+
+def _union(a: Tuple[float, float], b: Optional[Tuple[float, float]]) -> Tuple[float, float]:
+    return a if b is None else (min(a[0], b[0]), max(a[1], b[1]))
+
+
+def link_length_support_m(dist: "Distribution") -> Tuple[float, float]:
+    """The bone lengths in ``dist``'s support (sampling range plus support range)."""
+    return _union(dist.link_length_range_m, dist.link_length_support_m)
+
+
+def root_length_support_m(dist: "Distribution") -> Tuple[float, float]:
+    """The palm (root) lengths in ``dist``'s support."""
+    return _union(dist.palm_length_range_m, dist.root_length_support_m)
+
+
+def palm_body_length_support_m(dist: "Distribution") -> Tuple[float, float]:
+    """The palm-part (palm body) lengths in ``dist``'s support."""
+    return _union(dist.palm_length_range_m, dist.palm_body_length_support_m)
 
 
 def lateral_offset_choices_m(dist: "Distribution") -> Tuple[float, ...]:
@@ -314,9 +358,17 @@ def sample_grid_angle_rad(rng: np.random.Generator) -> float:
     return (k * ANGLE_STEP_DEG - 180.0) * DEG
 
 
-def sample_grid_length_m(rng: np.random.Generator, length_range_m: Tuple[float, float], grid_m: float) -> float:
+def sample_grid_length_m(rng: np.random.Generator, length_range_m: Tuple[float, float], grid_m: float,
+                         max_m: Optional[float] = None) -> float:
+    """A length on the grid of ``length_range_m``; one ``rng.integers`` draw.
+    ``max_m`` (generation limits: the room left under the finger-length cap)
+    drops the grid values above it and draws uniformly among the rest (the
+    shortest value if none is left); ``None``, or a ``max_m`` at or above the
+    range's top, draws exactly as before."""
     lo, hi = length_range_m
     n = int(round((hi - lo) / grid_m))
+    if max_m is not None and max_m < hi - 1e-12:
+        n = max(0, min(n, int(math.floor((max_m - lo) / grid_m + 1e-9))))
     k = int(rng.integers(0, n + 1))
     return round(lo + k * grid_m, 10)
 
