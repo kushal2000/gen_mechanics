@@ -136,6 +136,11 @@ assert set(OPERATOR_INFO) == set(EVOLUTION_OPERATORS) | set(EVOLUTION_OPERATORS_
 
 # Commercial hands: how the projection is shown.
 VERSIONS: Dict[str, Optional[str]] = {"fine grid": "fine", "coarse grid": "coarse", "exact (off-grid)": None}
+VERSION_NOTE: Dict[str, str] = {
+    "fine grid": "Fine grid (1 mm, 1%, 5°): the closest the grammar gets.",
+    "coarse grid": "Coarse grid (5 mm, 5%, 15°): where evolution starts.",
+    "exact (off-grid)": "Exact projection, off the grammar's grids.",
+}
 VERSION_HINT = ("Fine grid (default): the hand snapped onto the grammar's fine grid (1 mm, 1% of a part, 5 deg), the "
                 "closest the grammar gets; coarse grid: its 5 mm / 15 deg grid. Both are genuine members of the "
                 "grammar that the operators can mutate. Exact: the off-grid projection.")
@@ -756,7 +761,7 @@ class EssentialViewer:
             self.gui_hand = g.add_dropdown("Hand", [NO_HAND] + [h.label for h in hands], initial_value=NO_HAND,
                                            hint="A real hand's grammar projection, over its URDF meshes.")
             self.gui_version = g.add_dropdown("shown as", list(VERSIONS), initial_value="fine grid", hint=VERSION_HINT)
-            g.add_markdown("Shown on the fine grid (1 mm, 5°): the closest the grammar gets.")
+            self.md_version = g.add_markdown(VERSION_NOTE["fine grid"])
             self.gui_meshes = g.add_checkbox("show real hand meshes", True)
             self.md_fidelity = g.add_markdown("")
 
@@ -802,6 +807,7 @@ class EssentialViewer:
 
         @self.gui_version.on_update
         def _(_):
+            self.md_version.content = VERSION_NOTE[self.gui_version.value]
             if self.current_hand is not None:
                 self.load_commercial(self.current_hand, frame=False)
 

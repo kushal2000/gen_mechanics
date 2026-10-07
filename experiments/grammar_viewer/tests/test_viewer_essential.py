@@ -299,8 +299,10 @@ def test_commercial_hand(simulator):
     assert app.mutate("step_limits", wait=True) and app.history.cursor == 1
     assert app.mutate("insert_phalanx", wait=True) and app.history.cursor == 2
     # the coarse grid, and the exact projection, on request
+    assert app.md_version.content.startswith("Fine grid")
     app.gui_version.value = "coarse grid"
     app.wait_idle()
+    assert app.md_version.content.startswith("Coarse grid")
     assert app.md_fidelity.content.startswith("snapped to the grammar:") and app.history.cursor == 0
     assert app.shown.conformed.fidelity["max_pos_mm"] > pos
     app.gui_version.value = "exact (off-grid)"
