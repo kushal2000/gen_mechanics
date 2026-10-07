@@ -4,6 +4,42 @@ Evolve to generalize trains one joint-token transformer across many hands and le
 
 It combines three lines of work: our grammar on `martin/hand-grammar` (coarse and fine steps, palm joints, commercial-hand fitting, the simulator layout), Vatsal's physical grammar on `2026-10-02_physical_grammar` (the hull palm, the finger mount, joint kinds) and Kushal's uniform commercial hands on `2026-10-06-controlled_wuji_experiments` (shared dynamics, the joint sign convention). Every decision below, with its reason, is in `GRAMMAR-LOCK-2026-10-07.md`; the measurements behind the numbers are in `link-cross-section-study.md` and `palm-and-axis-study.md`.
 
+## The grammar in one table
+
+"Per hand" means it can differ between hands (evolution can change it); "global" means one value for every hand. Steps: coarse explores, fine refines. Evolution Rules apply on top of the grammar.
+
+| Part | Parameter | Per hand or global | Value or range | Coarse step | Fine step | Evolution Rules | Source |
+|---|---|---|---|---|---|---|---|
+| Hand | fingers | per hand | 2-6 | add / remove a finger | - | same | max: simulator layout; min: one finger cannot learn (Kushal) |
+| Hand | joints per finger | per finger | 1-5 | split / merge a link | - | same | commercial max is 5 |
+| Hand | palm joints | per hand | 0-6, each carrying >= 1 finger, a finger on at most one | give / move / remove | - | same | covers Shadow, SVH, ARMS |
+| Hand | branching fingers | - | none | - | - | - | no commercial hand has one |
+| Palm | outline | derived | convex hull of finger bases + 20 mm heel disc at the wrist centre | - | - | - | Vatsal; anchor at the wrist |
+| Palm | thickness | global | 37 mm | - | - | - | median of 15 commercial palms |
+| Palm | palm-joint hinge position | per palm joint | on the plate | 10 mm | 1 mm | - | |
+| Palm | palm-joint hinge axis | per palm joint | any direction | 30 deg | 5 deg | - | |
+| Palm | palm-joint range | global | +/-30 deg | - | - | - | |
+| Finger | base position (y, z) | per finger | within 125 mm of the wrist centre (re-measured from the wrist in the build) | 10 mm | 1 mm | - | commercial max x 1.1 |
+| Finger | facing (in-plate direction) | per finger | any | 30 deg | 5 deg | - | Vatsal |
+| Finger | tilt (out of the plate) | per finger | open: set from the commercial hands in the build | 30 deg | 5 deg | - | |
+| Finger | spacing between neighbouring bases | rule | >= 19 mm (one link width) | - | - | same | every commercial hand passes |
+| Finger | finger length (sum of links) | rule | <= 250 mm | - | - | same | longest commercial finger x 1.1 |
+| Joint | axis | per joint | any direction in the link's frame (2 angles) | 30 deg | 5 deg | - | thumbs need up to 45 deg from a kind |
+| Joint | kind | derived from the axis | bend / spread / twist | - | - | - | Vatsal |
+| Joint | sign | global convention | + closes toward the grasp point / + spreads toward +y; 0 = home | - | - | - | Kushal |
+| Joint | range | global per kind | bend -30 to +90; spread +/-30; twist +/-90 deg | - | - | - | Martin's 9/23 note |
+| Joint | type | per joint | hinge, coupled, sliding | couple / uncouple | - | hinge and coupled only | |
+| Joint | coupling | global | follows the previous joint, ratio 1.1, offset 0 | - | - | - | typical commercial ratio |
+| Joint | random draw | global | starts on a kind: 69% bend, 27% spread, 4% twist | - | - | - | commercial mix |
+| Link | cross-section | global | rounded box 19 x 18 mm, 6 mm corners | - | - | - | median of 208 commercial links |
+| Link | length | per link | 0 mm or 15-90 mm; fingertip >= 10 mm, never 0 | 10 mm (skips 1-14) | 1 mm | same | commercial range |
+| Link | rest bend | global | none (straight at the zero pose) | - | - | - | |
+| Physics | torque, speed | global | 0.5 N m, 5 rad/s | - | - | - | Kushal |
+| Physics | stiffness, damping, armature | global | 3, 0.078, 0.00058 | - | - | - | Kushal |
+| Physics | link density, friction | global | 1750 kg/m^3, 0.5 | - | - | - | Kushal |
+| Check | C1 self-overlap | - | no two links overlap > 3 mm at the zero or start pose | - | - | - | physics stability |
+| Check | C2 fingertips meet | - | some fingertip pair's reachable regions meet above the palm | - | - | - | Martin; every commercial hand passes |
+
 ## Three layers
 
 1. **The grammar:** what a hand can be.
