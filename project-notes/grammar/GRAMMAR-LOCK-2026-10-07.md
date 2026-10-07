@@ -119,6 +119,8 @@ No coupling step (one global ratio, 7b). Every coarse value lies on the fine gri
 
 ### 22. Palm anchor: the centre of the wrist
 - The palm hull is the finger bases plus a heel disc at the wrist centre (the hand's mount point); finger positions (y, z) are measured from the wrist centre. The base-distance limit of item 21 is re-measured from the wrist.
+- **Re-measured from the wrist (build, 2026-10-07), commercial extremes x 0.9 / x 1.1, rounded out to 5 mm:** finger bases 10-160 mm from the wrist centre (ARMS thumb 14.6 mm to Tesollo middle 141.2 mm); finger tilt out of the plate -30 to +90 degrees (Barrett thumb -25 to DClaw's fingers pointing straight out, +90); palm-joint hinges 15-110 mm from the wrist (ARMS CMC5 20.0 to Shadow LFJ5 98.1 mm). Facing: the full circle. These replace item 21's 0-125 mm, which was measured from the knuckle row.
+- Not every commercial URDF's root is at a wrist: DClaw's is the centre of its base plate, Orca's is mid-palm, and Barrett's and Dex1's sit 45-56 mm below the plate in gripper housings.
 - **Why:** real palms run from the wrist to the knuckles, and that area is where the object rests; a disc at the knuckle row would make palms a strip along the knuckles.
 
 ### 23. Viability checks: two

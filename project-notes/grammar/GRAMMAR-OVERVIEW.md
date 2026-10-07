@@ -16,12 +16,12 @@ It combines three lines of work: our grammar on `martin/hand-grammar` (coarse an
 | Hand | branching fingers | - | none | - | - | - | no commercial hand has one |
 | Palm | outline | derived | convex hull of finger bases + 20 mm heel disc at the wrist centre | - | - | - | Vatsal; anchor at the wrist |
 | Palm | thickness | global | 37 mm | - | - | - | median of 15 commercial palms |
-| Palm | palm-joint hinge position | per palm joint | on the plate | 10 mm | 1 mm | - | |
+| Palm | palm-joint hinge position | per palm joint | 15-110 mm from the wrist centre | 10 mm | 1 mm | - | |
 | Palm | palm-joint hinge axis | per palm joint | any direction | 30 deg | 5 deg | - | |
 | Palm | palm-joint range | global | +/-30 deg | - | - | - | |
-| Finger | base position (y, z) | per finger | within 125 mm of the wrist centre (re-measured from the wrist in the build) | 10 mm | 1 mm | - | commercial max x 1.1 |
+| Finger | base position (y, z) | per finger | 10-160 mm from the wrist centre | 10 mm | 1 mm | - | commercial max x 1.1 |
 | Finger | facing (in-plate direction) | per finger | any | 30 deg | 5 deg | - | Vatsal |
-| Finger | tilt (out of the plate) | per finger | open: set from the commercial hands in the build | 30 deg | 5 deg | - | |
+| Finger | tilt (out of the plate) | per finger | -30 to +90 deg | 30 deg | 5 deg | - | |
 | Finger | spacing between neighbouring bases | rule | >= 19 mm (one link width) | - | - | same | every commercial hand passes |
 | Finger | finger length (sum of links) | rule | <= 250 mm | - | - | same | longest commercial finger x 1.1 |
 | Joint | axis | per joint | any direction in the link's frame (2 angles) | 30 deg | 5 deg | - | thumbs need up to 45 deg from a kind |
@@ -52,7 +52,7 @@ Every limit comes from the commercial hands (their extremes with a 10% margin), 
 
 **Palm.** One rigid plate, 37 mm thick (the median of 15 commercial palms). Its outline is the convex hull of the finger bases plus a 20 mm heel disc at the centre of the wrist, so the palm runs from the wrist to the knuckles; the palm has no parameters of its own. A palm joint is a hinged section of the plate, shaped the same way around its own fingers and the hinge; its parameters are the hinge's position and axis, and it moves within +/-30 degrees. A hand has up to 6 palm joints, each carrying at least one finger, and several fingers may share one (as SVH's ring and little finger do).
 
-**Fingers.** 2 to 6. Each finger has a base position (y, z) on the plate, measured from the wrist centre; a facing, the in-plane direction it leaves in; and a tilt out of the plate. Neighbouring bases are at least 19 mm (one link width) apart, which every commercial hand satisfies.
+**Fingers.** 2 to 6. Each finger has a base position (y, z) on the plate, 10-160 mm from the wrist centre; a facing, the in-plane direction it leaves in; and a tilt out of the plate. Neighbouring bases are at least 19 mm (one link width) apart, which every commercial hand satisfies.
 
 **Joints.** 1 to 5 per finger. A joint's axis is a direction in its link's frame (two angles). Its kind is read off that direction: bend (closes the finger toward the palm), spread (swings it sideways) or twist (spins it about its length). The kind sets two things:
 - the sign, following Kushal's convention: positive closes toward the grasp point, or spreads toward +y; zero is home;
@@ -95,7 +95,7 @@ The object starts at a fixed spot above the palm, set by the task.
 
 ## Commercial hands
 
-Eighteen hands: Ability, Allegro, ARMS (a human skeleton model), Barrett, DClaw, Dex1, Dex3, Inspire, LEAP, MIDAS, Orca, Shadow, SHARPA, SVH, Tesollo DG-5F, Wuji v1, Wuji v2 and XHand. Each is fitted onto the grammar's fine grid and checked against the 5 mm / 10 degree target; per-hand results come with the build.
+Eighteen hands: Ability, Allegro, ARMS (a human skeleton model), Barrett, DClaw, Dex1, Dex3, Inspire, LEAP, MIDAS, Orca, Shadow, SHARPA, SVH, Tesollo DG-5F, Wuji v1, Wuji v2 and XHand. Each is fitted onto the grammar's fine grid and checked against the 5 mm / 10 degree target: 17 of 19 (counting Wuji v2's left and right hands) fit, most within 2 mm and 4 degrees. The misses are ARMS (a human skeleton whose bases sit 15.8 mm apart, under the 19 mm spacing) and Wuji v1 (a 4.6 mm knuckle offset snapped to 0 mm and an out-of-plane base; 5.1 mm, 10.4 degrees). Wuji v2 fits within 1.6 mm.
 
 ## In the simulator
 
@@ -114,25 +114,25 @@ Every hand fits one layout of 36 joint slots: 6 finger slots, each a palm-joint 
 
 ## Summary tables
 
-"Set in the build" marks a value the build fills in from the commercial hands, in the same way as the other limits.
+Ranges are commercial extremes x 0.9 / x 1.1; random draws are uniform within the ranges given.
 
 ### 1. What varies from hand to hand (what evolution mutates)
 
 | Parameter | Per | Allowed values | Random draw | Coarse step | Fine step |
 |---|---|---|---|---|---|
-| Number of fingers | hand | 2-6 | set in the build | add / remove a finger | none |
-| Joints per finger | finger | 1-5 | set in the build | split / merge a link | none |
-| Base position (y, z) on the plate | finger | within 125 mm of the wrist centre (being re-measured from the wrist); neighbouring bases at least 19 mm apart | set in the build | 10 mm | 1 mm |
-| Facing (in-plane direction) | finger | any | set in the build; one finger may be an opposing thumb | 30 degrees | 5 degrees |
-| Tilt (out of the plate) | finger | set in the build | 0 | 30 degrees | 5 degrees |
+| Number of fingers | hand | 2-6 | uniform 2-6 | add / remove a finger | none |
+| Joints per finger | finger | 1-5 | uniform 1-5 | split / merge a link | none |
+| Base position (y, z) on the plate | finger | 10-160 mm from the wrist centre; neighbouring bases at least 19 mm apart | a row 60-140 mm from the wrist, bases 20-45 mm apart; a thumb 15-35 mm to one side, 0-50 mm up the palm | 10 mm | 1 mm |
+| Facing (in-plane direction) | finger | any | 0 for the row; a thumb (probability 16/18) faces 45-90 degrees outward | 30 degrees | 5 degrees |
+| Tilt (out of the plate) | finger | -30 to +90 degrees | 0; a thumb 0-40 | 30 degrees | 5 degrees |
 | Joint axis direction | joint | any direction (2 angles); kind (bend / spread / twist) read off it | exactly on a kind: 69% bend, 27% spread, 4% twist | 30 degrees | 5 degrees |
-| Link length | joint | 0 mm or 15-90 mm; fingertip 10-90 mm, never 0; whole finger at most 250 mm | set in the build | 10 mm (0 and 15 mm are neighbours) | 1 mm |
-| Coupled to the previous joint | joint | yes / no | no | toggle | none |
-| Which fingers share a palm joint | hand | up to 6 palm joints, each carrying at least one finger | set in the build | give a finger its own / move it onto another / remove a palm joint | none |
-| Palm joint hinge position | palm joint | set in the build | set in the build | 10 mm | 1 mm |
-| Palm joint hinge axis | palm joint | any direction | set in the build | 30 degrees | 5 degrees |
+| Link length | joint | 0 mm or 15-90 mm; fingertip 10-90 mm, never 0; whole finger at most 250 mm | 15-70 mm, 0 mm with probability 0.13; fingertip 15-55 mm | 10 mm (0 and 15 mm are neighbours) | 1 mm |
+| Coupled to the previous joint | joint | yes / no | yes with probability 0.1 (not the first joint) | toggle | none |
+| Which fingers share a palm joint | hand | up to 6 palm joints, each carrying at least one finger | one palm joint on the outermost finger with probability 4/18 | give a finger its own / move it onto another / remove a palm joint | none |
+| Palm joint hinge position | palm joint | 15-110 mm from the wrist centre | halfway between the finger and the wrist | 10 mm | 1 mm |
+| Palm joint hinge axis | palm joint | any direction | along the palm (the section cups) | 30 degrees | 5 degrees |
 
-A four-finger hand with three joints per finger and no palm joint has 52 numbers (4 per finger, 3 per joint) and 12 coupling flags; each palm joint adds 4 numbers.
+A four-finger hand with three joints per finger and no palm joint has 52 numbers (4 per finger, 3 per joint) and 12 coupling flags; each palm joint adds 4 numbers. In the commercial set: Dex3 33, Inspire 56, Allegro 64, Wuji v2 80, Shadow 87; random hands 14-105, mean 53.
 
 ### 2. What is the same for every hand (fixed, not mutated)
 
@@ -159,7 +159,7 @@ A four-finger hand with three joints per finger and no palm joint has 52 numbers
 | Link length | 0 or 15-90 mm; fingertip 10-90 mm | same |
 | Finger length | at most 250 mm | same |
 | Finger spacing | at least 19 mm | same |
-| Base distance from the wrist centre | at most 125 mm (being re-measured) | same |
+| Base distance from the wrist centre | 10-160 mm | same |
 
 Sliding joints are the only part of the grammar that evolution does not use. Every limit is a commercial extreme with a 10% margin; none comes from a motor.
 
