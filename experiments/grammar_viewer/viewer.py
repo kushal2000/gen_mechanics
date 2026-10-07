@@ -3,7 +3,7 @@
     .venv_viewer/bin/python experiments/grammar_viewer/viewer.py --port 8080 --host 127.0.0.1
 
 One compact panel, one line per item (longer explanations are hover text):
-Grammar (variant, Random), Limits (the generation limits sampling and
+Grammar (Random and three rule toggles), Limits (the generation limits sampling and
 mutation obey by construction: a preset or custom values), Viability (the
 four physical checks generation cannot guarantee, each switchable),
 Commercial hand, Mutation (only the operators that can act on this hand under
@@ -34,6 +34,7 @@ import viser  # noqa: E402
 
 from hand_sampler.grammar import limits as glim  # noqa: E402
 from hand_sampler.grammar.coverage import coverage  # noqa: E402
+from hand_sampler.grammar.variants import RULES, build_distribution  # noqa: E402
 from hand_sampler.grammar.derive import EVOLUTION_OPERATORS, Derivation, VariationImpossible, derive, vary  # noqa: E402
 from hand_sampler.grammar.kinematics import KinematicModel  # noqa: E402
 
@@ -44,7 +45,6 @@ from gviewer import history as hist  # noqa: E402
 from gviewer import limitsui as lui  # noqa: E402
 from gviewer import meshes as gmesh  # noqa: E402
 from gviewer import model as gm  # noqa: E402
-from gviewer import sources as src  # noqa: E402
 from gviewer.envload import load_env_modules  # noqa: E402
 from gviewer.scene import SPAWN_RGB, TIP_MISS_RGB, TIP_REACH_RGB, HandRenderer, MeshOverlay, RenderOptions  # noqa: E402
 
@@ -57,51 +57,20 @@ RESET_CURL = an.CURL_FRAC          # palm_up's default_q is this fraction of eve
 MAX_TRIES = 5000
 NO_HAND = "(none)"
 
-# What each variant adds relative to the one it is built on
-# (hand_sampler/grammar/variants.py); shown as the dropdown's hover text.
-VARIANT_NOTES: Dict[str, str] = {
-    "G_FULL": "The default grammar: 1-6 digits of 1-6 segments, 0-3 palm bodies, hinge, continuous, "
-              "sliding and coupled joints, branching digits.",
-    "G_SERIAL": "G_FULL without extra palm bodies, branches or palm joints (the old-sampler-like baseline).",
-    "G_V1": "G_FULL restricted to what the simulator can build: hinges only, no branches, at most 2 palm "
-            "bodies, 1-5 digits.",
-    "G_V2": "V1 + digit mounts on one host spaced at least 29 mm apart.",
-    "G_V3": "V2 + curl prior (hinge-like axes, segments bend toward the palm) and a thumb-like opposing last "
-            "digit (first version; V3s fixes its bugs).",
-    "G_V1S": "V1 + digits mount on the host's surface at a random angle around it.",
-    "G_V2S": "V1s + mounts spread at least 29 mm apart across all hosts in 3-D.",
-    "G_V3S": "V1s + the fixed curl prior (first segment unbent) and a thumb-like opposing last digit.",
-    "G_NOPALMJOINT": "G_FULL with every extra palm body rigid.",
-    "G_NOBRANCH": "G_FULL without branching digits.",
-    "G_NOCOUPLE": "G_FULL without coupled joints.",
-    "G_FULL_INS": "G_FULL; growth mutations insert small pieces (1-3 segments, no branches).",
-    "G_NOBRANCH_INS": "G_NOBRANCH; growth mutations insert small pieces (1-3 segments).",
-    "G_BEND": "G_FULL + a random rest bend (up to 30 deg, 5 mm) on 30% of segments.",
-    "G_CONT": "G_FULL with joint limits drawn anywhere in +/-180 deg instead of a fixed menu.",
-    "G_WIDE": "G_FULL with rules widened to express the commercial hands: fingers mounted across the palm "
-              "(5 mm grid), a rest bend at any joint, continuous limits, mounts in 5% steps. A reference for "
-              "conforming real hands, not for sampling.",
+# The three generation rules of the one grammar (variants.build_distribution):
+# panel line and hover text.
+RULE_INFO: Dict[str, tuple] = {
+    "surface": ("fingers sit on the palm surface",
+                "A finger's base sits on the surface of the palm or palm part (at a 15 deg angle around it), not on "
+                "its centre line. Was V1s."),
+    "spacing": ("fingers spaced apart",
+                "Finger bases are placed at least 29 mm apart (twice the thickest link + 5 mm), over the whole palm "
+                "in 3-D when fingers sit on the surface. Was V2/V2s."),
+    "curl_opposition": ("fingers curl and oppose",
+                        "Hinge axes roughly across the bone, every bone after a finger's first curled 15-45 deg "
+                        "toward the palm, and the last finger turned to face the others, like a thumb. Was V3s."),
 }
-
-# Plain names for the variant dropdown (the code is in the hover text).
-VARIANT_NAMES: Dict[str, str] = {
-    "G_V1": "Basic",
-    "G_V1S": "+ fingers on palm surface",
-    "G_V2S": "+ fingers spaced apart",
-    "G_V3S": "+ curl and opposition",
-    "G_FULL": "Full grammar",
-    "G_SERIAL": "Serial (no palm parts)",
-    "G_V2": "Basic + spacing (old)",
-    "G_V3": "Basic + curl (old)",
-    "G_NOPALMJOINT": "Full, rigid palm parts",
-    "G_NOBRANCH": "Full, no branching",
-    "G_NOCOUPLE": "Full, no coupled joints",
-    "G_FULL_INS": "Full, small growth steps",
-    "G_NOBRANCH_INS": "Full, no branching, small growth",
-    "G_BEND": "Full + rest bends",
-    "G_CONT": "Full + free joint ranges",
-    "G_WIDE": "Wide (fits real hands)",
-}
+assert tuple(RULE_INFO) == RULES
 
 # Button label and one line of hover text for every operator in the evolution
 # driver's pool (derive.EVOLUTION_OPERATORS). Plain words: a finger is a
@@ -126,7 +95,7 @@ OPERATOR_INFO: Dict[str, tuple] = {
     "add_branch_digit": ("add a branch finger (1 joint)", "Adds a one-joint finger growing off a bone of a finger."),
     "remove_branch_digit": ("remove a short branch finger", "Removes a branch finger that has one joint."),
     "step_axis": ("tilt one joint axis", "Tilts one joint's axis (finger or palm joint) by 15 deg."),
-    "step_limits": ("change one joint's range", "Moves one joint's range to the neighbouring option of the variant."),
+    "step_limits": ("change one joint's range", "Moves one joint's range to the neighbouring option, or one end by 15 deg."),
     "step_mount": ("move a mount (finger or palm part)",
                    "Slides one finger or palm part along what it is attached to, or turns it 15 deg at its base."),
     "step_coupling": ("change one coupled joint", "Steps a coupled joint's ratio or offset to the next option."),
@@ -138,7 +107,7 @@ OPERATOR_INFO: Dict[str, tuple] = {
     "step_bend_rpy": ("change one joint's rest bend", "Turns the rest angle between two bones by 15 deg."),
     "step_bend_offset": ("shift one joint sideways", "Shifts one joint sideways by 5 mm on its bone."),
     "step_segment_length": ("lengthen/shorten one bone (5 mm)",
-                            "Changes one bone's (or palm part's) length by 5 mm within the variant's range; the parts "
+                            "Changes one bone's (or palm part's) length by 5 mm within the grammar's range; the parts "
                             "beyond it move with it."),
 }
 assert set(OPERATOR_INFO) == set(EVOLUTION_OPERATORS), "OPERATOR_INFO must cover EVOLUTION_OPERATORS exactly"
@@ -160,8 +129,9 @@ CONFLICT_SHORT: Dict[str, str] = {
 }
 
 
-def variant_name(code: str) -> str:
-    return VARIANT_NAMES.get(code, code)
+def rules_text(rules: Dict[str, bool]) -> str:
+    on = [RULE_INFO[r][0].replace("fingers ", "") for r in RULES if rules.get(r)]
+    return "the grammar" + (" (" + ", ".join(on) + ")" if on else " (no rules)")
 
 
 def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], limits: glim.GenerationLimits,
@@ -182,7 +152,7 @@ def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], 
         pos = max(f["max_pos_mm"], f["max_tip_mm"] or 0.0)
         lost = [CONFLICT_SHORT.get(k, k) for k in conformed.report.conflict_features()]
         rules = "yes" + (" (lost: " + ", ".join(lost) + ")" if lost else "")
-        head = f"snapped to {variant_name(conformed.variant)}: {pos:.0f} mm / {f['max_axis_deg']:.0f} deg"
+        head = f"snapped to the grammar: {pos:.0f} mm / {f['max_axis_deg']:.0f} deg"
         deriv = conformed.derivation
     return f"{head}; within rules: {rules}; within limits: {glim.check(deriv, limits).summary()}"
 
@@ -217,7 +187,7 @@ class Shown:
     label: str
     kind: str                                   # "sampled" | "commercial" | "mutant"
     commercial: Optional[com.CommercialHand] = None
-    conformed: Optional[com.Conformed] = None   # a commercial hand snapped to the variant (None: exact projection)
+    conformed: Optional[com.Conformed] = None   # a commercial hand snapped to the grammar (None: exact projection)
 
 
 @dataclass
@@ -233,7 +203,8 @@ class EssentialViewer:
     """State and callbacks. GUI callbacks call the public methods, which tests
     can also call directly (`wait=True` runs the job synchronously)."""
 
-    def __init__(self, server: viser.ViserServer, *, variant: str = "G_V3S", start_seed: Optional[int] = None,
+    def __init__(self, server: viser.ViserServer, *, rules: Optional[Dict[str, bool]] = None,
+                 start_seed: Optional[int] = None,
                  build_initial: bool = True):
         self.server = server
         self.lock = threading.RLock()
@@ -241,7 +212,7 @@ class EssentialViewer:
         self.history = hist.History()
         self.prep: Optional[Prepared] = None
         self.parent_view: Optional[gm.ModelView] = None
-        self.variant = variant
+        self.rules: Dict[str, bool] = {r: True for r in RULES} if rules is None else {r: bool(rules[r]) for r in RULES}
         self.last_search: Optional[ck.SearchResult] = None
         self.commercial_cache: Dict[str, com.CommercialHand] = {}
         self.mesh_cache: Dict[str, gmesh.MeshSet] = {}
@@ -261,7 +232,7 @@ class EssentialViewer:
         self.overlay = MeshOverlay(server, "/hand/urdf")
         self._build_gui()
         if build_initial:
-            self.random(variant, start_seed=start_seed, wait=True)
+            self.random(start_seed=start_seed, wait=True)
 
     # ------------------------------------------------------------------
     # Jobs (one at a time, on a worker thread)
@@ -368,7 +339,7 @@ class EssentialViewer:
             if self.prep is not None and self.prep.shown.commercial is not None:
                 sh = self.prep.shown
                 self.md_fidelity.content = fidelity_line(sh.commercial, sh.conformed, self.limits(),
-                                                         src.distribution(self.variant))
+                                                         self.dist())
 
     def _update_limits_line(self) -> None:
         if self.prep is None:
@@ -537,40 +508,54 @@ class EssentialViewer:
     # Sources
     # ------------------------------------------------------------------
 
-    def random(self, variant: Optional[str] = None, start_seed: Optional[int] = None, max_tries: int = MAX_TRIES,
-               wait: bool = False) -> bool:
-        """Sample designs from `variant` under the current limits until every
-        enabled viability check passes."""
-        variant = variant or self.variant
+    def dist(self):
+        """The one grammar with the panel's rules (variants.build_distribution)."""
+        return build_distribution(**self.rules)
+
+    def set_rules(self, **rules: bool) -> None:
+        """Set rule toggles (as the panel would) without drawing a new hand."""
+        self._suppress = True
+        try:
+            for r, v in rules.items():
+                self.rule_boxes[r].value = bool(v)
+                self.rules[r] = bool(v)
+        finally:
+            self._suppress = False
+        with self.lock:
+            self._update_operator_buttons()
+
+    def random(self, start_seed: Optional[int] = None, max_tries: int = MAX_TRIES, wait: bool = False) -> bool:
+        """Sample designs from the grammar (current rules) under the current
+        limits until every enabled viability check passes."""
         start = int(self.rng.integers(0, 1_000_000)) if start_seed is None else int(start_seed)
         enabled = self.enabled()
         limits = self.limits()
+        dist = self.dist()
+        label = rules_text(self.rules)
 
         def job():
-            self.variant = variant
-            self.md_random.content = f"searching {variant} ..."
+            self.md_random.content = "searching ..."
 
             def progress(k):
-                self.md_random.content = f"searching {variant}: {k} tries ..."
+                self.md_random.content = f"searching: {k} tries ..."
 
-            res = ck.search(src.distribution(variant), enabled, start, max_tries=max_tries, limits=limits,
-                            progress=progress)
+            res = ck.search(dist, enabled, start, max_tries=max_tries, limits=limits, progress=progress)
             self.last_search = res
             if res.derivation is None:
                 self.md_random.content = f"none viable in {res.tries} tries; relax a check or the limits"
                 return
             self.md_random.content = f"found after {res.tries} {'try' if res.tries == 1 else 'tries'} (seed {res.seed})"
             self._clear_commercial_choice()
-            self.show(Shown(res.derivation, res.model, f"{variant_name(variant)}, seed {res.seed}", "sampled"))
+            self.show(Shown(res.derivation, res.model, f"{label}, seed {res.seed}", "sampled"))
 
-        return self.run_job(f"random {variant}", job, wait=wait)
+        return self.run_job("random", job, wait=wait)
 
     def load_commercial(self, hand_id: str, wait: bool = False, frame: bool = True) -> bool:
         """Show a commercial hand: by default its projection conformed to the
-        current variant (a member of the grammar's space that every operator
+        grammar (a member of the grammar's space that every operator
         can act on); with "exact, off-grid version" ticked, the exact projection."""
         exact = bool(self.gui_exact.value)
-        variant = self.variant
+        rules = dict(self.rules)
 
         def job():
             ch = self.commercial_cache.get(hand_id)
@@ -584,13 +569,12 @@ class EssentialViewer:
                 links = [b.name for b in ch.imported.model.bodies]
                 self.mesh_cache[hand_id] = gmesh.load_link_meshes(ch.entry.mesh_path, links,
                                                                   fallback_dirs=self._mesh_fallbacks(ch))
-            dist = src.distribution(variant)
+            dist = build_distribution(**rules)
             if exact:
                 shown = Shown(ch.projection.derivation, ch.derived, f"{hand_id} (exact)", "commercial", commercial=ch)
             else:
-                conf = ch.conformed(variant, dist)
-                shown = Shown(conf.derivation, conf.derived, f"{hand_id} (snapped to {variant_name(variant)})",
-                              "commercial",
+                conf = ch.conformed(rules_text(rules), dist)
+                shown = Shown(conf.derivation, conf.derived, f"{hand_id} (snapped to the grammar)", "commercial",
                               commercial=ch, conformed=conf)
             self.md_fidelity.content = fidelity_line(ch, shown.conformed, self.limits(), dist)
             self.current_hand = hand_id
@@ -622,7 +606,7 @@ class EssentialViewer:
         shown = self.shown
         if shown is None:
             return
-        self.op_status = lui.operator_status(shown.derivation, src.distribution(self.variant),
+        self.op_status = lui.operator_status(shown.derivation, self.dist(),
                                              EVOLUTION_OPERATORS, self.limits())
         limits = self.limits()
         for op, b in self.op_buttons.items():
@@ -639,7 +623,7 @@ class EssentialViewer:
             shown = self.shown
             if shown is None:
                 return
-            dist = src.distribution(self.variant)
+            dist = self.dist()
             limits = self.limits()
             ops = [operator] if operator else [EVOLUTION_OPERATORS[i]
                                                for i in self.rng.permutation(len(EVOLUTION_OPERATORS))]
@@ -651,7 +635,7 @@ class EssentialViewer:
                     break
                 except VariationImpossible:
                     why = lui.NOT_ALLOWED if self.op_status.get(op) == lui.NOT_ALLOWED else lui.NOTHING
-                except Exception as exc:  # noqa: BLE001 - e.g. a projected hand's value is off the variant's grid
+                except Exception as exc:  # noqa: BLE001 - e.g. a projected hand's value is off the grammar's grid
                     why = f"{type(exc).__name__}: {exc}"
             if child is None:
                 self.md_mut.content = (f"'{op_label(operator, limits)}': {why}" if operator
@@ -694,23 +678,17 @@ class EssentialViewer:
     # GUI
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _variant_hint(code: str) -> str:
-        return f"{code}: {VARIANT_NOTES.get(code, '')}"
-
     def _build_gui(self) -> None:
         g = self.server.gui
         g.configure_theme(control_width="medium")
         self.md_status = g.add_markdown("starting ...")
 
         with g.add_folder("Grammar"):
-            names = src.variant_names()
-            self._variant_by_label = {variant_name(n): n for n in names}
-            self.gui_variant = g.add_dropdown("Variant", list(self._variant_by_label),
-                                              initial_value=variant_name(self.variant),
-                                              hint=self._variant_hint(self.variant))
-            btn_random = g.add_button("Random", hint="Sample designs under the limits until every enabled "
-                                                     "viability check passes.")
+            btn_random = g.add_button("Random", hint="Draw hands from the grammar, under the limits, until every "
+                                                     "enabled viability check passes.")
+            self.rule_boxes: Dict[str, Any] = {}
+            for r in RULES:
+                self.rule_boxes[r] = g.add_checkbox(RULE_INFO[r][0], self.rules[r], hint=RULE_INFO[r][1])
             self.md_random = g.add_markdown("")
 
         with g.add_folder("Limits"):
@@ -751,7 +729,7 @@ class EssentialViewer:
             self.gui_hand = g.add_dropdown("Hand", [NO_HAND] + [h.label for h in hands], initial_value=NO_HAND,
                                            hint="A real hand's grammar projection, over its URDF meshes.")
             self.gui_exact = g.add_checkbox("exact, off-grid version", False,
-                                            hint="Off: the hand snapped onto the variant's grids (lengths 5 mm, "
+                                            hint="Off: the hand snapped onto the grammar's grids (lengths 5 mm, "
                                                  "angles 15 deg, limit menu, ...), a genuine member of the grammar "
                                                  "that the operators can mutate. On: the exact, off-grid projection.")
             self.gui_meshes = g.add_checkbox("show real hand meshes", True)
@@ -772,13 +750,16 @@ class EssentialViewer:
                                                              "moves by itself for a new draw or a new real hand.")
 
         # ---- callbacks ---------------------------------------------------
-        btn_random.on_click(lambda _: self.random(self._variant_by_label[self.gui_variant.value]))
+        btn_random.on_click(lambda _: self.random())
 
-        @self.gui_variant.on_update
-        def _(_):
-            v = self._variant_by_label[self.gui_variant.value]
-            self.gui_variant.hint = self._variant_hint(v)
-            self.random(v)
+        def _rule_toggled(_):
+            if self._suppress:
+                return
+            self.rules = {r: bool(cb.value) for r, cb in self.rule_boxes.items()}
+            self.random()                    # a new draw shows what the rules do
+
+        for cb in self.rule_boxes.values():
+            cb.on_update(_rule_toggled)
 
         self.gui_preset.on_update(lambda _: self._on_preset())
         for h in list(self.limit_ints.values()) + list(self.limit_bools.values()) + [self.gui_joint_types,
@@ -832,10 +813,15 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--variant", default="G_V3S", choices=src.variant_names())
+    ap.add_argument("--rules", default="surface,spacing,curl_opposition",
+                    help="comma-separated generation rules switched on at start (of: " + ", ".join(RULES) + ")")
     args = ap.parse_args(argv)
     server = viser.ViserServer(host=args.host, port=args.port, label="grammar viewer")
-    EssentialViewer(server, variant=args.variant)
+    on = {r.strip() for r in args.rules.split(",") if r.strip()}
+    unknown = on - set(RULES)
+    if unknown:
+        ap.error(f"unknown rule(s) {sorted(unknown)}")
+    EssentialViewer(server, rules={r: r in on for r in RULES})
     print(f"grammar viewer at http://{args.host}:{args.port}", flush=True)
     try:
         server.sleep_forever()

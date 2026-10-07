@@ -2,7 +2,7 @@
 
 Interactive viser viewers for the hand-kinematics grammar (`hand_sampler/grammar/`). Everything runs on the CPU. Isaac, Kit and the GPU are never touched: the simulator's numpy-only envelope modules are loaded by file path (`gviewer/envload.py`), so `isaacsimenvs/__init__.py` and Isaac Lab are never imported.
 
-- `viewer.py` is the essential viewer: one compact panel, in plain words, to draw a hand from a grammar variant under a set of generation limits, switch each viability check on or off, look at a commercial hand snapped onto the grammar, and apply the mutation operators.
+- `viewer.py` is the essential viewer: one compact panel, in plain words, to draw a hand from the grammar (with its three rules) under a set of generation limits, switch each viability check on or off, look at a commercial hand snapped onto the grammar, and apply the mutation operators.
 - `viewer_full.py` is the full tool: seeds, gallery, mutation spread, per-joint sliders, analysis, views and export.
 
 ## Setup (once)
@@ -22,7 +22,7 @@ cd "/home/singularity/Evolve to Generalize/gen_mechanics"
 .venv_viewer/bin/python experiments/grammar_viewer/viewer.py --port 8080 --host 127.0.0.1
 ```
 
-Open http://127.0.0.1:8080. From a laptop: `ssh -L 8080:127.0.0.1:8080 <this machine>`, then open the same URL locally. `--variant G_V1` picks the starting variant (default `G_V3S`). The full viewer takes the same `--port`/`--host` plus `--seed`, `--no-until-viable` and `--out-dir`:
+Open http://127.0.0.1:8080. From a laptop: `ssh -L 8080:127.0.0.1:8080 <this machine>`, then open the same URL locally. `--rules surface,curl_opposition` picks the rules switched on at start (default: all three). The full viewer takes the same `--port`/`--host` plus `--seed`, `--no-until-viable` and `--out-dir`:
 
 ```bash
 .venv_viewer/bin/python experiments/grammar_viewer/viewer_full.py --port 8081 --host 127.0.0.1
@@ -42,7 +42,28 @@ The panel uses plain words; the code and the rest of this README use the grammar
 | palm joint | the joint of a jointed palm body |
 | finger slot | finger chain of the simulator's 32-slot articulation |
 | hinge / continuous / sliding / coupled joint | module `R` / `C` / `P` / `Coupled` |
-| variant ("Basic", "+ curl and opposition", ...) | a named `Distribution` (`G_V1`, `G_V3S`, ...; the code is in the hover text) |
+| the grammar, its rules ("fingers sit on the palm surface", ...) | `variants.build_distribution(surface=, spacing=, curl_opposition=)` |
+
+## One grammar, three rules
+
+The viewer has one grammar, `variants.build_distribution(surface=True, spacing=True, curl_opposition=True)`: one base distribution, `GRAMMAR_BASE`, plus three generation rules that shape where random hands put their fingers.
+
+- `GRAMMAR_BASE` is the default grammar (G_FULL's productions and sampling priors) with capability grids wide enough to contain the commercial hands: mount positions in 5% steps along a host, a 5 mm lateral mount grid up to 65 mm for fingers and palm parts, a rest bend at any joint on the 15 deg rotation grid, and joint ranges anywhere in +/-180 deg. The last three are support only (`Distribution.mount_lateral_sampled=False`, `bend_support_rpy_choices_rad`, `limits_support_continuous`): mutation reaches them and a conformed real hand may use them, but random sampling never draws them, so a random hand looks exactly as the rules say (`test_one_grammar.py` checks the draws are unchanged).
+- The rules, each one checkbox in the panel: "fingers sit on the palm surface" (`surface`, was V1s: a finger's base on its host's capsule surface at a 15 deg angle), "fingers spaced apart" (`spacing`, was V2/V2s: finger bases planned at least 29 mm apart, in 3-D across all hosts when on the surface) and "fingers curl and oppose" (`curl_opposition`, was V3s: hinge axes roughly across the bone, every bone after the first curled 15-45 deg, the last finger turned to oppose the others). All three are on by default. That is V1s + spacing + V3s's curl and opposition on the wide grids; it is not byte-identical to `G_V3S` (different base counts and mount steps, plus spacing), but its random hands have the same rule properties (`test_one_grammar.py`).
+- Restrictions such as hinge joints only, no branching, at most 5 fingers or 2 palm joints are generation limits (below), not grammars.
+
+The named variants of `variants.NAMED_DISTRIBUTIONS` are historical, kept unchanged (byte for byte) for reproducing past experiments, and are not shown in the viewer:
+
+| Variant | What it was | Now |
+|---|---|---|
+| `G_FULL` (= `DEFAULT_DISTRIBUTION`) | the default grammar | the base of `GRAMMAR_BASE` |
+| `G_SERIAL`, `G_NOPALMJOINT`, `G_NOBRANCH`, `G_NOCOUPLE` | G_FULL without palm parts / palm joints / branches / coupled joints | limits: max palm parts 0, max palm joints 0, allow branching off, joint types without coupled |
+| `G_V1` | G_FULL restricted to what the simulator builds | the grammar under the Simulator limits |
+| `G_V1S`, `G_V2S`, `G_V3S` | V1 + surface mounts; + spacing; + curl and opposition | the three rules |
+| `G_V2`, `G_V3` | first versions of spacing and curl (non-surface; V3 with the host-frame bug) | superseded by V2s/V3s |
+| `G_FULL_INS`, `G_NOBRANCH_INS` | growth operators insert small pieces | experiment settings (E2/E3) |
+| `G_BEND`, `G_CONT` | random rest bends; continuous joint ranges | support grids of `GRAMMAR_BASE` (not sampled) |
+| `G_WIDE` | G_FULL with the grids widened and sampled | `GRAMMAR_BASE` has the same grids as support only |
 
 ## Three layers: capability, limits, viability
 
@@ -75,10 +96,10 @@ The evolution driver (`isaacsimenvs/inhand_reorient/evolution/driver.py`) is unc
 
 One panel, one line per item; longer explanations are hover text.
 
-- **Grammar**: the variant dropdown in plain names (hover: the code and what the variant adds) and **Random**, which samples designs under the current limits until every enabled viability check passes. "Found after N tries" counts viability rejections only: every sample is within the limits by construction.
+- **Grammar**: **Random**, which draws hands from the grammar under the current limits until every enabled viability check passes, the three rule checkboxes (switching one draws a new hand), and "found after N tries", which counts viability rejections only: every draw is within the limits by construction.
 - **Limits**: a preset (Simulator, Default, Unlimited, Custom) and one dropdown or checkbox per limit. Editing a field switches the preset to Custom. Sampling and mutation use these limits. The last line says whether the hand on screen is within them.
 - **Viability**: the four physical checks, one line each ("fingers don't overlap (open): PASS 0.4 mm"), each with its own toggle. Unticking a check stops Random requiring it. "show object and reach" (off by default) shows the object's start sphere, the 5 cm reach sphere and the fingertip dots (green reaches, orange does not).
-- **Commercial hand**: a dropdown of the manifest hands, drawn over their real URDF meshes (a checkbox hides them). By default the hand is shown snapped onto the current variant's grids (`adapters/conform.py`), a genuine member of the grammar that every operator can mutate; "exact, off-grid version" shows the exact projection instead. One line gives the error against the URDF, whether the shown version is within the grammar's rules (and what snapping lost), and whether it is within the current limits (and which ones it breaks: SVH carries two fingers on one palm joint).
+- **Commercial hand**: a dropdown of the manifest hands, drawn over their real URDF meshes (a checkbox hides them). By default the hand is shown snapped onto the grammar's grids (`adapters/conform.py`), a genuine member of the grammar that every operator can mutate; "exact, off-grid version" shows the exact projection instead. One line gives the error against the URDF, whether the shown version is within the grammar's rules (and what snapping lost), and whether it is within the current limits (and which ones it breaks: SVH carries two fingers on one palm joint).
 - **Mutation**: **Random mutation** (draws operators until one applies), **Back** (undo), and one button per operator, shown only when it can act on this hand under these limits. After each mutation a line says what changed; the parent stays on screen as a faint grey ghost.
 - **Pose**: one curl slider (0 lower limits, 1 upper limits; the default 0.35 is the pose every episode starts from) and **re-centre view**.
 
@@ -112,57 +133,59 @@ Only properties no generation rule can guarantee. They need the simulator's 32-s
 | add a branch finger (1 joint) | `add_branch_digit` | adds a one-joint finger growing off a bone of a finger | branching (never under Simulator), joints per finger |
 | remove a short branch finger | `remove_branch_digit` | removes a branch finger with one joint | none |
 | tilt one joint axis | `step_axis` | tilts one joint's axis by one 15 deg step | none |
-| change one joint's range | `step_limits` | moves one joint's range to the neighbouring option of the variant | none |
+| change one joint's range | `step_limits` | moves one joint's range to the neighbouring menu option, or (a range off the menu, e.g. a real hand's) one end by 15 deg within +/-180 deg | none |
 | move a mount (finger or palm part) | `step_mount` | slides one finger or palm part along what it is attached to, or turns it 15 deg at its base | none |
 | change one coupled joint | `step_coupling` | steps a coupled joint's ratio or offset | none (no coupled joints under Simulator) |
 | lengthen/shorten the palm | `step_root_length` | changes the palm's length by 5 mm, within 20-80 mm; the fingers keep their relative place along it, so they move with it | none |
 | thicker/thinner (all links) | `step_radius` | every link, palm included, shares one thickness; steps it to 8, 10 or 12 mm | none |
-| change one joint's rest bend | `step_bend_rpy` | turns the rest angle between two bones by 15 deg (variants with rest bends) | none |
-| shift one joint sideways | `step_bend_offset` | shifts one joint sideways by 5 mm (only `G_BEND` has rest offsets) | none |
-| lengthen/shorten one bone (5 mm) | `step_segment_length` | changes one bone's (or palm part's) length by exactly one 5 mm step within the variant's range (15-80 mm, palm parts 20-80 mm); parts beyond it move with it; `lengthen_segment`/`shorten_segment` are its two directions as an exact inverse pair | none (no limit concerns lengths) |
+| change one joint's rest bend | `step_bend_rpy` | turns the rest angle between two bones by 15 deg about one axis | none |
+| shift one joint sideways | `step_bend_offset` | shifts one joint sideways by 5 mm (only historical `G_BEND` has rest offsets; never shown for the grammar) | none |
+| lengthen/shorten one bone (5 mm) | `step_segment_length` | changes one bone's (or palm part's) length by exactly one 5 mm step within the grammar's range (15-80 mm, palm parts 20-80 mm); parts beyond it move with it; `lengthen_segment`/`shorten_segment` are its two directions as an exact inverse pair | none (no limit concerns lengths) |
 
 The older `perturb_parameter` (also reachable as `step_length`, outside the pool) reflects off a range bound, so its step is not always exactly 5 mm; `step_segment_length` only offers moves that stay in range.
 
 ## Commercial hands in the grammar
 
-`adapters/projection.py` expresses a real hand exactly: continuous lengths, free axes and mount poses, the URDF's limits, a lateral offset for every finger mount, a rest bend at every joint and a 10 mm radius. `derive` accepts that, but the grammar never generates such values, so the exact projection is not a member of the search space and the grid-stepping operators cannot act on it (`step_limits` fails on all 15 hands, `step_axis` on 11). `hand_sampler/grammar/adapters/conform.py` snaps it onto a variant's grids (`conform_to_grammar(derivation, dist, limits)`, closed-loop, so errors do not add up along a finger) and reports what that costs. `grammar_bench/tests/test_conform.py` checks that every conformed hand derives, lies on the variant's grids and is in-support by the independent `coverage` audit (the exact projections are not), that a hand the grammar sampled conforms to itself exactly, and that the operators act on conformed hands.
+`adapters/projection.py` expresses a real hand exactly: continuous lengths, free axes and mount poses, the URDF's limits, a lateral offset for every finger mount, a rest bend at every joint and a 10 mm radius. `derive` accepts that, but the grammar never generates such values, so the exact projection is not a member of the search space (the `coverage` audit puts it out of support) and some grid steps cannot act on it (`step_axis` acts on 4 of the 15 hands). `hand_sampler/grammar/adapters/conform.py` snaps it onto a grammar's grids (`conform_to_grammar(derivation, dist, limits)`, closed-loop, so errors do not add up along a finger) and reports what that costs. The viewer conforms every commercial hand to the one grammar. `grammar_bench/tests/test_conform.py` checks that every conformed hand derives, lies on the grammar's grids and is in support by `coverage`, that a hand the grammar sampled conforms to itself exactly, and that the operators act on conformed hands (on all 15 hands every grid step applies: tilt an axis, change a range, move a mount, palm length, thickness, rest bend, bone length).
 
-Fidelity after snapping, E13's metric (zero plus 64 random configurations): max joint position error mm / max joint axis error deg / max fingertip error mm; the target is 5 mm / 10 deg. The exact projection is 0 / 0 / 0 for every hand. `G_V1` ("Basic") gives the same numbers as `G_FULL`; `G_WIDE` is the reference variant with the rules widened (below).
+Fidelity after snapping, E13's metric (zero plus 64 random configurations): max joint position error mm / max joint axis error deg / max fingertip error mm; the target is 5 mm / 10 deg. The exact projection is 0 / 0 / 0 for every hand. "The grammar" is `build_distribution()` (all rules on; the rules shape sampling only, so they do not change these numbers, which equal the historical `G_WIDE`'s); "Basic" is the historical `G_V1` (the grids before this change, same numbers as `G_FULL`), for comparison.
 
-| Hand | Basic (`G_V1`) | + curl and opposition (`G_V3S`) | Wide (`G_WIDE`) | Within Simulator limits |
+| Hand | The grammar | Basic (`G_V1`, historical) | Within Simulator limits |
+|---|---|---|---|
+| allegro_right | 9 / 11 / 17 | 59 / 9 / 82 | yes |
+| leap_right | 15 / 19 / 29 | 70 / 16 / 108 | yes |
+| barrett_bh | 17 / 3 / - | 52 / 3 / - | yes |
+| ability_right | 6 / 10 / 13 | 39 / 8 / 41 | yes |
+| inspire_right | 6 / 7 / 8 | 90 / 7 / 117 | yes |
+| dclaw | 6 / 3 / 10 | 73 / 5 / 80 | yes |
+| wuji_right | 20 / 14 / 28 | 72 / 13 / 85 | yes |
+| xhand_right | 8 / 7 / 9 | 47 / 5 / 57 | yes |
+| tesollo_dg5f_right | 11 / 7 / 16 | 94 / 3 / 132 | yes |
+| orca_right | 18 / 8 / 17 | 97 / 10 / 121 | yes |
+| sharpa_left_on_iiwa14 | 24 / 13 / 19 | 147 / 11 / 171 | yes |
+| shadow_right_local | 19 / 6 / 21 | 83 / 6 / 102 | yes |
+| svh_right | 32 / 5 / 26 | 87 / 7 / 109 | no: 2 fingers on one palm joint |
+| arms_skel | 30 / 14 / - | 45 / 20 / - | yes |
+| coupled_finger (analytic) | 0 / 0 / - | 0 / 0 / - | yes |
+
+Features the real hands need and the rules that forbade them (counts out of 15, against the historical Basic grids), with the extension and its status:
+
+| Conflict | Hands | Rule before | Extension | Status |
 |---|---|---|---|---|
-| allegro_right | 59 / 9 / 82 | 71 / 56 / 98 | 9 / 11 / 17 | yes |
-| leap_right | 70 / 16 / 108 | 74 / 49 / 122 | 15 / 19 / 29 | yes |
-| barrett_bh | 52 / 3 / - | 50 / 3 / - | 17 / 3 / - | yes |
-| ability_right | 39 / 8 / 41 | 29 / 8 / 23 | 6 / 10 / 13 | yes |
-| inspire_right | 90 / 7 / 117 | 96 / 9 / 132 | 6 / 7 / 8 | yes |
-| dclaw | 73 / 5 / 80 | 65 / 13 / 98 | 6 / 3 / 10 | yes |
-| wuji_right | 72 / 13 / 85 | 74 / 20 / 99 | 20 / 14 / 28 | yes |
-| xhand_right | 47 / 5 / 57 | 42 / 19 / 73 | 8 / 7 / 9 | yes |
-| tesollo_dg5f_right | 94 / 3 / 132 | 120 / 67 / 162 | 11 / 7 / 16 | yes |
-| orca_right | 97 / 10 / 121 | 95 / 35 / 120 | 18 / 8 / 17 | yes |
-| sharpa_left_on_iiwa14 | 147 / 11 / 171 | 123 / 20 / 137 | 24 / 13 / 19 | yes |
-| shadow_right_local | 83 / 6 / 102 | 57 / 21 / 75 | 19 / 6 / 21 | yes |
-| svh_right | 87 / 7 / 109 | 81 / 53 / 113 | 32 / 5 / 26 | no: 2 fingers on one palm joint |
-| arms_skel | 45 / 20 / - | 53 / 34 / - | 30 / 14 / - | yes |
-| coupled_finger (analytic) | 0 / 0 / - | 12 / 0 / - | 0 / 0 / - | yes |
-
-Features the real hands need that the variants' rules forbid (counts out of the 15 hands, conformed to Basic), and the smallest rule change that would allow each:
-
-| Conflict | Hands | Rule today | Smallest extension | Status |
-|---|---|---|---|---|
-| fingers side by side across the palm (18-62 mm off the palm's axis) | 14 | a finger mounts on its host's axis, or one radius off it (surface variants) | a lateral mount grid (5 mm steps) for fingers and palm parts | implemented, off by default: `Distribution.mount_lateral_grid_m`; on in `G_WIDE` |
-| palm part beside its parent | 4 | a palm part mounts on its parent's axis | the same lateral grid | implemented (same field) |
-| rest bend between bones (up to 99 deg) | 13 | no rest bend, except `G_BEND` (up to 30 deg on 30% of bones) | a rest bend at any joint on the 15 deg grid | already in the capability (bend menu); `G_WIDE` uses the full grid |
-| curl the straight finger does not have | 12 under V3s | V3s bends every bone after the first by 15-45 deg | none: it is that variant's prior; conform real hands to another variant | n/a |
-| joint ranges off the menu | 15 | 6 range options | continuous ranges within +/-180 deg | already in the capability (`limits_continuous`, `G_CONT`); on in `G_WIDE` |
+| fingers side by side across the palm (18-62 mm off the palm's axis) | 14 | a finger mounts on its host's axis, or one radius off it (surface rule) | a 5 mm lateral mount grid for fingers and palm parts | in the grammar (support only; `Distribution.mount_lateral_grid_m`, off by default elsewhere) |
+| palm part beside its parent | 4 | a palm part mounts on its parent's axis | the same lateral grid | in the grammar (same field) |
+| rest bend between bones (up to 99 deg) | 13 | no rest bend (the curl rule only draws 15-45 deg) | a rest bend at any joint on the 15 deg grid | in the grammar (support only) |
+| joint ranges off the menu | 15 | 6 range options | any range in +/-180 deg | in the grammar (support only) |
+| mounts between the 5 fixed positions along a host | 14 | 0, 25, 50, 75 or 100% of the host | 5% steps | in the grammar |
+| thumb below the palm's origin, or a palm longer than 80 mm | 12 | mounts lie on the root segment | conform slides the root frame along its own axis (an exact re-expression) | done in `conform_to_grammar` |
 | two joints at one point (a 0 mm bone, e.g. knuckle abduction + flexion) | 7: barrett, orca, sharpa, shadow, svh, arms, coupled_finger | bones are 15-80 mm | allow a 0 mm bone for a second joint at the same point | reported only: a 0 mm link makes its neighbours' capsules touch over 2 radii, which the simulator's overlap check (`rest_overlap_pairs`, in isaacsimenvs) flags; the envelope's adjacency rule would have to change first |
-| bone lengths outside 15-80 mm | 3: wuji, sharpa, arms | 15-80 mm | a wider length range in a variant | not done (a variant value) |
-| the 15 deg grid for mounts, bends and axes | all | `ANGLE_STEP_DEG = 15` is a module constant | a per-variant angle step (5 deg) | reported only: it runs through `sample_axis`, the step operators and `coverage`; with exact angles and lengths `G_WIDE` reaches 2-5 mm / 0 deg / 1-5 mm on every hand |
-| coupled (mimic) joints | 5: ability, inspire, svh, arms, coupled_finger | the capability has a coupled module; the projection keeps every mimic as its own motor (decision I22); the Simulator limits forbid couplings | none for the simulator; elsewhere the projection could emit `Coupled` modules | reported |
-| two fingers on one palm joint (SVH's j5) | 1 | the capability allows it; the Simulator limits allow 1 | a carrier slot with two finger chains in the envelope (isaacsimenvs), or a rigid palm joint in the simulator view | reported |
+| bone lengths outside 15-80 mm | 3: wuji, sharpa, arms | 15-80 mm | a wider length range | not done (would change sampling) |
+| a mount beyond a palm part's ends | 1: svh | mounts lie on the host segment | mount positions beyond [0, 1] on palm parts | reported only |
+| the 15 deg grid for mounts, bends and axes | all (above 10 deg error on 2) | `ANGLE_STEP_DEG = 15` is a module constant | a finer angle step (5 deg) | reported only: it runs through `sample_axis`, the step operators and `coverage`; with exact angles and lengths the grammar reaches 2-5 mm / 0 deg / 1-5 mm on every hand |
+| coupled (mimic) joints | 5: ability, inspire, svh, arms, coupled_finger | the grammar has a coupled module; the projection keeps every mimic as its own motor (decision I22); the Simulator limits forbid couplings | none for the simulator; elsewhere the projection could emit `Coupled` modules | reported |
+| two fingers on one palm joint (SVH's j5) | 1 | the grammar allows it; the Simulator limits allow 1 | a carrier slot with two finger chains in the envelope (isaacsimenvs), or a rigid palm joint in the simulator view | reported |
 
-On conformed hands the operators that still cannot act are the structural ones a sampled hand of the same shape also lacks: no branch finger to remove, no coupled joint, no bend menu (`step_bend_*` outside `G_BEND`/V3/V3s/`G_WIDE`), no palm part to toggle, Basic's 5-finger cap for "add a short finger". Under the Simulator limits "add a branch finger" is never allowed, and "add a palm part" needs a free finger slot. SVH is outside the Simulator limits (two fingers on one palm joint) and can still be mutated as long as no limit gets worse.
+On hands conformed to the grammar the operators that cannot act are the structural ones a drawn hand of the same shape also lacks: no branch finger to remove, no coupled joint, no rest offset menu, no palm part to make rigid or jointed (11 hands). Under the Simulator limits "add a branch finger" is never allowed, and "add a short finger" and "add a palm part" need a free finger slot (5 of 15 hands have one). SVH is outside the Simulator limits and can still be mutated as long as no limit gets worse.
 
 ## Full viewer panels
 
