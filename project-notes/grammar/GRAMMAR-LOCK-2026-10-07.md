@@ -50,17 +50,31 @@ The grammar combines our grammar (`martin/hand-grammar`), Vatsal's physical gram
 - 0.5 N m torque, 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, link density 1750 kg/m^3, friction 0.5, generated and commercial hands alike.
 - **Why:** consistency: hands then differ only in shape, and grammar hands share the settings Kushal's working policies were trained with (Wuji v2 at about 40 goals/episode, one policy over 52 Wuji hands).
 
+### 7a. No branching fingers
+- Every finger mounts on the palm; no finger grows off another finger's bone.
+- **Why:** no hand we model has one, and it would need its own mount design in the hull-palm representation.
+
+### 7b. Coupled joints: one global ratio, 1.1, with zero offset
+- A coupled joint follows the joint just before it in the same finger at a ratio of 1.1 and an offset of 0. There is no per-joint ratio.
+- **Why:** Martin asked for one common value taken from the commercial hands. Among the 18 within-finger couplings in the URDFs (Ability 4 x 1.059; Inspire 4 x 1.064 plus its thumb's 1.334 and 0.667; SVH's 1.015, 1.045, 1.045, 1.359, 1.359, 1.421, 1.423, 1.449), the most common value is about 1.06 (8 of 18), the median 1.064 and the mean 1.145; 1.1 is the rounded value between them. Offsets are 0 except Inspire's -0.045 rad. Not counted: SVH's cross-finger spread coupling (0.5) and thumb-to-palm coupling (1.0), ARMS's palm coupling (2.72), and hands that couple mechanically without saying so in their URDF (Shadow's distal joints, Barrett).
+
+### 15. Adding and removing joints: split and merge
+- Insert a joint by splitting a link in two; remove one by merging two links. Removing a finger stays a single step that removes any finger, whatever its length (decided 2026-10-06).
+- **Why:** split and merge keep the finger's length and reach, so each step is a small change. Losing a finger must not take many steps, as it did when only single-joint fingers could be removed.
+
+### 19. Commercial reference set: every hand any of us has
+- Ours: Ability, Allegro, ARMS (skeleton), Barrett, DClaw, Dex1, Inspire, LEAP, Orca, Shadow, SHARPA, SVH, Tesollo DG-5F, Wuji (v1), XHand. Kushal's: Dex3, Wuji v2 (left and right), plus his uniform-dynamics versions of the shared hands. Vatsal's: MIDAS.
+- **Why:** as many real hands as possible, to test how well the grammar covers the market and to give the policy the most held-out hands.
+
+### 20. Fit metric: revisit later
+- For now, ours (largest joint-position, axis and fingertip error against 5 mm / 10 degrees), counting a pure difference in the zero pose as a match (Vatsal). Martin expects a better similarity metric is needed.
+
 ## Still to decide
 6, 8 and 10 wait for the link-shape check (capsule, box or rounded box), since the cross-section sets the radius, the shortest link and the finger spacing.
-7a. Branching fingers (a finger growing off another finger's bone): keep in the grammar or drop.
-7b. Coupling parameters: the ratio and offset of a coupled joint.
 6. Capsule radius (global): 15 mm from the XM335 motor (Vatsal) or 10 mm.
 8. Evolution Rules link length: 20-80 mm, last link at least 15 mm (a motor must fit between joints); the grammar keeps 0-90 mm for commercial hands.
 10. Finger spacing at least 2 x radius + 5 mm.
-15. Adding and removing joints: split a link / merge two links (Vatsal), keeping the finger's length.
-16. Changing a joint: switch its kind, weighted toward flexion (6 : 2 : 1).
-17. Remaining coarse / fine steps: link length 5 / 1 mm; position on the plate 5 / 1 mm; facing and tilt 15 / 5 degrees; palm joint axis 15 / 5 degrees; structural: add or remove a finger, add or remove a palm joint with its section and finger.
-19. Commercial reference set: Kushal's 8 uniform hands, Vatsal's MIDAS, and our others.
-20. Fit metric: ours (joint position, axis, fingertip), allowing for a pure difference in the zero pose (Vatsal).
+16. Changing a joint (under discussion): switch its kind in place, and toggle coupling to the joint before it.
+17. Coarse / fine steps: Martin wants coarse steps coarser and fine as is (1 mm, 5 degrees); proposed coarse: 10 mm lengths and positions, 30 degrees for facing, tilt and palm-joint axes. No coupling step (one global ratio).
 
 Checks come after the grammar and the Evolution Rules. Candidates: the overlap check, Vatsal's curl score, Martin's thumb-finger workspace overlap, and an opposition test (none exists yet).
