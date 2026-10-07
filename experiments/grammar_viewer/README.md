@@ -123,6 +123,47 @@ Only properties no generation rule can guarantee. They need the simulator's 32-s
 
 The older `perturb_parameter` (also reachable as `step_length`, outside the pool) reflects off a range bound, so its step is not always exactly 5 mm; `step_segment_length` only offers moves that stay in range.
 
+## Commercial hands in the grammar
+
+`adapters/projection.py` expresses a real hand exactly: continuous lengths, free axes and mount poses, the URDF's limits, a lateral offset for every finger mount, a rest bend at every joint and a 10 mm radius. `derive` accepts that, but the grammar never generates such values, so the exact projection is not a member of the search space and the grid-stepping operators cannot act on it (`step_limits` fails on all 15 hands, `step_axis` on 11). `hand_sampler/grammar/adapters/conform.py` snaps it onto a variant's grids (`conform_to_grammar(derivation, dist, limits)`, closed-loop, so errors do not add up along a finger) and reports what that costs. `grammar_bench/tests/test_conform.py` checks that every conformed hand derives, lies on the variant's grids and is in-support by the independent `coverage` audit (the exact projections are not), that a hand the grammar sampled conforms to itself exactly, and that the operators act on conformed hands.
+
+Fidelity after snapping, E13's metric (zero plus 64 random configurations): max joint position error mm / max joint axis error deg / max fingertip error mm; the target is 5 mm / 10 deg. The exact projection is 0 / 0 / 0 for every hand. `G_V1` ("Basic") gives the same numbers as `G_FULL`; `G_WIDE` is the reference variant with the rules widened (below).
+
+| Hand | Basic (`G_V1`) | + curl and opposition (`G_V3S`) | Wide (`G_WIDE`) | Within Simulator limits |
+|---|---|---|---|---|
+| allegro_right | 59 / 9 / 82 | 71 / 56 / 98 | 9 / 11 / 17 | yes |
+| leap_right | 70 / 16 / 108 | 74 / 49 / 122 | 15 / 19 / 29 | yes |
+| barrett_bh | 52 / 3 / - | 50 / 3 / - | 17 / 3 / - | yes |
+| ability_right | 39 / 8 / 41 | 29 / 8 / 23 | 6 / 10 / 13 | yes |
+| inspire_right | 90 / 7 / 117 | 96 / 9 / 132 | 6 / 7 / 8 | yes |
+| dclaw | 73 / 5 / 80 | 65 / 13 / 98 | 6 / 3 / 10 | yes |
+| wuji_right | 72 / 13 / 85 | 74 / 20 / 99 | 20 / 14 / 28 | yes |
+| xhand_right | 47 / 5 / 57 | 42 / 19 / 73 | 8 / 7 / 9 | yes |
+| tesollo_dg5f_right | 94 / 3 / 132 | 120 / 67 / 162 | 11 / 7 / 16 | yes |
+| orca_right | 97 / 10 / 121 | 95 / 35 / 120 | 18 / 8 / 17 | yes |
+| sharpa_left_on_iiwa14 | 147 / 11 / 171 | 123 / 20 / 137 | 24 / 13 / 19 | yes |
+| shadow_right_local | 83 / 6 / 102 | 57 / 21 / 75 | 19 / 6 / 21 | yes |
+| svh_right | 87 / 7 / 109 | 81 / 53 / 113 | 32 / 5 / 26 | no: 2 fingers on one palm joint |
+| arms_skel | 45 / 20 / - | 53 / 34 / - | 30 / 14 / - | yes |
+| coupled_finger (analytic) | 0 / 0 / - | 12 / 0 / - | 0 / 0 / - | yes |
+
+Features the real hands need that the variants' rules forbid (counts out of the 15 hands, conformed to Basic), and the smallest rule change that would allow each:
+
+| Conflict | Hands | Rule today | Smallest extension | Status |
+|---|---|---|---|---|
+| fingers side by side across the palm (18-62 mm off the palm's axis) | 14 | a finger mounts on its host's axis, or one radius off it (surface variants) | a lateral mount grid (5 mm steps) for fingers and palm parts | implemented, off by default: `Distribution.mount_lateral_grid_m`; on in `G_WIDE` |
+| palm part beside its parent | 4 | a palm part mounts on its parent's axis | the same lateral grid | implemented (same field) |
+| rest bend between bones (up to 99 deg) | 13 | no rest bend, except `G_BEND` (up to 30 deg on 30% of bones) | a rest bend at any joint on the 15 deg grid | already in the capability (bend menu); `G_WIDE` uses the full grid |
+| curl the straight finger does not have | 12 under V3s | V3s bends every bone after the first by 15-45 deg | none: it is that variant's prior; conform real hands to another variant | n/a |
+| joint ranges off the menu | 15 | 6 range options | continuous ranges within +/-180 deg | already in the capability (`limits_continuous`, `G_CONT`); on in `G_WIDE` |
+| two joints at one point (a 0 mm bone, e.g. knuckle abduction + flexion) | 7: barrett, orca, sharpa, shadow, svh, arms, coupled_finger | bones are 15-80 mm | allow a 0 mm bone for a second joint at the same point | reported only: a 0 mm link makes its neighbours' capsules touch over 2 radii, which the simulator's overlap check (`rest_overlap_pairs`, in isaacsimenvs) flags; the envelope's adjacency rule would have to change first |
+| bone lengths outside 15-80 mm | 3: wuji, sharpa, arms | 15-80 mm | a wider length range in a variant | not done (a variant value) |
+| the 15 deg grid for mounts, bends and axes | all | `ANGLE_STEP_DEG = 15` is a module constant | a per-variant angle step (5 deg) | reported only: it runs through `sample_axis`, the step operators and `coverage`; with exact angles and lengths `G_WIDE` reaches 2-5 mm / 0 deg / 1-5 mm on every hand |
+| coupled (mimic) joints | 5: ability, inspire, svh, arms, coupled_finger | the capability has a coupled module; the projection keeps every mimic as its own motor (decision I22); the Simulator limits forbid couplings | none for the simulator; elsewhere the projection could emit `Coupled` modules | reported |
+| two fingers on one palm joint (SVH's j5) | 1 | the capability allows it; the Simulator limits allow 1 | a carrier slot with two finger chains in the envelope (isaacsimenvs), or a rigid palm joint in the simulator view | reported |
+
+On conformed hands the operators that still cannot act are the structural ones a sampled hand of the same shape also lacks: no branch finger to remove, no coupled joint, no bend menu (`step_bend_*` outside `G_BEND`/V3/V3s/`G_WIDE`), no palm part to toggle, Basic's 5-finger cap for "add a short finger". Under the Simulator limits "add a branch finger" is never allowed, and "add a palm part" needs a free finger slot. SVH is outside the Simulator limits (two fingers on one palm joint) and can still be mutated as long as no limit gets worse.
+
 ## Full viewer panels
 
 - **Source**

@@ -11,24 +11,34 @@ not apply to it.
 
 ``conform_to_grammar(derivation, dist, limits)`` snaps every parameter onto
 what ``dist`` (a grammar variant) can generate, keeping the structure (palm
-bodies, digits, phalanges, module kinds) unchanged:
+bodies, digits, phalanges, module kinds) unchanged. Snapping is closed-loop:
+bodies are placed root first and each value is chosen to put its own body
+where the real hand's body is, given where the already-snapped parents ended
+up, so grid errors do not add up along a finger:
 
-- lengths onto the 5 mm grid within the variant's range; a host's length is
-  chosen jointly with the mount fractions of what hangs on it, and a digit's
-  link lengths are snapped cumulatively, so errors do not add up along a
-  finger;
+- lengths onto the 5 mm grid within the variant's range: a link length reaches
+  for the hand's next joint (or fingertip); a host's length is chosen jointly
+  with the mount fractions of what hangs on it; the root frame slides down its
+  own axis when a mount lies below it or the palm is longer than the grammar's
+  longest palm segment (an exact re-expression: the root is fixed);
 - joint axes onto the 15 degree spherical grid (inside the variant's
-  elevation band for digit joints, if it has one);
+  elevation band for digit joints, if it has one), matching the hand's axis
+  direction in space;
 - mount and palm-body orientations onto the nearest rotation of the 15 degree
-  roll/pitch/yaw grid; mount positions onto the allowed fractions;
-- lateral mount offsets onto what the variant can generate: none, or the
-  host's surface at a 15 degree azimuth for surface-mounting variants;
+  roll/pitch/yaw grid, mount positions onto the allowed fractions;
+- lateral mount offsets onto what the variant can generate: none, the host's
+  surface at a 15 degree azimuth (surface-mounting variants), or the 5 mm
+  lateral grid (``Distribution.mount_lateral_grid_m``, e.g. ``G_WIDE``);
 - rest bends onto the variant's bend menu (zero for most variants);
 - joint limits onto the variant's menu, or (a continuous-limit variant,
   which samples any limits inside its range) clamped into that range;
 - the capsule radius onto the allowed choice closest to half the median
   spacing between neighbouring finger bases (fingers are about as thick as
   their spacing).
+
+A hand the grammar sampled conforms to itself exactly (for variants without
+a bend on a digit's first link; with one, the mount and that bend are chosen
+by a bounded joint search).
 
 The report lists how far each kind of parameter moved and every RULE
 CONFLICT: a feature the real hand needs that the variant's rules forbid
