@@ -171,11 +171,18 @@ def test_hinge_is_the_axis_the_design_asks_for(pop):
 
 
 def test_hinge_to_z_spans_the_whole_axis_space(pop):
-    """Including the poles: mutation walks theta continuously, not in steps."""
+    """Including the poles.
+
+    A GENERATED joint only ever has one of three axes now, but an imported hand
+    carries a measured one through ``axis_override`` and that can point anywhere,
+    so this still has to hold for the whole sphere.
+    """
     z = np.array([0.0, 0.0, 1.0])
     for theta in np.linspace(0.0, np.pi, 23):
         for phi in np.linspace(1e-12, np.pi, 13):
-            axis = design_space.axis_of(design_space.Joint(float(theta), float(phi)))
+            axis = np.array([np.cos(phi),
+                             np.sin(phi) * np.sin(theta),
+                             np.sin(phi) * np.cos(theta)])
             rot = build.hinge_to_z(axis)
             assert np.allclose(rot @ z, axis, atol=1e-9)
             assert np.allclose(rot.T @ rot, np.eye(3), atol=1e-12)

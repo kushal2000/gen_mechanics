@@ -19,7 +19,7 @@ from hand_sampler import design_space
 from hand_sampler import robot_param_constants as rpc
 from hand_sampler import mutate_design
 from hand_sampler import gen_init_pop
-from hand_sampler.design_space import face_frame
+from hand_sampler import commercial
 
 # assets/urdf/table_narrow.urdf, at reset.table_reset_z. Surface at z = 0.53.
 TABLE_EXTENTS = (0.475, 0.4, 0.3)
@@ -72,34 +72,57 @@ def axis_mesh(centre: np.ndarray, axis: np.ndarray) -> trimesh.Trimesh:
     return mesh
 
 
-def theta_colour(theta: float) -> tuple[int, int, int]:
-    """Blue at pure flexion, orange at pure abduction, blended between."""
-    t = (theta % math.pi) / (math.pi / 2)
-    t = t if t <= 1.0 else 2.0 - t          # fold: theta and pi-theta look alike
-    rgb = [(1 - t) * a + t * b for a, b in zip(FLEXION_RGB, ABDUCTION_RGB)]
+ROLL_RGB = (0.45, 0.75, 0.45)
+
+
+def kind_colour(kind: int) -> tuple[int, int, int]:
+    """Blue for flexion, orange for abduction, green for roll."""
+    rgb = {design_space.FLEXION: FLEXION_RGB,
+           design_space.ABDUCTION: ABDUCTION_RGB,
+           design_space.ROLL: ROLL_RGB}[kind]
     return tuple(int(255 * c) for c in rgb)
 
 
 def describe(hand: design_space.Hand, last_op: str | None) -> str:
     seps = design_space.mount_separations(hand)
+    curl = design_space.curl_score(hand)
+    # the second-best finger, because a grasp needs two things closing
+    verdict = ("**cannot close**" if curl < 0.05
+               else "weak" if curl < 0.35 else "ok")
     lines = [
         f"**{hand.n_fingers} fingers, {hand.n_joints} joints, "
         f"{hand.n_motors} motors**",
         "",
-        f"palm  {hand.palm.thickness*1000:.0f} x {hand.palm.width*1000:.0f} x "
-        f"{hand.palm.length*1000:.0f} mm",
+        f"curl score  **{curl:.2f}**  ({verdict})"
+        "   *(LEAP 1.00, Allegro 0.87, MIDAS 0.78; "
+        "roll- or abduction-only 0.00)*",
+        "",
+        f"palm  {design_space.palm_extents(hand)[0]*1000:.0f} thick, "
+        f"{design_space.palm_extents(hand)[1]*1000:.0f} x "
+        f"{design_space.palm_extents(hand)[2]*1000:.0f} mm across  "
+        f"*(derived: the hull of the "
+        f"{design_space.PALM_MIN_RADIUS*1000:.0f} mm disc and the mounts, "
+        f"+{design_space.PALM_RIM*1000:.0f} mm rim)*",
         f"mount separation  {', '.join(f'{d*1000:.0f}' for d in seps)} mm"
         + ("   *(optimum measured at 40-50 mm)*" if seps else ""),
         "",
     ]
     for i, f in enumerate(hand.fingers):
-        off = "" if all(abs(s.joint.phi - math.pi / 2) < 1e-9 for s in f.segments) \
-              else "  **phi off-perpendicular**"
+        rolls = sum(1 for s in f.segments if s.joint.kind == design_space.ROLL)
+        leans = sum(1 for s in f.segments if s.lean)
+        tags = ("" if not rolls else f"  **{rolls} roll**") \
+             + ("" if not leans else f"  **{leans} leaning**")
+        curl_f = design_space.curl_authority(f, hand.palm)
         lines.append(
-            f"`{i}` {f.mount.face} u={f.mount.u:.2f} v={f.mount.v:.2f} | "
-            f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm{off}")
+            f"`{i}` ({f.mount.y*1000:+.0f}, {f.mount.z*1000:+.0f})mm "
+            f"r={f.mount.radius*1000:.0f}mm "
+            f"facing {math.degrees(f.mount.facing):.0f}d | "
+            f"{f.n_joints} joints, reach {f.reach*1000:.0f} mm | "
+            f"curl {curl_f:.2f}{'  **dead**' if curl_f < 0.05 else ''}{tags}")
+        # [kind (lean) / length mm]
         lines.append("   " + "  ".join(
-            f"[{math.degrees(s.joint.theta):.0f}d"
+            "[" + design_space.JOINT_KIND_NAMES[s.joint.kind][:4]
+            + (f" lean{s.lean}" if s.lean else "")
             + (f"{math.degrees(s.joint.offset):+.0f}o" if s.joint.offset else "")
             + f"/{s.length*1000:.0f}mm]"
             for s in f.segments))
@@ -171,6 +194,8 @@ def main() -> None:
         btn_mutate = server.gui.add_button("mutate")
         btn_undo = server.gui.add_button("undo")
         btn_reseed = server.gui.add_button("new seed")
+        hand_picker = server.gui.add_dropdown(
+            "commercial hand", ("(generated)",) + commercial.HANDS)
         cb_context = server.gui.add_checkbox("show arm + table", True)
 
     with server.gui.add_folder("pose"):
@@ -260,7 +285,7 @@ def main() -> None:
         with joint_folder:
             for fi, finger in enumerate(state["hand"].fingers):
                 for si, seg in enumerate(finger.segments):
-                    label = f"f{fi}.j{si}  {math.degrees(seg.joint.theta):.0f}d"
+                    label = f"f{fi}.j{si}  {design_space.JOINT_KIND_NAMES[seg.joint.kind]}"
                     handle = server.gui.add_slider(
                         label, min=math.degrees(lo), max=math.degrees(hi),
                         step=1.0, initial_value=0.0)
@@ -360,6 +385,27 @@ def main() -> None:
         state["angles"] = {}
         refresh(f"seed {state['seed']}")
 
+    @hand_picker.on_update
+    def _(_) -> None:
+        """Load a vendor hand as fitted into this design space.
+
+        It is a real design here, not an imported mesh -- same genotype, same
+        validator, same build path -- so it can be mutated from, and run as a
+        baseline against generated hands in the same envelope.
+        """
+        name = hand_picker.value
+        if name == "(generated)":
+            return
+        hand, notes = commercial.fit(name)
+        state["hand"] = hand
+        state["lineage"].clear()
+        state["last_op"] = None
+        state["angles"] = {}
+        cost = [n for n in notes if "curl" in n or "truncated" in n or "dropped" in n]
+        refresh(f"**{name}** as fitted: {hand.n_fingers} fingers, "
+                f"{hand.n_joints} joints"
+                + ("  \n" + "  \n".join(cost) if cost else "  \nno structure lost"))
+
     # Once, before anything else draws: refresh() rebuilds only the hand, so
     # without this the table, the grid and the /robot base frame the URDF hangs
     # off are never created at all.
@@ -454,23 +500,19 @@ from hand_sampler import mutate_design                               # noqa: E40
 from hand_sampler import gen_init_pop                               # noqa: E402
 from hand_sampler.viewer import (                                  # noqa: E402
     JOINT_MARKER_LENGTH,
-    theta_colour,
+    kind_colour,
 )
 
 
-def _palm_faces(palm: design_space.Palm) -> list[np.ndarray]:
-    t, w, l = palm.extents
-    x, y = t / 2, w / 2
-    c = np.array([[-x, -y, 0], [x, -y, 0], [x, y, 0], [-x, y, 0],
-                  [-x, -y, l], [x, -y, l], [x, y, l], [-x, y, l]], float)
-    idx = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4),
-           (2, 3, 7, 6), (1, 2, 6, 5), (0, 3, 7, 4)]
-    return [c[list(f)] for f in idx]
+def _palm_faces(hand: design_space.Hand) -> list[np.ndarray]:
+    """The derived outline, extruded -- the same hull the simulator collides."""
+    verts, faces = design_space.palm_hull(hand)
+    return [verts[list(f)] for f in faces]
 
 
 def draw(ax, hand: design_space.Hand, title: str = "", flex: float = 0.0) -> None:
     ax.add_collection3d(Poly3DCollection(
-        _palm_faces(hand.palm), facecolor=(0.47, 0.49, 0.53), alpha=0.30,
+        _palm_faces(hand), facecolor=(0.47, 0.49, 0.53), alpha=0.30,
         edgecolor=(0.3, 0.3, 0.34), linewidths=0.5))
 
     for finger in hand.fingers:
@@ -478,14 +520,14 @@ def draw(ax, hand: design_space.Hand, title: str = "", flex: float = 0.0) -> Non
         joints, capsules = design_space.forward_kinematics(finger, hand.palm, angles)
         # colour by the segment the capsule BELONGS to, which is carried on the capsule -- capsule and...
         for p0, p1, _, si in capsules:
-            col = np.array(theta_colour(finger.segments[si].joint.theta)) / 255.0
+            col = np.array(kind_colour(finger.segments[si].joint.kind)) / 255.0
             ax.plot(*zip(p0, p1), color=col, linewidth=6.0, solid_capstyle="round")
 
         # a joint is a stub along its own hinge axis, so which way it turns is visible; an...
         axes = design_space.joint_axes(finger, hand.palm, angles)
         half = JOINT_MARKER_LENGTH / 2.0
         for si, (p, a) in enumerate(zip(joints[:-1], axes)):
-            perp = abs(finger.segments[si].joint.phi - math.pi / 2) < 1e-9
+            perp = finger.segments[si].joint.kind != design_space.ROLL
             ax.plot(*zip(p - half * a, p + half * a),
                     color="#1e1e23" if perp else "#d02828",
                     linewidth=3.0, solid_capstyle="round", zorder=5)
@@ -512,6 +554,9 @@ def _grid(items, out: str, cols: int = 3, flex: float = 0.0) -> None:
     print(f"wrote {out}  ({len(items)} hands)")
 
 
+_SCRATCH = None
+
+
 def urdf_for(hand) -> "yourdfpy.URDF":
     """The design as the ARM + HAND articulation, ready for ViserUrdf.
 
@@ -526,8 +571,13 @@ def urdf_for(hand) -> "yourdfpy.URDF":
 
     from coevolution.pose_viewer import ARM_URDF_PATH, _graft_hand_onto_arm
 
-    with tempfile.TemporaryDirectory() as tmp:
-        text = build.urdf_for_viewing(hand, pathlib.Path(tmp) / "d.urdf").read_text()
+    # ONE scratch directory for the process, not a context manager: the URDF
+    # names a palm mesh beside it, and a TemporaryDirectory deletes that file
+    # before yourdfpy gets to read it, so the palm silently vanished.
+    global _SCRATCH
+    if _SCRATCH is None:
+        _SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="hand_viewer_"))
+    text = build.urdf_for_viewing(hand, _SCRATCH / "d.urdf").read_text()
     root = ET.fromstring(_graft_hand_onto_arm(text, ARM_URDF_PATH))
     # yourdfpy resolves a relative mesh against the file it loaded; there is no
     # file here, so make them absolute instead of writing into the asset tree.

@@ -10,61 +10,282 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from hand_sampler import resolve
+from hand_sampler import robot_param_constants as rpc
 
 # --- palm ------------------------------------------------------------------- Mutable,...
 
 PALM_QUANTUM = 0.005
-"""Grid the palm dimensions must lie on."""
+"""Grid the finger origins lie on: BOTH of a mount's coordinates, and the step
+``move_mount`` takes.
 
-PALM_STEP = 0.010
-"""How far one ``perturb_palm`` moves a dimension -- twice the grid."""
-PALM_THICKNESS_RANGE = (0.015, 0.040)   # x -- NOT MUTATED, see below
-PALM_WIDTH_RANGE = (0.040, 0.100)       # y
-PALM_LENGTH_RANGE = (0.040, 0.100)      # z, wrist face at z = 0
+One grid in both directions, so a site 70 mm out is placed as precisely as one
+20 mm out. It was a radius on this grid and a bearing on ANGLE_QUANTUM, which
+made the far ring three and a half times coarser than the near one.
+"""
 
-# Thickness is seeded and never mutated: it is the dimension geometry cares least about, while...
-MUTABLE_PALM_DIMS: tuple[str, ...] = ("width", "length")
+PALM_MIN_RADIUS = 0.020
+"""The palm's own disc: the smallest it can ever be, around its centre.
+
+A palm is not a stored shape any more. It is the convex hull of THIS DISC and
+of where the fingers START, so a hand with its fingers drawn in is just the
+disc, and spreading them pulls the outline out to meet them. The disc is in the
+hull rather than merely bounding the mounts, which is what gives a palm a body
+even when every finger crowds one side of it.
+
+Also the inner bound of the mount annulus: a finger starts on this disc's rim
+at the closest, never inside it.
+"""
+
+PALM_RIM = 0.005
+"""How far the plate carries PAST a finger's base, and the radius its corners
+are rounded to.
+
+The outline used to be grown by PALM_MIN_RADIUS, which left 20 mm of plate
+outboard of every base -- enough to bury a whole first link, since the shortest
+is 20 mm and a capsule only 15 mm wide. The palm stops at the bases now, with
+one quantum of rim: enough to round every corner and to leave a mount material
+to bolt to, not enough to hide what it carries.
+"""
+
+MAX_MOUNT_RADIUS = 0.070
+"""How far from the centre a finger may start. With PALM_MIN_RADIUS this is the
+annulus a mount lives in.
+
+A reach, so it stays a CIRCLE even though a mount is now spelled on a square
+grid: the bound is how far a finger can be from the palm's centre, which has no
+corners. 70 mm because the vendor hands need 62 (LEAP), 45 (MIDAS) and 41
+(wuji2) about their own base centroids.
+
+Tied to WRIST_STANDOFF and PALM_RIM, which is not obvious: those two and the
+50 mm the arm sits behind the palm frame add to exactly this 70 mm, so a base
+at the far rim pointing straight back at the wrist lands its rim exactly on
+ARM_FACE_Z. The outer ring is tangent to the arm, and raising this without
+raising the standoff puts part of it inside -- where check_arm_clearance will
+refuse every hand that tries to use it, rather than anything here saying so.
+"""
+
+ARM_FACE_Z = -rpc.FLANGE_TO_PALM_Z_M
+"""Where the ARM stops, in the palm frame. Nothing the hand owns may go behind.
+
+The palm frame's origin is bolted to the flange, and the arm is entirely behind
+it: measuring the iiwa14's own meshes in this frame puts its frontmost vertex at
+exactly -FLANGE_TO_PALM_Z_M, with nothing in front. So one plane is the whole
+rule, and validate_design.check_arm_clearance enforces it.
+
+This REPLACED a wedge on the mount bearing, WRIST_NOGO, which was a proxy for
+the same thing and a bad one. A bearing says where a finger STARTS; what hits
+the arm is where it points and how far it reaches, and the bearing knows
+neither. With the wedge in force, 68% of the hands a mutation walk reached had
+something inside the arm.
+
+A wedge on the FACING, the obvious next proxy, is not much better. Over 1200
+drifted hands it catches 57% of the ones in the arm at 45 degrees while refusing
+15% of the ones that are fine, and 100% at 135 degrees while refusing 53% --
+because whether a finger pointed backwards actually gets there depends on where
+it starts and how long it is. The plane is exact instead: it refuses every hand
+in the arm and nothing else.
+"""
+
+WRIST_STANDOFF = 0.025
+"""How far forward of the palm FRAME the fingers are centred, along +z.
+
+The frame's origin is where the arm bolts on, and the arm's own last surface
+sits 50 mm behind it -- rpc.FLANGE_TO_PALM_Z_M, and measuring the iiwa14's
+meshes in this frame puts its frontmost vertex at exactly -50 mm. So everything
+the hand owns has to live forward of there, and centring the fingers on the
+origin did not: a hand whose thumb reaches back, which every vendor hand's
+does, put that thumb 17 mm inside the arm. Sliding the whole centre forward
+moves palm and fingers together and leaves the bolt pattern alone.
+"""
+
+PALM_CENTRE = np.array([0.0, 0.0, WRIST_STANDOFF])
+"""Where the fingers are centred, in the palm frame. A mount's (y, z) is an
+offset from THIS point, not from the frame's origin."""
 
 # --- links ------------------------------------------------------------------
 
 LINK_QUANTUM = 0.005
-CAPSULE_RADIUS = 0.010
-"""Fixed, on evidence: `radius_scale` scored Spearman -0.005 across a 2x range in the..."""
+CAPSULE_RADIUS = 0.015
+"""Set by the actuator, not by the search.
 
-MIN_LINK_LENGTH = 0.015
-"""The closest two joint axes can sit -- there is exactly one joint per link."""
+Every joint carries one XM335-T323-T (19.0 x 35.0 x 22.0 mm). Running its 35 mm
+axis along the link leaves a 19 x 22 mm cross-section, whose smallest enclosing
+circle has radius 14.5 mm; rounded up to the 5 mm grid. A link's radius was never
+really a free parameter -- a motor lives inside it.
+"""
+
+# Defined here rather than with the other palm constants: it is tied to the
+# link, so it has to follow CAPSULE_RADIUS.
+PALM_THICKNESS = 2.0 * CAPSULE_RADIUS - 0.005
+"""Fixed for every hand: not sampled, not mutated, not a design variable.
+
+``u`` runs along the thickness axis on every face, so thickness alone decides how
+far a mount sits from the palm's two large faces -- but every finger originates on
+the MIDPLANE now, so that is not a design variable and thickness only has to house
+each finger's BASE motor, which sits in the palm rather than in any link. The
+XM335's smallest dimension is 19 mm, so 25 mm clears it.
+
+A link's capsule is 30 mm across and the palm is deliberately THINNER than that,
+by one 5 mm quantum. A palm as thick as the fingers reads as a block with
+fingers on it rather than as a hand, and nothing needs the extra 5 mm: the base
+motor fits in 19.
+"""
+PALM_THICKNESS_RANGE = (PALM_THICKNESS, PALM_THICKNESS)   # x -- a single point now
+
+MIN_LINK_LENGTH = 0.020
+"""The closest two joint axes can sit, for a link that carries a motor.
+
+The XM335 is 19.0 x 35.0 x 22.0 mm, so 20 mm is its shortest dimension rounded to
+the grid: the orientation with that axis along the link is the one that packs two
+joints closest together.
+
+NOTE the capsule does NOT enclose the motor at this length. That orientation
+leaves a 35 x 22 mm cross-section, which needs a 20.7 mm radius against the
+15 mm CAPSULE_RADIUS here. The capsule is a nominal collision proxy, not a motor
+housing -- the real link bulges where the motor sits, and packaging is resolved
+when a design is actually built. Set deliberately: a radius wide enough to
+enclose the motor in every orientation would force 55 mm mount separation, which
+leaves room for only three fingers on a maximal palm.
+"""
+
+MIN_DISTAL_LINK_LENGTH = 0.015
+"""The floor for the LAST link of a finger, which drives no child joint.
+
+It carries no motor, so it only has to be long enough to be a fingertip. Its own
+joint's motor sits in the link proximal to it, or in the palm when the finger has
+a single joint.
+"""
 
 MAX_LINK_LENGTH = 0.080
-"""Deliberately loose."""
+"""Deliberately loose. Stall torque never binds it: a 3-link, 35 mm finger holds
+itself horizontal on 7.5% of the XM335's 1.03 N.m."""
+
+MAX_FINGER_LENGTH = 0.200
+"""Fully-extended mount-to-tip. MAX_LINK_LENGTH alone allowed 4 x 80 = 320 mm."""
 
 # --- joints -----------------------------------------------------------------
 
 ANGLE_QUANTUM = math.radians(15.0)
-"""Grid for every angle in the genotype: joint theta and offset."""
+"""Grid for a mount's FACING, and for the one angle only an IMPORTED joint can
+carry, its offset.
+
+Chosen, not derived. It used to grid a mount's BEARING too, when where a finger
+sat was polar; WHERE is cartesian now and only which way it POINTS is an angle.
+That is what made the change worth making -- an angular grid sites a far finger
+coarsely and a near one finely, while an angular grid on a DIRECTION is the
+same 15 degrees wherever the finger is.
+
+Not what a generated JOINT carries: that is a kind and a lean, which have
+alphabets of their own rather than a grid.
+"""
+
+LEAN_QUANTUM = math.radians(45.0)
+"""How far a link may lean off the one before it.
+
+A link is a motor bolted to its parent, and a bracket either carries it straight
+on or tips it over by a fixed angle. 45 degrees is as far as a lean goes: a
+right angle between two links is not spelled by leaning twice, it is spelled by
+putting an abduction joint next to a flexion joint, which is the same corner and
+an ACTUATED one.
+"""
+
+
+def _lean_table() -> tuple[tuple[float, float, float], ...]:
+    """Straight on, then tipped 45 degrees each of the four ways."""
+    c = math.cos(LEAN_QUANTUM)
+    s = math.sin(LEAN_QUANTUM)
+    return ((1.0, 0.0, 0.0),
+            (c, s, 0.0), (c, -s, 0.0),
+            (c, 0.0, s), (c, 0.0, -s))
+
+
+LEANS: tuple[tuple[float, float, float], ...] = _lean_table()
+"""Where a link may point in its parent's frame. Index 0 is straight on, which
+is what every link of LEAP does."""
+
+N_LEANS = len(LEANS)
+
+
+def _lean_neighbours() -> tuple[tuple[int, ...], ...]:
+    """Two leans are one step apart when they are within 60 degrees.
+
+    Straight on reaches all four tips; a tip reaches straight on and the two
+    tips perpendicular to it, but not the one opposite, which is 90 degrees away
+    and two steps. Symmetric by construction, so the move back is also one step.
+    """
+    out = []
+    for a in LEANS:
+        near = tuple(j for j, b in enumerate(LEANS)
+                     if b != a and float(np.dot(a, b)) > math.cos(math.radians(60.5)))
+        out.append(near)
+    return tuple(out)
+
+
+LEAN_NEIGHBOURS: tuple[tuple[int, ...], ...] = _lean_neighbours()
+
+ROLL, FLEXION, ABDUCTION = 0, 1, 2
+JOINT_KINDS: tuple[int, ...] = (ROLL, FLEXION, ABDUCTION)
+JOINT_KIND_NAMES: tuple[str, ...] = ("roll", "flexion", "abduction")
+
+JOINT_AXES: tuple[tuple[float, float, float], ...] = (
+    (1.0, 0.0, 0.0),    # ROLL -- along the link, so the link spins on its own axis
+    (0.0, 1.0, 0.0),    # ABDUCTION in the mount frame: the palm normal
+    (0.0, 0.0, 1.0),    # FLEXION in the mount frame: along the knuckle row
+)
+"""The hinge axis of each kind, in the joint's own frame, where the link is +x.
+
+Named for what they do at the MOUNT, where a +z face puts the link's local z
+along the knuckle row and its local y along the palm normal. A lean tips the
+frame, so after one the names drift by up to 45 degrees -- they are exact where
+it matters and approximate deeper in a leaning finger.
+"""
+_KIND_AXIS = {ROLL: JOINT_AXES[0], ABDUCTION: JOINT_AXES[1], FLEXION: JOINT_AXES[2]}
+
+
+def lean_rot(index: int) -> np.ndarray:
+    """The fixed rotation a lean applies, by the SHORTEST arc.
+
+    Shortest arc so the lean carries no spin of its own: spin about the link is
+    what a joint's own travel does, and two knobs for it is what this grammar
+    just stopped having.
+    """
+    d = np.asarray(LEANS[index % N_LEANS], dtype=float)
+    x = np.array([1.0, 0.0, 0.0])
+    v = np.cross(x, d)
+    s = float(np.linalg.norm(v))
+    c = float(x @ d)
+    if s < 1e-12:
+        return np.eye(3) if c > 0.0 else rodrigues(np.array([0.0, 0.0, 1.0]), math.pi)
+    return rodrigues(v, math.atan2(s, c))
+
 
 JOINT_LIMIT = (math.radians(-90.0), math.radians(90.0))
-"""Symmetric, for every joint regardless of axis."""
+"""Symmetric, for every joint regardless of axis.
+
+Travel is centred on the joint's own zero offset, so the usable span is 120 deg
+placed anywhere the offset can reach -- asymmetric ranges are expressed by moving
+the offset, not by widening this. Well inside what the actuator allows; the limit
+is a design choice about reach into the palm, not a hardware bound.
+"""
 
 # --- the envelope -----------------------------------------------------------
 
 MIN_FINGERS = 2
 """A one-finger hand cannot oppose anything, so it is excluded rather than left for..."""
 
-MAX_FINGERS = 5
-MAX_JOINTS_PER_FINGER = 6
+MAX_FINGERS = 6
+MAX_JOINTS_PER_FINGER = 5
 """The articulation envelope: a HARD cap, not a rail."""
 
-MIN_MOUNT_SEPARATION = 0.015
-"""Centre-to-centre floor between mounts on DIFFERENT faces."""
+MIN_MOUNT_SEPARATION = 2.0 * CAPSULE_RADIUS + 0.005
+"""Centre-to-centre floor between ANY two mounts, whatever faces they sit on.
 
-MOUNT_EDGE_MARGIN = CAPSULE_RADIUS
-"""How far a mount stays from its face boundary, or half the base capsule hangs off the..."""
+Two capsules running parallel are tangent at 2r, so a floor below that lets
+same-face fingers intersect outright; the extra 5 mm is shell-to-shell clearance.
+One derived number replaces the earlier pair of chosen ones (a loose across-face
+floor and a separate same-face floor).
+"""
 
-MIN_SAME_FACE_SEPARATION = 2.5 * CAPSULE_RADIUS
-"""Floor between mounts on the SAME face, where fingers run parallel and their base..."""
-
-FINGER_FACES: tuple[str, ...] = ("+z", "+y", "-y")
-"""The three THIN faces."""
 
 GRASP_DIR = np.array([1.0, 0.0, 0.0])
 """Fingers curl toward the palm surface (+x)."""
@@ -74,10 +295,15 @@ GRASP_DIR = np.array([1.0, 0.0, 0.0])
 
 @dataclass(frozen=True)
 class Joint:
-    """One revolute DOF; ``theta`` and ``phi`` in radians, see kinematics.axis_of."""
+    """One revolute DOF: which of the three kinds of hinge this is.
 
-    theta: float
-    phi: float = math.pi / 2
+    A generated joint is nothing but its kind. ``offset`` survives only for hands
+    that were MEASURED rather than drawn -- a vendor's assembly angle, which the
+    grammar itself no longer has a way to say and never mutates.
+    """
+
+    kind: int = FLEXION
+    # Import-only: a measured hand's assembly angle. Always 0 in a generated one.
     offset: float = 0.0
     # Set only by an imported hand, whose hinge is measured rather than drawn.
     axis_override: tuple[float, float, float] | None = None
@@ -96,8 +322,9 @@ class Joint:
             raise ValueError(f"axis_override must be 3 numbers, got {self.axis_override}")
         if not math.isfinite(self.offset):
             raise ValueError(f"non-finite joint offset {self.offset}")
-        if not math.isfinite(self.theta) or not math.isfinite(self.phi):
-            raise ValueError(f"non-finite joint angles ({self.theta}, {self.phi})")
+        if self.kind not in JOINT_KINDS:
+            raise ValueError(f"joint kind must be one of {JOINT_KINDS} "
+                             f"({', '.join(JOINT_KIND_NAMES)}), got {self.kind!r}")
 
 
 @dataclass(frozen=True)
@@ -106,6 +333,12 @@ class Segment:
 
     joint: Joint
     length: float
+    # Which way this link leans off the one before it, as an index into LEANS.
+    # 0 is straight on -- collinear with the previous link, or along the mount
+    # normal for the first segment of a finger. One knob: the palm uses it for
+    # the angle a finger leaves at, every later segment for the angle the next
+    # link tips through.
+    lean: int = 0
     # (bend, axis) extents of the link box. None means the capsule a generated
     # design gets; an imported hand carries its measured cross-section instead.
     cross_section: tuple[float, float] | None = None
@@ -122,6 +355,9 @@ class Segment:
             raise ValueError(f"bad link length {self.length}")
         if self.cross_section is not None and len(self.cross_section) != 2:
             raise ValueError(f"cross_section must be (bend, axis), got {self.cross_section}")
+        if not isinstance(self.lean, int) or not 0 <= self.lean < N_LEANS:
+            raise ValueError(f"lean must be an index into LEANS (0..{N_LEANS - 1}), "
+                             f"got {self.lean!r}")
 
     @property
     def box(self) -> tuple[float, float, float]:
@@ -133,18 +369,74 @@ class Segment:
 
 @dataclass(frozen=True)
 class Mount:
-    """Where a finger attaches to the palm."""
+    """Where a finger starts, and which way it leaves. Both in the palm plane.
 
-    face: str
-    u: float
-    v: float
+    ``y`` and ``z`` say WHERE the base sits, offset from PALM_CENTRE, each on
+    PALM_QUANTUM. ``facing`` says which way the finger leaves, as an angle on
+    ANGLE_QUANTUM. Where it sits and where it points are separate on purpose: a
+    thumb reaches across the palm, so they are not the same question.
+
+    CARTESIAN, where this used to be polar -- a radius on the 5 mm grid and a
+    bearing on the 15 degree one. Polar made the ring and MAX_MOUNT_RADIUS
+    natural, but it sited a finger less and less precisely the further out it
+    went: one bearing step is 5.2 mm of arc at the inner rim and 18.3 mm at the
+    outer, so the far ring was placed three and a half times more coarsely than
+    the near one. On one grid in both directions every site is 5 mm from its
+    neighbours wherever it is. The ring survives as a BOUND -- see
+    ``radius`` below and check_layout -- rather than as the way a mount is
+    spelled.
+
+    ``facing`` is absolute, measured from +z like any other bearing here, NOT
+    from the radial direction. A finger at facing 0 points away from the wrist
+    whatever side of the palm it sits on.
+
+    ``facing`` and the first segment's ``lean`` overlap -- both turn the first
+    link -- which is accepted: ``facing`` turns it IN the palm plane and a lean
+    tips it OUT of that plane, so between them a finger can leave in any
+    direction without either knob doing the other's job alone.
+    """
+
+    y: float
+    z: float
+    facing: float
 
     def __post_init__(self) -> None:
-        if self.face not in FINGER_FACES:
-            raise ValueError(f"{self.face!r} is not a finger face; use {FINGER_FACES}")
-        for name in ("u", "v"):
+        for name in ("y", "z", "facing"):
             if not math.isfinite(getattr(self, name)):
                 raise ValueError(f"non-finite mount {name}")
+
+    @classmethod
+    def polar(cls, radius: float, bearing: float, facing: float,
+              *, snap: bool = True) -> "Mount":
+        """A mount from the polar pair, snapped onto the grid.
+
+        Where a finger goes is often natural to SAY in polar -- "40 mm out at
+        30 degrees" -- even though a mount is spelled in y and z. This is the
+        one place that conversion lives, so a seed, a measured hand and a test
+        all round the same way. ``snap=False`` keeps the exact point, for a hand
+        that is a measurement rather than a design.
+
+        It does not clamp: a radius outside the ring converts fine and
+        check_layout refuses it, which is the caller's business to handle.
+        """
+        y, z = radius * math.sin(bearing), radius * math.cos(bearing)
+        if snap:
+            y = round(y / PALM_QUANTUM) * PALM_QUANTUM
+            z = round(z / PALM_QUANTUM) * PALM_QUANTUM
+        return cls(y=y, z=z, facing=facing)
+
+    @property
+    def radius(self) -> float:
+        """How far out the base sits. Derived now, and still what the annulus
+        bounds -- MAX_MOUNT_RADIUS is a reach, so it stays a circle even though
+        the grid under it is square."""
+        return math.hypot(self.y, self.z)
+
+    @property
+    def bearing(self) -> float:
+        """Which way round the palm the base sits, from +z. Derived, and no
+        longer on any grid: it is read for reporting, not stored or snapped."""
+        return bearing_of(self.y, self.z)
 
 
 @dataclass(frozen=True)
@@ -168,13 +460,14 @@ class Finger:
 
 @dataclass(frozen=True)
 class Palm:
-    thickness: float   # x
-    width: float       # y
-    length: float      # z
+    """All that is stored of a palm. Its OUTLINE is derived from the mounts.
 
-    @property
-    def extents(self) -> tuple[float, float, float]:
-        return (self.thickness, self.width, self.length)
+    See ``palm_outline``: a palm is the convex hull of its own minimum disc and
+    of where its fingers start. There is nothing here to mutate, which is why
+    there is no longer a perturb_palm.
+    """
+
+    thickness: float   # x, the one dimension the shape does not give us
 
 
 @dataclass(frozen=True)
@@ -216,15 +509,30 @@ def with_finger(hand: Hand, i: int, finger: Finger) -> Hand:
     return replace(hand, fingers=tuple(fingers))
 
 
-def palm_center(palm: "Palm") -> tuple[float, float, float]:
+def palm_center(hand: "Hand") -> tuple[float, float, float]:
     """Centre of the palm box, in the palm frame.
 
-    The wrist face is at z = 0 and the box grows outward, so the centre tracks
-    half the length. Unlike SHARPA's measured PALM_BOX_CENTER_M this is exactly
-    centred in x and y: a generated palm is a box we author, with no asymmetry
-    to record.
+    The centroid of the derived outline, not of a box: a radial palm has no
+    symmetry to assume, since where its fingers start decides its shape. In x it
+    is still exactly centred, because the plate is extruded evenly either way.
     """
-    return (0.0, 0.0, palm.length / 2.0)
+    ring = palm_outline(hand)
+    nxt = np.roll(ring, -1, axis=0)
+    cr = ring[:, 0] * nxt[:, 1] - nxt[:, 0] * ring[:, 1]
+    area = float(cr.sum()) / 2.0
+    if abs(area) < 1e-12:
+        c = ring.mean(axis=0)
+        return (0.0, float(c[0]), float(c[1]))
+    cy = float(((ring[:, 0] + nxt[:, 0]) * cr).sum()) / (6.0 * area)
+    cz = float(((ring[:, 1] + nxt[:, 1]) * cr).sum()) / (6.0 * area)
+    return (0.0, cy, cz)
+
+
+def palm_area(hand: "Hand") -> float:
+    """Area of the derived outline, for mass and inertia."""
+    ring = palm_outline(hand)
+    nxt = np.roll(ring, -1, axis=0)
+    return abs(float((ring[:, 0] * nxt[:, 1] - nxt[:, 0] * ring[:, 1]).sum())) / 2.0
 
 
 # --- geometry --------------------------------------------------------------- Joint axes,...
@@ -248,57 +556,117 @@ def axis_of(joint: Joint) -> np.ndarray:
     if joint.axis_override is not None:
         a = np.asarray(joint.axis_override, dtype=float)
         return a / max(float(np.linalg.norm(a)), 1e-12)
-    ct, st = math.cos(joint.theta), math.sin(joint.theta)
-    cp, sp = math.cos(joint.phi), math.sin(joint.phi)
-    return np.array([cp, sp * st, sp * ct])
+    return np.array(_KIND_AXIS[joint.kind], dtype=float)
 
 
-# --- palm faces -------------------------------------------------------------
+# --- where things sit on the palm --------------------------------------------
 
-def face_frame(face: str, palm: Palm) -> tuple[np.ndarray, np.ndarray, np.ndarray,
-                                               np.ndarray, float, float]:
-    """``(centre, normal, t_u, t_v, span_u, span_v)`` for a palm face."""
-    t, w, l = palm.thickness, palm.width, palm.length
-    x = np.array([1.0, 0.0, 0.0])
-    y = np.array([0.0, 1.0, 0.0])
-    z = np.array([0.0, 0.0, 1.0])
-    table = {
-        "+y": (np.array([0.0, w / 2, l / 2]), y, x, z, t, l),
-        "-y": (np.array([0.0, -w / 2, l / 2]), -y, x, z, t, l),
-        "+z": (np.array([0.0, 0.0, l]), z, x, y, t, w),
-    }
-    if face not in table:
-        raise ValueError(f"{face!r} is not a finger face")
-    return table[face]
+def bearing_of(y: float, z: float) -> float:
+    """The bearing of a point in the palm plane, measured from +z, in [0, 2pi).
+
+    From +z because that is the direction a row of fingers tends to point, which
+    puts the arm at pi -- directly behind the hand.
+    """
+    return math.atan2(y, z) % (2.0 * math.pi)
 
 
-def face_from_normal(n: np.ndarray) -> str | None:
-    """Which finger face has this outward normal, if any."""
-    axis = int(np.argmax(np.abs(n)))
-    sign = "+" if n[axis] > 0 else "-"
-    face = f"{sign}{'xyz'[axis]}"
-    return face if face in FINGER_FACES else None
+def mount_position(mount: Mount) -> np.ndarray:
+    """Where the finger starts, in the palm frame.
+
+    Offset from PALM_CENTRE, and always in the midplane: x is 0 because a palm
+    is a flat plate and a finger starts on it, not above or below it.
+    """
+    return PALM_CENTRE + np.array([0.0, mount.y, mount.z])
 
 
-def mount_uv_bounds(face: str, palm: Palm) -> tuple[float, float, float, float]:
-    """``(u_lo, u_hi, v_lo, v_hi)`` -- the normalised box a mount may occupy."""
-    _, _, _, _, span_u, span_v = face_frame(face, palm)
-    m = MOUNT_EDGE_MARGIN
-    lo_u, hi_u = ((m / span_u, 1.0 - m / span_u) if span_u > 2 * m else (0.5, 0.5))
-    lo_v, hi_v = ((m / span_v, 1.0 - m / span_v) if span_v > 2 * m else (0.5, 0.5))
-    return lo_u, hi_u, lo_v, hi_v
+def mount_direction(mount: Mount) -> np.ndarray:
+    """Which way the finger leaves, in the palm frame.
+
+    Its own angle, NOT the direction it sits in. A thumb sits off one side and
+    reaches back across the palm, which a face normal could never say.
+    """
+    return np.array([0.0, math.sin(mount.facing), math.cos(mount.facing)])
 
 
-def mount_position(mount: Mount, palm: Palm) -> np.ndarray:
-    centre, _, t_u, t_v, span_u, span_v = face_frame(mount.face, palm)
-    return (centre
-            + (mount.u - 0.5) * span_u * t_u
-            + (mount.v - 0.5) * span_v * t_v)
+def palm_outline(hand: "Hand", arc: int = 32) -> np.ndarray:
+    """The palm as (y, z) vertices, counterclockwise. Derived, never stored.
+
+    The convex hull of two kinds of circle: the palm's own disc, of
+    PALM_MIN_RADIUS about PALM_CENTRE, and a disc of PALM_RIM about every place
+    a finger starts. So the plate always has a body, it reaches out to each
+    base, and it STOPS there -- one rim past the base, where it used to grow a
+    full 20 mm and swallow the first link whole. Hulling circles rather than
+    points is what keeps the outline smooth: there is no corner anywhere left
+    to fillet, and one finger or six fall out of the same construction.
+
+    ``arc`` is how many segments a full circle is drawn with -- a drawing
+    resolution, not a design parameter. The hull of the samples is inscribed in
+    the true outline, by 0.1 mm at the default.
+    """
+    a = np.linspace(0.0, 2.0 * math.pi, arc, endpoint=False)
+    circle = np.column_stack([np.sin(a), np.cos(a)])
+    pts = [PALM_CENTRE[1:] + PALM_MIN_RADIUS * circle]
+    pts += [mount_position(f.mount)[1:] + PALM_RIM * circle
+            for f in hand.fingers]
+    return _hull_ccw(np.vstack(pts))
 
 
-def mount_direction(mount: Mount, palm: Palm) -> np.ndarray:
-    """The face normal: a finger leaves perpendicular to the face it sits on."""
-    return face_frame(mount.face, palm)[1]
+def _hull_ccw(pts: np.ndarray) -> np.ndarray:
+    """Convex hull of 2-D points, counterclockwise, duplicates dropped.
+
+    Monotone chain. Kept hand-written rather than handed to scipy for the
+    winding: ``palm_hull`` extrudes this ring and its faces are wound off the
+    order the points come back in. It also used to be needed because a two
+    finger hand hulled two points and scipy refuses what it cannot triangulate,
+    which ``palm_outline`` no longer asks of it -- the minimum disc puts 32
+    points in whatever the hand has.
+    """
+    uniq = np.unique(np.round(pts, 9), axis=0)
+    order = np.lexsort((uniq[:, 1], uniq[:, 0]))
+    q = uniq[order]
+    if len(q) <= 2:
+        return q
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower = []
+    for v in q:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], v) <= 0:
+            lower.pop()
+        lower.append(v)
+    upper = []
+    for v in q[::-1]:
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], v) <= 0:
+            upper.pop()
+        upper.append(v)
+    return np.array(lower[:-1] + upper[:-1])
+
+
+def palm_hull(hand: "Hand") -> tuple[np.ndarray, list[tuple[int, ...]]]:
+    """The palm as ``(vertices, faces)``: the outline extruded through x.
+
+    ONE convex solid, which is what a physics engine wants -- no decomposition,
+    no union of parts, and the same shape the viewer draws.
+    """
+    ring = palm_outline(hand)
+    half = hand.palm.thickness / 2.0
+    n = len(ring)
+    verts = np.array([[-half, y, z] for y, z in ring]
+                     + [[half, y, z] for y, z in ring], dtype=float)
+    faces: list[tuple[int, ...]] = [tuple(range(n - 1, -1, -1)),
+                                    tuple(range(n, 2 * n))]
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append((i, j, j + n, i + n))
+    return verts, faces
+
+
+def palm_extents(hand: "Hand") -> tuple[float, float, float]:
+    """``(thickness, width, length)`` of the palm's bounding box."""
+    ring = palm_outline(hand)
+    lo, hi = ring.min(axis=0), ring.max(axis=0)
+    return (hand.palm.thickness, float(hi[0] - lo[0]), float(hi[1] - lo[1]))
 
 
 def _frame_from_axis(axis: np.ndarray) -> np.ndarray:
@@ -313,9 +681,9 @@ def _frame_from_axis(axis: np.ndarray) -> np.ndarray:
     return np.column_stack([a, aa, fe])
 
 
-def mount_frame(mount: Mount, palm: Palm) -> tuple[np.ndarray, np.ndarray]:
+def mount_frame(mount: Mount) -> tuple[np.ndarray, np.ndarray]:
     """``(position, R)`` for a finger's base, in the palm frame."""
-    return mount_position(mount, palm), _frame_from_axis(mount_direction(mount, palm))
+    return mount_position(mount), _frame_from_axis(mount_direction(mount))
 
 
 # --- forward kinematics -----------------------------------------------------
@@ -325,13 +693,14 @@ def forward_kinematics(finger: Finger, palm: Palm,
                        ) -> tuple[list[np.ndarray], list[tuple]]:
     """``(joint_positions, capsules)`` for one finger, in the palm frame."""
     angles = angles or {}
-    p, R = mount_frame(finger.mount, palm)
+    p, R = mount_frame(finger.mount)
     joints: list[np.ndarray] = []
     capsules: list[tuple] = []
 
     for i, seg in enumerate(finger.segments):
         joints.append(p.copy())
-        R = R @ rodrigues(axis_of(seg.joint),
+        R = R @ lean_rot(seg.lean)                      # bolt the link on
+        R = R @ rodrigues(axis_of(seg.joint),           # then the joint turns
                           seg.joint.offset + angles.get(i, 0.0))
         nxt = p + R[:, 0] * seg.length
         if seg.length > _EPS:
@@ -346,9 +715,10 @@ def joint_axes(finger: Finger, palm: Palm,
                angles: dict[int, float] | None = None) -> list[np.ndarray]:
     """Each joint's hinge axis as a unit vector in the palm frame."""
     angles = angles or {}
-    _, R = mount_frame(finger.mount, palm)
+    _, R = mount_frame(finger.mount)
     out: list[np.ndarray] = []
     for i, seg in enumerate(finger.segments):
+        R = R @ lean_rot(seg.lean)
         a = axis_of(seg.joint)
         out.append(R @ a)
         R = R @ rodrigues(a, seg.joint.offset + angles.get(i, 0.0))
@@ -358,6 +728,101 @@ def joint_axes(finger: Finger, palm: Palm,
 def fingertip(finger: Finger, palm: Palm,
               angles: dict[int, float] | None = None) -> np.ndarray:
     return forward_kinematics(finger, palm, angles)[0][-1]
+
+
+def rearmost(hand: "Hand", links=None) -> tuple[float, int | None]:
+    """``(z of the backmost point the hand owns, which finger owns it)``.
+
+    None for the finger means the palm plate owns it. At the REST pose, the same
+    convention check_base_clearance keeps: what a joint sweep then does is
+    configuration, which is the gate's business rather than the grammar's.
+
+    Exact, and cheap for both halves. The palm is the hull of circles, so its
+    backmost point is simply the backmost point of the backmost circle -- no
+    outline to build. A link is the AUTHORED capsule, whose axis is inset by a
+    radius at each end: taking the joint-to-joint span instead would call every
+    link 15 mm longer than the one the simulator builds, and refuse hands that
+    clear.
+
+    ``links`` takes a ``rest_capsules`` a caller already has. The validator runs
+    this beside check_base_clearance, which needs the same list, and walking the
+    kinematics twice per hand cost the test suite 60% of its runtime.
+    """
+    worst = PALM_CENTRE[2] - PALM_MIN_RADIUS
+    who = None
+    for i, finger in enumerate(hand.fingers):
+        z = float(mount_position(finger.mount)[2]) - PALM_RIM
+        if z < worst:
+            worst = z                     # still the PLATE, reaching that base
+    for fi, _si, a, b in (rest_capsules(hand) if links is None else links):
+        z = float(min(a[2], b[2])) - CAPSULE_RADIUS
+        if z < worst:
+            worst, who = z, fi
+    return worst, who
+
+
+def curl_authority(finger: Finger, palm: Palm) -> float:
+    """How well this finger can swing its tip INTO the palm. 0 to 1.
+
+    The one thing a finger has to do to take part in a grasp: close toward where
+    an object sits. Each joint contributes ``(axis x (tip - joint)) . GRASP_DIR``
+    -- the Jacobian column projected on the grasp direction, which is the speed
+    the tip heads for the palm per radian of that joint. Divided by the finger's
+    own reach, so a long finger gets no credit for being long.
+
+    The MAX over joints rather than the norm: the question is whether the finger
+    has a joint that closes it, not how many. The norm would rank a 4-joint
+    finger above a 3-joint one for no reason a grasp can use. In practice the
+    base joint wins that max 86% of the time and the second joint most of the
+    rest, which is what a moment arm measured from the tip will do -- so this is
+    close to asking whether the finger's FIRST joint closes it.
+
+    The absolute value is sound because JOINT_LIMIT is symmetric: a joint that
+    carries the tip away from the palm at +theta carries it in at -theta, and
+    both are reachable. It would be wrong the moment a joint got a one-sided
+    range.
+
+    Verified against a numerical derivative of the tip -- 300 random fingers,
+    every kind, lean and facing -- and the two agree to 0.013 nanometres per
+    radian. The formula is what it says it is.
+
+    Exactly 0 for a finger of roll joints, whose axes lie along their own links,
+    and for a finger of abduction joints, whose axes lie along GRASP_DIR itself
+    -- abduction spreads a hand, it never closes it. Measured at the rest pose,
+    which is one forward-kinematics call.
+    """
+    if finger.reach <= _EPS:
+        return 0.0
+    pts, _ = forward_kinematics(finger, palm)
+    axes = joint_axes(finger, palm)
+    tip = pts[-1]
+    return max(abs(float(np.cross(a, tip - p) @ GRASP_DIR))
+               for a, p in zip(axes, pts[:-1])) / finger.reach
+
+
+def curl_score(hand: "Hand") -> float:
+    """The hand's SECOND-best finger by curl authority.
+
+    Second rather than best, because a grasp needs two things closing on an
+    object -- two fingers, or one finger and the palm it presses against. One
+    good finger beside a row of dead ones is not a hand.
+
+    Cheap enough to filter sampled designs with: about 230 microseconds for a
+    whole hand. LEAP and wuji2 score 1.00, Allegro 0.87, MIDAS 0.78, and a hand
+    of nothing but roll or abduction joints scores exactly 0.
+
+    What it does NOT say is whether those two fingers can reach each other. Each
+    finger is measured on its own, so two fingers pointing in OPPOSITE
+    directions, tips 300 mm apart, both score 1.00 and the hand scores 1.00.
+    Over 80 drifted designs, 24% of the hands this calls "ok" (>= 0.35) cannot
+    bring any two fingertips within 60 mm at any uniform flex, and 3% cannot get
+    within 100. It does correlate -- the median best approach is 40 mm for the
+    "ok" hands against 54 mm for the rest -- but weakly, and a real opposition
+    test is a separate measure that nothing here does yet.
+    """
+    ranked = sorted((curl_authority(f, hand.palm) for f in hand.fingers),
+                    reverse=True)
+    return ranked[1] if len(ranked) > 1 else ranked[0]
 
 
 # --- the two measures that carry signal -------------------------------------
@@ -407,8 +872,9 @@ def base_capsules(hand: Hand) -> list[tuple[np.ndarray, np.ndarray]]:
     """Each finger's proximal link at the rest pose, as a core segment."""
     out = []
     for f in hand.fingers:
-        p0, R = mount_frame(f.mount, hand.palm)
+        p0, R = mount_frame(f.mount)
         seg = f.segments[0]
+        R = R @ lean_rot(seg.lean)
         R = R @ rodrigues(axis_of(seg.joint), seg.joint.offset)
         out.append((p0, p0 + R[:, 0] * seg.length))
     return out
@@ -455,7 +921,7 @@ def rest_capsules(hand: Hand) -> list[tuple[int, int, np.ndarray, np.ndarray]]:
 
 def mount_separations(hand: Hand) -> list[float]:
     """Pairwise distances between finger mounts, in metres."""
-    pos = [mount_position(f.mount, hand.palm) for f in hand.fingers]
+    pos = [mount_position(f.mount) for f in hand.fingers]
     return [float(np.linalg.norm(pos[i] - pos[j]))
             for i in range(len(pos)) for j in range(i + 1, len(pos))]
 
@@ -855,18 +1321,20 @@ def hand_from_urdf(urdf, joint_names, *, base_dir=None, palm=None) -> "Hand":
         chains.append(chain)
 
     index = {n: i for i, n in enumerate(wanted)}
-    fingers, faces = [], list(FINGER_FACES)
-    the_palm = palm or Palm(thickness=0.020, width=0.060, length=0.060)
+    fingers = []
+    the_palm = palm or Palm(thickness=PALM_THICKNESS)
     for k, chain in enumerate(chains):
         segs = []
         for n in chain:
             i = index[n]
             box = np.asarray(boxes[i], dtype=float)
             length = float(np.linalg.norm(box[1] - box[0]))
-            segs.append(Segment(joint=Joint(theta=0.0), length=max(length, 1e-6),
+            segs.append(Segment(joint=Joint(kind=FLEXION), length=max(length, 1e-6),
                                 token_box=tuple(map(tuple, box))))
-        face = faces[k % len(faces)]
-        u0, u1, v0, v1 = mount_uv_bounds(face, the_palm)
-        fingers.append(Finger(mount=Mount(face=face, u=0.5 * (u0 + u1), v=0.5 * (v0 + v1)),
+        # A measured hand's real mount is whatever its URDF says; this only has
+        # to be a legal, distinct place to hang each chain from.
+        bearing = (2.0 * math.pi * k / max(len(chains), 1)) % (2.0 * math.pi)
+        fingers.append(Finger(mount=Mount.polar(PALM_MIN_RADIUS + MIN_MOUNT_SEPARATION,
+                                                bearing, bearing),
                               segments=tuple(segs)))
     return Hand(palm=the_palm, fingers=tuple(fingers))

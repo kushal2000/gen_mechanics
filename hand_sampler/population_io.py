@@ -13,7 +13,6 @@ catches a file that has drifted from the sampler that wrote it.
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 
 from hand_sampler import design_space
@@ -31,7 +30,7 @@ DEFAULT_DIR = REPO_ROOT / "assets" / "populations"
 # a hand-edited file can leave them out too.
 
 def _joint_to_dict(joint: design_space.Joint) -> dict:
-    out: dict = {"theta": joint.theta, "phi": joint.phi}
+    out: dict = {"kind": design_space.JOINT_KIND_NAMES[joint.kind]}
     if joint.offset:
         out["offset"] = joint.offset
     for name in ("axis_override", "limits", "drive"):
@@ -42,9 +41,19 @@ def _joint_to_dict(joint: design_space.Joint) -> dict:
 
 
 def _joint_from_dict(data: dict) -> design_space.Joint:
+    if "theta" in data:
+        raise ValueError(
+            "this joint carries 'theta', an axis angle the design space no "
+            "longer has: a joint is one of "
+            f"{design_space.JOINT_KIND_NAMES} now. Re-derive the population, or "
+            "convert it with the version that wrote it, where the conversion is "
+            "phi=0 -> roll, (theta=0, phi=pi/2) -> flexion, "
+            "(theta=pi/2, phi=pi/2) -> abduction, and nothing else was legal.")
+    kind = data["kind"]
+    if isinstance(kind, str):
+        kind = design_space.JOINT_KIND_NAMES.index(kind)
     return design_space.Joint(
-        theta=float(data["theta"]),
-        phi=float(data.get("phi", math.pi / 2)),
+        kind=int(kind),
         offset=float(data.get("offset", 0.0)),
         axis_override=_tuple(data.get("axis_override")),
         limits=_tuple(data.get("limits")),
@@ -58,6 +67,9 @@ def _tuple(value):
 
 def _segment_to_dict(segment: design_space.Segment) -> dict:
     out: dict = {"joint": _joint_to_dict(segment.joint), "length": segment.length}
+    # Straight on is the overwhelming majority, so it stays out of the file.
+    if segment.lean:
+        out["lean"] = int(segment.lean)
     if segment.cross_section is not None:
         out["cross_section"] = list(segment.cross_section)
     if segment.meshes is not None:
@@ -73,6 +85,7 @@ def _segment_from_dict(data: dict) -> design_space.Segment:
     return design_space.Segment(
         joint=_joint_from_dict(data["joint"]),
         length=float(data["length"]),
+        lean=int(data.get("lean", 0)),
         cross_section=_tuple(data.get("cross_section")),
         meshes=_tuple(data.get("meshes")),
         token_box=None if token_box is None else tuple(tuple(row) for row in token_box),
@@ -81,25 +94,53 @@ def _segment_from_dict(data: dict) -> design_space.Segment:
 
 def hand_to_dict(hand: design_space.Hand) -> dict:
     return {
-        "palm": {"thickness": hand.palm.thickness,
-                 "width": hand.palm.width,
-                 "length": hand.palm.length},
+        "palm": {"thickness": hand.palm.thickness},
         "fingers": [
-            {"mount": {"face": finger.mount.face, "u": finger.mount.u, "v": finger.mount.v},
+            {"mount": {"y": finger.mount.y,
+                       "z": finger.mount.z,
+                       "facing": finger.mount.facing},
              "segments": [_segment_to_dict(s) for s in finger.segments]}
             for finger in hand.fingers
         ],
     }
 
 
+def _mount_from_dict(data: dict) -> design_space.Mount:
+    if "face" in data:
+        raise ValueError(
+            "this mount carries 'face', 'u' and 'v', which placed a finger on "
+            "the surface of a BOX. A palm is a disc now and a mount sits at a "
+            "(y, z) offset from its centre, with a facing for which way the "
+            "finger leaves. Re-derive the population -- there is no exact "
+            "conversion, because a box face and a disc are different shapes.")
+    if "radius" in data or "bearing" in data:
+        raise ValueError(
+            "this mount is POLAR -- a radius on the 5 mm grid and a bearing on "
+            "the 15 degree one -- and a mount is cartesian now, y and z both on "
+            "the 5 mm grid, because an angular grid sited a far finger three "
+            "and a half times more coarsely than a near one. The POSITION "
+            "converts exactly, y = radius * sin(bearing) and "
+            "z = radius * cos(bearing), and 'facing' is unchanged; but the "
+            "result does not generally land on the 5 mm grid, and snapping it "
+            "moves a base by up to 3.5 mm. Convert and re-snap deliberately "
+            "rather than having this do it silently.")
+    return design_space.Mount(y=float(data["y"]),
+                              z=float(data["z"]),
+                              facing=float(data["facing"]))
+
+
 def hand_from_dict(data: dict) -> design_space.Hand:
+    palm = dict(data["palm"])
+    if "width" in palm or "length" in palm:
+        raise ValueError(
+            "this palm carries a width and a length, which it no longer has: a "
+            "palm's outline is DERIVED from where its fingers start. Re-derive "
+            "the population.")
     return design_space.Hand(
-        palm=design_space.Palm(**{k: float(v) for k, v in data["palm"].items()}),
+        palm=design_space.Palm(**{k: float(v) for k, v in palm.items()}),
         fingers=tuple(
             design_space.Finger(
-                mount=design_space.Mount(face=finger["mount"]["face"],
-                                         u=float(finger["mount"]["u"]),
-                                         v=float(finger["mount"]["v"])),
+                mount=_mount_from_dict(finger["mount"]),
                 segments=tuple(_segment_from_dict(s) for s in finger["segments"]),
             )
             for finger in data["fingers"]

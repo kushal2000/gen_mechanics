@@ -15,6 +15,17 @@ def hand():
     return sharpa_capsule.sharpa_capsule()
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "The capsule SHARPA was built against the pre-motor constants and is no "
+    "longer a design the grammar would produce: 15 mm links against a 20 mm "
+    "floor, a mount at u = 0.6 when every mount is now on the midplane, and a "
+    "25 mm palm against a thickness tied to the capsule diameter. It is left "
+    "alone deliberately -- assets/populations/sharpa_capsule.json came from "
+    "this function and the uniform-dynamics training runs are trained on it, so "
+    "regenerating the hand would break comparability with results already "
+    "collected. There is no competing version to choose between: SHARPA is not "
+    "in commercial.HANDS and is not being fitted, so this capsule IS the "
+    "baseline and the xfail is permanent rather than a question."))
 def test_it_is_a_legal_design(hand):
     assert validate_design.check(hand) == []
 
@@ -28,20 +39,19 @@ def test_it_has_sharpas_structure(hand):
 
 
 def test_every_joint_is_pure_flexion_or_abduction(hand):
-    """theta on {0, 90}, phi = 90: exactly what the sampler draws."""
+    """Hinges only, which is exactly what the sampler draws."""
     for finger in hand.fingers:
         for seg in finger.segments:
-            assert math.isclose(seg.joint.phi, math.pi / 2)
-            assert min(abs(seg.joint.theta), abs(seg.joint.theta - math.pi / 2)) < 1e-9
+            assert seg.joint.kind in (ds.FLEXION, ds.ABDUCTION)
+            assert seg.lean == 0, "the capsule's links are all straight on"
 
 
 def test_the_mcp_pattern_is_flexion_then_abduction(hand):
     """SHARPA's MCP_FE is the parent of MCP_AA on every finger; same here."""
+    F, A = ds.FLEXION, ds.ABDUCTION
     for finger in hand.fingers[1:]:
-        thetas = [round(math.degrees(s.joint.theta)) for s in finger.segments]
-        assert thetas == [0, 90, 0, 0]
-    thumb = [round(math.degrees(s.joint.theta)) for s in hand.fingers[0].segments]
-    assert thumb == [0, 90, 0, 90, 0]
+        assert [s.joint.kind for s in finger.segments] == [F, A, F, F]
+    assert [s.joint.kind for s in hand.fingers[0].segments] == [F, A, F, A, F]
 
 
 def test_everything_sits_on_the_grammars_grid(hand):
@@ -50,8 +60,8 @@ def test_everything_sits_on_the_grammars_grid(hand):
             assert math.isclose(seg.length / ds.LINK_QUANTUM, round(seg.length / ds.LINK_QUANTUM))
             assert math.isclose(seg.joint.offset / ds.ANGLE_QUANTUM,
                                 round(seg.joint.offset / ds.ANGLE_QUANTUM), abs_tol=1e-9)
-    for v in hand.palm.extents:
-        assert math.isclose(v / ds.PALM_QUANTUM, round(v / ds.PALM_QUANTUM))
+    # the palm has no extents of its own to check: it is the hull of its own
+    # minimum disc and the mounts, so its size falls out of where they are
 
 
 def test_fingertips_land_near_sharpas(hand):
@@ -59,8 +69,16 @@ def test_fingertips_land_near_sharpas(hand):
     deviation the grammar forces, mounted on a thin face 24 mm outboard of where
     SHARPA's sits."""
     names = ("thumb", "index", "middle", "ring", "pinky")
+    # SHARPA_TIPS_MM were measured with the WRIST at z = 0; a radial palm puts
+    # its own centre there instead, so the whole hand sits one half-length
+    # further back -- less WRIST_STANDOFF, which slides that centre forward
+    # again to keep the hand out of the arm. Compare shapes, not absolute
+    # positions. What is left is small: the best-fit shift of the five tips is
+    # 6 mm in z, so the standoff lands this hand about where SHARPA's own palm
+    # is, which is some corroboration that 25 mm is the right size for it.
+    shift = np.array([0.0, 0.0, 42.5 - ds.WRIST_STANDOFF * 1000.0])
     for name, finger in zip(names, hand.fingers):
-        tip = ds.fingertip(finger, hand.palm) * 1000
+        tip = ds.fingertip(finger, hand.palm) * 1000 + shift
         err = np.linalg.norm(tip - np.array(sharpa_capsule.SHARPA_TIPS_MM[name]))
         assert err < (36.0 if name == "thumb" else 20.0), f"{name}: {err:.1f} mm"
 
