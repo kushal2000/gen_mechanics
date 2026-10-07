@@ -180,29 +180,29 @@ Only properties no generation rule can guarantee. They need the simulator's 32-s
 
 ## Commercial hands in the grammar
 
-`adapters/projection.py` expresses a real hand exactly: continuous lengths, free axes and mount poses, the URDF's limits, a lateral offset for every finger mount, a rest bend at every joint and a 10 mm radius. `adapters/conform.py` snaps it onto the grammar (`conform_to_grammar(derivation, dist, limits, resolution=)`, closed-loop, so errors do not add up along a finger), at the coarse or the fine resolution, and reports what that costs. At the fine resolution, with the one grammar's full bend support, each frame's turn about its own link and its joint axis are chosen together over the whole 5 deg rotation lattice (turning a frame about its link moves no joint, so many frames aim the link right and one usually holds a grid axis close to the hand's), aiming each link at the hand's next joint and weighing link-direction error by the bone's length and axis error by the distance to the fingertip. The viewer shows the fine conform by default.
+`adapters/projection.py` expresses a real hand exactly: continuous lengths, free axes and mount poses, the URDF's limits, a lateral offset for every finger mount, a rest bend at every joint and a 10 mm radius. `adapters/conform.py` snaps it onto the grammar (`conform_to_grammar(derivation, dist, limits, resolution=)`, closed-loop, so errors do not add up along a finger), at the coarse or the fine resolution, and reports what that costs. At the fine resolution, with the one grammar's full bend support, each frame's turn about its own link and its joint axis are chosen together over the whole 5 deg rotation lattice (turning a frame about its link moves no joint, so many frames aim the link right and one usually holds a grid axis close to the hand's), and a beam search over each finger lets a link lean a little so that the next bend lands on the grid; the cost is the sum of the joints' and fingertip's distances from the hand's plus each axis error times its distance to the fingertip. The viewer shows the fine conform by default.
 
 Fidelity, E13's metric (zero plus 64 random configurations): max joint position error mm / max joint axis error deg / max fingertip error mm; the target is 5 mm / 10 deg. The exact projection is 0 / 0 / 0 for every hand. "Coarse, before" is the coarse conform before the wider ranges (bones 15-80 mm, palm 20-80 mm); "+1 mm joint offsets" is an experiment, not in the grammar (below).
 
 | Hand | Coarse, before | Coarse | Fine | Fine within target | Fine + 1 mm joint offsets | Within the simulator limits |
 |---|---|---|---|---|---|---|
-| allegro_right | 10 / 11 / 17 | 9 / 11 / 16 | 2.8 / 0.8 / 3.1 | yes | 1.3 / 0.6 / 1.6 | yes |
-| leap_right | 15 / 20 / 29 | 16 / 20 / 31 | 2.2 / 2.5 / 4.5 | yes | 2.2 / 2.9 / 4.2 | yes |
-| barrett_bh | 18 / 2 / - | 18 / 2 / - | 5.0 / 1.6 / - | yes | 4.1 / 1.6 / - | yes |
-| ability_right | 6 / 10 / 13 | 6 / 10 / 13 | 1.6 / 4.1 / 2.4 | yes | 1.6 / 4.1 / 2.1 | yes |
-| inspire_right | 6 / 7 / 8 | 6 / 7 / 8 | 2.3 / 1.8 / 2.1 | yes | 1.1 / 1.4 / 2.2 | yes |
-| dclaw | 6 / 3 / 10 | 6 / 3 / 9 | 5.7 / 1.2 / 7.0 | no | 1.7 / 0.9 / 3.5 | yes |
-| wuji_right | 20 / 14 / 28 | 17 / 14 / 28 | 3.1 / 2.2 / 3.6 | yes | 2.1 / 2.3 / 2.3 | yes |
-| xhand_right | 8 / 7 / 9 | 6 / 7 / 9 | 4.6 / 0.6 / 7.3 | no | 1.1 / 0.7 / 1.3 | yes |
-| tesollo_dg5f_right | 11 / 7 / 16 | 11 / 7 / 15 | 1.6 / 0.9 / 2.0 | yes | 1.4 / 0.9 / 1.8 | yes |
-| orca_right | 18 / 8 / 17 | 9 / 8 / 13 | 1.3 / 2.0 / 2.3 | yes | 1.0 / 1.5 / 1.4 | yes |
-| sharpa_left_on_iiwa14 | 24 / 13 / 19 | 15 / 13 / 17 | 1.0 / 1.4 / 1.4 | yes | 1.3 / 1.6 / 1.9 | yes |
-| shadow_right_local | 20 / 6 / 21 | 10 / 6 / 12 | 1.6 / 0.9 / 2.9 | yes | 1.6 / 0.9 / 1.9 | yes |
-| svh_right | 32 / 5 / 26 | 9 / 5 / 13 | 1.6 / 1.3 / 2.0 | yes | 1.5 / 1.3 / 1.9 | no: 2 fingers on one palm joint |
-| arms_skel | 30 / 14 / - | 16 / 14 / - | 3.5 / 3.8 / - | yes | 3.9 / 3.4 / - | yes |
+| allegro_right | 10 / 11 / 17 | 9 / 11 / 16 | 2.3 / 0.4 / 2.3 | yes | 1.3 / 0.6 / 1.6 | yes |
+| leap_right | 15 / 20 / 29 | 16 / 20 / 31 | 2.5 / 2.6 / 4.5 | yes | 2.2 / 2.9 / 4.2 | yes |
+| barrett_bh | 18 / 2 / - | 18 / 2 / - | 3.7 / 1.4 / - | yes | 4.1 / 1.6 / - | yes |
+| ability_right | 6 / 10 / 13 | 6 / 10 / 13 | 1.6 / 3.4 / 2.5 | yes | 1.6 / 4.1 / 2.1 | yes |
+| inspire_right | 6 / 7 / 8 | 6 / 7 / 8 | 1.6 / 1.4 / 2.0 | yes | 1.1 / 1.4 / 2.2 | yes |
+| dclaw | 6 / 3 / 10 | 6 / 3 / 9 | 5.7 / 0.8 / 7.0 | no | 1.7 / 0.9 / 3.5 | yes |
+| wuji_right | 20 / 14 / 28 | 17 / 14 / 28 | 1.9 / 0.8 / 2.9 | yes | 2.1 / 2.3 / 2.3 | yes |
+| xhand_right | 8 / 7 / 9 | 6 / 7 / 9 | 1.9 / 1.5 / 4.8 | yes | 1.1 / 0.7 / 1.3 | yes |
+| tesollo_dg5f_right | 11 / 7 / 16 | 11 / 7 / 15 | 1.6 / 0.5 / 1.9 | yes | 1.4 / 0.9 / 1.8 | yes |
+| orca_right | 18 / 8 / 17 | 9 / 8 / 13 | 2.9 / 1.3 / 2.4 | yes | 1.0 / 1.5 / 1.4 | yes |
+| sharpa_left_on_iiwa14 | 24 / 13 / 19 | 15 / 13 / 17 | 2.4 / 0.5 / 1.7 | yes | 1.3 / 1.6 / 1.9 | yes |
+| shadow_right_local | 20 / 6 / 21 | 10 / 6 / 12 | 1.6 / 0.9 / 1.9 | yes | 1.6 / 0.9 / 1.9 | yes |
+| svh_right | 32 / 5 / 26 | 9 / 5 / 13 | 1.7 / 1.4 / 2.5 | yes | 1.5 / 1.3 / 1.9 | no: 2 fingers on one palm joint |
+| arms_skel | 30 / 14 / - | 16 / 14 / - | 2.7 / 6.0 / - | yes | 3.9 / 3.4 / - | yes |
 | coupled_finger (analytic) | 0 / 0 / - | 0 / 0 / - | 0 / 0 / - | yes | 0 / 0 / - | yes |
 
-At the fine resolution 13 of 15 hands are within 5 mm / 10 deg. DClaw and XHand miss on the fingertip (7.0 and 7.3 mm) for one reason: a small bend between two bones is not on the 5 deg rest-bend grid, whose angles from straight are 0, 5, 7.1, 10, ... deg whichever way the frames are turned. DClaw's 2.8 deg bend between its middle bones becomes 0 or 5 deg, which on a 68 mm bone puts the next joint 3-5 mm off at q = 0. A 1 mm lateral joint offset in the fine support (the `bend_offset` field `G_BEND` already has, within +/-5 mm) moves each joint onto its hand position and brings every hand inside the target (last column); a 2.5 deg bend grid would also do. Neither is in the grammar yet.
+At the fine resolution 14 of 15 hands are within 5 mm / 10 deg (most at 1.6-3 mm). DClaw misses (5.7 mm joint, 7.0 mm fingertip) because a small bend between two bones is not on the 5 deg rest-bend grid, whose angles from straight are 0, 5, 7.1, 10, ... deg whichever way the frames are turned, and near straight the only other freedom, a turn about the link, comes in 5 deg steps too, so the joint axis cannot be matched at the same time. DClaw's 2.8 deg bend between its middle bones becomes 0 deg with an accurate axis (the search prefers it: the axis has a 152 mm lever to the fingertip), which on a 68 mm bone puts the next joint 5 mm off at q = 0. A 1 mm lateral joint offset in the fine support (the `bend_offset` field `G_BEND` already has, within +/-5 mm) moves each joint onto its hand position and brings every hand inside the target (last column, measured without the beam search); a 2.5 deg bend grid would also do. Neither is in the grammar yet.
 
 Every conformed hand (fine) derives, lies on the fine grid, is in `coverage(..., resolution="fine")` support, keeps the palm rule, is within `SIMULATOR` except SVH, and every fine operator acts on it (`grammar_bench/tests/test_conform.py`). On hands conformed to the grammar the coarse operators that cannot act are the structural ones a drawn hand of the same shape also lacks (no branch finger, no coupled joint, no palm part to make rigid or jointed); "add a short finger" and "add a palm part" need a free finger slot.
 
@@ -216,7 +216,7 @@ Features the real hands need, against the grammar before 2026-10-06, and their s
 | two joints at one point (a 0 mm bone) | 7: barrett, orca, sharpa, shadow, svh, arms, coupled_finger | bones down to 0 mm; the overlap check and authoring treat the bodies on either side as adjacent | in the grammar and the envelope |
 | bone lengths outside 15-80 mm; a palm longer than 80 mm | 3; 2 | bones 0-90 mm, palm 15-160 mm (support), finger length capped at 250 mm | in the grammar |
 | thumb below the palm's origin | most | conform slides the root frame along its own axis (an exact re-expression) | done in `conform_to_grammar` |
-| the 15 deg grid for mounts, bends and axes | all | the fine stage (5 deg) | done; DClaw and XHand still need a lateral joint offset or a finer bend grid (above) |
+| the 15 deg grid for mounts, bends and axes | all | the fine stage (5 deg) | done; DClaw still needs a lateral joint offset or a finer bend grid (above) |
 | a mount beyond a palm part's ends | 1: svh | mount positions beyond [0, 1] on palm parts | reported only |
 | coupled (mimic) joints | 5: ability, inspire, svh, arms, coupled_finger | none for the simulator; elsewhere the projection could emit `Coupled` modules | reported |
 | two fingers on one palm joint (SVH's j5) | 1 | a carrier slot with two finger chains in the envelope | pending: no fixed 32-slot layout fits both SVH (2 fingers on one palm joint + 3 rigid) and arms_skel (2 palm joints with 1 finger each + 3 rigid); the options (keep 32 slots and move one chain, dropping "2 palm joints + 3 rigid fingers"; 6 chains x 5 joints + 2; 6 x 6 + 2 = 38) are Martin's call. `test_generation_limits.py` pins today's slot layout of every admitted design and makes SIMULATOR follow the envelope's `MAX_DIGITS_PER_CARRIER`, ready to switch on |

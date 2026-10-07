@@ -339,6 +339,73 @@ def fine_frame_and_axis(R_parent: np.ndarray, R_target: np.ndarray, axis_space: 
     return tuple(float(v) for v in trip[k]), R_parent @ M[k], _canonical_fine_axis(best_ax[j])
 
 
+def _frame_candidates(R_parent: np.ndarray, z_target: np.ndarray, axis_space: np.ndarray, box, link_m: float,
+                      lever_m: float, n_best: int = 6) -> List[Tuple[float, int, np.ndarray, Tuple[float, float, float]]]:
+    """The candidate frames of one joint for ``_fine_chain``: the ``n_best``
+    cheapest by ``link_m`` x link-direction error + ``lever_m`` x axis error
+    (as ``fine_frame_and_axis``), plus the cheapest whose link deliberately
+    misses ``z_target`` by 1-2, 2-3 or 3-4 deg (so the next bend, which the
+    5 deg grid quantises near straight to 0, 5, 7.1, ... deg, can land on the
+    grid). Returns (axis cost in m, lattice index, frame rotation, axis)."""
+    trip, M = _fine_lattice(box)
+    zl = R_parent.T @ z_target
+    z_err = np.arccos(np.clip(M[:, :, 2] @ zl, -1.0, 1.0))
+    near = np.argpartition(z_err, 2048)[:2048] if len(z_err) > 2048 else np.arange(len(z_err))
+    a = R_parent.T @ (axis_space / max(np.linalg.norm(axis_space), 1e-12))
+    local = np.einsum("kji,j->ki", M[near], a)
+    best_ax, ax_err = _nearest_fine_axes(local)
+    cost = max(link_m, 1e-3) * z_err[near] + max(lever_m, 1e-3) * ax_err
+    order = list(np.argsort(cost)[:n_best])
+    zdeg = np.degrees(z_err[near])
+    for lo, hi in ((1.0, 2.0), (2.0, 3.0), (3.0, 4.0)):
+        band = np.where((zdeg >= lo) & (zdeg < hi))[0]
+        if len(band):
+            order.append(int(band[np.argmin(cost[band])]))
+    out, seen = [], set()
+    for j in order:
+        k = int(near[j])
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append((max(lever_m, 1e-3) * float(ax_err[j]), k, R_parent @ M[k], _canonical_fine_axis(best_ax[j])))
+    return out
+
+
+def _fine_chain(origin0: np.ndarray, R_host: np.ndarray, targets: Sequence[np.ndarray], axes_space: Sequence[np.ndarray],
+                levers: Sequence[float], box, lrange: Tuple[float, float], grid: float, width: int = 6):
+    """Frames, axes and lengths for one digit at the fine resolution, chosen
+    over the whole chain by a beam search: joint k sits where the previous
+    link ends, its frame comes from ``_frame_candidates`` (aimed at the next
+    target), and the cost is the sum of every joint's and the fingertip's
+    distance from the hand's own (``targets``: the hand's joints 1..n-1 and
+    fingertip) plus each axis error times its lever. A single joint cannot
+    hold a small bend (the 5 deg grid has none between 0 and 5 deg), but the
+    link before it can lean a little so the bend lands on the grid; this
+    spreads that error over the chain. Returns [(rpy, rotation, axis, length)]
+    per joint (the first rpy relative to ``R_host``, the rest relative to the
+    previous frame)."""
+    trip_full, _ = _fine_lattice(None)
+    beam = [(0.0, np.asarray(origin0, dtype=float), np.asarray(R_host, dtype=float), [])]
+    n = len(axes_space)
+    for k in range(n):
+        new = []
+        bx = None if k == 0 else box
+        trip = trip_full if k == 0 else _fine_lattice(box)[0]
+        for cost, origin, R_par, chosen in beam:
+            nxt = targets[k]
+            d = nxt - origin
+            dist_ = float(np.linalg.norm(d))
+            zt = d / dist_ if dist_ > 1e-3 else R_par[:, 2]
+            for ax_cost, idx, R, axis in _frame_candidates(R_par, zt, axes_space[k], bx, dist_, levers[k]):
+                L = _snap_length(float(np.dot(nxt - origin, R[:, 2])), lrange, grid)
+                end = origin + R[:, 2] * L
+                c = cost + ax_cost + float(np.linalg.norm(end - nxt))
+                new.append((c, end, R, chosen + [(tuple(float(v) for v in trip[idx]), R, axis, L)]))
+        new.sort(key=lambda t: t[0])
+        beam = new[:width]
+    return beam[0][3]
+
+
 def _snap_frac_fine(local_z: float, L: float) -> float:
     if L <= 1e-12:
         return 0.0
@@ -898,9 +965,20 @@ def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len,
         return float(np.linalg.norm(end - T0[f"d{did}p{k + 1}"][:3, 3]))
 
     fine_axes: Dict[int, Tuple[float, float, float]] = {}
-    if fine_joint:
+    chain = None
+    n_ph = p["phalanx_count"]
+    if fine_joint and all(tuple(o) == (0.0, 0.0) for o in dist.bend_offset_choices_m):
+        # the whole finger at once (``_fine_chain``)
+        off0 = p.get("mount_offset", (0.0, 0.0))
+        origin = (T[host] @ _trans(off0[0], off0[1], f * host_len[host]))[:3, 3]
+        targets = [T0[f"d{did}p{k + 2}"][:3, 3] for k in range(n_ph - 1)] + [tip0[f"d{did}p{n_ph}"][:3, 3]]
+        axes_space = [T0[f"d{did}p{k + 1}"][:3, :3] @ np.asarray(steps[phalanges[did][k]].params["module"]["axis"],
+                                                                 dtype=float) for k in range(n_ph)]
+        chain = _fine_chain(origin, T[host][:3, :3], targets, axes_space, [reach_to_tip(k) for k in range(n_ph)],
+                            bend_box, lrange, grid)
+        mount_rpy, R_mount, fine_axes[0] = chain[0][0], T[host][:3, :3] @ rpy_to_matrix(chain[0][0]), chain[0][2]
+    elif fine_joint:
         a_space = R_target @ np.asarray(q0["module"]["axis"], dtype=float)
-        n_ph = p["phalanx_count"]
         nxt = T0[f"d{did}p2"][:3, 3] if n_ph > 1 else tip0[b0][:3, 3]
         off0 = p.get("mount_offset", (0.0, 0.0))
         origin = (T[host] @ _trans(off0[0], off0[1], f * host_len[host]))[:3, 3]
@@ -968,7 +1046,14 @@ def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len,
             if "bends" in exact:
                 br, br_off, ea = tuple(float(v) for v in matrix_to_rpy(Rrel)), (float(want[0]), float(want[1])), 0.0
             else:
-                if fine_joint:
+                if chain is not None:
+                    br, br_off, fine_axes[k] = chain[k][0], (0.0, 0.0), chain[k][2]
+                    R_new = prev[:3, :3] @ rpy_to_matrix(br)
+                    nxt = T0[f"d{did}p{k + 2}"][:3, 3] if k < n - 1 else tip0[body][:3, 3]
+                    zdir = _direction(nxt - (prev @ _trans(0.0, 0.0, L_prev))[:3, 3])
+                    # a 0 mm link has no direction to keep
+                    ea = 0.0 if zdir is None else _angle_between(R_new[:, 2], zdir)
+                elif fine_joint:
                     a_space = T0[body][:3, :3] @ np.asarray(q["module"]["axis"], dtype=float)
                     _, br_off, _ = _snap_bend_fine(np.eye(3), want, dist, [[0.0]] * 3)
                     origin = (prev @ _trans(br_off[0], br_off[1], L_prev))[:3, 3]

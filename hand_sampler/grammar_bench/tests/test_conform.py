@@ -315,9 +315,10 @@ def test_the_one_grammar_contains_the_hands(hand_id):
 # Hands that miss the 5 mm / 10 deg target at the fine resolution, and why (see
 # the README): a small bend between two bones (DClaw's 2.8 deg) is not on the
 # 5 deg rest-bend grid, whose angles from straight are 0, 5, 7.1, 10, ... deg,
-# so on a long bone the next joint lands a few millimetres off. A 1 mm lateral
-# joint offset (``bend_offset``) in the fine support brings every hand inside.
-FINE_MISSES = {"dclaw", "xhand_right"}
+# and near straight the joint axis cannot be matched as well, so on a long
+# bone the next joint lands a few millimetres off. A 1 mm lateral joint offset
+# (``bend_offset``) in the fine support brings every hand inside.
+FINE_MISSES = {"dclaw"}
 
 
 def _fine_on_grid(d):
