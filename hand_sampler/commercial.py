@@ -544,6 +544,14 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
         if slip > 1.0:
             notes.append(f"{d.name}: base {slip:.0f} mm from where the vendor "
                          f"puts it, after the grid and the motor floor")
+        # Every mount is on the palm's midplane, so whatever the vendor had
+        # ACROSS it is dropped -- silently, until hand_sampler.overlay_fits drew
+        # the two hands together. LEAP's row is 6 mm off it, MIDAS's 10, and
+        # Allegro's thumb 18.
+        off = abs(float(to_palm(d.pos[0])[0])) * 1000
+        if off > 1.0:
+            notes.append(f"{d.name}: base {off:.0f} mm off the palm midplane, "
+                         f"which a mount cannot express")
     for reason in reasons:
         notes.append(f"NOT A LEGAL DESIGN: {reason}")
     return hand, notes

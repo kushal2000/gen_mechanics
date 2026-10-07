@@ -257,6 +257,10 @@ plus notes on every way it is not the vendor's.
 | `midas` | 4 / 16 | 0.78 | 4.3 / 6.0 mm | 27.8 mm | yes |
 | `allegro` | 4 / 16 | 0.87 | 2.2 / 3.0 mm | 27.4 mm | yes |
 
+`python -m hand_sampler.overlay_fits` draws all four, the fit solid over the
+vendor's own meshes in ghost, which is the quickest way to see *where* a fit
+went wrong rather than by how much.
+
 Three things worth knowing before trusting a fit:
 
 * **`_straighten` slides joint origins along their own axes**, which is
@@ -271,6 +275,10 @@ Three things worth knowing before trusting a fit:
   *exactly nothing* — 0.0 µm. It is not a hand anyone should build; the
   separator simply stops the moment it clears. Generated hands do not do this:
   over 60 drifted designs the median clearance was 13.6 mm.
+* **Every vendor's bases sit off the palm midplane** and a mount cannot say
+  so — 6 mm across LEAP's row, 10 across MIDAS's, 18 on Allegro's thumb. A
+  mount is a (y, z) offset in one plane, so that component is dropped. It is
+  in the fit's notes, and the overlay is what made it visible.
 * **Allegro's base joints read `roll`, and that is correct.** Its axis is along
   the finger's own direction, so at full extension that joint moves the tip
   0.0 mm; driven ±20° it sweeps 41 mm at 15° of flex and 71 mm at 45°. The

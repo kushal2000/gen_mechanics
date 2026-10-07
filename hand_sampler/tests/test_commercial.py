@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import re
 
 import numpy as np
 import pytest
@@ -121,6 +122,37 @@ def test_every_digit_has_a_real_fingertip(name):
 
 
 # --- what the fit costs, per hand -------------------------------------------
+
+@pytest.mark.parametrize("name", commercial.HANDS)
+def test_the_overlay_puts_both_hands_in_the_same_frame(name, fits):
+    """hand_sampler.overlay_fits draws the vendor under the fit, and a picture
+    of two hands in different frames would be a convincing lie.
+
+    The check is that its transform and the fit's own reported base slip are the
+    same quantity by two routes: the fit works in the palm plane throughout,
+    while the overlay rotates the vendor's whole geometry and then measures. If
+    the frame convention drifted, these would separate.
+
+    In-plane only, because that IS the fit's number. What the overlay adds is
+    the other component -- the vendor's bases sit up to 18 mm off the palm
+    midplane and a mount cannot say so, which is in the notes now because
+    drawing the two hands together is what made it visible.
+    """
+    from hand_sampler import overlay_fits
+
+    hand, notes = fits[name]
+    inplane, offplane = overlay_fits.alignment_error(name, hand)
+    reported = {n.split(":")[0]: float(re.search(r"base (\d+) mm from where", n).group(1))
+                for n in notes if "from where the vendor" in n}
+    M, order = _vendor(name)
+    for d, got in zip(order, inplane):
+        want = reported.get(d.name, 0.0)        # the fit reports only above 1 mm
+        assert abs(got - want) <= 1.0, (
+            f"{name} {d.name}: the overlay puts the vendor base {got:.1f} mm "
+            f"from the mount, the fit reports {want:.0f} -- the two are not in "
+            f"the same frame")
+    assert offplane.max() < 25.0, "a base this far off the midplane wants looking at"
+
 
 @pytest.mark.parametrize("name", commercial.HANDS)
 def test_every_vendor_hand_clears_the_arm(name, fits):
