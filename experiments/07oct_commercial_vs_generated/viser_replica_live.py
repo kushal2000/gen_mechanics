@@ -30,6 +30,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 WORKER = REPO / "experiments/01oct_unified_rl/viser_compare.py"
 sys.path.insert(0, str(WORKER.parent))
 REPLICAS = REPO / "assets/urdf/unified_dynamics_commercial_hands_replicas/wuji2"
+VENDOR_EXTENTS = "[0.03542,0.07649,0.08798]"   # Wuji v2's palm box (onboarded spec), metres
 CKPT = ("debug_outputs/train_logs/06oct_wuji2_multi_embodiment/0_scale_train_wuji2_lr_2plus_ema0.1_c01_*_31826_0_*"
         "/rank_0/*/nn/last_*_ep_5000_*.pth")
 
@@ -48,8 +49,8 @@ def hands() -> dict[str, str]:
 class Panel:
     """One side: a hand dropdown, its worker, and its drawing under /p<i>."""
 
-    def __init__(self, server, i: int, x: float, opts: dict, initial: str, policy: str):
-        self.server, self.i, self.x, self.opts, self.policy = server, i, x, opts, policy
+    def __init__(self, server, i: int, x: float, opts: dict, initial: str, policy: str, sets: list):
+        self.server, self.i, self.x, self.opts, self.policy, self.sets = server, i, x, opts, policy, sets
         self.authkey = secrets.token_bytes(16)
         self.listener = Listener(("127.0.0.1", 0), authkey=self.authkey)
         with server.gui.add_folder(f"{'left' if i == 0 else 'right'} hand"):
@@ -86,6 +87,8 @@ class Panel:
         host, port = self.listener.address
         cmd = [sys.executable, str(WORKER), "--worker", "--hand", self.opts[self.current], "--host", host,
                "--wport", str(port), "--authkey", self.authkey.hex(), "--policy", self.policy]
+        for kv in self.sets:
+            cmd += ["--set", kv]
         self.child = subprocess.Popen(cmd, env={**os.environ, "OMNI_KIT_ACCEPT_EULA": "YES"})
         self.conn = self.listener.accept()
 
@@ -152,6 +155,8 @@ def main():
     ap.add_argument("--port", type=int, default=8084)
     ap.add_argument("--spacing", type=float, default=0.32)
     ap.add_argument("--right", default="replica: clone", help="the right panel's starting hand")
+    ap.add_argument("--own-palm-extents", action="store_true",
+                    help="let each hand report its own palm_extents (default: the vendor's, for every hand)")
     args = ap.parse_args()
 
     import viser
@@ -161,8 +166,12 @@ def main():
     opts = hands()
     server = viser.ViserServer(port=args.port)
     print(f"\n[replica-live] viser on http://{socket.gethostname()}:{args.port}  ({len(opts)} hands)\n", flush=True)
-    panels = [Panel(server, 0, -args.spacing / 2, opts, "Wuji v2 (vendor)", policy),
-              Panel(server, 1, args.spacing / 2, opts, args.right if args.right in opts else list(opts)[-1], policy)]
+    # The 52-hand policy collapses on any palm_extents but Wuji's (it never varied in training; README), so by default
+    # both panels report the vendor's palm size to the policy -- the obs.palm_extents_override test setting.
+    sets = [] if args.own_palm_extents else [f"env.obs.palm_extents_override={VENDOR_EXTENTS}"]
+    panels = [Panel(server, 0, -args.spacing / 2, opts, "Wuji v2 (vendor)", policy, sets),
+              Panel(server, 1, args.spacing / 2, opts, args.right if args.right in opts else list(opts)[-1], policy,
+                    sets)]
     with server.gui.add_folder("playback (both)"):
         b_pause = server.gui.add_button("pause / resume")
         b_reset = server.gui.add_button("reset")

@@ -67,6 +67,8 @@ def parse():
     ap.add_argument("--host", default="")
     ap.add_argument("--wport", type=int, default=0)
     ap.add_argument("--authkey", default="")
+    ap.add_argument("--set", action="append", default=[],
+                    help="key=value config override, e.g. env.obs.palm_extents_override=[0.035,0.076,0.088] (repeatable)")
     a = ap.parse_known_args()[0]
     if not a.policy and a.hand == "gen_sharpa":
         # gen-SHARPA has no policy of the same observation; compare against SHARPA's, its source hand.
@@ -121,6 +123,10 @@ def _loop(args, conn):
         label, ck = p.split("=", 1)
         saved = OmegaConf.load(pathlib.Path(ck).parents[3] / "rank_0/.hydra/config.yaml")
         saved.env.assets.robot_spec = spec_name           # the network is built for THIS hand's joints
+        for kv in args.set:
+            import ast
+            key, val = kv.split("=", 1)
+            OmegaConf.update(saved, key.strip(), ast.literal_eval(val.strip()), force_add=True)
         if args.hand == "gen_sharpa":
             for k, v in GEN_SHARPA_ACTUATOR.items():
                 saved.env.physics[k] = v
