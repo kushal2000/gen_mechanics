@@ -19,12 +19,15 @@ The grammar combines our grammar (`martin/hand-grammar`), Vatsal's physical gram
 - Position (y, z) on the plate's plane; facing = the in-plane direction the finger leaves in (Vatsal's `Mount(y, z, facing)`); plus one tilt out of the plate's plane.
 - **Why:** four numbers instead of our five (host, fraction along it, sideways offset, three mount angles), and no dependence on a host link now that the palm is a hull. Vatsal's facing alone keeps every finger in the plate's plane; the added tilt lets a thumb angle across the palm.
 
-### 3. Joint axes: a kind in the coarse stage, plus a small tilt in the fine stage
-- Coarse: every joint has a kind, fixed relative to its link: flexion (closes toward the palm), abduction (spreads), roll (spins about the link) (Vatsal's three kinds).
-- Sign convention (Kushal's): + = flex toward the grasp point, + = spread toward +y, 0 = home.
-- Fine: the axis may tilt away from its kind in 5 degree steps, up to +/-15 degrees in each of two directions. Every hand starts at zero tilt; the coarse stage never changes it.
-- **Why:** with free axes (our grammar), nothing made "positive" mean "curl": the curl rule only kept each axis roughly perpendicular to its bone, and its direction around the bone was random, so random fingers curled only through the rest bends. Kinds make positive always mean curl. Kinds alone (Vatsal's grammar) cannot express slightly angled axes, such as fingers that converge as they curl; the fine tilt covers those without changing what positive means, and should bring the commercial fits back near 5 mm. If commercial hands need more than 15 degrees, report it with numbers before widening it.
-- This also settles item 18 (closer commercial fits): the fine tilt, measured before it is final.
+### 3. Joint axes: a direction (two angles in the link's frame), stepped like every other angle; kinds are derived labels
+- The axis is a direction in the link's frame, two angles on the same grid as every other angle: 30 degrees coarse, 5 degrees fine. There is no separate kind parameter, no kind-switch operator and no tilt cap.
+- Kinds (Vatsal's three: flexion closes toward the palm, abduction spreads, roll spins about the link) are labels computed from the direction, and are used for three things:
+  1. **Sign:** positive is set by the convention, not stored: if the joint can close the finger at all, positive closes it toward the grasp point; otherwise + spreads toward +y; 0 = home (Kushal's convention, generalised).
+  2. **Range:** a joint takes the global range of its nearest kind (item 5).
+  3. **Random draw:** a new joint starts exactly on a kind, chosen with the commercial hands' mix of kinds (measured in `palm-and-axis-study.md`).
+- Oblique axes (between two kinds, e.g. a thumb base angled so the thumb sweeps across the palm as it closes) are allowed anywhere on the 5 degree grid.
+- **Why:** with free axes as before, nothing made "positive" mean "curl", and random fingers curled only through the rest bends; the computed sign and the kind-based random draw fix that. Vatsal's fixed kinds cannot express oblique axes, and kinds plus a capped tilt (an earlier draft of this item) needed three different step types (a 90 degree switch, a coarse tilt and a fine tilt) and still could not reach a 45 degree thumb axis. Treating the axis like every other angle gives one rule for all parameters: coarse 10 mm or 30 degrees, fine 1 mm or 5 degrees. Commercial hands fit on the 5 degree grid with no cap.
+- This settles item 16 (no kind-switch operator) and supersedes item 18.
 
 ### 4. No angles between links (no rest bends, no leans)
 - At the zero pose every link continues straight from the one before; a finger is a straight line at rest and bends only through its joints.
@@ -85,15 +88,15 @@ The grammar combines our grammar (`martin/hand-grammar`), Vatsal's physical gram
 | finger facing and tilt | 30 degrees | 5 degrees |
 | palm joint hinge position | 10 mm | 1 mm |
 | palm joint axis | 30 degrees | 5 degrees |
-| joint axis tilt (item 3) | none | 5 degrees, up to +/-15 |
+| joint axis direction (item 3) | 30 degrees | 5 degrees |
 
 No coupling step (one global ratio, 7b). Every coarse value lies on the fine grid.
 - **Why:** Martin wanted the coarse stage coarser; the 2026-09-18 meeting noted that mutations were not large enough between generations, and the coarse stage is the one meant to explore.
 
-### 16 (partly). Coupling toggle, and split/merge for joints
+### 16. Changing a joint: step its axis direction, toggle its coupling; split/merge to add or remove it
 - A mutation can switch a joint between independent and coupled to the joint before it (ratio 1.1). Adding and removing joints is split and merge (item 15).
 - **Why:** with one global ratio, coupling is a yes/no property of a joint, so one toggle covers it.
-- Still open: switching a joint's kind in place (see below).
+- No kind-switch operator: the axis direction is stepped directly (item 3).
 
 ### 6 (shape). Links are rounded boxes, one cross-section for every link of every hand
 - Built in the simulator as an 8-vertex convex hull of the core box (outer size minus 2r) with PhysX `restOffset = r` and `contactOffset = r + 2 mm`, mass and inertia authored explicitly.
@@ -107,7 +110,6 @@ No coupling step (one global ratio, 7b). Every coarse value lies on the fine gri
 - **Why:** mechanically, two co-located joints are convenient (one two-axis module) while joints a few millimetres apart are awkward, and longer links are easy again since motors stack in series (Martin). The floor is set by the commercial hands, not by a motor (principle above): Vatsal's motor-derived 20 mm floor would reject 13 real bones in 7 hands (Allegro 16.4, Inspire 16.8, XHand 17.8, LEAP 19.3, Wuji's thumb 16.1 mm, ...). With 15 mm every commercial bone fits except knuckle offsets of 4.6 mm (Wuji v1) and 5.0 mm (SHARPA), which snap to 0 mm within the 5 mm fit target, and the ARMS skeleton model's 9.3 mm. The shortest real fingertip link is SVH's 14.0 mm (the next is 25 mm), so the tip floor is 10 mm rather than Vatsal's 15 mm. The longest real link is DClaw's 84 mm. 27 of the 220 real bones are 0 mm.
 
 ## Still to decide
-- Mount area and palm plate thickness: from the commercial extremes (measured during the build), no motor numbers.
-16. Switching a joint's kind in place: in the kind grammar this is the only coarse axis step (the three kinds are 90 degrees apart and the fine tilt stops at 15), so it is not redundant with axis steps; proposed weighting by the commercial hands' mix of kinds (to be measured; expected about 70% flexion, 25% abduction, 5% roll).
+- Mount area (how far finger bases may sit from the palm centre) and palm plate thickness: commercial extremes with a margin (smallest x 0.9, largest x 1.1), measurement in progress (`palm-and-axis-study.md`).
 
 Checks come after the grammar and the Evolution Rules. Candidates: the overlap check, Vatsal's curl score, Martin's thumb-finger workspace overlap, and an opposition test (none exists yet).
