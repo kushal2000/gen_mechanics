@@ -1,0 +1,444 @@
+{
+ "format": 1,
+ "name": "wuji2_left_replica_palm",
+ "count": 1,
+ "provenance": {
+  "created_at": "2026-10-07T16:44:39+00:00",
+  "git_commit": "411b4fffed421ae9f5e77d7710505935c271ea88",
+  "method": "commercial.fit",
+  "source": "hand_sampler.commercial",
+  "vendor_urdf": "assets/urdf/unified_dynamics_commercial_hands/wuji2/wuji2_left.urdf",
+  "notes": [
+   "bases spread to 50 mm rather than the 35 mm floor: at the floor this hand's LINKS still met",
+   "l_index_finger_mcp_flex: link 0 14.5 -> 20 mm (the 20 mm floor)",
+   "l_middle_finger_mcp_flex: link 0 14.5 -> 20 mm (the 20 mm floor)",
+   "l_ring_finger_mcp_flex: link 0 14.5 -> 20 mm (the 20 mm floor)",
+   "l_pinky_mcp_flex: link 0 14.5 -> 20 mm (the 20 mm floor)",
+   "l_index_finger_mcp_flex: base 15 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_index_finger_mcp_flex: base 3 mm off the palm midplane, which a mount cannot express",
+   "l_middle_finger_mcp_flex: base 20 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_middle_finger_mcp_flex: base 8 mm off the palm midplane, which a mount cannot express",
+   "l_ring_finger_mcp_flex: base 29 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_ring_finger_mcp_flex: base 5 mm off the palm midplane, which a mount cannot express",
+   "l_pinky_mcp_flex: base 34 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_thumb_cmc_flex: base 11 mm from where the vendor puts it, after the grid and the motor floor",
+   "l_thumb_cmc_flex: base 5 mm off the palm midplane, which a mount cannot express"
+  ],
+  "gen_joint_drive": [
+   0.5,
+   5.0,
+   3.0,
+   0.0775033248319064,
+   0.00058
+  ],
+  "fidelity": [
+   "limits",
+   "axes",
+   "zero",
+   "palm"
+  ]
+ },
+ "designs": [
+  {
+   "palm": {
+    "thickness": 0.03541884757578373,
+    "outline": [
+     [
+      -0.038247328251600266,
+      -0.018991686310619114
+     ],
+     [
+      0.038247328251600266,
+      -0.018991686310619114
+     ],
+     [
+      0.038247328251600266,
+      0.06899168631061911
+     ],
+     [
+      -0.038247328251600266,
+      0.06899168631061911
+     ]
+    ]
+   },
+   "fingers": [
+    {
+     "mount": {
+      "y": -0.045,
+      "z": 0.03,
+      "facing": 6.021385919380436
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": 0.6842615600810612,
+        "axis_override": [
+         -0.016940457137020987,
+         -0.1573677545234151,
+         0.9873947593279231
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.02,
+       "lean": 2
+      },
+      {
+       "joint": {
+        "kind": "abduction",
+        "offset": -0.7575305028577064,
+        "axis_override": [
+         -0.051576802564296025,
+         -0.9843865425885212,
+         -0.1682942904790922
+        ],
+        "limits": [
+         -0.698,
+         0.698
+        ]
+       },
+       "length": 0.04,
+       "lean": 3
+      },
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": -0.051599697128986245,
+        "axis_override": [
+         8.991109590057271e-13,
+         -0.16851858349318338,
+         0.985698476724729
+        ],
+        "limits": [
+         -1.047,
+         2.094
+        ]
+       },
+       "length": 0.03
+      },
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": -5.160599639610651e-14,
+        "axis_override": [
+         8.990987181392844e-13,
+         -0.16851858349318338,
+         0.985698476724729
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.025
+      }
+     ]
+    },
+    {
+     "mount": {
+      "y": 0.0,
+      "z": 0.055,
+      "facing": 0.0
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": -0.9019763602488527,
+        "axis_override": [
+         -0.007383962475162821,
+         0.008395465035244208,
+         0.9999374946790461
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.02,
+       "lean": 1
+      },
+      {
+       "joint": {
+        "kind": "abduction",
+        "offset": 0.7941234186342687,
+        "axis_override": [
+         0.052018169984109706,
+         -0.9965472152701024,
+         0.0647128868843645
+        ],
+        "limits": [
+         -0.698,
+         0.698
+        ]
+       },
+       "length": 0.04,
+       "lean": 4
+      },
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": 0.05204165783644972,
+        "axis_override": [
+         -9.225236494482872e-13,
+         0.06480061794448999,
+         0.9978982312410482
+        ],
+        "limits": [
+         -1.047,
+         2.094
+        ]
+       },
+       "length": 0.03
+      },
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": 5.211295389234818e-14,
+        "axis_override": [
+         -9.225225369465482e-13,
+         0.06480061794448999,
+         0.9978982312410482
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.025
+      }
+     ]
+    },
+    {
+     "mount": {
+      "y": 0.02,
+      "z": 0.0,
+      "facing": 0.2617993877991494
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": 0.7022406241591233,
+        "axis_override": [
+         0.03647279723566119,
+         0.13204980999554095,
+         0.9905718463301629
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.02,
+       "lean": 2
+      },
+      {
+       "joint": {
+        "kind": "abduction",
+        "offset": 0.7409788165411616,
+        "axis_override": [
+         -0.03267820092752932,
+         -0.9882465590475944,
+         0.14933477061531797
+        ],
+        "limits": [
+         -0.698,
+         0.698
+        ]
+       },
+       "length": 0.04,
+       "lean": 4
+      },
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": -0.032684019707597274,
+        "axis_override": [
+         -8.770346935922184e-13,
+         0.14941456920529408,
+         0.9887746388885571
+        ],
+        "limits": [
+         -1.047,
+         2.094
+        ]
+       },
+       "length": 0.03
+      },
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": -3.2703405813475885e-14,
+        "axis_override": [
+         -8.770272386988893e-13,
+         0.14941456920529408,
+         0.9887746388885571
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.025
+      }
+     ]
+    },
+    {
+     "mount": {
+      "y": 0.06,
+      "z": 0.035,
+      "facing": 0.2617993877991494
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": -0.05734803774049512,
+        "axis_override": [
+         0.010506173750635341,
+         0.13142468735280202,
+         0.9912704837063091
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.02
+      },
+      {
+       "joint": {
+        "kind": "abduction",
+        "offset": 0.7698645584460853,
+        "axis_override": [
+         -0.033647470226091374,
+         -0.9880562357217932,
+         0.15037527322889407
+        ],
+        "limits": [
+         -0.698,
+         0.698
+        ]
+       },
+       "length": 0.035,
+       "lean": 4
+      },
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": -0.03365397140779411,
+        "axis_override": [
+         0.0029744920742145456,
+         0.1503608022298363,
+         0.9886267149686482
+        ],
+        "limits": [
+         -1.047,
+         2.094
+        ]
+       },
+       "length": 0.03
+      },
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": -3.366485801990864e-14,
+        "axis_override": [
+         0.002974492074214537,
+         0.1503608022298363,
+         0.9886267149686482
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.025
+      }
+     ]
+    },
+    {
+     "mount": {
+      "y": -0.035,
+      "z": -0.02,
+      "facing": 4.71238898038469
+     },
+     "segments": [
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": 1.7395111757568027,
+        "axis_override": [
+         -0.4750053806627094,
+         -0.44687975992021367,
+         0.7580688415408767
+        ],
+        "limits": [
+         -1.187,
+         1.291
+        ]
+       },
+       "length": 0.025,
+       "lean": 4
+      },
+      {
+       "joint": {
+        "kind": "flexion",
+        "offset": 1.4223577312435451,
+        "axis_override": [
+         -0.14258347382815162,
+         -0.37139995734606657,
+         -0.9174595493396082
+        ],
+        "limits": [
+         -1.484,
+         0.698
+        ]
+       },
+       "length": 0.04,
+       "lean": 4
+      },
+      {
+       "joint": {
+        "kind": "abduction",
+        "offset": -0.05442607159025381,
+        "axis_override": [
+         0.3316456491998667,
+         -0.9365620402916991,
+         -0.11341387944801448
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.04,
+       "lean": 2
+      },
+      {
+       "joint": {
+        "kind": "abduction",
+        "offset": 0.09418344937589752,
+        "axis_override": [
+         -0.42774048219076816,
+         -0.8967582571929612,
+         -0.11341387944802808
+        ],
+        "limits": [
+         -1.047,
+         1.57
+        ]
+       },
+       "length": 0.03,
+       "lean": 1
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

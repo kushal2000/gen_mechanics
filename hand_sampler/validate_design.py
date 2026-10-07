@@ -21,10 +21,16 @@ def _on_grid(value: float, quantum: float) -> bool:
 
 # --- individual rules -------------------------------------------------------
 
-def check_palm(palm: design_space.Palm) -> list[str]:
+def check_palm(palm: design_space.Palm, measured: bool = False) -> list[str]:
     """Thickness is all a palm stores. Its outline is derived from the mounts,
     so what used to be checked here is checked on them -- see check_layout."""
     out: list[str] = []
+    if palm.outline is not None or measured:
+        # A measured palm, or the palm of a hand whose bases are measured (an imported replica): the vendor's
+        # thickness, off the grammar's range and grid by design.
+        if palm.thickness <= 0.0:
+            out.append(f"palm.thickness = {palm.thickness:.4f} must be positive")
+        return out
     lo, hi = design_space.PALM_THICKNESS_RANGE
     if not lo - _TOL <= palm.thickness <= hi + _TOL:
         out.append(f"palm.thickness = {palm.thickness:.4f} outside [{lo}, {hi}]")
@@ -46,6 +52,8 @@ def check_layout(hand: design_space.Hand) -> list[str]:
     for i, f in enumerate(hand.fingers):
         m = f.mount
         where = f"finger[{i}].mount"
+        if m.height is not None:
+            continue          # a measured base (an imported replica): the vendor's position, off the grids by design
         # The ring is a bound on the DISTANCE, which is why it survived the grid
         # going cartesian: it is how far a finger may be from the centre.
         if not design_space.PALM_MIN_RADIUS - _TOL <= m.radius <= \
@@ -109,6 +117,11 @@ def check_segment(seg: design_space.Segment, where: str, terminal: bool) -> list
     # except the last, which has no child joint to drive.
     floor = (design_space.MIN_DISTAL_LINK_LENGTH if terminal
              else design_space.MIN_LINK_LENGTH)
+    if seg.cross_section is not None:
+        # A measured link (an imported replica): the vendor's length, off the grammar's floor and grid by design.
+        if seg.length <= 0.0:
+            out.append(f"{where}.length = {seg.length:.4f} must be positive")
+        return out
     if not floor - _TOL <= seg.length <= design_space.MAX_LINK_LENGTH + _TOL:
         out.append(f"{where}.length = {seg.length:.4f} outside "
                    f"[{floor}, {design_space.MAX_LINK_LENGTH}]"
@@ -161,6 +174,10 @@ def check_packing(hand: design_space.Hand, links=None) -> list[str]:
     base capsules already overlap where they leave the palm.
     """
     out: list[str] = []
+    if any(f.mount.height is not None for f in hand.fingers):
+        # A measured hand (an imported replica) packs its fingers as its vendor does, closer than the grammar's
+        # motor allows (Wuji v2's knuckles are 22 mm apart against a 35 mm floor); that is what it replicates.
+        return out
     floor = design_space.MIN_MOUNT_SEPARATION
     pos = [mount_position(f.mount) for f in hand.fingers]
     for pa, pb in combinations(pos, 2):
@@ -192,10 +209,11 @@ def check_base_clearance(hand: design_space.Hand, links=None) -> list[str]:
     """
     out: list[str] = []
     links = design_space.rest_capsules(hand) if links is None else links
-    floor = 2.0 * design_space.CAPSULE_RADIUS
+    radius = lambda f, s: design_space.link_radius(hand.fingers[f].segments[s])   # measured links are thinner
     for (fi, si, p0, p1), (fj, sj, q0, q1) in combinations(links, 2):
         if fi == fj and abs(si - sj) <= 1:
             continue
+        floor = radius(fi, si) + radius(fj, sj)
         d = segment_distance(p0, p1, q0, q1)
         if d < floor - _TOL:
             who = (f"finger {fi} link {si} and finger {fj} link {sj}" if fi != fj
@@ -221,7 +239,7 @@ def check_envelope(hand: design_space.Hand) -> list[str]:
 def check(hand: design_space.Hand) -> list[str]:
     """Every reason this hand is not a legal design. Empty means legal."""
     out = check_envelope(hand)
-    out += check_palm(hand.palm)
+    out += check_palm(hand.palm, measured=any(f.mount.height is not None for f in hand.fingers))
     out += check_layout(hand)
     for i, f in enumerate(hand.fingers):
         out += check_finger(f, i, hand.palm)

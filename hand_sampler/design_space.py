@@ -344,6 +344,10 @@ class Segment:
     cross_section: tuple[float, float] | None = None
     # Collision/visual meshes, for a measured link. None authors a capsule.
     meshes: tuple[str, ...] | None = None
+    # Import-only: a MEASURED link's exact turn off the previous frame (a 3x3 rotation, row-major), in place of
+    # LEANS[lean]. A generated link leans by an index into the grid; a replica's link points exactly where the
+    # vendor's does, which the grid plus a turn about the link's own hinge cannot always reach (Wuji v2's thumb).
+    bolt: tuple[float, ...] | None = None
     # An imported hand's box, verbatim, in ITS child-link frame. A generated
     # hand has none: we author its USD, so its links lie along +x by
     # construction, and the box is derived. A measured hand's frames come from
@@ -365,6 +369,17 @@ class Segment:
         if self.cross_section is None:
             return (self.length, 2.0 * CAPSULE_RADIUS, 2.0 * CAPSULE_RADIUS)
         return (self.length, self.cross_section[0], self.cross_section[1])
+
+
+def bolt_rot(seg: "Segment") -> np.ndarray:
+    """How a link is bolted onto the previous frame: its measured ``bolt`` if it has one, else ``LEANS[lean]``."""
+    return lean_rot(seg.lean) if seg.bolt is None else np.asarray(seg.bolt, dtype=float).reshape(3, 3)
+
+
+def link_radius(seg: "Segment", default: float = CAPSULE_RADIUS) -> float:
+    """A link's capsule radius: ``default`` for a generated link, half its mean measured extent for an imported
+    link that carries a ``cross_section``."""
+    return default if seg.cross_section is None else 0.25 * (seg.cross_section[0] + seg.cross_section[1])
 
 
 @dataclass(frozen=True)
@@ -399,6 +414,9 @@ class Mount:
     y: float
     z: float
     facing: float
+    # Import-only: a MEASURED base's height off the palm midplane (x). A generated finger starts ON the midplane;
+    # a vendor's bases sit a few mm above or below it, and a replica carries that here.
+    height: float | None = None
 
     def __post_init__(self) -> None:
         for name in ("y", "z", "facing"):
@@ -468,6 +486,10 @@ class Palm:
     """
 
     thickness: float   # x, the one dimension the shape does not give us
+    # Import-only: a MEASURED palm's outline, (y, z) vertices counterclockwise in the palm frame. A generated
+    # palm never has one -- its outline is derived from its mounts (palm_outline). A replica of a vendor hand
+    # carries the vendor's palm box here, with the vendor's thickness, so its extents and centre are the vendor's.
+    outline: tuple[tuple[float, float], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -576,7 +598,7 @@ def mount_position(mount: Mount) -> np.ndarray:
     Offset from PALM_CENTRE, and always in the midplane: x is 0 because a palm
     is a flat plate and a finger starts on it, not above or below it.
     """
-    return PALM_CENTRE + np.array([0.0, mount.y, mount.z])
+    return PALM_CENTRE + np.array([mount.height or 0.0, mount.y, mount.z])
 
 
 def mount_direction(mount: Mount) -> np.ndarray:
@@ -589,6 +611,12 @@ def mount_direction(mount: Mount) -> np.ndarray:
 
 
 def palm_outline(hand: "Hand", arc: int = 32) -> np.ndarray:
+    if hand.palm.outline is not None:              # a measured palm (Palm.outline): stored, not derived
+        return np.asarray(hand.palm.outline, dtype=float)
+    return _derived_outline(hand, arc)
+
+
+def _derived_outline(hand: "Hand", arc: int = 32) -> np.ndarray:
     """The palm as (y, z) vertices, counterclockwise. Derived, never stored.
 
     The convex hull of two kinds of circle: the palm's own disc, of
@@ -699,12 +727,12 @@ def forward_kinematics(finger: Finger, palm: Palm,
 
     for i, seg in enumerate(finger.segments):
         joints.append(p.copy())
-        R = R @ lean_rot(seg.lean)                      # bolt the link on
+        R = R @ bolt_rot(seg)                      # bolt the link on
         R = R @ rodrigues(axis_of(seg.joint),           # then the joint turns
                           seg.joint.offset + angles.get(i, 0.0))
         nxt = p + R[:, 0] * seg.length
         if seg.length > _EPS:
-            capsules.append((p.copy(), nxt.copy(), CAPSULE_RADIUS, i))
+            capsules.append((p.copy(), nxt.copy(), link_radius(seg), i))
         p = nxt
 
     joints.append(p.copy())
@@ -718,7 +746,7 @@ def joint_axes(finger: Finger, palm: Palm,
     _, R = mount_frame(finger.mount)
     out: list[np.ndarray] = []
     for i, seg in enumerate(finger.segments):
-        R = R @ lean_rot(seg.lean)
+        R = R @ bolt_rot(seg)
         a = axis_of(seg.joint)
         out.append(R @ a)
         R = R @ rodrigues(a, seg.joint.offset + angles.get(i, 0.0))
@@ -874,7 +902,7 @@ def base_capsules(hand: Hand) -> list[tuple[np.ndarray, np.ndarray]]:
     for f in hand.fingers:
         p0, R = mount_frame(f.mount)
         seg = f.segments[0]
-        R = R @ lean_rot(seg.lean)
+        R = R @ bolt_rot(seg)
         R = R @ rodrigues(axis_of(seg.joint), seg.joint.offset)
         out.append((p0, p0 + R[:, 0] * seg.length))
     return out

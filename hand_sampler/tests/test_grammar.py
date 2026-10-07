@@ -598,10 +598,13 @@ def test_a_palm_has_nothing_left_to_perturb():
     where the fingers start. move_mount changes the palm now, by changing them.
     """
     assert "perturb_palm" not in mutate_design.OPERATORS
-    assert [f.name for f in dataclasses.fields(design_space.Palm)] == ["thickness"]
+    # outline is import-only (a measured palm: a commercial replica's) and never set on a generated hand, so for
+    # the grammar a palm still stores nothing but its thickness.
+    assert [f.name for f in dataclasses.fields(design_space.Palm)] == ["thickness", "outline"]
 
     rng = random.Random(10)
     hand = gen_init_pop.seed_population(0, 1)[0]
+    assert hand.palm.outline is None
     before = design_space.palm_extents(hand)
     for _ in range(400):
         child = mutate_design.mutate(rng, hand, "move_mount")

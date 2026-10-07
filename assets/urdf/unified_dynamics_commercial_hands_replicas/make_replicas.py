@@ -15,6 +15,7 @@ make_uniform.py actuator every commercial hand trains with (0.5 N.m, 5 rad/s, kp
 0.00058) -- hence "unified_dynamics". Links are the grammar's capsules, not the vendor's meshes or masses.
 
     .venv_isaacsim/bin/python assets/urdf/unified_dynamics_commercial_hands_replicas/make_replicas.py [hand ...]
+    .venv_isaacsim/bin/python assets/urdf/unified_dynamics_commercial_hands_replicas/make_replicas.py --fidelity 1 wuji2
 """
 import json
 import re
@@ -30,19 +31,22 @@ from hand_sampler import design_space as D  # noqa: E402
 from hand_sampler import robot_param_constants as rpc  # noqa: E402
 
 
-def make(name: str) -> Path:
-    hand, notes = commercial.fit(name)
+def make(name: str, fidelity: tuple[str, ...] = ()) -> Path:
+    hand, notes = commercial.fit(name, fidelity=fidelity)
     problems = validate_design.check(hand)
     if problems:
         raise SystemExit(f"{name}: not a legal design:\n  " + "\n  ".join(problems))
     vendor = commercial.urdf_of(name)
-    stem = f"{vendor.stem}_replica"
+    # The grammar's own replica is <vendor>_replica; a fidelity variant (commercial.FIDELITY, cumulative) is
+    # <vendor>_replica_<last level>, e.g. wuji2_left_replica_limits.
+    stem = f"{vendor.stem}_replica" + ("_clone" if fidelity == commercial.CLONE else
+                                       f"_{fidelity[-1]}" if fidelity else "")
     out = HERE / name
     pop = population_io.save_population(
         [hand], out / f"{stem}.json", name=stem,
         provenance=population_io.provenance(method="commercial.fit", source="hand_sampler.commercial",
                                             vendor_urdf=str(vendor.relative_to(REPO)), notes=notes,
-                                            gen_joint_drive=list(rpc.gen_joint_drive())))
+                                            gen_joint_drive=list(rpc.gen_joint_drive()), fidelity=list(fidelity)))
     urdf = build.urdf_for_viewing(hand, out / f"{stem}.urdf")
     # urdf_for_viewing names its palm mesh by absolute path (it is written for a scratch directory); a tracked
     # asset should not carry this checkout's path, and the viewers resolve a bare name against the URDF's folder.
@@ -67,5 +71,11 @@ def make(name: str) -> Path:
 
 
 if __name__ == "__main__":
-    for name in sys.argv[1:] or commercial.HANDS:
-        make(name)
+    # --fidelity N: the first N levels of commercial.FIDELITY, e.g. --fidelity 1 wuji2 -> wuji2_left_replica_limits
+    args, fid = sys.argv[1:], ()
+    if args[:1] == ["--fidelity"]:
+        fid, args = commercial.FIDELITY[:int(args[1])], args[2:]
+    elif args[:1] == ["--clone"]:          # commercial.CLONE: bases first, palm backed out of them -> <vendor>_replica_clone
+        fid, args = commercial.CLONE, args[1:]
+    for name in args or commercial.HANDS:
+        make(name, fid)

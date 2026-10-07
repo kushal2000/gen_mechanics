@@ -72,6 +72,8 @@ def _segment_to_dict(segment: design_space.Segment) -> dict:
         out["lean"] = int(segment.lean)
     if segment.cross_section is not None:
         out["cross_section"] = list(segment.cross_section)
+    if segment.bolt is not None:
+        out["bolt"] = list(segment.bolt)
     if segment.meshes is not None:
         out["meshes"] = list(segment.meshes)
     if segment.token_box is not None:
@@ -87,6 +89,7 @@ def _segment_from_dict(data: dict) -> design_space.Segment:
         length=float(data["length"]),
         lean=int(data.get("lean", 0)),
         cross_section=_tuple(data.get("cross_section")),
+        bolt=_tuple(data.get("bolt")),
         meshes=_tuple(data.get("meshes")),
         token_box=None if token_box is None else tuple(tuple(row) for row in token_box),
     )
@@ -94,11 +97,11 @@ def _segment_from_dict(data: dict) -> design_space.Segment:
 
 def hand_to_dict(hand: design_space.Hand) -> dict:
     return {
-        "palm": {"thickness": hand.palm.thickness},
+        "palm": ({"thickness": hand.palm.thickness} if hand.palm.outline is None else
+                 {"thickness": hand.palm.thickness, "outline": [list(v) for v in hand.palm.outline]}),
         "fingers": [
-            {"mount": {"y": finger.mount.y,
-                       "z": finger.mount.z,
-                       "facing": finger.mount.facing},
+            {"mount": ({"y": finger.mount.y, "z": finger.mount.z, "facing": finger.mount.facing}
+                       | ({} if finger.mount.height is None else {"height": finger.mount.height})),
              "segments": [_segment_to_dict(s) for s in finger.segments]}
             for finger in hand.fingers
         ],
@@ -126,7 +129,8 @@ def _mount_from_dict(data: dict) -> design_space.Mount:
             "rather than having this do it silently.")
     return design_space.Mount(y=float(data["y"]),
                               z=float(data["z"]),
-                              facing=float(data["facing"]))
+                              facing=float(data["facing"]),
+                              height=None if data.get("height") is None else float(data["height"]))
 
 
 def hand_from_dict(data: dict) -> design_space.Hand:
@@ -137,7 +141,9 @@ def hand_from_dict(data: dict) -> design_space.Hand:
             "palm's outline is DERIVED from where its fingers start. Re-derive "
             "the population.")
     return design_space.Hand(
-        palm=design_space.Palm(**{k: float(v) for k, v in palm.items()}),
+        palm=design_space.Palm(thickness=float(palm["thickness"]),
+                               outline=(None if palm.get("outline") is None
+                                        else tuple((float(y), float(z)) for y, z in palm["outline"]))),
         fingers=tuple(
             design_space.Finger(
                 mount=_mount_from_dict(finger["mount"]),

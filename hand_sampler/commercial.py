@@ -98,6 +98,7 @@ class Digit:
     axis: np.ndarray       # (n, 3) unit hinge axes
     tip: np.ndarray        # (3,)
     limits: tuple = ()     # (lower, upper) per joint, from the URDF: which way the finger flexes
+    frames: tuple = ()     # per joint, the child link's frame at q = 0 (4x4, palm body coordinates)
 
 
 # --- reading the vendor hand ------------------------------------------------
@@ -158,13 +159,14 @@ def digits(name_or_path: "str | Path" = "leap") -> list[Digit]:
     for root_joint in [n for n in by_parent[palm] if J[n]["type"] == "revolute"]:
         chain = _longest_chain(J, by_parent, root_joint)
         T = np.eye(4)
-        pos, axis = [], []
+        pos, axis, frames = [], [], []
         for n in chain:
             d = J[n]
             M = np.eye(4)
             M[:3, :3] = R.from_euler("xyz", d["rpy"]).as_matrix()
             M[:3, 3] = d["xyz"]
             T = T @ M
+            frames.append(T.copy())
             pos.append(T[:3, 3].copy())
             axis.append(T[:3, :3] @ d["axis"])
         # The fingertip can be SEVERAL fixed joints out, and a link can carry
@@ -192,7 +194,7 @@ def digits(name_or_path: "str | Path" = "leap") -> list[Digit]:
                     tip = nxt[:3, 3].copy()
                 stack.append((nxt, d["child"]))
         out.append(Digit(root_joint, tuple(chain), np.array(pos), np.array(axis), tip,
-                         tuple(J[n]["limit"] for n in chain)))
+                         tuple(J[n]["limit"] for n in chain), tuple(frames)))
     return out
 
 
@@ -363,6 +365,105 @@ def _grasp_side(row: list[Digit]) -> np.ndarray:
     return v / n if n > 1e-12 else v
 
 
+def _with_vendor_boxes(hand: D.Hand, name: str, digits_: list, vendor: dict, to_palm) -> D.Hand:
+    """Each link carries the vendor link's box (Segment.token_box), moved into the replica's own link frame.
+
+    Needs exact mounts: then the grammar's palm frame is the fitter's palm coordinates plus one translation (the
+    disc placement), the same for every base."""
+    from hand_sampler import build as _build
+    names = [j for d in digits_ for j in d.joints]
+    _, boxes, _, _ = D.joint_link_boxes(urdf_of(name), names)
+    box_of = dict(zip(names, np.asarray(boxes, float)))
+    frames = _build.link_frames(hand)
+    delta = D.mount_position(hand.fingers[0].mount) - to_palm(digits_[0].pos[0])
+    fingers = []
+    for f, (d, finger) in enumerate(zip(digits_, hand.fingers)):
+        segs = []
+        for k, seg in enumerate(finger.segments):
+            Tv = vendor[d.name].frames[k]                                 # the vendor link's frame at q = 0
+            c = (Tv[:3, :3] @ box_of[d.joints[k]].T).T + Tv[:3, 3]        # its box, palm body coordinates
+            c = np.array([to_palm(x) for x in c]) + delta                 # -> the replica's palm frame
+            Tf = frames[(f, k)]
+            local = (c - Tf[:3, 3]) @ Tf[:3, :3]                          # -> the replica link's own frame
+            segs.append(replace(seg, token_box=tuple(tuple(float(v) for v in row) for row in local)))
+        fingers.append(replace(finger, segments=tuple(segs)))
+    return replace(hand, fingers=tuple(fingers))
+
+
+def _centre_disc(mounts: list) -> list:
+    """Shift a measured hand's mounts (all together) so the DERIVED palm's centre -- the centroid of the hull of
+    the centre disc and a rim round each base -- is where the vendor's palm centre is: the origin of the mounts'
+    coordinates. The disc is always at PALM_CENTRE, so this places the disc relative to the bases."""
+    from scipy.optimize import minimize as _minimize
+    def centre_after(s):
+        shifted = [replace(m, y=float(m.y + s[0]), z=float(m.z + s[1])) for m in mounts]
+        c = D.palm_center(D.Hand(D.Palm(D.PALM_THICKNESS), tuple(D.Finger(m, (D.Segment(D.Joint(), 0.02),))
+                                                                    for m in shifted)))
+        return np.array(c[1:]) - D.PALM_CENTRE[1:] - np.asarray(s)   # where the vendor centre sits off the centroid
+
+    # The disc only moves the centroid when it pokes OUT of the rims' hull; inside it the objective is flat, which
+    # stalls a local search. So a coarse grid first (5 mm, +-150 mm), then a local refinement from its best.
+    cost = lambda s: float(np.sum(centre_after(s) ** 2))
+    grid = np.arange(-0.15, 0.1501, 0.005)
+    s0 = min(((a, b) for a in grid for b in grid), key=cost)
+    s = _minimize(cost, x0=np.array(s0), method="Nelder-Mead",
+                  options={"xatol": 1e-7, "fatol": 1e-14, "maxiter": 4000}).x
+    return [replace(m, y=float(m.y + s[0]), z=float(m.z + s[1])) for m in mounts]
+
+
+def _turn_onto(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """The shortest rotation taking unit ``a`` onto unit ``b``."""
+    b = b / float(np.linalg.norm(b))
+    v, c = np.cross(a, b), float(a @ b)
+    if np.linalg.norm(v) < 1e-12:
+        if c > 0:
+            return np.eye(3)
+        perp = np.cross(a, [0.0, 0.0, 1.0] if abs(a[2]) < 0.9 else [0.0, 1.0, 0.0])
+        return D.rodrigues(perp, math.pi)
+    return D.rodrigues(v, math.atan2(float(np.linalg.norm(v)), c))
+
+
+def _zero_offset(ax: np.ndarray, t: np.ndarray) -> float:
+    """The turn about unit hinge ``ax`` that brings +x closest to unit direction ``t`` (both in one frame)."""
+    ex = np.array([1.0, 0.0, 0.0])
+    ep, tp = ex - ax * float(ex @ ax), t - ax * float(t @ ax)
+    if np.linalg.norm(ep) < 1e-3 or np.linalg.norm(tp) < 1e-3:
+        return 0.0                       # a link along its own hinge (a roll) has no such turn
+    return math.atan2(float(ax @ np.cross(ep, tp)), float(ep @ tp))
+
+
+def _offset_residual(R: np.ndarray, axis_world: np.ndarray, v_unit: np.ndarray, fidelity) -> float:
+    """Angle left between the link (+x of R turned by its best offset) and the vendor's direction ``v_unit``."""
+    local = R.T @ axis_world
+    if "axes" in fidelity:
+        ax = local / float(np.linalg.norm(local))
+    else:
+        d = D.axis_of(D.Joint(_kind_for(local)))
+        ax = d if float(local @ d) >= 0.0 else -d
+    t = R.T @ v_unit
+    x = D.rodrigues(ax, _zero_offset(ax, t))[:, 0]
+    return float(np.arccos(np.clip(x @ t, -1.0, 1.0)))
+
+
+def _onboarded_spec(name: str) -> dict:
+    """The vendor hand's onboarded spec (unified_commercial_hands/onboard.py): its canonical palm frame, centre
+    and box, in the palm body's frame -- which is the frame digits() measures in (asserted)."""
+    import json
+    urdf = urdf_of(name)
+    spec_path = urdf.with_suffix("").with_suffix(".spec.json")
+    if not spec_path.exists():
+        raise ValueError(f"fidelity 'palm' needs an onboarded spec, and {name} has none ({spec_path.name})")
+    spec = json.loads(spec_path.read_text())
+    J = _read(urdf)
+    by_parent: dict[str, list[str]] = {}
+    for n, d in J.items():
+        by_parent.setdefault(d["parent"], []).append(n)
+    palm = max(by_parent, key=lambda k: sum(J[n]["type"] == "revolute" for n in by_parent[k]))
+    if palm != spec["palm_body"]:
+        raise ValueError(f"{name}: digits() measures from {palm}, the spec's palm frame is in {spec['palm_body']}")
+    return spec
+
+
 def _lean_for(direction: np.ndarray) -> int:
     """The lean closest to ``direction``, a unit vector in the parent's frame."""
     return int(np.argmax([float(direction @ np.asarray(v)) for v in D.LEANS]))
@@ -467,9 +568,51 @@ def _push_apart_2d(pts: np.ndarray, floor: float, rounds: int = 200) -> np.ndarr
     return q
 
 
-def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
+FIDELITY = ("limits", "axes", "zero", "palm", "links", "mounts")
+
+CLONE = ("limits", "axes", "zero", "links", "mounts", "derived_palm", "bolt", "boxes")
+"""The clone, built in the order one would build it by hand: fix every finger's base (MCP) where the vendor's is
+(mounts); back the palm out of those bases the grammar's own way -- the convex hull of its centre disc and a rim
+round each base, at the vendor's thickness (derived_palm, no imported box); place that disc so the derived palm's
+centre lands on the vendor's palm centre, in the vendor's canonical frame, so the two hands agree on every base
+measured from the palm centre (the frame the policy observes in); then finish the fingers (links, axes, zero,
+limits), each link bolted on at the vendor's exact direction (bolt, Segment.bolt) rather than the nearest lean
+plus a turn about its own hinge, which cannot reach every direction (Wuji v2's thumb was 9-23 mm off), and
+each link's box -- what the policy reads as joint_link_bbox -- is the vendor's own (boxes, Segment.token_box):
+a vendor link reaches past its joints, 8-14 mm longer than joint-to-joint (Wuji v2's PIPs and DIPs). Not
+cumulative with FIDELITY's "palm": derived_palm replaces it."""
+"""What fit(..., fidelity=) may carry over from the vendor beyond the grammar's own description, cumulatively:
+
+  limits   each joint's travel is the vendor's (Joint.limits), not the design space's +-90 degrees. Under
+           joint_units "range" an action spans a joint's travel, so this is also what an action MEANS.
+  axes     each hinge is the vendor's exact direction (axis_override), not the nearest of the three kinds
+           (Wuji v2's thumb CMC is 41 degrees off its kind, the finger MCPs 8-9).
+  zero     each joint carries the vendor's zero (Joint.offset, the measured-hand assembly angle): the turn about
+           its hinge that points its link where the vendor's points at q = 0, so the two hands' zero POSTURES
+           agree, not just their joint angles. The leans stay on their grid; the offset takes up the rest.
+  palm     the replica is built in the vendor's CANONICAL palm frame and centre (the onboarded spec's
+           palm_frame and palm_centre_in_palm_body -- the frame every observation is expressed in), not the
+           fitter's own (mean finger direction, centroid of the bases), and its palm is the vendor's palm box
+           (Palm.outline, the vendor thickness): palm_extents, the palm centre and so the cube's spawn follow.
+  links    each link is the vendor's length (no 5 mm grid, no 20 mm floor) and carries the vendor link box's
+           cross-section (Segment.cross_section: the box edge along the hinge, and the other one across the link),
+           so the policy's joint_link_bbox and the simulated capsule are the vendor's thickness, not the grammar's.
+  mounts   each finger starts exactly where the vendor's does -- position, the direction it leaves in, and its
+           height off the palm midplane (Mount.height) -- with no 5 mm / 15 degree grid and no pushing apart to
+           the 35 mm motor floor. Packing checks are off for such a hand: it packs its fingers as the vendor does.
+
+Empty (the default) is the grammar's own replica, every rule kept. A fidelity replica is an IMPORT, like
+sharpa_capsule: it uses the import-only fields the grammar keeps for measured hands."""
+
+
+def fit(name: str = "leap", spread: bool = True,
+        fidelity: tuple[str, ...] = ()) -> tuple[D.Hand, list[str]]:
     """A vendor hand as a Hand, plus notes on every way it is not the vendor's."""
-    ds = [_straighten(d) for d in digits(name)]
+    unknown = set(fidelity) - set(FIDELITY) - set(CLONE)
+    if unknown:
+        raise ValueError(f"unknown fidelity {sorted(unknown)}; known: {FIDELITY}")
+    vendor = {d.name: d for d in digits(name)}         # as the vendor has them, before the free slides
+    ds = [_straighten(d) for d in vendor.values()]
     row, thumb = _split(ds)
     M = _palm_axes(row)
 
@@ -479,6 +622,20 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
     base = np.array([d.pos[0] for d in (row + [thumb])]) @ M
     origin = base.mean(axis=0)
     origin[0] = 0.0                       # the plate's own plane
+    palm = D.Palm(D.PALM_THICKNESS)
+    if "palm" in fidelity or "derived_palm" in fidelity:
+        spec = _onboarded_spec(name)
+        M = np.asarray(spec["palm_frame"], dtype=float)          # columns: canonical axes in the palm body
+        origin = np.asarray(spec["palm_centre_in_palm_body"], dtype=float) @ M
+        t, w, l = (float(v) for v in spec["palm_extents_ours"])
+        cy, cz = D.PALM_CENTRE[1], D.PALM_CENTRE[2]
+        if "palm" in fidelity:
+            palm = D.Palm(t, outline=((cy - w / 2, cz - l / 2), (cy + w / 2, cz - l / 2),
+                                      (cy + w / 2, cz + l / 2), (cy - w / 2, cz + l / 2)))
+        else:
+            # derived_palm: the outline is backed out of the bases, but thickness is the one palm dimension the
+            # grammar stores rather than derives -- so it is the vendor's.
+            palm = D.Palm(t)
 
     def to_palm(p):
         return (p @ M) - origin
@@ -486,14 +643,19 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
     # A base may sit closer to another than a motor allows. Push the whole set
     # apart in the plane rather than along a row axis, because a radial palm has
     # no row to push along.
-    want = np.array([to_palm(d.pos[0])[1:] for d in (row + [thumb])])
     digits_ = row + [thumb]
+    if "mounts" in fidelity:
+        # Each base exactly where the vendor's first joint is: its OWN origin, not the straightened one. Sliding a
+        # joint along its axis is kinematically free, so the hinge line and the motion are the same either way --
+        # but the base, and the first link's box, sit where the vendor's do (Wuji v2's thumb CMC slid 8 mm).
+        digits_ = [replace(d, pos=np.vstack([vendor[d.name].pos[0], d.pos[1:]])) for d in digits_]
+    want = np.array([to_palm(d.pos[0])[1:] for d in digits_])
     prepared = [( d, [to_palm(q) for q in d.pos] + [to_palm(d.tip)],
                   [M.T @ a for a in d.axis] ) for d in digits_]
 
     def place(floor: float) -> tuple[list, list[D.Mount], np.ndarray]:
         """Mounts for a given separation floor, snapped and then separated."""
-        spread_pts = _push_apart_2d(want, floor + 1e-4) if spread else want
+        spread_pts = _push_apart_2d(want, floor + 1e-4) if spread and "mounts" not in fidelity else want
         raw = []
         for k, (d, pts, _axes) in enumerate(prepared):
             y, z = float(spread_pts[k][0]), float(spread_pts[k][1])
@@ -511,8 +673,28 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
                 out_dir = np.array([0.0, y, z])
             facing = _snap(D.bearing_of(float(out_dir[1]), float(out_dir[2])),
                            D.ANGLE_QUANTUM) % (2.0 * math.pi)
+            if "mounts" in fidelity:            # the vendor's base, exactly: no grid, no ring, height kept
+                exact = D.bearing_of(float(out_dir[1]), float(out_dir[2])) % (2.0 * math.pi)
+                raw.append(D.Mount(y=y, z=z, facing=exact, height=float(pts[0][0])))
+                continue
             raw.append(D.Mount(y=gy, z=gz, facing=facing))
+        if "mounts" in fidelity:
+            if "derived_palm" in fidelity:
+                raw = _centre_disc(raw)
+            return raw, raw, want
         return raw, (_separate_on_grid(raw, floor) if spread else raw), spread_pts
+
+    sections: dict[str, tuple[float, float]] = {}
+    if "links" in fidelity:
+        names = [j for d in digits_ for j in d.joints]
+        _, boxes, _, _ = D.joint_link_boxes(urdf_of(name), names)
+        J = _read(urdf_of(name))
+        for jn, b in zip(names, np.asarray(boxes, float)):
+            edges = b[1:] - b[0]
+            ax = J[jn]["axis"] / float(np.linalg.norm(J[jn]["axis"]))
+            k = int(np.argmax([abs(float(e @ ax)) / max(float(np.linalg.norm(e)), 1e-12) for e in edges]))
+            rest = sorted((float(np.linalg.norm(e)) for i, e in enumerate(edges) if i != k), reverse=True)
+            sections[jn] = (rest[1], float(np.linalg.norm(edges[k])))      # (bend, axis); rest[0] is the length
 
     def build(mounts: list) -> tuple[D.Hand, list[str]]:
         notes: list[str] = []
@@ -524,7 +706,17 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
                 v_link = pts[i + 1] - pts[i]
                 L = float(np.linalg.norm(v_link))
                 lean = _lean_for(R.T @ (v_link / max(L, 1e-12)))
-                R = R @ D.lean_rot(lean)
+                bolt = None
+                if "bolt" in fidelity:
+                    # The vendor's link direction exactly: the shortest turn taking +x onto it.
+                    t = R.T @ (v_link / max(L, 1e-12))
+                    bolt = _turn_onto(np.array([1.0, 0.0, 0.0]), t)
+                elif "zero" in fidelity:
+                    # With an offset to take up the turn ABOUT the hinge, the best lean is not the nearest one but
+                    # the one whose remaining error the offset can remove: try them all, keep the smallest residual.
+                    lean = min(range(D.N_LEANS), key=lambda k: _offset_residual(
+                        R @ D.lean_rot(k), axes[i], v_link / max(L, 1e-12), fidelity))
+                R = R @ (D.lean_rot(lean) if bolt is None else bolt)
                 local = R.T @ axes[i]
                 kind = _kind_for(local)
                 # The kind fixes the hinge LINE; its positive direction is the vendor's. Kinematically an axis and
@@ -532,16 +724,28 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
                 # every Wuji v2 and LEAP abduction joint (and LEAP's and Allegro's thumbs) the other way from the
                 # vendor's under the same command. A reversed axis rides on axis_override, which axis_of honours.
                 default = D.axis_of(D.Joint(kind))
-                joint = (D.Joint(kind) if float(local @ default) >= 0.0
-                         else D.Joint(kind, axis_override=tuple(float(v) for v in -default)))
-                snapped = _snap_length(L)
+                lim = tuple(float(v) for v in d.limits[i]) if "limits" in fidelity else None
+                if "axes" in fidelity:
+                    ax = local / float(np.linalg.norm(local))
+                else:
+                    ax = default if float(local @ default) >= 0.0 else -default
+                override = None if ("axes" not in fidelity and ax is default) else tuple(float(v) for v in ax)
+                offset = 0.0
+                if "zero" in fidelity and bolt is None:
+                    # The turn about ax that brings this link (+x after the lean) onto the vendor's.
+                    offset = _zero_offset(ax, R.T @ (v_link / max(L, 1e-12)))
+                    override = tuple(float(v) for v in ax)          # an offset marks a measured hinge
+                joint = D.Joint(kind, offset=offset, axis_override=override, limits=lim)
+                R = R @ D.rodrigues(ax, offset)
+                snapped = L if "links" in fidelity else _snap_length(L)
                 if abs(snapped - L) > D.LINK_QUANTUM / 2 + 1e-9:
                     notes.append(f"{d.name}: link {i} {L*1000:.1f} -> "
                                  f"{snapped*1000:.0f} mm "
                                  f"(the {D.MIN_LINK_LENGTH*1000:.0f} mm floor)")
-                segs.append(D.Segment(joint, snapped, lean=lean))
+                segs.append(D.Segment(joint, snapped, lean=lean, cross_section=sections.get(d.joints[i]),
+                                      bolt=None if bolt is None else tuple(float(v) for v in bolt.ravel())))
             fingers.append(D.Finger(mount, tuple(segs)))
-        return D.Hand(D.Palm(D.PALM_THICKNESS), tuple(fingers)), notes
+        return D.Hand(palm, tuple(fingers)), notes
 
     # A margin ladder. MIN_MOUNT_SEPARATION keeps two PARALLEL base capsules
     # apart, which is not enough when a hand splays its fingers -- wuji2's links
@@ -587,4 +791,6 @@ def fit(name: str = "leap", spread: bool = True) -> tuple[D.Hand, list[str]]:
                          f"which a mount cannot express")
     for reason in reasons:
         notes.append(f"NOT A LEGAL DESIGN: {reason}")
+    if "boxes" in fidelity:
+        hand = _with_vendor_boxes(hand, name, digits_, vendor, to_palm)
     return hand, notes

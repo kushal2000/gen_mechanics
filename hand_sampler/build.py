@@ -324,7 +324,7 @@ def link_frames(hand: design_space.Hand) -> dict[tuple[int, int], np.ndarray]:
                 # link, bolt this one on at its lean, then let the joint turn.
                 # The hinge axis survives its own rotation, so the URDF axis
                 # written below is still right in the post-origin frame.
-                step[:3, :3] = design_space.lean_rot(seg.lean) @ design_space.rodrigues(
+                step[:3, :3] = design_space.bolt_rot(seg) @ design_space.rodrigues(
                     design_space.axis_of(seg.joint), seg.joint.offset)
                 if d:
                     step[:3, 3] = (finger.segments[d - 1].length, 0.0, 0.0)
@@ -384,7 +384,7 @@ def joint_local_frames(hand: design_space.Hand
     return out
 
 
-def link_mass_props(length: float, *, real: bool = True
+def link_mass_props(length: float, *, real: bool = True, radius: float | None = None
                     ) -> tuple[float, tuple[float, float, float]]:
     """``(mass, diagonal inertia)`` for one link.
 
@@ -401,7 +401,7 @@ def link_mass_props(length: float, *, real: bool = True
     """
     if not real:
         return rpc.VIRTUAL_LINK_MASS_KG, (rpc.VIRTUAL_LINK_INERTIA,) * 3
-    r = rpc.GEN_LINK_RADIUS_M
+    r = rpc.GEN_LINK_RADIUS_M if radius is None else radius
     mass = max(math.pi * r * r * length * rpc.GEN_LINK_DENSITY_KG_M3, 1e-6)
     ixx = 0.5 * mass * r * r                              # about the link axis
     iyy = mass * (3.0 * r * r + length * length) / 12.0   # transverse
@@ -446,7 +446,9 @@ def author_hand(layer, root_path: str, hand: design_space.Hand, *,
                            "PhysicsFilteredPairsAPI"])
             if pairs.get(name):
                 rel(body, "physics:filteredPairs", pairs[name])
-            mass, inertia = link_mass_props(length, real=real)
+            # An imported link with a measured cross_section is simulated at its own thickness.
+            r_seg = design_space.link_radius(seg, rpc.GEN_LINK_RADIUS_M) if real else rpc.GEN_LINK_RADIUS_M
+            mass, inertia = link_mass_props(length, real=real, radius=r_seg)
             attr(body, "physics:mass", Sdf.ValueTypeNames.Float, float(mass))
             attr(body, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
                  Gf.Vec3f(*[float(v) for v in inertia]))
@@ -457,7 +459,7 @@ def author_hand(layer, root_path: str, hand: design_space.Hand, *,
 
             # A ghost link carries no collider: it must not touch anything.
             if real:
-                r = rpc.GEN_LINK_RADIUS_M
+                r = r_seg
                 define(layer, f"{root_path}/{name}/collisions", "Xform")
                 mesh = define(layer, f"{root_path}/{name}/collisions/mesh_0", "Xform")
                 set_xform(mesh, (length / 2.0, 0.0, 0.0),
@@ -645,6 +647,7 @@ def urdf_for_viewing(hand: design_space.Hand, out_path) -> "pathlib.Path":
             seg = finger.segments[d] if real else None
             name = f"f{f}_link{d}"
             link = ET.SubElement(root, "link", {"name": name})
+            r = design_space.link_radius(seg, rpc.GEN_LINK_RADIUS_M) if real else rpc.GEN_LINK_RADIUS_M
             # A ghost carries no geometry, the way it carries no collider.
             if real:
                 # A CAPSULE, which URDF cannot name: the collider the sim

@@ -3,7 +3,12 @@
 Reads the JSONs capture_spawn.py writes (results/spawn/<name>.json; no simulator here).
 
   * Hand A and hand B: any two captures (vendor vs its replica, or any other pair), side by side or overlaid,
-    each with its cube, goal (green ghost) and canonical palm frame.
+    each with its cube, goal (green ghost) and canonical palm frame. Each hand is drawn in ITS OWN canonical palm
+    frame -- palm centre at the origin, palm axes along the world axes -- so overlaid, the two palm centres and
+    frames coincide and every difference on screen is one the policy sees (its observations are in that frame).
+  * Each finger's base (the first joint, the MCP flexion on Wuji v2) is marked, and its gap listed in mm.
+  * Every joint's hinge is drawn as a short line through its origin along its axis (positive end marked), and
+    follows the sliders -- so a joint turning about a different line, or the other way, is visible.
   * Joint sliders for each hand, starting at the captured spawn angles. "B follows A" drives B's matching joint
     (through the replica's joint map) to the same angle as A's.
   * The policy observation, term by term, for the terms you tick: per-term and combined differences over the
@@ -36,12 +41,21 @@ TOKEN_TERMS = {"joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel", "pr
 COLORS = {"A": (0.85, 0.55, 0.2), "B": (0.2, 0.45, 0.85)}
 
 
+def parse(name: str) -> tuple[str, str, str]:
+    """<hand>_commercial, <hand>_replica or <hand>_replica_<fidelity level> -> (hand, kind, level)."""
+    for hand in STEM:
+        if name.startswith(hand + "_"):
+            kind, _, level = name[len(hand) + 1:].partition("_")
+            return hand, kind, level
+    return "", "", ""
+
+
 def urdf_of(name: str) -> pathlib.Path | None:
-    hand, _, kind = name.rpartition("_")
-    if hand not in STEM:
+    hand, kind, level = parse(name)
+    if not hand:
         return None
     p = (COMMERCIAL / hand / f"{STEM[hand]}.urdf" if kind == "commercial"
-         else REPLICAS / hand / f"{STEM[hand]}_replica.urdf")
+         else REPLICAS / hand / f"{STEM[hand]}_replica{'_' + level if level else ''}.urdf")
     return p if p.exists() else None
 
 
@@ -51,11 +65,12 @@ def load(name: str) -> dict:
 
 def label_map(a_name: str, b_name: str) -> dict[str, str]:
     """A's joint names -> B's, when one is the other's replica (make_replicas.py's joint map); else {}."""
-    ha, _, ka = a_name.rpartition("_")
-    hb, _, kb = b_name.rpartition("_")
-    if ha != hb or ha not in STEM or {ka, kb} != {"commercial", "replica"}:
+    ha, ka, la = parse(a_name)
+    hb, kb, lb = parse(b_name)
+    if ha != hb or not ha or {ka, kb} != {"commercial", "replica"}:
         return {}
-    p = REPLICAS / ha / f"{STEM[ha]}_replica.joint_map.json"
+    level = la or lb
+    p = REPLICAS / ha / f"{STEM[ha]}_replica{'_' + level if level else ''}.joint_map.json"
     if not p.exists():
         return {}
     m = json.loads(p.read_text())                       # vendor -> slot
@@ -238,7 +253,11 @@ def main() -> None:
         md_term = server.gui.add_markdown("")
     with server.gui.add_folder("joints"):
         g_follow = server.gui.add_checkbox("B follows A (joint map)", True)
+        g_axes = server.gui.add_checkbox("show joint axes", True)
         b_reset = server.gui.add_button("reset both to spawn")
+        # Each hand draws its own reset noise, so at spawn matching joints sit a few degrees apart (Wuji v2's thumb
+        # IP 12): this puts B at A's angles, joint for joint, to compare geometry alone.
+        b_copy = server.gui.add_button("B takes A's angles")
         f_a = server.gui.add_folder("A joints")
         f_b = server.gui.add_folder("B joints")
 
@@ -257,6 +276,35 @@ def main() -> None:
         h, r = st["hands"][tag], st["robots"].get(tag)
         if r is not None:
             r.update_cfg(np.array([h.q.get(j, 0.0) for j in r.get_actuated_joint_names()]))
+        draw_axes(tag)
+
+    def draw_axes(tag):
+        """Each movable joint's hinge: a 30 mm line through its origin along its axis, with a dot at the + end."""
+        h = st["hands"][tag]
+        if h.fk is None or not g_axes.value:
+            for k in ("axes", "axes_tip"):
+                n = st.get(f"{k}_{tag}")
+                if n is not None:
+                    n.remove()
+                    st[f"{k}_{tag}"] = None
+            return
+        T = h.body_T()
+        segs, tips = [], []
+        for j in h.fk.robot.joints:
+            if j.type != "revolute" or j.name not in h.movable:
+                continue
+            Tc = T[j.child]
+            u = Tc[:3, :3] @ np.asarray(j.axis, float)
+            u = u / np.linalg.norm(u)
+            segs.append([Tc[:3, 3] - 0.015 * u, Tc[:3, 3] + 0.015 * u])
+            tips.append(Tc[:3, 3] + 0.015 * u)
+        if not segs:
+            return
+        st[f"axes_{tag}"] = server.scene.add_line_segments(
+            f"/{tag}/axes", points=np.array(segs, dtype=np.float32), colors=COLORS[tag], line_width=3.0)
+        st[f"axes_tip_{tag}"] = server.scene.add_point_cloud(
+            f"/{tag}/axes_tip", points=np.array(tips, dtype=np.float32),
+            colors=np.tile(np.array(COLORS[tag], dtype=np.float32), (len(tips), 1)), point_size=0.004)
 
     def on_slider(tag, joint, s):
         def cb(_):
@@ -294,7 +342,11 @@ def main() -> None:
         h = st["hands"][tag]
         d = h.d
         root = f"/{tag}"
-        st["nodes"].append(server.scene.add_frame(root, position=tuple(offset), show_axes=False))
+        # world = offset + R_canon^T (p - palm centre): the hand in its own canonical palm frame
+        Rr = h.R_canon.T
+        q = Rot.from_matrix(Rr).as_quat()
+        st["nodes"].append(server.scene.add_frame(root, position=tuple(np.asarray(offset) - Rr @ h.c),
+                                                  wxyz=(q[3], q[0], q[1], q[2]), show_axes=False))
         x, y, z, qw, qx, qy, qz = d["root"]
         st["nodes"].append(server.scene.add_frame(f"{root}/base", position=(x, y, z), wxyz=(qw, qx, qy, qz),
                                                   show_axes=False))
@@ -313,6 +365,39 @@ def main() -> None:
                                                 wxyz=tuple(g[3:]), color=(0.3, 0.8, 0.3), opacity=0.25))
         st["nodes"].append(server.scene.add_label(f"{root}/label", f"{tag}: {h.name}",
                                                   position=(o[0], o[1], o[2] + 0.12)))
+        for j, pos in bases(h, tag).items():
+            st["nodes"].append(server.scene.add_icosphere(f"{root}/base_{j}", radius=0.005, position=tuple(pos),
+                                                          color=COLORS[tag]))
+
+    def bases(h, tag) -> dict[str, np.ndarray]:
+        """First joint of each finger -> its position (env-local world, as captured). For B, A's joint names are
+        mapped through the joint map so both hands list the same fingers."""
+        child = dict(zip(h.d["hand_joint_names"], h.d["joint_link_bodies"]))
+        if tag == "A" and st["lmap"]:
+            firsts = [j for j in h.movable if st["lmap"].get(j, "").endswith("_j0")]
+        elif tag == "B" and st["lmap"]:
+            back = {v: k for k, v in st["lmap"].items()}
+            firsts = [j for j in h.movable if j.endswith("_j0") and j in back]
+        else:                                    # no joint map: a replica's slots name their depth, a vendor's don't
+            firsts = [j for j in h.movable if j.endswith("_j0")]
+        return {j: np.array(h.d["bodies"][child[j]][:3]) for j in firsts}
+
+    def base_table() -> str:
+        A, B = st["hands"]["A"], st["hands"]["B"]
+        if not st["lmap"]:
+            return ""
+        ba, bb = bases(A, "A"), bases(B, "B")
+        rows = ["| finger base (A) | A (x, y, z) mm | B (x, y, z) mm | B - A mm | gap mm |", "|---|---|---|---|---|"]
+        for j, pa in ba.items():
+            jb = st["lmap"][j]
+            if jb not in bb:
+                continue
+            a = (pa - A.c) @ A.R_canon * 1000
+            b = (bb[jb] - B.c) @ B.R_canon * 1000
+            f = lambda v: "(" + ", ".join(f"{x:+.1f}" for x in v) + ")"
+            rows.append(f"| {j} | {f(a)} | {f(b)} | {f(b - a)} | {np.linalg.norm(b - a):.1f} |")
+        return ("\n\n**Finger bases in the palm frame** (from each palm centre; x normal, y width, z length)\n\n"
+                + "\n".join(rows))
 
     def rebuild(_=None):
         for r in st["robots"].values():
@@ -331,7 +416,7 @@ def main() -> None:
         pairing = ("joints paired through the replica's joint map" if st["lmap"]
                    else "no joint map between these two: per-joint terms pair only by identical labels")
         md_sum.content = (summary(st["hands"]["A"], "A") + "\n" + summary(st["hands"]["B"], "B")
-                          + f"\n\n_{pairing}_")
+                          + f"\n\n_{pairing}_" + base_table())
         refresh_obs()
 
     def preset(which):
@@ -352,6 +437,7 @@ def main() -> None:
             pose(tag)
         refresh_obs()
 
+    g_axes.on_update(lambda _: (draw_axes("A"), draw_axes("B")))
     dd_a.on_update(rebuild)
     dd_b.on_update(rebuild)
     g_overlay.on_update(rebuild)
@@ -363,6 +449,19 @@ def main() -> None:
     b_tok.on_click(preset("tok"))
     b_glob.on_click(preset("glob"))
     b_reset.on_click(reset)
+
+    def copy_a(_):
+        A, B = st["hands"]["A"], st["hands"]["B"]
+        st["muted"] = True
+        for ja, jb in st["lmap"].items():
+            if jb in st["sliders"]["B"]:
+                v = float(np.clip(A.q[ja], *B.limits[jb]))
+                B.q[jb] = v
+                st["sliders"]["B"][jb].value = v
+        st["muted"] = False
+        pose("B")
+        refresh_obs()
+    b_copy.on_click(copy_a)
     rebuild()
     print(f"viser on port {args.port}: {len(names)} captures: {', '.join(names)}", flush=True)
     while True:
