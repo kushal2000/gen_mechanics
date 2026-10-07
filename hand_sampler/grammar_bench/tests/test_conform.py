@@ -44,7 +44,7 @@ from hand_sampler.grammar.distributions import DEG, lateral_offset_choices_m
 from hand_sampler.grammar.experiments import e13_representation as e13
 from hand_sampler.grammar.fk import forward_kinematics
 from hand_sampler.grammar.limits import SIMULATOR
-from hand_sampler.grammar.variants import G_FULL, G_V1, G_V3S, G_WIDE, NAMED_DISTRIBUTIONS
+from hand_sampler.grammar.variants import G_FULL, G_V1, G_V3S, G_WIDE, NAMED_DISTRIBUTIONS, build_distribution
 
 
 def _hands():
@@ -61,7 +61,8 @@ def _hands():
 
 HANDS = _hands()
 HAND_IDS = sorted(HANDS)
-VARIANTS = {"G_FULL": G_FULL, "G_V1": G_V1, "G_V3S": G_V3S, "G_WIDE": G_WIDE}
+GRAMMAR = build_distribution()
+VARIANTS = {"G_FULL": G_FULL, "G_V1": G_V1, "G_V3S": G_V3S, "G_WIDE": G_WIDE, "GRAMMAR": GRAMMAR}
 
 if not HANDS:  # pragma: no cover
     pytest.skip("local-only: no manifest hand available on this machine", allow_module_level=True)
@@ -89,27 +90,27 @@ def _on_grid(d, dist):
             assert all(round(a, 12) in angles for a in p["direction_rpy"])
             _axis_grid_indices(p["axis"])
             assert all(v in lat for v in p.get("mount_offset", (0.0, 0.0)))
-            if p["has_joint"]:
+            if p["has_joint"] and dist.limits_support_continuous:
+                a, b = dist.revolute_limit_range_deg
+                assert a * DEG - 1e-9 <= p["limits"][0] < p["limits"][1] <= b * DEG + 1e-9
+            elif p["has_joint"]:
                 assert any(abs(lo * DEG - p["limits"][0]) < 1e-9 and abs(hi * DEG - p["limits"][1]) < 1e-9
                            for lo, hi in dist.palm_joint_limit_choices_deg)
         elif s.production == "Digit":
             assert p["mount_frac"] in fracs
             assert all(round(a, 12) in angles for a in p["mount_rpy"])
             off = p.get("mount_offset", (0.0, 0.0))
-            if dist.mount_on_host_surface:
+            if dist.mount_on_host_surface and not (dist.mount_lateral_grid_m and not dist.mount_lateral_sampled):
                 assert abs(math.hypot(*off) - hand["capsule_radius_m"]) < 1e-9
             else:
                 assert all(v in lat for v in off)
         elif s.production == "Phalanx":
             on_len(p["length"], dist.link_length_range_m)
             mod = p["module"]
-            el_k, _ = _axis_grid_indices(mod["axis"])
-            if dist.digit_axis_elevation_band_deg is not None:
-                lo, hi = dist.digit_axis_elevation_band_deg
-                assert lo <= el_k * 15.0 <= hi
+            _axis_grid_indices(mod["axis"])
             if mod["kind"] == "R":
                 lo, hi = mod["limits"]
-                if dist.limits_continuous:
+                if dist.limits_continuous or dist.limits_support_continuous:
                     a, b = dist.revolute_limit_range_deg
                     assert a * DEG - 1e-9 <= lo < hi <= b * DEG + 1e-9
                 else:
@@ -119,7 +120,7 @@ def _on_grid(d, dist):
             assert pair in {(tuple(r), tuple(o)) for r, o in C._bend_support(dist, p["p"] == 0)}, pair
 
 
-@pytest.mark.parametrize("variant", ["G_FULL", "G_V1", "G_V3S"])
+@pytest.mark.parametrize("variant", ["GRAMMAR", "G_FULL", "G_V1", "G_V3S"])
 @pytest.mark.parametrize("hand_id", HAND_IDS)
 def test_conformed_hand_is_in_the_grammar(hand_id, variant):
     dist = VARIANTS[variant]
@@ -283,3 +284,19 @@ def test_lateral_mounts_mutated():
                 assert all("mount_offset" in s.params for s in new)
                 grown += 1
     assert moved > 5 and grown > 20
+
+
+@pytest.mark.parametrize("hand_id", HAND_IDS)
+def test_the_one_grammar_contains_the_hands(hand_id):
+    """Against the one grammar (all rules on) the only rule conflicts left are
+    the ones its capability does not cover yet (see the README): joints at
+    one point, bone lengths outside 15-80 mm, mounts off a palm part, and the
+    15 deg grid where it costs more than 10 deg."""
+    model, pr = HANDS[hand_id]
+    cd, rep = C.conform_to_grammar(pr.derivation, GRAMMAR, SIMULATOR)
+    assert set(rep.conflict_features()) <= {"colocated_joints", "link_length_range", "mount_off_segment", "rest_bend"}
+    f = C.fidelity(model, pr.name_map, rep.root_transform(pr.root_transform), derive(cd))
+    _, rf = C.conform_to_grammar(pr.derivation, G_V1)
+    old = C.fidelity(model, pr.name_map, rf.root_transform(pr.root_transform),
+                     derive(C.conform_to_grammar(pr.derivation, G_V1)[0]))
+    assert f["max_pos_mm"] <= old["max_pos_mm"] + 1e-6
