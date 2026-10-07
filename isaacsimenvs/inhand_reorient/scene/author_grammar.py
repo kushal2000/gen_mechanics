@@ -192,11 +192,21 @@ def _author_joint(layer, joint_path: str, *, body0_path: str, body1_path: str,
 
 
 def _link_mass_props(length: float, radius: float, real: bool) -> Tuple[float, Tuple[float, float, float]]:
+    """Mass and diagonal inertia of a real link: a solid cylinder of the
+    link's length, floored at a solid sphere of the link's radius. Without
+    the floor a 0 mm link (two joints at one point) would get about 1e-6 kg
+    and 5e-11 kg m^2 between two real links, a PhysX stability risk. The
+    floor only acts on links shorter than 4/3 of the radius (16 mm at the
+    largest sampled radius, 12 mm)."""
     if not real:
         return rpc.VIRTUAL_LINK_MASS_KG, (rpc.VIRTUAL_LINK_INERTIA,) * 3
     mass = max(math.pi * radius * radius * length * rpc.GEN_LINK_DENSITY_KG_M3, 1e-6)
     izz = 0.5 * mass * radius * radius
     ixx = iyy = mass * (3.0 * radius * radius + length * length) / 12.0
+    sphere = 4.0 / 3.0 * math.pi * radius ** 3 * rpc.GEN_LINK_DENSITY_KG_M3
+    if sphere > mass:
+        i_sphere = 0.4 * sphere * radius * radius
+        mass, ixx, iyy, izz = sphere, max(ixx, i_sphere), max(iyy, i_sphere), max(izz, i_sphere)
     return mass, (ixx, iyy, izz)
 
 
