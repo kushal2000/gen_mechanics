@@ -582,29 +582,16 @@ GEN_LINK_DENSITY_KG_M3: float = TIER_MASS_KG["pp"] / (
 GEN_JOINT_EFFORT_NM: float = 0.5
 GEN_JOINT_VELOCITY_RAD_S: float = 5.0
 
-# Control, not hardware: these say how the joint tracks a target, and are ours
-# to tune. kp is matched to the torque ceiling -- the actuator saturates at
-# ~1 rad of error, about the joint's full travel, so it can use its whole range
-# without sitting permanently clipped. That makes kp track GEN_JOINT_EFFORT_NM:
-# at a 0.5 N.m ceiling, kp = 1.0 would saturate at half a radian instead.
-GEN_JOINT_STIFFNESS: float = 0.5
+# The drive gains are the uniform actuator every commercial hand trains with
+# (assets/urdf/unified_dynamics_commercial_hands/make_uniform.py: STIFFNESS, ARMATURE, DAMPING), so a
+# generated hand and a commercial hand in the same run differ in morphology only, not in how their joints
+# track a target. 2026-10-02_physical_grammar proposed kp 0.5 (saturating at ~1 rad of error) and a fixed
+# hardware armature of 0.003 (the XM335's reflected inertia, good to ~2x); kept out on 2026-10-07 so every
+# hand shares one actuator model. Revisit both together, in make_uniform.py and here, if the actuator changes.
+GEN_JOINT_STIFFNESS: float = 3.0
 
-# Hardware, and NOT a function of the effort ceiling.
-#
-# An earlier form scaled this with torque (armature/effort averages 0.00116
-# across SHARPA's five tiers). That is a motor-SELECTION law: it holds for a
-# hand that fits a bigger actuator where it needs more torque, which is what
-# SHARPA does. Generated hands carry one fixed actuator at every joint, so the
-# rotor inertia is hardware -- de-rating the torque ceiling in software does not
-# make the rotor lighter, and tying the two would silently halve the simulated
-# inertia of a motor that had not changed.
-#
-# Reflected inertia N^2 J for the XM335-T323-T: N = 323.04, and its rotor turns
-# at 53 x 323 = 17,119 rpm at no load, so J is coreless-class, ~2-4e-8 kg.m^2,
-# giving 0.002-0.004. SHARPA's two largest actuators sit at 0.00265 and 0.00320,
-# which is the same band. Good to roughly a factor of two: ROBOTIS does not
-# publish rotor inertia, and a bench spin-down would settle it.
-GEN_JOINT_ARMATURE: float = 0.003
+# armature/effort averaged over SHARPA's five actuator tiers (0.00116), at the effort ceiling: 0.00058.
+GEN_JOINT_ARMATURE: float = 0.00116 * GEN_JOINT_EFFORT_NM
 
 
 # Critically damped against the joint's own inertia, which is what SHARPA is:
