@@ -26,6 +26,12 @@ The grammar combines our grammar (`martin/hand-grammar`), Vatsal's physical gram
   2. **Range:** a joint takes the global range of its nearest kind (item 5).
   3. **Random draw:** a new joint starts exactly on a kind, chosen with the commercial hands' mix of kinds (measured in `palm-and-axis-study.md`).
 - Oblique axes (between two kinds, e.g. a thumb base angled so the thumb sweeps across the palm as it closes) are allowed anywhere on the 5 degree grid.
+- **Closing direction = toward the grasp point (Martin, 2026-10-07).** A finger's link frame at q = 0: x along the finger (from facing and tilt); y, the closing direction, the unit vector square to x pointing at the grasp point G, y = normalise((G - base) - ((G - base) . x) x); z = x cross y. G is the object's start point above the palm (`derive.object_start_m`: 53.5 mm above the plate's centre plane, i.e. half the 37 mm plate + a 30 mm object half-size + 5 mm, over the main palm outline's centroid). A finger pointing straight at G falls back to +x (the grasp side), then to the tilt direction. Axis angles, kinds, signs, the random draw on kinds, conform and the simulator tables all use this frame. Before, y was the tilt direction (toward the palm normal), and nothing made fingers close toward a common point.
+  - Random hands, + on a bending joint at the zero pose: the fingertip moved nearer G for 79% of bending joints before (2,285 joints), 100% after (a test checks it).
+  - G depends on every finger base and palm hinge (through the outline's centroid), so moving one base turns every finger's closing direction a little; the stored axis angles are relative to it.
+  - Commercial fidelity: 17 of 19 within 5 mm / 10 degrees before and after. Misses before: ARMS 5.1 mm, Wuji v1 5.1 mm / 10.4 degrees; after: ARMS 5.2 mm, SVH 5.04 mm (Wuji v1 now 4.0 mm / 3.4 degrees). Conform now fits each finger twice, because a finger's frame depends on all the bases: first with its base free (G from the first estimate of the bases), then with every base fixed where it settled (and spaced), on the G those bases set.
+  - Derived kinds of the 283 commercial hinge joints: bend 192 -> 203, spread 78 -> 67, twist 13 -> 13; DClaw now reads as one spread and two bends per finger, as built. The random draw keeps the measured mix (69/27/4).
+  - Random hands alone (before item 25): C1 40% -> 29%, because fingers in a row now close toward one point and meet; C2 64% -> 80%; viable 17% -> 17%. A parallel row with plain bend axes (0, 0) converges as it closes, so the simulator's hand-made validation hands splay their rows 15 degrees per finger.
 - **Why:** with free axes as before, nothing made "positive" mean "curl", and random fingers curled only through the rest bends; the computed sign and the kind-based random draw fix that. Vatsal's fixed kinds cannot express oblique axes, and kinds plus a capped tilt (an earlier draft of this item) needed three different step types (a 90 degree switch, a coarse tilt and a fine tilt) and still could not reach a 45 degree thumb axis. Treating the axis like every other angle gives one rule for all parameters: coarse 10 mm or 30 degrees, fine 1 mm or 5 degrees. Commercial hands fit on the 5 degree grid with no cap.
 - This settles item 16 (no kind-switch operator) and supersedes item 18.
 
@@ -134,6 +140,28 @@ No coupling step (one global ratio, 7b). Every coarse value lies on the fine gri
 - **Tolerance 8 mm:** the smallest whole millimetre every commercial hand passes. Worst insets: Allegro's thumb 8.0 mm (inside the hull of its heel disc and index base), Inspire's thumb 5.6, ARMS's thumb 5.3, Wuji v2's thumbs 5.0 and 4.9, Tesollo 2.9, SVH 2.0, Wuji v1 1.3, every other hand 0 (middle knuckles of a straight row lie on the hull's edge). Dex3 breaks the rule: its thumb sits 22.5 mm inside (between the wrist and its two fingers on the palm's centre line), more than the 10 mm we allow a tolerance to grow for one hand, so it is reported, not accommodated; the simulator still admits it as a commercial hand.
 - **Why (Martin, 2026-10-07):** "the fingers should be able to be on any of the edges but not sticking out of the middle of the palm". With uniform random hands (878a3d4) bases could land anywhere on the plate.
 - Effect on random hands (Evolution Rules, coarse, 1000 hands): C1 37% -> 40%, C2 66% -> 64%, viable 16% -> 17% (6.1 -> 5.8 tries per viable hand).
+
+### 25. Generation keeps C1: random hands are built clear, mutations return the first child that passes (Vatsal's method)
+- **Random hands** are built finger by finger. Each finger (base, facing, tilt, joints and links) is drawn again, up to 50 times, until the hand so far is clear: no two bodies overlap at the zero pose (rounded-box distance at least 0) and none by more than 3 mm at the start pose (C1). Pairs that touch by construction are excluded (consecutive links, a link and its plate through 0 mm links, a palm section and the main plate). A finger that cannot be placed ends the hand there (fewer fingers); a hand left with fewer than the minimum is drawn again. The optional palm joint goes only on a finger for which the hand stays clear.
+- **Mutations:** each operator lists its applications, shuffles them and returns the first child that keeps the rules and C1 (a parent that already fails C1, such as a commercial hand, needs a child no worse). `mutate` picks an operator uniformly among those with applications at the stage and returns nothing if that operator has no such child; `can_act`, which sets the viewer's operator buttons, stops at the first passing child.
+- C1 and C2 stay viability checks (viewer panel, simulator admission). C2 is not built into generation, and no bias toward it was tried: the obvious ones (fingers aimed at the palm centre, shorter fingers) would skew the uniform draw.
+- **Why (Martin, 2026-10-07):** Vatsal's sanity checks belong in generation, so that feasible designs are more likely; 60% of random draws failed C1 and were wasted.
+- **Effect** (Evolution Rules, coarse; 1000 random hands; 500 mutations of viable parents; before = the commit before both changes, after = both changes):
+
+  | | before | after |
+  |---|---|---|
+  | C1 / C2 / viable | 40% / 64% / 17% | 100% / 74% / 74% |
+  | random draws per viable hand | 5.8 | 1.4 |
+  | draw time per hand | 2.7 ms | 30 ms |
+  | draw + checks per viable hand | 0.12 s | 0.07 s |
+  | mutate() calls returning a child | 100% | 98.4% |
+  | children passing C1 / viable | 95% / 90% | 100% / 96% |
+  | time per mutation | 20 ms | 11 ms |
+  | fingers per hand, joints per finger, finger length | 3.95, 3.01, 140 mm | 4.02, 2.79, 134 mm |
+  | base spread (std y, z), facing and bearing spread, tilt std | 80, 80 mm; 0.99, 1.00; 42 deg | 79, 80 mm; 0.99, 0.98; 43 deg |
+  | mean distance between two random hands | 155 | 152 |
+
+  The clearance costs a little diversity in finger structure (fewer joints, shorter fingers: long many-jointed fingers collide more often); placement, facing and tilt stay uniform. Mutations got faster because an operator stops at its first passing child instead of listing every valid one.
 
 ## Still to decide
 - After the grammar work: raise C5 (physics grasp test) again.
