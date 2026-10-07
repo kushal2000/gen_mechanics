@@ -299,7 +299,8 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
     # Review item 4's exemption (projected commercial hands only -- see
     # `_author_body_and_collider`'s own comment): which authored body path
     # must collision-filter which other authored body path(s), from this
-    # design's `filtered_pairs` (empty for every sampled design).
+    # design's `filtered_pairs` (short-bone and ghost-mount pairs for any
+    # design, plus rest-overlap pairs for exempted projected hands).
     filtered_targets_of: Dict[str, List[str]] = {}
     for i, j in design.filtered_pairs:
         pi, pj = _node_body_path(i), _node_body_path(j)

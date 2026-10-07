@@ -646,7 +646,7 @@ def test_sampled_designs_keep_parent_child_adjacency_only():
             if not ge._admit_structural(model).ok:
                 continue
             design = ge.canonicalize(model)
-            assert design.filtered_pairs == ()
+            assert design.filtered_pairs == ge.ghost_mount_pairs(design)
             parent_only = set()
             for idx in range(ge.N_SLOTS):
                 if design.slot_valid[idx]:
@@ -671,3 +671,36 @@ def test_zero_length_link_mass_is_floored_at_a_sphere():
         assert m30 == pytest.approx(math.pi * r * r * 0.030 * rpc.GEN_LINK_DENSITY_KG_M3)
         assert i30[2] == pytest.approx(0.5 * m30 * r * r)
     assert ag._link_mass_props(0.0, 0.01, False) == (rpc.VIRTUAL_LINK_MASS_KG, (rpc.VIRTUAL_LINK_INERTIA,) * 3)
+
+
+def test_ghost_mounted_fingers_are_filtered_against_the_palm():
+    """A finger 3/4 on the palm through a ghost carrier is exempt from the
+    overlap check against the palm, and its authored joint parent is the
+    ghost carrier, so authoring must collision-filter it against the palm;
+    a finger on a real (jointed) carrier is excluded by PhysX itself and is
+    still overlap-checked against the palm, so it gets no pair."""
+    from hand_sampler.grammar.limits import SIMULATOR
+    from hand_sampler.grammar.variants import build_distribution
+
+    seen_ghost = seen_real = 0
+    for seed in range(300):
+        model = derive(sample_derivation(seed, build_distribution(), limits=SIMULATOR))
+        if not ge._admit_structural(model).ok:
+            continue
+        design = ge.canonicalize(model)
+        pairs = set(design.filtered_pairs)
+        for f, pc in ((3, ge.PC0_SLOT), (4, ge.PC1_SLOT)):
+            base = f * ge.N_JOINTS_PER_FINGER
+            if not design.slot_valid[base]:
+                continue
+            if design.slot_valid[pc]:
+                seen_real += 1
+                assert (ge.ROOT_NODE, base) not in pairs
+                assert ge._effective_parent(design, base) == pc
+            else:
+                seen_ghost += 1
+                assert (ge.ROOT_NODE, base) in pairs
+                assert ge._effective_parent(design, base) == ge.ROOT_NODE
+        assert set(ge.ghost_mount_pairs(design)) <= pairs
+        assert all(i == ge.ROOT_NODE for i, _j in ge.ghost_mount_pairs(design))
+    assert seen_ghost > 0 and seen_real > 0

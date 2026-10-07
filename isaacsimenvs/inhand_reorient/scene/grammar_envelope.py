@@ -342,7 +342,10 @@ class EnvelopeDesign:
     bone between two joints at one point, so the bodies on either side of
     it meet at the joint like a parent and its child; set
     by `canonicalize` for every design, empty for a design without such
-    bones); (2) for EXEMPTED designs only (projected commercial hands --
+    bones); (2) the palm and the first link of every finger 3/4 that sits on
+    the palm through a ghost carrier (`ghost_mount_pairs`, also set by
+    `canonicalize`: PhysX only excludes a joint's own two bodies, and this
+    link's joint parent is the ghost carrier); (3) for EXEMPTED designs only (projected commercial hands --
     `admit`'s `check_overlap=False` path, see its docstring), the pairs that
     overlap at rest (`mark_filtered_pairs`), so PhysX's depenetration impulse
     doesn't blow up the ghost/carrier joints at step 0. Sampled designs are
@@ -514,7 +517,7 @@ def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
         finger_digit_id=tuple(finger_digit_id), grammar_version=getattr(model, "grammar_version", ""),
         reasons=(), fingertip_marker_ok=fingertip_marker_ok, filtered_pairs=(),
     )
-    design.filtered_pairs = short_bone_pairs(design)
+    design.filtered_pairs = tuple(sorted(set(short_bone_pairs(design)) | set(ghost_mount_pairs(design))))
     return design
 
 
@@ -906,6 +909,24 @@ def short_bone_pairs(design: EnvelopeDesign) -> Tuple[Tuple[int, int], ...]:
         if design.slot_valid[idx]:
             for a in _chain_ancestors(design, idx)[1:]:
                 pairs.add((min(idx, a), max(idx, a)))
+    return tuple(sorted(pairs))
+
+
+def ghost_mount_pairs(design: EnvelopeDesign) -> Tuple[Tuple[int, int], ...]:
+    """`(ROOT_NODE, base_slot)` for every finger 3/4 whose structural parent
+    (PC0_SLOT/PC1_SLOT) is a ghost carrier. Such a finger sits on the palm
+    (`_effective_parent` returns `ROOT_NODE`, so `rest_overlap_pairs` never
+    checks it against the palm), but its authored joint parent is the
+    collider-less ghost carrier, not the root body, so PhysX's automatic
+    parent/child exclusion does not cover the finger's first link and the
+    palm. Without a filter the two collide from step 0 wherever they overlap
+    at rest, which the overlap check allows. `canonicalize` puts these in
+    `filtered_pairs`, which `author_grammar` collision-filters."""
+    pairs = []
+    for idx in range(N_SLOTS):
+        parent = SLOT_PARENT[idx]
+        if design.slot_valid[idx] and parent in (PC0_SLOT, PC1_SLOT) and not design.slot_valid[parent]:
+            pairs.append((ROOT_NODE, idx))
     return tuple(sorted(pairs))
 
 

@@ -211,5 +211,7 @@ def test_write_population_marks_projected_hands_exempt_at_both_poses(tmp_path):
     default_q = ge.palm_up(design, n_sweep=0).default_q
     q0_pairs = {(i, j) for i, j, pen in ge.rest_overlap_pairs(design) if pen > 0.0}
     default_pairs = {(i, j) for i, j, pen in ge.rest_overlap_pairs(design, q=default_q) if pen > 0.0}
-    # plus the pairs joined through its 0 mm bones, which canonicalize records for every design
-    assert set(entry.filtered_pairs) == q0_pairs | default_pairs | set(ge.short_bone_pairs(design))
+    # plus canonicalize's own pairs for every design: those joined through 0 mm
+    # bones and the palm against fingers on a ghost carrier
+    assert set(entry.filtered_pairs) == (q0_pairs | default_pairs | set(ge.short_bone_pairs(design))
+                                         | set(ge.ghost_mount_pairs(design)))
