@@ -21,14 +21,19 @@ import numpy as np
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 HAND_DIR = REPO / "assets/urdf/unified_dynamics_commercial_hands/wuji2"
-FULL = HAND_DIR / "wuji2_left.urdf"
+FULL_OF = {"L": HAND_DIR / "wuji2_left.urdf", "R": HAND_DIR / "wuji2_right.urdf"}   # R: Wuji's own right hand
+FULL = FULL_OF["L"]
 
 
 def variants() -> dict[str, pathlib.Path]:
-    """Display name -> URDF, the full hand first."""
-    out = {"full hand": FULL}
-    for p in sorted(HAND_DIR.glob("wuji2_left_*.urdf")):
-        out[p.stem.replace("wuji2_left_", "").replace("_", " ")] = p
+    """Display name -> URDF: each side's full hand first, then its variants ("L no pinky", "R only thumb index")."""
+    out = {}
+    for side, word in (("L", "left"), ("R", "right")):
+        if not FULL_OF[side].exists():
+            continue
+        out[f"{side} full hand"] = FULL_OF[side]
+        for p in sorted(HAND_DIR.glob(f"wuji2_{word}_*.urdf")):
+            out[f"{side} " + p.stem.replace(f"wuji2_{word}_", "").replace("_", " ")] = p
     return out
 
 
@@ -55,10 +60,9 @@ def main():
     print(f"\n[variants] viser on http://{socket.gethostname()}:{args.port}\n", flush=True)
     server.scene.set_up_direction("+z")
     opts = variants()
-    full_info = summary(FULL)
 
     with server.gui.add_folder("hand"):
-        dd = server.gui.add_dropdown("variant", tuple(opts), initial_value="full hand")
+        dd = server.gui.add_dropdown("variant", tuple(opts), initial_value="L full hand")
         g_full = server.gui.add_checkbox("show full hand beside it", False)
         g_coll = server.gui.add_checkbox("show collision meshes", False)
         md = server.gui.add_markdown("")
@@ -93,11 +97,13 @@ def main():
             s.remove()
         state["sliders"], state["limits"] = {}, {}
         urdf = opts[name]
+        full = FULL_OF[name[0]]                   # the same side's full hand
+        full_info = summary(full)
         state["robot"] = ViserUrdf(server, urdf, root_node_name="/hand", load_collision_meshes=True)
         state["robot"].show_collision = bool(g_coll.value)
-        if g_full.value and name != "full hand":
+        if g_full.value and not name.endswith("full hand"):
             server.scene.add_frame("/ghost", position=(0.0, 0.25, 0.0), show_axes=False)
-            state["ghost"] = ViserUrdf(server, FULL, root_node_name="/ghost/hand", mesh_color_override=(0.6, 0.6, 0.6, 0.5))
+            state["ghost"] = ViserUrdf(server, full, root_node_name="/ghost/hand", mesh_color_override=(0.6, 0.6, 0.6, 0.5))
             state["ghost"].update_cfg(np.zeros(len(state["ghost"].get_actuated_joint_names())))
         limits = state["robot"].get_actuated_joint_limits()
         with sliders_folder:
@@ -122,7 +128,7 @@ def main():
     dd.on_update(lambda _: load(str(dd.value)))
     g_full.on_update(lambda _: load(str(dd.value)))
     g_coll.on_update(lambda _: setattr(state["robot"], "show_collision", bool(g_coll.value)) if state["robot"] else None)
-    load("full hand")
+    load("L full hand")
     while True:
         time.sleep(1.0)
 

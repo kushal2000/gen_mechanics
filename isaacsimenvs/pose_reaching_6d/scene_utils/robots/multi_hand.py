@@ -2,7 +2,9 @@
 
 Selected by ``robot_spec = "multi:<spec>+<spec>+..."`` (registered RobotSpec names; "+", because hydra
 reads a comma in an override as a sweep), or the shorthand
-``"multi:uniform"`` for every uniform-dynamics commercial hand. Kit-free, so the network resolves the same
+``"multi:uniform"`` for every uniform-dynamics commercial hand, or ``"multi:wuji2_lr_2plus"`` for every Wuji v2
+with two or more fingers, left and right (2 x 26 = 52: the full hand, 5 no_<finger>, 10 three- and 10
+two-finger only_<...>, from make_missing_fingers.py --all). Kit-free, so the network resolves the same
 layout as the env (``get_robot_spec`` returns :attr:`HandSet.template`).
 
 Nothing is padded in the SIMULATOR -- every hand keeps its own links and joints (a padded topology made
@@ -35,6 +37,22 @@ from hand_sampler.robot_spec import RobotSpec
 MULTI_PREFIX = "multi:"
 UNIFORM_HANDS = ("sharpa", "allegro", "leap", "shadow", "dex3", "tesollo", "wuji2", "xhand")
 PALM = "palm"
+WUJI2_FINGERS = ("thumb", "index", "middle", "ring", "pinky")
+
+
+def _subset_tags(fingers, min_fingers: int) -> list[str]:
+    """make_missing_fingers.make_all's tags, in its order: no_<f> for one short, only_<a>_<b>... below."""
+    import itertools
+    tags = []
+    for k in range(len(fingers) - 1, min_fingers - 1, -1):
+        for keep in itertools.combinations(fingers, k):
+            tags.append("no_" + next(f for f in fingers if f not in keep) if k == len(fingers) - 1
+                        else "only_" + "_".join(keep))
+    return tags
+
+
+WUJI2_LR_2PLUS = tuple(f"wuji2_{side}_uniform_handonly{t}" for side in ("left", "right")
+                       for t in ["", *(f"_{g}" for g in _subset_tags(WUJI2_FINGERS, 2))])
 
 
 def is_multi_ref(ref) -> bool:
@@ -45,6 +63,8 @@ def spec_names(ref: str) -> tuple[str, ...]:
     body = ref[len(MULTI_PREFIX):]
     if body == "uniform":
         return tuple(f"{h}_left_uniform_handonly" for h in UNIFORM_HANDS)
+    if body == "wuji2_lr_2plus":
+        return WUJI2_LR_2PLUS
     names = tuple(n.strip() for n in body.split("+") if n.strip())
     if len(names) < 1 or len(set(names)) != len(names):
         raise ValueError(f"{ref!r}: need one or more distinct robot specs")

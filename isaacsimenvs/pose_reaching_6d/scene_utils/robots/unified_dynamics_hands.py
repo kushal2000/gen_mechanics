@@ -52,13 +52,22 @@ UNIFORM_LEFT = {h: spec_from_json(UNIFORM_DIR / h / f"{h}_left.spec.json", name=
                 for h in LEFT_HANDS}
 UNIFORM_LEFT["sharpa"] = _sharpa_uniform()
 
-# Reduced variants (make_missing_fingers.py): the full hand minus some fingers, everything else identical --
-# <hand>_left_<tag>.spec.json next to the full hand, tag no_<finger> or only_<a>_<b>... Registered as
-# <hand>_left_uniform_handonly_<tag>.
-MISSING_FINGER = {}
-for _p in sorted(UNIFORM_DIR.glob("*/*_left_*.spec.json")):
-    _hand, _tag = _p.name[: -len(".spec.json")].split("_left_", 1)
-    _name = f"{_hand}_left_uniform_handonly_{_tag}"
-    MISSING_FINGER[_name] = spec_from_json(_p, name=_name)
+# Right hands with uniform dynamics (any <hand>/<hand>_right.spec.json; so far only Wuji v2, from the vendor's
+# own right URDF): registered as <hand>_right_uniform_handonly. Kept apart from UNIFORM_LEFT so that
+# "multi:uniform" (multi_hand.UNIFORM_HANDS, left hands) means what it always has.
+UNIFORM_RIGHT = {}
+for _p in sorted(UNIFORM_DIR.glob("*/*_right.spec.json")):
+    _hand = _p.name[: -len("_right.spec.json")]
+    UNIFORM_RIGHT[_hand] = spec_from_json(_p, name=f"{_hand}_right_uniform_handonly")
 
-__all__ = ["MISSING_FINGER", "UNIFORM_LEFT"]
+# Reduced variants (make_missing_fingers.py): the full hand minus some fingers, everything else identical --
+# <hand>_<side>_<tag>.spec.json next to the full hand, tag no_<finger> or only_<a>_<b>... Registered as
+# <hand>_<side>_uniform_handonly_<tag>.
+MISSING_FINGER = {}
+for _side in ("left", "right"):
+    for _p in sorted(UNIFORM_DIR.glob(f"*/*_{_side}_*.spec.json")):
+        _hand, _tag = _p.name[: -len(".spec.json")].split(f"_{_side}_", 1)
+        _name = f"{_hand}_{_side}_uniform_handonly_{_tag}"
+        MISSING_FINGER[_name] = spec_from_json(_p, name=_name)
+
+__all__ = ["MISSING_FINGER", "UNIFORM_LEFT", "UNIFORM_RIGHT"]
