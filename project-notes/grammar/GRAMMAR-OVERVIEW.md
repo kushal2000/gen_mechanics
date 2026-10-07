@@ -112,6 +112,92 @@ Every hand fits one layout of 36 joint slots: 6 finger slots, each a palm-joint 
 | Physics | | | the uniform values |
 | Commercial hands | the fitting and our 15 hands | MIDAS | Dex3, Wuji v2 |
 
+## Summary tables
+
+"Set in the build" marks a value the build fills in from the commercial hands, in the same way as the other limits.
+
+### 1. What varies from hand to hand (what evolution mutates)
+
+| Parameter | Per | Allowed values | Random draw | Coarse step | Fine step |
+|---|---|---|---|---|---|
+| Number of fingers | hand | 2-6 | set in the build | add / remove a finger | none |
+| Joints per finger | finger | 1-5 | set in the build | split / merge a link | none |
+| Base position (y, z) on the plate | finger | within 125 mm of the wrist centre (being re-measured from the wrist); neighbouring bases at least 19 mm apart | set in the build | 10 mm | 1 mm |
+| Facing (in-plane direction) | finger | any | set in the build; one finger may be an opposing thumb | 30 degrees | 5 degrees |
+| Tilt (out of the plate) | finger | set in the build | 0 | 30 degrees | 5 degrees |
+| Joint axis direction | joint | any direction (2 angles); kind (bend / spread / twist) read off it | exactly on a kind: 69% bend, 27% spread, 4% twist | 30 degrees | 5 degrees |
+| Link length | joint | 0 mm or 15-90 mm; fingertip 10-90 mm, never 0; whole finger at most 250 mm | set in the build | 10 mm (0 and 15 mm are neighbours) | 1 mm |
+| Coupled to the previous joint | joint | yes / no | no | toggle | none |
+| Which fingers share a palm joint | hand | up to 6 palm joints, each carrying at least one finger | set in the build | give a finger its own / move it onto another / remove a palm joint | none |
+| Palm joint hinge position | palm joint | set in the build | set in the build | 10 mm | 1 mm |
+| Palm joint hinge axis | palm joint | any direction | set in the build | 30 degrees | 5 degrees |
+
+A four-finger hand with three joints per finger and no palm joint has 52 numbers (4 per finger, 3 per joint) and 12 coupling flags; each palm joint adds 4 numbers.
+
+### 2. What is the same for every hand (fixed, not mutated)
+
+| Constant | Value | Where it comes from |
+|---|---|---|
+| Link cross-section | rounded box 19 mm wide x 18 mm high, 6 mm corners | median of 208 finger links on 16 commercial hands |
+| Link shape at rest | straight (no bends between links) | Martin: an unnecessary per-link number |
+| Palm thickness | 37 mm | median of 15 commercial palms |
+| Palm outline | convex hull of the finger bases plus a 20 mm heel disc at the wrist centre | Vatsal's hull, anchored at the wrist (Martin) |
+| Joint ranges | bend -30 to +90; spread +/-30; twist +/-90; palm joints +/-30 degrees | Martin's 9/23 note: spread needs a narrower range than bend |
+| Joint sign | + closes toward the grasp point, or spreads toward +y; 0 = home | Kushal's convention |
+| Coupling | follows the previous joint at a ratio of 1.1, offset 0 | typical of the commercial couplings (median 1.064, mean 1.145) |
+| Physics | 0.5 N m, 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, link density 1750 kg/m^3, friction 0.5 | Kushal's uniform values |
+| Object start | a fixed spot above the palm | set by the task |
+
+### 3. Limits: the whole grammar against the Evolution Rules
+
+| Limit | Grammar (No Rules) | Evolution Rules |
+|---|---|---|
+| Fingers | 2-6 | 2-6 |
+| Joints per finger | 1-5 | 1-5 |
+| Palm joints | up to 6, each with at least one finger | same |
+| Joint types | hinge, coupled, sliding | hinge, coupled |
+| Link length | 0 or 15-90 mm; fingertip 10-90 mm | same |
+| Finger length | at most 250 mm | same |
+| Finger spacing | at least 19 mm | same |
+| Base distance from the wrist centre | at most 125 mm (being re-measured) | same |
+
+Sliding joints are the only part of the grammar that evolution does not use. Every limit is a commercial extreme with a 10% margin; none comes from a motor.
+
+### 4. Removed from the grammar to keep it simple
+
+| Removed | What replaced it |
+|---|---|
+| Per-hand capsule radius | one rounded-box cross-section |
+| Per-joint joint ranges | one range per kind |
+| Rest bends between links (and Vatsal's leans) | straight links; mount facing and tilt, and free joint axes |
+| Palm length and rigid extra palm pieces | the hull palm |
+| Per-joint coupling ratio and offset | one ratio (1.1), offset 0 |
+| Continuous (unlimited spin) joints | dropped: they need a slip ring and no hand needs them |
+| Branching fingers | dropped: no hand we model has one |
+| Joint-kind switch, capped tilt | the axis is a direction, stepped like every other angle |
+| Named grammar variants and rule toggles | one grammar |
+| Limits derived from a motor (Dynamixel, Feetech) | limits from the commercial hands |
+
+### 5. Structural mutations (coarse stage only)
+
+| Mutation | Effect |
+|---|---|
+| Add a finger | one bend joint at a free spot that keeps the spacing |
+| Remove a finger | any finger, in one step; a palm joint left with no finger is removed |
+| Split a link | adds a joint; the finger keeps its length |
+| Merge two links | removes a joint |
+| Couple / uncouple a joint | it follows, or stops following, the joint before it |
+| Give a finger its own palm joint | a new hinged section under that finger |
+| Move a finger onto another palm joint | the two fingers then move together |
+| Remove a palm joint | its fingers return to the main palm |
+
+### 6. Viability checks
+
+| Check | Passes when | Why |
+|---|---|---|
+| C1, no self-overlap | no two links (palm included) overlap by more than 3 mm at the zero pose or the start pose | deeper starting overlaps make the physics blow up |
+| C2, fingertips can meet | at least one pair of fingertips can reach a common region above the palm (tolerance set so every commercial hand passes) | a hand whose fingertips never meet cannot hold or turn an object |
+
 ## Not settled yet
 
 - A physics grasp check, finding a stable grasp in simulation, comes up again once the grammar work is done.
