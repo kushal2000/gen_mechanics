@@ -336,13 +336,17 @@ class EnvelopeDesign:
     (review item 1). False (no ghost to place) for a finger whose real chain
     fills all 6 slots -- `palm_up` masks such a finger's `fingertip_valid`."""
     filtered_pairs: Tuple[Tuple[int, int], ...] = field(default_factory=tuple)
-    """Slot-index pairs (root capsule uses -1) that overlap at rest and are
-    EXEMPTED from admission rejection (projected commercial hands only --
-    `admit`'s `check_overlap=False` path, see its docstring) -- authoring
-    must collision-filter exactly these pairs so PhysX's depenetration
-    impulse doesn't blow up the ghost/carrier joints at step 0. Empty for
-    every sampled design (those are REJECTED on overlap instead, never
-    exempted)."""
+    """Slot-index pairs (root capsule uses -1) that authoring must
+    collision-filter: (1) bodies joined through a chain of short bones
+    (`short_bone_pairs`: a bone shorter than one capsule radius, e.g. a 0 mm
+    bone between two joints at one point, so the bodies on either side of
+    it meet at the joint like a parent and its child; set
+    by `canonicalize` for every design, empty for a design without such
+    bones); (2) for EXEMPTED designs only (projected commercial hands --
+    `admit`'s `check_overlap=False` path, see its docstring), the pairs that
+    overlap at rest (`mark_filtered_pairs`), so PhysX's depenetration impulse
+    doesn't blow up the ghost/carrier joints at step 0. Sampled designs are
+    REJECTED on overlap instead, never exempted."""
     sha256: str = ""
     """This design's entry-level sha256 (over its raw derivation dict,
     `population_file._entry_sha256`) -- set by `population_file.
@@ -503,13 +507,15 @@ def canonicalize(model: KinematicModel, source: str = "") -> EnvelopeDesign:
     root_frame = frames_by_name.get("root_tip")
     root_length = float(root_frame.pose.xyz[2]) if root_frame is not None else 0.0
 
-    return EnvelopeDesign(
+    design = EnvelopeDesign(
         source=source, model=model, slot_valid=slot_valid, slot_origin=slot_origin, slot_axis=slot_axis,
         slot_limits=slot_limits, slot_length=slot_length, slot_joint_name=tuple(slot_joint_name),
         slot_body_name=tuple(slot_body_name), capsule_radius_m=float(capsule_radius), root_length_m=root_length,
         finger_digit_id=tuple(finger_digit_id), grammar_version=getattr(model, "grammar_version", ""),
         reasons=(), fingertip_marker_ok=fingertip_marker_ok, filtered_pairs=(),
     )
+    design.filtered_pairs = short_bone_pairs(design)
+    return design
 
 
 def _physical_reasons(
@@ -848,6 +854,61 @@ def _effective_parent(design: EnvelopeDesign, idx: int) -> int:
     return ROOT_NODE
 
 
+SHORT_BONE_RADII = 1.0
+"""A bone shorter than this many capsule radii joins its two neighbours
+(`_short`). One radius: a 0 mm bone (two joints at one point, e.g. a
+knuckle's abduction and flexion joints) and the few-millimetre bones of the
+commercial hands make the capsules on either side meet at the joint, so they
+overlap at any real bend; a longer bone keeps them apart at the rest and
+reset poses, and when it does not (a finger folded back onto itself) that is
+a real collision the overlap check must still see. No sampled bone is this
+short (the grammar draws 15-80 mm with radii of at most 12 mm), so sampled
+designs keep exactly their parent/child adjacency."""
+
+
+def _short(design: EnvelopeDesign, node: int) -> bool:
+    """A valid slot whose bone is shorter than `SHORT_BONE_RADII` capsule
+    radii: the bodies on either side of it meet at its joint."""
+    return node != ROOT_NODE and float(design.slot_length[node]) < SHORT_BONE_RADII * design.capsule_radius_m
+
+
+def _chain_ancestors(design: EnvelopeDesign, idx: int) -> List[int]:
+    """The nodes VALID slot `idx` is expected to touch towards the root: its
+    effective parent, and beyond it every ancestor reached through a chain of
+    short bones (`_short`), e.g. both neighbours of a 0 mm bone."""
+    out = [_effective_parent(design, idx)]
+    while _short(design, out[-1]):
+        out.append(_effective_parent(design, out[-1]))
+    return out
+
+
+def adjacent_pairs(design: EnvelopeDesign) -> set:
+    """Ordered node pairs (both orders) that `rest_overlap_pairs` excludes:
+    every valid slot with its effective parent, and with every ancestor it
+    meets through a chain of short bones (`_chain_ancestors`)."""
+    out = set()
+    for idx in range(N_SLOTS):
+        if design.slot_valid[idx]:
+            for a in _chain_ancestors(design, idx):
+                out.add((idx, a))
+                out.add((a, idx))
+    return out
+
+
+def short_bone_pairs(design: EnvelopeDesign) -> Tuple[Tuple[int, int], ...]:
+    """Node pairs (sorted, root `ROOT_NODE`) that meet through a chain of
+    short bones but are not parent and child: PhysX does not collide a
+    joint's two bodies, but it would collide these, so authoring must
+    collision-filter them (`canonicalize` puts them in `filtered_pairs`).
+    Empty for a design without bones shorter than one capsule radius."""
+    pairs = set()
+    for idx in range(N_SLOTS):
+        if design.slot_valid[idx]:
+            for a in _chain_ancestors(design, idx)[1:]:
+                pairs.add((min(idx, a), max(idx, a)))
+    return tuple(sorted(pairs))
+
+
 def capsule_core_endpoints_local(length: float, radius: float) -> Tuple[float, float]:
     """`(z0, z1)`: local-z interval of a capsule's CORE segment -- the
     segment between the two hemisphere-cap CENTERS, which is what a
@@ -891,7 +952,10 @@ def rest_overlap_pairs(design: EnvelopeDesign, q: Optional[np.ndarray] = None) -
     allow, EXCLUDING pairs that are expected to touch (envelope parent/
     child, walked through any ghost carrier via `_effective_parent` --
     review item 4 (phase2)'s two gaps: "it ignores the root capsule and
-    pairs that meet across ghosts"). Returns `(slot_i, slot_j,
+    pairs that meet across ghosts" -- and bodies that meet through a chain
+    of bones shorter than one radius, e.g. the two neighbours of a 0 mm bone,
+    `adjacent_pairs`, which authoring collision-filters via
+    `filtered_pairs`). Returns `(slot_i, slot_j,
     penetration_depth_m)` for each violating pair, `slot_i`/`slot_j`
     possibly `ROOT_NODE`. Ghost slots themselves (other than the root
     pseudo-node) are never checked -- they have no collider (see
@@ -904,11 +968,7 @@ def rest_overlap_pairs(design: EnvelopeDesign, q: Optional[np.ndarray] = None) -
     q_arr = np.zeros(N_SLOTS) if q is None else np.asarray(q, dtype=float).reshape(N_SLOTS)
     T = authored_fk(design, q_arr)
     valid_slots = [i for i in range(N_SLOTS) if design.slot_valid[i]]
-    adjacent = set()
-    for idx in valid_slots:
-        parent = _effective_parent(design, idx)
-        adjacent.add((idx, parent))
-        adjacent.add((parent, idx))
+    adjacent = adjacent_pairs(design)
 
     root_z0, root_z1 = capsule_core_endpoints_local(design.root_length_m, design.capsule_radius_m)
     endpoints: Dict[int, Tuple[np.ndarray, np.ndarray, float]] = {
@@ -940,7 +1000,8 @@ def rest_overlap_pairs(design: EnvelopeDesign, q: Optional[np.ndarray] = None) -
 def mark_filtered_pairs(
     design: EnvelopeDesign, max_penetration_m: float = 0.0, extra_qs: Sequence[np.ndarray] = (),
 ) -> EnvelopeDesign:
-    """Return a copy of `design` with `filtered_pairs` set to the UNION,
+    """Return a copy of `design` with `filtered_pairs` set to its own pairs
+    (`canonicalize`'s short-bone pairs) plus the UNION,
     over `q=0` and every pose in `extra_qs` (pass
     `[palm_up(design, n_sweep=0).default_q]` so the design's own env reset
     pose is covered too -- opus review G0 item 3's same q=0-vs-default_q gap
@@ -956,7 +1017,7 @@ def mark_filtered_pairs(
     see this module's `MAX_REST_PENETRATION_M`)."""
     import dataclasses
 
-    pairs = set()
+    pairs = set(design.filtered_pairs)          # keep canonicalize's short-bone pairs
     for q in (None, *extra_qs):
         for i, j, pen in rest_overlap_pairs(design, q=q):
             if pen > max_penetration_m:

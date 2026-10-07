@@ -558,3 +558,116 @@ def test_five_finger_commercial_hands_reach_with_at_least_three(hand_id):
     assert n_digits == 5, f"{hand_id}: expected 5 digits, got {n_digits}"
     pu = ge.palm_up(design)
     assert pu.reachable_fingertips >= 3, f"{hand_id}: only {pu.reachable_fingertips} fingertips reach"
+
+
+# --------------------------------------------------------------------------
+# Joints at one point (a 0 mm bone, or one shorter than a capsule radius)
+# --------------------------------------------------------------------------
+
+
+def _hand_with_a_short_bone(length_m: float):
+    """A one-grammar hand with a 3+ joint finger whose middle bone is
+    `length_m` long and bent 60 deg at both its joints."""
+    import math
+
+    from hand_sampler.grammar.derive import DerivationStep
+    from hand_sampler.grammar.limits import SIMULATOR
+    from hand_sampler.grammar.variants import build_distribution
+
+    dist = build_distribution()
+    for seed in range(200):
+        d = sample_derivation(seed, dist, limits=SIMULATOR)
+        digits = [s for s in d.steps if s.production == "Digit" and s.params["phalanx_count"] >= 3]
+        if not digits:
+            continue
+        did = digits[0].params["digit_id"]
+        steps = []
+        for s in d.steps:
+            if s.production == "Phalanx" and s.params["digit_id"] == did and s.params["p"] in (1, 2):
+                p = dict(s.params)
+                p["bend_rpy"] = (0.0, math.radians(60.0), 0.0)
+                if s.params["p"] == 1:
+                    p["length"] = length_m
+                s = DerivationStep(path=s.path, production=s.production, params=p)
+            steps.append(s)
+        dd = replace(d, steps=tuple(steps))
+        model = derive(dd)
+        if ge._admit_structural(model).ok:
+            design = ge.canonicalize(model)
+            f = next(i for i, x in enumerate(design.finger_digit_id) if x == did)
+            return design, f * ge.N_JOINTS_PER_FINGER
+    raise AssertionError("no suitable hand")
+
+
+def test_bodies_either_side_of_a_0mm_bone_are_adjacent_and_filtered():
+    design, base = _hand_with_a_short_bone(0.0)
+    a, c = base, base + 2                        # the bones before and after the 0 mm bone (base + 1)
+    assert (a, c) in ge.adjacent_pairs(design) and (c, a) in ge.adjacent_pairs(design)
+    assert (a, c) in design.filtered_pairs        # authoring collision-filters them
+    for q in (None, ge.palm_up(design, n_sweep=0).default_q):
+        assert not any({i, j} == {a, c} for i, j, _ in ge.rest_overlap_pairs(design, q=q))
+    # the same pair, with the middle bone 30 mm long, is a pair the check sees
+    design30, base30 = _hand_with_a_short_bone(0.030)
+    assert (base30, base30 + 2) not in ge.adjacent_pairs(design30)
+    assert (base30, base30 + 2) not in design30.filtered_pairs
+
+
+def test_without_the_chain_rule_the_0mm_bone_overlaps():
+    """What the chain rule removes: across a 0 mm bone bent 60 deg twice, the
+    neighbours' capsules overlap by more than the 3 mm gate."""
+    from hand_sampler.design_space import segment_distance
+
+    design, base = _hand_with_a_short_bone(0.0)
+    T = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
+    ends = []
+    for idx in (base, base + 2):
+        z0, z1 = ge.capsule_core_endpoints_local(float(design.slot_length[idx]), design.capsule_radius_m)
+        ends.append([(T[idx] @ np.array([0.0, 0.0, z, 1.0]))[:3] for z in (z0, z1)])
+    pen = 2 * design.capsule_radius_m - segment_distance(*ends[0], *ends[1])
+    assert pen > ge.MAX_REST_PENETRATION_M
+
+
+def test_short_bone_pairs_survive_mark_filtered_pairs():
+    design, base = _hand_with_a_short_bone(0.0)
+    marked = ge.mark_filtered_pairs(design, extra_qs=[ge.palm_up(design, n_sweep=0).default_q])
+    assert set(design.filtered_pairs) <= set(marked.filtered_pairs)
+
+
+def test_sampled_designs_keep_parent_child_adjacency_only():
+    """No sampled bone is shorter than a capsule radius, so sampled designs
+    get no short-bone pairs and the overlap check is unchanged for them."""
+    from hand_sampler.grammar.limits import SIMULATOR
+    from hand_sampler.grammar.variants import build_distribution
+
+    n = 0
+    for dist in (DEFAULT_R, build_distribution()):
+        for seed in range(150):
+            model = derive(sample_derivation(seed, dist, limits=SIMULATOR if dist is not DEFAULT_R else None))
+            if not ge._admit_structural(model).ok:
+                continue
+            design = ge.canonicalize(model)
+            assert design.filtered_pairs == ()
+            parent_only = set()
+            for idx in range(ge.N_SLOTS):
+                if design.slot_valid[idx]:
+                    p = ge._effective_parent(design, idx)
+                    parent_only |= {(idx, p), (p, idx)}
+            assert ge.adjacent_pairs(design) == parent_only
+            n += 1
+    assert n > 150
+
+
+def test_zero_length_link_mass_is_floored_at_a_sphere():
+    import math
+
+    from isaacsimenvs.inhand_reorient.scene import author_grammar as ag
+
+    for r in (0.008, 0.010, 0.012):
+        m, inertia = ag._link_mass_props(0.0, r, True)
+        sphere = 4.0 / 3.0 * math.pi * r ** 3 * rpc.GEN_LINK_DENSITY_KG_M3
+        assert m == pytest.approx(sphere) and min(inertia) >= 0.4 * sphere * r * r * (1 - 1e-9)
+        # a link long enough to outweigh the sphere is unchanged
+        m30, i30 = ag._link_mass_props(0.030, r, True)
+        assert m30 == pytest.approx(math.pi * r * r * 0.030 * rpc.GEN_LINK_DENSITY_KG_M3)
+        assert i30[2] == pytest.approx(0.5 * m30 * r * r)
+    assert ag._link_mass_props(0.0, 0.01, False) == (rpc.VIRTUAL_LINK_MASS_KG, (rpc.VIRTUAL_LINK_INERTIA,) * 3)
