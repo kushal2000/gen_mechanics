@@ -87,7 +87,7 @@ def build_limits(ints: Dict[str, str], bools: Dict[str, bool], joint_types: str,
 # Operator applicability
 # --------------------------------------------------------------------------
 
-OK, NOT_ALLOWED, NOTHING = "ok", "not allowed by limits", "nothing to act on"
+OK, NOT_ALLOWED, NOTHING = "ok", "not allowed by the rules", "nothing to act on"
 
 
 def _applies(derivation: Derivation, dist, op: str, limits: Optional[GenerationLimits]) -> bool:

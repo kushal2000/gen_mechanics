@@ -56,6 +56,12 @@ GHOST_RGB = (105, 105, 125)
 HAND_RENDER = RenderOptions(joint_axes=False, joint_markers=True, tips=True, root_frame=False)
 MESH_OPACITY = 0.35
 RESET_CURL = an.CURL_FRAC          # palm_up's default_q is this fraction of every joint's range
+
+# The Rules dropdown: the simulator's limits, none, or the fields as edited.
+EVOLUTION_RULES, NO_RULES, CUSTOM_RULES = "Evolution Rules", "No Rules", "Custom Rules"
+RULE_SETS: Dict[str, Optional[glim.GenerationLimits]] = {
+    EVOLUTION_RULES: glim.SIMULATOR, NO_RULES: glim.GenerationLimits(), CUSTOM_RULES: None,
+}
 MAX_TRIES = 5000
 NO_HAND = "(none)"
 
@@ -170,8 +176,8 @@ def rules_text(rules: Dict[str, bool]) -> str:
 def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], limits: glim.GenerationLimits,
                   dist, fine: bool = False) -> str:
     """One line: the shown expression's error against the URDF (E13's metric,
-    target 5 mm / 10 deg), whether it is within the grammar's rules (the
-    conformed one is; what snapping lost), and within the current limits."""
+    target 5 mm / 10 deg), whether it is in the grammar (the conformed one
+    is; what snapping lost), and whether it follows the current rules."""
     if conformed is None:
         f = ch.fidelity or {}
         pos = max(f.get("max_pos_mm", 0.0), f.get("max_tip_mm") or 0.0)
@@ -188,7 +194,7 @@ def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], 
         grid = "the grammar's fine grid" if fine else "the grammar"
         head = f"snapped to {grid}: {pos:.0f} mm / {f['max_axis_deg']:.0f} deg"
         deriv = conformed.derivation
-    return f"{head}; within rules: {rules}; within limits: {glim.check(deriv, limits).summary()}"
+    return f"{head}; in the grammar: {rules}; follows the rules: {glim.check(deriv, limits).summary()}"
 
 
 def change_line(d: hist.DiffSummary) -> str:
@@ -328,9 +334,32 @@ class EssentialViewer:
             self._suppress = False
 
     def reset_limits(self) -> None:
-        """Put every limit field back to the simulator's value."""
-        self._set_fields(glim.SIMULATOR)
+        """Put every field back to the Evolution Rules (the simulator's limits)."""
+        self.choose_rule_set(EVOLUTION_RULES)
+
+    def choose_rule_set(self, name: str) -> None:
+        """Choose Evolution Rules, No Rules or Custom Rules (as the dropdown would)."""
+        self.gui_rules.value = name
+        self._on_rules()
+
+    def _on_rules(self) -> None:
+        if self._suppress:
+            return
+        preset = RULE_SETS[self.gui_rules.value]
+        if preset is not None:            # Custom Rules keeps the fields as they are
+            self._set_fields(preset)
         self._limits_changed()
+
+    def _sync_rules_name(self) -> None:
+        """Name the fields' current values: Evolution Rules, No Rules or Custom Rules."""
+        lim = self.limits()
+        name = next((n for n, p in RULE_SETS.items() if p is not None and p == lim), CUSTOM_RULES)
+        if self.gui_rules.value != name:
+            self._suppress = True
+            try:
+                self.gui_rules.value = name
+            finally:
+                self._suppress = False
 
     def set_limit(self, key: str, value) -> None:
         """Set one limit field (as the panel would)."""
@@ -353,6 +382,7 @@ class EssentialViewer:
         except ValueError as exc:
             self.md_limits.content = f"invalid: {exc}"
             return
+        self._sync_rules_name()
         self._limits_changed()
 
     def _limits_changed(self) -> None:
@@ -368,7 +398,7 @@ class EssentialViewer:
         if self.prep is None:
             return
         rep = glim.check(self.prep.shown.derivation, self.limits())
-        self.md_limits.content = "this hand: " + ("within limits" if rep.ok else "outside: " + "; ".join(
+        self.md_limits.content = "this hand: " + ("follows the rules" if rep.ok else "breaks: " + "; ".join(
             rep.line(k) for k in rep.failing))
 
     # ------------------------------------------------------------------
@@ -565,7 +595,7 @@ class EssentialViewer:
             res = ck.search(dist, enabled, start, max_tries=max_tries, limits=limits, progress=progress)
             self.last_search = res
             if res.derivation is None:
-                self.md_random.content = f"none viable in {res.tries} tries; relax a check or the limits"
+                self.md_random.content = f"none viable in {res.tries} tries; relax a check or the rules"
                 return
             self.md_random.content = f"found after {res.tries} {'try' if res.tries == 1 else 'tries'} (seed {res.seed})"
             self._clear_commercial_choice()
@@ -719,16 +749,18 @@ class EssentialViewer:
         self.md_status = g.add_markdown("starting ...")
 
         with g.add_folder("Grammar"):
-            btn_random = g.add_button("Random", hint="Draw hands from the grammar, under the limits, until every "
+            btn_random = g.add_button("Random", hint="Draw hands from the grammar, following the rules, until every "
                                                      "enabled viability check passes.")
             self.rule_boxes: Dict[str, Any] = {}
             for r in RULES:
                 self.rule_boxes[r] = g.add_checkbox(RULE_INFO[r][0], self.rules[r], hint=RULE_INFO[r][1])
             self.md_random = g.add_markdown("")
 
-        with g.add_folder("Limits"):
-            btn_reset = g.add_button("reset", hint="Every drawn or mutated hand obeys these limits. They start at "
-                                                   "what the simulator's hand can build; reset puts them back.")
+        with g.add_folder("Rules"):
+            self.gui_rules = g.add_dropdown("rules", list(RULE_SETS), initial_value=EVOLUTION_RULES,
+                                            hint="Every drawn or mutated hand follows these rules. Evolution Rules is "
+                                                 "what the simulator's hand can build; No Rules is the whole grammar; "
+                                                 "editing a field below makes them Custom Rules.")
             self.limit_ints: Dict[str, Any] = {}
             for f in lui.INT_FIELDS:
                 self.limit_ints[f.key] = g.add_dropdown(f.label, list(f.options),
@@ -793,7 +825,7 @@ class EssentialViewer:
         for cb in self.rule_boxes.values():
             cb.on_update(_rule_toggled)
 
-        btn_reset.on_click(lambda _: self.reset_limits())
+        self.gui_rules.on_update(lambda _: self._on_rules())
         for h in list(self.limit_ints.values()) + list(self.limit_bools.values()) + [self.gui_joint_types,
                                                                                       self.gui_coupled]:
             h.on_update(lambda _: self._on_field())

@@ -98,7 +98,7 @@ def test_http_and_initial_design(app):
     assert app.md_status.content.endswith(": passes the checks")
     assert all(": PASS" in app.check_boxes[k].label for k in ck.CHECK_KEYS)
     assert all(cb.value for cb in app.rule_boxes.values()) and "the grammar (" in app.md_status.content
-    assert app.md_limits.content == "this hand: within limits"
+    assert app.md_limits.content == "this hand: follows the rules"
 
 
 def test_panel_is_essential(app):
@@ -126,11 +126,27 @@ def test_limit_fields_and_reset(simulator):
     app.set_limit("max_digits", 2)
     app.set_limit("max_finger_length_mm", "150")
     assert app.limits() == SIMULATOR.with_(max_digits=2, max_finger_length_mm=150.0)
+    assert app.gui_rules.value == "Custom Rules"
     app.reset_limits()
     assert app.limits() == SIMULATOR and app.limit_ints["max_digits"].value == "5"
+    assert app.gui_rules.value == "Evolution Rules"
     unlimit(app)
+    assert app.gui_rules.value == "No Rules"
     app.reset_limits()
     assert app.limits() == SIMULATOR
+
+
+def test_rules_dropdown(app):
+    assert tuple(V.RULE_SETS) == ("Evolution Rules", "No Rules", "Custom Rules")
+    assert app.gui_rules.value == "Evolution Rules" and app.limits() == SIMULATOR
+    app.choose_rule_set("No Rules")
+    assert app.limits() == UNLIMITED and app.limit_ints["max_digits"].value == lui.ANY
+    app.set_limit("max_digits", 3)
+    assert app.gui_rules.value == "Custom Rules" and app.limits() == UNLIMITED.with_(max_digits=3)
+    app.choose_rule_set("Custom Rules")                      # keeps the fields as edited
+    assert app.limits() == UNLIMITED.with_(max_digits=3)
+    app.choose_rule_set("Evolution Rules")
+    assert app.limits() == SIMULATOR and app.md_limits.content.startswith("this hand: ")
 
 
 def test_random_uses_the_limits(simulator):
@@ -144,7 +160,7 @@ def test_random_uses_the_limits(simulator):
         st = Structure.from_steps(app.shown.derivation.steps)
         assert len(st.top_digits()) <= 2 and max(st.joints_per_digit().values()) <= 2
         assert app.last_search.tries == 1
-    assert app.md_limits.content == "this hand: within limits"
+    assert app.md_limits.content == "this hand: follows the rules"
 
 
 @pytest.mark.parametrize("key", ck.CHECK_KEYS)
@@ -200,7 +216,7 @@ def test_unbuildable_hand_reads_na(simulator):
     assert all(": n/a" in app.check_boxes[k].label for k in ck.CHECK_KEYS)
     assert "the simulator cannot build this hand" in app.md_status.content
     app.reset_limits()
-    assert app.md_limits.content.startswith("this hand: outside:")
+    assert app.md_limits.content.startswith("this hand: breaks:")
 
 
 def test_reach_display_toggle(simulator):
@@ -246,7 +262,7 @@ def test_operator_buttons_follow_the_limits(simulator):
     assert app.op_buttons["insert_phalanx"].visible
     assert app.op_buttons["add_palm_body"].label == "add a palm part with a short finger"
     assert app.mutate("add_branch_digit", wait=True)
-    assert "not allowed by limits" in app.md_mut.content and app.history.cursor == 0
+    assert "not allowed by the rules" in app.md_mut.content and app.history.cursor == 0
     unlimit(app)
     # a palm part comes with a finger: a rule of the grammar, not a limit
     assert app.op_buttons["add_branch_digit"].visible
@@ -290,8 +306,8 @@ def test_commercial_hand(simulator):
     assert app.load_commercial("allegro_right", wait=True)
     assert app.shown.kind == "commercial" and app.shown.conformed is not None and app.overlay.handles
     line = app.md_fidelity.content
-    assert line.startswith("snapped to the grammar's fine grid:") and "within rules: yes" in line
-    assert "within limits: yes" in line
+    assert line.startswith("snapped to the grammar's fine grid:") and "in the grammar: yes" in line
+    assert "follows the rules: yes" in line
     pos = app.shown.conformed.fidelity["max_pos_mm"]
     assert pos <= 5.0                                                     # allegro: about 3 mm at the fine grid
     # the grid steps act on it
@@ -309,7 +325,7 @@ def test_commercial_hand(simulator):
     app.wait_idle()
     assert app.shown.conformed is None and app.history.cursor == 0
     line = app.md_fidelity.content
-    assert line.startswith("exact projection:") and "within rules: no" in line
+    assert line.startswith("exact projection:") and "in the grammar: no" in line
     app.gui_version.value = "fine grid"
     app.wait_idle()
     assert app.shown.conformed is not None
@@ -325,8 +341,8 @@ def test_commercial_hand_outside_the_limits(simulator):
     if com.hand_entry("svh_right").availability != "available":
         pytest.skip("svh URDF not available")
     assert app.load_commercial("svh_right", wait=True)
-    assert "within limits: no (fingers per palm joint 2 > 1)" in app.md_fidelity.content
-    assert app.md_limits.content.startswith("this hand: outside:")
+    assert "follows the rules: no (fingers per palm joint 2 > 1)" in app.md_fidelity.content
+    assert app.md_limits.content.startswith("this hand: breaks:")
     # it can still be mutated, as long as no limit gets worse
     assert app.mutate("step_segment_length", wait=True) and app.history.cursor == 1
 
