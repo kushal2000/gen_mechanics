@@ -46,7 +46,7 @@ from hand_sampler.grammar.derive import (
     vary,
     vary_tracked,
 )
-from hand_sampler.grammar.limits import SIMULATOR, UNLIMITED, GenerationLimits
+from hand_sampler.grammar.limits import DEFAULT_LIMITS, SIMULATOR, SIMULATOR_ENVELOPE, UNLIMITED, GenerationLimits
 from hand_sampler.grammar.variants import NAMED_DISTRIBUTIONS
 
 REPO = Path(__file__).resolve().parents[3]
@@ -230,6 +230,9 @@ def test_simulator_preset_matches_envelope_constants():
     assert SIMULATOR.max_finger_chains == GE.N_FINGERS
     assert SIMULATOR.allowed_modules == ("R",) and not SIMULATOR.allow_branches
     assert not SIMULATOR.allow_stacked_palm_joints and SIMULATOR.max_digits_per_jointed_palm_body == 1
+    # SIMULATOR adds the no-empty-palm-part rule to the envelope's shape
+    assert SIMULATOR.require_digit_on_palm_body and not SIMULATOR_ENVELOPE.require_digit_on_palm_body
+    assert DEFAULT_LIMITS == GenerationLimits(require_digit_on_palm_body=True)
 
 
 def _equivalence_designs():
@@ -251,11 +254,15 @@ def _equivalence_designs():
 
 
 def test_simulator_limits_equal_admit_structural():
+    """The envelope's shape is exactly SIMULATOR_ENVELOPE; SIMULATOR (which
+    also forbids empty palm bodies) is inside it."""
     n = n_ok = 0
     for d in _equivalence_designs():
-        rep = L.check(d, SIMULATOR)
+        rep = L.check(d, SIMULATOR_ENVELOPE)
         oracle = GE._admit_structural(derive(d))
         assert rep.ok == oracle.ok, (rep.failing, oracle.reasons)
+        if L.check(d, SIMULATOR).ok:
+            assert oracle.ok
         n += 1
         n_ok += oracle.ok
     assert n > 1500 and 0 < n_ok < n, (n, n_ok)
@@ -454,3 +461,96 @@ def test_report_lines():
              if not L.check(sample_derivation(s, _dist("G_FULL")), SIMULATOR).ok)
     rep = L.check(d, SIMULATOR)
     assert rep.summary().startswith("no (") and all(k in L.LIMIT_KEYS for k in rep.failing)
+
+
+# ---------------------------------------------------------------------------
+# 5. No empty palm parts (require_digit_on_palm_body)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("limits", [SIMULATOR, DEFAULT_LIMITS], ids=["SIMULATOR", "DEFAULT"])
+@pytest.mark.parametrize("name", ["G_FULL", "G_V1", "G_V1S", "G_V2", "G_V2S", "G_V3S"])
+def test_no_empty_palm_parts_sampled_or_mutated(name, limits):
+    dist = _dist(name)
+    n_palm = 0
+    for seed in range(400):
+        d = sample_derivation(seed, dist, limits=limits)
+        st = L.Structure.from_steps(d.steps)
+        assert not st.empty_palm_bodies() and L.check(d, limits).ok
+        n_palm += len(st.palm)
+    assert n_palm > 100
+    for c in range(15):
+        rng = np.random.default_rng(c)
+        d = sample_derivation(c, dist, limits=limits)
+        for _ in range(40):
+            try:
+                d = vary(d, rng, dist, operators=EVOLUTION_OPERATORS + ("remove_digit_minimal", "regrow_subtree",
+                                                                        "resample_parameter", "remove_palm_body"),
+                         limits=limits)
+            except VariationImpossible:
+                continue
+            assert not L.Structure.from_steps(d.steps).empty_palm_bodies()
+
+
+def test_add_palm_body_brings_a_finger():
+    dist = _dist("G_FULL")
+    rng = np.random.default_rng(5)
+    n = 0
+    for seed in range(60):
+        d = sample_derivation(seed, dist, limits=DEFAULT_LIMITS)
+        child = apply_operator(d, rng, dist, "add_palm_body", limits=DEFAULT_LIMITS)
+        if child is None:
+            continue
+        a, b = L.Structure.from_steps(d.steps), L.Structure.from_steps(child.steps)
+        (new,) = set(b.palm) - set(a.palm)
+        assert len(b.top_digits()) == len(a.top_digits()) + 1
+        assert [m for m, _ in b.digits.values()].count(new) == 1 and not b.empty_palm_bodies()
+        n += 1
+        # without the rule it adds an empty palm body, as before
+        plain = apply_operator(d, np.random.default_rng(seed), dist, "add_palm_body")
+        if plain is not None:
+            assert len(L.Structure.from_steps(plain.steps).top_digits()) == len(a.top_digits())
+    assert n > 20
+
+
+def test_removing_the_last_finger_removes_the_palm_part():
+    dist = _dist("G_FULL")
+    n = 0
+    for seed in range(200):
+        d = sample_derivation(seed, dist, limits=DEFAULT_LIMITS)
+        st = L.Structure.from_steps(d.steps)
+        lonely = [t for t in st.top_digits() if st.digits[t][0] in st.palm_leaves()
+                  and [m for m, _ in st.digits.values()].count(st.digits[t][0]) == 1]
+        if not lonely or len(st.top_digits()) < 2:
+            continue
+        for rng_seed in range(20):
+            child = apply_operator(d, np.random.default_rng(rng_seed), dist, "remove_digit", limits=DEFAULT_LIMITS)
+            if child is None:
+                continue
+            b = L.Structure.from_steps(child.steps)
+            assert not b.empty_palm_bodies()
+            if set(st.top_digits()) - set(b.top_digits()) <= set(lonely):
+                assert len(b.palm) < len(st.palm)
+                n += 1
+        if n > 15:
+            break
+    assert n > 15
+
+
+def test_remove_a_finger_removes_any_finger():
+    """The current pool's 'remove a finger' (remove_digit) removes fingers of
+    any length, so it is not an exact inverse of 'add a finger'
+    (add_minimal_digit, one joint)."""
+    assert "remove_digit" in EVOLUTION_OPERATORS and "remove_digit_minimal" not in EVOLUTION_OPERATORS
+    assert "remove_palm_body_empty" not in EVOLUTION_OPERATORS and "remove_palm_body_empty" in EVOLUTION_OPERATORS_V1
+    dist = _dist("G_V1")
+    lengths = set()
+    for seed in range(60):
+        d = sample_derivation(seed, dist, limits=SIMULATOR)
+        child = apply_operator(d, np.random.default_rng(seed), dist, "remove_digit", limits=SIMULATOR)
+        if child is None:
+            continue
+        a, b = L.Structure.from_steps(d.steps), L.Structure.from_steps(child.steps)
+        (gone,) = set(a.top_digits()) - set(b.top_digits())
+        lengths.add(a.digits[gone][1])
+    assert max(lengths) >= 3

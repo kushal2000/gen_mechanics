@@ -3,7 +3,8 @@
 exactly one 5 mm grid step, never past the variant's range, the two
 directions undo each other exactly, it runs under the generation limits, and
 ``EVOLUTION_OPERATORS`` gained it while the old pool stays available as
-``EVOLUTION_OPERATORS_V1``."""
+``EVOLUTION_OPERATORS_V1`` (the current pool also swaps remove_digit_minimal
+for remove_digit and drops remove_palm_body_empty, see derive.py)."""
 
 from __future__ import annotations
 
@@ -51,7 +52,9 @@ def _changed(parent, child):
 
 
 def test_pool_gained_the_operator_and_v1_is_frozen():
-    assert EVOLUTION_OPERATORS == EVOLUTION_OPERATORS_V1 + ("step_segment_length",)
+    assert EVOLUTION_OPERATORS[-1] == "step_segment_length"
+    assert set(EVOLUTION_OPERATORS) == (set(EVOLUTION_OPERATORS_V1) - {"remove_digit_minimal", "remove_palm_body_empty"}
+                                        | {"remove_digit", "step_segment_length"})
     assert len(EVOLUTION_OPERATORS_V1) == 17 and "step_segment_length" not in EVOLUTION_OPERATORS_V1
     assert "step_segment_length" not in SMALL_STEP_OPERATORS          # older pools unchanged
     assert INVERSE_OF["lengthen_segment"] == "shorten_segment" and LENGTH_STEP_PAIR == ("lengthen_segment",
