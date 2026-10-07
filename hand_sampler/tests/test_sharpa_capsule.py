@@ -23,9 +23,9 @@ def hand():
     "alone deliberately -- assets/populations/sharpa_capsule.json came from "
     "this function and the uniform-dynamics training runs are trained on it, so "
     "regenerating the hand would break comparability with results already "
-    "collected. hand_sampler.commercial.fit('sharpa') is the in-grammar SHARPA "
-    "under the current constants. Decide which of the two is the baseline "
-    "before deleting this."))
+    "collected. There is no competing version to choose between: SHARPA is not "
+    "in commercial.HANDS and is not being fitted, so this capsule IS the "
+    "baseline and the xfail is permanent rather than a question."))
 def test_it_is_a_legal_design(hand):
     assert validate_design.check(hand) == []
 

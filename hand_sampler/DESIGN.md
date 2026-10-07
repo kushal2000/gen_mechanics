@@ -299,11 +299,13 @@ versus policy exposure, sparse fitness, bloat, keep the Pareto archive), §10
 | §7 | two mount-separation floors, 15 mm across faces and 25 mm within one | §A7 — one floor of 35 mm, plus the arm plane |
 | §11 | the "held back" list, written in terms of faces and `phi` | the entries still name real deferrals, but not in this grammar's words |
 
-**Measured tables taken in a space that no longer exists**, and so not evidence
-about this one: §5's joint-count distribution at a 15 mm floor, §5's
-`radius_scale` Spearman (radius is now set by the motor, not free), §6's
-`add_finger` balance table and the claim that `perturb_palm` relieves it.
-Re-running them is open work.
+**Retired measurements.** Four results were taken in a space that no longer
+exists, and each is marked RETIRED where it sits: §5's joint-count distribution
+at a 15 mm floor, §5's `radius_scale` Spearman, §5's palm-packing claim, and
+§6's `add_finger` balance table with `perturb_palm` as its remedy. They are kept
+as the record of how the space was arrived at. They are **not** evidence about
+this grammar, and re-running them is not planned — the constants they measured
+are set by the actuator now, and the questions they answered are not live.
 
 ---
 
@@ -499,6 +501,10 @@ link must reach 30 mm before it can split. That makes the floor a far bigger
 lever than its size suggests — dropping it from 20 mm moved the unselected
 distribution from shallow to deep:
 
+> **RETIRED.** The floor is back at 20 mm and set by the actuator, so this
+> table compares two values of a constant that is no longer free. It is kept as
+> the record of why the floor was lowered, not as a description of the space.
+
 | joints | share (15 mm) | mean reach | share (20 mm) |
 |---|---|---|---|
 | 1 | 11.5% | 49 mm | 32.5% |
@@ -515,6 +521,10 @@ finger**; the two effects cannot be cleanly separated here.
 
 ### Fingers
 
+> **RETIRED.** A palm has no size to pack against. The ring holds 15 mounts at
+> the separation floor against a cap of 6, so `MAX_FINGERS` binds and geometry
+> never gets the chance — the inverse of what this paragraph intends. See §A6.
+
 Between `MIN_FINGERS` (2) and `MAX_FINGERS` (5). The intent is that **mount
 packing decides how many fit** — measured, a 50 mm palm packs 4 and a 60 mm palm
 5, both short of the cap, while an 80 mm palm reaches it. The cap exists only so
@@ -524,6 +534,11 @@ a runaway search cannot hand the simulator an arbitrarily wide articulation; per
 Joints per finger are capped at 6 by the same envelope.
 
 ### Fixed
+
+> **RETIRED.** A link's radius is `CAPSULE_RADIUS` = 15 mm, set by the
+> XM335-T323-T's cross-section. It was never really free, so "ruled out on
+> evidence" is the right answer to the wrong question — the measurement stands,
+> but nothing in the grammar could act on it either way.
 
 **Radius 10 mm** — the one parameter ruled out on evidence. `radius_scale` scored
 Spearman −0.005 across a 2× range and every volume measure −0.006 to −0.018
@@ -564,6 +579,11 @@ under the same operator name, **masking that palm capacity had run out**.
 load-bearing for §9.3 and hold for both pairs.
 
 Balance falls with depth, and with four operators the cause is visible:
+
+> **RETIRED.** `add_finger` collapsed here because the palm filled. It cannot
+> fill now, so the numbers below are not this space's, and the remedy the text
+> names — `perturb_palm` — does not exist. What replaced the diagnosis is
+> `test_operators_are_unbiased`, which holds P(up) inside 40–60% at n = 4 and 6.
 
 | n | split | merge | add_finger | remove_finger | P(up) |
 |---|---|---|---|---|---|
@@ -814,7 +834,7 @@ ordered by value against cost.
 | 5 | **coincident joints** — two axes sharing a point, an MCP-style knuckle | re-allow zero-length segments, and the special cases they carry through builder and renderers |
 | 6 | **palm thickness** | one entry in `MUTABLE_PALM_DIMS` |
 | 7 | **per-design joint limits** — currently a global ±90° | no evidence yet that searching over it pays |
-| 8 | **link radius** — the one parameter *measured* to do nothing (Spearman −0.005) | trivial, and listed for completeness rather than as a candidate |
+| 8 | ~~**link radius**~~ — RETIRED: the radius is the motor's cross-section now, not a parameter | — |
 | 9 | **actuator properties** — gear ratio, reflected inertia, torque limits | the node schema (§8) already has room |
 | 10 | **a larger envelope, or a non-box palm** | both real simulator cost (§2) |
 
