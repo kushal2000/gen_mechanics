@@ -29,16 +29,34 @@ The grammar combines our grammar (`martin/hand-grammar`), Vatsal's physical gram
 - Flexion -30 to +90 degrees; abduction +/-30 degrees; roll +/-90 degrees; palm joints +/-30 degrees. No per-hand or per-joint ranges.
 - **Why:** joint limits do not change the kinematic tree, so they need not vary per hand. A single +/-90 degree range (Vatsal; raised by Kushal on Oct 5) would let a side-to-side joint swing 90 degrees each way, which no real hand does; Martin's 9/23 note already observed that abduction needs a narrower range than flexion.
 
+### 7. Joint types: the grammar has hinge, coupled and sliding joints; evolution uses hinge and coupled only
+- The grammar can express hinge (revolute), coupled (a joint that follows an earlier joint) and sliding (prismatic) joints. Continuous (unlimited spin) joints are dropped.
+- The Evolution Rules allow hinge and coupled joints only.
+- **Why:** some research hands use sliding joints, so the grammar should be able to describe them. Continuous spin needs a slip ring and no hand needs it. Coupled joints are how several commercial hands drive a distal joint (Inspire, Ability, SVH, Shadow, Barrett), and the simulator's mimic joints (validated 2026-10-07, tie error at most 1.3e-3 rad) can carry a coupling ratio directly.
+
+### 9. Fingers 2-6, joints per finger 1-5
+- **Why:** the maxima match the simulator's 36-slot layout (6 finger slots of 5 joints) and Vatsal's grammar; the minimum of 2 follows Kushal's result that a single Wuji finger cannot learn the task (0.01 goals/episode, 2026-10-07).
+
+### 11. Palm joints: at most 6, one per finger at most, and none without a finger
+- **Why:** a palm joint without a finger is not a palm (Martin, 2026-10-06), so a hand can have at most one palm joint per finger. The simulator is ours to adapt; the 36-slot layout already gives every finger slot its own palm-joint carrier, so 6 palm joints need no simulator change.
+
+### 12. Finger length at most 250 mm
+- **Why:** the longest commercial finger (DClaw, 221 mm) x 1.1, rounded. Without it, random fingers grow longer than any real hand's (5-6 bones of 15-80 mm add up to 240-285 mm).
+
+### 13. No arm-clearance rule
+- **Why:** the task is a fixed hand with no arm. Add Vatsal's rule when an arm comes back.
+
+### 14. Kushal's uniform physical properties for every hand
+- 0.5 N m torque, 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, link density 1750 kg/m^3, friction 0.5, generated and commercial hands alike.
+- **Why:** consistency: hands then differ only in shape, and grammar hands share the settings Kushal's working policies were trained with (Wuji v2 at about 40 goals/episode, one policy over 52 Wuji hands).
+
 ## Still to decide
+6, 8 and 10 wait for the link-shape check (capsule, box or rounded box), since the cross-section sets the radius, the shortest link and the finger spacing.
+7a. Branching fingers (a finger growing off another finger's bone): keep in the grammar or drop.
+7b. Coupling parameters: the ratio and offset of a coupled joint.
 6. Capsule radius (global): 15 mm from the XM335 motor (Vatsal) or 10 mm.
-7. Capability kept but off in the Evolution Rules: coupled, sliding and continuous joints; branching fingers.
 8. Evolution Rules link length: 20-80 mm, last link at least 15 mm (a motor must fit between joints); the grammar keeps 0-90 mm for commercial hands.
-9. Fingers 2-6, joints per finger 1-5.
 10. Finger spacing at least 2 x radius + 5 mm.
-11. At most 2 palm joints, any number of fingers on each.
-12. Finger length at most 250 mm.
-13. Arm clearance (skip: our task has no arm).
-14. Kushal's uniform physical properties for every hand (0.5 N m, 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, link density 1750 kg/m^3, friction 0.5).
 15. Adding and removing joints: split a link / merge two links (Vatsal), keeping the finger's length.
 16. Changing a joint: switch its kind, weighted toward flexion (6 : 2 : 1).
 17. Remaining coarse / fine steps: link length 5 / 1 mm; position on the plate 5 / 1 mm; facing and tilt 15 / 5 degrees; palm joint axis 15 / 5 degrees; structural: add or remove a finger, add or remove a palm joint with its section and finger.
