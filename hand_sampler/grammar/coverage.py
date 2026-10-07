@@ -455,6 +455,11 @@ def _revolute_limits_ok(axis: Tuple[float, float, float], limits: Tuple[float, f
         _, norm_limits = normalize_axis_sign(axis, limits)
         return _fits(limits) or _fits(norm_limits)
     choices = dist.palm_joint_limit_choices_deg if palm else dist.revolute_limit_choices_deg
+    if getattr(dist, "limits_support_continuous", False) and not _limits_in_choice_set(limits, choices):
+        # Support-continuous ranges (distributions.py): any range inside
+        # ``revolute_limit_range_deg`` is in the support.
+        lo_rad, hi_rad = (v * DEG for v in dist.revolute_limit_range_deg)
+        return (lo_rad - SET_TOL) <= limits[0] < limits[1] <= (hi_rad + SET_TOL)
     return _limits_in_choice_set(limits, choices)
 
 
@@ -518,9 +523,10 @@ def _bend_rpy_ok(rpy: Tuple[float, float, float], dist: Distribution, relax: Fro
     meaning, unchanged)."""
     if "rest_bend" in relax:
         return True
+    support = tuple(dist.bend_rpy_choices_rad) + tuple(getattr(dist, "bend_support_rpy_choices_rad", ()))
     return any(
         abs(rpy[0] - c[0]) <= SET_TOL and abs(rpy[1] - c[1]) <= SET_TOL and abs(rpy[2] - c[2]) <= SET_TOL
-        for c in dist.bend_rpy_choices_rad
+        for c in support
     )
 
 

@@ -21,17 +21,19 @@ up, so grid errors do not add up along a finger:
   with the mount fractions of what hangs on it; the root frame slides down its
   own axis when a mount lies below it or the palm is longer than the grammar's
   longest palm segment (an exact re-expression: the root is fixed);
-- joint axes onto the 15 degree spherical grid (inside the variant's
-  elevation band for digit joints, if it has one), matching the hand's axis
-  direction in space;
+- joint axes onto the 15 degree spherical grid, matching the hand's axis
+  direction in space (an elevation band, V3/V3s, only shapes sampling:
+  ``step_axis`` leaves it, so it is not imposed);
 - mount and palm-body orientations onto the nearest rotation of the 15 degree
   roll/pitch/yaw grid, mount positions onto the allowed fractions;
-- lateral mount offsets onto what the variant can generate: none, the host's
+- lateral mount offsets onto what the variant contains: none, the host's
   surface at a 15 degree azimuth (surface-mounting variants), or the 5 mm
-  lateral grid (``Distribution.mount_lateral_grid_m``, e.g. ``G_WIDE``);
-- rest bends onto the variant's bend menu (zero for most variants);
-- joint limits onto the variant's menu, or (a continuous-limit variant,
-  which samples any limits inside its range) clamped into that range;
+  lateral grid (``Distribution.mount_lateral_grid_m``: ``G_WIDE``, and the
+  one grammar of ``variants.build_distribution``, where it is support only);
+- rest bends onto the variant's bend support: its sampled bend menu plus any
+  support-only bends (``bend_support_rpy_choices_rad``);
+- joint limits onto the variant's menu, or (a continuous-limit variant, or
+  ``limits_support_continuous``) clamped into its range;
 - the capsule radius onto the allowed choice closest to half the median
   spacing between neighbouring finger bases (fingers are about as thick as
   their spacing).
@@ -166,7 +168,7 @@ def _nearest_limits(lim: Sequence[float], choices_deg, scale: float) -> Tuple[Tu
 
 
 def _snap_revolute_limits(lim: Sequence[float], dist: Distribution) -> Tuple[Tuple[float, float], float]:
-    if dist.limits_continuous:
+    if dist.limits_continuous or dist.limits_support_continuous:
         # A continuous-limit variant draws any (lo, hi) inside its range (and
         # ``step_limits`` moves one bound by ``limit_step_deg``), so the
         # hand's own limits are already in its support once inside the range.
@@ -183,14 +185,19 @@ def _snap_revolute_limits(lim: Sequence[float], dist: Distribution) -> Tuple[Tup
 def _bend_support(dist: Distribution, first_phalanx: bool):
     """Every (bend_rpy, bend_offset) pair ``sample_bend`` can produce."""
     zero = ((0.0, 0.0, 0.0), (0.0, 0.0))
+    support_only = [(tuple(r), (0.0, 0.0)) for r in dist.bend_support_rpy_choices_rad]
     if first_phalanx and dist.curl_skip_first_phalanx:
-        return [zero]
+        # The curl rule only keeps SAMPLED first bones straight; step_bend_rpy
+        # still reaches the support-only bends there.
+        return [zero] + support_only
     out = []
     if dist.bend_probability < 1.0:
         out.append(zero)
     if dist.bend_probability > 0.0:
         out += [(tuple(r), tuple(o)) for r in dist.bend_rpy_choices_rad for o in dist.bend_offset_choices_m]
-    return out
+    # Support-only bends (Distribution.bend_support_rpy_choices_rad): reachable
+    # by step_bend_rpy, never sampled.
+    return out + support_only
 
 
 _BEND_CACHE: Dict[Tuple[int, bool], Any] = {}
@@ -534,7 +541,10 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
             rep.bump("angle_deg", math.degrees(_rot_angle(R_new, T0[name][:3, :3])))
             p["axis"] = axis_for(R_new, T0[name][:3, :3], steps[i].params["axis"], False, f"{name}_j")
             if p["has_joint"] and "limits" not in exact:
-                new_lim, e = _nearest_limits(p["limits"], dist.palm_joint_limit_choices_deg, DEG)
+                if dist.limits_support_continuous:
+                    new_lim, e = _snap_revolute_limits(p["limits"], dist)
+                else:
+                    new_lim, e = _nearest_limits(p["limits"], dist.palm_joint_limit_choices_deg, DEG)
                 if math.degrees(e) > CONFLICT_DEG:
                     rep.conflicts.append(RuleConflict(
                         "limits_menu", f"{name}_j", "({:.0f}, {:.0f}) deg -> ({:.0f}, {:.0f})".format(
@@ -583,8 +593,13 @@ def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len,
     p["mount_frac"] = f
     lateral = np.asarray(local[:2], dtype=float)
     lat_mm = float(np.hypot(*lateral)) * 1000
+    lateral_support = dist.mount_lateral_grid_m is not None and p.get("top_level") and (
+        not dist.mount_on_host_surface or not dist.mount_lateral_sampled)
     if "lateral" in exact:
         p["mount_offset"] = (float(lateral[0]), float(lateral[1]))
+    elif lateral_support:
+        grid_xy = lateral_offset_choices_m(dist)
+        p["mount_offset"] = tuple(min(grid_xy, key=lambda g: abs(g - float(v))) for v in lateral)
     elif dist.mount_on_host_surface:
         az = math.atan2(float(lateral[1]), float(lateral[0])) if lat_mm > 1e-6 else -math.pi
         az = min(_ANGLES, key=lambda a: abs(math.remainder(a - az, 2 * math.pi)))
@@ -667,7 +682,9 @@ def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len,
         rep.bump("joint_pos_mm", float(np.linalg.norm(cur[:3, 3] - T0[body][:3, 3])) * 1000)
 
         mod = dict(q["module"])
-        mod["axis"] = axis_for(cur[:3, :3], T0[body][:3, :3], mod["axis"], True, f"{body}_j")
+        # The digit-axis elevation band (V3/V3s) only shapes sampling;
+        # step_axis moves axes out of it, so it is not part of the support.
+        mod["axis"] = axis_for(cur[:3, :3], T0[body][:3, :3], mod["axis"], False, f"{body}_j")
         if "limits" not in exact:
             if mod["kind"] == "R":
                 new_lim, e = _snap_revolute_limits(mod["limits"], dist)

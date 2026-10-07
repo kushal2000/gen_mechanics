@@ -506,7 +506,7 @@ def _emit_digit(rng, dist: Distribution, steps: List[DerivationStep], digit_id: 
     if dist.mount_on_host_surface:
         azimuth = forced_azimuth if forced_azimuth is not None else sample_grid_angle_rad(rng)
         mount_offset = (host_radius_m * math.cos(azimuth), host_radius_m * math.sin(azimuth))
-    elif top_level and dist.mount_lateral_grid_m is not None:
+    elif top_level and dist.mount_lateral_grid_m is not None and dist.mount_lateral_sampled:
         # Lateral digit mounts (off by default; see Distribution).
         mount_offset = sample_lateral_offset(rng, dist)
     else:
@@ -660,7 +660,7 @@ def sample_derivation(rng_or_seed, dist: Distribution = DEFAULT_DISTRIBUTION,
             "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": joint_limits,
             "uid": uid,
         }
-        if dist.mount_lateral_grid_m is not None:
+        if dist.mount_lateral_grid_m is not None and dist.mount_lateral_sampled:
             # Lateral mounts (off by default; see Distribution).
             palm_params["mount_offset"] = sample_lateral_offset(rng, dist)
         steps.append(DerivationStep(path=f"palm/{i}", production="PalmBody", params=palm_params))
@@ -1755,6 +1755,21 @@ def _step_choice_index(rng, idx: int, n: int) -> int:
     return max(0, min(n - 1, idx + direction))
 
 
+def _step_one_bound(rng, dist: Distribution, limits: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+    """One bound of ``limits`` moved by ``dist.limit_step_deg``, kept inside
+    ``dist.revolute_limit_range_deg`` and on its side of the other bound
+    (``None`` when it cannot move). Used for ``limits_support_continuous``."""
+    lo, hi = limits
+    range_lo, range_hi = (v * DEG for v in dist.revolute_limit_range_deg)
+    step = dist.limit_step_deg * DEG
+    direction = 1.0 if bool(rng.integers(0, 2)) else -1.0
+    if bool(rng.integers(0, 2)):
+        new_lo = max(range_lo, min(lo + direction * step, min(range_hi, hi - 1e-9)))
+        return None if abs(new_lo - lo) < 1e-12 else (new_lo, hi)
+    new_hi = min(range_hi, max(hi + direction * step, max(range_lo, lo + 1e-9)))
+    return None if abs(new_hi - hi) < 1e-12 else (lo, new_hi)
+
+
 def _op_step_limits(rng, dist: Distribution, derivation: Derivation,
                     lim: Optional[LimitContext] = None) -> Optional[List[DerivationStep]]:
     """I14 fix: ``dist.*_limit_choices_*`` are sorted HERE (a local copy, on
@@ -1779,6 +1794,13 @@ def _op_step_limits(rng, dist: Distribution, derivation: Derivation,
     if s.production == "PalmBody":
         choices = sorted(dist.palm_joint_limit_choices_deg)
         ci = _find_choice_index(p["limits"], choices, scale=DEG)
+        if ci is None and dist.limits_support_continuous:
+            new = _step_one_bound(rng, dist, tuple(p["limits"]))
+            if new is None:
+                return None
+            p["limits"] = new
+            steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+            return steps
         if ci is None:
             return None
         new_ci = _step_choice_index(rng, ci, len(choices))
@@ -1817,6 +1839,16 @@ def _op_step_limits(rng, dist: Distribution, derivation: Derivation,
     else:
         choices, scale = sorted(dist.prismatic_limit_choices_m), 1.0
     ci = _find_choice_index(mod["limits"], choices, scale=scale)
+    if ci is None and mod["kind"] == "R" and dist.limits_support_continuous:
+        # A range off the menu but inside the support (a conformed real
+        # hand's own range): move one bound by one ``limit_step_deg`` step.
+        new = _step_one_bound(rng, dist, tuple(mod["limits"]))
+        if new is None:
+            return None
+        mod["limits"] = new
+        p["module"] = mod
+        steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+        return steps
     if ci is None:
         return None
     new_ci = _step_choice_index(rng, ci, len(choices))
@@ -1851,7 +1883,8 @@ def _op_step_mount(rng, dist: Distribution, derivation: Derivation,
     rpy_field = "mount_rpy" if s.production == "Digit" else "direction_rpy"
     if dist.mount_lateral_grid_m is not None and (
             s.production == "PalmBody"
-            or (s.production == "Digit" and p.get("top_level") and not dist.mount_on_host_surface)):
+            or (s.production == "Digit" and p.get("top_level")
+                and (not dist.mount_on_host_surface or not dist.mount_lateral_sampled))):
         # Lateral digit mounts (off by default): a third choice, one grid
         # step of one offset component. Never reached for an existing
         # variant, so their draws are unchanged.
@@ -2001,7 +2034,10 @@ def _op_step_bend_rpy(rng, dist: Distribution, derivation: Derivation,
     p = dict(s.params)
     bend_rpy = list(p.get("bend_rpy", (0.0, 0.0, 0.0)))
     comp = int(rng.integers(0, 3))
-    grid = _bend_component_grid(dist.bend_rpy_choices_rad, comp)
+    choices = dist.bend_rpy_choices_rad
+    if dist.bend_support_rpy_choices_rad:
+        choices = tuple(choices) + tuple(dist.bend_support_rpy_choices_rad)   # support-only bends
+    grid = _bend_component_grid(choices, comp)
     if len(grid) <= 1 or bend_rpy[comp] not in grid:
         return None
     ci = grid.index(bend_rpy[comp])
@@ -2099,7 +2135,8 @@ def _op_add_minimal_digit(rng, dist: Distribution, derivation: Derivation,
         "digit_id": digit_id, "mount": mount, "mount_frac": mount_frac, "mount_rpy": mount_rpy,
         "phalanx_count": 1, "top_level": True, "depth": 0, "uid": uid_base,
     }
-    if gdist.mount_lateral_grid_m is not None and not gdist.mount_on_host_surface:
+    if (gdist.mount_lateral_grid_m is not None and gdist.mount_lateral_sampled
+            and not gdist.mount_on_host_surface):
         digit_params["mount_offset"] = sample_lateral_offset(rng, gdist)
     digit_step = DerivationStep(path=f"digit/{digit_id}", production="Digit", params=digit_params)
     phalanx_step = DerivationStep(path=f"digit/{digit_id}/phalanx/0", production="Phalanx", params={
@@ -2212,7 +2249,7 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation,
         "direction_rpy": direction_rpy, "has_joint": has_joint, "axis": axis, "limits": limits,
         "uid": _max_uid(steps) + 1,
     }
-    if gdist.mount_lateral_grid_m is not None:
+    if gdist.mount_lateral_grid_m is not None and gdist.mount_lateral_sampled:
         palm_params["mount_offset"] = sample_lateral_offset(rng, gdist)
     new_step = DerivationStep(path=f"palm/{palm_body_count}", production="PalmBody", params=palm_params)
     rest = [s for i, s in enumerate(steps) if i != hand_idx]
@@ -2234,7 +2271,8 @@ def _op_add_palm_body(rng, dist: Distribution, derivation: Derivation,
         "digit_id": digit_id, "mount": name, "mount_frac": d_frac, "mount_rpy": d_rpy,
         "phalanx_count": 1, "top_level": True, "depth": 0, "uid": uid,
     }
-    if gdist.mount_lateral_grid_m is not None and not gdist.mount_on_host_surface:
+    if (gdist.mount_lateral_grid_m is not None and gdist.mount_lateral_sampled
+            and not gdist.mount_on_host_surface):
         digit_params["mount_offset"] = sample_lateral_offset(rng, gdist)
     digit_step = DerivationStep(path=f"digit/{digit_id}", production="Digit", params=digit_params)
     phalanx_step = DerivationStep(path=f"digit/{digit_id}/phalanx/0", production="Phalanx", params={

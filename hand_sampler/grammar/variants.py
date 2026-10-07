@@ -283,6 +283,79 @@ G_WIDE: Distribution = replace(
     mount_frac_choices=tuple(round(k * 0.05, 10) for k in range(21)),
 )
 
+# --------------------------------------------------------------------------
+# THE grammar (2026-10-06): one base distribution plus three on/off rules.
+#
+# Under the three-layer design most named variants above are redundant:
+# what V1/SERIAL/NOPALMJOINT/NOBRANCH/NOCOUPLE restrict is a generation LIMIT
+# (limits.py), not a grammar. They stay unchanged in NAMED_DISTRIBUTIONS for
+# reproducing past experiments; new work uses ``build_distribution``.
+#
+# ``GRAMMAR_BASE``: the default grammar (G_FULL's productions and sampling
+# priors) with capability grids wide enough to contain the commercial hands
+# (adapters/conform.py): mount fractions in 5% steps, a 5 mm lateral mount
+# grid up to 65 mm, a rest bend at any joint on the 15 degree rotation grid,
+# and joint ranges anywhere in +/-180 deg. The last three are support only:
+# mutation reaches them and a conformed real hand may use them, but random
+# sampling never draws them (distributions.py's support fields).
+# --------------------------------------------------------------------------
+
+GRAMMAR_BASE: Distribution = replace(
+    DEFAULT_DISTRIBUTION,
+    mount_frac_choices=tuple(round(k * 0.05, 10) for k in range(21)),
+    mount_lateral_grid_m=0.005,
+    mount_lateral_max_m=0.065,
+    mount_lateral_sampled=False,
+    bend_support_rpy_choices_rad=_WIDE_BEND_RPY_CHOICES_RAD,
+    limits_support_continuous=True,
+    revolute_limit_range_deg=(-180.0, 180.0),
+)
+
+RULES: Tuple[str, ...] = ("surface", "spacing", "curl_opposition")
+RULE_TEXT = {
+    "surface": "fingers sit on the palm surface",
+    "spacing": "fingers spaced apart",
+    "curl_opposition": "fingers curl and oppose",
+}
+
+
+def build_distribution(surface: bool = True, spacing: bool = True, curl_opposition: bool = True) -> Distribution:
+    """The one grammar with its three generation rules switched on or off.
+
+    - ``surface`` (from V1s): a finger's mount sits on its host's capsule
+      surface at a 15 degree azimuth, not on the host's axis;
+    - ``spacing`` (from V2/V2s): finger mounts are planned at least 29 mm
+      apart (2 x the largest radius + 5 mm), across all hosts in 3-D when
+      ``surface`` is on, along each host otherwise;
+    - ``curl_opposition`` (the V3s bundle): digit hinge axes within 30 deg of
+      transverse, every bone after a finger's first curled 15-45 deg toward
+      the palm, and the last finger turned to oppose the others (in the root
+      frame).
+
+    All three on is V1s + spacing + the V3s curl/opposition on the wide
+    grids of ``GRAMMAR_BASE``; it is not byte-identical to ``G_V3S`` (whose
+    base is G_V1's restricted counts and 5 mount fractions, without spacing).
+    Restrictions such as hinge-only joints, no branches or at most 5 fingers
+    are generation limits (``limits.SIMULATOR``), not rules."""
+    d = GRAMMAR_BASE
+    if surface:
+        d = replace(d, mount_on_host_surface=True)
+    if spacing:
+        d = replace(d, mount_min_separation_m=_MOUNT_SEP_TARGET_M)
+    if curl_opposition:
+        d = replace(
+            d,
+            digit_axis_elevation_band_deg=(60.0, 120.0),
+            opposition_prior=True,
+            opposition_use_host_frame=True,
+            bend_rpy_choices_rad=_CURL_BEND_RPY_CHOICES_RAD,
+            bend_offset_choices_m=((0.0, 0.0),),
+            bend_probability=1.0,
+            curl_skip_first_phalanx=True,
+        )
+    return d
+
+
 # Every named Distribution variant above, for iteration by experiment code.
 NAMED_DISTRIBUTIONS = {
     "G_FULL": G_FULL,
@@ -334,6 +407,10 @@ __all__ = [
     "G_V2S",
     "G_V3S",
     "G_WIDE",
+    "GRAMMAR_BASE",
+    "RULES",
+    "RULE_TEXT",
+    "build_distribution",
     "NAMED_DISTRIBUTIONS",
     "G0_SCREEN_VARIANTS",
     "OPERATORS",

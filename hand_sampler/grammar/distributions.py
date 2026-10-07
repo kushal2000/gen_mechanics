@@ -264,6 +264,27 @@ class Distribution:
     mount_lateral_grid_m: Optional[float] = None
     mount_lateral_max_m: float = 0.05
 
+    # Support grids versus sampling priors (2026-10-06, "the one grammar"):
+    # the three fields below widen what the grammar CONTAINS (the values a
+    # mutation may reach and a conformed real hand may take) without
+    # changing what random SAMPLING draws. All default to "no change", so
+    # every existing variant samples and mutates byte-identically.
+    #
+    # ``mount_lateral_sampled=False``: the lateral mount grid above is part
+    # of the support (``step_mount`` steps along it, ``adapters/conform.py``
+    # snaps onto it, also for a surface-mounting distribution) but sampling
+    # and growth never draw an offset from it.
+    mount_lateral_sampled: bool = True
+    # Extra rest-bend rotations that are part of the support (``step_bend_rpy``
+    # steps through them, conform snaps onto them) but are never drawn: the
+    # sampled bends stay ``bend_rpy_choices_rad`` with ``bend_probability``.
+    bend_support_rpy_choices_rad: Tuple[Tuple[float, float, float], ...] = ()
+    # Joint ranges anywhere inside ``revolute_limit_range_deg`` are part of the
+    # support (conform keeps a real hand's own range, ``step_limits`` moves an
+    # off-menu bound by ``limit_step_deg``), while sampling still draws from
+    # the range menus.
+    limits_support_continuous: bool = False
+
 
 DEFAULT_DISTRIBUTION = Distribution()
 
