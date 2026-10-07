@@ -87,11 +87,19 @@ No coupling step (one global ratio, 7b). Every coarse value lies on the fine gri
 - **Why:** with one global ratio, coupling is a yes/no property of a joint, so one toggle covers it.
 - Still open: switching a joint's kind in place (see below).
 
+### 6 (shape). Links are rounded boxes, one cross-section for every link of every hand
+- Built in the simulator as an 8-vertex convex hull of the core box (outer size minus 2r) with PhysX `restOffset = r` and `contactOffset = r + 2 mm`, mass and inertia authored explicitly.
+- The cross-section (width, height, corner radius) is the average of the commercial hands' finger links: study in progress, `project-notes/grammar/link-cross-section-study.md`.
+- **Why (probe, Isaac Sim 5.1, RTX 4090, 4096 envs, ms per physics step):** capsule 5.1-5.3, sharp box 6.3-6.5, rounded box (hull + rest offset) 5.6. The hull version gave exact rounded-edge contact normals and no gap. The cheaper-looking alternative, a plain box collider with a rest offset, costs the same but is broken at edges against our box-shaped object: the object sank 4-5 mm into the rounded shell with no force, then was pushed along the box's face normals. One parameterisation covers capsule-like (Wuji), boxy (LEAP) and rounded (SHARPA) fingers; a rounded box is slimmer than a capsule around the same motor; the policy's per-link token features already describe links as boxes.
+- **Risks:** the grammar's overlap and reach checks and the viewer must switch from capsule distance to rounded-box distance so they match the simulator; the behaviour relies on PhysX's GPU convex-convex path, so add a regression test on edge normals; keep the core at least about 1 mm thick or hull cooking falls back to CPU.
+
+### 8. Link length: 0 mm, or 20 mm and up; never 0 mm for a fingertip link
+- A link is either 0 mm (two joints at one point) or at least 20 mm. The last link of a finger is at least 15 mm (Vatsal) and never 0 mm. Lengths between 1 and 19 mm are not allowed.
+- Length steps skip the gap: shortening a 20 mm link goes to 0 mm and lengthening a 0 mm link goes to 20 mm; above 20 mm the coarse and fine steps (10 mm and 1 mm) apply as usual.
+- **Why:** mechanically, two co-located joints are convenient (one two-axis module), while two joints only a few millimetres apart are awkward to build; from 20 mm up it is easy again, since motors stack in series. Co-located joints are also common in commercial hands (27 of 220 projected bones are 0 mm, e.g. knuckles with abduction and flexion at one point). The grammar's 0 mm bones are already handled in the simulator (adjacent-pair collision filtering, a mass floor).
+
 ## Still to decide
-6, 8 and 10 wait for the link-shape check (capsule, box or rounded box), since the cross-section sets the radius, the shortest link and the finger spacing.
-6. Capsule radius (global): 15 mm from the XM335 motor (Vatsal) or 10 mm.
-8. Evolution Rules link length: 20-80 mm, last link at least 15 mm (a motor must fit between joints); the grammar keeps 0-90 mm for commercial hands.
-10. Finger spacing at least 2 x radius + 5 mm.
+10. Finger spacing: proposed at least the link width + 5 mm; Martin worries it will not fit commercial hands, so the cross-section study also measures every hand's finger spacing against candidate rules.
 16. Switching a joint's kind in place: in the kind grammar this is the only coarse axis step (the three kinds are 90 degrees apart and the fine tilt stops at 15), so it is not redundant with axis steps; proposed weighting by the commercial hands' mix of kinds (to be measured; expected about 70% flexion, 25% abduction, 5% roll).
 
 Checks come after the grammar and the Evolution Rules. Candidates: the overlap check, Vatsal's curl score, Martin's thumb-finger workspace overlap, and an opposition test (none exists yet).
