@@ -19,7 +19,7 @@ def _cand(design_id, digit_count, joint_count, fitness, *, founder_id=None, pare
           generation_born=0, episodes=100, low_confidence=False, source=""):
     return arc.Candidate(
         design_id=design_id,
-        derivation_dict={"seed": hash(design_id) % 1000, "steps": []},
+        hand_dict={"seed": hash(design_id) % 1000, "steps": []},
         sha256=f"sha-{design_id}",
         founder_id=founder_id or design_id,
         parent_id=parent_id,
@@ -273,7 +273,7 @@ def test_to_dict_from_dict_round_trips():
     elite_b = b.get(arc.descriptor(1, 3))
     assert elite_a.design_id == elite_b.design_id
     assert elite_a.fitness_history == elite_b.fitness_history
-    assert elite_a.derivation_dict == elite_b.derivation_dict
+    assert elite_a.hand_dict == elite_b.hand_dict
 
 
 def test_from_dict_rejects_unknown_schema():

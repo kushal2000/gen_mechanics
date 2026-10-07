@@ -25,9 +25,9 @@ Run with the isaacsim venv (see test_grammar_envelope.py's docstring):
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 
-from hand_sampler.grammar.derive import derive, sample_derivation
 from hand_sampler.robot_spec import design_index
 
 from isaacsimenvs.inhand_reorient.drop_detection import object_below_palm
@@ -39,26 +39,16 @@ DROP_DISTANCE_M = 0.24  # matches env_cfg.ResetCfg.drop_distance_m's default
 
 
 def _three_designs() -> ge.GrammarPopulation:
-    """3 admitted designs: 2 sampled (G_SERIAL) + 1 projected commercial
+    """3 admitted designs: 2 random viable hands + 1 conformed commercial
     hand, canonicalized into one `GrammarPopulation` -- exactly what
     `author_grammar.setup_grammar_robot` builds from a population file."""
-    dist = pf._variant_distribution("G_SERIAL")
-    designs = []
-    for seed in range(50):
-        derivation = sample_derivation(seed, dist)
-        model = derive(derivation)
-        if ge.admit(model).ok:
-            designs.append(ge.canonicalize(model, source=f"sampled:G_SERIAL:{seed}"))
-        if len(designs) == 2:
-            break
-    assert len(designs) == 2, "need 2 admitted G_SERIAL designs for this test"
-
-    entry, status, reason = pf.projected_entry("dclaw")
+    entries, _ = pf.sampled_entries(range(50), limit=2)
+    designs = [ge.canonicalize(e.hand, source=e.source) for e in entries[:2]]
+    assert len(designs) == 2, "need 2 viable random hands for this test"
+    entry, status, reason = pf.commercial_entry("dclaw")
     assert status == "admitted", (status, reason)
-    model = derive(pf.derivation_from_dict(entry.derivation_dict))
-    designs.append(ge.canonicalize(model, source=entry.source))
-
-    return ge.build_population(designs, n_sweep=10)
+    designs.append(ge.canonicalize(entry.hand, source=entry.source))
+    return ge.build_population(designs)
 
 
 def _shuffled_phys_names(seed: int = 0) -> tuple[list[str], list[int]]:
@@ -192,9 +182,10 @@ def test_fingertip_fk_equals_the_real_tip_per_env():
             if not fingertip_valid_per_env[env_id, f]:
                 continue
             used = [ge.finger_slot(f, j) for j in range(ge.N_JOINTS_PER_FINGER)
-                    if design.slot_valid[ge.finger_slot(f, j)]]
+                    if design.slot_real[ge.finger_slot(f, j)]]
             last = max(used)
-            tip = (T_mid[last] @ np.array([0.0, 0.0, float(design.slot_length[last]), 1.0]))[:3]
+            # links run along their body's +x; the fingertip is the last link's end
+            tip = (T_mid[last] @ np.array([float(design.slot_length[last]), 0.0, 0.0, 1.0]))[:3]
             row = fingertip_offsets_per_env[env_id, f].numpy()
             assert np.allclose(tip, row, atol=1e-6), (env_id, d, f)
             checked += 1
@@ -208,11 +199,10 @@ def test_no_spawn_triggered_termination_per_env():
     behavior. Checked per env (through the `design_idx` gather, matching
     `reset_utils.reset_env_state`'s own `_object_spawn_offset` /
     `object.write_root_state_to_sim` -> `compute_terminations`'s
-    `object_below_palm` call chain), using `spawn_height_above_palm_m`
-    (world z after `base_rot`, the SAME quantity `admit`'s
-    `check_spawn_height` gate already enforces at admission time -- this
+    `object_below_palm` call chain), using the spawn point's world z after
+    `base_rot` (the object starts above the plate by construction -- this
     test re-derives it independently, through the population's OWN tables
-    plus `design_idx`, rather than re-running `admit`)."""
+    plus `design_idx`)."""
     population = _three_designs()
     design_idx = design_index(N_ENVS, population.n_designs)
 
@@ -220,7 +210,7 @@ def test_no_spawn_triggered_termination_per_env():
         d = int(design_idx[env_id])
         design = population.designs[d]
         pu = population.palm_up_results[d]
-        height_above_palm = ge.spawn_height_above_palm_m(design, pu)
+        height_above_palm = float(ge._quat_apply_wxyz(pu.base_rot_wxyz, pu.spawn_offset)[2])
         # obj_pos_w_z - palm_pos_w_z == height_above_palm at the moment of
         # spawn (palm sits at its own body origin; the object is placed
         # `height_above_palm` above it along world z, by construction of
@@ -234,26 +224,29 @@ def test_no_spawn_triggered_termination_per_env():
         )
 
 
-def test_follower_columns_take_their_leaders_value_under_a_shuffle():
+def test_tied_columns_take_their_sources_value_under_a_shuffle():
     """`scene_utils` gathers every written joint position with
-    `ge.tie_columns` (`obs_utils.tie_joints`): a follower carrier's column
-    takes its leader's value, every other column its own, under any
-    articulation column order."""
-    from hand_sampler.grammar_bench.splits import split_hand
+    `ge.tie_columns` and scales it by `ge.tie_gears` (`obs_utils.tie_joints`):
+    a follower carrier's column takes its leader's value, a coupled joint 1.1
+    (per link of its coupling chain) times its source's, every other column
+    its own, under any articulation column order."""
+    from isaacsimenvs.inhand_reorient import make_grammar_population as mkpop
 
-    designs = [ge.canonicalize(derive(split_hand(r, p))) for r, p in ((3, (2, 1)), (5, ()), (0, (3, 3)))]
-    population = ge.build_population(designs, n_sweep=0)
+    designs = [ge.canonicalize(h) for h in (mkpop.split_321_hand(), mkpop.zero_link_hand(), mkpop.oblique_hand())]
+    population = ge.build_population(designs)
     design_idx = design_index(N_ENVS, population.n_designs)
     rng = np.random.default_rng(1)
     order = rng.permutation(ge.N_SLOTS)                  # column c holds slot order[c]
     idx = ge.tie_columns(population.joint_tie[design_idx], order)
+    gear = ge.tie_gears(population.joint_tie[design_idx], population.joint_gear[design_idx], order)
     q_slots = rng.normal(size=(N_ENVS, ge.N_SLOTS))
-    q_cols = torch.as_tensor(q_slots[:, order]).gather(1, torch.as_tensor(idx)).numpy()
-    n_followers = 0
+    q_cols = (torch.as_tensor(q_slots[:, order]).gather(1, torch.as_tensor(idx)) * torch.as_tensor(gear)).numpy()
+    n_tied = 0
     for e in range(N_ENVS):
         tie = population.joint_tie[design_idx[e]]
+        g = population.joint_gear[design_idx[e]]
         for c, slot in enumerate(order):
-            want = q_slots[e, tie[slot]] if tie[slot] >= 0 else q_slots[e, slot]
-            assert q_cols[e, c] == want
-            n_followers += tie[slot] >= 0
-    assert n_followers > 0
+            want = g[slot] * q_slots[e, tie[slot]] if tie[slot] >= 0 else q_slots[e, slot]
+            assert q_cols[e, c] == pytest.approx(want)
+            n_tied += tie[slot] >= 0
+    assert n_tied > 0

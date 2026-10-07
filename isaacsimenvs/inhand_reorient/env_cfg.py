@@ -462,19 +462,16 @@ class AnyRotateCfg:
     hand_velocity_limit: float = 6.283
     population_hand_actuator: bool = False
     population_palm_collider: str = "capsule"
-    """Population path: "capsule" (default: the root capsule only),
-    "mount_hull" (also a convex palm spanning the root capsule and every
-    finger mount, ``projected_hands.palm_hull_points``) or
-    "mount_hull_filtered" (the same, collision-filtered against each
-    finger's first two links)."""
+    """Unused: the palm is the grammar's hull plate (`grammar_envelope.plate_points`).
+    Kept only because `coevolution/cfg/task/InHandReorient.yaml` (not edited
+    on this branch) still sets it."""
     population_capsule_radius: float = -1.0
-    """> 0: collider radius of every real link and the root (masses keep the
-    design's radius). -1: the design's own (projections: 0.01 m)."""
+    """Unused (links are the grammar's rounded boxes); kept for the same YAML."""
     population_projected_pose: bool = False
-    """Population path: a projected commercial hand with an entry in
+    """Population path: a conformed commercial hand with an entry in
     ``hand_pose_file`` stands where its single-hand URDF asset does (pose,
     spawn point, default joints; ``projected_hands.urdf_equivalent_placement``)
-    instead of at its analytic palm-up calibration."""
+    instead of palm-up with the task's object start."""
     grasp_canonical_profile: str = "palm_up"
     """Population grasp search: "palm_up" (default, each design's calibrated
     curl), "opposition" (one candidate pose per finger as the opposing digit

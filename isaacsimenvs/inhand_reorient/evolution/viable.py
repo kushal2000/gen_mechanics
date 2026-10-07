@@ -8,8 +8,7 @@ Kit launch) found at least one stable grasp for it. Per generation:
 2. New designs are drawn as before (founders in generation 0; offspring of
    archive elites, or an immigrant when a mutation fails), then pre-filtered
    on the CPU (``prefilter_report``: ``grammar_envelope.viability_report``
-   admitted, at least ``min_tip_contacts`` digits, at least one reachable
-   fingertip). A design that fails can never pass the search, because one
+   viable, i.e. C1 and C2, and at least ``min_tip_contacts`` fingers). A design that fails can never pass the search, because one
    finger gives at most one tip contact.
 3. Survivors are searched in batches (one Kit launch per batch, all designs
    in parallel) until the target is filled or ``max_batches`` run out. A
@@ -30,8 +29,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from hand_sampler.grammar.derive import derivation_from_dict, derive
-from hand_sampler.grammar.distributions import Distribution
+from hand_sampler.grammar.hand import Rules, hand_from_dict
 
 from ..scene import grammar_envelope as ge
 from ..scene import population_file as pf
@@ -61,8 +59,8 @@ def prefilter_report(report: dict, min_tip_contacts: int = 2) -> Tuple[bool, str
         return False, "not_admitted"
     if (report.get("digit_count") or 0) < min_tip_contacts:
         return False, f"digits<{min_tip_contacts}"
-    if (report.get("fingertips_reachable") or 0) < 1:
-        return False, "reach<1"
+    if not report.get("c2_ok"):
+        return False, "c2"
     return True, ""
 
 
@@ -220,15 +218,15 @@ def fill_viable(*, target: int, forced: Sequence[Proposal], propose: Callable[[]
                       stats=stats, unused=unused)
 
 
-def _proposal_from(entry: "pf.PopulationEntry", meta, model, min_tip_contacts: int, check: bool) -> Proposal:
+def _proposal_from(entry: "pf.PopulationEntry", meta, hand, min_tip_contacts: int, check: bool) -> Proposal:
     ok, why = (True, "")
     if check:
-        ok, why = prefilter_report(ge.viability_report(model), min_tip_contacts)
+        ok, why = prefilter_report(ge.viability_report(hand), min_tip_contacts)
     return Proposal(entry=entry, meta=meta, sha256=entry.sha256, prefilter_ok=ok, prefilter_reason=why)
 
 
 def build_viable_generation(
-    generation: int, n_designs: int, probe_hand_ids: Sequence[str], dist,
+    generation: int, n_designs: int, probe_hand_ids: Sequence[str], rules,
     archive: "arch.Archive", driver_rng: np.random.Generator, minter, *, known: Dict[str, int],
     search: Callable[[List[Proposal]], Tuple[Dict[str, int], float]], batch_size: int, max_batches: int,
     max_offspring_retries: int = 16, min_tip_contacts: int = 2, spares: Sequence[dict] = (),
@@ -236,19 +234,18 @@ def build_viable_generation(
     """The viable-only counterpart of ``driver.build_generation_population``:
     ``(GenerationPlan, report)`` with elites, viable probes and newly drawn
     viable designs; ``report`` is the generation's ``viability`` log entry.
-    ``dist`` is a Distribution or a ``{variant name: Distribution}`` dict;
-    founders and immigrants cycle through the dict (a mixed population),
-    mutation uses its first entry."""
+    ``rules`` is a `Rules` or a ``{name: Rules}`` dict; founders and
+    immigrants cycle through the dict, mutation uses its first entry."""
     from . import driver as drv
 
-    named = dict(dist) if isinstance(dist, dict) else {"": dist}
+    named = dict(rules) if isinstance(rules, dict) else {"": rules}
     variant_names, dists = list(named), list(named.values())
     drawn_variants: List[str] = []
 
     t0 = time.time()
     probes: List[Proposal] = []
     for hand_id in probe_hand_ids:
-        entry, status, reason = pf.projected_entry(hand_id)
+        entry, status, reason = pf.commercial_entry(hand_id)
         if status != "admitted":
             raise RuntimeError(f"probe hand {hand_id!r} is not admitted ({status}): {reason}")
         meta = drv.DesignMeta(design_id=f"probe:{hand_id}", founder_id=f"probe:{hand_id}", parent_id=None,
@@ -264,9 +261,8 @@ def build_viable_generation(
         elites = sorted(elites, key=lambda e: e.fitness, reverse=True)[:slots]
     elite_entries, elite_metas = [], []
     for e in elites:
-        derivation = derivation_from_dict(e.derivation_dict)
         source = f"arch:{e.design_id}"
-        entry = pf.make_entry(source, derivation, derive(derivation))
+        entry = pf.make_entry(source, hand_from_dict(e.hand_dict))
         elite_entries.append(entry)
         elite_metas.append(drv.DesignMeta(
             design_id=e.design_id, founder_id=e.founder_id, parent_id=e.parent_id,
@@ -283,10 +279,8 @@ def build_viable_generation(
     spares_used = {"n": 0}
 
     def from_spare(s: dict) -> Proposal:
-        derivation = derivation_from_dict(s["derivation_dict"])
-        model = derive(derivation)
         source = f"arch:{s['design_id']}"
-        entry = pf.make_entry(source, derivation, model)
+        entry = pf.make_entry(source, hand_from_dict(s["hand_dict"]))
         meta = drv.DesignMeta(design_id=s["design_id"], founder_id=s["founder_id"], parent_id=s.get("parent_id"),
                               generation_born=int(s["generation_born"]), digit_count=int(s["digit_count"]),
                               joint_count=int(s["joint_count"]), role=s["role"], source=source)
@@ -299,29 +293,28 @@ def build_viable_generation(
             if p.sha256 in known:  # a spare is known viable; anything else is drawn fresh
                 return p
         if generation == 0 or not elites:
-            derivation, design = founder()
+            hand, design = founder()
             role, design_id = "founder", minter.mint(generation, "founder")
             founder_id, parent_id = design_id, None
         else:
             parent = archive.sample_parent(driver_rng)
-            result = drv.try_offspring(derivation_from_dict(parent.derivation_dict), dists[0], driver_rng,
+            result = drv.try_offspring(hand_from_dict(parent.hand_dict), dists[0], driver_rng,
                                        max_retries=max_offspring_retries)
             if result is not None:
-                derivation, design = result
+                hand, design = result
                 role, design_id = "offspring", minter.mint(generation, "off")
                 founder_id, parent_id = parent.founder_id, parent.design_id
             else:
-                derivation, design = founder()
+                hand, design = founder()
                 role, design_id = "immigrant", minter.mint(generation, "imm")
                 founder_id, parent_id = design_id, None
         digit_count, joint_count = drv._design_counts(design)
         source = f"arch:{design_id}"
-        model = derive(derivation)
-        entry = pf.make_entry(source, derivation, model)
+        entry = pf.make_entry(source, hand)
         meta = drv.DesignMeta(design_id=design_id, founder_id=founder_id, parent_id=parent_id,
                               generation_born=generation, digit_count=digit_count, joint_count=joint_count,
                               role=role, source=source)
-        return _proposal_from(entry, meta, model, min_tip_contacts, check=True)
+        return _proposal_from(entry, meta, hand, min_tip_contacts, check=True)
 
     target = n_designs - len(elite_entries)
     res = fill_viable(target=target, forced=probes, propose=propose, search=search, known=known,
@@ -336,7 +329,7 @@ def build_viable_generation(
         "assembly_s": round(time.time() - t0, 1),
         "founder_variants": list(drawn_variants),
         "spares_used": spares_used["n"],
-        "spares": [{"derivation_dict": p.entry.derivation_dict, "design_id": p.meta.design_id, "role": p.meta.role,
+        "spares": [{"hand_dict": p.entry.hand_dict, "design_id": p.meta.design_id, "role": p.meta.role,
                     "founder_id": p.meta.founder_id, "parent_id": p.meta.parent_id,
                     "generation_born": p.meta.generation_born, "digit_count": p.meta.digit_count,
                     "joint_count": p.meta.joint_count} for p in res.unused] + pool,
@@ -345,8 +338,8 @@ def build_viable_generation(
 
 
 def main(argv=None) -> int:
-    """Build one viable population (no training): founders round-robin over
-    ``--variants``, plus probes, grasp-searched in batches until
+    """Build one viable population (no training): founders under ``--rules``,
+    plus probes, grasp-searched in batches until
     ``--designs`` are viable. Writes ``<out-dir>/population.json``, the
     grasp cache ``<out-dir>/grasp_cache.npz`` and ``viability.json``."""
     import argparse
@@ -356,7 +349,7 @@ def main(argv=None) -> int:
     from . import driver as drv
 
     ap = argparse.ArgumentParser(description=main.__doc__)
-    ap.add_argument("--variants", required=True, help="comma-separated, e.g. G_V3S,G_V1")
+    ap.add_argument("--rules", default="evolution", help="comma-separated rule sets: evolution, none")
     ap.add_argument("--probes", default="allegro_right,sharpa_left_on_iiwa14,leap_right")
     ap.add_argument("--designs", type=int, default=32)
     ap.add_argument("--seed", type=int, default=0)
@@ -384,7 +377,7 @@ def main(argv=None) -> int:
         counter["i"] += 1
         return drv.run_grasp_search(batch, args=args, run_dir=out, gen_dir=out, index=counter["i"])
 
-    dists = {v: drv.resolve_variant(v) for v in a.variants.split(",")}
+    dists = {v: drv.resolve_rules(v) for v in a.rules.split(",")}
     plan, report = build_viable_generation(
         0, a.designs, [h for h in a.probes.split(",") if h], dists, arch.Archive(), np.random.default_rng(a.seed),
         drv.IdMinter(), known={}, search=search, batch_size=a.batch_size, max_batches=a.max_batches)

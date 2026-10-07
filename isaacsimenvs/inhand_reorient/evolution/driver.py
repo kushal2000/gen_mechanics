@@ -14,7 +14,7 @@ entirely inside the ``coevolution/train.py`` subprocess.
 
 CLI:
     python -m isaacsimenvs.inhand_reorient.evolution.driver \
-        --variant G_V1 --seed 0 --generations 20 --designs 64 \
+        --rules evolution --stage coarse --seed 0 --generations 20 --designs 64 \
         --probes allegro_right,dclaw,sharpa_left_on_iiwa14,leap_right \
         --num-envs 4096 --epochs-per-gen 200 --fitness train_tail \
         --run-dir outputs/evolution_pilot/run0
@@ -75,18 +75,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from hand_sampler.grammar.derive import (
-    EVOLUTION_OPERATORS,
-    Derivation,
-    VariationImpossible,
-    derivation_from_dict,
-    derive,
-    sample_derivation,
-    vary,
-)
-from hand_sampler.grammar.distributions import Distribution
-from hand_sampler.grammar.kinematics import ModelError
-from hand_sampler.grammar import variants as grammar_variants
+from hand_sampler.grammar import operators as gops
+from hand_sampler.grammar import viability as gvb
+from hand_sampler.grammar.hand import EVOLUTION_RULES, NO_RULES, Hand, Rules, hand_from_dict
 
 from ..scene import grammar_envelope as ge
 from ..scene import population_file as pf
@@ -127,29 +118,19 @@ DEFAULT_PROBES: Tuple[str, ...] = ("allegro_right", "dclaw", "sharpa_left_on_iiw
 
 
 # --------------------------------------------------------------------------
-# Variant resolution (I29/I30 G0 variants live in a registry a concurrent
-# worker is still adding to -- resolve by name through it, never hard-code
-# a list of variant names here).
+# Rules
 # --------------------------------------------------------------------------
 
 
-def resolve_variant(name: str) -> Distribution:
-    registries = (
-        getattr(grammar_variants, "NAMED_DISTRIBUTIONS", {}),
-        getattr(grammar_variants, "G0_SCREEN_VARIANTS", {}),
-    )
-    for registry in registries:
-        if name in registry:
-            dist = registry[name]
-            # G_FULL_SMALL-style entries are `(Distribution, operators)` pairs
-            # for `vary`'s default operator pool -- the evolution pilot
-            # always uses EVOLUTION_OPERATORS regardless, so just take the
-            # Distribution half if that's what was registered.
-            if isinstance(dist, tuple):
-                dist = dist[0]
-            return dist
-    known = sorted(set(registries[0]) | set(registries[1]))
-    raise ValueError(f"unknown --variant {name!r}; known variants: {known}")
+RULES_BY_NAME: Dict[str, Rules] = {"evolution": EVOLUTION_RULES, "none": NO_RULES}
+
+
+def resolve_rules(name: str) -> Rules:
+    """`--rules`: "evolution" (the simulator's Evolution Rules) or "none"
+    (the whole grammar)."""
+    if name not in RULES_BY_NAME:
+        raise ValueError(f"unknown --rules {name!r}; known: {sorted(RULES_BY_NAME)}")
+    return RULES_BY_NAME[name]
 
 
 # --------------------------------------------------------------------------
@@ -175,9 +156,9 @@ class DesignMeta:
 
 
 def _design_counts(design: "ge.EnvelopeDesign") -> Tuple[int, int]:
-    digit_count = int(sum(1 for d in design.finger_digit_id if d is not None))
-    joint_count = int(design.slot_valid.sum())
-    return digit_count, joint_count
+    """(fingers, joints) of a design: every finger joint and palm joint."""
+    hand = design.hand
+    return len(hand.fingers), sum(len(f.joints) for f in hand.fingers) + len(hand.palm_joints)
 
 
 class IdMinter:
@@ -194,49 +175,36 @@ class IdMinter:
         return f"gen{generation}-{role}-{uid:06d}"
 
 
+def _viable(hand: Hand) -> bool:
+    """C1 (admission: no overlap above 3 mm) and C2 (fingertip workspaces
+    meet above the palm)."""
+    return ge.admit(hand).ok and gvb.c2_workspace_overlap(hand).ok
+
+
 def sample_new_founder(
-    dist: Distribution, driver_rng: np.random.Generator, max_tries: int = 20000,
-) -> Tuple[Derivation, "ge.EnvelopeDesign"]:
-    """A freshly sampled, `admit`-ted derivation (generation-0 founder, or
-    an immigrant replacing a failed mutation) -- retries with fresh seeds
-    (drawn from `driver_rng`, so the whole search is reproducible/resumable
-    from the driver's own rng state) until one is admitted."""
+    rules: Rules, driver_rng: np.random.Generator, max_tries: int = 20000, stage: str = "coarse",
+) -> Tuple[Hand, "ge.EnvelopeDesign"]:
+    """A random viable hand (generation-0 founder, or an immigrant replacing
+    a failed mutation); seeds come from `driver_rng`, so the search is
+    reproducible and resumable."""
     for _ in range(max_tries):
         seed = int(driver_rng.integers(0, 2**31 - 1))
-        derivation = sample_derivation(seed, dist)
-        try:
-            model = derive(derivation)
-        except ModelError:
-            continue
-        result = ge.admit(model)
-        if not result.ok:
-            continue
-        design = ge.canonicalize(model)
-        return derivation, design
-    raise RuntimeError(f"could not sample an admitted design from this variant in {max_tries} tries")
+        hand = gops.random_hand(np.random.default_rng(seed), rules, stage)
+        if _viable(hand):
+            return hand, ge.canonicalize(hand)
+    raise RuntimeError(f"could not draw a viable hand under these rules in {max_tries} tries")
 
 
 def try_offspring(
-    parent_derivation: Derivation, dist: Distribution, driver_rng: np.random.Generator, max_retries: int = 16,
-) -> Optional[Tuple[Derivation, "ge.EnvelopeDesign"]]:
-    """Up to `max_retries` attempts at `derive.vary(..., operators=
-    EVOLUTION_OPERATORS)` + `grammar_envelope.admit`; `None` if none of them
-    produced an admitted design (the caller then draws an immigrant
-    instead, per the plan)."""
+    parent: Hand, rules: Rules, driver_rng: np.random.Generator, max_retries: int = 16, stage: str = "coarse",
+) -> Optional[Tuple[Hand, "ge.EnvelopeDesign"]]:
+    """Up to `max_retries` mutations of `parent` (`operators.mutate` at
+    `stage`, within `rules`); the first viable child, or `None` (the caller
+    then draws an immigrant)."""
     for _ in range(max_retries):
-        try:
-            candidate = vary(parent_derivation, driver_rng, dist, operators=EVOLUTION_OPERATORS)
-        except VariationImpossible:
-            continue
-        try:
-            model = derive(candidate)
-        except ModelError:
-            continue
-        result = ge.admit(model)
-        if not result.ok:
-            continue
-        design = ge.canonicalize(model)
-        return candidate, design
+        child, _op, _mv = gops.mutate(parent, driver_rng, rules, stage)
+        if _viable(child):
+            return child, ge.canonicalize(child)
     return None
 
 
@@ -255,18 +223,19 @@ def build_generation_population(
     generation: int,
     n_designs: int,
     probe_hand_ids: Sequence[str],
-    dist: Distribution,
+    rules: Rules,
     archive: "arch.Archive",
     driver_rng: np.random.Generator,
     minter: IdMinter,
     max_offspring_retries: int = 16,
+    stage: str = "coarse",
 ) -> GenerationPlan:
     entries: List[pf.PopulationEntry] = []
     metas: List[DesignMeta] = []
 
     # Probes: fixed identity every generation, never enter the archive.
     for hand_id in probe_hand_ids:
-        entry, status, reason = pf.projected_entry(hand_id)
+        entry, status, reason = pf.commercial_entry(hand_id)
         if status != "admitted":
             raise RuntimeError(f"probe hand {hand_id!r} is not admitted ({status}): {reason}")
         entries.append(entry)
@@ -291,10 +260,8 @@ def build_generation_population(
         elites = sorted(elites, key=lambda e: e.fitness, reverse=True)[:n_elite_slots]
 
     for e in elites:
-        derivation = derivation_from_dict(e.derivation_dict)
-        model = derive(derivation)
         source = f"arch:{e.design_id}"
-        entries.append(pf.make_entry(source, derivation, model))
+        entries.append(pf.make_entry(source, hand_from_dict(e.hand_dict)))
         metas.append(DesignMeta(
             design_id=e.design_id, founder_id=e.founder_id, parent_id=e.parent_id,
             generation_born=e.generation_born, digit_count=e.digit_count, joint_count=e.joint_count,
@@ -304,30 +271,30 @@ def build_generation_population(
     n_offspring = slots_for_growth - n_elite_slots
     for _ in range(n_offspring):
         if generation == 0 or not elites:
-            derivation, design = sample_new_founder(dist, driver_rng)
+            hand, design = sample_new_founder(rules, driver_rng, stage=stage)
             digit_count, joint_count = _design_counts(design)
             design_id = minter.mint(generation, "founder")
             role = "founder"
             founder_id, parent_id = design_id, None
         else:
             parent = archive.sample_parent(driver_rng)
-            parent_derivation = derivation_from_dict(parent.derivation_dict)
-            result = try_offspring(parent_derivation, dist, driver_rng, max_retries=max_offspring_retries)
+            result = try_offspring(hand_from_dict(parent.hand_dict), rules, driver_rng,
+                                   max_retries=max_offspring_retries, stage=stage)
             if result is not None:
-                derivation, design = result
+                hand, design = result
                 digit_count, joint_count = _design_counts(design)
                 design_id = minter.mint(generation, "off")
                 role = "offspring"
                 founder_id, parent_id = parent.founder_id, parent.design_id
             else:
-                derivation, design = sample_new_founder(dist, driver_rng)
+                hand, design = sample_new_founder(rules, driver_rng, stage=stage)
                 digit_count, joint_count = _design_counts(design)
                 design_id = minter.mint(generation, "imm")
                 role = "immigrant"
                 founder_id, parent_id = design_id, None
 
         source = f"arch:{design_id}"
-        entries.append(pf.make_entry(source, derivation, derive(derivation)))
+        entries.append(pf.make_entry(source, hand))
         metas.append(DesignMeta(
             design_id=design_id, founder_id=founder_id, parent_id=parent_id, generation_born=generation,
             digit_count=digit_count, joint_count=joint_count, role=role, source=source,
@@ -906,8 +873,10 @@ def load_state(path: Path) -> dict:
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--variant", required=True, help="Named Distribution, resolved through "
-                    "hand_sampler.grammar.variants' registries (NAMED_DISTRIBUTIONS, G0_SCREEN_VARIANTS)")
+    ap.add_argument("--rules", default="evolution", choices=sorted(RULES_BY_NAME),
+                    help="evolution: the simulator's Evolution Rules (hinge and coupled joints); none: the whole grammar")
+    ap.add_argument("--stage", default="coarse", choices=["coarse", "fine"],
+                    help="mutation steps: coarse (10 mm / 30 deg, structural operators) or fine (1 mm / 5 deg)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--generations", type=int, required=True)
     ap.add_argument("--designs", type=int, default=64, help="Population size N per generation")
@@ -1066,7 +1035,7 @@ def grasp_report_row(report: Optional[dict], source_to_id: Dict[str, str]) -> Op
 
 def _resolved_config(args: argparse.Namespace) -> dict:
     config = {
-        "variant": args.variant, "seed": args.seed, "designs": args.designs,
+        "rules": args.rules, "stage": args.stage, "seed": args.seed, "designs": args.designs,
         "probes": sorted(args.probes.split(",")), "num_envs": args.num_envs,
         "epochs_per_gen": args.epochs_per_gen, "fitness": args.fitness,
         "max_offspring_retries": args.max_offspring_retries,
@@ -1137,7 +1106,7 @@ def _set_aside_failed_attempt(gen_dir: Path, attempt: int) -> None:
 
 
 def run_generation(
-    generation: int, args: argparse.Namespace, run_dir: Path, dist: Distribution, archive: "arch.Archive",
+    generation: int, args: argparse.Namespace, run_dir: Path, rules: Rules, archive: "arch.Archive",
     driver_rng: np.random.Generator, minter: IdMinter, last_checkpoint: Optional[Path], prev_tolerance: float,
     probe_hand_ids: Sequence[str], known_viability: Optional[Dict[str, int]] = None,
     spares: Optional[List[dict]] = None,
@@ -1158,7 +1127,7 @@ def run_generation(
             return run_grasp_search(batch, args=args, run_dir=run_dir, gen_dir=gen_dir, index=counter["i"])
 
         plan, viability = build_viable_generation(
-            generation, args.designs, probe_hand_ids, dist, archive, driver_rng, minter,
+            generation, args.designs, probe_hand_ids, rules, archive, driver_rng, minter,
             known=known_viability if known_viability is not None else {}, search=_search,
             batch_size=args.viable_batch_size, max_batches=args.viable_max_batches,
             max_offspring_retries=args.max_offspring_retries, spares=list(spares or []))
@@ -1178,8 +1147,8 @@ def run_generation(
             raise GenerationFailed(f"generation {generation}: no viable design to train")
     else:
         plan = build_generation_population(
-            generation, args.designs, probe_hand_ids, dist, archive, driver_rng, minter,
-            max_offspring_retries=args.max_offspring_retries,
+            generation, args.designs, probe_hand_ids, rules, archive, driver_rng, minter,
+            max_offspring_retries=args.max_offspring_retries, stage=getattr(args, "stage", "coarse"),
         )
     population_path = gen_dir / "population.json"
     population_doc = pf.write_population(population_path, plan.entries)
@@ -1270,7 +1239,7 @@ def run_generation(
             }
             continue
         candidates.append(arch.Candidate(
-            design_id=meta.design_id, derivation_dict=_entry_derivation(plan.entries, meta.source),
+            design_id=meta.design_id, hand_dict=_entry_hand(plan.entries, meta.source),
             sha256=_entry_sha256(plan.entries, meta.source), founder_id=meta.founder_id,
             parent_id=meta.parent_id, generation_born=meta.generation_born, digit_count=meta.digit_count,
             joint_count=meta.joint_count, fitness=fr.fitness, episodes=fr.episodes,
@@ -1353,10 +1322,10 @@ def run_generation(
     return new_checkpoint, new_tolerance
 
 
-def _entry_derivation(entries: Sequence["pf.PopulationEntry"], source: str) -> dict:
+def _entry_hand(entries: Sequence["pf.PopulationEntry"], source: str) -> dict:
     for e in entries:
         if e.source == source:
-            return e.derivation_dict
+            return e.hand_dict
     raise KeyError(source)
 
 
@@ -1403,7 +1372,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
               f"(archive coverage {archive.coverage()}/{arch.N_CELLS}, checkpoint={last_checkpoint})",
               flush=True)
 
-    dist = resolve_variant(args.variant)
+    rules = resolve_rules(args.rules)
 
     if args.fitness == "eval":
         print("[driver] --fitness eval is not implemented in this pilot driver "
@@ -1414,7 +1383,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     for generation in range(start_generation, args.generations):
         try:
             last_checkpoint, prev_tolerance = run_generation(
-                generation, args, run_dir, dist, archive, driver_rng, minter, last_checkpoint, prev_tolerance,
+                generation, args, run_dir, rules, archive, driver_rng, minter, last_checkpoint, prev_tolerance,
                 probe_hand_ids, known_viability=known_viability if args.viable_only else None,
                 spares=spares if args.viable_only else None,
             )

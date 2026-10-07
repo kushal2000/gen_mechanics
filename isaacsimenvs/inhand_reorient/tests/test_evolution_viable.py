@@ -19,19 +19,18 @@ from isaacsimenvs.inhand_reorient.evolution import viable as vb
 # --------------------------------------------------------------------------
 
 
-def _report(admitted=True, digits=2, reach=1):
-    return {"admitted": admitted, "reasons": [] if admitted else ["x"], "digit_count": digits,
-            "fingertips_reachable": reach}
+def _report(admitted=True, digits=2, c2=True):
+    return {"admitted": admitted, "reasons": [] if admitted else ["x"], "digit_count": digits, "c2_ok": c2}
 
 
-def test_prefilter_needs_two_digits_for_two_tip_contacts_and_one_reachable_tip():
+def test_prefilter_needs_c1_two_fingers_and_c2():
     ok, why = vb.prefilter_report(_report())
     assert ok and why == ""
     assert vb.prefilter_report(_report(digits=1)) == (False, "digits<2")
-    assert vb.prefilter_report(_report(reach=0)) == (False, "reach<1")
+    assert vb.prefilter_report(_report(c2=False)) == (False, "c2")
     assert vb.prefilter_report(_report(admitted=False)) == (False, "not_admitted")
     assert vb.prefilter_report({"admitted": False, "reasons": ["s"], "digit_count": None,
-                                "fingertips_reachable": None}) == (False, "not_admitted")
+                                "c2_ok": None}) == (False, "not_admitted")
     # min_tip_contacts 3 needs three digits
     assert vb.prefilter_report(_report(digits=2), min_tip_contacts=3) == (False, "digits<3")
 
@@ -170,7 +169,7 @@ def test_rates_and_log_row():
 
 
 def test_viable_generation_keeps_elites_drops_non_viable_probes_and_fills_new_designs():
-    dist = drv.resolve_variant("G_V1")
+    dist = drv.resolve_rules("evolution")
     rng = np.random.default_rng(0)
     a = arch.Archive()
     minter = drv.IdMinter()
@@ -205,7 +204,7 @@ def test_viable_generation_keeps_elites_drops_non_viable_probes_and_fills_new_de
 
 
 def test_viable_generation_after_gen_0_reuses_elites_and_known_probes():
-    dist = drv.resolve_variant("G_V1")
+    dist = drv.resolve_rules("evolution")
     rng = np.random.default_rng(1)
     minter = drv.IdMinter()
     known = {}
@@ -217,7 +216,7 @@ def test_viable_generation_after_gen_0_reuses_elites_and_known_probes():
                                           known=known, search=search, batch_size=8, max_batches=2)
     a = arch.Archive()
     cands = [arch.Candidate(
-        design_id=m.design_id, derivation_dict=e.derivation_dict, sha256=e.sha256, founder_id=m.founder_id,
+        design_id=m.design_id, hand_dict=e.hand_dict, sha256=e.sha256, founder_id=m.founder_id,
         parent_id=None, generation_born=0, digit_count=m.digit_count, joint_count=m.joint_count, fitness=1.0,
         episodes=20, low_confidence=False, source=m.source) for e, m in zip(plan0.entries, plan0.metas)
         if m.role != "probe"]
@@ -237,7 +236,7 @@ def test_viable_generation_after_gen_0_reuses_elites_and_known_probes():
 
 
 def test_viable_only_flag_needs_the_grasp_cache_and_adds_csv_columns():
-    base = ["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "hora",
+    base = ["--rules", "evolution", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "hora",
             "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT]
     with pytest.raises(SystemExit):
         drv.parse_args(base + ["--viable-only"])
@@ -262,7 +261,7 @@ def test_state_round_trips_the_known_viability_map(tmp_path):
 def test_founders_cycle_through_several_variants():
     """A mixed population (e.g. G_V3S and G_V1 founders): founders are drawn
     round-robin over the distributions."""
-    dists = {"G_V3S": drv.resolve_variant("G_V3S"), "G_V1": drv.resolve_variant("G_V1")}
+    dists = {"none": drv.resolve_rules("none"), "evolution": drv.resolve_rules("evolution")}
     rng = np.random.default_rng(0)
     seen = []
 
@@ -274,7 +273,7 @@ def test_founders_cycle_through_several_variants():
                                               search=search, batch_size=6, max_batches=1)
     assert len(plan.entries) == 6
     # every draw (pre-filter rejects included) takes the next variant
-    assert report["founder_variants"] == [("G_V3S", "G_V1")[i % 2] for i in range(report["candidates_drawn"])]
+    assert report["founder_variants"] == [("none", "evolution")[i % 2] for i in range(report["candidates_drawn"])]
 
 
 def test_kit_cache_path_follows_the_job_environment(monkeypatch, tmp_path):
@@ -309,7 +308,7 @@ def test_grasp_search_command_bounds_the_peak_joint_speed(tmp_path):
     """--viable-max-joint-speed (default 5 rad/s): a design whose joints sit at
     the 10 rad/s velocity limit while holding is not viable (2026-10-02:
     founders 373, 420, 101 dominated population training)."""
-    base = ["--variant", "G_V3S", "--generations", "1", "--run-dir", str(tmp_path), "--task-profile", "hora",
+    base = ["--rules", "evolution", "--generations", "1", "--run-dir", str(tmp_path), "--task-profile", "hora",
             "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT, "--grasp-cache", "--viable-only"]
     args = drv.parse_args(base)
     assert args.viable_max_joint_speed == 5.0
@@ -325,7 +324,7 @@ def test_grasp_search_command_bounds_the_peak_joint_speed(tmp_path):
 def test_surplus_viable_designs_become_spares_drawn_first_next_generation():
     """Viable designs beyond the target are returned as spares; the next
     generation proposes them first (known viable: no search)."""
-    dist = drv.resolve_variant("G_V1")
+    dist = drv.resolve_rules("evolution")
     rng = np.random.default_rng(2)
     known = {}
 
@@ -336,7 +335,7 @@ def test_surplus_viable_designs_become_spares_drawn_first_next_generation():
                                                 search=search_all, batch_size=6, max_batches=1)
     spares = report0["spares"]
     assert len(plan0.entries) == 3 and len(spares) >= 1
-    assert {"derivation_dict", "design_id", "role", "founder_id", "parent_id", "generation_born", "digit_count",
+    assert {"hand_dict", "design_id", "role", "founder_id", "parent_id", "generation_born", "digit_count",
             "joint_count"} <= set(spares[0])
     searched = []
 

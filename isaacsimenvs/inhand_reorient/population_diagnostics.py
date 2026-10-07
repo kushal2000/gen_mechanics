@@ -233,6 +233,7 @@ def _random_rollout_and_contacts(env, args, population, design_idx, ge) -> bool:
 
     n, device = env.num_envs, env.device
     tie_index = env.scene_record.get("tie_index")
+    tie_gear = env.scene_record.get("tie_gear")
     tied = (tie_index != torch.arange(tie_index.shape[1], device=device)) if tie_index is not None else None
     filtered = [_filtered_body_pairs(population.designs[int(d)], ge) for d in design_idx.tolist()]
     n_filtered_pairs = sum(len(f) for f in filtered)
@@ -261,7 +262,8 @@ def _random_rollout_and_contacts(env, args, population, design_idx, ge) -> bool:
         q_max = max(q_max, float(q.abs().max()))
         qd_max = max(qd_max, float(qd.abs().max()))
         if tied is not None and bool(tied.any()):
-            err = ((q - q.gather(1, tie_index)).abs() * tied).max(dim=1).values  # (n,)
+            src = q.gather(1, tie_index) * (tie_gear if tie_gear is not None else 1.0)   # gear: 1.1 per coupling
+            err = ((q - src).abs() * tied).max(dim=1).values  # (n,)
             tie_max = max(tie_max, float(err.max()))
             for d in range(population.n_designs):
                 rows = design_idx == d

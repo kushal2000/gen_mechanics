@@ -130,10 +130,8 @@ def test_morphology_table_per_slot():
     q = 0, link length, limits (10 values); ghost slots all zero."""
     from isaacsimenvs.inhand_reorient.scene import grammar_envelope as ge
     from isaacsimenvs.inhand_reorient.scene import population_file as pf
-    from hand_sampler.grammar.derive import derivation_from_dict, derive
-
-    entry, status, _ = pf.projected_entry("allegro_right")
-    design = ge.canonicalize(derive(derivation_from_dict(entry.derivation_dict)), source=entry.source)
+    entry, status, _ = pf.commercial_entry("allegro_right")
+    design = ge.canonicalize(entry.hand, source=entry.source)
     tab = hp.morphology_table(design)
     assert tab.shape == (36, hp.MORPH_PER_SLOT) and hp.MORPH_PER_SLOT == 10
     T0 = ge.authored_fk(design, np.zeros(ge.N_SLOTS))

@@ -1,5 +1,5 @@
 """CPU tests for `isaacsimenvs/inhand_reorient/evolution/driver.py`'s
-non-subprocess pieces: variant resolution, gen-0/offspring/immigrant
+non-subprocess pieces: rules resolution, gen-0/offspring/immigrant
 population assembly, train_tail fitness, checkpoint discovery, and the
 state.json save/load/resume contract. Nothing here boots Kit or launches a
 subprocess -- `run_training_subprocess`/`run_generation`/`main` (which do)
@@ -23,7 +23,7 @@ from isaacsimenvs.inhand_reorient.scene import population_file as pf
 
 
 # --------------------------------------------------------------------------
-# Variant resolution
+# Rules resolution
 # --------------------------------------------------------------------------
 
 
@@ -42,35 +42,13 @@ def test_repo_root_points_at_the_actual_gen_mechanics_checkout():
     assert drv.TRAIN_PY.is_file()
 
 
-def test_resolve_variant_finds_named_distributions():
-    dist = drv.resolve_variant("G_SERIAL")
-    assert dist.palm_body_count_range == (0, 0)
+def test_resolve_rules():
+    from hand_sampler.grammar.hand import EVOLUTION_RULES, NO_RULES
 
-
-def test_resolve_variant_finds_g0_screen_variants():
-    dist = drv.resolve_variant("V1")  # G0_SCREEN_VARIANTS' own alias for G_V1
-    assert dist.digit_count_range == (1, 5)
-
-
-def test_resolve_variant_unwraps_tuple_entries(monkeypatch):
-    """Some registered variants (e.g. `variants.G_FULL_SMALL`) are `(dist,
-    operators)` pairs meant for `vary`'s default operator pool -- the
-    pilot always uses EVOLUTION_OPERATORS regardless (plan-rl-grammar-
-    tuning.md), so `resolve_variant` must unwrap the Distribution half
-    rather than handing a raw tuple to the rest of the driver."""
-    from hand_sampler.grammar import variants as grammar_variants
-
-    real_dist = drv.resolve_variant("G_SERIAL")
-    fake_registry = dict(grammar_variants.NAMED_DISTRIBUTIONS)
-    fake_registry["_FAKE_PAIR"] = (real_dist, ("resample_parameter",))
-    monkeypatch.setattr(grammar_variants, "NAMED_DISTRIBUTIONS", fake_registry)
-    dist = drv.resolve_variant("_FAKE_PAIR")
-    assert dist is real_dist
-
-
-def test_resolve_variant_raises_with_a_helpful_message_for_unknown_names():
-    with pytest.raises(ValueError, match="unknown --variant"):
-        drv.resolve_variant("NOT_A_REAL_VARIANT")
+    assert drv.resolve_rules("evolution") == EVOLUTION_RULES
+    assert drv.resolve_rules("none") == NO_RULES
+    with pytest.raises(ValueError, match="unknown --rules"):
+        drv.resolve_rules("G_V1")
 
 
 # --------------------------------------------------------------------------
@@ -78,34 +56,32 @@ def test_resolve_variant_raises_with_a_helpful_message_for_unknown_names():
 # --------------------------------------------------------------------------
 
 
-def test_sample_new_founder_returns_an_admitted_design():
-    dist = drv.resolve_variant("G_V1")
-    rng = np.random.default_rng(0)
-    derivation, design = drv.sample_new_founder(dist, rng)
-    model = None
-    from hand_sampler.grammar.derive import derive
+def test_sample_new_founder_returns_a_viable_design():
+    from hand_sampler.grammar import viability as gvb
+    from hand_sampler.grammar.hand import check
     from isaacsimenvs.inhand_reorient.scene import grammar_envelope as ge
 
-    model = derive(derivation)
-    assert ge.admit(model).ok
+    rules = drv.resolve_rules("evolution")
+    rng = np.random.default_rng(0)
+    hand, design = drv.sample_new_founder(rules, rng)
+    assert check(hand, rules) == [] and ge.admit(hand).ok and gvb.c2_workspace_overlap(hand).ok
     digit_count, joint_count = drv._design_counts(design)
-    assert 1 <= digit_count <= 5
-    assert 1 <= joint_count <= 32
+    assert 2 <= digit_count <= 6
+    assert 1 <= joint_count <= 36
 
 
-def test_try_offspring_returns_an_admitted_mutant_or_none():
-    dist = drv.resolve_variant("G_V1")
+@pytest.mark.parametrize("stage", ["coarse", "fine"])
+def test_try_offspring_returns_a_viable_mutant_or_none(stage):
+    from hand_sampler.grammar import viability as gvb
+    from hand_sampler.grammar.hand import check
+
+    rules = drv.resolve_rules("evolution")
     rng = np.random.default_rng(1)
-    parent_derivation, _parent_design = drv.sample_new_founder(dist, rng)
-    result = drv.try_offspring(parent_derivation, dist, rng, max_retries=16)
-    # Either it succeeds (and is admitted) or politely gives up (None) --
-    # both are valid outcomes; what matters is it never raises.
+    parent, _ = drv.sample_new_founder(rules, rng)
+    result = drv.try_offspring(parent, rules, rng, max_retries=16, stage=stage)
     if result is not None:
-        from hand_sampler.grammar.derive import derive
-        from isaacsimenvs.inhand_reorient.scene import grammar_envelope as ge
-
-        candidate_derivation, _design = result
-        assert ge.admit(derive(candidate_derivation)).ok
+        child, _design = result
+        assert check(child, rules) == [] and gvb.is_viable(child) and child != parent
 
 
 # --------------------------------------------------------------------------
@@ -113,14 +89,14 @@ def test_try_offspring_returns_an_admitted_mutant_or_none():
 # --------------------------------------------------------------------------
 
 
-def _archive_with_one_elite(dist, rng):
-    a = arch.Archive()
-    derivation, design = drv.sample_new_founder(dist, rng)
-    digit_count, joint_count = drv._design_counts(design)
-    from hand_sampler.grammar.derive import derivation_to_dict
+def _archive_with_one_elite(rules, rng):
+    from hand_sampler.grammar.hand import hand_to_dict
 
+    a = arch.Archive()
+    hand, design = drv.sample_new_founder(rules, rng)
+    digit_count, joint_count = drv._design_counts(design)
     cand = arch.Candidate(
-        design_id="seed-elite", derivation_dict=derivation_to_dict(derivation), sha256="deadbeef",
+        design_id="seed-elite", hand_dict=hand_to_dict(hand), sha256="deadbeef",
         founder_id="seed-elite", parent_id=None, generation_born=0, digit_count=digit_count,
         joint_count=joint_count, fitness=1.0, episodes=50, low_confidence=False,
     )
@@ -129,7 +105,7 @@ def _archive_with_one_elite(dist, rng):
 
 
 def test_generation_0_population_is_all_founders_plus_probes():
-    dist = drv.resolve_variant("G_V1")
+    dist = drv.resolve_rules("evolution")
     rng = np.random.default_rng(0)
     a = arch.Archive()
     minter = drv.IdMinter()
@@ -145,7 +121,7 @@ def test_generation_0_population_is_all_founders_plus_probes():
 
 
 def test_later_generation_carries_elites_and_fills_with_offspring_or_immigrants():
-    dist = drv.resolve_variant("G_V1")
+    dist = drv.resolve_rules("evolution")
     rng = np.random.default_rng(0)
     a = _archive_with_one_elite(dist, rng)
     minter = drv.IdMinter()
@@ -168,7 +144,7 @@ def test_later_generation_carries_elites_and_fills_with_offspring_or_immigrants(
 
 
 def test_population_entries_round_trip_through_write_and_load_population(tmp_path):
-    dist = drv.resolve_variant("G_V1")
+    dist = drv.resolve_rules("evolution")
     rng = np.random.default_rng(3)
     a = _archive_with_one_elite(dist, rng)
     minter = drv.IdMinter()
@@ -183,7 +159,7 @@ def test_population_entries_round_trip_through_write_and_load_population(tmp_pat
 def test_probes_never_appear_as_offspring_parents_or_founders():
     """Probes are logged every generation but never enter the archive, so
     they can never become a `sample_parent` candidate either."""
-    dist = drv.resolve_variant("G_V1")
+    dist = drv.resolve_rules("evolution")
     rng = np.random.default_rng(0)
     a = _archive_with_one_elite(dist, rng)
     minter = drv.IdMinter()
@@ -193,7 +169,7 @@ def test_probes_never_appear_as_offspring_parents_or_founders():
 
 
 def test_ids_minted_by_the_same_minter_never_collide_across_generations():
-    dist = drv.resolve_variant("G_V1")
+    dist = drv.resolve_rules("evolution")
     rng = np.random.default_rng(0)
     a = arch.Archive()
     minter = drv.IdMinter()
@@ -311,10 +287,10 @@ def test_anyrotate_profile_uses_its_own_ppo_horizon():
     assert "env.task_profile=anyrotate" in cmd
     assert "agent.params.config.minibatch_size=2048" in cmd  # 256 envs x 8 steps
     assert "expl_coef_block_size" not in " ".join(cmd)
-    args = drv.parse_args(["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x",
+    args = drv.parse_args(["--rules", "evolution", "--generations", "1", "--run-dir", "/tmp/x",
                            "--task-profile", "anyrotate", "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT])
     assert drv._resolved_config(args)["task_profile"] == "anyrotate"
-    assert drv.parse_args(["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x"]).task_profile == "legacy"
+    assert drv.parse_args(["--rules", "evolution", "--generations", "1", "--run-dir", "/tmp/x"]).task_profile == "legacy"
 
 
 def test_build_train_cmd_rejects_an_unknown_profile():
@@ -327,7 +303,7 @@ def test_build_train_cmd_rejects_an_unknown_profile():
 
 
 def test_task_profile_flag_defaults_to_legacy_and_keeps_the_old_config_hash():
-    base = ["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x"]
+    base = ["--rules", "evolution", "--generations", "1", "--run-dir", "/tmp/x"]
     legacy = drv.parse_args(base)
     assert legacy.task_profile == "legacy"
     assert legacy.agent_entry_point == "rl_games_sapg_cfg_entry_point"
@@ -464,11 +440,11 @@ def test_find_last_checkpoint_finds_rl_games_own_nested_experiment_dir(tmp_path)
 
 
 def test_save_state_then_load_state_round_trips(tmp_path):
-    a = _archive_with_one_elite(drv.resolve_variant("G_V1"), np.random.default_rng(0))
+    a = _archive_with_one_elite(drv.resolve_rules("evolution"), np.random.default_rng(0))
     rng = np.random.default_rng(5)
     minter = drv.IdMinter(7)
     path = tmp_path / "state.json"
-    config = {"variant": "G_V1", "seed": 5}
+    config = {"rules": "evolution", "seed": 5}
     drv.save_state(
         path, archive=a, driver_rng=rng, generation_completed=2, last_checkpoint="/tmp/ckpt.pth",
         prev_tolerance=0.33, minter=minter, config=config,
@@ -509,7 +485,7 @@ def test_resumed_driver_rng_continues_the_exact_same_stream():
 # --grasp-cache (anyrotate stable-grasp cache, generated inside the training launch)
 # --------------------------------------------------------------------------
 
-_AR = ["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "anyrotate",
+_AR = ["--rules", "evolution", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "anyrotate",
        "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT]
 
 
@@ -524,7 +500,7 @@ def test_grasp_cache_flag_is_off_by_default_and_keeps_the_config_hash():
 
 def test_grasp_cache_needs_the_anyrotate_profile():
     with pytest.raises(SystemExit):
-        drv.parse_args(["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x", "--grasp-cache"])
+        drv.parse_args(["--rules", "evolution", "--generations", "1", "--run-dir", "/tmp/x", "--grasp-cache"])
 
 
 def test_grasp_cache_overrides_point_the_env_at_the_run_cache_and_generate_missing_designs(tmp_path):
@@ -544,7 +520,7 @@ def test_grasp_report_row_maps_sources_to_design_ids(tmp_path):
     import json
 
     report = {"cache": "c.npz", "designs": 3, "reused": 1, "generated": 2, "gen_s": 41.5,
-              "grasps_per_design": {"arch:a": 1000, "arch:b": 0, "projected:allegro_right": 640},
+              "grasps_per_design": {"arch:a": 1000, "arch:b": 0, "commercial:allegro_right": 640},
               "viable": 2, "non_viable": ["arch:b"], "generation": {"rounds": 6, "s_per_design": 20.7}}
     (tmp_path / "grasp_cache_report.json").write_text(json.dumps(report))
     loaded = drv.read_grasp_report(tmp_path)
@@ -552,13 +528,13 @@ def test_grasp_report_row_maps_sources_to_design_ids(tmp_path):
     assert row["gen_s"] == 41.5 and row["generated"] == 2 and row["reused"] == 1 and row["rounds"] == 6
     assert row["viable"] == 2 and row["viable_frac"] == pytest.approx(2 / 3)
     assert row["non_viable"] == ["g1-0002"]
-    assert row["grasps_by_design"] == {"g1-0001": 1000, "g1-0002": 0, "projected:allegro_right": 640}
+    assert row["grasps_by_design"] == {"g1-0001": 1000, "g1-0002": 0, "commercial:allegro_right": 640}
     assert drv.read_grasp_report(tmp_path / "missing") is None
     assert drv.grasp_report_row(None, {}) is None
 
 
 def test_hora_profile_is_accepted_with_the_grasp_cache():
-    args = drv.parse_args(["--variant", "G_V3S", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "hora",
+    args = drv.parse_args(["--rules", "evolution", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "hora",
                            "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT, "--grasp-cache"])
     assert args.task_profile == "hora" and args.grasp_cache
     cmd = drv.build_train_cmd(
@@ -568,7 +544,7 @@ def test_hora_profile_is_accepted_with_the_grasp_cache():
     assert "env.task_profile=hora" in cmd
 
 
-_ARGS = ["--variant", "V1", "--generations", "1", "--run-dir", "/tmp/x"]
+_ARGS = ["--rules", "evolution", "--generations", "1", "--run-dir", "/tmp/x"]
 
 
 def test_hora_populations_default_to_the_joint_token_transformer():

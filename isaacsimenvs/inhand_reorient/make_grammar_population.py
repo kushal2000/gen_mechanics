@@ -1,18 +1,17 @@
 """CLI: build a grammar population file for `env.assets.hand_population`.
 
-Default invocation (no args) writes the 16-design Kit-smoke test population
-the Phase 2 design note asks for: 8 G_SERIAL, 4 "carrier" designs (DEFAULT
-variant, admitted WITH a real jointed palm part, i.e. at least one leader
-carrier), and the 4 projected commercial hands allegro_right, dclaw,
-sharpa_left_on_iiwa14, wuji_right.
-
-Numpy + `hand_sampler` only (no `isaaclab`/`pxr`): runs under plain
-`python3`, same as `scene/grammar_envelope.py`/`scene/population_file.py` --
-except that importing `isaacsimenvs` at all eagerly imports `gymnasium`
-(`isaacsimenvs/__init__.py`), so use the isaacsim venv:
-
     .venv_isaacsim/bin/python3 -m isaacsimenvs.inhand_reorient.make_grammar_population \
-        --out outputs/grammar_populations/test16.json
+        --out outputs/grammar_populations/test16.json [--sampled 12] [--commercial allegro_right ...]
+
+`test16` (the default): 12 random viable hands (Evolution Rules, coarse grid,
+C1 and C2 pass) and 4 conformed commercial hands. `validation`: the mixed
+population of the Isaac validation (`validation_entries`): five commercial
+hands (Allegro, SVH, Wuji v2, Shadow, Inspire with its couplings), a 3+2+1
+palm-joint split, a hand with 0 mm links, a hand with oblique axes and random
+hands.
+
+Numpy + `hand_sampler` only (no Kit), but importing `isaacsimenvs` pulls in
+`gymnasium`, so run it with the isaacsim venv.
 """
 
 from __future__ import annotations
@@ -21,107 +20,109 @@ import argparse
 import sys
 from typing import List, Sequence
 
-from hand_sampler.grammar.derive import derive, sample_derivation
+import numpy as np
+
+from hand_sampler.grammar import operators as gops
+from hand_sampler.grammar.hand import EVOLUTION_RULES, Finger, Hand, Joint, PalmJoint, check
 
 from .scene import grammar_envelope as ge
 from .scene import population_file as pf
 
-DEFAULT_COMMERCIAL_HANDS: tuple[str, ...] = ("allegro_right", "dclaw", "sharpa_left_on_iiwa14", "wuji_right")
+DEFAULT_COMMERCIAL_HANDS: tuple = ("allegro_right", "dclaw", "sharpa_left_on_iiwa14", "wuji_right")
+VALIDATION_COMMERCIAL_HANDS: tuple = ("allegro_right", "svh_right", "wuji2_left", "shadow_right_local",
+                                      "inspire_right")
 
 
-def _has_real_carrier(model) -> bool:
-    """Whether `model` (already admitted) has a real jointed palm part (a
-    leader carrier) -- the "carrier design" selection criterion for the
-    16-design test population."""
-    design = ge.canonicalize(model, source="_probe")
-    return ge.LEADER in ge.carrier_roles(design)
+def collect_sampled(n: int, seed0: int = 0, max_seeds: int = 5000) -> List[pf.PopulationEntry]:
+    entries, rej = pf.sampled_entries(range(seed0, seed0 + max_seeds), limit=n)
+    if len(entries) < n:
+        raise RuntimeError(f"only {len(entries)}/{n} viable random hands in {max_seeds} seeds ({rej})")
+    return entries[:n]
 
 
-def collect_serial_entries(n: int, seed0: int = 0, max_seeds: int = 5000) -> List[pf.PopulationEntry]:
-    out: List[pf.PopulationEntry] = []
-    dist = pf._variant_distribution("G_SERIAL")
-    for seed in range(seed0, seed0 + max_seeds):
-        derivation = sample_derivation(seed, dist)
-        model = derive(derivation)
-        # `admit`'s default args already enforce the rest-overlap AND
-        # spawn-height gates (review items 2/4) -- this CLI used to run its
-        # own separate, easy-to-bypass `_no_bad_rest_overlap` check on top
-        # of a structural-only `admit(model)`; that duplication (and the
-        # `--variant sampled_only` path that skipped it entirely) is exactly
-        # the review's "not enforced ... sampled_only skips it" gap.
-        result = ge.admit(model)
-        if result.ok:
-            out.append(pf.make_entry(f"sampled:G_SERIAL:{seed}", derivation, model))
-            if len(out) >= n:
-                break
-    if len(out) < n:
-        raise RuntimeError(f"only found {len(out)}/{n} admitted G_SERIAL designs in {max_seeds} seeds")
-    return out
-
-
-def collect_carrier_entries(n: int, seed0: int = 0, max_seeds: int = 20000) -> List[pf.PopulationEntry]:
-    out: List[pf.PopulationEntry] = []
-    dist = pf._variant_distribution("DEFAULT")
-    for seed in range(seed0, seed0 + max_seeds):
-        derivation = sample_derivation(seed, dist)
-        model = derive(derivation)
-        result = ge.admit(model)
-        if not result.ok:
-            continue
-        if _has_real_carrier(model):
-            out.append(pf.make_entry(f"sampled:DEFAULT_CARRIER:{seed}", derivation, model))
-            if len(out) >= n:
-                break
-    if len(out) < n:
-        raise RuntimeError(f"only found {len(out)}/{n} admitted carrier designs in {max_seeds} seeds")
-    return out
-
-
-def collect_projected_entries(hand_ids: Sequence[str]) -> List[pf.PopulationEntry]:
-    out: List[pf.PopulationEntry] = []
-    for hand_id in hand_ids:
-        entry, status, reason = pf.projected_entry(hand_id)
+def collect_commercial(hand_ids: Sequence[str]) -> List[pf.PopulationEntry]:
+    out = []
+    for hid in hand_ids:
+        entry, status, reason = pf.commercial_entry(hid)
         if status != "admitted":
-            raise RuntimeError(f"projected hand {hand_id!r} is not admitted: {status} ({reason})")
+            raise RuntimeError(f"commercial hand {hid!r} not admitted: {status} ({reason})")
         out.append(entry)
     return out
 
 
+def _finger(y: int, z: int, joints, facing: int = 0, tilt: int = 0, palm_joint: int = -1) -> Finger:
+    return Finger(y=y, z=z, facing=facing, tilt=tilt, palm_joint=palm_joint,
+                  joints=tuple(Joint(t, a, L) for t, a, L in joints))
+
+
+FLEX, ABD, ROLL = (0, 0), (90, 0), (0, 90)
+
+
+def split_321_hand() -> Hand:
+    """Six fingers: three on the main palm, two on one palm joint's section
+    (the -y side of the row), and a thumb on its own palm joint (+y side):
+    the 3+2+1 split."""
+    j3 = (("hinge", FLEX, 40), ("hinge", FLEX, 30), ("coupled", FLEX, 25))
+    row = [(-50, 90, 0), (-25, 95, 0), (0, 100, -1), (25, 95, -1), (50, 90, -1)]
+    fingers = [_finger(y, z, j3, palm_joint=k) for y, z, k in row]
+    fingers.append(_finger(60, 35, (("hinge", ROLL, 0), ("hinge", FLEX, 40), ("hinge", FLEX, 30)), facing=60,
+                           tilt=40, palm_joint=1))
+    return Hand(fingers=tuple(fingers), palm_joints=(PalmJoint(-20, 45, (0, 0)), PalmJoint(30, 20, (0, 0))))
+
+
+def zero_link_hand() -> Hand:
+    """Knuckles with two joints at one point (0 mm links), a thumb with a
+    0 mm link in its middle."""
+    knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 45), ("hinge", FLEX, 0), ("hinge", FLEX, 25), ("hinge", FLEX, 20))
+    fingers = [_finger(y, 95, knuckle) for y in (-25, 0, 25)]
+    fingers.append(_finger(30, 30, (("hinge", ROLL, 0), ("hinge", FLEX, 40), ("hinge", FLEX, 0), ("hinge", ABD, 30)),
+                           facing=70, tilt=20))
+    return Hand(fingers=tuple(fingers))
+
+
+def oblique_hand() -> Hand:
+    """Axes between kinds (a thumb base at 45 degrees, tilted finger joints)."""
+    fingers = [_finger(y, 90, (("hinge", (15, -20), 40), ("hinge", (30, 0), 35), ("hinge", (0, 10), 25)), facing=f)
+               for y, f in ((-30, 350), (0, 0), (30, 10))]
+    fingers.append(_finger(45, 25, (("hinge", (45, 45), 30), ("hinge", (135, 30), 40), ("hinge", (60, 0), 30)),
+                           facing=60, tilt=60))
+    return Hand(fingers=tuple(fingers))
+
+
+def validation_entries(n_random: int = 3, seed0: int = 0) -> List[pf.PopulationEntry]:
+    built = []
+    for name, hand in (("split321", split_321_hand()), ("zero_links", zero_link_hand()), ("oblique", oblique_hand())):
+        problems = check(hand, EVOLUTION_RULES)
+        if problems:
+            raise RuntimeError(f"{name}: {problems}")
+        result = ge.admit(hand)
+        if not result.ok:
+            raise RuntimeError(f"{name} not admitted: {result.reasons}")
+        built.append(pf.make_entry(f"{pf.SAMPLED_PREFIX}{name}", hand))
+    return collect_commercial(VALIDATION_COMMERCIAL_HANDS) + built + collect_sampled(n_random, seed0)
+
+
 def build_test16(seed0: int = 0, commercial_hands: Sequence[str] = DEFAULT_COMMERCIAL_HANDS) -> List[pf.PopulationEntry]:
-    entries: List[pf.PopulationEntry] = []
-    entries += collect_serial_entries(8, seed0=seed0)
-    entries += collect_carrier_entries(4, seed0=seed0)
-    entries += collect_projected_entries(commercial_hands)
-    return entries
+    return collect_sampled(16 - len(commercial_hands), seed0) + collect_commercial(commercial_hands)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out", default="outputs/grammar_populations/test16.json",
-                     help="output population JSON path (outputs/ is git-ignored)")
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--out", default="outputs/grammar_populations/test16.json")
     ap.add_argument("--seed0", type=int, default=0)
+    ap.add_argument("--variant", choices=["test16", "validation", "sampled_only"], default="test16")
     ap.add_argument("--commercial", nargs="*", default=list(DEFAULT_COMMERCIAL_HANDS))
-    ap.add_argument("--variant", choices=["test16", "sampled_only"], default="test16",
-                     help="'test16': the design note's 16-design Kit-smoke population (default). "
-                          "'sampled_only': --n-serial G_SERIAL + --n-default DEFAULT sampled designs, no projections.")
-    ap.add_argument("--n-serial", type=int, default=8)
-    ap.add_argument("--n-default", type=int, default=8)
+    ap.add_argument("--sampled", type=int, default=12, help="random hands for --variant sampled_only")
     args = ap.parse_args(argv)
-
     if args.variant == "test16":
-        entries = build_test16(seed0=args.seed0, commercial_hands=args.commercial)
+        entries = build_test16(args.seed0, args.commercial)
+    elif args.variant == "validation":
+        entries = validation_entries(seed0=args.seed0)
     else:
-        serial, serial_rej = pf.sampled_entries("G_SERIAL", range(args.seed0, args.seed0 + 5000))
-        default, default_rej = pf.sampled_entries("DEFAULT", range(args.seed0, args.seed0 + 5000))
-        entries = serial[: args.n_serial] + default[: args.n_default]
-        print(f"G_SERIAL: {len(serial)} admitted (used {min(args.n_serial, len(serial))}), "
-              f"rejections {serial_rej}", file=sys.stderr)
-        print(f"DEFAULT: {len(default)} admitted (used {min(args.n_default, len(default))}), "
-              f"rejections {default_rej}", file=sys.stderr)
-
+        entries, rej = pf.sampled_entries(range(args.seed0, args.seed0 + 5000), limit=args.sampled)
+        print(f"rejections: {rej}", file=sys.stderr)
     doc = pf.write_population(args.out, entries)
-    print(f"wrote {len(entries)} designs to {args.out} "
-          f"(population_sha256={doc['population_sha256'][:12]}..., git_sha={doc['git_sha'][:12]})")
+    print(f"wrote {len(entries)} designs to {args.out} (population_sha256={doc['population_sha256'][:12]}...)")
     for e in entries:
         print(f"  - {e.source}")
     return 0

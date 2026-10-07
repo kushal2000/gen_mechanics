@@ -124,8 +124,8 @@ def _setup_contact_indices(env) -> None:
     tables = getattr(env, "hand_tables", None)
     if tables is None:
         return
-    valid = torch.as_tensor(tables.joint_valid, dtype=torch.bool, device=env.device)
-    distal = ar.distal_slots(valid)[env.scene_record["design_idx"]]
+    real = torch.as_tensor(tables.joint_real, dtype=torch.bool, device=env.device)   # coupled joints have links too
+    distal = ar.distal_slots(real)[env.scene_record["design_idx"]]
     env._ar_tip_src, env._ar_nontip_mask = ar.tip_sources(distal, env.ar_tip_names, env.ar_nontip_names)
     points = [True] * len(env.ar_tip_names) + list(env.ar_nontip_points)
     used = sorted(set(env._ar_tip_src.flatten().tolist()))

@@ -267,7 +267,7 @@ class FakeTrainer:
 
 def _args(tmp_path, *extra):
     return drv.parse_args([
-        "--variant", "G_V1", "--generations", "2", "--designs", "3", "--probes", "",
+        "--rules", "evolution", "--generations", "2", "--designs", "3", "--probes", "",
         "--num-envs", "64", "--epochs-per-gen", "6", "--run-dir", str(tmp_path / "run"), *extra,
     ])
 
@@ -276,7 +276,7 @@ def _run_gen(tmp_path, args, archive, generation=0, last_checkpoint=None):
     run_dir = Path(args.run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     return drv.run_generation(
-        generation, args, run_dir, drv.resolve_variant(args.variant), archive, np.random.default_rng(0),
+        generation, args, run_dir, drv.resolve_rules(args.rules), archive, np.random.default_rng(0),
         drv.IdMinter(), last_checkpoint, 0.4, [],
     )
 
@@ -366,7 +366,7 @@ def test_main_stops_cleanly_with_state_at_the_last_good_generation(tmp_path, mon
     monkeypatch.setattr(drv, "run_training_subprocess", fake)
     run_dir = tmp_path / "run"
     rc = drv.main([
-        "--variant", "G_V1", "--generations", "3", "--designs", "3", "--probes", "",
+        "--rules", "evolution", "--generations", "3", "--designs", "3", "--probes", "",
         "--num-envs", "64", "--epochs-per-gen", "6", "--run-dir", str(run_dir),
     ])
     assert rc != 0

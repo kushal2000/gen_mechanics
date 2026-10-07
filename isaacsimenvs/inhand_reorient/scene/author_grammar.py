@@ -33,6 +33,8 @@ from hand_sampler import robot_param_constants as rpc
 from hand_sampler.design_space import mat_to_pos_quat
 from hand_sampler.robot_spec import design_index
 
+from hand_sampler.grammar import hand as gh
+
 from . import grammar_envelope as ge
 from . import population_file as pf
 
@@ -61,75 +63,32 @@ def _env_paths_in_order(env) -> List[str]:
 # --------------------------------------------------------------------------
 
 
-def _author_body_and_collider(layer, path: str, *, length: float, radius: float, mass: float,
-                               inertia_diag: Tuple[float, float, float], com_z: float,
-                               pos: Sequence[float], quat_wxyz: Sequence[float],
-                               real: bool, filtered_pair_targets: Sequence[str] = (),
-                               contact_offset: Optional[float] = None,
-                               rest_offset: Optional[float] = None) -> None:
+def _author_body(layer, path: str, *, mass: float, com: Sequence[float], inertia_diag: Sequence[float],
+                 pos: Sequence[float], quat_wxyz: Sequence[float], filtered_pair_targets: Sequence[str] = ()) -> None:
+    """A rigid body with its mass, centre of mass and diagonal inertia
+    authored explicitly."""
     from pxr import Gf, Sdf
 
     from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel, set_xform
 
-    apis = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
-    if filtered_pair_targets:
-        # Review item 4's exemption: this body has a rest-pose overlap with
-        # one it is not kinematically adjacent to (a PROJECTED commercial
-        # hand's capsule-projection artifact -- see
-        # `grammar_envelope.EnvelopeDesign.filtered_pairs`) -- collision-
-        # filter it explicitly instead of letting PhysX's depenetration
-        # impulse resolve a real interpenetration (which blows up the
-        # ghost/carrier joints on step 0 for a SAMPLED design with the same
-        # symptom; sampled designs are instead REJECTED on this, never
-        # exempted, so they never reach this branch).
-        apis.append("PhysicsFilteredPairsAPI")
+    apis = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"] + (["PhysicsFilteredPairsAPI"] if filtered_pair_targets else [])
     body = define(layer, path, "Xform", apis)
     attr(body, "physics:mass", Sdf.ValueTypeNames.Float, float(mass))
-    attr(body, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
-         Gf.Vec3f(*[float(v) for v in inertia_diag]))
-    attr(body, "physics:centerOfMass", Sdf.ValueTypeNames.Float3, Gf.Vec3f(0.0, 0.0, float(com_z)))
+    attr(body, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3, Gf.Vec3f(*[float(v) for v in inertia_diag]))
+    attr(body, "physics:centerOfMass", Sdf.ValueTypeNames.Float3, Gf.Vec3f(*[float(v) for v in com]))
     set_xform(body, pos, quat_wxyz)
     if filtered_pair_targets:
         rel(body, "physics:filteredPairs", list(filtered_pair_targets))
 
-    if real:
-        r = float(radius)
-        define(layer, f"{path}/collisions", "Xform")
-        mesh = define(layer, f"{path}/collisions/mesh_0", "Xform")
-        # Capsule collider along the body's own local +z (grammar's segment
-        # convention), so it is rotated 90deg off the collider prim's own
-        # native +Z-is-the-capsule-axis default onto our +z... the capsule
-        # geometry schema's own axis token handles this directly (below),
-        # so mesh_0 needs no extra rotation -- unlike build.py's URDF-derived
-        # links (which run along local +x and rotate the capsule mesh to
-        # match), a grammar body already runs along +z.
-        cap_apis = ["PhysicsCollisionAPI"]
-        if contact_offset is not None or rest_offset is not None:
-            # Parity with the single-hand path's own colliders (review
-            # item 11's "robot colliders have no contact offsets or
-            # friction"): the single-hand path's URDF-converted USD gets
-            # these from `author_robot.flatten_robot_usd` (same
-            # `PhysxCollisionAPI` attrs, same `env.cfg.physics.*` values);
-            # a grammar body is authored directly here instead, so it needs
-            # the same two attrs set explicitly, or it silently falls back
-            # to PhysX's own per-shape defaults instead of this task's
-            # configured 2mm contact / 0mm rest offset.
-            cap_apis.append("PhysxCollisionAPI")
-        cap = define(layer, f"{path}/collisions/mesh_0/capsule", "Capsule", cap_apis)
-        attr(cap, "radius", Sdf.ValueTypeNames.Double, r)
-        attr(cap, "height", Sdf.ValueTypeNames.Double, float(rpc.cylinder_part(max(length, 1e-6), r)))
-        attr(cap, "axis", Sdf.ValueTypeNames.Token, "Z")
-        if contact_offset is not None:
-            attr(cap, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float, float(contact_offset))
-        if rest_offset is not None:
-            attr(cap, "physxCollision:restOffset", Sdf.ValueTypeNames.Float, float(rest_offset))
-        set_xform(mesh, (0.0, 0.0, length / 2.0), (1.0, 0.0, 0.0, 0.0))
-
 
 def _author_convex_hull(layer, path: str, points: np.ndarray, *, contact_offset: Optional[float],
-                        rest_offset: Optional[float], vertex_limit: int = 64) -> None:
-    """A convex-hull mesh collider at ``path`` (points in its parent body's
-    frame): the hull's triangles, PhysX ``convexHull`` approximation."""
+                        rest_offset: Optional[float], material_path: Optional[str] = None,
+                        vertex_limit: int = 64) -> None:
+    """A convex-hull mesh collider at `path` (points in its parent body's
+    frame): the hull's triangles, PhysX `convexHull` approximation. A link's
+    8 core-box corners with `rest_offset` = the corner radius give the
+    rounded box; a palm plate's prism has at most 64 vertices and 34 faces
+    (GPU hull limits)."""
     from pxr import Gf, Sdf, Vt
     from scipy.spatial import ConvexHull
 
@@ -140,13 +99,14 @@ def _author_convex_hull(layer, path: str, points: np.ndarray, *, contact_offset:
     remap = {int(v): i for i, v in enumerate(used)}
     verts = hull.points[used]
     tris = [[remap[int(i)] for i in tri] for tri in hull.simplices]
-    # Outward winding: flip any triangle whose normal points to the centroid.
     centroid = verts.mean(axis=0)
     for t in tris:
         a, b, c = verts[t[0]], verts[t[1]], verts[t[2]]
         if np.dot(np.cross(b - a, c - a), a - centroid) < 0:
             t[1], t[2] = t[2], t[1]
     apis = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI", "PhysxConvexHullCollisionAPI"]
+    if material_path:
+        apis.append("MaterialBindingAPI")
     mesh = define(layer, path, "Mesh", apis)
     attr(mesh, "points", Sdf.ValueTypeNames.Point3fArray,
          Vt.Vec3fArray([Gf.Vec3f(*[float(x) for x in v]) for v in verts]))
@@ -158,22 +118,27 @@ def _author_convex_hull(layer, path: str, points: np.ndarray, *, contact_offset:
         attr(mesh, "physxCollision:contactOffset", Sdf.ValueTypeNames.Float, float(contact_offset))
     if rest_offset is not None:
         attr(mesh, "physxCollision:restOffset", Sdf.ValueTypeNames.Float, float(rest_offset))
+    if material_path:
+        binding = Sdf.RelationshipSpec(mesh, "material:binding:physics", custom=False)
+        binding.targetPathList.explicitItems.append(Sdf.Path(material_path))
 
 
 def _author_joint(layer, joint_path: str, *, body0_path: str, body1_path: str,
-                   frame0: np.ndarray, frame1: np.ndarray, limits_rad: Tuple[float, float],
-                   mimic_of: Optional[str] = None) -> None:
-    """A revolute joint about its local z. `mimic_of` (a joint path): tie it
-    to that joint with a PhysX mimic joint (`MIMIC_GEARING`), for a follower
-    carrier."""
+                  frame0: np.ndarray, frame1: np.ndarray, limits: Tuple[float, float],
+                  prismatic: bool = False, mimic_of: Optional[str] = None, gearing: float = -1.0,
+                  drive: bool = True) -> None:
+    """A revolute (or prismatic) joint about (along) its local z, with the
+    grammar's uniform drive; `mimic_of` (a joint path) ties it to that joint
+    with a PhysX mimic joint (`q + gearing * q_ref = 0`) and no drive."""
     from pxr import Gf, Sdf
 
     from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
 
-    apis = ["PhysicsDriveAPI:angular", "PhysxJointAPI"]
+    kind = "linear" if prismatic else "angular"
+    apis = [f"PhysicsDriveAPI:{kind}", "PhysxJointAPI"]
     if mimic_of is not None:
         apis.append("PhysxMimicJointAPI:rotZ")
-    j = define(layer, joint_path, "PhysicsRevoluteJoint", apis)
+    j = define(layer, joint_path, "PhysicsPrismaticJoint" if prismatic else "PhysicsRevoluteJoint", apis)
     rel(j, "physics:body0", body0_path)
     rel(j, "physics:body1", body1_path)
     jpos, jquat = mat_to_pos_quat(frame0)
@@ -185,27 +150,30 @@ def _author_joint(layer, joint_path: str, *, body0_path: str, body1_path: str,
     attr(j, "physics:localRot1", Sdf.ValueTypeNames.Quatf,
          Gf.Quatf(float(j1quat[0]), Gf.Vec3f(*[float(v) for v in j1quat[1:]])))
     attr(j, "physics:axis", Sdf.ValueTypeNames.Token, "Z")
-    lo, hi = limits_rad
-    attr(j, "physics:lowerLimit", Sdf.ValueTypeNames.Float, float(math.degrees(lo)))
-    attr(j, "physics:upperLimit", Sdf.ValueTypeNames.Float, float(math.degrees(hi)))
+    lo, hi = limits
+    scale = 1.0 if prismatic else 180.0 / math.pi
+    attr(j, "physics:lowerLimit", Sdf.ValueTypeNames.Float, float(lo * scale))
+    attr(j, "physics:upperLimit", Sdf.ValueTypeNames.Float, float(hi * scale))
     attr(j, "physics:jointEnabled", Sdf.ValueTypeNames.Bool, True)
     attr(j, "physics:excludeFromArticulation", Sdf.ValueTypeNames.Bool, False)
-    attr(j, "drive:angular:physics:stiffness", Sdf.ValueTypeNames.Float, rpc.CONVERTER_DRIVE_STIFFNESS)
-    attr(j, "drive:angular:physics:damping", Sdf.ValueTypeNames.Float, rpc.CONVERTER_DRIVE_DAMPING)
-    attr(j, "drive:angular:physics:maxForce", Sdf.ValueTypeNames.Float, float(rpc.GEN_JOINT_EFFORT_NM))
-    attr(j, "drive:angular:physics:targetPosition", Sdf.ValueTypeNames.Float, 0.0)
+    on = drive and mimic_of is None
+    attr(j, f"drive:{kind}:physics:stiffness", Sdf.ValueTypeNames.Float, float(gh.JOINT_STIFFNESS) if on else 0.0)
+    attr(j, f"drive:{kind}:physics:damping", Sdf.ValueTypeNames.Float, float(gh.JOINT_DAMPING) if on else 0.0)
+    attr(j, f"drive:{kind}:physics:maxForce", Sdf.ValueTypeNames.Float, float(gh.JOINT_EFFORT_NM))
+    attr(j, f"drive:{kind}:physics:targetPosition", Sdf.ValueTypeNames.Float, 0.0)
     attr(j, "physxJoint:maxJointVelocity", Sdf.ValueTypeNames.Float,
-         float(math.degrees(rpc.GEN_JOINT_VELOCITY_RAD_S)))
+         float(gh.JOINT_VELOCITY_RAD_S * (1.0 if prismatic else 180.0 / math.pi)))
+    attr(j, "physxJoint:armature", Sdf.ValueTypeNames.Float, float(gh.JOINT_ARMATURE))
     if mimic_of is not None:
         rel(j, "physxMimicJoint:rotZ:referenceJoint", mimic_of)
-        attr(j, "physxMimicJoint:rotZ:gearing", Sdf.ValueTypeNames.Float, MIMIC_GEARING)
+        attr(j, "physxMimicJoint:rotZ:gearing", Sdf.ValueTypeNames.Float, float(gearing))
         attr(j, "physxMimicJoint:rotZ:offset", Sdf.ValueTypeNames.Float, 0.0)
 
 
 def _author_fixed_joint(layer, joint_path: str, *, body0_path: str, body1_path: str,
-                         pos0: Sequence[float]) -> None:
-    """A fixed joint inside the articulation (no degree of freedom): body1's
-    origin at `pos0` in body0's frame, same orientation."""
+                        pos0: Sequence[float]) -> None:
+    """A fixed joint inside the articulation: body1's origin at `pos0` in
+    body0's frame, same orientation."""
     from pxr import Gf, Sdf
 
     from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
@@ -219,222 +187,138 @@ def _author_fixed_joint(layer, joint_path: str, *, body0_path: str, body1_path: 
     attr(j, "physics:localRot1", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)))
 
 
-def _link_mass_props(length: float, radius: float, real: bool) -> Tuple[float, Tuple[float, float, float]]:
-    """Mass and diagonal inertia of a real link: a solid cylinder of the
-    link's length, floored at a solid sphere of the link's radius. Without
-    the floor a 0 mm link (two joints at one point) would get about 1e-6 kg
-    and 5e-11 kg m^2 between two real links, a PhysX stability risk. The
-    floor only acts on links shorter than 4/3 of the radius (16 mm at the
-    largest sampled radius, 12 mm)."""
-    if not real:
-        return rpc.VIRTUAL_LINK_MASS_KG, (rpc.VIRTUAL_LINK_INERTIA,) * 3
-    mass = max(math.pi * radius * radius * length * rpc.GEN_LINK_DENSITY_KG_M3, 1e-6)
-    izz = 0.5 * mass * radius * radius
-    ixx = iyy = mass * (3.0 * radius * radius + length * length) / 12.0
-    sphere = 4.0 / 3.0 * math.pi * radius ** 3 * rpc.GEN_LINK_DENSITY_KG_M3
-    if sphere > mass:
-        i_sphere = 0.4 * sphere * radius * radius
-        mass, ixx, iyy, izz = sphere, max(ixx, i_sphere), max(iyy, i_sphere), max(izz, i_sphere)
-    return mass, (ixx, iyy, izz)
+LINK_CONTACT_EXTRA_M = 0.002
+"""A link's contact offset is its corner radius plus this (`restOffset` = r)."""
+CARRIER_MASS_PROPS = (0.01, (2e-6, 2e-6, 2e-6))
+"""A locked or follower carrier (no collider) gets a small real mass: a
+near-massless body between the palm and a real finger destabilised the
+solver (a Kit diagnostic: 114 rad/s within 2 steps on a ghost carrier)."""
 
 
 def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
-                   base_pos: Sequence[float] = (0.0, 0.0, 0.0),
-                   base_rot_wxyz: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
-                   world_anchor_pos: Optional[Sequence[float]] = None,
-                   contact_offset: Optional[float] = None,
-                   rest_offset: Optional[float] = None,
-                   collider_radius: Optional[float] = None,
-                   palm_hull_points: Optional[np.ndarray] = None,
-                   palm_filter_slots: Sequence[int] = ()) -> Dict[str, bool]:
-    """Author one design's root/palm, its 6 finger slots (a carrier joint,
-    5 finger joints and a fixed fingertip body each) under `root_path` (an already-`define`-d Xform). `base_pos`/
-    `base_rot_wxyz` place the design's root BODY relative to `root_path`
-    (its own env's Xform -- USD composes this with the env's own origin
-    automatically, so this stays env-LOCAL). `world_anchor_pos` is the SAME
-    point but in GLOBAL STAGE coordinates (defaults to `base_pos` unchanged,
-    correct only for an env whose own origin is the stage origin): the fixed
-    joint anchoring root to world (`body0` unset) reads its own
-    `localPos0`/`localRot0` as an ABSOLUTE world-frame anchor, INDEPENDENT
-    of any USD xformOp hierarchy above it and thus INDEPENDENT of the env's
-    own grid offset -- confirmed by two Kit smokes: leaving `localPos0` at
-    its identity default fought a world-origin anchor against the authored
-    pose every step (FK error up to 0.24 m, ghost joints spun to 150+ rad);
-    setting it to `base_pos` alone (no env-origin offset) reproduced the
-    IDENTICAL error, because most sampled envs sit away from the stage
-    origin on the grid cloner's layout. The caller (`author_population`)
-    passes `world_anchor_pos = env_origin + base_pos`. `collider_radius`
-    (> 0) replaces the design's capsule radius in every collider (masses
-    keep the design's); `palm_hull_points` (root frame) adds a convex palm
-    collider to the root body. Returns
-    `{body_name: has_collider}` for every authored body -- a friction pass
-    may use it (see `AssetsCfg.modify_asset_frictions`, not yet wired for
-    populations here; see the Phase 2 report's known gaps)."""
+                  base_pos: Sequence[float] = (0.0, 0.0, 0.0),
+                  base_rot_wxyz: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
+                  world_anchor_pos: Optional[Sequence[float]] = None,
+                  contact_offset: Optional[float] = None,
+                  rest_offset: Optional[float] = None) -> Dict[str, bool]:
+    """Author one design under `root_path` (an env's `Robot` Xform, the
+    articulation root): the root body (the palm frame, carrying the main
+    palm plate), 6 finger slots of a carrier (a palm section on a leader),
+    5 finger links (rounded-box hulls) and a fixed fingertip body each. Every
+    body is a flat sibling under `root_path`, authored at its rest pose
+    (`authored_fk` at q = 0 composed with the base pose). `world_anchor_pos`
+    is the base position in stage coordinates (the fixed joint anchoring the
+    root to the world reads its anchor in world space). Returns
+    `{body_name: has_collider}`."""
     from pxr import Gf, Sdf
 
+    from isaacsimenvs.pose_reaching_6d.scene_utils.author_objects import author_physics_material
     from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
 
-    # `root_path` (e.g. ".../Robot") is the ArticulationRoot Xform -- the
-    # PARENT of the design's own root/palm rigid body, one level below (see
-    # module docstring's "World anchoring" note). Left at IDENTITY: the
-    # design's world placement lives entirely on the root BODY + fixed
-    # joint below, not on this parent xform.
     define(layer, root_path, "Xform", ["PhysicsArticulationRootAPI", "PhysxArticulationAPI"])
     define(layer, f"{root_path}/joints", "Scope")
+    material = author_physics_material(layer, f"{root_path}/PhysicsMaterial", gh.FRICTION, gh.FRICTION, 0.0)
     frames = ge.joint_local_frames(design)
     colliders: Dict[str, bool] = {}
     base_pos = tuple(float(v) for v in base_pos)
     base_rot_wxyz = tuple(float(v) for v in base_rot_wxyz)
     world_anchor = tuple(float(v) for v in (world_anchor_pos if world_anchor_pos is not None else base_pos))
+    link_rest = ge.LINK_RADIUS_M
+    link_contact = ge.LINK_RADIUS_M + LINK_CONTACT_EXTRA_M
 
-    # Every body is authored as a FLAT SIBLING directly under `root_path`
-    # (not nested under its own kinematic parent body), so each one's own
-    # initial xform must be its ABSOLUTE (root_path-relative) rest pose, NOT
-    # `design.slot_origin[slot]` (which is relative to the slot's KINEMATIC
-    # parent body -- only equal to the root_path-relative pose for a slot
-    # whose parent is the root). `T0[slot]` (`authored_fk` at q=0, ROOT-
-    # relative by construction) composed with the design's own base
-    # transform gives the correct root_path-relative pose for every slot.
     T0 = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
     T_base = np.eye(4)
-    T_base[:3, :3] = Rotation.from_quat(
-        [base_rot_wxyz[1], base_rot_wxyz[2], base_rot_wxyz[3], base_rot_wxyz[0]]
-    ).as_matrix()
+    T_base[:3, :3] = Rotation.from_quat([base_rot_wxyz[1], base_rot_wxyz[2], base_rot_wxyz[3],
+                                         base_rot_wxyz[0]]).as_matrix()
     T_base[:3, 3] = base_pos
-    T_slot_in_root_path = T_base @ T0  # (36,4,4), broadcasting T_base over all 36 slots
+    T_in_root = T_base @ T0
 
-    def _slot_pos_quat(slot: int) -> Tuple[Tuple[float, float, float], Tuple[float, float, float, float]]:
-        return mat_to_pos_quat(T_slot_in_root_path[slot])
+    def node_path(node: int) -> str:
+        return f"{root_path}/{ROOT_BODY_NAME}" if node == ge.ROOT_NODE else f"{root_path}/{ge.slot_body(node)}"
 
-    def _node_body_path(node: int) -> str:
-        """`grammar_envelope.rest_overlap_pairs`/`filtered_pairs` node index
-        (a joint slot, or `ge.ROOT_NODE` for the root/palm capsule) -> this
-        design's own authored body path."""
-        if node == ge.ROOT_NODE:
-            return f"{root_path}/{ROOT_BODY_NAME}"
-        return f"{root_path}/{ge.slot_body(node)}"
-
-    # Review item 4's exemption (projected commercial hands only -- see
-    # `_author_body_and_collider`'s own comment): which authored body path
-    # must collision-filter which other authored body path(s), from this
-    # design's `filtered_pairs` (short-bone and ghost-mount pairs for any
-    # design, plus rest-overlap pairs for exempted projected hands).
     filtered_targets_of: Dict[str, List[str]] = {}
     for i, j in design.filtered_pairs:
-        pi, pj = _node_body_path(i), _node_body_path(j)
+        pi, pj = node_path(i), node_path(j)
         filtered_targets_of.setdefault(pi, []).append(pj)
         filtered_targets_of.setdefault(pj, []).append(pi)
-    for s in palm_filter_slots:  # the palm hull ignores each finger's first links
-        pi, pj = _node_body_path(ge.ROOT_NODE), _node_body_path(int(s))
-        if pj not in filtered_targets_of.get(pi, []):
-            filtered_targets_of.setdefault(pi, []).append(pj)
-            filtered_targets_of.setdefault(pj, []).append(pi)
 
-    # --- root/palm body: the design's own fixed-base anchor, authored
-    # DIRECTLY at its world pose (base_pos/base_rot_wxyz) -------------------
-    root_body_path = f"{root_path}/{ROOT_BODY_NAME}"
-    root_mass = max(math.pi * design.capsule_radius_m ** 2 * max(design.root_length_m, 1e-6)
-                     * rpc.GEN_PALM_DENSITY_KG_M3, 1e-6)
-    col_r = float(collider_radius) if collider_radius is not None and collider_radius > 0 else design.capsule_radius_m
-    _author_body_and_collider(
-        layer, root_body_path, length=design.root_length_m, radius=col_r,
-        mass=root_mass,
-        inertia_diag=_link_mass_props(design.root_length_m, design.capsule_radius_m, True)[1],
-        com_z=design.root_length_m / 2.0, pos=base_pos, quat_wxyz=base_rot_wxyz, real=True,
-        filtered_pair_targets=filtered_targets_of.get(root_body_path, ()),
-        contact_offset=contact_offset, rest_offset=rest_offset,
-    )
-    if palm_hull_points is not None and len(palm_hull_points) >= 4:
-        _author_convex_hull(layer, f"{root_body_path}/collisions/palm_hull", palm_hull_points,
-                            contact_offset=contact_offset, rest_offset=rest_offset)
+    # --- the root: the palm frame, with the main palm plate --------------------
+    root_body_path = node_path(ge.ROOT_NODE)
+    plate = ge.plate_points(design, ge.ROOT_NODE)
+    m, com, inertia = ge.plate_mass_props(plate)
+    _author_body(layer, root_body_path, mass=m, com=com, inertia_diag=inertia, pos=base_pos, quat_wxyz=base_rot_wxyz,
+                 filtered_pair_targets=filtered_targets_of.get(root_body_path, ()))
+    define(layer, f"{root_body_path}/collisions", "Xform")
+    _author_convex_hull(layer, f"{root_body_path}/collisions/palm_plate", plate, contact_offset=contact_offset,
+                        rest_offset=rest_offset, material_path=material)
     colliders[ROOT_BODY_NAME] = True
-
-    # A `PhysicsFixedJoint` (body1 = root, body0 UNSET = world) anchors the
-    # root rigid body to world. `localPos1`/`localRot1` (body1 = root's own
-    # frame) stay identity -- root's own origin. `localPos0`/`localRot0`
-    # (the WORLD anchor, since body0 is unset) are set to the SAME
-    # base_pos/base_rot_wxyz as the body itself, so the constraint holds
-    # root exactly where it was authored, not at the world origin.
     fixed = define(layer, f"{root_path}/root_fixed_joint", "PhysicsFixedJoint")
     rel(fixed, "physics:body1", root_body_path)
     attr(fixed, "physics:localPos0", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(*world_anchor))
-    attr(fixed, "physics:localRot0", Sdf.ValueTypeNames.Quatf,
-         Gf.Quatf(base_rot_wxyz[0], Gf.Vec3f(*base_rot_wxyz[1:])))
+    attr(fixed, "physics:localRot0", Sdf.ValueTypeNames.Quatf, Gf.Quatf(base_rot_wxyz[0], Gf.Vec3f(*base_rot_wxyz[1:])))
     attr(fixed, "physics:localPos1", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(0.0, 0.0, 0.0))
     attr(fixed, "physics:localRot1", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)))
 
-    # --- finger slots: carrier, finger joints, fingertip body -----------------
-    # A carrier that is not a real palm joint (LOCKED, or a FOLLOWER tied to
-    # its leader) still carries a whole real finger, so it gets a real
-    # phalanx's mass and inertia (that finger's first link length as the
-    # reference): a near-massless body between the palm and a real finger
-    # destabilised the solver (a Kit diagnostic: 114 rad/s within 2 steps on
-    # a ghost carrier). Only a LEADER, the palm part itself, has a collider.
     roles = ge.carrier_roles(design)
     tips = ge.tip_offsets(design)
     for f in range(ge.N_FINGERS):
         c = ge.carrier_slot(f)
         role = roles[f]
-        body_path = f"{root_path}/{ge.slot_body(c)}"
-        length = float(design.slot_length[c])
+        body_path = node_path(c)
+        pos, quat = mat_to_pos_quat(T_in_root[c])
         if role == ge.LEADER:
-            mass, inertia = _link_mass_props(length, design.capsule_radius_m, True)
+            pts = ge.plate_points(design, c)
+            m, com, inertia = ge.plate_mass_props(pts)
         else:
-            base = ge.finger_slot(f, 0)
-            ref_length = float(design.slot_length[base]) if design.slot_valid[base] else 0.0
-            mass, inertia = _link_mass_props(max(ref_length, ge.GHOST_LENGTH_M), design.capsule_radius_m, True)
-        pos, quat = _slot_pos_quat(c)
-        _author_body_and_collider(
-            layer, body_path, length=length, radius=col_r, mass=mass,
-            inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=role == ge.LEADER,
-            filtered_pair_targets=filtered_targets_of.get(body_path, ()),
-            contact_offset=contact_offset, rest_offset=rest_offset,
-        )
+            m, (com, inertia) = CARRIER_MASS_PROPS[0], ((0.0, 0.0, 0.0), CARRIER_MASS_PROPS[1])
+        _author_body(layer, body_path, mass=m, com=com, inertia_diag=inertia, pos=pos, quat_wxyz=quat,
+                     filtered_pair_targets=filtered_targets_of.get(body_path, ()))
+        if role == ge.LEADER:
+            define(layer, f"{body_path}/collisions", "Xform")
+            _author_convex_hull(layer, f"{body_path}/collisions/palm_plate", pts, contact_offset=contact_offset,
+                                rest_offset=rest_offset, material_path=material)
         colliders[ge.slot_body(c)] = role == ge.LEADER
         limits = ge.GHOST_LIMITS if role == ge.LOCKED else tuple(float(v) for v in design.slot_limits[c])
-        mimic_of = (f"{root_path}/joints/{ge.SLOT_NAMES[int(design.slot_tie[c])]}"
-                    if role == ge.FOLLOWER else None)
-        _author_joint(
-            layer, f"{root_path}/joints/{ge.SLOT_NAMES[c]}", body0_path=root_body_path,
-            body1_path=body_path, frame0=frames[c, 0], frame1=frames[c, 1], limits_rad=limits, mimic_of=mimic_of,
-        )
+        mimic_of = f"{root_path}/joints/{ge.SLOT_NAMES[int(design.slot_tie[c])]}" if role == ge.FOLLOWER else None
+        _author_joint(layer, f"{root_path}/joints/{ge.SLOT_NAMES[c]}", body0_path=root_body_path, body1_path=body_path,
+                      frame0=frames[c, 0], frame1=frames[c, 1], limits=limits, mimic_of=mimic_of, gearing=-1.0,
+                      drive=role == ge.LEADER)
 
         for d in range(ge.N_JOINTS_PER_FINGER):
             slot = ge.finger_slot(f, d)
-            valid = bool(design.slot_valid[slot])
-            length = float(design.slot_length[slot])
-            body_path = f"{root_path}/{ge.slot_body(slot)}"
-            mass, inertia = _link_mass_props(length, design.capsule_radius_m, valid)
-            pos, quat = _slot_pos_quat(slot)
-            _author_body_and_collider(
-                layer, body_path, length=length, radius=col_r, mass=mass,
-                inertia_diag=inertia, com_z=length / 2.0, pos=pos, quat_wxyz=quat, real=valid,
-                filtered_pair_targets=filtered_targets_of.get(body_path, ()),
-                contact_offset=contact_offset, rest_offset=rest_offset,
-            )
-            colliders[ge.slot_body(slot)] = valid
-            limits = tuple(float(v) for v in design.slot_limits[slot]) if valid else ge.GHOST_LIMITS
+            real = bool(design.slot_real[slot])
+            body_path = node_path(slot)
+            pos, quat = mat_to_pos_quat(T_in_root[slot])
+            if real:
+                m, com, inertia = ge.link_mass_props(design, slot)
+            else:
+                m, com, inertia = rpc.VIRTUAL_LINK_MASS_KG, (0.0, 0.0, 0.0), (rpc.VIRTUAL_LINK_INERTIA,) * 3
+            _author_body(layer, body_path, mass=m, com=com, inertia_diag=inertia, pos=pos, quat_wxyz=quat,
+                         filtered_pair_targets=filtered_targets_of.get(body_path, ()))
+            if real:
+                define(layer, f"{body_path}/collisions", "Xform")
+                _author_convex_hull(layer, f"{body_path}/collisions/rounded_box", ge.link_core_points(design, slot),
+                                    contact_offset=link_contact, rest_offset=link_rest, material_path=material)
+            colliders[ge.slot_body(slot)] = real
+            tie = int(design.slot_tie[slot])
             _author_joint(
-                layer, f"{root_path}/joints/{ge.SLOT_NAMES[slot]}",
-                body0_path=f"{root_path}/{ge.slot_body(ge.SLOT_PARENT[slot])}",
-                body1_path=body_path, frame0=frames[slot, 0], frame1=frames[slot, 1], limits_rad=limits,
-            )
+                layer, f"{root_path}/joints/{ge.SLOT_NAMES[slot]}", body0_path=node_path(ge.SLOT_PARENT[slot]),
+                body1_path=body_path, frame0=frames[slot, 0], frame1=frames[slot, 1],
+                limits=tuple(float(v) for v in design.slot_limits[slot]) if real else ge.GHOST_LIMITS,
+                prismatic=bool(design.slot_prismatic[slot]),
+                mimic_of=f"{root_path}/joints/{ge.SLOT_NAMES[tie]}" if real and tie >= 0 else None,
+                gearing=-float(design.slot_gear[slot]), drive=real)
 
-        # The fingertip body: fixed to the last link at the real fingertip.
         last = ge.LAST_FINGER_SLOTS[f]
         tip_path = f"{root_path}/{ge.tip_body(f)}"
         offset = np.eye(4)
-        offset[2, 3] = float(tips[f])
-        pos, quat = mat_to_pos_quat(T_slot_in_root_path[last] @ offset)
-        _author_body_and_collider(
-            layer, tip_path, length=0.0, radius=col_r, mass=rpc.VIRTUAL_LINK_MASS_KG,
-            inertia_diag=(rpc.VIRTUAL_LINK_INERTIA,) * 3, com_z=0.0, pos=pos, quat_wxyz=quat, real=False,
-        )
+        offset[0, 3] = float(tips[f])
+        pos, quat = mat_to_pos_quat(T_in_root[last] @ offset)
+        _author_body(layer, tip_path, mass=rpc.VIRTUAL_LINK_MASS_KG, com=(0.0, 0.0, 0.0),
+                     inertia_diag=(rpc.VIRTUAL_LINK_INERTIA,) * 3, pos=pos, quat_wxyz=quat)
         colliders[ge.tip_body(f)] = False
-        _author_fixed_joint(layer, f"{root_path}/joints/{ge.tip_body(f)}_fixed",
-                            body0_path=f"{root_path}/{ge.slot_body(last)}", body1_path=tip_path,
-                            pos0=(0.0, 0.0, float(tips[f])))
-
+        _author_fixed_joint(layer, f"{root_path}/joints/{ge.tip_body(f)}_fixed", body0_path=node_path(last),
+                            body1_path=tip_path, pos0=(float(tips[f]), 0.0, 0.0))
     return colliders
 
 
@@ -480,22 +364,6 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
     # instead of silently falling back to PhysX's own per-shape defaults.
     contact_offset = float(env.cfg.physics.contact_offset)
     rest_offset = float(env.cfg.physics.rest_offset)
-    a = getattr(env.cfg, "anyrotate", None)
-    radius_override = float(getattr(a, "population_capsule_radius", -1.0)) if a is not None else -1.0
-    palm_mode = getattr(a, "population_palm_collider", "capsule") if a is not None else "capsule"
-    if palm_mode not in ("capsule", "mount_hull", "mount_hull_filtered"):
-        raise ValueError(f"anyrotate.population_palm_collider={palm_mode!r}; expected capsule, mount_hull or "
-                         f"mount_hull_filtered")
-    hull_by_design: Dict[int, np.ndarray] = {}
-    palm_filter_by_design: Dict[int, List[int]] = {}
-    if palm_mode in ("mount_hull", "mount_hull_filtered"):
-        from .projected_hands import palm_filter_slots, palm_hull_points
-
-        for i, d in enumerate(population.designs):
-            r = radius_override if radius_override > 0 else d.capsule_radius_m
-            hull_by_design[i] = palm_hull_points(d, r)
-            if palm_mode == "mount_hull_filtered":
-                palm_filter_by_design[i] = palm_filter_slots(d)
     if base_pos_by_design is None:
         base_pos_by_design = np.tile(np.asarray(HAND_BASE_POS_M, dtype=float), (population.n_designs, 1))
 
@@ -511,8 +379,6 @@ def author_population(env, population: ge.GrammarPopulation, design_idx: np.ndar
             authored = author_design(
                 layer, root_path, design, base_pos=base_pos, base_rot_wxyz=base_rot,
                 world_anchor_pos=world_anchor, contact_offset=contact_offset, rest_offset=rest_offset,
-                collider_radius=radius_override if radius_override > 0 else None,
-                palm_hull_points=hull_by_design.get(idx), palm_filter_slots=palm_filter_by_design.get(idx, ()),
             )
             collider_links.setdefault(idx, authored)
 
@@ -554,9 +420,9 @@ def build_hand_population_spec(population: ge.GrammarPopulation, template_idx: i
     ghost-joint masking in reward/obs code, which is not yet wired)."""
     from .. import hand_only  # local import: hand_only pulls in the same package's __init__ chain
 
-    stiffness = {n: hand_only.DEFAULT_HAND_STIFFNESS for n in ge.SLOT_NAMES}
-    damping = {n: hand_only.DEFAULT_HAND_DAMPING for n in ge.SLOT_NAMES}
-    armature = {n: hand_only.DEFAULT_HAND_ARMATURE for n in ge.SLOT_NAMES}
+    stiffness = {n: gh.JOINT_STIFFNESS for n in ge.SLOT_NAMES}
+    damping = {n: gh.JOINT_DAMPING for n in ge.SLOT_NAMES}
+    armature = {n: gh.JOINT_ARMATURE for n in ge.SLOT_NAMES}
     default_pos = dict(zip(ge.SLOT_NAMES, (float(v) for v in population.default_joint_pos[template_idx])))
     limits = tuple(
         (float(lo), float(hi)) for lo, hi in population.joint_limits[template_idx]

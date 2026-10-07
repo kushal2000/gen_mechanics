@@ -147,18 +147,21 @@ def _fingertip_valid_mask(env) -> torch.Tensor | None:
 
 def tie_joints(env, x: torch.Tensor, env_ids=None) -> torch.Tensor:
     """`x` (`(n, num_joints)` per-joint values in articulation-view column
-    order, for `env_ids` or every env) with each follower carrier's column
-    set to its leader's: a mimic joint holds the two equal, so every write of
-    joint positions (resets) must too, or PhysX snaps them together. `x`
-    unchanged on the single-hand path."""
+    order, for `env_ids` or every env) with each tied column (a follower
+    carrier, a coupled joint) set to its gear times its source's: a mimic
+    joint holds them so, every write of joint positions (resets) must too,
+    or PhysX snaps them together. `x` unchanged on the single-hand path."""
     if getattr(env, "hand_tables", None) is None:
         return x
     idx = env.scene_record.get("tie_index")
     if idx is None:
         return x
+    gear = env.scene_record.get("tie_gear")
     if env_ids is not None:
         idx = idx[env_ids]
-    return x.gather(1, idx)
+        gear = gear[env_ids] if gear is not None else None
+    out = x.gather(1, idx)
+    return out * gear.to(out.dtype) if gear is not None else out
 
 
 def update_palm_frame_geometry(env) -> None:

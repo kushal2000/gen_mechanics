@@ -706,9 +706,12 @@ def _resolve_population_joint_permutation(env) -> None:
     # Follower carriers are tied to their leader by a mimic joint: every
     # write of joint positions must keep them equal (`obs_utils.tie_joints`).
     # `tie_index[e, col]` is the column whose value column `col` takes.
-    tie_rows = population.joint_tie[design_idx.detach().cpu().numpy()]
+    idx_np = design_idx.detach().cpu().numpy()
+    tie_rows = population.joint_tie[idx_np]
     env.scene_record["tie_index"] = torch.as_tensor(ge.tie_columns(tie_rows, perm), device=env.device,
                                                     dtype=torch.long)
+    env.scene_record["tie_gear"] = torch.as_tensor(ge.tie_gears(tie_rows, population.joint_gear[idx_np], perm),
+                                                   device=env.device, dtype=torch.float32)
     env.robot.data.default_joint_pos[:] = default_pos
     env.robot.write_joint_state_to_sim(default_pos, torch.zeros_like(default_pos))
     # Review risk 11: cache it OUTSIDE Isaac Lab's own mutable buffer too --
@@ -750,17 +753,33 @@ def _apply_per_env_carrier_gains(env, phys_names: list[str], design_idx) -> None
         out[follower] = follower_value
         return out
 
-    hs, hd, ha = hand_only.DEFAULT_HAND_STIFFNESS, hand_only.DEFAULT_HAND_DAMPING, hand_only.DEFAULT_HAND_ARMATURE
+    from hand_sampler.grammar import hand as gh   # the grammar's uniform physics (GRAMMAR-LOCK item 14)
+
+    hs, hd, ha = gh.JOINT_STIFFNESS, gh.JOINT_DAMPING, gh.JOINT_ARMATURE
     stiffness = _per_env(hs, 0.0, _CARRIER_STIFFNESS)
     damping = _per_env(hd, 0.0, _CARRIER_DAMPING)
     armature = _per_env(ha, ha, _CARRIER_ARMATURE)
-    effort = _per_env(rpc.GEN_JOINT_EFFORT_NM, rpc.GEN_JOINT_EFFORT_NM, _CARRIER_EFFORT_LIMIT_NM)
+    effort = _per_env(gh.JOINT_EFFORT_NM, gh.JOINT_EFFORT_NM, _CARRIER_EFFORT_LIMIT_NM)
 
     joint_ids = carrier_cols
     env.robot.write_joint_stiffness_to_sim(stiffness, joint_ids=joint_ids)
     env.robot.write_joint_damping_to_sim(damping, joint_ids=joint_ids)
     env.robot.write_joint_armature_to_sim(armature, joint_ids=joint_ids)
     env.robot.write_joint_effort_limit_to_sim(effort, joint_ids=joint_ids)
+    # Coupled finger joints are mimic joints on their source: no drive, so
+    # only the mimic constraint moves them (like a follower carrier).
+    finger_cols = [i for i, n in enumerate(phys_names) if n not in _CARRIER_JOINT_NAMES]
+    finger_slots = [ge.SLOT_NAMES.index(phys_names[i]) for i in finger_cols]
+    coupled = (torch.as_tensor(population.joint_tie, device=env.device)[design_idx][:, finger_slots] >= 0)
+    if bool(coupled.any()):
+        stiff = env.robot.data.joint_stiffness[:, finger_cols].clone()
+        damp = env.robot.data.joint_damping[:, finger_cols].clone()
+        stiff[coupled] = 0.0
+        damp[coupled] = 0.0
+        env.robot.write_joint_stiffness_to_sim(stiff, joint_ids=finger_cols)
+        env.robot.write_joint_damping_to_sim(damp, joint_ids=finger_cols)
+        print(f"[inhand_reorient] coupled joints: {int(coupled.sum())} mimic-tied finger joints without a drive "
+              f"over {env.num_envs} envs", flush=True)
     print(f"[inhand_reorient] carrier gains: {int(leader.sum())} leader (hand gains), {int(follower.sum())} "
           f"follower (no drive, mimic-tied) and {int((~leader & ~follower).sum())} locked (stiff) carriers "
           f"over {env.num_envs} envs", flush=True)

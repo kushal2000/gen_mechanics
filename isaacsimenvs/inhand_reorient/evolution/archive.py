@@ -1,5 +1,5 @@
 """MAP-Elites archive over ``(digit_count, joint_count_bin)`` for grammar
-hand derivations (plan-rl-grammar-tuning.md's "Revision, 2026-09-27", pilot
+grammar hands (plan-rl-grammar-tuning.md's "Revision, 2026-09-27", pilot
 E-R2': "MAP-Elites with descriptors (digit count, joint count) and one
 shared controller whose weights carry across generations").
 
@@ -121,13 +121,13 @@ class Candidate:
     this exact design (the driver mints one per founder/offspring/immigrant,
     e.g. ``"gen0-0007"``/``"gen5-off-0013"``) -- NOT the population-file
     ``source`` string, which is only unique within one generation's
-    population file. ``derivation_dict``/``sha256`` are
-    ``hand_sampler.grammar.derive.derivation_to_dict`` / the population
+    population file. ``hand_dict``/``sha256`` are
+    ``hand_sampler.grammar.hand.hand_to_dict`` / the population
     file's own entry-level sha256, so a stored elite round-trips through
-    ``derivation_from_dict`` + ``derive`` with no extra state."""
+    ``hand_from_dict`` with no extra state."""
 
     design_id: str
-    derivation_dict: dict
+    hand_dict: dict
     sha256: str
     founder_id: str
     parent_id: Optional[str]
@@ -151,7 +151,7 @@ class Elite:
     """The archive's own record for one occupied cell."""
 
     design_id: str
-    derivation_dict: dict
+    hand_dict: dict
     sha256: str
     founder_id: str
     parent_id: Optional[str]
@@ -176,7 +176,7 @@ def _elite_from_candidate(c: Candidate, generation: int, generation_born: int, h
         "episodes": int(c.episodes), "low_confidence": bool(c.low_confidence),
     })
     return Elite(
-        design_id=c.design_id, derivation_dict=c.derivation_dict, sha256=c.sha256,
+        design_id=c.design_id, hand_dict=c.hand_dict, sha256=c.sha256,
         founder_id=c.founder_id, parent_id=c.parent_id, generation_born=int(generation_born),
         digit_count=int(c.digit_count), joint_count=int(c.joint_count), fitness=float(c.fitness),
         episodes=int(c.episodes), low_confidence=bool(c.low_confidence), fitness_history=history,
@@ -331,7 +331,7 @@ class Archive:
             "schema": ARCHIVE_SCHEMA,
             "cells": [
                 {
-                    "cell": list(cell), "design_id": e.design_id, "derivation_dict": e.derivation_dict,
+                    "cell": list(cell), "design_id": e.design_id, "hand_dict": e.hand_dict,
                     "sha256": e.sha256, "founder_id": e.founder_id, "parent_id": e.parent_id,
                     "generation_born": e.generation_born, "digit_count": e.digit_count,
                     "joint_count": e.joint_count, "fitness": e.fitness, "episodes": e.episodes,
@@ -350,7 +350,7 @@ class Archive:
         for row in doc.get("cells", []):
             cell = (int(row["cell"][0]), int(row["cell"][1]))
             arc.cells[cell] = Elite(
-                design_id=row["design_id"], derivation_dict=row["derivation_dict"], sha256=row["sha256"],
+                design_id=row["design_id"], hand_dict=row["hand_dict"], sha256=row["sha256"],
                 founder_id=row["founder_id"], parent_id=row.get("parent_id"),
                 generation_born=int(row["generation_born"]), digit_count=int(row["digit_count"]),
                 joint_count=int(row["joint_count"]), fitness=float(row["fitness"]), episodes=int(row["episodes"]),
