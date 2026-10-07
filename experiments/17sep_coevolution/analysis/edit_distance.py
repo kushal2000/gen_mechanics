@@ -1,5 +1,17 @@
 """How many mutations separate each design from gen-SHARPA?
 
+SUPERSEDED, and it will not run. This metric is defined over an operator set
+and a genotype the grammar no longer has: `perturb_axis` and `perturb_offset`
+are gone with `Joint.theta`, `perturb_palm` is gone with the palm's width and
+length, and `move_mount` stepped in (u, v) across a box face where a mount is
+now a (y, z) offset on a disc. `face_frame` and the two-argument
+`mount_position` it calls were removed with them.
+
+Re-deriving it means choosing a step cost for `perturb_kind`, `perturb_lean`
+and `aim_mount`, which is a design decision rather than a port. Left in place
+because the 17sep analysis was run with it and the numbers in that write-up
+came from this file.
+
 A LOWER BOUND on the number of grammar mutations that would turn a design into
 `hand_sampler.sharpa_capsule`, computed from what each operator can do in one
 step:

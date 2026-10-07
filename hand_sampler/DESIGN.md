@@ -10,6 +10,36 @@ deliberately not — see §10.
 
 ---
 
+> ## ⚠ Sections 3–7 describe a grammar that no longer exists
+>
+> They were written for the box-palm grammar and were not updated through the
+> rollback of 2026-10-02 or the radial palm that followed. **Read the
+> docstrings in `design_space.py` as the specification**; they are current and
+> carry the measurements. What changed:
+>
+> | this doc says | the grammar now |
+> |---|---|
+> | `Palm := box(w, l, t)`, width and length mutated | a palm stores only `thickness`; its outline is DERIVED as the convex hull of its own 20 mm disc and the finger bases, plus a 5 mm rim. `perturb_palm` is gone — there is nothing left to mutate |
+> | `Mount := face, (u, v)` on three thin faces, `MOUNT_EDGE_MARGIN` | `Mount := y, z, facing`, a (y, z) offset from the palm centre on one 5 mm grid, inside a 20–70 mm ring. No faces, no edge margin |
+> | `Joint := axis(theta, phi), offset`, theta on a 15° continuum | three KINDS — roll, flexion, abduction — plus a `lean` from five mounting directions (straight on, or 45° four ways). A generated joint carries no offset at all; `offset` survives only on an imported hand |
+> | operators `perturb_axis`, `perturb_offset`, `perturb_palm` | `perturb_kind`, `perturb_lean`, `aim_mount`. Still nine, and the four structural ones are unchanged |
+> | link floor 15 mm, radius 10 mm | floor 20 mm (15 mm for a distal link), radius 15 mm — both set by the XM335-T323-T actuator, not chosen |
+> | `MAX_FINGERS` 5, 6 joints per finger | 6 fingers, 5 joints per finger |
+> | mount separation: 15 mm across faces, 25 mm within one | one floor, `MIN_MOUNT_SEPARATION` = 2r + 5 mm = 35 mm |
+> | — | `ARM_FACE_Z`: nothing the hand owns may reach behind the arm's own face. New rule, no predecessor here |
+>
+> §§1, 2, 8–13 are largely grammar-independent and still read true, with two
+> exceptions: §11's "held back" list is written in terms of faces and `phi`,
+> and several measured tables in §5 and §6 were taken under the old constants —
+> the joint-count distribution at a 15 mm floor, the `radius_scale` Spearman,
+> the add_finger balance that `perturb_palm` was said to relieve. Those numbers
+> were true of the space they were measured in and are not of this one.
+>
+> Rewriting this properly means deciding which of that evidence to re-run
+> rather than retire, which is not a call to make inside a cleanup pass.
+
+---
+
 ## 1. What this replaces
 
 `minimal/` answers *"draw me a random hand from a fixed space."* Evolution needs

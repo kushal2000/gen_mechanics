@@ -22,16 +22,20 @@ Its 25 mm palm used to be on this list, against a thickness that was then 50 and
 later 30. PALM_THICKNESS is 25 now, a quantum under the capsule diameter, so the
 capsule and the grammar agree on it exactly and it is no longer a deviation:
 
-  palm width 100 mm, not 85       four mounts on one face at MIN_MOUNT_SEPARATION
-                                  plus two MOUNT_EDGE_MARGINs need 95
+  palm width 100 mm, not 85       four mounts in a row at MIN_MOUNT_SEPARATION
+                                  span 105. A palm has no width of its own now
+                                  -- it is the hull of where the fingers are --
+                                  so this is not a deviation any more either,
+                                  only a note on how wide the row has to be
   finger spacing 25 mm, not ~20   MIN_MOUNT_SEPARATION, which is 35 mm now
   MCP as two joints 15 mm apart   MIN_LINK_LENGTH; SHARPA's FE and AA are coincident
   no pinky CMC (21 joints, not 22) a roll about the finger. The grammar HAS a roll
                                   kind now, so this one is no longer forced -- it is
                                   simply what was built before roll existed
   thumb 2.5 mm off the midplane   it was mounted at u = 0.6 on a box face; a
-       is lost                     polar mount has no such freedom and every
-                                  finger starts on the palm's own plane
+       is lost                     mount is a (y, z) offset in the palm's own
+                                  plane now, with no freedom across it, so
+                                  every finger starts on that plane
   thumb MCP hinges axis-aligned   the real ones are oblique, and a joint is one of
                                   three kinds, so there is no oblique axis to reach
   lengths on the 5 mm grid        LINK_QUANTUM

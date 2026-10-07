@@ -693,7 +693,8 @@ def test_segment_distance_degenerate_cases(p0, p1, q0, q1, want):
 def test_move_mount_keeps_a_finger_on_the_palm_plane():
     """What replaced test_move_mount_slides_along_the_face_and_never_off_the_midplane.
 
-    A mount is polar now, so there is no midplane to fall off -- x is zero by
+    A mount is a (y, z) offset now, so there is no midplane to fall off -- x is
+    zero by
     construction. What is worth checking is that move_mount changes only WHERE a
     finger sits, never which way it points, which is aim_mount's job.
     """

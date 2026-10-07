@@ -48,7 +48,7 @@ def fingertip_reach(hand, rng, n_samples: int) -> np.ndarray:
     palm_top = 0.5 * hand.palm.thickness          # +x face of the slab
     best = np.full(hand.n_fingers, -np.inf)
     for f, finger in enumerate(hand.fingers[:hand.n_fingers]):
-        pos, rot = design_space.mount_frame(finger.mount, hand.palm)
+        pos, rot = design_space.mount_frame(finger.mount)
         lo_hi = [(s.joint.limits or design_space.JOINT_LIMIT) for s in finger.segments]
         qs = np.stack([rng.uniform(lo, hi, n_samples) for lo, hi in lo_hi], axis=1)
         for k in range(n_samples):

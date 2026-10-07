@@ -94,13 +94,13 @@ sits 50 mm behind it -- rpc.FLANGE_TO_PALM_Z_M, and measuring the iiwa14's
 meshes in this frame puts its frontmost vertex at exactly -50 mm. So everything
 the hand owns has to live forward of there, and centring the fingers on the
 origin did not: a hand whose thumb reaches back, which every vendor hand's
-does, put that thumb 17 mm inside the arm. Sliding the whole polar centre
-forward moves palm and fingers together and leaves the bolt pattern alone.
+does, put that thumb 17 mm inside the arm. Sliding the whole centre forward
+moves palm and fingers together and leaves the bolt pattern alone.
 """
 
 PALM_CENTRE = np.array([0.0, 0.0, WRIST_STANDOFF])
-"""Where the fingers are centred, in the palm frame. Everything polar is about
-this point rather than about the frame's origin."""
+"""Where the fingers are centred, in the palm frame. A mount's (y, z) is an
+offset from THIS point, not from the frame's origin."""
 
 # --- links ------------------------------------------------------------------
 

@@ -140,11 +140,10 @@ def test_every_vendor_hand_clears_the_arm(name, fits):
 
 
 def test_every_hand_needs_some_spreading_on_a_radial_palm():
-    """A radial palm places a base at its OWN polar coordinate, snapped to a
-    5 mm radius grid and a 15 deg bearing grid. The snap alone can move a base
-    several millimetres -- a bearing quantum is 6.5 mm of arc at r = 50 -- so
-    even LEAP, whose knuckles are a comfortable 45 mm apart, needs a nudge after
-    snapping. That is the grid, not the hand being too tightly packed.
+    """A radial palm places a base wherever the vendor puts it, snapped to the
+    5 mm grid. The snap alone moves a base by up to 3.5 mm, so even LEAP, whose
+    knuckles are a comfortable 45 mm apart, needs a nudge afterwards. That is
+    the grid, not the hand being too tightly packed.
     """
     for name in commercial.HANDS:
         _, notes = commercial.fit(name)
