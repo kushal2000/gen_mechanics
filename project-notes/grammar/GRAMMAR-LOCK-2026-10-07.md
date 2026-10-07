@@ -109,7 +109,15 @@ No coupling step (one global ratio, 7b). Every coarse value lies on the fine gri
 - A link between two joints is either 0 mm (two joints at one point) or at least 15 mm. A finger's last link is at least 10 mm. Lengths between 1 and 14 mm are not allowed; steps skip the gap (shortening 15 mm gives 0 mm, lengthening 0 mm gives 15 mm). Longest link 90 mm.
 - **Why:** mechanically, two co-located joints are convenient (one two-axis module) while joints a few millimetres apart are awkward, and longer links are easy again since motors stack in series (Martin). The floor is set by the commercial hands, not by a motor (principle above): Vatsal's motor-derived 20 mm floor would reject 13 real bones in 7 hands (Allegro 16.4, Inspire 16.8, XHand 17.8, LEAP 19.3, Wuji's thumb 16.1 mm, ...). With 15 mm every commercial bone fits except knuckle offsets of 4.6 mm (Wuji v1) and 5.0 mm (SHARPA), which snap to 0 mm within the 5 mm fit target, and the ARMS skeleton model's 9.3 mm. The shortest real fingertip link is SVH's 14.0 mm (the next is 25 mm), so the tip floor is 10 mm rather than Vatsal's 15 mm. The longest real link is DClaw's 84 mm. 27 of the 220 real bones are 0 mm.
 
-## Still to decide
-- Mount area (how far finger bases may sit from the palm centre) and palm plate thickness: commercial extremes with a margin (smallest x 0.9, largest x 1.1), measurement in progress (`palm-and-axis-study.md`).
+### 21. Palm plate thickness 37 mm; finger bases within 125 mm of the palm centre
+- Thickness: 37 mm, the median of 15 commercial palms (IQR 25-42 mm; DClaw's 6 mm mounting plate and Barrett's 86 mm motor housing are the extremes). Base distance from the palm centre, in the plate: 0-125 mm (SVH's thumb at 110.8 mm x 1.1, rounded; every other thumb is 48-77 mm and every non-thumb finger at most 62 mm). Study: `project-notes/grammar/palm-and-axis-study.md` (4108105).
+- **Why:** the principle above: limits from the commercial extremes with a 10% margin.
+- Open: where the palm centre (the hull's anchor disc) sits. The study's centre, the centroid of the non-thumb bases, lies on the knuckle row, so a disc there makes a palm that is only a strip along the knuckles; proposed: anchor at the wrist (the hand's mount point), so the hull spans wrist to knuckles like a real palm. The distance limit is re-measured from whichever anchor is chosen.
 
-Checks come after the grammar and the Evolution Rules. Candidates: the overlap check, Vatsal's curl score, Martin's thumb-finger workspace overlap, and an opposition test (none exists yet).
+### 3 (evidence). The commercial axes support the unified axis design
+- Of 263 finger and thumb joints, after sliding each joint along its own axis onto the finger's centre line (exact for the motion): fingers lie within 15 degrees of a kind 96% of the time and within 30 degrees 99%; thumbs only 45% within 15 degrees, 85% within 30 and all within 45 (worst: thumb bases of Inspire, LEAP, SHARPA, ARMS, Allegro). Palm joints are often far from any kind (Shadow LFJ5 35, ARMS CMC4 45). A kind-plus-15-degree design would have missed most thumbs; directions stepped 30 / 5 degrees reach all of them. Kind mix for the random draw: flexion 69%, abduction 27%, roll 4%.
+
+## Still to decide
+- Palm anchor: where the palm centre disc sits (item 21).
+- Viability checks (proposed C1-C5, under discussion).
+
