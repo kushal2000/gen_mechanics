@@ -213,12 +213,24 @@ def body_tip_local(model: KinematicModel) -> Dict[str, np.ndarray]:
     return out
 
 
+def _colour_slot(st: Structure, d: DigitInfo) -> int:
+    """Palette slot of a digit's top-level finger: from the grammar's digit id
+    (``d{id}p1``), which never changes when another finger is added or
+    removed, so a mutation never recolours the fingers it did not touch.
+    Falls back to the order of appearance for non-grammar names."""
+    top = st.digits[d.top_index] if d.branch else d
+    name = top.root_body
+    if name.startswith("d") and name.endswith("p1") and name[1:-2].isdigit():
+        return int(name[1:-2]) - 1
+    return top.index
+
+
 def digit_colour(st: Structure, body: str) -> Tuple[int, int, int]:
     idx = st.body_digit.get(body)
     if idx is None:
         return PALM_RGB
     d = st.digits[idx]
-    base = DIGIT_PALETTE[d.top_index % len(DIGIT_PALETTE)]
+    base = DIGIT_PALETTE[_colour_slot(st, d) % len(DIGIT_PALETTE)]
     if d.branch:  # lighter shade of the host digit's colour
         return tuple(int(c + 0.45 * (255 - c)) for c in base)
     return base

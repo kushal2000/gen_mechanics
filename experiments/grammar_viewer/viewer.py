@@ -6,8 +6,8 @@ One compact panel, one line per item (longer explanations are hover text):
 Grammar (variant, Random), Limits (the generation limits sampling and
 mutation obey by construction: a preset or custom values), Viability (the
 four physical checks generation cannot guarantee, each switchable),
-Commercial hand, Mutation (operator buttons, greyed out where the limits or
-the hand rule them out) and Pose (curl). `viewer_full.py` keeps the full tool.
+Commercial hand, Mutation (only the operators that can act on this hand under
+these limits are shown) and Pose (curl, re-centre). `viewer_full.py` keeps the full tool.
 CPU only: the simulator's envelope oracle is loaded by file path
 (gviewer/envload.py), so Isaac is never imported.
 """
@@ -49,6 +49,9 @@ from gviewer.envload import load_env_modules  # noqa: E402
 from gviewer.scene import SPAWN_RGB, TIP_MISS_RGB, TIP_REACH_RGB, HandRenderer, MeshOverlay, RenderOptions  # noqa: E402
 
 GHOST_RGB = (105, 105, 125)
+# One colour per finger, neutral palm and joint markers, nothing else: no axis
+# arrows, no root frame; fingertips only with the reach display.
+HAND_RENDER = RenderOptions(joint_axes=False, joint_markers=True, tips=True, root_frame=False)
 MESH_OPACITY = 0.35
 RESET_CURL = an.CURL_FRAC          # palm_up's default_q is this fraction of every joint's range
 MAX_TRIES = 5000
@@ -80,56 +83,85 @@ VARIANT_NOTES: Dict[str, str] = {
               "conforming real hands, not for sampling.",
 }
 
-# Button label and hover text for every operator in the evolution driver's
-# pool (derive.EVOLUTION_OPERATORS).
+# Plain names for the variant dropdown (the code is in the hover text).
+VARIANT_NAMES: Dict[str, str] = {
+    "G_V1": "Basic",
+    "G_V1S": "+ fingers on palm surface",
+    "G_V2S": "+ fingers spaced apart",
+    "G_V3S": "+ curl and opposition",
+    "G_FULL": "Full grammar",
+    "G_SERIAL": "Serial (no palm parts)",
+    "G_V2": "Basic + spacing (old)",
+    "G_V3": "Basic + curl (old)",
+    "G_NOPALMJOINT": "Full, rigid palm parts",
+    "G_NOBRANCH": "Full, no branching",
+    "G_NOCOUPLE": "Full, no coupled joints",
+    "G_FULL_INS": "Full, small growth steps",
+    "G_NOBRANCH_INS": "Full, no branching, small growth",
+    "G_BEND": "Full + rest bends",
+    "G_CONT": "Full + free joint ranges",
+    "G_WIDE": "Wide (fits real hands)",
+}
+
+# Button label and one line of hover text for every operator in the evolution
+# driver's pool (derive.EVOLUTION_OPERATORS). Plain words: a finger is a
+# top-level digit, a joint + bone is a phalanx, a palm part is a palm body.
 OPERATOR_INFO: Dict[str, tuple] = {
-    "add_minimal_digit": ("add a digit", "New one-segment digit (one hinge) on the root palm or a palm body."),
-    "remove_digit_minimal": ("remove a short digit", "Removes a digit with 1-2 segments and no branches."),
-    "insert_phalanx": ("add a segment", "Inserts a new segment (link + joint) somewhere in one digit."),
-    "delete_phalanx": ("remove a segment", "Deletes one segment of a digit that has at least 2; branches on it "
-                                           "re-attach."),
-    "add_palm_body": ("add a palm body", "Adds a palm piece on the root or another palm body, jointed with the "
-                                         "variant's palm-joint probability (55% in G_FULL) where the limits allow."),
-    "remove_palm_body_empty": ("remove an empty palm body", "Removes a palm body that carries nothing (the exact "
-                                                            "undo of 'add a palm body')."),
-    "toggle_palm_joint": ("joint/unjoint a palm body", "Gives a rigid palm body a joint (new axis and limits), or "
-                                                       "makes a jointed one rigid."),
-    "add_branch_digit": ("add a branch digit", "Adds a one-segment digit growing off an existing segment."),
-    "remove_branch_digit": ("remove a branch digit", "Removes a one-segment branch digit."),
-    "step_axis": ("tilt one joint axis", "Moves one joint's axis by one 15 deg step in elevation or azimuth."),
-    "step_limits": ("change one joint's limits", "Moves one joint's limits to the neighbouring choice on the "
-                                                 "variant's menu."),
-    "step_mount": ("move one mount", "Moves where one digit or palm body attaches: one step along its host, or "
-                                     "one 15 deg step of its mount angle."),
-    "step_coupling": ("change one coupling", "Steps a coupled joint's ratio or offset to the neighbouring "
-                                             "choice (needs a coupled joint)."),
-    "step_root_length": ("lengthen/shorten the palm", "Changes the root palm's length by one 5 mm step "
-                                                      "(within 20-80 mm)."),
-    "step_radius": ("thicken/thin every link", "Moves the hand's single capsule radius to the neighbouring "
-                                               "choice (8, 10 or 12 mm)."),
-    "step_bend_rpy": ("change one rest bend angle", "Steps one angle of one segment's rest bend (needs a variant "
-                                                    "with a bend menu: G_BEND, V3, V3s)."),
-    "step_bend_offset": ("change one rest bend offset", "Steps one component of one segment's rest bend offset "
-                                                        "(needs a variant with an offset menu: G_BEND)."),
-    "step_segment_length": ("lengthen/shorten one segment (5 mm)", "Changes one segment's length (a finger link "
-                                                                   "or an extra palm body) by exactly 5 mm, within "
-                                                                   "the variant's range."),
+    "add_minimal_digit": ("add a short finger (1 joint)",
+                          "Adds a new finger with one hinge joint and one bone, on the palm or a palm part."),
+    "remove_digit": ("remove a finger",
+                     "Removes one finger of any length, with its branch fingers; a palm part left without a finger "
+                     "goes too (no-empty-palm rule)."),
+    "insert_phalanx": ("add a joint to a finger",
+                       "Inserts a joint and bone at a random place in one finger; the bones beyond it move out by the "
+                       "new bone's length."),
+    "delete_phalanx": ("remove a joint from a finger",
+                       "Removes one joint and its bone; the bones beyond it move in and stay attached (a coupled joint "
+                       "that loses its driver becomes a new independent joint)."),
+    "add_palm_body": ("add a palm part",
+                      "Adds a palm part on the palm or another palm part, jointed or rigid at random where a joint is "
+                      "allowed."),
+    "toggle_palm_joint": ("make a palm part rigid/jointed",
+                          "Gives a rigid palm part a joint (random axis and range), or makes a jointed one rigid."),
+    "add_branch_digit": ("add a branch finger (1 joint)", "Adds a one-joint finger growing off a bone of a finger."),
+    "remove_branch_digit": ("remove a short branch finger", "Removes a branch finger that has one joint."),
+    "step_axis": ("tilt one joint axis", "Tilts one joint's axis (finger or palm joint) by 15 deg."),
+    "step_limits": ("change one joint's range", "Moves one joint's range to the neighbouring option of the variant."),
+    "step_mount": ("move a mount (finger or palm part)",
+                   "Slides one finger or palm part along what it is attached to, or turns it 15 deg at its base."),
+    "step_coupling": ("change one coupled joint", "Steps a coupled joint's ratio or offset to the next option."),
+    "step_root_length": ("lengthen/shorten the palm",
+                         "Changes the palm's length by 5 mm; the fingers keep their relative place along it, so they "
+                         "move with it."),
+    "step_radius": ("thicker/thinner (all links)",
+                    "Every link, palm included, shares one thickness; steps it to the next option (8, 10, 12 mm)."),
+    "step_bend_rpy": ("change one joint's rest bend", "Turns the rest angle between two bones by 15 deg."),
+    "step_bend_offset": ("shift one joint sideways", "Shifts one joint sideways by 5 mm on its bone."),
+    "step_segment_length": ("lengthen/shorten one bone (5 mm)",
+                            "Changes one bone's (or palm part's) length by 5 mm within the variant's range; the parts "
+                            "beyond it move with it."),
 }
 assert set(OPERATOR_INFO) == set(EVOLUTION_OPERATORS), "OPERATOR_INFO must cover EVOLUTION_OPERATORS exactly"
 
 
-def op_label(op: str) -> str:
+def op_label(op: str, limits: Optional[glim.GenerationLimits] = None) -> str:
+    if op == "add_palm_body" and limits is not None and limits.require_digit_on_palm_body:
+        return "add a palm part with a short finger"
     return OPERATOR_INFO.get(op, (op, ""))[0]
 
 
-# Short names for the rule conflicts conform reports (adapters/conform.py).
+# Plain names for the rule conflicts conform reports (adapters/conform.py).
 CONFLICT_SHORT: Dict[str, str] = {
-    "lateral_mount_offset": "finger spread", "palm_mount_offset": "palm offsets", "rest_bend": "rest bends",
-    "forced_curl": "forced curl", "colocated_joints": "co-located joints", "limits_menu": "limits",
-    "link_length_range": "link lengths", "mount_off_segment": "mounts off palm", "axis_band": "axis band",
-    "module_kind": "joint kinds", "zero_length_palm": "zero-length palm", "digit_count": "digit count",
-    "phalanx_count": "joints per digit", "palm_body_count": "palm bodies",
+    "lateral_mount_offset": "finger spread", "palm_mount_offset": "palm part offsets", "rest_bend": "rest bends",
+    "forced_curl": "forced curl", "colocated_joints": "joints at one point", "limits_menu": "joint ranges",
+    "link_length_range": "bone lengths", "mount_off_segment": "mounts off the palm", "axis_band": "joint axes",
+    "module_kind": "joint types", "zero_length_palm": "zero-length palm part", "digit_count": "finger count",
+    "phalanx_count": "joints per finger", "palm_body_count": "palm part count",
 }
+
+
+def variant_name(code: str) -> str:
+    return VARIANT_NAMES.get(code, code)
 
 
 def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], limits: glim.GenerationLimits,
@@ -150,7 +182,7 @@ def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], 
         pos = max(f["max_pos_mm"], f["max_tip_mm"] or 0.0)
         lost = [CONFLICT_SHORT.get(k, k) for k in conformed.report.conflict_features()]
         rules = "yes" + (" (lost: " + ", ".join(lost) + ")" if lost else "")
-        head = f"snapped to {conformed.variant}: {pos:.0f} mm / {f['max_axis_deg']:.0f} deg"
+        head = f"snapped to {variant_name(conformed.variant)}: {pos:.0f} mm / {f['max_axis_deg']:.0f} deg"
         deriv = conformed.derivation
     return f"{head}; within rules: {rules}; within limits: {glim.check(deriv, limits).summary()}"
 
@@ -158,7 +190,7 @@ def fidelity_line(ch: com.CommercialHand, conformed: Optional["com.Conformed"], 
 def change_line(d: hist.DiffSummary) -> str:
     """The parent -> child diff in one line."""
     parts = []
-    for name, (a, b) in (("digits", d.digits), ("joints", d.joints), ("palm bodies", d.palm_bodies)):
+    for name, (a, b) in (("fingers", d.digits), ("joints", d.joints), ("palm parts", d.palm_bodies)):
         if a != b:
             parts.append(f"{name} {a} -> {b}")
     params = [c for c in d.changed if "(renumbered)" not in c]
@@ -375,11 +407,11 @@ class EssentialViewer:
         ev = self.prep.ev
         failing = ev.failing(self.enabled())
         if not ev.buildable:
-            verdict = "viability n/a (outside the simulator)"
+            verdict = "checks n/a (the simulator cannot build this hand)"
         elif failing:
-            verdict = "fails " + ", ".join(ck.CHECK_BY_KEY[k].short for k in failing)
+            verdict = "fails: " + ", ".join(ck.CHECK_BY_KEY[k].short for k in failing)
         else:
-            verdict = "viable"
+            verdict = "passes the checks"
         self.md_status.content = f"{head}: {verdict}"
 
     # ------------------------------------------------------------------
@@ -403,7 +435,8 @@ class EssentialViewer:
                 self.history.current.payload = shown
             elif history_mode == "push":
                 self.history.push(shown.derivation, operator or "?").payload = shown
-            self.renderer.build(prep.view, prep.cells, RenderOptions())
+            self.renderer.build(prep.view, prep.cells, HAND_RENDER)
+            self.renderer.set_layer_visibility(tips=bool(self.gui_show_reach.value))
             self._build_ghost()
             self._build_spawn()
             self._build_overlay()
@@ -427,8 +460,9 @@ class EssentialViewer:
         ev = self.prep.ev
         gate = load_env_modules().grammar_envelope.MAX_REST_PENETRATION_M
         out: Dict[str, tuple] = {}
+        enabled = self.enabled()
         for key, pairs in (("overlap_zero", ev.pairs_q0), ("overlap_reset", ev.pairs_reset)):
-            if ev.results[key].status != ck.FAIL:
+            if key not in enabled or ev.results[key].status != ck.FAIL:
                 continue
             for b1, b2, pen in an.named_pairs(ev.design, pairs):
                 if pen > gate:
@@ -527,14 +561,14 @@ class EssentialViewer:
                 return
             self.md_random.content = f"found after {res.tries} {'try' if res.tries == 1 else 'tries'} (seed {res.seed})"
             self._clear_commercial_choice()
-            self.show(Shown(res.derivation, res.model, f"{variant} seed {res.seed}", "sampled"))
+            self.show(Shown(res.derivation, res.model, f"{variant_name(variant)}, seed {res.seed}", "sampled"))
 
         return self.run_job(f"random {variant}", job, wait=wait)
 
-    def load_commercial(self, hand_id: str, wait: bool = False) -> bool:
+    def load_commercial(self, hand_id: str, wait: bool = False, frame: bool = True) -> bool:
         """Show a commercial hand: by default its projection conformed to the
         current variant (a member of the grammar's space that every operator
-        can act on); with "Exact projection" ticked, the exact projection."""
+        can act on); with "exact, off-grid version" ticked, the exact projection."""
         exact = bool(self.gui_exact.value)
         variant = self.variant
 
@@ -555,11 +589,12 @@ class EssentialViewer:
                 shown = Shown(ch.projection.derivation, ch.derived, f"{hand_id} (exact)", "commercial", commercial=ch)
             else:
                 conf = ch.conformed(variant, dist)
-                shown = Shown(conf.derivation, conf.derived, f"{hand_id} (snapped to {variant})", "commercial",
+                shown = Shown(conf.derivation, conf.derived, f"{hand_id} (snapped to {variant_name(variant)})",
+                              "commercial",
                               commercial=ch, conformed=conf)
             self.md_fidelity.content = fidelity_line(ch, shown.conformed, self.limits(), dist)
             self.current_hand = hand_id
-            self.show(shown)
+            self.show(shown, frame=frame)
 
         return self.run_job(f"load {hand_id}", job, wait=wait)
 
@@ -589,11 +624,12 @@ class EssentialViewer:
             return
         self.op_status = lui.operator_status(shown.derivation, src.distribution(self.variant),
                                              EVOLUTION_OPERATORS, self.limits())
+        limits = self.limits()
         for op, b in self.op_buttons.items():
             st = self.op_status[op]
-            b.disabled = st != lui.OK
-            note = "" if st == lui.OK else f" Now: {st}."
-            b.hint = f"{op}: {OPERATOR_INFO[op][1]}{note}"
+            b.visible = st == lui.OK          # only what can act on this hand under these limits
+            b.label = op_label(op, limits)
+            b.hint = OPERATOR_INFO[op][1]
 
     def mutate(self, operator: Optional[str] = None, wait: bool = False) -> bool:
         """Apply `operator` under the current limits, or with None a random one
@@ -618,15 +654,15 @@ class EssentialViewer:
                 except Exception as exc:  # noqa: BLE001 - e.g. a projected hand's value is off the variant's grid
                     why = f"{type(exc).__name__}: {exc}"
             if child is None:
-                self.md_mut.content = (f"'{op_label(operator)}': {why}" if operator
-                                       else "no operator can apply to this hand")
+                self.md_mut.content = (f"'{op_label(operator, limits)}': {why}" if operator
+                                       else "no mutation can apply to this hand")
                 return
             d = hist.diff(shown.derivation, child)
             model = derive(child)
             base = self.history.entries[0].label
             self.show(Shown(child, model, base, "mutant", commercial=None), "push", operator=used, frame=False)
             prefix = "random: " if not operator else ""
-            self.md_mut.content = f"{prefix}{op_label(used)}: {change_line(d)}"
+            self.md_mut.content = f"{prefix}{op_label(used, limits)}: {change_line(d)}"
 
         return self.run_job(f"mutate {operator or 'random'}", job, wait=wait)
 
@@ -646,12 +682,21 @@ class EssentialViewer:
     # Pose
     # ------------------------------------------------------------------
 
+    def recentre(self) -> None:
+        with self.lock:
+            if self.prep is not None:
+                self._frame_camera()
+
     def set_curl(self, frac: float) -> None:
         self.gui_curl.value = float(frac)     # fires on_update -> _render_pose
 
     # ------------------------------------------------------------------
     # GUI
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _variant_hint(code: str) -> str:
+        return f"{code}: {VARIANT_NOTES.get(code, '')}"
 
     def _build_gui(self) -> None:
         g = self.server.gui
@@ -660,28 +705,29 @@ class EssentialViewer:
 
         with g.add_folder("Grammar"):
             names = src.variant_names()
-            self._variant_by_label = {src.variant_label(n): n for n in names}
+            self._variant_by_label = {variant_name(n): n for n in names}
             self.gui_variant = g.add_dropdown("Variant", list(self._variant_by_label),
-                                              initial_value=src.variant_label(self.variant),
-                                              hint=VARIANT_NOTES.get(self.variant, ""))
+                                              initial_value=variant_name(self.variant),
+                                              hint=self._variant_hint(self.variant))
             btn_random = g.add_button("Random", hint="Sample designs under the limits until every enabled "
                                                      "viability check passes.")
             self.md_random = g.add_markdown("")
 
         with g.add_folder("Limits"):
             self.gui_preset = g.add_dropdown("Preset", list(lui.PRESET_NAMES), initial_value="Simulator",
-                                             hint="Hard rules sampling and mutation obey by construction. "
-                                                  "Simulator: exactly what the simulator's 32-slot hand can build. "
-                                                  "Unlimited: the whole grammar. Editing a field makes it Custom.")
+                                             hint="Rules every drawn or mutated hand obeys. Simulator: what the "
+                                                  "simulator's hand can build. Default: the whole grammar, no empty "
+                                                  "palm parts. Unlimited: the whole grammar. Editing a field makes "
+                                                  "it Custom.")
             self.limit_ints: Dict[str, Any] = {}
             for f in lui.INT_FIELDS:
                 self.limit_ints[f.key] = g.add_dropdown(f.label, list(f.options),
                                                         initial_value=lui.int_to_option(getattr(glim.SIMULATOR, f.key)),
                                                         hint=f.hint)
-            self.gui_joint_types = g.add_dropdown("Joint types", list(lui.JOINT_TYPE_OPTIONS),
+            self.gui_joint_types = g.add_dropdown("joint types", list(lui.JOINT_TYPE_OPTIONS),
                                                   initial_value=lui.joint_types_option(glim.SIMULATOR),
                                                   hint=lui.JOINT_TYPES_HINT)
-            self.gui_coupled = g.add_checkbox("Coupled joints", "Coupled" in glim.SIMULATOR.allowed_modules,
+            self.gui_coupled = g.add_checkbox("allow coupled joints", "Coupled" in glim.SIMULATOR.allowed_modules,
                                               hint=lui.COUPLED_HINT)
             self.limit_bools: Dict[str, Any] = {}
             for key, label, hint in lui.BOOL_FIELDS:
@@ -692,22 +738,23 @@ class EssentialViewer:
             self.check_boxes: Dict[str, Any] = {}
             for c in ck.CHECKS:
                 self.check_boxes[c.key] = g.add_checkbox(check_label(c.key, None), True,
-                                                         hint=c.why + " Untick to stop Random requiring it.")
+                                                         hint=c.why + " Untick: Random stops requiring it.")
                 if c.key == "reach":
-                    self.gui_show_reach = g.add_checkbox("show cube and reach", True,
-                                                         hint="Blue sphere: the cube's spawn point and size; wire "
-                                                              "sphere: 5 cm reach; tips green if they reach it.")
+                    self.gui_show_reach = g.add_checkbox("show object and reach", False,
+                                                         hint="Blue sphere: the object's start point and size; wire "
+                                                              "sphere: 5 cm reach; fingertips green if they reach "
+                                                              "it, orange if not.")
 
         with g.add_folder("Commercial hand"):
             hands = com.list_hands()
             self._hand_ids = {h.label: h.id for h in hands}
             self.gui_hand = g.add_dropdown("Hand", [NO_HAND] + [h.label for h in hands], initial_value=NO_HAND,
                                            hint="A real hand's grammar projection, over its URDF meshes.")
-            self.gui_exact = g.add_checkbox("Exact projection", False,
+            self.gui_exact = g.add_checkbox("exact, off-grid version", False,
                                             hint="Off: the hand snapped onto the variant's grids (lengths 5 mm, "
                                                  "angles 15 deg, limit menu, ...), a genuine member of the grammar "
                                                  "that the operators can mutate. On: the exact, off-grid projection.")
-            self.gui_meshes = g.add_checkbox("Show real meshes", True)
+            self.gui_meshes = g.add_checkbox("show real hand meshes", True)
             self.md_fidelity = g.add_markdown("")
 
         with g.add_folder("Mutation"):
@@ -715,12 +762,14 @@ class EssentialViewer:
             self.md_mut = g.add_markdown("")
             self.op_buttons: Dict[str, Any] = {}
             for op in EVOLUTION_OPERATORS:
-                self.op_buttons[op] = g.add_button(OPERATOR_INFO[op][0], hint=f"{op}: {OPERATOR_INFO[op][1]}")
+                self.op_buttons[op] = g.add_button(op_label(op, glim.SIMULATOR), hint=OPERATOR_INFO[op][1])
 
         with g.add_folder("Pose"):
             self.gui_curl = g.add_slider("Curl", 0.0, 1.0, 0.01, RESET_CURL,
                                          hint="Fraction of every joint's range: 0 lower limits, 1 upper limits, "
                                               f"{RESET_CURL} the pose every episode starts from.")
+            btn_center = g.add_button("re-centre view", hint="Point the camera at the whole hand. The view only "
+                                                             "moves by itself for a new draw or a new real hand.")
 
         # ---- callbacks ---------------------------------------------------
         btn_random.on_click(lambda _: self.random(self._variant_by_label[self.gui_variant.value]))
@@ -728,7 +777,7 @@ class EssentialViewer:
         @self.gui_variant.on_update
         def _(_):
             v = self._variant_by_label[self.gui_variant.value]
-            self.gui_variant.hint = VARIANT_NOTES.get(v, "")
+            self.gui_variant.hint = self._variant_hint(v)
             self.random(v)
 
         self.gui_preset.on_update(lambda _: self._on_preset())
@@ -746,15 +795,21 @@ class EssentialViewer:
         @self.gui_exact.on_update
         def _(_):
             if self.current_hand is not None:
-                self.load_commercial(self.current_hand)
+                self.load_commercial(self.current_hand, frame=False)
+
+        def _check_toggled(_):
+            with self.lock:
+                self._update_status()
+                self._render_pose()          # red overlaps follow the enabled checks
 
         for cb in self.check_boxes.values():
-            cb.on_update(lambda _: self._update_status())
+            cb.on_update(_check_toggled)
 
         @self.gui_show_reach.on_update
         def _(_):
             for h in self.spawn_handles:
                 h.visible = bool(self.gui_show_reach.value)
+            self.renderer.set_layer_visibility(tips=bool(self.gui_show_reach.value))
             with self.lock:
                 self._render_pose()
 
@@ -769,6 +824,8 @@ class EssentialViewer:
         def _(_):
             with self.lock:
                 self._render_pose()
+
+        btn_center.on_click(lambda _: self.recentre())
 
 
 def main(argv=None) -> int:

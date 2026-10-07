@@ -26,30 +26,38 @@ class IntField:
 
 
 INT_FIELDS: Tuple[IntField, ...] = (
-    IntField("max_digits", "Fingers", "Most top-level digits (fingers).", (ANY,) + tuple(str(i) for i in range(1, 9))),
-    IntField("max_joints_per_digit", "Joints/finger", "Most joints in one finger, branches included.",
+    IntField("max_digits", "max fingers", "Most fingers on the hand (branch fingers not counted).",
              (ANY,) + tuple(str(i) for i in range(1, 9))),
-    IntField("max_palm_bodies", "Palm bodies", "Most palm bodies besides the root palm.",
+    IntField("max_joints_per_digit", "max joints per finger", "Most joints in one finger, its branch fingers "
+             "included.", (ANY,) + tuple(str(i) for i in range(1, 9))),
+    IntField("max_palm_bodies", "max palm parts", "Most palm parts besides the main palm.",
              (ANY,) + tuple(str(i) for i in range(0, 5))),
-    IntField("max_jointed_palm_bodies", "Palm joints", "Most palm bodies with their own joint.",
+    IntField("max_jointed_palm_bodies", "max palm joints", "Most palm parts with their own joint.",
              (ANY,) + tuple(str(i) for i in range(0, 5))),
-    IntField("max_digits_per_jointed_palm_body", "Fingers/palm joint",
-             "Most fingers carried by one jointed palm body (on it, or on rigid palm bodies below it).",
+    IntField("max_digits_per_jointed_palm_body", "fingers per palm joint",
+             "Most fingers moved by one palm joint (on its palm part, or on rigid palm parts below it).",
              (ANY,) + tuple(str(i) for i in range(0, 4))),
-    IntField("max_finger_chains", "Finger chains",
-             "Most fingers on the rigid palm plus jointed palm bodies: in the simulator each fills one of 5 "
-             "finger chains.", (ANY,) + tuple(str(i) for i in range(1, 9))),
+    IntField("max_finger_chains", "max finger slots",
+             "Fingers on the rigid palm plus palm joints: the simulator has 5 finger slots, and every palm joint "
+             "takes one.", (ANY,) + tuple(str(i) for i in range(1, 9))),
 )
 
 BOOL_FIELDS: Tuple[Tuple[str, str, str], ...] = (
-    ("allow_branches", "Branches", "Fingers may grow branch fingers off a segment."),
-    ("allow_stacked_palm_joints", "Stacked palm joints", "A jointed palm body may sit below another jointed one."),
+    ("allow_branches", "allow branching fingers", "A finger may grow a branch finger off one of its bones."),
+    ("allow_stacked_palm_joints", "allow stacked palm joints", "A jointed palm part may sit on another jointed one."),
+    ("require_digit_on_palm_body", "no empty palm parts",
+     "Every palm part carries a finger: a new palm part comes with a one-joint finger, and removing a palm "
+     "part's last finger removes the palm part."),
 )
 
-# Joint types other than Coupled, as one dropdown; Coupled is its own toggle.
-JOINT_TYPE_OPTIONS: Tuple[str, ...] = ("R", "R C", "R P", "R C P", "C", "P", "C P")
-JOINT_TYPES_HINT = "Joint modules that may be generated: R hinge, C continuous, P sliding."
-COUPLED_HINT = "Coupled joints: a hinge driven by an earlier hinge of the same finger (needs R)."
+# Joint types other than Coupled, as one dropdown (plain label -> kinds);
+# Coupled is its own checkbox.
+JOINT_TYPE_OPTIONS: Dict[str, str] = {
+    "hinge": "R", "hinge + continuous": "R C", "hinge + sliding": "R P", "hinge + continuous + sliding": "R C P",
+    "continuous": "C", "sliding": "P", "continuous + sliding": "C P",
+}
+JOINT_TYPES_HINT = "Joint types that may be generated: hinge (limited range), continuous (spins freely), sliding."
+COUPLED_HINT = "Coupled joints: a hinge that follows an earlier hinge of the same finger (needs hinges)."
 
 
 def int_to_option(v: Optional[int]) -> str:
@@ -61,11 +69,12 @@ def option_to_int(s: str) -> Optional[int]:
 
 
 def joint_types_option(limits: GenerationLimits) -> str:
-    return " ".join(k for k in ("R", "C", "P") if k in limits.allowed_modules)
+    kinds = " ".join(k for k in ("R", "C", "P") if k in limits.allowed_modules)
+    return next(label for label, k in JOINT_TYPE_OPTIONS.items() if k == kinds)
 
 
 def build_limits(ints: Dict[str, str], bools: Dict[str, bool], joint_types: str, coupled: bool) -> GenerationLimits:
-    kinds = tuple(joint_types.split()) + (("Coupled",) if coupled else ())
+    kinds = tuple(JOINT_TYPE_OPTIONS[joint_types].split()) + (("Coupled",) if coupled else ())
     return GenerationLimits(
         allowed_modules=kinds,
         **{k: option_to_int(v) for k, v in ints.items()},

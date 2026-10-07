@@ -23,6 +23,7 @@ from .model import (
 )
 
 TIP_RGB = (245, 215, 60)
+JOINT_MARKER_RGB = (55, 55, 60)
 TIP_REACH_RGB = (40, 200, 90)
 TIP_MISS_RGB = (235, 110, 40)
 SPAWN_RGB = (90, 160, 255)
@@ -34,6 +35,7 @@ class RenderOptions:
     palm_cells: bool = True
     palm_spines: bool = False
     joint_axes: bool = True
+    joint_markers: bool = False   # small neutral spheres at the joints (instead of coloured axis arrows)
     tips: bool = True
     body_labels: bool = False
     joint_labels: bool = False
@@ -64,6 +66,7 @@ class HandRenderer:
         self.base_rgb: Dict[str, Tuple[int, int, int]] = {}
         self.cur_rgb: Dict[str, Tuple[int, int, int]] = {}
         self.arrows = None
+        self.markers: Dict[str, object] = {}
         self.tip_handles: List[object] = []
         self.tip_bodies: List[str] = []
         self.body_labels: Dict[str, object] = {}
@@ -75,7 +78,8 @@ class HandRenderer:
 
     def clear(self) -> None:
         for h in list(self.caps.values()) + list(self.cells.values()) + self.tip_handles + \
-                list(self.body_labels.values()) + list(self.joint_labels.values()) + self._others:
+                list(self.body_labels.values()) + list(self.joint_labels.values()) + self._others + \
+                list(self.markers.values()):
             try:
                 h.remove()
             except Exception:  # noqa: BLE001 - already gone
@@ -89,6 +93,7 @@ class HandRenderer:
         self.caps, self.cells, self.base_rgb, self.cur_rgb = {}, {}, {}, {}
         self.tip_handles, self.tip_bodies, self.body_labels, self.joint_labels = [], [], {}, {}
         self.arrows = self.root_axes = None
+        self.markers = {}
         self._others = []
         self.view = None
 
@@ -150,6 +155,11 @@ class HandRenderer:
             r = view.radius
             self.arrows = s.add_arrows(f"{self.root}/axes", pts, cols, shaft_radius=0.12 * r,
                                        head_radius=0.3 * r, head_length=0.5 * r)
+        if opts.joint_markers:
+            for jp in prims.joints:
+                self.markers[jp.name] = s.add_icosphere(
+                    f"{self.root}/joint/{jp.name}", radius=1.12 * view.radius, color=opts.tint or JOINT_MARKER_RGB,
+                    position=jp.position, subdivisions=1)
         if opts.tips:
             for i, t in enumerate(prims.tips):
                 h = s.add_icosphere(f"{self.root}/tip/{i}", radius=0.45 * view.radius,
@@ -220,6 +230,11 @@ class HandRenderer:
         if self.arrows is not None:
             pts, _cols = self._arrow_points(prims)
             self.arrows.points = pts
+        if self.markers:
+            for jp in prims.joints:
+                h = self.markers.get(jp.name)
+                if h is not None:
+                    h.position = jp.position
         tip_pos = {t.body: t.position for t in prims.tips}
         for body, h in zip(self.tip_bodies, self.tip_handles):
             if body in tip_pos:

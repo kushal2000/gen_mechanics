@@ -53,18 +53,17 @@ def _checks() -> Tuple[Check, ...]:
     gate_mm = ge().MAX_REST_PENETRATION_M * 1000.0
     spawn_mm = load_env_modules().palm_calibration.MIN_SPAWN_HEIGHT_ABOVE_PALM_M * 1000.0
     return (
-        Check("overlap_zero", "overlap, zero pose",
-              f"No two capsules interpenetrate by more than {gate_mm:.0f} mm with every joint at 0. Deeper "
-              "starting overlaps make the physics engine push links apart violently."),
-        Check("overlap_reset", "overlap, reset pose",
-              f"No capsule overlap above {gate_mm:.0f} mm at the reset pose (every joint 35% through its range), "
-              "where every episode starts."),
-        Check("spawn_height", "spawn above palm",
-              f"Palm-up, the cube's spawn point is at least {spawn_mm:.0f} mm above the palm, so the hand holds "
-              "it against gravity. Provisional, to be reworked.", provisional=True),
-        Check("reach", "2 tips reach cube",
-              "In a random joint sweep, at least 2 fingertips come within 5 cm of the spawn point. Provisional, "
-              "to be reworked.", provisional=True),
+        Check("overlap_zero", "fingers don't overlap (open)",
+              f"With every joint at 0 (hand open), no two links interpenetrate by more than {gate_mm:.0f} mm. "
+              "Deeper starting overlaps make the physics engine push links apart violently."),
+        Check("overlap_reset", "fingers don't overlap (start pose)",
+              f"The same at the start pose of every episode (every joint 35% of the way through its range)."),
+        Check("spawn_height", "object starts above palm",
+              f"With the hand palm-up, the object's start point is at least {spawn_mm:.0f} mm above the palm, so "
+              "the hand holds it against gravity. Provisional, to be reworked.", provisional=True),
+        Check("reach", "\u22652 fingertips reach object",
+              "In a random sweep of the joints, at least 2 fingertips come within 5 cm of the object's start "
+              "point. Provisional, to be reworked.", provisional=True),
     )
 
 
