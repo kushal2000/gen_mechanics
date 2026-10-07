@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+import functools
 import math
 from dataclasses import replace
 
@@ -33,6 +34,7 @@ from hand_sampler.grammar.adapters.urdf import load_urdf
 from hand_sampler.grammar.coverage import coverage
 from hand_sampler.grammar.derive import (
     EVOLUTION_OPERATORS,
+    EVOLUTION_OPERATORS_FINE,
     VariationImpossible,
     _axis_grid_indices,
     apply_operator,
@@ -44,7 +46,7 @@ from hand_sampler.grammar.distributions import (DEG, lateral_offset_choices_m, l
                                                 palm_body_length_support_m, root_length_support_m)
 from hand_sampler.grammar.experiments import e13_representation as e13
 from hand_sampler.grammar.fk import forward_kinematics
-from hand_sampler.grammar.limits import SIMULATOR
+from hand_sampler.grammar.limits import SIMULATOR, Structure
 from hand_sampler.grammar.variants import G_FULL, G_V1, G_V3S, G_WIDE, NAMED_DISTRIBUTIONS, build_distribution
 
 
@@ -304,3 +306,103 @@ def test_the_one_grammar_contains_the_hands(hand_id):
     old = C.fidelity(model, pr.name_map, rf.root_transform(pr.root_transform),
                      derive(C.conform_to_grammar(pr.derivation, G_V1)[0]))
     assert f["max_pos_mm"] <= old["max_pos_mm"] + 1e-6
+
+
+# ---------------------------------------------------------------------------
+# The fine resolution (conform_to_grammar(..., resolution="fine"))
+# ---------------------------------------------------------------------------
+
+# Hands that miss the 5 mm / 10 deg target at the fine resolution, and why (see
+# the README): a small bend between two bones (DClaw's 2.8 deg) is not on the
+# 5 deg rest-bend grid, whose angles from straight are 0, 5, 7.1, 10, ... deg,
+# so on a long bone the next joint lands a few millimetres off. A 1 mm lateral
+# joint offset (``bend_offset``) in the fine support brings every hand inside.
+FINE_MISSES = {"dclaw", "xhand_right"}
+
+
+def _fine_on_grid(d):
+    def whole(v, unit):
+        return abs(v / unit - round(v / unit)) < 1e-6
+
+    from hand_sampler.grammar.derive import fine_axis_indices
+    hand = next(s for s in d.steps if s.path == "hand").params
+    assert whole(hand["root_length"], 0.001) and whole(hand["capsule_radius_m"], 0.001)
+    for s in d.steps:
+        p = s.params
+        if s.production in ("Digit", "PalmBody"):
+            assert whole(p["mount_frac"], 0.01)
+            assert all(whole(v, 0.001) for v in p.get("mount_offset", (0.0, 0.0)))
+            rpy = p["mount_rpy"] if s.production == "Digit" else p["direction_rpy"]
+            assert all(whole(math.degrees(a), 5.0) for a in rpy)
+        if s.production == "PalmBody":
+            assert whole(p["length"], 0.001) and fine_axis_indices(p["axis"]) is not None
+        if s.production == "Phalanx":
+            assert whole(p["length"], 0.001) and fine_axis_indices(p["module"]["axis"]) is not None
+            assert all(whole(math.degrees(a), 5.0) for a in p["bend_rpy"])
+
+
+@functools.lru_cache(maxsize=None)
+def _fine(hand_id):
+    model, pr = HANDS[hand_id]
+    out = {}
+    for res in ("coarse", "fine"):
+        cd, rep = C.conform_to_grammar(pr.derivation, GRAMMAR, SIMULATOR, resolution=res)
+        f = C.fidelity(model, pr.name_map, rep.root_transform(pr.root_transform), derive(cd))
+        out[res] = (cd, rep, f)
+    return out
+
+
+@pytest.mark.parametrize("hand_id", HAND_IDS)
+def test_fine_conform_is_in_the_fine_grammar(hand_id):
+    cd, rep, _ = _fine(hand_id)["fine"]
+    assert rep.valid, rep.error
+    cov = coverage(derive(cd), GRAMMAR, resolution="fine")
+    assert cov.in_support, cov.out_of_support
+    _fine_on_grid(cd)
+    # within the simulator limits; SVH carries two fingers on one palm joint
+    assert rep.limits.ok or (hand_id == "svh_right" and rep.limits.failing == ["max_digits_per_jointed_palm_body"])
+    assert not Structure.from_steps(cd.steps).empty_palm_bodies()          # the grammar's palm rule
+    assert not rep.conflicts, rep.conflict_features()
+
+
+@pytest.mark.parametrize("hand_id", HAND_IDS)
+def test_fine_conform_fidelity(hand_id):
+    res = _fine(hand_id)
+    f, fc = res["fine"][2], res["coarse"][2]
+    worst = max(f["max_pos_mm"], f["max_tip_mm"] or 0.0)
+    assert worst <= max(fc["max_pos_mm"], fc["max_tip_mm"] or 0.0) + 1e-6          # at least as close as coarse
+    if hand_id in FINE_MISSES:
+        assert worst <= 8.0 and f["max_axis_deg"] <= 10.0, f
+    else:
+        assert f["within_target"], f
+
+
+@pytest.mark.parametrize("hand_id", HAND_IDS)
+def test_fine_operators_act_on_fine_conformed_hands(hand_id):
+    cd, _, _ = _fine(hand_id)["fine"]
+    status = C.operator_applicability(cd, GRAMMAR, EVOLUTION_OPERATORS_FINE, limits=SIMULATOR)
+    assert all(v == "ok" for v in status.values()), status
+
+
+@pytest.mark.parametrize("name", ["GRAMMAR", "G_V3S"])
+def test_fine_conform_reproduces_grammar_hands(name):
+    """A sampled hand is on the fine grid already: conforming it at the fine
+    resolution keeps every joint where it was (to within the 1 mm lateral
+    grid, which a surface-mounted finger's offset is not on)."""
+    dist = GRAMMAR if name == "GRAMMAR" else G_V3S
+    for seed in range(15):
+        d = sample_derivation(seed, dist, limits=SIMULATOR)
+        cd, rep = C.conform_to_grammar(d, dist, exact=("radius",), resolution="fine")
+        T0, T1 = forward_kinematics(derive(d), {}), forward_kinematics(derive(cd), {})
+        assert max(float(np.linalg.norm(T0[b][:3, 3] - T1[b][:3, 3])) for b in T0) < 1.5e-3
+        m0, m1 = derive(d), derive(cd)
+        ax = {j.name: T0[j.child][:3, :3] @ np.asarray(j.axis) for j in m0.joints if j.type != "fixed"}
+        for j in m1.joints:
+            if j.name in ax:
+                assert float(np.dot(ax[j.name], T1[j.child][:3, :3] @ np.asarray(j.axis))) > math.cos(math.radians(2.0))
+
+
+def test_resolution_is_validated_by_conform():
+    _, pr = HANDS[HAND_IDS[0]]
+    with pytest.raises(ValueError):
+        C.conform_to_grammar(pr.derivation, GRAMMAR, resolution="medium")

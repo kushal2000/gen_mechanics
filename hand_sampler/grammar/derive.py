@@ -1773,8 +1773,24 @@ def _axis_grid_indices(axis: Tuple[float, float, float]) -> Tuple[int, int]:
 
 def _step_axis_value(rng, axis: Tuple[float, float, float]) -> Tuple[float, float, float]:
     """One grid step in elevation (clamped to [0, N_ELEVATION_STEPS-1]) or
-    azimuth (wrapped, since azimuth is circular), chosen at random."""
-    el_k, az_k = _axis_grid_indices(axis)
+    azimuth (wrapped, since azimuth is circular), chosen at random. An axis
+    on the fine (5 degree) grid but not the coarse one (a refined hand) moves
+    by the same 15 degrees, staying on the fine grid."""
+    try:
+        el_k, az_k = _axis_grid_indices(axis)
+    except ValueError:
+        ij = fine_axis_indices(axis)
+        if ij is None:
+            raise
+        k = int(round(ANGLE_STEP_DEG / FINE_ANGLE_STEP_DEG))
+        step_elevation = bool(rng.integers(0, 2))
+        direction = 1 if bool(rng.integers(0, 2)) else -1
+        el_k, az_k = ij
+        if step_elevation:
+            el_k = max(0, min(N_FINE_ELEVATION_STEPS - 1, el_k + k * direction))
+        else:
+            az_k = (az_k + k * direction) % N_FINE_ANGLE_STEPS
+        return fine_axis(el_k, az_k)
     step_elevation = bool(rng.integers(0, 2))
     direction = 1 if bool(rng.integers(0, 2)) else -1
     if step_elevation:
@@ -1825,6 +1841,31 @@ def _step_choice_index(rng, idx: int, n: int) -> int:
         return idx
     direction = 1 if bool(rng.integers(0, 2)) else -1
     return max(0, min(n - 1, idx + direction))
+
+
+def _uniform_step(choices: Sequence[float]) -> Optional[float]:
+    """The spacing of an evenly spaced, sorted menu (``None`` otherwise)."""
+    c = sorted(choices)
+    if len(c) < 2:
+        return None
+    d = [b - a for a, b in zip(c, c[1:])]
+    return d[0] if max(d) - min(d) < 1e-9 else None
+
+
+def _step_off_menu(rng, value: float, choices: Sequence[float], fine_unit: float) -> Optional[float]:
+    """A coarse step for a value that is on the fine grid (multiples of
+    ``fine_unit``) but not on the menu ``choices`` (a refined hand): one menu
+    spacing up or down, within the menu's span (``None`` when that leaves it,
+    the menu is uneven or the value is off the fine grid too). One draw, like
+    ``_step_choice_index``."""
+    step = _uniform_step(choices)
+    if step is None or abs(value / fine_unit - round(value / fine_unit)) > 1e-6:
+        return None
+    direction = 1 if bool(rng.integers(0, 2)) else -1
+    new = round(value + direction * step, 10)
+    if not min(choices) - 1e-9 <= new <= max(choices) + 1e-9:
+        return None
+    return new
 
 
 def _step_one_bound(rng, dist: Distribution, limits: Tuple[float, float]) -> Optional[Tuple[float, float]]:
@@ -1934,6 +1975,11 @@ def _op_step_limits(rng, dist: Distribution, derivation: Derivation,
 
 
 def _step_one_grid_angle(rng, current: float) -> float:
+    x = (current / DEG + 180.0) / ANGLE_STEP_DEG
+    if abs(x - round(x)) > 1e-6 and _fine_angle_index(current) is not None:
+        # a refined (5 degree) angle: 15 degrees from where it is
+        direction = 1 if bool(rng.integers(0, 2)) else -1
+        return _fine_turn(_fine_turn(_fine_turn(current, direction), direction), direction)
     k = int(round((current / DEG + 180.0) / ANGLE_STEP_DEG)) % N_ANGLE_STEPS
     direction = 1 if bool(rng.integers(0, 2)) else -1
     new_k = (k + direction) % N_ANGLE_STEPS
@@ -1966,7 +2012,13 @@ def _op_step_mount(rng, dist: Distribution, derivation: Derivation,
             off = list(p.get("mount_offset", (0.0, 0.0)))
             comp = int(rng.integers(0, 2))
             if off[comp] not in grid:
-                return None
+                new = _step_off_menu(rng, off[comp], grid, FINE_LENGTH_STEP_M)     # a refined (1 mm) offset
+                if new is None:
+                    return None
+                off[comp] = new
+                p["mount_offset"] = tuple(off)
+                steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+                return steps
             ci = grid.index(off[comp])
             new_ci = _step_choice_index(rng, ci, len(grid))
             if new_ci == ci:
@@ -1980,6 +2032,13 @@ def _op_step_mount(rng, dist: Distribution, derivation: Derivation,
         step_frac = bool(rng.integers(0, 2))
     if step_frac:
         choices = list(dist.mount_frac_choices)
+        if p["mount_frac"] not in choices and len(choices) > 1:
+            new = _step_off_menu(rng, float(p["mount_frac"]), choices, FINE_MOUNT_FRAC_STEP)   # a refined (1%) mount
+            if new is None:
+                return None
+            p["mount_frac"] = new
+            steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+            return steps
         if p["mount_frac"] not in choices or len(choices) <= 1:
             return None
         ci = choices.index(p["mount_frac"])
@@ -2042,6 +2101,14 @@ def _op_step_root_length(rng, dist: Distribution, derivation: Derivation,
     n = int(round((hi - lo) / grid))
     cur = hand.params["root_length"]
     ci = int(round((cur - lo) / grid))
+    if abs(cur - (lo + ci * grid)) > 1e-9 and lo - 1e-9 <= cur <= hi + 1e-9:
+        # a refined length off the coarse grid: one coarse step from where it is
+        direction = 1 if bool(rng.integers(0, 2)) else -1
+        new = round(cur + direction * grid, 10)
+        if not lo - 1e-9 <= new <= hi + 1e-9:
+            return None
+        steps[hand_idx] = DerivationStep(path="hand", production="Hand", params={**hand.params, "root_length": new})
+        return steps
     ci = max(0, min(n, ci))
     new_ci = _step_choice_index(rng, ci, n + 1)
     if new_ci == ci:
@@ -2064,6 +2131,12 @@ def _op_step_radius(rng, dist: Distribution, derivation: Derivation,
     hand = steps[hand_idx]
     choices = sorted(dist.capsule_radius_choices_m)
     cur = hand.params["capsule_radius_m"]
+    if cur not in choices and len(choices) > 1 and choices[0] < cur < choices[-1]:
+        # a refined radius between menu values: to the menu value above or below
+        up = bool(rng.integers(0, 2))
+        new = min(c for c in choices if c > cur) if up else max(c for c in choices if c < cur)
+        steps[hand_idx] = DerivationStep(path="hand", production="Hand", params={**hand.params, "capsule_radius_m": new})
+        return steps
     if cur not in choices or len(choices) <= 1:
         return None
     ci = choices.index(cur)
@@ -2110,6 +2183,14 @@ def _op_step_bend_rpy(rng, dist: Distribution, derivation: Derivation,
     if dist.bend_support_rpy_choices_rad:
         choices = tuple(choices) + tuple(dist.bend_support_rpy_choices_rad)   # support-only bends
     grid = _bend_component_grid(choices, comp)
+    if len(grid) > 1 and bend_rpy[comp] not in grid and grid[0] < bend_rpy[comp] < grid[-1]:
+        new = _step_off_menu(rng, bend_rpy[comp] / DEG, [g / DEG for g in grid], FINE_ANGLE_STEP_DEG)  # a refined bend
+        if new is None:
+            return None
+        bend_rpy[comp] = new * DEG
+        p["bend_rpy"] = tuple(bend_rpy)
+        steps[idx] = DerivationStep(path=s.path, production=s.production, params=p)
+        return steps
     if len(grid) <= 1 or bend_rpy[comp] not in grid:
         return None
     ci = grid.index(bend_rpy[comp])

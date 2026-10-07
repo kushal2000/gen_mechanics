@@ -42,6 +42,15 @@ A hand the grammar sampled conforms to itself exactly (for variants without
 a bend on a digit's first link; with one, the mount and that bend are chosen
 by a bounded joint search).
 
+``resolution="fine"`` snaps onto the fine grid instead (the refinement stage,
+``distributions.FINE_*``): lengths on 1 mm within the support ranges (0 mm
+bones included), mount positions on 1% of the host, lateral offsets and the
+capsule radius on 1 mm, axes, orientations and rest bends on 5 degrees (a
+bend within the span of the coarse bend support), and, for a variant whose
+joint ranges are a menu, range ends on 5 degrees. The fine grid contains the
+coarse one, so a hand conformed at the coarse resolution is also on the fine
+grid; the fine conform is at least as close to the real hand.
+
 The report lists how far each kind of parameter moved and every RULE
 CONFLICT: a feature the real hand needs that the variant's rules forbid
 (a zero-length link between co-located joints, a module kind the variant
@@ -62,10 +71,12 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..derive import Derivation, DerivationStep, VariationImpossible, derive, vary
-from ..distributions import (ANGLE_STEP_DEG, DEG, N_ANGLE_STEPS, N_ELEVATION_STEPS, Distribution,
-                             lateral_offset_choices_m, link_length_support_m, palm_body_length_support_m,
-                             root_length_support_m)
+from ..derive import (Derivation, DerivationStep, VariationImpossible, derive, fine_axis, fine_bend_component_grid,
+                      vary)
+from ..distributions import (ANGLE_STEP_DEG, DEG, FINE_ANGLE_STEP_DEG, FINE_LENGTH_STEP_M, FINE_MOUNT_FRAC_STEP,
+                             N_ANGLE_STEPS, N_ELEVATION_STEPS, N_FINE_ANGLE_STEPS, N_FINE_ELEVATION_STEPS,
+                             RESOLUTIONS, Distribution, lateral_offset_choices_m, link_length_support_m,
+                             palm_body_length_support_m, root_length_support_m)
 from ..fk import forward_kinematics, matrix_to_rpy, pose_to_matrix, rpy_to_matrix
 from ..kinematics import MOVABLE_TYPES, KinematicModel, ModelError
 from ..limits import GenerationLimits, LimitReport, check as check_limits
@@ -145,6 +156,202 @@ def snap_axis(axis: Sequence[float], band: Optional[Tuple[float, float]] = None
     return cands[k], math.acos(max(-1.0, min(1.0, dots[k])))
 
 
+# ---- the fine grid -----------------------------------------------------------
+
+_FINE_AXES: Optional[np.ndarray] = None
+
+
+def snap_axis_fine(axis: Sequence[float]) -> Tuple[Tuple[float, float, float], float]:
+    """Nearest axis on the 5 degree spherical grid; (axis, error rad)."""
+    global _FINE_AXES
+    if _FINE_AXES is None:
+        _FINE_AXES = np.asarray([fine_axis(e, a) for e in range(N_FINE_ELEVATION_STEPS)
+                                 for a in range(N_FINE_ANGLE_STEPS)])
+    a = np.asarray(axis, dtype=float)
+    a = a / max(np.linalg.norm(a), 1e-12)
+    dots = _FINE_AXES @ a
+    k = int(np.argmax(dots))
+    return tuple(float(v) for v in _FINE_AXES[k]), math.acos(max(-1.0, min(1.0, float(dots[k]))))
+
+
+def _wrap_deg(d: float) -> float:
+    return (d + 180.0) % 360.0 - 180.0
+
+
+def snap_rpy_fine(R: np.ndarray, box: Optional[Sequence[Sequence[float]]] = None
+                  ) -> Tuple[Tuple[float, float, float], float]:
+    """Nearest rotation whose roll, pitch and yaw are multiples of 5 degrees
+    (each within ``box[i]``'s values in radians when given, e.g. a rest
+    bend's ``fine_bend_component_grid``); (triple, error rad). A local search
+    around both roll/pitch/yaw decompositions of ``R``, or, for a small box,
+    an exhaustive one."""
+    R = np.asarray(R, dtype=float)
+    step = FINE_ANGLE_STEP_DEG
+    if box is not None and np.prod([len(b) for b in box]) <= 20000:
+        triples = [(r, p, y) for r in box[0] for p in box[1] for y in box[2]]
+        mats = np.stack([rpy_to_matrix(t) for t in triples])
+        tr = np.einsum("kij,ij->k", mats, R)
+        k = int(np.argmax(tr))
+        return tuple(float(v) for v in triples[k]), _rot_angle(mats[k], R)
+    allowed = None
+    if box is not None:
+        allowed = [{int(round(math.degrees(v) / step)) for v in b} for b in box]
+    r, p, y = (math.degrees(v) for v in matrix_to_rpy(R))
+    best, best_err = None, float("inf")
+    for base in ((r, p, y), (r + 180.0, 180.0 - p, y + 180.0)):
+        ks = []
+        for i, v in enumerate(base):
+            v = _wrap_deg(v)
+            k0 = int(round(v / step))
+            opts = []
+            for dk in (-1, 0, 1):
+                k = int(round(_wrap_deg((k0 + dk) * step) / step))
+                if allowed is None or k in allowed[i]:
+                    opts.append(k)
+            ks.append(opts)
+        for kr in ks[0]:
+            for kp in ks[1]:
+                for ky in ks[2]:
+                    t = (kr * step * DEG, kp * step * DEG, ky * step * DEG)
+                    e = _rot_angle(rpy_to_matrix(t), R)
+                    if e < best_err - 1e-12:
+                        best, best_err = t, e
+    if best is None:                      # nothing of the box near either decomposition
+        return snap_rpy_fine(R, [b[:: max(1, len(b) // 24)] for b in box])
+    return best, best_err
+
+
+def _rpy_matrices(rpy: np.ndarray) -> np.ndarray:
+    """``rpy_to_matrix`` for an (n, 3) array: R = Rz(yaw) Ry(pitch) Rx(roll)."""
+    r, p, y = rpy[:, 0], rpy[:, 1], rpy[:, 2]
+    cr, sr, cp, sp, cy, sy = np.cos(r), np.sin(r), np.cos(p), np.sin(p), np.cos(y), np.sin(y)
+    out = np.empty((len(rpy), 3, 3))
+    out[:, 0, 0] = cy * cp
+    out[:, 0, 1] = cy * sp * sr - sy * cr
+    out[:, 0, 2] = cy * sp * cr + sy * sr
+    out[:, 1, 0] = sy * cp
+    out[:, 1, 1] = sy * sp * sr + cy * cr
+    out[:, 1, 2] = sy * sp * cr - cy * sr
+    out[:, 2, 0] = -sp
+    out[:, 2, 1] = cp * sr
+    out[:, 2, 2] = cp * cr
+    return out
+
+
+def _nearest_fine_axes(local: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """For an (n, 3) array of unit vectors, the nearest axis of the 5 degree
+    spherical grid (searching the 3 x 3 grid cells around each) and the
+    angle to it."""
+    step = FINE_ANGLE_STEP_DEG * DEG
+    el = np.arccos(np.clip(local[:, 2], -1.0, 1.0))
+    az = np.arctan2(local[:, 1], local[:, 0])
+    best = np.full(len(local), -2.0)
+    best_ax = np.zeros_like(local)
+    for de in (-1, 0, 1):
+        ek = np.clip(np.round(el / step) + de, 0, N_FINE_ELEVATION_STEPS - 1)
+        for da in (-1, 0, 1):
+            ak = np.round(az / step) + da
+            e, a = ek * step, ak * step
+            cand = np.stack([np.sin(e) * np.cos(a), np.sin(e) * np.sin(a), np.cos(e)], axis=1)
+            d = np.einsum("ki,ki->k", cand, local)
+            better = d > best
+            best = np.where(better, d, best)
+            best_ax[better] = cand[better]
+    return best_ax, np.arccos(np.clip(best, -1.0, 1.0))
+
+
+def _canonical_fine_axis(v: np.ndarray) -> Tuple[float, float, float]:
+    """The exact float ``derive.fine_axis`` produces for a grid axis."""
+    el = math.acos(max(-1.0, min(1.0, float(v[2]))))
+    el_k = int(round(math.degrees(el) / FINE_ANGLE_STEP_DEG))
+    if el_k in (0, N_FINE_ELEVATION_STEPS - 1):
+        return fine_axis(el_k, N_FINE_ANGLE_STEPS // 2)
+    az_k = int(round((math.degrees(math.atan2(float(v[1]), float(v[0]))) + 180.0) / FINE_ANGLE_STEP_DEG))
+    return fine_axis(el_k, az_k % N_FINE_ANGLE_STEPS)
+
+
+def _direction(v: np.ndarray) -> Optional[np.ndarray]:
+    """``v`` normalised, or ``None`` when it is shorter than 1 mm (two joints
+    at one point: no direction to aim the link at)."""
+    n = float(np.linalg.norm(v))
+    return None if n < 1e-3 else np.asarray(v, dtype=float) / n
+
+
+_LATTICES: Dict[Any, Tuple[np.ndarray, np.ndarray]] = {}
+
+
+def _fine_lattice(box=None) -> Tuple[np.ndarray, np.ndarray]:
+    """Every roll/pitch/yaw triple on the 5 degree grid (pitch within
+    [-90, 90], which reaches every such rotation), or the product of ``box``'s
+    component values; (triples (n, 3), matrices (n, 3, 3)), cached."""
+    key = None if box is None else tuple(tuple(round(v, 12) for v in b) for b in box)
+    hit = _LATTICES.get(key)
+    if hit is None:
+        if box is None:
+            full = [k * FINE_ANGLE_STEP_DEG * DEG for k in range(-36, 36)]
+            pitch = [k * FINE_ANGLE_STEP_DEG * DEG for k in range(-18, 19)]
+            box = (full, pitch, full)
+        trip = np.stack(np.meshgrid(*[np.asarray(b, dtype=float) for b in box], indexing="ij"), -1).reshape(-1, 3)
+        hit = (trip, _rpy_matrices(trip))
+        _LATTICES[key] = hit
+    return hit
+
+
+def fine_frame_and_axis(R_parent: np.ndarray, R_target: np.ndarray, axis_space: Optional[Sequence[float]],
+                        box=None, link_m: float = 0.05, lever_m: float = 0.1,
+                        z_target: Optional[np.ndarray] = None
+                        ) -> Tuple[Tuple[float, float, float], np.ndarray, Optional[Tuple[float, float, float]]]:
+    """At the fine resolution, a frame's rotation (relative to ``R_parent``, a
+    triple of multiples of 5 degrees, within ``box`` for a rest bend) and its
+    joint axis (on the 5 degree spherical grid, in that frame) are chosen
+    together, over every such rotation: turning a frame about its own link
+    (+z) moves no joint, so many rotations aim the link (nearly) right, and
+    among them one usually holds a grid axis close to the hand's. Each is
+    scored in metres: ``link_m`` x the error of its link direction (how far
+    the next joint lands from the hand's) plus ``lever_m`` (the distance to
+    the fingertip) x the angle between the nearest grid axis and the hand's
+    (``axis_space``, the axis in space; ``None`` for a frame without a joint),
+    which is roughly the fingertip error the axis error causes when the
+    joint moves a radian. The link direction is compared with ``z_target``
+    (the direction from this joint to the hand's next joint or fingertip, so
+    that a joint off the previous link's axis is still reached) or, without
+    one, ``R_target``'s +z. Returns (rpy, the new frame's rotation, the joint
+    axis in that frame)."""
+    trip, M = _fine_lattice(box)
+    zt = R_target[:, 2] if z_target is None else np.asarray(z_target, dtype=float)
+    zl = R_parent.T @ zt                                    # target link direction in the parent's frame
+    z_err = np.arccos(np.clip(M[:, :, 2] @ zl, -1.0, 1.0))
+    cost = max(link_m, 1e-3) * z_err
+    if axis_space is None:
+        # no joint: the link direction, then the closest whole rotation
+        near = np.argsort(cost)[:64]
+        rot = np.arccos(np.clip((np.einsum("kij,ij->k", M[near], R_parent.T @ R_target) - 1.0) / 2.0, -1.0, 1.0))
+        k = int(near[int(np.argmin(cost[near] + 1e-3 * rot))])
+        return tuple(float(v) for v in trip[k]), R_parent @ M[k], None
+    near = np.argsort(cost)[:512]
+    a = np.asarray(axis_space, dtype=float)
+    a = R_parent.T @ (a / max(np.linalg.norm(a), 1e-12))     # the hand's axis in the parent's frame
+    local = np.einsum("kji,j->ki", M[near], a)              # ... in each candidate frame
+    best_ax, ax_err = _nearest_fine_axes(local)
+    total = cost[near] + max(lever_m, 1e-3) * ax_err
+    j = int(np.argmin(total))
+    k = int(near[j])
+    return tuple(float(v) for v in trip[k]), R_parent @ M[k], _canonical_fine_axis(best_ax[j])
+
+
+def _snap_frac_fine(local_z: float, L: float) -> float:
+    if L <= 1e-12:
+        return 0.0
+    k = int(round(local_z / (FINE_MOUNT_FRAC_STEP * L)))
+    return round(max(0, min(int(round(1.0 / FINE_MOUNT_FRAC_STEP)), k)) * FINE_MOUNT_FRAC_STEP, 10)
+
+
+def _snap_mm(v: float, limit: float) -> float:
+    k = int(round(v / FINE_LENGTH_STEP_M))
+    n = int(math.floor(limit / FINE_LENGTH_STEP_M + 1e-9))
+    return round(max(-n, min(n, k)) * FINE_LENGTH_STEP_M, 10)
+
+
 def _snap_length(v: float, rng: Tuple[float, float], grid: float) -> float:
     lo, hi = rng
     n = int(round((hi - lo) / grid))
@@ -168,7 +375,16 @@ def _nearest_limits(lim: Sequence[float], choices_deg, scale: float) -> Tuple[Tu
     return best, err
 
 
-def _snap_revolute_limits(lim: Sequence[float], dist: Distribution) -> Tuple[Tuple[float, float], float]:
+def _snap_revolute_limits(lim: Sequence[float], dist: Distribution,
+                          fine: bool = False) -> Tuple[Tuple[float, float], float]:
+    if fine and not (dist.limits_continuous or dist.limits_support_continuous):
+        # Fine: both ends on 5 degrees inside the variant's limit range.
+        lo_r, hi_r = dist.revolute_limit_range_deg
+        step = FINE_ANGLE_STEP_DEG
+        lo = min(hi_r - step, max(lo_r, step * round(math.degrees(lim[0]) / step)))
+        hi = max(lo + step, min(hi_r, step * round(math.degrees(lim[1]) / step)))
+        lo, hi = lo * DEG, hi * DEG
+        return (lo, hi), max(abs(lo - lim[0]), abs(hi - lim[1]))
     if dist.limits_continuous or dist.limits_support_continuous:
         # A continuous-limit variant draws any (lo, hi) inside its range (and
         # ``step_limits`` moves one bound by ``limit_step_deg``), so the
@@ -250,6 +466,17 @@ def _snap_bend_matrix(R: np.ndarray, off: Sequence[float], dist: Distribution, f
     return best[0], best[1], best_errs
 
 
+def _snap_bend_fine(R: np.ndarray, off: Sequence[float], dist: Distribution, box):
+    """Fine counterpart of ``_snap_bend_matrix``: the rest bend nearest to
+    ``R`` with every component a multiple of 5 degrees within ``box`` (the
+    bend support's span), and the nearest offset of the variant's offset
+    menu; returns (rpy, offset, (angle error rad, offset error m))."""
+    rpy, ea = snap_rpy_fine(R, box)
+    offs = [(0.0, 0.0)] + [tuple(o) for o in dist.bend_offset_choices_m]
+    o = min(offs, key=lambda c: math.hypot(c[0] - off[0], c[1] - off[1]))
+    return rpy, (float(o[0]), float(o[1])), (ea, math.hypot(o[0] - off[0], o[1] - off[1]))
+
+
 # --------------------------------------------------------------------------
 # Report
 # --------------------------------------------------------------------------
@@ -319,13 +546,16 @@ CONFLICT_TEXT = {
 
 
 def _choose_host_length(L0: float, axial: Sequence[float], rng: Tuple[float, float], grid: float,
-                        fracs: Sequence[float]) -> float:
+                        fracs: Sequence[float], fine: bool = False) -> float:
     """The grid length for a host whose children sit at ``axial`` positions
     along it, minimising their squared distance to the nearest allowed mount
     fraction (ties: closest to the hand's own length ``L0``)."""
     best, best_cost = None, float("inf")
     for L in _length_grid(rng, grid):
-        cost = sum(min((f * L - a) ** 2 for f in fracs) for a in axial) + 1e-3 * (L - L0) ** 2
+        if fine:
+            cost = sum((_snap_frac_fine(a, L) * L - a) ** 2 for a in axial) + 1e-3 * (L - L0) ** 2
+        else:
+            cost = sum(min((f * L - a) ** 2 for f in fracs) for a in axial) + 1e-3 * (L - L0) ** 2
         if cost < best_cost - 1e-15:
             best, best_cost = L, cost
     return best
@@ -363,7 +593,7 @@ PARAMETER_CLASSES: Tuple[str, ...] = ("lengths", "mounts", "lateral", "rotations
 
 def conform_to_grammar(derivation: Derivation, dist: Distribution,
                        limits: Optional[GenerationLimits] = None,
-                       exact: Sequence[str] = ()) -> Tuple[Derivation, ConformReport]:
+                       exact: Sequence[str] = (), resolution: str = "coarse") -> Tuple[Derivation, ConformReport]:
     """``derivation`` (typically ``project_to_derivation(...).derivation``)
     with every parameter snapped onto ``dist``'s discretisation, plus a
     report (see the module docstring). The structure is unchanged, so the
@@ -383,15 +613,36 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
     (``PARAMETER_CLASSES``) to set to the hand's exact value instead of a grid
     value, to attribute the fidelity loss to each class. Sampling priors that
     only choose among grid values (V2/V2s mount spacing, the opposition
-    prior) are not imposed; the axis elevation band and the bend menu are."""
+    prior) are not imposed; the axis elevation band and the bend menu are.
+
+    ``resolution``: ``"coarse"`` (the grammar's sampling grids) or ``"fine"``
+    (the refinement grid, see the module docstring)."""
+    if resolution not in RESOLUTIONS:
+        raise ValueError(f"resolution must be one of {RESOLUTIONS}, got {resolution!r}")
+    fine = resolution == "fine"
     exact = set(exact)
     unknown = exact - set(PARAMETER_CLASSES)
     if unknown:
         raise ValueError(f"unknown parameter class(es) {sorted(unknown)}")
     rep = ConformReport()
     steps = list(derivation.steps)
-    grid = dist.link_length_grid_m
+    grid = FINE_LENGTH_STEP_M if fine else dist.link_length_grid_m
     fracs = sorted(set(dist.mount_frac_choices))
+    if fine:
+        fracs = [round(k * FINE_MOUNT_FRAC_STEP, 10) for k in range(int(round(1 / FINE_MOUNT_FRAC_STEP)) + 1)]
+    radius_choices = list(dist.capsule_radius_choices_m)
+    if fine:
+        r_lo, r_hi = min(radius_choices), max(radius_choices)
+        radius_choices = [round(r_lo + k * FINE_LENGTH_STEP_M, 10)
+                          for k in range(int(round((r_hi - r_lo) / FINE_LENGTH_STEP_M)) + 1)]
+    bend_box = [fine_bend_component_grid(dist, c) for c in range(3)] if fine else None
+    # Frames may turn freely about their link (fine_frame_and_axis) only when
+    # the bends after them can take any rotation (the one grammar's bend
+    # support); with a restricted bend menu (e.g. pitch-only curls) the next
+    # bend could not undo the turn, so each frame snaps to its nearest grid
+    # rotation instead.
+    free_roll = fine and [len(b) for b in bend_box] == [N_FINE_ANGLE_STEPS, N_FINE_ELEVATION_STEPS,
+                                                        N_FINE_ANGLE_STEPS]
     lrange, prange = link_length_support_m(dist), root_length_support_m(dist)
     bodyrange = palm_body_length_support_m(dist)
     band = dist.digit_axis_elevation_band_deg
@@ -444,7 +695,7 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
     # ---- capsule radius ------------------------------------------------------------------
     rep.radius_hint_m = _radius_hint(T0, steps)
     target_r = rep.radius_hint_m if rep.radius_hint_m is not None else hand["capsule_radius_m"]
-    radius = float(min(dist.capsule_radius_choices_m, key=lambda r: (abs(r - target_r), r)))
+    radius = float(min(radius_choices, key=lambda r: (abs(r - target_r), r)))
     if "radius" in exact:
         radius = float(hand["capsule_radius_m"])
     hand["capsule_radius_m"] = radius
@@ -464,7 +715,7 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
         axial = [float((np.linalg.inv(T[host]) @ T0[child_body[id(steps[i])]])[2, 3]) for i in children.get(host, [])]
         if "lengths" in exact:
             return L0
-        L = _choose_host_length(L0, axial, rng_m, grid, fracs)
+        L = _choose_host_length(L0, axial, rng_m, grid, fracs, fine)
         rep.bump("length_mm", abs(L - L0) * 1000)
         if L0 < 1e-3 and rng_m[0] > 1e-9:
             rep.conflicts.append(RuleConflict("zero_length_palm", host, f"{L0 * 1000:.1f} mm -> {L * 1000:.0f} mm"))
@@ -476,7 +727,7 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
         L = host_len[host]
         if "mounts" in exact:
             return (float(local[2] / L) if L > 1e-9 else 0.0), local
-        f = min(fracs, key=lambda f: (abs(f * L - local[2]), f))
+        f = _snap_frac_fine(float(local[2]), L) if fine else min(fracs, key=lambda f: (abs(f * L - local[2]), f))
         rep.bump("mount_axial_mm", abs(f * L - local[2]) * 1000)
         if local[2] < -CONFLICT_MM / 1000 or local[2] > L + CONFLICT_MM / 1000:
             rep.conflicts.append(RuleConflict("mount_off_segment", path,
@@ -487,6 +738,8 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
         rel = R_parent.T @ R_target
         if "rotations" in exact:
             rpy = matrix_to_rpy(rel)
+        elif fine:
+            rpy, _ = snap_rpy_fine(rel)
         else:
             rpy, _ = snap_rpy(matrix_to_rpy(rel))
         return tuple(float(v) for v in rpy), R_parent @ rpy_to_matrix(rpy)
@@ -495,7 +748,7 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
         a_local = R_new.T @ (R_orig @ np.asarray(a_orig, dtype=float))
         if "axes" in exact:
             return tuple(float(v) for v in a_local / np.linalg.norm(a_local))
-        ax, e = snap_axis(a_local, band if use_band else None)
+        ax, e = snap_axis_fine(a_local) if fine else snap_axis(a_local, band if use_band else None)
         if use_band and band is not None:
             _, free_e = snap_axis(a_local)
             if math.degrees(e) > math.degrees(free_e) + CONFLICT_DEG:
@@ -524,7 +777,9 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
             if "lateral" in exact:
                 p["mount_offset"] = (float(local[0]), float(local[1]))
             else:
-                if dist.mount_lateral_grid_m is not None:
+                if dist.mount_lateral_grid_m is not None and fine:
+                    p["mount_offset"] = tuple(_snap_mm(float(v), dist.mount_lateral_max_m) for v in local[:2])
+                elif dist.mount_lateral_grid_m is not None:
                     grid_xy = lateral_offset_choices_m(dist)
                     p["mount_offset"] = tuple(min(grid_xy, key=lambda g: abs(g - float(v))) for v in local[:2])
                 else:
@@ -537,14 +792,27 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
                                                       f"{lat_mm:.1f} mm off-axis, {lost_mm:.1f} mm lost"))
             off = p.get("mount_offset", (0.0, 0.0))
             origin = T[parent] @ _trans(off[0], off[1], f * host_len[parent])
-            rpy, R_new = rotation(origin[:3, :3], T0[name][:3, :3])
+            fine_axis_local = None
+            if free_roll and not {"rotations", "axes"} & exact:
+                a_space = T0[name][:3, :3] @ np.asarray(steps[i].params["axis"], dtype=float)
+                rpy, R_new, fine_axis_local = fine_frame_and_axis(origin[:3, :3], T0[name][:3, :3], a_space)
+            else:
+                rpy, R_new = rotation(origin[:3, :3], T0[name][:3, :3])
             p["direction_rpy"] = rpy
             T[name] = _trans(*origin[:3, 3]) @ _rot4(R_new)
-            rep.bump("angle_deg", math.degrees(_rot_angle(R_new, T0[name][:3, :3])))
-            p["axis"] = axis_for(R_new, T0[name][:3, :3], steps[i].params["axis"], False, f"{name}_j")
+            if fine_axis_local is not None:
+                rep.bump("angle_deg", math.degrees(_angle_between(R_new[:, 2], T0[name][:3, 2])))
+            else:
+                rep.bump("angle_deg", math.degrees(_rot_angle(R_new, T0[name][:3, :3])))
+            if fine_axis_local is not None:
+                a_true = R_new.T @ (T0[name][:3, :3] @ np.asarray(steps[i].params["axis"], dtype=float))
+                rep.bump("axis_deg", math.degrees(_angle_between(a_true, np.asarray(fine_axis_local))))
+                p["axis"] = fine_axis_local
+            else:
+                p["axis"] = axis_for(R_new, T0[name][:3, :3], steps[i].params["axis"], False, f"{name}_j")
             if p["has_joint"] and "limits" not in exact:
-                if dist.limits_support_continuous:
-                    new_lim, e = _snap_revolute_limits(p["limits"], dist)
+                if dist.limits_support_continuous or fine:
+                    new_lim, e = _snap_revolute_limits(p["limits"], dist, fine)
                 else:
                     new_lim, e = _nearest_limits(p["limits"], dist.palm_joint_limit_choices_deg, DEG)
                 if math.degrees(e) > CONFLICT_DEG:
@@ -571,7 +839,7 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
             raise ValueError("a digit's mount is never created")
         for i in ready:
             _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len, mount_point, rotation,
-                           axis_for, radius, lrange, grid)
+                           axis_for, radius, lrange, grid, bend_box, free_roll)
         digit_idx = [i for i in digit_idx if i not in ready]
 
     conformed = Derivation(seed=derivation.seed, grammar_version=derivation.grammar_version, steps=tuple(steps),
@@ -587,7 +855,8 @@ def conform_to_grammar(derivation: Derivation, dist: Distribution,
 
 
 def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len, mount_point, rotation, axis_for,
-                   radius, lrange, grid) -> None:
+                   radius, lrange, grid, bend_box=None, free_roll: bool = False) -> None:
+    fine = bend_box is not None
     p = dict(steps[i].params)
     did, host = p["digit_id"], p["mount"]
     b0 = f"d{did}p1"
@@ -599,6 +868,8 @@ def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len,
         not dist.mount_on_host_surface or not dist.mount_lateral_sampled)
     if "lateral" in exact:
         p["mount_offset"] = (float(lateral[0]), float(lateral[1]))
+    elif lateral_support and fine:
+        p["mount_offset"] = tuple(_snap_mm(float(v), dist.mount_lateral_max_m) for v in lateral)
     elif lateral_support:
         grid_xy = lateral_offset_choices_m(dist)
         p["mount_offset"] = tuple(min(grid_xy, key=lambda g: abs(g - float(v))) for v in lateral)
@@ -617,10 +888,39 @@ def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len,
     # (zero for most variants) for whatever rotation and lateral offset is left
     q0 = dict(steps[phalanges[did][0]].params)
     R_target = T0[b0][:3, :3]
-    mount_rpy, R_mount = rotation(T[host][:3, :3], R_target)
+    fine_joint = free_roll and not {"rotations", "axes", "bends"} & exact
+
+    def reach_to_tip(k: int) -> float:
+        """The hand's own distance from joint k of this digit to its fingertip
+        (the lever that turns an axis error into fingertip error)."""
+        last = f"d{did}p{p['phalanx_count']}"
+        end = tip0[last][:3, 3] if last in tip0 else T0[last][:3, 3]
+        return float(np.linalg.norm(end - T0[f"d{did}p{k + 1}"][:3, 3]))
+
+    fine_axes: Dict[int, Tuple[float, float, float]] = {}
+    if fine_joint:
+        a_space = R_target @ np.asarray(q0["module"]["axis"], dtype=float)
+        n_ph = p["phalanx_count"]
+        nxt = T0[f"d{did}p2"][:3, 3] if n_ph > 1 else tip0[b0][:3, 3]
+        off0 = p.get("mount_offset", (0.0, 0.0))
+        origin = (T[host] @ _trans(off0[0], off0[1], f * host_len[host]))[:3, 3]
+        mount_rpy, R_mount, fine_axes[0] = fine_frame_and_axis(T[host][:3, :3], R_target, a_space, None,
+                                                               float(np.linalg.norm(nxt - origin)),
+                                                               reach_to_tip(0), _direction(nxt - origin))
+    else:
+        mount_rpy, R_mount = rotation(T[host][:3, :3], R_target)
     want_off = np.zeros(2) if "lateral" in exact else residual
-    br, br_off, (ea, eo) = _snap_bend_matrix(R_mount.T @ R_target, want_off, dist, first=True)
-    if "rotations" not in exact and len(_bend_support(dist, True)) > 1 and math.degrees(ea) > 1e-6:
+    if fine_joint:
+        offs = [(0.0, 0.0)] + [tuple(o) for o in dist.bend_offset_choices_m]
+        o = min(offs, key=lambda c: math.hypot(c[0] - want_off[0], c[1] - want_off[1]))
+        br, br_off = (0.0, 0.0, 0.0), (float(o[0]), float(o[1]))
+        ea, eo = 0.0, math.hypot(o[0] - want_off[0], o[1] - want_off[1])
+    elif fine:
+        br, br_off, (ea, eo) = _snap_bend_fine(R_mount.T @ R_target, want_off, dist, bend_box)
+    else:
+        br, br_off, (ea, eo) = _snap_bend_matrix(R_mount.T @ R_target, want_off, dist, first=True)
+    if (not fine and "rotations" not in exact and len(_bend_support(dist, True)) > 1
+            and math.degrees(ea) > 1e-6):
         # The digit's first link may also bend: its orientation is
         # R(mount) @ R(bend), so search the mounts near the target jointly
         # with the bend (a grammar hand is then reproduced exactly).
@@ -668,7 +968,21 @@ def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len,
             if "bends" in exact:
                 br, br_off, ea = tuple(float(v) for v in matrix_to_rpy(Rrel)), (float(want[0]), float(want[1])), 0.0
             else:
-                br, br_off, (ea, _) = _snap_bend_matrix(Rrel, want, dist, first=False)
+                if fine_joint:
+                    a_space = T0[body][:3, :3] @ np.asarray(q["module"]["axis"], dtype=float)
+                    _, br_off, _ = _snap_bend_fine(np.eye(3), want, dist, [[0.0]] * 3)
+                    origin = (prev @ _trans(br_off[0], br_off[1], L_prev))[:3, 3]
+                    nxt = T0[f"d{did}p{k + 2}"][:3, 3] if k < n - 1 else tip0[body][:3, 3]
+                    zdir = _direction(nxt - origin)
+                    br, R_new, fine_axes[k] = fine_frame_and_axis(
+                        prev[:3, :3], T0[body][:3, :3], a_space, bend_box,
+                        float(np.linalg.norm(nxt - origin)), reach_to_tip(k), zdir)
+                    # the frame may turn freely about its link: judge the link direction
+                    ea = _angle_between(R_new[:, 2], T0[body][:3, 2] if zdir is None else zdir)
+                elif fine:
+                    br, br_off, (ea, _) = _snap_bend_fine(Rrel, want, dist, bend_box)
+                else:
+                    br, br_off, (ea, _) = _snap_bend_matrix(Rrel, want, dist, first=False)
                 orig_bend = math.degrees(_rot_angle(np.eye(3), T0[f"d{did}p{k}"][:3, :3].T @ T0[body][:3, :3]))
                 new_bend = math.degrees(_rot_angle(np.eye(3), rpy_to_matrix(br)))
                 if math.degrees(ea) > CONFLICT_DEG:
@@ -680,16 +994,24 @@ def _conform_digit(i, steps, phalanges, dist, rep, exact, T, T0, tip0, host_len,
             frame[:3, :3] = prev[:3, :3] @ rpy_to_matrix(br)
             frames.append(frame)
         cur = frames[k]
-        rep.bump("angle_deg", math.degrees(_rot_angle(cur[:3, :3], T0[body][:3, :3])))
+        if fine_joint:          # frames turn freely about their link at the fine resolution
+            rep.bump("angle_deg", math.degrees(_angle_between(cur[:3, 2], T0[body][:3, 2])))
+        else:
+            rep.bump("angle_deg", math.degrees(_rot_angle(cur[:3, :3], T0[body][:3, :3])))
         rep.bump("joint_pos_mm", float(np.linalg.norm(cur[:3, 3] - T0[body][:3, 3])) * 1000)
 
         mod = dict(q["module"])
         # The digit-axis elevation band (V3/V3s) only shapes sampling;
         # step_axis moves axes out of it, so it is not part of the support.
-        mod["axis"] = axis_for(cur[:3, :3], T0[body][:3, :3], mod["axis"], False, f"{body}_j")
+        if k in fine_axes:
+            a_true = cur[:3, :3].T @ (T0[body][:3, :3] @ np.asarray(mod["axis"], dtype=float))
+            rep.bump("axis_deg", math.degrees(_angle_between(a_true, np.asarray(fine_axes[k]))))
+            mod["axis"] = fine_axes[k]
+        else:
+            mod["axis"] = axis_for(cur[:3, :3], T0[body][:3, :3], mod["axis"], False, f"{body}_j")
         if "limits" not in exact:
             if mod["kind"] == "R":
-                new_lim, e = _snap_revolute_limits(mod["limits"], dist)
+                new_lim, e = _snap_revolute_limits(mod["limits"], dist, fine)
                 if math.degrees(e) > CONFLICT_DEG:
                     rep.conflicts.append(RuleConflict(
                         "limits_menu", f"{body}_j", "({:.0f}, {:.0f}) deg -> ({:.0f}, {:.0f})".format(
@@ -807,5 +1129,5 @@ def operator_applicability(derivation: Derivation, dist: Distribution, operators
 
 __all__ = [
     "AXIS_TOL_DEG", "CONFLICT_TEXT", "ConformReport", "POS_TOL_MM", "RuleConflict", "conform_to_grammar",
-    "fidelity", "operator_applicability", "snap_axis", "snap_rpy",
+    "fidelity", "operator_applicability", "snap_axis", "snap_axis_fine", "snap_rpy", "snap_rpy_fine",
 ]

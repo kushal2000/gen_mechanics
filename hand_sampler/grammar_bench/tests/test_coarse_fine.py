@@ -501,3 +501,53 @@ def test_fine_chains_stay_in_the_fine_support():
 def test_resolution_is_validated():
     with pytest.raises(ValueError):
         coverage(derive(sample_derivation(0, GRAMMAR)), GRAMMAR, resolution="medium")
+
+
+COARSE_STEPS = ("step_axis", "step_mount", "step_root_length", "step_radius", "step_bend_rpy", "step_segment_length")
+
+
+def _one_coarse_unit(parent, child, op, dist):
+    a, b = _flat(parent), _flat(child)
+    changes = [(key, k, a[key][1][k], b[key][1][k]) for key in a for k in a[key][1] if a[key][1][k] != b[key][1][k]]
+    assert len(changes) == 1, (op, changes)
+    _, k, old, new = changes[0]
+    if k in ("length", "root_length"):
+        assert abs(abs(new - old) - 0.005) < 1e-9
+    elif k == "capsule_radius_m":
+        assert new in dist.capsule_radius_choices_m and abs(new - old) <= 0.002 + 1e-12
+    elif k == "mount_frac":
+        assert abs(abs(new - old) - 0.05) < 1e-9
+    elif k == "mount_offset":
+        assert sorted(abs(x - y) for x, y in zip(old, new))[1] == pytest.approx(0.005)
+    elif k in ("mount_rpy", "direction_rpy", "bend_rpy"):
+        d = sorted(_angle_diff_deg(x, y) for x, y in zip(old, new))
+        assert d[0] < 1e-9 and d[1] < 1e-9 and abs(d[2] - 15.0) < 1e-6, (op, d)
+    elif k in ("axis", "module.axis"):
+        ia, ib = fine_axis_indices(old), fine_axis_indices(new)
+        assert ib is not None
+        assert (ia[0] == ib[0] and min((ia[1] - ib[1]) % 72, (ib[1] - ia[1]) % 72) == 3) or abs(ia[0] - ib[0]) == 3 \
+            or 0 in (ia[0], ib[0]) or 36 in (ia[0], ib[0])
+    else:
+        raise AssertionError((op, k))
+
+
+def test_coarse_steps_act_on_refined_hands():
+    """A hand refined on the fine grid stays coarse-mutable: each coarse step
+    moves one parameter by one coarse unit (15 deg, 5 mm, 5%, the next radius
+    on the menu) from where it is, and keeps it on the fine grid."""
+    rng = np.random.default_rng(17)
+    seen = set()
+    for c in range(15):
+        d = sample_derivation(c, GRAMMAR, limits=SIMULATOR)
+        for _ in range(40):
+            d = vary(d, rng, GRAMMAR, operators=EVOLUTION_OPERATORS_FINE, limits=SIMULATOR)
+        for _ in range(15):
+            for op in COARSE_STEPS:
+                child = apply_operator(d, rng, GRAMMAR, op, limits=SIMULATOR)
+                if child is None:
+                    continue
+                _one_coarse_unit(d, child, op, GRAMMAR)
+                seen.add(op)
+                assert L.check(child, SIMULATOR).ok
+                assert coverage(derive(child), GRAMMAR, resolution="fine").in_support
+    assert seen == set(COARSE_STEPS)
