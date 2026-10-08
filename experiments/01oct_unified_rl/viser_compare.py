@@ -179,6 +179,7 @@ def _loop(args, conn):
         push_prob, push_now = 0.02, False
         env._random_force_prob[:] = push_prob
         push_period, k_step = 0, 0             # > 0: one push exactly every push_period control steps instead
+        prime_delay = False                     # action delay just switched on: fill its queue with the next action
         drops = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
         # Episode bookkeeping: goals in the running episode, finished episodes, goals in finished episodes.
         ep_goals, episodes, done_goals = (torch.zeros_like(drops) for _ in range(3))
@@ -205,6 +206,10 @@ def _loop(args, conn):
                     push_now = True
                 elif m["cmd"] == "push_period":
                     push_period = int(m["value"])
+                elif m["cmd"] == "action_delay":
+                    on = bool(m["value"])
+                    prime_delay = on and not dr.use_action_delay
+                    dr.use_action_delay = on
                 elif m["cmd"] == "friction":
                     # Live: the scene's own material pass re-reads these (runtime set_material_properties).
                     from isaacsimenvs.pose_reaching_6d.scene_utils.materials import apply_physx_material_properties
@@ -217,6 +222,9 @@ def _loop(args, conn):
             with torch.no_grad():
                 acts = [pl.get_normalized_action(obs["policy"], deterministic_actions=True) for pl in players]
             act = torch.stack([acts[i][i] for i in range(len(players))])     # env i <- policy i
+            if prime_delay:                     # the queue holds Lab-order actions (actions.py)
+                env._action_queue[:] = act[:, env._perm_canon_to_lab].unsqueeze(1)
+                prime_delay = False
             # The env resamples each env's push probability at reset; hold it at the slider's value.
             if push_period > 0:
                 push_now = push_now or (k_step % push_period == 0 and dr.force_scale > 0.0)

@@ -13,7 +13,7 @@ policies are compared under the same actuation (31826 trained without delay; --a
 trained). Loading restarts the worker (about a minute). Every hand has Wuji's palm, so palm_extents is the
 policy's own; no override.
 
-Per panel, live: hand friction (every hand link, fingertips included), object friction, and push force scale --
+Per panel, live: action delay on/off, hand friction (every hand link, fingertips included), object friction, and push force scale --
 the env's own pushes (randn(3) x object mass x scale, as training DR's force_scale), one every 0.3 s, 0 = off.
 Object mass (grams; set through object_density_scale = grams / the trained mass) is applied on load: PhysX masses cannot be changed at
 runtime in this build (env_cfg.py).
@@ -46,6 +46,7 @@ FINGERS = ("thumb", "index", "middle", "ring", "pinky")
 # The same actuation for every policy (worker --set, applied to the run's saved config).
 CONSISTENT = ("env.domain_randomization.use_action_delay=True", "env.domain_randomization.action_delay_max=3",
               "env.action.hand_moving_average=0.1")
+DELAY = ("on (0-3 steps)", "off")       # live; default on, as every policy runs (CONSISTENT)
 PUSH_PERIOD = 18             # control steps between pushes: 0.3 s
 CONTROL_DT = 1.0 / 60.0      # every Wuji run: sim dt 1/120 s x decimation 2 -- for the measured-rate readout
 
@@ -98,6 +99,12 @@ def trained_on(ckpt: str) -> set[str]:
     return set(MH.spec_names(ref)) if MH.is_multi_ref(ref) else {ref}
 
 
+def trained_delay(ckpt: str) -> bool:
+    from omegaconf import OmegaConf
+    cfg = OmegaConf.load(pathlib.Path(ckpt).parents[3] / "rank_0/.hydra/config.yaml")
+    return bool(cfg.env.domain_randomization.use_action_delay)
+
+
 def short(spec: str) -> str:
     side = "R" if "_right_" in spec else "L"
     tag = spec.split("uniform_handonly")[1].lstrip("_") or "full"
@@ -115,6 +122,7 @@ class Panel:
             self.dd_side = server.gui.add_dropdown("side", ("left", "right"), initial_value=side)
             self.cb = {f: server.gui.add_checkbox(f, f in kept) for f in FINGERS}
             self.dd_pol = server.gui.add_dropdown("policy", tuple(pols), initial_value=pol)
+            self.dd_delay = server.gui.add_dropdown("action delay", DELAY, initial_value=DELAY[0])
             self.s_mass = server.gui.add_number("object mass g (on load)", 0.0, min=0.0, step=1.0)
             self.s_hand_mu = server.gui.add_slider("hand friction", 0.05, 1.5, 0.05, 0.5)
             self.s_obj_mu = server.gui.add_slider("object friction", 0.05, 1.5, 0.05, 0.5)
@@ -128,6 +136,7 @@ class Panel:
         self.s_hand_mu.on_update(lambda _: self._send_physics())
         self.s_obj_mu.on_update(lambda _: self._send_physics())
         self.s_push.on_update(lambda _: self._send_physics())
+        self.dd_delay.on_update(lambda _: self._send_physics())
         self.load_requested = True
         self.b_load.on_click(lambda _: setattr(self, "load_requested", True))
         for w in (self.dd_side, self.dd_pol, *self.cb.values()):
@@ -143,6 +152,7 @@ class Panel:
         return [{"cmd": "friction", "value": {"robot_friction": mu_h, "finger_tip_friction": mu_h,
                                               "object_friction": mu_o}},
                 {"cmd": "push_period", "value": PUSH_PERIOD},
+                {"cmd": "action_delay", "value": self.dd_delay.value == DELAY[0]},
                 {"cmd": "force_scale", "value": float(self.s_push.value)}]
 
     def _send_physics(self):
@@ -154,7 +164,8 @@ class Panel:
         if self.info is None:
             return
         push = float(self.s_push.value)
-        self.md.content = (f"{self.status}\n\nobject {self.info['object_mass'] * 1000:.0f} g (trained "
+        self.md.content = (f"{self.status}  ·  action delay **{'on' if self.dd_delay.value == DELAY[0] else 'off'}**"
+                           f"\n\nobject {self.info['object_mass'] * 1000:.0f} g (trained "
                            f"{self.base_mass_g:.0f} g)  ·  friction hand "
                            f"{float(self.s_hand_mu.value):.2f}, object {float(self.s_obj_mu.value):.2f}  ·  "
                            + (f"push scale {push:.0f} every 0.3 s (~{push / 9.81:.1f} g, {push * self.info['object_mass']:.2f} N "
@@ -204,7 +215,9 @@ class Panel:
         self.stop()
         ep = re.search(r"_ep_(\d+)_", ckpt).group(1)
         held = "" if spec in trained_on(ckpt) else "  ·  **held out** (not in its training set)"
-        held += "  ·  action delay + EMA 0.1" if self.sets else "  ·  as trained"
+        held += "  ·  EMA 0.1" if self.sets else "  ·  EMA as trained"
+        if not self.sets:                           # --as-trained: the dropdown starts at the run's own setting
+            self.dd_delay.value = DELAY[0] if trained_delay(ckpt) else DELAY[1]
         self.title = f"{short(spec)}  ·  {pol} ep {ep}"
         self.dead = False
         self.md.content = f"**loading {short(spec)}** with {pol} ep {ep}{held} (Kit boots in about a minute)"
@@ -281,8 +294,9 @@ class Panel:
             n_ep = frame["episodes"][0]
             per_ep = f"{frame['done_goals'][0] / n_ep:.1f}" if n_ep else "-"
             self.md_count.content = (
-                f"**goals** {frame['goals'][0]}  ·  **drops** {frame['drops'][0]}  ·  **goals / episode** {per_ep} "
-                f"over {n_ep} finished  ·  this episode {frame['ep_goals'][0]}  ·  {self.rate:.2f}x real time")
+                f"**episodes** {n_ep}  ·  **goals** {frame['goals'][0]}  ·  **drops** {frame['drops'][0]}  ·  "
+                f"**goals / episode** {per_ep}  ·  this episode {frame['ep_goals'][0]}  ·  "
+                f"{self.rate:.2f}x real time")
         gp = frame["goal_pos"][0]
         self.label.position = (gp[0], gp[1], gp[2] + 0.09)
         self.label.text = (f"{self.title}  ·  {frame['goals'][0]} goals  ·  {frame['drops'][0]} drops"
