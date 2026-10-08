@@ -15,6 +15,9 @@ import numpy as np
 import torch
 from rl_games.common.algo_observer import AlgoObserver
 
+# logging_utils.PER_HAND_PREFIX; not imported, since that package pulls in Isaac Lab.
+PER_HAND_PREFIX = "per_hand_metric/"
+
 
 def _flatten_dict(d: dict, prefix: str = "", separator: str = "/") -> dict:
     out = {}
@@ -203,13 +206,20 @@ class EnvStatsAlgoObserver(AlgoObserver):
         self.new_finished_episodes = True
         keys = list(values)
         rows = self._gather_done_rows(values, keys, done_index_tensor, done_indices)
+        n_hands = len({k.split("/")[1] for k in keys if k.startswith(PER_HAND_PREFIX)})
         for key in keys:
+            per_hand = key.startswith(PER_HAND_PREFIX)
             if key not in self.episode_final_avg:
-                self.episode_final_avg[key] = deque([], maxlen=self.algo.games_to_track)
+                # A hand finishes 1/n_hands of the episodes, so a full games_to_track window would
+                # average it over n_hands times as many epochs as the whole-run curve (06oct's 52 hands:
+                # ~1000 epochs of lag). Its share of the window keeps every curve on the same time scale.
+                window = self.algo.games_to_track
+                if per_hand:
+                    window = max(1, window // n_hands)
+                self.episode_final_avg[key] = deque([], maxlen=window)
             row = rows[key]
-            if key.startswith("per_hand/"):
-                # NaN outside this hand's envs: keep only its own episodes, so each hand gets a full
-                # window rather than its share of everyone's.
+            if per_hand:
+                # NaN outside this hand's envs: keep only its own episodes.
                 row = [v for v in row if v == v]
             self.episode_final_avg[key].extend(row)
 
@@ -249,8 +259,8 @@ class EnvStatsAlgoObserver(AlgoObserver):
                     self.writer.add_scalar(f"episode_cumulative_max/{key}_max", np.max(values), frame)
             for key, values in self.episode_final_avg.items():
                 if values:
-                    # per_hand/* keeps its own top-level name, so it is its own wandb tab.
-                    tag = key if key.startswith("per_hand/") else f"episode_final/{key}"
+                    # per_hand_metric/<hand>/<metric> keeps its own top-level name: its own wandb section.
+                    tag = key if key.startswith(PER_HAND_PREFIX) else f"episode_final/{key}"
                     self.writer.add_scalar(tag, np.mean(values), frame)
             self.new_finished_episodes = False
 

@@ -33,8 +33,10 @@ def log_step_metrics(env) -> None:
 
 
 # Per-hand copies of these episode-final metrics in a multi-hand scene (robots/multi_hand.py), keyed
-# "per_hand/<hand>_<metric>" -- wandb files a key under the text before its first "/", so they land in
-# their own "per_hand" tab. NaN outside the hand's envs; the observer keeps each key's finite values only.
+# "per_hand_metric/<hand>/<metric>": one wandb section, panels sorted hand by hand (or one section per hand
+# with the workspace's "group by last prefix"). NaN outside the hand's envs; the observer keeps each key's
+# finite values only.
+PER_HAND_PREFIX = "per_hand_metric/"
 PER_HAND_METRICS = ("successes", "done_fall", "done_timeout")
 
 
@@ -47,8 +49,8 @@ def _per_hand(env, final: dict) -> dict:
         idx = env.scene_record.robot_design_index
         masks = env._per_hand_masks = [(s.hand_name, idx == h) for h, s in enumerate(hs.specs)]
     nan = torch.tensor(float("nan"), device=env.device)
-    return {f"per_hand/{name}_{k}": torch.where(m, final[k], nan)
+    return {f"{PER_HAND_PREFIX}{name}/{k}": torch.where(m, final[k], nan)
             for name, m in masks for k in PER_HAND_METRICS if k in final}
 
 
-__all__ = ["PER_HAND_METRICS", "log_step_metrics"]
+__all__ = ["PER_HAND_METRICS", "PER_HAND_PREFIX", "log_step_metrics"]

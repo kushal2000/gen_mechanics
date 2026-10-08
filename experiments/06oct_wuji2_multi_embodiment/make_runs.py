@@ -9,8 +9,8 @@ left), uniform dynamics like every other hand here; its palm frame is the left's
 Same RL configuration as experiments/06oct_wuji_5rads (canonical palm frame + palm_extents, friction 0.5,
 5 rad/s, the 30sep template's learner), plus the hand-target moving average 0.1 that let the full hand learn
 at 5 rad/s (wuji2_full_v5_ema0.1). 12288 envs dealt round-robin: ~236 per hand. One interactive viewer PER
-HAND every CAPTURE_VIEWER_INTERVAL epochs (train.py: interactive_viewer/<hand>), and every episode metric
-also per hand (per_hand/<hand>_<metric>). Its own wandb project.
+HAND every CAPTURE_VIEWER_INTERVAL env steps (train.py: interactive_viewer/<hand>), and every episode metric
+also per hand (per_hand_metric/<hand>/<metric>). Its own wandb project.
 
 Since 7 Oct also action delay on (the default training settings: moving average 0.1 + action delay; see
 06oct_wuji_5rads/make_runs.py), so the run is wuji2_lr_2plus_ema0.1_dact. wuji2_lr_2plus_ema0.1.sub, without
@@ -33,9 +33,11 @@ FRICTION = " env.assets.robot_friction=0.5 env.assets.finger_tip_friction=0.5 en
 CANON_OBS = OBS_LIST.replace("object_vel]", "object_vel,palm_extents]")
 HYDRA = FRICTION + " env.obs.canonical_palm_frame=true env.action.hand_moving_average=0.1"
 HYDRA += " env.domain_randomization.use_action_delay=true"      # run_rank.sh pins it false; this wins
-# 5 rad/s is what the assets carry since 6 Oct; pinned anyway. One viewer per hand x 52 hands: every 500
-# epochs rather than common.sh's 250 halves the ~280 MB of viewer HTML a 5000-epoch link would log.
-EXPORTS = "export HAND_VELOCITY_LIMIT=5.0\nexport CAPTURE_VIEWER_INTERVAL=\"${CAPTURE_VIEWER_INTERVAL:-500}\"\n"
+# 5 rad/s is what the assets carry since 6 Oct; pinned anyway. One viewer per hand x 52 hands, and the interval
+# counts ENV STEPS, not epochs (pose_viewer.py; 16 steps an epoch). 31826 ran 500: with 600-frame captures that is
+# one every 1000 steps, recording 60% of the time, 52 GPU syncs a step -- 4160 captures, and visibly slower
+# training. 10000 is 10x sparser: a capture per hand every ~625 epochs, recording 6% of the time.
+EXPORTS = "export HAND_VELOCITY_LIMIT=5.0\nexport CAPTURE_VIEWER_INTERVAL=\"${CAPTURE_VIEWER_INTERVAL:-10000}\"\n"
 RUN = "wuji2_lr_2plus_ema0.1_dact"
 
 if __name__ == "__main__":
