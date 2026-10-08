@@ -104,6 +104,7 @@ class HandSet:
     palm_center_offset: np.ndarray     # (H, 3)
     palm_keypoints: np.ndarray         # (H, 4, 3)
     hand_scale: np.ndarray             # (H,)
+    labels: tuple[str, ...] = ()       # short per-hand names for logging (hand_labels)
 
     @property
     def n_hands(self) -> int:
@@ -132,6 +133,25 @@ class HandSet:
             "fingertip_offsets": self.fingertip_offsets[i].astype(np.float32),
             "joint_valid": self.joint_valid[i],
         }
+
+
+def hand_labels(specs) -> tuple[str, ...]:
+    """Short, sortable per-hand names for wandb: <side><fingers>_<what>, e.g. L5_full, L4_no_index,
+    L3_thumb_index_middle, R2_index_middle -- so a section sorts left before right, then by finger count. A set of
+    different hands (multi:uniform) names each by its hand instead (L5_shadow, L4_allegro). Falls back to the spec's
+    hand_name if two would collide."""
+    parts = []
+    for s in specs:
+        name = s.hand_name
+        side = "R" if "_right" in name else "L"
+        base, _, tag = name.replace("_right", "").partition("_")
+        parts.append((side, s.num_fingertips, base, tag))
+    one_base = len({b for _, _, b, _ in parts}) == 1
+    labels = []
+    for side, nf, base, tag in parts:
+        what = (tag.removeprefix("only_") or "full") if one_base else "_".join(x for x in (base, tag) if x)
+        labels.append(f"{side}{nf}_{what}")
+    return tuple(labels) if len(set(labels)) == len(labels) else tuple(s.hand_name for s in specs)
 
 
 @functools.lru_cache(maxsize=None)
@@ -192,8 +212,9 @@ def hand_set(ref: str) -> HandSet:
         palm_center_offset=np.asarray([s.palm_center_offset for s in specs], np.float32),
         palm_keypoints=np.asarray([s.palm_keypoints for s in specs], np.float32),
         hand_scale=np.asarray([s.hand_scale for s in specs], np.float32),
+        labels=hand_labels(specs),
     )
 
 
-__all__ = ["HandSet", "MULTI_PREFIX", "PALM", "UNIFORM_HANDS", "hand_set", "is_multi_ref",
+__all__ = ["HandSet", "MULTI_PREFIX", "PALM", "UNIFORM_HANDS", "hand_labels", "hand_set", "is_multi_ref",
            "slot_joint", "slot_link", "slot_tip", "spec_names"]

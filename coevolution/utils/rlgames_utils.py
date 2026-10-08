@@ -15,8 +15,8 @@ import numpy as np
 import torch
 from rl_games.common.algo_observer import AlgoObserver
 
-# logging_utils.PER_HAND_PREFIX; not imported, since that package pulls in Isaac Lab.
-PER_HAND_PREFIX = "per_hand_metric/"
+# logging_utils.PER_HAND_PREFIX ("per_hand_<metric>/<hand>"); not imported, since that package pulls in Isaac Lab.
+PER_HAND_PREFIX = "per_hand_"
 
 
 def _flatten_dict(d: dict, prefix: str = "", separator: str = "/") -> dict:
@@ -259,7 +259,7 @@ class EnvStatsAlgoObserver(AlgoObserver):
                     self.writer.add_scalar(f"episode_cumulative_max/{key}_max", np.max(values), frame)
             for key, values in self.episode_final_avg.items():
                 if values:
-                    # per_hand_metric/<hand>/<metric> keeps its own top-level name: its own wandb section.
+                    # per_hand_<metric>/<hand> keeps its own top-level name: its own wandb section.
                     tag = key if key.startswith(PER_HAND_PREFIX) else f"episode_final/{key}"
                     self.writer.add_scalar(tag, np.mean(values), frame)
             self.new_finished_episodes = False

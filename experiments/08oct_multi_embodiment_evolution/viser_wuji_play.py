@@ -36,6 +36,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(WORKER.parent))
 LOGS = REPO / "debug_outputs/train_logs"
 FINGERS = ("thumb", "index", "middle", "ring", "pinky")
+CONTROL_DT = 1.0 / 60.0      # every Wuji run: sim dt 1/120 s x decimation 2 -- for the measured-rate readout
 
 
 def _multi_hand():
@@ -112,6 +113,7 @@ class Panel:
         self.child = self.conn = self.info = None
         self.urdf = self.obj = self.goal = self.label = None
         self.title, self.dead = "", False
+        self.rate, self.n_frames, self.t_rate = 0.0, 0, time.time()
 
     def _choice(self):
         kept = [f for f in FINGERS if self.cb[f].value]
@@ -210,9 +212,16 @@ class Panel:
         self.urdf.update_cfg(dict(zip(self.info["joints"], frame["q"][0])))
         self.obj.position, self.obj.wxyz = tuple(frame["obj_pos"][0]), tuple(frame["obj_quat"][0])
         self.goal.position, self.goal.wxyz = tuple(frame["goal_pos"][0]), tuple(frame["goal_quat"][0])
+        self.n_frames += len([m for m in batch if m["kind"] == "frame"])
+        now = time.time()
+        if now - self.t_rate > 2.0:                  # sim seconds per wall second, over the last ~2 s
+            self.rate = self.n_frames * CONTROL_DT / (now - self.t_rate)
+            self.n_frames, self.t_rate = 0, now
+            print(f"[wuji-play] panel {self.i + 1}: {self.rate:.2f}x real time", flush=True)
         gp = frame["goal_pos"][0]
         self.label.position = (gp[0], gp[1], gp[2] + 0.09)
-        self.label.text = f"{self.title}  ·  {frame['goals'][0]} goals  ·  {frame['drops'][0]} drops"
+        self.label.text = (f"{self.title}  ·  {frame['goals'][0]} goals  ·  {frame['drops'][0]} drops"
+                           f"  ·  {self.rate:.2f}x real time")
         return True
 
 

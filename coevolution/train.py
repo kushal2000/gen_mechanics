@@ -215,7 +215,8 @@ def main() -> None:
             hs = getattr(record, "hand_set", None)
             if hs is not None:
                 hand_idx = record.robot_design_index.tolist()
-                viewers = [(hand_idx.index(h), f"{args_cli.capture_viewer_wandb_key}/{s.hand_name}",
+                names = hs.labels or tuple(s.hand_name for s in hs.specs)     # L5_full, ... as per_hand_successes
+                viewers = [(hand_idx.index(h), f"{args_cli.capture_viewer_wandb_key}/{names[h]}",
                             Path(hydra_run_dir) / "interactive_viewer" / s.hand_name)
                            for h, s in enumerate(hs.specs)]
             else:
