@@ -6,10 +6,11 @@
 #SBATCH --mem=32000
 #SBATCH --time=08:00:00
 #SBATCH --partition=portal
-#SBATCH --nodelist=portal-compute-01
+#SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:1
 #SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/multi_embodiment_evolution/viser/wuji_play-%j.out
-# viser_wuji_play.py with its own CPUs: in the 1-core interactive shell it ran at ~0.6x real time. The log prints
+# viser_wuji_play.py with its own CPUs on an Ada node: measured 0.6x real time in the 1-core interactive shell,
+# 0.78x on portal-compute-01 (A6000, 8 CPUs), 0.96x on portal-compute-03 (6000 Ada, 8 CPUs). The log prints
 # the measured rate ("[wuji-play] panel N: <r>x real time") every 2 s once a panel is loaded.
 #   sbatch [--export=ALL,PORT=8086,PANELS=1] experiments/08oct_multi_embodiment_evolution/viser_wuji_play.sub
 #   then open http://<node>:$PORT (the node is in the log's first line)
