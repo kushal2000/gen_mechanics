@@ -121,6 +121,7 @@ class Panel:
             self.s_push = server.gui.add_slider("push force scale (1 / 0.3 s)", 0.0, 60.0, 1.0, 0.0)
             self.b_load = server.gui.add_button("load")
             self.md = server.gui.add_markdown("")
+            self.md_count = server.gui.add_markdown("")
         self.cmds: list[dict] = []
         self.base_mass_g: float | None = None   # the trained object's mass, learned from the first loaded scene
         self.density = 1.0                      # object_density_scale of the scene being loaded
@@ -135,6 +136,7 @@ class Panel:
         self.urdf = self.obj = self.goal = self.label = None
         self.title, self.dead = "", False
         self.rate, self.n_frames, self.t_rate = 0.0, 0, time.time()
+        self.t_count = 0.0
 
     def _physics_cmds(self) -> list[dict]:
         mu_h, mu_o = float(self.s_hand_mu.value), float(self.s_obj_mu.value)
@@ -187,6 +189,7 @@ class Panel:
             pass
         self.child = self.conn = self.info = None
         self.urdf = self.obj = self.goal = self.label = None
+        self.md_count.content = ""
 
     def start(self):
         self.load_requested = False
@@ -273,6 +276,13 @@ class Panel:
             self.rate = self.n_frames * CONTROL_DT / (now - self.t_rate)
             self.n_frames, self.t_rate = 0, now
             print(f"[wuji-play] panel {self.i + 1}: {self.rate:.2f}x real time", flush=True)
+        if now - self.t_count > 0.25:                # counters, a few times a second
+            self.t_count = now
+            n_ep = frame["episodes"][0]
+            per_ep = f"{frame['done_goals'][0] / n_ep:.1f}" if n_ep else "-"
+            self.md_count.content = (
+                f"**goals** {frame['goals'][0]}  ·  **drops** {frame['drops'][0]}  ·  **goals / episode** {per_ep} "
+                f"over {n_ep} finished  ·  this episode {frame['ep_goals'][0]}  ·  {self.rate:.2f}x real time")
         gp = frame["goal_pos"][0]
         self.label.position = (gp[0], gp[1], gp[2] + 0.09)
         self.label.text = (f"{self.title}  ·  {frame['goals'][0]} goals  ·  {frame['drops'][0]} drops"

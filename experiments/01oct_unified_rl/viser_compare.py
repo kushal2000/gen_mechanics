@@ -180,6 +180,8 @@ def _loop(args, conn):
         env._random_force_prob[:] = push_prob
         push_period, k_step = 0, 0             # > 0: one push exactly every push_period control steps instead
         drops = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+        # Episode bookkeeping: goals in the running episode, finished episodes, goals in finished episodes.
+        ep_goals, episodes, done_goals = (torch.zeros_like(drops) for _ in range(3))
         while True:
             while conn.poll():
                 m = conn.recv()
@@ -193,6 +195,8 @@ def _loop(args, conn):
                     obs, _ = env.reset()
                     goals.zero_()
                     drops.zero_()
+                    for c in (ep_goals, episodes, done_goals):
+                        c.zero_()
                 elif m["cmd"] == "force_scale":
                     dr.force_scale = float(m["value"])
                 elif m["cmd"] == "push_prob":
@@ -230,13 +234,21 @@ def _loop(args, conn):
             push_now = False
             goals += env._is_success.long()
             drops += env._termination_reasons["fall"].long()
+            ep_goals += env._is_success.long()
+            ended = torch.zeros_like(drops, dtype=torch.bool)
+            for v in env._termination_reasons.values():
+                ended |= v.bool()
+            episodes += ended.long()
+            done_goals += torch.where(ended, ep_goals, 0)
+            ep_goals[ended] = 0
             q = env.robot.data.joint_pos[:, env._perm_lab_to_canon]
             conn.send({"kind": "frame", "q": q.tolist(),
                        "obj_pos": (env.object.data.root_pos_w - origins).tolist(),
                        "obj_quat": env.object.data.root_quat_w.tolist(),
                        "goal_pos": (env.goal_viz.data.root_pos_w - origins).tolist(),
                        "goal_quat": env.goal_viz.data.root_quat_w.tolist(),
-                       "goals": goals.tolist(), "drops": drops.tolist()})
+                       "goals": goals.tolist(), "drops": drops.tolist(), "ep_goals": ep_goals.tolist(),
+                       "episodes": episodes.tolist(), "done_goals": done_goals.tolist()})
             t_next += float(env.step_dt) / max(speed, 1e-3)
             time.sleep(max(0.0, t_next - time.time()))
             t_next = max(t_next, time.time() - 0.1)
