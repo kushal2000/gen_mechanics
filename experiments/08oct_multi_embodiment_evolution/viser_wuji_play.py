@@ -15,7 +15,7 @@ policy's own; no override.
 
 Per panel, live: hand friction (every hand link, fingertips included), object friction, and push force scale --
 the env's own pushes (randn(3) x object mass x scale, as training DR's force_scale), one every 0.3 s, 0 = off.
-Object mass (x the trained mass, via object_density_scale) is applied on load: PhysX masses cannot be changed at
+Object mass (grams; set through object_density_scale = grams / the trained mass) is applied on load: PhysX masses cannot be changed at
 runtime in this build (env_cfg.py).
 
     .venv_isaacsim/bin/python experiments/08oct_multi_embodiment_evolution/viser_wuji_play.py --port 8085 [--panels 2]
@@ -115,13 +115,15 @@ class Panel:
             self.dd_side = server.gui.add_dropdown("side", ("left", "right"), initial_value=side)
             self.cb = {f: server.gui.add_checkbox(f, f in kept) for f in FINGERS}
             self.dd_pol = server.gui.add_dropdown("policy", tuple(pols), initial_value=pol)
-            self.s_mass = server.gui.add_slider("object mass x (on load)", 0.25, 4.0, 0.05, 1.0)
+            self.s_mass = server.gui.add_number("object mass g (on load)", 0.0, min=0.0, step=1.0)
             self.s_hand_mu = server.gui.add_slider("hand friction", 0.05, 1.5, 0.05, 0.5)
             self.s_obj_mu = server.gui.add_slider("object friction", 0.05, 1.5, 0.05, 0.5)
             self.s_push = server.gui.add_slider("push force scale (1 / 0.3 s)", 0.0, 60.0, 1.0, 0.0)
             self.b_load = server.gui.add_button("load")
             self.md = server.gui.add_markdown("")
         self.cmds: list[dict] = []
+        self.base_mass_g: float | None = None   # the trained object's mass, learned from the first loaded scene
+        self.density = 1.0                      # object_density_scale of the scene being loaded
         self.s_hand_mu.on_update(lambda _: self._send_physics())
         self.s_obj_mu.on_update(lambda _: self._send_physics())
         self.s_push.on_update(lambda _: self._send_physics())
@@ -150,7 +152,8 @@ class Panel:
         if self.info is None:
             return
         push = float(self.s_push.value)
-        self.md.content = (f"{self.status}\n\nobject {self.info['object_mass'] * 1000:.0f} g  ·  friction hand "
+        self.md.content = (f"{self.status}\n\nobject {self.info['object_mass'] * 1000:.0f} g (trained "
+                           f"{self.base_mass_g:.0f} g)  ·  friction hand "
                            f"{float(self.s_hand_mu.value):.2f}, object {float(self.s_obj_mu.value):.2f}  ·  "
                            + (f"push scale {push:.0f} every 0.3 s (~{push / 9.81:.1f} g, {push * self.info['object_mass']:.2f} N "
                               "rms per axis)"
@@ -206,7 +209,10 @@ class Panel:
         host, port = self.listener.address
         cmd = [sys.executable, str(WORKER), "--worker", "--hand", spec, "--host", host, "--wport", str(port),
                "--authkey", self.authkey.hex(), "--policy", f"{pol}={ckpt}"]
-        for kv in (*self.sets, f"env.assets.object_density_scale={float(self.s_mass.value)}"):
+        want = float(self.s_mass.value)
+        # Every run trained at object_density_scale 1; until the first scene reports its mass, load that.
+        self.density = want / self.base_mass_g if self.base_mass_g and want > 0 else 1.0
+        for kv in (*self.sets, f"env.assets.object_density_scale={self.density}"):
             cmd += ["--set", kv]
         self.child = subprocess.Popen(cmd, env={**os.environ, "OMNI_KIT_ACCEPT_EULA": "YES"})
         self.conn = self.listener.accept()
@@ -223,6 +229,9 @@ class Panel:
         self.goal = _face_cube(s, f"/p{self.i}/goal", m["cube"], opacity=0.35)
         self.label = s.scene.add_label(f"/p{self.i}/label", self.title)
         self.info = m
+        if self.base_mass_g is None:
+            self.base_mass_g = m["object_mass"] * 1000.0 / self.density
+            self.s_mass.value = round(self.base_mass_g, 1)
         self.cmds += self._physics_cmds()           # the sliders' current values, onto the fresh scene
         self._show_status()
         print(f"[wuji-play] panel {self.i + 1} ready: {self.title}", flush=True)
