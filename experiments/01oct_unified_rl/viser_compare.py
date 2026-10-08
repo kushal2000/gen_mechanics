@@ -164,7 +164,10 @@ def _loop(args, conn):
         conn.send({"kind": "ready", "urdf": str(REPO / spec.urdf_path) if spec.urdf_path else "",
                    "joints": list(spec.joint_names_canonical),
                    "base_pos": list(map(float, spec.base_pos)), "base_rot": list(map(float, spec.base_rot)),
-                   "cube": dims[0].tolist(), "hand": {"gen_sharpa": "gen-SHARPA"}.get(args.hand, NAMES.get(args.hand, args.hand)),
+                   "cube": dims[0].tolist(), "object_mass": float(env._object_mass[0, 0]),
+                   "friction": {k: float(getattr(env.cfg.assets, k))
+                                for k in ("robot_friction", "finger_tip_friction", "object_friction")},
+                   "hand": {"gen_sharpa": "gen-SHARPA"}.get(args.hand, NAMES.get(args.hand, args.hand)),
                    "labels": [f"{l}  (ep {pathlib.Path(c).name.split('_ep_')[-1].split('_')[0]})" for l, c, _ in pols]})
 
         origins = env.scene.env_origins
@@ -175,6 +178,7 @@ def _loop(args, conn):
         dr.force_scale, dr.torque_scale = 0.0, 0.0
         push_prob, push_now = 0.02, False
         env._random_force_prob[:] = push_prob
+        push_period, k_step = 0, 0             # > 0: one push exactly every push_period control steps instead
         drops = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
         while True:
             while conn.poll():
@@ -195,6 +199,14 @@ def _loop(args, conn):
                     push_prob = float(m["value"])
                 elif m["cmd"] == "push_now":
                     push_now = True
+                elif m["cmd"] == "push_period":
+                    push_period = int(m["value"])
+                elif m["cmd"] == "friction":
+                    # Live: the scene's own material pass re-reads these (runtime set_material_properties).
+                    from isaacsimenvs.pose_reaching_6d.scene_utils.materials import apply_physx_material_properties
+                    for key, val in m["value"].items():
+                        setattr(env.cfg.assets, key, float(val))
+                    apply_physx_material_properties(env)
             if not running:
                 time.sleep(0.05)
                 continue
@@ -202,7 +214,12 @@ def _loop(args, conn):
                 acts = [pl.get_normalized_action(obs["policy"], deterministic_actions=True) for pl in players]
             act = torch.stack([acts[i][i] for i in range(len(players))])     # env i <- policy i
             # The env resamples each env's push probability at reset; hold it at the slider's value.
-            env._random_force_prob[:] = 1.0 if push_now else push_prob
+            if push_period > 0:
+                push_now = push_now or (k_step % push_period == 0 and dr.force_scale > 0.0)
+                env._random_force_prob[:] = 1.0 if push_now else 0.0
+            else:
+                env._random_force_prob[:] = 1.0 if push_now else push_prob
+            k_step += 1
             if push_now and dr.force_scale == 0.0:
                 dr.force_scale, restore_scale = 50.0, True                       # a one-off ~5 g kick
             else:
