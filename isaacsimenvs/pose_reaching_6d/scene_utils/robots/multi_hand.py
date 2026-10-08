@@ -4,7 +4,8 @@ Selected by ``robot_spec = "multi:<spec>+<spec>+..."`` (registered RobotSpec nam
 reads a comma in an override as a sweep), or the shorthand
 ``"multi:uniform"`` for every uniform-dynamics commercial hand, or ``"multi:wuji2_lr_2plus"`` for every Wuji v2
 with two or more fingers, left and right (2 x 26 = 52: the full hand, 5 no_<finger>, 10 three- and 10
-two-finger only_<...>, from make_missing_fingers.py --all). Kit-free, so the network resolves the same
+two-finger only_<...>, from make_missing_fingers.py --all), or ``"multi:wuji2_lr_2to3"`` for just its two-
+and three-finger hands (2 x 20 = 40). Kit-free, so the network resolves the same
 layout as the env (``get_robot_spec`` returns :attr:`HandSet.template`).
 
 Nothing is padded in the SIMULATOR -- every hand keeps its own links and joints (a padded topology made
@@ -53,6 +54,8 @@ def _subset_tags(fingers, min_fingers: int) -> list[str]:
 
 WUJI2_LR_2PLUS = tuple(f"wuji2_{side}_uniform_handonly{t}" for side in ("left", "right")
                        for t in ["", *(f"_{g}" for g in _subset_tags(WUJI2_FINGERS, 2))])
+# The same family cut to hands with at most three fingers: 10 three- and 10 two-finger per side, 2 x 20 = 40.
+WUJI2_LR_2TO3 = tuple(n for n in WUJI2_LR_2PLUS if "_only_" in n and len(n.split("_only_")[1].split("_")) <= 3)
 
 
 def is_multi_ref(ref) -> bool:
@@ -65,6 +68,8 @@ def spec_names(ref: str) -> tuple[str, ...]:
         return tuple(f"{h}_left_uniform_handonly" for h in UNIFORM_HANDS)
     if body == "wuji2_lr_2plus":
         return WUJI2_LR_2PLUS
+    if body == "wuji2_lr_2to3":
+        return WUJI2_LR_2TO3
     names = tuple(n.strip() for n in body.split("+") if n.strip())
     if len(names) < 1 or len(set(names)) != len(names):
         raise ValueError(f"{ref!r}: need one or more distinct robot specs")
