@@ -147,6 +147,15 @@ class Panel:
         self.rate, self.n_frames, self.t_rate = 0.0, 0, time.time()
         self.t_count = 0.0
 
+    def refresh_policies(self, pols: dict):
+        """New runs appear as training jobs start; keep the selection."""
+        if tuple(pols) != tuple(self.pols):
+            self.pols = pols
+            cur = str(self.dd_pol.value)
+            self.dd_pol.options = tuple(pols)
+            if cur in pols:
+                self.dd_pol.value = cur
+
     def _physics_cmds(self) -> list[dict]:
         mu_h, mu_o = float(self.s_hand_mu.value), float(self.s_obj_mu.value)
         return [{"cmd": "friction", "value": {"robot_friction": mu_h, "finger_tip_friction": mu_h,
@@ -330,8 +339,13 @@ def main():
     b_pause.on_click(lambda _: outbox.put({"cmd": "toggle"}))
     b_reset.on_click(lambda _: outbox.put({"cmd": "reset"}))
     s_speed.on_update(lambda _: outbox.put({"cmd": "speed", "value": float(s_speed.value)}))
+    t_scan = time.time()
     try:
         while True:
+            if time.time() - t_scan > 60.0:          # pick up runs that started after the viewer
+                t_scan = time.time()
+                for pn in panels:
+                    pn.refresh_policies(policies())
             msgs = []
             while True:
                 try:
