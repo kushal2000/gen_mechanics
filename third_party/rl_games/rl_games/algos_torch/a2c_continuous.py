@@ -36,6 +36,13 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         
         self.model = self.network.build(build_config)
         self.model.to(self.ppo_device)
+        # Gradient accumulation inside each PPO minibatch: forward/backward over this many contiguous chunks,
+        # each chunk's (mean) loss weighted by its share of the minibatch, then ONE clip + optimizer step -- the
+        # same update as the whole minibatch at once, with ~1/k of the activation memory. 1 = the original path.
+        self.grad_accum_chunks = int(self.config.get('grad_accum_chunks', 1))
+        if self.grad_accum_chunks > 1:
+            print(f"[a2c_continuous] gradient accumulation: {self.grad_accum_chunks} chunks per minibatch of "
+                  f"{self.minibatch_size}", flush=True)
         self.states = None
         self.init_rnn_from_model(self.model)
         self.last_lr = float(self.last_lr)
@@ -107,6 +114,8 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         assert False
 
     def calc_gradients(self, input_dict):
+        if self.grad_accum_chunks > 1:
+            return self._calc_gradients_accum(input_dict)
         value_preds_batch = input_dict['old_values']
         old_action_log_probs_batch = input_dict['old_logp_actions']
         advantage = input_dict['advantages']
@@ -240,6 +249,96 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         self.train_result = (a_loss, c_loss, torch_ext.apply_masks([entropy.unsqueeze(1)], rnn_masks)[0][0], \
             kl_dist, self.last_lr, lr_mul, \
             mu.detach(), sigma.detach(), b_loss, extras)
+
+    def _entropy_coef_for(self, obs_batch):
+        """calc_gradients' per-sample entropy coefficient (SAPG: each block's own), for a slice of the batch."""
+        if self.expl_type.startswith('mixed_expl') and self.config.get('expl_reward_type') == 'entropy':
+            ec_candidates = self.intr_reward_coef[::self.intr_coef_block_size]
+            ec_identifiers = self.intr_reward_coef_embd[::self.intr_coef_block_size, 0].reshape(-1,1)
+            ec_indices = torch.argmax((obs_batch[:,-self.intr_reward_coef_embd.shape[1]] == ec_identifiers).float(), dim=0)
+            return ec_candidates[ec_indices]
+        if self.expl_type.startswith('simple') and self.config.get('expl_reward_type') == 'entropy':
+            return self.intr_reward_coef
+        return self.entropy_coef
+
+    def _calc_gradients_accum(self, input_dict):
+        """calc_gradients over grad_accum_chunks contiguous chunks of the minibatch, one optimizer step.
+
+        Every loss term in calc_gradients is a mean over the minibatch, so the minibatch loss is the
+        size-weighted sum of the chunks' mean losses and the accumulated gradient is the same (to rounding;
+        checked to 1e-7 in experiments/08oct_multi_embodiment_evolution/analysis/toy_transformer_memory.py).
+        KL, the clip fraction, diagnostics and per-block entropies are computed on the concatenated outputs,
+        as calc_gradients does. One difference: a network that updates input statistics in its forward pass sees
+        k smaller updates instead of one -- the combined moments are the same, the batch is normalised with
+        statistics that already include its earlier chunks.
+        """
+        if self.is_rnn or os.getenv('LOG_OFF_POLICY_GRADS'):
+            raise NotImplementedError("grad_accum_chunks > 1: RNN and LOG_OFF_POLICY_GRADS are not supported")
+        keys = ('old_values', 'old_logp_actions', 'advantages', 'mu', 'sigma', 'returns', 'actions', 'obs')
+        n = input_dict['actions'].shape[0]
+        bounds = torch.linspace(0, n, self.grad_accum_chunks + 1).round().long().tolist()
+        curr_e_clip, lr_mul = self.e_clip, 1.0
+        if self.multi_gpu:
+            self.optimizer.zero_grad()
+        else:
+            for param in self.model.parameters():
+                param.grad = None
+        a_sum = c_sum = e_sum = b_sum = 0.0
+        mus, sigmas, neglogps, entropies = [], [], [], []
+        for lo, hi in zip(bounds[:-1], bounds[1:]):
+            if hi <= lo:
+                continue
+            sub = {k: input_dict[k][lo:hi] for k in keys}
+            obs_batch = self._preproc_obs(sub['obs'])
+            w = (hi - lo) / n
+            with torch.cuda.amp.autocast(enabled=self.mixed_precision):
+                res_dict = self.model({'is_train': True, 'prev_actions': sub['actions'], 'obs': obs_batch})
+                action_log_probs, values = res_dict['prev_neglogp'], res_dict['values']
+                entropy, mu, sigma = res_dict['entropy'], res_dict['mus'], res_dict['sigmas']
+                a_loss = self.actor_loss_func(sub['old_logp_actions'], action_log_probs, sub['advantages'],
+                                              self.ppo, curr_e_clip)
+                if self.has_value_loss:
+                    c_loss = common_losses.critic_loss(self.model, sub['old_values'], values, curr_e_clip,
+                                                       sub['returns'], self.clip_value)
+                else:
+                    c_loss = torch.zeros((len(values), 1), device=self.ppo_device)
+                if self.bound_loss_type == 'regularisation':
+                    b_loss = self.reg_loss(mu)
+                elif self.bound_loss_type == 'bound':
+                    b_loss = self.bound_loss(mu)
+                else:
+                    b_loss = torch.zeros(len(mu), device=self.ppo_device)
+                entropy_coef = self._entropy_coef_for(obs_batch)
+                losses, _ = torch_ext.apply_masks([a_loss.unsqueeze(1), c_loss, (entropy_coef*entropy).unsqueeze(1),
+                                                   b_loss.unsqueeze(1)], None)
+                a_l, c_l, e_l, b_l = losses
+                loss = (a_l + 0.5 * c_l * self.critic_coef - e_l + b_l * self.bounds_loss_coef) * w
+            self.scaler.scale(loss).backward()
+            a_sum, c_sum, b_sum = a_sum + a_l.detach() * w, c_sum + c_l.detach() * w, b_sum + b_l.detach() * w
+            e_sum = e_sum + entropy.detach().float().mean() * w
+            mus.append(mu.detach()); sigmas.append(sigma.detach())
+            neglogps.append(action_log_probs.detach()); entropies.append(entropy.detach())
+        self.trancate_gradients_and_step()
+
+        mu, sigma = torch.cat(mus), torch.cat(sigmas)
+        action_log_probs, entropy = torch.cat(neglogps), torch.cat(entropies)
+        with torch.no_grad():
+            kl_dist = torch_ext.policy_kl(mu, sigma, input_dict['mu'], input_dict['sigma'], True)
+        self.diagnostics.mini_batch(self, {'values': input_dict['old_values'], 'returns': input_dict['returns'],
+                                           'new_neglogp': action_log_probs,
+                                           'old_neglogp': input_dict['old_logp_actions'], 'masks': None},
+                                    curr_e_clip, 0)
+        ratio = torch.exp(input_dict['old_logp_actions'] - action_log_probs)
+        contrib = torch.logical_and(ratio < 1.0 + curr_e_clip, ratio > 1.0 - curr_e_clip).float()
+        extras = {"on_policy_contrib": contrib.mean().item(), "off_policy_contrib": 0,
+                  "on_policy_grads": None, "off_policy_grads": None}
+        if self.expl_type.startswith('mixed_expl'):
+            obs_full = self._preproc_obs(input_dict['obs'])
+            bl_ids = self.intr_reward_coef_embd[::self.intr_coef_block_size, 0].reshape(-1,1)
+            bl_idxs = torch.argmax((obs_full[:,-self.intr_reward_coef_embd.shape[1]] == bl_ids).float(), dim=0)
+            extras["entropies"] = [torch.nan_to_num(entropy[bl_idxs == i].mean()).item()
+                                   for i in range(self.num_actors // self.intr_coef_block_size)]
+        self.train_result = (a_sum, c_sum, e_sum, kl_dist, self.last_lr, lr_mul, mu, sigma, b_sum, extras)
 
     def train_actor_critic(self, input_dict):
         self.calc_gradients(input_dict)
