@@ -32,10 +32,11 @@ Only the finger links are scaled; the palm and the finger mounts stay the same.
 - `link_length.png`: the full hand vs finger links 75% and 50% as long. Shorter links lose robustness to push, light
   objects and low friction, and gain it for heavy objects: at 500 g the 75%-length hand scores 28 against the full
   hand's 18. The 50%-length hand is worse than the full hand on push, light objects and friction.
-- `link_width.png`: the full hand vs finger links 120% as wide. Wider links score higher at the training condition
-  (43 vs 37) and on friction above it (33 vs 24 at 1.0). Under push and at 500 g they are level with the full hand.
+- `link_width.png`: the full hand vs finger links 120% as wide, 3 seeds each. Wider links score higher at the training
+  condition (43 vs 37), on friction above it (34 vs 24 at 1.0) and with the palm tilted back (22 vs 15 at -5 deg).
+  Under push and at 500 g they are level with the full hand. That looks more like a better hand overall than one
+  specially robust to friction.
 
-The tilt panels fill in as those sweeps finish; wid120 seed 101 is still training.
 
 ## H3: architecture, transformer vs MLP (`h3_transformer_vs_mlp/`)
 
