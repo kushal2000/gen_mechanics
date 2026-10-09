@@ -65,6 +65,25 @@ identical settings. These are final checkpoints (epoch 5000), 1 seed each.
   the palm tilted forward. So multi-embodiment training changes which perturbations the policy tolerates; it does not
   make it robust across the board. This needs more seeds before it counts as a finding.
 - `index_middle.png` pairs the policy for the 40 hands with 2 or 3 fingers (E4) with an index + middle specialist
-  (make_runs.py T1), both with action delay: EMA 0.1 + action delay, 24k envs, 5 mini-epochs. Both are training on
-  9 Oct, and the figure is drawn when both finish. The 6 Oct 52-hand policy is weak on this hand everywhere (9 goals
-  per episode at the training condition), so it isn't a useful comparison here.
+  (make_runs.py T1), both with action delay: EMA 0.1 + action delay, 24k envs, 5 mini-epochs. The 40-hand policy has
+  not learned this hand: 0.7 goals per episode at the training condition and at most 1.2 anywhere. The specialist
+  scores 13 there. The figure therefore says nothing about robustness. E4 was still improving at epoch 5000
+  (2.2 goals per episode over all 40 hands); it needs longer training before this comparison can be made. The 6 Oct
+  52-hand policy is weak on this hand everywhere (9 goals per episode at the training condition), so it isn't a useful
+  comparison either.
+
+## H5: domain randomisation over the OOD axes (`h5_dr_on_ood_axes/`)
+
+The same MLP recipe, trained with every OOD axis randomised over the middle of its sweep: push 0-1.5 N, friction
+0.25-1.0, object mass 15-250 g and hand tilt -5 to 15 deg, each sampled per episode. Tilt is emulated with a constant
+force on the object; it moves a cube on a still hand the same way a really tilted hand does. Baselines are the no-DR
+runs above (3 seeds); the DR runs are 1 seed. The evaluation turns the DR off and changes one axis at a time.
+
+`training_progress.png`: goals per episode during training. The DR runs are scored under their own randomisation, so
+their curves are not on the same footing as the no-DR ones.
+
+- `index_middle.png`: the DR policy is weaker everywhere inside the training range. It scores 13 goals per episode at
+  the training condition against 31, and on push, light objects and heavy objects it stays below the no-DR policy.
+  It is at or above the no-DR policy only where both are weak: friction 1.0 (7 vs 6) and 1.5 (5 vs 3), and tilt -10
+  deg (3 vs 2). Within the randomised ranges, index + middle trained with DR is worse than without DR.
+- `full_hand.png`: the full-hand DR run (135615) finishes training around 7 pm on 9 Oct; drawn once its sweep lands.
