@@ -12,7 +12,10 @@
 # OOD sweeps of ONE single-hand policy (analysis/eval_ood.py: 64 envs, each env's first episode, greedy):
 #   mass      5 / 15 / 45.6 (trained) / 100 / 250 / 500 g     one process per value (mass is fixed at scene build)
 #   friction  object + hand together 0.1 / 0.25 / 0.5 (trained) / 0.75 / 1.0 / 1.5
-#   push      0 / 2 / 5 / 10 / 15 / 20 N, random direction, one 1/60 s step every 0.3 s
+#   push      0 / 0.5 / 1 / 2 / 5 / 10 N, random direction, one 1/60 s step every 0.3 s (first tried 0-20 N in
+#             steps of 5: everything from 2 N up scored ~0, so the low end is sampled instead; those results are
+#             kept as push_0to20.json)
+#   AXES="friction push mass" (default) picks which sweeps to run
 #   sbatch --job-name=ood_<label> --export=ALL,CKPT=<pth>,LABEL=<label> experiments/08oct_repro_wuji_full/run_ood.sub
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
@@ -22,9 +25,13 @@ cd $REPO
 export OMNI_KIT_ACCEPT_EULA=YES
 PY=".venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/eval_ood.py --checkpoint $CKPT"
 echo "[ood] $LABEL  checkpoint $CKPT"
-$PY --axis friction --values 0.1 0.25 0.5 0.75 1.0 1.5 --out $OUT/friction.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error"
-$PY --axis push --values 0 2 5 10 15 20 --out $OUT/push.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error"
+AXES=${AXES:-friction push mass}
+case " $AXES " in *" friction "*)
+$PY --axis friction --values 0.1 0.25 0.5 0.75 1.0 1.5 --out $OUT/friction.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error" ;; esac
+case " $AXES " in *" push "*)
+$PY --axis push --values 0 0.5 1 2 5 10 --out $OUT/push.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error" ;; esac
+case " $AXES " in *" mass "*)
 for g in 5 15 45.5625 100 250 500; do
     $PY --axis mass --values $g --out $OUT/mass.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error"
-done
+done ;; esac
 echo "[ood] $LABEL done"
