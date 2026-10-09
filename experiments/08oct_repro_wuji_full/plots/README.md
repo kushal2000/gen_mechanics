@@ -86,4 +86,10 @@ their curves are not on the same footing as the no-DR ones.
   the training condition against 31, and on push, light objects and heavy objects it stays below the no-DR policy.
   It is at or above the no-DR policy only where both are weak: friction 1.0 (7 vs 6) and 1.5 (5 vs 3), and tilt -10
   deg (3 vs 2). Within the randomised ranges, index + middle trained with DR is worse than without DR.
-- `full_hand.png`: the full-hand DR run (135615) finishes training around 7 pm on 9 Oct; drawn once its sweep lands.
+- `full_hand.png`: the full hand trained with DR scores at or above the no-DR policy at every evaluated value except
+  friction 0.1, where both score 5. It scores 47 at the training condition against 37, 45 against 24 at friction
+  1.0, 35 against 11 at friction 1.5, 37 against 28 at a 1 N push, and 21 against 18 at 500 g. Tilt is where it helps
+  most: 37 against 4 with the hand tilted back 10 deg, outside the randomised range, and 18 against 7 at 20 deg
+  forward. The final checkpoint (epoch 5000) gives the same picture.
+- The two hands respond to the same DR in opposite ways. The full hand gets better everywhere. Index + middle gets
+  worse, even at the training condition. With 1 seed each, this is a lead, not a result.
