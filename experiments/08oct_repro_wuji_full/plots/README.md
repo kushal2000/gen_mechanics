@@ -25,14 +25,15 @@ headline pair.
 
 ## H2: link geometry changes which perturbations a hand tolerates (`h2_link_geometry/`)
 
-`link_scaling.png` compares the full hand with finger links 75% and 50% as long, and 120% as wide.
+Only the finger links are scaled; the palm and the finger mounts stay the same.
 
-- Shorter links trade robustness to push, light objects and low friction for robustness to heavy objects: at 500 g
-  the 75%-length hand keeps the most.
-- Wider links match or beat the full hand on most axes, with the clearest gain at high friction; they are slightly
-  behind under a 1 N push and at 500 g.
+- `link_length.png`: the full hand vs finger links 75% and 50% as long. Shorter links lose robustness to push, light
+  objects and low friction, and gain it for heavy objects: at 500 g the 75%-length hand scores 28 against the full
+  hand's 18. The 50%-length hand is worse than the full hand on push, light objects and friction.
+- `link_width.png`: the full hand vs finger links 120% as wide. Wider links score higher at the training condition
+  (43 vs 37) and on friction above it (33 vs 24 at 1.0). Under push and at 500 g they are level with the full hand.
 
-Some seeds are still running, and pitch for these hands is pending.
+The pitch panels fill in as those sweeps finish; wid120 seed 101 is still training.
 
 ## H3: architecture, transformer vs MLP (`h3_transformer_vs_mlp/`)
 
