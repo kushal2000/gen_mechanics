@@ -46,7 +46,6 @@ The transformer scores higher on almost every axis: 44 vs 37 at the training con
 35 vs 28 at a 1 N push. On push and heavy objects it stays within the MLP's seed band. With one transformer seed this is
 a lead, not a result.
 
-Tilt for the transformer is pending.
 
 ## H4: multi-embodiment training imbues robustness (`h4_multi_embodiment_robustness/`)
 
