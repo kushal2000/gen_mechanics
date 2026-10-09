@@ -16,7 +16,8 @@ coefficient 0). Everything else as the policy's own run trained -- its saved env
             palm-up rarely is, so the default gating would suppress almost every push.
   pitch     palm pitch in degrees (trained 5): the hand mount rotates about the palm centre, which stays put, and the
             palm slopes down toward the fingertips (HAND_ONLY_PALM_PITCH_DEG, read when the robot specs are built:
-            ONE value per process). Must be >= 0 -- robot_param_constants refuses a slope back toward the wrist. Most
+            ONE value per process). Negative pitch slopes back toward the wrist, away from the fingers: allowed here
+            through HAND_ONLY_ALLOW_ANY_SLOPE=1, which skips robot_param_constants' training-time slope checks. Most
             observations are palm-frame; keypoints_rel_goal and object_vel are world-frame, so they are misaligned
             with the hand by (pitch - 5) degrees, which a closed-loop policy should tolerate at moderate tilts.
 
@@ -64,6 +65,7 @@ def main() -> None:
         # Read by hand_sampler.robot_param_constants at import, which the robot specs (and their base pose) use.
         os.environ["HAND_ONLY_PALM_PITCH_DEG"] = str(args.values[0])
         os.environ.pop("HAND_ONLY_PALM_TILT_DEG", None)
+        os.environ["HAND_ONLY_ALLOW_ANY_SLOPE"] = "1"
 
     from isaaclab.app import AppLauncher
     lp = argparse.ArgumentParser()

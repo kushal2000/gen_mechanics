@@ -226,7 +226,9 @@ def hand_only_base_rot(frame=None) -> tuple[float, float, float, float]:
     # fingers, which can do nothing about it (done_fall 1.0000, ~24-step
     # episodes). Past roll 90 there is no supporting surface, so no slope either,
     # and the check has nothing to say.
-    if float(x_w[2]) > 1e-6:
+    # HAND_ONLY_ALLOW_ANY_SLOPE=1 skips these two checks -- for EVALUATING a trained policy on slopes it was never
+    # meant to train on (e.g. a negative pitch, sliding the object back at the wrist), never for training.
+    if float(x_w[2]) > 1e-6 and _os.environ.get("HAND_ONLY_ALLOW_ANY_SLOPE") != "1":
         g = np.array([0.0, 0.0, -1.0])
         downhill = g - (g @ x_w) * x_w
         if np.linalg.norm(downhill) > 1e-9:
