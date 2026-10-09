@@ -10,6 +10,7 @@
 #   plots/h2_link_geometry/link_width                       full vs finger links 120% as wide
 #   plots/h3_transformer_vs_mlp/full_hand                   MLP vs transformer, both trained with action delay
 #   plots/h4_multi_embodiment_robustness/full_hand       6 Oct 52-hand transformer vs the full-hand specialist (no delay)
+#   plots/h5_dr_on_ood_axes/training_progress           goals / episode vs epoch, DR runs and their no-DR counterparts
 #   plots/h5_dr_on_ood_axes/full_hand, index_middle     MLP trained with DR over the middle of each OOD sweep vs without
 #   plots/h4_multi_embodiment_robustness/index_middle    E4 (2-3 finger hands) vs the index + middle specialist T1 (delay)
 #
@@ -19,6 +20,7 @@
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 PY="$HERE/../../.venv_isaacsim/bin/python $HERE/analysis/plot_ood.py"
+PY_TRAIN="$HERE/../../.venv_isaacsim/bin/python $HERE/analysis/plot_training.py"
 P=$HERE/plots
 cd $HERE/analysis
 # A comparison with no results yet is skipped (plot_ood.py exits non-zero), not fatal.
@@ -38,4 +40,5 @@ ls $HERE/results/ood | grep -q "^mlp_full_ood_dr_" && \
     fig --only mlp_full,mlp_full_ood_dr --groups best --out $H5 --name full_hand
 ls $HERE/results/ood | grep -q "^mlp_index_middle_ood_dr_" && \
     fig --only mlp_index_middle,mlp_index_middle_ood_dr --groups best --out $H5 --name index_middle
+$PY_TRAIN > /dev/null 2>&1 || echo "skipped: training progress"
 find $P -name "*.png" | sed "s#$P/##" | sort
