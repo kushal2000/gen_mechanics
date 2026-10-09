@@ -12,9 +12,9 @@
 # OOD sweeps of ONE single-hand policy (analysis/eval_ood.py: 64 envs, each env's first episode, greedy):
 #   mass      5 / 15 / 45.6 (trained) / 100 / 250 / 500 g     one process per value (mass is fixed at scene build)
 #   friction  object + hand together 0.1 / 0.25 / 0.5 (trained) / 0.75 / 1.0 / 1.5
-#   push      0 / 0.5 / 1 / 2 / 5 / 10 N, random direction, one 1/60 s step every 0.3 s (first tried 0-20 N in
-#             steps of 5: everything from 2 N up scored ~0, so the low end is sampled instead; those results are
-#             kept as push_0to20.json)
+#   push      0 / 0.5 / 1 / 1.5 / 2 / 2.5 N, random direction, one 1/60 s step every 0.3 s (PUSH_VALUES overrides).
+#             History: 0-20 N in steps of 5 first (all ~0 from 2 N; kept as push_0to20.json), then 0/0.5/1/2/5/10;
+#             2.5 N is the max since. Points of earlier grids stay in push.json; plot_ood.py plots up to 2.5 N.
 #   AXES="friction push mass" (default) picks which sweeps to run
 #   sbatch --job-name=ood_<label> --export=ALL,CKPT=<pth>,LABEL=<label> experiments/08oct_repro_wuji_full/run_ood.sub
 set -uo pipefail
@@ -29,7 +29,7 @@ AXES=${AXES:-friction push mass}
 case " $AXES " in *" friction "*)
 $PY --axis friction --values 0.1 0.25 0.5 0.75 1.0 1.5 --out $OUT/friction.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error" ;; esac
 case " $AXES " in *" push "*)
-$PY --axis push --values 0 0.5 1 2 5 10 --out $OUT/push.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error" ;; esac
+$PY --axis push --values ${PUSH_VALUES:-0 0.5 1 1.5 2 2.5} --out $OUT/push.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error" ;; esac
 case " $AXES " in *" mass "*)
 for g in 5 15 45.5625 100 250 500; do
     $PY --axis mass --values $g --out $OUT/mass.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error"

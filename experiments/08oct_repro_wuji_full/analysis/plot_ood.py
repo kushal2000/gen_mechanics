@@ -51,6 +51,8 @@ def goals_per_drop(r: dict) -> float:
     return r["goals_per_min"] * scale / max(r["drops_per_min"] * scale, 1.0)
 
 
+PUSH_MAX = 2.5          # N: the push axis is plotted up to here
+
 METRICS = {"goals_per_episode_first": ("Goals / episode", False),
            "goals_per_drop": ("Goals / drop", False)}      # metric -> (label, log y): linear axes throughout
 
@@ -73,6 +75,8 @@ def load(results: pathlib.Path) -> dict:
             if not f.exists():
                 continue
             for r in json.loads(f.read_text())["results"].values():
+                if axis == "push" and r["value"] > PUSH_MAX:       # earlier grids went to 10 / 20 N
+                    continue
                 for metric, y in (("goals_per_episode_first", r["goals_per_episode_first"]),
                                   ("goals_per_drop", goals_per_drop(r))):
                     raw.setdefault(key, {}).setdefault(axis, {}).setdefault(metric, {}).setdefault(
