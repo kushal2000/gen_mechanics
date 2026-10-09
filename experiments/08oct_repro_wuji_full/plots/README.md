@@ -20,10 +20,14 @@ Forward tilt does not separate them.
 ## H1: fewer fingers, less robust (`h1_fewer_fingers_less_robust/`)
 
 `finger_subsets.png` places the full hand, the hand without the ring finger, thumb + index + middle, and index + middle
-side by side. Is the robustness lost gradually as fingers go, or all at once?
+side by side (MLP; full and index + middle 3 seeds, the other two 1 seed). All four score within 7 goals per episode
+of each other at the training condition (31-38).
 
-The no-ring and thumb + index + middle runs are still training (9 Oct). Until they finish, this figure shows only the
-headline pair.
+- Push: a thumb and a third finger are enough. No ring scores 23 and thumb + index + middle 17 at 1 N, against the
+  full hand's 28 and index + middle's 2.
+- High friction and heavy objects: only the full hand holds up. Without the ring finger the score drops to index +
+  middle's level, 9 vs 24 at friction 1.0 and 8 vs 18 at 500 g.
+- Tilt: no finger-count pattern; thumb + index + middle does best when the hand tilts back.
 
 ## H2: link geometry changes which perturbations a hand tolerates (`h2_link_geometry/`)
 

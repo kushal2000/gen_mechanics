@@ -31,7 +31,9 @@ fig --only mlp_full,tf_full_dact --groups best --out $P/h3_transformer_vs_mlp --
 H4=$P/h4_multi_embodiment_robustness
 fig --only tf6oct_full,tf6oct_multi52_on_full --groups final --out $H4 --name full_hand
 fig --only tf_index_middle_dact,tf_multi2to3_on_index_middle --groups final --out $H4 --name index_middle
-H5=$P/h5_dr_on_ood_axes
-fig --only mlp_full,mlp_full_ood_dr --groups best --out $H5 --name full_hand
-fig --only mlp_index_middle,mlp_index_middle_ood_dr --groups best --out $H5 --name index_middle
+H5=$P/h5_dr_on_ood_axes      # only once the DR run has results: the baseline alone would be drawn otherwise
+ls $HERE/results/ood | grep -q "^mlp_full_ood_dr_" && \
+    fig --only mlp_full,mlp_full_ood_dr --groups best --out $H5 --name full_hand
+ls $HERE/results/ood | grep -q "^mlp_index_middle_ood_dr_" && \
+    fig --only mlp_index_middle,mlp_index_middle_ood_dr --groups best --out $H5 --name index_middle
 find $P -name "*.png" | sed "s#$P/##" | sort
