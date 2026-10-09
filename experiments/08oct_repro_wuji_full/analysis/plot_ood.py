@@ -1,16 +1,14 @@
-"""OOD robustness of the single-hand MLP policies, one line per embodiment: object mass, friction (object + hand
-together), push force. Goals in each env's first episode (64 envs), from run_ood.sub / eval_ood.py.
+"""OOD robustness, one line per policy (embodiment x checkpoint): object mass, friction (object + hand together), push
+force, palm pitch, object restitution. From run_ood.sub / eval_ood.py (64 envs, each env's first episode, greedy).
 
-Figures, paper style, bottom legend, one per metric x checkpoint group -- "mid" (checkpoints before epoch 5000: 2000,
-2500, 3800), "final" (epoch 5000) and "best" (each run's best-training-reward checkpoint, chosen without OOD data):
-  plots/ood_sweeps_<group>[_<a>_vs_<b>]_goals_per_episode[_relative].{pdf,png}   goals per (first) episode
-  plots/ood_sweeps_<group>[_<a>_vs_<b>]_goals_per_drop[_relative].{pdf,png}      total goals / max(total drops, 1)
-  plots/ood_<pitch|restitution>_<group>[_<a>_vs_<b>]_<metric>.{pdf,png}   each a figure of its own (policies that have it)
-_relative: as a fraction of each policy's own trained-condition value. The trained value of each axis is a dotted line
-labelled "Train value"; mass on a log axis. Seeds are averaged (line) with their min-max range (band). Embodiments with
-no results yet are skipped. --only a,b restricts to those embodiments.
+Figures, paper style, bottom legend, one image per metric (goals / episode: goals in each env's first episode;
+goals / drop: total goals / max(total drops, 1)) and checkpoint group -- "mid" (checkpoints before epoch 5000), "final"
+(epoch 5000), "best" (each run's best-training-reward checkpoint, chosen without OOD data). The trained value of each
+axis is a dotted line labelled "Train value"; mass on a log axis. Seeds are averaged (line) with their min-max range
+(band). Embodiments with no results are skipped. make_plots.sh draws the whole plots/ tree with this script.
 
-    .venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/plot_ood.py [--results DIR]
+    .venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/plot_ood.py \\
+        --only mlp_full,mlp_index_middle --groups best --all-axes --out plots --name full_vs_index_middle
 """
 from __future__ import annotations
 
@@ -109,29 +107,30 @@ def n_seeds(entry) -> int:
     return max((p[4] for axes in entry.values() for pts in axes.values() for p in pts), default=1)
 
 
-def plot(data, epochs, relative: bool, out: pathlib.Path, metrics=None, axes=None):
-    metrics, axes = metrics or METRICS, axes or AXES
-    rows = len(metrics)
-    width = ps.TEXT_WIDTH * (1 if len(axes) == 3 else 0.45)
-    fig, grid = plt.subplots(rows, len(axes), figsize=(width, 2.3 * rows), squeeze=False)
-    for row, (metric, (ylabel, logy)) in zip(grid, metrics.items()):
-        _plot_row(row, data, metric, relative, logy and not relative, axes)
-        row[0].set_ylabel(("Fraction of trained " + ylabel.lower()) if relative else ylabel)
-    for r in range(rows - 1):              # x labels on the bottom row only, titles on the top row only
-        for ax in grid[r]:
-            ax.set_xlabel("")
-    for r in range(1, rows):
-        for ax in grid[r]:
-            ax.set_title("")
+def plot(data, relative: bool, out: pathlib.Path, metric: str, axes: dict, ncols: int | None = None):
+    """One metric, one panel per axis: a row of up to 3 (or ncols per row)."""
+    ylabel, logy = METRICS[metric]
+    ncols = ncols or min(3, len(axes))
+    nrows = -(-len(axes) // ncols)
+    width = ps.TEXT_WIDTH * {1: 0.45, 2: 0.7}.get(ncols, 1.0)
+    fig, grid = plt.subplots(nrows, ncols, figsize=(width, 2.3 * nrows), squeeze=False)
+    panels = grid.flatten()
+    for ax in panels[len(axes):]:
+        ax.set_axis_off()
+    _plot_row(panels[:len(axes)], data, metric, relative, logy and not relative, axes)
+    for r in range(nrows):
+        grid[r][0].set_ylabel(("Fraction of trained " + ylabel.lower()) if relative else ylabel)
     present = ordered(data)
     handles = [Line2D([], [], color=EMBODIMENTS[e][1], marker=EMBODIMENTS[e][2], markersize=3.5, linewidth=1.3,
                       linestyle=style(data, (e, ep))) for e, ep in present]
     labels = [f"{EMBODIMENTS[e][0]} (" + ("best ckpt" if ep == BEST else f"ep {ep}") +
               (f", {n_seeds(data[(e, ep)])} seeds)" if n_seeds(data[(e, ep)]) > 1 else ")") for e, ep in present]
     fig.tight_layout()
-    ps.bottom_legend(fig, handles, labels, y=-0.04 if rows > 1 else -0.12,
-                     ncol=min(len(labels), 3 if len(axes) == 3 else 1), bold=())
-    ps.save_figure(fig, out)
+    # Anchored by its top just under the panels, so a long legend grows downward instead of into the x labels.
+    ps.bottom_legend(fig, handles, labels, y=-0.01, loc="upper center",
+                     ncol=min(len(labels), {1: 1, 2: 1 if len(labels) <= 2 else 2}.get(ncols, 3)), bold=())
+    out.parent.mkdir(parents=True, exist_ok=True)
+    ps.save_figure(fig, out, formats=("png",))     # PNG only: no PDFs stored
     plt.close(fig)
 
 
@@ -176,36 +175,59 @@ def _plot_row(axs, data, metric, relative, logy, axes):
         ps.style_axis(ax)
 
 
+GRID_2X2 = ("push", "friction", "mass", "pitch")     # --all-axes: reading order, left to right then down
+TAGS = {"goals_per_episode_first": "goals_per_episode", "goals_per_drop": "goals_per_drop"}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", default=str(HERE / "results/ood"))
-    ap.add_argument("--out", default=str(HERE / "plots"))
-    ap.add_argument("--only", default="", help="comma-separated embodiments, e.g. mlp_full,mlp_index_middle; "
-                                               "writes ood_sweeps_<group>_<names>.{pdf,png}")
+    ap.add_argument("--out", default=str(HERE / "plots"), help="directory (created)")
+    ap.add_argument("--only", default="", help="comma-separated embodiments, e.g. mlp_full,mlp_index_middle")
+    ap.add_argument("--groups", default="mid,final,best", help="checkpoint groups to draw")
+    ap.add_argument("--name", default="{group}", help="file stem, {group} filled in; + _<metric>[_relative]")
+    ap.add_argument("--all-axes", action="store_true",
+                    help="one 2x2 figure per metric -- push force, friction (top row), mass, pitch (bottom row) -- instead "
+                         "of the 3-axis figure plus one per extra axis (restitution is left out)")
+    ap.add_argument("--axes", default="", help="one figure with just these axes, e.g. restitution")
+    ap.add_argument("--relative", action="store_true", help="also the _relative (fraction of trained) figures")
+    ap.add_argument("--metric", choices=sorted(TAGS.values()), default=None,
+                    help="draw only this metric, and name the file <name> with no metric suffix")
     args = ap.parse_args()
     ps.configure()
-    data, epochs = load(pathlib.Path(args.results))
+    data, _ = load(pathlib.Path(args.results))
     only = [s for s in args.only.split(",") if s]
     if only:
         data = {k: v for k, v in data.items() if k[0] in only}
-    suffix = ("_" + "_vs_".join(s.removeprefix("mlp_") for s in only)) if only else ""
     if not data:
         raise SystemExit(f"no OOD results under {args.results}")
     groups = {"mid": {k: v for k, v in data.items() if 0 <= k[1] < 5000},
               "final": {k: v for k, v in data.items() if k[1] >= 5000},
               "best": {k: v for k, v in data.items() if k[1] == BEST}}
-    for name, sub in groups.items():
-        if sub:
-            stem = pathlib.Path(args.out) / f"ood_sweeps_{name}{suffix}"
-            for metric in METRICS:               # one image per metric (no combined figure)
-                tag = {"goals_per_episode_first": "goals_per_episode", "goals_per_drop": "goals_per_drop"}[metric]
-                one = {metric: METRICS[metric]}
-                plot(sub, epochs, False, stem.with_name(f"{stem.name}_{tag}"), one)
-                plot(sub, epochs, True, stem.with_name(f"{stem.name}_{tag}_relative"), one)
-                for extra, spec in EXTRA_AXES.items():
-                    if any(extra in v for v in sub.values()):
-                        xstem = stem.with_name(stem.name.replace("ood_sweeps_", f"ood_{extra}_") + f"_{tag}")
-                        plot({k: v for k, v in sub.items() if extra in v}, epochs, False, xstem, one, {extra: spec})
+    out = pathlib.Path(args.out)
+    for group in args.groups.split(","):
+        sub = groups[group]
+        if not sub:
+            continue
+        stem = args.name.format(group=group)
+        for metric, tag in TAGS.items():
+            if args.metric and tag != args.metric:
+                continue
+            tag_sfx = "" if args.metric else f"_{tag}"
+            if args.all_axes or args.axes:
+                every = {**AXES, **EXTRA_AXES}
+                names = GRID_2X2 if args.all_axes else args.axes.split(",")
+                have = {k: v for k, v in sub.items() if any(a in v for a in names)}
+                plot(have, False, out / f"{stem}{tag_sfx}", metric, {a: every[a] for a in names},
+                     ncols=2 if len(names) == 4 else None)
+                continue
+            plot(sub, False, out / f"{stem}{tag_sfx}", metric, AXES)
+            if args.relative:
+                plot(sub, True, out / f"{stem}{tag_sfx}_relative", metric, AXES)
+            for extra, spec in EXTRA_AXES.items():
+                have = {k: v for k, v in sub.items() if extra in v}
+                if have:
+                    plot(have, False, out / f"{stem}_{extra}{tag_sfx}", metric, {extra: spec})
     for key in ordered(data):
         for axis, metrics in data[key].items():
             for metric, pts in metrics.items():

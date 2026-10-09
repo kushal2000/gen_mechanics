@@ -19,7 +19,7 @@
 #   pitch     palm pitch -10 / -5 / 0 / 5 (trained) / 10 / 15 / 20 deg, one process per value (PITCH_VALUES overrides).
 #             Scoped on the seed-100 best checkpoints over -30..50: both hands are at ~0 beyond -20 and +30.
 #   EVAL_ROBOT_SPEC=<spec> evaluates on that hand instead of the training one (a multi-embodiment policy on one hand)
-#   AXES="friction push mass" (default) picks which sweeps to run; pitch / restitution only when named
+#   AXES="friction push mass pitch" (default) picks which sweeps to run; restitution only when named
 #   sbatch --job-name=ood_<label> --export=ALL,CKPT=<pth>,LABEL=<label> experiments/08oct_repro_wuji_full/run_ood.sub
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
@@ -29,7 +29,7 @@ cd $REPO
 export OMNI_KIT_ACCEPT_EULA=YES
 PY=".venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/eval_ood.py --checkpoint $CKPT ${EVAL_ROBOT_SPEC:+--robot-spec $EVAL_ROBOT_SPEC}"
 echo "[ood] $LABEL  checkpoint $CKPT"
-AXES=${AXES:-friction push mass}
+AXES=${AXES:-friction push mass pitch}
 case " $AXES " in *" friction "*)
 $PY --axis friction --values 0.1 0.25 0.5 0.75 1.0 1.5 --out $OUT/friction.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error" ;; esac
 case " $AXES " in *" push "*)

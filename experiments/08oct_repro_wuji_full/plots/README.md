@@ -1,0 +1,56 @@
+# OOD robustness: does a design that trains well also generalise?
+
+Each figure is a 2x2 of goals per episode: push force and friction on the top row, object mass and palm pitch on the
+bottom. A dotted line marks the training value on each axis. Every policy was trained at a single fixed condition
+(no friction, mass or push randomisation). Lines are the mean over training seeds, bands the min-max range. Policies are
+the best-training-reward checkpoints, picked without looking at OOD data, unless a legend says otherwise.
+
+Protocol (`analysis/eval_ood.py`): 64 envs, the first episode of each env, greedy actions. Every setting is as trained
+except the swept one. Redraw with `analysis/make_plots.sh` as results land.
+
+## Headline: `full_vs_index_middle.png`
+
+Full Wuji v2 vs the index + middle hand, MLP, 3 seeds each. Both score about the same in training
+(37 vs 31 goals per episode). Under push and high friction the full hand keeps most of its score and index + middle
+collapses: push 1 N gives 28 vs 2, friction 1.0 gives 24 vs 6. Mass and backward pitch separate the two moderately.
+Forward pitch does not separate them.
+
+## H1: fewer fingers, less robust (`h1_fewer_fingers_less_robust/`)
+
+`finger_subsets.png` places the full hand, the hand without the ring finger, thumb + index + middle, and index + middle
+side by side. Is the robustness lost gradually as fingers go, or all at once?
+
+The no-ring and thumb + index + middle runs are still training (9 Oct). Until they finish, this figure shows only the
+headline pair.
+
+## H2: link geometry changes which perturbations a hand tolerates (`h2_link_geometry/`)
+
+`link_scaling.png` compares the full hand with finger links 75% and 50% as long, and 120% as wide.
+
+- Shorter links trade robustness to push, light objects and low friction for robustness to heavy objects: at 500 g
+  the 75%-length hand keeps the most.
+- Wider links match or beat the full hand on most axes, with the clearest gain at high friction; they are slightly
+  behind under a 1 N push and at 500 g.
+
+Some seeds are still running, and pitch for these hands is pending.
+
+## H3: architecture, transformer vs MLP (`h3_transformer_vs_mlp/`)
+
+`full_hand.png` compares the full hand trained with the MLP (3 seeds) and with the joint transformer at 24k envs, with
+and without action delay (1 seed each).
+
+- The transformer without action delay is the most robust policy we have. It loses almost nothing to friction from
+  0.25 to 1.0, and still scores 46 at a 1 N push.
+- With action delay the transformer is about as robust as the MLP, slightly better.
+
+Pitch for the transformers is pending.
+
+## H4: multi-embodiment training imbues robustness (`h4_multi_embodiment_robustness/`)
+
+`52_hand_vs_specialist.png` compares the 6 Oct 52-hand transformer, evaluated on the full hand and on index + middle,
+with the full-hand specialist trained on identical settings. These are final checkpoints (epoch 5000), 1 seed each.
+
+Despite scoring 12 goals per episode less at the training condition, the 52-hand policy is better at high friction,
+with a bouncy object and with the palm tilted back. It is worse under push, with heavy objects and with the palm
+tilted forward. So multi-embodiment training changes which perturbations the policy tolerates; it does not make it
+robust across the board. This needs more seeds before it counts as a finding.
