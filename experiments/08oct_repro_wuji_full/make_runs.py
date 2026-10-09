@@ -26,6 +26,12 @@ cancelled at start: the minibatch stays the 12288-env runs'.)
   A1 accum4_e24k            the full left hand
   A2 dact_accum4_e24k       the same with action delay on (from R4's sub)
 
+And one multi-embodiment transformer run from A2's sub: all 52 Wuji v2 finger-drop hands (multi:wuji2_lr_2plus,
+2+ fingers, left and right, no link scaling), 24576 envs, accumulation x4, EMA 0.1 + action delay, and 2 mini-epochs
+instead of 5 (8 optimizer steps an epoch instead of 20):
+
+  E1 lr_2plus_dact_accum4_e24k_me2
+
 And scaled-link variants of the full hand (assets/urdf/unified_dynamics_commercial_hands/make_scaled_links.py:
 finger links only, palm and finger mounts unchanged), as M1 (MLP, 24576 envs, EMA 0.1 + action delay):
 
@@ -102,3 +108,13 @@ if __name__ == "__main__":
         text = text.replace(old, f'ROBOT_SPEC="${{ROBOT_SPEC:-wuji2_left_uniform_handonly_{tag}}}"')
         (HERE / f"{run}.sub").write_text(text)
         print(HERE / f"{run}.sub")
+    a2 = (HERE / "left_wuji2_full_v5_ema0.1_dact_accum4_e24k.sub").read_text()
+    run = "wuji2_lr_2plus_v5_ema0.1_dact_accum4_e24k_me2"
+    text = a2.replace("left_wuji2_full_v5_ema0.1_dact_accum4_e24k", run)
+    text = text.replace("#SBATCH --job-name=A_dact_accum4_e24k", "#SBATCH --job-name=E_multi52_me2")
+    for old, new in (('ROBOT_SPEC="${ROBOT_SPEC:-wuji2_left_uniform_handonly}"', 'ROBOT_SPEC="${ROBOT_SPEC:-multi:wuji2_lr_2plus}"'),
+                     ("MINI_EPOCHS=5 ", "MINI_EPOCHS=2 ")):
+        assert old in text, old
+        text = text.replace(old, new)
+    (HERE / f"{run}.sub").write_text(text)
+    print(HERE / f"{run}.sub")
