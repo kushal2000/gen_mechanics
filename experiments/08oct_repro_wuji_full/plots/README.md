@@ -19,6 +19,8 @@ Forward tilt does not separate them.
 
 ## H1: fewer fingers, less robust (`h1_fewer_fingers_less_robust/`)
 
+`full_vs_index_middle.png` is the headline pair on its own (the same figure as at the top level).
+
 `finger_subsets.png` places the full hand, the hand without the ring finger, thumb + index + middle, and index + middle
 side by side (MLP; full and index + middle 3 seeds, the other two 1 seed). All four score within 7 goals per episode
 of each other at the training condition (31-38).

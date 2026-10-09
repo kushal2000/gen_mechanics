@@ -4,6 +4,7 @@
 # what each tests and what the figures show. PNG only. Rerun as OOD results land; figures are replaced.
 #
 #   plots/full_vs_index_middle                              headline: MLP, best checkpoints, 3 seeds
+#   plots/h1_fewer_fingers_less_robust/full_vs_index_middle   the full hand vs index + middle only
 #   plots/h1_fewer_fingers_less_robust/finger_subsets       full, no ring, thumb + index + middle, index + middle
 #   plots/h2_link_geometry/link_length                      full vs finger links 75% and 50% as long
 #   plots/h2_link_geometry/link_width                       full vs finger links 120% as wide
@@ -24,6 +25,7 @@ cd $HERE/analysis
 fig() { $PY --metric goals_per_episode --all-axes "$@" > /dev/null 2>&1 || echo "skipped (no results yet): $*"; }
 fig --only mlp_full,mlp_index_middle --groups best --out $P --name full_vs_index_middle
 H1=$P/h1_fewer_fingers_less_robust
+fig --only mlp_full,mlp_index_middle --groups best --out $H1 --name full_vs_index_middle
 fig --only mlp_full,mlp_no_ring,mlp_thumb_index_middle,mlp_index_middle --groups best --out $H1 --name finger_subsets
 fig --only mlp_full,mlp_len75,mlp_len50 --groups best --out $P/h2_link_geometry --name link_length
 fig --only mlp_full,mlp_wid120 --groups best --out $P/h2_link_geometry --name link_width
