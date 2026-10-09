@@ -36,12 +36,12 @@ Some seeds are still running, and pitch for these hands is pending.
 
 ## H3: architecture, transformer vs MLP (`h3_transformer_vs_mlp/`)
 
-`full_hand.png` compares the full hand trained with the MLP (3 seeds) and with the joint transformer at 24k envs, with
-and without action delay (1 seed each).
+`full_hand.png` compares the full hand trained with the MLP (3 seeds) and with the joint transformer (1 seed). Both are
+trained at 24k envs with EMA 0.1 and action delay, so architecture is the only difference.
 
-- The transformer without action delay is the most robust policy we have. It loses almost nothing to friction from
-  0.25 to 1.0, and still scores 46 at a 1 N push.
-- With action delay the transformer is about as robust as the MLP, slightly better.
+The transformer scores higher on almost every axis: 44 vs 37 at the training condition, 31 vs 24 at friction 1.0, and
+35 vs 28 at a 1 N push. On push and heavy objects it stays within the MLP's seed band. With one transformer seed this is
+a lead, not a result.
 
 Pitch for the transformers is pending.
 
