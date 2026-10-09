@@ -12,10 +12,10 @@
 # viser_wuji_play.py with its own CPUs on an Ada node: measured 0.6x real time in the 1-core interactive shell,
 # 0.78x on portal-compute-01 (A6000, 8 CPUs), 0.96x on portal-compute-03 (6000 Ada, 8 CPUs). The log prints
 # the measured rate ("[wuji-play] panel N: <r>x real time") every 2 s once a panel is loaded.
-#   sbatch [--export=ALL,PORT=8086,PANELS=1] experiments/08oct_multi_embodiment_evolution/viser_wuji_play.sub
+#   sbatch [--export=ALL,PORT=8086,PANELS=1,POLICY=<label substring>] experiments/08oct_multi_embodiment_evolution/viser_wuji_play.sub
 #   then open http://<node>:$PORT (the node is in the log's first line)
 cd /share/portal/kk837/gen_mechanics
 export OMNI_KIT_ACCEPT_EULA=YES
 echo "[wuji-play] node $(hostname)  cpus $(nproc)"
 exec .venv_isaacsim/bin/python experiments/08oct_multi_embodiment_evolution/viser_wuji_play.py \
-    --port "${PORT:-8086}" --panels "${PANELS:-1}"
+    --port "${PORT:-8086}" --panels "${PANELS:-1}" ${POLICY:+--policy "$POLICY"}

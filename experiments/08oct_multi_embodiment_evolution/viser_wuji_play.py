@@ -1,10 +1,16 @@
-"""Live viewer: any of the 52 Wuji v2 finger-drop hands, driven by any of the Wuji policies, in viser.
+"""Live viewer: any Wuji v2 hand -- the 52 finger-drop hands and the scaled-link variants -- driven by any Wuji
+policy, joint transformer or MLP, in viser.
 
-Pick the hand with a left/right dropdown and a checkbox per finger (two or more fingers: the 52 of
-multi:wuji2_lr_2plus), pick a policy, press "load". The policies are the 6 Oct 52-hand run (31826) and every
-08oct_multi_embodiment_evolution run, each at its newest checkpoint WHEN LOADED, so a training run can be
-re-loaded as it improves. The status line says whether the hand was in the policy's training set or is held out
-(e.g. a four-finger hand under the 2-3-finger policy).
+Pick the hand with a left/right dropdown, a checkbox per finger (two or more fingers: the 52 of
+multi:wuji2_lr_2plus) and a "links" dropdown (as built, or a make_scaled_links.py variant of the full left hand:
+len50, len75, wid120, ...), pick a policy, press "load". The policies are the 6 Oct 52-hand run (31826) and every
+run in 08oct_multi_embodiment_evolution and 08oct_repro_wuji_full, each at its newest checkpoint WHEN LOADED, so a
+training run can be re-loaded as it improves. The status line says whether the hand was in the policy's training set
+or is held out (e.g. a four-finger hand under the 2-3-finger policy).
+
+MLP policies ([MLP] in the dropdown) read a flat observation whose width is their training hand's, so they drive
+only that hand: picking one sets the hand selectors to it, and loading it on any other hand is refused. The joint
+transformer drives any of them (one token per joint, shared weights).
 
 Each panel's simulation is a child worker (experiments/01oct_unified_rl/viser_compare.py --worker: Kit and viser
 cannot share an interpreter), under the env config of the chosen policy's own run, except that every policy runs
@@ -47,6 +53,7 @@ FINGERS = ("thumb", "index", "middle", "ring", "pinky")
 CONSISTENT = ("env.domain_randomization.use_action_delay=True", "env.domain_randomization.action_delay_max=3",
               "env.action.hand_moving_average=0.1")
 DELAY = ("on (0-3 steps)", "off")       # live; default on, as every policy runs (CONSISTENT)
+RUN_DIRS = ("08oct_multi_embodiment_evolution", "08oct_repro_wuji_full")
 PUSH_PERIOD = 18             # control steps between pushes: 0.3 s
 CONTROL_DT = 1.0 / 60.0      # every Wuji run: sim dt 1/120 s x decimation 2 -- for the measured-rate readout
 
@@ -62,11 +69,29 @@ def _multi_hand():
 
 
 MH = _multi_hand()
-HANDS = set(MH.WUJI2_LR_2PLUS)
+WUJI = REPO / "assets/urdf/unified_dynamics_commercial_hands/wuji2"
 
 
-def hand_spec(side: str, kept: list[str]) -> str:
-    """Registered spec for a side + finger set (make_missing_fingers.py's tags)."""
+def scaled_tags() -> tuple[str, ...]:
+    """make_scaled_links.py variants on disk (their spec JSON carries a scaled_links entry)."""
+    import json
+    tags = []
+    for p in sorted(WUJI.glob("wuji2_left_*.spec.json")):
+        if "scaled_links" in json.loads(p.read_text()):
+            tags.append(p.name[len("wuji2_left_"):-len(".spec.json")])
+    return tuple(tags)
+
+
+LINKS = ("as built", *scaled_tags())
+HANDS = set(MH.WUJI2_LR_2PLUS) | {f"wuji2_left_uniform_handonly_{t}" for t in LINKS[1:]}
+
+
+def hand_spec(side: str, kept: list[str], links: str = "as built") -> str:
+    """Registered spec for a side + finger set (make_missing_fingers.py's tags) or a scaled-link variant (full left
+    hand only)."""
+    if links != "as built":
+        return (f"wuji2_left_uniform_handonly_{links}" if side == "left" and len(kept) == len(FINGERS)
+                else "")
     if len(kept) == len(FINGERS):
         tag = ""
     elif len(kept) == len(FINGERS) - 1:
@@ -76,16 +101,59 @@ def hand_spec(side: str, kept: list[str]) -> str:
     return f"wuji2_{side}_uniform_handonly{tag}"
 
 
+_ARCH: dict[str, bool] = {}
+
+
+def is_mlp(run_dir: str) -> bool:
+    """The run's network is rl_games' MLP actor_critic (not the joint transformer); cached per run."""
+    if run_dir not in _ARCH:
+        from omegaconf import OmegaConf
+        cfg = pathlib.Path(run_dir) / "rank_0/.hydra/config.yaml"
+        _ARCH[run_dir] = cfg.exists() and str(OmegaConf.load(cfg).agent.params.network.name) == "actor_critic"
+    return _ARCH[run_dir]
+
+
 def policies() -> dict[str, str]:
     """Dropdown label -> checkpoint glob (newest epoch taken at load time)."""
     out = {"Multi 52 hands (31826, 6 Oct, no action delay)":
            f"{LOGS}/06oct_wuji2_multi_embodiment/0_scale_train_wuji2_lr_2plus_ema0.1_c01_*_31826_0_*"
            "/rank_0/*/nn/last_*_ep_*.pth"}
-    for run in sorted(glob.glob(f"{LOGS}/08oct_multi_embodiment_evolution/0_scale_train_*_c01_*")):
-        m = re.search(r"0_scale_train_(.+?)_c01_.*_(\d+)_0_[^/]+$", run)
-        if m:
-            out[f"{m.group(1)} ({m.group(2)})"] = f"{run}/rank_0/*/nn/last_*_ep_*.pth"
+    for d in RUN_DIRS:
+        for run in sorted(glob.glob(f"{LOGS}/{d}/0_scale_train_*_c01_*")):
+            m = re.search(r"0_scale_train_(.+?)_c01_.*_(\d+)_0_[^/]+$", run)
+            if m:
+                out[f"{'[MLP] ' if is_mlp(run) else ''}{m.group(1)} ({m.group(2)})"] = \
+                    f"{run}/rank_0/*/nn/last_*_ep_*.pth"
     return out
+
+
+def run_dir_of(pattern: str) -> str:
+    return pattern.split("/rank_0/")[0]
+
+
+def trained_spec(pattern: str) -> str | None:
+    """The robot_spec a policy trained on, from its run config (before any checkpoint exists)."""
+    from omegaconf import OmegaConf
+    runs = glob.glob(run_dir_of(pattern))
+    cfg = pathlib.Path(runs[0]) / "rank_0/.hydra/config.yaml" if runs else None
+    return str(OmegaConf.load(cfg).env.assets.robot_spec) if cfg and cfg.exists() else None
+
+
+def selectors_for(spec: str):
+    """(side, fingers kept, links) that select a registered single-hand spec, or None."""
+    m = re.fullmatch(r"wuji2_(left|right)_uniform_handonly(?:_(.+))?", spec or "")
+    if not m:
+        return None
+    side, tag = m.group(1), m.group(2) or ""
+    if tag in LINKS[1:]:
+        return side, list(FINGERS), tag
+    if not tag:
+        return side, list(FINGERS), "as built"
+    if tag.startswith("no_"):
+        return side, [f for f in FINGERS if f != tag[3:]], "as built"
+    if tag.startswith("only_"):
+        return side, [f for f in FINGERS if f in tag[5:].split("_")], "as built"
+    return None
 
 
 def newest(pattern: str) -> str | None:
@@ -121,6 +189,7 @@ class Panel:
         with server.gui.add_folder(f"panel {i + 1}"):
             self.dd_side = server.gui.add_dropdown("side", ("left", "right"), initial_value=side)
             self.cb = {f: server.gui.add_checkbox(f, f in kept) for f in FINGERS}
+            self.dd_links = server.gui.add_dropdown("links", LINKS, initial_value=LINKS[0])
             self.dd_pol = server.gui.add_dropdown("policy", tuple(pols), initial_value=pol)
             self.dd_delay = server.gui.add_dropdown("action delay", DELAY, initial_value=DELAY[0])
             self.s_mass = server.gui.add_number("object mass g (on load)", 0.0, min=0.0, step=1.0)
@@ -139,8 +208,9 @@ class Panel:
         self.dd_delay.on_update(lambda _: self._send_physics())
         self.load_requested = True
         self.b_load.on_click(lambda _: setattr(self, "load_requested", True))
-        for w in (self.dd_side, self.dd_pol, *self.cb.values()):
+        for w in (self.dd_side, self.dd_links, *self.cb.values()):
             w.on_update(lambda _: self._preview())
+        self.dd_pol.on_update(lambda _: self._policy_changed())
         self.child = self.conn = self.info = None
         self.urdf = self.obj = self.goal = self.label = None
         self.title, self.dead = "", False
@@ -183,12 +253,33 @@ class Panel:
 
     def _choice(self):
         kept = [f for f in FINGERS if self.cb[f].value]
-        return hand_spec(str(self.dd_side.value), kept), str(self.dd_pol.value)
+        return hand_spec(str(self.dd_side.value), kept, str(self.dd_links.value)), str(self.dd_pol.value)
+
+    def _mlp_hand(self, pol: str) -> str | None:
+        """The one hand an MLP policy can drive (None for a joint transformer)."""
+        pat = self.pols.get(pol)
+        return trained_spec(pat) if pat and is_mlp(run_dir_of(glob.glob(run_dir_of(pat))[0])
+                                                    if glob.glob(run_dir_of(pat)) else "") else None
+
+    def _policy_changed(self):
+        """An MLP drives only its own hand: move the hand selectors to it."""
+        own = self._mlp_hand(str(self.dd_pol.value))
+        sel = selectors_for(own) if own else None
+        if sel:
+            side, kept, links = sel
+            self.dd_side.value, self.dd_links.value = side, links
+            for f in FINGERS:
+                self.cb[f].value = f in kept
+        self._preview()
 
     def _preview(self):
-        spec, _ = self._choice()
+        spec, pol = self._choice()
+        own = self._mlp_hand(pol)
         if spec not in HANDS:
-            self.md.content = "**pick two or more fingers** (the 52 hands)"
+            self.md.content = ("**pick two or more fingers** (the 52 hands); a scaled-link variant needs the full "
+                               "left hand")
+        elif own and spec != own:
+            self.md.content = f"**{pol} is an MLP: it drives only {short(own)}**"
         else:
             self.md.content = f"selected **{short(spec)}** -- press load"
 
@@ -214,7 +305,8 @@ class Panel:
     def start(self):
         self.load_requested = False
         spec, pol = self._choice()
-        if spec not in HANDS:
+        own = self._mlp_hand(pol)
+        if spec not in HANDS or (own and spec != own):
             self._preview()
             return
         ckpt = newest(self.pols[pol])
@@ -224,6 +316,7 @@ class Panel:
         self.stop()
         ep = re.search(r"_ep_(\d+)_", ckpt).group(1)
         held = "" if spec in trained_on(ckpt) else "  ·  **held out** (not in its training set)"
+        held += "  ·  MLP" if own else "  ·  joint transformer"
         held += "  ·  EMA 0.1" if self.sets else "  ·  EMA as trained"
         if not self.sets:                           # --as-trained: the dropdown starts at the run's own setting
             self.dd_delay.value = DELAY[0] if trained_delay(ckpt) else DELAY[1]
@@ -318,6 +411,7 @@ def main():
     ap.add_argument("--port", type=int, default=8085)
     ap.add_argument("--panels", type=int, default=1, help="side-by-side panels, each with its own hand and policy")
     ap.add_argument("--spacing", type=float, default=0.32)
+    ap.add_argument("--policy", default="", help="initial policy: a substring of its dropdown label (default: 31826)")
     ap.add_argument("--as-trained", action="store_true",
                     help="each policy's own run's action delay / moving average (default: delay on + EMA 0.1 for all)")
     args = ap.parse_args()
@@ -328,9 +422,11 @@ def main():
     pols = policies()
     server = viser.ViserServer(port=args.port)
     print(f"\n[wuji-play] viser on http://{socket.gethostname()}:{args.port}  ({len(pols)} policies)\n", flush=True)
-    first = next(iter(pols))
+    first = next((k for k in pols if args.policy and args.policy in k), next(iter(pols)))
     panels = [Panel(server, i, (i - (args.panels - 1) / 2) * args.spacing, pols, "left", FINGERS, first, sets)
               for i in range(args.panels)]
+    for pn in panels:
+        pn._policy_changed()                         # an MLP first: its own hand
     with server.gui.add_folder("playback (all panels)"):
         b_pause = server.gui.add_button("pause / resume")
         b_reset = server.gui.add_button("reset")
