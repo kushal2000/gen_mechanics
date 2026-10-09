@@ -58,6 +58,9 @@ def main() -> None:
     ap.add_argument("--max-goals", type=int, default=50)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--robot-spec", default=None,
+                    help="evaluate on this hand instead of the training one: a multi-embodiment policy on one of its "
+                         "hands (the network is built for this hand's joints, as viser_compare.py)")
     args = ap.parse_args()
     if args.axis in ("mass", "pitch") and len(args.values) != 1:
         raise SystemExit(f"--axis {args.axis}: one value per process (fixed when the scene is built)")
@@ -87,6 +90,8 @@ def main() -> None:
 
     ckpt = pathlib.Path(args.checkpoint).resolve()
     saved = OmegaConf.load(run_dir_of(ckpt) / "rank_0/.hydra/config.yaml")
+    if args.robot_spec:
+        saved.env.assets.robot_spec = args.robot_spec
     sys.argv = [sys.argv[0]]
     out_path = pathlib.Path(args.out)
     # Appends: the mass sweep is one process per value, all writing the same file.

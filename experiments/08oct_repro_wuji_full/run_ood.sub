@@ -17,6 +17,7 @@
 #             2.5 N is the max since. Points of earlier grids stay in push.json; plot_ood.py plots up to 2.5 N.
 #   pitch     palm pitch -10 / -5 / 0 / 5 (trained) / 10 / 15 / 20 deg, one process per value (PITCH_VALUES overrides).
 #             Scoped on the seed-100 best checkpoints over -30..50: both hands are at ~0 beyond -20 and +30.
+#   EVAL_ROBOT_SPEC=<spec> evaluates on that hand instead of the training one (a multi-embodiment policy on one hand)
 #   AXES="friction push mass" (default) picks which sweeps to run; pitch only when named
 #   sbatch --job-name=ood_<label> --export=ALL,CKPT=<pth>,LABEL=<label> experiments/08oct_repro_wuji_full/run_ood.sub
 set -uo pipefail
@@ -25,7 +26,7 @@ OUT=$REPO/experiments/08oct_repro_wuji_full/results/ood/$LABEL
 mkdir -p $OUT
 cd $REPO
 export OMNI_KIT_ACCEPT_EULA=YES
-PY=".venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/eval_ood.py --checkpoint $CKPT"
+PY=".venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/eval_ood.py --checkpoint $CKPT ${EVAL_ROBOT_SPEC:+--robot-spec $EVAL_ROBOT_SPEC}"
 echo "[ood] $LABEL  checkpoint $CKPT"
 AXES=${AXES:-friction push mass}
 case " $AXES " in *" friction "*)
