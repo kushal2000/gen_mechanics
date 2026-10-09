@@ -42,6 +42,12 @@ finger links only, palm and finger mounts unchanged), as M1 (MLP, 24576 envs, EM
   S3 len75_mlp_e24k         every finger link 25% shorter
   S2 wid120_mlp_e24k        every finger link 20% wider (one new rest contact, ring/pinky proximal, filtered)
 
+And two more finger subsets as M2 (MLP, 24576 envs, EMA 0.1 + action delay, seed 100): between index + middle
+and the full hand, does the thumb -- then the pinky -- buy the OOD robustness?
+
+  F1 thumb_index_middle_mlp_e24k   thumb + index + middle (wuji2_left_only_thumb_index_middle)
+  F2 no_ring_mlp_e24k              thumb + index + middle + pinky (wuji2_left_no_ring)
+
 References, episode_final/successes at epoch 1000 / 1500: 12491 0.71 / 1.81, 21667 0.26 / 0.78. Earliest signal:
 info/last_lr decays (healthy) or stays at 0.01 (8 Oct's failures) by epoch ~400-800.
 
@@ -62,6 +68,9 @@ VIEWER = (250, 10000)
 # Extra training seeds of the single-hand MLP runs (the originals are seed 100): is the embodiment ranking -- and the
 # OOD robustness ranking -- bigger than seed-to-seed variance? len50 (learns nothing) gets one, to rule out bad luck.
 SEEDS = {"full": (101, 102), "index_middle": (101, 102), "wid120": (101, 102), "len75": (101, 102), "len50": (101,)}
+
+FINGERS = {"thumb_index_middle": "wuji2_left_uniform_handonly_only_thumb_index_middle",
+           "no_ring": "wuji2_left_uniform_handonly_no_ring"}
 
 SCALED = {"len50": "every finger link 50% shorter", "len75": "every finger link 25% shorter",
           "wid120": "every finger link 20% wider"}
@@ -152,5 +161,15 @@ if __name__ == "__main__":
         text = re.sub(r"(#SBATCH --job-name=)(\S+)_me2", r"\g<1>\g<2>_me5", text)
         assert "MINI_EPOCHS=2 " in text
         text = text.replace("MINI_EPOCHS=2 ", "MINI_EPOCHS=5 ")
+        (HERE / f"{run}.sub").write_text(text)
+        print(HERE / f"{run}.sub")
+    m2 = (HERE / "left_wuji2_index_middle_v5_ema0.1_dact_mlp_e24k.sub").read_text()
+    for tag, spec in FINGERS.items():
+        run = f"left_wuji2_{tag}_v5_ema0.1_dact_mlp_e24k"
+        text = m2.replace("left_wuji2_index_middle_v5_ema0.1_dact_mlp_e24k", run)
+        text = text.replace("#SBATCH --job-name=M_mlp_index_middle", f"#SBATCH --job-name=F_mlp_{tag}")
+        old = 'ROBOT_SPEC="${ROBOT_SPEC:-wuji2_left_uniform_handonly_only_index_middle}"'
+        assert old in text
+        text = text.replace(old, f'ROBOT_SPEC="${{ROBOT_SPEC:-{spec}}}"')
         (HERE / f"{run}.sub").write_text(text)
         print(HERE / f"{run}.sub")
