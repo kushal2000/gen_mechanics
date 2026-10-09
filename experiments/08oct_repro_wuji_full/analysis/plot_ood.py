@@ -5,7 +5,7 @@ Figures, paper style, bottom legend, one per metric x checkpoint group -- "mid" 
 2500, 3800), "final" (epoch 5000) and "best" (each run's best-training-reward checkpoint, chosen without OOD data):
   plots/ood_sweeps_<group>[_<a>_vs_<b>]_goals_per_episode[_relative].{pdf,png}   goals per (first) episode
   plots/ood_sweeps_<group>[_<a>_vs_<b>]_goals_per_drop[_relative].{pdf,png}      total goals / max(total drops, 1)
-  plots/ood_pitch_<group>[_<a>_vs_<b>]_<metric>.{pdf,png}   palm pitch, a figure of its own (policies that have it)
+  plots/ood_<pitch|restitution>_<group>[_<a>_vs_<b>]_<metric>.{pdf,png}   each a figure of its own (policies that have it)
 _relative: as a fraction of each policy's own trained-condition value. The trained value of each axis is a dotted line
 labelled "Train value"; mass on a log axis. Seeds are averaged (line) with their min-max range (band). Embodiments with
 no results yet are skipped. --only a,b restricts to those embodiments.
@@ -50,8 +50,9 @@ AXES = {   # axis -> (title, x label, trained value, log x)
     "friction": ("Friction", "Friction, object and hand", 0.5, False),
     "push": ("Push Force", "Push force (N), every 0.3 s", 0.0, False),
 }
-# Palm pitch is its own figure (ood_pitch_<group>...): the hand mount tilts, so it is a different kind of shift.
-PITCH_AXES = {"pitch": ("Palm Pitch", "Palm pitch (deg), + toward the fingertips", 5.0, False)}
+# Axes added later, each a figure of its own (ood_<axis>_<group>...), for the policies that have them.
+EXTRA_AXES = {"pitch": ("Palm Pitch", "Palm pitch (deg), + toward the fingertips", 5.0, False),
+              "restitution": ("Object Restitution", "Object restitution (hand 0)", 0.0, False)}
 
 
 def goals_per_drop(r: dict) -> float:
@@ -85,7 +86,7 @@ def load(results: pathlib.Path) -> dict:
         if not m or m["emb"] not in EMBODIMENTS:
             continue
         key = (m["emb"], BEST if m["best"] else int(m["ep"]))
-        for axis in {**AXES, **PITCH_AXES}:
+        for axis in {**AXES, **EXTRA_AXES}:
             f = d / f"{axis}.json"
             if not f.exists():
                 continue
@@ -201,9 +202,10 @@ def main():
                 one = {metric: METRICS[metric]}
                 plot(sub, epochs, False, stem.with_name(f"{stem.name}_{tag}"), one)
                 plot(sub, epochs, True, stem.with_name(f"{stem.name}_{tag}_relative"), one)
-                if any("pitch" in v for v in sub.values()):
-                    pstem = stem.with_name(stem.name.replace("ood_sweeps_", "ood_pitch_") + f"_{tag}")
-                    plot({k: v for k, v in sub.items() if "pitch" in v}, epochs, False, pstem, one, PITCH_AXES)
+                for extra, spec in EXTRA_AXES.items():
+                    if any(extra in v for v in sub.values()):
+                        xstem = stem.with_name(stem.name.replace("ood_sweeps_", f"ood_{extra}_") + f"_{tag}")
+                        plot({k: v for k, v in sub.items() if extra in v}, epochs, False, xstem, one, {extra: spec})
     for key in ordered(data):
         for axis, metrics in data[key].items():
             for metric, pts in metrics.items():

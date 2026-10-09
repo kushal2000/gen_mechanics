@@ -14,6 +14,9 @@ coefficient 0). Everything else as the policy's own run trained -- its saved env
             independent of the mass), lasting one 1/60 s control step, every 0.3 s (18 steps) -- the viewer's
             cadence. force_only_when_lifted is turned OFF: "lifted" means above the cube's starting height, which
             palm-up rarely is, so the default gating would suppress almost every push.
+  restitution  the object's restitution (trained 0), live through the same material pass. The hand's stays 0 and
+            contacts average the two, so the effective contact restitution is v / 2; PhysX also ignores bounce below
+            bounce_threshold_velocity (0.2 m/s), so it acts on impacts (re-grasps, catches), not on slow rolling.
   pitch     palm pitch in degrees (trained 5): the hand mount rotates about the palm centre, which stays put, and the
             palm slopes down toward the fingertips (HAND_ONLY_PALM_PITCH_DEG, read when the robot specs are built:
             ONE value per process). Negative pitch slopes back toward the wrist, away from the fingers: allowed here
@@ -52,7 +55,7 @@ def run_dir_of(ckpt: pathlib.Path) -> pathlib.Path:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True)
-    ap.add_argument("--axis", choices=("mass", "friction", "push", "pitch"), required=True)
+    ap.add_argument("--axis", choices=("mass", "friction", "push", "pitch", "restitution"), required=True)
     ap.add_argument("--values", nargs="+", type=float, required=True)
     ap.add_argument("--num-envs", type=int, default=64)
     ap.add_argument("--max-seconds", type=float, default=300.0, help="sim-time cap per value")
@@ -132,6 +135,9 @@ def main() -> None:
             if args.axis == "friction":
                 for key in ("robot_friction", "finger_tip_friction", "object_friction"):
                     setattr(env.cfg.assets, key, float(v))
+                apply_physx_material_properties(env)
+            if args.axis == "restitution":
+                env.cfg.assets.object_restitution = float(v)
                 apply_physx_material_properties(env)
             pushing = args.axis == "push" and v > 0
             dr_live.force_magnitude_n = float(v) if pushing else 0.0
