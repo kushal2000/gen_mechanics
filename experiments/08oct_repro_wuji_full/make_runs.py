@@ -31,6 +31,7 @@ And one multi-embodiment transformer run from A2's sub: all 52 Wuji v2 finger-dr
 instead of 5 (8 optimizer steps an epoch instead of 20):
 
   E1 lr_2plus_dact_accum4_e24k_me2
+  E2 lr_2to3_dact_accum4_e24k_me2   the same over the 40 hands with 2 or 3 fingers (multi:wuji2_lr_2to3)
 
 And scaled-link variants of the full hand (assets/urdf/unified_dynamics_commercial_hands/make_scaled_links.py:
 finger links only, palm and finger mounts unchanged), as M1 (MLP, 24576 envs, EMA 0.1 + action delay):
@@ -133,3 +134,12 @@ if __name__ == "__main__":
             text = text.replace("set -euo pipefail", f"export SEED={seed}\nset -euo pipefail", 1)
             (HERE / f"{run}.sub").write_text(text)
             print(HERE / f"{run}.sub")
+    e1 = (HERE / "wuji2_lr_2plus_v5_ema0.1_dact_accum4_e24k_me2.sub").read_text()
+    run = "wuji2_lr_2to3_v5_ema0.1_dact_accum4_e24k_me2"
+    text = e1.replace("wuji2_lr_2plus_v5_ema0.1_dact_accum4_e24k_me2", run)
+    text = text.replace("#SBATCH --job-name=E_multi52_me2", "#SBATCH --job-name=E_multi2to3_me2")
+    old = 'ROBOT_SPEC="${ROBOT_SPEC:-multi:wuji2_lr_2plus}"'
+    assert old in text
+    text = text.replace(old, 'ROBOT_SPEC="${ROBOT_SPEC:-multi:wuji2_lr_2to3}"')
+    (HERE / f"{run}.sub").write_text(text)
+    print(HERE / f"{run}.sub")
