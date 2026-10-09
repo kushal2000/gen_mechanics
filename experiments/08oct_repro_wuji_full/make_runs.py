@@ -26,6 +26,12 @@ cancelled at start: the minibatch stays the 12288-env runs'.)
   A1 accum4_e24k            the full left hand
   A2 dact_accum4_e24k       the same with action delay on (from R4's sub)
 
+And scaled-link variants of the full hand (assets/urdf/unified_dynamics_commercial_hands/make_scaled_links.py:
+finger links only, palm and finger mounts unchanged), as M1 (MLP, 24576 envs, EMA 0.1 + action delay):
+
+  S1 len50_mlp_e24k         every finger link 50% shorter
+  S2 wid120_mlp_e24k        every finger link 20% wider (one new rest contact, ring/pinky proximal, filtered)
+
 References, episode_final/successes at epoch 1000 / 1500: 12491 0.71 / 1.81, 21667 0.26 / 0.78. Earliest signal:
 info/last_lr decays (healthy) or stays at 0.01 (8 Oct's failures) by epoch ~400-800.
 
@@ -42,6 +48,8 @@ LOGS_NEW = "debug_outputs/train_logs/08oct_repro_wuji_full"
 WANDB = "gen_mechanics_repro_08oct"
 RUNS = {"nodelay": "left_wuji2_full_v5_ema0.1", "dact": "left_wuji2_full_v5_ema0.1_dact"}
 VIEWER = (250, 10000)
+
+SCALED = {"len50": "every finger link 50% shorter", "wid120": "every finger link 20% wider"}
 
 if __name__ == "__main__":
     for tag, src in RUNS.items():
@@ -82,3 +90,13 @@ if __name__ == "__main__":
         p = HERE / f"{run}.sub"
         p.write_text(text)
         print(p)
+    m1 = (HERE / "left_wuji2_full_v5_ema0.1_dact_mlp_e24k.sub").read_text()
+    for tag in SCALED:
+        run = f"left_wuji2_{tag}_v5_ema0.1_dact_mlp_e24k"
+        text = m1.replace("left_wuji2_full_v5_ema0.1_dact_mlp_e24k", run)
+        text = text.replace("#SBATCH --job-name=M_mlp_full", f"#SBATCH --job-name=S_mlp_{tag}")
+        old = 'ROBOT_SPEC="${ROBOT_SPEC:-wuji2_left_uniform_handonly}"'
+        assert old in text
+        text = text.replace(old, f'ROBOT_SPEC="${{ROBOT_SPEC:-wuji2_left_uniform_handonly_{tag}}}"')
+        (HERE / f"{run}.sub").write_text(text)
+        print(HERE / f"{run}.sub")
