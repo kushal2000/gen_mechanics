@@ -234,6 +234,13 @@ def _author_objects_into_envs(env, object_params, design_idx) -> dict[int, int]:
     layer = get_current_stage().GetRootLayer()
     t0 = time.perf_counter()
     asset_index: dict[int, int] = {}
+    lo, hi = (float(v) for v in env.cfg.domain_randomization.object_mass_scale_range)
+    mass_scale = None
+    if (lo, hi) != (1.0, 1.0):      # log-uniform per env, seeded by the env seed and the rank
+        rng = np.random.default_rng([int(env.cfg.seed or 0), rank])
+        mass_scale = np.exp(rng.uniform(np.log(lo), np.log(hi), env.num_envs))
+        print(f"[scene] object mass DR: x{lo:g}..x{hi:g} log-uniform per env "
+              f"(median x{float(np.median(mass_scale)):.2f})", flush=True)
     with Sdf.ChangeBlock():
         # One shared material, bound on the shapes as they are authored; the
         # friction pass overwrites its values per env.
@@ -247,6 +254,10 @@ def _author_objects_into_envs(env, object_params, design_idx) -> dict[int, int]:
             asset_index[env_id] = int(which[env_id])
             handle_scale, head_scale, handle_density, head_density = \
                 object_params[asset_index[env_id]]
+            if mass_scale is not None:      # DomainRandomizationCfg.object_mass_scale_range
+                k = float(mass_scale[env_id])    # a one-part object (the cube) has no head: density None
+                handle_density = None if handle_density is None else handle_density * k
+                head_density = None if head_density is None else head_density * k
             # GoalViz: no collider and no motion.
             for name, collision, kinematic in (("Object", True, False),
                                                ("GoalViz", False, True)):

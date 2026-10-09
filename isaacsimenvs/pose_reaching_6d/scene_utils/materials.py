@@ -223,4 +223,23 @@ def _apply_non_robot(env, assets_cfg, material, obj_lo, obj_hi, n_buckets, env_i
         view.set_material_properties(materials, env_ids)
 
 
-__all__ = ["apply_physx_material_properties"]
+def apply_contact_friction(env, env_ids) -> None:
+    """DomainRandomizationCfg.contact_friction_range: one friction (static = dynamic) for the object and every hand
+    shape, per env, re-drawn at each reset on friction_n_buckets values (which caps the PhysX material count)."""
+    if getattr(env.scene_record, "hand_set", None) is not None or env.scene_record.population is not None:
+        raise NotImplementedError("contact_friction_range: single fixed robot only")
+    dr = env.cfg.domain_randomization
+    lo, hi = (float(v) for v in dr.contact_friction_range)
+    n_b = int(dr.friction_n_buckets)
+    ids = env_ids.to("cpu", torch.int64)
+    mu = torch.linspace(lo, hi, n_b)[torch.randint(0, n_b, (ids.numel(),))]
+    if getattr(env, "_contact_materials", None) is None:      # full (N, shapes, 3) tensors, read once
+        env._contact_materials = (env.robot.root_physx_view.get_material_properties(),
+                                  env.object.root_physx_view.get_material_properties())
+    for view, mats in zip((env.robot.root_physx_view, env.object.root_physx_view), env._contact_materials):
+        mats[ids, :, 0] = mu.unsqueeze(-1)
+        mats[ids, :, 1] = mu.unsqueeze(-1)
+        view.set_material_properties(mats, ids)
+
+
+__all__ = ["apply_contact_friction", "apply_physx_material_properties"]

@@ -334,6 +334,23 @@ class DomainRandomizationCfg:
     fingertip_friction_scale_range: tuple[float, float] = (1.0, 1.0)
     friction_n_buckets: int = 16
 
+    # DR over the four OOD axes of experiments/08oct_repro_wuji_full (push, friction, mass, hand tilt). Off by
+    # default; each range is re-drawn per env at every reset, except mass (see object_mass_scale_range).
+    # Push: every push is this many newtons (uniform in the range, drawn per episode) in a uniformly random
+    # direction; replaces force_scale / force_magnitude_n when hi > 0. How often: force_prob_range.
+    push_magnitude_range_n: tuple[float, float] = (0.0, 0.0)
+    # One friction for the object and EVERY hand shape together (as the OOD friction axis), uniform over
+    # friction_n_buckets values in the range. Overrides robot / fingertip / object friction while on.
+    contact_friction_range: tuple[float, float] = (0.0, 0.0)
+    # Object mass multiplier, log-uniform, per env at SCENE BUILD and fixed after: mass cannot change at runtime in
+    # this build (set_masses raises), so it is baked into each env's object density when the object is authored.
+    object_mass_scale_range: tuple[float, float] = (1.0, 1.0)
+    # Hand tilt angle in degrees, uniform per episode (the base pose's pitch, HAND_ONLY_PALM_PITCH_DEG, is the
+    # angle at 0 extra). Emulated, not a moved hand: a constant force on the object of m (g_tilted - g), so the
+    # object feels gravity as on a hand tilted to that angle. Gravity on the finger links and world-frame
+    # observations are not tilted (the OOD tilt eval moves the real hand).
+    tilt_range_deg: tuple[float, float] = (0.0, 0.0)
+
 
 def _default_sim_cfg() -> SimulationCfg:
     """120 Hz physics, 60 Hz policy."""

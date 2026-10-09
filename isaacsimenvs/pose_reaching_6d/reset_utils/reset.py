@@ -288,6 +288,10 @@ def allocate_state_buffers(env) -> None:
         env.num_envs, 3, device=env.device
     ).uniform_(lo, hi)
 
+    # --- OOD-axis DR (push size, hand tilt): drawn per episode in reset_env_state ---
+    env._push_magnitude = torch.zeros(env.num_envs, device=env.device)
+    env._tilt_force = torch.zeros(env.num_envs, 1, 3, device=env.device)
+
     # --- Reward / termination trackers  ---
     # whether the object is lifted
     env._lifted_object = torch.zeros(
@@ -702,6 +706,7 @@ def reset_env_state(env, env_ids: torch.Tensor) -> None:
     env._object_scale_multiplier[env_ids] = torch.empty(
         n, 3, device=env.device
     ).uniform_(lo, hi)
+    _sample_ood_axis_dr(env, env_ids)
 
 
 __all__ = [
@@ -709,3 +714,27 @@ __all__ = [
     "reset_env_state",
     "reset_goal_trackers",
 ]
+
+
+def _sample_ood_axis_dr(env, env_ids: torch.Tensor) -> None:
+    """Per-episode draws for DomainRandomizationCfg's OOD-axis DR (push size, hand tilt, contact friction)."""
+    dr = env.cfg.domain_randomization
+    n = env_ids.numel()
+    lo, hi = dr.push_magnitude_range_n
+    if hi > 0.0:
+        env._push_magnitude[env_ids] = torch.empty(n, device=env.device).uniform_(lo, hi)
+    lo, hi = dr.tilt_range_deg
+    if (lo, hi) != (0.0, 0.0):
+        from hand_sampler.robot_param_constants import HAND_ONLY_PALM_PITCH_DEG
+        # The hand pitches about world x (fingers along -y, dipping toward -z as the angle grows): on a hand tilted
+        # by d more, gravity in the hand's frame is Rx(-d) g = 9.81 (0, -sin d, -cos d). The extra force is
+        # m (that - g), so a positive d pulls the object toward the fingertips (-y).
+        d = torch.deg2rad(torch.empty(n, device=env.device).uniform_(lo, hi) - HAND_ONLY_PALM_PITCH_DEG)
+        m = env._object_mass[env_ids, 0]
+        g = 9.81
+        env._tilt_force[env_ids, 0, 0] = 0.0
+        env._tilt_force[env_ids, 0, 1] = -m * g * torch.sin(d)
+        env._tilt_force[env_ids, 0, 2] = m * g * (1.0 - torch.cos(d))
+    if tuple(dr.contact_friction_range) != (0.0, 0.0):
+        from ..scene_utils.materials import apply_contact_friction
+        apply_contact_friction(env, env_ids)

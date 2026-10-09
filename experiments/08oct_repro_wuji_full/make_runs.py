@@ -56,6 +56,14 @@ this delay-on pairing.)
 
   T1 index_middle_dact_accum4_e24k   left index + middle (wuji2_left_only_index_middle)
 
+And the OOD axes as training DR (DomainRandomizationCfg's push / contact friction / object mass / tilt fields),
+over the middle of each OOD sweep so its ends stay unseen: push 0-1.5 N every ~0.3 s (the eval's cadence), friction
+0.25-1.0 (object and whole hand together), object mass 15-250 g (log-uniform, per env), hand tilt -5 to +15 deg
+(emulated by a force on the object). Re-drawn every episode except mass. As M1 / M2 otherwise:
+
+  D1 full_ood_dr_mlp_e24k           the full left hand
+  D2 index_middle_ood_dr_mlp_e24k   the left index + middle hand
+
 References, episode_final/successes at epoch 1000 / 1500: 12491 0.71 / 1.81, 21667 0.26 / 0.78. Earliest signal:
 info/last_lr decays (healthy) or stays at 0.01 (8 Oct's failures) by epoch ~400-800.
 
@@ -79,6 +87,13 @@ SEEDS = {"full": (101, 102), "index_middle": (101, 102), "wid120": (101, 102), "
 
 FINGERS = {"thumb_index_middle": "wuji2_left_uniform_handonly_only_thumb_index_middle",
            "no_ring": "wuji2_left_uniform_handonly_no_ring"}
+
+OOD_DR = ("env.domain_randomization.push_magnitude_range_n=[0.0,1.5] "
+          "env.domain_randomization.force_prob_range=[0.0556,0.0556] "
+          "env.domain_randomization.force_only_when_lifted=false "
+          "env.domain_randomization.contact_friction_range=[0.25,1.0] "
+          "env.domain_randomization.object_mass_scale_range=[0.3292,5.487] "     # 15 / 45.5625, 250 / 45.5625
+          "env.domain_randomization.tilt_range_deg=[-5.0,15.0]")
 
 SCALED = {"len50": "every finger link 50% shorter", "len75": "every finger link 25% shorter",
           "wid120": "every finger link 20% wider"}
@@ -189,3 +204,13 @@ if __name__ == "__main__":
     text = text.replace(old, 'ROBOT_SPEC="${ROBOT_SPEC:-wuji2_left_uniform_handonly_only_index_middle}"')
     (HERE / f"{run}.sub").write_text(text)
     print(HERE / f"{run}.sub")
+    for tag in ("full", "index_middle"):
+        src = f"left_wuji2_{tag}_v5_ema0.1_dact_mlp_e24k"
+        run = f"left_wuji2_{tag}_v5_ema0.1_dact_ood_dr_mlp_e24k"
+        text = (HERE / f"{src}.sub").read_text().replace(src, run)
+        text = text.replace(f"#SBATCH --job-name=M_mlp_{tag}", f"#SBATCH --job-name=D_mlp_{tag}_ood_dr")
+        last = 'env.domain_randomization.use_action_delay=true"'
+        assert text.count(last) == 1
+        text = text.replace(last, last[:-1] + " " + OOD_DR + '"')
+        (HERE / f"{run}.sub").write_text(text)
+        print(HERE / f"{run}.sub")

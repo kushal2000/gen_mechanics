@@ -12,8 +12,8 @@ coefficient 0). Everything else as the policy's own run trained -- its saved env
             scene's own material pass, so all values run in one process.
   push      a push of exactly N newtons in a uniformly random direction (domain_randomization.force_magnitude_n,
             independent of the mass), lasting one 1/60 s control step, every 0.3 s (18 steps) -- the viewer's
-            cadence. force_only_when_lifted is turned OFF: "lifted" means above the cube's starting height, which
-            palm-up rarely is, so the default gating would suppress almost every push.
+            cadence. force_only_when_lifted is turned off, though in this task it gates nothing: "lifted" is set at
+            every reset when the object starts in the hand (reset.object_in_hand) and only ever latches on.
   restitution  the object's restitution (trained 0), live through the same material pass. The hand's stays 0 and
             contacts average the two, so the effective contact restitution is v / 2; PhysX also ignores bounce below
             bounce_threshold_velocity (0.2 m/s), so it acts on impacts (re-grasps, catches), not on slow rolling.
@@ -112,6 +112,9 @@ def main() -> None:
         env_cfg.termination.max_consecutive_successes = args.max_goals
         dr = env_cfg.domain_randomization
         dr.force_scale, dr.torque_scale = 0.0, 0.0
+        # A policy trained with the OOD-axis DR: evaluate at the swept value only, not under that DR.
+        dr.push_magnitude_range_n, dr.contact_friction_range, dr.tilt_range_deg = (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)
+        dr.object_mass_scale_range = (1.0, 1.0)
         if args.axis == "mass":
             env_cfg.assets.object_density_scale = args.values[0] / NOMINAL_G
         env = gym.make(TASK, cfg=env_cfg).unwrapped
