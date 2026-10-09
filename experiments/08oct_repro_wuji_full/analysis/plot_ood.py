@@ -1,12 +1,13 @@
 """OOD robustness of the single-hand MLP policies, one line per embodiment: object mass, friction (object + hand
 together), push force. Goals in each env's first episode (64 envs), from run_ood.sub / eval_ood.py.
 
-Figures, paper style, bottom legend, one pair per checkpoint group -- "mid" (checkpoints before epoch 5000: 2000,
+Figures, paper style, bottom legend, one per metric x checkpoint group -- "mid" (checkpoints before epoch 5000: 2000,
 2500, 3800), "final" (epoch 5000) and "best" (each run's best-training-reward checkpoint, chosen without OOD data):
-  plots/ood_sweeps_<group>.{pdf,png}           top: goals per (first) episode; bottom: goals per drop over the whole eval
-                                       window (total goals / max(total drops, 1)); linear axes
-  plots/ood_sweeps_<group>_relative.{pdf,png}  both as a fraction of the embodiment's own trained-condition value
-The trained value of each axis is marked (dotted line). Embodiments with no results yet are skipped.
+  plots/ood_sweeps_<group>[_<a>_vs_<b>]_goals_per_episode[_relative].{pdf,png}   goals per (first) episode
+  plots/ood_sweeps_<group>[_<a>_vs_<b>]_goals_per_drop[_relative].{pdf,png}      total goals / max(total drops, 1)
+_relative: as a fraction of each policy's own trained-condition value. The trained value of each axis is a dotted line
+labelled "Train value"; mass on a log axis. Seeds are averaged (line) with their min-max range (band). Embodiments with
+no results yet are skipped. --only a,b restricts to those embodiments.
 
     .venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/plot_ood.py [--results DIR]
 """
@@ -37,7 +38,7 @@ EMBODIMENTS = {
     "tf_full_dact": ("Full Wuji v2 (transformer)", ps.GREEN_RAMP[1], "X"),
 }
 AXES = {   # axis -> (title, x label, trained value, log x)
-    "mass": ("Object Mass", "Object mass (g)", 45.5625, False),
+    "mass": ("Object Mass", "Object mass (g)", 45.5625, True),
     "friction": ("Friction", "Friction, object and hand", 0.5, False),
     "push": ("Push Force", "Push force (N), every 0.3 s", 0.0, False),
 }
@@ -94,22 +95,26 @@ def n_seeds(entry) -> int:
     return max((p[4] for axes in entry.values() for pts in axes.values() for p in pts), default=1)
 
 
-def plot(data, epochs, relative: bool, out: pathlib.Path):
-    fig, grid = plt.subplots(2, 3, figsize=(ps.TEXT_WIDTH, 4.4))
-    for row, (metric, (ylabel, logy)) in zip(grid, METRICS.items()):
+def plot(data, epochs, relative: bool, out: pathlib.Path, metrics=None):
+    metrics = metrics or METRICS
+    rows = len(metrics)
+    fig, grid = plt.subplots(rows, 3, figsize=(ps.TEXT_WIDTH, 2.3 * rows), squeeze=False)
+    for row, (metric, (ylabel, logy)) in zip(grid, metrics.items()):
         _plot_row(row, data, metric, relative, logy and not relative)
         row[0].set_ylabel(("Fraction of trained " + ylabel.lower()) if relative else ylabel)
-    for ax in grid[0]:
-        ax.set_xlabel("")
-    for ax in grid[1]:
-        ax.set_title("")
+    for r in range(rows - 1):              # x labels on the bottom row only, titles on the top row only
+        for ax in grid[r]:
+            ax.set_xlabel("")
+    for r in range(1, rows):
+        for ax in grid[r]:
+            ax.set_title("")
     present = ordered(data)
     handles = [Line2D([], [], color=EMBODIMENTS[e][1], marker=EMBODIMENTS[e][2], markersize=3.5, linewidth=1.3,
                       linestyle=style(data, (e, ep))) for e, ep in present]
     labels = [f"{EMBODIMENTS[e][0]} (" + ("best ckpt" if ep == BEST else f"ep {ep}") +
               (f", {n_seeds(data[(e, ep)])} seeds)" if n_seeds(data[(e, ep)]) > 1 else ")") for e, ep in present]
     fig.tight_layout()
-    ps.bottom_legend(fig, handles, labels, y=-0.04, ncol=min(len(labels), 3), bold=())
+    ps.bottom_legend(fig, handles, labels, y=-0.04 if rows > 1 else -0.12, ncol=min(len(labels), 3), bold=())
     ps.save_figure(fig, out)
     plt.close(fig)
 
@@ -142,6 +147,8 @@ def _plot_row(axs, data, metric, relative, logy):
             if max(ns) > 1:
                 ax.fill_between(xs, los, his, color=color, alpha=ps.BAND_ALPHA, linewidth=0)
         ax.axvline(trained, color=ps.COLORS["neutral"], linewidth=0.8, linestyle=(0, (2, 2)), zorder=0)
+        ax.text(trained, 0.99, " Train value", transform=ax.get_xaxis_transform(), ha="left", va="top",
+                fontsize=7, color=ps.COLORS["muted_ink"])
         if logx:
             ax.set_xscale("log")
         if logy:
@@ -173,8 +180,12 @@ def main():
               "best": {k: v for k, v in data.items() if k[1] == BEST}}
     for name, sub in groups.items():
         if sub:
-            plot(sub, epochs, False, pathlib.Path(args.out) / f"ood_sweeps_{name}{suffix}")
-            plot(sub, epochs, True, pathlib.Path(args.out) / f"ood_sweeps_{name}{suffix}_relative")
+            stem = pathlib.Path(args.out) / f"ood_sweeps_{name}{suffix}"
+            for metric in METRICS:               # one image per metric (no combined figure)
+                tag = {"goals_per_episode_first": "goals_per_episode", "goals_per_drop": "goals_per_drop"}[metric]
+                one = {metric: METRICS[metric]}
+                plot(sub, epochs, False, stem.with_name(f"{stem.name}_{tag}"), one)
+                plot(sub, epochs, True, stem.with_name(f"{stem.name}_{tag}_relative"), one)
     for key in ordered(data):
         for axis, metrics in data[key].items():
             for metric, pts in metrics.items():
