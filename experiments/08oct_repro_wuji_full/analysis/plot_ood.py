@@ -5,6 +5,7 @@ Figures, paper style, bottom legend, one per metric x checkpoint group -- "mid" 
 2500, 3800), "final" (epoch 5000) and "best" (each run's best-training-reward checkpoint, chosen without OOD data):
   plots/ood_sweeps_<group>[_<a>_vs_<b>]_goals_per_episode[_relative].{pdf,png}   goals per (first) episode
   plots/ood_sweeps_<group>[_<a>_vs_<b>]_goals_per_drop[_relative].{pdf,png}      total goals / max(total drops, 1)
+  plots/ood_pitch_<group>[_<a>_vs_<b>]_<metric>.{pdf,png}   palm pitch, a figure of its own (policies that have it)
 _relative: as a fraction of each policy's own trained-condition value. The trained value of each axis is a dotted line
 labelled "Train value"; mass on a log axis. Seeds are averaged (line) with their min-max range (band). Embodiments with
 no results yet are skipped. --only a,b restricts to those embodiments.
@@ -42,6 +43,8 @@ AXES = {   # axis -> (title, x label, trained value, log x)
     "friction": ("Friction", "Friction, object and hand", 0.5, False),
     "push": ("Push Force", "Push force (N), every 0.3 s", 0.0, False),
 }
+# Palm pitch is its own figure (ood_pitch_<group>...): the hand mount tilts, so it is a different kind of shift.
+PITCH_AXES = {"pitch": ("Palm Pitch", "Palm pitch (deg), + toward the fingertips", 5.0, False)}
 
 
 def goals_per_drop(r: dict) -> float:
@@ -74,7 +77,7 @@ def load(results: pathlib.Path) -> dict:
         if not m or m["emb"] not in EMBODIMENTS:
             continue
         key = (m["emb"], BEST if m["best"] else int(m["ep"]))
-        for axis in AXES:
+        for axis in {**AXES, **PITCH_AXES}:
             f = d / f"{axis}.json"
             if not f.exists():
                 continue
@@ -95,12 +98,13 @@ def n_seeds(entry) -> int:
     return max((p[4] for axes in entry.values() for pts in axes.values() for p in pts), default=1)
 
 
-def plot(data, epochs, relative: bool, out: pathlib.Path, metrics=None):
-    metrics = metrics or METRICS
+def plot(data, epochs, relative: bool, out: pathlib.Path, metrics=None, axes=None):
+    metrics, axes = metrics or METRICS, axes or AXES
     rows = len(metrics)
-    fig, grid = plt.subplots(rows, 3, figsize=(ps.TEXT_WIDTH, 2.3 * rows), squeeze=False)
+    width = ps.TEXT_WIDTH * (1 if len(axes) == 3 else 0.45)
+    fig, grid = plt.subplots(rows, len(axes), figsize=(width, 2.3 * rows), squeeze=False)
     for row, (metric, (ylabel, logy)) in zip(grid, metrics.items()):
-        _plot_row(row, data, metric, relative, logy and not relative)
+        _plot_row(row, data, metric, relative, logy and not relative, axes)
         row[0].set_ylabel(("Fraction of trained " + ylabel.lower()) if relative else ylabel)
     for r in range(rows - 1):              # x labels on the bottom row only, titles on the top row only
         for ax in grid[r]:
@@ -114,7 +118,8 @@ def plot(data, epochs, relative: bool, out: pathlib.Path, metrics=None):
     labels = [f"{EMBODIMENTS[e][0]} (" + ("best ckpt" if ep == BEST else f"ep {ep}") +
               (f", {n_seeds(data[(e, ep)])} seeds)" if n_seeds(data[(e, ep)]) > 1 else ")") for e, ep in present]
     fig.tight_layout()
-    ps.bottom_legend(fig, handles, labels, y=-0.04 if rows > 1 else -0.12, ncol=min(len(labels), 3), bold=())
+    ps.bottom_legend(fig, handles, labels, y=-0.04 if rows > 1 else -0.12,
+                     ncol=min(len(labels), 3 if len(axes) == 3 else 1), bold=())
     ps.save_figure(fig, out)
     plt.close(fig)
 
@@ -130,8 +135,8 @@ def style(data, key):
     return ps.LINE_STYLES[eps.index(key[1]) % len(ps.LINE_STYLES)]
 
 
-def _plot_row(axs, data, metric, relative, logy):
-    for ax, (axis, (title, xlabel, trained, logx)) in zip(axs, AXES.items()):
+def _plot_row(axs, data, metric, relative, logy, axes):
+    for ax, (axis, (title, xlabel, trained, logx)) in zip(axs, axes.items()):
         for key in ordered(data):
             name, color, marker = EMBODIMENTS[key[0]]
             pts = data[key].get(axis, {}).get(metric)
@@ -186,6 +191,9 @@ def main():
                 one = {metric: METRICS[metric]}
                 plot(sub, epochs, False, stem.with_name(f"{stem.name}_{tag}"), one)
                 plot(sub, epochs, True, stem.with_name(f"{stem.name}_{tag}_relative"), one)
+                if any("pitch" in v for v in sub.values()):
+                    pstem = stem.with_name(stem.name.replace("ood_sweeps_", "ood_pitch_") + f"_{tag}")
+                    plot({k: v for k, v in sub.items() if "pitch" in v}, epochs, False, pstem, one, PITCH_AXES)
     for key in ordered(data):
         for axis, metrics in data[key].items():
             for metric, pts in metrics.items():
