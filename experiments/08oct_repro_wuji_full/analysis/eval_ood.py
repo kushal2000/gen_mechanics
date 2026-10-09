@@ -27,6 +27,7 @@ coefficient 0). Everything else as the policy's own run trained -- its saved env
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import pathlib
@@ -177,7 +178,13 @@ def main() -> None:
                   f"{res['first_episode_drop_frac']:.2f}  goals/min {res['goals_per_min']:.1f}  "
                   f"({time.time() - t0:.0f} s wall)", flush=True)
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(json.dumps({"checkpoint": str(ckpt), "results": results}, indent=1))
+            # Re-read and merge under a lock: two jobs can write the same file (e.g. positive and negative pitch of
+            # one checkpoint at once), and a plain read-modify-write lost one job's values (9 Oct).
+            with open(out_path.with_suffix(".lock"), "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                merged = json.loads(out_path.read_text())["results"] if out_path.exists() else {}
+                merged[f"{args.axis}={v:g}"] = res
+                out_path.write_text(json.dumps({"checkpoint": str(ckpt), "results": merged}, indent=1))
         env.close()
 
     _run()
