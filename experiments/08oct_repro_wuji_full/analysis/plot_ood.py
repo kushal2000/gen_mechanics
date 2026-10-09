@@ -2,7 +2,7 @@
 together), push force. Goals in each env's first episode (64 envs), from run_ood.sub / eval_ood.py.
 
 Figures, paper style, bottom legend, one pair per checkpoint group -- "mid" (checkpoints before epoch 5000: 2000,
-2500, 3800) and "final" (epoch 5000):
+2500, 3800), "final" (epoch 5000) and "best" (each run's best-training-reward checkpoint, chosen without OOD data):
   plots/ood_sweeps_<group>.{pdf,png}           top: goals per (first) episode; bottom: goals per drop over the whole eval
                                        window (total goals / max(total drops, 1)); linear axes
   plots/ood_sweeps_<group>_relative.{pdf,png}  both as a fraction of the embodiment's own trained-condition value
@@ -57,7 +57,10 @@ METRICS = {"goals_per_episode_first": ("Goals / episode", False),
            "goals_per_drop": ("Goals / drop", False)}      # metric -> (label, log y): linear axes throughout
 
 
-LABEL = re.compile(r"^(?P<emb>.+?)(?:_s(?P<seed>\d+))?_ep(?P<ep>\d+)$")   # <emb>[_s<seed>]_ep<epoch>; no seed = 100
+# <emb>[_s<seed>][_best]_ep<epoch>; no seed = 100. "_best": the run's best-training-reward checkpoint (rl_games'
+# nn/<run>.pth), whose epoch differs per seed -- grouped under BEST rather than by epoch.
+LABEL = re.compile(r"^(?P<emb>.+?)(?:_s(?P<seed>\d+))?(?P<best>_best)?_ep(?P<ep>\d+)$")
+BEST = -1
 
 
 def load(results: pathlib.Path) -> dict:
@@ -69,7 +72,7 @@ def load(results: pathlib.Path) -> dict:
         m = LABEL.match(d.name)
         if not m or m["emb"] not in EMBODIMENTS:
             continue
-        key = (m["emb"], int(m["ep"]))
+        key = (m["emb"], BEST if m["best"] else int(m["ep"]))
         for axis in AXES:
             f = d / f"{axis}.json"
             if not f.exists():
@@ -103,8 +106,8 @@ def plot(data, epochs, relative: bool, out: pathlib.Path):
     present = ordered(data)
     handles = [Line2D([], [], color=EMBODIMENTS[e][1], marker=EMBODIMENTS[e][2], markersize=3.5, linewidth=1.3,
                       linestyle=style(data, (e, ep))) for e, ep in present]
-    labels = [f"{EMBODIMENTS[e][0]} (ep {ep}" + (f", {n_seeds(data[(e, ep)])} seeds)" if n_seeds(data[(e, ep)]) > 1
-                                                  else ")") for e, ep in present]
+    labels = [f"{EMBODIMENTS[e][0]} (" + ("best ckpt" if ep == BEST else f"ep {ep}") +
+              (f", {n_seeds(data[(e, ep)])} seeds)" if n_seeds(data[(e, ep)]) > 1 else ")") for e, ep in present]
     fig.tight_layout()
     ps.bottom_legend(fig, handles, labels, y=-0.04, ncol=min(len(labels), 3), bold=())
     ps.save_figure(fig, out)
@@ -159,8 +162,9 @@ def main():
     data, epochs = load(pathlib.Path(args.results))
     if not data:
         raise SystemExit(f"no OOD results under {args.results}")
-    groups = {"mid": {k: v for k, v in data.items() if k[1] < 5000},
-              "final": {k: v for k, v in data.items() if k[1] >= 5000}}
+    groups = {"mid": {k: v for k, v in data.items() if 0 <= k[1] < 5000},
+              "final": {k: v for k, v in data.items() if k[1] >= 5000},
+              "best": {k: v for k, v in data.items() if k[1] == BEST}}
     for name, sub in groups.items():
         if sub:
             plot(sub, epochs, False, pathlib.Path(args.out) / f"ood_sweeps_{name}")
