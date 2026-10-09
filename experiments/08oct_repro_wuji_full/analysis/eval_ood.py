@@ -77,7 +77,8 @@ def main() -> None:
     saved = OmegaConf.load(run_dir_of(ckpt) / "rank_0/.hydra/config.yaml")
     sys.argv = [sys.argv[0]]
     out_path = pathlib.Path(args.out)
-    results = json.loads(out_path.read_text()) if out_path.exists() else {}
+    # Appends: the mass sweep is one process per value, all writing the same file.
+    results = json.loads(out_path.read_text())["results"] if out_path.exists() else {}
 
     @hydra_task_config_with_yaml(TASK, "rl_games_joint_transformer_cfg_entry_point")
     def _run(env_cfg, agent_cfg):
