@@ -14,6 +14,11 @@ coefficient 0). Everything else as the policy's own run trained -- its saved env
             independent of the mass), lasting one 1/60 s control step, every 0.3 s (18 steps) -- the viewer's
             cadence. force_only_when_lifted is turned OFF: "lifted" means above the cube's starting height, which
             palm-up rarely is, so the default gating would suppress almost every push.
+  pitch     palm pitch in degrees (trained 5): the hand mount rotates about the palm centre, which stays put, and the
+            palm slopes down toward the fingertips (HAND_ONLY_PALM_PITCH_DEG, read when the robot specs are built:
+            ONE value per process). Must be >= 0 -- robot_param_constants refuses a slope back toward the wrist. Most
+            observations are palm-frame; keypoints_rel_goal and object_vel are world-frame, so they are misaligned
+            with the hand by (pitch - 5) degrees, which a closed-loop policy should tolerate at moderate tilts.
 
     OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/eval_ood.py \\
         --checkpoint <pth> --axis friction --values 0.1 0.25 0.5 0.75 1.0 1.5 --out results/ood/<label>/friction.json
@@ -22,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import sys
 import time
@@ -44,7 +50,7 @@ def run_dir_of(ckpt: pathlib.Path) -> pathlib.Path:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True)
-    ap.add_argument("--axis", choices=("mass", "friction", "push"), required=True)
+    ap.add_argument("--axis", choices=("mass", "friction", "push", "pitch"), required=True)
     ap.add_argument("--values", nargs="+", type=float, required=True)
     ap.add_argument("--num-envs", type=int, default=64)
     ap.add_argument("--max-seconds", type=float, default=300.0, help="sim-time cap per value")
@@ -52,8 +58,12 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
-    if args.axis == "mass" and len(args.values) != 1:
-        raise SystemExit("--axis mass: one value per process (the mass is fixed when the scene is built)")
+    if args.axis in ("mass", "pitch") and len(args.values) != 1:
+        raise SystemExit(f"--axis {args.axis}: one value per process (fixed when the scene is built)")
+    if args.axis == "pitch":
+        # Read by hand_sampler.robot_param_constants at import, which the robot specs (and their base pose) use.
+        os.environ["HAND_ONLY_PALM_PITCH_DEG"] = str(args.values[0])
+        os.environ.pop("HAND_ONLY_PALM_TILT_DEG", None)
 
     from isaaclab.app import AppLauncher
     lp = argparse.ArgumentParser()
