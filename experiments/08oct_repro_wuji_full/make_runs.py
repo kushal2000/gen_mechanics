@@ -24,6 +24,7 @@ in toy_transformer_memory.py, instead of ~17 GB). (A first try doubled the minib
 cancelled at start: the minibatch stays the 12288-env runs'.)
 
   A1 accum4_e24k            the full left hand
+  A2 dact_accum4_e24k       the same with action delay on (from R4's sub)
 
 References, episode_final/successes at epoch 1000 / 1500: 12491 0.71 / 1.81, 21667 0.26 / 0.78. Earliest signal:
 info/last_lr decays (healthy) or stays at 0.01 (8 Oct's failures) by epoch ~400-800.
@@ -55,17 +56,19 @@ if __name__ == "__main__":
             p = HERE / f"{run}.sub"
             p.write_text(text)
             print(p)
-    r2 = (HERE / "left_wuji2_full_v5_ema0.1_repro_v10000.sub").read_text()
-    run = "left_wuji2_full_v5_ema0.1_accum4_e24k"
-    text = r2.replace("left_wuji2_full_v5_ema0.1_repro_v10000", run)
-    text = text.replace("#SBATCH --job-name=R_nodelay_v10000", "#SBATCH --job-name=A_accum4_e24k")
-    assert "export ARCH=transformer\n" in text and 'env.action.hand_moving_average=0.1"' in text
-    text = text.replace("export ARCH=transformer\n",
-                        "export ARCH=transformer\nexport NUM_ENVS_PER_GPU=24576 GLOBAL_MINIBATCH=114688\n")
-    text = text.replace('env.action.hand_moving_average=0.1"',
-                        'env.action.hand_moving_average=0.1 ++agent.params.config.grad_accum_chunks=4"')
-    (HERE / f"{run}.sub").write_text(text)
-    print(HERE / f"{run}.sub")
+    for src, run, job, last in (
+            ("left_wuji2_full_v5_ema0.1_repro_v10000", "left_wuji2_full_v5_ema0.1_accum4_e24k", "R_nodelay_v10000",
+             'env.action.hand_moving_average=0.1"'),
+            ("left_wuji2_full_v5_ema0.1_dact_repro_v10000", "left_wuji2_full_v5_ema0.1_dact_accum4_e24k",
+             "R_dact_v10000", 'env.domain_randomization.use_action_delay=true"')):
+        text = (HERE / f"{src}.sub").read_text().replace(src, run)
+        text = text.replace(f"#SBATCH --job-name={job}", f"#SBATCH --job-name=A_{'dact_' if 'dact' in run else ''}accum4_e24k")
+        assert "export ARCH=transformer\n" in text and last in text
+        text = text.replace("export ARCH=transformer\n",
+                            "export ARCH=transformer\nexport NUM_ENVS_PER_GPU=24576 GLOBAL_MINIBATCH=114688\n")
+        text = text.replace(last, last[:-1] + ' ++agent.params.config.grad_accum_chunks=4"')
+        (HERE / f"{run}.sub").write_text(text)
+        print(HERE / f"{run}.sub")
     r4 = (HERE / "left_wuji2_full_v5_ema0.1_dact_repro_v10000.sub").read_text()
     for tag, spec in (("full", "wuji2_left_uniform_handonly"),
                       ("index_middle", "wuji2_left_uniform_handonly_only_index_middle")):
