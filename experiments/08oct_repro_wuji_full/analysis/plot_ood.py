@@ -38,10 +38,12 @@ EMBODIMENTS = {
     "tf_full": ("Full Wuji v2 (transformer, no delay)", ps.GREEN_RAMP[3], "P"),
     "tf_full_dact": ("Full Wuji v2 (transformer)", ps.GREEN_RAMP[1], "X"),
     # Multi-embodiment hypothesis: the 6 Oct 52-hand transformer (31826) evaluated on one of its hands vs the 6 Oct
-    # full-hand specialist with the identical config (12491): EMA 0.1, no action delay, 12288 envs, seed 100.
-    "tf6oct_full": ("Full Wuji v2 specialist (transformer, 6 Oct)", ps.GREEN_RAMP[3], "P"),
+    # specialist of that hand with the identical config (full 12491; index + middle T1, make_runs.py): EMA 0.1, no
+    # action delay, 12288 envs, seed 100.
+    "tf6oct_full": ("Full-hand specialist (transformer)", ps.GREEN_RAMP[3], "P"),
     "tf6oct_multi52_on_full": ("52-hand policy, on the full hand", ps.COLORS["foil"], "*"),
-    "tf6oct_multi52_on_index_middle": ("52-hand policy, on index + middle", ps.COLORS["third"], "*"),
+    "tf6oct_index_middle": ("Index + middle specialist (transformer)", ps.GREEN_RAMP[3], "P"),
+    "tf6oct_multi52_on_index_middle": ("52-hand policy, on index + middle", ps.COLORS["foil"], "*"),
 }
 AXES = {   # axis -> (title, x label, trained value, log x)
     "mass": ("Object Mass", "Object mass (g)", 45.5625, True),
