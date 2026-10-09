@@ -22,9 +22,9 @@ cd $REPO
 export OMNI_KIT_ACCEPT_EULA=YES
 PY=".venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/eval_ood.py --checkpoint $CKPT"
 echo "[ood] $LABEL  checkpoint $CKPT"
-$PY --axis friction --values 0.1 0.25 0.5 0.75 1.0 1.5 --out $OUT/friction.json 2>&1 | grep -a "\[ood\]\|Traceback\|Error"
-$PY --axis push --values 0 2 5 10 15 20 --out $OUT/push.json 2>&1 | grep -a "\[ood\]\|Traceback\|Error"
+$PY --axis friction --values 0.1 0.25 0.5 0.75 1.0 1.5 --out $OUT/friction.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error"
+$PY --axis push --values 0 2 5 10 15 20 --out $OUT/push.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error"
 for g in 5 15 45.5625 100 250 500; do
-    $PY --axis mass --values $g --out $OUT/mass.json 2>&1 | grep -a "\[ood\]\|Traceback\|Error"
+    $PY --axis mass --values $g --out $OUT/mass.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error"
 done
 echo "[ood] $LABEL done"
