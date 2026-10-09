@@ -58,6 +58,7 @@ def goals_per_drop(r: dict) -> float:
 
 
 PUSH_MAX = 2.5          # N: the push axis is plotted up to here
+PITCH_RANGE = (-10, 20)  # deg: the scoping runs (seed 100) went -30..50, all ~0 outside this
 
 METRICS = {"goals_per_episode_first": ("Goals / episode", False),
            "goals_per_drop": ("Goals / drop", False)}      # metric -> (label, log y): linear axes throughout
@@ -85,6 +86,8 @@ def load(results: pathlib.Path) -> dict:
                 continue
             for r in json.loads(f.read_text())["results"].values():
                 if axis == "push" and r["value"] > PUSH_MAX:       # earlier grids went to 10 / 20 N
+                    continue
+                if axis == "pitch" and not PITCH_RANGE[0] <= r["value"] <= PITCH_RANGE[1]:
                     continue
                 for metric, y in (("goals_per_episode_first", r["goals_per_episode_first"]),
                                   ("goals_per_drop", goals_per_drop(r))):

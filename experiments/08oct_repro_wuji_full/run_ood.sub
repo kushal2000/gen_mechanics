@@ -15,7 +15,9 @@
 #   push      0 / 0.5 / 1 / 1.5 / 2 / 2.5 N, random direction, one 1/60 s step every 0.3 s (PUSH_VALUES overrides).
 #             History: 0-20 N in steps of 5 first (all ~0 from 2 N; kept as push_0to20.json), then 0/0.5/1/2/5/10;
 #             2.5 N is the max since. Points of earlier grids stay in push.json; plot_ood.py plots up to 2.5 N.
-#   AXES="friction push mass" (default) picks which sweeps to run
+#   pitch     palm pitch -10 / -5 / 0 / 5 (trained) / 10 / 15 / 20 deg, one process per value (PITCH_VALUES overrides).
+#             Scoped on the seed-100 best checkpoints over -30..50: both hands are at ~0 beyond -20 and +30.
+#   AXES="friction push mass" (default) picks which sweeps to run; pitch only when named
 #   sbatch --job-name=ood_<label> --export=ALL,CKPT=<pth>,LABEL=<label> experiments/08oct_repro_wuji_full/run_ood.sub
 set -uo pipefail
 REPO=/share/portal/kk837/gen_mechanics
@@ -33,5 +35,9 @@ $PY --axis push --values ${PUSH_VALUES:-0 0.5 1 1.5 2 2.5} --out $OUT/push.json 
 case " $AXES " in *" mass "*)
 for g in 5 15 45.5625 100 250 500; do
     $PY --axis mass --values $g --out $OUT/mass.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error"
+done ;; esac
+case " $AXES " in *" pitch "*)
+for d in ${PITCH_VALUES:--10 -5 0 5 10 15 20}; do
+    $PY --axis pitch --values $d --out $OUT/pitch.json 2>&1 | grep -a --line-buffered "\[ood\]\|Traceback\|Error"
 done ;; esac
 echo "[ood] $LABEL done"
