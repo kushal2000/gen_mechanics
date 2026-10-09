@@ -56,6 +56,10 @@ WANDB = "gen_mechanics_repro_08oct"
 RUNS = {"nodelay": "left_wuji2_full_v5_ema0.1", "dact": "left_wuji2_full_v5_ema0.1_dact"}
 VIEWER = (250, 10000)
 
+# Extra training seeds of the single-hand MLP runs (the originals are seed 100): is the embodiment ranking -- and the
+# OOD robustness ranking -- bigger than seed-to-seed variance? len50 (learns nothing) gets one, to rule out bad luck.
+SEEDS = {"full": (101, 102), "index_middle": (101, 102), "wid120": (101, 102), "len75": (101, 102), "len50": (101,)}
+
 SCALED = {"len50": "every finger link 50% shorter", "len75": "every finger link 25% shorter",
           "wid120": "every finger link 20% wider"}
 
@@ -118,3 +122,14 @@ if __name__ == "__main__":
         text = text.replace(old, new)
     (HERE / f"{run}.sub").write_text(text)
     print(HERE / f"{run}.sub")
+    for tag, seeds in SEEDS.items():
+        src = HERE / f"left_wuji2_{tag}_v5_ema0.1_dact_mlp_e24k.sub"
+        base = src.read_text()
+        for seed in seeds:
+            run = f"left_wuji2_{tag}_v5_ema0.1_dact_mlp_e24k_seed{seed}"
+            text = base.replace(f"left_wuji2_{tag}_v5_ema0.1_dact_mlp_e24k", run)
+            text = re.sub(r"(#SBATCH --job-name=)(\S+)", rf"\g<1>\g<2>_s{seed}", text)
+            assert "set -euo pipefail" in text
+            text = text.replace("set -euo pipefail", f"export SEED={seed}\nset -euo pipefail", 1)
+            (HERE / f"{run}.sub").write_text(text)
+            print(HERE / f"{run}.sub")
