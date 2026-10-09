@@ -52,13 +52,14 @@ METRICS = {"goals_per_episode_first": ("Goals / episode", False),
 
 
 def load(results: pathlib.Path) -> dict:
-    """{embodiment: {axis: {metric: [(value, y), ...]}}} and the checkpoint epoch per embodiment."""
-    data, epochs = {}, {}
+    """{(embodiment, epoch): {axis: {metric: [(value, y), ...]}}}: one line per checkpoint (an embodiment can have
+    several, e.g. index + middle at epoch 2500 and 3800)."""
+    data = {}
     for d in sorted(results.iterdir()):
-        key = next((k for k in EMBODIMENTS if d.name.startswith(k + "_ep")), None)
-        if key is None:
+        emb = next((k for k in EMBODIMENTS if d.name.startswith(k + "_ep")), None)
+        if emb is None:
             continue
-        epochs[key] = d.name.split("_ep")[-1]
+        key = (emb, int(d.name.split("_ep")[-1]))
         for axis in AXES:
             f = d / f"{axis}.json"
             if f.exists():
@@ -66,7 +67,7 @@ def load(results: pathlib.Path) -> dict:
                 data.setdefault(key, {})[axis] = {
                     "goals_per_episode_first": sorted((r["value"], r["goals_per_episode_first"]) for r in rows),
                     "goals_per_drop": sorted((r["value"], goals_per_drop(r)) for r in rows)}
-    return data, epochs
+    return data, None
 
 
 def plot(data, epochs, relative: bool, out: pathlib.Path):
@@ -78,20 +79,32 @@ def plot(data, epochs, relative: bool, out: pathlib.Path):
         ax.set_xlabel("")
     for ax in grid[1]:
         ax.set_title("")
-    present = [k for k in EMBODIMENTS if k in data]
-    handles = [Line2D([], [], color=EMBODIMENTS[k][1], marker=EMBODIMENTS[k][2], markersize=3.5, linewidth=1.3)
-               for k in present]
-    labels = [f"{EMBODIMENTS[k][0]} (ep {epochs[k]})" for k in present]
+    present = ordered(data)
+    handles = [Line2D([], [], color=EMBODIMENTS[e][1], marker=EMBODIMENTS[e][2], markersize=3.5, linewidth=1.3,
+                      linestyle=style(data, (e, ep))) for e, ep in present]
+    labels = [f"{EMBODIMENTS[e][0]} (ep {ep})" for e, ep in present]
     fig.tight_layout()
     ps.bottom_legend(fig, handles, labels, y=-0.04, ncol=min(len(labels), 3), bold=())
     ps.save_figure(fig, out)
     plt.close(fig)
 
 
+def ordered(data):
+    """Checkpoints in EMBODIMENTS order, earliest epoch first."""
+    return sorted(data, key=lambda k: (list(EMBODIMENTS).index(k[0]), k[1]))
+
+
+def style(data, key):
+    """Solid for an embodiment's first checkpoint, then dashed, dotted, ..."""
+    eps = sorted(ep for e, ep in data if e == key[0])
+    return ps.LINE_STYLES[eps.index(key[1]) % len(ps.LINE_STYLES)]
+
+
 def _plot_row(axs, data, metric, relative, logy):
     for ax, (axis, (title, xlabel, trained, logx)) in zip(axs, AXES.items()):
-        for key, (name, color, marker) in EMBODIMENTS.items():
-            pts = data.get(key, {}).get(axis, {}).get(metric)
+        for key in ordered(data):
+            name, color, marker = EMBODIMENTS[key[0]]
+            pts = data[key].get(axis, {}).get(metric)
             if not pts:
                 continue
             xs, ys = zip(*pts)
@@ -100,7 +113,7 @@ def _plot_row(axs, data, metric, relative, logy):
                 if not base or base != base:
                     continue
                 ys = [y / base for y in ys]
-            ax.plot(xs, ys, color=color, marker=marker, markersize=3.5, linewidth=1.3)
+            ax.plot(xs, ys, color=color, marker=marker, markersize=3.5, linewidth=1.3, linestyle=style(data, key))
         ax.axvline(trained, color=ps.COLORS["neutral"], linewidth=0.8, linestyle=(0, (2, 2)), zorder=0)
         if logx:
             ax.set_xscale("log")
@@ -124,10 +137,11 @@ def main():
         raise SystemExit(f"no OOD results under {args.results}")
     plot(data, epochs, False, pathlib.Path(args.out) / "ood_sweeps")
     plot(data, epochs, True, pathlib.Path(args.out) / "ood_sweeps_relative")
-    for key in data:
+    for key in ordered(data):
         for axis, metrics in data[key].items():
             for metric, pts in metrics.items():
-                print(f"{key:18s} {axis:9s} {metric:24s} " + "  ".join(f"{v:g}: {y:.2f}" for v, y in pts))
+                print(f"{key[0]:18s} ep{key[1]:<5d} {axis:9s} {metric:24s} " +
+                      "  ".join(f"{v:g}: {y:.2f}" for v, y in pts))
 
 
 if __name__ == "__main__":
