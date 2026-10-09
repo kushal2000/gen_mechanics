@@ -117,7 +117,11 @@ def main() -> None:
         f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
         yaml.safe_dump({"train": acfg}, f)
         f.close()
-        player = RlPlayer(obs["policy"].shape[-1], env.action_space.shape[-1], f.name, str(ckpt),
+        load = str(ckpt)
+        if args.robot_spec:      # sigma is (blocks, joints): fit it to this hand (greedy actions never read it)
+            from coevolution.eval._play_worker import _resize_sigma
+            load = _resize_sigma(load, int(env.action_space.shape[-1]))
+        player = RlPlayer(obs["policy"].shape[-1], env.action_space.shape[-1], f.name, load,
                           device=env.device, sapg_expl_coef=0.0, num_envs=env.num_envs)
         N, dev, dt = env.num_envs, env.device, float(env.step_dt)
         mass_g = float(env._object_mass[0, 0]) * 1000.0
