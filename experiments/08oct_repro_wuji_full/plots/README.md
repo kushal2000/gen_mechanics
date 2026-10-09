@@ -47,14 +47,15 @@ Pitch for the transformers is pending.
 
 ## H4: multi-embodiment training imbues robustness (`h4_multi_embodiment_robustness/`)
 
-Each figure puts the 6 Oct 52-hand transformer, evaluated on one hand, against a specialist for that hand trained on
-identical settings: transformer, EMA 0.1, no action delay, 12k envs. These are final checkpoints (epoch 5000), 1 seed
-each.
+Each figure puts a multi-hand transformer, evaluated on one hand, against a specialist for that hand trained on
+identical settings. These are final checkpoints (epoch 5000), 1 seed each.
 
-- `full_hand.png`: despite scoring 12 goals per episode less at the training condition, the 52-hand policy is better at
+- `full_hand.png` pairs the 6 Oct 52-hand policy with the full-hand specialist: EMA 0.1, no action delay, 12k envs.
+  Despite scoring 12 goals per episode less at the training condition, the 52-hand policy is better at
   high friction, with a bouncy object and with the palm tilted back. It is worse under push, with heavy objects and with
   the palm tilted forward. So multi-embodiment training changes which perturbations the policy tolerates; it does not
   make it robust across the board. This needs more seeds before it counts as a finding.
-- `index_middle.png`: the 52-hand policy is weak on this hand everywhere (9 goals per episode at the training
-  condition). Its specialist (make_runs.py T1) is training on 9 Oct; until it finishes, the figure shows only the
-  52-hand policy.
+- `index_middle.png` pairs the policy for the 40 hands with 2 or 3 fingers (E4) with an index + middle specialist
+  (make_runs.py T1), both with action delay: EMA 0.1 + action delay, 24k envs, 5 mini-epochs. Both are training on
+  9 Oct, and the figure is drawn when both finish. The 6 Oct 52-hand policy is weak on this hand everywhere (9 goals
+  per episode at the training condition), so it isn't a useful comparison here.

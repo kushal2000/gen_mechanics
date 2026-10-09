@@ -48,11 +48,13 @@ and the full hand, does the thumb -- then the pinky -- buy the OOD robustness?
   F1 thumb_index_middle_mlp_e24k   thumb + index + middle (wuji2_left_only_thumb_index_middle)
   F2 no_ring_mlp_e24k              thumb + index + middle + pinky (wuji2_left_no_ring)
 
-And the index + middle specialist for the multi-embodiment robustness test (plots/h4_...): the 6 Oct 52-hand
-transformer (31826) is compared on each hand with a specialist trained identically -- R2's sub (= 12491's config:
-transformer, EMA 0.1, no action delay, 12288 envs, seed 100) with only the hand changed:
+And the index + middle specialist for the multi-embodiment robustness test (plots/h4_...): E4 (the 40 hands with 2 or
+3 fingers, action delay, 5 mini-epochs) is compared on index + middle with a specialist trained identically -- A2's
+sub (transformer, EMA 0.1 + action delay, 24576 envs, accumulation x4, 5 mini-epochs) with only the hand changed.
+(A first T1 copied 6 Oct's no-delay config to pair with the 6 Oct 52-hand policy; cancelled at start, 134508, for
+this delay-on pairing.)
 
-  T1 index_middle_tf6oct_spec   left index + middle (wuji2_left_only_index_middle)
+  T1 index_middle_dact_accum4_e24k   left index + middle (wuji2_left_only_index_middle)
 
 References, episode_final/successes at epoch 1000 / 1500: 12491 0.71 / 1.81, 21667 0.26 / 0.78. Earliest signal:
 info/last_lr decays (healthy) or stays at 0.01 (8 Oct's failures) by epoch ~400-800.
@@ -179,12 +181,11 @@ if __name__ == "__main__":
         text = text.replace(old, f'ROBOT_SPEC="${{ROBOT_SPEC:-{spec}}}"')
         (HERE / f"{run}.sub").write_text(text)
         print(HERE / f"{run}.sub")
-    r2 = (HERE / "left_wuji2_full_v5_ema0.1_repro_v10000.sub").read_text()
-    run = "left_wuji2_index_middle_v5_ema0.1_tf6oct_spec"
-    text = r2.replace("left_wuji2_full_v5_ema0.1_repro_v10000", run)
-    text = text.replace("#SBATCH --job-name=R_nodelay_v10000", "#SBATCH --job-name=T_tf_index_middle")
+    run = "left_wuji2_index_middle_v5_ema0.1_dact_accum4_e24k"
+    text = a2.replace("left_wuji2_full_v5_ema0.1_dact_accum4_e24k", run)
+    text = text.replace("#SBATCH --job-name=A_dact_accum4_e24k", "#SBATCH --job-name=T_tf_index_middle_dact")
     old = 'ROBOT_SPEC="${ROBOT_SPEC:-wuji2_left_uniform_handonly}"'
-    assert old in text and "use_action_delay" not in text
+    assert old in text
     text = text.replace(old, 'ROBOT_SPEC="${ROBOT_SPEC:-wuji2_left_uniform_handonly_only_index_middle}"')
     (HERE / f"{run}.sub").write_text(text)
     print(HERE / f"{run}.sub")
