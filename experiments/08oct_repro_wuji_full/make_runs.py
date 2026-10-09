@@ -30,6 +30,7 @@ And scaled-link variants of the full hand (assets/urdf/unified_dynamics_commerci
 finger links only, palm and finger mounts unchanged), as M1 (MLP, 24576 envs, EMA 0.1 + action delay):
 
   S1 len50_mlp_e24k         every finger link 50% shorter
+  S3 len75_mlp_e24k         every finger link 25% shorter
   S2 wid120_mlp_e24k        every finger link 20% wider (one new rest contact, ring/pinky proximal, filtered)
 
 References, episode_final/successes at epoch 1000 / 1500: 12491 0.71 / 1.81, 21667 0.26 / 0.78. Earliest signal:
@@ -49,7 +50,8 @@ WANDB = "gen_mechanics_repro_08oct"
 RUNS = {"nodelay": "left_wuji2_full_v5_ema0.1", "dact": "left_wuji2_full_v5_ema0.1_dact"}
 VIEWER = (250, 10000)
 
-SCALED = {"len50": "every finger link 50% shorter", "wid120": "every finger link 20% wider"}
+SCALED = {"len50": "every finger link 50% shorter", "len75": "every finger link 25% shorter",
+          "wid120": "every finger link 20% wider"}
 
 if __name__ == "__main__":
     for tag, src in RUNS.items():
