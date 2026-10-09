@@ -32,6 +32,8 @@ instead of 5 (8 optimizer steps an epoch instead of 20):
 
   E1 lr_2plus_dact_accum4_e24k_me2
   E2 lr_2to3_dact_accum4_e24k_me2   the same over the 40 hands with 2 or 3 fingers (multi:wuji2_lr_2to3)
+  E3, E4  _me5                      E1 and E2 again with 5 mini-epochs: with 2, neither took off (E1 0.07 goals/episode
+                                    at epoch 3000; 6 Oct's 52-hand run, 5 mini-epochs and no delay, had 4.3 by then)
 
 And scaled-link variants of the full hand (assets/urdf/unified_dynamics_commercial_hands/make_scaled_links.py:
 finger links only, palm and finger mounts unchanged), as M1 (MLP, 24576 envs, EMA 0.1 + action delay):
@@ -143,3 +145,12 @@ if __name__ == "__main__":
     text = text.replace(old, 'ROBOT_SPEC="${ROBOT_SPEC:-multi:wuji2_lr_2to3}"')
     (HERE / f"{run}.sub").write_text(text)
     print(HERE / f"{run}.sub")
+    for fam in ("2plus", "2to3"):
+        src = f"wuji2_lr_{fam}_v5_ema0.1_dact_accum4_e24k_me2"
+        run = src[:-len("_me2")] + "_me5"
+        text = (HERE / f"{src}.sub").read_text().replace(src, run)
+        text = re.sub(r"(#SBATCH --job-name=)(\S+)_me2", r"\g<1>\g<2>_me5", text)
+        assert "MINI_EPOCHS=2 " in text
+        text = text.replace("MINI_EPOCHS=2 ", "MINI_EPOCHS=5 ")
+        (HERE / f"{run}.sub").write_text(text)
+        print(HERE / f"{run}.sub")
