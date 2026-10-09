@@ -145,9 +145,13 @@ def main() -> None:
                 "first_episode_unfinished_frac": 1.0 - float(done.float().mean()),
                 "goals_per_min": float(goals.sum()) / (N * minutes),
                 "drops_per_min": float(drops.sum()) / (N * minutes),
+                # Over the whole window (every env, every episode until the last first episode ended):
+                "goals_total": float(goals.sum()), "drops_total": float(drops.sum()),
+                "goals_per_drop": float(goals.sum()) / max(float(drops.sum()), 1.0),
             }
             results[f"{args.axis}={v:g}"] = res
-            print(f"[ood] {args.axis}={v:g}: goals/ep (first) {res['goals_per_episode_first']:.2f}  drop frac "
+            print(f"[ood] {args.axis}={v:g}: goals/ep (first) {res['goals_per_episode_first']:.2f}  goals/drop "
+                  f"{res['goals_per_drop']:.1f}  drop frac "
                   f"{res['first_episode_drop_frac']:.2f}  goals/min {res['goals_per_min']:.1f}  "
                   f"({time.time() - t0:.0f} s wall)", flush=True)
             out_path.parent.mkdir(parents=True, exist_ok=True)
