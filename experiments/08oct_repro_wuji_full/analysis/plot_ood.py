@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 
 import matplotlib
 
@@ -54,23 +55,36 @@ METRICS = {"goals_per_episode_first": ("Goals / episode", False),
            "goals_per_drop": ("Goals / drop", False)}      # metric -> (label, log y): linear axes throughout
 
 
+LABEL = re.compile(r"^(?P<emb>.+?)(?:_s(?P<seed>\d+))?_ep(?P<ep>\d+)$")   # <emb>[_s<seed>]_ep<epoch>; no seed = 100
+
+
 def load(results: pathlib.Path) -> dict:
-    """{(embodiment, epoch): {axis: {metric: [(value, y), ...]}}}: one line per checkpoint (an embodiment can have
-    several, e.g. index + middle at epoch 2500 and 3800)."""
-    data = {}
+    """{(embodiment, epoch): {axis: {metric: [(value, mean, lo, hi, n_seeds), ...]}}}: one line per checkpoint (an
+    embodiment can have several, e.g. index + middle at epoch 2500 and 3800), averaged over training seeds with the
+    min-max range as a band."""
+    raw = {}
     for d in sorted(results.iterdir()):
-        emb = next((k for k in EMBODIMENTS if d.name.startswith(k + "_ep")), None)
-        if emb is None:
+        m = LABEL.match(d.name)
+        if not m or m["emb"] not in EMBODIMENTS:
             continue
-        key = (emb, int(d.name.split("_ep")[-1]))
+        key = (m["emb"], int(m["ep"]))
         for axis in AXES:
             f = d / f"{axis}.json"
-            if f.exists():
-                rows = list(json.loads(f.read_text())["results"].values())
-                data.setdefault(key, {})[axis] = {
-                    "goals_per_episode_first": sorted((r["value"], r["goals_per_episode_first"]) for r in rows),
-                    "goals_per_drop": sorted((r["value"], goals_per_drop(r)) for r in rows)}
+            if not f.exists():
+                continue
+            for r in json.loads(f.read_text())["results"].values():
+                for metric, y in (("goals_per_episode_first", r["goals_per_episode_first"]),
+                                  ("goals_per_drop", goals_per_drop(r))):
+                    raw.setdefault(key, {}).setdefault(axis, {}).setdefault(metric, {}).setdefault(
+                        r["value"], []).append(y)
+    data = {key: {axis: {metric: [(v, sum(ys) / len(ys), min(ys), max(ys), len(ys)) for v, ys in sorted(vals.items())]
+                         for metric, vals in metrics.items()} for axis, metrics in axes.items()}
+            for key, axes in raw.items()}
     return data, None
+
+
+def n_seeds(entry) -> int:
+    return max((p[4] for axes in entry.values() for pts in axes.values() for p in pts), default=1)
 
 
 def plot(data, epochs, relative: bool, out: pathlib.Path):
@@ -85,7 +99,8 @@ def plot(data, epochs, relative: bool, out: pathlib.Path):
     present = ordered(data)
     handles = [Line2D([], [], color=EMBODIMENTS[e][1], marker=EMBODIMENTS[e][2], markersize=3.5, linewidth=1.3,
                       linestyle=style(data, (e, ep))) for e, ep in present]
-    labels = [f"{EMBODIMENTS[e][0]} (ep {ep})" for e, ep in present]
+    labels = [f"{EMBODIMENTS[e][0]} (ep {ep}" + (f", {n_seeds(data[(e, ep)])} seeds)" if n_seeds(data[(e, ep)]) > 1
+                                                  else ")") for e, ep in present]
     fig.tight_layout()
     ps.bottom_legend(fig, handles, labels, y=-0.04, ncol=min(len(labels), 3), bold=())
     ps.save_figure(fig, out)
@@ -110,13 +125,15 @@ def _plot_row(axs, data, metric, relative, logy):
             pts = data[key].get(axis, {}).get(metric)
             if not pts:
                 continue
-            xs, ys = zip(*pts)
+            xs, ys, los, his, ns = zip(*pts)
             if relative:
                 base = min(pts, key=lambda p: abs(p[0] - trained))[1]
                 if not base or base != base:
                     continue
-                ys = [y / base for y in ys]
+                ys, los, his = ([y / base for y in seq] for seq in (ys, los, his))
             ax.plot(xs, ys, color=color, marker=marker, markersize=3.5, linewidth=1.3, linestyle=style(data, key))
+            if max(ns) > 1:
+                ax.fill_between(xs, los, his, color=color, alpha=ps.BAND_ALPHA, linewidth=0)
         ax.axvline(trained, color=ps.COLORS["neutral"], linewidth=0.8, linestyle=(0, (2, 2)), zorder=0)
         if logx:
             ax.set_xscale("log")
@@ -148,7 +165,7 @@ def main():
         for axis, metrics in data[key].items():
             for metric, pts in metrics.items():
                 print(f"{key[0]:18s} ep{key[1]:<5d} {axis:9s} {metric:24s} " +
-                      "  ".join(f"{v:g}: {y:.2f}" for v, y in pts))
+                      "  ".join(f"{p[0]:g}: {p[1]:.2f}" + (f" (n={p[4]})" if p[4] > 1 else "") for p in pts))
 
 
 if __name__ == "__main__":
