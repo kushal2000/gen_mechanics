@@ -157,9 +157,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", default=str(HERE / "results/ood"))
     ap.add_argument("--out", default=str(HERE / "plots"))
+    ap.add_argument("--only", default="", help="comma-separated embodiments, e.g. mlp_full,mlp_index_middle; "
+                                               "writes ood_sweeps_<group>_<names>.{pdf,png}")
     args = ap.parse_args()
     ps.configure()
     data, epochs = load(pathlib.Path(args.results))
+    only = [s for s in args.only.split(",") if s]
+    if only:
+        data = {k: v for k, v in data.items() if k[0] in only}
+    suffix = ("_" + "_vs_".join(s.removeprefix("mlp_") for s in only)) if only else ""
     if not data:
         raise SystemExit(f"no OOD results under {args.results}")
     groups = {"mid": {k: v for k, v in data.items() if 0 <= k[1] < 5000},
@@ -167,8 +173,8 @@ def main():
               "best": {k: v for k, v in data.items() if k[1] == BEST}}
     for name, sub in groups.items():
         if sub:
-            plot(sub, epochs, False, pathlib.Path(args.out) / f"ood_sweeps_{name}")
-            plot(sub, epochs, True, pathlib.Path(args.out) / f"ood_sweeps_{name}_relative")
+            plot(sub, epochs, False, pathlib.Path(args.out) / f"ood_sweeps_{name}{suffix}")
+            plot(sub, epochs, True, pathlib.Path(args.out) / f"ood_sweeps_{name}{suffix}_relative")
     for key in ordered(data):
         for axis, metrics in data[key].items():
             for metric, pts in metrics.items():
