@@ -3,7 +3,7 @@ together), push force. Goals in each env's first episode (64 envs), from run_ood
 
 Two figures, paper style, bottom legend:
   plots/ood_sweeps.{pdf,png}           top: goals per (first) episode; bottom: goals per drop over the whole eval
-                                       window (total goals / max(total drops, 1); log axis)
+                                       window (total goals / max(total drops, 1)); linear axes
   plots/ood_sweeps_relative.{pdf,png}  both as a fraction of the embodiment's own trained-condition value
 The trained value of each axis is marked (dotted line). Embodiments with no results yet are skipped.
 
@@ -33,7 +33,7 @@ EMBODIMENTS = {
     "mlp_index_middle": ("Index + middle only", ps.COLORS["third"], "v"),
 }
 AXES = {   # axis -> (title, x label, trained value, log x)
-    "mass": ("Object Mass", "Object mass (g)", 45.5625, True),
+    "mass": ("Object Mass", "Object mass (g)", 45.5625, False),
     "friction": ("Friction", "Friction, object and hand", 0.5, False),
     "push": ("Push Force", "Push force (N), every 0.3 s", 0.0, False),
 }
@@ -48,7 +48,7 @@ def goals_per_drop(r: dict) -> float:
 
 
 METRICS = {"goals_per_episode_first": ("Goals / episode", False),
-           "goals_per_drop": ("Goals / drop", True)}       # metric -> (label, log y)
+           "goals_per_drop": ("Goals / drop", False)}      # metric -> (label, log y): linear axes throughout
 
 
 def load(results: pathlib.Path) -> dict:
