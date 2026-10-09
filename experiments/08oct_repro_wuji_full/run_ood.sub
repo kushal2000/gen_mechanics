@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH --job-name=ood
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=06:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/repro_wuji_full/ood/ood-%x-%j.out
+# OOD sweeps of ONE single-hand policy (analysis/eval_ood.py: 64 envs, each env's first episode, greedy):
+#   mass      5 / 15 / 45.6 (trained) / 100 / 250 / 500 g     one process per value (mass is fixed at scene build)
+#   friction  object + hand together 0.1 / 0.25 / 0.5 (trained) / 0.75 / 1.0 / 1.5
+#   push      0 / 2 / 5 / 10 / 15 / 20 N, random direction, one 1/60 s step every 0.3 s
+#   sbatch --job-name=ood_<label> --export=ALL,CKPT=<pth>,LABEL=<label> experiments/08oct_repro_wuji_full/run_ood.sub
+set -uo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+OUT=$REPO/experiments/08oct_repro_wuji_full/results/ood/$LABEL
+mkdir -p $OUT
+cd $REPO
+export OMNI_KIT_ACCEPT_EULA=YES
+PY=".venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/eval_ood.py --checkpoint $CKPT"
+echo "[ood] $LABEL  checkpoint $CKPT"
+$PY --axis friction --values 0.1 0.25 0.5 0.75 1.0 1.5 --out $OUT/friction.json 2>&1 | grep -a "\[ood\]\|Traceback\|Error"
+$PY --axis push --values 0 2 5 10 15 20 --out $OUT/push.json 2>&1 | grep -a "\[ood\]\|Traceback\|Error"
+for g in 5 15 45.5625 100 250 500; do
+    $PY --axis mass --values $g --out $OUT/mass.json 2>&1 | grep -a "\[ood\]\|Traceback\|Error"
+done
+echo "[ood] $LABEL done"

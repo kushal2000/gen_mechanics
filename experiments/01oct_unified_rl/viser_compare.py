@@ -178,6 +178,9 @@ def _loop(args, conn):
         # Pushes: the env's own wrench DR, live. Off until the GUI turns them on.
         dr = env.cfg.domain_randomization
         dr.force_scale, dr.torque_scale = 0.0, 0.0
+        # "Lifted" is above the cube's starting height, which palm-up in-hand rarely is: with the default gating the
+        # push slider would do (almost) nothing.
+        dr.force_only_when_lifted = False
         push_prob, push_now = 0.02, False
         env._random_force_prob[:] = push_prob
         push_period, k_step = 0, 0             # > 0: one push exactly every push_period control steps instead
