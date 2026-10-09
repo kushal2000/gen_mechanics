@@ -35,6 +35,8 @@ EMBODIMENTS = {
     "mlp_wid120": ("Links 120% width (MLP)", ps.COLORS["foil"], "D"),
     "mlp_index_middle": ("Index + middle only (MLP)", ps.COLORS["third"], "v"),
     "mlp_thumb_index_middle": ("Thumb + index + middle (MLP)", ps.GREEN_RAMP[2], "<"),
+    "mlp_full_ood_dr": ("Full Wuji v2, OOD-axis DR (MLP)", ps.COLORS["foil"], "s"),
+    "mlp_index_middle_ood_dr": ("Index + middle, OOD-axis DR (MLP)", ps.COLORS["foil"], "s"),
     "mlp_no_ring": ("No ring finger (MLP)", ps.BLUE_RAMP[1], ">"),
     "tf_full": ("Full Wuji v2 (transformer, no delay)", ps.GREEN_RAMP[3], "P"),
     "tf_full_dact": ("Full Wuji v2 (transformer)", ps.GREEN_RAMP[1], "X"),

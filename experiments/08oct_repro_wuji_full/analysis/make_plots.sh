@@ -9,6 +9,7 @@
 #   plots/h2_link_geometry/link_width                       full vs finger links 120% as wide
 #   plots/h3_transformer_vs_mlp/full_hand                   MLP vs transformer, both trained with action delay
 #   plots/h4_multi_embodiment_robustness/full_hand       6 Oct 52-hand transformer vs the full-hand specialist (no delay)
+#   plots/h5_dr_on_ood_axes/full_hand, index_middle     MLP trained with DR over the middle of each OOD sweep vs without
 #   plots/h4_multi_embodiment_robustness/index_middle    E4 (2-3 finger hands) vs the index + middle specialist T1 (delay)
 #
 # plot_ood.py itself still draws the other views (--groups mid,final; goals per drop; 3-axis figures) on request.
@@ -30,4 +31,7 @@ fig --only mlp_full,tf_full_dact --groups best --out $P/h3_transformer_vs_mlp --
 H4=$P/h4_multi_embodiment_robustness
 fig --only tf6oct_full,tf6oct_multi52_on_full --groups final --out $H4 --name full_hand
 fig --only tf_index_middle_dact,tf_multi2to3_on_index_middle --groups final --out $H4 --name index_middle
+H5=$P/h5_dr_on_ood_axes
+fig --only mlp_full,mlp_full_ood_dr --groups best --out $H5 --name full_hand
+fig --only mlp_index_middle,mlp_index_middle_ood_dr --groups best --out $H5 --name index_middle
 find $P -name "*.png" | sed "s#$P/##" | sort
