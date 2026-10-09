@@ -54,6 +54,7 @@ CONSISTENT = ("env.domain_randomization.use_action_delay=True", "env.domain_rand
               "env.action.hand_moving_average=0.1")
 DELAY = ("on (0-3 steps)", "off")       # live; default on, as every policy runs (CONSISTENT)
 RUN_DIRS = ("08oct_multi_embodiment_evolution", "08oct_repro_wuji_full")
+MAX_GOALS = 10               # goals after which an episode ends (training used 50); --max-goals
 PUSH_PERIOD = 18             # control steps between pushes: 0.3 s
 CONTROL_DT = 1.0 / 60.0      # every Wuji run: sim dt 1/120 s x decimation 2 -- for the measured-rate readout
 
@@ -317,6 +318,7 @@ class Panel:
         ep = re.search(r"_ep_(\d+)_", ckpt).group(1)
         held = "" if spec in trained_on(ckpt) else "  ·  **held out** (not in its training set)"
         held += "  ·  MLP" if own else "  ·  joint transformer"
+        held += f"  ·  max {MAX_GOALS} goals / episode" if MAX_GOALS else "  ·  no goal cap"
         held += "  ·  EMA 0.1" if self.sets else "  ·  EMA as trained"
         if not self.sets:                           # --as-trained: the dropdown starts at the run's own setting
             self.dd_delay.value = DELAY[0] if trained_delay(ckpt) else DELAY[1]
@@ -326,7 +328,7 @@ class Panel:
         self.status = f"**{short(spec)}** with {pol} ep {ep}{held}"
         host, port = self.listener.address
         cmd = [sys.executable, str(WORKER), "--worker", "--hand", spec, "--host", host, "--wport", str(port),
-               "--authkey", self.authkey.hex(), "--policy", f"{pol}={ckpt}"]
+               "--authkey", self.authkey.hex(), "--policy", f"{pol}={ckpt}", "--max-goals", str(MAX_GOALS)]
         want = float(self.s_mass.value)
         # Every run trained at object_density_scale 1; until the first scene reports its mass, load that.
         self.density = want / self.base_mass_g if self.base_mass_g and want > 0 else 1.0
@@ -407,15 +409,18 @@ class Panel:
 
 
 def main():
+    global MAX_GOALS
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8085)
     ap.add_argument("--panels", type=int, default=1, help="side-by-side panels, each with its own hand and policy")
     ap.add_argument("--spacing", type=float, default=0.32)
+    ap.add_argument("--max-goals", type=int, default=MAX_GOALS, help="goals per episode before it ends; 0 = no cap")
     ap.add_argument("--policy", default="", help="initial policy: a substring of its dropdown label (default: 31826)")
     ap.add_argument("--as-trained", action="store_true",
                     help="each policy's own run's action delay / moving average (default: delay on + EMA 0.1 for all)")
     args = ap.parse_args()
     sets = () if args.as_trained else CONSISTENT
+    MAX_GOALS = args.max_goals
 
     import viser
 

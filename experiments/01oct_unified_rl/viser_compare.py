@@ -67,6 +67,8 @@ def parse():
     ap.add_argument("--host", default="")
     ap.add_argument("--wport", type=int, default=0)
     ap.add_argument("--authkey", default="")
+    ap.add_argument("--max-goals", type=int, default=0,
+                    help="worker: goals after which an episode ends (env max_consecutive_successes); 0 = no cap")
     ap.add_argument("--set", action="append", default=[],
                     help="key=value config override, e.g. env.obs.palm_extents_override=[0.035,0.076,0.088] (repeatable)")
     a = ap.parse_known_args()[0]
@@ -145,7 +147,7 @@ def _loop(args, conn):
         env_cfg.from_dict(env_d)
         env_cfg.scene.num_envs = len(pols)
         env_cfg.seed = 0
-        env_cfg.termination.max_consecutive_successes = 0
+        env_cfg.termination.max_consecutive_successes = args.max_goals
         env = gym.make(TASK, cfg=env_cfg).unwrapped
         obs, _ = env.reset()
         n_act = env.action_space.shape[-1]
