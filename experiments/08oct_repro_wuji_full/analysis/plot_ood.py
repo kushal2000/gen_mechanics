@@ -1,10 +1,11 @@
 """OOD robustness of the single-hand MLP policies, one line per embodiment: object mass, friction (object + hand
 together), push force. Goals in each env's first episode (64 envs), from run_ood.sub / eval_ood.py.
 
-Two figures, paper style, bottom legend:
-  plots/ood_sweeps.{pdf,png}           top: goals per (first) episode; bottom: goals per drop over the whole eval
+Figures, paper style, bottom legend, one pair per checkpoint group -- "mid" (checkpoints before epoch 5000: 2000,
+2500, 3800) and "final" (epoch 5000):
+  plots/ood_sweeps_<group>.{pdf,png}           top: goals per (first) episode; bottom: goals per drop over the whole eval
                                        window (total goals / max(total drops, 1)); linear axes
-  plots/ood_sweeps_relative.{pdf,png}  both as a fraction of the embodiment's own trained-condition value
+  plots/ood_sweeps_<group>_relative.{pdf,png}  both as a fraction of the embodiment's own trained-condition value
 The trained value of each axis is marked (dotted line). Embodiments with no results yet are skipped.
 
     .venv_isaacsim/bin/python experiments/08oct_repro_wuji_full/analysis/plot_ood.py [--results DIR]
@@ -26,11 +27,13 @@ import paper_style as ps  # noqa: E402
 HERE = pathlib.Path(__file__).resolve().parent.parent
 # results label prefix -> (legend name, colour, marker)
 EMBODIMENTS = {
-    "mlp_full": ("Full Wuji v2", ps.COLORS["reference"], "o"),
-    "mlp_len75": ("Links 75% length", ps.BLUE_RAMP[2], "s"),
-    "mlp_len50": ("Links 50% length", ps.BLUE_RAMP[0], "^"),
-    "mlp_wid120": ("Links 120% width", ps.COLORS["foil"], "D"),
-    "mlp_index_middle": ("Index + middle only", ps.COLORS["third"], "v"),
+    "mlp_full": ("Full Wuji v2 (MLP)", ps.COLORS["reference"], "o"),
+    "mlp_len75": ("Links 75% length (MLP)", ps.BLUE_RAMP[2], "s"),
+    "mlp_len50": ("Links 50% length (MLP)", ps.BLUE_RAMP[0], "^"),
+    "mlp_wid120": ("Links 120% width (MLP)", ps.COLORS["foil"], "D"),
+    "mlp_index_middle": ("Index + middle only (MLP)", ps.COLORS["third"], "v"),
+    "tf_full": ("Full Wuji v2 (transformer, no delay)", ps.GREEN_RAMP[3], "P"),
+    "tf_full_dact": ("Full Wuji v2 (transformer)", ps.GREEN_RAMP[1], "X"),
 }
 AXES = {   # axis -> (title, x label, trained value, log x)
     "mass": ("Object Mass", "Object mass (g)", 45.5625, False),
@@ -135,8 +138,12 @@ def main():
     data, epochs = load(pathlib.Path(args.results))
     if not data:
         raise SystemExit(f"no OOD results under {args.results}")
-    plot(data, epochs, False, pathlib.Path(args.out) / "ood_sweeps")
-    plot(data, epochs, True, pathlib.Path(args.out) / "ood_sweeps_relative")
+    groups = {"mid": {k: v for k, v in data.items() if k[1] < 5000},
+              "final": {k: v for k, v in data.items() if k[1] >= 5000}}
+    for name, sub in groups.items():
+        if sub:
+            plot(sub, epochs, False, pathlib.Path(args.out) / f"ood_sweeps_{name}")
+            plot(sub, epochs, True, pathlib.Path(args.out) / f"ood_sweeps_{name}_relative")
     for key in ordered(data):
         for axis, metrics in data[key].items():
             for metric, pts in metrics.items():
