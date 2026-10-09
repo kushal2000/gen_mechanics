@@ -1,9 +1,11 @@
 # OOD robustness: does a design that trains well also generalise?
 
-Each figure is a 2x2 of goals per episode: push force and friction on the top row, object mass and palm pitch on the
+Each figure is a 2x2 of goals per episode: push force and friction on the top row, object mass and hand tilt angle on the
 bottom. A dotted line marks the training value on each axis. Every policy was trained at a single fixed condition
 (no friction, mass or push randomisation). Lines are the mean over training seeds, bands the min-max range. Policies are
-the best-training-reward checkpoints, picked without looking at OOD data, unless a legend says otherwise.
+the best-training-reward checkpoints, picked without looking at OOD data, unless a legend says otherwise. Positive tilt
+angles slope the palm down toward the fingertips; training used 5 deg. The training-condition point is the same on
+every panel: per seed, the mean of all distinct evaluations of it across the sweeps.
 
 Protocol (`analysis/eval_ood.py`): 64 envs, the first episode of each env, greedy actions. Every setting is as trained
 except the swept one. Redraw with `analysis/make_plots.sh` as results land.
@@ -12,8 +14,8 @@ except the swept one. Redraw with `analysis/make_plots.sh` as results land.
 
 Full Wuji v2 vs the index + middle hand, MLP, 3 seeds each. Both score about the same in training
 (37 vs 31 goals per episode). Under push and high friction the full hand keeps most of its score and index + middle
-collapses: push 1 N gives 28 vs 2, friction 1.0 gives 24 vs 6. Mass and backward pitch separate the two moderately.
-Forward pitch does not separate them.
+collapses: push 1 N gives 28 vs 2, friction 1.0 gives 24 vs 6. Mass and backward tilt separate the two moderately.
+Forward tilt does not separate them.
 
 ## H1: fewer fingers, less robust (`h1_fewer_fingers_less_robust/`)
 
@@ -33,7 +35,7 @@ Only the finger links are scaled; the palm and the finger mounts stay the same.
 - `link_width.png`: the full hand vs finger links 120% as wide. Wider links score higher at the training condition
   (43 vs 37) and on friction above it (33 vs 24 at 1.0). Under push and at 500 g they are level with the full hand.
 
-The pitch panels fill in as those sweeps finish; wid120 seed 101 is still training.
+The tilt panels fill in as those sweeps finish; wid120 seed 101 is still training.
 
 ## H3: architecture, transformer vs MLP (`h3_transformer_vs_mlp/`)
 
@@ -44,7 +46,7 @@ The transformer scores higher on almost every axis: 44 vs 37 at the training con
 35 vs 28 at a 1 N push. On push and heavy objects it stays within the MLP's seed band. With one transformer seed this is
 a lead, not a result.
 
-Pitch for the transformers is pending.
+Tilt for the transformer is pending.
 
 ## H4: multi-embodiment training imbues robustness (`h4_multi_embodiment_robustness/`)
 

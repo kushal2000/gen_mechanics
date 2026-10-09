@@ -22,6 +22,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.ticker import FixedFormatter, FixedLocator, NullLocator  # noqa: E402
 
 import paper_style as ps  # noqa: E402
 
@@ -53,7 +54,7 @@ AXES = {   # axis -> (title, x label, trained value, log x)
     "push": ("Push Force", "Push force (N), every 0.3 s", 0.0, False),
 }
 # Axes added later, each a figure of its own (ood_<axis>_<group>...), for the policies that have them.
-EXTRA_AXES = {"pitch": ("Palm Pitch", "Palm pitch (deg), + toward the fingertips", 5.0, False),
+EXTRA_AXES = {"pitch": ("Hand Tilt Angle", "Hand tilt angle (deg)", 5.0, False),
               "restitution": ("Object Restitution", "Object restitution (hand 0)", 0.0, False)}
 
 
@@ -88,17 +89,31 @@ def load(results: pathlib.Path) -> dict:
         if not m or m["emb"] not in EMBODIMENTS:
             continue
         key = (m["emb"], BEST if m["best"] else int(m["ep"]))
-        for axis in {**AXES, **EXTRA_AXES}:
-            f = d / f"{axis}.json"
-            if not f.exists():
-                continue
-            for r in json.loads(f.read_text())["results"].values():
+        every = {**AXES, **EXTRA_AXES}
+        records = {axis: list(json.loads((d / f"{axis}.json").read_text())["results"].values())
+                   for axis in every if (d / f"{axis}.json").exists()}
+        # The training condition is a point of every sweep. Plot one number for it on every panel: the mean over this
+        # policy's distinct evaluations of it (sweeps that start a fresh process at it -- mass, push, pitch,
+        # restitution -- replay the same 64 episodes exactly and count once; friction's comes third in its process,
+        # so it is a different draw).
+        nominal = {}
+        for axis, rs in records.items():
+            for r in rs:
+                if abs(r["value"] - every[axis][2]) < 1e-6:
+                    nominal[(r["goals_total"], r["drops_total"], r["sim_seconds"]) if "goals_total" in r
+                            else (axis,)] = r
+        pooled = {"goals_per_episode_first": sum(r["goals_per_episode_first"] for r in nominal.values()) / len(nominal),
+                  "goals_per_drop": sum(goals_per_drop(r) for r in nominal.values()) / len(nominal)} if nominal else {}
+        for axis, rs in records.items():
+            for r in rs:
                 if axis == "push" and r["value"] > PUSH_MAX:       # earlier grids went to 10 / 20 N
                     continue
                 if axis == "pitch" and not PITCH_RANGE[0] <= r["value"] <= PITCH_RANGE[1]:
                     continue
+                at_train = abs(r["value"] - every[axis][2]) < 1e-6
                 for metric, y in (("goals_per_episode_first", r["goals_per_episode_first"]),
                                   ("goals_per_drop", goals_per_drop(r))):
+                    y = pooled[metric] if at_train else y
                     raw.setdefault(key, {}).setdefault(axis, {}).setdefault(metric, {}).setdefault(
                         r["value"], []).append(y)
     data = {key: {axis: {metric: [(v, sum(ys) / len(ys), min(ys), max(ys), len(ys)) for v, ys in sorted(vals.items())]
@@ -151,12 +166,14 @@ def style(data, key):
 
 def _plot_row(axs, data, metric, relative, logy, axes):
     for ax, (axis, (title, xlabel, trained, logx)) in zip(axs, axes.items()):
+        evaluated = set()
         for key in ordered(data):
             name, color, marker = EMBODIMENTS[key[0]]
             pts = data[key].get(axis, {}).get(metric)
             if not pts:
                 continue
             xs, ys, los, his, ns = zip(*pts)
+            evaluated.update(xs)
             if relative:
                 base = min(pts, key=lambda p: abs(p[0] - trained))[1]
                 if not base or base != base:
@@ -177,6 +194,11 @@ def _plot_row(axs, data, metric, relative, logy, axes):
         ax.set_title(title, fontweight="bold")
         ax.set_xlabel(xlabel)
         ps.style_axis(ax)
+        if evaluated:          # one x tick per evaluated value (mass: 45.6 g is the trained cube)
+            ticks = sorted(evaluated)
+            ax.xaxis.set_major_locator(FixedLocator(ticks))
+            ax.xaxis.set_major_formatter(FixedFormatter([f"{t:.3g}".replace("-", "\u2212") for t in ticks]))
+            ax.xaxis.set_minor_locator(NullLocator())
 
 
 GRID_2X2 = ("push", "friction", "mass", "pitch")     # --all-axes: reading order, left to right then down

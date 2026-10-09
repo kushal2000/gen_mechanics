@@ -1,6 +1,6 @@
 #!/bin/bash
 # Draws plots/ from results/ood with plot_ood.py: one figure per comparison, goals per episode, a 2x2 of push force
-# and friction (top row), object mass and palm pitch (bottom row), one folder per hypothesis -- plots/README.md says
+# and friction (top row), object mass and hand tilt angle (bottom row), one folder per hypothesis -- plots/README.md says
 # what each tests and what the figures show. PNG only. Rerun as OOD results land; figures are replaced.
 #
 #   plots/full_vs_index_middle                              headline: MLP, best checkpoints, 3 seeds
@@ -19,7 +19,8 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)
 PY="$HERE/../../.venv_isaacsim/bin/python $HERE/analysis/plot_ood.py"
 P=$HERE/plots
 cd $HERE/analysis
-fig() { $PY --metric goals_per_episode --all-axes "$@" > /dev/null; }
+# A comparison with no results yet is skipped (plot_ood.py exits non-zero), not fatal.
+fig() { $PY --metric goals_per_episode --all-axes "$@" > /dev/null 2>&1 || echo "skipped (no results yet): $*"; }
 fig --only mlp_full,mlp_index_middle --groups best --out $P --name full_vs_index_middle
 H1=$P/h1_fewer_fingers_less_robust
 fig --only mlp_full,mlp_no_ring,mlp_thumb_index_middle,mlp_index_middle --groups best --out $H1 --name finger_subsets
