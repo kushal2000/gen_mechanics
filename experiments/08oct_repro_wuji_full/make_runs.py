@@ -10,6 +10,13 @@ VERBATIM copy of a 6 Oct .sub with only the wandb project, log dir, study name a
   R3 dact_v250       experiments/06oct_wuji_5rads/left_wuji2_full_v5_ema0.1_dact.sub  = 21667 exactly (35.6 goals/ep)
   R4 dact_v10000     the same, today's viewer interval (= 113950, a second sample)
 
+Plus two MLP runs (ARCH=mlp: SAPG's [1024, 1024, 512, 512] trunk, shared actor-critic), 24576 envs in SAPG's 6
+blocks (block size = envs / 6 = 4096), from R4's sub (EMA 0.1 + action delay, 5 deg, the same PPO settings): is the
+8 Oct blow-up in the transformer path?
+
+  M1 mlp_e24k_full          the full left hand
+  M2 mlp_e24k_index_middle  the left index + middle hand
+
 References, episode_final/successes at epoch 1000 / 1500: 12491 0.71 / 1.81, 21667 0.26 / 0.78. Earliest signal:
 info/last_lr decays (healthy) or stays at 0.01 (8 Oct's failures) by epoch ~400-800.
 
@@ -40,3 +47,16 @@ if __name__ == "__main__":
             p = HERE / f"{run}.sub"
             p.write_text(text)
             print(p)
+    r4 = (HERE / "left_wuji2_full_v5_ema0.1_dact_repro_v10000.sub").read_text()
+    for tag, spec in (("full", "wuji2_left_uniform_handonly"),
+                      ("index_middle", "wuji2_left_uniform_handonly_only_index_middle")):
+        run = f"left_wuji2_{tag}_v5_ema0.1_dact_mlp_e24k"
+        text = r4.replace("left_wuji2_full_v5_ema0.1_dact_repro_v10000", run)
+        text = text.replace("#SBATCH --job-name=R_dact_v10000", f"#SBATCH --job-name=M_mlp_{tag}")
+        assert "export ARCH=transformer\n" in text
+        text = text.replace("export ARCH=transformer\n", "export ARCH=mlp\nexport NUM_ENVS_PER_GPU=24576\n")
+        text = text.replace('ROBOT_SPEC="${ROBOT_SPEC:-wuji2_left_uniform_handonly}"', f'ROBOT_SPEC="${{ROBOT_SPEC:-{spec}}}"')
+        assert f"ROBOT_SPEC:-{spec}" in text
+        p = HERE / f"{run}.sub"
+        p.write_text(text)
+        print(p)
