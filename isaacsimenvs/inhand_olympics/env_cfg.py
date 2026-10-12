@@ -1,6 +1,6 @@
 """Config for the in-hand olympics env: one hand on a 6-DOF dummy wrist, palm down above a table.
 
-Skeleton stage: the scene (hand + wrist + table) and joint-target actions only. Tasks, objects, observations and
+Skeleton stage: the scene (hand + wrist + table + pen) and joint-target actions only. Tasks, objects, observations and
 rewards come later.
 
 Never use a ``None`` default here: a hydra override of a ``None`` default is rejected
@@ -63,6 +63,20 @@ class TableCfg:
 
 
 @configclass
+class PenCfg:
+    """The pen: a capsule lying on the table. ``length`` is tip to tip, caps included (the PhysX capsule's
+    cylinder is length - diameter long)."""
+
+    length: float = 0.10                     # m
+    diameter: float = 0.03                   # m
+    mass: float = 0.03                       # kg
+    friction: float = 0.5
+    # Reset pose on the table, in the env frame: centre (x, y), and yaw of the pen's long axis from world +x.
+    init_xy: tuple[float, float] = (0.0, 0.0)
+    init_yaw: float = 0.0                    # rad
+
+
+@configclass
 class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     decimation: int = 2
     episode_length_s: float = 10.0
@@ -84,5 +98,6 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     hand: HandCfg = HandCfg()
     wrist: WristCfg = WristCfg()
     table: TableCfg = TableCfg()
+    pen: PenCfg = PenCfg()
     contact_offset: float = 0.002
     rest_offset: float = 0.0

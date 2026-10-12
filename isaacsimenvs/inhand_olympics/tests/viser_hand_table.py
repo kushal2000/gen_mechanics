@@ -1,5 +1,5 @@
 """Viser test of the in-hand olympics scene: the Wuji v2 left hand on its 6-DOF dummy wrist, palm down above the
-table. Every joint gets a slider spanning its limits in sim, grouped in collapsible folders (wrist, then one per
+table, with the pen (a capsule) lying on it. Every joint gets a slider spanning its limits in sim, grouped in collapsible folders (wrist, then one per
 finger); a slider sets that joint's position target, the sim tracks it, and viser draws the simulated joint
 positions. The status line shows the worst target-tracking error.
 
@@ -8,7 +8,8 @@ experiments/01oct_unified_rl/viser_compare.py) and streams joint positions back.
 
     OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python isaacsimenvs/inhand_olympics/tests/viser_hand_table.py \\
         --port 8090                     # then open http://<node>:8090
-    ... viser_hand_table.py --smoke     # no viewer: random targets, check tracking and that the palm faces down
+    ... viser_hand_table.py --smoke     # no viewer: the pen settles on the table, joints track random targets,
+                                        # the palm faces down
 """
 from __future__ import annotations
 
@@ -78,13 +79,21 @@ def smoke(args):
     import torch
     env = _make_env(args.hand)
     names = env.robot.joint_names
-    n, palm = None, None
+    n, palm, pen_ok = None, None, False
     try:
         print(f"[smoke] {len(names)} joints: {names}", flush=True)
         palm = _palm_normal_world(env)
         print(f"[smoke] palm normal in world at reset: {palm.round(3).tolist()} (want [0, 0, -1])", flush=True)
         root = env.robot.data.body_pos_w[0, env.robot.body_names.index(env.robot_spec.palm_body_name)]
         print(f"[smoke] hand root at {root.tolist()} (table top {env.cfg.table.top_height})", flush=True)
+        hold = env.target_to_action(env.robot.data.default_joint_pos)
+        for _ in range(60):                         # 1 s at the reset pose: the pen should lie still on the table
+            env.step(hold)
+        pen_z = float(env.pen.data.root_pos_w[0, 2] - env.scene.env_origins[0, 2])
+        pen_ok = abs(pen_z - (env.cfg.table.top_height + env.cfg.pen.diameter / 2)) < 0.003
+        print(f"[smoke] pen centre at z {pen_z:.4f} after 1 s (want table top + radius "
+              f"{env.cfg.table.top_height + env.cfg.pen.diameter / 2:.4f}); speed "
+              f"{float(env.pen.data.root_lin_vel_w[0].norm()):.4f} m/s", flush=True)
         g = torch.Generator(device="cpu").manual_seed(0)
         worst = {}
         for trial in range(3):
@@ -104,8 +113,9 @@ def smoke(args):
         print(f"[smoke] {n} of {len(names)} joints off target by more than 0.05 after 3 s", flush=True)
     finally:
         # Printed before closing: app.close() can end the process.
-        ok = palm is not None and palm[2] < -0.99 and n == 0
-        print(f"[smoke] {'PASS' if ok else 'FAIL'}: palm faces down and every joint tracks its target", flush=True)
+        ok = palm is not None and palm[2] < -0.99 and n == 0 and pen_ok
+        print(f"[smoke] {'PASS' if ok else 'FAIL'}: palm faces down, the pen rests on the table, every joint "
+              f"tracks its target", flush=True)
         env.close()
         app.close()
     os._exit(0 if ok else 1)
@@ -132,7 +142,8 @@ def _loop(args, conn):
     conn.send({"kind": "ready", "urdf": str(env.wrist_urdf_path), "joints": names,
                "lower": env.joint_lower.tolist(), "upper": env.joint_upper.tolist(),
                "default": env.robot.data.default_joint_pos[0].tolist(),
-               "base_pos": [0.0, 0.0, w.top_height], "table_size": list(w.size), "table_top": w.top_height})
+               "base_pos": [0.0, 0.0, w.top_height], "table_size": list(w.size), "table_top": w.top_height,
+               "pen": [env.cfg.pen.length, env.cfg.pen.diameter]})
     targets = env.robot.data.default_joint_pos.clone()
     t_next = time.time()
     while True:
@@ -148,7 +159,9 @@ def _loop(args, conn):
                 targets = env.robot.data.default_joint_pos.clone()
         env.step(env.target_to_action(targets))
         q = env.robot.data.joint_pos[0]
-        conn.send({"kind": "frame", "q": q.tolist(), "err": float((q - targets[0]).abs().max())})
+        conn.send({"kind": "frame", "q": q.tolist(), "err": float((q - targets[0]).abs().max()),
+                   "pen_pos": (env.pen.data.root_pos_w[0] - env.scene.env_origins[0]).tolist(),
+                   "pen_quat": env.pen.data.root_quat_w[0].tolist()})
         t_next += float(env.step_dt)
         time.sleep(max(0.0, t_next - time.time()))
         t_next = max(t_next, time.time() - 0.1)
@@ -158,6 +171,16 @@ def _group(name: str) -> str:
     if name.startswith("wrist_"):
         return "wrist"
     return next((f for f in FINGERS if f in name), "other")
+
+
+def _add_pen(server, length: float, diameter: float):
+    """The pen as drawn: a capsule along its local x, tip to tip ``length``."""
+    import numpy as np
+    import trimesh
+    mesh = trimesh.creation.capsule(height=length - diameter, radius=diameter / 2, count=[24, 24])   # along z
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))            # z -> x
+    mesh.visual.face_colors = (38, 89, 204, 255)
+    return server.scene.add_mesh_trimesh("/pen", mesh)
 
 
 def main(args):
@@ -176,7 +199,7 @@ def main(args):
     print(f"\n[olympics-viser] open http://{socket.gethostname()}:{args.port}\n", flush=True)
     outbox: "queue.Queue[dict]" = queue.Queue()
     md = server.gui.add_markdown("waiting for Kit...")
-    urdf = info = None
+    urdf = info = pen = None
     sliders = {}
     try:
         while child.poll() is None:
@@ -206,6 +229,7 @@ def main(args):
                     server.scene.add_grid("/ground", width=2.0, height=2.0, position=(0.0, 0.0, 0.0))
                     server.scene.add_frame("/base", position=tuple(m["base_pos"]), show_axes=False)
                     urdf = ViserUrdf(server, pathlib.Path(m["urdf"]), root_node_name="/base/robot")
+                    pen = _add_pen(server, *m["pen"])
                     b_reset = server.gui.add_button("reset (sim and sliders)")
                     groups = ["wrist"] + [f for f in FINGERS if any(_group(n) == f for n in m["joints"])]
                     for g in groups + (["other"] if any(_group(n) == "other" for n in m["joints"]) else []):
@@ -227,6 +251,7 @@ def main(args):
             if frame is None or info is None:
                 continue
             urdf.update_cfg(dict(zip(info["joints"], frame["q"])))
+            pen.position, pen.wxyz = tuple(frame["pen_pos"]), tuple(frame["pen_quat"])
             md.content = f"worst |q - target|: {frame['err']:.3f}"
     except (EOFError, ConnectionResetError):
         print("[olympics-viser] worker closed the connection", flush=True)

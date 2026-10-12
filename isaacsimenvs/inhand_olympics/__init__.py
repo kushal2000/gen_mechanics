@@ -5,7 +5,7 @@ table and pen pickup + holding against pushes. Today it is a skeleton:
 
     env_cfg.py   InHandOlympicsEnvCfg: hand spec, wrist joint ranges and drives, table
     wrist.py     the hand's URDF on the dummy wrist, palm down (Kit-free)
-    scene.py     robot articulation + kinematic table + ground + light
+    scene.py     robot articulation + kinematic table + pen (capsule) + ground + light
     env.py       InHandOlympicsEnv: joint-target actions, placeholder obs, zero reward, timeouts only
     tests/       viser_hand_table.py: drive every joint from sliders and watch the sim
 

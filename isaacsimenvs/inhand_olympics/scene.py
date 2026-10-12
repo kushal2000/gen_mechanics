@@ -1,6 +1,8 @@
-"""Scene: the hand on its dummy wrist (one articulation) above a kinematic table, a ground plane and a light."""
+"""Scene: the hand on its dummy wrist (one articulation) above a kinematic table, the pen lying on the table, a
+ground plane and a light."""
 from __future__ import annotations
 
+import math
 import tempfile
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from .wrist import WRIST_JOINTS, build_wrist_urdf
 
 ROBOT_PATH = "/World/envs/env_.*/Robot"
 TABLE_PATH = "/World/envs/env_.*/Table"
+PEN_PATH = "/World/envs/env_.*/Pen"
 
 
 def _actuators(spec, cfg) -> dict:
@@ -81,11 +84,30 @@ def setup_scene(env) -> None:
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, top - sz / 2)),
     ))
+    pen = cfg.pen
+    r = pen.diameter / 2
+    env.pen = RigidObject(RigidObjectCfg(
+        prim_path=PEN_PATH,
+        spawn=sim_utils.CapsuleCfg(
+            radius=r, height=pen.length - pen.diameter, axis="X",     # USD capsule height excludes the caps
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+            mass_props=sim_utils.MassPropertiesCfg(mass=pen.mass),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=cfg.contact_offset,
+                                                             rest_offset=cfg.rest_offset),
+            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=pen.friction,
+                                                            dynamic_friction=pen.friction),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.15, 0.35, 0.80)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(pen.init_xy[0], pen.init_xy[1], top + r),
+            rot=(math.cos(pen.init_yaw / 2), 0.0, 0.0, math.sin(pen.init_yaw / 2))),
+    ))
     spawn_ground_plane("/World/ground", GroundPlaneCfg())
     env.scene.clone_environments(copy_from_source=False)
     env.scene.filter_collisions(global_prim_paths=["/World/ground"])
     env.scene.articulations["robot"] = env.robot
     env.scene.rigid_objects["table"] = env.table
+    env.scene.rigid_objects["pen"] = env.pen
     sim_utils.DomeLightCfg(intensity=2000.0).func("/World/Light", sim_utils.DomeLightCfg(intensity=2000.0))
 
     env.robot_spec = spec

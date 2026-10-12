@@ -64,3 +64,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         q = self.robot.data.default_joint_pos[env_ids]
         self.robot.write_joint_state_to_sim(q, torch.zeros_like(q), env_ids=env_ids)
         self.targets[env_ids] = q
+        pen = self.pen.data.default_root_state[env_ids].clone()
+        pen[:, :3] += self.scene.env_origins[env_ids]
+        self.pen.write_root_pose_to_sim(pen[:, :7], env_ids)
+        self.pen.write_root_velocity_to_sim(torch.zeros_like(pen[:, 7:]), env_ids)
