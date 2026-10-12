@@ -1,6 +1,6 @@
 """Config for the in-hand olympics env: one hand on a 6-DOF dummy wrist, palm down above a table.
 
-Skeleton stage: the scene (hand + wrist + table + pen) and joint-target actions only. Tasks, objects, observations and
+Skeleton stage: the scene (hand + wrist + table + pen) and the action pipeline only. Tasks, objects, observations and
 rewards come later.
 
 Never use a ``None`` default here: a hydra override of a ``None`` default is rejected
@@ -33,14 +33,19 @@ class WristCfg:
     """
 
     # (lower, upper) per joint: metres for x/y/z, radians for roll/pitch/yaw.
-    x_range: tuple[float, float] = (-0.25, 0.25)
-    y_range: tuple[float, float] = (-0.25, 0.25)
-    z_range: tuple[float, float] = (0.02, 0.40)
-    roll_range: tuple[float, float] = (-1.5708, 1.5708)
-    pitch_range: tuple[float, float] = (-1.5708, 1.5708)
-    yaw_range: tuple[float, float] = (-3.1416, 3.1416)
+    # Narrow on purpose: in-hand manipulation, not the wrist, should do the work.
+    x_range: tuple[float, float] = (-0.10, 0.10)
+    y_range: tuple[float, float] = (-0.10, 0.10)
+    z_range: tuple[float, float] = (0.02, 0.20)
+    # Human-like, from the normal anatomical ranges (AAOS). Signs, checked by forward kinematics on the left hand
+    # (thumb at -y): roll - = supination (palm turns toward the thumb side), + = pronation; palm-down is already near
+    # full pronation, so the range is lopsided and stops with the palm on edge. Pitch + = flexion (fingertips
+    # down) 80 deg, - = extension 70 deg. Yaw + = ulnar deviation 30 deg, - = radial deviation 20 deg.
+    roll_range: tuple[float, float] = (-1.5708, 0.3491)      # -90 .. +20 deg
+    pitch_range: tuple[float, float] = (-1.2217, 1.3963)     # -70 .. +80 deg
+    yaw_range: tuple[float, float] = (-0.3491, 0.5236)       # -20 .. +30 deg
     # Pose at reset: (x, y, z, roll, pitch, yaw).
-    default_pose: tuple[float, float, float, float, float, float] = (0.0, 0.0, 0.20, 0.0, 0.0, 0.0)
+    default_pose: tuple[float, float, float, float, float, float] = (0.0, 0.0, 0.15, 0.0, 0.0, 0.0)
 
     # Implicit PD drives. The robot has gravity off (flatten_robot_usd), so these only fight contacts and inertia.
     prismatic_stiffness: float = 1000.0      # N/m
@@ -53,6 +58,27 @@ class WristCfg:
     revolute_velocity_limit: float = 6.0     # rad/s
     # Mass of each dummy link; PhysX needs a body behind every joint.
     link_mass: float = 0.01
+
+
+@configclass
+class ActionCfg:
+    """Wrist: delta position targets. Each step a in [-1, 1] moves an integrated target by a * max_speed * dt
+    (clamped to the joint range), and the PD target follows it through an EMA. The EMA runs on the integrated target,
+    not on the previous PD target, so the wrist really reaches max_speed (smoothing the previous PD target would
+    cap it at ema * max_speed); it lags the command by about dt / ema = 0.17 s.
+
+    Fingers: absolute targets, a in [-1, 1] mapped onto each joint's range, through an EMA (as in-hand training).
+    """
+
+    wrist_max_speed_lin: float = 0.2         # m/s, x/y/z
+    wrist_max_speed_ang: float = 1.5         # rad/s, roll/pitch/yaw (~86 deg/s)
+    wrist_ema: float = 0.1
+    hand_ema: float = 0.1
+    # Action latency, as in-hand training (pose_reaching_6d actions.py): every step each env applies one of its
+    # last action_delay_max + 1 actions, picked uniformly, so 0..action_delay_max steps (0-50 ms at 60 Hz) late.
+    # At an episode's first step the queue is filled with that step's action.
+    use_action_delay: bool = True
+    action_delay_max: int = 3
 
 
 @configclass
@@ -97,6 +123,7 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
 
     hand: HandCfg = HandCfg()
     wrist: WristCfg = WristCfg()
+    action: ActionCfg = ActionCfg()
     table: TableCfg = TableCfg()
     pen: PenCfg = PenCfg()
     contact_offset: float = 0.002

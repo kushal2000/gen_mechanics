@@ -1,7 +1,8 @@
 """Viser test of the in-hand olympics scene: the Wuji v2 left hand on its 6-DOF dummy wrist, palm down above the
 table, with the pen (a capsule) lying on it. Every joint gets a slider spanning its limits in sim, grouped in collapsible folders (wrist, then one per
-finger); a slider sets that joint's position target, the sim tracks it, and viser draws the simulated joint
-positions. The status line shows the worst target-tracking error.
+finger); a slider sets where that joint should go, the env's own action pipeline steers it there (fingers:
+absolute targets through the EMA; wrist: speed-limited deltas through the EMA), and viser draws the simulated
+joint positions. The status line shows the worst target-tracking error.
 
 Kit and viser cannot share an interpreter, so the sim runs in a child worker (as in
 experiments/01oct_unified_rl/viser_compare.py) and streams joint positions back.
@@ -77,31 +78,47 @@ def _palm_normal_world(env):
 def smoke(args):
     app = _boot()
     import torch
+
+    from isaacsimenvs.inhand_olympics.wrist import WRIST_JOINTS
     env = _make_env(args.hand)
     names = env.robot.joint_names
-    n, palm, pen_ok = None, None, False
+    n, palm, pen_ok, lat_ok = None, None, False, False
     try:
         print(f"[smoke] {len(names)} joints: {names}", flush=True)
         palm = _palm_normal_world(env)
         print(f"[smoke] palm normal in world at reset: {palm.round(3).tolist()} (want [0, 0, -1])", flush=True)
         root = env.robot.data.body_pos_w[0, env.robot.body_names.index(env.robot_spec.palm_body_name)]
         print(f"[smoke] hand root at {root.tolist()} (table top {env.cfg.table.top_height})", flush=True)
-        hold = env.target_to_action(env.robot.data.default_joint_pos)
+        default = env.robot.data.default_joint_pos.clone()
         for _ in range(60):                         # 1 s at the reset pose: the pen should lie still on the table
-            env.step(hold)
+            env.step(env.action_toward(default))
         pen_z = float(env.pen.data.root_pos_w[0, 2] - env.scene.env_origins[0, 2])
         pen_ok = abs(pen_z - (env.cfg.table.top_height + env.cfg.pen.diameter / 2)) < 0.003
         print(f"[smoke] pen centre at z {pen_z:.4f} after 1 s (want table top + radius "
               f"{env.cfg.table.top_height + env.cfg.pen.diameter / 2:.4f}); speed "
               f"{float(env.pen.data.root_lin_vel_w[0].norm()):.4f} m/s", flush=True)
+        # Action latency: step t sends the action t / 1000 everywhere; the env must apply one of t-3..t
+        # (clipped at the episode's first step).
+        env.reset()
+        delays = []
+        for t in range(1, 61):
+            env.step(torch.full((1, len(names)), t / 1000.0, device=env.device))
+            delays.append(t - round(float(env.applied_actions[0, 0]) * 1000.0))
+        lat_ok = all(0 <= d <= env.cfg.action.action_delay_max for d in delays)
+        print(f"[smoke] action latency over 60 steps: delays seen {sorted(set(delays))} "
+              f"(want within 0..{env.cfg.action.action_delay_max}); {'ok' if lat_ok else 'WRONG'}", flush=True)
+        env.reset()
         g = torch.Generator(device="cpu").manual_seed(0)
-        worst = {}
+        worst, w = {}, env.wrist_ids
+        top_speed = torch.zeros(len(w), device=env.device)
         for trial in range(3):
-            # Targets inside the middle 60% of each range, so contact with the table rarely blocks them.
-            a = (torch.rand(len(names), generator=g) * 1.2 - 0.6).to(env.device).unsqueeze(0)
+            # Desired poses inside the middle 60% of each range, so contact with the table rarely blocks them.
+            u = (torch.rand(len(names), generator=g) * 1.2 - 0.6).to(env.device).unsqueeze(0)
+            desired = env.action_to_target(u)
             for _ in range(180):                    # 3 s
-                env.step(a)
-            err = (env.robot.data.joint_pos - env.targets)[0].abs()
+                env.step(env.action_toward(desired))
+                top_speed = torch.maximum(top_speed, env.robot.data.joint_vel[0, w].abs())
+            err = (env.robot.data.joint_pos - desired)[0].abs()
             moved = (env.robot.data.joint_pos - env.robot.data.default_joint_pos)[0].abs()
             print(f"[smoke] trial {trial}: joints moved from default by {float(moved.min()):.3f}.."
                   f"{float(moved.max()):.3f}", flush=True)
@@ -111,11 +128,18 @@ def smoke(args):
             print(f"[smoke]   {nm:28s} worst |q - target| {worst[nm]:.4f}", flush=True)
         n = sum(v > 0.05 for v in worst.values())
         print(f"[smoke] {n} of {len(names)} joints off target by more than 0.05 after 3 s", flush=True)
+        # The PD lags the target, so allow 10% over the commanded speed.
+        over = top_speed > 1.1 * env.wrist_speed
+        for i, nm in enumerate(WRIST_JOINTS):
+            print(f"[smoke]   {nm:12s} top speed {float(top_speed[i]):.3f} (limit {float(env.wrist_speed[i]):.3f})",
+                  flush=True)
+        n += int(over.sum())
     finally:
         # Printed before closing: app.close() can end the process.
-        ok = palm is not None and palm[2] < -0.99 and n == 0 and pen_ok
+        ok = palm is not None and palm[2] < -0.99 and n == 0 and pen_ok and lat_ok
         print(f"[smoke] {'PASS' if ok else 'FAIL'}: palm faces down, the pen rests on the table, every joint "
-              f"tracks its target", flush=True)
+              f"tracks its target, the wrist keeps to its speed limits, actions arrive 0-{env.cfg.action.action_delay_max} "
+              f"steps late", flush=True)
         env.close()
         app.close()
     os._exit(0 if ok else 1)
@@ -157,7 +181,7 @@ def _loop(args, conn):
             elif m["cmd"] == "reset":
                 env.reset()
                 targets = env.robot.data.default_joint_pos.clone()
-        env.step(env.target_to_action(targets))
+        env.step(env.action_toward(targets))
         q = env.robot.data.joint_pos[0]
         conn.send({"kind": "frame", "q": q.tolist(), "err": float((q - targets[0]).abs().max()),
                    "pen_pos": (env.pen.data.root_pos_w[0] - env.scene.env_origins[0]).tolist(),
