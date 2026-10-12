@@ -1,0 +1,18 @@
+#!/bin/bash
+#SBATCH --job-name=olympics_viser
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32000
+#SBATCH --time=04:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/inhand_olympics/viser-%j.out
+# The in-hand olympics scene in viser, joint sliders driving the sim (viser_hand_table.py).
+#   sbatch [--export=ALL,PORT=8090] isaacsimenvs/inhand_olympics/tests/viser_hand_table.sub
+#   then open http://<node>:$PORT (the node is in the log's first line)
+cd /share/portal/kk837/gen_mechanics
+export OMNI_KIT_ACCEPT_EULA=YES
+echo "[olympics-viser] node $(hostname)"
+exec .venv_isaacsim/bin/python -u isaacsimenvs/inhand_olympics/tests/viser_hand_table.py --port "${PORT:-8090}"
