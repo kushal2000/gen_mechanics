@@ -1,11 +1,13 @@
 """Per-hand goals per episode of the 2-3-finger multi-hand policy (E4, 127128) on all 52 Wuji v2 finger-drop hands:
 its 40 training hands (2 or 3 fingers) and 12 hands it never saw (4 and 5 fingers), grouped by finger count.
 
-Reads results/eval_per_hand_2to3_me5_ep<N>_on_2plus.json (08oct_multi_embodiment_evolution/analysis/eval_per_hand.py:
-64 envs per hand, each env's first episode, greedy). One dot per hand (left and right hands both drawn), a bar
-for the group mean. Writes plots/h4_multi_embodiment_robustness/embodiment_generalization.png.
+Reads results/eval_per_hand_2to3_me5_ep<N>_on_2plus[_stochastic].json
+(08oct_multi_embodiment_evolution/analysis/eval_per_hand.py: 64 envs per hand, goals in each env's first episode).
+Sampled actions by default, as every eval since 12 Oct; --greedy for the earlier greedy run, which understated this
+policy about 4x. One dot per hand (left and right hands both drawn), a bar for the group mean.
+Writes plots/h4_multi_embodiment_robustness/embodiment_generalization[_greedy].png.
 
-    python experiments/08oct_repro_wuji_full/analysis/plot_embodiment_generalization.py [--epoch 5000]
+    python experiments/08oct_repro_wuji_full/analysis/plot_embodiment_generalization.py [--epoch 5000] [--greedy]
 """
 from __future__ import annotations
 
@@ -38,8 +40,10 @@ def n_fingers(name: str) -> int:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--epoch", default="5000")
+    ap.add_argument("--greedy", action="store_true", help="the greedy-action eval instead of sampled actions")
     args = ap.parse_args()
-    res = json.loads((HERE / f"results/eval_per_hand_2to3_me5_ep{args.epoch}_on_2plus.json").read_text())
+    suffix = "" if args.greedy else "_stochastic"
+    res = json.loads((HERE / f"results/eval_per_hand_2to3_me5_ep{args.epoch}_on_2plus{suffix}.json").read_text())
     hands = res["hands"]
 
     ps.configure()
@@ -63,7 +67,7 @@ def main():
     ax.set_xlim(1.5, 5.7)
     ax.set_ylim(bottom=0)
     ax.set_xlabel("Fingers on the hand")
-    ax.set_ylabel("Goals / episode")
+    ax.set_ylabel("Goals in first episode")
     ax.set_title("2-3-Finger Policy on All 52 Hands", fontweight="bold")
     ps.style_axis(ax)
     fig.tight_layout()
@@ -72,7 +76,7 @@ def main():
                Line2D([], [], color=ps.COLORS["muted_ink"], linewidth=2.2)]
     labels = ["Training hands (40)", "Unseen hands (12)", "Group mean"]
     ps.bottom_legend(fig, handles, labels, y=-0.01, loc="upper center", ncol=3, bold=())
-    out = HERE / "plots/h4_multi_embodiment_robustness/embodiment_generalization"
+    out = HERE / ("plots/h4_multi_embodiment_robustness/embodiment_generalization" + ("_greedy" if args.greedy else ""))
     ps.save_figure(fig, out, formats=("png",))
     plt.close(fig)
 

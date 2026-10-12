@@ -529,9 +529,17 @@ def _resize_sigma(path: str, n_actions: int) -> str:
     """A copy of the checkpoint whose sigma fits a hand with n_actions joints.
 
     sigma is (exploration blocks, joints) -- the only tensor in the joint transformer
-    whose shape depends on the hand. Each block's joints get that block's mean log-std,
-    so a stochastic action explores as widely as it did in training; the greedy action
-    (deterministic, or expl-coef 0) never reads sigma at all.
+    whose shape depends on the hand; the greedy action (deterministic) never reads it.
+    A hand's joint k sits in slot k in every layout (single hands in canonical order,
+    multi-hand templates slot by slot), so the trained slots keep their own log-std and
+    extra slots repeat the trained pattern (slot k gets slot k mod n_trained); a smaller
+    hand takes the first n_actions slots.
+
+    Learned log-stds differ a lot by slot (12 Oct, 127128's leader: std 0.18 to 6.3,
+    the last joint of each finger the noisiest), so averaging them over the slots, as
+    this did before, nearly doubled the noise on most joints: sampled-action evals of
+    127128 on the 52-hand layout scored its own training hands 0.70 goals per episode
+    against 4.62 on its own 40-hand layout.
     """
     import tempfile
 
@@ -542,7 +550,8 @@ def _resize_sigma(path: str, n_actions: int) -> str:
     sig = inner["model"].get("a2c_network.sigma")
     if sig is None or sig.shape[-1] == n_actions:
         return path
-    new = sig.mean(dim=-1, keepdim=True).expand(*sig.shape[:-1], n_actions).clone()
+    n_old = sig.shape[-1]
+    new = sig[..., [k % n_old for k in range(n_actions)]].clone()
     inner["model"]["a2c_network.sigma"] = new
     out = tempfile.NamedTemporaryFile(suffix=".pth", delete=False).name
     torch.save(ck, out)
