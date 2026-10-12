@@ -59,6 +59,9 @@ def main() -> None:
     ap.add_argument("--max-seconds", type=float, default=600.0,
                     help="sim-time cap; stops earlier once every env's first episode has ended")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--stochastic", action="store_true", help="sample actions as in training instead of greedy")
+    ap.add_argument("--min-seconds", type=float, default=0.0,
+                    help="keep stepping at least this much sim time, for goals_per_episode_all (training's metric)")
     ap.add_argument("--out", default="", help="default: results/eval_per_hand_<study>_ep<N>_on_<family>.json")
     ap.add_argument("--device", default="cuda:0")
     args = ap.parse_args()
@@ -138,13 +141,15 @@ def main() -> None:
         N, dev, dt = inner.num_envs, inner.device, float(inner.step_dt)
         max_steps = int(round(args.max_seconds / dt))
         goals, drops, streak = (torch.zeros(N, device=dev) for _ in range(3))
+        ended_goals, ended_n = torch.zeros(N, device=dev), torch.zeros(N, device=dev)   # every episode that ended
         first_goals = torch.full((N,), -1.0, device=dev)       # goals in the first episode; -1 = still running
         first_drop = torch.zeros(N, dtype=torch.bool, device=dev)
         t0 = time.time()
         k = 0
-        while k < max_steps and bool((first_goals < 0).any()):
+        min_steps = int(round(args.min_seconds / dt))
+        while k < max_steps and (bool((first_goals < 0).any()) or k < min_steps):
             with torch.no_grad():
-                act = player.get_normalized_action(obs["policy"], deterministic_actions=True)
+                act = player.get_normalized_action(obs["policy"], deterministic_actions=not args.stochastic)
             obs, _, _, _, _ = env.step(act)
             succ = inner._is_success.float()
             r = inner._termination_reasons
@@ -156,6 +161,8 @@ def main() -> None:
             fresh = (end > 0) & (first_goals < 0)
             first_goals[fresh] = streak[fresh]
             first_drop[fresh] = r["fall"].bool()[fresh]
+            ended_goals += streak * end
+            ended_n += end
             streak *= 1.0 - end
             k += 1
             if k % 600 == 0:
@@ -164,7 +171,7 @@ def main() -> None:
 
         minutes = k * dt / 60.0
         out = {"checkpoint": str(ckpt), "trained_spec": trained_spec, "eval_spec": spec, "seconds": k * dt,
-               "envs_per_hand": args.envs_per_hand, "hands": {}}
+               "envs_per_hand": args.envs_per_hand, "stochastic": args.stochastic, "hands": {}}
         for h, name in enumerate(hands):
             m = idx == h
             n = int(m.sum())
@@ -176,6 +183,9 @@ def main() -> None:
                 "goals_per_episode_first_std": float(first_goals[done].std()) if int(done.sum()) > 1 else float("nan"),
                 "first_episode_drop_frac": float(first_drop[done].float().mean()) if done.any() else float("nan"),
                 "first_episode_unfinished_frac": 1.0 - int(done.sum()) / n,
+                # training's episode_final/successes: the mean over every episode that ended in the window
+                "goals_per_episode_all": float(ended_goals[m].sum() / ended_n[m].sum()) if ended_n[m].sum() > 0
+                else float("nan"),
                 "goals_per_min": float(goals[m].sum()) / (n * minutes),
                 "drops_per_min": float(drops[m].sum()) / (n * minutes),
             }

@@ -13,6 +13,7 @@
 #   plots/h5_dr_on_ood_axes/training_progress           goals / episode vs epoch, DR runs and their no-DR counterparts
 #   plots/h5_dr_on_ood_axes/full_hand, index_middle     MLP trained with DR over the middle of each OOD sweep vs without
 #   plots/h4_multi_embodiment_robustness/index_middle    E4 (2-3 finger hands) vs the index + middle specialist T1 (delay)
+#   plots/h4_multi_embodiment_robustness/embodiment_generalization   E4 per hand on all 52 hands, 12 never trained on
 #
 # plot_ood.py itself still draws the other views (--groups mid,final; goals per drop; 3-axis figures) on request.
 #
@@ -41,4 +42,6 @@ ls $HERE/results/ood | grep -q "^mlp_full_ood_dr_" && \
 ls $HERE/results/ood | grep -q "^mlp_index_middle_ood_dr_" && \
     fig --only mlp_index_middle,mlp_index_middle_ood_dr --groups best --out $H5 --name index_middle
 $PY_TRAIN > /dev/null 2>&1 || echo "skipped: training progress"
+$HERE/../../.venv_isaacsim/bin/python $HERE/analysis/plot_embodiment_generalization.py > /dev/null 2>&1 \
+    || echo "skipped: embodiment generalization"
 find $P -name "*.png" | sed "s#$P/##" | sort
