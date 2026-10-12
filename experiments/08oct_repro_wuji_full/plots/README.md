@@ -73,11 +73,12 @@ identical settings. These are final checkpoints (epoch 5000), 1 seed each.
   comparison either.
 - `embodiment_generalization.png` runs the same E4 policy (epoch 5000) on all 52 finger-drop hands: its 40 training
   hands with 2 or 3 fingers and 12 hands with 4 or 5 fingers that it never trained on. One dot per hand, grouped by
-  finger count. The unseen hands score higher than the training hands: 2.4 goals per episode on average against 1.1.
-  More fingers score more within the training set, from 0.6 with 2 fingers to 1.6 with 3. The unseen hands continue
-  that trend: 2.4 with 4 fingers and 2.6 with 5. Thumb + one finger is the worst group (0.02-0.12). All absolute
-  numbers are low and come from greedy first-episode evaluation; this evaluation scores the training hands at about
-  half of the training log's 2.3 goals per episode (being checked).
+  finger count; goals in each env's first episode, 64 envs per hand, sampled actions. The unseen hands score far
+  higher than the training hands: 13.9 goals on average against 4.8. Within the training set more fingers score
+  more (2.0 with 2 fingers, 7.6 with 3), and the unseen hands continue the trend (12.9 with 4, 18.8 with 5; the
+  left full hand 21.4). Thumb + one finger is the worst group. The training hands' 4.8 matches the same checkpoint
+  on its own 40-hand layout (4.6), so the larger layout costs nothing. An earlier greedy run understated every hand
+  about 4x, and a sampled run before the per-slot sigma fix (_play_worker._resize_sigma) understated them again.
 
 ## H5: domain randomisation over the OOD axes (`h5_dr_on_ood_axes/`)
 
