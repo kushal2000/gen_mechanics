@@ -1,7 +1,7 @@
 """Config for the in-hand olympics env: one hand on a 6-DOF dummy wrist, palm down above a table.
 
-Skeleton stage: the scene (hand + wrist + table + pen) and the action pipeline only. Tasks, objects, observations and
-rewards come later.
+Every task is a sequence of 6D goal poses for the pen; the task decides where the pen starts and how the next goal
+follows a hit one, while success, rewards and terminations are shared (env.py). Today's tasks: pen_spin.
 
 Never use a ``None`` default here: a hydra override of a ``None`` default is rejected
 (pose_reaching_6d/env_cfg.py says the same).
@@ -97,15 +97,87 @@ class PenCfg:
     diameter: float = 0.03                   # m
     mass: float = 0.03                       # kg
     friction: float = 0.5
-    # Reset pose on the table, in the env frame: centre (x, y), and yaw of the pen's long axis from world +x.
+    # Spawn pose on the table, in the env frame: centre (x, y), and yaw of the pen's tip (its local +x end) from
+    # world +x. Each task places the pen at reset itself; this is only where it is built.
     init_xy: tuple[float, float] = (0.0, 0.0)
     init_yaw: float = 0.0                    # rad
 
 
 @configclass
+class ObsCfg:
+    """In-hand reorientation's format (observations.py): the actor sees obs_list, the critic state_list."""
+
+    obs_list: tuple[str, ...] = (
+        "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel", "prev_action_targets",
+        "joint_link_bbox", "joint_lower", "joint_upper", "joint_enabled",
+        "keypoints_rel_ee", "keypoints_rel_goal", "object_vel", "palm_extents", "task_onehot",
+    )
+    state_list: tuple[str, ...] = (
+        "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel", "prev_action_targets",
+        "joint_link_bbox", "joint_lower", "joint_upper", "joint_enabled",
+        "keypoints_rel_ee", "keypoints_rel_goal", "object_vel", "palm_extents", "task_onehot",
+        "object_keypoints_rel_joint", "palm_keypoints", "ee_pos", "ee_rot", "ee_vel", "object_rot",
+        "fingertip_pos_rel_palm", "closest_keypoint_max_dist", "closest_fingertip_dist",
+        "progress", "successes", "reward",
+    )
+    clamp_abs_observations: float = 10.0
+
+
+@configclass
+class TaskCfg:
+    """Which tasks the env samples from, one per env at every reset, uniformly. The policy sees the task as a
+    one-hot over ``tasks/__init__.py``'s TASK_NAMES (fixed order, so a policy's input never changes meaning when
+    the mix does)."""
+
+    names: tuple[str, ...] = ("pen_spin",)
+
+
+@configclass
+class PenSpinCfg:
+    """Spin the pen flat on the table, in place. Goals: the pen lying flat with its centre at ``centre_xy``, at
+    yaw = previous goal's yaw + direction * step; the direction is drawn per episode. The pen starts at the centre at
+    a random yaw and the first goal is one step from it."""
+
+    centre_xy: tuple[float, float] = (0.0, 0.0)   # env frame, on the table
+    step_deg: float = 45.0
+
+
+@configclass
+class GoalCfg:
+    """Success = every pen keypoint (4 points along the long axis, tip to tail, so the ends are distinct) within
+    ``success_tolerance`` of its goal position. Roll about the long axis is invisible to it, as it is to a capsule."""
+
+    success_tolerance: float = 0.01          # m, max keypoint distance
+    max_successes: int = 50                  # goals after which the episode ends
+    # Each goal gets this long (s); a hit restarts the clock, as in in-hand reorientation.
+    seconds_per_goal: float = 10.0
+
+
+@configclass
+class RewardCfg:
+    # Progress: scale * (best keypoint distance so far for this goal - current), when positive (in-hand's
+    # keypoint reward).
+    keypoint_rew_scale: float = 2000.0
+    goal_bonus: float = 1000.0
+    # Getting the fingertips to the pen: scale * the mean over fingertips of (closest distance so far - current).
+    approach_rew_scale: float = 50.0
+    # L1 on joint velocities.
+    wrist_action_penalty: float = 0.03
+    hand_action_penalty: float = 0.0003
+
+
+@configclass
+class TerminationCfg:
+    # The pen's centre more than this far from the goal's (m): it slid or was knocked away.
+    max_goal_distance: float = 0.15
+    # Below the table top (m): it fell off.
+    fall_below_table: float = 0.05
+
+
+@configclass
 class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     decimation: int = 2
-    episode_length_s: float = 10.0
+    episode_length_s: float = 10.0          # set from goal.seconds_per_goal by the env (after any override)
     # Derived in setup_scene (6 wrist joints + the hand's); a stale non-zero value raises.
     action_space: int = 0
     observation_space: int = 0
@@ -126,5 +198,11 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     action: ActionCfg = ActionCfg()
     table: TableCfg = TableCfg()
     pen: PenCfg = PenCfg()
+    obs: ObsCfg = ObsCfg()
+    task: TaskCfg = TaskCfg()
+    pen_spin: PenSpinCfg = PenSpinCfg()
+    goal: GoalCfg = GoalCfg()
+    reward: RewardCfg = RewardCfg()
+    termination: TerminationCfg = TerminationCfg()
     contact_offset: float = 0.002
     rest_offset: float = 0.0

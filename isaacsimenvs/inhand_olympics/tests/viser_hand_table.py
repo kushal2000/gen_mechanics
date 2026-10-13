@@ -1,5 +1,5 @@
 """Viser test of the in-hand olympics scene: the Wuji v2 left hand on its 6-DOF dummy wrist, palm down above the
-table, with the pen (a capsule) lying on it. Every joint gets a slider spanning its limits in sim, grouped in collapsible folders (wrist, then one per
+table, with the pen (a capsule, its tip red) lying on it and its current goal drawn as a ghost. Every joint gets a slider spanning its limits in sim, grouped in collapsible folders (wrist, then one per
 finger); a slider sets where that joint should go, the env's own action pipeline steers it there (fingers:
 absolute targets through the EMA; wrist: speed-limited deltas through the EMA), and viser draws the simulated
 joint positions. The status line shows the worst target-tracking error.
@@ -58,7 +58,7 @@ def _make_env(hand: str):
     cfg = InHandOlympicsEnvCfg()
     cfg.hand.robot_spec = hand
     cfg.scene.num_envs = 1
-    cfg.episode_length_s = 1e6            # the viewer never resets on its own
+    cfg.goal.seconds_per_goal = 1e6       # no timeouts while someone is driving the sliders
     env = InHandOlympicsEnv(cfg)
     env.reset()
     return env
@@ -82,7 +82,7 @@ def smoke(args):
     from isaacsimenvs.inhand_olympics.wrist import WRIST_JOINTS
     env = _make_env(args.hand)
     names = env.robot.joint_names
-    n, palm, pen_ok, lat_ok = None, None, False, False
+    n, palm, pen_ok, lat_ok, task_ok = None, None, False, False, False
     try:
         print(f"[smoke] {len(names)} joints: {names}", flush=True)
         palm = _palm_normal_world(env)
@@ -90,11 +90,11 @@ def smoke(args):
         root = env.robot.data.body_pos_w[0, env.robot.body_names.index(env.robot_spec.palm_body_name)]
         print(f"[smoke] hand root at {root.tolist()} (table top {env.cfg.table.top_height})", flush=True)
         default = env.robot.data.default_joint_pos.clone()
-        for _ in range(60):                         # 1 s at the reset pose: the pen should lie still on the table
+        for _ in range(120):                        # 2 s at the reset pose: the pen should lie still on the table
             env.step(env.action_toward(default))
         pen_z = float(env.pen.data.root_pos_w[0, 2] - env.scene.env_origins[0, 2])
         pen_ok = abs(pen_z - (env.cfg.table.top_height + env.cfg.pen.diameter / 2)) < 0.003
-        print(f"[smoke] pen centre at z {pen_z:.4f} after 1 s (want table top + radius "
+        print(f"[smoke] pen centre at z {pen_z:.4f} after 2 s (want table top + radius "
               f"{env.cfg.table.top_height + env.cfg.pen.diameter / 2:.4f}); speed "
               f"{float(env.pen.data.root_lin_vel_w[0].norm()):.4f} m/s", flush=True)
         # Action latency: step t sends the action t / 1000 everywhere; the env must apply one of t-3..t
@@ -107,6 +107,9 @@ def smoke(args):
         lat_ok = all(0 <= d <= env.cfg.action.action_delay_max for d in delays)
         print(f"[smoke] action latency over 60 steps: delays seen {sorted(set(delays))} "
               f"(want within 0..{env.cfg.action.action_delay_max}); {'ok' if lat_ok else 'WRONG'}", flush=True)
+        task_ok = _check_pen_spin(env)
+        # The joint-tracking trials below may knock the pen about; keep that from resetting the robot.
+        env.cfg.termination.max_goal_distance = env.cfg.termination.fall_below_table = 1e3
         env.reset()
         g = torch.Generator(device="cpu").manual_seed(0)
         worst, w = {}, env.wrist_ids
@@ -136,13 +139,52 @@ def smoke(args):
         n += int(over.sum())
     finally:
         # Printed before closing: app.close() can end the process.
-        ok = palm is not None and palm[2] < -0.99 and n == 0 and pen_ok and lat_ok
+        ok = palm is not None and palm[2] < -0.99 and n == 0 and pen_ok and lat_ok and task_ok
         print(f"[smoke] {'PASS' if ok else 'FAIL'}: palm faces down, the pen rests on the table, every joint "
               f"tracks its target, the wrist keeps to its speed limits, actions arrive 0-{env.cfg.action.action_delay_max} "
-              f"steps late", flush=True)
+              f"steps late, pen-spin goals advance and terminate as they should", flush=True)
         env.close()
         app.close()
     os._exit(0 if ok else 1)
+
+
+def _check_pen_spin(env) -> bool:
+    """Goals one step round from the pen; a hit counts and moves the goal on; a knocked-away pen ends the episode."""
+    import math
+
+    import torch
+    env.reset()
+    ids = torch.zeros(1, dtype=torch.long, device=env.device)
+    hold = lambda: env.action_toward(env.robot.data.joint_pos.clone())        # noqa: E731
+    env.step(hold())
+    step = math.radians(env.cfg.pen_spin.step_deg)
+    want = 2 * (env.cfg.pen.length / 2) * math.sin(step / 2)               # tip (and tail) displacement
+    d0 = float(env.goal_dist[0])
+    print(f"[smoke] pen_spin: goal distance at reset {d0 * 1000:.1f} mm (one {env.cfg.pen_spin.step_deg:g} deg step: "
+          f"{want * 1000:.1f} mm)", flush=True)
+    ok = abs(d0 - want) < 0.003
+    env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
+    env.step(hold())
+    bonus = float(env.reward_terms["goal_bonus"][0])
+    env.step(hold())
+    d1 = float(env.goal_dist[0])
+    print(f"[smoke] pen_spin: pen put on its goal -> successes {int(env.successes[0])}, bonus {bonus:g}, "
+          f"next goal {d1 * 1000:.1f} mm away", flush=True)
+    ok &= int(env.successes[0]) == 1 and bonus == env.cfg.reward.goal_bonus and abs(d1 - want) < 0.003
+    pos = env.goal_pos[ids].clone()
+    pos[:, 0] += 0.2
+    env.place_pen(ids, pos, env.goal_quat[ids].clone())
+    env.step(hold())
+    away = bool(env.termination_reasons["away"][0])
+    print(f"[smoke] pen_spin: pen moved 0.2 m away -> terminated {away}, successes after the reset "
+          f"{int(env.successes[0])}", flush=True)
+    ok &= away and int(env.successes[0]) == 0
+    obs = env._get_observations()
+    print(f"[smoke] pen_spin checks {'ok' if ok else 'WRONG'}; actor obs {tuple(obs['policy'].shape)}, critic obs "
+          f"{tuple(obs['critic'].shape)} (spaces {env.cfg.observation_space}, {env.cfg.state_space})", flush=True)
+    ok &= obs["policy"].shape[-1] == env.cfg.observation_space and obs["critic"].shape[-1] == env.cfg.state_space
+    ok &= bool(torch.isfinite(obs["policy"]).all() and torch.isfinite(obs["critic"]).all())
+    return ok
 
 
 def worker(args):
@@ -181,11 +223,18 @@ def _loop(args, conn):
             elif m["cmd"] == "reset":
                 env.reset()
                 targets = env.robot.data.default_joint_pos.clone()
+            elif m["cmd"] == "pen_to_goal":
+                ids = torch.zeros(1, dtype=torch.long, device=env.device)
+                env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
         env.step(env.action_toward(targets))
         q = env.robot.data.joint_pos[0]
         conn.send({"kind": "frame", "q": q.tolist(), "err": float((q - targets[0]).abs().max()),
                    "pen_pos": (env.pen.data.root_pos_w[0] - env.scene.env_origins[0]).tolist(),
-                   "pen_quat": env.pen.data.root_quat_w[0].tolist()})
+                   "pen_quat": env.pen.data.root_quat_w[0].tolist(),
+                   "goal_pos": env.goal_pos[0].tolist(), "goal_quat": env.goal_quat[0].tolist(),
+                   "goal_dist": float(env.goal_dist[0]), "successes": int(env.successes[0]),
+                   "task": env.tasks[int(env.task_id[0])].name,
+                   "ended": [k for k, v in env.termination_reasons.items() if bool(v[0])]})
         t_next += float(env.step_dt)
         time.sleep(max(0.0, t_next - time.time()))
         t_next = max(t_next, time.time() - 0.1)
@@ -197,14 +246,17 @@ def _group(name: str) -> str:
     return next((f for f in FINGERS if f in name), "other")
 
 
-def _add_pen(server, length: float, diameter: float):
-    """The pen as drawn: a capsule along its local x, tip to tip ``length``."""
+def _add_pen(server, name: str, length: float, diameter: float, opacity: float = 1.0):
+    """A pen as drawn: a capsule along its local x, tip to tip ``length``, its tip (+x end) marked red."""
     import numpy as np
     import trimesh
     mesh = trimesh.creation.capsule(height=length - diameter, radius=diameter / 2, count=[24, 24])   # along z
     mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))            # z -> x
-    mesh.visual.face_colors = (38, 89, 204, 255)
-    return server.scene.add_mesh_trimesh("/pen", mesh)
+    node = server.scene.add_mesh_simple(name, vertices=mesh.vertices, faces=mesh.faces, color=(38, 89, 204),
+                                        opacity=opacity)
+    server.scene.add_icosphere(f"{name}/tip", radius=0.4 * diameter, color=(220, 40, 40),
+                               position=(length / 2 - 0.3 * diameter, 0.0, 0.0), opacity=opacity)
+    return node
 
 
 def main(args):
@@ -223,7 +275,7 @@ def main(args):
     print(f"\n[olympics-viser] open http://{socket.gethostname()}:{args.port}\n", flush=True)
     outbox: "queue.Queue[dict]" = queue.Queue()
     md = server.gui.add_markdown("waiting for Kit...")
-    urdf = info = pen = None
+    urdf = info = pen = goal = None
     sliders = {}
     try:
         while child.poll() is None:
@@ -253,8 +305,11 @@ def main(args):
                     server.scene.add_grid("/ground", width=2.0, height=2.0, position=(0.0, 0.0, 0.0))
                     server.scene.add_frame("/base", position=tuple(m["base_pos"]), show_axes=False)
                     urdf = ViserUrdf(server, pathlib.Path(m["urdf"]), root_node_name="/base/robot")
-                    pen = _add_pen(server, *m["pen"])
+                    pen = _add_pen(server, "/pen", *m["pen"])
+                    goal = _add_pen(server, "/goal", *m["pen"], opacity=0.3)
                     b_reset = server.gui.add_button("reset (sim and sliders)")
+                    b_goal = server.gui.add_button("put the pen on its goal")
+                    b_goal.on_click(lambda _: outbox.put({"cmd": "pen_to_goal"}))
                     groups = ["wrist"] + [f for f in FINGERS if any(_group(n) == f for n in m["joints"])]
                     for g in groups + (["other"] if any(_group(n) == "other" for n in m["joints"]) else []):
                         with server.gui.add_folder(g, expand_by_default=(g == "wrist")):
@@ -276,7 +331,10 @@ def main(args):
                 continue
             urdf.update_cfg(dict(zip(info["joints"], frame["q"])))
             pen.position, pen.wxyz = tuple(frame["pen_pos"]), tuple(frame["pen_quat"])
-            md.content = f"worst |q - target|: {frame['err']:.3f}"
+            goal.position, goal.wxyz = tuple(frame["goal_pos"]), tuple(frame["goal_quat"])
+            ended = f"  \n**episode ended: {', '.join(frame['ended'])}**" if frame["ended"] else ""
+            md.content = (f"task **{frame['task']}** · goals hit {frame['successes']} · goal distance "
+                          f"{frame['goal_dist'] * 1000:.0f} mm  \nworst |q - target| {frame['err']:.3f}{ended}")
     except (EOFError, ConnectionResetError):
         print("[olympics-viser] worker closed the connection", flush=True)
     finally:

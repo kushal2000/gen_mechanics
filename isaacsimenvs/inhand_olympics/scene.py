@@ -47,9 +47,8 @@ def setup_scene(env) -> None:
     n_joints = len(WRIST_JOINTS) + len(spec.hand_joint_names)
     if cfg.action_space not in (0, n_joints):
         raise ValueError(f"action_space={cfg.action_space}, but the robot has {n_joints} joints")
-    # DirectRLEnv reads the spaces after this hook. Placeholder observation: joint positions and velocities.
+    # DirectRLEnv reads the spaces after this hook (the env sets observation_space from this).
     cfg.action_space = n_joints
-    cfg.observation_space = 2 * n_joints
 
     work = Path(tempfile.mkdtemp(prefix="olympics_assets_"))
     urdf = build_wrist_urdf(spec, cfg.wrist, work / "hand_on_wrist.urdf")
