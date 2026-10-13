@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim import PhysxCfg, SimulationCfg
+from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
+
+from ..pose_reaching_6d.env_cfg import _default_sim_cfg
 
 
 @configclass
@@ -183,14 +185,9 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     observation_space: int = 0
     state_space: int = 0
 
-    sim: SimulationCfg = SimulationCfg(
-        dt=1.0 / 120.0,
-        render_interval=2,
-        gravity=(0.0, 0.0, -9.81),
-        physx=PhysxCfg(solver_type=1, min_position_iteration_count=8, max_position_iteration_count=8,
-                       min_velocity_iteration_count=0, max_velocity_iteration_count=0,
-                       bounce_threshold_velocity=0.2),
-    )
+    # In-hand reorientation's simulation settings, unchanged (120 Hz TGS, 8 position iterations, its friction and
+    # GPU buffer settings).
+    sim: SimulationCfg = _default_sim_cfg()
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=1.5, replicate_physics=True)
 
     hand: HandCfg = HandCfg()
@@ -204,5 +201,5 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     goal: GoalCfg = GoalCfg()
     reward: RewardCfg = RewardCfg()
     termination: TerminationCfg = TerminationCfg()
-    contact_offset: float = 0.002
+    contact_offset: float = 0.002            # as in-hand (PhysicsCfg)
     rest_offset: float = 0.0

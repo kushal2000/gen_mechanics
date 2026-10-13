@@ -10,11 +10,16 @@ import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import Articulation, ArticulationCfg, RigidObject, RigidObjectCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
+from isaaclab.sim.utils import get_current_stage
+from pxr import Sdf
 
 from ..pose_reaching_6d.common_utils.urdf_to_usd import (
     _apply_self_collision_filters, _convert_urdf_to_usd, _robot_joint_drive_cfg,
 )
+from ..pose_reaching_6d.scene_utils.author_objects import author_handle_head, author_physics_material
 from ..pose_reaching_6d.scene_utils.author_robot import flatten_robot_usd
+from ..pose_reaching_6d.scene_utils.objects.generate_objects import compute_mass_and_inertia
+from ..pose_reaching_6d.scene_utils.sdf import define
 from ..pose_reaching_6d.scene_utils.robots import get_robot_spec
 from .wrist import WRIST_JOINTS, build_wrist_urdf
 
@@ -74,6 +79,7 @@ def setup_scene(env) -> None:
         prim_path=TABLE_PATH,
         spawn=sim_utils.CuboidCfg(
             size=(sx, sy, sz),
+            # As in-hand's table (assembly._table_props): kinematic, no gravity.
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=cfg.contact_offset,
                                                              rest_offset=cfg.rest_offset),
@@ -83,22 +89,23 @@ def setup_scene(env) -> None:
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, top - sz / 2)),
     ))
+    # The pen, authored exactly as in-hand reorientation authors its objects (author_objects.author_handle_head: a
+    # handle-only object, i.e. one capsule along +x, its rigid-body and collider properties, inertia from density),
+    # into env_0; clone_environments copies it.
     pen = cfg.pen
-    r = pen.diameter / 2
+    handle = (pen.length - pen.diameter, pen.diameter)        # (cylinder length, diameter): a capsule
+    density = pen.mass / compute_mass_and_inertia(handle, 1.0)[0]
+    layer = get_current_stage().GetRootLayer()
+    with Sdf.ChangeBlock():
+        mat = author_physics_material(layer, "/World/PhysicsMaterials/pen",
+                                      static_friction=pen.friction, dynamic_friction=pen.friction)
+        define(layer, "/World/envs/env_0/Pen", "Xform")
+        author_handle_head(layer, "/World/envs/env_0/Pen", handle, None, density, None,
+                           collision=True, material_path=mat)
     env.pen = RigidObject(RigidObjectCfg(
-        prim_path=PEN_PATH,
-        spawn=sim_utils.CapsuleCfg(
-            radius=r, height=pen.length - pen.diameter, axis="X",     # USD capsule height excludes the caps
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-            mass_props=sim_utils.MassPropertiesCfg(mass=pen.mass),
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=cfg.contact_offset,
-                                                             rest_offset=cfg.rest_offset),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=pen.friction,
-                                                            dynamic_friction=pen.friction),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.15, 0.35, 0.80)),
-        ),
+        prim_path=PEN_PATH, spawn=None,
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(pen.init_xy[0], pen.init_xy[1], top + r),
+            pos=(pen.init_xy[0], pen.init_xy[1], top + pen.diameter / 2),
             rot=(math.cos(pen.init_yaw / 2), 0.0, 0.0, math.sin(pen.init_yaw / 2))),
     ))
     spawn_ground_plane("/World/ground", GroundPlaneCfg())
