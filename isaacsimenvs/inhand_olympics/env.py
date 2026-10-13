@@ -301,8 +301,17 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.extras["log"]["successes"] = self.successes.mean()
         # Per env; the training observer averages them over the envs whose episode ends this step (as in-hand's
         # episode_final/*).
-        self.extras["episode_final"] = {"successes": self.successes.clone(),
-                                        **{f"done_{k}": v.float() for k, v in self.termination_reasons.items()}}
+        final = {"successes": self.successes.clone(),
+                 **{f"done_{k}": v.float() for k, v in self.termination_reasons.items()}}
+        # The same per task, as "task_<task>/<metric>" (NaN outside the task's envs): one wandb section per task
+        # (coevolution/utils/rlgames_utils.py PER_TASK_PREFIX).
+        nan = torch.full_like(self.successes, math.nan)
+        overall = list(final.items())
+        for k, task in enumerate(self.tasks):
+            mine = self.task_id == k
+            for name, value in overall:
+                final[f"task_{task.name}/{name}"] = torch.where(mine, value, nan)
+        self.extras["episode_final"] = final
         return reward
 
     def _next_goal(self, ids: torch.Tensor) -> None:

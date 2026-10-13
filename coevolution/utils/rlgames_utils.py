@@ -17,6 +17,9 @@ from rl_games.common.algo_observer import AlgoObserver
 
 # logging_utils.PER_HAND_PREFIX ("per_hand_<metric>/<hand>"); not imported, since that package pulls in Isaac Lab.
 PER_HAND_PREFIX = "per_hand_"
+# A multi-task env's per-task copies (isaacsimenvs/inhand_olympics): "task_<task>/<metric>", NaN outside that task's
+# envs. Like per_hand_, each keeps its own top-level name, so every task is its own wandb section.
+PER_TASK_PREFIX = "task_"
 
 
 def _flatten_dict(d: dict, prefix: str = "", separator: str = "/") -> dict:
@@ -207,19 +210,24 @@ class EnvStatsAlgoObserver(AlgoObserver):
         keys = list(values)
         rows = self._gather_done_rows(values, keys, done_index_tensor, done_indices)
         n_hands = len({k.split("/")[1] for k in keys if k.startswith(PER_HAND_PREFIX)})
+        n_tasks = len({k.split("/")[0] for k in keys if k.startswith(PER_TASK_PREFIX)})
         for key in keys:
             per_hand = key.startswith(PER_HAND_PREFIX)
+            per_task = key.startswith(PER_TASK_PREFIX)
             if key not in self.episode_final_avg:
                 # A hand finishes 1/n_hands of the episodes, so a full games_to_track window would
                 # average it over n_hands times as many epochs as the whole-run curve (06oct's 52 hands:
                 # ~1000 epochs of lag). Its share of the window keeps every curve on the same time scale.
+                # Likewise a task, 1/n_tasks.
                 window = self.algo.games_to_track
                 if per_hand:
                     window = max(1, window // n_hands)
+                elif per_task:
+                    window = max(1, window // n_tasks)
                 self.episode_final_avg[key] = deque([], maxlen=window)
             row = rows[key]
-            if per_hand:
-                # NaN outside this hand's envs: keep only its own episodes.
+            if per_hand or per_task:
+                # NaN outside this hand's (task's) envs: keep only its own episodes.
                 row = [v for v in row if v == v]
             self.episode_final_avg[key].extend(row)
 
@@ -259,8 +267,9 @@ class EnvStatsAlgoObserver(AlgoObserver):
                     self.writer.add_scalar(f"episode_cumulative_max/{key}_max", np.max(values), frame)
             for key, values in self.episode_final_avg.items():
                 if values:
-                    # per_hand_<metric>/<hand> keeps its own top-level name: its own wandb section.
-                    tag = key if key.startswith(PER_HAND_PREFIX) else f"episode_final/{key}"
+                    # per_hand_<metric>/<hand> and task_<task>/<metric> keep their own top-level names: their
+                    # own wandb sections.
+                    tag = key if key.startswith((PER_HAND_PREFIX, PER_TASK_PREFIX)) else f"episode_final/{key}"
                     self.writer.add_scalar(tag, np.mean(values), frame)
             self.new_finished_episodes = False
 
