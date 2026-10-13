@@ -223,9 +223,16 @@ class GoalCfg:
 
 @configclass
 class RewardCfg:
-    # Progress: scale * (best keypoint distance so far for this goal - current), when positive (in-hand's
-    # keypoint reward).
+    # The keypoint term, on the goal distance d (max keypoint distance, m):
+    #   "best_so_far"  keypoint_rew_scale * max(0, best d so far for this goal - d) (in-hand's): pays progress once
+    #   "absolute"     keypoint_abs_scale / (d + keypoint_abs_eps) every step (Visual Dexterity's rotation reward,
+    #                  dexenv/envs/rewards.py, there 1 / (|angle| + 0.1)): being near always pays, holding included.
+    #                  0.1 / (d + 0.01): 10 per step at the goal, 5 at 1 cm, 1.1 at 8 cm -- their 10 : 800 against
+    #                  the goal bonus.
+    keypoint_reward: str = "best_so_far"
     keypoint_rew_scale: float = 2000.0
+    keypoint_abs_scale: float = 0.1
+    keypoint_abs_eps: float = 0.01           # m
     # Per goal, paid as goal_bonus / success_steps on each step within tolerance (all at once for a one-step goal).
     goal_bonus: float = 1000.0
     # Getting the fingertips to the pen: scale * the mean over fingertips of (closest distance so far - current).

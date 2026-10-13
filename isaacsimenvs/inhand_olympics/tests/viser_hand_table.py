@@ -223,6 +223,15 @@ def _check_pen_lift(env) -> bool:
     print(f"[smoke] pen_lift: push on the lifted pen before the first hit {before_hit:.3f} N; after it "
           f"{pushed[0]:.3f} N, twist {pushed[1]:.4f} N m; on the pen back on the table {resting:.3f} N", flush=True)
     ok &= before_hit == 0.0 and pushed[0] > 0.0 and pushed[1] > 0.0 and resting == 0.0
+    # The absolute keypoint term: scale / (d + eps) on this step's goal distance.
+    r = env.cfg.reward
+    r.keypoint_reward = "absolute"
+    env.step(hold())
+    got, want = float(env.reward_terms["keypoint"][0]), r.keypoint_abs_scale / (float(env.goal_dist[0]) + r.keypoint_abs_eps)
+    r.keypoint_reward = "best_so_far"
+    print(f"[smoke] pen_lift: absolute keypoint term {got:.3f} at d {float(env.goal_dist[0]) * 1000:.1f} mm "
+          f"(want {want:.3f})", flush=True)
+    ok &= abs(got - want) < 1e-4
     print(f"[smoke] pen_lift checks {'ok' if ok else 'WRONG'}", flush=True)
     return ok
 

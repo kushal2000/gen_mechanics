@@ -8,7 +8,8 @@ one-hot. A task is a sequence of 6D goal poses for the pen (tasks/); everything 
                  clock (goal.seconds_per_goal per goal)
     perturbation random pushes and twists on the pen in envs whose task asks for them (cfg.perturb), from the
                  episode's first hit on, while the pen is lifted
-    reward       keypoint progress toward the goal (best-so-far, in-hand style) + goal bonus (spread over a goal's
+    reward       keypoint term (best-so-far progress, in-hand style, or absolute 1 / (d + eps), Visual Dexterity
+                 style: reward.keypoint_reward) + goal bonus (spread over a goal's
                  success_steps: bonus / success_steps per step within tolerance) + fingertip approach progress
                  - joint-velocity penalties - a penalty on the step the pen is lost (away or fell)
     terminated   the pen fell off the table (or, if termination.max_goal_distance is set, left the goal's
@@ -279,8 +280,14 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.closest_tip_dist = torch.minimum(self.closest_tip_dist, tip)
 
         vel = self.robot.data.joint_vel
+        if r.keypoint_reward == "absolute":
+            keypoint = r.keypoint_abs_scale / (d + r.keypoint_abs_eps)
+        elif r.keypoint_reward == "best_so_far":
+            keypoint = r.keypoint_rew_scale * progress
+        else:
+            raise ValueError(f"reward.keypoint_reward must be 'best_so_far' or 'absolute', got {r.keypoint_reward!r}")
         self.reward_terms = {
-            "keypoint": r.keypoint_rew_scale * progress,
+            "keypoint": keypoint,
             # Spread over the steps a goal needs: goal_bonus / success_steps on every step within tolerance, so a
             # full hold earns goal_bonus and a hold cut short keeps what it earned (a one-step goal: unchanged).
             "goal_bonus": r.goal_bonus * self.near_goal.float() / self.task_success_steps[self.task_id],
