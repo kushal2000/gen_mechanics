@@ -123,8 +123,11 @@ def smoke(args):
         print(f"[smoke] action latency over 60 steps: delays seen {sorted(set(delays))} "
               f"(want within 0..{env.cfg.action.action_delay_max}); {'ok' if lat_ok else 'WRONG'}", flush=True)
         task_ok = _check_pen_spin(env) & _check_pen_lift(env) & _check_pen_spin_air(env) & _check_pen_flip_air(env)
-        # The joint-tracking trials below may knock the pen about; keep that from resetting the robot.
+        # The joint-tracking trials below may knock the pen about; keep that from resetting the robot. They test
+        # tracking, not the reset: start them from the default pose (a full-range finger reset locks a finger
+        # behind another in ~1% of resets, 13 Oct).
         env.cfg.termination.max_goal_distance = env.cfg.termination.fall_below_table = 1e3
+        env.cfg.reset.finger_pos_fraction, env.cfg.reset.finger_vel = 0.0, 0.0
         env.reset()
         g = torch.Generator(device="cpu").manual_seed(0)
         worst, w = {}, env.wrist_ids
@@ -311,14 +314,21 @@ def _check_pen_spin(env) -> bool:
           f"next goal {d1 * 1000:.1f} mm away", flush=True)
     ok &= int(env.successes[0]) == 1 and bonus == env.cfg.reward.goal_bonus and abs(d1 - want) < 0.003
     pos = env.goal_pos[ids].clone()
-    pos[:, 0] += 0.2
+    pos[:, 0] += 0.2                                   # pushed aside, still on the table: the episode goes on
     env.place_pen(ids, pos, env.goal_quat[ids].clone())
     env.step(hold())
-    away = bool(env.termination_reasons["away"][0])
-    lost = float(env.reward_terms["lost_pen"][0])
-    print(f"[smoke] pen_spin: pen moved 0.2 m away -> terminated {away}, penalty {lost:g}, successes after the reset "
-          f"{int(env.successes[0])}", flush=True)
-    ok &= away and int(env.successes[0]) == 0 and lost == -env.cfg.reward.lost_pen_penalty
+    stays = int(env.successes[0]) == 1 and not bool(env.termination_reasons["away"][0])
+    pos[:, 0] += 0.4                                   # off the table's edge (0.4 m from its centre): it falls
+    env.place_pen(ids, pos, env.goal_quat[ids].clone())
+    fell, lost = False, 0.0
+    for _ in range(30):
+        env.step(hold())
+        if bool(env.termination_reasons["fell"][0]):
+            fell, lost = True, float(env.reward_terms["lost_pen"][0])
+            break
+    print(f"[smoke] pen_spin: pen pushed 0.2 m aside -> episode goes on {stays}; pen off the table -> fell {fell}, "
+          f"penalty {lost:g}, successes after the reset {int(env.successes[0])}", flush=True)
+    ok &= stays and fell and int(env.successes[0]) == 0 and lost == -env.cfg.reward.lost_pen_penalty
     obs = env._get_observations()
     print(f"[smoke] pen_spin checks {'ok' if ok else 'WRONG'}; actor obs {tuple(obs['policy'].shape)}, critic obs "
           f"{tuple(obs['critic'].shape)} (spaces {env.cfg.observation_space}, {env.cfg.state_space})", flush=True)

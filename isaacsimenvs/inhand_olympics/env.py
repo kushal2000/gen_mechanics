@@ -11,7 +11,8 @@ one-hot. A task is a sequence of 6D goal poses for the pen (tasks/); everything 
     reward       keypoint progress toward the goal (best-so-far, in-hand style) + goal bonus (spread over a goal's
                  success_steps: bonus / success_steps per step within tolerance) + fingertip approach progress
                  - joint-velocity penalties - a penalty on the step the pen is lost (away or fell)
-    terminated   the pen left the goal's neighbourhood (termination.max_goal_distance) or fell off the table
+    terminated   the pen fell off the table (or, if termination.max_goal_distance is set, left the goal's
+                 neighbourhood)
     truncated    out of time for this goal, or goal.max_successes hit
 
 Actions: one per joint in canonical order (``env.canon_joint_names``: the 6 wrist joints, then the hand's in its
@@ -255,7 +256,8 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.is_success = self.near_goal_steps >= self.task_success_steps[self.task_id]
         pos, _ = self.pen_pose()
         t = self.cfg.termination
-        away = (pos - self.goal_pos).norm(dim=-1) > t.max_goal_distance
+        away = ((pos - self.goal_pos).norm(dim=-1) > t.max_goal_distance if t.max_goal_distance > 0
+                else torch.zeros_like(near))
         fell = pos[:, 2] < self.cfg.table.top_height - t.fall_below_table
         out_of_time = (self.episode_length_buf >= self.max_episode_length - 1) & ~self.is_success
         all_goals = (self.successes + self.is_success.float()) >= self.cfg.goal.max_successes
