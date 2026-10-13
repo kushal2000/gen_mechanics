@@ -7,20 +7,30 @@ pushes.
     env_cfg.py   InHandOlympicsEnvCfg: hand, wrist, actions, table, pen, tasks, goals, rewards, terminations
     wrist.py     the hand's URDF on the dummy wrist, palm down (Kit-free)
     scene.py     robot articulation + kinematic table + pen (capsule) + ground + light
-    env.py       InHandOlympicsEnv: actions, goals and success, rewards, terminations, observations
-    goals.py     pen keypoints (tip, centre, tail) and goal-pose helpers
+    env.py       InHandOlympicsEnv: actions, goals and success, rewards, terminations
+    observations.py  in-hand reorientation's observation format (obs_list / state_list)
+    goals.py     pen keypoints (4 along the long axis, tip to tail) and goal-pose helpers
     tasks/       one module per task: where the pen starts, how the next goal follows a hit one
+    pose_viewer.py  the wandb pose viewer for this env (train.py --capture_viewer)
     tests/       viser_hand_table.py: drive every joint from sliders and watch the sim
 
-Not imported by isaacsimenvs/__init__.py yet, so nothing here can break a training job's startup; import this
-package to register the gym id.
+Registered as GenMech-InHandOlympics-Direct-v0 with in-hand's rl_games configs.
 """
+from pathlib import Path
+
 import gymnasium as gym
+
+_CFG_DIR = Path(__file__).resolve().parents[2] / "coevolution" / "cfg" / "train"
 
 gym.register(
     id="GenMech-InHandOlympics-Direct-v0",
     entry_point="isaacsimenvs.inhand_olympics.env:InHandOlympicsEnv",
     order_enforce=False,
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": "isaacsimenvs.inhand_olympics.env_cfg:InHandOlympicsEnvCfg"},
+    kwargs={
+        "env_cfg_entry_point": "isaacsimenvs.inhand_olympics.env_cfg:InHandOlympicsEnvCfg",
+        "rl_games_cfg_entry_point": str(_CFG_DIR / "PoseReachPPO.yaml"),
+        "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "PoseReachSAPG.yaml"),
+        "rl_games_sapg_nolstm_cfg_entry_point": str(_CFG_DIR / "PoseReachSAPGNoLSTM.yaml"),
+    },
 )

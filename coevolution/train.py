@@ -208,6 +208,8 @@ def main() -> None:
             from pathlib import Path
 
             from coevolution.pose_viewer import PoseViewerWrapper
+            # An env with its own bodies to draw (isaacsimenvs/inhand_olympics) supplies its own viewer class.
+            PoseViewerWrapper = getattr(env.unwrapped, "POSE_VIEWER", PoseViewerWrapper)  # noqa: N806
 
             # One viewer per hand in a multi-hand scene (the first env holding each hand), each its
             # own wandb key "<key>/<hand>" -- one panel per hand under one section. Otherwise one.

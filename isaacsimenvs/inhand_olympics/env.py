@@ -38,6 +38,11 @@ from .wrist import WRIST_JOINTS
 class InHandOlympicsEnv(DirectRLEnv):
     cfg: InHandOlympicsEnvCfg
 
+    @property
+    def POSE_VIEWER(self):  # noqa: N802 -- train.py's hook for an env-specific wandb pose viewer
+        from .pose_viewer import OlympicsPoseViewer
+        return OlympicsPoseViewer
+
     def __init__(self, cfg: InHandOlympicsEnvCfg, render_mode: str | None = None, **kwargs):
         cfg.episode_length_s = cfg.goal.seconds_per_goal
         super().__init__(cfg, render_mode, **kwargs)
@@ -248,6 +253,10 @@ class InHandOlympicsEnv(DirectRLEnv):
             self.closest_goal_dist[hit] = math.nan
         self.extras["log"] = {f"reward/{k}": v.mean() for k, v in self.reward_terms.items()}
         self.extras["log"]["successes"] = self.successes.mean()
+        # Per env; the training observer averages them over the envs whose episode ends this step (as in-hand's
+        # episode_final/*).
+        self.extras["episode_final"] = {"successes": self.successes.clone(),
+                                        **{f"done_{k}": v.float() for k, v in self.termination_reasons.items()}}
         return reward
 
     def _next_goal(self, ids: torch.Tensor) -> None:
