@@ -83,13 +83,27 @@ def smoke(args):
     from isaacsimenvs.inhand_olympics.wrist import WRIST_JOINTS
     env = _make_env(args.hand)
     names = env.robot.joint_names
-    n, palm, pen_ok, lat_ok, task_ok = None, None, False, False, False
+    n, palm, pen_ok, lat_ok, task_ok, reset_ok = None, None, False, False, False, False
     try:
         print(f"[smoke] {len(names)} joints: {names}", flush=True)
         palm = _palm_normal_world(env)
         print(f"[smoke] palm normal in world at reset: {palm.round(3).tolist()} (want [0, 0, -1])", flush=True)
         root = env.robot.data.body_pos_w[0, env.robot.body_names.index(env.robot_spec.palm_body_name)]
         print(f"[smoke] hand root at {root.tolist()} (table top {env.cfg.table.top_height})", flush=True)
+        # Random finger reset (cfg.reset): two resets, two different poses, each within the joint limits, and the
+        # pen undisturbed.
+        h = env.hand_ids
+        q1 = env.robot.data.joint_pos[0, h].clone()
+        env.reset()
+        q2 = env.robot.data.joint_pos[0, h].clone()
+        lo, hi = env.joint_lower[h], env.joint_upper[h]
+        frac = ((q2 - lo) / (hi - lo)).clamp(0, 1)
+        inside = bool(((q1 >= lo - 1e-4) & (q1 <= hi + 1e-4) & (q2 >= lo - 1e-4) & (q2 <= hi + 1e-4)).all())
+        pen_z0 = float(env.pen.data.root_pos_w[0, 2] - env.scene.env_origins[0, 2])
+        reset_ok = inside and float((q1 - q2).abs().mean()) > 0.2
+        print(f"[smoke] finger reset: mean |q1 - q2| over two resets {float((q1 - q2).abs().mean()):.2f} rad, "
+              f"positions within their ranges at fractions {float(frac.min()):.2f}..{float(frac.max()):.2f}, "
+              f"inside limits {inside}; pen at z {pen_z0:.4f}", flush=True)
         default = env.robot.data.default_joint_pos.clone()
         for _ in range(120):                        # 2 s at the reset pose: the pen should lie still on the table
             env.step(env.action_toward(default))
@@ -140,7 +154,7 @@ def smoke(args):
         n += int(over.sum())
     finally:
         # Printed before closing: app.close() can end the process.
-        ok = palm is not None and palm[2] < -0.99 and n == 0 and pen_ok and lat_ok and task_ok
+        ok = palm is not None and palm[2] < -0.99 and n == 0 and pen_ok and lat_ok and task_ok and reset_ok
         print(f"[smoke] {'PASS' if ok else 'FAIL'}: palm faces down, the pen rests on the table, every joint "
               f"tracks its target, the wrist keeps to its speed limits, actions arrive 0-{env.cfg.action.action_delay_max} "
               f"steps late, all four tasks' goals, holds and pushes behave as they should", flush=True)

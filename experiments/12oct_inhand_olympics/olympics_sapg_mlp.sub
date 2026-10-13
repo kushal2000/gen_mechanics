@@ -14,7 +14,7 @@
 # settings as the 8 Oct Wuji MLP runs (08oct_repro_wuji_full/*_mlp_e24k.sub through run_rank.sh) except gamma: 0.99,
 # pose reaching's / SAPG's own (the in-hand runs' 0.998 is ~8 s of horizon at 60 Hz; 13 Oct). lr 5e-4 adaptive, 5 mini-epochs, horizon 16, 24576 envs in 6 exploration blocks, minibatch 114688. The env's own
 # defaults carry EMA 0.1 + action latency. A pose viewer goes to wandb every VIEWER_INTERVAL env steps.
-#   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=...] sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
+#   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=... FINGER_RESET=...] sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
 #   (TASKS goes through the environment: sbatch --export splits on commas)
 #   local smoke: NUM_ENVS=3072 MINIBATCH=12288 EPOCHS=20 WANDB=0 VIEWER_INTERVAL=40 VIEWER_LEN=30 bash <this file>
 set -euo pipefail
@@ -22,8 +22,8 @@ cd /share/portal/kk837/gen_mechanics
 export OMNI_KIT_ACCEPT_EULA=YES
 NUM_ENVS="${NUM_ENVS:-24576}" MINIBATCH="${MINIBATCH:-114688}" EPOCHS="${EPOCHS:-5000}" SEED="${SEED:-100}"
 TASKS="${TASKS:-pen_spin}" GAMMA="${GAMMA:-0.99}"
-STUDY="${TASKS//,/+}_sapg_mlp_e${NUM_ENVS}_s${SEED}"
-STUDY="${STUDY}_g${GAMMA}"
+FINGER_RESET="${FINGER_RESET:-1.0}"     # env.reset.finger_pos_fraction: 1 = each finger joint uniform over its range
+STUDY="${TASKS//,/+}_sapg_mlp_e${NUM_ENVS}_s${SEED}_g${GAMMA}_fr${FINGER_RESET}"
 RUN_NAME="0_${STUDY}_${SLURM_JOB_ID:-local}"     # rl_games reads the policy index off the front
 RUN_DIR="debug_outputs/train_logs/12oct_inhand_olympics/${RUN_NAME}"
 mkdir -p "$RUN_DIR"
@@ -39,6 +39,7 @@ exec .venv_isaacsim/bin/python -u coevolution/train.py \
     "${WANDB_ARGS[@]}" \
     --capture_viewer --capture_viewer_len "${VIEWER_LEN:-600}" --capture_viewer_interval "${VIEWER_INTERVAL:-10000}" \
     "env.task.names=[$TASKS]" \
+    "env.reset.finger_pos_fraction=$FINGER_RESET" \
     "env.scene.num_envs=$NUM_ENVS" \
     "agent.params.seed=$SEED" \
     "agent.params.config.name=$RUN_NAME" "agent.params.config.full_experiment_name=$RUN_NAME" \

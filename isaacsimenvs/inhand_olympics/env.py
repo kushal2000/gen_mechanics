@@ -331,12 +331,19 @@ class InHandOlympicsEnv(DirectRLEnv):
         root = self.robot.data.default_root_state[ids].clone()
         root[:, :3] += self.scene.env_origins[ids]
         self.robot.write_root_pose_to_sim(root[:, :7], ids)
-        q = self.robot.data.default_joint_pos[ids]
-        self.robot.write_joint_state_to_sim(q, torch.zeros_like(q), env_ids=ids)
+        # Fingers: towards a uniform draw over each joint's range (cfg.reset); the wrist at its default pose.
+        q = self.robot.data.default_joint_pos[ids].clone()
+        qd = torch.zeros_like(q)
+        h, r = self.hand_ids, self.cfg.reset
+        lo, hi = self.joint_lower[h], self.joint_upper[h]
+        draw = lo + (hi - lo) * torch.rand(len(ids), len(h), device=self.device)
+        q[:, h] = torch.lerp(q[:, h], draw, r.finger_pos_fraction).clamp(lo, hi)
+        qd[:, h] = torch.empty(len(ids), len(h), device=self.device).uniform_(-r.finger_vel, r.finger_vel)
+        self.robot.write_joint_state_to_sim(q, qd, env_ids=ids)
         self.targets[ids] = q
         self.wrist_command[ids] = q[:, self.wrist_ids]
         self.prev_joint_pos_canon[ids] = q[:, self.perm_lab_to_canon]
-        self.prev_joint_vel_canon[ids] = 0.0
+        self.prev_joint_vel_canon[ids] = qd[:, self.perm_lab_to_canon]
 
         self.task_id[ids] = torch.randint(0, len(self.tasks), (len(ids),), device=self.device)
         for k, task in enumerate(self.tasks):

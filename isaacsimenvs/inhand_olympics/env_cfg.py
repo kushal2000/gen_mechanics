@@ -84,6 +84,17 @@ class ActionCfg:
 
 
 @configclass
+class ResetCfg:
+    """Robot state at every reset. Each finger joint goes ``finger_pos_fraction`` of the way from its default to a
+    uniform draw over its whole range (in-hand's reset_dof_pos_random_interval_fingers, there 0.1; here 1.0: any
+    pose the joints allow), with a velocity uniform in +-``finger_vel``; the PD targets start at the drawn pose.
+    The wrist starts at WristCfg.default_pose, at rest."""
+
+    finger_pos_fraction: float = 1.0
+    finger_vel: float = 0.5                  # rad/s
+
+
+@configclass
 class TableCfg:
     size: tuple[float, float, float] = (0.8, 0.8, 0.04)   # x, y, thickness (m)
     top_height: float = 0.40                              # top surface above the ground (m)
@@ -250,6 +261,7 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     hand: HandCfg = HandCfg()
     wrist: WristCfg = WristCfg()
     action: ActionCfg = ActionCfg()
+    reset: ResetCfg = ResetCfg()
     table: TableCfg = TableCfg()
     pen: PenCfg = PenCfg()
     obs: ObsCfg = ObsCfg()
