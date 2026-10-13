@@ -1,10 +1,13 @@
-"""InHandOlympicsEnv: one hand on a 6-DOF dummy wrist above a table, one pen, several tasks.
+"""InHandOlympicsEnv: one hand on a 6-DOF dummy wrist above a table, one pen, several tasks (tasks/).
 
 Every env runs one task per episode, drawn uniformly from ``cfg.task.names`` at reset and shown to the policy as a
 one-hot. A task is a sequence of 6D goal poses for the pen (tasks/); everything after that is shared here:
 
-    success      every pen keypoint (tip, centre, tail) within goal.success_tolerance of its goal position;
-                 a hit sets the task's next goal and restarts the episode clock (goal.seconds_per_goal per goal)
+    success      every pen keypoint (4 along its axis) within goal.success_tolerance of its goal position for the
+                 task's success_steps consecutive steps; a hit sets the task's next goal and restarts the episode
+                 clock (goal.seconds_per_goal per goal)
+    perturbation random pushes and twists on the pen in envs whose task asks for them (cfg.perturb), from the
+                 episode's first hit on, while the pen is lifted
     reward       keypoint progress toward the goal (best-so-far, in-hand style) + goal bonus + fingertip approach
                  progress - joint-velocity penalties
     terminated   the pen left the goal's neighbourhood (termination.max_goal_distance) or fell off the table
@@ -77,12 +80,21 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.tip_bodies = [self.robot.body_names.index(b) for b in spec.fingertip_body_names]
         self.tip_offsets = torch.tensor(spec.fingertip_offsets, device=dev)
         self.pen_offsets = pen_keypoint_offsets(self.cfg.pen.length, dev)
+        self.pen_rest_height = self.cfg.table.top_height + self.cfg.pen.diameter / 2   # centre, lying on the table
         self._init_hand_geometry(spec)
 
         # Tasks and goals. Goal poses are in the env frame.
         self.tasks = make_tasks(self)
         self.task_id = torch.zeros(n, dtype=torch.long, device=dev)          # index into self.tasks
         self.task_onehot_index = torch.tensor([TASK_NAMES.index(t.name) for t in self.tasks], device=dev)
+        self.task_success_steps = torch.tensor([getattr(t, "success_steps", 1) for t in self.tasks], device=dev)
+        self.task_perturbed = torch.tensor([bool(getattr(t, "perturbed", False)) for t in self.tasks], device=dev)
+        self.near_goal_steps = torch.zeros(n, dtype=torch.long, device=dev)
+        # Perturbations (cfg.perturb): the current push and twist, and each env's chance per step of a new one.
+        self.pen_forces = torch.zeros(n, 1, 3, device=dev)
+        self.pen_torques = torch.zeros(n, 1, 3, device=dev)
+        self.force_prob = torch.zeros(n, device=dev)
+        self.torque_prob = torch.zeros(n, device=dev)
         self.goal_pos = torch.zeros(n, 3, device=dev)
         self.goal_quat = torch.zeros(n, 4, device=dev)
         self.goal_quat[:, 0] = 1.0
@@ -165,7 +177,31 @@ class InHandOlympicsEnv(DirectRLEnv):
         k = torch.randint(0, self.action_queue.shape[1], (self.num_envs,), device=self.device)
         return self.action_queue[torch.arange(self.num_envs, device=self.device), k]
 
+    def _perturb(self) -> None:
+        """Pushes and twists on the pen (cfg.perturb), in envs whose task asks for them, once the episode's first
+        goal is hit and while the pen is lifted; in-hand's wrench DR (pose_reaching_6d/obs_utils/actions.apply_wrench_dr)."""
+        p, dt, n = self.cfg.perturb, self.step_dt, self.num_envs
+        self.pen_forces *= p.force_decay ** (dt / p.decay_interval) if p.force_decay > 0 else 0.0
+        self.pen_torques *= p.torque_decay ** (dt / p.decay_interval) if p.torque_decay > 0 else 0.0
+        mass = self.pen.data.default_mass.to(self.device).view(n, 1, 1)
+        f_new = torch.randn(n, 1, 3, device=self.device) * mass * p.force_scale
+        t_new = torch.randn(n, 1, 3, device=self.device) * mass * p.torque_scale
+        fire_f = (torch.rand(n, device=self.device) < self.force_prob).view(n, 1, 1)
+        fire_t = (torch.rand(n, device=self.device) < self.torque_prob).view(n, 1, 1)
+        self.pen_forces = torch.where(fire_f, f_new, self.pen_forces)
+        self.pen_torques = torch.where(fire_t, t_new, self.pen_torques)
+        pos, _ = self.pen_pose()
+        # Only once the goal has been hit this episode (the pen picked up and held), and while the pen is up.
+        active = (self.task_perturbed[self.task_id] & (self.successes > 0)
+                  & (pos[:, 2] > self.pen_rest_height + p.lifted_height))
+        a = active.float().view(n, 1, 1)
+        self.pen_forces *= a
+        self.pen_torques *= a
+        self.pen.set_external_force_and_torque(forces=self.pen_forces, torques=self.pen_torques, is_global=True)
+
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
+        if bool(self.task_perturbed.any()):
+            self._perturb()
         self.prev_joint_pos_canon.copy_(self.robot.data.joint_pos[:, self.perm_lab_to_canon])
         self.prev_joint_vel_canon.copy_(self.robot.data.joint_vel[:, self.perm_lab_to_canon])
         a = actions.clamp(-1.0, 1.0)
@@ -211,7 +247,9 @@ class InHandOlympicsEnv(DirectRLEnv):
     # --- RL hooks ---------------------------------------------------------------------------------------------
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self.goal_dist = self._goal_distance()
-        self.is_success = self.goal_dist < self.cfg.goal.success_tolerance
+        near = self.goal_dist < self.cfg.goal.success_tolerance
+        self.near_goal_steps = torch.where(near, self.near_goal_steps + 1, torch.zeros_like(self.near_goal_steps))
+        self.is_success = self.near_goal_steps >= self.task_success_steps[self.task_id]
         pos, _ = self.pen_pose()
         t = self.cfg.termination
         away = (pos - self.goal_pos).norm(dim=-1) > t.max_goal_distance
@@ -248,6 +286,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         hit = self.is_success.nonzero(as_tuple=False).squeeze(-1)
         if len(hit):
             self.successes[hit] += 1
+            self.near_goal_steps[hit] = 0
             self._next_goal(hit)
             self.episode_length_buf[hit] = 0
             self.closest_goal_dist[hit] = math.nan
@@ -289,5 +328,11 @@ class InHandOlympicsEnv(DirectRLEnv):
             if len(sel):
                 task.reset(sel)
         self.successes[ids] = 0.0
+        self.near_goal_steps[ids] = 0
+        lo, hi = (math.log(v) for v in self.cfg.perturb.prob_range)
+        for prob in (self.force_prob, self.torque_prob):
+            prob[ids] = torch.exp(torch.empty(len(ids), device=self.device).uniform_(lo, hi))
+        self.pen_forces[ids] = 0.0
+        self.pen_torques[ids] = 0.0
         self.closest_goal_dist[ids] = math.nan
         self.closest_tip_dist[ids] = math.nan

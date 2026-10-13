@@ -1,8 +1,8 @@
 """In-hand olympics: several manipulation tasks on one object, one hand on a 6-DOF dummy wrist above a table.
 
 A task is sampled per env at reset and given to the policy as a one-hot; every task is a sequence of 6D goal
-poses for the pen. Tasks: pen_spin (spin it flat on the table, in place). Planned: pen pickup + holding against
-pushes.
+poses for the pen. Tasks: pen_spin (spin it flat on the table, in place) and pen_lift (pick it up flat and hold it
+while it is pushed and twisted).
 
     env_cfg.py   InHandOlympicsEnvCfg: hand, wrist, actions, table, pen, tasks, goals, rewards, terminations
     wrist.py     the hand's URDF on the dummy wrist, palm down (Kit-free)

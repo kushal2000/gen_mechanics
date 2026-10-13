@@ -11,6 +11,8 @@ from ..goals import yaw_quat
 
 class PenSpin:
     name = "pen_spin"
+    success_steps = 1
+    perturbed = False
 
     def __init__(self, env):
         self.env = env
@@ -23,7 +25,7 @@ class PenSpin:
         env = self.env
         pos = torch.zeros(len(ids), 3, device=env.device)
         pos[:, 0], pos[:, 1] = self.cfg.centre_xy
-        pos[:, 2] = env.cfg.table.top_height + env.cfg.pen.diameter / 2
+        pos[:, 2] = env.pen_rest_height
         return pos, yaw_quat(yaw)
 
     def reset(self, ids: torch.Tensor) -> None:

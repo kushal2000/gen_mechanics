@@ -145,9 +145,40 @@ class PenSpinCfg:
 
 
 @configclass
+class PenLiftCfg:
+    """Lift the pen flat and hold it (tasks/pen_lift.py). The goal: the pen at its starting yaw, flat, centred at
+    ``centre_xy``, ``lift_height`` above where it rests on the table. A goal counts after ``hold_steps``
+    consecutive steps within tolerance; the next goal is the same pose."""
+
+    centre_xy: tuple[float, float] = (0.0, 0.0)
+    lift_height: float = 0.08                # m
+    hold_steps: int = 30                     # 0.5 s at 60 Hz
+
+
+@configclass
+class PerturbCfg:
+    """Random pushes and twists on the pen, for tasks that ask for them (pen_lift): from the episode's first hit on
+    (so the pickup is learned undisturbed), while the pen is lifted.
+    In-hand reorientation's wrench DR with pose reaching's defaults (pose_reaching_6d/obs_utils/actions.py): each
+    step a new force fires with the env's probability (log-uniform over ``prob_range``, drawn at reset):
+    randn(3) * pen mass * force_scale (N); likewise the torque with torque_scale (N m). With decay 0 each lasts one
+    policy step."""
+
+    force_scale: float = 20.0
+    torque_scale: float = 2.0
+    prob_range: tuple[float, float] = (0.001, 0.1)
+    force_decay: float = 0.0
+    torque_decay: float = 0.0
+    decay_interval: float = 0.08             # s
+    # "Lifted": the pen's centre this far above its resting height (m).
+    lifted_height: float = 0.02
+
+
+@configclass
 class GoalCfg:
     """Success = every pen keypoint (4 points along the long axis, tip to tail, so the ends are distinct) within
-    ``success_tolerance`` of its goal position. Roll about the long axis is invisible to it, as it is to a capsule."""
+    ``success_tolerance`` of its goal position, for the task's success_steps consecutive steps (pen_spin 1,
+    pen_lift its hold_steps). Roll about the long axis is invisible to it, as it is to a capsule."""
 
     success_tolerance: float = 0.01          # m, max keypoint distance
     max_successes: int = 50                  # goals after which the episode ends
@@ -198,6 +229,8 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     obs: ObsCfg = ObsCfg()
     task: TaskCfg = TaskCfg()
     pen_spin: PenSpinCfg = PenSpinCfg()
+    pen_lift: PenLiftCfg = PenLiftCfg()
+    perturb: PerturbCfg = PerturbCfg()
     goal: GoalCfg = GoalCfg()
     reward: RewardCfg = RewardCfg()
     termination: TerminationCfg = TerminationCfg()
