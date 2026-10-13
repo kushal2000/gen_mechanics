@@ -156,6 +156,16 @@ class PenSpinAirCfg:
 
 
 @configclass
+class PenFlipAirCfg:
+    """Flip the pen end over end in the air (tasks/pen_flip.py): picked up flat to pen_lift's lift_height at its
+    starting yaw (the first goal), then each goal ``step_deg`` further about the horizontal axis across the pen, its
+    centre staying put, one direction per episode."""
+
+    centre_xy: tuple[float, float] = (0.0, 0.0)
+    step_deg: float = 45.0
+
+
+@configclass
 class PenLiftCfg:
     """Lift the pen flat and hold it (tasks/pen_lift.py). The goal: the pen at its starting yaw, flat, centred at
     ``centre_xy``, ``lift_height`` above where it rests on the table. A goal counts after ``hold_steps``
@@ -242,6 +252,7 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     pen_spin: PenSpinCfg = PenSpinCfg()
     pen_lift: PenLiftCfg = PenLiftCfg()
     pen_spin_air: PenSpinAirCfg = PenSpinAirCfg()
+    pen_flip_air: PenFlipAirCfg = PenFlipAirCfg()
     perturb: PerturbCfg = PerturbCfg()
     goal: GoalCfg = GoalCfg()
     reward: RewardCfg = RewardCfg()

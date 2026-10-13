@@ -8,11 +8,12 @@ wide whatever the number of tasks, so adding one does not change the observation
 """
 from __future__ import annotations
 
+from .pen_flip import PenFlipAir
 from .pen_lift import PenLift
 from .pen_spin import PenSpin, PenSpinAir
 
-TASK_NAMES = ("pen_spin", "pen_lift", "pen_spin_air")
-TASK_CLASSES = {"pen_spin": PenSpin, "pen_lift": PenLift, "pen_spin_air": PenSpinAir}
+TASK_NAMES = ("pen_spin", "pen_lift", "pen_spin_air", "pen_flip_air")
+TASK_CLASSES = {"pen_spin": PenSpin, "pen_lift": PenLift, "pen_spin_air": PenSpinAir, "pen_flip_air": PenFlipAir}
 NUM_TASK_SLOTS = 8
 assert len(TASK_NAMES) <= NUM_TASK_SLOTS
 

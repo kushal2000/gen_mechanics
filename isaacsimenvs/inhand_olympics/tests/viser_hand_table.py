@@ -59,7 +59,7 @@ def _make_env(hand: str):
     cfg.hand.robot_spec = hand
     cfg.scene.num_envs = 1
     cfg.goal.seconds_per_goal = 1e6       # no timeouts while someone is driving the sliders
-    cfg.task.names = ("pen_spin", "pen_lift", "pen_spin_air")
+    cfg.task.names = ("pen_spin", "pen_lift", "pen_spin_air", "pen_flip_air")
     env = InHandOlympicsEnv(cfg)
     env.reset()
     return env
@@ -108,7 +108,7 @@ def smoke(args):
         lat_ok = all(0 <= d <= env.cfg.action.action_delay_max for d in delays)
         print(f"[smoke] action latency over 60 steps: delays seen {sorted(set(delays))} "
               f"(want within 0..{env.cfg.action.action_delay_max}); {'ok' if lat_ok else 'WRONG'}", flush=True)
-        task_ok = _check_pen_spin(env) & _check_pen_lift(env) & _check_pen_spin_air(env)
+        task_ok = _check_pen_spin(env) & _check_pen_lift(env) & _check_pen_spin_air(env) & _check_pen_flip_air(env)
         # The joint-tracking trials below may knock the pen about; keep that from resetting the robot.
         env.cfg.termination.max_goal_distance = env.cfg.termination.fall_below_table = 1e3
         env.reset()
@@ -143,7 +143,7 @@ def smoke(args):
         ok = palm is not None and palm[2] < -0.99 and n == 0 and pen_ok and lat_ok and task_ok
         print(f"[smoke] {'PASS' if ok else 'FAIL'}: palm faces down, the pen rests on the table, every joint "
               f"tracks its target, the wrist keeps to its speed limits, actions arrive 0-{env.cfg.action.action_delay_max} "
-              f"steps late, pen_spin, pen_lift and pen_spin_air goals, holds and pushes behave as they should", flush=True)
+              f"steps late, all four tasks' goals, holds and pushes behave as they should", flush=True)
         env.close()
         app.close()
     os._exit(0 if ok else 1)
@@ -235,6 +235,40 @@ def _check_pen_spin_air(env) -> bool:
           f"{env.cfg.pen_spin_air.step_deg:g}); keypoints {want * 1000:.1f} mm from the last", flush=True)
     ok &= abs(abs(turn) - env.cfg.pen_spin_air.step_deg) < 0.1
     print(f"[smoke] pen_spin_air checks {'ok' if ok else 'WRONG'}", flush=True)
+    return ok
+
+
+def _check_pen_flip_air(env) -> bool:
+    """First goal straight above the pen, flat; each hit tilts the goal one 45-degree step about the axis across the
+    pen: tip at sin(45) half-lengths, then vertical (one half-length), then sin(135), then flat again (end for end),
+    all on one side of the centre."""
+    import torch
+    from isaacsimenvs.inhand_olympics.goals import keypoints
+    ids = _force_task(env, "pen_flip_air")[:1]
+    env.step(env.action_toward(env.robot.data.joint_pos.clone()))
+    d0, lift = float(env.goal_dist[0]), env.cfg.pen_lift.lift_height
+    # A vertical pen at the goal height reaches into the hand at its reset pose: move the hand up and aside first.
+    aside = env.robot.data.joint_pos.clone()
+    aside[:, env.wrist_ids[1]], aside[:, env.wrist_ids[2]] = 0.1, 0.2          # wrist y, z
+    for _ in range(90):
+        env.step(env.action_toward(aside))
+    env.successes[:] = 0.0
+    hold = lambda: env.action_toward(aside)                                    # noqa: E731
+    tips = []
+    for _ in range(4):
+        env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
+        env.step(hold())
+        kp = keypoints(env.goal_pos[ids], env.goal_quat[ids], env.pen_offsets)[0]
+        tips.append(float(kp[0, 2] - env.goal_pos[0, 2]))
+    half = env.cfg.pen.length / 2
+    print(f"[smoke] pen_flip_air: first goal {d0 * 1000:.1f} mm above the pen; after 1-4 hits the goal tip sits "
+          f"{', '.join(f'{t * 1000:+.1f}' for t in tips)} mm from the centre (vertical: +-{half * 1000:.0f}); "
+          f"successes {int(env.successes[0])}", flush=True)
+    s45 = half * 0.7071
+    ok = (abs(d0 - lift) < 0.003 and int(env.successes[0]) == 4 and abs(abs(tips[0]) - s45) < 1e-3
+          and abs(abs(tips[1]) - half) < 1e-3 and abs(abs(tips[2]) - s45) < 1e-3 and abs(tips[3]) < 1e-3
+          and tips[0] * tips[1] > 0 and tips[1] * tips[2] > 0)
+    print(f"[smoke] pen_flip_air checks {'ok' if ok else 'WRONG'}", flush=True)
     return ok
 
 
