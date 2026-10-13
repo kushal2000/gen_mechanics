@@ -11,8 +11,8 @@
 #SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/12oct_inhand_olympics/%x-%j.log
 # In-hand olympics: Wuji v2 left on the 6-DOF dummy wrist, SAPG with the MLP actor-critic, on TASKS (comma-separated,
 # default pen_spin; several are sampled per env at every reset). Agent
-# settings as the 8 Oct Wuji MLP runs (08oct_repro_wuji_full/*_mlp_e24k.sub through run_rank.sh): gamma 0.998,
-# lr 5e-4 adaptive, 5 mini-epochs, horizon 16, 24576 envs in 6 exploration blocks, minibatch 114688. The env's own
+# settings as the 8 Oct Wuji MLP runs (08oct_repro_wuji_full/*_mlp_e24k.sub through run_rank.sh) except gamma: 0.99,
+# pose reaching's / SAPG's own (the in-hand runs' 0.998 is ~8 s of horizon at 60 Hz; 13 Oct). lr 5e-4 adaptive, 5 mini-epochs, horizon 16, 24576 envs in 6 exploration blocks, minibatch 114688. The env's own
 # defaults carry EMA 0.1 + action latency. A pose viewer goes to wandb every VIEWER_INTERVAL env steps.
 #   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=...] sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
 #   (TASKS goes through the environment: sbatch --export splits on commas)
@@ -21,9 +21,9 @@ set -euo pipefail
 cd /share/portal/kk837/gen_mechanics
 export OMNI_KIT_ACCEPT_EULA=YES
 NUM_ENVS="${NUM_ENVS:-24576}" MINIBATCH="${MINIBATCH:-114688}" EPOCHS="${EPOCHS:-5000}" SEED="${SEED:-100}"
-TASKS="${TASKS:-pen_spin}" GAMMA="${GAMMA:-0.998}"
+TASKS="${TASKS:-pen_spin}" GAMMA="${GAMMA:-0.99}"
 STUDY="${TASKS//,/+}_sapg_mlp_e${NUM_ENVS}_s${SEED}"
-[[ "$GAMMA" == 0.998 ]] || STUDY="${STUDY}_g${GAMMA}"
+STUDY="${STUDY}_g${GAMMA}"
 RUN_NAME="0_${STUDY}_${SLURM_JOB_ID:-local}"     # rl_games reads the policy index off the front
 RUN_DIR="debug_outputs/train_logs/12oct_inhand_olympics/${RUN_NAME}"
 mkdir -p "$RUN_DIR"
