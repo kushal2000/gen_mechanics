@@ -3,15 +3,18 @@
 steps within tolerance a goal needs; default 1) and ``perturbed`` (the env pushes and twists the pen while it is
 lifted; default False). Success, rewards and terminations are the env's.
 
-TASK_NAMES fixes the one-hot order the policy sees; append new tasks, never reorder.
+TASK_NAMES fixes the one-hot order the policy sees; append new tasks, never reorder. The one-hot is NUM_TASK_SLOTS
+wide whatever the number of tasks, so adding one does not change the observation (or orphan a checkpoint).
 """
 from __future__ import annotations
 
 from .pen_lift import PenLift
-from .pen_spin import PenSpin
+from .pen_spin import PenSpin, PenSpinAir
 
-TASK_NAMES = ("pen_spin", "pen_lift")
-TASK_CLASSES = {"pen_spin": PenSpin, "pen_lift": PenLift}
+TASK_NAMES = ("pen_spin", "pen_lift", "pen_spin_air")
+TASK_CLASSES = {"pen_spin": PenSpin, "pen_lift": PenLift, "pen_spin_air": PenSpinAir}
+NUM_TASK_SLOTS = 8
+assert len(TASK_NAMES) <= NUM_TASK_SLOTS
 
 
 def make_tasks(env) -> list:

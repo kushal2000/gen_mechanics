@@ -34,7 +34,7 @@ from .env_cfg import InHandOlympicsEnvCfg
 from .goals import keypoints, pen_keypoint_offsets
 from .observations import build_observations, field_sizes, width
 from .scene import setup_scene
-from .tasks import TASK_NAMES, make_tasks
+from .tasks import NUM_TASK_SLOTS, TASK_NAMES, make_tasks
 from .wrist import WRIST_JOINTS
 
 
@@ -111,7 +111,7 @@ class InHandOlympicsEnv(DirectRLEnv):
     def _setup_scene(self) -> None:
         setup_scene(self)
         spec, o = self.robot_spec, self.cfg.obs
-        sizes = field_sizes(self.cfg.action_space, spec.num_hand_joints, spec.num_fingertips, len(TASK_NAMES))
+        sizes = field_sizes(self.cfg.action_space, spec.num_hand_joints, spec.num_fingertips, NUM_TASK_SLOTS)
         self.cfg.observation_space = width(o.obs_list, sizes)
         self.cfg.state_space = width(o.state_list, sizes)
 
@@ -133,7 +133,7 @@ class InHandOlympicsEnv(DirectRLEnv):
             self.palm_frame_quat.unsqueeze(1).expand(-1, 4, -1), kp - self.palm_center_offset.unsqueeze(1))
 
     def task_onehot(self) -> torch.Tensor:
-        onehot = torch.zeros(self.num_envs, len(TASK_NAMES), device=self.device)
+        onehot = torch.zeros(self.num_envs, NUM_TASK_SLOTS, device=self.device)
         onehot[torch.arange(self.num_envs, device=self.device), self.task_onehot_index[self.task_id]] = 1.0
         return onehot
 

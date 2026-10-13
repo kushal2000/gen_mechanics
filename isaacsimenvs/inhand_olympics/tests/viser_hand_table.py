@@ -59,7 +59,7 @@ def _make_env(hand: str):
     cfg.hand.robot_spec = hand
     cfg.scene.num_envs = 1
     cfg.goal.seconds_per_goal = 1e6       # no timeouts while someone is driving the sliders
-    cfg.task.names = ("pen_spin", "pen_lift")
+    cfg.task.names = ("pen_spin", "pen_lift", "pen_spin_air")
     env = InHandOlympicsEnv(cfg)
     env.reset()
     return env
@@ -108,7 +108,7 @@ def smoke(args):
         lat_ok = all(0 <= d <= env.cfg.action.action_delay_max for d in delays)
         print(f"[smoke] action latency over 60 steps: delays seen {sorted(set(delays))} "
               f"(want within 0..{env.cfg.action.action_delay_max}); {'ok' if lat_ok else 'WRONG'}", flush=True)
-        task_ok = _check_pen_spin(env) & _check_pen_lift(env)
+        task_ok = _check_pen_spin(env) & _check_pen_lift(env) & _check_pen_spin_air(env)
         # The joint-tracking trials below may knock the pen about; keep that from resetting the robot.
         env.cfg.termination.max_goal_distance = env.cfg.termination.fall_below_table = 1e3
         env.reset()
@@ -143,7 +143,7 @@ def smoke(args):
         ok = palm is not None and palm[2] < -0.99 and n == 0 and pen_ok and lat_ok and task_ok
         print(f"[smoke] {'PASS' if ok else 'FAIL'}: palm faces down, the pen rests on the table, every joint "
               f"tracks its target, the wrist keeps to its speed limits, actions arrive 0-{env.cfg.action.action_delay_max} "
-              f"steps late, pen_spin and pen_lift goals, holds and pushes behave as they should", flush=True)
+              f"steps late, pen_spin, pen_lift and pen_spin_air goals, holds and pushes behave as they should", flush=True)
         env.close()
         app.close()
     os._exit(0 if ok else 1)
@@ -205,6 +205,36 @@ def _check_pen_lift(env) -> bool:
           f"{pushed[0]:.3f} N, twist {pushed[1]:.4f} N m; on the pen back on the table {resting:.3f} N", flush=True)
     ok &= before_hit == 0.0 and pushed[0] > 0.0 and pushed[1] > 0.0 and resting == 0.0
     print(f"[smoke] pen_lift checks {'ok' if ok else 'WRONG'}", flush=True)
+    return ok
+
+
+def _check_pen_spin_air(env) -> bool:
+    """First goal straight above the pen at the held pen's height; a hit moves it one step round at that height."""
+    import math
+    ids = _force_task(env, "pen_spin_air")[:1]
+    hold = lambda: env.action_toward(env.robot.data.joint_pos.clone())        # noqa: E731
+    env.step(hold())
+    lift = env.cfg.pen_lift.lift_height
+    d0 = float(env.goal_dist[0])
+    env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
+    env.step(hold())
+    hits = int(env.successes[0])
+    want = 2 * (env.cfg.pen.length / 2) * math.sin(math.radians(env.cfg.pen_spin_air.step_deg) / 2)
+    gz = float(env.goal_pos[0, 2]) - env.pen_rest_height
+    env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())    # back to the old goal height,
+    print(f"[smoke] pen_spin_air: first goal {d0 * 1000:.1f} mm above the pen (lift height {lift * 1000:.0f} mm); "
+          f"pen put on it -> successes {hits}; next goal at height {gz * 1000:.1f} mm", flush=True)
+    ok = abs(d0 - lift) < 0.003 and hits == 1 and abs(gz - lift) < 1e-4
+    ids2 = _force_task(env, "pen_spin_air")[:1]
+    yaw0 = float(env.tasks[[t.name for t in env.tasks].index("pen_spin_air")].goal_yaw[0])
+    env.place_pen(ids2, env.goal_pos[ids2].clone(), env.goal_quat[ids2].clone())
+    env.step(hold())
+    yaw1 = float(env.tasks[[t.name for t in env.tasks].index("pen_spin_air")].goal_yaw[0])
+    turn = math.degrees((yaw1 - yaw0 + math.pi) % (2 * math.pi) - math.pi)
+    print(f"[smoke] pen_spin_air: after the pickup the goal turned {turn:+.1f} deg (step "
+          f"{env.cfg.pen_spin_air.step_deg:g}); keypoints {want * 1000:.1f} mm from the last", flush=True)
+    ok &= abs(abs(turn) - env.cfg.pen_spin_air.step_deg) < 0.1
+    print(f"[smoke] pen_spin_air checks {'ok' if ok else 'WRONG'}", flush=True)
     return ok
 
 

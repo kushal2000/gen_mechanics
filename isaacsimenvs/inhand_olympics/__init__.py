@@ -2,7 +2,7 @@
 
 A task is sampled per env at reset and given to the policy as a one-hot; every task is a sequence of 6D goal
 poses for the pen. Tasks: pen_spin (spin it flat on the table, in place) and pen_lift (pick it up flat and hold it
-while it is pushed and twisted).
+while it is pushed and twisted) and pen_spin_air (pick it up and spin it in the air).
 
     env_cfg.py   InHandOlympicsEnvCfg: hand, wrist, actions, table, pen, tasks, goals, rewards, terminations
     wrist.py     the hand's URDF on the dummy wrist, palm down (Kit-free)
