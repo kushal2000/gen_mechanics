@@ -14,6 +14,7 @@ class PenSpin:
     name = "pen_spin"
     success_steps = 1
     perturbed = False
+    carried = False
 
     def __init__(self, env):
         self.env = env
@@ -54,6 +55,7 @@ class PenSpinAir(PenSpin):
     each goal ``step_deg`` further round at that height."""
 
     name = "pen_spin_air"
+    carried = True                  # the pen touching the table after the first goal ends the episode
 
     def __init__(self, env):
         super().__init__(env)

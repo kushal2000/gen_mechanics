@@ -18,6 +18,7 @@ from ..goals import yaw_quat
 
 class PenFlipAir:
     name = "pen_flip_air"
+    carried = True                  # the pen touching the table after the first goal ends the episode
     success_steps = 1
     perturbed = False
 

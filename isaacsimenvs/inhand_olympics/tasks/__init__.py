@@ -1,7 +1,8 @@
 """Tasks. Each is a sequence of 6D goal poses for the pen: a task places the pen and sets the first goal at reset
 (``reset``), and sets the next goal when one is hit (``next_goal``). A task may also set ``success_steps`` (consecutive
 steps within tolerance a goal needs; default 1) and ``perturbed`` (the env pushes and twists the pen while it is
-lifted; default False). Success, rewards and terminations are the env's.
+lifted; default False) and ``carried`` (once the first goal is hit, the pen touching the table ends the episode;
+default False). Success, rewards and terminations are the env's.
 
 TASK_NAMES fixes the one-hot order the policy sees; append new tasks, never reorder. The one-hot is NUM_TASK_SLOTS
 wide whatever the number of tasks, so adding one does not change the observation (or orphan a checkpoint).

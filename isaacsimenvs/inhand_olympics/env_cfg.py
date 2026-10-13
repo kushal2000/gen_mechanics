@@ -251,7 +251,7 @@ class RewardCfg:
     goal_bonus: float = 1000.0
     # Getting the fingertips to the pen: scale * the mean over fingertips of (closest distance so far - current).
     approach_rew_scale: float = 50.0
-    # Charged on the step an episode ends because the pen was lost (termination "away", when on, or "fell"). Without it, a
+    # Charged on the step an episode ends because the pen was lost (termination "away", when on, "fell" or "dropped"). Without it, a
     # policy that cannot reach a goal learns to swat the pen away and restart, collecting the approach reward every
     # episode (pen_lift, 12-13 Oct: episodes of ~0.6 s from epoch 500 on).
     lost_pen_penalty: float = 100.0
@@ -267,6 +267,10 @@ class TerminationCfg:
     max_goal_distance: float = 0.0
     # Below the table top (m): it fell off.
     fall_below_table: float = 0.05
+    # "dropped", for tasks that carry the pen in the air (pen_lift, pen_spin_air, pen_flip_air): once the episode's
+    # first goal is hit, the pen's lowest point within this of the table top ends the episode -- no setting it down
+    # and picking it up again.
+    table_touch_margin: float = 0.003        # m
 
 
 @configclass

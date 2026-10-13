@@ -128,7 +128,8 @@ def smoke(args):
         # The task checks put the pen on lifted goals under the hand: start the fingers straight, not at a random
         # pose that may reach down into it.
         env.cfg.reset.finger_pos_fraction, env.cfg.reset.finger_vel = 0.0, 0.0
-        task_ok = _check_pen_spin(env) & _check_pen_lift(env) & _check_pen_spin_air(env) & _check_pen_flip_air(env)
+        task_ok = (_check_pen_spin(env) & _check_pen_lift(env) & _check_pen_spin_air(env) & _check_pen_flip_air(env)
+                   & _check_dropped(env))
         # The joint-tracking trials below may knock the pen about; keep that from resetting the robot. They test
         # tracking, not the reset: start them from the default pose (a full-range finger reset locks a finger
         # behind another in ~1% of resets, 13 Oct).
@@ -299,6 +300,36 @@ def _check_pen_flip_air(env) -> bool:
           and abs(abs(tips[1]) - half) < 1e-3 and abs(abs(tips[2]) - s45) < 1e-3 and abs(tips[3]) < 1e-3
           and tips[0] * tips[1] > 0 and tips[1] * tips[2] > 0)
     print(f"[smoke] pen_flip_air checks {'ok' if ok else 'WRONG'}", flush=True)
+    return ok
+
+
+def _check_dropped(env) -> bool:
+    """A carried task's pen back on the table ends the episode once the first goal is hit (and not before); table
+    spin's never does."""
+    import torch
+    ids = _force_task(env, "pen_lift")
+    hold = lambda: env.action_toward(env.robot.data.joint_pos.clone())        # noqa: E731
+    for _ in range(3):
+        env.step(hold())
+    before = bool(env.termination_reasons["dropped"][0])
+    env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
+    env.step(hold())                                       # the pickup counts
+    picked = int(env.successes[0])
+    pos = env.goal_pos[ids].clone()
+    pos[:, 2] = env.pen_rest_height
+    env.place_pen(ids, pos, env.goal_quat[ids].clone())
+    env.step(hold())
+    dropped, lost = bool(env.termination_reasons["dropped"][0]), float(env.reward_terms["lost_pen"][0])
+    _force_task(env, "pen_spin")
+    env.step(hold())
+    env.successes[:] = 1.0
+    env.step(hold())
+    spin_ok = not bool(env.termination_reasons["dropped"][0])
+    print(f"[smoke] dropped: lift pen on the table before the pickup -> ends {before}; after it (successes {picked}) "
+          f"-> ends {dropped}, penalty {lost:g}; table spin's pen on the table after a goal -> ends {not spin_ok}",
+          flush=True)
+    ok = (not before) and picked == 1 and dropped and lost == -env.cfg.reward.lost_pen_penalty and spin_ok
+    print(f"[smoke] dropped checks {'ok' if ok else 'WRONG'}", flush=True)
     return ok
 
 

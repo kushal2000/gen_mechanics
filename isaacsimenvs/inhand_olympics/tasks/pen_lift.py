@@ -17,6 +17,7 @@ from ..goals import yaw_quat
 
 class PenLift:
     name = "pen_lift"
+    carried = True                  # the pen touching the table after the first goal ends the episode
     perturbed = True
 
     def __init__(self, env):

@@ -12,8 +12,9 @@ one-hot. A task is a sequence of 6D goal poses for the pen (tasks/); everything 
                  style: reward.keypoint_reward) + goal bonus (spread over a goal's
                  success_steps: bonus / success_steps per step within tolerance) + fingertip approach progress
                  - joint-velocity penalties - a penalty on the step the pen is lost (away or fell)
-    terminated   the pen fell off the table (or, if termination.max_goal_distance is set, left the goal's
-                 neighbourhood)
+    terminated   the pen fell off the table; or, in tasks that carry the pen (lift, air spin, flip), touched the
+                 table after the episode's first goal ("dropped"); or, if termination.max_goal_distance is set,
+                 left the goal's neighbourhood
     truncated    out of time for this goal, or goal.max_successes hit
 
 Actions: one per joint in canonical order (``env.canon_joint_names``: the 6 wrist joints, then the hand's in its
@@ -94,6 +95,18 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.task_first_goal_steps = torch.tensor(
             [getattr(t, "first_goal_steps", getattr(t, "success_steps", 1)) for t in self.tasks], device=dev)
         self.task_perturb_after = torch.tensor([getattr(t, "perturb_after", 1) for t in self.tasks], device=dev)
+        self.task_carried = torch.tensor([bool(getattr(t, "carried", False)) for t in self.tasks], device=dev)
+        # Points whose lowest one is the pen's lowest point, in the pen's frame, and how far below them the surface
+        # reaches: a capsule's two end-sphere centres (radius r below), a box's eight corners (0 below).
+        p = self.cfg.pen
+        h, r = p.length / 2, p.diameter / 2
+        if p.shape == "box":
+            self.pen_extreme_points = torch.tensor(
+                [[x, y, z] for x in (-h, h) for y in (-r, r) for z in (-r, r)], device=dev)
+            self.pen_extreme_reach = 0.0
+        else:
+            self.pen_extreme_points = torch.tensor([[h - r, 0.0, 0.0], [-(h - r), 0.0, 0.0]], device=dev)
+            self.pen_extreme_reach = r
         self.task_perturbed = torch.tensor([bool(getattr(t, "perturbed", False)) for t in self.tasks], device=dev)
         self.near_goal_steps = torch.zeros(n, dtype=torch.long, device=dev)
         # Perturbations (cfg.perturb): the current push and twist, and each env's chance per step of a new one.
@@ -251,6 +264,12 @@ class InHandOlympicsEnv(DirectRLEnv):
         off = quat_apply(quat.reshape(-1, 4), self.tip_offsets.unsqueeze(0).expand(n, f, 3).reshape(-1, 3))
         return pos + off.view(n, f, 3)
 
+    def pen_lowest_height(self) -> torch.Tensor:
+        """(N,) the pen's lowest point above the table top (m)."""
+        pos, quat = self.pen_pose()
+        pts = keypoints(pos, quat, self.pen_extreme_points)
+        return pts[..., 2].amin(dim=-1) - self.pen_extreme_reach - self.cfg.table.top_height
+
     def _goal_distance(self) -> torch.Tensor:
         pos, quat = self.pen_pose()
         kp = keypoints(pos, quat, self.pen_offsets)
@@ -271,9 +290,11 @@ class InHandOlympicsEnv(DirectRLEnv):
         fell = pos[:, 2] < self.cfg.table.top_height - t.fall_below_table
         out_of_time = (self.episode_length_buf >= self.max_episode_length - 1) & ~self.is_success
         all_goals = (self.successes + self.is_success.float()) >= self.cfg.goal.max_successes
-        self.termination_reasons = {"away": away, "fell": fell, "timeout": out_of_time,
+        dropped = self.task_carried[self.task_id] & (self.successes > 0) & (
+            self.pen_lowest_height() < t.table_touch_margin)
+        self.termination_reasons = {"away": away, "fell": fell, "dropped": dropped, "timeout": out_of_time,
                                     "max_successes": all_goals}
-        return away | fell, out_of_time | all_goals
+        return away | fell | dropped, out_of_time | all_goals
 
     def _get_rewards(self) -> torch.Tensor:
         r = self.cfg.reward
@@ -301,8 +322,8 @@ class InHandOlympicsEnv(DirectRLEnv):
             # full hold earns goal_bonus and a hold cut short keeps what it earned (a one-step goal: unchanged).
             "goal_bonus": r.goal_bonus * self.near_goal.float() / self.goal_steps(),
             "approach": r.approach_rew_scale * approach,
-            "lost_pen": -r.lost_pen_penalty * (self.termination_reasons["away"]
-                                               | self.termination_reasons["fell"]).float(),
+            "lost_pen": -r.lost_pen_penalty * (self.termination_reasons["away"] | self.termination_reasons["fell"]
+                                               | self.termination_reasons["dropped"]).float(),
             "wrist_penalty": -r.wrist_action_penalty * vel[:, self.wrist_ids].abs().sum(-1),
             "hand_penalty": -r.hand_action_penalty * vel[:, self.hand_ids].abs().sum(-1),
         }
