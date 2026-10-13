@@ -91,9 +91,14 @@ def main() -> None:
     for t, task in enumerate(env.tasks):
         m = (task_of == t) & (first >= 0)
         ends = [how[i] for i in m.nonzero().flatten().tolist()]
+        g = first[m]
+        q = torch.quantile(g, torch.tensor([0.1, 0.25, 0.5, 0.75, 0.9], device=g.device)) if m.any() else None
         out["tasks"][task.name] = {
             "envs": int((task_of == t).sum()),
-            "goals_per_episode_first": float(first[m].mean()) if m.any() else float("nan"),
+            "goals_per_episode_first": float(g.mean()) if m.any() else float("nan"),
+            # How the goals spread over envs: are they from a few envs or most of them?
+            "goals_quantiles_10_25_50_75_90": [round(float(v), 2) for v in q] if q is not None else [],
+            "frac_envs_with_goals": {f">={k}": float((g >= k).float().mean()) for k in (1, 2, 10, 50)} if m.any() else {},
             "ended": {r: ends.count(r) / max(len(ends), 1) for r in sorted(set(ends))},
         }
         print(f"[eval_tasks] {task.name:14s} {out['tasks'][task.name]}", flush=True)
