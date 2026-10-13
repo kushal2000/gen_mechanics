@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=O_olympics_mlp
+#SBATCH --job-name=O_olympics
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -14,7 +14,7 @@
 # settings as the 8 Oct Wuji MLP runs (08oct_repro_wuji_full/*_mlp_e24k.sub through run_rank.sh) except gamma: 0.99,
 # pose reaching's / SAPG's own (the in-hand runs' 0.998 is ~8 s of horizon at 60 Hz; 13 Oct). lr 5e-4 adaptive, 5 mini-epochs, horizon 16, 24576 envs in 6 exploration blocks, minibatch 114688. The env's own
 # defaults carry EMA 0.1 + action latency. A pose viewer goes to wandb every VIEWER_INTERVAL env steps.
-#   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=... FINGER_RESET=...] sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
+#   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=... FINGER_RESET=... ARCH=lstm EXTRA_HYDRA=...] sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
 #   (TASKS goes through the environment: sbatch --export splits on commas)
 #   local smoke: NUM_ENVS=3072 MINIBATCH=12288 EPOCHS=20 WANDB=0 VIEWER_INTERVAL=40 VIEWER_LEN=30 bash <this file>
 set -euo pipefail
@@ -23,7 +23,17 @@ export OMNI_KIT_ACCEPT_EULA=YES
 NUM_ENVS="${NUM_ENVS:-24576}" MINIBATCH="${MINIBATCH:-114688}" EPOCHS="${EPOCHS:-5000}" SEED="${SEED:-100}"
 TASKS="${TASKS:-pen_spin}" GAMMA="${GAMMA:-0.99}"
 FINGER_RESET="${FINGER_RESET:-1.0}"     # env.reset.finger_pos_fraction: 1 = each finger joint uniform over its range
-STUDY="${TASKS//,/+}_sapg_mlp_e${NUM_ENVS}_s${SEED}_g${GAMMA}_fr${FINGER_RESET}"
+# ARCH: mlp (PoseReachSAPGNoLSTM.yaml) or lstm (PoseReachSAPG.yaml: a 1024-unit LSTM before the same MLP, 16-step
+# sequences); the critic shares the actor's network and observation either way (central_value_config=null).
+ARCH="${ARCH:-mlp}"
+case "$ARCH" in
+    mlp) AGENT=rl_games_sapg_nolstm_cfg_entry_point ;;
+    lstm) AGENT=rl_games_sapg_cfg_entry_point ;;
+    *) echo "ARCH must be mlp or lstm, got $ARCH"; exit 1 ;;
+esac
+STUDY="${TASKS//,/+}_sapg_${ARCH}_e${NUM_ENVS}_s${SEED}_g${GAMMA}_fr${FINGER_RESET}"
+EXTRA=()                                 # EXTRA_HYDRA: further overrides, space-separated
+[[ -n "${EXTRA_HYDRA:-}" ]] && read -r -a EXTRA <<< "$EXTRA_HYDRA"
 RUN_NAME="0_${STUDY}_${SLURM_JOB_ID:-local}"     # rl_games reads the policy index off the front
 RUN_DIR="debug_outputs/train_logs/12oct_inhand_olympics/${RUN_NAME}"
 mkdir -p "$RUN_DIR"
@@ -35,7 +45,7 @@ fi
 export WANDB_DIR="$RUN_DIR"
 echo "[olympics] node $(hostname)  run $RUN_DIR"
 exec .venv_isaacsim/bin/python -u coevolution/train.py \
-    --task GenMech-InHandOlympics-Direct-v0 --agent rl_games_sapg_nolstm_cfg_entry_point --headless \
+    --task GenMech-InHandOlympics-Direct-v0 --agent "$AGENT" --headless \
     "${WANDB_ARGS[@]}" \
     --capture_viewer --capture_viewer_len "${VIEWER_LEN:-600}" --capture_viewer_interval "${VIEWER_INTERVAL:-10000}" \
     "env.task.names=[$TASKS]" \
@@ -53,4 +63,5 @@ exec .venv_isaacsim/bin/python -u coevolution/train.py \
     "agent.params.config.expl_coef_block_size=$((NUM_ENVS / 6))" \
     "agent.params.config.max_epochs=$EPOCHS" \
     agent.params.config.save_frequency=100 agent.params.config.save_best_after=0 \
+    ${EXTRA[@]+"${EXTRA[@]}"} \
     "hydra.run.dir=$RUN_DIR"
