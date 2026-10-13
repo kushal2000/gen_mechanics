@@ -14,7 +14,7 @@
 # settings as the 8 Oct Wuji MLP runs (08oct_repro_wuji_full/*_mlp_e24k.sub through run_rank.sh) except gamma: 0.99,
 # pose reaching's / SAPG's own (the in-hand runs' 0.998 is ~8 s of horizon at 60 Hz; 13 Oct). lr 5e-4 adaptive, 5 mini-epochs, horizon 16, 24576 envs in 6 exploration blocks, minibatch 114688. The env's own
 # defaults carry EMA 0.1 + action latency. A pose viewer goes to wandb every VIEWER_INTERVAL env steps.
-#   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=... FINGER_RESET=... KEYPOINT=... ARCH=lstm EXTRA_HYDRA=...] sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
+#   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=... FINGER_RESET=... KEYPOINT=... PEN_SHAPE=box ARCH=lstm EXTRA_HYDRA=...] sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
 #   (TASKS goes through the environment: sbatch --export splits on commas)
 #   local smoke: NUM_ENVS=3072 MINIBATCH=12288 EPOCHS=20 WANDB=0 VIEWER_INTERVAL=40 VIEWER_LEN=30 bash <this file>
 set -euo pipefail
@@ -32,7 +32,9 @@ case "$ARCH" in
     *) echo "ARCH must be mlp or lstm, got $ARCH"; exit 1 ;;
 esac
 KEYPOINT="${KEYPOINT:-best_so_far}"     # env.reward.keypoint_reward: best_so_far | absolute
+PEN_SHAPE="${PEN_SHAPE:-capsule}"       # env.pen.shape: capsule | box (cannot roll)
 STUDY="${TASKS//,/+}_sapg_${ARCH}_e${NUM_ENVS}_s${SEED}_g${GAMMA}_fr${FINGER_RESET}_kp${KEYPOINT}"
+[[ "$PEN_SHAPE" == capsule ]] || STUDY="${STUDY}_${PEN_SHAPE}"
 EXTRA=()                                 # EXTRA_HYDRA: further overrides, space-separated
 [[ -n "${EXTRA_HYDRA:-}" ]] && read -r -a EXTRA <<< "$EXTRA_HYDRA"
 RUN_NAME="0_${STUDY}_${SLURM_JOB_ID:-local}"     # rl_games reads the policy index off the front
@@ -52,6 +54,7 @@ exec .venv_isaacsim/bin/python -u coevolution/train.py \
     "env.task.names=[$TASKS]" \
     "env.reset.finger_pos_fraction=$FINGER_RESET" \
     "env.reward.keypoint_reward=$KEYPOINT" \
+    "env.pen.shape=$PEN_SHAPE" \
     "env.scene.num_envs=$NUM_ENVS" \
     "agent.params.seed=$SEED" \
     "agent.params.config.name=$RUN_NAME" "agent.params.config.full_experiment_name=$RUN_NAME" \

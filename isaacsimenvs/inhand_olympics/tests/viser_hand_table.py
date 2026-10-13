@@ -36,6 +36,7 @@ def parse():
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--hand", default="wuji2_left_uniform_handonly")
     ap.add_argument("--smoke", action="store_true", help="headless check, no viewer")
+    ap.add_argument("--pen-shape", default="capsule", choices=("capsule", "box"))
     ap.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--host", default="", help=argparse.SUPPRESS)
     ap.add_argument("--wport", type=int, default=0, help=argparse.SUPPRESS)
@@ -52,7 +53,7 @@ def _boot():
     return AppLauncher(a).app
 
 
-def _make_env(hand: str):
+def _make_env(hand: str, pen_shape: str = "capsule"):
     import isaacsimenvs.inhand_olympics  # noqa: F401
     from isaacsimenvs.inhand_olympics.env import InHandOlympicsEnv
     from isaacsimenvs.inhand_olympics.env_cfg import InHandOlympicsEnvCfg
@@ -61,6 +62,7 @@ def _make_env(hand: str):
     cfg.scene.num_envs = 1
     cfg.goal.seconds_per_goal = 1e6       # no timeouts while someone is driving the sliders
     cfg.task.names = ("pen_spin", "pen_lift", "pen_spin_air", "pen_flip_air")
+    cfg.pen.shape = pen_shape
     env = InHandOlympicsEnv(cfg)
     env.reset()
     return env
@@ -82,7 +84,7 @@ def smoke(args):
     import torch
 
     from isaacsimenvs.inhand_olympics.wrist import WRIST_JOINTS
-    env = _make_env(args.hand)
+    env = _make_env(args.hand, args.pen_shape)
     names = env.robot.joint_names
     n, palm, pen_ok, lat_ok, task_ok, reset_ok = None, None, False, False, False, False
     try:
@@ -123,6 +125,9 @@ def smoke(args):
         lat_ok = all(0 <= d <= env.cfg.action.action_delay_max for d in delays)
         print(f"[smoke] action latency over 60 steps: delays seen {sorted(set(delays))} "
               f"(want within 0..{env.cfg.action.action_delay_max}); {'ok' if lat_ok else 'WRONG'}", flush=True)
+        # The task checks put the pen on lifted goals under the hand: start the fingers straight, not at a random
+        # pose that may reach down into it.
+        env.cfg.reset.finger_pos_fraction, env.cfg.reset.finger_vel = 0.0, 0.0
         task_ok = _check_pen_spin(env) & _check_pen_lift(env) & _check_pen_spin_air(env) & _check_pen_flip_air(env)
         # The joint-tracking trials below may knock the pen about; keep that from resetting the robot. They test
         # tracking, not the reset: start them from the default pose (a full-range finger reset locks a finger
@@ -358,14 +363,14 @@ def worker(args):
 
 def _loop(args, conn):
     import torch
-    env = _make_env(args.hand)
+    env = _make_env(args.hand, args.pen_shape)
     names = list(env.robot.joint_names)
     w = env.cfg.table
     conn.send({"kind": "ready", "urdf": str(env.wrist_urdf_path), "joints": names,
                "lower": env.joint_lower.tolist(), "upper": env.joint_upper.tolist(),
                "default": env.robot.data.default_joint_pos[0].tolist(),
                "base_pos": [0.0, 0.0, w.top_height], "table_size": list(w.size), "table_top": w.top_height,
-               "pen": [env.cfg.pen.length, env.cfg.pen.diameter]})
+               "pen": [env.cfg.pen.length, env.cfg.pen.diameter], "pen_shape": env.cfg.pen.shape})
     targets = env.robot.data.default_joint_pos.clone()
     t_next = time.time()
     while True:
@@ -413,12 +418,15 @@ def _group(name: str) -> str:
     return next((f for f in FINGERS if f in name), "other")
 
 
-def _add_pen(server, name: str, length: float, diameter: float, opacity: float = 1.0):
-    """A pen as drawn: a capsule along its local x, tip to tip ``length``, its tip (+x end) marked red."""
+def _add_pen(server, name: str, length: float, diameter: float, opacity: float = 1.0, shape: str = "capsule"):
+    """A pen as drawn: a capsule (or a box) along its local x, ``length`` long, its tip (+x end) marked red."""
     import numpy as np
     import trimesh
-    mesh = trimesh.creation.capsule(height=length - diameter, radius=diameter / 2, count=[24, 24])   # along z
-    mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))            # z -> x
+    if shape == "box":
+        mesh = trimesh.creation.box(extents=(length, diameter, diameter))
+    else:
+        mesh = trimesh.creation.capsule(height=length - diameter, radius=diameter / 2, count=[24, 24])  # along z
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))           # z -> x
     node = server.scene.add_mesh_simple(name, vertices=mesh.vertices, faces=mesh.faces, color=(38, 89, 204),
                                         opacity=opacity)
     server.scene.add_icosphere(f"{name}/tip", radius=0.4 * diameter, color=(220, 40, 40),
@@ -433,7 +441,8 @@ def main(args):
     authkey = secrets.token_bytes(16)
     listener = Listener(("127.0.0.1", 0), authkey=authkey)
     host, port = listener.address
-    child = subprocess.Popen([sys.executable, __file__, "--worker", "--hand", args.hand, "--host", host,
+    child = subprocess.Popen([sys.executable, __file__, "--worker", "--hand", args.hand, "--pen-shape", args.pen_shape,
+                              "--host", host,
                               "--wport", str(port), "--authkey", authkey.hex()],
                              env={**os.environ, "OMNI_KIT_ACCEPT_EULA": "YES"})
     print("[olympics-viser] Kit is booting in the child (about a minute)", flush=True)
@@ -472,8 +481,8 @@ def main(args):
                     server.scene.add_grid("/ground", width=2.0, height=2.0, position=(0.0, 0.0, 0.0))
                     server.scene.add_frame("/base", position=tuple(m["base_pos"]), show_axes=False)
                     urdf = ViserUrdf(server, pathlib.Path(m["urdf"]), root_node_name="/base/robot")
-                    pen = _add_pen(server, "/pen", *m["pen"])
-                    goal = _add_pen(server, "/goal", *m["pen"], opacity=0.3)
+                    pen = _add_pen(server, "/pen", *m["pen"], shape=m["pen_shape"])
+                    goal = _add_pen(server, "/goal", *m["pen"], opacity=0.3, shape=m["pen_shape"])
                     b_reset = server.gui.add_button("reset (sim and sliders)")
                     b_goal = server.gui.add_button("put the pen on its goal")
                     b_goal.on_click(lambda _: outbox.put({"cmd": "pen_to_goal"}))

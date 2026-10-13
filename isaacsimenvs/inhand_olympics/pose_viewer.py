@@ -2,7 +2,7 @@
 env's rollout, captured every ``capture_interval`` steps for ``capture_len`` steps, with this env's bodies:
 
     robot   the hand on its dummy wrist, embedded (its URDF lives in a temp dir; mesh paths become raw GitHub URLs)
-    object  the pen: a cylinder with spherical caps along +x, its tip red
+    object  the pen: a cylinder with spherical caps (or a box) along +x, its tip red
     goal    the same pen, translucent, at the goal pose
     table   the env's table box
 
@@ -13,6 +13,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from coevolution.pose_viewer import PoseViewerWrapper, _pose_xyzw, _to_numpy
+
+
+def _pen_box_urdf(length: float, diameter: float) -> str:
+    """A box pen along +x, its tip end (a thin slab) red."""
+    tip = 0.15 * diameter
+    return (f'<robot name="pen"><link name="pen">'
+            f'<visual><origin xyz="{-tip / 2:g} 0 0"/><geometry><box size="{length - tip:g} {diameter:g} {diameter:g}"/>'
+            f'</geometry><material name="body"><color rgba="0.15 0.35 0.8 1"/></material></visual>'
+            f'<visual><origin xyz="{length / 2 - tip / 2:g} 0 0"/><geometry><box size="{tip:g} {diameter:g} {diameter:g}"/>'
+            f'</geometry><material name="tip"><color rgba="0.86 0.16 0.16 1"/></material></visual></link></robot>')
 
 
 def _pen_urdf(length: float, diameter: float) -> str:
@@ -45,7 +55,8 @@ class OlympicsPoseViewer(PoseViewerWrapper):
         self.env_id, self.wandb_key = int(env_id), wandb_key
         self.github_raw_base, self.url_check = github_raw_base, url_check
         cfg = inner.cfg
-        self._object_urdf_text, self._object_urdf_path = _pen_urdf(cfg.pen.length, cfg.pen.diameter), None
+        pen_urdf = _pen_box_urdf if cfg.pen.shape == "box" else _pen_urdf
+        self._object_urdf_text, self._object_urdf_path = pen_urdf(cfg.pen.length, cfg.pen.diameter), None
         self._table_urdf_text, self._table_urdf_path = _table_urdf(cfg.table.size), None
         self._hole_urdf_text = self._hole_urdf_path = None
         self._robot_urdf_text = Path(inner.wrist_urdf_path).read_text(encoding="utf-8")

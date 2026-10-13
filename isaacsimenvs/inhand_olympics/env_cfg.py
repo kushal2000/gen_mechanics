@@ -106,13 +106,23 @@ class TableCfg:
 
 @configclass
 class PenCfg:
-    """The pen: a capsule lying on the table. ``length`` is tip to tip, caps included (the PhysX capsule's
-    cylinder is length - diameter long)."""
+    """The pen, lying on the table. ``shape``: "capsule" (``length`` tip to tip, caps included; the PhysX capsule's
+    cylinder is length - diameter long) or "box" (``length`` long, a ``diameter`` x ``diameter`` square section:
+    it rests on a face and cannot roll; 13 Oct, the capsule rolls off by itself on GPU PhysX)."""
+
+    shape: str = "capsule"
 
     length: float = 0.10                     # m
     diameter: float = 0.03                   # m
     mass: float = 0.03                       # kg
     friction: float = 0.5
+    # PhysX has no rolling friction. These are what it has (0 = in-hand's authored values):
+    #   contact_slop  physxRigidBody:contactSlopCoefficient (m): zeroes a contact's angular part when its offset is
+    #                 this small, "to improve the behavior of rolling approximate collision shapes"
+    #   torsional_patch_radius  physxCollision:(min)torsionalPatchRadius (m): torsional friction about the contact
+    #                 normal, i.e. resistance to the pen twisting on the table (not to rolling)
+    contact_slop: float = 0.0
+    torsional_patch_radius: float = 0.0
     # Spawn pose on the table, in the env frame: centre (x, y), and yaw of the pen's tip (its local +x end) from
     # world +x. Each task places the pen at reset itself; this is only where it is built.
     init_xy: tuple[float, float] = (0.0, 0.0)

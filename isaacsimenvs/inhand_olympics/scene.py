@@ -19,7 +19,7 @@ from ..pose_reaching_6d.common_utils.urdf_to_usd import (
 from ..pose_reaching_6d.scene_utils.author_objects import author_handle_head, author_physics_material
 from ..pose_reaching_6d.scene_utils.author_robot import flatten_robot_usd
 from ..pose_reaching_6d.scene_utils.objects.generate_objects import compute_mass_and_inertia
-from ..pose_reaching_6d.scene_utils.sdf import define
+from ..pose_reaching_6d.scene_utils.sdf import attr, define
 from ..pose_reaching_6d.scene_utils.robots import get_robot_spec
 from .wrist import WRIST_JOINTS, build_wrist_urdf
 
@@ -90,10 +90,16 @@ def setup_scene(env) -> None:
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, top - sz / 2)),
     ))
     # The pen, authored exactly as in-hand reorientation authors its objects (author_objects.author_handle_head: a
-    # handle-only object, i.e. one capsule along +x, its rigid-body and collider properties, inertia from density),
+    # handle-only object, i.e. one capsule or box along +x, its rigid-body and collider properties, inertia from
+    # density),
     # into env_0; clone_environments copies it.
     pen = cfg.pen
-    handle = (pen.length - pen.diameter, pen.diameter)        # (cylinder length, diameter): a capsule
+    if pen.shape == "capsule":
+        handle = (pen.length - pen.diameter, pen.diameter)    # (cylinder length, diameter): a capsule along +x
+    elif pen.shape == "box":
+        handle = (pen.length, pen.diameter, pen.diameter)     # (x, y, z): a box, its long axis along +x
+    else:
+        raise ValueError(f"pen.shape must be 'capsule' or 'box', got {pen.shape!r}")
     density = pen.mass / compute_mass_and_inertia(handle, 1.0)[0]
     layer = get_current_stage().GetRootLayer()
     with Sdf.ChangeBlock():
@@ -102,6 +108,20 @@ def setup_scene(env) -> None:
         define(layer, "/World/envs/env_0/Pen", "Xform")
         author_handle_head(layer, "/World/envs/env_0/Pen", handle, None, density, None,
                            collision=True, material_path=mat)
+        # PhysX's rolling/torsion knobs (PenCfg), over author_handle_head's values when set.
+        def _set(path: str, name: str, value: float) -> None:
+            spec = layer.GetPrimAtPath(path)
+            if name in spec.attributes:                 # authored already (author_handle_head)
+                spec.attributes[name].default = value
+            else:
+                attr(spec, name, Sdf.ValueTypeNames.Float, value)
+        body = "/World/envs/env_0/Pen/object_root"
+        if pen.contact_slop > 0:
+            _set(body, "physxRigidBody:contactSlopCoefficient", float(pen.contact_slop))
+        if pen.torsional_patch_radius > 0:
+            for name in ("torsionalPatchRadius", "minTorsionalPatchRadius"):
+                _set(f"{body}/collisions/mesh_0/{'box' if pen.shape == 'box' else 'capsule'}",
+                     f"physxCollision:{name}", float(pen.torsional_patch_radius))
     env.pen = RigidObject(RigidObjectCfg(
         prim_path=PEN_PATH, spawn=None,
         init_state=RigidObjectCfg.InitialStateCfg(
