@@ -22,6 +22,9 @@ class HandCfg:
     robot_spec: str = "wuji2_left_uniform_handonly"
     # 0 = the URDF's own per-joint speed cap (the uniform assets: 5 rad/s).
     velocity_limit: float = 0.0
+    # How the URDF converter turns each link's mesh into colliders: "convex_hull" (one hull per link, as in-hand
+    # reorientation) or "convex_decomposition" (several, closer to concave links such as the palm).
+    collider_type: str = "convex_hull"
 
 
 @configclass

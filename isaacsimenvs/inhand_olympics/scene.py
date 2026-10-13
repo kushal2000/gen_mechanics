@@ -59,7 +59,7 @@ def setup_scene(env) -> None:
     urdf = build_wrist_urdf(spec, cfg.wrist, work / "hand_on_wrist.urdf")
     converted = _convert_urdf_to_usd(
         str(urdf), work, fix_base=True, self_collision=True, joint_drive=_robot_joint_drive_cfg(),
-        replace_cylinders_with_capsules=spec.replace_cylinders_with_capsules)
+        replace_cylinders_with_capsules=spec.replace_cylinders_with_capsules, collider_type=cfg.hand.collider_type)
     _apply_self_collision_filters(converted, spec.adjacent_links)
     flat, _ = flatten_robot_usd(converted, work / "robot_flat.usd",
                                 contact_offset=cfg.contact_offset, rest_offset=cfg.rest_offset)

@@ -303,6 +303,7 @@ def _convert_urdf_to_usd(
     replace_cylinders_with_capsules: bool = False,
     joint_drive=None,
     make_instanceable: bool = False,
+    collider_type: str = "convex_hull",
 ) -> str:
     # make_instanceable puts geometry in a shared prototype that every env
     # references, instead of deep-copying it per env -- the standard fix for slow
@@ -321,6 +322,9 @@ def _convert_urdf_to_usd(
         make_instanceable=make_instanceable,
         replace_cylinders_with_capsules=replace_cylinders_with_capsules,
         joint_drive=joint_drive,
+        # "convex_hull" (the converter's default, one hull per mesh) or "convex_decomposition" (several hulls per
+        # mesh, closer to concave links such as a palm).
+        collider_type=collider_type,
     )
     if self_collision is not None:
         cfg_kwargs["self_collision"] = self_collision
