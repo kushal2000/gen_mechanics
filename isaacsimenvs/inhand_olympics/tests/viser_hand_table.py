@@ -1,5 +1,6 @@
 """Viser test of the in-hand olympics scene: the Wuji v2 left hand on its 6-DOF dummy wrist, palm down above the
-table, with the pen (a capsule, its tip red) lying on it and its current goal drawn as a ghost. Every joint gets a slider spanning its limits in sim, grouped in collapsible folders (wrist, then one per
+table, with the pen (a capsule, its tip red) lying on it and its current goal drawn as a ghost. Each group also has
+a "limits" folder whose number boxes edit every joint's position limits in the sim, live (the slider follows). Every joint gets a slider spanning its limits in sim, grouped in collapsible folders (wrist, then one per
 finger); a slider sets where that joint should go, the env's own action pipeline steers it there (fingers:
 absolute targets through the EMA; wrist: speed-limited deltas through the EMA), and viser draws the simulated
 joint positions. The status line shows the worst target-tracking error.
@@ -378,6 +379,17 @@ def _loop(args, conn):
             elif m["cmd"] == "reset":
                 env.reset()
                 targets = env.robot.data.default_joint_pos.clone()
+            elif m["cmd"] == "limit":
+                # Edit one joint's position limits in the sim, and everything the env derives from them.
+                k = names.index(m["joint"])
+                lo, hi = float(m["lower"]), float(m["upper"])
+                lims = env.robot.data.joint_pos_limits[:, k:k + 1, :].clone()
+                lims[..., 0], lims[..., 1] = lo, hi
+                env.robot.write_joint_position_limit_to_sim(lims, joint_ids=[k], warn_limit_violation=False)
+                env.joint_lower[k], env.joint_upper[k] = lo, hi
+                c = int((env.perm_lab_to_canon == k).nonzero()[0])
+                env.joint_lower_canon[:, c], env.joint_upper_canon[:, c] = lo, hi
+                targets[0, k] = targets[0, k].clamp(lo, hi)
             elif m["cmd"] == "pen_to_goal":
                 ids = torch.zeros(1, dtype=torch.long, device=env.device)
                 env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
@@ -431,7 +443,7 @@ def main(args):
     outbox: "queue.Queue[dict]" = queue.Queue()
     md = server.gui.add_markdown("waiting for Kit...")
     urdf = info = pen = goal = None
-    sliders = {}
+    sliders, limit_boxes, urdf_limits = {}, {}, {}
     try:
         while child.poll() is None:
             while True:
@@ -476,12 +488,41 @@ def main(args):
                                 s.on_update(lambda _, n=n, s=s: outbox.put(
                                     {"cmd": "target", "joint": n, "value": float(s.value)}))
                                 sliders[n] = (s, m["default"][i])
+                                urdf_limits[n] = (lo, hi)
+                            # Each joint's position limits, editable: written into the sim as they change.
+                            with server.gui.add_folder(f"{g} limits", expand_by_default=False):
+                                for i, n in enumerate(m["joints"]):
+                                    if _group(n) != g:
+                                        continue
+                                    lo, hi = m["lower"][i], m["upper"][i]
+                                    b_lo = server.gui.add_number(f"{n} lower", round(lo, 4), step=0.01)
+                                    b_hi = server.gui.add_number(f"{n} upper", round(hi, 4), step=0.01)
+                                    limit_boxes[n] = (b_lo, b_hi)
+
+                                    def _limits(_, n=n, b_lo=b_lo, b_hi=b_hi):
+                                        lo, hi = float(b_lo.value), float(b_hi.value)
+                                        if hi <= lo:
+                                            md.content = f"**{n}: upper must be above lower**"
+                                            return
+                                        s = sliders[n][0]
+                                        s.min, s.max, s.step = lo, hi, (hi - lo) / 200
+                                        s.value = min(max(float(s.value), lo), hi)
+                                        outbox.put({"cmd": "limit", "joint": n, "lower": lo, "upper": hi})
+                                    b_lo.on_update(_limits)
+                                    b_hi.on_update(_limits)
 
                     def _reset(_):
                         for s, d in sliders.values():
                             s.value = d
                         outbox.put({"cmd": "reset"})
                     b_reset.on_click(_reset)
+                    b_urdf = server.gui.add_button("restore the URDF's joint limits")
+
+                    def _restore(_):
+                        for n, (lo, hi) in urdf_limits.items():
+                            b_lo, b_hi = limit_boxes[n]
+                            b_lo.value, b_hi.value = round(lo, 4), round(hi, 4)   # each fires _limits
+                    b_urdf.on_click(_restore)
             if frame is None or info is None:
                 continue
             urdf.update_cfg(dict(zip(info["joints"], frame["q"])))
