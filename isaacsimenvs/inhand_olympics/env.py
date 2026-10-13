@@ -4,10 +4,10 @@ Every env runs one task per episode, drawn uniformly from ``cfg.task.names`` at 
 one-hot. A task is a sequence of 6D goal poses for the pen (tasks/); everything after that is shared here:
 
     success      every pen keypoint (4 along its axis) within goal.success_tolerance of its goal position for the
-                 task's success_steps consecutive steps; a hit sets the task's next goal and restarts the episode
+                 task's success_steps consecutive steps (first_goal_steps for an episode's first goal); a hit sets the task's next goal and restarts the episode
                  clock (goal.seconds_per_goal per goal)
-    perturbation random pushes and twists on the pen in envs whose task asks for them (cfg.perturb), from the
-                 episode's first hit on, while the pen is lifted
+    perturbation random pushes and twists on the pen in envs whose task asks for them (cfg.perturb), once the
+                 task's perturb_after goals are hit (pen_lift: the pickup and one hold), while the pen is lifted
     reward       keypoint term (best-so-far progress, in-hand style, or absolute 1 / (d + eps), Visual Dexterity
                  style: reward.keypoint_reward) + goal bonus (spread over a goal's
                  success_steps: bonus / success_steps per step within tolerance) + fingertip approach progress
@@ -91,6 +91,9 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.task_id = torch.zeros(n, dtype=torch.long, device=dev)          # index into self.tasks
         self.task_onehot_index = torch.tensor([TASK_NAMES.index(t.name) for t in self.tasks], device=dev)
         self.task_success_steps = torch.tensor([getattr(t, "success_steps", 1) for t in self.tasks], device=dev)
+        self.task_first_goal_steps = torch.tensor(
+            [getattr(t, "first_goal_steps", getattr(t, "success_steps", 1)) for t in self.tasks], device=dev)
+        self.task_perturb_after = torch.tensor([getattr(t, "perturb_after", 1) for t in self.tasks], device=dev)
         self.task_perturbed = torch.tensor([bool(getattr(t, "perturbed", False)) for t in self.tasks], device=dev)
         self.near_goal_steps = torch.zeros(n, dtype=torch.long, device=dev)
         # Perturbations (cfg.perturb): the current push and twist, and each env's chance per step of a new one.
@@ -135,6 +138,12 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.palm_frame_quat = quat_from_matrix(axes)
         self.palm_keypoints_canon = quat_apply_inverse(
             self.palm_frame_quat.unsqueeze(1).expand(-1, 4, -1), kp - self.palm_center_offset.unsqueeze(1))
+
+    def goal_steps(self) -> torch.Tensor:
+        """Steps within tolerance the current goal needs, per env: the task's first_goal_steps for an episode's
+        first goal, its success_steps after that."""
+        return torch.where(self.successes == 0, self.task_first_goal_steps[self.task_id],
+                           self.task_success_steps[self.task_id])
 
     def task_onehot(self) -> torch.Tensor:
         onehot = torch.zeros(self.num_envs, NUM_TASK_SLOTS, device=self.device)
@@ -182,8 +191,8 @@ class InHandOlympicsEnv(DirectRLEnv):
         return self.action_queue[torch.arange(self.num_envs, device=self.device), k]
 
     def _perturb(self) -> None:
-        """Pushes and twists on the pen (cfg.perturb), in envs whose task asks for them, once the episode's first
-        goal is hit and while the pen is lifted; in-hand's wrench DR (pose_reaching_6d/obs_utils/actions.apply_wrench_dr)."""
+        """Pushes and twists on the pen (cfg.perturb), in envs whose task asks for them, once the episode has hit the
+        task's perturb_after goals and while the pen is lifted; in-hand's wrench DR (pose_reaching_6d/obs_utils/actions.apply_wrench_dr)."""
         p, dt, n = self.cfg.perturb, self.step_dt, self.num_envs
         self.pen_forces *= p.force_decay ** (dt / p.decay_interval) if p.force_decay > 0 else 0.0
         self.pen_torques *= p.torque_decay ** (dt / p.decay_interval) if p.torque_decay > 0 else 0.0
@@ -196,7 +205,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.pen_torques = torch.where(fire_t, t_new, self.pen_torques)
         pos, _ = self.pen_pose()
         # Only once the goal has been hit this episode (the pen picked up and held), and while the pen is up.
-        active = (self.task_perturbed[self.task_id] & (self.successes > 0)
+        active = (self.task_perturbed[self.task_id] & (self.successes >= self.task_perturb_after[self.task_id])
                   & (pos[:, 2] > self.pen_rest_height + p.lifted_height))
         a = active.float().view(n, 1, 1)
         self.pen_forces *= a
@@ -254,7 +263,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         near = self.goal_dist < self.cfg.goal.success_tolerance
         self.near_goal = near
         self.near_goal_steps = torch.where(near, self.near_goal_steps + 1, torch.zeros_like(self.near_goal_steps))
-        self.is_success = self.near_goal_steps >= self.task_success_steps[self.task_id]
+        self.is_success = self.near_goal_steps >= self.goal_steps()
         pos, _ = self.pen_pose()
         t = self.cfg.termination
         away = ((pos - self.goal_pos).norm(dim=-1) > t.max_goal_distance if t.max_goal_distance > 0
@@ -290,7 +299,7 @@ class InHandOlympicsEnv(DirectRLEnv):
             "keypoint": keypoint,
             # Spread over the steps a goal needs: goal_bonus / success_steps on every step within tolerance, so a
             # full hold earns goal_bonus and a hold cut short keeps what it earned (a one-step goal: unchanged).
-            "goal_bonus": r.goal_bonus * self.near_goal.float() / self.task_success_steps[self.task_id],
+            "goal_bonus": r.goal_bonus * self.near_goal.float() / self.goal_steps(),
             "approach": r.approach_rew_scale * approach,
             "lost_pen": -r.lost_pen_penalty * (self.termination_reasons["away"]
                                                | self.termination_reasons["fell"]).float(),

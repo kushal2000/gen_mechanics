@@ -183,48 +183,44 @@ def _force_task(env, name: str):
 
 
 def _check_pen_lift(env) -> bool:
-    """The goal is the pen's own flat pose lift_height up; a goal needs hold_steps in tolerance; the lifted pen is
-    pushed, the resting one not."""
+    """The goal is the pen's own flat pose lift_height up. The pickup (first goal) counts after first_goal_steps
+    with the full bonus; later goals need hold_steps, paid bonus / hold_steps per step. Pushes start only after the
+    first full hold, and only while the pen is lifted."""
     import torch
     ids = _force_task(env, "pen_lift")
     hold = lambda: env.action_toward(env.robot.data.joint_pos.clone())        # noqa: E731
     env.step(hold())
-    lift = env.cfg.pen_lift.lift_height
+    c, r = env.cfg.pen_lift, env.cfg.reward
     d0 = float(env.goal_dist[0])
-    print(f"[smoke] pen_lift: goal distance at reset {d0 * 1000:.1f} mm (lift height {lift * 1000:.0f} mm)", flush=True)
-    ok = abs(d0 - lift) < 0.003
-    env.force_prob[:] = 0.0
-    env.torque_prob[:] = 0.0
-    env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
-    env.step(hold())
-    held, hits = int(env.near_goal_steps[0]), int(env.successes[0])
-    bonus = float(env.reward_terms["goal_bonus"][0])
-    want = env.cfg.reward.goal_bonus / env.cfg.pen_lift.hold_steps
-    print(f"[smoke] pen_lift: pen put on its goal -> steps in tolerance {held}, successes {hits} "
-          f"(a goal needs {env.cfg.pen_lift.hold_steps}); bonus this step {bonus:.1f} (want {want:.1f})", flush=True)
-    ok &= held == 1 and hits == 0 and abs(bonus - want) < 1e-3
-    env.force_prob[:] = 1.0
-    env.torque_prob[:] = 1.0
-    ids = _force_task(env, "pen_lift")
+    print(f"[smoke] pen_lift: goal distance at reset {d0 * 1000:.1f} mm (lift height {c.lift_height * 1000:.0f} mm)",
+          flush=True)
+    ok = abs(d0 - c.lift_height) < 0.003
     env.force_prob[:] = 1.0
     env.torque_prob[:] = 1.0
     env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
     env.step(hold())
-    before_hit = float(env.pen_forces.norm())
-    env.successes[:] = 1.0                         # as if the goal had been hit once
+    pickup, bonus1, push1 = int(env.successes[0]), float(env.reward_terms["goal_bonus"][0]), float(env.pen_forces.norm())
     env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
-    pos = env.goal_pos[ids].clone()
-    pos[:, 2] = env.pen_rest_height
+    env.step(hold())
+    held, bonus2 = int(env.near_goal_steps[0]), float(env.reward_terms["goal_bonus"][0])
+    print(f"[smoke] pen_lift: pickup -> successes {pickup} after {c.first_goal_steps} step(s), bonus {bonus1:.1f}, push "
+          f"{push1:.3f} N; next step at the goal -> {held} of {c.hold_steps} hold steps, bonus {bonus2:.1f} "
+          f"(want {r.goal_bonus / c.hold_steps:.1f})", flush=True)
+    ok &= (pickup == 1 and abs(bonus1 - r.goal_bonus / c.first_goal_steps) < 1e-3 and push1 == 0.0
+           and held == 1 and abs(bonus2 - r.goal_bonus / c.hold_steps) < 1e-3)
+    env.successes[:] = 2.0                         # as if the pickup and one hold had counted
+    env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
     env.step(hold())
     pushed = float(env.pen_forces.norm()), float(env.pen_torques.norm())
+    pos = env.goal_pos[ids].clone()
+    pos[:, 2] = env.pen_rest_height
     env.place_pen(ids, pos, env.goal_quat[ids].clone())
     env.step(hold())
     resting = float(env.pen_forces.norm())
-    print(f"[smoke] pen_lift: push on the lifted pen before the first hit {before_hit:.3f} N; after it "
-          f"{pushed[0]:.3f} N, twist {pushed[1]:.4f} N m; on the pen back on the table {resting:.3f} N", flush=True)
-    ok &= before_hit == 0.0 and pushed[0] > 0.0 and pushed[1] > 0.0 and resting == 0.0
+    print(f"[smoke] pen_lift: after a full hold, push on the lifted pen {pushed[0]:.3f} N, twist {pushed[1]:.4f} N m; "
+          f"on the pen back on the table {resting:.3f} N", flush=True)
+    ok &= pushed[0] > 0.0 and pushed[1] > 0.0 and resting == 0.0
     # The absolute keypoint term: scale / (d + eps) on this step's goal distance.
-    r = env.cfg.reward
     r.keypoint_reward = "absolute"
     env.step(hold())
     got, want = float(env.reward_terms["keypoint"][0]), r.keypoint_abs_scale / (float(env.goal_dist[0]) + r.keypoint_abs_eps)

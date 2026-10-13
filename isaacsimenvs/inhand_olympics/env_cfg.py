@@ -188,12 +188,16 @@ class PenLiftCfg:
     centre_xy: tuple[float, float] = (0.0, 0.0)
     lift_height: float = 0.08                # m
     hold_steps: int = 30                     # 0.5 s at 60 Hz
+    # The first goal (picking the pen up to the pose) counts after this many steps, as pen_flip_air's do; every
+    # later goal needs hold_steps. 1 gives the pickup the same full bonus a one-step goal gets (13 Oct: with 30 for
+    # every goal pen_lift never scored, while pen_flip_air, whose first goal is the same pose, learned).
+    first_goal_steps: int = 1
 
 
 @configclass
 class PerturbCfg:
-    """Random pushes and twists on the pen, for tasks that ask for them (pen_lift): from the episode's first hit on
-    (so the pickup is learned undisturbed), while the pen is lifted.
+    """Random pushes and twists on the pen, for tasks that ask for them (pen_lift): once the pen has been held at
+    the goal (the task's first full hold: pen_lift's second goal), while it is lifted.
     In-hand reorientation's wrench DR with pose reaching's defaults (pose_reaching_6d/obs_utils/actions.py): each
     step a new force fires with the env's probability (log-uniform over ``prob_range``, drawn at reset):
     randn(3) * pen mass * force_scale (N); likewise the torque with torque_scale (N m). With decay 0 each lasts one
