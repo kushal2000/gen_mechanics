@@ -301,9 +301,10 @@ def _check_pen_spin(env) -> bool:
     env.place_pen(ids, pos, env.goal_quat[ids].clone())
     env.step(hold())
     away = bool(env.termination_reasons["away"][0])
-    print(f"[smoke] pen_spin: pen moved 0.2 m away -> terminated {away}, successes after the reset "
+    lost = float(env.reward_terms["lost_pen"][0])
+    print(f"[smoke] pen_spin: pen moved 0.2 m away -> terminated {away}, penalty {lost:g}, successes after the reset "
           f"{int(env.successes[0])}", flush=True)
-    ok &= away and int(env.successes[0]) == 0
+    ok &= away and int(env.successes[0]) == 0 and lost == -env.cfg.reward.lost_pen_penalty
     obs = env._get_observations()
     print(f"[smoke] pen_spin checks {'ok' if ok else 'WRONG'}; actor obs {tuple(obs['policy'].shape)}, critic obs "
           f"{tuple(obs['critic'].shape)} (spaces {env.cfg.observation_space}, {env.cfg.state_space})", flush=True)

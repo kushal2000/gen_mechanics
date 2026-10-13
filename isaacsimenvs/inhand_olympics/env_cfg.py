@@ -216,6 +216,10 @@ class RewardCfg:
     goal_bonus: float = 1000.0
     # Getting the fingertips to the pen: scale * the mean over fingertips of (closest distance so far - current).
     approach_rew_scale: float = 50.0
+    # Charged on the step an episode ends because the pen was lost (termination "away" or "fell"). Without it, a
+    # policy that cannot reach a goal learns to swat the pen away and restart, collecting the approach reward every
+    # episode (pen_lift, 12-13 Oct: episodes of ~0.6 s from epoch 500 on).
+    lost_pen_penalty: float = 100.0
     # L1 on joint velocities.
     wrist_action_penalty: float = 0.03
     hand_action_penalty: float = 0.0003

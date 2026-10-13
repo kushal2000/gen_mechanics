@@ -10,7 +10,7 @@ one-hot. A task is a sequence of 6D goal poses for the pen (tasks/); everything 
                  episode's first hit on, while the pen is lifted
     reward       keypoint progress toward the goal (best-so-far, in-hand style) + goal bonus (spread over a goal's
                  success_steps: bonus / success_steps per step within tolerance) + fingertip approach progress
-                 - joint-velocity penalties
+                 - joint-velocity penalties - a penalty on the step the pen is lost (away or fell)
     terminated   the pen left the goal's neighbourhood (termination.max_goal_distance) or fell off the table
     truncated    out of time for this goal, or goal.max_successes hit
 
@@ -283,6 +283,8 @@ class InHandOlympicsEnv(DirectRLEnv):
             # full hold earns goal_bonus and a hold cut short keeps what it earned (a one-step goal: unchanged).
             "goal_bonus": r.goal_bonus * self.near_goal.float() / self.task_success_steps[self.task_id],
             "approach": r.approach_rew_scale * approach,
+            "lost_pen": -r.lost_pen_penalty * (self.termination_reasons["away"]
+                                               | self.termination_reasons["fell"]).float(),
             "wrist_penalty": -r.wrist_action_penalty * vel[:, self.wrist_ids].abs().sum(-1),
             "hand_penalty": -r.hand_action_penalty * vel[:, self.hand_ids].abs().sum(-1),
         }
