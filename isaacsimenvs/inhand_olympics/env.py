@@ -8,8 +8,9 @@ one-hot. A task is a sequence of 6D goal poses for the pen (tasks/); everything 
                  clock (goal.seconds_per_goal per goal)
     perturbation random pushes and twists on the pen in envs whose task asks for them (cfg.perturb), from the
                  episode's first hit on, while the pen is lifted
-    reward       keypoint progress toward the goal (best-so-far, in-hand style) + goal bonus + fingertip approach
-                 progress - joint-velocity penalties
+    reward       keypoint progress toward the goal (best-so-far, in-hand style) + goal bonus (spread over a goal's
+                 success_steps: bonus / success_steps per step within tolerance) + fingertip approach progress
+                 - joint-velocity penalties
     terminated   the pen left the goal's neighbourhood (termination.max_goal_distance) or fell off the table
     truncated    out of time for this goal, or goal.max_successes hit
 
@@ -104,6 +105,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.closest_tip_dist = torch.full((n, len(self.tip_bodies)), math.nan, device=dev)
         self.goal_dist = torch.zeros(n, device=dev)
         self.is_success = torch.zeros(n, dtype=torch.bool, device=dev)
+        self.near_goal = torch.zeros(n, dtype=torch.bool, device=dev)
         self.termination_reasons: dict[str, torch.Tensor] = {}
         self.reward_terms: dict[str, torch.Tensor] = {}
         self.reward_buf = torch.zeros(n, device=dev)       # DirectRLEnv sets it in step(); the obs reads it at reset
@@ -248,6 +250,7 @@ class InHandOlympicsEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self.goal_dist = self._goal_distance()
         near = self.goal_dist < self.cfg.goal.success_tolerance
+        self.near_goal = near
         self.near_goal_steps = torch.where(near, self.near_goal_steps + 1, torch.zeros_like(self.near_goal_steps))
         self.is_success = self.near_goal_steps >= self.task_success_steps[self.task_id]
         pos, _ = self.pen_pose()
@@ -276,7 +279,9 @@ class InHandOlympicsEnv(DirectRLEnv):
         vel = self.robot.data.joint_vel
         self.reward_terms = {
             "keypoint": r.keypoint_rew_scale * progress,
-            "goal_bonus": r.goal_bonus * self.is_success.float(),
+            # Spread over the steps a goal needs: goal_bonus / success_steps on every step within tolerance, so a
+            # full hold earns goal_bonus and a hold cut short keeps what it earned (a one-step goal: unchanged).
+            "goal_bonus": r.goal_bonus * self.near_goal.float() / self.task_success_steps[self.task_id],
             "approach": r.approach_rew_scale * approach,
             "wrist_penalty": -r.wrist_action_penalty * vel[:, self.wrist_ids].abs().sum(-1),
             "hand_penalty": -r.hand_action_penalty * vel[:, self.hand_ids].abs().sum(-1),

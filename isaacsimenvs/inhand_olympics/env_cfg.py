@@ -212,6 +212,7 @@ class RewardCfg:
     # Progress: scale * (best keypoint distance so far for this goal - current), when positive (in-hand's
     # keypoint reward).
     keypoint_rew_scale: float = 2000.0
+    # Per goal, paid as goal_bonus / success_steps on each step within tolerance (all at once for a one-step goal).
     goal_bonus: float = 1000.0
     # Getting the fingertips to the pen: scale * the mean over fingertips of (closest distance so far - current).
     approach_rew_scale: float = 50.0

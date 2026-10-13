@@ -181,9 +181,11 @@ def _check_pen_lift(env) -> bool:
     env.place_pen(ids, env.goal_pos[ids].clone(), env.goal_quat[ids].clone())
     env.step(hold())
     held, hits = int(env.near_goal_steps[0]), int(env.successes[0])
+    bonus = float(env.reward_terms["goal_bonus"][0])
+    want = env.cfg.reward.goal_bonus / env.cfg.pen_lift.hold_steps
     print(f"[smoke] pen_lift: pen put on its goal -> steps in tolerance {held}, successes {hits} "
-          f"(a goal needs {env.cfg.pen_lift.hold_steps})", flush=True)
-    ok &= held == 1 and hits == 0
+          f"(a goal needs {env.cfg.pen_lift.hold_steps}); bonus this step {bonus:.1f} (want {want:.1f})", flush=True)
+    ok &= held == 1 and hits == 0 and abs(bonus - want) < 1e-3
     env.force_prob[:] = 1.0
     env.torque_prob[:] = 1.0
     ids = _force_task(env, "pen_lift")
