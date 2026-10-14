@@ -9,7 +9,7 @@ finger's first joint axis at the zero pose with the palm up (gravity along
 import json, math, sys, time, collections
 import numpy as np
 from hand_sampler.grammar import derive as dv, viability as V, operators as ops, motor as mt
-from hand_sampler.grammar.hand import FEETECH_RULES, PLATE_HALF_MM, parameter_count, KIND_AXIS, finger_section
+from hand_sampler.grammar.hand import FEETECH_RULES, JOINT_EFFORT_NM, PLATE_HALF_MM, parameter_count, KIND_AXIS, finger_section
 from hand_sampler.grammar import build_conformed as BC
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 1000
@@ -77,6 +77,8 @@ out = {
     "object_raised_mm_half36": {"share_raised": float(np.mean(np.array(ostart36) > 1e-6)), "max": float(max(ostart36))},
     "finger_mass_g": {"median": float(np.median(masses)) * 1e3, "max": float(max(masses)) * 1e3},
     "flat_finger_gravity_torque_nm": {"median": float(np.median(torques)), "p90": float(np.percentile(torques, 90)),
-                                       "max": float(max(torques)), "share_over_0_5": float(np.mean(np.array(torques) > 0.5))},
+                                       "max": float(max(torques)), "share_over_0_5": float(np.mean(np.array(torques) > 0.5)),
+                                       "effort_nm": JOINT_EFFORT_NM,
+                                       "share_over_effort": float(np.mean(np.array(torques) > JOINT_EFFORT_NM))},
 }
 print(json.dumps(out, indent=1))

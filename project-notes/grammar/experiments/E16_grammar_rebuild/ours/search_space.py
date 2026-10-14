@@ -30,7 +30,7 @@ import numpy as np
 from hand_sampler.grammar import motor as mt
 from hand_sampler.grammar import operators as ops
 from hand_sampler.grammar import viability as V
-from hand_sampler.grammar.hand import (FEETECH_RULES, KIND_AXIS, LINK_MAX_MM, TILT_RANGE_DEG, Finger, Hand,
+from hand_sampler.grammar.hand import (FEETECH_RULES, KIND_AXIS, TILT_RANGE_DEG, Finger, Hand,
                                        Joint, axis_unit, canonical_axis, check)
 
 R = FEETECH_RULES
@@ -45,13 +45,13 @@ def chain_counter(axes):
     U = [axis_unit(a) for a in axes]
 
     def lengths(i, j, prev_zero):
-        out = list(range(mt.link_floor_mm(U[i], U[j]), LINK_MAX_MM + 1, 10))
+        out = list(range(mt.link_floor_mm(U[i], U[j]), R.max_link_mm + 1, 10))
         if not prev_zero and mt.crossing_ok(U[i], U[j]):
             out = [0] + out
         return out
 
     def tips(i):
-        return list(range(mt.tip_floor_mm(U[i]), LINK_MAX_MM + 1, 10))
+        return list(range(mt.tip_floor_mm(U[i]), R.max_link_mm + 1, 10))
 
     @lru_cache(maxsize=None)
     def rec(left, i, prev_zero, budget):

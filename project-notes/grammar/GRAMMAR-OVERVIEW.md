@@ -83,7 +83,7 @@ Before the rebuild the same count was about 10^50 four-finger hands (10^70 with 
 
 **6. The clearance test.** After each finger is drawn, the whole hand so far must pass C1 (step 14) at the zero pose and the start pose. If it fails, that finger's base, direction and joints are drawn again, up to 50 times; after that the whole hand starts again with the same finger count, up to 20 times, then generation reports that no such hand exists. **Why:** Vatsal's method (each finger clear of the others as it is placed), and Martin's note 2.12 (never silently fewer fingers).
 
-**7. An optional palm cut.** On half the hands (when the rules allow a palm joint), the palm is cut along a straight line and the part beyond the line hinges on the rest, +/-30 degrees. The cut is drawn uniformly among the lines (30 degree directions, 10 mm offsets) that leave at least one finger on each side, keep the mount whole on the fixed part (at least 30 mm from the centre) and keep the hand clear. Every finger beyond the line rides on the moving part. **Why:** Martin's note 2.13 (palm joints decided on the finished palm; several fingers on one part, like a pinkie and a ring finger); a straight cut of a convex palm leaves two convex plates. If no cut fits, the hand is drawn again, so half the hands have one (49% of 1000).
+**7. An optional palm cut.** On half the hands (when the rules allow a palm joint), the palm is cut along a straight line and the part beyond the line hinges on the rest, +/-30 degrees. The cut is drawn uniformly among the lines (30 degree directions, 10 mm offsets) that leave at least one finger on each side, keep the mount whole on the fixed part (at least 30 mm from the centre) and keep the hand clear. Every finger beyond the line rides on the moving part. **Why:** Martin's note 2.13 (palm joints decided on the finished palm; several fingers on one part, like a pinkie and a ring finger); a straight cut of a convex palm leaves two convex plates. If no cut fits, the hand is drawn again, so half the hands have one (48% of 1000).
 
 ### What is computed from the stored numbers
 
@@ -94,11 +94,11 @@ Before the rebuild the same count was about 10^50 four-finger hands (10^70 with 
 - each finger's base servo, fixed to its plate;
 - the main plate, the part beyond a cut, the mount, and the cut's hinge servo.
 
-Mass comes from a density of 1750 kg/m^3 over each box: a finger weighs 399 g at the median (up to 862 g).
+Mass comes from a density of 1750 kg/m^3 over each box: a finger weighs 397 g at the median (up to 931 g).
 
-**10. Palm plates.** The palm's outline is the convex hull of the mount disc, every base servo's housing seen from above, and the hinge servo's housing, at most 32 corners. Every servo sits inside the palm by construction; there is no other palm parameter. The plate is 24 mm thick: a flat bend servo in its housing. Servos that stand deeper stick out behind: a spread servo 9 mm, a twist servo 14 mm, a crossed spread 31 mm; in 99.6% of random hands something sticks out behind (median 21 mm, at most 43). Behind the palm is free in our palm-up task.
+**10. Palm plates.** The palm's outline is the convex hull of the mount disc, every base servo's housing seen from above, and the hinge servo's housing, at most 32 corners. Every servo sits inside the palm by construction; there is no other palm parameter. The plate is 24 mm thick: a flat bend servo in its housing. Servos that stand deeper stick out behind: a spread servo 9 mm, a twist servo 14 mm, a crossed spread 31 mm; in 99.1% of random hands something sticks out behind (median 24 mm, at most 43). Behind the palm is free in our palm-up task.
 
-A cut splits the outline into two convex plates, each stopping 4.3 mm short of the line: an 8.6 mm seam, because a 24 mm plate cannot swing +/-30 degrees through a zero-width cut. The hinge axis runs along the line in the plate's mid-plane. Its servo sits on the main palm's side at the 10 mm spot along the line nearest the middle of the chord that clears every base servo. Random palms measure 171 cm^2 at the median (commercial hands 97 cm^2 under the same outline rule).
+A cut splits the outline into two convex plates, each stopping 4.3 mm short of the line: an 8.6 mm seam, because a 24 mm plate cannot swing +/-30 degrees through a zero-width cut. The hinge axis runs along the line in the plate's mid-plane. Its servo sits on the main palm's side at the 10 mm spot along the line nearest the middle of the chord that clears every base servo. Random palms measure 177 cm^2 at the median (commercial hands 97 cm^2 at their real size, 196 cm^2 at the scale Feetech servos build them, under the same outline rule).
 
 **11. Each finger's frame,** at the zero pose: **x** along the finger (from facing and tilt); **y**, the closing direction, the palm's normal turned by the tilt; **z** = x cross y, the bend axis, in the plate. The frame depends on the finger alone. Joint axes are written in it; links are straight, so every link of a finger shares it at rest. **Why (Martin, 10/13):** + on every bend then moves the fingertip toward the palm's working face, the same way on every finger. (From 10/07 to 10/13 the closing direction pointed at the object's start point; it made a finger's frame depend on the other fingers.)
 
@@ -122,10 +122,10 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 **14. Viability checks.**
 - **C1, clearance:** every two solids that do not touch by construction keep one printed wall (2 mm) apart, at the zero pose and at the start pose (exact box distances). Touching by construction: the main plate with the mount, the hinge servo and the part beyond the cut; a plate with its base servos (they sit in pockets); within a finger, the two sides of each joint (and, across a 0 mm link, the links on either side). One exception keeps a link from lying in the palm: at the zero pose a plate is checked against the far end of a link hinged to it. A base servo's housing must also stay out of a cut's seam. Collisions while the fingers move are left to the physics and the policy (Martin, 10/14). Generation keeps C1 (step 6).
 - **C2, fingertips can meet:** each fingertip is sampled 1,500 times over its own joints' ranges (the palm joint included, one hinge angle shared by every finger beyond the cut); a sample counts if it is above the plate and over the palm (the outline grown by 20 mm); a hand passes if some pair of fingers' samples come within 20 mm of each other. Every commercial hand passes.
-- Of random Feetech hands, 81% pass both (C1 100%, C2 81%): 1.23 draws per usable hand, 0.05 s each.
+- Of random Feetech hands, 80% pass both (C1 100%, C2 80%): 1.25 draws per usable hand, 0.04 s each (1000 hands, re-measured 2026-10-14 after base placements came to be drawn by weight until one fits).
 - A physics grasp test (C5) is deferred until the grammar work is done.
 
-**15. Rule sets.** The grammar's own limits (No Rules) allow hinge, coupled and sliding joints, links of 0 or 10-90 mm, bases anywhere on a 10 mm grid 10-160 mm from the centre facing any way. The **Feetech rules** (`FEETECH_RULES`, also `EVOLUTION_RULES`) are what evolution and the simulator use: hinges only; bases on the 40 mm grid, 40-90 mm out, facing outward; links at least the servo floors (step 5). Custom Rules can only tighten the grammar: joint types, maximum fingers (6), joints per finger (5), palm joints (1), finger length (250 mm), base grid and distance, outward facing, servo link lengths. Random hands and every mutation keep the rules by construction.
+**15. Rule sets.** The grammar's own limits (No Rules) allow hinge, coupled and sliding joints, links of 0 or 10-200 mm, fingers up to 500 mm, bases anywhere on a 10 mm grid 10-370 mm from the centre facing any way. These limits are the commercial hands' extremes at the scale Feetech servos build them (step 18) x 1.1, rounded out: the longest link (SHARPA at 3.1 x, 180 mm), the longest finger (SHARPA, 450 mm) and the farthest base (SVH at 3.05 x, 329 mm). The **Feetech rules** (`FEETECH_RULES`, also `EVOLUTION_RULES`) are what evolution and the simulator use: hinges only; bases on the 40 mm grid, 40-90 mm out, facing outward; links at least the servo floors (step 5). Custom Rules can only tighten the grammar: joint types, maximum fingers (6), joints per finger (5), palm joints (1), finger length (Feetech 250 mm), link length (Feetech 90 mm), base grid and distance, outward facing, servo link lengths. The search space: 10^31 four-finger hands under the Feetech rules (joints on the three kinds, before the clearance check), 10^63 under the grammar's own limits. Random hands and every mutation keep the rules by construction.
 
 **16. Mutation.** One grid: every value moves 10 mm or 30 degrees, a base by one grid step (40 mm under the Feetech rules). The fine stage is future work.
 - **Parameter operators:** move a finger's base (y or z); turn its facing; tilt it; change a link to its next allowed length (from its shortest down to 0 where two joints may share a point); turn or tip a joint's axis (links whose shortest length changes move to it); move the cut 10 mm; turn the cut 30 degrees.
@@ -134,19 +134,45 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 
 **17. In the simulator** (Isaac Lab, `isaacsimenvs/inhand_reorient/scene/`).
 - The hand is fixed palm-up with no arm: the palm's +x is turned to world up.
-- Physics is the same for every hand, generated or commercial (Kushal's values): 0.5 N m torque, 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, density 1750 kg/m^3, friction 0.5.
+- Physics is the same for every hand, generated or commercial: each joint's torque limit is the Feetech HL-3915's stall torque, 1.39 N m (14.2 kg cm at 12 V; Martin, 10/14; it was 0.5 N m); the rest are Kushal's values: 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, density 1750 kg/m^3, friction 0.5. The servo's rated load is 0.44 N m and its no-load speed 10.5 rad/s.
 - Every hand fits one layout of 36 joint slots: 6 finger slots, each one palm-joint slot plus 5 finger joints, with a fingertip body. Unused slots are tiny, have no collider and are locked.
 - The palm joint and couplings are PhysX mimic joints: a second finger beyond the cut follows with gearing -1, a coupled joint with -1.1. The policy does not control coupled joints.
 - Colliders: each link is its servo-sized box; the root body carries the main plate, the mount, the hinge servo and the main palm's base servos; the part beyond the cut carries its plate and its base servos. Solids rest one wall apart (rest offset 1 mm each, contact offset 3 mm). Plates are convex hulls of up to 64 corners.
-- Admission: grammar hands must pass C1. Commercial hands are exempt and have their overlapping pairs filtered from collision instead.
+- Admission: grammar hands must pass C1. Commercial hands are fitted at the scale where they pass it (step 18); the two that no scale makes buildable (ARMS, Dex1) have their overlapping pairs filtered from collision instead.
 - The object's size comes from the task (72 mm in the repose task); it sets the start height (step 13).
-- Isaac check of the rebuilt layout (2026-10-14, RTX 4090, the validation population: five commercial hands, a hand with two fingers beyond a cut, crossed knuckles, oblique axes, three random hands; 64 envs, `population_diagnostics.py --task-profile hora --random-steps 300`): PASS. The authored bodies match the grammar's kinematics to 0.0005 mm at reset and 0.014 mm after 20 random steps; joint limits exact; 300 random steps without NaN (largest joint speed 5.09 rad/s, the 5 rad/s limit); mimic ties within 1.1e-3 rad; no collider-cooking warning; every cube still resting after 100 zero-action steps. The 2026-10-07 validation is `isaac-validation-2026-10-07.md`.
+- Isaac check of the rebuilt layout (2026-10-14, RTX 4090, the validation population: five commercial hands, a hand with two fingers beyond a cut, crossed knuckles, oblique axes, three random hands; 64 envs, `population_diagnostics.py --task-profile hora --random-steps 300`): PASS. The authored bodies match the grammar's kinematics to 0.0005 mm at reset and 0.014 mm after 20 random steps; joint limits exact; 300 random steps without NaN (largest joint speed 5.09 rad/s, the 5 rad/s limit); mimic ties within 1.1e-3 rad; no collider-cooking warning; every cube still resting after 100 zero-action steps. Again after the commercial hands were scaled and the torque limit raised to 1.39 N m (the same day, the validation population and the default one with SHARPA at 3.1 x and Wuji v1 at 2.55 x): PASS both; 0.0005 mm at reset, at most 0.26 mm after 20 random steps; no NaN; joint speeds up to 6.5 rad/s against the 5 rad/s limit; no contact between collision-filtered pairs; every cube resting. The 2026-10-07 validation is `isaac-validation-2026-10-07.md`.
 
-**18. Commercial hands.** Eighteen hands (19 fits, counting Wuji v2's left and right): Ability, Allegro, ARMS (a human skeleton model), Barrett, DClaw, Dex1, Dex3, Inspire, LEAP, MIDAS, Orca, Shadow, SHARPA, SVH, Tesollo DG-5F, Wuji v1, Wuji v2 and XHand. Each is fitted onto the grid with its own mount at its wrist (`hand_sampler/grammar_bench/conformed_hands.json`, rebuilt with `python3 -m hand_sampler.grammar.build_conformed`). The aim is their structure, roughly in place (Martin, 10/14):
-- every hand keeps its finger count, its joints per finger, and each joint's type and kind;
-- 18 of 19 fit within 10 mm / 20 degrees (half the grid's steps); Wuji v1 misses by 1.2 degrees, the 30 degree grid's worst snapping error;
-- SHARPA's, Shadow's and SVH's palm joints each become a cut with the same fingers beyond it; ARMS's two palm joints become one cut carrying both their fingers. A straight cut cannot always follow the commercial hinge axis (up to 33 degrees and 27 mm off), so the palm joint's own errors are reported, not scored;
-- none is buildable from Feetech servos as it stands (their bases sit closer than the servos allow), so all are fitted under No Rules and their overlaps are collision-filtered in the simulator. Fitting them at a larger scale is future work.
+**18. Commercial hands.** Eighteen hands (19 fits, counting Wuji v2's left and right): Ability, Allegro, ARMS (a human skeleton model), Barrett, DClaw, Dex1, Dex3, Inspire, LEAP, MIDAS, Orca, Shadow, SHARPA (KaRMA's model of the hand alone), SVH, Tesollo DG-5F, Wuji v1, Wuji v2 and XHand. Each is scaled up by the smallest factor at which Feetech servos can build it, then fitted onto the grid with its own mount at its wrist (`hand_sampler/grammar_bench/conformed_hands.json`, rebuilt with `python3 -m hand_sampler.grammar.build_conformed`, about an hour on 19 processes). Martin, 10/14: "scale commercial hands up minimally so that they can be built with feetechs / our feetech grammar without collisions"; only the DOF structure has to match, and the hand may be bigger.
+- **The scale:** tried at 1, 1.25, ..., 2.5, 3, ..., 5, then in 0.05 steps below the first that works. A scale works when the fit keeps the servo link lengths, passes C1, keeps every joint's kind (or lies within 20 degrees of the commercial axis, for an axis about 45 degrees between two kinds, as on SHARPA's thumb) and stays within twice the fit target (20 mm, 40 degrees). The last condition exists because moving fingers clear can leave a fit that is no longer the hand: Dex3 passes C1 at its real size, but at 25 mm and 38 degrees, against 7 mm at 1.6 x.
+- **Moving fingers clear:** a finger that fails C1 is refitted with its clash counted, first by local search, then in each of the 60 grid frames (12 facings x 5 tilts), the best frames refined in turn; the difference goes into its zero-pose offset. A thumb lying along the palm comes out standing off it.
+- **Errors** are millimetres at the real hand's size (20 mm on a hand at 2 x counts 10 mm), so fits at different scales compare. The target is 10 mm / 20 degrees.
+- **Result** (`experiments/E16_grammar_rebuild/ours/commercial_scaled.py`): 17 of 19 buildable; 9 within the target and every fit within twice it. Each keeps its finger count, joints per finger, joint types and kinds; SHARPA's, Shadow's and SVH's palm joints each become a cut with the same fingers beyond it, ARMS's two one cut carrying both.
+
+| Hand | Scale | Joint (mm) | Axis (deg) | Tip (mm) | Heaviest finger flat (N m) |
+|---|---|---|---|---|---|
+| Ability | 2.1 | 4.1 | 13.0 | 2.5 | 0.43 |
+| Allegro | 1.6 | 11.5 | 22.8 | 10.7 | 0.41 |
+| ARMS | 1 (not buildable) | 7.3 | 15.1 | 4.7 | 0.11 |
+| Barrett | 1.2 | 5.2 | 15.5 | 5.0 | 0.18 |
+| DClaw | 1 | 3.9 | 2.4 | 2.0 | 0.00 |
+| Dex1 | 1 (not buildable) | 9.6 | 15.7 | 8.4 | 0.02 |
+| Dex3 | 1.6 | 7.3 | 30.0 | 2.8 | 0.20 |
+| Inspire | 1.8 | 9.2 | 18.8 | 4.9 | 0.15 |
+| LEAP | 1.35 | 19.0 | 29.7 | 9.3 | 0.44 |
+| MIDAS | 1.6 | 14.2 | 13.4 | 2.4 | 0.00 |
+| Orca | 1.8 | 15.0 | 30.4 | 3.0 | 0.12 |
+| Shadow | 2.6 | 12.5 | 25.0 | 5.0 | 0.55 |
+| SHARPA | 3.1 | 9.5 | 8.2 | 1.4 | 2.89 |
+| SVH | 3.05 | 11.8 | 21.8 | 4.7 | 0.63 |
+| Tesollo DG-5F | 1.6 | 13.9 | 32.7 | 4.7 | 0.00 |
+| Wuji v1 | 2.55 | 16.1 | 23.9 | 6.0 | 1.16 |
+| Wuji v2 left | 2.5 | 11.2 | 21.3 | 8.0 | 1.31 |
+| Wuji v2 right | 3.05 | 5.6 | 15.4 | 1.6 | 1.26 |
+| XHand | 1.85 | 5.4 | 15.0 | 2.9 | 0.92 |
+
+- **Not buildable up to 5 x:** ARMS (a skeleton whose finger bones crowd each other and the palm at every scale) and Dex1 (a gripper whose two sliding jaws face each other; pulling them clear spoils the fingertips at any scale, and a sliding jaw needs a mechanism anyway). Both keep their real-size fit under the grammar's own limits and their overlaps collision-filtered in the simulator.
+- **Torque:** only SHARPA at 3.1 x has a finger heavier than the 1.39 N m limit can hold flat, palm up (2.9 N m).
+- Scaled, commercial palms have a median area of 196 cm^2 under the outline rule (97 cm^2 at their real size); random Feetech palms 177 cm^2.
 
 ## The grammar in one table
 
@@ -161,11 +187,11 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 | Palm | outline | derived | convex hull of the mount and the base and hinge servos' housings | same | - | Vatsal's hull |
 | Palm | thickness | global | 24 mm | same | - | a flat bend servo in its housing |
 | Palm | cut seam, hinge | derived | 8.6 mm seam; hinge along the cut in the mid-plane, its servo on the main side | same | - | a 24 mm plate swinging +/-30 deg |
-| Finger | base position (y, z) | per finger | 10 mm grid, 10-160 mm from the centre | 40 mm grid, 40-90 mm | one grid step | Martin 10/13; E16 layouts |
+| Finger | base position (y, z) | per finger | 10 mm grid, 10-370 mm from the centre | 40 mm grid, 40-90 mm | one grid step | Martin 10/13; E16 layouts; scaled commercial extremes x 1.1 |
 | Finger | facing | per finger | any (30 deg steps) | outward | 30 deg | Martin 10/13 |
 | Finger | tilt | per finger | -30 to +90 deg | same | 30 deg | commercial extremes |
 | Finger | base depth | derived | the first servo's housing flush with the front face | same | - | Martin 10/14 |
-| Finger | finger length | rule | <= 250 mm | same | - | longest commercial finger x 1.1 |
+| Finger | finger length | rule | <= 500 mm | <= 250 mm | - | longest scaled commercial finger x 1.1; DClaw's 221 mm x 1.1 |
 | Joint | axis | per joint | 31 directions in the link's frame | same | 30 deg | |
 | Joint | kind | derived from the axis | bend / spread / twist | same | - | Vatsal |
 | Joint | sign | global convention | + closes toward the working side; + spreads toward +y; 0 = home | same | - | Kushal; Martin 10/13 |
@@ -173,8 +199,8 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 | Joint | type | per joint | hinge, coupled, sliding | hinge only | couple / uncouple | E15: one servo per joint |
 | Joint | random draw | global | starts on a kind: 69% bend, 27% spread, 4% twist | same | - | commercial mix |
 | Link | shape | derived | one box around its yoke and the servo it carries | same | - | Martin 10/13 (servo-sized) |
-| Link | length | per link | 0 or 10-90 mm; fingertip 10-90 mm | the servo floors (30-50 mm), fingertip >= 30, 0 only for crossings | 10 mm | E15 |
-| Physics | torque, speed, gains, density, friction | global | 0.5 N m, 5 rad/s, 3, 0.078, 0.00058, 1750 kg/m^3, 0.5 | same | - | Kushal |
+| Link | length | per link | 0 or 10-200 mm; fingertip 10-200 mm | the servo floors (30-50 mm) to 90, fingertip >= 30, 0 only for crossings | 10 mm | E15; scaled commercial extremes x 1.1 |
+| Physics | torque, speed, gains, density, friction | global | 1.39 N m (the Feetech's stall torque), 5 rad/s, 3, 0.078, 0.00058, 1750 kg/m^3, 0.5 | same | - | Feetech datasheet (torque); Kushal (the rest) |
 | Check | C1 clearance | - | solids a wall (2 mm) apart at the zero and start poses | same | - | |
 | Check | C2 fingertips meet | - | some fingertip pair's reachable regions meet above the palm | same | - | Martin; every commercial hand passes |
 
@@ -216,7 +242,7 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 | Link shape | one box around each link's yoke and the servo it carries; straight at rest | Martin 10/13 |
 | Joint ranges | bend -30 to +90; spread +/-30; twist +/-90; palm joint +/-30 deg | Martin's 9/23 note |
 | Joint sign | + closes toward the working side, or spreads toward +y; 0 = home | Kushal; Martin 10/13 |
-| Physics | 0.5 N m, 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, density 1750 kg/m^3, friction 0.5 | Kushal |
+| Physics | 1.39 N m (Feetech stall torque), 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, density 1750 kg/m^3, friction 0.5 | Feetech; Kushal |
 | Object start | over the outline's centroid, the lowest height clear of the hand by 5 mm at the start pose | the task |
 
 ### 3. Limits: the whole grammar against the Feetech rules
@@ -227,10 +253,10 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 | Joints per finger | 1-5 | 1-5 |
 | Palm joints | at most one cut | same |
 | Joint types | hinge, coupled, sliding | hinge |
-| Base grid | 10 mm, 10-160 mm from the centre | 40 mm, 40-90 mm |
+| Base grid | 10 mm, 10-370 mm from the centre | 40 mm, 40-90 mm |
 | Facing | any | outward |
-| Link length | 0 or 10-90 mm; fingertip 10-90 mm | servo floors (30-50 mm) to 90; 0 only for crossings; fingertip 30-90 |
-| Finger length | at most 250 mm | same |
+| Link length | 0 or 10-200 mm; fingertip 10-200 mm | servo floors (30-50 mm) to 90; 0 only for crossings; fingertip 30-90 |
+| Finger length | at most 500 mm | at most 250 mm |
 
 ### 4. Removed from the grammar to keep it simple
 
@@ -268,12 +294,11 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 
 ## Not settled yet
 
-- **The object start.** At the start curl, tilted fingers on the inner ring stand over the palm's centre, so the object starts 10 cm or more up on 64% of random hands (60 mm cube; 77% for the repose task's 72 mm cube) and falls onto the fingers; the worst start 235 mm up, near the 0.24 m drop termination. Even with straight fingers, 49% of hands raise the 72 mm cube. A smaller object, a lower start curl or another spawn point are task decisions.
-- **Torque.** 12.5% of random fingers weigh more than the 0.5 N m effort can hold flat (palm up). The HL-3915 stalls at 1.39 N m.
+- **The object start.** At the start curl, tilted fingers on the inner ring stand over the palm's centre, so the object starts raised on 65% of random hands (60 mm cube, by 103 mm at the median; 77% for the repose task's 72 mm cube) and falls onto the fingers; the worst start 234 mm up, near the 0.24 m drop termination. Even with straight fingers, 49% of hands raise the 72 mm cube. A smaller object, a lower start curl or another spawn point are task decisions.
+- **Torque.** The torque limit is now the HL-3915's stall torque, 1.39 N m: no random Feetech finger is too heavy to hold flat (the heaviest needs 0.94 N m; 12% needed more than the old 0.5 N m). SHARPA at 3.1 x needs 2.9 N m. The servo's rated load is 0.44 N m, so stall is an upper bound.
 - **The mount's real size** (assumed 40 mm across, 40 deep).
 - **Palm cuts between neighbouring bend-first fingers** are impossible: their housings are 7 mm apart, the seam needs 8.6.
 - **Coupled joints and the policy:** they are tied and not controlled; whether they appear as tokens is open.
 - **A physics grasp check (C5)** comes up again once the grammar work is done.
-- **Commercial hands at another scale**, so they can be fitted under the Feetech rules.
 
 Status: the grammar is being built on `martin/hand-grammar`; the grammar viewer is `experiments/grammar_viewer/`.
