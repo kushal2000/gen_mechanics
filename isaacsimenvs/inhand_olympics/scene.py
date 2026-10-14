@@ -183,3 +183,4 @@ def setup_scene(env) -> None:
     env.hand_set = hs
     env.hand_of_env = torch.as_tensor(hand_of_env, device=env.device)
     env.wrist_urdf_path = urdf                 # env 0's hand (the pose viewer's)
+    env.hand_urdf_paths = [h[0] for h in hands] if multi else [urdf]   # per hand, env i's is [hand_of_env[i]]
