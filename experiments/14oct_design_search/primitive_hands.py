@@ -15,8 +15,9 @@ Geometry (the palm frame is the "ours" palm frame of the spec: palm_frame is the
               joint at its base; 4 modules per finger, collinear at q = 0, capsules meeting end to end
     joint     flexion only: the axis is the rim tangent, and q in [0, 90 deg] curls the finger toward +x
 
-Collisions are URDF cylinders (the 2 cm between the cap centres) that the importer turns into capsules
-(``replace_cylinders_with_capsules``); the visuals add the end spheres, so the URDF draws as the capsule.
+A module's collision is a URDF cylinder (between the cap centres) that the importer turns into a capsule
+(``replace_cylinders_with_capsules``); the visuals add the end spheres, so the URDF draws as the capsule. The palm is
+a mesh (a 64-sided prism), never a cylinder: that option turns EVERY cylinder into a capsule.
 
     .venv_isaacsim/bin/python experiments/14oct_design_search/primitive_hands.py --random 8 --seed 0
     ... primitive_hands.py --bearings 0,90,180,270             # one hand from explicit bearings (degrees)
@@ -176,7 +177,7 @@ def _shape(link: ET.Element, kind: str, geometry: tuple[str, dict], xyz, rpy=(0.
     el = ET.SubElement(link, kind, **({"name": name} if name else {}))
     ET.SubElement(el, "origin", xyz=_fmt(xyz), rpy=_fmt(rpy))
     g = ET.SubElement(el, "geometry")
-    ET.SubElement(g, geometry[0], **{k: f"{v:.6g}" for k, v in geometry[1].items()})
+    ET.SubElement(g, geometry[0], **{k: (v if isinstance(v, str) else f"{v:.6g}") for k, v in geometry[1].items()})
     if rgba and kind == "visual":
         mat = ET.SubElement(el, "material", name=name or rgba)
         ET.SubElement(mat, "color", rgba=rgba)
@@ -185,15 +186,32 @@ def _shape(link: ET.Element, kind: str, geometry: tuple[str, dict], xyz, rpy=(0.
 PALM_RGBA, LINK_RGBA, TIP_RGBA = "0.72 0.76 0.86 1", "0.93 0.93 0.93 1", "0.55 0.78 0.95 1"
 
 
+PALM_SIDES = 64             # the disc's mesh: a 64-sided prism, within 0.12 mm of the circle at 5 cm
+
+
+def palm_mesh_name(hand: PrimitiveHand) -> str:
+    """The palm mesh's file, next to the URDF; shared by every hand with the same palm."""
+    return f"palm_disc_r{hand.palm_radius * 1000:.0f}_t{hand.palm_thickness * 1000:.0f}.stl"
+
+
+def write_palm_mesh(hand: PrimitiveHand, path: pathlib.Path) -> None:
+    """The disc, axis +x (the palm frame's grasp normal), centred on the palm frame's origin."""
+    import trimesh
+    mesh = trimesh.creation.cylinder(radius=hand.palm_radius, height=hand.palm_thickness, sections=PALM_SIDES)
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2.0, [0, 1, 0]))   # its z axis -> +x
+    mesh.export(path)
+
+
 def urdf_of(hand: PrimitiveHand) -> ET.Element:
     h = hand
     root = ET.Element("robot", name=h.name)
     palm = ET.SubElement(root, "link", name="palm")
     # The disc: a URDF cylinder's axis is z, turned onto +x (the palm's axis).
-    disc = ("cylinder", {"radius": h.palm_radius, "length": h.palm_thickness})
-    turn = (0.0, math.pi / 2.0, 0.0)
-    _shape(palm, "visual", disc, (0, 0, 0), turn, PALM_RGBA, "palm_disc")   # not "palm": scene nodes take visual names
-    _shape(palm, "collision", disc, (0, 0, 0), turn)
+    # The disc as a mesh, not a URDF cylinder: the importer's replace_cylinders_with_capsules turns EVERY cylinder
+    # into a capsule, and the palm's would be a pill 12 cm long along its axis, swallowing the fingers' bases.
+    disc = ("mesh", {"filename": palm_mesh_name(h)})
+    _shape(palm, "visual", disc, (0, 0, 0), rgba=PALM_RGBA, name="palm_disc")   # not "palm": scene nodes use visual names
+    _shape(palm, "collision", disc, (0, 0, 0))
     m = DENSITY * math.pi * h.palm_radius ** 2 * h.palm_thickness
     i_ax = m * h.palm_radius ** 2 / 2.0
     i_tr = m * (3 * h.palm_radius ** 2 + h.palm_thickness ** 2) / 12.0
@@ -276,6 +294,7 @@ def build(hand: PrimitiveHand, out_dir: pathlib.Path = OUT) -> dict[str, pathlib
     hand.validate()
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = {k: out_dir / f"{hand.name}.{k}" for k in ("urdf", "spec.json", "design.json")}
+    write_palm_mesh(hand, out_dir / palm_mesh_name(hand))
     tree = ET.ElementTree(urdf_of(hand))
     ET.indent(tree)
     tree.write(paths["urdf"], encoding="unicode", xml_declaration=False)
