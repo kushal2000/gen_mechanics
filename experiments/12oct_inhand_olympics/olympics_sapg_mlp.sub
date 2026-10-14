@@ -51,6 +51,12 @@ CKPT=()
 [[ -n "${CHECKPOINT:-}" ]] && CKPT=(--checkpoint "$CHECKPOINT" --checkpoint_load_mode "${CHECKPOINT_MODE:-weights}")
 [[ -n "${EXTRA_HYDRA:-}" ]] && read -r -a EXTRA <<< "$EXTRA_HYDRA"
 RUN_NAME="0_${STUDY}_${SLURM_JOB_ID:-local}"     # rl_games reads the policy index off the front
+# wandb caps a run's name at 128 characters and the logger appends _YYYYMMDD_HHMMSS (16): longer, and the run
+# trains without wandb (13 Oct: init fails "128 limit exceeded for Name", then is skipped after three retries).
+if (( ${#RUN_NAME} + 16 > 128 )); then
+    echo "[olympics] run name is ${#RUN_NAME} characters; wandb allows 112 before its timestamp. Shorten RUN_TAG/HAND_TAG: $RUN_NAME"
+    exit 1
+fi
 RUN_DIR="debug_outputs/train_logs/12oct_inhand_olympics/${RUN_NAME}"
 mkdir -p "$RUN_DIR"
 WANDB_ARGS=()
