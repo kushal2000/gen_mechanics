@@ -1,210 +1,171 @@
 """The two viability checks (layer 3: what no generation rule can guarantee).
 
-C1, self-overlap: no two bodies overlap by more than 3 mm, at the zero pose
-and at the episode start pose (`derive.START_CURL`). Bodies are the
-rounded-box links (core box grown by 6 mm, as the simulator builds them) and
-the palm plates (sharp prisms); the overlap of two bodies is the sum of
-their radii minus the distance between their cores (GJK). Bodies that touch
-by construction are skipped: a link and the next link of its finger, links
-joined through 0 mm links, a finger's first link(s) and the plate it sits
-on, and a palm section and the main palm.
+C1, clearance: every two solids that do not touch by construction keep one
+printed wall (2 mm) apart, at the zero pose and at the episode start pose
+(`derive.START_CURL`); and every base motor's housing stays out of a palm
+cut's seam. Solids are `derive.solids_at`: the plates, the mount, the hinge
+motor, each finger's base motor and each link (a box around its yoke and the
+next motor or the pad). Distances are exact (GJK on the corners).
+
+Touching by construction (skipped):
+- the main plate with the mount, the hinge motor and the part beyond the
+  cut; the hinge motor with that part;
+- a plate with the base motors on it (they sit in pockets);
+- within a finger, each joint's two sides: its plate and base motor with
+  link 0, link j - 1 with link j, and across a 0 mm link the links on either
+  side of it.
+One exception keeps a link from lying in the palm: at the zero pose a plate
+is checked against the far end (the next motor, or the pad) of a link hinged
+to it, when that end is away from the base point. (At the start pose the
+link's near end swings through the plate's edge, where a built palm has a
+pocket.)
+
+Collisions while the fingers move are left to the physics and the policy.
 
 C2, fingertip workspaces meet above the palm: at least one pair of fingers
 whose fingertips' reachable regions come within `C2_TOLERANCE_MM` of each
 other above the palm. Each fingertip is sampled `C2_SAMPLES` times over its
-own joints' ranges (its palm joint included); only samples above the plate's
-top face and over the palm's footprint (all plates' outlines, grown by
-`C2_FOOTPRINT_MARGIN_MM`) count. The tolerance and the sample count are
-calibrated so every commercial hand passes (see the grammar README).
+own joints' ranges (the palm joint included); fingers beyond the cut share
+one hinge angle per comparison. Only samples above the plate's front face
+and over the palm's footprint (all plates' outlines, grown by
+`C2_FOOTPRINT_MARGIN_MM`) count.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 
 from . import derive as dv
-from .hand import LINK_RADIUS_MM, PALM_THICKNESS_MM, Hand
+from . import motor as mt
+from .derive import gjk_distance  # noqa: F401  (re-exported: the checks' distance)
+from .hand import PLATE_HALF_MM, SEAM_MM, Hand, cut_side_mm, finger_section
 
 MM = 1e-3
-C1_MAX_OVERLAP_MM = 3.0
+CLEARANCE_MM = dv.CLEARANCE_MM          # one printed wall
+C1_MAX_OVERLAP_MM = 0.0                 # how far two solids may come inside the wall (none)
+C1_TOLERANCE_MM = 1e-3                  # numerical slack (a micron)
 C2_SAMPLES = 1500
 C2_TOLERANCE_MM = 20.0
 C2_FOOTPRINT_MARGIN_MM = 20.0
+C2_HINGE_LEVELS = 7                     # hinge angles shared by the fingers beyond a cut
 C2_SEED = 0
 
 
 # --------------------------------------------------------------------------
-# GJK distance between convex point sets
+# Which solids touch by construction
 # --------------------------------------------------------------------------
 
 
-def _closest_segment(a: np.ndarray, b: np.ndarray):
-    ab = b - a
-    t = -float(a @ ab) / max(float(ab @ ab), 1e-30)
-    if t <= 0.0:
-        return a, [a]
-    if t >= 1.0:
-        return b, [b]
-    return a + t * ab, [a, b]
-
-
-def _closest_triangle(a: np.ndarray, b: np.ndarray, c: np.ndarray):
-    """Closest point to the origin on triangle abc (Ericson, Real-Time
-    Collision Detection 5.1.5) and the vertices of the feature it lies on."""
-    ab, ac, ap = b - a, c - a, -a
-    d1, d2 = float(ab @ ap), float(ac @ ap)
-    if d1 <= 0.0 and d2 <= 0.0:
-        return a, [a]
-    bp = -b
-    d3, d4 = float(ab @ bp), float(ac @ bp)
-    if d3 >= 0.0 and d4 <= d3:
-        return b, [b]
-    vc = d1 * d4 - d3 * d2
-    if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
-        v = d1 / (d1 - d3)
-        return a + v * ab, [a, b]
-    cp = -c
-    d5, d6 = float(ab @ cp), float(ac @ cp)
-    if d6 >= 0.0 and d5 <= d6:
-        return c, [c]
-    vb = d5 * d2 - d1 * d6
-    if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
-        w = d2 / (d2 - d6)
-        return a + w * ac, [a, c]
-    va = d3 * d6 - d5 * d4
-    if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
-        w = (d4 - d3) / ((d4 - d3) + (d5 - d6))
-        return b + w * (c - b), [b, c]
-    denom = 1.0 / (va + vb + vc)
-    v, w = vb * denom, vc * denom
-    return a + ab * v + ac * w, [a, b, c]
-
-
-def _closest_on_simplex(S: List[np.ndarray]) -> Tuple[np.ndarray, List[np.ndarray]]:
-    """The point of the simplex S (1-4 points) closest to the origin, and the
-    smallest sub-simplex containing it (a full tetrahedron: the origin is
-    inside, distance 0)."""
-    k = len(S)
-    if k == 1:
-        return S[0], [S[0]]
-    if k == 2:
-        return _closest_segment(S[0], S[1])
-    if k == 3:
-        return _closest_triangle(S[0], S[1], S[2])
-    a, b, c, d = S
-    best = None
-    for tri, other in (((a, b, c), d), ((a, b, d), c), ((a, c, d), b), ((b, c, d), a)):
-        n = np.cross(tri[1] - tri[0], tri[2] - tri[0])
-        s_origin = float(-tri[0] @ n)
-        s_other = float((other - tri[0]) @ n)
-        if s_origin * s_other < 0.0 or abs(s_other) < 1e-18:      # the origin is outside this face
-            p, sub = _closest_triangle(*tri)
-            dd = float(p @ p)
-            if best is None or dd < best[0]:
-                best = (dd, p, sub)
-    if best is None:
-        return np.zeros(3), list(S)
-    return best[1], best[2]
-
-
-def gjk_distance(A: np.ndarray, B: np.ndarray, max_iter: int = 64) -> float:
-    """Euclidean distance between the convex hulls of point sets `A` and `B`
-    (0 when they intersect)."""
-    v = A[0] - B[0]
-    S = [v]
-    for _ in range(max_iter):
-        vv = float(v @ v)
-        if vv < 1e-20:
-            return 0.0
-        w = A[int(np.argmax(A @ -v))] - B[int(np.argmax(B @ v))]
-        if vv - float(v @ w) <= 1e-10 * max(vv, 1e-12):
-            break
-        S.append(w)
-        v, S = _closest_on_simplex(S)
-        if len(S) == 4 or float(v @ v) < 1e-20:
-            return 0.0
-    return math.sqrt(float(v @ v))
-
-
-# --------------------------------------------------------------------------
-# Bodies
-# --------------------------------------------------------------------------
-
-
-@dataclass
-class Body:
-    key: Tuple                # ("palm", -1 | k) or ("link", i, j)
-    points: np.ndarray        # core corners, palm frame (m)
-    radius: float             # m
-
-
-def bodies_at(hand: Hand, q: Optional[np.ndarray] = None) -> List[Body]:
-    pose = dv.fk(hand, q)
-    out: List[Body] = []
-    outlines = dv.palm_outlines_mm(hand)
-    out.append(Body(("palm", -1), dv.plate_points_m(outlines[-1]), 0.0))
-    for k in range(len(hand.palm_joints)):
-        pts = dv.plate_points_m(outlines[k])
-        T = pose.palm[k]
-        out.append(Body(("palm", k), pts @ T[:3, :3].T + T[:3, 3], 0.0))
-    r = LINK_RADIUS_MM * MM
-    for i, f in enumerate(hand.fingers):
-        for j in range(len(f.joints)):
-            c, h = dv.link_core_box_m(hand, i, j)
-            T = pose.links[i][j]
-            pts = dv.box_corners(c, h)
-            out.append(Body(("link", i, j), pts @ T[:3, :3].T + T[:3, 3], r))
-    return out
-
-
-def touching_pairs(hand: Hand) -> set:
-    """Body-key pairs that touch by construction (both orders)."""
-    out = set()
+def touching_pairs(hand: Hand) -> Set[Tuple[Tuple, Tuple]]:
+    """Solid-key pairs that touch by construction (both orders)."""
+    out: Set[Tuple[Tuple, Tuple]] = set()
 
     def add(a, b):
         out.add((a, b))
         out.add((b, a))
 
-    for k in range(len(hand.palm_joints)):
-        add(("palm", -1), ("palm", k))
+    add(("palm", -1), ("mount",))
+    if hand.palm_joints:
+        add(("palm", -1), ("palm", 0))
+        add(("hinge",), ("palm", -1))
+        add(("hinge",), ("palm", 0))
     for i, f in enumerate(hand.fingers):
-        plate = ("palm", f.palm_joint)
+        plate, motor = ("palm", finger_section(hand, i)), ("motor", i)
+        add(plate, motor)
         for j in range(len(f.joints)):
             me = ("link", i, j)
-            # walk back toward the palm through 0 mm links
             prev = j - 1
             while True:
-                other = plate if prev < 0 else ("link", i, prev)
-                add(me, other)
+                for other in ((plate, motor) if prev < 0 else (("link", i, prev),)):
+                    add(me, other)
                 if prev < 0 or f.joints[prev].length != 0:
                     break
                 prev -= 1
     return out
 
 
-def overlaps(hand: Hand, q: Optional[np.ndarray] = None) -> List[Tuple[Tuple, Tuple, float]]:
-    """`(body_a, body_b, overlap_mm)` for every pair not touching by
-    construction whose rounded shapes overlap (overlap > 0)."""
-    bodies = bodies_at(hand, q)
+def plate_far_pairs(hand: Hand) -> Set[Tuple[Tuple, Tuple]]:
+    """(plate, link) pairs checked against the link's far end although the
+    link is hinged to the plate: links reached from the base through 0 mm
+    links whose own length is not 0."""
+    out = set()
+    for i, f in enumerate(hand.fingers):
+        plate = ("palm", finger_section(hand, i))
+        for j, jt in enumerate(f.joints):
+            if jt.length > 0:
+                out.add((plate, ("link", i, j)))
+            if jt.length != 0:
+                break
+    return out
+
+
+# --------------------------------------------------------------------------
+# C1
+# --------------------------------------------------------------------------
+
+
+def _finger_of(key: Tuple) -> int:
+    return key[1] if key[0] in ("motor", "link") else -1
+
+
+def overlaps(hand: Hand, q: Optional[np.ndarray] = None, focus_finger: Optional[int] = None
+             ) -> List[Tuple[Tuple, Tuple, float]]:
+    """`(solid_a, solid_b, overlap_mm)` for every pair not touching by
+    construction that comes closer than the wall (overlap = wall - distance,
+    so 2 mm when they intersect). `q` None is the zero pose (with the
+    plate-against-far-end exception). `focus_finger`: only pairs involving
+    that finger or a plate (what changes when a finger is added)."""
+    solids = dv.solids_at(hand, q)
     skip = touching_pairs(hand)
-    centres = [b.points.mean(axis=0) for b in bodies]
-    reach = [float(np.max(np.linalg.norm(b.points - c, axis=1))) + b.radius for b, c in zip(bodies, centres)]
+    far = plate_far_pairs(hand) if q is None else set()
+    centres = [s.points.mean(axis=0) for s in solids]
+    reach = [float(np.max(np.linalg.norm(s.points - c, axis=1))) for s, c in zip(solids, centres)]
+    margin = CLEARANCE_MM * MM
     out = []
-    for a in range(len(bodies)):
-        for b in range(a + 1, len(bodies)):
-            A, B = bodies[a], bodies[b]
+    for a in range(len(solids)):
+        for b in range(a + 1, len(solids)):
+            A, B = solids[a], solids[b]
+            if focus_finger is not None and focus_finger not in (_finger_of(A.key), _finger_of(B.key)) \
+                    and A.key[0] != "palm" and B.key[0] != "palm":
+                continue
+            PA, PB = A.points, B.points
             if (A.key, B.key) in skip:
+                if (A.key, B.key) in far:
+                    PB = B.far.corners() * MM
+                elif (B.key, A.key) in far:
+                    PA = A.far.corners() * MM
+                else:
+                    continue
+            if float(np.linalg.norm(centres[a] - centres[b])) > reach[a] + reach[b] + margin:
                 continue
-            if float(np.linalg.norm(centres[a] - centres[b])) > reach[a] + reach[b]:
-                continue
-            d = gjk_distance(A.points, B.points)
-            ov = (A.radius + B.radius - d) / MM
-            if ov > 1e-6:
+            d = gjk_distance(PA, PB)
+            ov = CLEARANCE_MM - d / MM
+            if ov > C1_TOLERANCE_MM:
                 out.append((A.key, B.key, ov))
+    return out
+
+
+def seam_overlaps(hand: Hand) -> List[Tuple[Tuple, Tuple, float]]:
+    """`(("motor", i), ("seam",), mm)` for every finger whose base motor
+    housings reach into a palm cut's seam (the band half a seam either side
+    of the line), by how much."""
+    if not hand.palm_joints:
+        return []
+    p = hand.palm_joints[0]
+    out = []
+    for i, f in enumerate(hand.fingers):
+        sec = finger_section(hand, i)
+        worst = -math.inf
+        for b in dv.base_motor_boxes_mm(f):
+            for y, z in b.grown(mt.WALL_MM).corners()[:, 1:]:
+                s = cut_side_mm(p, y, z)
+                worst = max(worst, SEAM_MM / 2.0 - s if sec == 0 else s + SEAM_MM / 2.0)
+        if worst > C1_TOLERANCE_MM:
+            out.append((("motor", i), ("seam",), float(worst)))
     return out
 
 
@@ -218,12 +179,25 @@ class C1Result:
 def c1_self_overlap(hand: Hand, max_overlap_mm: float = C1_MAX_OVERLAP_MM) -> C1Result:
     bad = []
     worst = 0.0
+    found = seam_overlaps(hand)
     for q in (None, dv.start_q(hand)):
-        for a, b, ov in overlaps(hand, q):
-            worst = max(worst, ov)
-            if ov > max_overlap_mm:
-                bad.append((a, b, ov))
+        found += overlaps(hand, q)
+    for a, b, ov in found:
+        worst = max(worst, ov)
+        if ov > max_overlap_mm + C1_TOLERANCE_MM:
+            bad.append((a, b, ov))
     return C1Result(ok=not bad, worst_mm=worst, pairs=bad)
+
+
+def clear(hand: Hand, focus_finger: Optional[int] = None) -> bool:
+    """C1 as a yes/no (`focus_finger`: only what involves that finger or a
+    plate, for building a hand finger by finger)."""
+    if seam_overlaps(hand):
+        return False
+    for q in (None, dv.start_q(hand)):
+        if overlaps(hand, q, focus_finger):
+            return False
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -247,18 +221,25 @@ def footprint_mm(hand: Hand) -> np.ndarray:
 
 def fingertip_samples(hand: Hand, n: int = C2_SAMPLES, seed: int = C2_SEED) -> List[np.ndarray]:
     """Per finger, `(n, 3)` fingertip positions (m) with that finger's joints
-    (and its palm joint) uniform over their ranges and every other joint at 0."""
+    uniform over their ranges, every other joint at 0, and the palm joint (for
+    a finger beyond the cut) at sample k's shared level (`C2_HINGE_LEVELS`
+    angles over its range, sample k at level k mod levels)."""
     rng = np.random.default_rng(seed)
     ds = dv.dofs(hand)
+    lo_p, hi_p = dv.palm_limits()
+    levels = np.linspace(lo_p, hi_p, C2_HINGE_LEVELS)
+    hinge = levels[np.arange(n) % C2_HINGE_LEVELS]
     out = []
     for i, f in enumerate(hand.fingers):
         lo = np.zeros(len(ds))
         hi = np.zeros(len(ds))
         for k, d in enumerate(ds):
-            mine = d.finger == i or (d.type == "palm" and d.index == f.palm_joint)
-            if mine:
+            if d.finger == i:
                 lo[k], hi[k] = d.limits
-        q = dv.tie(hand, rng.uniform(lo, hi, size=(n, len(ds))), ds)
+        q = rng.uniform(lo, hi, size=(n, len(ds)))
+        if finger_section(hand, i) == 0:
+            q[:, 0] = hinge
+        q = dv.tie(hand, q, ds)
         out.append(dv.fk(hand, q).tips[:, i])
     return out
 
@@ -266,11 +247,13 @@ def fingertip_samples(hand: Hand, n: int = C2_SAMPLES, seed: int = C2_SEED) -> L
 def c2_workspace_overlap(hand: Hand, n: int = C2_SAMPLES, tol_mm: float = C2_TOLERANCE_MM,
                          margin_mm: float = C2_FOOTPRINT_MARGIN_MM, seed: int = C2_SEED) -> C2Result:
     poly = footprint_mm(hand)
-    top = PALM_THICKNESS_MM / 2.0 * MM
-    kept = []
+    top = PLATE_HALF_MM * MM
+    kept, idx = [], []
     for tips in fingertip_samples(hand, n, seed):
         m = (tips[:, 0] > top) & dv.point_in_polygon(tips[:, 1:] / MM, poly, margin_mm)
         kept.append(tips[m])
+        idx.append(np.nonzero(m)[0])
+    moving = [finger_section(hand, i) == 0 for i in range(len(hand.fingers))]
     best, pair = math.inf, None
     for a in range(len(kept)):
         for b in range(a + 1, len(kept)):
@@ -278,6 +261,9 @@ def c2_workspace_overlap(hand: Hand, n: int = C2_SAMPLES, tol_mm: float = C2_TOL
             if len(A) == 0 or len(B) == 0:
                 continue
             d2 = (A * A).sum(1)[:, None] + (B * B).sum(1)[None, :] - 2.0 * A @ B.T
+            if moving[a] and moving[b]:          # one hinge angle for both
+                same = (idx[a] % C2_HINGE_LEVELS)[:, None] == (idx[b] % C2_HINGE_LEVELS)[None, :]
+                d2 = np.where(same, d2, np.inf)
             d = math.sqrt(max(float(d2.min()), 0.0)) / MM
             if d < best:
                 best, pair = d, (a, b)

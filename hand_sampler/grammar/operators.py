@@ -1,19 +1,23 @@
 """Random hands and mutation operators for the hand grammar.
 
 Every operator lists its applications, shuffles them and returns the first
-whose child keeps the rules and C1 (Vatsal's method; GRAMMAR-LOCK item 25):
-nothing out of the rules is ever produced. An operator with no such child
-cannot act (the viewer hides it). A hand that already breaks the rules (a
-commercial hand with a sliding joint, under the Evolution Rules) or C1 can
-still be mutated as long as it stays in the grammar and gets no worse.
+whose child keeps the rules and C1 (Vatsal's method): nothing out of the
+rules is ever produced. An operator with no such child cannot act (the
+viewer hides it). A hand that already breaks the rules (a commercial hand
+under the Feetech rules) or C1 can still be mutated as long as it stays in
+the grammar and gets no worse.
 
-Random hands are built finger by finger, each finger redrawn until the hand
-is clear (`clear`: no overlap at rest, none over 3 mm at the start pose).
+One grid: every parameter steps by 10 mm (finger bases by the rule set's
+pitch) or 30 degrees. A structural change keeps every link inside its
+allowed lengths by moving it to the nearest allowed length
+(`fit_lengths`).
 
-Stages (GRAMMAR-LOCK item 17): every parameter steps by 10 mm or 30 degrees
-(coarse) or 1 mm or 5 degrees (fine). Structural operators belong to the
-coarse stage; the fine stage only refines parameters. Every coarse value lies
-on the fine grid.
+Random hands are built finger by finger. Each finger's base (spot, facing,
+tilt and first joint kind) is drawn from the placements whose base motor
+clears the mount and the base motors already placed, its other joints and
+links from their allowed values, and the finger is kept if the whole hand is
+clear (C1); otherwise it is drawn again, up to 50 times, then the whole hand
+again with the same number of fingers.
 """
 
 from __future__ import annotations
@@ -28,49 +32,38 @@ import numpy as np
 from . import derive as dv
 from . import viability as gvb
 from .hand import (
+    GRID_DEG,
+    GRID_MM,
     KIND_AXIS,
     KIND_MIX,
     LINK_MAX_MM,
-    LINK_MIN_MM,
-    PALM_ANCHOR_MM,
-    PALM_HINGE_DISTANCE_MM,
+    MIN_CUT_OFFSET_MM,
     REVOLUTE_TYPES,
-    STEPS,
     TILT_RANGE_DEG,
-    TIP_MIN_MM,
-    RIM_TOLERANCE_MM,
+    EVOLUTION_RULES,
+    NO_RULES,
     Finger,
     Hand,
     Joint,
     PalmJoint,
     Rules,
-    EVOLUTION_RULES,
-    NO_RULES,
-    base_insets_mm,
+    allowed_lengths,
     canonical_axis,
     check,
-    drop_unused_palm_joints,
-    link_length_ok,
+    cut_normal_yz,
+    drop_empty_cut,
+    faces_outward,
+    finger_section,
+    length_floor_mm,
     with_finger,
     with_joint,
 )
 
-STAGES = ("coarse", "fine")
-
-# Random-draw priors: uniform within the grammar's own limits, plus three
-# shares measured on the commercial hands.
-P_PALM_JOINT = 4 / 18
-"""Share of the commercial hands with a palm joint (SHARPA, Shadow, SVH, ARMS)."""
-P_ZERO_LINK = 27 / 220
-"""Share of commercial bones that are 0 mm (two joints at one point)."""
-P_COUPLED = 18 / 180
-"""Within-finger couplings per joint after a finger's first joint."""
-P_SLIDING = 2 / 265
-"""Sliding joints per commercial joint (Dex1's two jaws), when allowed."""
-
-
-def step_of(stage: str) -> Tuple[int, int]:
-    return STEPS[stage]
+P_PALM_JOINT = 0.5
+"""Share of random hands drawn with a palm cut (when the rules allow one)."""
+ADD_FINGER_LENGTH_MM = 40
+MAX_FINGER_ATTEMPTS = 50
+MAX_HAND_ATTEMPTS = 20
 
 
 def _grid(lo: int, hi: int, step: int) -> List[int]:
@@ -99,19 +92,51 @@ def _c1_keeps(child: Hand, parent_worst: float) -> bool:
     a parent that already fails it (a commercial or hand-made hand) needs a
     child no worse."""
     w = _c1_worst(child)
-    if parent_worst <= gvb.C1_MAX_OVERLAP_MM:
-        return w <= gvb.C1_MAX_OVERLAP_MM
+    if parent_worst <= gvb.C1_MAX_OVERLAP_MM + gvb.C1_TOLERANCE_MM:
+        return w <= gvb.C1_MAX_OVERLAP_MM + gvb.C1_TOLERANCE_MM
     return w <= parent_worst + 1e-6
 
 
 def clear(hand: Hand) -> bool:
-    """Generation-time clearance (GRAMMAR-LOCK item 25, Vatsal's rest
-    clearance on our rounded boxes): no two bodies that do not touch by
-    construction overlap at all at the zero pose, and none by more than 3 mm
-    at the start pose (C1)."""
-    if any(ov > 1e-6 for _, _, ov in gvb.overlaps(hand, None)):
-        return False
-    return all(ov <= gvb.C1_MAX_OVERLAP_MM for _, _, ov in gvb.overlaps(hand, dv.start_q(hand)))
+    """Generation-time clearance: C1 (every two solids that do not touch by
+    construction a wall apart at rest and at the start pose; no base motor
+    in a cut's seam)."""
+    return gvb.clear(hand)
+
+
+# --------------------------------------------------------------------------
+# Lengths
+# --------------------------------------------------------------------------
+
+
+def _nearest(values: Sequence[int], v: int) -> int:
+    return min(values, key=lambda a: (abs(a - v), -a))
+
+
+def fit_lengths(f: Finger, rules: Rules) -> Finger:
+    """The finger with every link moved to its nearest allowed length (ties
+    to the longer), from the palm out."""
+    js = list(f.joints)
+    for j in range(len(js)):
+        allowed = allowed_lengths(replace(f, joints=tuple(js)), j, rules.buildable_links)
+        if js[j].length not in allowed:
+            js[j] = replace(js[j], length=_nearest(allowed, js[j].length))
+    return replace(f, joints=tuple(js))
+
+
+def step_length(f: Finger, j: int, s: int, rules: Rules) -> Optional[int]:
+    """Link j's next allowed length up (s = +1) or down (s = -1): 10 mm
+    steps, the floor down to 0 where a 0 mm link is allowed. None at the
+    ends."""
+    allowed = allowed_lengths(f, j, rules.buildable_links)
+    L = f.joints[j].length
+    if L in allowed:
+        k = allowed.index(L) + s
+        return allowed[k] if 0 <= k < len(allowed) else None
+    beyond = [v for v in allowed if (v > L if s > 0 else v < L)]
+    if not beyond:
+        return None
+    return min(beyond) if s > 0 else max(beyond)
 
 
 # --------------------------------------------------------------------------
@@ -125,182 +150,156 @@ class Operator:
     label: str            # the viewer's button, plain words
     hover: str            # one line of hover text
     structural: bool
-    moves: Callable[[Hand, Rules, str], List[tuple]]   # raw applications (before the rules)
-    apply: Callable[[Hand, tuple, str], Hand]
+    moves: Callable[[Hand, Rules], List[tuple]]     # raw applications (before the rules)
+    apply: Callable[[Hand, tuple, Rules], Hand]
 
 
-def _finger_param_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
+def _finger_param_moves(hand: Hand, rules: Rules) -> List[tuple]:
     return [(i, s) for i in range(len(hand.fingers)) for s in (-1, 1)]
 
 
-def _move_finger_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
+def _move_finger_moves(hand: Hand, rules: Rules) -> List[tuple]:
     return [(i, c, s) for i in range(len(hand.fingers)) for c in ("y", "z") for s in (-1, 1)]
 
 
-def _move_finger(hand: Hand, mv: tuple, stage: str) -> Hand:
+def _move_finger(hand: Hand, mv: tuple, rules: Rules) -> Hand:
     i, c, s = mv
-    mm = step_of(stage)[0]
     f = hand.fingers[i]
-    return with_finger(hand, i, replace(f, **{c: getattr(f, c) + s * mm}))
+    return with_finger(hand, i, replace(f, **{c: getattr(f, c) + s * rules.base_pitch_mm}))
 
 
-def _turn_finger(hand: Hand, mv: tuple, stage: str) -> Hand:
+def _turn_finger(hand: Hand, mv: tuple, rules: Rules) -> Hand:
     i, s = mv
     f = hand.fingers[i]
-    return with_finger(hand, i, replace(f, facing=(f.facing + s * step_of(stage)[1]) % 360))
+    return with_finger(hand, i, replace(f, facing=(f.facing + s * GRID_DEG) % 360))
 
 
-def _tilt_finger(hand: Hand, mv: tuple, stage: str) -> Hand:
+def _tilt_finger(hand: Hand, mv: tuple, rules: Rules) -> Hand:
     i, s = mv
     f = hand.fingers[i]
-    return with_finger(hand, i, replace(f, tilt=f.tilt + s * step_of(stage)[1]))
+    return with_finger(hand, i, replace(f, tilt=f.tilt + s * GRID_DEG))
 
 
-def _joint_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
+def _joint_moves(hand: Hand, rules: Rules) -> List[tuple]:
     return [(i, j, s) for i, f in enumerate(hand.fingers) for j in range(len(f.joints)) for s in (-1, 1)]
 
 
-def new_length(length: int, s: int, mm: int, is_tip: bool) -> Optional[int]:
-    """One length step: +/- `mm`, skipping the 1-14 mm gap (shortening below
-    15 mm gives 0, lengthening 0 gives 15); None outside the range."""
-    if length == 0 and s > 0:
-        return LINK_MIN_MM
-    out = length + s * mm
-    if not is_tip and 0 < out < LINK_MIN_MM:
-        out = 0 if s < 0 else LINK_MIN_MM
-    return out if link_length_ok(out, is_tip) else None
-
-
-def _length(hand: Hand, mv: tuple, stage: str) -> Hand:
+def _length(hand: Hand, mv: tuple, rules: Rules) -> Hand:
     i, j, s = mv
     f = hand.fingers[i]
-    jt = f.joints[j]
-    out = new_length(jt.length, s, step_of(stage)[0], j == len(f.joints) - 1)
+    out = step_length(f, j, s, rules)
     if out is None:
         return hand
-    return with_joint(hand, i, j, replace(jt, length=out))
+    return with_joint(hand, i, j, replace(f.joints[j], length=out))
 
 
-def step_axis(axis: Tuple[int, int], which: int, s: int, deg: int) -> Tuple[int, int]:
+def step_axis(axis: Tuple[int, int], which: int, s: int, deg: int = GRID_DEG) -> Tuple[int, int]:
     az, el = axis
     if which == 0:
         return canonical_axis(az + s * deg, el)
     return canonical_axis(az, el + s * deg)
 
 
-def _axis_az(hand: Hand, mv: tuple, stage: str) -> Hand:
+def _turn_axis(hand: Hand, mv: tuple, rules: Rules, which: int) -> Hand:
     i, j, s = mv
-    jt = hand.fingers[i].joints[j]
-    return with_joint(hand, i, j, replace(jt, axis=step_axis(jt.axis, 0, s, step_of(stage)[1])))
+    f = hand.fingers[i]
+    js = list(f.joints)
+    js[j] = replace(js[j], axis=step_axis(js[j].axis, which, s))
+    return with_finger(hand, i, fit_lengths(replace(f, joints=tuple(js)), rules))
 
 
-def _axis_el(hand: Hand, mv: tuple, stage: str) -> Hand:
-    i, j, s = mv
-    jt = hand.fingers[i].joints[j]
-    return with_joint(hand, i, j, replace(jt, axis=step_axis(jt.axis, 1, s, step_of(stage)[1])))
+def _axis_az(hand: Hand, mv: tuple, rules: Rules) -> Hand:
+    return _turn_axis(hand, mv, rules, 0)
 
 
-def _hinge_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    return [(k, c, s) for k in range(len(hand.palm_joints)) for c in ("y", "z") for s in (-1, 1)]
+def _axis_el(hand: Hand, mv: tuple, rules: Rules) -> Hand:
+    return _turn_axis(hand, mv, rules, 1)
 
 
-def _hinge_axis_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    return [(k, s) for k in range(len(hand.palm_joints)) for s in (-1, 1)]
+def _cut_moves(hand: Hand, rules: Rules) -> List[tuple]:
+    return [(0, s) for s in (-1, 1)] if hand.palm_joints else []
 
 
-def _with_palm_joint(hand: Hand, k: int, p: PalmJoint) -> Hand:
-    ps = list(hand.palm_joints)
-    ps[k] = p
-    return replace(hand, palm_joints=tuple(ps))
+def _move_cut(hand: Hand, mv: tuple, rules: Rules) -> Hand:
+    _, s = mv
+    p = hand.palm_joints[0]
+    return replace(hand, palm_joints=(replace(p, offset=p.offset + s * GRID_MM),))
 
 
-def _move_hinge(hand: Hand, mv: tuple, stage: str) -> Hand:
-    k, c, s = mv
-    p = hand.palm_joints[k]
-    return _with_palm_joint(hand, k, replace(p, **{c: getattr(p, c) + s * step_of(stage)[0]}))
-
-
-def _hinge_az(hand: Hand, mv: tuple, stage: str) -> Hand:
-    k, s = mv
-    p = hand.palm_joints[k]
-    return _with_palm_joint(hand, k, replace(p, axis=step_axis(p.axis, 0, s, step_of(stage)[1])))
-
-
-def _hinge_el(hand: Hand, mv: tuple, stage: str) -> Hand:
-    k, s = mv
-    p = hand.palm_joints[k]
-    return _with_palm_joint(hand, k, replace(p, axis=step_axis(p.axis, 1, s, step_of(stage)[1])))
+def _turn_cut(hand: Hand, mv: tuple, rules: Rules) -> Hand:
+    _, s = mv
+    p = hand.palm_joints[0]
+    return replace(hand, palm_joints=(replace(p, facing=(p.facing + s * GRID_DEG) % 360),))
 
 
 # ---- structural ---------------------------------------------------------
 
 
-def _free_spots(hand: Hand, rules: Rules, stage: str) -> List[Tuple[int, int]]:
-    """Grid points (10 mm, or 1 mm thinned to 5 mm at the fine stage) inside
-    the mount area and at least the spacing from every finger base."""
+def base_spots(rules: Rules) -> List[Tuple[int, int]]:
+    """Every grid point a base may take under `rules`."""
     lo, hi = rules.base_distance_mm
-    step = 10
-    out = []
-    for y in range(-hi, hi + 1, step):
-        for z in range(-hi, hi + 1, step):
-            d = math.hypot(y - PALM_ANCHOR_MM[0], z - PALM_ANCHOR_MM[1])
-            if not (lo <= d <= hi):
-                continue
-            if all(math.hypot(y - f.y, z - f.z) >= rules.min_spacing_mm for f in hand.fingers):
-                out.append((y, z))
+    step = rules.base_pitch_mm
+    k = hi // step
+    return [(y, z) for y in range(-k * step, k * step + 1, step) for z in range(-k * step, k * step + 1, step)
+            if lo <= math.hypot(y, z) <= hi]
+
+
+def facings_at(y: int, z: int, rules: Rules) -> List[int]:
+    out = list(range(0, 360, GRID_DEG))
+    if rules.outward_facing:
+        out = [fa for fa in out if faces_outward(Finger(y=y, z=z, facing=fa))]
     return out
 
 
-def _radial_facing(y: int, z: int, deg: int) -> int:
-    a = math.degrees(math.atan2(y - PALM_ANCHOR_MM[0], z - PALM_ANCHOR_MM[1]))
-    return int(round(a / deg) * deg) % 360
+def _radial_facing(y: int, z: int) -> int:
+    a = math.degrees(math.atan2(y, z))
+    return int(round(a / GRID_DEG) * GRID_DEG) % 360
 
 
-def _add_finger_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    if stage != "coarse" or len(hand.fingers) >= rules.max_fingers:
+def _add_finger_moves(hand: Hand, rules: Rules) -> List[tuple]:
+    if len(hand.fingers) >= rules.max_fingers:
         return []
-    return [(y, z) for (y, z) in _free_spots(hand, rules, stage)]
+    taken = {(f.y, f.z) for f in hand.fingers}
+    return [(y, z) for (y, z) in base_spots(rules) if (y, z) not in taken]
 
 
-def _add_finger(hand: Hand, mv: tuple, stage: str) -> Hand:
+def _add_finger(hand: Hand, mv: tuple, rules: Rules) -> Hand:
     y, z = mv
-    f = Finger(y=y, z=z, facing=_radial_facing(y, z, step_of(stage)[1]), tilt=0,
-               joints=(Joint("hinge", KIND_AXIS["flexion"], 40),))
+    f = Finger(y=y, z=z, facing=_radial_facing(y, z), tilt=0,
+               joints=(Joint("hinge", KIND_AXIS["flexion"], ADD_FINGER_LENGTH_MM),))
     return replace(hand, fingers=hand.fingers + (f,))
 
 
-def _remove_finger_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    if stage != "coarse" or len(hand.fingers) <= rules.min_fingers:
+def _remove_finger_moves(hand: Hand, rules: Rules) -> List[tuple]:
+    if len(hand.fingers) <= rules.min_fingers:
         return []
     return [(i,) for i in range(len(hand.fingers))]
 
 
-def _remove_finger(hand: Hand, mv: tuple, stage: str) -> Hand:
+def _remove_finger(hand: Hand, mv: tuple, rules: Rules) -> Hand:
     (i,) = mv
-    fs = hand.fingers[:i] + hand.fingers[i + 1:]
-    return drop_unused_palm_joints(replace(hand, fingers=fs))
+    return drop_empty_cut(replace(hand, fingers=hand.fingers[:i] + hand.fingers[i + 1:]))
 
 
-def _split_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    if stage != "coarse":
-        return []
-    kinds = list(KIND_MIX) + (["sliding"] if "sliding" in rules.joint_types else [])
+def _split_kinds(rules: Rules) -> List[str]:
+    return list(KIND_MIX) + (["sliding"] if "sliding" in rules.joint_types else [])
+
+
+def _split_moves(hand: Hand, rules: Rules) -> List[tuple]:
     out = []
     for i, f in enumerate(hand.fingers):
         if len(f.joints) >= rules.max_joints:
             continue
         for j, jt in enumerate(f.joints):
-            is_tip = j == len(f.joints) - 1
-            L = jt.length
-            for a in sorted({0, L // 2, L}):
-                if link_length_ok(a, False) and link_length_ok(L - a, is_tip):
-                    out.extend((i, j, a, k) for k in kinds)
+            for a in range(0, jt.length + 1, GRID_MM):
+                out.extend((i, j, a, k) for k in _split_kinds(rules))
     return out
 
 
-def _split(hand: Hand, mv: tuple, stage: str) -> Hand:
+def _split(hand: Hand, mv: tuple, rules: Rules) -> Hand:
     """Split finger i's link j at `a` mm from joint j: a new joint of kind k
-    starts the second part; the finger keeps its length."""
+    starts the second part; then every link to its nearest allowed length
+    (the finger keeps its length where the floors allow)."""
     i, j, a, k = mv
     f = hand.fingers[i]
     jt = f.joints[j]
@@ -308,19 +307,17 @@ def _split(hand: Hand, mv: tuple, stage: str) -> Hand:
     js = list(f.joints)
     js[j] = replace(jt, length=a)
     js.insert(j + 1, new)
-    return with_finger(hand, i, replace(f, joints=tuple(js)))
+    return with_finger(hand, i, fit_lengths(replace(f, joints=tuple(js)), rules))
 
 
-def _merge_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    if stage != "coarse":
-        return []
+def _merge_moves(hand: Hand, rules: Rules) -> List[tuple]:
     return [(i, j) for i, f in enumerate(hand.fingers) for j in range(1, len(f.joints))]
 
 
-def _merge(hand: Hand, mv: tuple, stage: str) -> Hand:
-    """Remove finger i's joint j (j >= 1): links j-1 and j become one. A
-    joint coupled to the removed one follows the joint before it instead
-    (or becomes a hinge if that one is not revolute)."""
+def _merge(hand: Hand, mv: tuple, rules: Rules) -> Hand:
+    """Remove finger i's joint j (j >= 1): links j-1 and j become one (then
+    every link to its nearest allowed length). A joint coupled to the removed
+    one follows the joint before it instead (or becomes a hinge)."""
     i, j = mv
     f = hand.fingers[i]
     js = list(f.joints)
@@ -328,134 +325,101 @@ def _merge(hand: Hand, mv: tuple, stage: str) -> Hand:
     del js[j]
     if j < len(js) and js[j].type == "coupled" and js[j - 1].type not in REVOLUTE_TYPES:
         js[j] = replace(js[j], type="hinge")
-    return with_finger(hand, i, replace(f, joints=tuple(js)))
+    return with_finger(hand, i, fit_lengths(replace(f, joints=tuple(js)), rules))
 
 
-def _couple_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    if stage != "coarse":
+def _couple_moves(hand: Hand, rules: Rules) -> List[tuple]:
+    if "coupled" not in rules.joint_types:
         return []
     return [(i, j) for i, f in enumerate(hand.fingers) for j in range(1, len(f.joints))
             if f.joints[j].type in REVOLUTE_TYPES]
 
 
-def _couple(hand: Hand, mv: tuple, stage: str) -> Hand:
+def _couple(hand: Hand, mv: tuple, rules: Rules) -> Hand:
     i, j = mv
     jt = hand.fingers[i].joints[j]
     return with_joint(hand, i, j, replace(jt, type="hinge" if jt.type == "coupled" else "coupled"))
 
 
-def default_hinge(fingers: Sequence[Finger], deg: int, mm: int) -> PalmJoint:
-    """A new palm joint for `fingers`: the hinge halfway between the wrist
-    centre and their bases (kept inside the hinge range), along the palm
-    (+z), so the section cups."""
-    cy = float(np.mean([f.y for f in fingers])) - PALM_ANCHOR_MM[0]
-    cz = float(np.mean([f.z for f in fingers])) - PALM_ANCHOR_MM[1]
-    d = math.hypot(cy, cz)
-    lo, hi = PALM_HINGE_DISTANCE_MM
-    target = min(max(d / 2.0, lo), hi)
-    s = target / d if d > 1e-9 else 0.0
-    y = PALM_ANCHOR_MM[0] + int(math.ceil(abs(cy * s) / mm) * mm) * (1 if cy >= 0 else -1)
-    z = PALM_ANCHOR_MM[1] + int(math.ceil(abs(cz * s) / mm) * mm) * (1 if cz >= 0 else -1)
-    if math.hypot(y - PALM_ANCHOR_MM[0], z - PALM_ANCHOR_MM[1]) > hi:   # rounding outward crossed the top
-        y = PALM_ANCHOR_MM[0] + int(cy * s / mm) * mm
-        z = PALM_ANCHOR_MM[1] + int(cz * s / mm) * mm
-    return PalmJoint(y=y, z=z, axis=(0, 0))
+def cut_moves(hand: Hand) -> List[tuple]:
+    """Every cut (facing, offset) with at least one finger on each side."""
+    out = []
+    pts = np.array([[f.y, f.z] for f in hand.fingers], dtype=float)
+    for fa in range(0, 360, GRID_DEG):
+        n = cut_normal_yz(PalmJoint(fa, 0))
+        s = pts @ n
+        top = int(math.ceil(float(s.max())))
+        for off in range(MIN_CUT_OFFSET_MM, top + 1, GRID_MM):
+            beyond = int((s > off).sum())
+            if 0 < beyond < len(pts):
+                out.append((fa, off))
+    return out
 
 
-def _own_palm_joint_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    if stage != "coarse" or len(hand.palm_joints) >= rules.max_palm_joints:
+def _add_cut_moves(hand: Hand, rules: Rules) -> List[tuple]:
+    if hand.palm_joints or rules.max_palm_joints < 1:
         return []
-    count = [sum(1 for f in hand.fingers if f.palm_joint == k) for k in range(len(hand.palm_joints))]
-    return [(i,) for i, f in enumerate(hand.fingers) if f.palm_joint < 0 or count[f.palm_joint] > 1]
+    return cut_moves(hand)
 
 
-def _own_palm_joint(hand: Hand, mv: tuple, stage: str) -> Hand:
-    (i,) = mv
-    f = hand.fingers[i]
-    p = default_hinge([f], step_of(stage)[1], step_of(stage)[0])
-    hand = replace(hand, palm_joints=hand.palm_joints + (p,))
-    return with_finger(hand, i, replace(f, palm_joint=len(hand.palm_joints) - 1))
+def _add_cut(hand: Hand, mv: tuple, rules: Rules) -> Hand:
+    fa, off = mv
+    return replace(hand, palm_joints=(PalmJoint(facing=fa, offset=off),))
 
 
-def _move_to_section_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    if stage != "coarse":
-        return []
-    return [(i, k) for i, f in enumerate(hand.fingers) for k in range(-1, len(hand.palm_joints))
-            if k != f.palm_joint]
+def _remove_cut_moves(hand: Hand, rules: Rules) -> List[tuple]:
+    return [(0,)] if hand.palm_joints else []
 
 
-def _move_to_section(hand: Hand, mv: tuple, stage: str) -> Hand:
-    i, k = mv
-    return drop_unused_palm_joints(with_finger(hand, i, replace(hand.fingers[i], palm_joint=k)))
-
-
-def _remove_palm_joint_moves(hand: Hand, rules: Rules, stage: str) -> List[tuple]:
-    if stage != "coarse":
-        return []
-    return [(k,) for k in range(len(hand.palm_joints))]
-
-
-def _remove_palm_joint(hand: Hand, mv: tuple, stage: str) -> Hand:
-    (k,) = mv
-    fs = tuple(replace(f, palm_joint=-1) if f.palm_joint == k else f for f in hand.fingers)
-    return drop_unused_palm_joints(replace(hand, fingers=fs))
+def _remove_cut(hand: Hand, mv: tuple, rules: Rules) -> Hand:
+    return replace(hand, palm_joints=())
 
 
 OPERATORS: Tuple[Operator, ...] = (
-    # parameters (both stages)
-    Operator("move_finger", "move a finger", "Move one finger's base along the palm (y or z) by one step.",
+    # parameters
+    Operator("move_finger", "move a finger", "Move one finger's base one grid step along the palm (y or z).",
              False, _move_finger_moves, _move_finger),
-    Operator("turn_finger", "turn a finger", "Turn one finger's facing in the palm's plane by one step.",
+    Operator("turn_finger", "turn a finger", "Turn one finger 30 degrees in the palm's plane.",
              False, _finger_param_moves, _turn_finger),
-    Operator("tilt_finger", "tilt a finger", "Tilt one finger out of the palm's plane by one step.",
+    Operator("tilt_finger", "tilt a finger", "Tilt one finger 30 degrees out of the palm's plane.",
              False, _finger_param_moves, _tilt_finger),
     Operator("length", "lengthen or shorten a link",
-             "Change one link's length by one step (links are 0 mm or 15-90 mm; fingertips 10-90 mm).",
+             "Change one link to its next allowed length (10 mm steps; down from its shortest to 0 where allowed).",
              False, _joint_moves, _length),
-    Operator("axis_az", "turn a joint axis", "Turn one joint's axis around the link by one step.",
+    Operator("axis_az", "turn a joint axis", "Turn one joint's axis 30 degrees around the link.",
              False, _joint_moves, _axis_az),
-    Operator("axis_el", "tip a joint axis", "Tip one joint's axis toward or away from the link by one step.",
+    Operator("axis_el", "tip a joint axis", "Tip one joint's axis 30 degrees toward or away from the link.",
              False, _joint_moves, _axis_el),
-    Operator("move_hinge", "move a palm hinge", "Move one palm joint's hinge along the palm by one step.",
-             False, _hinge_moves, _move_hinge),
-    Operator("hinge_az", "turn a palm hinge", "Turn one palm joint's axis in the palm's plane by one step.",
-             False, _hinge_axis_moves, _hinge_az),
-    Operator("hinge_el", "tip a palm hinge", "Tip one palm joint's axis out of the palm's plane by one step.",
-             False, _hinge_axis_moves, _hinge_el),
-    # structure (coarse stage)
+    Operator("move_cut", "move the palm cut", "Move the palm's cut 10 mm.",
+             False, _cut_moves, _move_cut),
+    Operator("turn_cut", "turn the palm cut", "Turn the palm's cut 30 degrees.",
+             False, _cut_moves, _turn_cut),
+    # structure
     Operator("add_finger", "add a finger",
              "Add a one-joint finger (a bending joint, 40 mm) at a free spot on the palm, pointing outward.",
              True, _add_finger_moves, _add_finger),
     Operator("remove_finger", "remove a finger",
-             "Remove one whole finger; a palm joint left without a finger goes too.",
+             "Remove one whole finger; a palm cut left with no finger on one side goes too.",
              True, _remove_finger_moves, _remove_finger),
     Operator("split", "add a joint (split a link)",
-             "Split one link in two with a new joint; the finger keeps its length.", True, _split_moves, _split),
+             "Split one link in two with a new joint; links grow to their shortest allowed length if needed.",
+             True, _split_moves, _split),
     Operator("merge", "remove a joint (merge two links)",
-             "Remove one joint; the links on either side become one, so the finger keeps its length.",
+             "Remove one joint; the links on either side become one (at most 90 mm).",
              True, _merge_moves, _merge),
     Operator("couple", "couple or uncouple a joint",
              "Make a joint follow the joint before it (x1.1), or move on its own again.",
              True, _couple_moves, _couple),
-    Operator("own_palm_joint", "give a finger its own palm joint",
-             "Put one finger on a new hinged palm section (hinge halfway to the wrist, along the palm).",
-             True, _own_palm_joint_moves, _own_palm_joint),
-    Operator("move_to_section", "move a finger to another palm part",
-             "Move one finger onto another palm joint's section, or back onto the main palm.",
-             True, _move_to_section_moves, _move_to_section),
-    Operator("remove_palm_joint", "remove a palm joint",
-             "Remove one palm joint; its fingers return to the main palm.",
-             True, _remove_palm_joint_moves, _remove_palm_joint),
+    Operator("add_cut", "cut the palm",
+             "Cut the palm along a straight line; the part beyond it hinges on the rest.",
+             True, _add_cut_moves, _add_cut),
+    Operator("remove_cut", "remove the palm cut", "Join the palm into one piece again.",
+             True, _remove_cut_moves, _remove_cut),
 )
 OPERATOR_BY_NAME: Dict[str, Operator] = {op.name: op for op in OPERATORS}
 INVERSES: Dict[str, str] = {
-    "add_finger": "remove_finger", "split": "merge", "couple": "couple",
-    "own_palm_joint": "remove_palm_joint", "move_to_section": "move_to_section",
+    "add_finger": "remove_finger", "split": "merge", "couple": "couple", "add_cut": "remove_cut",
 }
-
-
-def operators_for(stage: str) -> Tuple[Operator, ...]:
-    return tuple(op for op in OPERATORS if stage == "coarse" or not op.structural)
 
 
 def _weighted_order(rng: np.random.Generator, weights: Sequence[float]) -> List[int]:
@@ -466,27 +430,24 @@ def _weighted_order(rng: np.random.Generator, weights: Sequence[float]) -> List[
     return list(np.argsort(-keys))
 
 
-def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse",
-               rng: Optional[np.random.Generator] = None):
+def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, rng: Optional[np.random.Generator] = None):
     """The applications of `op` whose child keeps `rules` and C1, as
     `(move, child)`, in shuffled order when `rng` is given (a split's new
     joint kind weighted by the commercial mix), else in list order. Lazy:
     a caller that needs one stops at the first (Vatsal's method)."""
-    if op.structural and stage != "coarse":
-        return
-    moves = op.moves(hand, rules, stage)
+    moves = op.moves(hand, rules)
     if not moves:
         return
     if rng is not None:
         if op.name == "split":
-            order = _weighted_order(rng, [KIND_MIX.get(m[3], P_SLIDING) for m in moves])
+            order = _weighted_order(rng, [KIND_MIX.get(m[3], 0.01) for m in moves])
         else:
             order = list(rng.permutation(len(moves)))
         moves = [moves[int(k)] for k in order]
     pv = len(check(hand, rules))
     parent_worst = None
     for mv in moves:
-        child = op.apply(hand, mv, stage)
+        child = op.apply(hand, mv, rules)
         if child == hand or not _admissible(child, pv, rules):
             continue
         if parent_worst is None:
@@ -495,40 +456,40 @@ def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, stage: 
             yield mv, child
 
 
-def candidates(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse") -> List[tuple]:
+def candidates(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES) -> List[tuple]:
     """Every application of `op` to `hand` whose child keeps `rules` and C1
     (exhaustive: for tests and analysis; `apply_operator` stops at the first)."""
-    return [mv for mv, _ in iter_valid(hand, op, rules, stage)]
+    return [mv for mv, _ in iter_valid(hand, op, rules)]
 
 
-def can_act(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse") -> bool:
+def can_act(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES) -> bool:
     """Whether `op` has an application whose child keeps `rules` and C1
     (stops at the first)."""
-    return next(iter_valid(hand, op, rules, stage), None) is not None
+    return next(iter_valid(hand, op, rules), None) is not None
 
 
-def apply_operator(hand: Hand, name: str, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES,
-                   stage: str = "coarse") -> Optional[Tuple[Hand, tuple]]:
+def apply_operator(hand: Hand, name: str, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES
+                   ) -> Optional[Tuple[Hand, tuple]]:
     """Operator `name`'s candidates in random order; the first child that
     keeps `rules` and C1, as `(child, move)`, or None."""
-    hit = next(iter_valid(hand, OPERATOR_BY_NAME[name], rules, stage, rng), None)
+    hit = next(iter_valid(hand, OPERATOR_BY_NAME[name], rules, rng), None)
     if hit is None:
         return None
     mv, child = hit
     return child, mv
 
 
-def mutate(hand: Hand, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse",
+def mutate(hand: Hand, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES,
            tries: int = 1) -> Optional[Tuple[Hand, str, tuple]]:
     """One random mutation: an operator chosen uniformly among those with an
-    application at this stage, its applications shuffled, the first child
-    that keeps the rules and C1. Returns `(child, operator, move)`, or None
-    when the operator has no such child; `tries` > 1 moves on to other
-    operators (in random order) before giving up."""
-    ops = [op for op in operators_for(stage) if op.moves(hand, rules, stage)]
+    application, its applications shuffled, the first child that keeps the
+    rules and C1. Returns `(child, operator, move)`, or None when the operator
+    has no such child; `tries` > 1 moves on to other operators (in random
+    order) before giving up."""
+    ops = [op for op in OPERATORS if op.moves(hand, rules)]
     for k in list(rng.permutation(len(ops)))[:max(1, tries)]:
         op = ops[int(k)]
-        res = apply_operator(hand, op.name, rng, rules, stage)
+        res = apply_operator(hand, op.name, rng, rules)
         if res is not None:
             return res[0], op.name, res[1]
     return None
@@ -539,117 +500,168 @@ def mutate(hand: Hand, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES,
 # --------------------------------------------------------------------------
 
 
-def _draw_kind(rng: np.random.Generator, rules: Rules) -> str:
-    kinds = list(KIND_MIX)
-    w = [KIND_MIX[k] for k in kinds]
-    if "sliding" in rules.joint_types:
-        kinds.append("sliding")
-        w.append(P_SLIDING)
-    w = np.asarray(w) / np.sum(w)
-    return kinds[int(rng.choice(len(kinds), p=w))]
+class NoHand(RuntimeError):
+    """No hand with the requested finger count fits the rules."""
 
 
-def _draw_finger_joints(rng: np.random.Generator, rules: Rules, stage: str) -> Tuple[Joint, ...]:
-    """1 to the rules' maximum joints, uniformly; each joint exactly on a kind
-    drawn with the commercial mix; joints after the first coupled with
-    probability `P_COUPLED`; links uniform over 15-90 mm on the stage grid
-    (0 mm with probability `P_ZERO_LINK`), the fingertip link over 10-90 mm,
-    each drawn among the lengths that leave the rest of the finger room under
-    the finger-length cap."""
-    mm = step_of(stage)[0]
-    n = int(rng.integers(1, rules.max_joints + 1))
-    budget = rules.max_finger_length_mm
-    joints: List[Joint] = []
-    for j in range(n):
-        is_tip = j == n - 1
-        cap = min(LINK_MAX_MM, budget - (0 if is_tip else TIP_MIN_MM))   # the fingertip still needs 10 mm
-        if is_tip:
-            values = _grid(TIP_MIN_MM, cap, mm) or [TIP_MIN_MM]
-            length = _pick(rng, values)
-        else:
-            values = _grid(LINK_MIN_MM, cap, mm)
-            length = 0 if (not values or rng.random() < P_ZERO_LINK) else _pick(rng, values)
-        budget -= length
-        kind = _draw_kind(rng, rules)
-        jtype = "sliding" if kind == "sliding" else "hinge"
-        if (jtype == "hinge" and j > 0 and "coupled" in rules.joint_types
-                and joints[-1].type in REVOLUTE_TYPES and rng.random() < P_COUPLED):
-            jtype = "coupled"
-        joints.append(Joint(jtype, KIND_AXIS.get(kind, (0, 0)), length))
-    return tuple(joints)
+def _base_placements(rules: Rules) -> Tuple[List[Tuple[int, int, int, int, str]], np.ndarray]:
+    """Every (y, z, facing, tilt, first kind) a finger's base may take, and
+    the draw's weight of each (the kind mix)."""
+    return _base_placements_cached(rules)
 
 
-def _snap(v: float, step: int) -> int:
-    return int(round(v / step) * step)
+@lru_cache(maxsize=16)
+def _base_placements_cached(rules: Rules):
+    tilts = _grid(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1], GRID_DEG)
+    out, w = [], []
+    for (y, z) in base_spots(rules):
+        for fa in facings_at(y, z, rules):
+            for t in tilts:
+                for k, p in KIND_MIX.items():
+                    out.append((y, z, fa, t, k))
+                    w.append(p)
+    return out, np.array(w)
 
 
-MAX_FINGER_ATTEMPTS = 50
-MAX_HAND_ATTEMPTS = 20
+@lru_cache(maxsize=200000)
+def _base_box_corners(y: int, z: int, facing: int, tilt: int, kind: str) -> np.ndarray:
+    """The base motor's corners (palm frame, metres) of a finger whose first
+    joint has the kind's axis (no crossing)."""
+    f = Finger(y=y, z=z, facing=facing, tilt=tilt, joints=(Joint("hinge", KIND_AXIS[kind], 90),))
+    return dv.base_motor_boxes_mm(f)[0].corners() * dv.MM
 
 
-def _rim_spot(rng: np.random.Generator, fingers: List[Finger], rules: Rules, stage: str) -> Optional[Tuple[int, int]]:
-    """A random free grid spot that keeps every base on the palm's rim."""
-    spots = _free_spots(Hand(fingers=tuple(fingers)), rules, stage)
-    for idx in rng.permutation(len(spots)):
-        y, z = spots[int(idx)]
-        cand = Finger(y=y, z=z, facing=0, tilt=0, joints=(Joint(),))
-        if max(base_insets_mm(Hand(fingers=tuple(fingers) + (cand,)))) <= RIM_TOLERANCE_MM:
-            return y, z
+@lru_cache(maxsize=200000)
+def _clears_mount(y: int, z: int, facing: int, tilt: int, kind: str) -> bool:
+    C = _base_box_corners(y, z, facing, tilt, kind)
+    return dv.gjk_distance(C, dv.mount_points_m()) / dv.MM >= gvb.CLEARANCE_MM - gvb.C1_TOLERANCE_MM
+
+
+def _base_clear(cand: Tuple[int, int, int, int, str], placed: List[np.ndarray]) -> bool:
+    if not _clears_mount(*cand):
+        return False
+    C = _base_box_corners(*cand)
+    c = C.mean(axis=0)
+    r = float(np.max(np.linalg.norm(C - c, axis=1)))
+    for P in placed:
+        pc = P.mean(axis=0)
+        if np.linalg.norm(pc - c) > r + float(np.max(np.linalg.norm(P - pc, axis=1))) + 0.01:
+            continue
+        if dv.gjk_distance(C, P) / dv.MM < gvb.CLEARANCE_MM - gvb.C1_TOLERANCE_MM:
+            return False
+    return True
+
+
+def _draw_base(rng: np.random.Generator, rules: Rules, placed: List[np.ndarray],
+               taken: set) -> Optional[Tuple[int, int, int, int, str]]:
+    """A base drawn from the placements whose motor clears the mount and the
+    base motors placed so far (each placement weighted by its kind's share):
+    the first such placement in a weighted random order."""
+    cands, w = _base_placements(rules)
+    for k in _weighted_order(rng, w):
+        c = cands[int(k)]
+        if (c[0], c[1]) in taken:
+            continue
+        if _base_clear(c, placed):
+            return c
     return None
 
 
-def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES, stage: str = "coarse") -> Hand:
-    """A random hand within `rules`, on the stage's grid, uniform within the
-    grammar's own limits (no hand-shaped template), built finger by finger:
+def _draw_kind(rng: np.random.Generator) -> str:
+    kinds = list(KIND_MIX)
+    w = np.array([KIND_MIX[k] for k in kinds])
+    return kinds[int(rng.choice(len(kinds), p=w / w.sum()))]
 
-    - 2 to the rules' maximum fingers, uniformly;
-    - each finger: a base drawn uniformly over the free grid points of the
-      mount ring (10-160 mm around the wrist centre) that keep every base on
-      the palm's rim; facing uniform over the full circle, tilt uniform over
-      -30..+90 deg; joints and links as `_draw_finger_joints` (kinds with the
-      commercial mix);
-    - a finger is kept only if the hand stays clear (`clear`: no overlap at
-      rest, none over 3 mm at the start pose); otherwise its placement,
-      facing, tilt and joints are drawn again, up to 50 times; a finger that
-      cannot be placed ends the hand there (fewer fingers), and a hand left
-      with fewer than the minimum is drawn again;
-    - with probability `P_PALM_JOINT`, one finger, chosen uniformly among
-      those for which it keeps the rules and the clearance, on its own palm
-      joint (`default_hinge`).
+
+def _draw_joints(rng: np.random.Generator, rules: Rules, first: str, base: Finger) -> Optional[Tuple[Joint, ...]]:
+    """1 to the rules' maximum joints, uniformly; the first of the base's
+    kind, the others drawn with the commercial mix, every axis exactly on its
+    kind; each link uniform over its allowed lengths, among those that leave
+    the rest of the finger room under the length cap."""
+    for _ in range(20):
+        n = int(rng.integers(1, rules.max_joints + 1))
+        kinds = [first] + [_draw_kind(rng) for _ in range(n - 1)]
+        js = [Joint("hinge", KIND_AXIS[k], LINK_MAX_MM) for k in kinds]
+        f = replace(base, joints=tuple(js))
+        floors = [length_floor_mm(f, j, rules.buildable_links) for j in range(n)]
+        if sum(floors) > rules.max_finger_length_mm:
+            continue
+        budget = rules.max_finger_length_mm
+        ok = True
+        for j in range(n):
+            f = replace(base, joints=tuple(js))
+            rest = sum(floors[j + 1:])
+            values = [v for v in allowed_lengths(f, j, rules.buildable_links) if v <= budget - rest]
+            if not values:
+                ok = False
+                break
+            L = _pick(rng, values)
+            js[j] = replace(js[j], length=L)
+            budget -= L
+        if ok:
+            return tuple(js)
+    return None
+
+
+def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES) -> Hand:
+    """A random hand within `rules`, uniform within its limits (no
+    hand-shaped template), built finger by finger:
+
+    - 2 to the rules' maximum fingers, uniformly; the count is kept;
+    - each finger's base (grid spot, facing, tilt and first joint kind) is
+      drawn from the placements whose base motor clears the mount and the
+      base motors already placed, weighted by the kind mix (69/27/4); its
+      other joints and links as `_draw_joints`;
+    - a finger is kept if the hand stays clear (C1); otherwise its base and
+      joints are drawn again, up to 50 times, then the whole hand again with
+      the same finger count (up to 20 times; `NoHand` after that);
+    - with probability `P_PALM_JOINT` (when the rules allow a palm joint) a
+      cut drawn uniformly among those that leave a finger on each side and
+      keep the hand clear (none: the hand is drawn again).
     """
-    mm, deg = step_of(stage)
-    facings = _grid(0, 360 - deg, deg)
-    tilts = _grid(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1], deg)
-    fingers: List[Finger] = []
+    n = int(rng.integers(rules.min_fingers, rules.max_fingers + 1))
+    want_cut = rules.max_palm_joints > 0 and rng.random() < P_PALM_JOINT
     for _ in range(MAX_HAND_ATTEMPTS):
-        n = int(rng.integers(rules.min_fingers, rules.max_fingers + 1))
-        fingers = []
-        for _ in range(n):
-            placed = False
-            for _ in range(MAX_FINGER_ATTEMPTS):
-                spot = _rim_spot(rng, fingers, rules, stage)
-                if spot is None:
+        hand = _draw_fingers(rng, rules, n)
+        if hand is None:
+            continue
+        if want_cut:
+            cut = None
+            moves = cut_moves(hand)
+            for k in rng.permutation(len(moves)):
+                cand = _add_cut(hand, moves[int(k)], rules)
+                if not check(cand, rules) and clear(cand):
+                    cut = cand
                     break
-                f = Finger(y=spot[0], z=spot[1], facing=_pick(rng, facings), tilt=_pick(rng, tilts),
-                           joints=_draw_finger_joints(rng, rules, stage))
-                if clear(Hand(fingers=tuple(fingers) + (f,))):
-                    fingers.append(f)
-                    placed = True
-                    break
-            if not placed:
+            if cut is None:
+                continue
+            hand = cut
+        problems = check(hand, rules)
+        if problems:   # every draw keeps the limits by construction; this guards the construction itself
+            raise AssertionError(f"random_hand broke its rules: {problems}")
+        return hand
+    raise NoHand(f"no {n}-finger hand under these rules after {MAX_HAND_ATTEMPTS} attempts")
+
+
+def _draw_fingers(rng: np.random.Generator, rules: Rules, n: int) -> Optional[Hand]:
+    fingers: List[Finger] = []
+    placed: List[np.ndarray] = []
+    for _ in range(n):
+        for _ in range(MAX_FINGER_ATTEMPTS):
+            base = _draw_base(rng, rules, placed, {(f.y, f.z) for f in fingers})
+            if base is None:
+                return None
+            y, z, fa, t, kind = base
+            stub = Finger(y=y, z=z, facing=fa, tilt=t)
+            joints = _draw_joints(rng, rules, kind, stub)
+            if joints is None:
+                continue
+            f = replace(stub, joints=joints)
+            hand = Hand(fingers=tuple(fingers) + (f,))
+            if gvb.clear(hand, focus_finger=len(fingers)):
+                fingers.append(f)
+                placed.extend(b.corners() * dv.MM for b in dv.base_motor_boxes_mm(f))
                 break
-        if len(fingers) >= rules.min_fingers:
-            break
-    hand = Hand(fingers=tuple(fingers))
-    if rules.max_palm_joints > 0 and rng.random() < P_PALM_JOINT:
-        for k in rng.permutation(len(fingers)):          # a finger whose own palm joint keeps the rules
-            k = int(k)
-            cand = Hand(fingers=tuple(replace(f, palm_joint=0) if i == k else f for i, f in enumerate(fingers)),
-                        palm_joints=(default_hinge([fingers[k]], deg, mm),))
-            if not check(cand, rules) and clear(cand):
-                hand = cand
-                break
-    problems = check(hand, rules)
-    if problems:   # every draw keeps the limits by construction; this guards the construction itself
-        raise AssertionError(f"random_hand broke its rules: {problems}")
-    return hand
+        else:
+            return None
+    return Hand(fingers=tuple(fingers))

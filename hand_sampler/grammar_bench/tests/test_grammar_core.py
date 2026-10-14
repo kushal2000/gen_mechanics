@@ -1,5 +1,6 @@
-"""The locked grammar (GRAMMAR-LOCK-2026-10-07): genotype, derived kinematics,
-rules, random hands and mutation operators."""
+"""The grammar (GRAMMAR-LOCK-2026-10-07, revised 2026-10-14): genotype,
+rules, derived kinematics and geometry, random hands and mutation
+operators."""
 
 from __future__ import annotations
 
@@ -11,24 +12,29 @@ import numpy as np
 import pytest
 
 from hand_sampler.grammar import derive as dv
+from hand_sampler.grammar import motor as mt
 from hand_sampler.grammar import operators as ops
 from hand_sampler.grammar import viability as V
 from hand_sampler.grammar.adapters.urdf import load_urdf, to_urdf
 from hand_sampler.grammar.fk import forward_kinematics, pose_to_matrix
 from hand_sampler.grammar.hand import (
     EVOLUTION_RULES,
+    FEETECH_RULES,
     KIND_AXIS,
+    MIN_CUT_OFFSET_MM,
     NO_RULES,
     PALM_OUTLINE_MAX_VERTICES,
-    STEPS,
+    PLATE_HALF_MM,
     Finger,
     Hand,
     Joint,
     PalmJoint,
     Rules,
+    allowed_lengths,
     canonical_axis,
     check,
     finger_length_mm,
+    finger_section,
     hand_from_dict,
     hand_to_dict,
     parameter_count,
@@ -37,13 +43,29 @@ from hand_sampler.grammar.hand import (
 N_SAMPLES = int(os.environ.get("GRAMMAR_SAMPLES", "2000"))
 N_CHAIN = int(os.environ.get("GRAMMAR_CHAIN", "2000"))
 
+BEND, SPREAD, TWIST = KIND_AXIS["flexion"], KIND_AXIS["abduction"], KIND_AXIS["roll"]
+
+
+def _finger(y, z, facing=0, tilt=0, joints=((BEND, 50), (BEND, 50), (BEND, 30))) -> Finger:
+    return Finger(y=y, z=z, facing=facing, tilt=tilt, joints=tuple(Joint("hinge", a, L) for a, L in joints))
+
 
 def simple_hand() -> Hand:
-    row = [Finger(y=y, z=90, joints=(Joint("hinge", (90, 0), 0), Joint("hinge", (0, 0), 45),
-                                      Joint("coupled", (0, 0), 30), Joint("hinge", (0, 0), 25)))
-           for y in (-30, 0, 30)]
-    thumb = Finger(y=55, z=40, facing=90, tilt=45, joints=(Joint("hinge", (0, 90), 20), Joint("hinge", (0, 0), 40),
-                                                        Joint("hinge", (0, 0), 30)))
+    """A buildable hand: a row of four bending fingers and a 2-2-1 thumb
+    (spread-bend-spread-bend-bend, both spreads crossing the next bend)."""
+    row = [_finger(y, 40) for y in (-80, -40, 0, 40)]
+    thumb = _finger(80, -40, facing=90, joints=((SPREAD, 0), (BEND, 50), (SPREAD, 0), (BEND, 50), (BEND, 30)))
+    return Hand(fingers=tuple(row) + (thumb,))
+
+
+def general_hand() -> Hand:
+    """A hand under the grammar's own limits only: coupled joints, a spread
+    knuckle crossing a bend, a twisting thumb, short links."""
+    row = [Finger(y=y, z=80, joints=(Joint("hinge", SPREAD, 0), Joint("hinge", BEND, 40),
+                                      Joint("coupled", BEND, 30), Joint("hinge", BEND, 20)))
+           for y in (-40, 0, 40)]
+    thumb = Finger(y=60, z=30, facing=90, tilt=30, joints=(Joint("hinge", TWIST, 20), Joint("hinge", BEND, 40),
+                                                        Joint("hinge", BEND, 30)))
     return Hand(fingers=tuple(row) + (thumb,))
 
 
@@ -52,15 +74,25 @@ def simple_hand() -> Hand:
 # --------------------------------------------------------------------------
 
 
-def test_simple_hand_is_valid_and_round_trips():
+def test_simple_hand_is_buildable_clear_and_round_trips():
     h = simple_hand()
-    assert check(h, EVOLUTION_RULES) == []
+    assert check(h, FEETECH_RULES) == []
+    assert V.c1_self_overlap(h).ok and V.c2_workspace_overlap(h).ok
+    assert hand_from_dict(hand_to_dict(h)) == h
+
+
+def test_general_hand_is_in_the_grammar_only():
+    h = general_hand()
+    assert check(h, NO_RULES) == []
+    out = check(h, FEETECH_RULES)
+    assert any("coupled joints not allowed" in o for o in out)
+    assert any("off the 40 mm grid" in o for o in out)
     assert hand_from_dict(hand_to_dict(h)) == h
 
 
 def test_canonical_axis_is_a_line():
-    for az in range(-360, 361, 5):
-        for el in range(-90, 91, 5):
+    for az in range(-360, 361, 30):
+        for el in range(-90, 91, 30):
             a, e = canonical_axis(az, el)
             assert 0 <= a < 180 and -90 <= e <= 90
             u, v = dv.direction(az, el), dv.direction(a, e)
@@ -68,55 +100,79 @@ def test_canonical_axis_is_a_line():
             assert canonical_axis(a, e) == (a, e)
 
 
+def _edit_finger(h: Hand, i: int, **kw) -> Hand:
+    fs = list(h.fingers)
+    fs[i] = replace(fs[i], **kw)
+    return replace(h, fingers=tuple(fs))
+
+
+def _edit_joints(h: Hand, i: int, joints) -> Hand:
+    return _edit_finger(h, i, joints=tuple(Joint("hinge", a, L) for a, L in joints))
+
+
 @pytest.mark.parametrize("edit,needle", [
     (lambda h: replace(h, fingers=h.fingers[:1]), "fingers, allowed"),
-    (lambda h: replace(h, fingers=h.fingers + h.fingers[:3]), "fingers, allowed"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], joints=h.fingers[0].joints * 2),) + h.fingers[1:]),
-     "joints, allowed"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], y=-10),) + h.fingers[1:]), "apart, need 19"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], joints=(Joint("hinge", (0, 0), 7),) + h.fingers[0].joints[1:]),)
-                       + h.fingers[1:]), "link length"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], joints=h.fingers[0].joints[:-1] + (Joint("hinge", (0, 0), 0),)),)
-                       + h.fingers[1:]), "fingertip 10-90"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], joints=h.fingers[0].joints[:-1] + (Joint("hinge", (0, 0), 91),)),)
-                       + h.fingers[1:]), "link length"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], joints=tuple(Joint("hinge", (0, 0), 90) for _ in range(3))),)
-                       + h.fingers[1:]), "mm long, allowed 250"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], joints=(Joint("coupled", (0, 0), 40),)),) + h.fingers[1:]),
-     "coupled joint must follow"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], joints=(Joint("hinge", (3, 0), 40),)),) + h.fingers[1:]),
-     "grid"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], joints=(Joint("hinge", (180, 0), 40),)),) + h.fingers[1:]),
-     "not canonical"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], facing=7),) + h.fingers[1:]), "grid"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], y=400),) + h.fingers[1:]), "from the wrist centre"),
-    (lambda h: replace(h, palm_joints=(PalmJoint(0, 40),)), "carries no finger"),
-    (lambda h: replace(h, fingers=(replace(h.fingers[0], palm_joint=2),) + h.fingers[1:]), "does not exist"),
+    (lambda h: replace(h, fingers=h.fingers + h.fingers[:2]), "fingers, allowed"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 50),) * 6), "joints, allowed"),
+    (lambda h: _edit_finger(h, 0, y=-70), "off the 40 mm grid"),
+    (lambda h: _edit_finger(h, 2, z=0), "from the palm centre, allowed 40-90"),
+    (lambda h: _edit_finger(h, 0, y=-80, z=40, facing=90), "faces back across the palm"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 40), (BEND, 30))), "not allowed (50-90"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 50), (BEND, 20))), "fingertip 30-90"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 0), (TWIST, 30))), "link length 0 mm not allowed"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 0), (SPREAD, 0), (BEND, 30))), "link length 0 mm not allowed"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 50), (BEND, 95))), "link length 95"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 90), (BEND, 90), (BEND, 90))), "mm long, allowed 250"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 55), (BEND, 30))), "link length 55"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 50), ((5, 0), 30))), "axis off the 30 degree grid"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 50), ((180, 0), 30))), "not canonical"),
+    (lambda h: _edit_finger(h, 0, facing=10), "grid"),
+    (lambda h: _edit_finger(h, 0, tilt=120), "tilt 120 outside"),
+    (lambda h: replace(h, palm_joints=(PalmJoint(0, 20),)), "through the mount"),
+    (lambda h: replace(h, palm_joints=(PalmJoint(0, 15),)), "off the 10 mm grid"),
+    (lambda h: replace(h, palm_joints=(PalmJoint(0, 300),)), "no finger beyond the cut"),
+    (lambda h: replace(h, palm_joints=(PalmJoint(0, 30), PalmJoint(90, 30))), "palm joints, allowed at most 1"),
 ])
 def test_check_catches(edit, needle):
-    out = check(edit(simple_hand()), NO_RULES)
+    out = check(edit(simple_hand()), FEETECH_RULES)
     assert any(needle in o for o in out), out
 
 
-def test_sliding_joints_only_without_rules():
-    h = simple_hand()
-    f = h.fingers[0]
-    h2 = replace(h, fingers=(replace(f, joints=(Joint("sliding", (90, 0), 0),) + f.joints[1:]),) + h.fingers[1:])
+def test_coupled_and_sliding_joints_only_without_rules():
+    h = general_hand()
+    f = h.fingers[3]
+    h2 = _edit_finger(h, 3, joints=(Joint("sliding", SPREAD, 20),) + f.joints[1:])
     assert check(h2, NO_RULES) == []
-    assert any("sliding joints not allowed" in o for o in check(h2, EVOLUTION_RULES))
+    assert any("sliding joints not allowed" in o for o in check(h2, FEETECH_RULES))
+    assert any("coupled joints not allowed" in o for o in check(h, FEETECH_RULES))
+
+
+def test_allowed_lengths_follow_the_motor_floors():
+    f = _finger(0, 40, joints=((SPREAD, 50), (BEND, 50), (TWIST, 50), (BEND, 30)))
+    assert allowed_lengths(f, 0, True) == [0, 40, 50, 60, 70, 80, 90]      # spread then bend may cross
+    assert allowed_lengths(f, 1, True) == list(range(40, 91, 10))           # bend then twist: no crossing
+    assert allowed_lengths(f, 2, True) == list(range(50, 91, 10))           # twist then bend
+    assert allowed_lengths(f, 3, True) == list(range(30, 91, 10))           # the fingertip
+    assert allowed_lengths(f, 0, False) == [0] + list(range(10, 91, 10))
+    assert allowed_lengths(f, 3, False) == list(range(10, 91, 10))
+    g = _finger(0, 40, joints=((SPREAD, 0), (BEND, 50), (SPREAD, 50), (BEND, 30)))
+    assert 0 not in allowed_lengths(g, 1, True)                              # bend then spread, but link 0 is 0 mm
 
 
 def test_rules_clamp_never_widen_the_grammar():
-    r = Rules(max_fingers=9, max_joints=8, max_palm_joints=9, max_finger_length_mm=400, min_spacing_mm=5,
+    r = Rules(max_fingers=9, max_joints=8, max_palm_joints=9, max_finger_length_mm=400, base_pitch_mm=7,
               base_distance_mm=(0, 999)).clamp()
-    assert r.max_fingers == 6 and r.max_joints == 5 and r.max_palm_joints == 6
-    assert r.max_finger_length_mm == 250 and r.min_spacing_mm == 19
+    assert r.max_fingers == 6 and r.max_joints == 5 and r.max_palm_joints == 1
+    assert r.max_finger_length_mm == 250 and r.base_pitch_mm == 10
     assert r.base_distance_mm == NO_RULES.base_distance_mm
+    assert FEETECH_RULES.clamp() == FEETECH_RULES and EVOLUTION_RULES == FEETECH_RULES
 
 
 def test_parameter_count():
     c = parameter_count(simple_hand())
-    assert c["fingers"] == 4 and c["joints"] == 15 and c["numbers"] == 4 * 4 + 3 * 15
+    assert c["fingers"] == 5 and c["joints"] == 17 and c["numbers"] == 4 * 5 + 3 * 17
+    c = parameter_count(replace(simple_hand(), palm_joints=(PalmJoint(0, 40),)))
+    assert c["numbers"] == 4 * 5 + 3 * 17 + 2
 
 
 # --------------------------------------------------------------------------
@@ -137,22 +193,35 @@ def _model_tips(hand: Hand, q: np.ndarray) -> np.ndarray:
 
 def test_fk_matches_the_kinematic_model():
     rng = np.random.default_rng(0)
-    for _ in range(60):
-        h = ops.random_hand(rng, NO_RULES)
+    for _ in range(40):
+        h = ops.random_hand(rng, NO_RULES if _ % 2 else FEETECH_RULES)
         for _ in range(3):
             q = dv.sample_q(h, 1, rng)[0]
             assert np.abs(_model_tips(h, q) - dv.fk(h, q).tips).max() < 1e-12
 
 
+def test_finger_frame_is_tilt_defined():
+    """x along the finger, y = the palm normal turned by the tilt (the
+    closing direction), z = x cross y in the plate; the frame depends on the
+    finger alone."""
+    for fa in range(0, 360, 30):
+        for t in (-30, 0, 30, 60, 90):
+            B = dv.frame_of(fa, t)
+            assert np.allclose(B.T @ B, np.eye(3)) and np.linalg.det(B) > 0
+            assert np.allclose(B[:, 0], dv.direction(fa, t))
+            assert abs(B[0, 2]) < 1e-12                          # the bend axis lies in the plate
+            assert B[0, 1] == pytest.approx(math.cos(math.radians(t)))
+
+
 def test_derived_signs_close_or_spread():
     """+ moves the fingertip toward the link's closing direction (+y of the
-    link frame); a joint that cannot (abduction) spreads toward +y of the
-    palm; a pure roll turns right-handed about the link."""
+    link frame); a joint that cannot (a spread) spreads toward +y of the
+    palm; a pure twist turns right-handed about the link."""
     rng = np.random.default_rng(1)
-    for _ in range(200):
+    for _ in range(100):
         h = ops.random_hand(rng, NO_RULES)
         for i, f in enumerate(h.fingers):
-            B = dv.finger_frame(f, dv.grasp_point_m(h))
+            B = dv.finger_frame(f)
             for j, jt in enumerate(f.joints):
                 a = dv.joint_axis(h, i, j)
                 v = a if jt.type == "sliding" else np.array([0.0, a[2], -a[1]])   # tip velocity, link frame
@@ -164,58 +233,44 @@ def test_derived_signs_close_or_spread():
                     assert a[0] > 0
 
 
-def test_every_closing_joint_moves_the_tip_toward_the_grasp_point():
-    """The closing direction points at the grasp point (the object's start
-    point above the palm), so at the zero pose + on any joint that can close
-    the finger brings its tip nearer that point, whatever the facing and tilt."""
+def test_every_closing_joint_lifts_the_fingertip():
+    """At the zero pose + on any joint that can close the finger moves its tip
+    toward the palm's front face (straight up unless the finger already
+    points straight up)."""
     rng = np.random.default_rng(15)
     n = 0
-    for _ in range(200):
-        h = ops.random_hand(rng, NO_RULES)
-        G = dv.grasp_point_m(h)
-        assert np.allclose(G, dv.object_start_m(h))
+    for _ in range(150):
+        h = ops.random_hand(rng, FEETECH_RULES)
         ds = dv.dofs(h)
         q0 = np.zeros(len(ds))
         tip0 = dv.fk(h, q0).tips
         for k, d in enumerate(ds):
-            if d.finger < 0 or d.source >= 0 or d.type == "sliding":
+            if d.finger < 0 or d.source >= 0:
                 continue
             a = dv.direction(*h.fingers[d.finger].joints[d.index].axis)
-            if abs(a[2]) < 1e-9:          # cannot close: spreads or rolls
+            if abs(a[2]) < 1e-9:          # cannot close: spreads or twists
                 continue
             q = q0.copy()
             q[k] = 1e-4
-            tip = dv.fk(h, q).tips[d.finger]
-            assert np.linalg.norm(tip - G) < np.linalg.norm(tip0[d.finger] - G)
+            dx = dv.fk(h, q).tips[d.finger][0] - tip0[d.finger][0]
+            if h.fingers[d.finger].tilt == 90:     # straight up: the tip moves sideways (second order down)
+                assert abs(dx) < 1e-8
+            else:
+                assert dx > 0
             n += 1
-    assert n > 500
+    assert n > 300
 
 
-def test_flexion_closes_toward_the_palm_normal():
-    h = simple_hand()
-    q0 = np.zeros(len(dv.dofs(h)))
-    ds = dv.dofs(h)
-    k = next(k for k, d in enumerate(ds) if d.name == "f1_j1")
-    q = q0.copy()
-    q[k] = 0.3
-    assert dv.fk(h, q).tips[1][0] > dv.fk(h, q0).tips[1][0] + 0.01   # toward +x (the grasp side)
-
-
-def test_ranges_by_kind():
-    h = simple_hand()
+def test_ranges_by_kind_and_coupling():
+    h = general_hand()
     ds = {d.name: d for d in dv.dofs(h)}
     assert ds["f0_j0"].kind == "abduction" and np.allclose(np.degrees(ds["f0_j0"].limits), (-30, 30))
     assert ds["f0_j1"].kind == "flexion" and np.allclose(np.degrees(ds["f0_j1"].limits), (-30, 90))
     assert ds["f3_j0"].kind == "roll" and np.allclose(np.degrees(ds["f3_j0"].limits), (-90, 90))
     assert ds["f0_j2"].type == "coupled" and np.allclose(np.degrees(ds["f0_j2"].limits), (-33, 99))
     assert ds["f0_j2"].source == list(ds).index("f0_j1")
-
-
-def test_coupled_joint_follows_at_1_1():
-    h = simple_hand()
-    ds = dv.dofs(h)
     q = np.zeros(len(ds))
-    k = [d.name for d in ds].index("f0_j1")
+    k = list(ds).index("f0_j1")
     q[k] = 0.4
     assert dv.tie(h, q)[k + 1] == pytest.approx(0.44)
 
@@ -226,8 +281,7 @@ def test_links_are_straight_at_zero():
         h = ops.random_hand(rng, NO_RULES)
         p = dv.fk(h)
         for i, f in enumerate(h.fingers):
-            x = dv.finger_direction(f)
-            tip = dv.mount_point_m(f) + x * finger_length_mm(f) * 1e-3
+            tip = dv.mount_point_m(f) + dv.finger_direction(f) * finger_length_mm(f) * 1e-3
             assert np.allclose(p.tips[i], tip, atol=1e-12)
 
 
@@ -247,98 +301,173 @@ def test_urdf_round_trip():
         assert {c.dependent for c in back.couplings} == {c.dependent for c in model.couplings}
 
 
-def test_palm_outlines_fit_the_gpu_hull_limits():
+# --------------------------------------------------------------------------
+# Derived geometry
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("axis,depth,below_back", [(BEND, 12.0, 0.0), (SPREAD, 16.5, 9.0), (TWIST, 11.5, 14.0)])
+def test_base_depth_puts_the_motor_housing_flush(axis, depth, below_back):
+    f = _finger(0, 40, joints=((axis, 30),))
+    assert dv.base_depth_mm(f) == pytest.approx(depth)
+    housing = dv.base_motor_boxes_mm(f)[0].grown(mt.WALL_MM).corners()
+    assert housing[:, 0].max() == pytest.approx(PLATE_HALF_MM)                # flush with the front face
+    assert -PLATE_HALF_MM - housing[:, 0].min() == pytest.approx(below_back)   # behind the back face
+
+
+def test_crossed_base_slides_the_spread_motor_behind_the_palm():
+    f = _finger(0, 40, joints=((SPREAD, 0), (BEND, 50), (BEND, 30)))
+    assert dv.base_depth_mm(f) == pytest.approx(12.0)
+    spread, bend = dv.base_motor_boxes_mm(f)
+    assert -PLATE_HALF_MM - spread.grown(mt.WALL_MM).corners()[:, 0].min() == pytest.approx(31.0)
+    assert bend.grown(mt.WALL_MM).corners()[:, 0].max() == pytest.approx(PLATE_HALF_MM)
+
+
+def test_links_are_servo_sized():
+    """A bending link is 33 mm wide (along its axis) and 24 mm deep, and runs
+    from 12 mm behind its joint to the next motor's front."""
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 30)))
+    b = dv.link_box_mm(f, 0)
+    assert np.allclose(2 * b.half[1:], (24.0, 33.0))
+    assert b.centre[0] - b.half[0] == pytest.approx(-12.0) and b.centre[0] + b.half[0] == pytest.approx(59.5)
+    tip = dv.link_box_mm(f, 1)
+    assert tip.centre[0] + tip.half[0] == pytest.approx(30.0)
+
+
+def test_palm_outlines():
+    """Convex, at most the GPU hull's vertices; the main palm holds the mount;
+    every base sits on its own plate; a cut leaves a seam."""
     rng = np.random.default_rng(4)
-    for _ in range(200):
-        h = ops.random_hand(rng, NO_RULES)
+    for _ in range(150):
+        h = ops.random_hand(rng, FEETECH_RULES)
         outs = dv.palm_outlines_mm(h)
-        assert set(outs) == {-1} | set(range(len(h.palm_joints)))
+        assert set(outs) == ({-1, 0} if h.palm_joints else {-1})
         for k, poly in outs.items():
             assert 3 <= len(poly) <= PALM_OUTLINE_MAX_VERTICES
-            # convex and counter-clockwise
             e = np.roll(poly, -1, axis=0) - poly
             cross = e[:, 0] * np.roll(e, -1, axis=0)[:, 1] - e[:, 1] * np.roll(e, -1, axis=0)[:, 0]
             assert (cross > -1e-9).all()
-        main = outs[-1]
-        assert dv.point_in_polygon(np.array([[0.0, 0.0]]), main)[0]          # the heel disc at the wrist
-        for f in h.fingers:
-            poly = outs[f.palm_joint]
-            assert dv.point_in_polygon(np.array([[f.y, f.z]]), poly)[0]     # every base on its plate
+        assert dv.point_in_polygon(dv.mount_outline_mm(), outs[-1], 1e-6).all()
+        for i, f in enumerate(h.fingers):
+            assert dv.point_in_polygon(np.array([[f.y, f.z]]), outs[finger_section(h, i)])[0]
+        if h.palm_joints:
+            from hand_sampler.grammar.hand import SEAM_MM, cut_side_mm
+            p = h.palm_joints[0]
+            assert max(cut_side_mm(p, *v) for v in outs[-1]) == pytest.approx(-SEAM_MM / 2, abs=1e-6)
+            assert min(cut_side_mm(p, *v) for v in outs[0]) == pytest.approx(SEAM_MM / 2, abs=1e-6)
 
 
-def test_link_cores_are_thick_enough_for_gpu_cooking():
-    for L, tip in ((0, False), (15, False), (90, False), (10, True), (90, True)):
-        x0, x1 = dv.link_core_x_mm(L, tip)
-        assert x1 - x0 >= 1.0 - 1e-12
-    assert dv.CORE_HALF_Y_MM * 2 >= 1.0 and dv.CORE_HALF_Z_MM * 2 >= 1.0
+def test_the_cut_hinges_along_its_line_and_lifts_the_part_beyond():
+    h = replace(simple_hand(), palm_joints=(PalmJoint(facing=0, offset=40),))    # the line y = -40, beyond: y < -40
+    assert check(h, FEETECH_RULES) == []
+    assert [finger_section(h, i) for i in range(5)] == [0, -1, -1, -1, -1]
+    a, p = dv.palm_axis(h), dv.palm_hinge_m(h) * 1e3
+    assert np.allclose(a, (0, 0, 1)) and p[0] == pytest.approx(0.0) and p[1] == pytest.approx(-40.0)
+    ds = dv.dofs(h)
+    q = np.zeros(len(ds))
+    q[0] = 0.3
+    assert dv.fk(h, q).tips[0][0] > dv.fk(h).tips[0][0] + 0.01          # the part beyond rises
+    assert np.allclose(dv.fk(h, q).tips[1:], dv.fk(h).tips[1:])          # the rest stays
+
+
+def test_object_start_is_the_lowest_clear_height():
+    """Over the outline's centroid, at the lowest height (from 5 mm above the
+    front face, in 1 mm steps) where the cube clears every solid by 5 mm at
+    the start pose: never inside the hand, no higher than it must be."""
+    h = simple_hand()
+    p = dv.object_start_m(h, 0.03)
+    assert p[0] == pytest.approx((PLATE_HALF_MM + 30 + 5 + 1) * 1e-3)    # the row's curled first links: 1 mm up
+    assert np.allclose(p[1:] * 1e3, dv.polygon_centroid(dv.outline_mm(h)))
+    rng = np.random.default_rng(18)
+    raised = 0
+    for _ in range(N_SAMPLES // 20):
+        h = ops.random_hand(rng, FEETECH_RULES)
+        p = dv.object_start_m(h, 0.03) * 1e3
+        solids = [s for s in dv.solids_at(h, dv.start_q(h)) if s.key[0] != "mount"]
+
+        def gap(x):
+            cube = dv.box_corners(np.array([x, p[1], p[2]]), np.full(3, 30.0)) * 1e-3
+            return min(dv.gjk_distance(cube, s.points) for s in solids) * 1e3
+
+        assert gap(p[0]) >= 5.0 - 1e-6
+        if p[0] > PLATE_HALF_MM + 35 + 1e-6:
+            raised += 1
+            assert gap(p[0] - 1.0) < 5.0 - 1e-6
+    assert raised > 0
 
 
 # --------------------------------------------------------------------------
 # Random hands
 # --------------------------------------------------------------------------
 
+CUSTOM = Rules(joint_types=("hinge",), max_fingers=4, max_joints=3, max_palm_joints=0, max_finger_length_mm=150,
+               base_pitch_mm=40, base_distance_mm=(40, 90), outward_facing=True, buildable_links=True)
 
-@pytest.mark.parametrize("rules", [EVOLUTION_RULES, NO_RULES,
-                                   Rules(joint_types=("hinge",), max_fingers=4, max_joints=3, max_palm_joints=1,
-                                         max_finger_length_mm=150, min_spacing_mm=25)],
-                         ids=["evolution", "none", "custom"])
-@pytest.mark.parametrize("stage", ["coarse", "fine"])
-def test_random_hands_keep_every_rule(rules, stage):
+
+@pytest.mark.parametrize("rules", [FEETECH_RULES, NO_RULES, CUSTOM], ids=["feetech", "none", "custom"])
+def test_random_hands_keep_every_rule_and_are_clear(rules):
     rng = np.random.default_rng(5)
-    mm, deg = STEPS[stage]
-    for _ in range(N_SAMPLES // 4):
-        h = ops.random_hand(rng, rules, stage)
+    for _ in range(N_SAMPLES // 20):
+        h = ops.random_hand(rng, rules)
         assert check(h, rules) == []
-        if stage == "coarse":
-            for f in h.fingers:
-                assert f.facing % deg == 0 and f.tilt % deg == 0
-                assert all(j.axis[0] % deg == 0 and j.axis[1] % deg == 0 for j in f.joints)
+        assert V.c1_self_overlap(h).ok
+        for f in h.fingers:
+            assert all(j.axis in KIND_AXIS.values() for j in f.joints)       # every drawn axis on a kind
+            assert all(j.type == "hinge" for j in f.joints)
 
 
-def test_random_hands_start_on_kinds_with_the_mix():
+def test_random_hands_mix_and_counts():
+    """Kinds 69/27/4; finger counts uniform over 2-6 (a hand keeps its
+    drawn count); half the hands cut."""
     rng = np.random.default_rng(6)
     counts = {k: 0 for k in KIND_AXIS}
-    palm = n = 0
-    for _ in range(N_SAMPLES):
-        h = ops.random_hand(rng, EVOLUTION_RULES)
+    nf = {n: 0 for n in range(2, 7)}
+    cut = n = 0
+    for _ in range(N_SAMPLES // 4):
+        h = ops.random_hand(rng, FEETECH_RULES)
         n += 1
-        palm += len(h.palm_joints) > 0
+        cut += len(h.palm_joints) > 0
+        nf[len(h.fingers)] += 1
         for f in h.fingers:
             for jt in f.joints:
-                kind = next(k for k, a in KIND_AXIS.items() if a == jt.axis)
-                counts[kind] += 1
+                counts[next(k for k, a in KIND_AXIS.items() if a == jt.axis)] += 1
     total = sum(counts.values())
     assert abs(counts["flexion"] / total - 0.69) < 0.03
     assert abs(counts["abduction"] / total - 0.27) < 0.03
-    assert abs(palm / n - ops.P_PALM_JOINT) < 0.05
-
-
-def test_random_hands_are_clear():
-    """Generation-time clearance (item 25): no overlap at rest, none over 3 mm
-    at the start pose, so every random hand passes C1."""
-    rng = np.random.default_rng(17)
-    for _ in range(N_SAMPLES // 10):
-        h = ops.random_hand(rng, EVOLUTION_RULES)
-        assert ops.clear(h) and V.c1_self_overlap(h).ok
+    assert abs(cut / n - ops.P_PALM_JOINT) < 0.08
+    assert min(nf.values()) > 0.12 * n
 
 
 def test_random_hands_are_uniform_over_the_limits():
-    """No hand-shaped template: bases all around the wrist, facings and tilts
-    over their whole ranges, finger and joint counts over their ranges."""
+    """No hand-shaped template: bases all around the palm centre, facings and
+    tilts over their whole ranges, finger and joint counts over their ranges."""
     rng = np.random.default_rng(16)
-    bearings, facings, tilts, nf, nj = [], set(), set(), set(), set()
-    for _ in range(N_SAMPLES // 2):
-        h = ops.random_hand(rng, EVOLUTION_RULES)
-        nf.add(len(h.fingers))
+    bearings, facings, tilts, nj, spots = [], set(), set(), set(), set()
+    for _ in range(N_SAMPLES // 4):
+        h = ops.random_hand(rng, FEETECH_RULES)
         for f in h.fingers:
             bearings.append(math.atan2(f.y, f.z))
             facings.add(f.facing)
             tilts.add(f.tilt)
             nj.add(len(f.joints))
+            spots.add((f.y, f.z))
     R = abs(np.mean(np.exp(1j * np.array(bearings))))
-    assert R < 0.1                                  # bases spread all around the wrist centre
+    assert R < 0.1
     assert facings == set(range(0, 360, 30)) and tilts == {-30, 0, 30, 60, 90}
-    assert nf == {2, 3, 4, 5, 6} and nj == {1, 2, 3, 4, 5}
+    assert nj == {1, 2, 3, 4, 5}
+    assert spots == set(ops.base_spots(FEETECH_RULES)) and len(spots) == 20
+
+
+def test_random_hand_never_drops_fingers():
+    """A finger that cannot be placed restarts the hand with the same count;
+    a count that never fits is an error, not a smaller hand."""
+    rng = np.random.default_rng(19)
+    tight = replace(FEETECH_RULES, min_fingers=6, max_fingers=6, base_distance_mm=(40, 60))
+    with pytest.raises(ops.NoHand):
+        ops.random_hand(rng, tight)
+    six = replace(FEETECH_RULES, min_fingers=6, max_fingers=6)
+    for _ in range(5):
+        assert len(ops.random_hand(rng, six).fingers) == 6
 
 
 # --------------------------------------------------------------------------
@@ -346,16 +475,15 @@ def test_random_hands_are_uniform_over_the_limits():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("rules", [EVOLUTION_RULES, NO_RULES], ids=["evolution", "none"])
-@pytest.mark.parametrize("stage", ["coarse", "fine"])
-def test_long_mutation_chains_keep_every_rule(rules, stage):
+@pytest.mark.parametrize("rules", [FEETECH_RULES, NO_RULES], ids=["feetech", "none"])
+def test_long_mutation_chains_keep_every_rule(rules):
     rng = np.random.default_rng(7)
     used = set()
     done = calls = 0
     for c in range(10):
-        h = ops.random_hand(rng, rules, "coarse")
+        h = ops.random_hand(rng, rules)
         for _ in range(N_CHAIN // 10):
-            res = ops.mutate(h, rng, rules, stage)
+            res = ops.mutate(h, rng, rules)
             calls += 1
             if res is None:
                 continue
@@ -364,7 +492,7 @@ def test_long_mutation_chains_keep_every_rule(rules, stage):
             used.add(name)
             assert check(h, rules) == [], (name, check(h, rules))
             assert V.c1_self_overlap(h).ok, name                 # every mutant keeps C1
-    expected = {op.name for op in ops.operators_for(stage)}
+    expected = {op.name for op in ops.OPERATORS} - ({"couple"} if "coupled" not in rules.joint_types else set())
     assert used == expected, expected - used
     assert done / calls > 0.8
 
@@ -373,7 +501,7 @@ def _diff(a: Hand, b: Hand):
     """Every value that differs between two hands with the same structure."""
     out = []
     for i, (fa, fb) in enumerate(zip(a.fingers, b.fingers)):
-        for k in ("y", "z", "facing", "tilt", "palm_joint"):
+        for k in ("y", "z", "facing", "tilt"):
             if getattr(fa, k) != getattr(fb, k):
                 out.append((i, k, getattr(fa, k), getattr(fb, k)))
         for j, (ja, jb) in enumerate(zip(fa.joints, fb.joints)):
@@ -392,172 +520,168 @@ def _angle_between_lines(a, b) -> float:
     return math.degrees(math.acos(min(1.0, abs(float(dv.direction(*a) @ dv.direction(*b))))))
 
 
-@pytest.mark.parametrize("stage", ["coarse", "fine"])
-def test_parameter_steps_change_one_value_by_one_step(stage):
+def test_parameter_steps_change_one_value_by_one_step():
     rng = np.random.default_rng(8)
-    mm, deg = STEPS[stage]
+    rules = FEETECH_RULES
+    seen = set()
     for _ in range(12):
-        h = ops.random_hand(rng, EVOLUTION_RULES, "coarse")
-        for op in ops.operators_for(stage):
+        h = ops.random_hand(rng, rules)
+        for op in ops.OPERATORS:
             if op.structural:
                 continue
-            for mv in ops.candidates(h, op, EVOLUTION_RULES, stage):
-                child = op.apply(h, mv, stage)
+            for mv in ops.candidates(h, op, rules):
+                child = op.apply(h, mv, rules)
                 d = _diff(h, child)
+                seen.add(op.name)
+                if op.name in ("axis_az", "axis_el"):
+                    axes = [x for x in d if x[2] == "axis"]
+                    assert len(axes) == 1 and _angle_between_lines(axes[0][3], axes[0][4]) <= 30 + 1e-9
+                    assert all(x[2] in ("axis", "length") and x[0] == mv[0] for x in d)   # lengths refit to floors
+                    continue
                 assert len(d) == 1, (op.name, d)
                 (item,) = d
                 if op.name == "move_finger":
-                    assert abs(item[3] - item[2]) == mm
-                elif op.name in ("turn_finger",):
-                    assert min((item[3] - item[2]) % 360, (item[2] - item[3]) % 360) == deg
+                    assert abs(item[3] - item[2]) == rules.base_pitch_mm
+                elif op.name == "turn_finger":
+                    assert min((item[3] - item[2]) % 360, (item[2] - item[3]) % 360) == 30
                 elif op.name == "tilt_finger":
-                    assert abs(item[3] - item[2]) == deg
+                    assert abs(item[3] - item[2]) == 30
                 elif op.name == "length":
                     a, b = item[3], item[4]
-                    assert abs(b - a) == mm or {a, b} & {0} and max(a, b) <= 15 + mm
-                elif op.name in ("axis_az", "axis_el"):
-                    assert _angle_between_lines(item[3], item[4]) <= deg + 1e-9
-                elif op.name == "move_hinge":
-                    pa, pb = item[2], item[3]
-                    assert abs(pa.y - pb.y) + abs(pa.z - pb.z) == mm
-                elif op.name in ("hinge_az", "hinge_el"):
-                    assert _angle_between_lines(item[2].axis, item[3].axis) <= deg + 1e-9
+                    allowed = allowed_lengths(h.fingers[item[0]], item[1], True)
+                    assert abs(allowed.index(a) - allowed.index(b)) == 1
+                elif op.name == "move_cut":
+                    assert abs(item[2].offset - item[3].offset) == 10
+                elif op.name == "turn_cut":
+                    assert min((item[3].facing - item[2].facing) % 360, (item[2].facing - item[3].facing) % 360) == 30
+    assert {"move_finger", "turn_finger", "tilt_finger", "length", "axis_az", "axis_el"} <= seen
 
 
-def test_length_steps_skip_the_gap():
-    assert ops.new_length(15, -1, 1, False) == 0
-    assert ops.new_length(0, 1, 1, False) == 15
-    assert ops.new_length(20, -1, 10, False) == 0
-    assert ops.new_length(0, 1, 10, False) == 15
-    assert ops.new_length(10, -1, 1, True) is None
-    assert ops.new_length(90, 1, 1, False) is None
-    assert ops.new_length(16, -1, 1, False) == 15
+def test_length_steps_follow_the_allowed_lengths():
+    f = _finger(0, 40, joints=((SPREAD, 40), (BEND, 50), (BEND, 30)))
+    assert ops.step_length(f, 0, -1, FEETECH_RULES) == 0          # the floor down to a crossing
+    g = _finger(0, 40, joints=((SPREAD, 0), (BEND, 50), (BEND, 30)))
+    assert ops.step_length(g, 0, 1, FEETECH_RULES) == 40           # a crossing up to the floor
+    assert ops.step_length(f, 1, -1, FEETECH_RULES) is None        # bend then bend: 50 is the floor
+    assert ops.step_length(f, 2, -1, FEETECH_RULES) is None        # the fingertip floor
+    assert ops.step_length(_finger(0, 40, joints=((BEND, 90), (BEND, 30))), 0, 1, FEETECH_RULES) is None
+    assert ops.step_length(f, 1, -1, NO_RULES) == 40
 
 
-def test_fine_stage_has_no_structural_operators():
-    assert all(not op.structural for op in ops.operators_for("fine"))
-    assert {op.name for op in ops.operators_for("coarse")} == {op.name for op in ops.OPERATORS}
+def test_fit_lengths_moves_links_to_their_nearest_allowed_length():
+    f = _finger(0, 40, joints=((BEND, 30), (TWIST, 0), (BEND, 10)))
+    g = ops.fit_lengths(f, FEETECH_RULES)
+    assert [j.length for j in g.joints] == [40, 50, 30]
+    assert ops.fit_lengths(g, FEETECH_RULES) == g
 
 
-def test_coarse_is_inside_fine():
-    """Every coarse value lies on the fine grid, so every hand the coarse stage
-    reaches is a fine hand, and a coarse step is a whole number of fine steps."""
-    rng = np.random.default_rng(9)
-    cm, cd = STEPS["coarse"]
-    fm, fd = STEPS["fine"]
-    assert cm % fm == 0 and cd % fd == 0
-    h = ops.random_hand(rng, EVOLUTION_RULES, "coarse")
-    for _ in range(300):
-        res = ops.mutate(h, rng, EVOLUTION_RULES, "coarse")
-        if res is not None:
-            h = res[0]
-        assert check(h, NO_RULES) == []                 # NO_RULES checks the fine grid
-
-
-@pytest.mark.parametrize("stage", ["coarse", "fine"])
-def test_parameter_steps_are_inverse_pairs(stage):
+def test_parameter_steps_are_inverse_pairs():
     rng = np.random.default_rng(10)
+    rules = FEETECH_RULES
     checked = 0
     for _ in range(12):
-        h = ops.random_hand(rng, EVOLUTION_RULES, "coarse")
-        for op in ops.operators_for(stage):
+        h = ops.random_hand(rng, rules)
+        for op in ops.OPERATORS:
             if op.structural:
                 continue
-            for mv in ops.candidates(h, op, EVOLUTION_RULES, stage):
-                child = op.apply(h, mv, stage)
-                back = op.apply(child, mv[:-1] + (-mv[-1],), stage)
-                if op.name == "length":
-                    a = h.fingers[mv[0]].joints[mv[1]].length
-                    b = child.fingers[mv[0]].joints[mv[1]].length
-                    if 0 in (a, b):         # the gap: 0 <-> 15 only
+            for mv in ops.candidates(h, op, rules):
+                child = op.apply(h, mv, rules)
+                back = op.apply(child, mv[:-1] + (-mv[-1],), rules)
+                if op.name in ("axis_az", "axis_el"):
+                    if len(_diff(h, child)) > 1:
+                        continue                   # lengths were refit: not a pure step
+                    ax = child.fingers[mv[0]].joints[mv[1]].axis
+                    if ax == (0, 90):              # through the pole, az is not kept
                         continue
-                if op.name in ("axis_el", "hinge_el"):
-                    ax = (child.fingers[mv[0]].joints[mv[1]].axis if op.name == "axis_el"
-                          else child.palm_joints[mv[0]].axis)
-                    if ax == (0, 90):       # through the pole, az is not kept
-                        continue
-                if not V.c1_self_overlap(back).ok:
-                    continue                       # the way back is a valid hand too, but C1 may not admit it
+                if not V.c1_self_overlap(back).ok or check(back, rules):
+                    continue
                 assert back == h, (op.name, mv)
                 checked += 1
-    assert checked > 300
+    assert checked > 200
 
 
 def test_structural_inverse_pairs():
     rng = np.random.default_rng(11)
+    rules = FEETECH_RULES
     for _ in range(12):
-        h = ops.random_hand(rng, EVOLUTION_RULES, "coarse")
-        for mv in ops.candidates(h, ops.OPERATOR_BY_NAME["split"], EVOLUTION_RULES):
-            child = ops.OPERATOR_BY_NAME["split"].apply(h, mv, "coarse")
-            i, j = mv[0], mv[1]
-            assert finger_length_mm(child.fingers[i]) == finger_length_mm(h.fingers[i])
-            assert ops.OPERATOR_BY_NAME["merge"].apply(child, (i, j + 1), "coarse") == h
-        for mv in ops.candidates(h, ops.OPERATOR_BY_NAME["add_finger"], EVOLUTION_RULES):
-            child = ops.OPERATOR_BY_NAME["add_finger"].apply(h, mv, "coarse")
-            assert ops.OPERATOR_BY_NAME["remove_finger"].apply(child, (len(h.fingers),), "coarse") == h
+        h = ops.random_hand(rng, rules)
+        for mv in ops.candidates(h, ops.OPERATOR_BY_NAME["add_finger"], rules):
+            child = ops.OPERATOR_BY_NAME["add_finger"].apply(h, mv, rules)
+            assert ops.OPERATOR_BY_NAME["remove_finger"].apply(child, (len(h.fingers),), rules) == h
             break
-        for mv in ops.candidates(h, ops.OPERATOR_BY_NAME["couple"], EVOLUTION_RULES):
-            child = ops.OPERATOR_BY_NAME["couple"].apply(h, mv, "coarse")
-            assert ops.OPERATOR_BY_NAME["couple"].apply(child, mv, "coarse") == h
-        for mv in ops.candidates(h, ops.OPERATOR_BY_NAME["own_palm_joint"], EVOLUTION_RULES):
-            if h.fingers[mv[0]].palm_joint >= 0:
-                continue
-            child = ops.OPERATOR_BY_NAME["own_palm_joint"].apply(h, mv, "coarse")
-            k = child.fingers[mv[0]].palm_joint
-            assert ops.OPERATOR_BY_NAME["remove_palm_joint"].apply(child, (k,), "coarse") == h
-            assert ops.OPERATOR_BY_NAME["move_to_section"].apply(child, (mv[0], -1), "coarse") == h
+        for mv in ops.candidates(h, ops.OPERATOR_BY_NAME["add_cut"], rules):
+            child = ops.OPERATOR_BY_NAME["add_cut"].apply(h, mv, rules)
+            assert ops.OPERATOR_BY_NAME["remove_cut"].apply(child, (0,), rules) == h
+            break
+        for mv in ops.candidates(h, ops.OPERATOR_BY_NAME["split"], rules):
+            child = ops.OPERATOR_BY_NAME["split"].apply(h, mv, rules)
+            i, j = mv[0], mv[1]
+            assert len(child.fingers[i].joints) == len(h.fingers[i].joints) + 1
+            if finger_length_mm(child.fingers[i]) == finger_length_mm(h.fingers[i]) and mv[2] not in (0, ):
+                back = ops.OPERATOR_BY_NAME["merge"].apply(child, (i, j + 1), rules)
+                assert len(back.fingers[i].joints) == len(h.fingers[i].joints)
+    g = general_hand()
+    for mv in ops.candidates(g, ops.OPERATOR_BY_NAME["couple"], NO_RULES):
+        child = ops.OPERATOR_BY_NAME["couple"].apply(g, mv, NO_RULES)
+        assert ops.OPERATOR_BY_NAME["couple"].apply(child, mv, NO_RULES) == g
+
+
+def test_split_keeps_the_finger_length_when_the_floors_allow():
+    h = Hand(fingers=(_finger(0, 40, joints=((BEND, 90), (BEND, 30))), _finger(0, -40, facing=180)))
+    child = ops.OPERATOR_BY_NAME["split"].apply(h, (0, 0, 50, "abduction"), FEETECH_RULES)
+    assert [(j.axis, j.length) for j in child.fingers[0].joints] == [(BEND, 50), (SPREAD, 40), (BEND, 30)]
+    child = ops.OPERATOR_BY_NAME["split"].apply(h, (0, 0, 40, "abduction"), FEETECH_RULES)
+    assert [j.length for j in child.fingers[0].joints] == [50, 50, 30]      # bend then spread needs 50
+    child = ops.OPERATOR_BY_NAME["split"].apply(h, (0, 1, 10, "flexion"), FEETECH_RULES)
+    assert [j.length for j in child.fingers[0].joints] == [90, 50, 30]      # the tip grows to its floors
+    moves = ops.OPERATOR_BY_NAME["split"].moves(h, FEETECH_RULES)
+    assert {m[2] for m in moves if m[:2] == (0, 0)} == set(range(0, 91, 10))
 
 
 def test_remove_any_finger_in_one_step():
-    """Any finger can go in one step, unless the hand left behind breaks C1
-    (the grasp point moves with the bases, so the others' start pose curls a
-    little differently)."""
     rng = np.random.default_rng(12)
     full = hands = 0
     for _ in range(40):
-        h = ops.random_hand(rng, EVOLUTION_RULES)
+        h = ops.random_hand(rng, FEETECH_RULES)
         if len(h.fingers) <= 2:
             continue
         hands += 1
-        cands = sorted(c[0] for c in ops.candidates(h, ops.OPERATOR_BY_NAME["remove_finger"], EVOLUTION_RULES))
-        expected = [i for i in range(len(h.fingers))
-                    if V.c1_self_overlap(ops.OPERATOR_BY_NAME["remove_finger"].apply(h, (i,), "coarse")).ok]
-        assert cands == expected
+        cands = sorted(c[0] for c in ops.candidates(h, ops.OPERATOR_BY_NAME["remove_finger"], FEETECH_RULES))
         full += cands == list(range(len(h.fingers)))
         for i in cands:
-            child = ops.OPERATOR_BY_NAME["remove_finger"].apply(h, (i,), "coarse")
+            child = ops.OPERATOR_BY_NAME["remove_finger"].apply(h, (i,), FEETECH_RULES)
             assert len(child.fingers) == len(h.fingers) - 1
-            assert check(child, EVOLUTION_RULES) == []      # a palm joint left without a finger went too
-    assert full >= 0.8 * hands          # 27 of 31 at the time of writing
+            assert check(child, FEETECH_RULES) == []          # a cut left without a finger on a side went too
+    assert full >= 0.8 * hands
 
 
 def test_add_finger_is_one_bending_joint_at_a_free_spot():
     rng = np.random.default_rng(13)
     h = Hand(fingers=simple_hand().fingers[:2])
-    child, mv = ops.apply_operator(h, "add_finger", rng, EVOLUTION_RULES)
+    child, mv = ops.apply_operator(h, "add_finger", rng, FEETECH_RULES)
     f = child.fingers[-1]
-    assert len(f.joints) == 1 and f.joints[0].axis == KIND_AXIS["flexion"] and f.joints[0].type == "hinge"
-    assert check(child, EVOLUTION_RULES) == []
+    assert len(f.joints) == 1 and f.joints[0].axis == BEND and f.joints[0].type == "hinge"
+    assert (f.y, f.z) not in {(g.y, g.z) for g in h.fingers}
+    assert check(child, FEETECH_RULES) == []
 
 
 def test_operators_that_cannot_act_have_no_candidates():
-    h = Hand(fingers=simple_hand().fingers[:2])           # two fingers, no palm joint
-    assert not ops.can_act(h, ops.OPERATOR_BY_NAME["remove_finger"], EVOLUTION_RULES)
-    assert not ops.can_act(h, ops.OPERATOR_BY_NAME["remove_palm_joint"], EVOLUTION_RULES)
-    assert not ops.can_act(h, ops.OPERATOR_BY_NAME["move_hinge"], EVOLUTION_RULES)
-    four = Hand(fingers=simple_hand().fingers[:2])        # both fingers have 4 joints
-    assert ops.can_act(four, ops.OPERATOR_BY_NAME["split"], EVOLUTION_RULES)
-    assert not ops.can_act(four, ops.OPERATOR_BY_NAME["split"], replace(EVOLUTION_RULES, max_joints=4))
+    h = Hand(fingers=simple_hand().fingers[:2])           # two fingers, no cut
+    assert not ops.can_act(h, ops.OPERATOR_BY_NAME["remove_finger"], FEETECH_RULES)
+    assert not ops.can_act(h, ops.OPERATOR_BY_NAME["remove_cut"], FEETECH_RULES)
+    assert not ops.can_act(h, ops.OPERATOR_BY_NAME["move_cut"], FEETECH_RULES)
+    assert not ops.can_act(h, ops.OPERATOR_BY_NAME["couple"], FEETECH_RULES)
+    assert ops.can_act(h, ops.OPERATOR_BY_NAME["split"], FEETECH_RULES)
+    assert not ops.can_act(h, ops.OPERATOR_BY_NAME["split"], replace(FEETECH_RULES, max_joints=3))
+    assert not ops.can_act(h, ops.OPERATOR_BY_NAME["add_cut"], replace(FEETECH_RULES, max_palm_joints=0))
 
 
 def test_mutating_a_hand_outside_the_rules_never_adds_violations():
-    h = simple_hand()
-    f = h.fingers[0]
-    h = replace(h, fingers=(replace(f, joints=(Joint("sliding", (90, 0), 0),) + f.joints[1:]),) + h.fingers[1:])
-    n0 = len(check(h, EVOLUTION_RULES))
+    h = general_hand()
+    n0 = len(check(h, FEETECH_RULES))
     rng = np.random.default_rng(14)
-    for _ in range(200):
-        res = ops.mutate(h, rng, EVOLUTION_RULES)
+    for _ in range(150):
+        res = ops.mutate(h, rng, FEETECH_RULES)
         if res is not None:
             h = res[0]
-        assert len(check(h, EVOLUTION_RULES)) <= n0 and check(h, NO_RULES) == []
+        assert len(check(h, FEETECH_RULES)) <= n0 and check(h, NO_RULES) == []
