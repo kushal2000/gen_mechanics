@@ -1,0 +1,73 @@
+{
+ "N": 1000,
+ "seconds_per_hand": 0.048,
+ "c1_ok": 1.0,
+ "c2_ok": 0.814,
+ "random_hands_per_viable_hand": 1.23,
+ "numbers": {
+  "mean": 55.689,
+  "min": 14,
+  "max": 102
+ },
+ "palm_area_cm2": {
+  "median": 171.1731004042392,
+  "p10": 87.36294322173822,
+  "p90": 248.90380019731796
+ },
+ "commercial_palm_area_cm2_median_same_outline_rule": 97.33488389348048,
+ "base_radii": {
+  "40.0": 380,
+  "56.6": 787,
+  "80.0": 977,
+  "89.4": 1863
+ },
+ "fingers": {
+  "2": 193,
+  "3": 204,
+  "4": 211,
+  "5": 187,
+  "6": 205
+ },
+ "joints_per_finger": {
+  "1": 376,
+  "2": 966,
+  "3": 918,
+  "4": 902,
+  "5": 845
+ },
+ "cut_share": 0.488,
+ "fingers_beyond_cut": {
+  "1": 336,
+  "2": 147,
+  "3": 5
+ },
+ "zero_link_share": 0.06874437443744374,
+ "finger_length_mm": {
+  "median": 200.0,
+  "max": 250
+ },
+ "rear_protrusion_mm": {
+  "share_any": 0.996,
+  "median": 20.908965343808674,
+  "max": 42.63139720814413
+ },
+ "object_raised_mm_half30": {
+  "share_raised": 0.64,
+  "median_raise_when_raised": 100.0,
+  "max": 235.0
+ },
+ "object_raised_mm_half36": {
+  "share_raised": 0.768,
+  "max": 235.00000000000006
+ },
+ "finger_mass_g": {
+  "median": 399.485625,
+  "max": 862.2223750000002
+ },
+ "flat_finger_gravity_torque_nm": {
+  "median": 0.047765916371250015,
+  "p90": 0.5183964949936851,
+  "max": 0.8281903461300002,
+  "share_over_0_5": 0.12528075867232344
+ }
+}

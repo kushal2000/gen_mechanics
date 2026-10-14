@@ -47,7 +47,8 @@
     "Policy architecture (Martin, 2026-10-04): every multi-hand policy (shared controller, evolution populations) uses the team's per-joint token transformer (coevolution/networks/joint_transformer.py layout); padded-MLP multi-hand runs are dropped. Earlier MLP-based population/shared-controller results (pilots 1-3, I41-I44) are historical references only.",
     "rl_games edit approved (Martin, 2026-10-04): flagged, default-off per-design advantage normalisation in third_party/rl_games, in its own 'rl_games (vendored): ...' commits; made via the Edit/Write tools under the project allow rule Edit(//.../third_party/rl_games/**).",
     "GET-Zero route approved (Martin, 2026-10-04: 'sure ill try anything at this point'): per-hand MLP experts are allowed as a training tool, distilled into the per-joint token transformer (the final multi-hand policy). GPU split: fair RL test <= 3, GET-Zero <= 3 (1 main + up to 2 ada only without preemption).",
-    "Transformer RL recipe (2026-10-05): use the collaborator's recipe R2 for the token transformer -- lr 1e-4 adaptive (kl 0.016), e_clip 0.1, mini_epochs 2, horizon 16, d_model 128, n_layers 4, SAPG 6 exploration blocks, ~12k envs per GPU; budget hours, not minutes."
+    "Transformer RL recipe (2026-10-05): use the collaborator's recipe R2 for the token transformer -- lr 1e-4 adaptive (kl 0.016), e_clip 0.1, mini_epochs 2, horizon 16, d_model 128, n_layers 4, SAPG 6 exploration blocks, ~12k envs per GPU; budget hours, not minutes.",
+    "Grammar rebuilt around the Feetech HL-3915 servo (Martin, 2026-10-14): 40 mm base grid 40-90 mm from the palm centre with one overlap rule (no spacing or rim rule); mount at the palm centre; base joint half a servo plus a wall below the front face; 24 mm palm; tilt-defined finger frame; servo link floors rounded up to 10 mm; crossings between different axes square to the finger; at most one straight palm cut on half the hands; one grid (fine stage later); commercial hands fitted for their structure only; collisions during motion left to physics."
   ],
   "issues": [
     {
@@ -374,7 +375,7 @@
     }
   ],
   "last_green_commit": "3acff20",
-  "next_action": "GRAMMAR LOCKED (2026-10-07): read project-notes/grammar/GRAMMAR-OVERVIEW.md (explanation and summary tables) and GRAMMAR-LOCK-2026-10-07.md (every decision with its reason). The old derivation grammar is removed (local tag grammar-v0.5-final); the simulator uses a 36-slot layout (6 finger slots x (palm-joint carrier + 5 joints)), so 32-slot populations, grasp caches and checkpoints no longer load. Isaac validation: isaac-validation-2026-10-07.md. Open: coupled-joint tokens (visible to the policy or not); C5 physics grasp check to raise after the grammar work; hardware buildability as a later selection step. Earlier recentering map: RECENTER-2026-10-05.md.",
+  "next_action": "GRAMMAR REBUILT AROUND THE FEETECH SERVO (2026-10-14): read project-notes/grammar/GRAMMAR-OVERVIEW.md (step by step) and GRAMMAR-LOCK-2026-10-07.md (revision of 2026-10-14). Evolution and the simulator use FEETECH_RULES (= EVOLUTION_RULES): hinges only, bases on a 40 mm grid 40-90 mm from the palm centre, outward facing, servo link floors; one 10 mm / 30 deg grid (no fine stage); at most one palm cut. Grammar files are hand_grammar/2.0 and populations grammar_envelope/4: older files no longer load. Record: experiments/E16_grammar_rebuild/summary.md. Open: the object start (raised on 64-77% of random hands at the start curl), the 0.5 N m effort against servo-sized finger weights, an Isaac check of the rebuilt layout, the mount's real size, coupled-joint tokens, C5 after the grammar work.",
   "loop": {
     "cron_job": "bb7e458d",
     "started_at": "2026-09-25T18:42:57-04:00",
@@ -441,7 +442,9 @@
     },
     "grammar_solo": {
       "status": "stopped: viability phase done (V1 4.3%, V2S 5.2%, V3S 12.4% under HORA physics); the per-design MLP training array 2535511 failed at start and is not rerun (MLP policy dropped)"
-    }
+    },
+    "E15": "done (Feetech servo buildability; experiments/E15_feetech_buildability/summary.md)",
+    "E16": "done (grammar rebuilt around the Feetech servo; experiments/E16_grammar_rebuild/summary.md)"
   },
   "gpu_hours_used": 114.9,
   "cluster_jobs": [
