@@ -55,6 +55,7 @@ def main() -> None:
     cfg.from_dict(env_d)
     cfg.scene.num_envs = args.envs
     cfg.seed = 0
+    cfg.reset.stagger_initial_episodes = False    # the first episode is a whole one in every env
     env = InHandOlympicsEnv(cfg)
     obs, _ = env.reset()
 

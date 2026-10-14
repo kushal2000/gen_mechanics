@@ -79,6 +79,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         # The last action_delay_max + 1 actions, newest first; and the action applied this step (after the delay).
         self.action_queue = torch.zeros(n, a.action_delay_max + 1, self.robot.num_joints, device=dev)
         self.applied_actions = torch.zeros(n, self.robot.num_joints, device=dev)
+        self.action_queue_filled = torch.zeros(n, dtype=torch.bool, device=dev)
 
         self.palm_body = self.robot.body_names.index(spec.palm_body_name)
         self.tip_bodies = [self.robot.body_names.index(b) for b in spec.fingertip_body_names]
@@ -128,6 +129,14 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.reward_terms: dict[str, torch.Tensor] = {}
         self.reward_buf = torch.zeros(n, device=dev)       # DirectRLEnv sets it in step(); the obs reads it at reset
 
+    def reset(self, seed: int | None = None, options: dict | None = None):
+        out = super().reset(seed=seed, options=options)
+        if self.cfg.reset.stagger_initial_episodes:
+            # reset.stagger_initial_episodes: spread the envs' first timeouts over a whole goal's time. Their action
+            # queues are still filled from their first action (action_queue_filled), as at any episode start.
+            self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
+        return out
+
     def _setup_scene(self) -> None:
         setup_scene(self)
         spec, o = self.robot_spec, self.cfg.obs
@@ -170,6 +179,13 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.pen.write_root_pose_to_sim(pose, ids)
         self.pen.write_root_velocity_to_sim(torch.zeros(len(ids), 6, device=self.device), ids)
 
+    def start_pen_yaw(self, n: int) -> torch.Tensor:
+        """(n,) the pen's starting yaw (rad) for n resetting envs: uniform over +-pi, or reset.pen_yaw_deg."""
+        r = self.cfg.reset
+        if r.randomize_pen_yaw:
+            return (torch.rand(n, device=self.device) * 2 - 1) * math.pi
+        return torch.full((n,), math.radians(r.pen_yaw_deg), device=self.device)
+
     def set_goal(self, ids: torch.Tensor, pos: torch.Tensor, quat: torch.Tensor) -> None:
         self.goal_pos[ids] = pos
         self.goal_quat[ids] = quat
@@ -195,7 +211,8 @@ class InHandOlympicsEnv(DirectRLEnv):
 
     def _delay(self, a: torch.Tensor) -> torch.Tensor:
         """Action latency: one of the env's last action_delay_max + 1 actions, picked uniformly per env."""
-        start = self.episode_length_buf == 0
+        start = (self.episode_length_buf == 0) | ~self.action_queue_filled
+        self.action_queue_filled[:] = True
         if start.any():
             self.action_queue[start] = a[start].unsqueeze(1)
         self.action_queue = torch.roll(self.action_queue, shifts=1, dims=1)

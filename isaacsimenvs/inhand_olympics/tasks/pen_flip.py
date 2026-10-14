@@ -45,7 +45,7 @@ class PenFlipAir:
     def reset(self, ids: torch.Tensor) -> None:
         """Pen flat on the table at a random yaw; a flip direction; the first goal straight above it, flat."""
         env, n = self.env, len(ids)
-        self.yaw[ids] = (torch.rand(n, device=env.device) * 2 - 1) * math.pi
+        self.yaw[ids] = env.start_pen_yaw(n)
         self.pitch[ids] = 0.0
         self.direction[ids] = torch.where(torch.rand(n, device=env.device) < 0.5, -1.0, 1.0)
         pos = torch.zeros(n, 3, device=env.device)

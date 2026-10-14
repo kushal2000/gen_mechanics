@@ -36,7 +36,7 @@ class PenSpin:
     def reset(self, ids: torch.Tensor) -> None:
         """Pen flat at the centre at a random yaw; a spin direction; the first goal one step round."""
         env, n = self.env, len(ids)
-        yaw = (torch.rand(n, device=env.device) * 2 - 1) * math.pi
+        yaw = env.start_pen_yaw(n)
         pos, quat = self._flat_at_centre(ids, yaw)
         env.place_pen(ids, pos, quat)
         self.direction[ids] = torch.where(torch.rand(n, device=env.device) < 0.5, -1.0, 1.0)
@@ -66,7 +66,7 @@ class PenSpinAir(PenSpin):
     def reset(self, ids: torch.Tensor) -> None:
         """Pen flat on the table at a random yaw; a spin direction; the first goal straight above it."""
         env, n = self.env, len(ids)
-        yaw = (torch.rand(n, device=env.device) * 2 - 1) * math.pi
+        yaw = env.start_pen_yaw(n)
         env.place_pen(ids, *self._flat_at_centre(ids, yaw))
         self.direction[ids] = torch.where(torch.rand(n, device=env.device) < 0.5, -1.0, 1.0)
         self.goal_yaw[ids] = yaw

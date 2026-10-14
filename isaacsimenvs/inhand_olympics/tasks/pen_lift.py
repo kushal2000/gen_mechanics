@@ -29,7 +29,7 @@ class PenLift:
 
     def reset(self, ids: torch.Tensor) -> None:
         env, n = self.env, len(ids)
-        yaw = (torch.rand(n, device=env.device) * 2 - 1) * math.pi
+        yaw = env.start_pen_yaw(n)
         pos = torch.zeros(n, 3, device=env.device)
         pos[:, 0], pos[:, 1] = self.cfg.centre_xy
         pos[:, 2] = env.pen_rest_height

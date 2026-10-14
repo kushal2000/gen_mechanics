@@ -91,10 +91,19 @@ class ResetCfg:
     """Robot state at every reset. Each finger joint goes ``finger_pos_fraction`` of the way from its default to a
     uniform draw over its whole range (in-hand's reset_dof_pos_random_interval_fingers, there 0.1; here 1.0: any
     pose the joints allow), with a velocity uniform in +-``finger_vel``; the PD targets start at the drawn pose.
-    The wrist starts at WristCfg.default_pose, at rest."""
+    The wrist starts at WristCfg.default_pose, at rest. The pen's yaw: below."""
 
     finger_pos_fraction: float = 1.0
     finger_vel: float = 0.5                  # rad/s
+    # The pen's starting yaw (every task): uniform over +-180 deg, or fixed at pen_yaw_deg -- the angle of its tip
+    # (local +x end) from world +x, the direction the fingers point. -90: across the hand, tip toward the thumb side
+    # of the left hand (-y).
+    randomize_pen_yaw: bool = True
+    pen_yaw_deg: float = -90.0
+    # Desynchronise the envs: after the first reset each env's episode clock starts at a random point of its
+    # first goal's time (as Isaac Gym's / rsl_rl's random initial episode length). Otherwise every env starts
+    # together and, until goals are hit, times out together, so each rollout holds one phase of the episode.
+    stagger_initial_episodes: bool = False
 
 
 @configclass
