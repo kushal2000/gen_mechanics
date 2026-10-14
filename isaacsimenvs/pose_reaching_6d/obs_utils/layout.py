@@ -13,8 +13,9 @@ JOINT_BOX_POINTS: int = 4
 JOINT_BOX_DIM: int = 3 * JOINT_BOX_POINTS
 
 
-def obs_field_sizes(spec) -> dict[str, int]:
-    """Per-field widths for ``spec``."""
+def obs_field_sizes(spec, extra_sizes: dict[str, int] | None = None) -> dict[str, int]:
+    """Per-field widths for ``spec``; ``extra_sizes`` adds global fields another env emits (e.g. in-hand
+    olympics' task_onehot)."""
     n_joints = spec.num_joints
     n_hand = spec.num_hand_joints
     n_tips = spec.num_fingertips
@@ -59,19 +60,20 @@ def obs_field_sizes(spec) -> dict[str, int]:
         "reward": 1,
         "fingertip_pos_rel_palm": 3 * n_tips,
         "fingertip_pos_rel_ee": 3 * n_tips,
+        **(extra_sizes or {}),
     }
 
 
-def compute_obs_dim(field_list, spec) -> int:
-    sizes = obs_field_sizes(spec)
+def compute_obs_dim(field_list, spec, extra_sizes: dict[str, int] | None = None) -> int:
+    sizes = obs_field_sizes(spec, extra_sizes)
     unknown = [f for f in field_list if f not in sizes]
     if unknown:
         raise KeyError(f"unknown observation field(s) {unknown}; valid: {sorted(sizes)}")
     return sum(sizes[f] for f in field_list)
 
 
-def field_offsets(field_list, spec) -> dict[str, tuple[int, int]]:
-    sizes = obs_field_sizes(spec)
+def field_offsets(field_list, spec, extra_sizes: dict[str, int] | None = None) -> dict[str, tuple[int, int]]:
+    sizes = obs_field_sizes(spec, extra_sizes)
     unknown = [f for f in field_list if f not in sizes]
     if unknown:
         raise KeyError(f"unknown observation field(s) {unknown}; valid: {sorted(sizes)}")
@@ -114,7 +116,7 @@ OPTIONAL_HAND_TOKEN_FIELDS: frozenset[str] = frozenset({"object_keypoints_rel_jo
 MASK_FIELD = "joint_enabled"
 
 
-def build_token_layout(spec, field_list) -> dict:
+def build_token_layout(spec, field_list, extra_sizes: dict[str, int] | None = None) -> dict:
     """Describe exact gathers from a flat observation into hand-joint tokens.
 
     ``joint_enabled`` is NOT a token feature: it is gathered separately
@@ -122,7 +124,7 @@ def build_token_layout(spec, field_list) -> dict:
     existence flag carries no information the policy should act on, and a column that is a
     constant 1 on a fixed hand is exactly what an input normaliser turns into noise.
     """
-    offsets = field_offsets(field_list, spec)
+    offsets = field_offsets(field_list, spec, extra_sizes)
     n_arm = spec.num_arm_joints
     n_hand = spec.num_hand_joints
     missing = [f for f in (*JOINT_WIDTH_FIELDS, *HAND_TOKEN_FIELDS)
@@ -182,7 +184,7 @@ def build_token_layout(spec, field_list) -> dict:
     token_dim = widths.pop() if widths else 0
 
     return {
-        "obs_dim": compute_obs_dim(field_list, spec),
+        "obs_dim": compute_obs_dim(field_list, spec, extra_sizes),
         "enabled_columns": enabled_columns,
         "n_arm": n_arm,
         "n_hand": n_hand,

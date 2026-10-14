@@ -29,8 +29,14 @@ ARCH="${ARCH:-mlp}"
 case "$ARCH" in
     mlp) AGENT=rl_games_sapg_nolstm_cfg_entry_point ;;
     lstm) AGENT=rl_games_sapg_cfg_entry_point ;;
-    *) echo "ARCH must be mlp or lstm, got $ARCH"; exit 1 ;;
+    # transformer: OlympicsJointTransformerSAPG.yaml, the per-joint transformer, with its own training settings
+    # (lr 1e-4, 2 mini-epochs, minibatch 16384) in place of the MLP's below.
+    transformer) AGENT=rl_games_joint_transformer_cfg_entry_point ;;
+    *) echo "ARCH must be mlp, lstm or transformer, got $ARCH"; exit 1 ;;
 esac
+LEARNER=(agent.params.config.learning_rate=0.0005 agent.params.config.mini_epochs=5
+         "agent.params.config.minibatch_size=$MINIBATCH")
+[[ "$ARCH" == transformer ]] && LEARNER=()
 KEYPOINT="${KEYPOINT:-best_so_far}"     # env.reward.keypoint_reward: best_so_far | absolute
 PEN_SHAPE="${PEN_SHAPE:-capsule}"       # env.pen.shape: capsule | box (cannot roll)
 HAND="${HAND:-wuji2_left_uniform_handonly}"   # env.hand.robot_spec, e.g. wuji2_left_uniform_handonly_only_thumb_index
@@ -69,9 +75,8 @@ exec .venv_isaacsim/bin/python -u coevolution/train.py \
     agent.params.config.central_value_config=null \
     agent.params.network.separate=false \
     "agent.params.config.gamma=$GAMMA" \
-    agent.params.config.learning_rate=0.0005 agent.params.config.lr_schedule=adaptive \
-    agent.params.config.horizon_length=16 agent.params.config.mini_epochs=5 \
-    "agent.params.config.minibatch_size=$MINIBATCH" \
+    agent.params.config.lr_schedule=adaptive agent.params.config.horizon_length=16 \
+    ${LEARNER[@]+"${LEARNER[@]}"} \
     "agent.params.config.expl_coef_block_size=$((NUM_ENVS / 6))" \
     "agent.params.config.max_epochs=$EPOCHS" \
     agent.params.config.save_frequency=100 agent.params.config.save_best_after=0 \

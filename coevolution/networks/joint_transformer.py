@@ -267,6 +267,24 @@ def install_rl_games_hook(algo) -> bool:
     return True
 
 
+class _WithArmJoints:
+    """A robot spec with ``n`` more arm joints ahead of its own (params.network.extra_arm_joints)."""
+
+    def __init__(self, spec, n: int):
+        self._spec, self._n = spec, n
+
+    def __getattr__(self, name):
+        return getattr(self._spec, name)
+
+    @property
+    def num_arm_joints(self) -> int:
+        return self._spec.num_arm_joints + self._n
+
+    @property
+    def num_joints(self) -> int:
+        return self._spec.num_joints + self._n
+
+
 class JointTransformerNet(NetworkBuilder.BaseNetwork):
     """One token per hand joint, one global token, one shared action head."""
 
@@ -511,6 +529,11 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         self.affine_norm = bool(params.get("affine_norm", True))
         self.value_head_units = list(params.get("value_head_units", [256, 128]))
         self.robot_spec_name = params["robot_spec"]
+        # Joints ahead of the spec's own in canonical order that the spec does not know about, treated as arm
+        # joints (global context in, the arm head out): in-hand olympics' 6-DOF dummy wrist on a hand-only spec.
+        self.extra_arm_joints = int(params.get("extra_arm_joints", 0))
+        # Global observation fields the pose-reaching layout does not know, with their widths (olympics' task_onehot).
+        self.extra_field_sizes = dict(params.get("extra_field_sizes", None) or {})
         key = "state_list" if self.central_value else "obs_list"
         if key not in params:
             raise KeyError(
@@ -530,7 +553,9 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         from isaacsimenvs.pose_reaching_6d.scene_utils.robots import get_robot_spec
 
         spec = get_robot_spec(self.robot_spec_name)
-        layout = build_token_layout(spec, self.field_list)
+        if self.extra_arm_joints:
+            spec = _WithArmJoints(spec, self.extra_arm_joints)
+        layout = build_token_layout(spec, self.field_list, self.extra_field_sizes)
         if layout["obs_dim"] != env_obs_dim:
             raise ValueError(
                 f"joint_transformer layout mismatch: {self.robot_spec_name} with "

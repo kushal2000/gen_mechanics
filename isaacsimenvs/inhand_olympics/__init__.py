@@ -32,5 +32,6 @@ gym.register(
         "rl_games_cfg_entry_point": str(_CFG_DIR / "PoseReachPPO.yaml"),
         "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "PoseReachSAPG.yaml"),
         "rl_games_sapg_nolstm_cfg_entry_point": str(_CFG_DIR / "PoseReachSAPGNoLSTM.yaml"),
+        "rl_games_joint_transformer_cfg_entry_point": str(_CFG_DIR / "OlympicsJointTransformerSAPG.yaml"),
     },
 )
