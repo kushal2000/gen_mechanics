@@ -12,12 +12,12 @@ The setup:
 
 The figure is `plots/embodiment_curriculum.png`.
 - **To regenerate it:** `.venv_isaacsim/bin/python experiments/12oct_inhand_olympics/analysis/plot_embodiment_curriculum.py`. The numbers behind it go to `debug_outputs/inhand_olympics/embodiment_curriculum/embodiment_curriculum.json`.
-- **Left panel:** goals/episode against total training epochs, with the curriculum's 900 thumb + index epochs counted.
-- **Right panel:** the same against 5-finger experience only, counting a mix epoch as half a 5-finger epoch.
+- **What it shows:** the 5-finger hand's goals/episode against total training epochs, with the curriculum's 900 thumb + index epochs counted (shaded). Blue is the curriculum; orange is the same network (joint transformer) trained on the full hand from scratch, one line per seed. The full-hand MLP runs are in the table below, not the figure.
+- **Smoothing:** a 25-epoch moving average, as in 08oct's training plots.
 
 ## The numbers (14 Oct)
 
-All values are 5-finger goals/episode: training-time, leader SAPG block, 20-epoch mean. All runs use stagger and default pushes.
+All values are 5-finger goals/episode: training-time, leader SAPG block, 20-epoch mean (taken 14 Oct, before the figure moved to a 25-epoch mean). All runs use stagger and default pushes.
 
 | 5-finger hand | at 1,500 epochs | at ~1,600 epochs | first epoch ≥ 1 goal/ep | latest |
 |---|---|---|---|---|
