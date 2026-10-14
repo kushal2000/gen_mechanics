@@ -1,6 +1,6 @@
-"""Meshes for the grammar viewer: rounded-box links, palm plates, joint
-markers, and the commercial URDF overlay. Numpy + scipy; viser only through
-the server handle passed in."""
+"""Meshes for the grammar viewer: servo-sized links, base motors, the mount,
+the hinge motor, palm plates, joint markers, and the commercial URDF
+overlay. Numpy + scipy; viser only through the server handle passed in."""
 
 from __future__ import annotations
 
@@ -11,31 +11,17 @@ import numpy as np
 from scipy.spatial import ConvexHull
 
 from hand_sampler.grammar import derive as gdv
-from hand_sampler.grammar.hand import LINK_RADIUS_MM, Hand
+from hand_sampler.grammar.hand import Hand, finger_section
 
 MM = 1e-3
 FINGER_RGB = [(230, 90, 70), (70, 150, 230), (90, 190, 100), (230, 170, 50), (160, 100, 210), (60, 190, 190)]
 PALM_RGB = (175, 175, 182)
 SECTION_RGB = (150, 150, 165)
+MOUNT_RGB = (110, 110, 118)
 JOINT_RGB = (40, 40, 48)
+HOT_RGB = (220, 30, 30)
 PALM_UP = np.array([[0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]])
-"""Palm frame -> viewer world: palm normal up (+z), fingers along +x."""
-
-
-def _icosphere(radius: float) -> np.ndarray:
-    t = (1.0 + 5 ** 0.5) / 2.0
-    v = np.array([[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t],
-                  [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]], dtype=float)
-    hull = ConvexHull(v)
-    verts = list(v / np.linalg.norm(v, axis=1, keepdims=True))
-    for a, b, c in hull.simplices:          # one subdivision: edge midpoints
-        for i, j in ((a, b), (b, c), (c, a)):
-            m = verts[i] + verts[j]
-            verts.append(m / np.linalg.norm(m))
-    return np.unique(np.round(np.array(verts), 9), axis=0) * radius
-
-
-_SPHERE = _icosphere(1.0)
+"""Palm frame -> viewer world: palm normal up (+z), +z of the palm along +x."""
 
 
 def hull_mesh(points: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -53,19 +39,22 @@ def hull_mesh(points: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return V.astype(np.float32), F.astype(np.int32)
 
 
-@lru_cache(maxsize=512)
-def rounded_box(x0_mm: float, x1_mm: float) -> Tuple[np.ndarray, np.ndarray]:
-    """A link's rounded box (core x0..x1 along the link, the shared
-    cross-section) in its link frame, metres."""
-    centre = np.array([(x0_mm + x1_mm) / 2.0, 0.0, 0.0]) * MM
-    half = np.array([(x1_mm - x0_mm) / 2.0, gdv.CORE_HALF_Y_MM, gdv.CORE_HALF_Z_MM]) * MM
-    corners = gdv.box_corners(centre, half)
-    pts = (corners[:, None, :] + _SPHERE[None] * LINK_RADIUS_MM * MM).reshape(-1, 3)
-    return hull_mesh(pts)
+@lru_cache(maxsize=1024)
+def _box_mesh(key: Tuple[float, ...]) -> Tuple[np.ndarray, np.ndarray]:
+    return hull_mesh(np.array(key, dtype=float).reshape(8, 3))
+
+
+def box_mesh(corners_m: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """A box's mesh from its 8 corners (metres, in the frame it is drawn in)."""
+    return _box_mesh(tuple(np.round(np.asarray(corners_m, dtype=float), 9).ravel().tolist()))
 
 
 def plate_mesh(outline_mm: np.ndarray, origin_mm=(0.0, 0.0)) -> Tuple[np.ndarray, np.ndarray]:
     return hull_mesh(gdv.plate_points_m(outline_mm, origin_mm))
+
+
+def _darker(rgb: Tuple[int, int, int], f: float = 0.6) -> Tuple[int, int, int]:
+    return tuple(int(c * f) for c in rgb)
 
 
 def _pose(T: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -76,16 +65,17 @@ def _pose(T: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 
 
 class HandDrawing:
-    """One grammar hand in the viser scene: plates, links, joint markers.
-    `build` makes the meshes for a hand; `pose` moves them to a joint
-    vector."""
+    """One grammar hand in the viser scene: one body per solid (the main
+    plate, the mount, the hinge motor, the part beyond the cut, each base
+    motor, each link) and joint markers. `build` makes the meshes for a
+    hand; `pose` moves them to a joint vector. One colour per finger (its
+    base motor darker), no other markers."""
 
     def __init__(self, server, root: str = "/hand"):
         self.server = server
         self.root = root
         self.handles: List[object] = []
-        self.links: Dict[Tuple[int, int], object] = {}
-        self.sections: Dict[int, object] = {}
+        self.bodies: Dict[Tuple, object] = {}
         self.markers: Dict[Tuple[int, int], object] = {}
         self.hand: Optional[Hand] = None
         self.frame = server.scene.add_frame(root, show_axes=False, wxyz=_pose(_pad(PALM_UP))[0])
@@ -96,44 +86,55 @@ class HandDrawing:
                 h.remove()
             except Exception:  # noqa: BLE001
                 pass
-        self.handles, self.links, self.sections, self.markers = [], {}, {}, {}
+        self.handles, self.bodies, self.markers = [], {}, {}
+
+    def _add(self, key: Tuple, name: str, mesh, color, hot) -> None:
+        V, F = mesh
+        h = self.server.scene.add_mesh_simple(f"{self.root}/{name}", V, F, color=HOT_RGB if key in hot else color,
+                                              flat_shading=True)
+        self.bodies[key] = h
+        self.handles.append(h)
 
     def build(self, hand: Hand, highlight: Sequence[Tuple] = ()) -> None:
         self.clear()
         self.hand = hand
-        s = self.server.scene
-        outlines = gdv.palm_outlines_mm(hand)
-        V, F = plate_mesh(outlines[-1])
-        self.handles.append(s.add_mesh_simple(f"{self.root}/palm", V, F, color=PALM_RGB, flat_shading=True))
-        for k, p in enumerate(hand.palm_joints):
-            V, F = plate_mesh(outlines[k], (p.y, p.z))
-            h = s.add_mesh_simple(f"{self.root}/section{k}", V, F, color=SECTION_RGB, flat_shading=True)
-            self.sections[k] = h
-            self.handles.append(h)
         hot = {k for pair in highlight for k in pair}
+        outlines = gdv.palm_outlines_mm(hand)
+        self._add(("palm", -1), "palm", plate_mesh(outlines[-1]), PALM_RGB, hot)
+        self._add(("mount",), "mount", hull_mesh(gdv.mount_points_m()), MOUNT_RGB, hot)
+        g = gdv.hand_geometry(hand)
+        if hand.palm_joints:
+            hinge = gdv.palm_hinge_m(hand) / MM
+            self._add(("palm", 0), "section", plate_mesh(outlines[0], tuple(hinge[1:])), SECTION_RGB, hot)
+            self._add(("hinge",), "hinge_motor", box_mesh(g.hinge_box.corners() * MM), MOUNT_RGB, hot)
         for i, f in enumerate(hand.fingers):
             rgb = FINGER_RGB[i % len(FINGER_RGB)]
-            for j, jt in enumerate(f.joints):
-                x0, x1 = gdv.link_core_x_mm(jt.length, j == len(f.joints) - 1)
-                V, F = rounded_box(float(x0), float(x1))
-                color = (220, 30, 30) if ("link", i, j) in hot else rgb
-                h = s.add_mesh_simple(f"{self.root}/f{i}/l{j}", V, F, color=color)
-                self.links[(i, j)] = h
-                m = s.add_icosphere(f"{self.root}/f{i}/j{j}", radius=0.0045, color=JOINT_RGB)
+            motor = gdv.base_motor_boxes_mm(f)[0].corners() * MM
+            if finger_section(hand, i) == 0:          # drawn relative to the hinge, moved with the part beyond the cut
+                motor = motor - gdv.palm_hinge_m(hand)
+            self._add(("motor", i), f"f{i}/motor", box_mesh(motor), _darker(rgb), hot)
+            for j in range(len(f.joints)):
+                self._add(("link", i, j), f"f{i}/l{j}", box_mesh(gdv.link_points_m(hand, i, j)), rgb, hot)
+                m = self.server.scene.add_icosphere(f"{self.root}/f{i}/j{j}", radius=0.0045, color=JOINT_RGB)
                 self.markers[(i, j)] = m
-                self.handles += [h, m]
+                self.handles.append(m)
 
     def pose(self, q: np.ndarray) -> None:
         if self.hand is None:
             return
         p = gdv.fk(self.hand, q)
-        for k, h in self.sections.items():
-            T = p.palm[k] @ _translate(gdv.palm_hinge_m(self.hand, k))
-            h.wxyz, h.position = _pose(T)
-        for (i, j), h in self.links.items():
+        if self.hand.palm_joints:
+            T = p.palm[0] @ _translate(gdv.palm_hinge_m(self.hand))
+            wxyz, pos = _pose(T)
+            self.bodies[("palm", 0)].wxyz, self.bodies[("palm", 0)].position = wxyz, pos
+            for i in range(len(self.hand.fingers)):
+                if finger_section(self.hand, i) == 0:
+                    self.bodies[("motor", i)].wxyz, self.bodies[("motor", i)].position = wxyz, pos
+        for (i, j), m in self.markers.items():
             T = p.links[i][j]
+            h = self.bodies[("link", i, j)]
             h.wxyz, h.position = _pose(T)
-            self.markers[(i, j)].position = T[:3, 3]
+            m.position = T[:3, 3]
 
     def set_visible(self, visible: bool) -> None:
         for h in self.handles:
@@ -144,7 +145,7 @@ class HandDrawing:
         if self.hand is None:
             return np.zeros(3), 0.2
         p = gdv.fk(self.hand, q)
-        pts = [p.tips.reshape(-1, 3), np.zeros((1, 3))] + [l[:, :3, 3] for l in p.links]
+        pts = [p.tips.reshape(-1, 3), gdv.mount_points_m()] + [l[:, :3, 3] for l in p.links]
         pts = np.concatenate(pts) @ PALM_UP.T
         c = (pts.min(0) + pts.max(0)) / 2.0
         return c, float(np.linalg.norm(pts.max(0) - pts.min(0)) / 2.0 + 0.03)

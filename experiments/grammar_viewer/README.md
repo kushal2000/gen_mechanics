@@ -1,6 +1,6 @@
 # Grammar viewer
 
-A viser viewer for the locked hand grammar (`hand_sampler/grammar/`). The grammar itself, every decision and its reason, is explained in [`project-notes/grammar/GRAMMAR-OVERVIEW.md`](../../project-notes/grammar/GRAMMAR-OVERVIEW.md) and decided in `project-notes/grammar/GRAMMAR-LOCK-2026-10-07.md`. Everything here runs on the CPU; Isaac is never imported.
+A viser viewer for the hand grammar (`hand_sampler/grammar/`). The grammar itself, every decision and its reason, is explained in [`project-notes/grammar/GRAMMAR-OVERVIEW.md`](../../project-notes/grammar/GRAMMAR-OVERVIEW.md) and decided in `project-notes/grammar/GRAMMAR-LOCK-2026-10-07.md`. Everything here runs on the CPU; Isaac is never imported.
 
 ## Setup (once)
 
@@ -23,54 +23,50 @@ Open http://127.0.0.1:8080 (from a laptop: `ssh -L 8080:127.0.0.1:8080 <this mac
 
 One line per item; longer explanations are hover text.
 
-- **Grammar**: **Random** draws hands under the current rules until the ticked viability checks pass, and says "found after N tries". Every draw is within the rules and passes C1 by construction (the hand is built finger by finger, each finger redrawn until it clears the palm and the fingers before it), so only C2 can reject.
-- **Rules**: **Evolution Rules** (what the simulator builds and evolution uses: hinge and coupled joints), **No Rules** (the whole grammar: sliding joints too) or **Custom Rules** (any field edited). The fields can only tighten the grammar: max fingers (2-6), max joints per finger (1-5), max palm joints (up to 6), coupled and sliding joints, max finger length (250 mm), min finger spacing (19 mm), max base distance from the wrist centre (160 mm). Fixed by the grammar: link lengths 0 or 15-90 mm, fingertip at least 10 mm; every finger base on the rim of its plate (at most 8 mm inside the convex hull of the heel disc, the hinges and the bases on that plate), never in the middle of the palm; every finger closes toward the grasp point (the object's start point above the palm). The last line says whether the hand on screen follows the rules.
+- **Grammar**: **Random** draws hands under the current rules until the ticked viability checks pass, and says "found after N tries". Every draw is within the rules and passes C1 by construction (the hand is built finger by finger, each finger's base drawn among the placements whose servo fits and the finger redrawn until it clears the hand so far), so only C2 can reject.
+- **Rules**: **Feetech Rules** (hands buildable from Feetech servos: what the simulator builds and evolution uses), **No Rules** (the whole grammar: coupled and sliding joints too) or **Custom Rules** (any field edited). The fields can only tighten the grammar: max fingers (2-6), max joints per finger (1-5), max palm joints (0-1), coupled and sliding joints, max finger length (250 mm), the base grid (Feetech: 40 mm), min and max base distance from the palm centre (Feetech: 40-90 mm), fingers face outward, servo link lengths (links at least as long as two servos need, fingertips at least 30 mm). The last line says whether the hand on screen follows the rules.
 - **Viability**: the two checks, one line each with the measured value; untick one to stop Random requiring it.
-  - **C1, no overlap**: no two links (rounded boxes; the palm plate counts) overlap by more than 3 mm, at the zero pose and at the episode start pose.
+  - **C1, clearance**: every two solids (links, base servos, the mount, the hinge servo, the palm) keep one printed wall (2 mm) apart at the zero pose and at the episode start pose, except parts that touch by construction; no base servo in a palm cut's seam.
   - **C2, fingertips meet above the palm**: at least one pair of fingers whose fingertips' reachable regions come within 20 mm above the plate, over the palm.
-- **Commercial hand**: a commercial hand conformed onto the grammar's fine grid, drawn over its own URDF meshes (ghosted), with one line: fingers and joints, the fit (largest joint, axis and fingertip error) and whether it follows the rules. Curl 0 is the real hand's zero pose (the conformed hand at its zero-pose difference); the meshes follow the pose. MIDAS has no meshes on this branch (only its URDF was copied).
-- **Mutation**: **Coarse (10 mm / 30°)** or **Fine (1 mm / 5°)**, **Random mutation**, **Back**, and one button per operator, shown only when it has a child that keeps these rules and C1. A mutation tries the operator's applications in random order and keeps the first such child. After a mutation, one line says what changed.
-- **Pose**: **curl** (bending joints at this fraction of their upper limit; 0.35 is the episode start pose; other joints stay at 0), **palm bend** (every palm joint at this fraction of its ±30° range, so the hinged sections fold; shown only when the hand has a palm joint) and **re-centre view**.
+- **Commercial hand**: a commercial hand conformed onto the grammar's grid (10 mm / 30°), drawn over its own URDF meshes (ghosted), with one line: fingers and joints, the fit (largest joint, axis and fingertip error, target 10 mm / 20°) and whether it follows the rules. Curl 0 is the real hand's zero pose (the conformed hand at its zero-pose difference); the meshes follow the pose. MIDAS has no meshes on this branch (only its URDF was copied).
+- **Mutation**: **Random mutation**, **Back**, and one button per operator, shown only when it has a child that keeps these rules and C1. One grid: every value moves 10 mm or 30°, a base one grid step. A mutation tries the operator's applications in random order and keeps the first such child. After a mutation, one line says what changed.
+- **Pose**: **curl** (bending joints at this fraction of their upper limit; 0.35 is the episode start pose; other joints stay at 0), **palm bend** (the palm joint at this fraction of its ±30° range, so the part beyond the cut folds; shown only when the hand has a cut) and **re-centre view**.
 
-On screen: the palm plate (grey) from the heel disc at the wrist to the knuckles, hinged palm sections (darker grey), rounded-box links in one colour per finger, dark joint markers; links of a failing C1 pair in red. The palm faces up (+z) with the fingers along +x.
+On screen: the palm plate (grey) around the mount (dark grey, behind the palm's centre), the part beyond a cut (darker grey) and its hinge servo, each finger's base servo (its finger's colour, darker) and its servo-sized links in one colour per finger, dark joint markers; solids of a failing C1 pair in red. The palm faces up (+z).
 
 ## Words
 
 | In the panel | In the code (`hand_sampler/grammar/hand.py`) |
 |---|---|
-| finger | `Finger`: base `y`, `z` (mm from the wrist centre), `facing`, `tilt` (degrees), its joints, `palm_joint` |
+| finger | `Finger`: base `y`, `z` (mm from the palm centre), `facing`, `tilt` (degrees), its joints |
 | joint + link | `Joint`: `type` (hinge, coupled, sliding), `axis` (az, el) in degrees, `length` of the link after it (mm) |
-| palm joint, palm section | `PalmJoint`: hinge point `y`, `z` and `axis`; the section is the plate around its fingers and the hinge |
+| palm cut | `PalmJoint`: the line's direction `facing` and its distance `offset` from the palm centre; the part beyond it hinges along it |
 | bend / spread / twist | the derived kinds flexion / abduction / roll (`derive.joint_kind`) |
-| Evolution Rules / No Rules | `EVOLUTION_RULES` / `NO_RULES` (`Rules`) |
-| Coarse / Fine | `stage="coarse"` / `"fine"` (`operators.STEPS`) |
+| Feetech Rules / No Rules | `FEETECH_RULES` (also `EVOLUTION_RULES`) / `NO_RULES` (`Rules`) |
+| servo | the Feetech HL-3915 (`motor.py`) |
 | C1 / C2 | `viability.c1_self_overlap` / `viability.c2_workspace_overlap` |
 
 ## Parameters
 
-Per hand: what evolution changes. Global: one value for every hand.
+Per hand: what evolution changes. Global: one value for every hand. Ranges under the Feetech rules (the grammar's own in brackets).
 
-| Parameter | Per hand or global | Range | Coarse step | Fine step |
-|---|---|---|---|---|
-| fingers | per hand | 2-6 | add / remove a finger | - |
-| joints per finger | per finger | 1-5 | split / merge a link | - |
-| palm joints | per hand | 0-6, one per finger at most, never without a finger | give / move / remove | - |
-| base position (y, z) | per finger | 10-160 mm from the wrist centre; neighbours at least 19 mm apart; on the rim of its plate (at most 8 mm inside) | 10 mm | 1 mm |
-| facing | per finger | full circle | 30° | 5° |
-| tilt | per finger | -30° to +90° | 30° | 5° |
-| joint axis (two angles) | per joint | any direction (a line; its sign is derived), in the link frame: x along the finger, y the closing direction, z = x × y | 30° | 5° |
-| closing direction | derived per finger | square to the finger, toward the grasp point (the object's start point above the palm); + on a bending joint brings the tip nearer that point | - | - |
-| joint type | per joint | hinge, coupled (x1.1 the joint before it), sliding | couple / uncouple | - |
-| link length | per link | 0 or 15-90 mm, fingertip 10-90 mm; finger at most 250 mm | 10 mm (skips 1-14) | 1 mm |
-| palm hinge position | per palm joint | 15-110 mm from the wrist centre | 10 mm | 1 mm |
-| palm hinge axis | per palm joint | any direction | 30° | 5° |
-| link cross-section | global | rounded box 19 x 18 mm, 6 mm corners | - | - |
-| palm plate | global | 37 mm thick; outline: hull of the bases and a 20 mm heel disc at the wrist | - | - |
-| clearance | random hands and every mutant | no overlap at rest, none over 3 mm at the start pose (C1); a random finger is redrawn up to 50 times, a mutation keeps the first child that passes | - | - |
-| joint ranges | global per kind | bend -30° to +90°, spread ±30°, twist ±90°, palm ±30°, sliding -20 to +25 mm | - | - |
-| physics | global | 0.5 N m, 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, 1750 kg/m³, friction 0.5 | - | - |
-
-Every coarse value lies on the fine grid. Structural operators belong to the coarse stage only.
+| Parameter | Per hand or global | Range | Step |
+|---|---|---|---|
+| fingers | per hand | 2-6 | add / remove a finger |
+| joints per finger | per finger | 1-5 | split / merge a link |
+| palm cut | per hand | none or one straight line, a finger on each side | cut / remove; move 10 mm; turn 30° |
+| base position (y, z) | per finger | the 40 mm grid, 40-90 mm from the palm centre (10 mm grid, 10-160 mm) | one grid step |
+| facing | per finger | outward (any) | 30° |
+| tilt | per finger | -30° to +90° | 30° |
+| joint axis (two angles) | per joint | 31 directions (a line; its sign is derived), in the link frame: x along the finger, y the closing direction (the palm normal turned by the tilt), z = x × y | 30° |
+| joint type | per joint | hinge (hinge, coupled x1.1 the joint before it, sliding) | couple / uncouple |
+| link length | per link | the servo floor for its two axes (30-50 mm) to 90 mm, 0 for two joints at one point between different axes square to the finger; fingertip 30-90 mm (0 or 10-90; fingertip 10-90); finger at most 250 mm | 10 mm |
+| links | global | servo-sized: one box around each link's yoke and the servo it carries | - |
+| palm plate | global | 24 mm thick; outline: hull of the mount and the servos' housings; a cut leaves an 8.6 mm seam | - |
+| base depth | derived | the first servo's housing flush with the front face | - |
+| clearance | random hands and every mutant | C1 at rest and at the start pose; a random finger is redrawn up to 50 times, a mutation keeps the first child that passes | - |
+| joint ranges | global per kind | bend -30° to +90°, spread ±30°, twist ±90°, palm ±30°, sliding -20 to +25 mm | - |
+| physics | global | 0.5 N m, 5 rad/s, stiffness 3, damping 0.078, armature 0.00058, 1750 kg/m³, friction 0.5 | - |
 
 ## Mutation operators
 
@@ -78,23 +74,21 @@ Every coarse value lies on the fine grid. Structural operators belong to the coa
 
 | Button | Operator | What it does |
 |---|---|---|
-| move a finger | `move_finger` | the base by one step along y or z |
-| turn a finger | `turn_finger` | the facing by one step |
-| tilt a finger | `tilt_finger` | the tilt by one step |
-| lengthen or shorten a link | `length` | one link by one step (shortening 15 mm gives 0, lengthening 0 gives 15) |
-| turn a joint axis | `axis_az` | the axis around the link by one step |
-| tip a joint axis | `axis_el` | the axis toward or away from the link by one step |
-| move / turn / tip a palm hinge | `move_hinge`, `hinge_az`, `hinge_el` | a palm joint's hinge by one step |
-| add a finger | `add_finger` | a one-joint finger (bend, 40 mm) at a free spot, facing outward |
-| remove a finger | `remove_finger` | any finger in one step; a palm joint left without a finger goes too |
-| add a joint (split a link) | `split` | a new joint inside a link (at 0, half or all of it), kind drawn with the commercial mix; the finger keeps its length |
-| remove a joint (merge two links) | `merge` | one joint; the links on either side become one |
-| couple or uncouple a joint | `couple` | a joint follows the joint before it (x1.1), or moves on its own |
-| give a finger its own palm joint | `own_palm_joint` | a new hinged section under the finger (hinge halfway to the wrist, along the palm) |
-| move a finger to another palm part | `move_to_section` | onto another palm joint's section or back onto the main palm |
-| remove a palm joint | `remove_palm_joint` | its fingers return to the main palm |
+| move a finger | `move_finger` | the base by one grid step along y or z |
+| turn a finger | `turn_finger` | the facing by 30° |
+| tilt a finger | `tilt_finger` | the tilt by 30° |
+| lengthen or shorten a link | `length` | one link to its next allowed length (from its shortest down to 0 where allowed) |
+| turn a joint axis | `axis_az` | the axis around the link by 30° (links move to their new shortest if needed) |
+| tip a joint axis | `axis_el` | the axis toward or away from the link by 30° |
+| move / turn the palm cut | `move_cut`, `turn_cut` | the line by 10 mm or 30° |
+| add a finger | `add_finger` | a one-joint finger (bend, 40 mm) at a free spot, facing away from the centre |
+| remove a finger | `remove_finger` | any finger in one step; a cut left with no finger on a side goes too |
+| add a joint (split a link) | `split` | a new joint at any 10 mm point of a link, kind drawn with the commercial mix; links too short grow to their shortest |
+| remove a joint (merge two links) | `merge` | one joint; the links on either side become one (at most 90 mm) |
+| couple or uncouple a joint | `couple` | No Rules only: a joint follows the joint before it (x1.1), or moves on its own |
+| cut the palm / remove the palm cut | `add_cut`, `remove_cut` | a straight cut with a finger on each side, or none |
 
-Inverse pairs: each parameter step and its opposite (away from the 0/15 mm gap and the twist pole), split and merge, add and remove a finger, couple twice, give a finger its own palm joint and remove it (or move the finger back).
+Inverse pairs: each parameter step and its opposite (when no link was refit and away from the twist pole), add and remove a finger, cut and remove the cut, couple twice.
 
 ## Tests
 
@@ -102,4 +96,4 @@ Inverse pairs: each parameter step and its opposite (away from the 0/15 mm gap a
 cd experiments/grammar_viewer && ../../.venv_viewer/bin/python -m pytest -q tests
 ```
 
-`tests/test_viewer.py` drives the viewer's callbacks headless against a local viser server: Random under the rules, the Rules dropdown and fields, the checks, the operator buttons, mutation and Back, a commercial hand over its meshes, the pose, and the rounded-box mesh.
+`tests/test_viewer.py` drives the viewer's callbacks headless against a local viser server: Random under the rules, the Rules dropdown and fields, the checks, the operator buttons, mutation and Back, a commercial hand over its meshes, the pose, one drawn body per solid, and a link's box mesh.

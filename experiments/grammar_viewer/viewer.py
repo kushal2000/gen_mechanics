@@ -1,13 +1,13 @@
-"""The grammar viewer (viser): one compact panel for the locked hand grammar.
+"""The grammar viewer (viser): one compact panel for the hand grammar.
 
     .venv_viewer/bin/python experiments/grammar_viewer/viewer.py --port 8080 --host 127.0.0.1
 
-Grammar (Random, "found after N tries"), Rules (Evolution Rules / No Rules /
+Grammar (Random, "found after N tries"), Rules (Feetech Rules / No Rules /
 Custom Rules, the limits in plain words), Viability (C1 and C2, one line
 each), Commercial hand (the conformed hand over its URDF meshes, with its
-fit), Mutation (Coarse 10 mm / 30 deg, Fine 1 mm / 5 deg; only the operators
-that can act are shown) and Pose (curl, palm bend, re-centre). CPU only; Isaac is never
-imported.
+fit), Mutation (one grid: 10 mm / 30 deg, bases by the grid pitch; only the
+operators that can act are shown) and Pose (curl, palm bend, re-centre).
+CPU only; Isaac is never imported.
 """
 
 from __future__ import annotations
@@ -38,21 +38,21 @@ from hand_sampler.grammar import operators as gops  # noqa: E402
 from hand_sampler.grammar import viability as gvb  # noqa: E402
 from hand_sampler.grammar.fk import forward_kinematics  # noqa: E402
 from hand_sampler.grammar.hand import (  # noqa: E402
-    BASE_DISTANCE_MM, EVOLUTION_RULES, NO_RULES, RIM_TOLERANCE_MM, STEPS, Hand, Rules, check, parameter_count)
+    FEETECH_RULES, MOUNT_DEPTH_MM, NO_RULES, PLATE_HALF_MM, Hand, Rules, check, parameter_count)
 
 from gviewer import draw  # noqa: E402
 from gviewer import meshes as gmesh  # noqa: E402
 
-EVOLUTION, NONE, CUSTOM = "Evolution Rules", "No Rules", "Custom Rules"
-RULE_SETS: Dict[str, Optional[Rules]] = {EVOLUTION: EVOLUTION_RULES, NONE: NO_RULES, CUSTOM: None}
-STAGE_LABELS = {"Coarse (10 mm / 30°)": "coarse", "Fine (1 mm / 5°)": "fine"}
+FEETECH, NONE, CUSTOM = "Feetech Rules", "No Rules", "Custom Rules"
+RULE_SETS: Dict[str, Optional[Rules]] = {FEETECH: FEETECH_RULES, NONE: NO_RULES, CUSTOM: None}
 NO_HAND = "(none)"
 MAX_TRIES = 2000
 MESH_OPACITY = 0.35
 
-C1_HINT = ("No two links (rounded boxes; the palm plate counts as one) overlap by more than 3 mm, with every joint "
-           "at 0 and at the start pose (bending joints at 0.35 of their range). Deeper starting overlaps made the "
-           "physics engine push links apart at over 100 rad/s.")
+C1_HINT = ("Every two solids (servo-sized links, base motors, the mount, the hinge motor, the palm) keep one printed "
+           "wall (2 mm) apart, with every joint at 0 and at the start pose (bending joints at 0.35 of their range), "
+           "except parts that touch by construction (a joint's two sides, a motor in its palm pocket); no base "
+           "motor in a palm cut's seam.")
 C2_HINT = ("At least one pair of fingers whose fingertips can meet above the palm: each fingertip is swept over its "
            "own joints' ranges; only positions above the plate and over the palm count; two fingers pass if their "
            "swept tips come within 20 mm. Every commercial hand passes.")
@@ -85,7 +85,7 @@ class GrammarViewer:
 
         server.scene.set_up_direction("+z")
         server.scene.add_grid("/grid", width=0.6, height=0.6, cell_size=0.02, plane="xy",
-                              position=(0.0, 0.0, -gdv.PALM_THICKNESS_MM / 2 * 1e-3 - 0.002))
+                              position=(0.0, 0.0, -(PLATE_HALF_MM + MOUNT_DEPTH_MM) * 1e-3 - 0.002))
         self.drawing = draw.HandDrawing(server, "/hand")
         self.overlay = draw.MeshOverlay(server, "/hand/urdf")
         self._build_gui()
@@ -131,8 +131,9 @@ class GrammarViewer:
             ("sliding",) if self.gui_sliding.value else ())
         return Rules(joint_types=types, max_fingers=int(self.gui_fingers.value), max_joints=int(self.gui_joints.value),
                      max_palm_joints=int(self.gui_palm.value), max_finger_length_mm=int(self.gui_length.value),
-                     min_spacing_mm=int(self.gui_spacing.value),
-                     base_distance_mm=(BASE_DISTANCE_MM[0], int(self.gui_base.value))).clamp()
+                     base_pitch_mm=int(self.gui_pitch.value),
+                     base_distance_mm=(int(self.gui_base_min.value), int(self.gui_base.value)),
+                     outward_facing=bool(self.gui_outward.value), buildable_links=bool(self.gui_buildable.value)).clamp()
 
     def _show_rules(self, r: Rules) -> None:
         self._suppress = True
@@ -143,8 +144,11 @@ class GrammarViewer:
             self.gui_coupled.value = "coupled" in r.joint_types
             self.gui_sliding.value = "sliding" in r.joint_types
             self.gui_length.value = r.max_finger_length_mm
-            self.gui_spacing.value = r.min_spacing_mm
+            self.gui_pitch.value = r.base_pitch_mm
+            self.gui_base_min.value = r.base_distance_mm[0]
             self.gui_base.value = r.base_distance_mm[1]
+            self.gui_outward.value = r.outward_facing
+            self.gui_buildable.value = r.buildable_links
         finally:
             self._suppress = False
 
@@ -174,9 +178,13 @@ class GrammarViewer:
     # ------------------------------------------------------------------ actions
     def random(self, wait: bool = False, max_tries: int = MAX_TRIES) -> bool:
         def job():
-            rules, stage = self.rules(), self.stage()
+            rules = self.rules()
             for n in range(1, max_tries + 1):
-                h = gops.random_hand(self.rng, rules, stage)
+                try:
+                    h = gops.random_hand(self.rng, rules)
+                except gops.NoHand as exc:
+                    self.md_random.content = f"no hand under these rules: {exc}"
+                    return
                 v = gvb.viability(h)
                 if self._required_ok(v):
                     self.tries = n
@@ -206,39 +214,32 @@ class GrammarViewer:
             self._suppress = False
             n = parameter_count(rec["hand"])
             fit = (f"{rec['max_joint_mm']:.1f} mm joints, {rec['max_axis_deg']:.1f}° axes, {rec['max_tip_mm']:.1f} mm "
-                   f"tips ({'within' if rec['within_target'] else 'outside'} 5 mm / 10°)")
+                   f"tips ({'within' if rec['within_target'] else 'outside'} {gcf.TARGET_MM:g} mm / "
+                   f"{gcf.TARGET_DEG:g}°)")
             rules_note = "follows the rules" if not check(rec["hand"], self.rules()) else "outside these rules"
             self.md_fit.content = (f"{len(rec['hand'].fingers)} fingers, {n['joints']} joints; fit: {fit}; "
                                    f"{rules_note}. Meshes: {ms.summary()}")
         return self.run_job("commercial", job, wait)
 
-    def stage(self) -> str:
-        return STAGE_LABELS[self.gui_stage.value]
-
-    def set_stage(self, stage: str) -> None:
-        self.gui_stage.value = next(k for k, v in STAGE_LABELS.items() if v == stage)
-        with self.lock:
-            self._update_operator_buttons()
-
     def mutate(self, operator: Optional[str] = None, wait: bool = False) -> bool:
         def job():
             if self.hand is None:
                 return
-            rules, stage = self.rules(), self.stage()
+            rules = self.rules()
             if operator is None:
-                res = gops.mutate(self.hand, self.rng, rules, stage, tries=len(gops.OPERATORS))
+                res = gops.mutate(self.hand, self.rng, rules, tries=len(gops.OPERATORS))
                 if res is None:
                     self.md_mut.content = "no operator has a child that keeps the rules and C1"
                     return
                 child, name, mv = res
             else:
-                res = gops.apply_operator(self.hand, operator, self.rng, rules, stage)
+                res = gops.apply_operator(self.hand, operator, self.rng, rules)
                 if res is None:
                     self.md_mut.content = (f"'{gops.OPERATOR_BY_NAME[operator].label}' has no child that keeps the "
                                            f"rules and C1")
                     return
                 (child, mv), name = res, operator
-            self.last_change = f"{gops.OPERATOR_BY_NAME[name].label} ({stage}): {mv}"
+            self.last_change = f"{gops.OPERATOR_BY_NAME[name].label}: {mv}"
             self._set_hand(child, history="push", commercial=None,
                            viability=gvb.viability(child), frame=False)
             self.md_mut.content = self.last_change
@@ -280,8 +281,8 @@ class GrammarViewer:
             else:
                 self.commercial = commercial
             self.viability = viability
-            # commercial hands are exempt from C1 in the simulator (their overlaps come from the shared
-            # cross-section and are collision-filtered), so they are not painted red
+            # commercial hands are exempt from C1 in the simulator (their bases and links sit closer than
+            # servo-sized solids allow; the overlaps are collision-filtered), so they are not painted red
             bad = [(a, b) for a, b, _ in viability.c1.pairs] if self.gui_c1.value and commercial is None else []
             self.drawing.build(hand, highlight=bad)
             self.gui_palm_bend.visible = bool(hand.palm_joints)
@@ -298,7 +299,7 @@ class GrammarViewer:
         q = gdv.curl_q(self.hand, float(self.gui_curl.value))
         bend = float(self.gui_palm_bend.value)
         for k, d in enumerate(gdv.dofs(self.hand)):
-            if d.type == "palm":            # every palm joint at this fraction of its range (+/-30 deg)
+            if d.type == "palm":            # the palm joint at this fraction of its range (+/-30 deg)
                 q[k] = bend * d.limits[1]
         if self.commercial is not None:
             q = q + self.commercial["q_off"]
@@ -324,7 +325,7 @@ class GrammarViewer:
             return
         v = self.viability
         exempt = " (commercial: exempt)" if self.commercial is not None and not v.c1.ok else ""
-        self.gui_c1.label = f"C1 no overlap (zero, start): {_verdict(v.c1.ok)} {v.c1.worst_mm:.1f} mm{exempt}"
+        self.gui_c1.label = f"C1 clearance (zero, start): {_verdict(v.c1.ok)} {v.c1.worst_mm:.1f} mm{exempt}"
         best = "none" if not np.isfinite(v.c2.best_mm) else f"{v.c2.best_mm:.1f} mm"
         self.gui_c2.label = f"C2 fingertips meet above palm: {_verdict(v.c2.ok)} {best}"
         problems = check(self.hand, self.rules())
@@ -337,10 +338,10 @@ class GrammarViewer:
     def _update_operator_buttons(self) -> None:
         if self.hand is None:
             return
-        rules, stage = self.rules(), self.stage()
+        rules = self.rules()
         for name, b in self.op_buttons.items():
             op = gops.OPERATOR_BY_NAME[name]
-            b.visible = gops.can_act(self.hand, op, rules, stage)
+            b.visible = gops.can_act(self.hand, op, rules)
 
     def _frame_camera(self, clients=None) -> None:
         if self.hand is None:
@@ -368,51 +369,55 @@ class GrammarViewer:
             self.md_random = g.add_markdown("")
 
         with g.add_folder("Rules"):
-            self.gui_rules = g.add_dropdown("rules", list(RULE_SETS), initial_value=EVOLUTION,
-                                            hint="Random hands and every mutation follow these rules. Evolution Rules: "
-                                                 "what the simulator builds and evolution uses (hinge and coupled "
-                                                 "joints). No Rules: the whole grammar (sliding joints too). Editing a "
-                                                 "field makes them Custom Rules; fields can only tighten the grammar.")
-            r = EVOLUTION_RULES
+            self.gui_rules = g.add_dropdown("rules", list(RULE_SETS), initial_value=FEETECH,
+                                            hint="Random hands and every mutation follow these rules. Feetech Rules: "
+                                                 "hands buildable from Feetech servos, what the simulator builds and "
+                                                 "evolution uses. No Rules: the whole grammar (coupled and sliding "
+                                                 "joints too). Editing a field makes them Custom Rules; fields can "
+                                                 "only tighten the grammar.")
+            r = FEETECH_RULES
             self.gui_fingers = g.add_slider("max fingers", 2, 6, 1, r.max_fingers, hint="Fingers per hand: 2-6.")
             self.gui_joints = g.add_slider("max joints per finger", 1, 5, 1, r.max_joints,
                                            hint="Joints per finger: 1-5.")
-            self.gui_palm = g.add_slider("max palm joints", 0, 6, 1, r.max_palm_joints,
-                                         hint="Hinged palm sections: at most 6, one per finger at most, never one "
-                                              "without a finger.")
-            self.gui_coupled = g.add_checkbox("coupled joints", True, hint="A coupled joint follows the joint before "
-                                                                           "it in its finger at 1.1 x its angle.")
+            self.gui_palm = g.add_slider("max palm joints", 0, 1, 1, r.max_palm_joints,
+                                         hint="A palm cut: the part beyond a straight line hinges on the rest "
+                                              "(at most one, with a finger on each side).")
+            self.gui_coupled = g.add_checkbox("coupled joints", False, hint="A coupled joint follows the joint before "
+                                                                            "it in its finger at 1.1 x its angle.")
             self.gui_sliding = g.add_checkbox("sliding joints", False, hint="Sliding (prismatic) joints, like Dex1's "
                                                                             "jaws: in the grammar, not in evolution.")
-            self.gui_length = g.add_number("max finger length (mm)", r.max_finger_length_mm, min=10, max=250, step=1,
+            self.gui_length = g.add_number("max finger length (mm)", r.max_finger_length_mm, min=10, max=250, step=10,
                                            hint="Sum of a finger's link lengths: at most 250 mm (DClaw's 221 x 1.1).")
-            self.gui_spacing = g.add_number("min finger spacing (mm)", r.min_spacing_mm, min=19, max=100, step=1,
-                                            hint="Neighbouring finger bases at least one link width (19 mm) apart.")
-            self.gui_base = g.add_number("max base distance from wrist (mm)", r.base_distance_mm[1],
-                                         min=BASE_DISTANCE_MM[0], max=BASE_DISTANCE_MM[1], step=1,
-                                         hint=f"Finger bases sit {BASE_DISTANCE_MM[0]}-{BASE_DISTANCE_MM[1]} mm from "
-                                              "the wrist centre on the plate (commercial hands x0.9 / x1.1).")
-            g.add_markdown("links: 0 or 15-90 mm, fingertip ≥ 10 mm; finger bases on the palm's rim "
-                           f"(≤ {RIM_TOLERANCE_MM:g} mm inside)")
+            self.gui_pitch = g.add_number("base grid (mm)", r.base_pitch_mm, min=10, max=80, step=10,
+                                          hint="Finger bases sit on a square grid of this pitch (Feetech: 40 mm, a "
+                                               "servo housing plus room).")
+            self.gui_base_min = g.add_number("min base distance (mm)", r.base_distance_mm[0], min=10, max=160,
+                                             step=10, hint="Finger bases at least this far from the palm centre.")
+            self.gui_base = g.add_number("max base distance (mm)", r.base_distance_mm[1], min=10, max=160, step=10,
+                                         hint="Finger bases at most this far from the palm centre.")
+            self.gui_outward = g.add_checkbox("fingers face outward", r.outward_facing,
+                                              hint="No finger points back across the palm (tangential is fine).")
+            self.gui_buildable = g.add_checkbox("servo link lengths", r.buildable_links,
+                                                hint="Links at least as long as two servos need (30-50 mm by their "
+                                                     "axes), fingertips at least 30 mm, two joints at one point only "
+                                                     "between different axes square to the finger. Off: 0 or 10-90 "
+                                                     "mm, fingertips 10-90 mm.")
             self.md_rules = g.add_markdown("")
 
         with g.add_folder("Viability"):
-            self.gui_c1 = g.add_checkbox("C1 no overlap", True, hint=C1_HINT + " Untick: Random stops requiring it.")
+            self.gui_c1 = g.add_checkbox("C1 clearance", True, hint=C1_HINT + " Untick: Random stops requiring it.")
             self.gui_c2 = g.add_checkbox("C2 fingertips meet above palm", True,
                                          hint=C2_HINT + " Untick: Random stops requiring it.")
 
         with g.add_folder("Commercial hand"):
             ids = sorted(self.records)
             self.gui_hand = g.add_dropdown("hand", [NO_HAND] + ids, initial_value=NO_HAND,
-                                           hint="A commercial hand conformed onto the grammar (fine grid), over its "
-                                                "own URDF meshes.")
+                                           hint="A commercial hand conformed onto the grammar (10 mm / 30° grid), "
+                                                "over its own URDF meshes.")
             self.gui_meshes = g.add_checkbox("show real meshes", True)
             self.md_fit = g.add_markdown("")
 
         with g.add_folder("Mutation"):
-            self.gui_stage = g.add_dropdown("steps", list(STAGE_LABELS), initial_value=list(STAGE_LABELS)[0],
-                                            hint="Coarse: every value moves 10 mm or 30°, and fingers, joints and "
-                                                 "palm joints can be added or removed. Fine: 1 mm or 5°, values only.")
             btns = g.add_button_group("mutate", ["Random mutation", "Back"])
             self.md_mut = g.add_markdown("")
             self.op_buttons: Dict[str, Any] = {}
@@ -424,14 +429,15 @@ class GrammarViewer:
                                          hint="Bending joints at this fraction of their range (0.35: the pose every "
                                               "episode starts from); other joints at 0.")
             self.gui_palm_bend = g.add_slider("palm bend", -1.0, 1.0, 0.05, 0.0,
-                                              hint="Every palm joint at this fraction of its range (±30°): the "
-                                                   "hinged palm sections fold. Shown when the hand has a palm joint.")
+                                              hint="The palm joint at this fraction of its range (±30°): the part "
+                                                   "beyond the cut folds. Shown when the hand has a palm cut.")
             btn_center = g.add_button("re-centre view", hint="Point the camera at the whole hand.")
 
         btn_random.on_click(lambda _: self.random())
         self.gui_rules.on_update(lambda _: None if self._suppress else self.choose_rules(self.gui_rules.value))
         for h in (self.gui_fingers, self.gui_joints, self.gui_palm, self.gui_coupled, self.gui_sliding,
-                  self.gui_length, self.gui_spacing, self.gui_base):
+                  self.gui_length, self.gui_pitch, self.gui_base_min, self.gui_base, self.gui_outward,
+                  self.gui_buildable):
             h.on_update(lambda _: self._on_field())
 
         @self.gui_hand.on_update
@@ -440,7 +446,6 @@ class GrammarViewer:
                 self.load_commercial(self.gui_hand.value)
 
         self.gui_meshes.on_update(lambda _: self.overlay.set_visible(bool(self.gui_meshes.value)))
-        self.gui_stage.on_update(lambda _: self._after_rules())
 
         def _checks(_):
             with self.lock:
