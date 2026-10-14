@@ -559,6 +559,9 @@ def main(args):
     import viser
     from viser.extras import ViserUrdf
 
+    import signal
+    # A kill (SIGTERM) unwinds like Ctrl-C, so the finally below stops the Kit child instead of orphaning it.
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     runs = discover(args)
     if not runs:
         raise SystemExit("no runs with checkpoints")
