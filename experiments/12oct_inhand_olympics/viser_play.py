@@ -1,30 +1,39 @@
-"""Watch any in-hand olympics policy in viser: every run under debug_outputs/train_logs/12oct_inhand_olympics that
-trained on --task (default pen_lift) and has a checkpoint is in a dropdown; pick a run and a checkpoint and its
-policy plays in the run's own env (its hand(s), pen, pushes, rewards) over --envs envs. The page draws one env --
-pick which -- and keeps per-hand statistics of every finished episode since the policy was loaded. Filters (hand,
-network, push force, variant, seed) narrow the run list, and each run's training curve (read from its logs) is shown
-next to it and its checkpoints. The start state (the pen's yaw: random or fixed; how random the fingers start) can be
-changed for every env.
+"""Watch trained policies in viser: every in-hand olympics run under debug_outputs/train_logs/12oct_inhand_olympics
+that trained on --task (default pen_lift), and task_curriculum's Play runs (play_scratch: Kuka + SHARPA, Flexiv +
+SHARPA, Flexiv + Wuji, Flexiv + Wuji human-like), each with its checkpoints. Pick a run and a checkpoint and its
+policy plays in the run's own env, built from its saved config; the page draws one env -- pick which -- and keeps
+statistics of every finished episode since the policy was loaded (per hand for olympics, per object type for Play).
+
+Filters (task, hand / robot, network, push force, variant, seed) narrow the run list, and each run's training curve
+(read from its logs) is shown with it and its checkpoints. The success tolerance starts at the checkpoint's own:
+olympics' is fixed (the run's goal.success_tolerance); Play's shrinks with its curriculum, so it is the run's logged
+current_success_tolerance at the frame the checkpoint was saved. It can be changed live. The start state can be set
+for every env: olympics -- the pen's yaw (random or fixed) and how random the fingers start; Play -- the object's
+orientation (random or a fixed roll/pitch/yaw). Olympics' push and twist scales can be changed live too.
 
     .venv_isaacsim/bin/python experiments/12oct_inhand_olympics/viser_play.py [--port 8091] [--run 257159]
     # then open http://<node>:8091
-    ... viser_play.py --check 257159          # no viewer: load the run, play 600 steps, print the statistics
+    ... viser_play.py --check 257159          # no viewer: load a run (olympics job id or Play run name), play, print
 
 Actions are sampled (the SAPG leader block, exploration coefficient 0), as every eval since 12 Oct; tick
-"deterministic" for the mean action. Envs start with whole episodes (no staggered clocks), so the first episodes
-are full ones. The push and twist scales can be changed live (pen_lift's pushes start after the episode's second
-goal, the pickup and one hold); a red line from the pen shows the push while one acts.
+"deterministic" for the mean action. Olympics envs start with whole episodes (no staggered clocks). Play runs use
+task_curriculum's eval protocol (its randomization off) with one env per object, as its own viewer
+(isaacsimenvs/eval/viser_play.py there) does; that repo is only read.
 
 Kit and viser cannot share an interpreter (coevolution/eval/viser_play.py), so the sim runs in a child worker that
-streams joint positions and poses back; switching to another run restarts the worker (about a minute), switching
+streams joint positions and poses back -- this file for olympics runs, play_worker_task_curriculum.py (under
+task_curriculum's venv) for Play runs. Switching to another run restarts the worker (about a minute); switching
 checkpoints within a run does not.
 """
 from __future__ import annotations
 
 import argparse
+import glob
+import json
 import os
 import pathlib
 import queue
+import re
 import secrets
 import socket
 import subprocess
@@ -37,19 +46,23 @@ from multiprocessing.connection import Client, Listener
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 RUNS_DIR = REPO / "debug_outputs/train_logs/12oct_inhand_olympics"
+TC = pathlib.Path("/share/portal/kk837/task_curriculum")
+PLAY_WORKER = pathlib.Path(__file__).resolve().parent / "play_worker_task_curriculum.py"
 FULL = "wuji2_left_uniform_handonly"
 SPEEDS = {"real time": 1.0, "0.25x": 0.25, "0.5x": 0.5, "2x": 2.0, "as fast as possible": 0.0}
 FRAME_PERIOD_S = 1.0 / 30.0
+OLYMPICS, PLAY = "olympics", "Play (task_curriculum)"
 
 
 def parse():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8091)
-    ap.add_argument("--task", default="pen_lift", help="list the runs that trained on this task")
+    ap.add_argument("--task", default="pen_lift", help="list the olympics runs that trained on this task")
     ap.add_argument("--runs-dir", default=str(RUNS_DIR))
-    ap.add_argument("--envs", type=int, default=24, help="envs the policy plays in (statistics over all of them)")
-    ap.add_argument("--run", default="", help="job id of the run to load first (default: the newest)")
-    ap.add_argument("--check", default="", help="no viewer: load this job id's run, play, print statistics")
+    ap.add_argument("--no-play", action="store_true", help="leave task_curriculum's Play runs out")
+    ap.add_argument("--envs", type=int, default=24, help="olympics envs the policy plays in (Play: one per object)")
+    ap.add_argument("--run", default="", help="job id (or Play run name) of the run to load first; default newest")
+    ap.add_argument("--check", default="", help="no viewer: load this run, play, print statistics")
     ap.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--run-dir", default="", help=argparse.SUPPRESS)
     ap.add_argument("--checkpoint", default="", help=argparse.SUPPRESS)
@@ -61,52 +74,66 @@ def parse():
 
 # --- the runs (parent side: no Kit) -------------------------------------------------------------------------
 
-def checkpoints(run_dir: pathlib.Path) -> list[tuple[str, str]]:
+def checkpoints(nn_dir: pathlib.Path) -> list[tuple[str, str]]:
     """(label, path), newest first: every last_*_ep_<N> by epoch, then the best-reward one."""
-    import re
     out = []
-    for p in run_dir.glob("0_*/nn/last_*_ep_*.pth"):
+    for p in nn_dir.glob("last_*_ep_*.pth"):
         m = re.search(r"_ep_(\d+)_", p.name)
         if m:
             out.append((int(m.group(1)), p))
     rows = [(f"epoch {e}", str(p)) for e, p in sorted(out, key=lambda x: -x[0])]
-    best = [p for p in run_dir.glob("0_*/nn/0_*.pth")]
-    rows += [("best reward", str(best[0]))] if best else []
-    return rows
+    best = sorted(nn_dir.glob("0_*.pth"))
+    return rows + ([("best reward", str(best[0]))] if best else [])
 
 
 def _hand_short(spec: str) -> str:
     if spec.startswith("multi:"):
-        names = spec[len("multi:"):].split("+")
-        return "mix " + "+".join(_hand_short(n) for n in names)
+        return "mix " + "+".join(_hand_short(n) for n in spec[len("multi:"):].split("+"))
     if spec == FULL:
         return "full"
     return spec.replace(FULL + "_only_", "").replace(FULL + "_", "").replace("thumb_index", "ti")
 
 
-def discover(runs_dir: pathlib.Path, task: str) -> list[dict]:
-    """Every run that trained on ``task`` and has a checkpoint, newest job first, with a one-line label."""
+def _slurm_states(jobs) -> dict[str, str]:
+    jobs = [j for j in jobs if j.isdigit()]
+    if not jobs:
+        return {}
+    try:
+        out = subprocess.run(["sacct", "-X", "-n", "-P", "-o", "JobID,State", "-j", ",".join(jobs)],
+                             capture_output=True, text=True).stdout
+        return {j: s.split()[0] for j, s in (line.split("|") for line in out.splitlines() if "|" in line)}
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _status(state: dict, job: str) -> str:
+    """done / training / time limit (finished by Slurm's wall clock: a whole run) / cancelled / failed / ..."""
+    st = state.get(job, "")
+    if st in ("RUNNING", "PENDING"):
+        return "training"
+    if st == "TIMEOUT":
+        return "time limit"
+    return st.lower() if st and st != "COMPLETED" else "done"
+
+
+SHOWN_STATUSES = ("done", "training", "time limit")      # the rest only with "include cancelled runs"
+
+
+def discover_olympics(runs_dir: pathlib.Path, task: str) -> list[dict]:
     import yaml
     dirs = [d for d in runs_dir.glob("0_*") if (d / ".hydra/config.yaml").is_file()]
-    state = {}                                      # job id -> Slurm state (RUNNING, COMPLETED, CANCELLED, ...)
-    try:
-        jobs = ",".join(d.name.rsplit("_", 1)[-1] for d in dirs if d.name.rsplit("_", 1)[-1].isdigit())
-        out = subprocess.run(["sacct", "-X", "-n", "-P", "-o", "JobID,State", "-j", jobs],
-                             capture_output=True, text=True).stdout
-        state = {j: s.split()[0] for j, s in (line.split("|") for line in out.splitlines() if "|" in line)}
-    except (FileNotFoundError, ValueError):
-        pass
+    state = _slurm_states([d.name.rsplit("_", 1)[-1] for d in dirs])
     runs = []
     for d in dirs:
-        cfg_path = d / ".hydra/config.yaml"
         try:
-            cfg = yaml.safe_load(cfg_path.read_text())
+            cfg = yaml.safe_load((d / ".hydra/config.yaml").read_text())
             env, agent = cfg["env"], cfg["agent"]["params"]
             if task not in env["task"]["names"]:
                 continue
         except Exception:
             continue
-        ckpts = checkpoints(d)
+        nn = next(iter(d.glob("0_*/nn")), None)
+        ckpts = checkpoints(nn) if nn else []
         if not ckpts:
             continue
         job = d.name.rsplit("_", 1)[-1]
@@ -124,60 +151,143 @@ def discover(runs_dir: pathlib.Path, task: str) -> list[dict]:
             variant.append(f"yaw {r.get('pen_yaw_deg', 0):g}")
         if "_ft" in d.name or "_from_" in d.name:
             variant.append("fine-tune")
-        st = state.get(job, "")
-        status = "training" if st in ("RUNNING", "PENDING") else (st.lower() if st and st != "COMPLETED" else "done")
-        run = {"job": job, "dir": str(d), "ckpts": ckpts, "status": status,
-               # The filterable fields (the viewer's dropdowns).
-               "hand": _hand_short(env["hand"]["robot_spec"]),
-               "network": "JT" if agent["network"].get("name") == "joint_transformer" else
-                          ("LSTM" if agent["network"].get("rnn") else "MLP"),
-               "seed": f"s{agent.get('seed')}", "force": f"f{float(pert.get('force_scale', 20.0)):g}",
-               "variant": " · ".join(variant) or "plain"}
-        run["label"] = " · ".join([job, run["hand"], run["network"], run["seed"], run["force"], run["variant"]]
-                                  + ([f"({status})"] if status != "done" else []))
-        runs.append(run)
-    return sorted(runs, key=lambda r: -int(r["job"]) if r["job"].isdigit() else 0)
+        runs.append({"kind": OLYMPICS, "job": job, "dir": str(d), "ckpts": ckpts, "status": _status(state, job),
+                     "task": f"{OLYMPICS} {task}", "hand": _hand_short(env["hand"]["robot_spec"]),
+                     "network": "JT" if agent["network"].get("name") == "joint_transformer" else
+                                ("LSTM" if agent["network"].get("rnn") else "MLP"),
+                     "seed": f"s{agent.get('seed')}", "force": f"f{float(pert.get('force_scale', 20.0)):g}",
+                     "variant": " · ".join(variant) or "plain",
+                     "events": f"{d}/0_*/summaries/events*",
+                     "tolerance": float(env.get("goal", {}).get("success_tolerance", 0.01))})
+    return runs
 
 
-FILTERS = ("hand", "network", "force", "variant", "seed")
-FILTER_TITLES = {"hand": "hand", "network": "network", "force": "push force", "variant": "variant", "seed": "seed"}
+_PLAY_LIST = """
+import json
+from isaacsimenvs.eval.viser_play import find_runs
+out = []
+for r in find_runs():
+    if r.task and r.name.startswith("play_scratch"):
+        a = r.config["agent"]["params"]
+        dr = r.config["env"].get("domain_randomization", {})
+        out.append({"name": r.name, "dir": str(r.dir), "robot": r.robot, "task": r.task, "seed": a.get("seed"),
+                    "rnn": bool(a["network"].get("rnn")), "force": dr.get("force_scale", 0.0)})
+print("PLAYRUNS " + json.dumps(out))
+"""
+
+
+def discover_play() -> list[dict]:
+    """task_curriculum's play_scratch runs, listed by that repo's own code under its venv (its package shares our
+    package's name, so it cannot be imported here)."""
+    py = TC / ".venv_isaacsim/bin/python"
+    if not py.is_file():
+        return []
+    try:
+        out = subprocess.run([str(py), "-c", _PLAY_LIST], cwd=TC, capture_output=True, text=True, timeout=120).stdout
+        listed = json.loads(next(line for line in out.splitlines() if line.startswith("PLAYRUNS "))[9:])
+    except Exception as e:
+        print(f"[play] could not list task_curriculum's runs: {e}", flush=True)
+        return []
+    state = _slurm_states([r["name"].rsplit("_", 1)[-1] for r in listed])
+    runs = []
+    for p in listed:
+        ckpts = checkpoints(pathlib.Path(p["dir"]) / "nn")
+        if not ckpts:
+            continue
+        job = p["name"].rsplit("_", 1)[-1]
+        tag = p["name"][len("play_scratch_"):].removeprefix(p["robot"]).strip("_").removesuffix(job).strip("_")
+        runs.append({"kind": PLAY, "job": job if job.isdigit() else p["name"], "dir": p["dir"], "ckpts": ckpts,
+                     "status": _status(state, job), "task": PLAY, "hand": p["robot"],
+                     "network": "LSTM" if p["rnn"] else "MLP", "seed": f"s{p['seed']}",
+                     "force": f"f{float(p['force'] or 0):g}", "variant": tag.replace("_", " ") or "plain",
+                     "events": f"{p['dir']}/summaries/events*", "name": p["name"], "tolerance": None})
+    return runs
+
+
+def discover(args) -> list[dict]:
+    runs = discover_olympics(pathlib.Path(args.runs_dir), args.task)
+    if not args.no_play:
+        runs += discover_play()
+    for r in runs:
+        r["label"] = " · ".join([r["job"], r["hand"], r["network"], r["seed"], r["force"], r["variant"]]
+                                + ([f"({r['status']})"] if r["status"] != "done" else []))
+    key = lambda r: (r["kind"] != OLYMPICS, -int(r["job"]) if r["job"].isdigit() else 0)  # noqa: E731
+    return sorted(runs, key=key)
+
+
+FILTERS = ("task", "hand", "network", "force", "variant", "seed")
+FILTER_TITLES = {"task": "task", "hand": "hand / robot", "network": "network", "force": "push force",
+                 "variant": "variant", "seed": "seed"}
 ALL = "all"
 
 
-def training_curve(run: dict) -> dict:
-    """The run's own training-time goals per episode (leader block, TensorBoard): epochs, value at the end, best,
-    the first epoch at >= 1 goal/ep, the value at each checkpoint's epoch, and per hand for a multi-hand run."""
-    import glob
-
+def _scalars(events_glob: str, tags: tuple[str, ...]):
     from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-    ev = glob.glob(f"{run['dir']}/0_*/summaries/events*")
+    ev = glob.glob(events_glob)
     if not ev:
         return {}
     ea = EventAccumulator(ev[0], size_guidance={"scalars": 0, "histograms": 1, "images": 1, "tensors": 1})
     ea.Reload()
-    tags = ea.Tags()["scalars"]
-
-    def smooth(tag):
-        v = [e.value for e in sorted(ea.Scalars(tag), key=lambda e: e.step)]
-        return [sum(v[max(0, i - 19):i + 1]) / len(v[max(0, i - 19):i + 1]) for i in range(len(v))]
-
-    lead = "episode_final/successes_per_block/block_5"
-    if lead not in tags:
-        return {}
-    g = smooth(lead)
-    out = {"epochs": len(g), "end": g[-1], "best": max(g),
-           "first_one": next((i + 1 for i, x in enumerate(g) if x >= 1), None),
-           "per_hand": {t.split("/", 1)[1]: smooth(t)[-1] for t in tags if t.startswith("per_hand_successes/")}}
-    out["at_ckpt"] = {}
-    for label, _ in run["ckpts"]:
-        if label.startswith("epoch "):
-            e = int(label.split()[1])
-            if 0 < e <= len(g):
-                out["at_ckpt"][label] = g[e - 1]
+    have = ea.Tags()["scalars"]
+    out = {t: sorted(((e.step, e.value) for e in ea.Scalars(t)), key=lambda x: x[0]) for t in tags if t in have}
+    out["_per_hand"] = {t.split("/", 1)[1]: sorted(((e.step, e.value) for e in ea.Scalars(t)), key=lambda x: x[0])
+                        for t in have if t.startswith("per_hand_successes/")}
     return out
 
 
-# --- the worker (Kit) -----------------------------------------------------------------------------------
+def _smooth(vals, k=20):
+    return [sum(vals[max(0, i - k + 1):i + 1]) / len(vals[max(0, i - k + 1):i + 1]) for i in range(len(vals))]
+
+
+def _ckpt_frame_epoch(path: str) -> tuple[int, int]:
+    import torch
+    c = torch.load(path, map_location="cpu", weights_only=False)
+    c = c[0] if isinstance(c, dict) and 0 in c else c
+    return int(c.get("frame", 0)), int(c.get("epoch", 0))
+
+
+def _at(series, step):
+    """The last value logged at or before ``step``."""
+    v = None
+    for s, x in series:
+        if s > step:
+            break
+        v = x
+    return v
+
+
+def training_curve(run: dict) -> dict:
+    """The run's own training-time goals per episode (leader block, 20-epoch mean): epochs, the value at the end,
+    best, the first epoch at >= 1 goal/ep, per hand (multi-hand), and per checkpoint the goals and, for Play, the
+    curriculum's success tolerance when it was saved."""
+    lead = "episode_final/successes_per_block/block_5"
+    sc = _scalars(run["events"], (lead, "current_success_tolerance"))
+    if lead not in sc:
+        return {}
+    steps = [s for s, _ in sc[lead]]
+    g = _smooth([v for _, v in sc[lead]])
+    out = {"epochs": len(g), "end": g[-1], "best": max(g),
+           "first_one": next((i + 1 for i, x in enumerate(g) if x >= 1), None),
+           "per_hand": {h: _smooth([v for _, v in s])[-1] for h, s in sc["_per_hand"].items() if s},
+           "at_ckpt": {}, "tol_at_ckpt": {}}
+    smoothed = list(zip(steps, g))
+    for label, path in run["ckpts"]:
+        if run["kind"] == PLAY:
+            frame, epoch = _ckpt_frame_epoch(path)        # Play: by frame (runs resume and fine-tune)
+            gv = _at(smoothed, frame)
+            if "current_success_tolerance" in sc:
+                tv = _at(sc["current_success_tolerance"], frame)
+                if tv is not None:
+                    out["tol_at_ckpt"][label] = tv
+        else:
+            m = re.match(r"epoch (\d+)", label)            # olympics: one point per epoch
+            gv = g[int(m.group(1)) - 1] if m and 0 < int(m.group(1)) <= len(g) else None
+        if gv is not None:
+            out["at_ckpt"][label] = gv
+    return out
+
+
+# --- the olympics worker (Kit) ------------------------------------------------------------------------------
 
 def worker(args):
     from isaaclab.app import AppLauncher
@@ -185,7 +295,7 @@ def worker(args):
     AppLauncher.add_app_launcher_args(lp)
     a, _ = lp.parse_known_args([])
     a.headless = True
-    app = AppLauncher(a).app
+    app = AppLauncher(a).app  # noqa: F841
     conn = Client((args.host, args.wport), authkey=bytes.fromhex(args.authkey))
     try:
         _work(args, conn)
@@ -195,8 +305,11 @@ def worker(args):
             conn.send({"kind": "error", "text": traceback.format_exc()})
         except Exception:
             pass
-    del app
     os._exit(0)
+
+
+def _pose7(pos, quat):
+    return [*pos.tolist(), *quat.tolist()]
 
 
 def _work(args, conn):
@@ -235,32 +348,31 @@ def _work(args, conn):
                         sapg_expl_coef=0.0, num_envs=env.num_envs)
 
     player = make_player(args.checkpoint)
-    n, dev = env.num_envs, env.device
+    n = env.num_envs
     multi = env.hand_set is not None
     labels = list(env.hand_set.labels) if multi else [_hand_short(cfg.hand.robot_spec)]
     hand_of_env = env.hand_of_env.tolist()
-    # Each hand's joint names, in the order its slice of joint_pos is sent (the env's joint order).
-    if multi:
-        first = [hand_of_env.index(h) for h in range(len(labels))]
-        hand_joints = [env.robot.real_joint_names(i) for i in first]
+    if multi:   # each hand's joint names, in the order its slice of joint_pos is sent
+        hand_joints = [env.robot.real_joint_names(hand_of_env.index(h)) for h in range(len(labels))]
     else:
         hand_joints = [list(env.robot.joint_names)]
-    conn.send({"kind": "ready", "urdfs": [str(p) for p in env.hand_urdf_paths], "hand_joints": hand_joints,
-               "hand_labels": labels, "hand_of_env": hand_of_env, "num_envs": n,
-               "table_size": list(cfg.table.size), "table_top": cfg.table.top_height,
-               "pen": [cfg.pen.length, cfg.pen.diameter], "pen_shape": cfg.pen.shape,
+    sx, sy, sz = cfg.table.size
+    conn.send({"kind": "ready", "controls": "olympics",
+               "robots": [{"urdf": str(p), "joints": j} for p, j in zip(env.hand_urdf_paths, hand_joints)],
+               "table": {"box": [sx, sy, sz], "pos": [0.0, 0.0, cfg.table.top_height - sz / 2]},
+               "objects": {"pen": [cfg.pen.length, cfg.pen.diameter, cfg.pen.shape]},
+               "env_names": [labels[h] for h in hand_of_env], "num_envs": n,
+               "tolerance": float(cfg.goal.success_tolerance),
+               "tolerance_note": "the run's own (fixed in this task)",
                "force_scale": cfg.perturb.force_scale, "torque_scale": cfg.perturb.torque_scale,
-               "random_yaw": bool(cfg.reset.randomize_pen_yaw), "yaw_deg": float(cfg.reset.pen_yaw_deg),
-               "finger_fraction": float(cfg.reset.finger_pos_fraction),
-               "tasks": [t.name for t in env.tasks]})
+               "start": {"random_yaw": bool(cfg.reset.randomize_pen_yaw), "yaw_deg": float(cfg.reset.pen_yaw_deg),
+                         "finger_fraction": float(cfg.reset.finger_pos_fraction)},
+               "summary": f"{n} envs · tasks {', '.join(t.name for t in env.tasks)} · hands {', '.join(labels)}"})
 
     running, pending, det, watch, speed = True, 0, False, 0, 1.0
     finished = [deque(maxlen=1000) for _ in labels]          # goals of each finished episode, per hand
     ends = [dict() for _ in labels]                          # how they ended, per hand
-    last_end = ""
-    t_next = time.time()
-    t_frame = 0.0
-    steps = 0
+    last_end, t_next, t_frame, steps = "", time.time(), 0.0, 0
     while True:
         while conn.poll():
             m = conn.recv()
@@ -281,6 +393,8 @@ def _work(args, conn):
                 env.cfg.perturb.force_scale = float(m["value"])
             elif c == "torque":
                 env.cfg.perturb.torque_scale = float(m["value"])
+            elif c == "tolerance":
+                env.cfg.goal.success_tolerance = float(m["value"])
             elif c in ("reset", "ckpt", "init"):
                 if c == "init":
                     # The start state, read by every reset from here on (env.start_pen_yaw, _reset_idx).
@@ -327,38 +441,54 @@ def _work(args, conn):
             continue
         t_frame = now
         h = hand_of_env[watch]
-        k = len(hand_joints[h])
         pen_pos, pen_quat = env.pen_pose()
-        lift = float(env.pen_lowest_height()[watch])
-        force = env.pen_forces[watch, 0]
-        stats = []
+        root = env.robot.data
+        rows = ["| hand | finished episodes | goals / episode | ≥ 1 goal | how they ended |", "|---|---|---|---|---|"]
         for j, lab in enumerate(labels):
             g = list(finished[j])
-            stats.append({"hand": lab, "episodes": len(g), "mean": sum(g) / len(g) if g else float("nan"),
-                          "at_least_1": sum(x >= 1 for x in g) / len(g) if g else float("nan"),
-                          "ends": dict(ends[j])})
-        conn.send({"kind": "frame", "hand": h, "q": env.robot.data.joint_pos[watch, :k].tolist(),
-                   "pen_pos": pen_pos[watch].tolist(), "pen_quat": pen_quat[watch].tolist(),
-                   "goal_pos": env.goal_pos[watch].tolist(), "goal_quat": env.goal_quat[watch].tolist(),
-                   "goal_dist": float(env.goal_dist[watch]), "goals": int(env.successes[watch]),
-                   "task": env.tasks[int(env.task_id[watch])].name, "lift": lift, "force": force.tolist(),
-                   "time": float(env.episode_length_buf[watch]) * float(env.step_dt), "last_end": last_end,
-                   "running": running, "steps": steps, "stats": stats})
+            e = ", ".join(f"{k} {v}" for k, v in sorted(ends[j].items(), key=lambda kv: -kv[1])) or "–"
+            rows.append(f"| {lab} | {len(g)} | {sum(g) / len(g):.1f} | {100 * sum(x >= 1 for x in g) / len(g):.0f}% "
+                        f"| {e} |" if g else f"| {lab} | 0 | – | – | – |")
+        force = env.pen_forces[watch, 0]
+        fn = float(force.norm())
+        conn.send({"kind": "frame", "robot": h, "q": root.joint_pos[watch, :len(hand_joints[h])].tolist(),
+                   "robot_pose": _pose7(root.root_pos_w[watch] - env.scene.env_origins[watch], root.root_quat_w[watch]),
+                   "table_pose": None, "object": None,
+                   "object_pose": _pose7(pen_pos[watch], pen_quat[watch]),
+                   "goal_pose": _pose7(env.goal_pos[watch], env.goal_quat[watch]),
+                   "push": force.tolist() if fn > 1e-6 else None,
+                   "status": (f"env {watch} ({labels[h]}) · **{env.tasks[int(env.task_id[watch])].name}** · goals "
+                              f"**{int(env.successes[watch])}** · {float(env.episode_length_buf[watch]) * env.step_dt:.1f}"
+                              f" s into this goal  \ngoal distance {float(env.goal_dist[watch]) * 1000:.0f} mm · pen "
+                              f"{float(env.pen_lowest_height()[watch]) * 1000:.0f} mm above the table · push {fn:.2f} N"
+                              f" · tolerance {env.cfg.goal.success_tolerance * 100:.1f} cm"
+                              + (f"  \nlast episode: {last_end}" if last_end else "")
+                              + f"  \n{'running' if running else 'paused'} · {steps} steps"),
+                   "stats": "\n".join(rows), "steps": steps, "running": running})
 
 
 # --- the viewer -------------------------------------------------------------------------------------------
 
 class Worker:
     """One Kit child for one run; connects back on ``listener`` (accepted on a thread, so a child that dies while
-    booting cannot hang the page)."""
+    booting cannot hang the page). Olympics runs: this file under our venv; Play runs: the task_curriculum worker
+    under that repo's venv."""
 
-    def __init__(self, listener, authkey: bytes, run: dict, ckpt: str, envs: int):
+    def __init__(self, listener, authkey: bytes, run: dict, ckpt: str, envs: int, tolerance: float = 0.0,
+                 tolerance_note: str = ""):
         host, port = listener.address
         self.run, self.ckpt = run, ckpt
-        self.proc = subprocess.Popen(
-            [sys.executable, __file__, "--worker", "--run-dir", run["dir"], "--checkpoint", ckpt,
-             "--envs", str(envs), "--host", host, "--wport", str(port), "--authkey", authkey.hex()],
-            env={**os.environ, "OMNI_KIT_ACCEPT_EULA": "YES"})
+        conn_args = ["--host", host, "--wport", str(port), "--authkey", authkey.hex()]
+        if run["kind"] == PLAY:
+            cmd = [str(TC / ".venv_isaacsim/bin/python"), str(PLAY_WORKER), "--run-dir", run["dir"],
+                   "--checkpoint", ckpt, "--tolerance", str(tolerance), "--tolerance-note", tolerance_note,
+                   *conn_args]
+            cwd = str(TC)
+        else:
+            cmd = [sys.executable, __file__, "--worker", "--run-dir", run["dir"], "--checkpoint", ckpt,
+                   "--envs", str(envs), *conn_args]
+            cwd = str(REPO)
+        self.proc = subprocess.Popen(cmd, cwd=cwd, env={**os.environ, "OMNI_KIT_ACCEPT_EULA": "YES"})
         self.conn = None
         self._accepted: "queue.Queue" = queue.Queue()
         threading.Thread(target=lambda: self._accepted.put(listener.accept()), daemon=True).start()
@@ -386,6 +516,24 @@ class Worker:
             self.proc.kill()
 
 
+def checkpoint_tolerance(run: dict, label: str, curve: dict | None) -> tuple[float, str]:
+    """The success tolerance to evaluate a checkpoint at, and where it comes from."""
+    if run["kind"] == OLYMPICS:
+        return run["tolerance"], "the run's own (fixed in this task)"
+    tol = (curve or {}).get("tol_at_ckpt", {}).get(label)
+    if tol is None:                     # not read yet: read this one now
+        try:
+            path = dict(run["ckpts"])[label]
+            frame, _ = _ckpt_frame_epoch(path)
+            sc = _scalars(run["events"], ("current_success_tolerance",))
+            tol = _at(sc.get("current_success_tolerance", []), frame)
+        except Exception:
+            tol = None
+    if tol is None:
+        return 0.0, ""
+    return float(tol), f"the curriculum's when this checkpoint was saved ({tol * 100:.2f} cm)"
+
+
 def _add_pen(server, name: str, length: float, diameter: float, shape: str, opacity: float = 1.0):
     """The pen as drawn in the olympics viewer: a box (or capsule) along its x, its tip (+x end) red."""
     import numpy as np
@@ -402,14 +550,8 @@ def _add_pen(server, name: str, length: float, diameter: float, shape: str, opac
     return node
 
 
-def _stats_md(stats) -> str:
-    rows = ["| hand | finished episodes | goals / episode | ≥ 1 goal | how they ended |", "|---|---|---|---|---|"]
-    for s in stats:
-        ends = ", ".join(f"{k} {v}" for k, v in sorted(s["ends"].items(), key=lambda kv: -kv[1]))
-        mean = f"{s['mean']:.1f}" if s["episodes"] else "–"
-        one = f"{100 * s['at_least_1']:.0f}%" if s["episodes"] else "–"
-        rows.append(f"| {s['hand']} | {s['episodes']} | {mean} | {one} | {ends or '–'} |")
-    return "\n".join(rows)
+def _set_pose(node, pose7):
+    node.position, node.wxyz = tuple(pose7[:3]), tuple(pose7[3:])
 
 
 def main(args):
@@ -417,17 +559,19 @@ def main(args):
     import viser
     from viser.extras import ViserUrdf
 
-    runs = discover(pathlib.Path(args.runs_dir), args.task)
+    runs = discover(args)
     if not runs:
-        raise SystemExit(f"no {args.task} runs with checkpoints under {args.runs_dir}")
-    first = next((r for r in runs if r["job"] == args.run), runs[0])
-    print(f"[play] {len(runs)} {args.task} runs with checkpoints", flush=True)
+        raise SystemExit("no runs with checkpoints")
+    first = next((r for r in runs if args.run in (r["job"], r.get("name"))), runs[0])
+    print(f"[play] {sum(r['kind'] == OLYMPICS for r in runs)} olympics {args.task} runs, "
+          f"{sum(r['kind'] == PLAY for r in runs)} Play runs", flush=True)
 
     authkey = secrets.token_bytes(16)
     listener = Listener(("127.0.0.1", 0), authkey=authkey)
     server = viser.ViserServer(port=args.port)
+    server.scene.set_up_direction("+z")
     print(f"\n[play] open http://{socket.gethostname()}:{args.port}\n", flush=True)
-    server.scene.add_grid("/ground", width=2.0, height=2.0)
+    server.scene.add_grid("/ground", width=3.0, height=3.0, cell_size=0.1)
 
     outbox: "queue.Queue[dict]" = queue.Queue()
     requests: "queue.Queue[tuple[dict, str]]" = queue.Queue()
@@ -440,7 +584,7 @@ def main(args):
         g_filter = {k: server.gui.add_dropdown(FILTER_TITLES[k], (ALL, *sorted({r[k] for r in runs},
                                                                                 key=lambda v, k=k: _order(k, v))),
                                                initial_value=ALL) for k in FILTERS}
-        g_cancelled = server.gui.add_checkbox("include cancelled runs", first["status"] not in ("done", "training"))
+        g_cancelled = server.gui.add_checkbox("include cancelled runs", first["status"] not in SHOWN_STATUSES)
         g_run = server.gui.add_dropdown("run", ("-",))
         g_ckpt = server.gui.add_dropdown("checkpoint", ("-",))
         md_run = server.gui.add_markdown("")
@@ -452,13 +596,24 @@ def main(args):
         g_det = server.gui.add_checkbox("deterministic (mean action)", False)
         g_speed = server.gui.add_dropdown("speed", tuple(SPEEDS), initial_value="real time")
         g_watch = server.gui.add_slider("watch env", 0, max(args.envs - 1, 1), 1, 0)
-    with server.gui.add_folder("start state"):
+        md_env = server.gui.add_markdown("")
+        g_tol = server.gui.add_number("success tolerance (m)", 0.01, step=0.001)
+        md_tol = server.gui.add_markdown("")
+    f_olym = server.gui.add_folder("start state (olympics)")
+    with f_olym:
         g_yaw_mode = server.gui.add_dropdown("pen yaw", ("random (±180°)", "fixed"), initial_value="random (±180°)")
         # The pen lies along +x at yaw 0; -90 points its tip (red) to -y, the thumb side of the left hand.
         g_yaw = server.gui.add_slider("fixed yaw (deg; -90 = tip to the thumb side)", -180.0, 180.0, 5.0, -90.0)
         g_fingers = server.gui.add_slider("finger start: 0 default pose, 1 uniform over range", 0.0, 1.0, 0.05, 1.0)
         b_init = server.gui.add_button("apply (resets every env)")
-    with server.gui.add_folder("pushes (live)"):
+    f_play = server.gui.add_folder("start state (Play)")
+    with f_play:
+        g_orient = server.gui.add_dropdown("object orientation", ("random (as in training)", "fixed"),
+                                           initial_value="random (as in training)")
+        g_rpy = [server.gui.add_slider(f"{a} (deg)", -180.0, 180.0, 5.0, 0.0) for a in ("roll", "pitch", "yaw")]
+        b_init_play = server.gui.add_button("apply (resets every env) ")
+    f_push = server.gui.add_folder("pushes (live, olympics)")
+    with f_push:
         g_force = server.gui.add_number("force_scale", 20.0, step=1.0)
         g_torque = server.gui.add_number("torque_scale", 2.0, step=0.1)
     md_load = server.gui.add_markdown("")
@@ -468,8 +623,10 @@ def main(args):
     # The run list follows the filters; a run's name carries only what the filters leave open.
     shown: dict[str, dict] = {}          # run dropdown label -> run
     ckpt_paths: dict[str, str] = {}      # checkpoint dropdown label -> path
-    curves: dict[str, dict] = {}         # job -> training_curve (a thread fills it)
+    ckpt_base: dict[str, str] = {}       # checkpoint dropdown label -> its plain label ("epoch N", "best reward")
+    curves: dict[str, dict] = {}         # run key -> training_curve (a thread fills it)
     lock = threading.RLock()
+    rkey = lambda r: r["dir"]            # noqa: E731
 
     def run_label(r) -> str:
         bits = [r["job"]] + [r[k] for k in ("hand", "network", "seed", "force", "variant")
@@ -484,8 +641,8 @@ def main(args):
         if r is None:
             md_run.content = "*no run matches these filters*"
             return
-        c = curves.get(r["job"])
-        lines = [f"**{r['label']}**"]
+        c = curves.get(rkey(r))
+        lines = [f"**{r['label']}**  \n{r['task']}"]
         if c is None:
             lines.append("training curve: reading the run's logs...")
         elif not c:
@@ -501,30 +658,33 @@ def main(args):
     def refresh_ckpts():
         with lock:
             r = selected()
-            if r is None:
-                g_ckpt.options, ckpt_paths_new = ("-",), {}
-            else:
-                at = (curves.get(r["job"]) or {}).get("at_ckpt", {})
-                ckpt_paths_new = {(f"{lab} · {at[lab]:.1f} goals/ep" if lab in at else lab): path
-                                  for lab, path in r["ckpts"]}
             old = ckpt_paths.get(g_ckpt.value)
             ckpt_paths.clear()
-            ckpt_paths.update(ckpt_paths_new)
+            ckpt_base.clear()
+            if r is not None:
+                c = curves.get(rkey(r)) or {}
+                at, tol = c.get("at_ckpt", {}), c.get("tol_at_ckpt", {})
+                for lab, path in r["ckpts"]:
+                    full = lab + (f" · {at[lab]:.1f} goals/ep" if lab in at else "") + \
+                        (f" · tol {tol[lab] * 100:.1f} cm" if lab in tol else "")
+                    ckpt_paths[full], ckpt_base[full] = path, lab
             if ckpt_paths:
                 g_ckpt.options = tuple(ckpt_paths)
                 keep = next((lab for lab, p in ckpt_paths.items() if p == old), None)
                 g_ckpt.value = keep or g_ckpt.options[0]
+            else:
+                g_ckpt.options = ("-",)
             refresh_info()
 
     def refresh_runs(prefer: dict | None = None):
         with lock:
             cur = prefer or selected()
             match = [r for r in runs if all(g_filter[k].value in (ALL, r[k]) for k in FILTERS)
-                     and (g_cancelled.value or r["status"] in ("done", "training"))]
+                     and (g_cancelled.value or r["status"] in SHOWN_STATUSES)]
             shown.clear()
             shown.update({run_label(r): r for r in match})
             g_run.options = tuple(shown) or ("no matching runs",)
-            keep = next((lab for lab, r in shown.items() if cur is not None and r["job"] == cur["job"]), None)
+            keep = next((lab for lab, r in shown.items() if cur is not None and rkey(r) == rkey(cur)), None)
             g_run.value = keep or g_run.options[0]
             refresh_ckpts()
 
@@ -538,22 +698,19 @@ def main(args):
     def _(_):
         r = selected()
         if r is not None and g_ckpt.value in ckpt_paths:
-            requests.put((r, ckpt_paths[g_ckpt.value]))
+            requests.put((r, ckpt_base[g_ckpt.value]))
 
     def read_curves():
         """Every run's training curve, the selected run first; a finished run's is cached by its log's size."""
-        import json
         cache_path = pathlib.Path(args.runs_dir) / ".viser_play_curves.json"
         try:
             cache = json.loads(cache_path.read_text())
         except Exception:
             cache = {}
-        todo = sorted(runs, key=lambda r: r is not selected())
-        for r in todo:
-            import glob
-            ev = glob.glob(f"{r['dir']}/0_*/summaries/events*")
-            key = f"{ev[0]}:{os.path.getsize(ev[0])}" if ev else ""
-            hit = cache.get(r["job"])
+        for r in sorted(runs, key=lambda r: r is not selected()):
+            ev = glob.glob(r["events"])
+            key = f"v2:{ev[0]}:{os.path.getsize(ev[0])}" if ev else ""
+            hit = cache.get(rkey(r))
             if hit and hit.get("key") == key:
                 c = hit["curve"]
             else:
@@ -563,12 +720,12 @@ def main(args):
                     print(f"[play] {r['job']}: no training curve ({e})", flush=True)
                     c = {}
                 if r["status"] != "training":
-                    cache[r["job"]] = {"key": key, "curve": c}
+                    cache[rkey(r)] = {"key": key, "curve": c}
                     try:
                         cache_path.write_text(json.dumps(cache))
                     except OSError:
                         pass
-            curves[r["job"]] = c
+            curves[rkey(r)] = c
             if selected() is r:
                 refresh_ckpts()
         print(f"[play] read {len(curves)} training curves", flush=True)
@@ -577,6 +734,8 @@ def main(args):
 
     b_init.on_click(lambda _: outbox.put({"cmd": "init", "random_yaw": g_yaw_mode.value != "fixed",
                                           "yaw_deg": float(g_yaw.value), "finger_fraction": float(g_fingers.value)}))
+    b_init_play.on_click(lambda _: outbox.put({"cmd": "init", "random": g_orient.value != "fixed",
+                                               "rpy": [float(g.value) for g in g_rpy]}))
     b_pause.on_click(lambda _: outbox.put({"cmd": "toggle"}))
     b_step.on_click(lambda _: outbox.put({"cmd": "step"}))
     b_reset.on_click(lambda _: outbox.put({"cmd": "reset"}))
@@ -585,8 +744,10 @@ def main(args):
     g_watch.on_update(lambda _: outbox.put({"cmd": "watch", "value": int(g_watch.value)}))
     g_force.on_update(lambda _: outbox.put({"cmd": "force", "value": float(g_force.value)}))
     g_torque.on_update(lambda _: outbox.put({"cmd": "torque", "value": float(g_torque.value)}))
+    g_tol.on_update(lambda _: outbox.put({"cmd": "tolerance", "value": float(g_tol.value)})
+                    if g_tol.value > 0 else None)
 
-    requests.put((first, first["ckpts"][0][1]))
+    requests.put((first, first["ckpts"][0][0]))
     w: Worker | None = None
     info = None
     scene: dict = {}
@@ -594,23 +755,47 @@ def main(args):
     t_boot = 0.0
 
     def clear_scene():
-        for k in ("urdfs",):
-            for u in scene.get(k, []):
+        for u in scene.pop("urdfs", []):
+            u.remove()
+        for k in ("obj_urdfs",):
+            for u in scene.pop(k, []):
                 u.remove()
-        for k in ("frames", "pen", "goal", "table", "push"):
-            v = scene.get(k)
+        for k in ("frames", "pen", "goal", "table", "table_urdf", "push", "obj_frames"):
+            v = scene.pop(k, None)
             for node in (v if isinstance(v, list) else [v] if v is not None else []):
-                node.remove()
+                try:
+                    node.remove()
+                except Exception:
+                    pass
         scene.clear()
+
+    def show_object(idx: int):
+        """A Play env's object and its goal, drawn from the object's URDF (rebuilt when the watched env changes)."""
+        for u in scene.pop("obj_urdfs", []):
+            u.remove()
+        for fr in scene.pop("obj_frames", []):
+            fr.remove()
+        path = pathlib.Path(info["objects"]["urdfs"][idx])
+        frames, urdfs = [], []
+        for name, color in (("object", (0.95, 0.6, 0.2, 1.0)), ("goal", (0.3, 0.85, 0.35, 0.35))):
+            fr = server.scene.add_frame(f"/{name}{load_id}_{idx}", show_axes=False)
+            frames.append(fr)
+            urdfs.append(ViserUrdf(server, path, root_node_name=f"/{name}{load_id}_{idx}", mesh_color_override=color))
+        scene["obj_frames"], scene["obj_urdfs"], scene["obj_idx"] = frames, urdfs, idx
 
     try:
         while True:
             try:
-                run, ckpt = requests.get_nowait()
+                run, label = requests.get_nowait()
+                ckpt = dict(run["ckpts"])[label]
+                tol, note = checkpoint_tolerance(run, label, curves.get(rkey(run)))
                 if w is not None and w.alive() and w.connected() and run["dir"] == w.run["dir"]:
-                    outbox.put({"cmd": "ckpt", "path": ckpt})        # same run: no restart
+                    outbox.put({"cmd": "ckpt", "path": ckpt, "tolerance": tol})     # same run: no restart
+                    if tol > 0:
+                        g_tol.value = tol
+                        md_tol.content = f"tolerance: {note}"
                     w.ckpt = ckpt
-                    md_load.content = f"**{run['label']}** · {pathlib.Path(ckpt).name}"
+                    md_load.content = f"**{run['label']}** · {label}"
                 else:
                     if w is not None:
                         w.stop()
@@ -619,10 +804,10 @@ def main(args):
                     clear_scene()
                     info = None
                     load_id += 1
-                    w = Worker(listener, authkey, run, ckpt, args.envs)
+                    w = Worker(listener, authkey, run, ckpt, args.envs, tol, note)
                     t_boot = time.time()
-                    md_load.content = f"**loading {run['label']}** -- Kit boots in a child (about a minute)"
-                    md.content = md_stats.content = ""
+                    md_load.content = f"**loading {run['label']}** · {label} -- Kit boots in a child (about a minute)"
+                    md.content = md_stats.content = md_env.content = ""
             except queue.Empty:
                 pass
             if w is None or not w.alive():
@@ -662,52 +847,72 @@ def main(args):
                     frame = m
                 elif m["kind"] == "ready":
                     info = m
-                    sx, sy, sz = m["table_size"]
-                    scene["table"] = server.scene.add_box("/table", dimensions=(sx, sy, sz), color=(140, 107, 77),
-                                                          position=(0.0, 0.0, m["table_top"] - sz / 2))
+                    play = m["controls"] == "play"
+                    for f_, vis in ((f_olym, not play), (f_push, not play), (f_play, play)):
+                        try:
+                            f_.visible = vis
+                        except Exception:
+                            pass
+                    t = m["table"]
+                    if "box" in t:
+                        scene["table"] = server.scene.add_box(f"/table{load_id}", dimensions=tuple(t["box"]),
+                                                              color=(140, 107, 77), position=tuple(t["pos"]))
+                    else:
+                        scene["table"] = server.scene.add_frame(f"/table{load_id}", show_axes=False)
+                        scene["table_urdf"] = ViserUrdf(server, pathlib.Path(t["urdf"]), root_node_name=f"/table{load_id}",
+                                                        mesh_color_override=(0.82, 0.56, 0.35))
                     scene["frames"], scene["urdfs"] = [], []
-                    for h, urdf in enumerate(m["urdfs"]):
-                        fr = server.scene.add_frame(f"/hand{load_id}_{h}", position=(0.0, 0.0, m["table_top"]),
-                                                    show_axes=False)
+                    for h, rob in enumerate(m["robots"]):
+                        fr = server.scene.add_frame(f"/robot{load_id}_{h}", show_axes=False)
                         scene["frames"].append(fr)
-                        scene["urdfs"].append(ViserUrdf(server, pathlib.Path(urdf),
-                                                        root_node_name=f"/hand{load_id}_{h}/robot"))
-                    scene["pen"] = _add_pen(server, f"/pen{load_id}", *m["pen"], m["pen_shape"])
-                    scene["goal"] = _add_pen(server, f"/goal{load_id}", *m["pen"], m["pen_shape"], opacity=0.3)
+                        scene["urdfs"].append(ViserUrdf(server, pathlib.Path(rob["urdf"]),
+                                                        root_node_name=f"/robot{load_id}_{h}"))
+                    if "pen" in m["objects"]:
+                        scene["pen"] = _add_pen(server, f"/pen{load_id}", *m["objects"]["pen"])
+                        scene["goal"] = _add_pen(server, f"/goal{load_id}", *m["objects"]["pen"], opacity=0.3)
                     g_watch.max = max(m["num_envs"] - 1, 1)
-                    g_force.value, g_torque.value = float(m["force_scale"]), float(m["torque_scale"])
-                    g_yaw_mode.value = "random (±180°)" if m["random_yaw"] else "fixed"
-                    g_yaw.value, g_fingers.value = float(m["yaw_deg"]), float(m["finger_fraction"])
+                    g_watch.value = min(int(g_watch.value), m["num_envs"] - 1)
+                    g_tol.value = float(m["tolerance"])
+                    md_tol.content = f"tolerance: {m['tolerance_note']}"
+                    if play:
+                        g_orient.value = "random (as in training)" if m["start"]["random"] else "fixed"
+                    else:
+                        g_force.value, g_torque.value = float(m["force_scale"]), float(m["torque_scale"])
+                        g_yaw_mode.value = "random (±180°)" if m["start"]["random_yaw"] else "fixed"
+                        g_yaw.value, g_fingers.value = m["start"]["yaw_deg"], m["start"]["finger_fraction"]
                     for c in ({"cmd": "det", "value": bool(g_det.value)},
                               {"cmd": "speed", "value": SPEEDS[g_speed.value]},
                               {"cmd": "watch", "value": int(g_watch.value)}):
                         outbox.put(c)
-                    md_load.content = (f"**{w.run['label']}** · {pathlib.Path(w.ckpt).name}  \n"
-                                       f"{m['num_envs']} envs · tasks {', '.join(m['tasks'])} · hands "
-                                       f"{', '.join(m['hand_labels'])}")
+                    md_load.content = f"**{w.run['label']}** · {pathlib.Path(w.ckpt).name}  \n{m['summary']}"
             if frame is None or info is None:
                 continue
-            h = frame["hand"]
+            h = frame["robot"]
             for k, fr in enumerate(scene["frames"]):
                 fr.visible = k == h
-            scene["urdfs"][h].update_cfg(dict(zip(info["hand_joints"][h], frame["q"])))
-            scene["pen"].position, scene["pen"].wxyz = tuple(frame["pen_pos"]), tuple(frame["pen_quat"])
-            scene["goal"].position, scene["goal"].wxyz = tuple(frame["goal_pos"]), tuple(frame["goal_quat"])
-            f = np.asarray(frame["force"], dtype=np.float32)
+            _set_pose(scene["frames"][h], frame["robot_pose"])
+            scene["urdfs"][h].update_cfg(dict(zip(info["robots"][h]["joints"], frame["q"])))
+            if frame["table_pose"] is not None and "table_urdf" in scene:
+                _set_pose(scene["table"], frame["table_pose"])
+            if frame["object"] is not None:
+                if scene.get("obj_idx") != frame["object"]:
+                    show_object(frame["object"])
+                _set_pose(scene["obj_frames"][0], frame["object_pose"])
+                _set_pose(scene["obj_frames"][1], frame["goal_pose"])
+            else:
+                _set_pose(scene["pen"], frame["object_pose"])
+                _set_pose(scene["goal"], frame["goal_pose"])
             if "push" in scene:
                 scene.pop("push").remove()
-            fn = float(np.linalg.norm(f))
-            if fn > 1e-6:
-                p = np.asarray(frame["pen_pos"], dtype=np.float32)
+            if frame["push"] is not None:
+                f = np.asarray(frame["push"], dtype=np.float32)
+                p = np.asarray(frame["object_pose"][:3], dtype=np.float32)
                 scene["push"] = server.scene.add_line_segments(
-                    "/push", points=np.stack([p, p + 0.1 * f / fn])[None], colors=(230, 30, 30), line_width=4.0)
-            ended = f"  \nlast episode: {frame['last_end']}" if frame["last_end"] else ""
-            md.content = (f"env {int(g_watch.value)} ({info['hand_labels'][h]}) · **{frame['task']}** · "
-                          f"goals {frame['goals']} · {frame['time']:.1f} s into this goal  \n"
-                          f"goal distance {frame['goal_dist'] * 1000:.0f} mm · pen {frame['lift'] * 1000:.0f} mm "
-                          f"above the table · push {fn:.2f} N{ended}  \n"
-                          f"{'running' if frame['running'] else 'paused'} · {frame['steps']} steps")
-            md_stats.content = _stats_md(frame["stats"])
+                    "/push", points=np.stack([p, p + 0.1 * f / np.linalg.norm(f)])[None], colors=(230, 30, 30),
+                    line_width=4.0)
+            md_env.content = f"watching: {info['env_names'][int(g_watch.value)]}"
+            md.content = frame["status"]
+            md_stats.content = frame["stats"]
     except KeyboardInterrupt:
         pass
     finally:
@@ -716,21 +921,24 @@ def main(args):
 
 
 def check(args):
-    """No viewer: load one run's newest checkpoint, play 600 steps as fast as possible, print what the page would."""
-    runs = {r["job"]: r for r in discover(pathlib.Path(args.runs_dir), args.task)}
-    if args.check not in runs:
-        raise SystemExit(f"job {args.check} is not a {args.task} run with checkpoints")
-    run = runs[args.check]
-    print(f"[check] {run['label']} · {run['ckpts'][0][0]}", flush=True)
+    """No viewer: load one run's newest checkpoint, set a fixed start, play as fast as possible, switch checkpoint in
+    the same worker, and print what the page would show."""
+    runs = discover(args)
+    run = next((r for r in runs if args.check in (r["job"], r.get("name"))), None)
+    if run is None:
+        raise SystemExit(f"{args.check} is not a run with checkpoints")
+    label = run["ckpts"][0][0]
+    tol, note = checkpoint_tolerance(run, label, None)
+    print(f"[check] {run['label']} · {label} · tolerance {tol} ({note})", flush=True)
     authkey = secrets.token_bytes(16)
     listener = Listener(("127.0.0.1", 0), authkey=authkey)
-    w = Worker(listener, authkey, run, run["ckpts"][0][1], args.envs)
+    w = Worker(listener, authkey, run, run["ckpts"][0][1], args.envs, tol, note)
     while not w.connected():
         if not w.alive():
             raise SystemExit("[check] the worker died before connecting")
         time.sleep(0.5)
     w.conn.send({"cmd": "speed", "value": 0.0})
-    ready, last, switched = None, None, False
+    ready, last, switched, reset_seen = None, None, False, False
     while w.alive():
         if not w.conn.poll(timeout=1.0):
             continue
@@ -740,34 +948,28 @@ def check(args):
             break
         if m["kind"] == "ready":
             ready = m
-            print(f"[check] ready: hands {m['hand_labels']}, {len(m['hand_joints'][0])} joints drawn for hand 0, "
-                  f"urdfs {m['urdfs']}", flush=True)
-            # The start state: paused, a fixed yaw of -90 and the default finger pose; the next frame is step 0.
-            for c in ({"cmd": "toggle"}, {"cmd": "init", "random_yaw": False, "yaw_deg": -90.0, "finger_fraction": 0.0}):
-                w.conn.send(c)
-            m = w.conn.recv()
-            while m["kind"] != "frame" or m["steps"] != 0 or m["running"]:
-                m = w.conn.recv()
-            import math
-            qw, qx, qy, qz = m["pen_quat"]
-            yaw = math.degrees(math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz)))
-            print(f"[check] start state fixed at -90: the watched pen starts at yaw {yaw:.1f} deg", flush=True)
-            w.conn.send({"cmd": "toggle"})
-            continue
+            print(f"[check] ready: {m['summary']}; robots {[r['urdf'] for r in m['robots']]}; tolerance "
+                  f"{m['tolerance']} ({m['tolerance_note']})", flush=True)
+            init = ({"cmd": "init", "random": False, "rpy": [0.0, 0.0, 90.0]} if m["controls"] == "play" else
+                    {"cmd": "init", "random_yaw": False, "yaw_deg": -90.0, "finger_fraction": 0.0})
+            w.conn.send(init)
+            print(f"[check] start state: {init}", flush=True)
         if m["kind"] == "frame":
             last = m
+            # Frames already in flight when the switch is sent are from before it; it has landed once steps restart.
+            reset_seen = reset_seen or (switched and m["steps"] < 300)
             if m["steps"] >= 300 and not switched and len(run["ckpts"]) > 1:
-                print(f"[check] 300 steps: {m['stats']}\n[check] switching to {run['ckpts'][1][0]} "
-                      f"(the same worker)", flush=True)
-                w.conn.send({"cmd": "ckpt", "path": run["ckpts"][1][1]})
+                lab2 = run["ckpts"][1][0]
+                tol2, _ = checkpoint_tolerance(run, lab2, None)
+                print(f"[check] 300 steps:\n{m['stats']}\n[check] switching to {lab2} (tolerance {tol2})", flush=True)
+                w.conn.send({"cmd": "ckpt", "path": run["ckpts"][1][1], "tolerance": tol2})
                 w.conn.send({"cmd": "watch", "value": 1})
                 switched = True
-            elif m["steps"] >= 600 and (switched or len(run["ckpts"]) == 1):
+            elif m["steps"] >= 600 and (reset_seen or len(run["ckpts"]) == 1):
                 break
     if last is not None:
-        print(f"[check] watched env: hand {last['hand']}, {len(last['q'])} joint positions, goals {last['goals']}, "
-              f"goal distance {last['goal_dist']:.3f} m, push {last['force']}", flush=True)
-        print(f"[check] statistics: {last['stats']}", flush=True)
+        print(f"[check] watched: robot {last['robot']}, {len(last['q'])} joint positions, object {last['object']}"
+              f"\n{last['status']}\n{last['stats']}", flush=True)
     w.stop()
     print("[check] ok" if ready is not None and last is not None else "[check] FAILED", flush=True)
 
