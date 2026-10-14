@@ -233,8 +233,19 @@ def main() -> None:
             b_lo, b_hi = view["limit_boxes"][n]
             b_lo.value, b_hi.value = round(lo, 4), round(hi, 4)       # each fires _limits
 
+    t_scan = 0.0
     try:
         while True:
+            if time.time() - t_scan > 5.0:          # hands built elsewhere (primitive_hands.py) join the dropdown
+                t_scan = time.time()
+                now = built(out_dir)
+                if set(now) != set(hands):
+                    cur = str(g_hand.value)
+                    hands.clear()
+                    hands.update(now)
+                    g_hand.options = tuple(hands)
+                    if cur in hands:
+                        g_hand.value = cur
             try:
                 name = requests.get_nowait()
                 if sim is not None:

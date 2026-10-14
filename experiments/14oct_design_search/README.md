@@ -73,3 +73,4 @@ Renders: `plots/prim4x4_r10l25_g090_090_090_090_{face,curl45}.png`
 | 35/65/195/65 (random) | 272198 |
 | 50/65/55/190 (random) | 272200 |
 | 90/90/90/90 (designed) | 272940 |
+| 70/70/110/110 (designed runner-up: bearings 0/70/140/250) | 272977 |
