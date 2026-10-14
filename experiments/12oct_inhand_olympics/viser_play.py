@@ -1,7 +1,10 @@
 """Watch any in-hand olympics policy in viser: every run under debug_outputs/train_logs/12oct_inhand_olympics that
 trained on --task (default pen_lift) and has a checkpoint is in a dropdown; pick a run and a checkpoint and its
 policy plays in the run's own env (its hand(s), pen, pushes, rewards) over --envs envs. The page draws one env --
-pick which -- and keeps per-hand statistics of every finished episode since the policy was loaded.
+pick which -- and keeps per-hand statistics of every finished episode since the policy was loaded. Filters (hand,
+network, push force, variant, seed) narrow the run list, and each run's training curve (read from its logs) is shown
+next to it and its checkpoints. The start state (the pen's yaw: random or fixed; how random the fingers start) can be
+changed for every env.
 
     .venv_isaacsim/bin/python experiments/12oct_inhand_olympics/viser_play.py [--port 8091] [--run 257159]
     # then open http://<node>:8091
@@ -108,29 +111,70 @@ def discover(runs_dir: pathlib.Path, task: str) -> list[dict]:
             continue
         job = d.name.rsplit("_", 1)[-1]
         r, rw, pert = env.get("reset", {}), env.get("reward", {}), env.get("perturb", {})
-        bits = [job, _hand_short(env["hand"]["robot_spec"]),
-                "JT" if agent["network"].get("name") == "joint_transformer" else
-                ("LSTM" if agent["network"].get("rnn") else "MLP"),
-                f"s{agent.get('seed')}", f"f{float(pert.get('force_scale', 20.0)):g}"]
+        variant = []
         if r.get("stagger_initial_episodes"):
-            bits.append("stagger")
+            variant.append("stagger")
         if len(env["task"]["names"]) > 1:
-            bits.append("+".join(t.replace("pen_", "") for t in env["task"]["names"]))
+            variant.append("+".join(t.replace("pen_", "") for t in env["task"]["names"]))
         if env.get("pen", {}).get("shape", "capsule") != "box":
-            bits.append("capsule")
+            variant.append("capsule")
         if not rw.get("approach_rew_scale", 1.0) and not rw.get("lost_pen_penalty", 1.0):
-            bits.append("no approach/lost")
+            variant.append("no approach/lost")
         if r.get("randomize_pen_yaw") is False:
-            bits.append(f"yaw {r.get('pen_yaw_deg', 0):g}")
+            variant.append(f"yaw {r.get('pen_yaw_deg', 0):g}")
         if "_ft" in d.name or "_from_" in d.name:
-            bits.append("fine-tune")
+            variant.append("fine-tune")
         st = state.get(job, "")
-        if st in ("RUNNING", "PENDING"):
-            bits.append("(training)")
-        elif st and st != "COMPLETED":
-            bits.append(f"({st.lower()})")
-        runs.append({"job": job, "dir": str(d), "label": " · ".join(bits), "ckpts": ckpts})
+        status = "training" if st in ("RUNNING", "PENDING") else (st.lower() if st and st != "COMPLETED" else "done")
+        run = {"job": job, "dir": str(d), "ckpts": ckpts, "status": status,
+               # The filterable fields (the viewer's dropdowns).
+               "hand": _hand_short(env["hand"]["robot_spec"]),
+               "network": "JT" if agent["network"].get("name") == "joint_transformer" else
+                          ("LSTM" if agent["network"].get("rnn") else "MLP"),
+               "seed": f"s{agent.get('seed')}", "force": f"f{float(pert.get('force_scale', 20.0)):g}",
+               "variant": " · ".join(variant) or "plain"}
+        run["label"] = " · ".join([job, run["hand"], run["network"], run["seed"], run["force"], run["variant"]]
+                                  + ([f"({status})"] if status != "done" else []))
+        runs.append(run)
     return sorted(runs, key=lambda r: -int(r["job"]) if r["job"].isdigit() else 0)
+
+
+FILTERS = ("hand", "network", "force", "variant", "seed")
+FILTER_TITLES = {"hand": "hand", "network": "network", "force": "push force", "variant": "variant", "seed": "seed"}
+ALL = "all"
+
+
+def training_curve(run: dict) -> dict:
+    """The run's own training-time goals per episode (leader block, TensorBoard): epochs, value at the end, best,
+    the first epoch at >= 1 goal/ep, the value at each checkpoint's epoch, and per hand for a multi-hand run."""
+    import glob
+
+    from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+    ev = glob.glob(f"{run['dir']}/0_*/summaries/events*")
+    if not ev:
+        return {}
+    ea = EventAccumulator(ev[0], size_guidance={"scalars": 0, "histograms": 1, "images": 1, "tensors": 1})
+    ea.Reload()
+    tags = ea.Tags()["scalars"]
+
+    def smooth(tag):
+        v = [e.value for e in sorted(ea.Scalars(tag), key=lambda e: e.step)]
+        return [sum(v[max(0, i - 19):i + 1]) / len(v[max(0, i - 19):i + 1]) for i in range(len(v))]
+
+    lead = "episode_final/successes_per_block/block_5"
+    if lead not in tags:
+        return {}
+    g = smooth(lead)
+    out = {"epochs": len(g), "end": g[-1], "best": max(g),
+           "first_one": next((i + 1 for i, x in enumerate(g) if x >= 1), None),
+           "per_hand": {t.split("/", 1)[1]: smooth(t)[-1] for t in tags if t.startswith("per_hand_successes/")}}
+    out["at_ckpt"] = {}
+    for label, _ in run["ckpts"]:
+        if label.startswith("epoch "):
+            e = int(label.split()[1])
+            if 0 < e <= len(g):
+                out["at_ckpt"][label] = g[e - 1]
+    return out
 
 
 # --- the worker (Kit) -----------------------------------------------------------------------------------
@@ -206,6 +250,8 @@ def _work(args, conn):
                "table_size": list(cfg.table.size), "table_top": cfg.table.top_height,
                "pen": [cfg.pen.length, cfg.pen.diameter], "pen_shape": cfg.pen.shape,
                "force_scale": cfg.perturb.force_scale, "torque_scale": cfg.perturb.torque_scale,
+               "random_yaw": bool(cfg.reset.randomize_pen_yaw), "yaw_deg": float(cfg.reset.pen_yaw_deg),
+               "finger_fraction": float(cfg.reset.finger_pos_fraction),
                "tasks": [t.name for t in env.tasks]})
 
     running, pending, det, watch, speed = True, 0, False, 0, 1.0
@@ -235,7 +281,12 @@ def _work(args, conn):
                 env.cfg.perturb.force_scale = float(m["value"])
             elif c == "torque":
                 env.cfg.perturb.torque_scale = float(m["value"])
-            elif c in ("reset", "ckpt"):
+            elif c in ("reset", "ckpt", "init"):
+                if c == "init":
+                    # The start state, read by every reset from here on (env.start_pen_yaw, _reset_idx).
+                    env.cfg.reset.randomize_pen_yaw = bool(m["random_yaw"])
+                    env.cfg.reset.pen_yaw_deg = float(m["yaw_deg"])
+                    env.cfg.reset.finger_pos_fraction = float(m["finger_fraction"])
                 if c == "ckpt":
                     conn.send({"kind": "status", "text": "loading the checkpoint"})
                     player = make_player(m["path"])
@@ -369,7 +420,6 @@ def main(args):
     runs = discover(pathlib.Path(args.runs_dir), args.task)
     if not runs:
         raise SystemExit(f"no {args.task} runs with checkpoints under {args.runs_dir}")
-    by_label = {r["label"]: r for r in runs}
     first = next((r for r in runs if r["job"] == args.run), runs[0])
     print(f"[play] {len(runs)} {args.task} runs with checkpoints", flush=True)
 
@@ -381,9 +431,19 @@ def main(args):
 
     outbox: "queue.Queue[dict]" = queue.Queue()
     requests: "queue.Queue[tuple[dict, str]]" = queue.Queue()
-    with server.gui.add_folder("policy"):
-        g_run = server.gui.add_dropdown("run", tuple(by_label), initial_value=first["label"])
-        g_ckpt = server.gui.add_dropdown("checkpoint", tuple(c[0] for c in first["ckpts"]))
+
+    def _order(k, v):
+        num = v[1:] if k in ("seed", "force") else ""
+        return (0, float(num), "") if num.replace(".", "", 1).isdigit() else (1, 0.0, v)
+
+    with server.gui.add_folder("choose a policy"):
+        g_filter = {k: server.gui.add_dropdown(FILTER_TITLES[k], (ALL, *sorted({r[k] for r in runs},
+                                                                                key=lambda v, k=k: _order(k, v))),
+                                               initial_value=ALL) for k in FILTERS}
+        g_cancelled = server.gui.add_checkbox("include cancelled runs", first["status"] not in ("done", "training"))
+        g_run = server.gui.add_dropdown("run", ("-",))
+        g_ckpt = server.gui.add_dropdown("checkpoint", ("-",))
+        md_run = server.gui.add_markdown("")
         b_load = server.gui.add_button("load")
     with server.gui.add_folder("playback"):
         b_pause = server.gui.add_button("pause / resume")
@@ -392,6 +452,12 @@ def main(args):
         g_det = server.gui.add_checkbox("deterministic (mean action)", False)
         g_speed = server.gui.add_dropdown("speed", tuple(SPEEDS), initial_value="real time")
         g_watch = server.gui.add_slider("watch env", 0, max(args.envs - 1, 1), 1, 0)
+    with server.gui.add_folder("start state"):
+        g_yaw_mode = server.gui.add_dropdown("pen yaw", ("random (±180°)", "fixed"), initial_value="random (±180°)")
+        # The pen lies along +x at yaw 0; -90 points its tip (red) to -y, the thumb side of the left hand.
+        g_yaw = server.gui.add_slider("fixed yaw (deg; -90 = tip to the thumb side)", -180.0, 180.0, 5.0, -90.0)
+        g_fingers = server.gui.add_slider("finger start: 0 default pose, 1 uniform over range", 0.0, 1.0, 0.05, 1.0)
+        b_init = server.gui.add_button("apply (resets every env)")
     with server.gui.add_folder("pushes (live)"):
         g_force = server.gui.add_number("force_scale", 20.0, step=1.0)
         g_torque = server.gui.add_number("torque_scale", 2.0, step=0.1)
@@ -399,16 +465,118 @@ def main(args):
     md = server.gui.add_markdown("")
     md_stats = server.gui.add_markdown("")
 
-    @g_run.on_update
-    def _(_):
-        g_ckpt.options = tuple(c[0] for c in by_label[g_run.value]["ckpts"])
-        g_ckpt.value = g_ckpt.options[0]
+    # The run list follows the filters; a run's name carries only what the filters leave open.
+    shown: dict[str, dict] = {}          # run dropdown label -> run
+    ckpt_paths: dict[str, str] = {}      # checkpoint dropdown label -> path
+    curves: dict[str, dict] = {}         # job -> training_curve (a thread fills it)
+    lock = threading.RLock()
+
+    def run_label(r) -> str:
+        bits = [r["job"]] + [r[k] for k in ("hand", "network", "seed", "force", "variant")
+                             if g_filter[k].value == ALL]
+        return " · ".join(bits + ([r["status"]] if r["status"] != "done" else []))
+
+    def selected():
+        return shown.get(g_run.value)
+
+    def refresh_info():
+        r = selected()
+        if r is None:
+            md_run.content = "*no run matches these filters*"
+            return
+        c = curves.get(r["job"])
+        lines = [f"**{r['label']}**"]
+        if c is None:
+            lines.append("training curve: reading the run's logs...")
+        elif not c:
+            lines.append("training curve: no episodes logged yet")
+        else:
+            one = f"≥ 1 goal/ep from epoch {c['first_one']}" if c["first_one"] else "never reached 1 goal/ep"
+            lines.append(f"in training (leader block, 20-epoch mean): **{c['end']:.1f}** goals/ep at epoch "
+                         f"{c['epochs']} · best {c['best']:.1f} · {one}")
+            if c["per_hand"]:
+                lines.append("per hand at the end: " + ", ".join(f"{h} {v:.1f}" for h, v in c["per_hand"].items()))
+        md_run.content = "  \n".join(lines)
+
+    def refresh_ckpts():
+        with lock:
+            r = selected()
+            if r is None:
+                g_ckpt.options, ckpt_paths_new = ("-",), {}
+            else:
+                at = (curves.get(r["job"]) or {}).get("at_ckpt", {})
+                ckpt_paths_new = {(f"{lab} · {at[lab]:.1f} goals/ep" if lab in at else lab): path
+                                  for lab, path in r["ckpts"]}
+            old = ckpt_paths.get(g_ckpt.value)
+            ckpt_paths.clear()
+            ckpt_paths.update(ckpt_paths_new)
+            if ckpt_paths:
+                g_ckpt.options = tuple(ckpt_paths)
+                keep = next((lab for lab, p in ckpt_paths.items() if p == old), None)
+                g_ckpt.value = keep or g_ckpt.options[0]
+            refresh_info()
+
+    def refresh_runs(prefer: dict | None = None):
+        with lock:
+            cur = prefer or selected()
+            match = [r for r in runs if all(g_filter[k].value in (ALL, r[k]) for k in FILTERS)
+                     and (g_cancelled.value or r["status"] in ("done", "training"))]
+            shown.clear()
+            shown.update({run_label(r): r for r in match})
+            g_run.options = tuple(shown) or ("no matching runs",)
+            keep = next((lab for lab, r in shown.items() if cur is not None and r["job"] == cur["job"]), None)
+            g_run.value = keep or g_run.options[0]
+            refresh_ckpts()
+
+    for g in (*g_filter.values(), g_cancelled):
+        g.on_update(lambda _: refresh_runs())
+    g_run.on_update(lambda _: refresh_ckpts())
+    g_ckpt.on_update(lambda _: refresh_info())
+    refresh_runs(prefer=first)
 
     @b_load.on_click
     def _(_):
-        r = by_label[g_run.value]
-        requests.put((r, dict(r["ckpts"])[g_ckpt.value]))
+        r = selected()
+        if r is not None and g_ckpt.value in ckpt_paths:
+            requests.put((r, ckpt_paths[g_ckpt.value]))
 
+    def read_curves():
+        """Every run's training curve, the selected run first; a finished run's is cached by its log's size."""
+        import json
+        cache_path = pathlib.Path(args.runs_dir) / ".viser_play_curves.json"
+        try:
+            cache = json.loads(cache_path.read_text())
+        except Exception:
+            cache = {}
+        todo = sorted(runs, key=lambda r: r is not selected())
+        for r in todo:
+            import glob
+            ev = glob.glob(f"{r['dir']}/0_*/summaries/events*")
+            key = f"{ev[0]}:{os.path.getsize(ev[0])}" if ev else ""
+            hit = cache.get(r["job"])
+            if hit and hit.get("key") == key:
+                c = hit["curve"]
+            else:
+                try:
+                    c = training_curve(r)
+                except Exception as e:                       # a half-written log: show nothing for it
+                    print(f"[play] {r['job']}: no training curve ({e})", flush=True)
+                    c = {}
+                if r["status"] != "training":
+                    cache[r["job"]] = {"key": key, "curve": c}
+                    try:
+                        cache_path.write_text(json.dumps(cache))
+                    except OSError:
+                        pass
+            curves[r["job"]] = c
+            if selected() is r:
+                refresh_ckpts()
+        print(f"[play] read {len(curves)} training curves", flush=True)
+
+    threading.Thread(target=read_curves, daemon=True).start()
+
+    b_init.on_click(lambda _: outbox.put({"cmd": "init", "random_yaw": g_yaw_mode.value != "fixed",
+                                          "yaw_deg": float(g_yaw.value), "finger_fraction": float(g_fingers.value)}))
     b_pause.on_click(lambda _: outbox.put({"cmd": "toggle"}))
     b_step.on_click(lambda _: outbox.put({"cmd": "step"}))
     b_reset.on_click(lambda _: outbox.put({"cmd": "reset"}))
@@ -508,6 +676,8 @@ def main(args):
                     scene["goal"] = _add_pen(server, f"/goal{load_id}", *m["pen"], m["pen_shape"], opacity=0.3)
                     g_watch.max = max(m["num_envs"] - 1, 1)
                     g_force.value, g_torque.value = float(m["force_scale"]), float(m["torque_scale"])
+                    g_yaw_mode.value = "random (±180°)" if m["random_yaw"] else "fixed"
+                    g_yaw.value, g_fingers.value = float(m["yaw_deg"]), float(m["finger_fraction"])
                     for c in ({"cmd": "det", "value": bool(g_det.value)},
                               {"cmd": "speed", "value": SPEEDS[g_speed.value]},
                               {"cmd": "watch", "value": int(g_watch.value)}):
@@ -572,6 +742,18 @@ def check(args):
             ready = m
             print(f"[check] ready: hands {m['hand_labels']}, {len(m['hand_joints'][0])} joints drawn for hand 0, "
                   f"urdfs {m['urdfs']}", flush=True)
+            # The start state: paused, a fixed yaw of -90 and the default finger pose; the next frame is step 0.
+            for c in ({"cmd": "toggle"}, {"cmd": "init", "random_yaw": False, "yaw_deg": -90.0, "finger_fraction": 0.0}):
+                w.conn.send(c)
+            m = w.conn.recv()
+            while m["kind"] != "frame" or m["steps"] != 0 or m["running"]:
+                m = w.conn.recv()
+            import math
+            qw, qx, qy, qz = m["pen_quat"]
+            yaw = math.degrees(math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz)))
+            print(f"[check] start state fixed at -90: the watched pen starts at yaw {yaw:.1f} deg", flush=True)
+            w.conn.send({"cmd": "toggle"})
+            continue
         if m["kind"] == "frame":
             last = m
             if m["steps"] >= 300 and not switched and len(run["ckpts"]) > 1:
