@@ -41,6 +41,31 @@ def _table_urdf(size) -> str:
             f'<material name="wood"><color rgba="0.55 0.42 0.3 1"/></material></visual></link></robot>')
 
 
+def _inline_primitive_palm(urdf_text: str) -> str:
+    """A generated primitive hand's palm (experiments/14oct_design_search/primitive_hands.py) is a prism mesh,
+    ``palm_disc_r<mm>_t<mm>.stl``, which lives in a gitignored folder: the HTML's raw-GitHub URL for it would 404.
+    Draw it as the URDF cylinder it approximates instead (axis +x of the palm frame, as the mesh)."""
+    import math
+    import re
+    import xml.etree.ElementTree as ET
+    if "palm_disc_r" not in urdf_text:
+        return urdf_text
+    root = ET.fromstring(urdf_text)
+    for el in root.iter():
+        for geom in list(el.findall("geometry")):
+            mesh = geom.find("mesh")
+            m = re.search(r"palm_disc_r(\d+)_t(\d+)\.stl$", mesh.get("filename", "")) if mesh is not None else None
+            if not m:
+                continue
+            geom.remove(mesh)
+            ET.SubElement(geom, "cylinder", radius=f"{int(m.group(1)) / 1000:g}", length=f"{int(m.group(2)) / 1000:g}")
+            origin = el.find("origin")
+            if origin is None:
+                origin = ET.SubElement(el, "origin", xyz="0 0 0")
+            origin.set("rpy", f"0 {math.pi / 2:.6f} 0")      # the cylinder's z axis onto the palm's +x
+    return ET.tostring(root, encoding="unicode")
+
+
 class OlympicsPoseViewer(PoseViewerWrapper):
     def __init__(self, env, *, output_dir, capture_len: int, capture_interval: int, env_id: int = 0,
                  wandb_key: str = "interactive_viewer", github_raw_base: str | None = None,
@@ -59,7 +84,7 @@ class OlympicsPoseViewer(PoseViewerWrapper):
         self._object_urdf_text, self._object_urdf_path = pen_urdf(cfg.pen.length, cfg.pen.diameter), None
         self._table_urdf_text, self._table_urdf_path = _table_urdf(cfg.table.size), None
         self._hole_urdf_text = self._hole_urdf_path = None
-        self._robot_urdf_text = Path(inner.wrist_urdf_path).read_text(encoding="utf-8")
+        self._robot_urdf_text = _inline_primitive_palm(Path(inner.wrist_urdf_path).read_text(encoding="utf-8"))
         self._robot_urdf_relpath = None
         self._step, self._capture_index, self._frames = 0, 0, []
         self.output_dir.mkdir(parents=True, exist_ok=True)

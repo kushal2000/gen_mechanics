@@ -57,7 +57,8 @@ if (( ${#RUN_NAME} + 16 > 128 )); then
     echo "[olympics] run name is ${#RUN_NAME} characters; wandb allows 112 before its timestamp. Shorten RUN_TAG/HAND_TAG: $RUN_NAME"
     exit 1
 fi
-RUN_DIR="debug_outputs/train_logs/12oct_inhand_olympics/${RUN_NAME}"
+# LOG_GROUP: the folder under debug_outputs/train_logs (another experiment's runs; pass sbatch --output to match)
+RUN_DIR="debug_outputs/train_logs/${LOG_GROUP:-12oct_inhand_olympics}/${RUN_NAME}"
 mkdir -p "$RUN_DIR"
 WANDB_ARGS=()
 if [[ "${WANDB:-1}" == 1 ]]; then
