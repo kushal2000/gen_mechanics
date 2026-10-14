@@ -84,3 +84,26 @@ Renders: `plots/prim4x4_r10l25_g090_090_090_090_{face,curl45}.png`
 | 30/55/55/220 (random) | 275108 |
 | 35/65/195/65 (random) | 275109 |
 | 50/65/55/190 (random) | 275110 |
+| 65/85/120/90 (designed for flip: bearings 0/65/150/270) | 275798 |
+| 70/90/110/90 (flip runner-up: bearings 0/70/160/270) | 275800 |
+
+## The flip-designed placement: a skewed cross, 0/65/150/270
+
+A second design pass (14 Oct) did the same for pen flip, reading the task's goal sequence and the wrist limits:
+
+- **The wrist can't do the flip.** Holding the pen rigidly, it covers at most 0-2 of the 45 deg goals, so the fingers
+  must give unlimited rotation.
+- **The grasp it needs:** an opposed pair pinching the pen's side faces at its centre, as a hinge, plus a pusher on
+  each end, since the flip direction is random. The pinch line must match the flip axis within about 6 deg, and the
+  pivot must sit at least 6.2 cm below the palm.
+- **Scoring:** all 3,472 canonical designs over pen yaw, with the narrow wrist yaw.
+  - **0/65/150/270** ranks 1st-2nd in every setting: hinge plus both-end pushers at 72-75% of yaws. Its slightly
+    skewed pairs (150 and 155 deg apart) can swing their pinch line 15-18 deg by shifting the pen off-centre.
+  - **Evenly spaced** gets 63% and ranks 141-302. Its perfectly opposed pairs can't swing.
+  - **The lift runner-up 0/70/140/250** gets 69-71%.
+  - Every top design still has a hinge with at least one pusher at 100% of yaws.
+- **One hand for both tasks:** the pass still picks evenly spaced. Flip's gain is about 10 points in a static model,
+  and lift relies on the perfectly opposed pinch.
+- **Runner-up for flip:** 0/70/160/270, the most consistent across settings and closer to even.
+
+Renders: `plots/prim4x4_r10l25_g065_085_120_090_{face,curl45}.png`, `plots/prim4x4_r10l25_g070_090_110_090_*`.
