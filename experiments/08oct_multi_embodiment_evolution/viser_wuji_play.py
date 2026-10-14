@@ -1,7 +1,8 @@
 """Live viewer: any Wuji v2 hand -- the 52 finger-drop hands and the scaled-link variants -- driven by any Wuji
 policy, joint transformer or MLP, in viser.
 
-Pick the hand with a left/right dropdown, a checkbox per finger (two or more fingers: the 52 of
+Pick the hand from the "hand" menu of the 52 (each labelled with its finger count, whether the 2-3-finger policy E4
+trained on it, and its goals in E4's 52-hand eval), or with a left/right dropdown, a checkbox per finger (two or more fingers: the 52 of
 multi:wuji2_lr_2plus) and a "links" dropdown (as built, or a make_scaled_links.py variant of the full left hand:
 len50, len75, wid120, ...), pick a policy, press "load". The policies are the 6 Oct 52-hand run (31826) and every
 run in 08oct_multi_embodiment_evolution and 08oct_repro_wuji_full, each at its newest checkpoint WHEN LOADED, so a
@@ -174,6 +175,35 @@ def trained_delay(ckpt: str) -> bool:
     return bool(cfg.env.domain_randomization.use_action_delay)
 
 
+# The 52-hand eval of the 2-3-finger policy (E4, 127128, epoch 5000, sampled actions: 08oct_repro_wuji_full's
+# embodiment_generalization.png), to label the hand dropdown with each hand's score there.
+EVAL_52 = REPO / "experiments/08oct_repro_wuji_full/results/eval_per_hand_2to3_me5_ep5000_on_2plus_stochastic.json"
+
+
+def n_fingers(spec: str) -> int:
+    tag = spec.split("uniform_handonly")[1].lstrip("_")
+    return 5 if not tag else 4 if tag.startswith("no_") else len(tag[len("only_"):].split("_"))
+
+
+def hand_menu() -> dict[str, str]:
+    """Dropdown label -> spec for the 52 finger-drop hands: side and fingers, whether E4 trained on it, and its
+    goals in the first episode in the 52-hand eval."""
+    import json
+    try:
+        res = json.loads(EVAL_52.read_text())["hands"]
+    except Exception:
+        res = {}
+    rows = []
+    for spec in MH.WUJI2_LR_2PLUS:
+        side = "right" if "_right_" in spec else "left"
+        tag = spec.split("uniform_handonly")[1]
+        r = res.get(("wuji2_right" if side == "right" else "wuji2") + tag)
+        note = (f" · {'unseen' if r['held_out'] else 'trained'} · {r['goals_per_episode_first']:.1f} goals"
+                if r else "")
+        rows.append(((side != "left", -n_fingers(spec), tag), f"{short(spec)} · {n_fingers(spec)} fingers{note}", spec))
+    return {label: spec for _, label, spec in sorted(rows)}
+
+
 def short(spec: str) -> str:
     side = "R" if "_right_" in spec else "L"
     tag = spec.split("uniform_handonly")[1].lstrip("_") or "full"
@@ -188,6 +218,10 @@ class Panel:
         self.authkey = secrets.token_bytes(16)
         self.listener = Listener(("127.0.0.1", 0), authkey=self.authkey)
         with server.gui.add_folder(f"panel {i + 1}"):
+            # One menu of the 52 hands (labelled with E4's 52-hand eval), or the side / finger selectors below.
+            self.menu = hand_menu()
+            self.dd_hand = server.gui.add_dropdown("hand (E4 ep 5000 eval: goals in 1st episode)",
+                                                   ("pick a hand ...", *self.menu), initial_value="pick a hand ...")
             self.dd_side = server.gui.add_dropdown("side", ("left", "right"), initial_value=side)
             self.cb = {f: server.gui.add_checkbox(f, f in kept) for f in FINGERS}
             self.dd_links = server.gui.add_dropdown("links", LINKS, initial_value=LINKS[0])
@@ -217,6 +251,7 @@ class Panel:
         for w in (self.dd_side, self.dd_links, *self.cb.values()):
             w.on_update(lambda _: self._preview())
         self.dd_pol.on_update(lambda _: self._policy_changed())
+        self.dd_hand.on_update(lambda _: self._hand_picked())
         self.child = self.conn = self.info = None
         self.urdf = self.obj = self.goal = self.label = None
         self.title, self.dead = "", False
@@ -267,6 +302,16 @@ class Panel:
         pat = self.pols.get(pol)
         return trained_spec(pat) if pat and is_mlp(run_dir_of(glob.glob(run_dir_of(pat))[0])
                                                     if glob.glob(run_dir_of(pat)) else "") else None
+
+    def _hand_picked(self):
+        """The hand menu sets the side and finger selectors (links as built); press load to switch."""
+        sel = selectors_for(self.menu.get(str(self.dd_hand.value), ""))
+        if sel:
+            side, kept, links = sel
+            self.dd_side.value, self.dd_links.value = side, links
+            for f in FINGERS:
+                self.cb[f].value = f in kept
+            self._preview()
 
     def _policy_changed(self):
         """An MLP drives only its own hand: move the hand selectors to it."""
