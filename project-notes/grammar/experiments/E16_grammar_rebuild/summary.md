@@ -46,6 +46,8 @@
 
 One mutation of a usable hand returns a child 94% of the time, and 96% of those children are usable.
 
+Search space (`ours/search_space.py`, `ours/search_space.json`; counted exactly, before the clearance check): 10^31.3 four-finger hands with joints on the three kinds (Codex's estimate for its proposal: 10^30.8), 10^46.0 for 2-6 fingers; 10^46.6 and 10^68.9 with all 31 axis directions; a palm cut multiplies a hand by at most 73. Of 3000 uniform samples of four-finger hands, 3% pass C1 and C2 (0.3% with all axes): about 10^29.8 (10^44.0) usable four-finger hands. Before the rebuild: about 10^50 (10^70).
+
 Commercial hands (fitted on the new grid, `hand_sampler/grammar_bench/conformed_hands.json`): every one of the 19 keeps its finger count, joints per finger, joint types and kinds; 18 fit within 10 mm / 20 degrees (Wuji v1 misses by 1.2 degrees, the grid's worst snapping error). SHARPA's, Shadow's and SVH's palm joints each become a cut with the same fingers beyond it; ARMS's two palm joints become one cut carrying both their fingers. All 19 pass C2; none is buildable from Feetech servos as it stands (their bases sit closer than the motors allow), so the simulator collision-filters their overlaps.
 
 Isaac (RTX 4090, the validation population, 64 envs, 300 random steps): PASS: the simulated bodies match the grammar's kinematics to 0.0005 mm at reset, no NaN, mimic ties within 1.1e-3 rad, no collider-cooking warning.

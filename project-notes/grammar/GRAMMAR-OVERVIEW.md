@@ -22,6 +22,16 @@ Only these numbers, all whole: millimetres in steps of 10, degrees in steps of 3
 
 That is 4 numbers per finger, 3 per joint and 2 for a cut, plus each joint's type. Random Feetech hands have 14-102 numbers (mean 56); the commercial fits range from 14 (Dex1) to 85 (SHARPA, Shadow). Everything in steps 8-13 is computed from these numbers and the motor.
 
+**The search space** (`hand_sampler/grammar/space.py`, counted exactly; `experiments/E16_grammar_rebuild/ours/search_space.py`). Hands the Feetech rules allow, before the clearance check; a palm cut multiplies each by at most 73 more:
+
+| Hands | Joints on the three kinds (where random hands start) | All 31 axis directions (what mutation reaches) |
+|---|---|---|
+| 4 fingers | 10^31.3 | 10^46.6 |
+| 2-6 fingers | 10^46.0 | 10^68.9 |
+| 4 fingers that pass C1 and C2 (estimated from 3000 uniform samples) | 10^29.8 (3%) | 10^44.0 (0.3%) |
+
+Before the rebuild the same count was about 10^50 four-finger hands (10^70 with all axes); the grammar's own limits (No Rules) allow 10^54 (10^110). Most of the count is five-joint fingers with long links, which collide more often; the random draw (step 5) picks joint counts uniformly instead.
+
 ### Building a random hand
 
 **1. The origin and the mount.**

@@ -685,3 +685,16 @@ def test_mutating_a_hand_outside_the_rules_never_adds_violations():
         if res is not None:
             h = res[0]
         assert len(check(h, FEETECH_RULES)) <= n0 and check(h, NO_RULES) == []
+
+
+def test_search_space_counts():
+    """The Feetech rules' search space, counted exactly (no geometry): about
+    10^31 four-finger hands with joints on the three kinds, 10^47 with all 31
+    axis directions (E16)."""
+    from hand_sampler.grammar import space
+
+    assert len(space.AXES_ALL) == 31
+    assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (21, 371, 6409, 58089, 185051)
+    assert space.hands_log10(FEETECH_RULES)[4] == pytest.approx(31.30, abs=0.01)
+    assert space.hands_log10(FEETECH_RULES, space.AXES_ALL)[4] == pytest.approx(46.55, abs=0.01)
+    assert space.hands_log10(NO_RULES)[4] > space.hands_log10(FEETECH_RULES)[4] + 20

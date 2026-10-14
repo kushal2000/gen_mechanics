@@ -20,6 +20,7 @@ SECTION_RGB = (150, 150, 165)
 MOUNT_RGB = (110, 110, 118)
 JOINT_RGB = (40, 40, 48)
 HOT_RGB = (220, 30, 30)
+OBJECT_RGB = (70, 110, 230)
 PALM_UP = np.array([[0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]])
 """Palm frame -> viewer world: palm normal up (+z), +z of the palm along +x."""
 
@@ -77,6 +78,7 @@ class HandDrawing:
         self.handles: List[object] = []
         self.bodies: Dict[Tuple, object] = {}
         self.markers: Dict[Tuple[int, int], object] = {}
+        self.object: Optional[object] = None
         self.hand: Optional[Hand] = None
         self.frame = server.scene.add_frame(root, show_axes=False, wxyz=_pose(_pad(PALM_UP))[0])
 
@@ -86,7 +88,7 @@ class HandDrawing:
                 h.remove()
             except Exception:  # noqa: BLE001
                 pass
-        self.handles, self.bodies, self.markers = [], {}, {}
+        self.handles, self.bodies, self.markers, self.object = [], {}, {}, None
 
     def _add(self, key: Tuple, name: str, mesh, color, hot) -> None:
         V, F = mesh
@@ -95,7 +97,10 @@ class HandDrawing:
         self.bodies[key] = h
         self.handles.append(h)
 
-    def build(self, hand: Hand, highlight: Sequence[Tuple] = ()) -> None:
+    def build(self, hand: Hand, highlight: Sequence[Tuple] = (), object_half_m: Optional[float] = None) -> None:
+        """Meshes for `hand`; with `object_half_m`, also the task's cube (that
+        half size) where it starts (`derive.object_start_m`), half
+        transparent."""
         self.clear()
         self.hand = hand
         hot = {k for pair in highlight for k in pair}
@@ -118,6 +123,12 @@ class HandDrawing:
                 m = self.server.scene.add_icosphere(f"{self.root}/f{i}/j{j}", radius=0.0045, color=JOINT_RGB)
                 self.markers[(i, j)] = m
                 self.handles.append(m)
+        if object_half_m is not None:
+            c = gdv.object_start_m(hand, object_half_m)
+            V, F = box_mesh(gdv.box_corners(c, np.full(3, object_half_m)))
+            self.object = self.server.scene.add_mesh_simple(f"{self.root}/object", V, F, color=OBJECT_RGB,
+                                                            opacity=0.4, flat_shading=True)
+            self.handles.append(self.object)
 
     def pose(self, q: np.ndarray) -> None:
         if self.hand is None:

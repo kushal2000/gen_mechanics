@@ -1,0 +1,56 @@
+{
+ "spots": 20,
+ "orientations_per_spot": [
+  30,
+  35
+ ],
+ "cut_factor_at_most": 73,
+ "kinds": {
+  "chains_by_joint_count": [
+   21,
+   371,
+   6409,
+   58089,
+   185051
+  ],
+  "chains_per_spot_orientation": 249941,
+  "log10_hands_by_fingers": {
+   "2": 16.08,
+   "3": 23.77,
+   "4": 31.3,
+   "5": 38.7,
+   "6": 46.0
+  },
+  "log10_hands_total": 46.0,
+  "four_finger_sample": {
+   "samples": 3000,
+   "pass_c1": 0.036,
+   "pass_c1_and_c2": 0.03
+  },
+  "log10_usable_four_finger_hands": 29.77
+ },
+ "all_31_axes": {
+  "chains_by_joint_count": [
+   193,
+   30489,
+   4688141,
+   228911667,
+   1393111355
+  ],
+  "chains_per_spot_orientation": 1626741845,
+  "log10_hands_by_fingers": {
+   "2": 23.71,
+   "3": 35.21,
+   "4": 46.55,
+   "5": 57.77,
+   "6": 68.89
+  },
+  "log10_hands_total": 68.89,
+  "four_finger_sample": {
+   "samples": 3000,
+   "pass_c1": 0.004666666666666667,
+   "pass_c1_and_c2": 0.003
+  },
+  "log10_usable_four_finger_hands": 44.03
+ }
+}

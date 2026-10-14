@@ -177,3 +177,23 @@ def test_palm_bend_folds_the_part_beyond_the_cut(evo):
     evo.gui_palm_bend.value = 0.0
     evo.random(wait=True)
     assert evo.gui_palm_bend.visible == bool(evo.hand.palm_joints)
+
+
+def test_search_space_line_follows_the_rules(evo):
+    assert "10^31 four-finger hands" in evo.md_space.content
+    evo.choose_rules(V.NONE)
+    assert "10^54 four-finger hands" in evo.md_space.content
+    evo.choose_rules(V.FEETECH)
+
+
+def test_object_at_its_start(evo):
+    evo.random(wait=True)
+    assert evo.drawing.object is None
+    evo.gui_object.value = True
+    with evo.lock:
+        evo._set_hand(evo.hand, history="keep", commercial=None, viability=evo.viability, frame=False)
+    assert evo.drawing.object is not None
+    want = gdv.object_start_m(evo.hand, V.OBJECT_HALF_M)
+    V_ = np.asarray(evo.drawing.object.vertices)
+    assert np.allclose((V_.max(0) + V_.min(0)) / 2, want, atol=1e-6)
+    evo.gui_object.value = False

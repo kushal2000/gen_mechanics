@@ -35,6 +35,7 @@ from hand_sampler.grammar import commercial as gcom  # noqa: E402
 from hand_sampler.grammar import conform as gcf  # noqa: E402
 from hand_sampler.grammar import derive as gdv  # noqa: E402
 from hand_sampler.grammar import operators as gops  # noqa: E402
+from hand_sampler.grammar import space as gspace  # noqa: E402
 from hand_sampler.grammar import viability as gvb  # noqa: E402
 from hand_sampler.grammar.fk import forward_kinematics  # noqa: E402
 from hand_sampler.grammar.hand import (  # noqa: E402
@@ -48,6 +49,8 @@ RULE_SETS: Dict[str, Optional[Rules]] = {FEETECH: FEETECH_RULES, NONE: NO_RULES,
 NO_HAND = "(none)"
 MAX_TRIES = 2000
 MESH_OPACITY = 0.35
+OBJECT_HALF_M = 0.036
+"""The repose task's cube (72 mm), shown where it starts."""
 
 C1_HINT = ("Every two solids (servo-sized links, base motors, the mount, the hinge motor, the palm) keep one printed "
            "wall (2 mm) apart, with every joint at 0 and at the start pose (bending joints at 0.35 of their range), "
@@ -172,6 +175,7 @@ class GrammarViewer:
 
     def _after_rules(self) -> None:
         with self.lock:
+            self.md_space.content = gspace.summary(self.rules())
             self._update_status()
             self._update_operator_buttons()
 
@@ -284,7 +288,8 @@ class GrammarViewer:
             # commercial hands are exempt from C1 in the simulator (their bases and links sit closer than
             # servo-sized solids allow; the overlaps are collision-filtered), so they are not painted red
             bad = [(a, b) for a, b, _ in viability.c1.pairs] if self.gui_c1.value and commercial is None else []
-            self.drawing.build(hand, highlight=bad)
+            self.drawing.build(hand, highlight=bad,
+                               object_half_m=OBJECT_HALF_M if self.gui_object.value else None)
             self.gui_palm_bend.visible = bool(hand.palm_joints)
             self._render_pose()
             self._update_status()
@@ -403,6 +408,7 @@ class GrammarViewer:
                                                      "between different axes square to the finger. Off: 0 or 10-90 "
                                                      "mm, fingertips 10-90 mm.")
             self.md_rules = g.add_markdown("")
+            self.md_space = g.add_markdown(gspace.summary(FEETECH_RULES))
 
         with g.add_folder("Viability"):
             self.gui_c1 = g.add_checkbox("C1 clearance", True, hint=C1_HINT + " Untick: Random stops requiring it.")
@@ -431,6 +437,10 @@ class GrammarViewer:
             self.gui_palm_bend = g.add_slider("palm bend", -1.0, 1.0, 0.05, 0.0,
                                               hint="The palm joint at this fraction of its range (±30°): the part "
                                                    "beyond the cut folds. Shown when the hand has a palm cut.")
+            self.gui_object = g.add_checkbox("show the object at its start", False,
+                                             hint="The repose task's 72 mm cube where an episode starts: over the "
+                                                  "palm's centre, at the lowest height where it clears the hand by 5 mm "
+                                                  "with the fingers at the start curl (0.35).")
             btn_center = g.add_button("re-centre view", hint="Point the camera at the whole hand.")
 
         btn_random.on_click(lambda _: self.random())
@@ -455,6 +465,7 @@ class GrammarViewer:
 
         self.gui_c1.on_update(_checks)
         self.gui_c2.on_update(_checks)
+        self.gui_object.on_update(_checks)
 
         @btns.on_click
         def _(event):
