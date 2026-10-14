@@ -8,10 +8,10 @@ The setup:
 
 **Result.** The 5-finger hand reaches **35 goals/episode about 700 fine-tune epochs later, ~1,600 epochs in total**. Trained from scratch, the same network has **0 goals/episode at 1,500 epochs on all three seeds**.
 
-![5-finger hand: curriculum vs from scratch](../../debug_outputs/inhand_olympics/embodiment_curriculum/five_finger_curriculum_vs_scratch.png)
+![5-finger hand: curriculum vs from scratch](plots/embodiment_curriculum.png)
 
-The figure is `debug_outputs/inhand_olympics/embodiment_curriculum/five_finger_curriculum_vs_scratch.png`.
-- **To regenerate it:** `.venv_isaacsim/bin/python experiments/12oct_inhand_olympics/analysis/plot_embodiment_curriculum.py`. The numbers behind it are in the `.json` next to the PNG.
+The figure is `plots/embodiment_curriculum.png`.
+- **To regenerate it:** `.venv_isaacsim/bin/python experiments/12oct_inhand_olympics/analysis/plot_embodiment_curriculum.py`. The numbers behind it go to `debug_outputs/inhand_olympics/embodiment_curriculum/embodiment_curriculum.json`.
 - **Left panel:** goals/episode against total training epochs, with the curriculum's 900 thumb + index epochs counted.
 - **Right panel:** the same against 5-finger experience only, counting a mix epoch as half a 5-finger epoch.
 

@@ -9,7 +9,8 @@ for the curriculum run (thumb + index joint transformer s102 at epoch 900 -> the
 full-hand run from scratch (MLP and joint transformer, seeds 101-103, stagger). Re-run to update while runs train.
 
     .venv_isaacsim/bin/python experiments/12oct_inhand_olympics/analysis/plot_embodiment_curriculum.py
-    # -> debug_outputs/inhand_olympics/embodiment_curriculum/five_finger_curriculum_vs_scratch.png (+ .json)
+    # -> experiments/12oct_inhand_olympics/plots/embodiment_curriculum.png (the headline figure, tracked);
+    #    its numbers -> debug_outputs/inhand_olympics/embodiment_curriculum/embodiment_curriculum.json
 """
 from __future__ import annotations
 
@@ -21,7 +22,8 @@ import numpy as np
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 LOGS = REPO / "debug_outputs/train_logs/12oct_inhand_olympics"
-OUT = REPO / "debug_outputs/inhand_olympics/embodiment_curriculum"
+PLOTS = pathlib.Path(__file__).resolve().parent.parent / "plots"
+NUMBERS = REPO / "debug_outputs/inhand_olympics/embodiment_curriculum"
 PRETRAIN_EPOCHS = 900                      # the thumb + index checkpoint the mix starts from (257159, epoch 900)
 CURRICULUM = ("264937", "per_hand_successes/L5_full")
 SCRATCH = {"MLP": ("256376", "256377", "256378"), "joint transformer": ("257623", "257624", "257625")}
@@ -96,8 +98,8 @@ def main() -> None:
     fig.suptitle("Pen lift, 5-finger Wuji hand: learned via a 2-finger policy vs from scratch", y=1.09, fontsize=12,
                  color=ink)
     fig.tight_layout()
-    OUT.mkdir(parents=True, exist_ok=True)
-    png = OUT / "five_finger_curriculum_vs_scratch.png"
+    PLOTS.mkdir(parents=True, exist_ok=True)
+    png = PLOTS / "embodiment_curriculum.png"
     fig.savefig(png, dpi=160, bbox_inches="tight", facecolor="white")
 
     def at(g, e):
@@ -112,7 +114,8 @@ def main() -> None:
                                              "first_epoch_ge_1": next((i + 1 for i, x in enumerate(g) if x >= 1), None)}
                           for (a, j), g in scratch.items()},
     }
-    (OUT / "five_finger_curriculum_vs_scratch.json").write_text(json.dumps(summary, indent=1))
+    NUMBERS.mkdir(parents=True, exist_ok=True)
+    (NUMBERS / "embodiment_curriculum.json").write_text(json.dumps(summary, indent=1))
     print(f"wrote {png}\n{json.dumps(summary, indent=1)}")
 
 
