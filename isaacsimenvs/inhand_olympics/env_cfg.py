@@ -102,8 +102,9 @@ class ResetCfg:
     pen_yaw_deg: float = -90.0
     # Desynchronise the envs: after the first reset each env's episode clock starts at a random point of its
     # first goal's time (as Isaac Gym's / rsl_rl's random initial episode length). Otherwise every env starts
-    # together and, until goals are hit, times out together, so each rollout holds one phase of the episode.
-    stagger_initial_episodes: bool = False
+    # together and, until goals are hit, times out together, so each rollout holds one phase of the episode
+    # (the critic loss then cycles every 600/16 = 37.5 epochs). Default since 13 Oct (runs before it: off).
+    stagger_initial_episodes: bool = True
 
 
 @configclass

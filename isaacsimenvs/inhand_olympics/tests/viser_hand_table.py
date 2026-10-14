@@ -61,6 +61,7 @@ def _make_env(hand: str, pen_shape: str = "capsule"):
     cfg.hand.robot_spec = hand
     cfg.scene.num_envs = 1
     cfg.goal.seconds_per_goal = 1e6       # no timeouts while someone is driving the sliders
+    cfg.reset.stagger_initial_episodes = False
     cfg.task.names = ("pen_spin", "pen_lift", "pen_spin_air", "pen_flip_air")
     cfg.pen.shape = pen_shape
     env = InHandOlympicsEnv(cfg)

@@ -80,6 +80,7 @@ def main() -> None:
     cfg.scene.num_envs = len(poses)
     cfg.hand.collider_type = args.collider
     cfg.goal.seconds_per_goal = 1e6
+    cfg.reset.stagger_initial_episodes = False
     cfg.reset.finger_pos_fraction = 0.0
     cfg.reset.finger_vel = 0.0
     cfg.action.use_action_delay = False
