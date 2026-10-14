@@ -40,7 +40,7 @@ def _random_hands(n, rules=NO_RULES, seed=0, mutate=0):
     return out
 
 
-SPECIAL = {"split321": mkpop.split_321_hand(), "zero_links": mkpop.zero_link_hand(), "oblique": mkpop.oblique_hand()}
+SPECIAL = {"cut": mkpop.cut_hand(), "zero_links": mkpop.zero_link_hand(), "oblique": mkpop.oblique_hand()}
 
 
 # --------------------------------------------------------------------------
@@ -81,34 +81,37 @@ def test_every_grammar_hand_fits_the_envelope():
             int(d.slot_real[ge.finger_slot(f, k)]) for f in range(6) for k in range(5))
 
 
-def test_split_321_roles_and_ties():
-    d = ge.canonicalize(SPECIAL["split321"])
+def test_cut_roles_and_ties():
+    """The main palm's fingers take the first slots; the two fingers beyond
+    the cut share its hinge: the first leads, the second follows (gear 1)."""
+    d = ge.canonicalize(SPECIAL["cut"])
     roles = ge.carrier_roles(d)
-    assert roles == (ge.LOCKED, ge.LOCKED, ge.LOCKED, ge.LEADER, ge.FOLLOWER, ge.LEADER)
-    assert d.finger_index == (2, 3, 4, 0, 1, 5)
-    assert d.slot_tie[ge.carrier_slot(4)] == ge.carrier_slot(3) and d.slot_gear[ge.carrier_slot(4)] == 1.0
-    # coupled joints: mimic joints on the joint before them, gear 1.1, not policy-controlled
-    s = ge.finger_slot(0, 2)
-    assert d.slot_real[s] and not d.slot_valid[s]
-    assert d.slot_tie[s] == ge.finger_slot(0, 1) and d.slot_gear[s] == pytest.approx(1.1)
+    assert roles == (ge.LOCKED, ge.LOCKED, ge.LOCKED, ge.LOCKED, ge.LEADER, ge.FOLLOWER)
+    assert d.finger_index == (0, 1, 2, 5, 3, 4)
+    assert d.slot_tie[ge.carrier_slot(5)] == ge.carrier_slot(4) and d.slot_gear[ge.carrier_slot(5)] == 1.0
     q = np.zeros(ge.N_SLOTS)
-    q[ge.finger_slot(0, 1)] = 0.5
-    q[ge.carrier_slot(3)] = 0.2
-    t = ge.tied_q(d, q)
-    assert t[s] == pytest.approx(0.55) and t[ge.carrier_slot(4)] == pytest.approx(0.2)
+    q[ge.carrier_slot(4)] = 0.2
+    assert ge.tied_q(d, q)[ge.carrier_slot(5)] == pytest.approx(0.2)
 
 
-def test_coupling_chains_resolve_to_the_independent_joint():
+def test_coupled_joints_are_mimic_joints():
+    """Coupled joints (the grammar's own limits): mimic joints on the joint
+    their chain starts from, gear 1.1 per link, not policy-controlled."""
     h = Hand(fingers=(Finger(y=0, z=90, joints=(Joint("hinge", (0, 0), 40), Joint("coupled", (0, 0), 30),
-                                                 Joint("coupled", (0, 0), 25))),
+                                                 Joint("coupled", (0, 0), 20))),
                       Finger(y=40, z=90, joints=(Joint("hinge", (0, 0), 40),))))
     d = ge.canonicalize(h)
-    s = ge.finger_slot(0, 2)
-    assert d.slot_tie[s] == ge.finger_slot(0, 0) and d.slot_gear[s] == pytest.approx(1.21)
+    s1, s2 = ge.finger_slot(0, 1), ge.finger_slot(0, 2)
+    assert d.slot_real[s1] and not d.slot_valid[s1]
+    assert d.slot_tie[s1] == ge.finger_slot(0, 0) and d.slot_gear[s1] == pytest.approx(1.1)
+    assert d.slot_tie[s2] == ge.finger_slot(0, 0) and d.slot_gear[s2] == pytest.approx(1.21)
+    q = np.zeros(ge.N_SLOTS)
+    q[ge.finger_slot(0, 0)] = 0.5
+    assert ge.tied_q(d, q)[s1] == pytest.approx(0.55)
 
 
 def test_tie_columns_and_gears():
-    d = ge.canonicalize(SPECIAL["split321"])
+    d = ge.canonicalize(SPECIAL["cut"])
     perm = np.arange(ge.N_SLOTS)[::-1]
     cols = ge.tie_columns(d.slot_tie[None], perm)
     gears = ge.tie_gears(d.slot_tie[None], d.slot_gear[None], perm)
@@ -144,17 +147,17 @@ def test_ghost_tail_sits_at_the_fingertip():
 # --------------------------------------------------------------------------
 
 
-def test_link_colliders_are_8_vertex_cores_and_plates_fit_gpu_hulls():
+def test_link_colliders_are_servo_sized_boxes_and_plates_fit_gpu_hulls():
     from scipy.spatial import ConvexHull
 
     for h in list(SPECIAL.values()) + _random_hands(40, seed=4):
         d = ge.canonicalize(h)
         for s in range(ge.N_SLOTS):
             if d.slot_real[s] and ge.slot_joint_index(s) >= 0:
-                pts = ge.link_core_points(d, s)
+                pts = ge.link_points(d, s)
                 assert pts.shape == (8, 3)
                 ext = pts.max(0) - pts.min(0)
-                assert ext.min() >= 1e-3 - 1e-12          # >= 1 mm core: GPU cooking
+                assert ext.min() >= 0.020 - 1e-12          # at least a motor's width
         for node in [ge.ROOT_NODE] + [c for c in ge.CARRIER_SLOTS if d.slot_valid[c]]:
             pts = ge.plate_points(d, node)
             hull = ConvexHull(pts)
@@ -163,15 +166,33 @@ def test_link_colliders_are_8_vertex_cores_and_plates_fit_gpu_hulls():
             assert len(pts) // 2 + 2 <= 64
 
 
-def test_token_boxes_cover_rounded_links():
+def test_token_boxes_are_the_link_boxes():
     d = ge.canonicalize(SPECIAL["zero_links"])
     boxes = ge.token_boxes(d)
     assert boxes.shape == (36, 4, 3)
     s = ge.finger_slot(0, 1)
-    c, h = ge.link_core(d, s)
-    extent = 2 * (h + ge.LINK_RADIUS_M)
+    pts = ge.link_points(d, s)
+    extent = pts.max(0) - pts.min(0)
     side = sorted(np.linalg.norm(boxes[s, 1:] - boxes[s, 0], axis=1))
     assert np.allclose(side, sorted(extent), atol=1e-6)
+
+
+def test_extra_colliders_carry_the_motors_and_the_mount():
+    """The root carries the mount, the hinge motor and the main palm's base
+    motors; the leader carrier the base motors beyond the cut (relative to
+    the hinge)."""
+    h = SPECIAL["cut"]
+    d = ge.canonicalize(h)
+    root = ge.root_colliders(d)
+    assert set(root) == {"mount", "hinge_motor", "motor_0", "motor_1", "motor_2", "motor_5"}
+    leader = ge.carrier_slot(4)
+    carried = ge.carrier_colliders(d, leader)
+    assert set(carried) == {"motor_3", "motor_4"}
+    hinge = gdv.palm_hinge_m(h)
+    want = gdv.base_motor_boxes_mm(h.fingers[3])[0].corners() * 1e-3 - hinge
+    assert np.allclose(carried["motor_3"], want)
+    m, com, I = ge.carrier_mass_props(d, leader)
+    assert m > ge.plate_mass_props(ge.plate_points(d, leader))[0]
 
 
 def test_construction_pairs_cover_0mm_links_and_mounts():
@@ -181,11 +202,11 @@ def test_construction_pairs_cover_0mm_links_and_mounts():
     assert (ge.ROOT_NODE, ge.finger_slot(0, 0)) in pairs
     # link 1 meets the palm through the 0 mm link 0
     assert (ge.ROOT_NODE, ge.finger_slot(0, 1)) in pairs
-    # links 1 and 3 meet through the 0 mm link 2
-    assert (ge.finger_slot(0, 1), ge.finger_slot(0, 3)) in pairs
-    d2 = ge.canonicalize(SPECIAL["split321"])
-    # a follower's finger sits on the leader's section
-    assert (ge.carrier_slot(3), ge.finger_slot(4, 0)) in set(d2.filtered_pairs)
+    # the thumb's links 1 and 3 meet through its 0 mm link 2
+    assert (ge.finger_slot(3, 1), ge.finger_slot(3, 3)) in pairs
+    d2 = ge.canonicalize(SPECIAL["cut"])
+    # a follower's finger sits on the leader's part of the palm
+    assert (ge.carrier_slot(4), ge.finger_slot(5, 0)) in set(d2.filtered_pairs)
 
 
 def test_overlap_pairs_match_viability_c1():
@@ -203,18 +224,21 @@ def test_overlap_pairs_match_viability_c1():
 
 def test_admit_is_c1_for_sampled_and_exempts_commercial():
     bad = Hand(fingers=(Finger(y=0, z=80, joints=(Joint("hinge", (0, 0), 50),)),
-                        Finger(y=19, z=80, facing=355, joints=(Joint("hinge", (0, 0), 50),))))
+                        Finger(y=20, z=80, facing=330, joints=(Joint("hinge", (0, 0), 50),))))
     assert not ge.admit(bad).ok and ge.admit(bad, check_overlap=False).ok
     for hid, rec in build_conformed.load().items():
-        assert ge.admit(rec["hand"], check_overlap=False, check_rim=False).ok, hid
+        assert ge.admit(rec["hand"], check_overlap=False).ok, hid
 
 
 def test_palm_up_is_exact():
-    d = ge.canonicalize(SPECIAL["split321"])
+    d = ge.canonicalize(SPECIAL["cut"])
     pu = ge.palm_up(d)
     up = ge._quat_apply_wxyz(pu.base_rot_wxyz, [1.0, 0.0, 0.0])
     assert np.allclose(up, [0.0, 0.0, 1.0])
-    assert pu.spawn_offset[0] == pytest.approx(0.037 / 2 + 0.03 + 0.005)
+    assert np.allclose(pu.spawn_offset, gdv.object_start_m(d.hand, 0.03))
+    assert pu.spawn_offset[0] >= 0.024 / 2 + 0.03 + 0.005 - 1e-12
+    big = ge.palm_up(d, object_half_size=0.036)
+    assert big.spawn_offset[0] >= pu.spawn_offset[0] + 0.006 - 1e-12
     assert np.allclose(ge.tied_q(d, pu.default_q), pu.default_q)
     # the start pose: flexion joints at 0.35 of their upper limit, others 0
     for s in range(ge.N_SLOTS):
@@ -224,7 +248,7 @@ def test_palm_up_is_exact():
 
 
 def test_viability_report():
-    r = ge.viability_report(SPECIAL["split321"])
+    r = ge.viability_report(SPECIAL["cut"])
     assert set(r) >= {"admitted", "viable", "c1_ok", "c2_ok", "c2_margin_mm", "digit_count", "joint_count"}
     assert r["digit_count"] == 6
 
@@ -268,10 +292,13 @@ def test_every_commercial_hand_is_admitted(hand_id):
     entry, status, reason = pf.commercial_entry(hand_id)
     assert status == "admitted", reason
     d = pf._design(entry.hand, entry.source, True)
-    # after filtering, no overlapping pair is left unfiltered at zero or at the start pose
+    # after filtering, no overlapping pair of bodies is left unfiltered at zero or at the start pose
+    # (solids on one body, such as two base servos on the root, never collide with each other)
+    assert all(a != b for a, b in d.filtered_pairs)
     for q in (None, ge.palm_up(d).default_q):
         for a, b, _ in ge.overlap_pairs(d, q):
-            assert (min(a, b), max(a, b)) in set(d.filtered_pairs)
+            if a != b:
+                assert (min(a, b), max(a, b)) in set(d.filtered_pairs)
 
 
 def test_validation_population_has_its_hands():

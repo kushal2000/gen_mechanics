@@ -229,10 +229,16 @@ def test_tied_columns_take_their_sources_value_under_a_shuffle():
     `ge.tie_columns` and scales it by `ge.tie_gears` (`obs_utils.tie_joints`):
     a follower carrier's column takes its leader's value, a coupled joint 1.1
     (per link of its coupling chain) times its source's, every other column
-    its own, under any articulation column order."""
+    its own, under any articulation column order (a hand with two fingers
+    beyond a palm cut, and a hand with a coupling chain, under the grammar's
+    own limits)."""
+    from hand_sampler.grammar.hand import Finger, Hand, Joint
     from isaacsimenvs.inhand_reorient import make_grammar_population as mkpop
 
-    designs = [ge.canonicalize(h) for h in (mkpop.split_321_hand(), mkpop.zero_link_hand(), mkpop.oblique_hand())]
+    coupled = Hand(fingers=(Finger(y=0, z=90, joints=(Joint("hinge", (0, 0), 40), Joint("coupled", (0, 0), 30),
+                                                      Joint("coupled", (0, 0), 20))),
+                            Finger(y=40, z=90, joints=(Joint("hinge", (0, 0), 40),))))
+    designs = [ge.canonicalize(h) for h in (mkpop.cut_hand(), mkpop.zero_link_hand(), mkpop.oblique_hand(), coupled)]
     population = ge.build_population(designs)
     design_idx = design_index(N_ENVS, population.n_designs)
     rng = np.random.default_rng(1)

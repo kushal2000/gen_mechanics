@@ -70,15 +70,14 @@ def test_sample_new_founder_returns_a_viable_design():
     assert 1 <= joint_count <= 36
 
 
-@pytest.mark.parametrize("stage", ["coarse", "fine"])
-def test_try_offspring_returns_a_viable_mutant_or_none(stage):
+def test_try_offspring_returns_a_viable_mutant_or_none():
     from hand_sampler.grammar import viability as gvb
     from hand_sampler.grammar.hand import check
 
     rules = drv.resolve_rules("evolution")
     rng = np.random.default_rng(1)
     parent, _ = drv.sample_new_founder(rules, rng)
-    result = drv.try_offspring(parent, rules, rng, max_retries=16, stage=stage)
+    result = drv.try_offspring(parent, rules, rng, max_retries=16)
     if result is not None:
         child, _design = result
         assert check(child, rules) == [] and gvb.is_viable(child) and child != parent

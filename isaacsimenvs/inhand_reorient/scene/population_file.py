@@ -32,10 +32,11 @@ from . import grammar_envelope as ge
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 POPULATION_SCHEMA = "grammar_population/1.0"
-ENVELOPE_ID = "grammar_envelope/3"
+ENVELOPE_ID = "grammar_envelope/4"
 """The articulation layout a file was built for: 36 slots (6 finger slots of
-a palm-joint carrier and 5 finger joints), rounded-box links along +x, hull
-palm plates, coupled joints as mimic joints. `load_population` refuses any
+a palm-joint carrier and 5 finger joints), servo-sized box links along +x,
+hull palm plates with the mount, base motors and hinge motor as extra
+colliders, coupled joints as mimic joints. `load_population` refuses any
 other."""
 
 SAMPLED_PREFIX = "sampled:"
@@ -118,7 +119,7 @@ def _reason_key(reason: str) -> str:
     return reason.split(":")[0]
 
 
-def sampled_entries(seeds: Sequence[int], rules: Rules = EVOLUTION_RULES, stage: str = "coarse",
+def sampled_entries(seeds: Sequence[int], rules: Rules = EVOLUTION_RULES,
                     require_viable: bool = True, limit: Optional[int] = None,
                     ) -> Tuple[List[PopulationEntry], Dict[str, int]]:
     """`(entries, rejection_counts)`: every seed whose random hand passes C1
@@ -129,7 +130,11 @@ def sampled_entries(seeds: Sequence[int], rules: Rules = EVOLUTION_RULES, stage:
     for seed in seeds:
         if limit is not None and len(entries) >= limit:
             break
-        hand = gops.random_hand(np.random.default_rng(seed), rules, stage)
+        try:
+            hand = gops.random_hand(np.random.default_rng(seed), rules)
+        except gops.NoHand:
+            rejections["no hand"] = rejections.get("no hand", 0) + 1
+            continue
         reasons = list(ge.admit(hand).reasons)
         if not reasons and require_viable and not gvb.c2_workspace_overlap(hand).ok:
             reasons.append("C2: fingertip workspaces do not meet above the palm")
@@ -144,14 +149,14 @@ def sampled_entries(seeds: Sequence[int], rules: Rules = EVOLUTION_RULES, stage:
 def commercial_entry(hand_id: str) -> Tuple[Optional[PopulationEntry], str, Optional[str]]:
     """`(entry_or_None, status, reason)` for a conformed commercial hand
     (`hand_sampler/grammar_bench/conformed_hands.json`). Commercial hands are
-    exempt from the overlap check: their overlaps come from the shared link
-    cross-section, so the overlapping pairs are collision-filtered instead) and
-    from the rim rule (Dex3's thumb sits inside its palm)."""
+    exempt from the clearance check: their bases and links sit closer than
+    servo-sized solids allow, so the overlapping pairs are collision-filtered
+    instead."""
     recs = build_conformed.load()
     rec = recs.get(hand_id)
     if rec is None:
         return None, "unavailable", f"{hand_id!r} is not in conformed_hands.json (not on the machine that built it?)"
-    result = ge.admit(rec["hand"], check_overlap=False, check_rim=False)
+    result = ge.admit(rec["hand"], check_overlap=False)
     if not result.ok:
         return None, "rejected", "; ".join(result.reasons)
     return make_entry(f"{COMMERCIAL_PREFIX}{hand_id}", rec["hand"], exempt_overlap=True), "admitted", None
@@ -195,7 +200,7 @@ def load_population(path) -> List["ge.EnvelopeDesign"]:
             raise ValueError(f"design {d.get('source')!r}: sha256 mismatch, entry tampered or corrupt")
         hand = hand_from_dict(d["hand"])
         exempt = bool(d.get("exempt_overlap", False))
-        result = ge.admit(hand, check_overlap=not exempt, check_rim=not exempt)
+        result = ge.admit(hand, check_overlap=not exempt)
         if not result.ok:
             raise ValueError(f"design {d.get('source')!r} fails re-admission: {'; '.join(result.reasons)}")
         design = _design(hand, d["source"], exempt)

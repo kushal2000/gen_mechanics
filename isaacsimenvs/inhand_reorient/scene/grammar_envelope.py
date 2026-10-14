@@ -14,31 +14,33 @@ topology):
       `f{f}_link{d}`) -- 36 joint slots -- and a fingertip body `f{f}_tip`
       fixed to `f{f}_link4` at the real fingertip (`tip_offsets`).
     - The root body is the palm frame (x = palm normal on the grasp side, y
-      across the palm, z from the wrist toward the fingers; origin at the
-      wrist centre) and carries the main palm plate.
+      and z in the plate; origin at the palm centre, where the hand mounts)
+      and carries the main palm plate, the mount, the hinge motor and the
+      main palm's base motors (`root_colliders`).
     - Each carrier has a role (`carrier_roles`): LOCKED (a finger on the main
       palm, or an empty finger slot: ghost limits, no collider, the finger's
-      mount folded into its base origin), LEADER (the first finger of a palm
-      joint's section: the carrier IS that palm joint and carries the
-      section's plate) or FOLLOWER (another finger on the same section: same
-      origin, axis and limits as its leader, tied to it by a mimic joint,
-      gearing -1, no collider).
+      mount folded into its base origin), LEADER (the first finger beyond the
+      palm cut: the carrier IS the palm joint and carries the part beyond the
+      cut, its plate and its fingers' base motors) or FOLLOWER (another
+      finger beyond the cut: same origin, axis and limits as its leader, tied
+      to it by a mimic joint, gearing -1, no collider).
     - A coupled joint is a mimic joint on the independent joint its coupling
       chain starts from (gearing -1.1 per link of the chain), so it is tied
       (`slot_tie`, `slot_gear`) and not policy-controlled.
     - Fingers take finger slots in a canonical order: the main palm's fingers
-      in the hand's order, then each palm joint's fingers, leader first.
+      in the hand's order, then the fingers beyond the cut, leader first.
     - `slot_valid` marks the joints the policy controls (independent finger
       joints and leader carriers); `slot_real` every joint with a real link
       (coupled joints included) and leader carriers.
-    - Links are rounded boxes (`hand_sampler.grammar.derive.link_core_box_m`:
-      a core box grown by 6 mm), along each link body's +x. Ghost slots (no
-      finger joint) are tiny, collider-less and locked near zero.
+    - Links are servo-sized boxes (`hand_sampler.grammar.derive.link_box_mm`:
+      each link's yoke and the motor it carries), along each link body's +x,
+      with a 1 mm rest offset (two solids rest one printed wall apart). Ghost
+      slots (no finger joint) are tiny, collider-less and locked near zero.
 
 Every grammar hand fits (at most 6 fingers of at most 5 joints, at most one
-palm joint per finger). `admit` adds the viability check C1 (self-overlap)
-for sampled designs; commercial hands are exempt and collision-filter their
-overlapping pairs instead (`mark_filtered_pairs`).
+palm joint). `admit` adds the viability check C1 (clearance) for sampled
+designs; commercial hands are exempt and collision-filter their overlapping
+pairs instead (`mark_filtered_pairs`).
 """
 
 from __future__ import annotations
@@ -56,11 +58,12 @@ from hand_sampler.grammar.fk import forward_kinematics, pose_to_matrix, rodrigue
 from hand_sampler.grammar.hand import (
     COUPLING_RATIO,
     LINK_DENSITY_KG_M3,
-    LINK_RADIUS_MM,
     NO_RULES,
     PALM_THICKNESS_MM,
+    PLATE_HALF_MM,
     Hand,
     check,
+    finger_section,
 )
 from hand_sampler.grammar.kinematics import KinematicModel
 
@@ -83,7 +86,8 @@ GHOST_LENGTH_M = 1e-4
 GHOST_LIMITS = (0.0, 1e-8)
 GHOST_AXIS = (0.0, 0.0, 1.0)
 
-LINK_RADIUS_M = LINK_RADIUS_MM * 1e-3
+SHELL_RADIUS_M = gvb.CLEARANCE_MM / 2.0 * 1e-3
+"""Every solid's rest offset: two solids come to rest one printed wall apart."""
 MAX_REST_PENETRATION_M = gvb.C1_MAX_OVERLAP_MM * 1e-3
 
 
@@ -262,8 +266,8 @@ class EnvelopeDesign:
         return tuple(None if i < 0 else str(i) for i in self.finger_index)
 
     @property
-    def capsule_radius_m(self) -> float:   # the rounded links' corner radius
-        return LINK_RADIUS_M
+    def capsule_radius_m(self) -> float:   # every solid's rest offset (a hand feature for the policy)
+        return SHELL_RADIUS_M
 
 
 def carrier_roles(design: EnvelopeDesign) -> Tuple[str, ...]:
@@ -320,9 +324,10 @@ def tip_offsets(design: EnvelopeDesign) -> np.ndarray:
 def _assign_slots(hand: Hand) -> Tuple[List[int], List[int], List[int]]:
     """Per finger slot: (hand finger index or -1, palm joint or -1, leader
     finger slot or -1)."""
-    order: List[Tuple[int, int]] = [(i, -1) for i, f in enumerate(hand.fingers) if f.palm_joint < 0]
+    sec = [finger_section(hand, i) for i in range(len(hand.fingers))]
+    order: List[Tuple[int, int]] = [(i, -1) for i in range(len(hand.fingers)) if sec[i] < 0]
     for k in range(len(hand.palm_joints)):
-        order += [(i, k) for i, f in enumerate(hand.fingers) if f.palm_joint == k]
+        order += [(i, k) for i in range(len(hand.fingers)) if sec[i] == k]
     fi = [-1] * N_FINGERS
     pk = [-1] * N_FINGERS
     lead = [-1] * N_FINGERS
@@ -335,7 +340,7 @@ def _assign_slots(hand: Hand) -> Tuple[List[int], List[int], List[int]]:
 
 
 def canonicalize(hand: Hand, source: str = "") -> EnvelopeDesign:
-    problems = check(hand, NO_RULES, rim=False)
+    problems = check(hand, NO_RULES)
     if problems:
         raise AdmissionError(problems)
     if len(hand.fingers) > N_FINGERS or any(len(f.joints) > N_JOINTS_PER_FINGER for f in hand.fingers):
@@ -376,7 +381,7 @@ def canonicalize(hand: Hand, source: str = "") -> EnvelopeDesign:
             continue
         fg = hand.fingers[i]
         base = np.eye(4)
-        base[:3, :3] = gdv.finger_frame(fg, gdv.grasp_point_m(hand))
+        base[:3, :3] = gdv.finger_frame(fg)
         base[:3, 3] = gdv.mount_point_m(fg) - hinge
         n = len(fg.joints)
         for d, jt in enumerate(fg.joints):
@@ -416,16 +421,24 @@ def canonicalize(hand: Hand, source: str = "") -> EnvelopeDesign:
 # --------------------------------------------------------------------------
 
 
+def _leader_of(design: EnvelopeDesign, k: int) -> int:
+    f = next(f for f in range(N_FINGERS) if design.carrier_palm_joint[f] == k and design.slot_valid[carrier_slot(f)])
+    return carrier_slot(f)
+
+
 def node_of_key(design: EnvelopeDesign, key: Tuple) -> int:
-    """`hand_sampler.grammar.viability` body key -> envelope node."""
-    if key[0] == "palm":
-        if key[1] < 0:
-            return ROOT_NODE
-        f = next(f for f in range(N_FINGERS) if design.carrier_palm_joint[f] == key[1] and design.slot_valid[carrier_slot(f)])
-        return carrier_slot(f)
+    """`hand_sampler.grammar.viability` solid key -> envelope node (the body
+    that carries the solid)."""
+    kind = key[0]
+    if kind in ("mount", "hinge"):
+        return ROOT_NODE
+    if kind == "palm":
+        return ROOT_NODE if key[1] < 0 else _leader_of(design, key[1])
+    if kind == "motor":
+        k = finger_section(design.hand, key[1])
+        return ROOT_NODE if k < 0 else _leader_of(design, k)
     _, i, j = key
-    f = design.finger_index.index(i)
-    return finger_slot(f, j)
+    return finger_slot(design.finger_index.index(i), j)
 
 
 def _articulation_parent(design: EnvelopeDesign, node: int) -> int:
@@ -450,7 +463,7 @@ def construction_pairs(design: EnvelopeDesign) -> Tuple[Tuple[int, int], ...]:
 def overlap_pairs(design: EnvelopeDesign, q: Optional[np.ndarray] = None,
                   min_overlap_mm: float = 0.0) -> List[Tuple[int, int, float]]:
     """`(node_a, node_b, overlap_m)` for every pair of bodies that do not touch
-    by construction and overlap (rounded-box distance) at slot joint vector
+    by construction and come closer than a wall (`viability.overlaps`) at slot joint vector
     `q` (default 0)."""
     qd = None if q is None else slot_q_to_dofs(design, q)
     out = []
@@ -462,13 +475,14 @@ def overlap_pairs(design: EnvelopeDesign, q: Optional[np.ndarray] = None,
 
 def mark_filtered_pairs(design: EnvelopeDesign, max_penetration_m: float = 0.0,
                         extra_qs: Sequence[np.ndarray] = ()) -> EnvelopeDesign:
-    """A copy of `design` whose `filtered_pairs` also hold every pair that
-    overlaps at q = 0 or at any of `extra_qs` (commercial hands only: their
-    overlaps come from the shared cross-section, not from the design)."""
+    """A copy of `design` whose `filtered_pairs` also hold every pair of
+    bodies that overlaps at q = 0 or at any of `extra_qs` (commercial hands
+    only: their bases and links sit closer than servo-sized solids allow)."""
     pairs = set(design.filtered_pairs)
     for q in (None, *extra_qs):
         for a, b, _ in overlap_pairs(design, q, min_overlap_mm=max_penetration_m * 1e3):
-            pairs.add((min(a, b), max(a, b)))
+            if a != b:          # two solids on one body never collide with each other
+                pairs.add((min(a, b), max(a, b)))
     return dc_replace(design, filtered_pairs=tuple(sorted(pairs)))
 
 
@@ -506,22 +520,20 @@ def dofs_to_slot_q(design: EnvelopeDesign, qd: np.ndarray) -> np.ndarray:
 # --------------------------------------------------------------------------
 
 
-def admit(hand: Hand, *, check_overlap: bool = True, check_rim: bool = True,
+def admit(hand: Hand, *, check_overlap: bool = True,
           max_rest_penetration_m: float = MAX_REST_PENETRATION_M) -> AdmissionResult:
     """Whether the simulator builds `hand`: it is in the grammar (every
     grammar hand fits the envelope) and, for a sampled design
-    (`check_overlap`), passes C1 (no two bodies overlap by more than 3 mm at
-    the zero or the start pose). Commercial hands pass `check_overlap=False`
-    and filter their overlapping pairs instead; they also pass `check_rim=False`
-    (the rim rule shapes generated hands; Dex3's thumb breaks it)."""
-    problems = check(hand, NO_RULES, rim=check_rim)
+    (`check_overlap`), passes C1 (every two solids a wall apart at the zero
+    and the start pose). Commercial hands pass `check_overlap=False` and
+    filter their overlapping pairs instead."""
+    problems = check(hand, NO_RULES)
     if problems:
         return AdmissionResult(False, tuple(problems))
     if check_overlap:
         c1 = gvb.c1_self_overlap(hand, max_rest_penetration_m * 1e3)
         if not c1.ok:
-            return AdmissionResult(False, (f"C1: {len(c1.pairs)} overlapping pair(s), worst {c1.worst_mm:.1f} mm "
-                                           f"(allowed {max_rest_penetration_m * 1e3:.0f} mm)",))
+            return AdmissionResult(False, (f"C1: {len(c1.pairs)} pair(s) closer than a wall, worst {c1.worst_mm:.1f} mm",))
     return AdmissionResult(True, ())
 
 
@@ -537,7 +549,7 @@ def viability_report(hand: Hand) -> dict:
     v = gvb.viability(hand)
     reasons = []
     if not v.c1.ok:
-        reasons.append(f"C1: worst overlap {v.c1.worst_mm:.1f} mm")
+        reasons.append(f"C1: {v.c1.worst_mm:.1f} mm inside the wall")
     if not v.c2.ok:
         reasons.append(f"C2: fingertip workspaces {v.c2.best_mm:.1f} mm apart above the palm")
     return {"admitted": bool(v.c1.ok), "viable": bool(v.ok), "reasons": reasons, "c1_ok": bool(v.c1.ok),
@@ -636,28 +648,48 @@ def grammar_fk_reference(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
 # --------------------------------------------------------------------------
 
 
-def link_core(design: EnvelopeDesign, idx: int) -> Tuple[np.ndarray, np.ndarray]:
-    """(centre, half extents) of slot `idx`'s rounded link core box, in its
-    body frame (metres)."""
+def link_points(design: EnvelopeDesign, idx: int) -> np.ndarray:
+    """(8, 3): slot `idx`'s link box corners in its body frame (metres): the
+    collider's convex hull points."""
     f, d = slot_finger(idx), slot_joint_index(idx)
-    return gdv.link_core_box_m(design.hand, design.finger_index[f], d)
+    return gdv.link_points_m(design.hand, design.finger_index[f], d)
 
 
-def link_core_points(design: EnvelopeDesign, idx: int) -> np.ndarray:
-    """The 8 core-box corners: the collider's convex hull points."""
-    return gdv.box_corners(*link_core(design, idx))
+def _hinge_mm(design: EnvelopeDesign, k: int) -> np.ndarray:
+    return gdv.palm_hinge_m(design.hand, k) * 1e3
 
 
 def plate_points(design: EnvelopeDesign, node: int) -> np.ndarray:
     """A palm plate's prism corners (<= 64) in its body frame: the main palm
-    (`ROOT_NODE`, root frame) or a leader carrier's section (relative to its
-    hinge)."""
+    (`ROOT_NODE`, root frame) or the part beyond the cut on its leader
+    carrier (relative to the hinge)."""
     outlines = gdv.palm_outlines_mm(design.hand)
     if node == ROOT_NODE:
         return gdv.plate_points_m(outlines[-1])
     k = design.carrier_palm_joint[slot_finger(node)]
-    p = design.hand.palm_joints[k]
-    return gdv.plate_points_m(outlines[k], origin_mm=(p.y, p.z))
+    return gdv.plate_points_m(outlines[k], origin_mm=tuple(_hinge_mm(design, k)[1:]))
+
+
+def root_colliders(design: EnvelopeDesign) -> Dict[str, np.ndarray]:
+    """The root body's solids besides the main plate (root frame, metres):
+    the mount, the hinge motor and every main-palm finger's base motor."""
+    out = {"mount": gdv.mount_points_m()}
+    g = gdv.hand_geometry(design.hand)
+    if g.hinge_box is not None:
+        out["hinge_motor"] = g.hinge_box.corners() * 1e-3
+    for i, f in enumerate(design.hand.fingers):
+        if finger_section(design.hand, i) < 0:
+            out[f"motor_{i}"] = gdv.base_motor_boxes_mm(f)[0].corners() * 1e-3
+    return out
+
+
+def carrier_colliders(design: EnvelopeDesign, node: int) -> Dict[str, np.ndarray]:
+    """A leader carrier's solids besides its plate (relative to the hinge,
+    metres): the base motors of the fingers beyond the cut."""
+    k = design.carrier_palm_joint[slot_finger(node)]
+    h = _hinge_mm(design, k)
+    return {f"motor_{i}": (gdv.base_motor_boxes_mm(f)[0].corners() - h) * 1e-3
+            for i, f in enumerate(design.hand.fingers) if finger_section(design.hand, i) == k}
 
 
 def plate_mass_props(points: np.ndarray) -> Tuple[float, np.ndarray, np.ndarray]:
@@ -678,18 +710,29 @@ def plate_mass_props(points: np.ndarray) -> Tuple[float, np.ndarray, np.ndarray]
 
 
 def link_mass_props(design: EnvelopeDesign, idx: int) -> Tuple[float, np.ndarray, np.ndarray]:
-    return gdv.rounded_box_mass_props(*link_core(design, idx))
+    return gdv.box_mass_props(link_points(design, idx))
+
+
+def carrier_mass_props(design: EnvelopeDesign, node: int) -> Tuple[float, np.ndarray, np.ndarray]:
+    """A leader carrier's plate and base motors: summed mass, mass-weighted
+    centre, and the inertia of their bounding box at that mass."""
+    parts = [plate_mass_props(plate_points(design, node))]
+    parts += [gdv.box_mass_props(pts) for pts in carrier_colliders(design, node).values()]
+    m = sum(p[0] for p in parts)
+    com = sum(p[0] * np.asarray(p[1]) for p in parts) / m
+    pts = np.concatenate([plate_points(design, node)] + list(carrier_colliders(design, node).values()))
+    a, b, c = (pts.max(axis=0) - pts.min(axis=0)).tolist()
+    return float(m), com, m / 12.0 * np.array([b * b + c * c, a * a + c * c, a * a + b * b])
 
 
 def token_boxes(design: EnvelopeDesign) -> np.ndarray:
     """`(36, 4, 3)` float32 ordered boxes (`design_space._ordered_box`) of each
-    slot's body in its own frame: a link's outer rounded box, a leader
-    carrier's section plate, tiny for every other slot."""
+    slot's body in its own frame: a link's box, a leader carrier's plate,
+    tiny for every other slot."""
     out = np.zeros((N_SLOTS, 4, 3), dtype=np.float32)
     for idx in range(N_SLOTS):
         if design.slot_real[idx] and slot_joint_index(idx) >= 0:
-            c, h = link_core(design, idx)
-            verts = gdv.box_corners(c, h + LINK_RADIUS_M)
+            verts = link_points(design, idx)
         elif design.slot_real[idx]:
             pts = plate_points(design, idx)
             lo, hi = pts.min(axis=0), pts.max(axis=0)
@@ -727,9 +770,9 @@ def finger_valid(design: EnvelopeDesign) -> np.ndarray:
 def palm_up(design: EnvelopeDesign, object_half_size: float = 0.03) -> PalmUpResult:
     """The palm frame is known, so this is exact: base_rot turns the palm
     normal to world +z; the start pose is `derive.start_q` (every flexion
-    joint at 0.35 of its upper limit); the object starts above the main
-    palm's outline centroid, half its size plus 5 mm above the plate
-    (`derive.object_start_m`)."""
+    joint at 0.35 of its upper limit); the object starts over the palm
+    outline's centroid, 5 mm above the highest solid under it at the start
+    pose (`derive.object_start_m`)."""
     fvalid = finger_valid(design)
     default_q = dofs_to_slot_q(design, gdv.start_q(design.hand))
     tips = tip_fk(design, authored_fk(design, default_q))
@@ -799,8 +842,8 @@ def build_population(designs: Sequence[EnvelopeDesign], **palm_up_kwargs) -> Gra
         out["base_rot"][i] = pu.base_rot_wxyz
         out["spawn_offset"][i] = pu.spawn_offset
         outline = gdv.palm_outlines_mm(d.hand)[-1]
-        c = gdv.polygon_centroid(outline) * 1e-3
-        top = PALM_THICKNESS_MM / 2.0 * 1e-3
+        c = gdv.polygon_centroid(gdv.outline_mm(d.hand)) * 1e-3
+        top = PLATE_HALF_MM * 1e-3
         out["palm_center"][i] = np.array([top, c[0], c[1]])
         mounts = [gdv.mount_point_m(f) for f in d.hand.fingers][:2]
         kp = [np.zeros(3), out["palm_center"][i]] + mounts

@@ -86,9 +86,9 @@ def _author_convex_hull(layer, path: str, points: np.ndarray, *, contact_offset:
                         vertex_limit: int = 64) -> None:
     """A convex-hull mesh collider at `path` (points in its parent body's
     frame): the hull's triangles, PhysX `convexHull` approximation. A link's
-    8 core-box corners with `rest_offset` = the corner radius give the
-    rounded box; a palm plate's prism has at most 64 vertices and 34 faces
-    (GPU hull limits)."""
+    or a motor's 8 box corners with `rest_offset` = half the printed wall;
+    a palm plate's prism has at most 64 vertices and 34 faces (GPU hull
+    limits)."""
     from pxr import Gf, Sdf, Vt
     from scipy.spatial import ConvexHull
 
@@ -188,7 +188,8 @@ def _author_fixed_joint(layer, joint_path: str, *, body0_path: str, body1_path: 
 
 
 LINK_CONTACT_EXTRA_M = 0.002
-"""A link's contact offset is its corner radius plus this (`restOffset` = r)."""
+"""A solid's contact offset is its rest offset plus this (`restOffset` = half
+the printed wall, so two solids rest a wall apart)."""
 CARRIER_MASS_PROPS = (0.01, (2e-6, 2e-6, 2e-6))
 """A locked or follower carrier (no collider) gets a small real mass: a
 near-massless body between the palm and a real finger destabilised the
@@ -203,8 +204,10 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
                   rest_offset: Optional[float] = None) -> Dict[str, bool]:
     """Author one design under `root_path` (an env's `Robot` Xform, the
     articulation root): the root body (the palm frame, carrying the main
-    palm plate), 6 finger slots of a carrier (a palm section on a leader),
-    5 finger links (rounded-box hulls) and a fixed fingertip body each. Every
+    palm plate, the mount, the hinge motor and the main palm's base motors),
+    6 finger slots of a carrier (on a leader, the part beyond the palm cut
+    with its base motors), 5 finger links (servo-sized box hulls) and a
+    fixed fingertip body each. Every
     body is a flat sibling under `root_path`, authored at its rest pose
     (`authored_fk` at q = 0 composed with the base pose). `world_anchor_pos`
     is the base position in stage coordinates (the fixed joint anchoring the
@@ -223,8 +226,8 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
     base_pos = tuple(float(v) for v in base_pos)
     base_rot_wxyz = tuple(float(v) for v in base_rot_wxyz)
     world_anchor = tuple(float(v) for v in (world_anchor_pos if world_anchor_pos is not None else base_pos))
-    link_rest = ge.LINK_RADIUS_M
-    link_contact = ge.LINK_RADIUS_M + LINK_CONTACT_EXTRA_M
+    link_rest = ge.SHELL_RADIUS_M
+    link_contact = ge.SHELL_RADIUS_M + LINK_CONTACT_EXTRA_M
 
     T0 = ge.authored_fk(design, np.zeros(ge.N_SLOTS))
     T_base = np.eye(4)
@@ -251,6 +254,9 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
     define(layer, f"{root_body_path}/collisions", "Xform")
     _author_convex_hull(layer, f"{root_body_path}/collisions/palm_plate", plate, contact_offset=contact_offset,
                         rest_offset=rest_offset, material_path=material)
+    for name, pts in ge.root_colliders(design).items():
+        _author_convex_hull(layer, f"{root_body_path}/collisions/{name}", pts, contact_offset=link_contact,
+                            rest_offset=link_rest, material_path=material)
     colliders[ROOT_BODY_NAME] = True
     fixed = define(layer, f"{root_path}/root_fixed_joint", "PhysicsFixedJoint")
     rel(fixed, "physics:body1", root_body_path)
@@ -268,7 +274,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
         pos, quat = mat_to_pos_quat(T_in_root[c])
         if role == ge.LEADER:
             pts = ge.plate_points(design, c)
-            m, com, inertia = ge.plate_mass_props(pts)
+            m, com, inertia = ge.carrier_mass_props(design, c)
         else:
             m, (com, inertia) = CARRIER_MASS_PROPS[0], ((0.0, 0.0, 0.0), CARRIER_MASS_PROPS[1])
         _author_body(layer, body_path, mass=m, com=com, inertia_diag=inertia, pos=pos, quat_wxyz=quat,
@@ -277,6 +283,9 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
             define(layer, f"{body_path}/collisions", "Xform")
             _author_convex_hull(layer, f"{body_path}/collisions/palm_plate", pts, contact_offset=contact_offset,
                                 rest_offset=rest_offset, material_path=material)
+            for name, mpts in ge.carrier_colliders(design, c).items():
+                _author_convex_hull(layer, f"{body_path}/collisions/{name}", mpts, contact_offset=link_contact,
+                                    rest_offset=link_rest, material_path=material)
         colliders[ge.slot_body(c)] = role == ge.LEADER
         limits = ge.GHOST_LIMITS if role == ge.LOCKED else tuple(float(v) for v in design.slot_limits[c])
         mimic_of = f"{root_path}/joints/{ge.SLOT_NAMES[int(design.slot_tie[c])]}" if role == ge.FOLLOWER else None
@@ -297,7 +306,7 @@ def author_design(layer, root_path: str, design: ge.EnvelopeDesign, *,
                          filtered_pair_targets=filtered_targets_of.get(body_path, ()))
             if real:
                 define(layer, f"{body_path}/collisions", "Xform")
-                _author_convex_hull(layer, f"{body_path}/collisions/rounded_box", ge.link_core_points(design, slot),
+                _author_convex_hull(layer, f"{body_path}/collisions/link_box", ge.link_points(design, slot),
                                     contact_offset=link_contact, rest_offset=link_rest, material_path=material)
             colliders[ge.slot_body(slot)] = real
             tie = int(design.slot_tie[slot])
@@ -481,8 +490,10 @@ def setup_grammar_robot(env) -> None:
     assert env.cfg.scene.replicate_physics is False, "hand_population requires scene.replicate_physics=False"
     assert env.cfg.scene.clone_in_fabric is False, "hand_population requires scene.clone_in_fabric=False"
 
+    from ..scene_utils import object_half_size_m
+
     designs = pf.load_population(env.cfg.assets.hand_population)
-    population = ge.build_population(designs)
+    population = ge.build_population(designs, object_half_size=object_half_size_m(env.cfg))
     print(f"[inhand_reorient] loaded grammar population: {population.n_designs} designs from "
           f"{env.cfg.assets.hand_population}", flush=True)
 

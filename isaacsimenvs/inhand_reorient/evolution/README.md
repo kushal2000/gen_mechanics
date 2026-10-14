@@ -12,7 +12,7 @@ the whole run is **one process, one SLURM job** -- no self-resubmitting chains.
 
 ```
 python -m isaacsimenvs.inhand_reorient.evolution.driver \
-    --rules evolution --stage coarse --seed 0 --generations 20 --designs 64 \
+    --rules evolution --seed 0 --generations 20 --designs 64 \
     --probes allegro_right,dclaw,sharpa_left_on_iiwa14,leap_right \
     --num-envs 4096 --epochs-per-gen 200 --fitness train_tail \
     --run-dir outputs/evolution_pilot/run0
@@ -25,12 +25,12 @@ anywhere in this package), it only shells out to `coevolution/train.py`, which d
 
 Key flags (see `driver.py`'s `parse_args` for the full list and defaults):
 
-- `--rules {evolution,none}` (default `evolution`): the locked grammar's rule set
-  (`hand_sampler.grammar.hand.EVOLUTION_RULES`: hinge and coupled joints; `none`: the whole
-  grammar). `--stage {coarse,fine}` (default `coarse`): mutation steps of 10 mm / 30 deg with the
-  structural operators, or 1 mm / 5 deg values only (`hand_sampler.grammar.operators`). Founders,
-  offspring and immigrants must pass both viability checks (C1 self-overlap, C2 fingertip
-  workspaces meet above the palm). The grammar of 2026-10-07 replaced the named variants; sections
+- `--rules {evolution,none}` (default `evolution`): the grammar's rule set
+  (`hand_sampler.grammar.hand.EVOLUTION_RULES`, the Feetech rules of 2026-10-14: hinges only,
+  bases on a 40 mm grid 40-90 mm from the palm centre, links at least the servo floors; `none`:
+  the whole grammar). Mutation steps are 10 mm / 30 deg (bases by the grid pitch), one grid only
+  (`hand_sampler.grammar.operators`). Founders, offspring and immigrants must pass both viability
+  checks (C1 clearance, C2 fingertip workspaces meet above the palm). The grammar of 2026-10-07 replaced the named variants; sections
   below that mention `--variant`, G_V1 or projected hands describe runs made before it (the old
   code is at the local tag `grammar-v0.5-final`).
 - `--designs N` (default 64): total population size per generation, including probes.

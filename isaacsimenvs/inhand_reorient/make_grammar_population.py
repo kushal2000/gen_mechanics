@@ -3,12 +3,12 @@
     .venv_isaacsim/bin/python3 -m isaacsimenvs.inhand_reorient.make_grammar_population \
         --out outputs/grammar_populations/test16.json [--sampled 12] [--commercial allegro_right ...]
 
-`test16` (the default): 12 random viable hands (Evolution Rules, coarse grid,
-C1 and C2 pass) and 4 conformed commercial hands. `validation`: the mixed
-population of the Isaac validation (`validation_entries`): five commercial
-hands (Allegro, SVH, Wuji v2, Shadow, Inspire with its couplings), a 3+2+1
-palm-joint split, a hand with 0 mm links, a hand with oblique axes and random
-hands.
+`test16` (the default): 12 random viable hands (the Feetech rules, C1 and C2
+pass) and 4 conformed commercial hands. `validation`: the mixed population
+of the Isaac validation (`validation_entries`): five commercial hands
+(Allegro, SVH, Wuji v2, Shadow, Inspire with its couplings), a hand with two
+fingers beyond a palm cut, a hand with crossed knuckles (0 mm links), a hand
+with oblique axes and random hands.
 
 Numpy + `hand_sampler` only (no Kit), but importing `isaacsimenvs` pulls in
 `gymnasium`, so run it with the isaacsim venv.
@@ -50,51 +50,50 @@ def collect_commercial(hand_ids: Sequence[str]) -> List[pf.PopulationEntry]:
     return out
 
 
-def _finger(y: int, z: int, joints, facing: int = 0, tilt: int = 0, palm_joint: int = -1) -> Finger:
-    return Finger(y=y, z=z, facing=facing, tilt=tilt, palm_joint=palm_joint,
-                  joints=tuple(Joint(t, a, L) for t, a, L in joints))
+def _finger(y: int, z: int, joints, facing: int = 0, tilt: int = 0) -> Finger:
+    return Finger(y=y, z=z, facing=facing, tilt=tilt, joints=tuple(Joint(t, a, L) for t, a, L in joints))
 
 
 FLEX, ABD, ROLL = (0, 0), (90, 0), (0, 90)
+BENDS = (("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
+THUMB_221 = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
 
 
-def split_321_hand() -> Hand:
-    """Six fingers: three on the main palm, two on one palm joint's section
-    (the -y side of the row), and a thumb on its own palm joint (+y side):
-    the 3+2+1 split. The row splays 15 degrees per finger: every finger
-    closes toward the grasp point, so a parallel row would close into its
-    neighbours."""
-    j3 = (("hinge", FLEX, 40), ("hinge", FLEX, 30), ("coupled", FLEX, 25))
-    row = [(-50, 90, 330, 0), (-25, 95, 345, 0), (0, 100, 0, -1), (25, 95, 15, -1), (50, 90, 30, -1)]
-    fingers = [_finger(y, z, j3, facing=fa, palm_joint=k) for y, z, fa, k in row]
-    fingers.append(_finger(60, 35, (("hinge", ROLL, 0), ("hinge", FLEX, 40), ("hinge", FLEX, 30)), facing=60,
-                           tilt=40, palm_joint=1))
-    return Hand(fingers=tuple(fingers), palm_joints=(PalmJoint(-20, 45, (0, 0)), PalmJoint(30, 20, (0, 0))))
+def cut_hand() -> Hand:
+    """Six fingers under the Feetech rules: a row of three, two fingers
+    beyond one palm cut (pointing -y) and a 2-2-1 thumb (spread-bend-spread-
+    bend-bend, each spread crossing the next bend)."""
+    fingers = [_finger(y, 80, BENDS) for y in (-40, 0, 40)]
+    fingers += [_finger(-80, 0, BENDS, facing=270), _finger(-80, -40, BENDS, facing=270)]
+    fingers.append(_finger(80, -40, THUMB_221, facing=90))
+    return Hand(fingers=tuple(fingers), palm_joints=(PalmJoint(facing=330, offset=30),))
 
 
 def zero_link_hand() -> Hand:
-    """Knuckles with two joints at one point (0 mm links), a thumb with a
-    0 mm link in its middle. The outer fingers splay 15 degrees (they close
-    toward the grasp point)."""
-    knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 45), ("hinge", FLEX, 0), ("hinge", FLEX, 25), ("hinge", FLEX, 20))
-    fingers = [_finger(y, 95, knuckle, facing=fa) for y, fa in ((-25, 345), (0, 0), (25, 15))]
-    fingers.append(_finger(30, 30, (("hinge", ROLL, 0), ("hinge", FLEX, 40), ("hinge", FLEX, 0), ("hinge", ABD, 30)),
-                           facing=70, tilt=20))
+    """Knuckles with two joints at one point (0 mm links: a spread crossing a
+    bend, its motor slid behind the palm), and a 2-2-1 thumb with a second
+    crossing in its middle."""
+    knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
+    fingers = [_finger(y, 80, knuckle) for y in (-40, 0, 40)]
+    fingers.append(_finger(80, -40, THUMB_221, facing=90))
     return Hand(fingers=tuple(fingers))
 
 
 def oblique_hand() -> Hand:
-    """Axes between kinds (a thumb base at 45 degrees, tilted finger joints)."""
-    fingers = [_finger(y, 90, (("hinge", (15, -20), 40), ("hinge", (30, 0), 35), ("hinge", (0, 10), 25)), facing=f)
-               for y, f in ((-30, 345), (0, 0), (30, 15))]
-    fingers.append(_finger(45, 25, (("hinge", (45, 45), 30), ("hinge", (135, 30), 40), ("hinge", (60, 0), 30)),
-                           facing=60, tilt=60))
+    """Axes between kinds (30 degree steps), lengths at the servo floors
+    their axes need; the fingers sit a grid step apart or more (an oblique
+    motor's link is wider than a bending one)."""
+    fingers = [gops.fit_lengths(_finger(y, z, (("hinge", (150, 30), 50), ("hinge", (0, 30), 50), ("hinge", (0, -30), 50)),
+                                        facing=fa), EVOLUTION_RULES)
+               for y, z, fa in ((0, 80, 0), (-80, 0, 270), (80, 0, 90))]
+    fingers.append(gops.fit_lengths(_finger(0, -80, (("hinge", (120, 30), 50), ("hinge", (30, 0), 50),
+                                                     ("hinge", (0, 30), 50)), facing=180, tilt=30), EVOLUTION_RULES))
     return Hand(fingers=tuple(fingers))
 
 
 def validation_entries(n_random: int = 3, seed0: int = 0) -> List[pf.PopulationEntry]:
     built = []
-    for name, hand in (("split321", split_321_hand()), ("zero_links", zero_link_hand()), ("oblique", oblique_hand())):
+    for name, hand in (("cut", cut_hand()), ("zero_links", zero_link_hand()), ("oblique", oblique_hand())):
         problems = check(hand, EVOLUTION_RULES)
         if problems:
             raise RuntimeError(f"{name}: {problems}")

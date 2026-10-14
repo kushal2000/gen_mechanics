@@ -404,6 +404,20 @@ def _add_anyrotate_contact_sensor(env, fingertip_names) -> None:
           f"{len(env.ar_nontip_sensors)} other hand bodies", flush=True)
 
 
+def object_half_size_m(cfg) -> float:
+    """Half the task object's largest extent (m): what the grammar's object
+    start (`grammar_envelope.palm_up`) lifts the object's centre by, above
+    the highest solid under it."""
+    if is_anyrotate(cfg):
+        a = cfg.anyrotate
+        if a.object_shape == "capsule":
+            return float(a.capsule_radius) + float(a.capsule_width) / 2.0
+        return float(a.box_size) / 2.0
+    if is_repose(cfg):
+        return float(cfg.repose.object_size_m) / 2.0
+    return float(cfg.assets.object_size_m) / 2.0
+
+
 def _scene_objects(env, offsets: dict) -> tuple[RigidObject, RigidObject]:
     """``(object, goal marker)`` for the active task profile."""
     if is_anyrotate(env.cfg):

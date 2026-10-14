@@ -14,7 +14,7 @@ entirely inside the ``coevolution/train.py`` subprocess.
 
 CLI:
     python -m isaacsimenvs.inhand_reorient.evolution.driver \
-        --rules evolution --stage coarse --seed 0 --generations 20 --designs 64 \
+        --rules evolution --seed 0 --generations 20 --designs 64 \
         --probes allegro_right,dclaw,sharpa_left_on_iiwa14,leap_right \
         --num-envs 4096 --epochs-per-gen 200 --fitness train_tail \
         --run-dir outputs/evolution_pilot/run0
@@ -126,8 +126,8 @@ RULES_BY_NAME: Dict[str, Rules] = {"evolution": EVOLUTION_RULES, "none": NO_RULE
 
 
 def resolve_rules(name: str) -> Rules:
-    """`--rules`: "evolution" (the simulator's Evolution Rules) or "none"
-    (the whole grammar)."""
+    """`--rules`: "evolution" (the Feetech rules: hands buildable from
+    Feetech servos) or "none" (the whole grammar)."""
     if name not in RULES_BY_NAME:
         raise ValueError(f"unknown --rules {name!r}; known: {sorted(RULES_BY_NAME)}")
     return RULES_BY_NAME[name]
@@ -182,27 +182,30 @@ def _viable(hand: Hand) -> bool:
 
 
 def sample_new_founder(
-    rules: Rules, driver_rng: np.random.Generator, max_tries: int = 20000, stage: str = "coarse",
+    rules: Rules, driver_rng: np.random.Generator, max_tries: int = 20000,
 ) -> Tuple[Hand, "ge.EnvelopeDesign"]:
     """A random viable hand (generation-0 founder, or an immigrant replacing
     a failed mutation); seeds come from `driver_rng`, so the search is
     reproducible and resumable."""
     for _ in range(max_tries):
         seed = int(driver_rng.integers(0, 2**31 - 1))
-        hand = gops.random_hand(np.random.default_rng(seed), rules, stage)
+        try:
+            hand = gops.random_hand(np.random.default_rng(seed), rules)
+        except gops.NoHand:
+            continue
         if _viable(hand):
             return hand, ge.canonicalize(hand)
     raise RuntimeError(f"could not draw a viable hand under these rules in {max_tries} tries")
 
 
 def try_offspring(
-    parent: Hand, rules: Rules, driver_rng: np.random.Generator, max_retries: int = 16, stage: str = "coarse",
+    parent: Hand, rules: Rules, driver_rng: np.random.Generator, max_retries: int = 16,
 ) -> Optional[Tuple[Hand, "ge.EnvelopeDesign"]]:
-    """Up to `max_retries` mutations of `parent` (`operators.mutate` at
-    `stage`, within `rules`); the first viable child, or `None` (the caller
-    then draws an immigrant)."""
+    """Up to `max_retries` mutations of `parent` (`operators.mutate`, within
+    `rules`); the first viable child, or `None` (the caller then draws an
+    immigrant)."""
     for _ in range(max_retries):
-        res = gops.mutate(parent, driver_rng, rules, stage)
+        res = gops.mutate(parent, driver_rng, rules)
         if res is not None and _viable(res[0]):
             return res[0], ge.canonicalize(res[0])
     return None
@@ -228,7 +231,6 @@ def build_generation_population(
     driver_rng: np.random.Generator,
     minter: IdMinter,
     max_offspring_retries: int = 16,
-    stage: str = "coarse",
 ) -> GenerationPlan:
     entries: List[pf.PopulationEntry] = []
     metas: List[DesignMeta] = []
@@ -271,7 +273,7 @@ def build_generation_population(
     n_offspring = slots_for_growth - n_elite_slots
     for _ in range(n_offspring):
         if generation == 0 or not elites:
-            hand, design = sample_new_founder(rules, driver_rng, stage=stage)
+            hand, design = sample_new_founder(rules, driver_rng)
             digit_count, joint_count = _design_counts(design)
             design_id = minter.mint(generation, "founder")
             role = "founder"
@@ -279,7 +281,7 @@ def build_generation_population(
         else:
             parent = archive.sample_parent(driver_rng)
             result = try_offspring(hand_from_dict(parent.hand_dict), rules, driver_rng,
-                                   max_retries=max_offspring_retries, stage=stage)
+                                   max_retries=max_offspring_retries)
             if result is not None:
                 hand, design = result
                 digit_count, joint_count = _design_counts(design)
@@ -287,7 +289,7 @@ def build_generation_population(
                 role = "offspring"
                 founder_id, parent_id = parent.founder_id, parent.design_id
             else:
-                hand, design = sample_new_founder(rules, driver_rng, stage=stage)
+                hand, design = sample_new_founder(rules, driver_rng)
                 digit_count, joint_count = _design_counts(design)
                 design_id = minter.mint(generation, "imm")
                 role = "immigrant"
@@ -874,9 +876,7 @@ def load_state(path: Path) -> dict:
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rules", default="evolution", choices=sorted(RULES_BY_NAME),
-                    help="evolution: the simulator's Evolution Rules (hinge and coupled joints); none: the whole grammar")
-    ap.add_argument("--stage", default="coarse", choices=["coarse", "fine"],
-                    help="mutation steps: coarse (10 mm / 30 deg, structural operators) or fine (1 mm / 5 deg)")
+                    help="evolution: the Feetech rules (hands buildable from Feetech servos); none: the whole grammar")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--generations", type=int, required=True)
     ap.add_argument("--designs", type=int, default=64, help="Population size N per generation")
@@ -1035,7 +1035,7 @@ def grasp_report_row(report: Optional[dict], source_to_id: Dict[str, str]) -> Op
 
 def _resolved_config(args: argparse.Namespace) -> dict:
     config = {
-        "rules": args.rules, "stage": args.stage, "seed": args.seed, "designs": args.designs,
+        "rules": args.rules, "seed": args.seed, "designs": args.designs,
         "probes": sorted(args.probes.split(",")), "num_envs": args.num_envs,
         "epochs_per_gen": args.epochs_per_gen, "fitness": args.fitness,
         "max_offspring_retries": args.max_offspring_retries,
@@ -1148,7 +1148,7 @@ def run_generation(
     else:
         plan = build_generation_population(
             generation, args.designs, probe_hand_ids, rules, archive, driver_rng, minter,
-            max_offspring_retries=args.max_offspring_retries, stage=getattr(args, "stage", "coarse"),
+            max_offspring_retries=args.max_offspring_retries,
         )
     population_path = gen_dir / "population.json"
     population_doc = pf.write_population(population_path, plan.entries)

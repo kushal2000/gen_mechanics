@@ -466,7 +466,7 @@ class AnyRotateCfg:
     Kept only because `coevolution/cfg/task/InHandReorient.yaml` (not edited
     on this branch) still sets it."""
     population_capsule_radius: float = -1.0
-    """Unused (links are the grammar's rounded boxes); kept for the same YAML."""
+    """Unused (links are the grammar's servo-sized boxes); kept for the same YAML."""
     population_projected_pose: bool = False
     """Population path: a conformed commercial hand with an entry in
     ``hand_pose_file`` stands where its single-hand URDF asset does (pose,
