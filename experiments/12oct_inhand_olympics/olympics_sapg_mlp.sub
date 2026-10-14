@@ -14,7 +14,7 @@
 # settings as the 8 Oct Wuji MLP runs (08oct_repro_wuji_full/*_mlp_e24k.sub through run_rank.sh) except gamma: 0.99,
 # pose reaching's / SAPG's own (the in-hand runs' 0.998 is ~8 s of horizon at 60 Hz; 13 Oct). lr 5e-4 adaptive, 5 mini-epochs, horizon 16, 24576 envs in 6 exploration blocks, minibatch 114688. The env's own
 # defaults carry EMA 0.1 + action latency. A pose viewer goes to wandb every VIEWER_INTERVAL env steps.
-#   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=... FINGER_RESET=... KEYPOINT=... PEN_SHAPE=box HAND=... ARCH=lstm EXTRA_HYDRA=... RUN_TAG=...] sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
+#   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=... FINGER_RESET=... KEYPOINT=... PEN_SHAPE=box HAND=... ARCH=lstm EXTRA_HYDRA=... RUN_TAG=... CHECKPOINT=... CHECKPOINT_MODE=weights|resume] sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
 #   (TASKS goes through the environment: sbatch --export splits on commas)
 #   local smoke: NUM_ENVS=3072 MINIBATCH=12288 EPOCHS=20 WANDB=0 VIEWER_INTERVAL=40 VIEWER_LEN=30 bash <this file>
 set -euo pipefail
@@ -39,6 +39,9 @@ STUDY="${TASKS//,/+}_sapg_${ARCH}_e${NUM_ENVS}_s${SEED}_g${GAMMA}_fr${FINGER_RES
 [[ "$HAND" == wuji2_left_uniform_handonly ]] || STUDY="${STUDY}_${HAND#wuji2_left_uniform_handonly_}"
 [[ -n "${RUN_TAG:-}" ]] && STUDY="${STUDY}_${RUN_TAG}"   # a label for what EXTRA_HYDRA changes
 EXTRA=()                                 # EXTRA_HYDRA: further overrides, space-separated
+# CHECKPOINT: start from a .pth (CHECKPOINT_MODE weights: the model only, epochs count from 0; resume: everything)
+CKPT=()
+[[ -n "${CHECKPOINT:-}" ]] && CKPT=(--checkpoint "$CHECKPOINT" --checkpoint_load_mode "${CHECKPOINT_MODE:-weights}")
 [[ -n "${EXTRA_HYDRA:-}" ]] && read -r -a EXTRA <<< "$EXTRA_HYDRA"
 RUN_NAME="0_${STUDY}_${SLURM_JOB_ID:-local}"     # rl_games reads the policy index off the front
 RUN_DIR="debug_outputs/train_logs/12oct_inhand_olympics/${RUN_NAME}"
@@ -52,7 +55,7 @@ export WANDB_DIR="$RUN_DIR"
 echo "[olympics] node $(hostname)  run $RUN_DIR"
 exec .venv_isaacsim/bin/python -u coevolution/train.py \
     --task GenMech-InHandOlympics-Direct-v0 --agent "$AGENT" --headless \
-    "${WANDB_ARGS[@]}" \
+    "${WANDB_ARGS[@]}" ${CKPT[@]+"${CKPT[@]}"} \
     --capture_viewer --capture_viewer_len "${VIEWER_LEN:-600}" --capture_viewer_interval "${VIEWER_INTERVAL:-10000}" \
     "env.task.names=[$TASKS]" \
     "env.reset.finger_pos_fraction=$FINGER_RESET" \
