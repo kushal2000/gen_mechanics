@@ -39,3 +39,37 @@ on the 6-DOF wrist, palm down above the table, with the pen. The page offers:
 
 Self-collision is on, with the uniform hands' filter: each link against its parent, and the palm against each
 finger's first two links.
+
+## The hand-designed "optimal" placement: evenly spaced, 0/90/180/270
+
+A dedicated design pass (14 Oct) recommends evenly spaced fingers for pen lift, with 0/70/140/250 as runner-up.
+Its analysis used forward kinematics against the 10 x 3 x 3 cm pen and a quasi-static force check over every pen yaw.
+
+- **The wrist decides it.** Its yaw range is only -20..+30 deg, and the pen's yaw is random. A layout with 90 deg
+  symmetry can always be turned so all four fingers land on the pen's long sides, two per side, about +-2.5 cm from
+  the centre. A finger more than about 65 deg off the line across the pen lies over it and can only hook its small
+  end face.
+- **Force needed to hold the pen** against gravity plus a typical push or twist, worst case over pen yaw:
+
+  | Layout (gaps) | Worst-case finger force |
+  |---|---|
+  | Evenly spaced | 1.3-1.4 N |
+  | 60/120/60/120 | 2.3 N |
+  | 45/135/45/135 | 3.1 N |
+  | Two-thumb, 30/150/30/150 | no secure grasp for 11% of pen yaws |
+
+  A finger can push about 20 N, so reach and angle are the limit, not strength.
+- **Spin and flip** should favour the same layout, so there's no conflict between tasks.
+- **Caveat:** these are static numbers. Only training separates near-even layouts.
+
+Renders: `plots/prim4x4_r10l25_g090_090_090_090_{face,curl45}.png`
+(`analysis/render_primitive.py`).
+
+## Runs (pen lift, MLP, box pen, stagger, seed 100, 5,000 epochs; wandb `gen_mechanics_design_search`)
+
+| Hand (gaps) | Job |
+|---|---|
+| 30/55/55/220 (random) | 272196 |
+| 35/65/195/65 (random) | 272198 |
+| 50/65/55/190 (random) | 272200 |
+| 90/90/90/90 (designed) | 272940 |
