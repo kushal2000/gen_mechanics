@@ -90,3 +90,6 @@ assets/populations/*
 experiments/**/slurm-*.out
 !experiments/02oct_ood_evals/results/
 !experiments/05oct_embodiment_generalization/results/
+
+# primitive hands (experiments/14oct_design_search/primitive_hands.py): rebuilt from their design JSONs
+assets/urdf/generated/14oct_design_search/
