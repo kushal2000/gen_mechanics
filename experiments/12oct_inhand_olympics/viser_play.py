@@ -61,6 +61,8 @@ def parse():
     ap.add_argument("--runs-dir", default=str(RUNS_DIR))
     ap.add_argument("--no-play", action="store_true", help="leave task_curriculum's Play runs out")
     ap.add_argument("--envs", type=int, default=24, help="olympics envs the policy plays in (Play: one per object)")
+    ap.add_argument("--mix-envs-per-hand", type=int, default=1,
+                    help="a multi-hand olympics run plays in this many envs per hand (env i has hand i mod hands)")
     ap.add_argument("--run", default="", help="job id (or Play run name) of the run to load first; default newest")
     ap.add_argument("--check", default="", help="no viewer: load this run, play, print statistics")
     ap.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
@@ -202,6 +204,14 @@ def discover_play() -> list[dict]:
                      "force": f"f{float(p['force'] or 0):g}", "variant": tag.replace("_", " ") or "plain",
                      "events": f"{p['dir']}/summaries/events*", "name": p["name"], "tolerance": None})
     return runs
+
+
+def envs_for(run: dict, args) -> int:
+    """Olympics envs to play a run in: --envs, or for a multi-hand run --mix-envs-per-hand per hand (env 0 the
+    first hand, env 1 the second, ...)."""
+    if run["kind"] == OLYMPICS and run["hand"].startswith("mix "):
+        return args.mix_envs_per_hand * (run["hand"].count("+") + 1)
+    return args.envs
 
 
 def discover(args) -> list[dict]:
@@ -598,8 +608,8 @@ def main(args):
         b_reset = server.gui.add_button("reset every env (clears the statistics)")
         g_det = server.gui.add_checkbox("deterministic (mean action)", False)
         g_speed = server.gui.add_dropdown("speed", tuple(SPEEDS), initial_value="real time")
-        g_watch = server.gui.add_slider("watch env", 0, max(args.envs - 1, 1), 1, 0)
-        md_env = server.gui.add_markdown("")
+        g_watch = server.gui.add_dropdown("watch", ("env 0",))
+        watch_index: dict[str, int] = {"env 0": 0}             # dropdown label -> env id
         g_tol = server.gui.add_number("success tolerance (m)", 0.01, step=0.001)
         md_tol = server.gui.add_markdown("")
     f_olym = server.gui.add_folder("start state (olympics)")
@@ -744,7 +754,7 @@ def main(args):
     b_reset.on_click(lambda _: outbox.put({"cmd": "reset"}))
     g_det.on_update(lambda _: outbox.put({"cmd": "det", "value": bool(g_det.value)}))
     g_speed.on_update(lambda _: outbox.put({"cmd": "speed", "value": SPEEDS[g_speed.value]}))
-    g_watch.on_update(lambda _: outbox.put({"cmd": "watch", "value": int(g_watch.value)}))
+    g_watch.on_update(lambda _: outbox.put({"cmd": "watch", "value": watch_index.get(g_watch.value, 0)}))
     g_force.on_update(lambda _: outbox.put({"cmd": "force", "value": float(g_force.value)}))
     g_torque.on_update(lambda _: outbox.put({"cmd": "torque", "value": float(g_torque.value)}))
     g_tol.on_update(lambda _: outbox.put({"cmd": "tolerance", "value": float(g_tol.value)})
@@ -807,10 +817,10 @@ def main(args):
                     clear_scene()
                     info = None
                     load_id += 1
-                    w = Worker(listener, authkey, run, ckpt, args.envs, tol, note)
+                    w = Worker(listener, authkey, run, ckpt, envs_for(run, args), tol, note)
                     t_boot = time.time()
                     md_load.content = f"**loading {run['label']}** · {label} -- Kit boots in a child (about a minute)"
-                    md.content = md_stats.content = md_env.content = ""
+                    md.content = md_stats.content = ""
             except queue.Empty:
                 pass
             if w is None or not w.alive():
@@ -873,8 +883,11 @@ def main(args):
                     if "pen" in m["objects"]:
                         scene["pen"] = _add_pen(server, f"/pen{load_id}", *m["objects"]["pen"])
                         scene["goal"] = _add_pen(server, f"/goal{load_id}", *m["objects"]["pen"], opacity=0.3)
-                    g_watch.max = max(m["num_envs"] - 1, 1)
-                    g_watch.value = min(int(g_watch.value), m["num_envs"] - 1)
+                    labels = [f"env {i} · {name}" for i, name in enumerate(m["env_names"])]
+                    watch_index.clear()
+                    watch_index.update({lab: i for i, lab in enumerate(labels)})
+                    g_watch.options = tuple(labels)
+                    g_watch.value = labels[0]
                     g_tol.value = float(m["tolerance"])
                     md_tol.content = f"tolerance: {m['tolerance_note']}"
                     if play:
@@ -885,7 +898,7 @@ def main(args):
                         g_yaw.value, g_fingers.value = m["start"]["yaw_deg"], m["start"]["finger_fraction"]
                     for c in ({"cmd": "det", "value": bool(g_det.value)},
                               {"cmd": "speed", "value": SPEEDS[g_speed.value]},
-                              {"cmd": "watch", "value": int(g_watch.value)}):
+                              {"cmd": "watch", "value": 0}):
                         outbox.put(c)
                     md_load.content = f"**{w.run['label']}** · {pathlib.Path(w.ckpt).name}  \n{m['summary']}"
             if frame is None or info is None:
@@ -913,7 +926,6 @@ def main(args):
                 scene["push"] = server.scene.add_line_segments(
                     "/push", points=np.stack([p, p + 0.1 * f / np.linalg.norm(f)])[None], colors=(230, 30, 30),
                     line_width=4.0)
-            md_env.content = f"watching: {info['env_names'][int(g_watch.value)]}"
             md.content = frame["status"]
             md_stats.content = frame["stats"]
     except KeyboardInterrupt:
@@ -935,7 +947,7 @@ def check(args):
     print(f"[check] {run['label']} · {label} · tolerance {tol} ({note})", flush=True)
     authkey = secrets.token_bytes(16)
     listener = Listener(("127.0.0.1", 0), authkey=authkey)
-    w = Worker(listener, authkey, run, run["ckpts"][0][1], args.envs, tol, note)
+    w = Worker(listener, authkey, run, run["ckpts"][0][1], envs_for(run, args), tol, note)
     while not w.connected():
         if not w.alive():
             raise SystemExit("[check] the worker died before connecting")
