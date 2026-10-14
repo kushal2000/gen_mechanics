@@ -74,3 +74,13 @@ Renders: `plots/prim4x4_r10l25_g090_090_090_090_{face,curl45}.png`
 | 50/65/55/190 (random) | 272200 |
 | 90/90/90/90 (designed) | 272940 |
 | 70/70/110/110 (designed runner-up: bearings 0/70/140/250) | 272977 |
+
+## Pen flip runs (same settings; the "dropped" rule ends an episode if the pen touches the table after its first goal)
+
+| Hand (gaps) | Job |
+|---|---|
+| 90/90/90/90 (designed) | 275106 |
+| 70/70/110/110 (runner-up) | 275107 |
+| 30/55/55/220 (random) | 275108 |
+| 35/65/195/65 (random) | 275109 |
+| 50/65/55/190 (random) | 275110 |
