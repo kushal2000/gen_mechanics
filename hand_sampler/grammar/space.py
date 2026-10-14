@@ -21,7 +21,7 @@ from functools import lru_cache
 from typing import Dict, List, Sequence, Tuple
 
 from . import motor as mt
-from .hand import (GRID_DEG, KIND_AXIS, LINK_MAX_MM, TILT_RANGE_DEG, Rules, axis_unit, canonical_axis)
+from .hand import (GRID_DEG, KIND_AXIS, TILT_RANGE_DEG, Rules, axis_unit, canonical_axis)
 
 AXES_KINDS: Tuple[Tuple[int, int], ...] = (KIND_AXIS["flexion"], KIND_AXIS["abduction"], KIND_AXIS["roll"])
 AXES_ALL: Tuple[Tuple[int, int], ...] = tuple(sorted({canonical_axis(az, el) for az in range(0, 180, GRID_DEG)
@@ -44,16 +44,17 @@ def chains(rules: Rules, axes: Tuple[Tuple[int, int], ...]) -> Tuple[int, ...]:
     extra_types = [t for t in ("sliding",) if t in rules.joint_types]
     coupled = "coupled" in rules.joint_types
     step = 10
+    top = rules.max_link_mm
 
     def links(i: int, j: int, prev_zero: bool) -> List[int]:
         if not buildable:
-            return [0] + list(range(10, LINK_MAX_MM + 1, step))
-        out = list(range(mt.link_floor_mm(U[i], U[j]), LINK_MAX_MM + 1, step))
+            return [0] + list(range(10, top + 1, step))
+        out = list(range(mt.link_floor_mm(U[i], U[j]), top + 1, step))
         return ([0] + out) if (not prev_zero and mt.crossing_ok(U[i], U[j])) else out
 
     def tips(i: int) -> List[int]:
         lo = mt.tip_floor_mm(U[i]) if buildable else 10
-        return list(range(lo, LINK_MAX_MM + 1, step))
+        return list(range(lo, top + 1, step))
 
     def types(revolute_before: bool) -> List[Tuple[str, bool]]:
         """(type, revolute) choices for a joint whose predecessor is

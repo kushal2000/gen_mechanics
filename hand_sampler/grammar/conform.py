@@ -41,6 +41,7 @@ exactly those fingers beyond it, nearest the commercial hinge axis.
 
 from __future__ import annotations
 
+import copy
 import math
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -48,7 +49,11 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from . import derive as dv
+from . import motor as mt
+from . import operators as ops
+from . import viability as gvb
 from .commercial import RealFinger, RealHand, RealJoint
+from .kinematics import KinematicModel, Pose
 from .hand import (
     COUPLING_RATIO,
     GRID_DEG,
@@ -56,6 +61,7 @@ from .hand import (
     LINK_MAX_MM,
     LINK_MIN_MM,
     MIN_CUT_OFFSET_MM,
+    COMMERCIAL_RULES,
     NO_RULES,
     TILT_RANGE_DEG,
     TIP_MIN_MM,
@@ -63,6 +69,8 @@ from .hand import (
     Hand,
     Joint,
     PalmJoint,
+    Rules,
+    SEAM_MM,
     allowed_lengths,
     canonical_axis,
     check,
@@ -77,6 +85,10 @@ TARGET_DEG = 20.0
 Q_WEIGHT = 0.2
 """Tie-breaker: prefer small zero-pose differences (per radian of mean
 |q_off|), so a conformed finger lies where the real one does at rest."""
+CLASH_WEIGHT = 5.0
+"""Cost per millimetre a refitted finger's solids come inside the wall of
+the rest of the hand, as C1 counts it (`Guard`, `refit_clear`): a 2 mm clash
+outweighs a fit error of 20 mm."""
 MAX_SLIDE_M = 0.04      # sliding a joint onto the finger's centre line
 BASE_SHIFT_M = 0.002    # the first joint slides onto the plate if that moves the base at most this far
 PALM_HINGE_SHIFT_M = 0.1  # the same for a palm joint's hinge
@@ -138,12 +150,12 @@ def snap_axis(v: np.ndarray, step: int = GRID_DEG) -> Tuple[int, int]:
     return best
 
 
-def snap_length(L_mm: float, is_tip: bool) -> int:
-    """The nearest length on the grid the grammar allows (0 or 10-90 mm; a
-    fingertip 10-90 mm)."""
+def snap_length(L_mm: float, is_tip: bool, max_mm: int = LINK_MAX_MM) -> int:
+    """The nearest length on the grid the grammar allows (0 or 10 mm up to
+    `max_mm`; a fingertip from 10 mm)."""
     r = int(round(L_mm / GRID_MM)) * GRID_MM
     lo = TIP_MIN_MM if is_tip else 0
-    return int(min(LINK_MAX_MM, max(lo, r)))
+    return int(min(max_mm, max(lo, r)))
 
 
 def snap_angle(v: float, lo: Optional[int] = None, hi: Optional[int] = None) -> int:
@@ -168,6 +180,7 @@ class FingerTarget:
     tip: np.ndarray
     names: List[str]
     raw_points: List[np.ndarray]
+    scale: float = 1.0           # the hand is this many times its real size; errors count at the real size
 
 
 @dataclass
@@ -177,6 +190,7 @@ class FingerFit:
     joint_mm: List[float]
     axis_deg: List[float]
     tip_mm: float
+    clash_mm: float = 0.0
 
     @property
     def cost(self) -> float:
@@ -185,7 +199,7 @@ class FingerFit:
         mean = (sum(self.joint_mm) / TARGET_MM + sum(self.axis_deg) / TARGET_DEG + self.tip_mm / TARGET_MM) / (
             2 * len(self.joint_mm) + 1)
         bend = float(np.mean(np.abs(self.q_off))) if len(self.q_off) else 0.0
-        return worst + 0.1 * mean + Q_WEIGHT * bend
+        return worst + 0.1 * mean + Q_WEIGHT * bend + CLASH_WEIGHT * self.clash_mm
 
 
 def _targets(fp: Sequence[np.ndarray], tip: np.ndarray, j: int) -> np.ndarray:
@@ -242,14 +256,18 @@ def _chain(mount: np.ndarray, B: np.ndarray, axes_link: Sequence[np.ndarray], le
 
 
 def _errors(t: FingerTarget, pts, axw, tip) -> Tuple[List[float], List[float], float]:
+    """Joint, axis and fingertip errors; millimetres at the real hand's size
+    (a hand scaled up 2 x with a 20 mm error counts 10 mm), so the fit is
+    the same whatever the scale."""
+    u = MM * t.scale
     jmm, adeg = [], []
     for j, (G, a) in enumerate(zip(pts, axw)):
         if t.types[j] == "sliding":
-            jmm.append(float(np.linalg.norm(G - t.points[j])) / MM)
+            jmm.append(float(np.linalg.norm(G - t.points[j])) / u)
         else:
-            jmm.append(line_distance(G, t.points[j], t.axes[j]) / MM)
+            jmm.append(line_distance(G, t.points[j], t.axes[j]) / u)
         adeg.append(axis_angle_deg(a, t.axes[j]))
-    return jmm, adeg, float(np.linalg.norm(tip - t.tip)) / MM
+    return jmm, adeg, float(np.linalg.norm(tip - t.tip)) / u
 
 
 def _residuals(t: FingerTarget, pts, axw, tip) -> np.ndarray:
@@ -259,9 +277,9 @@ def _residuals(t: FingerTarget, pts, axw, tip) -> np.ndarray:
         d = G - t.points[j]
         if t.types[j] != "sliding":
             d = d - t.axes[j] * float(d @ t.axes[j])
-        out.extend(d / (TARGET_MM * MM))
+        out.extend(d / (TARGET_MM * MM * t.scale))
         out.extend(np.cross(_unit(a), t.axes[j]) / sin_target)
-    out.extend((tip - t.tip) / (TARGET_MM * MM))
+    out.extend((tip - t.tip) / (TARGET_MM * MM * t.scale))
     return np.array(out)
 
 
@@ -295,9 +313,11 @@ def _lm(fun, x0: np.ndarray, iters: int = 40, eps: float = 1e-6) -> np.ndarray:
     return x
 
 
-def evaluate_finger(f: Finger, t: FingerTarget, q: Optional[np.ndarray] = None) -> FingerFit:
+def evaluate_finger(f: Finger, t: FingerTarget, q: Optional[np.ndarray] = None,
+                    guard: Optional["Guard"] = None) -> FingerFit:
     """The errors of `f` against `t` at joint angles `q` (default: each joint
-    turns its link toward the next commercial joint)."""
+    turns its link toward the next commercial joint); with `guard`, also how
+    far its solids come inside the wall of the rest of the hand at rest."""
     B = dv.finger_frame(f)
     mount = dv.mount_point_m(f)
     axes = [dv.direction(*jt.axis) for jt in f.joints]
@@ -314,10 +334,10 @@ def evaluate_finger(f: Finger, t: FingerTarget, q: Optional[np.ndarray] = None) 
     q = _tie_unsigned(B, axes, [jt.type for jt in f.joints], q)
     pts, axw, tip = _chain(mount, B, axes, lengths, t.types, q)
     jmm, adeg, tmm = _errors(t, pts, axw, tip)
-    return FingerFit(f, q, jmm, adeg, tmm)
+    return FingerFit(f, q, jmm, adeg, tmm, guard.clash_mm(f) if guard is not None else 0.0)
 
 
-def best_q(f: Finger, t: FingerTarget, q0: np.ndarray, iters: int = 15) -> FingerFit:
+def best_q(f: Finger, t: FingerTarget, q0: np.ndarray, iters: int = 15, guard: Optional["Guard"] = None) -> FingerFit:
     """The zero-pose differences that fit `f` best (least squares from `q0`)."""
     B = dv.finger_frame(f)
     mount = dv.mount_point_m(f)
@@ -325,7 +345,7 @@ def best_q(f: Finger, t: FingerTarget, q0: np.ndarray, iters: int = 15) -> Finge
     lengths = [jt.length for jt in f.joints]
     rev = [j for j, jt in enumerate(f.joints) if jt.type == "hinge"]
     if not rev:
-        return evaluate_finger(f, t, np.zeros(len(f.joints)))
+        return evaluate_finger(f, t, np.zeros(len(f.joints)), guard)
 
     def fun(x):
         q = np.zeros(len(f.joints))
@@ -335,17 +355,21 @@ def best_q(f: Finger, t: FingerTarget, q0: np.ndarray, iters: int = 15) -> Finge
     x = _lm(fun, np.asarray(q0, dtype=float)[rev], iters=iters)
     q = np.zeros(len(f.joints))
     q[rev] = x
-    return evaluate_finger(f, t, q)
+    return evaluate_finger(f, t, q, guard)
 
 
-def continuous_fit(t: FingerTarget, mount: np.ndarray) -> Tuple[np.ndarray, dict]:
+def continuous_fit(t: FingerTarget, mount: np.ndarray,
+                   frame: Optional[Tuple[float, float]] = None) -> Tuple[np.ndarray, dict]:
     """Least-squares fit of every finger value, unsnapped: facing, tilt, the
     axes (az, el), the link lengths and the zero-pose differences, the mount
-    fixed on the plate. Returns the parameter vector and its layout."""
+    fixed on the plate (with `frame`, the facing and tilt fixed at it).
+    Returns the parameter vector and its layout."""
     n = len(t.axes)
     d0 = _unit(_targets(t.points, t.tip, 0) - mount)
     tilt = math.degrees(math.asin(max(-1.0, min(1.0, float(d0[0])))))
     facing = math.degrees(math.atan2(float(d0[1]), float(d0[2])))
+    if frame is not None:
+        facing, tilt = float(frame[0]), float(frame[1])
     B = _frame(facing, tilt)
     P, F = mount.copy(), B.copy()
     az, el, L, q = [], [], [], []
@@ -377,14 +401,18 @@ def continuous_fit(t: FingerTarget, mount: np.ndarray) -> Tuple[np.ndarray, dict
         return np.concatenate([_residuals(t, *_chain(mount, _frame(fa, ti), A, Ls, t.types, qs)),
                                Q_WEIGHT * qs])
 
-    x = _lm(fun, x0, iters=60, eps=1e-5)
+    if frame is None:
+        x = _lm(fun, x0, iters=60, eps=1e-5)
+    else:
+        x = np.concatenate([x0[:2], _lm(lambda y: fun(np.concatenate([x0[:2], y])), x0[2:], iters=60, eps=1e-5)])
     return x, {"n": n, "unpack": unpack}
 
 
-def snap_continuous(x: np.ndarray, layout: dict, t: FingerTarget, mount_mm: Tuple[int, int]
-                    ) -> Tuple[Finger, np.ndarray]:
+def snap_continuous(x: np.ndarray, layout: dict, t: FingerTarget, mount_mm: Tuple[int, int],
+                    rules: Rules = NO_RULES) -> Tuple[Finger, np.ndarray]:
     """Snap a continuous fit to the grid, joint by joint from the palm: each
-    axis is snapped in the (already snapped) link frame."""
+    axis is snapped in the (already snapped) link frame; then every link to
+    its nearest length `rules` allow (the servo floors for buildable rules)."""
     fa, ti, A, Ls, qs = layout["unpack"](x)
     facing = snap_angle(fa) % 360
     tilt = snap_angle(ti, *TILT_RANGE_DEG)
@@ -402,12 +430,13 @@ def snap_continuous(x: np.ndarray, layout: dict, t: FingerTarget, mount_mm: Tupl
         if t.types[j] != "sliding":
             F_c = F_c @ _rot(A[j], float(qs[j]))
             F = F @ _rot(dv.direction(*ax), float(qs[j]))
-        joints.append(Joint(t.types[j], ax, snap_length(Ls[j], j == n - 1)))
-    return replace(f, joints=tuple(joints)), np.asarray(qs, dtype=float)
+        joints.append(Joint(t.types[j], ax, snap_length(Ls[j], j == n - 1, rules.max_link_mm)))
+    return ops.fit_lengths(replace(f, joints=tuple(joints)), rules), np.asarray(qs, dtype=float)
 
 
-def _neighbours(f: Finger, mount_fixed: bool = False) -> List[Finger]:
-    """Every finger one grid step away (the grammar's own limits)."""
+def _neighbours(f: Finger, mount_fixed: bool = False, rules: Rules = NO_RULES) -> List[Finger]:
+    """Every finger one grid step away within `rules` (a turned axis moves
+    the links next to it to their nearest allowed lengths)."""
     out = []
     if not mount_fixed:
         for c in ("y", "z"):
@@ -424,9 +453,9 @@ def _neighbours(f: Finger, mount_fixed: bool = False) -> List[Finger]:
             return replace(f, joints=tuple(js))
 
         for s in (-GRID_DEG, GRID_DEG):
-            out.append(put(replace(jt, axis=canonical_axis(jt.axis[0] + s, jt.axis[1]))))
-            out.append(put(replace(jt, axis=canonical_axis(jt.axis[0], jt.axis[1] + s))))
-        allowed = allowed_lengths(f, j, False)
+            out.append(ops.fit_lengths(put(replace(jt, axis=canonical_axis(jt.axis[0] + s, jt.axis[1]))), rules))
+            out.append(ops.fit_lengths(put(replace(jt, axis=canonical_axis(jt.axis[0], jt.axis[1] + s))), rules))
+        allowed = allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm)
         if jt.length in allowed:
             k = allowed.index(jt.length)
             for kk in (k - 1, k + 1):
@@ -436,27 +465,136 @@ def _neighbours(f: Finger, mount_fixed: bool = False) -> List[Finger]:
 
 
 def refine_finger(fit: FingerFit, t: FingerTarget, mount_fixed: bool = True,
-                  max_passes: int = 30) -> FingerFit:
+                  max_passes: int = 30, rules: Rules = NO_RULES, guard: Optional["Guard"] = None) -> FingerFit:
     """Local search over one-step changes of every value of the finger (its
     base too unless `mount_fixed`), the zero-pose differences re-fitted
     (warm-started) for each candidate."""
     best = fit
     for _ in range(max_passes):
         improved = False
-        for g in _neighbours(best.finger, mount_fixed=mount_fixed):
-            r = best_q(g, t, best.q_off, iters=4)
+        for g in _neighbours(best.finger, mount_fixed=mount_fixed, rules=rules):
+            r = best_q(g, t, best.q_off, iters=4, guard=guard)
             if r.cost < best.cost - 1e-9:
                 best, improved = r, True
         if not improved:
             break
-    return best_q(best.finger, t, best.q_off, iters=30)
+    return best_q(best.finger, t, best.q_off, iters=30, guard=guard)
+
+
+class Guard:
+    """The rest of a hand, for refitting finger i clear of it: `clash_mm(f)`
+    is C1 on the hand with finger i replaced by f, counting only what
+    involves f or a plate (the plates are the hull of the base servos, so
+    they change with f): the summed overlaps in millimetres, at the zero and
+    start poses, plus how far its base servo reaches into a cut's seam."""
+
+    def __init__(self, hand: Hand, i: int):
+        self.hand, self.i = hand, i
+
+    def clash_mm(self, f: Finger) -> float:
+        h = replace(self.hand, fingers=tuple(f if k == self.i else g for k, g in enumerate(self.hand.fingers)))
+        total = sum(ov for (a, _b, ov) in gvb.seam_overlaps(h) if a[1] == self.i)
+        for q in (None, dv.start_q(h)):
+            total += sum(ov for _a, _b, ov in gvb.overlaps(h, q, focus_finger=self.i))
+        return float(total)
+
+
+def kinds_kept(hand: Hand, palm_T: np.ndarray, q_off: np.ndarray, real: RealHand,
+               fingers: Optional[Sequence[int]] = None) -> bool:
+    """Whether every joint (of `fingers`, default all) keeps its commercial
+    kind: the commercial axis, seen in the fitted link frame at the
+    zero-pose difference, is nearest the same kind as the grammar joint, or
+    lies within the fit target (20 degrees) of the grammar axis (a commercial
+    axis about 45 degrees between two kinds, as on SHARPA's thumb, has no
+    clear kind)."""
+    R = palm_T[:3, :3]
+    pose = dv.fk(hand, q_off)
+    for i, (f, rf) in enumerate(zip(hand.fingers, real.fingers)):
+        if fingers is not None and i not in fingers:
+            continue
+        for j, (jt, rj) in enumerate(zip(f.joints, rf.joints)):
+            if jt.type == "sliding":
+                continue
+            a = pose.links[i][j][:3, :3].T @ (R.T @ rj.axis)
+            if dv.kind_of(a) != dv.joint_kind(hand, i, j) and \
+                    axis_angle_deg(a, dv.direction(*jt.axis)) > TARGET_DEG:
+                return False
+    return True
+
+
+def _frame_sweep(t: FingerTarget, f: Finger, rules: Rules, guard: Guard) -> List[FingerFit]:
+    """Finger f fitted in every grid frame (12 facings x 5 tilts) on its
+    base, the clash with the rest of the hand counted, best first (not yet
+    refined). A thumb fitted lying along the palm can come out standing off
+    it, the difference taken into its zero-pose offsets."""
+    mount = np.array([float(dv.mount_point_m(f)[0]), f.y * MM, f.z * MM])
+    cands = []
+    for fa in range(0, 360, GRID_DEG):
+        for ti in range(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1] + 1, GRID_DEG):
+            x, layout = continuous_fit(t, mount, frame=(fa, ti))
+            g, q = snap_continuous(x, layout, t, (f.y, f.z), rules)
+            cands.append(best_q(g, t, q, iters=10, guard=guard))
+    return sorted(cands, key=lambda r: r.cost)
+
+
+SWEEP_TRIES = 8
+"""How many of the sweep's best frames `refit_clear` refines, in turn, before
+giving up on a finger."""
+
+
+def refit_clear(fit: "HandFit", real: RealHand, rules: Rules, rounds: int = 3) -> "HandFit":
+    """Refit, with `Guard`, every finger whose solids fail C1 against another
+    finger, a plate or the mount (a thumb resting across the palm, fingers
+    crossing at rest), until the hand passes C1 or `rounds` run out: first by
+    local search, then, if that refit still clashes or changes a joint's
+    kind, in every grid frame (`_frame_sweep`, its best frames refined in
+    turn). A refit may tilt or turn a finger clear and take the difference
+    into its zero-pose offset. The first refit that is better (cost or
+    clash) and keeps every joint's kind is kept."""
+    targets = _targets_for(real, fit.palm_T)
+    for _ in range(rounds):
+        c1 = gvb.c1_self_overlap(fit.hand)
+        if c1.ok:
+            break
+        bad = sorted({k[1] for a, b, _ in c1.pairs for k in (a, b) if k[0] in ("link", "motor")})
+        if not bad:
+            break
+        for i in bad:
+            guard = Guard(fit.hand, i)
+            f = fit.hand.fingers[i]
+            start = best_q(f, targets[i], fit.fingers[i].q_off, iters=30, guard=guard)
+
+            def take(new: FingerFit) -> bool:
+                if not (new.cost < start.cost - 1e-9 or new.clash_mm < start.clash_mm):
+                    return False
+                fingers = list(fit.hand.fingers)
+                fingers[i] = new.finger
+                old_hand, old_fit = fit.hand, fit.fingers[i]
+                # the joint vector's signs come from the hand: swap both before reading it
+                fit.hand, fit.fingers[i] = replace(fit.hand, fingers=tuple(fingers)), replace(new, clash_mm=0.0)
+                if kinds_kept(fit.hand, fit.palm_T, fit.q_off(), real, [i]):
+                    return True
+                fit.hand, fit.fingers[i] = old_hand, old_fit
+                return False
+
+            local = refine_finger(start, targets[i], mount_fixed=True, rules=rules, guard=guard)
+            if local.clash_mm == 0 and take(local):
+                continue
+            for c in _frame_sweep(targets[i], f, rules, guard)[:SWEEP_TRIES]:
+                new = refine_finger(c, targets[i], mount_fixed=True, rules=rules, guard=guard)
+                if new.clash_mm == 0 and take(new):
+                    break
+            else:
+                take(local)
+    return fit
 
 
 def _grid_point(m: np.ndarray) -> Tuple[int, int]:
     return (int(round(m[1] / MM / GRID_MM)) * GRID_MM, int(round(m[2] / MM / GRID_MM)) * GRID_MM)
 
 
-def fit_finger(t: FingerTarget, base_mm: Tuple[int, int], mount_fixed: bool = True) -> FingerFit:
+def fit_finger(t: FingerTarget, base_mm: Tuple[int, int], mount_fixed: bool = True,
+               rules: Rules = NO_RULES) -> FingerFit:
     """Fit one finger starting from its base at `base_mm` (kept there when
     `mount_fixed`). The continuous fit starts on the plate's mid-plane, then
     once more from the depth the snapped finger's first motor puts its base
@@ -467,7 +605,7 @@ def fit_finger(t: FingerTarget, base_mm: Tuple[int, int], mount_fixed: bool = Tr
     x0 = 0.0
     for _ in range(2):
         x, layout = continuous_fit(t, np.array([x0, y * MM, z * MM]))
-        f, q = snap_continuous(x, layout, t, (y, z))
+        f, q = snap_continuous(x, layout, t, (y, z), rules)
         start = best_q(f, t, q, iters=30)
         aimed = evaluate_finger(f, t, None)
         if aimed.cost < start.cost:
@@ -478,18 +616,18 @@ def fit_finger(t: FingerTarget, base_mm: Tuple[int, int], mount_fixed: bool = Tr
         if abs(x_next - x0) < 1e-9:
             break
         x0 = x_next
-    return refine_finger(best, t, mount_fixed)
+    return refine_finger(best, t, mount_fixed, rules=rules)
 
 
-def _fit_free(t: FingerTarget, base_mm: Tuple[int, int]) -> FingerFit:
+def _fit_free(t: FingerTarget, base_mm: Tuple[int, int], rules: Rules = NO_RULES) -> FingerFit:
     """`fit_finger` with the base free, started from `base_mm` and, when the
     first two commercial joints are closer than the shortest link, also from
     the plate point under their midpoint (the base then sits between them)."""
-    best = fit_finger(t, base_mm, mount_fixed=False)
+    best = fit_finger(t, base_mm, mount_fixed=False, rules=rules)
     if len(t.points) > 1 and np.linalg.norm(t.points[1] - t.points[0]) < LINK_MIN_MM * MM:
         seed = _grid_point(0.5 * (t.points[0] + t.points[1]))
         if seed != tuple(base_mm):
-            other = fit_finger(t, seed, mount_fixed=False)
+            other = fit_finger(t, seed, mount_fixed=False, rules=rules)
             if other.cost < best.cost:
                 best = other
     return best
@@ -513,6 +651,7 @@ class HandFit:
     finger_order: List[int] = field(default_factory=list)   # grammar finger i <- real finger index
     section: List[int] = field(default_factory=list)        # fingers beyond the cut
     dropped_palm_joints: List[str] = field(default_factory=list)   # commercial palm joints with no cut of their own
+    scale: float = 1.0                 # the commercial hand was scaled up by this before fitting
 
     @property
     def max_joint_mm(self) -> float:
@@ -689,7 +828,7 @@ def _targets_for(real: RealHand, frame: np.ndarray) -> List[FingerTarget]:
             else:
                 types.append("hinge")
         out.append(FingerTarget(points=S, axes=U, types=types, tip=R.T @ (f.tip - o), names=names,
-                                raw_points=[R.T @ (j.point - o) for j in f.joints]))
+                                raw_points=[R.T @ (j.point - o) for j in f.joints], scale=real.scale))
     return out
 
 
@@ -771,8 +910,9 @@ def _cut_fit(real: RealHand, frame: np.ndarray, fingers: Sequence[Finger]):
     section, kept joint names, dropped joint names, notes)`. The palm joint
     carrying the most fingers is kept (joints carrying as many are merged:
     their fingers all go beyond the one cut); the cut is the grid line that
-    puts exactly those fingers beyond it, nearest the kept hinge's axis
-    (direction in the plate, then distance)."""
+    puts exactly those fingers beyond it, keeps its seam clear of every base
+    servo's housing if any such line does, and lies nearest the kept hinge's
+    axis (direction in the plate, then distance)."""
     if not real.palm_joints:
         return None, [], [], [], []
     names = [j.name for j in real.palm_joints]
@@ -795,6 +935,8 @@ def _cut_fit(real: RealHand, frame: np.ndarray, fingers: Sequence[Finger]):
     if dropped:
         notes.append(f"palm joints {dropped} dropped (the grammar has one palm joint; {kept} carries more fingers)")
     bases = np.array([[f.y, f.z] for f in fingers], dtype=float)
+    # each finger's base housings seen from above, to keep the cut's seam clear of them
+    feet = [np.concatenate([b.grown(mt.WALL_MM).corners()[:, 1:] for b in dv.base_motor_boxes_mm(f)]) for f in fingers]
     best = None
     for fa in range(0, 360, GRID_DEG):
         n = cut_normal_yz(PalmJoint(fa, 0))
@@ -805,14 +947,18 @@ def _cut_fit(real: RealHand, frame: np.ndarray, fingers: Sequence[Finger]):
             if not members or len(members) == len(fingers):
                 continue
             mismatch = len(set(members) ^ set(section))
-            cost = _line_angle_deg(d, direction) / TARGET_DEG + abs(float(hinge @ n) - off) / TARGET_MM
-            key = (mismatch, cost)
+            seam = 0.0
+            for i, ft in enumerate(feet):
+                side = ft @ n - off
+                seam = max(seam, (SEAM_MM / 2.0 - side.min()) if i in members else (side.max() + SEAM_MM / 2.0))
+            cost = _line_angle_deg(d, direction) / TARGET_DEG + abs(float(hinge @ n) - off) / (TARGET_MM * real.scale)
+            key = (mismatch, seam > 0.0, cost)
             if best is None or key < best[0]:
                 best = (key, PalmJoint(facing=fa, offset=off), members)
     if best is None:
         notes.append(f"no straight cut separates fingers {section} from the rest: palm joint {kept} dropped")
         return None, [], [], names, notes
-    (mismatch, _), cut, members = best
+    (mismatch, _, _), cut, members = best
     if mismatch:
         notes.append(f"no straight cut puts exactly fingers {section} beyond it; fingers {members} are")
     return cut, members, kept, dropped, notes
@@ -825,7 +971,7 @@ def _palm_errors(real: RealHand, frame: np.ndarray, hand: Hand, kept: str) -> Tu
     rj = next(j for j in real.palm_joints if j.name == kept)
     p = R.T @ (rj.point - o)
     u = _unit(R.T @ rj.axis)
-    return line_distance(dv.palm_hinge_m(hand), p, u) / MM, axis_angle_deg(dv.palm_axis(hand), u)
+    return line_distance(dv.palm_hinge_m(hand), p, u) / (MM * real.scale), axis_angle_deg(dv.palm_axis(hand), u)
 
 
 def _variant_b(T0: np.ndarray, real: RealHand) -> np.ndarray:
@@ -849,14 +995,16 @@ def _variant_b(T0: np.ndarray, real: RealHand) -> np.ndarray:
     return _frame_from(n, T0[:3, 3], real)
 
 
-def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm: bool = True) -> HandFit:
-    """Conform `real` onto the grammar. `palm_frame`
+def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm: bool = True,
+            rules: Rules = NO_RULES) -> HandFit:
+    """Conform `real` onto the grammar, its link lengths within `rules`
+    (`COMMERCIAL_RULES`: the servo floors). `palm_frame`
     (4x4 in the hand-root frame) skips the palm-frame search; otherwise the
     plane fitted through the bases, its variant with the normal square to
     the fingers' last axes, and each of them moved to lower the worst error
     of a cheap unsnapped fit are all tried, and the best full fit is kept."""
     if palm_frame is not None:
-        return _conform_in(real, palm_frame)
+        return _conform_in(real, palm_frame, rules)
     T0 = palm_frame_guess(real)
     frames = [T0, _variant_b(T0, real)]
     if refine_palm:
@@ -866,7 +1014,7 @@ def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm
             frames.append(_perturb_frame(T, p, real))
     best = None
     for T in frames:
-        fit = _conform_in(real, T)
+        fit = _conform_in(real, T, rules)
         key = (not fit.within_target, max(fit.max_joint_mm / TARGET_MM, fit.max_tip_mm / TARGET_MM,
                                           fit.max_axis_deg / TARGET_DEG))
         if best is None or key < best[0]:
@@ -874,10 +1022,10 @@ def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm
     return best[1]
 
 
-def _conform_in(real: RealHand, frame: np.ndarray) -> HandFit:
+def _conform_in(real: RealHand, frame: np.ndarray, rules: Rules = NO_RULES) -> HandFit:
     notes = list(real.notes)
     targets = _targets_for(real, frame)
-    fits = [_fit_free(t, b) for t, b in zip(targets, _bases(targets))]
+    fits = [_fit_free(t, b, rules) for t, b in zip(targets, _bases(targets))]
     for f, t in zip(real.fingers, targets):
         for j, jt in enumerate(f.joints):
             if jt.coupled_to and t.types[j] != "coupled":
@@ -909,11 +1057,125 @@ def _conform_in(real: RealHand, frame: np.ndarray) -> HandFit:
 def conform_id(hand_id: str) -> HandFit:
     from .commercial import load_real_hand
 
-    return conform(load_real_hand(hand_id))
+    return conform_buildable(load_real_hand(hand_id))
 
 
 def fit_violations(fit: HandFit) -> List[str]:
-    return check(fit.hand, NO_RULES)
+    return check(fit.hand, COMMERCIAL_RULES)
+
+
+# --------------------------------------------------------------------------
+# Scaling a commercial hand until Feetech servos fit
+# --------------------------------------------------------------------------
+
+SCALE_LADDER = (1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
+SCALE_STEP = 0.05
+
+
+def scale_model(model: KinematicModel, s: float) -> KinematicModel:
+    """`model` with every length times `s` (joint origins, frames, sliding
+    limits); angles unchanged."""
+    def pose(p: Pose) -> Pose:
+        return Pose(xyz=tuple(float(v) * s for v in p.xyz), rpy=p.rpy)
+
+    joints = tuple(replace(j, origin=pose(j.origin),
+                           limits=(tuple(float(v) * s for v in j.limits) if (j.type == "prismatic" and j.limits)
+                                   else j.limits))
+                   for j in model.joints)
+    frames = tuple(replace(f, pose=pose(f.pose)) for f in model.frames)
+    return replace(model, joints=joints, frames=frames)
+
+
+def scaled(real: RealHand, s: float) -> RealHand:
+    """The commercial hand scaled up by `s` about its root (the wrist)."""
+    def sj(j: RealJoint) -> RealJoint:
+        return replace(j, point=np.asarray(j.point, dtype=float) * s)
+
+    fingers = [replace(f, joints=[sj(j) for j in f.joints], tip=np.asarray(f.tip, dtype=float) * s)
+               for f in real.fingers]
+    return replace(real, model=scale_model(real.model, s), fingers=fingers,
+                   palm_joints=[sj(j) for j in real.palm_joints], scale=real.scale * s)
+
+
+def buildable(fit: HandFit) -> bool:
+    """The fitted hand keeps the servo floors and every solid clears every
+    other by a wall (C1): it can be built from Feetech servos."""
+    return not check(fit.hand, COMMERCIAL_RULES) and gvb.c1_self_overlap(fit.hand).ok
+
+
+ACCEPT_FACTOR = 2.0
+"""A scaled fit counts only within this many times the fit target (20 mm,
+40 degrees): moving fingers clear can otherwise leave a fit that is no longer
+the hand (Dex3 at its real size: 25 mm and 38 degrees, against 4 mm and 2
+degrees at 2 x)."""
+
+
+def acceptable(fit: HandFit, real: RealHand) -> bool:
+    """Buildable, every joint keeps its commercial kind (the hand's
+    structure), and the fit is within `ACCEPT_FACTOR` x the target."""
+    close = (fit.max_joint_mm <= ACCEPT_FACTOR * TARGET_MM and fit.max_tip_mm <= ACCEPT_FACTOR * TARGET_MM
+             and fit.max_axis_deg <= ACCEPT_FACTOR * TARGET_DEG)
+    return close and buildable(fit) and kinds_kept(fit.hand, fit.palm_T, fit.q_off(), real)
+
+
+def fallback_fit(real: RealHand, top: float = SCALE_LADDER[-1]) -> HandFit:
+    """A hand no scale up to `top` makes buildable: its fit at the real size
+    under the grammar's own limits (no servo lengths: they would only spoil
+    the fit), as before commercial hands were scaled."""
+    fit = conform(real)
+    fit.scale = 1.0
+    fit.notes.append(f"no scale up to {top:g} x gives a fit buildable from Feetech servos that keeps every joint's "
+                     f"kind within {ACCEPT_FACTOR:g} x the fit target: kept at its real size, without servo lengths")
+    return fit
+
+
+def conform_buildable(real: RealHand, ladder: Sequence[float] = SCALE_LADDER, step: float = SCALE_STEP,
+                      ) -> HandFit:
+    """`real` scaled up by the smallest factor (to `step`) at which its fit,
+    with servo link lengths, is buildable, keeps every joint's kind and stays
+    within twice the fit target (`acceptable`): the scales in `ladder` in turn until one is, then every
+    `step` between the last that was not and that one, lowest first. A fit
+    that fails C1 is first refitted clear (`refit_clear`). The palm frame is
+    searched once at scale 1 and scaled with the hand. If no scale on the
+    ladder works, the hand's plain fit at its real size under the grammar's
+    own limits is kept (`fallback_fit`) and a note says so; the simulator
+    then filters its overlaps."""
+    first = conform(real, rules=COMMERCIAL_RULES)
+    R, o = first.palm_T[:3, :3], first.palm_T[:3, 3]
+
+    def at(s: float) -> HandFit:
+        real_s = scaled(real, s)
+        if abs(s - 1.0) < 1e-9:
+            fit = copy.deepcopy(first)            # the refit below changes a fit in place
+        else:
+            T = np.eye(4)
+            T[:3, :3], T[:3, 3] = R, o * s
+            fit = conform(real_s, palm_frame=T, rules=COMMERCIAL_RULES)
+        if not check(fit.hand, COMMERCIAL_RULES) and not gvb.c1_self_overlap(fit.hand).ok:
+            fit = refit_clear(fit, real_s, COMMERCIAL_RULES)
+        fit.scale = float(s)
+        return fit
+
+    prev, hit = None, None
+    for s in ladder:
+        fit = at(s)
+        if acceptable(fit, scaled(real, s)):
+            hit = fit
+            break
+        prev = s
+    if hit is None:
+        return fallback_fit(real, ladder[-1])
+    if prev is not None:
+        k = 1
+        while prev + k * step < hit.scale - 1e-9:
+            s = round(prev + k * step, 6)
+            fit = at(s)
+            if acceptable(fit, scaled(real, s)):
+                hit = fit
+                break
+            k += 1
+    hit.notes.append(f"scaled up {hit.scale:g} x so Feetech servos fit (servo link lengths, no collisions)")
+    return hit
 
 
 def urdf_joint_map(hand: Hand, palm_T: np.ndarray, q_off: np.ndarray, name_map: Dict[str, str],

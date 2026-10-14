@@ -149,22 +149,24 @@ def test_coupled_and_sliding_joints_only_without_rules():
 
 def test_allowed_lengths_follow_the_motor_floors():
     f = _finger(0, 40, joints=((SPREAD, 50), (BEND, 50), (TWIST, 50), (BEND, 30)))
-    assert allowed_lengths(f, 0, True) == [0, 40, 50, 60, 70, 80, 90]      # spread then bend may cross
-    assert allowed_lengths(f, 1, True) == list(range(40, 91, 10))           # bend then twist: no crossing
-    assert allowed_lengths(f, 2, True) == list(range(50, 91, 10))           # twist then bend
-    assert allowed_lengths(f, 3, True) == list(range(30, 91, 10))           # the fingertip
-    assert allowed_lengths(f, 0, False) == [0] + list(range(10, 91, 10))
-    assert allowed_lengths(f, 3, False) == list(range(10, 91, 10))
+    assert allowed_lengths(f, 0, True, 90) == [0, 40, 50, 60, 70, 80, 90]      # spread then bend may cross
+    assert allowed_lengths(f, 1, True, 90) == list(range(40, 91, 10))           # bend then twist: no crossing
+    assert allowed_lengths(f, 2, True, 90) == list(range(50, 91, 10))           # twist then bend
+    assert allowed_lengths(f, 3, True, 90) == list(range(30, 91, 10))           # the fingertip
+    assert allowed_lengths(f, 0, False, 90) == [0] + list(range(10, 91, 10))
+    assert allowed_lengths(f, 3, False, 90) == list(range(10, 91, 10))
+    assert allowed_lengths(f, 3, False)[-1] == NO_RULES.max_link_mm              # the grammar's own longest link
     g = _finger(0, 40, joints=((SPREAD, 0), (BEND, 50), (SPREAD, 50), (BEND, 30)))
     assert 0 not in allowed_lengths(g, 1, True)                              # bend then spread, but link 0 is 0 mm
 
 
 def test_rules_clamp_never_widen_the_grammar():
-    r = Rules(max_fingers=9, max_joints=8, max_palm_joints=9, max_finger_length_mm=400, base_pitch_mm=7,
-              base_distance_mm=(0, 999)).clamp()
+    r = Rules(max_fingers=9, max_joints=8, max_palm_joints=9, max_finger_length_mm=10_000, base_pitch_mm=7,
+              base_distance_mm=(0, 10_000), max_link_mm=10_000).clamp()
     assert r.max_fingers == 6 and r.max_joints == 5 and r.max_palm_joints == 1
-    assert r.max_finger_length_mm == 250 and r.base_pitch_mm == 10
-    assert r.base_distance_mm == NO_RULES.base_distance_mm
+    assert r.max_finger_length_mm == NO_RULES.max_finger_length_mm and r.base_pitch_mm == 10
+    assert r.base_distance_mm == NO_RULES.base_distance_mm and r.max_link_mm == NO_RULES.max_link_mm
+    assert (FEETECH_RULES.max_link_mm, FEETECH_RULES.max_finger_length_mm) == (90, 250)
     assert FEETECH_RULES.clamp() == FEETECH_RULES and EVOLUTION_RULES == FEETECH_RULES
 
 

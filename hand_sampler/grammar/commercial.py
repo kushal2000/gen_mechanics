@@ -103,6 +103,7 @@ class RealHand:
     fingers: List[RealFinger]
     palm_joints: List[RealJoint]
     notes: List[str] = field(default_factory=list)
+    scale: float = 1.0          # times the real hand's size (`conform.scaled`)
 
     def joint(self, name: str) -> RealJoint:
         for j in self.palm_joints:

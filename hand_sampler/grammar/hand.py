@@ -54,12 +54,19 @@ GRAMMAR_VERSION = "hand_grammar/2.0"
 GRID_MM = 10                # every stored length and position
 GRID_DEG = 30               # every stored angle
 
-# Links: 0 mm (two joints at one point) or 10-90 mm; the fingertip link
-# 10-90 mm, never 0. A buildable rule set raises the minimum to the motor
-# floors (`motor.link_floor_mm`, `motor.tip_floor_mm`).
+# Links: 0 mm (two joints at one point) or 10 mm up to the longest link; the
+# fingertip link 10 mm up, never 0. A buildable rule set raises the minimum to
+# the motor floors (`motor.link_floor_mm`, `motor.tip_floor_mm`).
+# The grammar's own limits (longest link and finger, farthest base) are the
+# commercial hands' extremes at the scale they are buildable from Feetech
+# servos (`build_conformed`, 2026-10-14: 180 mm, SHARPA x 3.1; 450 mm, SHARPA;
+# 329 mm, SVH x 3.05), x 1.1, rounded out to 10 mm; the Feetech rules keep
+# 90 mm links, 250 mm fingers and bases 40-90 mm out.
 LINK_MIN_MM = 10
 TIP_MIN_MM = 10
-LINK_MAX_MM = 90
+LINK_MAX_MM = 200
+FINGER_LENGTH_MAX_MM = 500
+BASE_DISTANCE_MAX_MM = 370
 
 # Palm: a flat plate as thick as a flat bend motor in its housing (20 + 2 x 2
 # mm), the convex hull of the mount disc and the base motors' housings.
@@ -98,8 +105,12 @@ KIND_AXIS = {"flexion": (0, 0), "abduction": (90, 0), "roll": (0, 90)}
 JOINT_TYPES = ("hinge", "coupled", "sliding")   # no continuous joints
 REVOLUTE_TYPES = ("hinge", "coupled")
 
-# Physical properties for every hand (Kushal's uniform values).
-JOINT_EFFORT_NM = 0.5
+# Physical properties for every hand (Kushal's uniform values), except the
+# effort: the Feetech HL-3915-C001's stall torque at 12 V, 14.2 kg cm = 1.39 N m
+# (Martin, 2026-10-14: "use feetech torque numbers"; was 0.5 N m). Its rated
+# load is 4.5 kg cm (0.44 N m) and its no-load speed 0.1 s per 60 degrees
+# (10.5 rad/s); the speed limit stays Kushal's 5 rad/s.
+JOINT_EFFORT_NM = 1.39
 JOINT_VELOCITY_RAD_S = 5.0
 JOINT_STIFFNESS = 3.0
 JOINT_DAMPING = 0.078
@@ -236,11 +247,12 @@ class Rules:
     max_fingers: int = 6
     max_joints: int = 5
     max_palm_joints: int = 1
-    max_finger_length_mm: int = 250
+    max_finger_length_mm: int = FINGER_LENGTH_MAX_MM
     base_pitch_mm: int = GRID_MM
-    base_distance_mm: Tuple[int, int] = (10, 160)
+    base_distance_mm: Tuple[int, int] = (10, BASE_DISTANCE_MAX_MM)
     outward_facing: bool = False
     buildable_links: bool = False
+    max_link_mm: int = LINK_MAX_MM
 
     def clamp(self) -> "Rules":
         """The same rules, every field inside the grammar's own limits."""
@@ -257,13 +269,17 @@ class Rules:
             max_finger_length_mm=max(TIP_MIN_MM, min(int(self.max_finger_length_mm), g.max_finger_length_mm)),
             base_pitch_mm=pitch, base_distance_mm=(lo, max(lo, hi)),
             outward_facing=bool(self.outward_facing), buildable_links=bool(self.buildable_links),
+            max_link_mm=max(TIP_MIN_MM, min(int(self.max_link_mm) // GRID_MM * GRID_MM, g.max_link_mm)),
         )
 
 
 NO_RULES = Rules()
 FEETECH_RULES = Rules(joint_types=("hinge",), base_pitch_mm=40, base_distance_mm=(40, 90),
-                      outward_facing=True, buildable_links=True)
+                      outward_facing=True, buildable_links=True, max_finger_length_mm=250, max_link_mm=90)
 EVOLUTION_RULES = FEETECH_RULES
+COMMERCIAL_RULES = Rules(buildable_links=True)
+"""The grammar's own limits with servo link lengths: what a commercial hand,
+scaled up until it is buildable from Feetech servos, is fitted under."""
 
 
 def _is_int(v) -> bool:
@@ -303,10 +319,10 @@ def length_floor_mm(f: Finger, j: int, buildable: bool) -> int:
     return mt.link_floor_mm(a, axis_unit(f.joints[j + 1].axis))
 
 
-def allowed_lengths(f: Finger, j: int, buildable: bool) -> List[int]:
+def allowed_lengths(f: Finger, j: int, buildable: bool, max_mm: int = LINK_MAX_MM) -> List[int]:
     """Every length link j of finger f may take, ascending, given its
-    neighbours: the floor to 90 mm on the grid, and 0 where allowed."""
-    out = list(range(length_floor_mm(f, j, buildable), LINK_MAX_MM + 1, GRID_MM))
+    neighbours: the floor to `max_mm` on the grid, and 0 where allowed."""
+    out = list(range(length_floor_mm(f, j, buildable), max_mm + 1, GRID_MM))
     if zero_link_ok(f, j, buildable):
         out = [0] + out
     return out
@@ -365,12 +381,12 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
                 out.append(f"{jtag}: axis {jt.axis} not canonical ({canonical_axis(az, el)})")
         if not bad_axis:
             for j, jt in enumerate(f.joints):
-                allowed = allowed_lengths(f, j, r.buildable_links)
+                allowed = allowed_lengths(f, j, r.buildable_links, r.max_link_mm)
                 if not _is_int(jt.length) or jt.length not in allowed:
                     lo_mm = length_floor_mm(f, j, r.buildable_links)
                     zero = "0 or " if zero_link_ok(f, j, r.buildable_links) else ""
                     out.append(f"{tag} joint {j}: link length {jt.length} mm not allowed "
-                               f"({'fingertip ' if j == nj - 1 else ''}{zero}{lo_mm}-{LINK_MAX_MM} mm "
+                               f"({'fingertip ' if j == nj - 1 else ''}{zero}{lo_mm}-{r.max_link_mm} mm "
                                f"in {GRID_MM} mm steps)")
         if finger_length_mm(f) > r.max_finger_length_mm:
             out.append(f"{tag}: {finger_length_mm(f)} mm long, allowed {r.max_finger_length_mm}")

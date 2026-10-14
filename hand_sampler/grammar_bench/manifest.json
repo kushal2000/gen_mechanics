@@ -452,6 +452,28 @@
           -0.0085
         ]
       }
+    },
+    {
+      "id": "sharpa_right",
+      "family": "F2_five_finger_full",
+      "split": "heldout",
+      "license": "BSD (HA4 package.xml); now Apache-2.0 upstream as Sharpa Wave",
+      "commit_allowed": false,
+      "source_url": "https://github.com/sharpa-robotics/sharpa-urdf-usd-xml (via KaRMA karma-hand-metric-v2)",
+      "retrieved": "2026-10-14",
+      "notes": "The KaRMA SHARPA (Right_Sharpa_HA4), the hand alone (replaces sharpa_left_on_iiwa14 in the reference set). Local-only: never committed. The pinky's CMC joint is a palm joint.",
+      "hand_root": "right_hand_C_MC",
+      "palm_joints": [
+        "right_pinky_CMC"
+      ],
+      "fixture_path": null,
+      "license_evidence": "/home/singularity/karma/karma-hand-metric-v2/robots/visual_models/sharpa/ATTRIBUTION.txt",
+      "source_path": "/home/singularity/karma/karma-hand-metric-v2/robots/urdfs/sharpa.urdf",
+      "mesh_dirs": [
+        "/home/singularity/karma/karma-hand-metric-v2/robots/visual_models/sharpa/meshes"
+      ],
+      "sha256": "0f31565c08c31c671e6013095800ef60a1e9155c8d7721e0b004a8006b68fe71",
+      "thumb_joint": "right_thumb_CMC_FE"
     }
   ],
   "reference_set": [
@@ -465,7 +487,7 @@
     "leap_right",
     "orca_right",
     "shadow_right_local",
-    "sharpa_left_on_iiwa14",
+    "sharpa_right",
     "svh_right",
     "tesollo_dg5f_right",
     "wuji_right",

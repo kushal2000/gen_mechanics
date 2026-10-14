@@ -36,7 +36,6 @@ from .hand import (
     GRID_MM,
     KIND_AXIS,
     KIND_MIX,
-    LINK_MAX_MM,
     MIN_CUT_OFFSET_MM,
     REVOLUTE_TYPES,
     TILT_RANGE_DEG,
@@ -118,7 +117,7 @@ def fit_lengths(f: Finger, rules: Rules) -> Finger:
     to the longer), from the palm out."""
     js = list(f.joints)
     for j in range(len(js)):
-        allowed = allowed_lengths(replace(f, joints=tuple(js)), j, rules.buildable_links)
+        allowed = allowed_lengths(replace(f, joints=tuple(js)), j, rules.buildable_links, rules.max_link_mm)
         if js[j].length not in allowed:
             js[j] = replace(js[j], length=_nearest(allowed, js[j].length))
     return replace(f, joints=tuple(js))
@@ -128,7 +127,7 @@ def step_length(f: Finger, j: int, s: int, rules: Rules) -> Optional[int]:
     """Link j's next allowed length up (s = +1) or down (s = -1): 10 mm
     steps, the floor down to 0 where a 0 mm link is allowed. None at the
     ends."""
-    allowed = allowed_lengths(f, j, rules.buildable_links)
+    allowed = allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm)
     L = f.joints[j].length
     if L in allowed:
         k = allowed.index(L) + s
@@ -405,7 +404,7 @@ OPERATORS: Tuple[Operator, ...] = (
              "Split one link in two with a new joint; links grow to their shortest allowed length if needed.",
              True, _split_moves, _split),
     Operator("merge", "remove a joint (merge two links)",
-             "Remove one joint; the links on either side become one (at most 90 mm).",
+             "Remove one joint; the links on either side become one (at most the longest link the rules allow).",
              True, _merge_moves, _merge),
     Operator("couple", "couple or uncouple a joint",
              "Make a joint follow the joint before it (x1.1), or move on its own again.",
@@ -523,6 +522,13 @@ def _base_placements_cached(rules: Rules):
     return out, np.array(w)
 
 
+@lru_cache(maxsize=16)
+def _base_cdf(rules: Rules) -> np.ndarray:
+    _, w = _base_placements_cached(rules)
+    c = np.cumsum(w)
+    return c / c[-1]
+
+
 @lru_cache(maxsize=200000)
 def _base_box_corners(y: int, z: int, facing: int, tilt: int, kind: str) -> np.ndarray:
     """The base motor's corners (palm frame, metres) of a finger whose first
@@ -556,8 +562,15 @@ def _draw_base(rng: np.random.Generator, rules: Rules, placed: List[np.ndarray],
                taken: set) -> Optional[Tuple[int, int, int, int, str]]:
     """A base drawn from the placements whose motor clears the mount and the
     base motors placed so far (each placement weighted by its kind's share):
-    the first such placement in a weighted random order."""
+    placements drawn by weight until one fits (the same distribution as
+    drawing from the ones that fit), or, if few fit, the first that fits in a
+    weighted random order."""
     cands, w = _base_placements(rules)
+    cdf = _base_cdf(rules)
+    for _ in range(200):
+        c = cands[int(np.searchsorted(cdf, rng.random(), side="right"))]
+        if (c[0], c[1]) not in taken and _base_clear(c, placed):
+            return c
     for k in _weighted_order(rng, w):
         c = cands[int(k)]
         if (c[0], c[1]) in taken:
@@ -581,7 +594,7 @@ def _draw_joints(rng: np.random.Generator, rules: Rules, first: str, base: Finge
     for _ in range(20):
         n = int(rng.integers(1, rules.max_joints + 1))
         kinds = [first] + [_draw_kind(rng) for _ in range(n - 1)]
-        js = [Joint("hinge", KIND_AXIS[k], LINK_MAX_MM) for k in kinds]
+        js = [Joint("hinge", KIND_AXIS[k], rules.max_link_mm) for k in kinds]
         f = replace(base, joints=tuple(js))
         floors = [length_floor_mm(f, j, rules.buildable_links) for j in range(n)]
         if sum(floors) > rules.max_finger_length_mm:
@@ -591,7 +604,7 @@ def _draw_joints(rng: np.random.Generator, rules: Rules, first: str, base: Finge
         for j in range(n):
             f = replace(base, joints=tuple(js))
             rest = sum(floors[j + 1:])
-            values = [v for v in allowed_lengths(f, j, rules.buildable_links) if v <= budget - rest]
+            values = [v for v in allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm) if v <= budget - rest]
             if not values:
                 ok = False
                 break
