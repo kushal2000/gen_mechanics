@@ -15,7 +15,7 @@ entirely inside the ``coevolution/train.py`` subprocess.
 CLI:
     python -m isaacsimenvs.inhand_reorient.evolution.driver \
         --rules evolution --seed 0 --generations 20 --designs 64 \
-        --probes allegro_right,dclaw,sharpa_left_on_iiwa14,leap_right \
+        --probes allegro_right,dclaw,sharpa_right,leap_right \
         --num-envs 4096 --epochs-per-gen 200 --fitness train_tail \
         --run-dir outputs/evolution_pilot/run0
 
@@ -114,7 +114,7 @@ AGENT_HORIZONS: Dict[str, int] = {
     HORA_TOKEN_AGENT_ENTRY_POINT: 8,
 }
 PPO_MINIBATCH_CAP = 32768  # InHandReposeIsaacLabPPO.yaml's (NVIDIA's) `minibatch_size`
-DEFAULT_PROBES: Tuple[str, ...] = ("allegro_right", "dclaw", "sharpa_left_on_iiwa14", "leap_right")
+DEFAULT_PROBES: Tuple[str, ...] = ("allegro_right", "dclaw", "sharpa_right", "leap_right")
 
 
 # --------------------------------------------------------------------------

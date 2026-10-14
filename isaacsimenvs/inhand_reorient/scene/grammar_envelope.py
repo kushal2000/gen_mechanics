@@ -39,8 +39,9 @@ topology):
 
 Every grammar hand fits (at most 6 fingers of at most 5 joints, at most one
 palm joint). `admit` adds the viability check C1 (clearance) for sampled
-designs; commercial hands are exempt and collision-filter their overlapping
-pairs instead (`mark_filtered_pairs`).
+designs; commercial hands are fitted at the scale where they pass it, and
+the few that do not collision-filter their overlapping pairs instead
+(`mark_filtered_pairs`).
 """
 
 from __future__ import annotations

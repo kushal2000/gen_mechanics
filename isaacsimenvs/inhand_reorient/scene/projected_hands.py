@@ -123,13 +123,16 @@ def _quat_wxyz_to_mat(q) -> np.ndarray:
 def urdf_equivalent_placement(design: "ge.EnvelopeDesign", hand_id: str, pose_entry: Mapping) -> dict:
     """`{"base_pos", "base_rot_wxyz", "spawn_offset", "default_q"}` putting the
     design where `pose_entry` puts the URDF hand: the grammar root is the
-    palm frame `palm_T` (p_root = R p_palm + o) inside the URDF root."""
+    palm frame `palm_T` (p_root = R p_palm + o) inside the URDF root. The fit
+    is of the hand scaled up `scale` x about its root, so the URDF asset's
+    spawn point scales with it."""
     rec = fit_record(hand_id)
     T = np.asarray(rec["palm_T"], dtype=float)
     R, o = T[:3, :3], T[:3, 3]
+    s = float(rec.get("scale", 1.0))
     R_u = _quat_wxyz_to_mat(pose_entry["base_rot"])
     base_pos = np.asarray(pose_entry["base_pos"], dtype=float) + R_u @ o
-    spawn = R.T @ (np.asarray(pose_entry["spawn_offset_local"], dtype=float) - o)
+    spawn = R.T @ (s * np.asarray(pose_entry["spawn_offset_local"], dtype=float) - o)
     default_q = np.array(ge.palm_up(design).default_q, dtype=float)
     for slot, v in slot_values(design, hand_id, pose_entry.get("hand_default_joint_pos") or {}).items():
         lo, hi = design.slot_limits[slot]

@@ -350,7 +350,7 @@ def main(argv=None) -> int:
 
     ap = argparse.ArgumentParser(description=main.__doc__)
     ap.add_argument("--rules", default="evolution", help="comma-separated rule sets: evolution, none")
-    ap.add_argument("--probes", default="allegro_right,sharpa_left_on_iiwa14,leap_right")
+    ap.add_argument("--probes", default="allegro_right,sharpa_right,leap_right")
     ap.add_argument("--designs", type=int, default=32)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out-dir", required=True)

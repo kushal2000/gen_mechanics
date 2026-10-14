@@ -28,7 +28,7 @@ from hand_sampler.grammar.hand import EVOLUTION_RULES, Finger, Hand, Joint, Palm
 from .scene import grammar_envelope as ge
 from .scene import population_file as pf
 
-DEFAULT_COMMERCIAL_HANDS: tuple = ("allegro_right", "dclaw", "sharpa_left_on_iiwa14", "wuji_right")
+DEFAULT_COMMERCIAL_HANDS: tuple = ("allegro_right", "dclaw", "sharpa_right", "wuji_right")
 VALIDATION_COMMERCIAL_HANDS: tuple = ("allegro_right", "svh_right", "wuji2_left", "shadow_right_local",
                                       "inspire_right")
 

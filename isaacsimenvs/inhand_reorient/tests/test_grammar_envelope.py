@@ -330,9 +330,9 @@ def test_urdf_equivalent_placement_keeps_the_palm():
     d = ge.canonicalize(build_conformed.load()["allegro_right"]["hand"], source="commercial:allegro_right")
     entry = {"base_pos": [0.0, 0.0, 0.5], "base_rot": [1.0, 0.0, 0.0, 0.0], "spawn_offset_local": [0.0, 0.0, 0.1]}
     pl = ph.urdf_equivalent_placement(d, "allegro_right", entry)
-    T = build_conformed.load()["allegro_right"]["palm_T"]
-    # the spawn point is the same physical point in both frames
-    p_world_urdf = np.array([0.0, 0.0, 0.6])
+    scale = build_conformed.load()["allegro_right"]["scale"]
+    # the spawn point is the same point of the hand in both frames (the fit is of the hand scaled up about its root)
+    p_world_urdf = np.array([0.0, 0.0, 0.5 + scale * 0.1])
     from scipy.spatial.transform import Rotation
 
     w, x, y, z = pl["base_rot_wxyz"]

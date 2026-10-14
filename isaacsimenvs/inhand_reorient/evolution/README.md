@@ -13,7 +13,7 @@ the whole run is **one process, one SLURM job** -- no self-resubmitting chains.
 ```
 python -m isaacsimenvs.inhand_reorient.evolution.driver \
     --rules evolution --seed 0 --generations 20 --designs 64 \
-    --probes allegro_right,dclaw,sharpa_left_on_iiwa14,leap_right \
+    --probes allegro_right,dclaw,sharpa_right,leap_right \
     --num-envs 4096 --epochs-per-gen 200 --fitness train_tail \
     --run-dir outputs/evolution_pilot/run0
 ```
@@ -35,7 +35,7 @@ Key flags (see `driver.py`'s `parse_args` for the full list and defaults):
   code is at the local tag `grammar-v0.5-final`).
 - `--designs N` (default 64): total population size per generation, including probes.
 - `--probes`: comma-separated manifest hand ids, fixed identity every generation, logged but
-  never entered into the archive. Default: `allegro_right,dclaw,sharpa_left_on_iiwa14,leap_right`
+  never entered into the archive. Default: `allegro_right,dclaw,sharpa_right,leap_right` (the KaRMA SHARPA, hand only, since 2026-10-14)
   (the plan's "allegro_right, dclaw, sharpa ... and one more admissible commercial hand" --
   `leap_right` is the fourth). Probes are the conformed commercial hands
   (`population_file.commercial_entry`, from `hand_sampler/grammar_bench/conformed_hands.json`).

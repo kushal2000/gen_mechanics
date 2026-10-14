@@ -148,10 +148,11 @@ def sampled_entries(seeds: Sequence[int], rules: Rules = EVOLUTION_RULES,
 
 def commercial_entry(hand_id: str) -> Tuple[Optional[PopulationEntry], str, Optional[str]]:
     """`(entry_or_None, status, reason)` for a conformed commercial hand
-    (`hand_sampler/grammar_bench/conformed_hands.json`). Commercial hands are
-    exempt from the clearance check: their bases and links sit closer than
-    servo-sized solids allow, so the overlapping pairs are collision-filtered
-    instead."""
+    (`hand_sampler/grammar_bench/conformed_hands.json`). Each is fitted at
+    the smallest scale where it is buildable from Feetech servos, so it
+    passes C1 and nothing is filtered; the few that no scale up to 5 x makes
+    buildable keep the exemption, their overlapping pairs collision-filtered
+    (`grammar_envelope.mark_filtered_pairs`)."""
     recs = build_conformed.load()
     rec = recs.get(hand_id)
     if rec is None:
