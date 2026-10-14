@@ -80,6 +80,14 @@ identical settings. These are final checkpoints (epoch 5000), 1 seed each.
   on its own 40-hand layout (4.6), so the larger layout costs nothing. An earlier greedy run understated every hand
   about 4x, and a sampled run before the per-slot sigma fix (_play_worker._resize_sigma) understated them again.
 
+- `simple_vs_all_hands.png` (14 Oct): E4 against its sibling 127127, the identical recipe (v5, EMA 0.1 + action
+  delay, 24k envs, 5 mini-epochs, seed 100, epoch 5000) trained on ALL 52 hands, the 4- and 5-finger ones included.
+  Same eval (64 envs per hand, first-episode goals, sampled actions; 127127's ran as 4 parallel parts of 13 hands,
+  merged). Training on everything failed: 127127 scores 0.1-0.4 goals per episode on every finger count, its training
+  curve agrees (0.17 goals per episode at epoch 5000, against E4's 2.3) and its 24-hour continuation (230434) was
+  still at 0.1 by epoch 8,850. E4, which never saw a 4- or 5-finger hand, scores 12.9 and 18.8 on them. One seed each;
+  the 6 Oct 52-hand run (31826: no action delay, 12k envs) did learn, so this is a result about this recipe.
+
 ## H5: domain randomisation over the OOD axes (`h5_dr_on_ood_axes/`)
 
 The same MLP recipe, trained with every OOD axis randomised over the middle of its sweep: push 0-1.5 N, friction
