@@ -134,7 +134,7 @@ class GrammarViewer:
             ("sliding",) if self.gui_sliding.value else ())
         return Rules(joint_types=types, max_fingers=int(self.gui_fingers.value), max_joints=int(self.gui_joints.value),
                      max_palm_joints=int(self.gui_palm.value), max_finger_length_mm=int(self.gui_length.value),
-                     base_pitch_mm=int(self.gui_pitch.value),
+                     base_pitch_mm=int(self.gui_pitch.value), max_link_mm=int(self.gui_link_max.value),
                      base_distance_mm=(int(self.gui_base_min.value), int(self.gui_base.value)),
                      outward_facing=bool(self.gui_outward.value), buildable_links=bool(self.gui_buildable.value)).clamp()
 
@@ -147,6 +147,7 @@ class GrammarViewer:
             self.gui_coupled.value = "coupled" in r.joint_types
             self.gui_sliding.value = "sliding" in r.joint_types
             self.gui_length.value = r.max_finger_length_mm
+            self.gui_link_max.value = r.max_link_mm
             self.gui_pitch.value = r.base_pitch_mm
             self.gui_base_min.value = r.base_distance_mm[0]
             self.gui_base.value = r.base_distance_mm[1]
@@ -207,9 +208,10 @@ class GrammarViewer:
             real = gcom.load_real_hand(hand_id)
             self.jmap = gcf.urdf_joint_map(rec["hand"], rec["palm_T"], rec["q_off"], rec["name_map"], real)
             self.real = real
-            path = gcom.mesh_path(gcom.entry(hand_id))
-            ms = gmesh.load_link_meshes(path)
-            self.overlay.build(ms, MESH_OPACITY)
+            entry = gcom.entry(hand_id)
+            path = gcom.mesh_path(entry)
+            ms = gmesh.load_link_meshes(path, fallback_dirs=[Path(d) for d in entry.get("mesh_dirs") or []])
+            self.overlay.build(ms, MESH_OPACITY, scale=float(rec.get("scale", 1.0)))
             self.overlay.set_visible(bool(self.gui_meshes.value))
             self._set_hand(rec["hand"], history="reset", commercial=rec, viability=gvb.viability(rec["hand"]),
                            frame=True)
@@ -221,7 +223,10 @@ class GrammarViewer:
                    f"tips ({'within' if rec['within_target'] else 'outside'} {gcf.TARGET_MM:g} mm / "
                    f"{gcf.TARGET_DEG:g}°)")
             rules_note = "follows the rules" if not check(rec["hand"], self.rules()) else "outside these rules"
-            self.md_fit.content = (f"{len(rec['hand'].fingers)} fingers, {n['joints']} joints; fit: {fit}; "
+            built = ("buildable from Feetech servos" if rec.get("buildable", False)
+                     else "not buildable from Feetech servos")
+            self.md_fit.content = (f"{len(rec['hand'].fingers)} fingers, {n['joints']} joints; shown "
+                                   f"{rec.get('scale', 1.0):g} x its size, {built}; fit (at its real size): {fit}; "
                                    f"{rules_note}. Meshes: {ms.summary()}")
         return self.run_job("commercial", job, wait)
 
@@ -261,7 +266,17 @@ class GrammarViewer:
         return self.run_job("back", job, wait)
 
     def set_curl(self, frac: float) -> None:
+        """Set the curl preset (every bending joint at this fraction of its
+        upper limit) and move the joint sliders to it."""
         self.gui_curl.value = float(frac)
+        self._apply_presets()
+
+    def set_joint(self, k: int, value_rad: float) -> None:
+        """Move joint k (`derive.dofs` order) to `value_rad` (metres for a
+        sliding joint), as its slider would."""
+        d, h = self.joint_sliders[k]
+        h.value = float(value_rad * (1e3 if d.type == "sliding" else 180.0 / np.pi))
+        self._on_joint_slider()
 
     def recentre(self) -> None:
         self._frame_camera()
@@ -287,20 +302,23 @@ class GrammarViewer:
             self.viability = viability
             # commercial hands are exempt from C1 in the simulator (their bases and links sit closer than
             # servo-sized solids allow; the overlaps are collision-filtered), so they are not painted red
-            bad = [(a, b) for a, b, _ in viability.c1.pairs] if self.gui_c1.value and commercial is None else []
+            bad = [(a, b) for a, b, _ in viability.c1.pairs] if self.gui_c1.value else []
             self.drawing.build(hand, highlight=bad,
-                               object_half_m=OBJECT_HALF_M if self.gui_object.value else None)
+                               object_half_m=OBJECT_HALF_M if self.gui_object.value else None,
+                               link_opacity=float(self.gui_links.value))
             self.gui_palm_bend.visible = bool(hand.palm_joints)
+            self._build_joint_sliders()
             self._render_pose()
             self._update_status()
             self._update_operator_buttons()
             if frame:
                 self._frame_camera()
 
-    def q(self) -> np.ndarray:
-        """The joint vector on screen: flexion joints at curl x their upper
-        limit (a commercial hand: added to its zero-pose difference, so curl 0
-        is the real hand's zero pose)."""
+    def preset_q(self) -> np.ndarray:
+        """The presets' joint vector: bending joints at curl x their upper
+        limit, the palm joint at palm bend x its range, every other joint at 0
+        (a commercial hand: added to its zero-pose difference, so curl 0 is
+        the real hand's zero pose)."""
         q = gdv.curl_q(self.hand, float(self.gui_curl.value))
         bend = float(self.gui_palm_bend.value)
         for k, d in enumerate(gdv.dofs(self.hand)):
@@ -309,6 +327,60 @@ class GrammarViewer:
         if self.commercial is not None:
             q = q + self.commercial["q_off"]
         return gdv.tie(self.hand, q)
+
+    def q(self) -> np.ndarray:
+        """The joint vector on screen: the joint sliders (coupled joints
+        follow their source)."""
+        if not self.joint_sliders:
+            return self.preset_q()
+        q = np.array([h.value * (1e-3 if d.type == "sliding" else np.pi / 180.0) for d, h in self.joint_sliders])
+        return gdv.tie(self.hand, q)
+
+    # ---- joint sliders
+    def _build_joint_sliders(self) -> None:
+        """One slider per joint of the hand on screen (degrees; mm for a
+        sliding joint), set to the presets."""
+        for _, h in self.joint_sliders:
+            h.remove()
+        self.joint_sliders = []
+        q = self.preset_q()
+        kinds = {"flexion": "bend", "abduction": "spread", "roll": "twist", "sliding": "slide", "palm": "palm cut"}
+        with self.joint_folder:
+            for k, d in enumerate(gdv.dofs(self.hand)):
+                unit = 1e3 if d.type == "sliding" else 180.0 / np.pi
+                lo, hi = d.limits[0] * unit, d.limits[1] * unit
+                v = float(q[k] * unit)
+                label = "palm cut" if d.finger < 0 else f"finger {d.finger + 1} joint {d.index + 1} ({kinds[d.kind]})"
+                h = self.server.gui.add_slider(
+                    label, float(np.floor(min(lo, v))), float(np.ceil(max(hi, v))), 1.0, v,
+                    disabled=d.source >= 0,
+                    hint=("follows the joint before it (x1.1)" if d.source >= 0
+                          else ("mm" if d.type == "sliding" else "degrees")))
+                h.on_update(lambda _: self._on_joint_slider())
+                self.joint_sliders.append((d, h))
+
+    def _write_sliders(self, q: np.ndarray) -> None:
+        self._suppress_joints = True
+        try:
+            for (d, h), v in zip(self.joint_sliders, q):
+                h.value = float(v * (1e3 if d.type == "sliding" else 180.0 / np.pi))
+        finally:
+            self._suppress_joints = False
+
+    def _on_joint_slider(self) -> None:
+        if self._suppress_joints or self.hand is None:
+            return
+        with self.lock:
+            q = self.q()
+            self._write_sliders(q)          # coupled joints follow
+            self._render_pose()
+
+    def _apply_presets(self) -> None:
+        if self.hand is None:
+            return
+        with self.lock:
+            self._write_sliders(self.preset_q())
+            self._render_pose()
 
     def _render_pose(self) -> None:
         if self.hand is None:
@@ -323,13 +395,17 @@ class GrammarViewer:
                     vals[c.dependent] = c.multiplier * vals[c.source] + c.offset
             W = forward_kinematics(model, vals)
             Pinv = np.linalg.inv(self.commercial["palm_T"])
-            self.overlay.update({link: Pinv @ T for link, T in W.items()})
+            s = float(self.commercial.get("scale", 1.0))
+            S = np.diag([s, s, s, 1.0])
+            # the fit is of the hand scaled by s about its root: positions x s, meshes x s (overlay.build)
+            self.overlay.update({link: Pinv @ (S @ T @ np.diag([1.0 / s, 1.0 / s, 1.0 / s, 1.0])) for link, T in
+                                 W.items()})
 
     def _update_status(self) -> None:
         if self.hand is None:
             return
         v = self.viability
-        exempt = " (commercial: exempt)" if self.commercial is not None and not v.c1.ok else ""
+        exempt = ""
         self.gui_c1.label = f"C1 clearance (zero, start): {_verdict(v.c1.ok)} {v.c1.worst_mm:.1f} mm{exempt}"
         best = "none" if not np.isfinite(v.c2.best_mm) else f"{v.c2.best_mm:.1f} mm"
         self.gui_c2.label = f"C2 fingertips meet above palm: {_verdict(v.c2.ok)} {best}"
@@ -391,14 +467,19 @@ class GrammarViewer:
                                                                             "it in its finger at 1.1 x its angle.")
             self.gui_sliding = g.add_checkbox("sliding joints", False, hint="Sliding (prismatic) joints, like Dex1's "
                                                                             "jaws: in the grammar, not in evolution.")
-            self.gui_length = g.add_number("max finger length (mm)", r.max_finger_length_mm, min=10, max=250, step=10,
-                                           hint="Sum of a finger's link lengths: at most 250 mm (DClaw's 221 x 1.1).")
+            self.gui_length = g.add_number("max finger length (mm)", r.max_finger_length_mm, min=10,
+                                           max=NO_RULES.max_finger_length_mm, step=10,
+                                           hint="Sum of a finger's link lengths (Feetech: 250 mm).")
+            self.gui_link_max = g.add_number("max link length (mm)", r.max_link_mm, min=10, max=NO_RULES.max_link_mm,
+                                             step=10, hint="The longest link (Feetech: 90 mm).")
             self.gui_pitch = g.add_number("base grid (mm)", r.base_pitch_mm, min=10, max=80, step=10,
                                           hint="Finger bases sit on a square grid of this pitch (Feetech: 40 mm, a "
                                                "servo housing plus room).")
-            self.gui_base_min = g.add_number("min base distance (mm)", r.base_distance_mm[0], min=10, max=160,
-                                             step=10, hint="Finger bases at least this far from the palm centre.")
-            self.gui_base = g.add_number("max base distance (mm)", r.base_distance_mm[1], min=10, max=160, step=10,
+            self.gui_base_min = g.add_number("min base distance (mm)", r.base_distance_mm[0], min=10,
+                                             max=NO_RULES.base_distance_mm[1], step=10,
+                                             hint="Finger bases at least this far from the palm centre.")
+            self.gui_base = g.add_number("max base distance (mm)", r.base_distance_mm[1], min=10,
+                                         max=NO_RULES.base_distance_mm[1], step=10,
                                          hint="Finger bases at most this far from the palm centre.")
             self.gui_outward = g.add_checkbox("fingers face outward", r.outward_facing,
                                               hint="No finger points back across the palm (tangential is fine).")
@@ -432,22 +513,31 @@ class GrammarViewer:
 
         with g.add_folder("Pose"):
             self.gui_curl = g.add_slider("curl", 0.0, 1.0, 0.01, gdv.START_CURL,
-                                         hint="Bending joints at this fraction of their range (0.35: the pose every "
-                                              "episode starts from); other joints at 0.")
+                                         hint="Sets every joint slider: bending joints at this fraction of their "
+                                              "range (0.35: the pose every episode starts from), other joints at 0.")
             self.gui_palm_bend = g.add_slider("palm bend", -1.0, 1.0, 0.05, 0.0,
                                               hint="The palm joint at this fraction of its range (±30°): the part "
                                                    "beyond the cut folds. Shown when the hand has a palm cut.")
+            self.gui_links = g.add_slider("link bodies", 0.0, 1.0, 0.05, draw.LINK_OPACITY,
+                                          hint="Opacity of each link's body (a box around its yoke and the servo it "
+                                               "carries, out to the fingertip: what the clearance check and the "
+                                               "simulator use). 0 hides them; a failing C1 pair is always shown, "
+                                               "in red.")
             self.gui_object = g.add_checkbox("show the object at its start", False,
                                              hint="The repose task's 72 mm cube where an episode starts: over the "
                                                   "palm's centre, at the lowest height where it clears the hand by 5 mm "
                                                   "with the fingers at the start curl (0.35).")
             btn_center = g.add_button("re-centre view", hint="Point the camera at the whole hand.")
 
+        self.joint_folder = g.add_folder("Joints", expand_by_default=True)
+        self.joint_sliders: List[Any] = []
+        self._suppress_joints = False
+
         btn_random.on_click(lambda _: self.random())
         self.gui_rules.on_update(lambda _: None if self._suppress else self.choose_rules(self.gui_rules.value))
         for h in (self.gui_fingers, self.gui_joints, self.gui_palm, self.gui_coupled, self.gui_sliding,
-                  self.gui_length, self.gui_pitch, self.gui_base_min, self.gui_base, self.gui_outward,
-                  self.gui_buildable):
+                  self.gui_length, self.gui_link_max, self.gui_pitch, self.gui_base_min, self.gui_base,
+                  self.gui_outward, self.gui_buildable):
             h.on_update(lambda _: self._on_field())
 
         @self.gui_hand.on_update
@@ -474,15 +564,14 @@ class GrammarViewer:
         for name, b in self.op_buttons.items():
             b.on_click(lambda _, name=name: self.mutate(name))
 
-        @self.gui_curl.on_update
-        def _(_):
-            with self.lock:
-                self._render_pose()
+        self.gui_curl.on_update(lambda _: self._apply_presets())
+        self.gui_palm_bend.on_update(lambda _: self._apply_presets())
 
-        @self.gui_palm_bend.on_update
+        @self.gui_links.on_update
         def _(_):
             with self.lock:
-                self._render_pose()
+                if self.hand is not None:
+                    self.drawing.set_link_opacity(float(self.gui_links.value), self.q())
 
         btn_center.on_click(lambda _: self.recentre())
 

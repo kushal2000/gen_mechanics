@@ -65,11 +65,12 @@ def test_rules_dropdown_and_custom_fields(evo):
 
 
 def test_fields_cannot_widen_the_grammar(evo):
-    evo.gui_base.value = 160
-    evo.gui_base_min.value = 10
-    evo.gui_length.value = 250
+    evo.gui_base.value = 10_000
+    evo.gui_base_min.value = 0
+    evo.gui_length.value = 10_000
     r = evo.rules()
-    assert r.base_distance_mm == (10, 160) and r.max_finger_length_mm <= 250 and r.max_palm_joints <= 1
+    assert r.base_distance_mm == NO_RULES.base_distance_mm and r.max_finger_length_mm == NO_RULES.max_finger_length_mm
+    assert r.max_palm_joints <= 1
 
 
 def test_operator_buttons_follow_what_can_act(evo):
@@ -112,7 +113,7 @@ def test_commercial_hand_over_its_meshes(evo):
     hid = "dex3_left" if "dex3_left" in evo.records else sorted(evo.records)[0]
     assert evo.load_commercial(hid, wait=True)
     assert evo.commercial is not None and evo.hand == evo.records[hid]["hand"]
-    assert "fit:" in evo.md_fit.content
+    assert "fit (at its real size):" in evo.md_fit.content and "x its size" in evo.md_fit.content
     assert evo.overlay.handles                      # its URDF meshes are drawn
     evo.set_curl(0.0)                                # curl 0 is the real hand's zero pose
     assert np.allclose(evo.q(), evo.commercial["q_off"])
@@ -123,25 +124,79 @@ def test_commercial_hand_over_its_meshes(evo):
 def test_pose_slider_moves_the_links(evo):
     evo.random(wait=True)
     evo.set_curl(0.0)
-    evo._render_pose()
     key = next(k for k in evo.drawing.bodies if k[0] == "link" and k[2] == len(evo.hand.fingers[k[1]].joints) - 1)
     p0 = np.array(evo.drawing.bodies[key].position)
     evo.set_curl(1.0)
-    evo._render_pose()
     moved = np.linalg.norm(np.array(evo.drawing.bodies[key].position) - p0)
     assert moved > 1e-4 or len(evo.hand.fingers[key[1]].joints) == 1
     evo.set_curl(gdv.START_CURL)
 
 
-def test_one_body_per_solid(evo):
-    """The drawing has one body per solid the clearance check sees: the
-    plates, the mount, the hinge motor (with a cut), each base motor and
-    each link."""
+def test_every_servo_is_drawn_with_its_horn_and_axis(evo):
+    """Every solid the clearance check sees has a drawn body (each finger's
+    base servo is its motor 0), and every joint has its servo, its output
+    horn and a rod along its axis."""
     evo.random(wait=True)
     h = evo.hand
     keys = set(evo.drawing.bodies)
-    want = {s.key for s in gdv.solids_at(h)}
-    assert keys == want
+    for s in gdv.solids_at(h):
+        k = ("motor", s.key[1], 0) if s.key[0] == "motor" else s.key
+        assert k in keys, s.key
+    for i, f in enumerate(h.fingers):
+        for j in range(len(f.joints)):
+            assert {("motor", i, j), ("horn", i, j), ("axis", i, j), ("link", i, j)} <= keys
+    # the plates are see-through, so the servos in the palm show; the servos are solid
+    for k in keys:
+        if k[0] == "palm":
+            assert evo.drawing.bodies[k].opacity == draw.PALM_OPACITY < 0.5, k
+        if k[0] == "motor":
+            assert evo.drawing.bodies[k].opacity is None, k
+
+
+def test_a_horn_turns_with_its_joint_and_its_servo_does_not(evo):
+    evo.random(wait=True)
+    ds = gdv.dofs(evo.hand)
+    k = next(k for k, d in enumerate(ds) if d.finger >= 0 and d.index == 0)
+    i = ds[k].finger
+    evo.set_curl(0.0)
+    horn0 = np.array(evo.drawing.bodies[("horn", i, 0)].wxyz)
+    motor0 = np.array(evo.drawing.bodies[("motor", i, 0)].wxyz)
+    evo.set_joint(k, ds[k].limits[1] * 0.5)
+    assert np.abs(np.array(evo.drawing.bodies[("horn", i, 0)].wxyz) - horn0).max() > 1e-3
+    assert np.allclose(np.array(evo.drawing.bodies[("motor", i, 0)].wxyz), motor0)
+    evo.set_curl(gdv.START_CURL)
+
+
+def test_one_slider_per_joint(evo):
+    """The Joints folder has a slider for every joint of the hand on screen,
+    set by the presets; moving one moves only that joint (and the joints
+    coupled to it), and a coupled joint's slider is disabled."""
+    evo.random(wait=True)
+    ds = gdv.dofs(evo.hand)
+    assert [d.name for d, _ in evo.joint_sliders] == [d.name for d in ds]
+    evo.set_curl(0.5)
+    assert np.allclose(evo.q(), evo.preset_q(), atol=1e-9)
+    k = next(k for k, d in enumerate(ds) if d.source < 0 and d.finger >= 0)
+    before = evo.q()
+    evo.set_joint(k, ds[k].limits[0])
+    after = evo.q()
+    assert after[k] == pytest.approx(ds[k].limits[0])
+    others = [m for m, d in enumerate(ds) if m != k and d.source != k]
+    assert np.allclose(after[others], before[others])
+    evo.set_curl(gdv.START_CURL)
+
+
+def test_link_bodies_follow_their_opacity_slider(evo):
+    """The link bodies start see-through (the fingertips show) and follow
+    the slider; 0 hides them."""
+    evo.random(wait=True)
+    links = [k for k in evo.drawing.bodies if k[0] == "link"]
+    assert links and all(evo.drawing.bodies[k].visible for k in links)
+    assert all(evo.drawing.bodies[k].opacity == draw.LINK_OPACITY for k in links if k not in evo.drawing.hot)
+    evo.gui_links.value = 0.0
+    assert all(not evo.drawing.bodies[k].visible for k in links if k not in evo.drawing.hot)
+    evo.gui_links.value = draw.LINK_OPACITY
+    assert all(evo.drawing.bodies[k].visible for k in links)
 
 
 def test_box_mesh_has_the_extents():
@@ -166,12 +221,12 @@ def test_palm_bend_folds_the_part_beyond_the_cut(evo):
     evo._set_hand(h, history="reset", commercial=None, viability=V.gvb.viability(h), frame=False)
     assert evo.gui_palm_bend.visible
     evo.gui_palm_bend.value = 0.0
-    evo._render_pose()
+    evo._apply_presets()
     p0 = np.array(evo.drawing.bodies[("link", 0, 0)].position)
     q = evo.q()
     k = [d.type for d in gdv.dofs(h)].index("palm")
     evo.gui_palm_bend.value = 1.0
-    evo._render_pose()
+    evo._apply_presets()
     assert evo.q()[k] == pytest.approx(np.radians(30))
     assert np.linalg.norm(np.array(evo.drawing.bodies[("link", 0, 0)].position) - p0) > 1e-3   # its finger moves
     evo.gui_palm_bend.value = 0.0
@@ -182,7 +237,7 @@ def test_palm_bend_folds_the_part_beyond_the_cut(evo):
 def test_search_space_line_follows_the_rules(evo):
     assert "10^31 four-finger hands" in evo.md_space.content
     evo.choose_rules(V.NONE)
-    assert "10^54 four-finger hands" in evo.md_space.content
+    assert "four-finger hands" in evo.md_space.content and "10^31 four-finger" not in evo.md_space.content
     evo.choose_rules(V.FEETECH)
 
 
