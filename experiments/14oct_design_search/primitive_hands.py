@@ -11,8 +11,8 @@ Geometry (the palm frame is the "ours" palm frame of the spec: palm_frame is the
     palm      a disc, radius 5 cm, thickness 2 cm; its axis is +x, the grasp normal (the face fingers curl toward)
     finger    leaves the rim radially at mid-thickness, at bearing b in the palm plane (y-z), measured from +z
               toward +y; its base joint sits on the rim
-    module    one capsule along the finger, radius 0.5 cm, 3 cm long (caps included), one joint at its base;
-              4 modules per finger, collinear at q = 0
+    module    one capsule along the finger, radius 1 cm (2 cm wide and thick), 2.5 cm long (caps included), one
+              joint at its base; 4 modules per finger, collinear at q = 0, capsules meeting end to end
     joint     flexion only: the axis is the rim tangent, and q in [0, 90 deg] curls the finger toward +x
 
 Collisions are URDF cylinders (the 2 cm between the cap centres) that the importer turns into capsules
@@ -50,8 +50,8 @@ class PrimitiveHand:
     bearings_deg: tuple[float, ...]
     palm_radius: float = 0.05
     palm_thickness: float = 0.02
-    module_length: float = 0.03          # capsule, caps included; also the joint-to-joint pitch
-    module_radius: float = 0.005
+    module_length: float = 0.025         # capsule, caps included; also the joint-to-joint pitch
+    module_radius: float = 0.010         # 2 cm wide and thick
     modules_per_finger: int = 4
     flex_range_deg: tuple[float, float] = (0.0, 90.0)
 
@@ -74,9 +74,11 @@ class PrimitiveHand:
 
     @property
     def name(self) -> str:
-        """``prim<F>x<M>_g<gaps>``: finger count, modules per finger, and the canonical gaps in whole degrees."""
+        """``prim<F>x<M>_r<radius mm>l<length mm>_g<gaps>``: finger count, modules per finger, the module's size,
+        and the canonical gaps in whole degrees -- so hands of different module sizes never share a name."""
         g = self.canonical().gaps_deg()
-        return f"prim{len(g)}x{self.modules_per_finger}_g" + "_".join(f"{x:03.0f}" for x in g)
+        size = f"r{self.module_radius * 1000:.0f}l{self.module_length * 1000:.0f}"
+        return f"prim{len(g)}x{self.modules_per_finger}_{size}_g" + "_".join(f"{x:03.0f}" for x in g)
 
     def validate(self, min_gap_deg: float | None = None) -> None:
         """Raise on a design the URDF cannot honestly represent: overlapping finger bases."""
@@ -104,7 +106,7 @@ class PrimitiveHand:
 
 # --- sampling -----------------------------------------------------------------------------------------------
 
-def sample(n: int, *, fingers: int = 4, seed: int = 0, min_gap_deg: float = 20.0, grid_deg: float = 5.0,
+def sample(n: int, *, fingers: int = 4, seed: int = 0, min_gap_deg: float = 25.0, grid_deg: float = 5.0,
            max_tries: int = 100000) -> list[PrimitiveHand]:
     """``n`` distinct hands (distinct up to turning and flipping the disc): ``fingers`` bearings drawn uniformly on
     a ``grid_deg`` grid, kept if every pair of neighbours is at least ``min_gap_deg`` apart."""
@@ -288,7 +290,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--random", type=int, default=0, help="this many distinct random 4-finger hands")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--min-gap", type=float, default=20.0, help="degrees between neighbouring fingers, at least")
+    ap.add_argument("--min-gap", type=float, default=25.0,
+                    help="degrees between neighbouring fingers, at least (2 cm wide fingers touch at 23.1)")
     ap.add_argument("--grid", type=float, default=5.0, help="bearings are multiples of this (degrees)")
     ap.add_argument("--bearings", default="", help="one hand: comma-separated bearings in degrees, e.g. 0,90,180,270")
     ap.add_argument("--out", default=str(OUT))

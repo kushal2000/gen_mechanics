@@ -14,6 +14,8 @@ registry without booting Kit.
 
 from __future__ import annotations
 
+import functools
+
 from hand_sampler.robot_spec import RobotSpec
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.allegro_handonly import ALLEGRO_HANDONLY
 from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_handonly import SHARPA_HANDONLY
@@ -29,10 +31,31 @@ REGISTRY: dict[str, RobotSpec] = {
 }
 
 
+@functools.lru_cache(maxsize=None)
+def _spec_from_file(path: str) -> RobotSpec:
+    """A RobotSpec from a spec JSON on disk, named by its path (so the network resolves the same layout from the
+    same config value). Honours the JSON's ``replace_cylinders_with_capsules`` (capsule-built hands)."""
+    import dataclasses
+    import json
+    from pathlib import Path
+
+    from isaacsimenvs.pose_reaching_6d.scene_utils.robots.unified_hands import REPO, spec_from_json
+    p = Path(path) if Path(path).is_absolute() else REPO / path
+    if not p.is_file():
+        raise KeyError(f"robot_spec {path!r}: no such spec JSON")
+    spec = spec_from_json(p, name=path)
+    caps = bool(json.loads(p.read_text()).get("replace_cylinders_with_capsules", False))
+    return dataclasses.replace(spec, replace_cylinders_with_capsules=caps)
+
+
 def get_robot_spec(name: str) -> RobotSpec:
     """Look up a spec by name, or fail with the list of valid names."""
     if name in REGISTRY:
         return REGISTRY[name]
+    # A hand described by its own spec JSON (e.g. a generated primitive hand,
+    # experiments/14oct_design_search/primitive_hands.py): a path, absolute or from the repo.
+    if name.endswith(".spec.json"):
+        return _spec_from_file(name)
     # Several hands in one scene: a padded template over their specs (robots/multi_hand.py).
     from isaacsimenvs.pose_reaching_6d.scene_utils.robots.multi_hand import hand_set, is_multi_ref
     if is_multi_ref(name):

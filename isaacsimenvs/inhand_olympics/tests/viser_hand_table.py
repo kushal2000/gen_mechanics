@@ -444,10 +444,17 @@ def _loop(args, conn):
         t_next = max(t_next, time.time() - 0.1)
 
 
+def _primitive_finger(name: str) -> str | None:
+    """A generated primitive hand's joints are f<finger>_j<module> (14oct_design_search/primitive_hands.py)."""
+    import re
+    m = re.fullmatch(r"f(\d+)_j\d+", name)
+    return f"finger {m.group(1)}" if m else None
+
+
 def _group(name: str) -> str:
     if name.startswith("wrist_"):
         return "wrist"
-    return next((f for f in FINGERS if f in name), "other")
+    return _primitive_finger(name) or next((f for f in FINGERS if f in name), "other")
 
 
 def _add_pen(server, name: str, length: float, diameter: float, opacity: float = 1.0, shape: str = "capsule"):
@@ -518,7 +525,8 @@ def main(args):
                     b_reset = server.gui.add_button("reset (sim and sliders)")
                     b_goal = server.gui.add_button("put the pen on its goal")
                     b_goal.on_click(lambda _: outbox.put({"cmd": "pen_to_goal"}))
-                    groups = ["wrist"] + [f for f in FINGERS if any(_group(n) == f for n in m["joints"])]
+                    prim = sorted({g for g in map(_primitive_finger, m["joints"]) if g}, key=lambda g: int(g.split()[1]))
+                    groups = ["wrist"] + [f for f in FINGERS if any(_group(n) == f for n in m["joints"])] + prim
                     for g in groups + (["other"] if any(_group(n) == "other" for n in m["joints"]) else []):
                         with server.gui.add_folder(g, expand_by_default=(g == "wrist")):
                             for i, n in enumerate(m["joints"]):
