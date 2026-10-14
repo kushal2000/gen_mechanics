@@ -28,7 +28,7 @@ from . import derive as dv
 from .hand import GRAMMAR_VERSION, Hand, check, hand_from_dict, hand_to_dict, NO_RULES
 
 OUT_PATH = C.BENCH_DIR / "conformed_hands.json"
-SCHEMA = "conformed_hands/1"
+SCHEMA = "conformed_hands/2"
 
 
 def _git_sha() -> str:
@@ -42,7 +42,6 @@ def _git_sha() -> str:
 def fit_record(hand_id: str, fit: CF.HandFit, real: C.RealHand) -> dict:
     R, o = fit.palm_T[:3, :3], fit.palm_T[:3, 3]
     root_in_palm = R.T @ (np.zeros(3) - o)
-    bases = [(f.y, f.z) for f in fit.hand.fingers]
     return {
         "id": hand_id,
         "hand": hand_to_dict(fit.hand),
@@ -58,8 +57,9 @@ def fit_record(hand_id: str, fit: CF.HandFit, real: C.RealHand) -> dict:
                      "tip_mm": round(f.tip_mm, 3)} for f in fit.fingers],
         "palm_joint_mm": [round(e, 3) for e in fit.palm_joint_mm],
         "palm_axis_deg": [round(e, 3) for e in fit.palm_axis_deg],
+        "section": list(fit.section),
+        "dropped_palm_joints": list(fit.dropped_palm_joints),
         "root_out_of_plate_mm": round(float(root_in_palm[0]) * 1e3, 2),
-        "min_base_z_mm": int(min(z for _, z in bases)),
         "notes": fit.notes,
         "violations": check(fit.hand, NO_RULES),
     }
@@ -106,13 +106,20 @@ def load(path: Path = OUT_PATH) -> Dict[str, dict]:
 
 
 def fidelity_table(doc: dict) -> str:
-    rows = ["| hand | fingers / joints | joint (mm) | axis (deg) | fingertip (mm) | within 5 mm / 10 deg |",
-            "|---|---|---|---|---|---|"]
+    t_mm, t_deg = doc.get("target_mm", CF.TARGET_MM), doc.get("target_deg", CF.TARGET_DEG)
+    rows = [f"| hand | fingers / joints | joint (mm) | axis (deg) | fingertip (mm) | palm cut | "
+            f"within {t_mm:g} mm / {t_deg:g} deg |",
+            "|---|---|---|---|---|---|---|"]
     for rec in doc["hands"]:
         h = hand_from_dict(rec["hand"])
         nj = sum(len(f.joints) for f in h.fingers) + len(h.palm_joints)
+        cut = "-"
+        if h.palm_joints:
+            cut = f"fingers {rec['section']}, axis {rec['palm_axis_deg'][0]:.0f} deg"
+            if rec["dropped_palm_joints"]:
+                cut += f" ({len(rec['dropped_palm_joints'])} dropped)"
         rows.append(f"| {rec['id']} | {len(h.fingers)} / {nj} | {rec['max_joint_mm']:.1f} | {rec['max_axis_deg']:.1f} | "
-                    f"{rec['max_tip_mm']:.1f} | {'yes' if rec['within_target'] else '**no**'} |")
+                    f"{rec['max_tip_mm']:.1f} | {cut} | {'yes' if rec['within_target'] else '**no**'} |")
     return "\n".join(rows)
 
 

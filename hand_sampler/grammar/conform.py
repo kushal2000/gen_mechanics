@@ -1,8 +1,11 @@
-"""Conform a commercial hand onto the grammar at the fine resolution, and
-measure how well it fits.
+"""Conform a commercial hand onto the grammar (its one grid: 10 mm, 30
+degrees), and measure how well it fits. The aim is the hand's structure
+(fingers, joints per finger, joint kinds, the palm joint), roughly in
+place, not a close copy: the grid allows about half a step of error.
 
 Fit metric (GRAMMAR-LOCK item 20): the largest joint-position error (mm),
-axis error (degrees) and fingertip error (mm), target 5 mm / 10 degrees.
+axis error (degrees) and fingertip error (mm), target 10 mm / 20 degrees
+(half the coarse grid's steps).
 - A pure difference in the zero pose counts as a match: the grammar hand is
   compared at its own joint angles `q_off` (free), the commercial hand at
   its zero pose. Signs and ranges are global conventions, so an axis is a
@@ -12,8 +15,9 @@ axis error (degrees) and fingertip error (mm), target 5 mm / 10 degrees.
   from the grammar's joint point to the commercial axis line. A sliding
   joint's position is its child frame's origin.
 
-The palm frame: origin at the hand root's origin (the wrist centre, where
-the hand mounts) moved onto the plate; x = the normal of the plane fitted
+The palm frame: origin at the hand root's origin (the wrist, where the hand
+mounts: the grammar's mount disc sits there) moved onto the plate; x = the
+normal of the plane fitted
 through the finger bases, on the side the fingertips are when the fingers
 leave the plate, else on the side the fingers close toward; z = from the
 wrist toward the non-thumb bases. The plane's tilt and offset are then
@@ -22,11 +26,17 @@ refined to minimise the fit's worst error.
 Per finger: each joint is slid along its axis onto the finger's centre line;
 the base is where the first axis meets the plate; facing and tilt point the
 finger at its next joint; then, joint by joint, the axis is expressed in the
-current link frame and snapped to the 5 degree grid, the joint's zero-pose
+current link frame and snapped to the 30 degree grid, the joint's zero-pose
 difference turns the link toward the next joint, and the link length is
-snapped to the millimetre (0 or 15-90 mm, fingertip 10-90 mm). A local
-search over one-step changes of every value of the finger then lowers the
-worst error.
+snapped to 10 mm (0 or 10-90 mm, fingertip 10-90 mm). A local search over
+one-step changes of every value of the finger then lowers the worst error.
+The grammar's finger frame is tilt-defined, so each finger is fitted on its
+own; its base joint sits at the derived depth below the plate's front face.
+
+Palm joints: the grammar has at most one, a straight cut of the plate. The
+commercial palm joint carrying the most fingers is kept (joints carrying as
+many are merged into one cut); the cut is the line on the grid that puts
+exactly those fingers beyond it, nearest the commercial hinge axis.
 """
 
 from __future__ import annotations
@@ -41,23 +51,29 @@ from . import derive as dv
 from .commercial import RealFinger, RealHand, RealJoint
 from .hand import (
     COUPLING_RATIO,
+    GRID_DEG,
+    GRID_MM,
     LINK_MAX_MM,
     LINK_MIN_MM,
+    MIN_CUT_OFFSET_MM,
     NO_RULES,
-    PALM_ANCHOR_MM,
+    TILT_RANGE_DEG,
     TIP_MIN_MM,
     Finger,
     Hand,
     Joint,
     PalmJoint,
+    allowed_lengths,
     canonical_axis,
     check,
+    cut_direction_yz,
+    cut_normal_yz,
 )
 
 MM = 1e-3
 DEG = math.pi / 180.0
-TARGET_MM = 5.0
-TARGET_DEG = 10.0
+TARGET_MM = 10.0
+TARGET_DEG = 20.0
 Q_WEIGHT = 0.2
 """Tie-breaker: prefer small zero-pose differences (per radian of mean
 |q_off|), so a conformed finger lies where the real one does at rest."""
@@ -105,7 +121,7 @@ def to_az_el(v: np.ndarray) -> Tuple[float, float]:
     return az, el
 
 
-def snap_axis(v: np.ndarray, step: int = 5) -> Tuple[int, int]:
+def snap_axis(v: np.ndarray, step: int = GRID_DEG) -> Tuple[int, int]:
     """The grid line nearest the line through `v` (the four grid corners
     around it, in both orientations)."""
     best, best_ang = (0, 90), 1e9
@@ -123,12 +139,18 @@ def snap_axis(v: np.ndarray, step: int = 5) -> Tuple[int, int]:
 
 
 def snap_length(L_mm: float, is_tip: bool) -> int:
-    if is_tip:
-        return int(min(LINK_MAX_MM, max(TIP_MIN_MM, round(L_mm))))
-    r = int(round(L_mm))
-    if 0 < r < LINK_MIN_MM:
-        r = 0 if L_mm < LINK_MIN_MM / 2.0 else LINK_MIN_MM
-    return int(min(LINK_MAX_MM, max(0, r)))
+    """The nearest length on the grid the grammar allows (0 or 10-90 mm; a
+    fingertip 10-90 mm)."""
+    r = int(round(L_mm / GRID_MM)) * GRID_MM
+    lo = TIP_MIN_MM if is_tip else 0
+    return int(min(LINK_MAX_MM, max(lo, r)))
+
+
+def snap_angle(v: float, lo: Optional[int] = None, hi: Optional[int] = None) -> int:
+    r = int(round(v / GRID_DEG)) * GRID_DEG
+    if lo is not None:
+        r = max(lo, min(hi, r))
+    return r
 
 
 # --------------------------------------------------------------------------
@@ -185,8 +207,8 @@ def _aim(x: np.ndarray, u: np.ndarray, d: np.ndarray) -> float:
     return math.atan2(float(dp @ np.cross(u, xp)), float(dp @ xp))
 
 
-def _frame(facing_deg: float, tilt_deg: float, mount: np.ndarray, G: np.ndarray) -> np.ndarray:
-    return dv.frame_toward(facing_deg, tilt_deg, mount, G)
+def _frame(facing_deg: float, tilt_deg: float) -> np.ndarray:
+    return dv.frame_of(facing_deg, tilt_deg)
 
 
 def _tie_unsigned(B: np.ndarray, axes_link: Sequence[np.ndarray], types: Sequence[str], q: np.ndarray) -> np.ndarray:
@@ -273,13 +295,11 @@ def _lm(fun, x0: np.ndarray, iters: int = 40, eps: float = 1e-6) -> np.ndarray:
     return x
 
 
-def evaluate_finger(f: Finger, t: FingerTarget, q: Optional[np.ndarray] = None,
-                    G: Optional[np.ndarray] = None) -> FingerFit:
+def evaluate_finger(f: Finger, t: FingerTarget, q: Optional[np.ndarray] = None) -> FingerFit:
     """The errors of `f` against `t` at joint angles `q` (default: each joint
-    turns its link toward the next commercial joint). `G`: the grasp point
-    the finger closes toward (palm frame, m)."""
-    B = dv.finger_frame(f, G)
-    mount = np.array([0.0, f.y * MM, f.z * MM])
+    turns its link toward the next commercial joint)."""
+    B = dv.finger_frame(f)
+    mount = dv.mount_point_m(f)
     axes = [dv.direction(*jt.axis) for jt in f.joints]
     lengths = [jt.length for jt in f.joints]
     if q is None:
@@ -297,15 +317,15 @@ def evaluate_finger(f: Finger, t: FingerTarget, q: Optional[np.ndarray] = None,
     return FingerFit(f, q, jmm, adeg, tmm)
 
 
-def best_q(f: Finger, t: FingerTarget, q0: np.ndarray, G: np.ndarray, iters: int = 15) -> FingerFit:
+def best_q(f: Finger, t: FingerTarget, q0: np.ndarray, iters: int = 15) -> FingerFit:
     """The zero-pose differences that fit `f` best (least squares from `q0`)."""
-    B = dv.finger_frame(f, G)
-    mount = np.array([0.0, f.y * MM, f.z * MM])
+    B = dv.finger_frame(f)
+    mount = dv.mount_point_m(f)
     axes = [dv.direction(*jt.axis) for jt in f.joints]
     lengths = [jt.length for jt in f.joints]
     rev = [j for j, jt in enumerate(f.joints) if jt.type == "hinge"]
     if not rev:
-        return evaluate_finger(f, t, np.zeros(len(f.joints)), G)
+        return evaluate_finger(f, t, np.zeros(len(f.joints)))
 
     def fun(x):
         q = np.zeros(len(f.joints))
@@ -315,10 +335,10 @@ def best_q(f: Finger, t: FingerTarget, q0: np.ndarray, G: np.ndarray, iters: int
     x = _lm(fun, np.asarray(q0, dtype=float)[rev], iters=iters)
     q = np.zeros(len(f.joints))
     q[rev] = x
-    return evaluate_finger(f, t, q, G)
+    return evaluate_finger(f, t, q)
 
 
-def continuous_fit(t: FingerTarget, mount: np.ndarray, G: np.ndarray) -> Tuple[np.ndarray, dict]:
+def continuous_fit(t: FingerTarget, mount: np.ndarray) -> Tuple[np.ndarray, dict]:
     """Least-squares fit of every finger value, unsnapped: facing, tilt, the
     axes (az, el), the link lengths and the zero-pose differences, the mount
     fixed on the plate. Returns the parameter vector and its layout."""
@@ -326,7 +346,7 @@ def continuous_fit(t: FingerTarget, mount: np.ndarray, G: np.ndarray) -> Tuple[n
     d0 = _unit(_targets(t.points, t.tip, 0) - mount)
     tilt = math.degrees(math.asin(max(-1.0, min(1.0, float(d0[0])))))
     facing = math.degrees(math.atan2(float(d0[1]), float(d0[2])))
-    B = _frame(facing, tilt, mount, G)
+    B = _frame(facing, tilt)
     P, F = mount.copy(), B.copy()
     az, el, L, q = [], [], [], []
     for j in range(n):
@@ -354,24 +374,23 @@ def continuous_fit(t: FingerTarget, mount: np.ndarray, G: np.ndarray) -> Tuple[n
 
     def fun(x):
         fa, ti, A, Ls, qs = unpack(x)
-        return np.concatenate([_residuals(t, *_chain(mount, _frame(fa, ti, mount, G), A, Ls, t.types, qs)),
+        return np.concatenate([_residuals(t, *_chain(mount, _frame(fa, ti), A, Ls, t.types, qs)),
                                Q_WEIGHT * qs])
 
     x = _lm(fun, x0, iters=60, eps=1e-5)
     return x, {"n": n, "unpack": unpack}
 
 
-def snap_continuous(x: np.ndarray, layout: dict, t: FingerTarget, mount_mm: Tuple[int, int],
-                    palm_joint: int, G: np.ndarray) -> Tuple[Finger, np.ndarray]:
-    """Snap a continuous fit to the fine grid, joint by joint from the palm:
-    each axis is snapped in the (already snapped) link frame."""
+def snap_continuous(x: np.ndarray, layout: dict, t: FingerTarget, mount_mm: Tuple[int, int]
+                    ) -> Tuple[Finger, np.ndarray]:
+    """Snap a continuous fit to the grid, joint by joint from the palm: each
+    axis is snapped in the (already snapped) link frame."""
     fa, ti, A, Ls, qs = layout["unpack"](x)
-    facing = int(round(fa / 5.0) * 5) % 360
-    tilt = int(round(ti / 5.0) * 5)
-    tilt = max(-90, min(90, tilt))
-    f = Finger(y=mount_mm[0], z=mount_mm[1], facing=facing, tilt=tilt, joints=(), palm_joint=palm_joint)
-    B_cont = _frame(fa, ti, dv.mount_point_m(f), G)
-    B = dv.finger_frame(f, G)
+    facing = snap_angle(fa) % 360
+    tilt = snap_angle(ti, *TILT_RANGE_DEG)
+    f = Finger(y=mount_mm[0], z=mount_mm[1], facing=facing, tilt=tilt, joints=())
+    B_cont = _frame(fa, ti)
+    B = dv.finger_frame(f)
     # continuous world axes, re-expressed in the snapped frame chain
     F_c = B_cont.copy()
     F = B.copy()
@@ -388,39 +407,35 @@ def snap_continuous(x: np.ndarray, layout: dict, t: FingerTarget, mount_mm: Tupl
 
 
 def _neighbours(f: Finger, mount_fixed: bool = False) -> List[Finger]:
+    """Every finger one grid step away (the grammar's own limits)."""
     out = []
     if not mount_fixed:
         for c in ("y", "z"):
             for s in (-1, 1):
-                out.append(replace(f, **{c: getattr(f, c) + s}))
-    for s in (-5, 5):
+                out.append(replace(f, **{c: getattr(f, c) + s * GRID_MM}))
+    for s in (-GRID_DEG, GRID_DEG):
         out.append(replace(f, facing=(f.facing + s) % 360))
-        if abs(f.tilt + s) <= 90:
+        if TILT_RANGE_DEG[0] <= f.tilt + s <= TILT_RANGE_DEG[1]:
             out.append(replace(f, tilt=f.tilt + s))
-    n = len(f.joints)
     for j, jt in enumerate(f.joints):
         def put(new: Joint) -> Finger:
             js = list(f.joints)
             js[j] = new
             return replace(f, joints=tuple(js))
 
-        for s in (-5, 5):
+        for s in (-GRID_DEG, GRID_DEG):
             out.append(put(replace(jt, axis=canonical_axis(jt.axis[0] + s, jt.axis[1]))))
             out.append(put(replace(jt, axis=canonical_axis(jt.axis[0], jt.axis[1] + s))))
-        for s in (-1, 1):
-            L = jt.length + s
-            if j == n - 1:
-                ok = TIP_MIN_MM <= L <= LINK_MAX_MM
-            else:
-                if 0 < L < LINK_MIN_MM:
-                    L = 0 if s < 0 else LINK_MIN_MM
-                ok = L == 0 or LINK_MIN_MM <= L <= LINK_MAX_MM
-            if ok and L != jt.length:
-                out.append(put(replace(jt, length=L)))
+        allowed = allowed_lengths(f, j, False)
+        if jt.length in allowed:
+            k = allowed.index(jt.length)
+            for kk in (k - 1, k + 1):
+                if 0 <= kk < len(allowed):
+                    out.append(put(replace(jt, length=allowed[kk])))
     return out
 
 
-def refine_finger(fit: FingerFit, t: FingerTarget, G: np.ndarray, mount_fixed: bool = True,
+def refine_finger(fit: FingerFit, t: FingerTarget, mount_fixed: bool = True,
                   max_passes: int = 30) -> FingerFit:
     """Local search over one-step changes of every value of the finger (its
     base too unless `mount_fixed`), the zero-pose differences re-fitted
@@ -429,59 +444,55 @@ def refine_finger(fit: FingerFit, t: FingerTarget, G: np.ndarray, mount_fixed: b
     for _ in range(max_passes):
         improved = False
         for g in _neighbours(best.finger, mount_fixed=mount_fixed):
-            r = best_q(g, t, best.q_off, G, iters=4)
+            r = best_q(g, t, best.q_off, iters=4)
             if r.cost < best.cost - 1e-9:
                 best, improved = r, True
         if not improved:
             break
-    return best_q(best.finger, t, best.q_off, G, iters=30)
+    return best_q(best.finger, t, best.q_off, iters=30)
 
 
-def fit_finger(t: FingerTarget, base_mm: Tuple[int, int], palm_joint: int, G: np.ndarray,
-               mount_fixed: bool = True) -> FingerFit:
+def _grid_point(m: np.ndarray) -> Tuple[int, int]:
+    return (int(round(m[1] / MM / GRID_MM)) * GRID_MM, int(round(m[2] / MM / GRID_MM)) * GRID_MM)
+
+
+def fit_finger(t: FingerTarget, base_mm: Tuple[int, int], mount_fixed: bool = True) -> FingerFit:
     """Fit one finger starting from its base at `base_mm` (kept there when
-    `mount_fixed`), its frame closing toward the grasp point `G`."""
+    `mount_fixed`). The continuous fit starts on the plate's mid-plane, then
+    once more from the depth the snapped finger's first motor puts its base
+    at (an oblique or tilted first motor sits deeper), and the better start
+    is refined."""
     y, z = base_mm
-    m = np.array([0.0, y * MM, z * MM])
-    x, layout = continuous_fit(t, m, G)
-    f, q = snap_continuous(x, layout, t, (y, z), palm_joint, G)
-    start = best_q(f, t, q, G, iters=30)
-    aimed = evaluate_finger(f, t, None, G)
-    if aimed.cost < start.cost:
-        start = best_q(f, t, aimed.q_off, G, iters=30)
-    return refine_finger(start, t, G, mount_fixed)
+    best = None
+    x0 = 0.0
+    for _ in range(2):
+        x, layout = continuous_fit(t, np.array([x0, y * MM, z * MM]))
+        f, q = snap_continuous(x, layout, t, (y, z))
+        start = best_q(f, t, q, iters=30)
+        aimed = evaluate_finger(f, t, None)
+        if aimed.cost < start.cost:
+            start = best_q(f, t, aimed.q_off, iters=30)
+        if best is None or start.cost < best.cost:
+            best = start
+        x_next = float(dv.mount_point_m(f)[0])
+        if abs(x_next - x0) < 1e-9:
+            break
+        x0 = x_next
+    return refine_finger(best, t, mount_fixed)
 
 
-def _fit_free(t: FingerTarget, base_mm: Tuple[int, int], palm_joint: int, G: np.ndarray) -> FingerFit:
+def _fit_free(t: FingerTarget, base_mm: Tuple[int, int]) -> FingerFit:
     """`fit_finger` with the base free, started from `base_mm` and, when the
     first two commercial joints are closer than the shortest link, also from
     the plate point under their midpoint (the base then sits between them)."""
-    best = fit_finger(t, base_mm, palm_joint, G, mount_fixed=False)
+    best = fit_finger(t, base_mm, mount_fixed=False)
     if len(t.points) > 1 and np.linalg.norm(t.points[1] - t.points[0]) < LINK_MIN_MM * MM:
-        mid = 0.5 * (t.points[0] + t.points[1])
-        seed = (int(round(mid[1] / MM)), int(round(mid[2] / MM)))
+        seed = _grid_point(0.5 * (t.points[0] + t.points[1]))
         if seed != tuple(base_mm):
-            other = fit_finger(t, seed, palm_joint, G, mount_fixed=False)
+            other = fit_finger(t, seed, mount_fixed=False)
             if other.cost < best.cost:
                 best = other
     return best
-
-
-def refit_on(fit: FingerFit, t: FingerTarget, base_mm: Tuple[int, int], G_old: np.ndarray,
-             G: np.ndarray) -> FingerFit:
-    """`fit` (made with the grasp point `G_old`) moved to the base `base_mm`
-    and the grasp point `G`: the same chain in space (each axis re-expressed
-    in the new frame, which differs by a turn about the finger), snapped and
-    refined with the base fixed."""
-    f = fit.finger
-    base = np.array([0.0, base_mm[0] * MM, base_mm[1] * MM])
-    R = dv.frame_toward(f.facing, f.tilt, base, G).T @ dv.finger_frame(f, G_old)
-    A = [R @ dv.direction(*jt.axis) for jt in f.joints]
-    layout = {"n": len(f.joints),
-              "unpack": lambda _x: (f.facing, f.tilt, A, [jt.length for jt in f.joints], fit.q_off)}
-    g, q = snap_continuous(np.zeros(0), layout, t, base_mm, f.palm_joint, G)
-    g = replace(g, joints=tuple(replace(jt, length=old.length) for jt, old in zip(g.joints, f.joints)))
-    return refine_finger(best_q(g, t, q, G, iters=30), t, G)
 
 
 # --------------------------------------------------------------------------
@@ -495,19 +506,27 @@ class HandFit:
     hand: Hand
     palm_T: np.ndarray                 # 4x4: the palm frame in the hand-root frame
     fingers: List[FingerFit]
-    palm_joint_mm: List[float]
-    palm_axis_deg: List[float]
+    palm_joint_mm: List[float]         # the cut's hinge from the commercial hinge axis (0 or 1 entry)
+    palm_axis_deg: List[float]         # the cut's direction against the commercial hinge axis (reported only)
     name_map: Dict[str, str]           # grammar dof name -> commercial joint name
     notes: List[str] = field(default_factory=list)
     finger_order: List[int] = field(default_factory=list)   # grammar finger i <- real finger index
+    section: List[int] = field(default_factory=list)        # fingers beyond the cut
+    dropped_palm_joints: List[str] = field(default_factory=list)   # commercial palm joints with no cut of their own
 
     @property
     def max_joint_mm(self) -> float:
-        return max([e for f in self.fingers for e in f.joint_mm] + list(self.palm_joint_mm) + [0.0])
+        """The fingers' worst joint error (the palm cut's hinge is reported on
+        its own: a straight cut that keeps the right fingers beyond it cannot
+        always run along the commercial hinge axis)."""
+        return max([e for f in self.fingers for e in f.joint_mm] + [0.0])
 
     @property
     def max_axis_deg(self) -> float:
-        return max([e for f in self.fingers for e in f.axis_deg] + list(self.palm_axis_deg) + [0.0])
+        """The fingers' worst axis error (a straight cut in the plate cannot
+        follow a hinge tilted out of it, so the palm joint's axis error is
+        reported on its own)."""
+        return max([e for f in self.fingers for e in f.axis_deg] + [0.0])
 
     @property
     def max_tip_mm(self) -> float:
@@ -674,7 +693,7 @@ def _targets_for(real: RealHand, frame: np.ndarray) -> List[FingerTarget]:
     return out
 
 
-def _aimed_chain(t: FingerTarget, mount: np.ndarray, G: np.ndarray):
+def _aimed_chain(t: FingerTarget, mount: np.ndarray):
     """The unsnapped finger built joint by joint (exact axes, each joint
     turning its link toward the next commercial joint, lengths by
     projection): a cheap estimate of the best continuous fit."""
@@ -682,7 +701,7 @@ def _aimed_chain(t: FingerTarget, mount: np.ndarray, G: np.ndarray):
     d0 = _unit(_targets(t.points, t.tip, 0) - mount)
     tilt = math.degrees(math.asin(max(-1.0, min(1.0, float(d0[0])))))
     facing = math.degrees(math.atan2(float(d0[1]), float(d0[2])))
-    P, F = mount.copy(), _frame(facing, tilt, mount, G)
+    P, F = mount.copy(), _frame(facing, tilt)
     pts, axw = [], []
     for j in range(n):
         pts.append(P.copy())
@@ -695,31 +714,18 @@ def _aimed_chain(t: FingerTarget, mount: np.ndarray, G: np.ndarray):
     return pts, axw, P
 
 
-def _bases_and_grasp(real: RealHand, frame: np.ndarray, targets: List[FingerTarget],
-                     palm_joints: Tuple[PalmJoint, ...], enforce: bool) -> Tuple[List[Tuple[int, int]], np.ndarray, List[int]]:
-    """Every finger's base on the plate (whole mm, pushed to the spacing when
-    `enforce`) and the grasp point they and the hinges set."""
-    palm_names = [j.name for j in real.palm_joints]
-    fingers = []
-    for f, t in zip(real.fingers, targets):
-        m = _mount_on_plate(t.points[0], t.axes[0], "prismatic" if t.types[0] == "sliding" else "r")
-        k = palm_names.index(f.palm_joint) if f.palm_joint else -1
-        fingers.append(Finger(y=int(round(m[1] / MM)), z=int(round(m[2] / MM)), palm_joint=k))
-    prov = Hand(fingers=tuple(fingers), palm_joints=palm_joints)
-    moved: List[int] = []
-    if enforce:
-        prov, moved = _enforce_spacing(prov, NO_RULES.min_spacing_mm)
-    return [(f.y, f.z) for f in prov.fingers], dv.grasp_point_m(prov), moved
+def _bases(targets: List[FingerTarget]) -> List[Tuple[int, int]]:
+    """Every finger's base on the plate, on the grid."""
+    return [_grid_point(_mount_on_plate(t.points[0], t.axes[0], "prismatic" if t.types[0] == "sliding" else "r"))
+            for t in targets]
 
 
 def _quick_cost(real: RealHand, frame: np.ndarray) -> float:
     """The worst finger cost of the cheap unsnapped fit (`_aimed_chain`)."""
     targets = _targets_for(real, frame)
-    palm = tuple(p for p, _, _ in (_palm_joint_fit(j, frame) for j in real.palm_joints))
-    bases, G, _ = _bases_and_grasp(real, frame, targets, palm, enforce=False)
     worst = 0.0
-    for t, (y, z) in zip(targets, bases):
-        jmm, adeg, tmm = _errors(t, *_aimed_chain(t, np.array([0.0, y * MM, z * MM]), G))
+    for t, (y, z) in zip(targets, _bases(targets)):
+        jmm, adeg, tmm = _errors(t, *_aimed_chain(t, np.array([0.0, y * MM, z * MM])))
         worst = max(worst, FingerFit(None, np.zeros(0), jmm, adeg, tmm).cost)
     return worst
 
@@ -752,44 +758,74 @@ def _nelder_mead(fn, x0: np.ndarray, scale: np.ndarray, iters: int = 60) -> np.n
     return pts[int(np.argmin(vals))]
 
 
-def _palm_joint_fit(rj: RealJoint, frame: np.ndarray) -> Tuple[PalmJoint, float, float]:
+def _line_angle_deg(a: np.ndarray, b: np.ndarray) -> float:
+    """Angle between two lines in the plate, 0-90 degrees."""
+    n = float(np.linalg.norm(a) * np.linalg.norm(b))
+    if n < 1e-12:
+        return 90.0
+    return math.degrees(math.acos(min(1.0, abs(float(a @ b)) / n)))
+
+
+def _cut_fit(real: RealHand, frame: np.ndarray, fingers: Sequence[Finger]):
+    """The cut standing for the commercial palm joints: `(cut or None,
+    section, kept joint names, dropped joint names, notes)`. The palm joint
+    carrying the most fingers is kept (joints carrying as many are merged:
+    their fingers all go beyond the one cut); the cut is the grid line that
+    puts exactly those fingers beyond it, nearest the kept hinge's axis
+    (direction in the plate, then distance)."""
+    if not real.palm_joints:
+        return None, [], [], [], []
+    names = [j.name for j in real.palm_joints]
+    carried = {n: [i for i, f in enumerate(real.fingers) if f.palm_joint == n] for n in names}
+    most = max(len(v) for v in carried.values())
+    kept = [n for n in names if len(carried[n]) == most]
+    dropped = [n for n in names if n not in kept]
+    section = sorted(i for n in kept for i in carried[n])
+    notes = []
     R, o = frame[:3, :3], frame[:3, 3]
+    rj = real.palm_joints[names.index(kept[0])]
     p = R.T @ (rj.point - o)
     u = _unit(R.T @ rj.axis)
-    hinge = _mount_on_plate(p, u, "revolute", max_shift=PALM_HINGE_SHIFT_M)
-    y, z = int(round(hinge[1] / MM)), int(round(hinge[2] / MM))
-    hinge = np.array([0.0, y * MM, z * MM])
-    ax = snap_axis(u)
-    return PalmJoint(y=y, z=z, axis=ax), line_distance(hinge, p, u) / MM, axis_angle_deg(dv.direction(*ax), u)
+    hinge = _mount_on_plate(p, u, "revolute", max_shift=PALM_HINGE_SHIFT_M)[1:] / MM
+    direction = u[1:]
+    if len(kept) > 1:
+        q = R.T @ (real.palm_joints[names.index(kept[1])].point - o)
+        direction = q[1:] - p[1:]
+        notes.append(f"palm joints {kept} each carry {most} finger(s): one cut stands for them all")
+    if dropped:
+        notes.append(f"palm joints {dropped} dropped (the grammar has one palm joint; {kept} carries more fingers)")
+    bases = np.array([[f.y, f.z] for f in fingers], dtype=float)
+    best = None
+    for fa in range(0, 360, GRID_DEG):
+        n = cut_normal_yz(PalmJoint(fa, 0))
+        d = cut_direction_yz(PalmJoint(fa, 0))
+        s = bases @ n
+        for off in range(MIN_CUT_OFFSET_MM, int(math.ceil(float(s.max()))) + 1, GRID_MM):
+            members = [i for i in range(len(fingers)) if s[i] > off]
+            if not members or len(members) == len(fingers):
+                continue
+            mismatch = len(set(members) ^ set(section))
+            cost = _line_angle_deg(d, direction) / TARGET_DEG + abs(float(hinge @ n) - off) / TARGET_MM
+            key = (mismatch, cost)
+            if best is None or key < best[0]:
+                best = (key, PalmJoint(facing=fa, offset=off), members)
+    if best is None:
+        notes.append(f"no straight cut separates fingers {section} from the rest: palm joint {kept} dropped")
+        return None, [], [], names, notes
+    (mismatch, _), cut, members = best
+    if mismatch:
+        notes.append(f"no straight cut puts exactly fingers {section} beyond it; fingers {members} are")
+    return cut, members, kept, dropped, notes
 
 
-def _enforce_spacing(hand: Hand, min_mm: int) -> Tuple[Hand, List[int]]:
-    """Move bases closer than the spacing apart, symmetrically along their
-    separation, to whole millimetres. Returns the hand and the fingers moved."""
-    fs = list(hand.fingers)
-    moved = set()
-    for _ in range(200):
-        bad = False
-        for a in range(len(fs)):
-            for b in range(a + 1, len(fs)):
-                d = math.hypot(fs[a].y - fs[b].y, fs[a].z - fs[b].z)
-                if d >= min_mm:
-                    continue
-                bad = True
-                u = np.array([fs[b].y - fs[a].y, fs[b].z - fs[a].z], dtype=float)
-                u = u / (np.linalg.norm(u) + 1e-12)
-                push = (min_mm - d) / 2.0 + 0.5
-                pa = np.array([fs[a].y, fs[a].z]) - u * push
-                pb = np.array([fs[b].y, fs[b].z]) + u * push
-                # round away from each other, so the distance only grows
-                pa = np.where(u > 0, np.floor(pa), np.ceil(pa))
-                pb = np.where(u > 0, np.ceil(pb), np.floor(pb))
-                fs[a] = replace(fs[a], y=int(pa[0]), z=int(pa[1]))
-                fs[b] = replace(fs[b], y=int(pb[0]), z=int(pb[1]))
-                moved.update((a, b))
-        if not bad:
-            break
-    return replace(hand, fingers=tuple(fs)), sorted(moved)
+def _palm_errors(real: RealHand, frame: np.ndarray, hand: Hand, kept: str) -> Tuple[float, float]:
+    """The cut's hinge from the commercial hinge axis (mm) and the angle
+    between the two axes (degrees)."""
+    R, o = frame[:3, :3], frame[:3, 3]
+    rj = next(j for j in real.palm_joints if j.name == kept)
+    p = R.T @ (rj.point - o)
+    u = _unit(R.T @ rj.axis)
+    return line_distance(dv.palm_hinge_m(hand), p, u) / MM, axis_angle_deg(dv.palm_axis(hand), u)
 
 
 def _variant_b(T0: np.ndarray, real: RealHand) -> np.ndarray:
@@ -813,15 +849,14 @@ def _variant_b(T0: np.ndarray, real: RealHand) -> np.ndarray:
     return _frame_from(n, T0[:3, 3], real)
 
 
-def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm: bool = True,
-            enforce: bool = True) -> HandFit:
-    """Conform `real` onto the grammar at the fine resolution. `palm_frame`
+def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm: bool = True) -> HandFit:
+    """Conform `real` onto the grammar. `palm_frame`
     (4x4 in the hand-root frame) skips the palm-frame search; otherwise the
     plane fitted through the bases, its variant with the normal square to
     the fingers' last axes, and each of them moved to lower the worst error
     of a cheap unsnapped fit are all tried, and the best full fit is kept."""
     if palm_frame is not None:
-        return _conform_in(real, palm_frame, enforce)
+        return _conform_in(real, palm_frame)
     T0 = palm_frame_guess(real)
     frames = [T0, _variant_b(T0, real)]
     if refine_palm:
@@ -831,7 +866,7 @@ def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm
             frames.append(_perturb_frame(T, p, real))
     best = None
     for T in frames:
-        fit = _conform_in(real, T, enforce)
+        fit = _conform_in(real, T)
         key = (not fit.within_target, max(fit.max_joint_mm / TARGET_MM, fit.max_tip_mm / TARGET_MM,
                                           fit.max_axis_deg / TARGET_DEG))
         if best is None or key < best[0]:
@@ -839,29 +874,11 @@ def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm
     return best[1]
 
 
-def _conform_in(real: RealHand, frame: np.ndarray, enforce: bool) -> HandFit:
+def _conform_in(real: RealHand, frame: np.ndarray) -> HandFit:
     notes = list(real.notes)
     targets = _targets_for(real, frame)
-    palm_names = [j.name for j in real.palm_joints]
-    palm_fits = [_palm_joint_fit(j, frame) for j in real.palm_joints]
-    palm = tuple(p for p, _, _ in palm_fits)
-    bases, G, moved = _bases_and_grasp(real, frame, targets, palm, enforce)
-    ks = [palm_names.index(f.palm_joint) if f.palm_joint else -1 for f in real.fingers]
-    # pass 1: each base may move a millimetre at a time to fit its finger (the grasp point held);
-    # pass 2: the bases settled (and spaced), the grasp point they set, every finger refitted on it
-    first = [_fit_free(t, b, k, G) for t, b, k in zip(targets, bases, ks)]
-    prov = Hand(fingers=tuple(Finger(y=r.finger.y, z=r.finger.z, palm_joint=k) for r, k in zip(first, ks)),
-                palm_joints=palm)
-    if enforce:
-        prov, moved2 = _enforce_spacing(prov, NO_RULES.min_spacing_mm)
-        moved = sorted(set(moved) | set(moved2))
-    if moved:
-        notes.append(f"bases of fingers {moved} moved apart to the {NO_RULES.min_spacing_mm} mm spacing")
-    G0, G = G, dv.grasp_point_m(prov)
-    fits: List[FingerFit] = []
-    for f, t, r, g, k in zip(real.fingers, targets, first, prov.fingers, ks):
-        cands = [fit_finger(t, (g.y, g.z), k, G, mount_fixed=True), refit_on(r, t, (g.y, g.z), G0, G)]
-        fits.append(min(cands, key=lambda c: c.cost))
+    fits = [_fit_free(t, b) for t, b in zip(targets, _bases(targets))]
+    for f, t in zip(real.fingers, targets):
         for j, jt in enumerate(f.joints):
             if jt.coupled_to and t.types[j] != "coupled":
                 notes.append(f"{jt.name} follows {jt.coupled_to} (x{jt.ratio:.3g}) in the URDF; not a coupling to "
@@ -871,17 +888,22 @@ def _conform_in(real: RealHand, frame: np.ndarray, enforce: bool) -> HandFit:
                 src = "" if jt.coupled_to == prev else f" (via {prev})"
                 notes.append(f"{jt.name}: coupled x{jt.ratio:.3g} to {jt.coupled_to} in the URDF; x1.1 to the joint "
                              f"before it here{src}")
-    hand = Hand(fingers=tuple(f.finger for f in fits), palm_joints=palm)
-    assert np.allclose(dv.grasp_point_m(hand), G), "the grasp point depends on the bases and hinges only"
+    fingers = tuple(r.finger for r in fits)
+    cut, section, kept, dropped, cut_notes = _cut_fit(real, frame, fingers)
+    notes += cut_notes
+    hand = Hand(fingers=fingers, palm_joints=(cut,) if cut is not None else ())
+    palm_mm, palm_deg = [], []
     name_map = {}
-    for k, j in enumerate(real.palm_joints):
-        name_map[f"palm{k}_joint"] = j.name
+    if cut is not None:
+        e_mm, e_deg = _palm_errors(real, frame, hand, kept[0])
+        palm_mm, palm_deg = [e_mm], [e_deg]
+        name_map["palm0_joint"] = kept[0]
     for i, f in enumerate(real.fingers):
         for j, jt in enumerate(f.joints):
             name_map[f"f{i}_j{j}"] = jt.name
-    return HandFit(id=real.id, hand=hand, palm_T=frame, fingers=fits,
-                   palm_joint_mm=[e for _, e, _ in palm_fits], palm_axis_deg=[a for _, _, a in palm_fits],
-                   name_map=name_map, notes=notes, finger_order=list(range(len(real.fingers))))
+    return HandFit(id=real.id, hand=hand, palm_T=frame, fingers=fits, palm_joint_mm=palm_mm, palm_axis_deg=palm_deg,
+                   name_map=name_map, notes=notes, finger_order=list(range(len(real.fingers))), section=section,
+                   dropped_palm_joints=dropped + (kept[1:] if len(kept) > 1 else []))
 
 
 def conform_id(hand_id: str) -> HandFit:
