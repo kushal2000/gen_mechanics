@@ -175,6 +175,7 @@ def _loop(args, conn):
         origins = env.scene.env_origins
         goals = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
         running, speed, t_next = True, 1.0, time.time()
+        deterministic = True                    # greedy unless the viewer asks for sampled actions ("deterministic")
         # Pushes: the env's own wrench DR, live. Off until the GUI turns them on.
         dr = env.cfg.domain_randomization
         dr.force_scale, dr.torque_scale = 0.0, 0.0
@@ -197,6 +198,8 @@ def _loop(args, conn):
                     running = not running
                 elif m["cmd"] == "speed":
                     speed = float(m["value"])
+                elif m["cmd"] == "deterministic":
+                    deterministic = bool(m["value"])
                 elif m["cmd"] == "reset":
                     obs, _ = env.reset()
                     goals.zero_()
@@ -225,7 +228,7 @@ def _loop(args, conn):
                 time.sleep(0.05)
                 continue
             with torch.no_grad():
-                acts = [pl.get_normalized_action(obs["policy"], deterministic_actions=True) for pl in players]
+                acts = [pl.get_normalized_action(obs["policy"], deterministic_actions=deterministic) for pl in players]
             act = torch.stack([acts[i][i] for i in range(len(players))])     # env i <- policy i
             if prime_delay:                     # the queue holds Lab-order actions (actions.py)
                 env._action_queue[:] = act[:, env._perm_canon_to_lab].unsqueeze(1)

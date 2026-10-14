@@ -197,6 +197,10 @@ class Panel:
             self.s_hand_mu = server.gui.add_slider("hand friction", 0.05, 1.5, 0.05, 0.5)
             self.s_obj_mu = server.gui.add_slider("object friction", 0.05, 1.5, 0.05, 0.5)
             self.s_push = server.gui.add_slider("push force scale (1 / 0.3 s)", 0.0, 60.0, 1.0, 0.0)
+            # Sampled (the SAPG leader block's own noise) by default: every eval since 12 Oct, the 52-hand figure
+            # included; greedy actions understated every hand about 4x there.
+            self.dd_act = server.gui.add_dropdown("actions", ("sampled (as evals)", "greedy (mean)"),
+                                                  initial_value="sampled (as evals)")
             self.b_load = server.gui.add_button("load")
             self.md = server.gui.add_markdown("")
             self.md_count = server.gui.add_markdown("")
@@ -207,6 +211,7 @@ class Panel:
         self.s_obj_mu.on_update(lambda _: self._send_physics())
         self.s_push.on_update(lambda _: self._send_physics())
         self.dd_delay.on_update(lambda _: self._send_physics())
+        self.dd_act.on_update(lambda _: self._send_physics())
         self.load_requested = True
         self.b_load.on_click(lambda _: setattr(self, "load_requested", True))
         for w in (self.dd_side, self.dd_links, *self.cb.values()):
@@ -233,7 +238,8 @@ class Panel:
                                               "object_friction": mu_o}},
                 {"cmd": "push_period", "value": PUSH_PERIOD},
                 {"cmd": "action_delay", "value": self.dd_delay.value == DELAY[0]},
-                {"cmd": "force_scale", "value": float(self.s_push.value)}]
+                {"cmd": "force_scale", "value": float(self.s_push.value)},
+                {"cmd": "deterministic", "value": self.dd_act.value != "sampled (as evals)"}]
 
     def _send_physics(self):
         if self.info is not None:
