@@ -95,7 +95,7 @@ def main() -> None:
     for i, pose in enumerate(poses):
         for j, end in pose.items():
             k = names.index(j)
-            target[i, k] = env.joint_lower[k] if end == "lower" else env.joint_upper[k]
+            target[i, k] = env.joint_lower[i, k] if end == "lower" else env.joint_upper[i, k]
             driven[i, k] = True
     for _ in range(int(args.seconds / env.step_dt)):
         env.step(env.action_toward(target))

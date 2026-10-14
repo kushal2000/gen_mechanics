@@ -100,7 +100,7 @@ def smoke(args):
         q1 = env.robot.data.joint_pos[0, h].clone()
         env.reset()
         q2 = env.robot.data.joint_pos[0, h].clone()
-        lo, hi = env.joint_lower[h], env.joint_upper[h]
+        lo, hi = env.joint_lower[0, h], env.joint_upper[0, h]
         frac = ((q2 - lo) / (hi - lo)).clamp(0, 1)
         inside = bool(((q1 >= lo - 1e-4) & (q1 <= hi + 1e-4) & (q2 >= lo - 1e-4) & (q2 <= hi + 1e-4)).all())
         pen_z0 = float(env.pen.data.root_pos_w[0, 2] - env.scene.env_origins[0, 2])
@@ -399,7 +399,7 @@ def _loop(args, conn):
     names = list(env.robot.joint_names)
     w = env.cfg.table
     conn.send({"kind": "ready", "urdf": str(env.wrist_urdf_path), "joints": names,
-               "lower": env.joint_lower.tolist(), "upper": env.joint_upper.tolist(),
+               "lower": env.joint_lower[0].tolist(), "upper": env.joint_upper[0].tolist(),
                "default": env.robot.data.default_joint_pos[0].tolist(),
                "base_pos": [0.0, 0.0, w.top_height], "table_size": list(w.size), "table_top": w.top_height,
                "pen": [env.cfg.pen.length, env.cfg.pen.diameter], "pen_shape": env.cfg.pen.shape})
@@ -423,7 +423,7 @@ def _loop(args, conn):
                 lims = env.robot.data.joint_pos_limits[:, k:k + 1, :].clone()
                 lims[..., 0], lims[..., 1] = lo, hi
                 env.robot.write_joint_position_limit_to_sim(lims, joint_ids=[k], warn_limit_violation=False)
-                env.joint_lower[k], env.joint_upper[k] = lo, hi
+                env.joint_lower[:, k], env.joint_upper[:, k] = lo, hi
                 c = int((env.perm_lab_to_canon == k).nonzero()[0])
                 env.joint_lower_canon[:, c], env.joint_upper_canon[:, c] = lo, hi
                 targets[0, k] = targets[0, k].clamp(lo, hi)

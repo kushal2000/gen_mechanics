@@ -81,10 +81,14 @@ class OlympicsPoseViewer(PoseViewerWrapper):
 def capture_frame(env, i: int) -> dict:
     origin = env.scene.env_origins[i]
     pen_pos, pen_quat = env.pen_pose()
+    names, q = list(env.robot.joint_names), env.robot.data.joint_pos[i]
+    if env.hand_set is not None:               # a multi-hand scene: env i's own hand (its URDF is the viewer's)
+        names = env.robot.real_joint_names(i)
+        q = q[: len(names)]
     return {
         "env_id": i,
-        "robot_joint_names": list(env.robot.joint_names),
-        "robot_joint_pos": _to_numpy(env.robot.data.joint_pos[i]),
+        "robot_joint_names": names,
+        "robot_joint_pos": _to_numpy(q),
         "robot_base_pose": _pose_xyzw(env.robot.data.root_pos_w[i] - origin, env.robot.data.root_quat_w[i]),
         "object_pose": _pose_xyzw(pen_pos[i], pen_quat[i]),
         "goal_pose": _pose_xyzw(env.goal_pos[i], env.goal_quat[i]),

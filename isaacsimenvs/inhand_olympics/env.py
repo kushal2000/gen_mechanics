@@ -24,6 +24,11 @@ Internally everything is in Isaac Lab's joint order.
 
 Observations: in-hand reorientation's format, observations.py ("policy" from obs.obs_list, "critic" from
 obs.state_list).
+
+Several hands (``hand.robot_spec = "multi:<spec>+<spec>+..."``, multi_hand.py): each env has one hand (round-robin);
+the joints are the wrist and J finger slots (J = the largest hand's), a smaller hand's extra slots ghosts with zero
+range, and every per-hand table (joint limits, link boxes, palm, fingertips) is per env. Episode metrics are also
+logged per hand (per_hand_<metric>/<hand>).
 """
 from __future__ import annotations
 
@@ -52,10 +57,15 @@ class InHandOlympicsEnv(DirectRLEnv):
 
     def __init__(self, cfg: InHandOlympicsEnvCfg, render_mode: str | None = None, **kwargs):
         cfg.episode_length_s = cfg.goal.seconds_per_goal
+        if cfg.hand.robot_spec.startswith("multi:"):
+            cfg.scene.replicate_physics = False         # different hands in different envs
         super().__init__(cfg, render_mode, **kwargs)
         n, dev = self.num_envs, self.device
-        limits = self.robot.data.soft_joint_pos_limits[0]
-        self.joint_lower, self.joint_upper = limits[:, 0].clone(), limits[:, 1].clone()
+        if self.hand_set is not None:
+            self.robot.resolve()                        # each hand's real joints and bodies onto the slots
+        # (N, J) per env: hands differ in a multi-hand scene (a ghost slot: (0, 0)).
+        limits = self.robot.data.soft_joint_pos_limits
+        self.joint_lower, self.joint_upper = limits[..., 0].clone(), limits[..., 1].clone()
         self.wrist_ids = [self.robot.joint_names.index(j) for j in WRIST_JOINTS]
         self.hand_ids = [i for i in range(self.robot.num_joints) if i not in self.wrist_ids]
         spec, lab = self.robot_spec, list(self.robot.joint_names)
@@ -64,8 +74,8 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.perm_lab_to_canon = torch.tensor([lab.index(j) for j in self.canon_joint_names], device=dev)
         self.perm_canon_to_lab = torch.tensor([self.canon_joint_names.index(j) for j in lab], device=dev)
         hand = slice(len(WRIST_JOINTS), None)
-        self.joint_lower_canon = self.joint_lower[self.perm_lab_to_canon].expand(n, -1).clone()
-        self.joint_upper_canon = self.joint_upper[self.perm_lab_to_canon].expand(n, -1).clone()
+        self.joint_lower_canon = self.joint_lower[:, self.perm_lab_to_canon].clone()
+        self.joint_upper_canon = self.joint_upper[:, self.perm_lab_to_canon].clone()
         self.joint_lower_hand = self.joint_lower_canon[:, hand]
         self.joint_upper_hand = self.joint_upper_canon[:, hand]
         self.joint_enabled = (self.joint_upper_hand - self.joint_lower_hand > 1e-6).float()
@@ -83,7 +93,13 @@ class InHandOlympicsEnv(DirectRLEnv):
 
         self.palm_body = self.robot.body_names.index(spec.palm_body_name)
         self.tip_bodies = [self.robot.body_names.index(b) for b in spec.fingertip_body_names]
-        self.tip_offsets = torch.tensor(spec.fingertip_offsets, device=dev)
+        if self.hand_set is not None:
+            tables = self.hand_set.per_env(self.hand_of_env.cpu().numpy())
+            self.tip_offsets = torch.as_tensor(tables["fingertip_offsets"], device=dev)          # (N, F, 3)
+            self.tip_valid = torch.as_tensor(tables["fingertip_valid"], device=dev).float()     # (N, F)
+        else:
+            self.tip_offsets = torch.tensor(spec.fingertip_offsets, device=dev).expand(n, -1, -1)
+            self.tip_valid = torch.ones(n, len(self.tip_bodies), device=dev)
         self.pen_offsets = pen_keypoint_offsets(self.cfg.pen.length, dev)
         self.pen_rest_height = self.cfg.table.top_height + self.cfg.pen.diameter / 2   # centre, lying on the table
         self._init_hand_geometry(spec)
@@ -150,10 +166,17 @@ class InHandOlympicsEnv(DirectRLEnv):
         n, dev = self.num_envs, self.device
         self._joint_link_body_ids = self.robot.find_bodies(list(spec.joint_link_bodies), preserve_order=True)[0]
         assert len(self._joint_link_body_ids) == spec.num_hand_joints
-        self._joint_link_bbox_local = torch.tensor(spec.joint_link_boxes, device=dev).expand(n, -1, -1, -1)
-        self._joint_geometry_valid = torch.tensor(spec.joint_geometry_valid, device=dev).expand(n, -1)
-        self.palm_center_offset = torch.tensor(spec.palm_center_offset, device=dev).expand(n, -1)
-        kp = torch.tensor(spec.palm_keypoints, device=dev).expand(n, -1, -1)       # (N, 4, 3), palm body frame
+        if self.hand_set is not None:                 # per env, from each env's own hand
+            t = {k: torch.as_tensor(v, device=dev) for k, v in self.hand_set.per_env(self.hand_of_env.cpu().numpy()).items()}
+            self._joint_link_bbox_local = t["joint_link_bbox_local"]
+            self._joint_geometry_valid = t["joint_geometry_valid"]
+            self.palm_center_offset = t["palm_center_offset"]
+            kp = t["palm_keypoints"]
+        else:
+            self._joint_link_bbox_local = torch.tensor(spec.joint_link_boxes, device=dev).expand(n, -1, -1, -1)
+            self._joint_geometry_valid = torch.tensor(spec.joint_geometry_valid, device=dev).expand(n, -1)
+            self.palm_center_offset = torch.tensor(spec.palm_center_offset, device=dev).expand(n, -1)
+            kp = torch.tensor(spec.palm_keypoints, device=dev).expand(n, -1, -1)   # (N, 4, 3), palm body frame
         edges = kp[:, 1:] - kp[:, :1]                                                 # grasp normal, width, length
         self.palm_extents = edges.norm(dim=-1)
         axes = (edges / self.palm_extents.unsqueeze(-1)).transpose(1, 2)
@@ -193,7 +216,7 @@ class InHandOlympicsEnv(DirectRLEnv):
     # --- actions --------------------------------------------------------------------------------------------
     def target_to_action(self, targets: torch.Tensor) -> torch.Tensor:
         """Absolute joint positions -> [-1, 1] over the joint ranges (the finger action; the obs scaling)."""
-        return 2.0 * (targets - self.joint_lower) / (self.joint_upper - self.joint_lower) - 1.0
+        return 2.0 * (targets - self.joint_lower) / (self.joint_upper - self.joint_lower).clamp(min=1e-6) - 1.0
 
     def action_to_target(self, actions: torch.Tensor) -> torch.Tensor:
         return self.joint_lower + 0.5 * (actions.clamp(-1.0, 1.0) + 1.0) * (self.joint_upper - self.joint_lower)
@@ -254,7 +277,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.applied_actions = a                       # canonical order, after the latency
         a = a[:, self.perm_canon_to_lab]
         w, h = self.wrist_ids, self.hand_ids
-        lo, hi = self.joint_lower[w], self.joint_upper[w]
+        lo, hi = self.joint_lower[:, w], self.joint_upper[:, w]
         self.wrist_command = torch.minimum(torch.maximum(
             self.wrist_command + a[:, w] * self.wrist_speed * self.step_dt, lo), hi)
         self.targets[:, w] = cfg.wrist_ema * self.wrist_command + (1.0 - cfg.wrist_ema) * self.targets[:, w]
@@ -278,7 +301,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         pos = self.robot.data.body_pos_w[:, self.tip_bodies] - self.scene.env_origins.unsqueeze(1)
         quat = self.robot.data.body_quat_w[:, self.tip_bodies]
         n, f = pos.shape[:2]
-        off = quat_apply(quat.reshape(-1, 4), self.tip_offsets.unsqueeze(0).expand(n, f, 3).reshape(-1, 3))
+        off = quat_apply(quat.reshape(-1, 4), self.tip_offsets.reshape(-1, 3))
         return pos + off.view(n, f, 3)
 
     def pen_lowest_height(self) -> torch.Tensor:
@@ -323,7 +346,8 @@ class InHandOlympicsEnv(DirectRLEnv):
         pos, _ = self.pen_pose()
         tip = (self.fingertips() - pos.unsqueeze(1)).norm(dim=-1)                     # (N, F)
         self.closest_tip_dist = torch.where(torch.isnan(self.closest_tip_dist), tip, self.closest_tip_dist)
-        approach = (self.closest_tip_dist - tip).clamp(min=0.0).mean(dim=-1)
+        # Over the env's real fingertips (a multi-hand scene's ghost tips read the palm).
+        approach = ((self.closest_tip_dist - tip).clamp(min=0.0) * self.tip_valid).sum(-1) / self.tip_valid.sum(-1)
         self.closest_tip_dist = torch.minimum(self.closest_tip_dist, tip)
 
         vel = self.robot.data.joint_vel
@@ -367,6 +391,12 @@ class InHandOlympicsEnv(DirectRLEnv):
             mine = self.task_id == k
             for name, value in overall:
                 final[f"task_{task.name}/{name}"] = torch.where(mine, value, nan)
+        # And per hand in a multi-hand scene, as "per_hand_<metric>/<hand>" (rlgames_utils PER_HAND_PREFIX).
+        if self.hand_set is not None:
+            for h, label in enumerate(self.hand_set.labels):
+                mine = self.hand_of_env == h
+                for name, value in overall:
+                    final[f"per_hand_{name}/{label}"] = torch.where(mine, value, nan)
         self.extras["episode_final"] = final
         return reward
 
@@ -391,7 +421,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         q = self.robot.data.default_joint_pos[ids].clone()
         qd = torch.zeros_like(q)
         h, r = self.hand_ids, self.cfg.reset
-        lo, hi = self.joint_lower[h], self.joint_upper[h]
+        lo, hi = self.joint_lower[ids][:, h], self.joint_upper[ids][:, h]
         draw = lo + (hi - lo) * torch.rand(len(ids), len(h), device=self.device)
         q[:, h] = torch.lerp(q[:, h], draw, r.finger_pos_fraction).clamp(lo, hi)
         qd[:, h] = torch.empty(len(ids), len(h), device=self.device).uniform_(-r.finger_vel, r.finger_vel)

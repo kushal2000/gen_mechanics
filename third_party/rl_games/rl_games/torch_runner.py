@@ -23,6 +23,7 @@ def _restore(agent, args):
             agent.restore(args['checkpoint'])
         elif load_mode == 'weights':
             weights = _load_checkpoint_weights(agent, args['checkpoint'])
+            _extend_action_params(agent, weights)
             agent.set_weights(weights)
             if getattr(agent, 'has_central_value', False) and 'assymetric_vf_nets' in weights:
                 try:
@@ -42,6 +43,26 @@ def _load_checkpoint_weights(agent, checkpoint_path):
         if 0 in checkpoint:
             return checkpoint[0]
     return checkpoint
+
+def _extend_action_params(agent, weights):
+    """Weights mode, from a policy with fewer actions (a hand with fewer joints; gen_mechanics' embodiment
+    curriculum): a per-action parameter whose last dim is shorter in the checkpoint -- the joint transformer's
+    ``sigma`` (blocks, actions) -- keeps its trained columns, and each new column copies one of the last
+    SIGMA_EXTEND_PERIOD (default 4: a Wuji finger's joints) trained ones, cyclically. Nothing else changes shape,
+    since the joint transformer's weights are shared across joints."""
+    model_sd = agent.model.state_dict()
+    sd = weights['model']
+    period = int(os.environ.get('SIGMA_EXTEND_PERIOD', '4'))
+    for k, v in list(sd.items()):
+        want = model_sd.get(k)
+        if (want is None or not k.endswith('sigma') or v.shape == want.shape or v.dim() != want.dim()
+                or v.shape[:-1] != want.shape[:-1] or v.shape[-1] >= want.shape[-1]):
+            continue
+        n_old, n_new = v.shape[-1], want.shape[-1]
+        cols = list(range(n_old)) + [n_old - period + (j % period) for j in range(n_new - n_old)]
+        sd[k] = v[..., cols]
+        print(f"=> {k}: {tuple(v.shape)} -> {tuple(sd[k].shape)}, new columns copy the last {period} trained ones")
+
 
 def _override_sigma(agent, args):
     if 'sigma' in args and args['sigma'] is not None:

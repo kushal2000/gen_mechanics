@@ -1,5 +1,6 @@
 """Scene: the hand on its dummy wrist (one articulation) above a kinematic table, the pen lying on the table, a
-ground plane and a light."""
+ground plane and a light. With ``hand.robot_spec = "multi:<spec>+<spec>+..."`` several hands, each on its own envs
+(round-robin) and its own articulation, which ``env.robot`` presents as one (multi_hand.py)."""
 from __future__ import annotations
 
 import math
@@ -11,6 +12,8 @@ from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import Articulation, ArticulationCfg, RigidObject, RigidObjectCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.sim.utils import get_current_stage
+import numpy as np
+import torch
 from pxr import Sdf
 
 from ..pose_reaching_6d.common_utils.urdf_to_usd import (
@@ -19,8 +22,9 @@ from ..pose_reaching_6d.common_utils.urdf_to_usd import (
 from ..pose_reaching_6d.scene_utils.author_objects import author_handle_head, author_physics_material
 from ..pose_reaching_6d.scene_utils.author_robot import flatten_robot_usd
 from ..pose_reaching_6d.scene_utils.objects.generate_objects import compute_mass_and_inertia
-from ..pose_reaching_6d.scene_utils.sdf import attr, define
+from ..pose_reaching_6d.scene_utils.sdf import attr, define, set_xform
 from ..pose_reaching_6d.scene_utils.robots import get_robot_spec
+from ..pose_reaching_6d.scene_utils.robots.multi_hand import hand_set, is_multi_ref
 from .wrist import WRIST_JOINTS, build_wrist_urdf
 
 ROBOT_PATH = "/World/envs/env_.*/Robot"
@@ -46,9 +50,42 @@ def _actuators(spec, cfg) -> dict:
     }
 
 
+def _hand_usd(spec, cfg, work: Path) -> tuple[Path, str, str]:
+    """The hand on its wrist: (URDF, flattened USD, its root prim path)."""
+    work.mkdir(parents=True, exist_ok=True)
+    urdf = build_wrist_urdf(spec, cfg.wrist, work / "hand_on_wrist.urdf")
+    converted = _convert_urdf_to_usd(
+        str(urdf), work, fix_base=True, self_collision=True, joint_drive=_robot_joint_drive_cfg(),
+        replace_cylinders_with_capsules=spec.replace_cylinders_with_capsules, collider_type=cfg.hand.collider_type)
+    _apply_self_collision_filters(converted, spec.adjacent_links)
+    flat, root = flatten_robot_usd(converted, work / "robot_flat.usd",
+                                   contact_offset=cfg.contact_offset, rest_offset=cfg.rest_offset)
+    return urdf, flat, root
+
+
+def _robot_cfg(spec, cfg, prim_path: str, usd: str | None) -> ArticulationCfg:
+    pose = dict(zip(WRIST_JOINTS, cfg.wrist.default_pose))
+    return ArticulationCfg(
+        prim_path=prim_path,
+        spawn=sim_utils.UsdFileCfg(usd_path=usd) if usd else None,
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.0, 0.0, cfg.table.top_height), rot=(1.0, 0.0, 0.0, 0.0),
+            joint_pos={**pose, **spec.hand_default_joint_pos}, joint_vel={".*": 0.0}),
+        actuators=_actuators(spec, cfg),
+    )
+
+
+def _block_regex(env_ids) -> str:
+    """``/World/envs/env_(i|j|...)/Robot`` over one hand's envs (pose_reaching_6d assembly._block_regex)."""
+    ids = [str(int(i)) for i in env_ids]
+    return f"/World/envs/env_({'|'.join(ids)})/Robot" if len(ids) > 1 else f"/World/envs/env_{ids[0]}/Robot"
+
+
 def setup_scene(env) -> None:
     cfg = env.cfg
-    spec = get_robot_spec(cfg.hand.robot_spec)
+    multi = is_multi_ref(cfg.hand.robot_spec)
+    hs = hand_set(cfg.hand.robot_spec) if multi else None
+    spec = hs.template if multi else get_robot_spec(cfg.hand.robot_spec)
     n_joints = len(WRIST_JOINTS) + len(spec.hand_joint_names)
     if cfg.action_space not in (0, n_joints):
         raise ValueError(f"action_space={cfg.action_space}, but the robot has {n_joints} joints")
@@ -56,24 +93,16 @@ def setup_scene(env) -> None:
     cfg.action_space = n_joints
 
     work = Path(tempfile.mkdtemp(prefix="olympics_assets_"))
-    urdf = build_wrist_urdf(spec, cfg.wrist, work / "hand_on_wrist.urdf")
-    converted = _convert_urdf_to_usd(
-        str(urdf), work, fix_base=True, self_collision=True, joint_drive=_robot_joint_drive_cfg(),
-        replace_cylinders_with_capsules=spec.replace_cylinders_with_capsules, collider_type=cfg.hand.collider_type)
-    _apply_self_collision_filters(converted, spec.adjacent_links)
-    flat, _ = flatten_robot_usd(converted, work / "robot_flat.usd",
-                                contact_offset=cfg.contact_offset, rest_offset=cfg.rest_offset)
-
     top = cfg.table.top_height
-    pose = dict(zip(WRIST_JOINTS, cfg.wrist.default_pose))
-    env.robot = Articulation(ArticulationCfg(
-        prim_path=ROBOT_PATH,
-        spawn=sim_utils.UsdFileCfg(usd_path=flat),
-        init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0, 0.0, top), rot=(1.0, 0.0, 0.0, 0.0),
-            joint_pos={**pose, **spec.hand_default_joint_pos}, joint_vel={".*": 0.0}),
-        actuators=_actuators(spec, cfg),
-    ))
+    if multi:
+        # Each hand converted once; referenced into its envs once they exist (below, after cloning).
+        hands = [_hand_usd(s, cfg, work / f"hand{h}") for h, s in enumerate(hs.specs)]
+        hand_of_env = hs.hand_of_env(env.num_envs)
+        urdf = hands[int(hand_of_env[0])][0]
+    else:
+        urdf, flat, _ = _hand_usd(spec, cfg, work)
+        hand_of_env = np.zeros(env.num_envs, dtype=np.int64)
+        env.robot = Articulation(_robot_cfg(spec, cfg, ROBOT_PATH, flat))
     sx, sy, sz = cfg.table.size
     env.table = RigidObject(RigidObjectCfg(
         prim_path=TABLE_PATH,
@@ -130,11 +159,27 @@ def setup_scene(env) -> None:
     ))
     spawn_ground_plane("/World/ground", GroundPlaneCfg())
     env.scene.clone_environments(copy_from_source=False)
+    if multi:
+        with Sdf.ChangeBlock():
+            for env_path in env.scene.env_prim_paths:
+                h = int(hand_of_env[int(env_path.rsplit("_", 1)[1])])
+                _, usd, root_path = hands[h]
+                prim = define(layer, f"{env_path}/Robot", "Xform")
+                prim.referenceList.explicitItems.append(Sdf.Reference(usd, Sdf.Path(root_path)))
+                set_xform(layer.GetPrimAtPath(f"{env_path}/Robot"), (0.0, 0.0, float(top)))
+        from .multi_hand import OlympicsMultiHand
+        arts = [Articulation(_robot_cfg(s, cfg, _block_regex(np.nonzero(hand_of_env == h)[0]), None))
+                for h, s in enumerate(hs.specs)]
+        env.robot = OlympicsMultiHand(hs, arts, torch.as_tensor(hand_of_env), env.device)
+        counts = {s.name: int((hand_of_env == h).sum()) for h, s in enumerate(hs.specs)}
+        print(f"[olympics] hands dealt round-robin: {counts}", flush=True)
     env.scene.filter_collisions(global_prim_paths=["/World/ground"])
     env.scene.articulations["robot"] = env.robot
     env.scene.rigid_objects["table"] = env.table
     env.scene.rigid_objects["pen"] = env.pen
     sim_utils.DomeLightCfg(intensity=2000.0).func("/World/Light", sim_utils.DomeLightCfg(intensity=2000.0))
 
-    env.robot_spec = spec
-    env.wrist_urdf_path = urdf
+    env.robot_spec = spec                      # a multi-hand scene: the padded template (hs.template)
+    env.hand_set = hs
+    env.hand_of_env = torch.as_tensor(hand_of_env, device=env.device)
+    env.wrist_urdf_path = urdf                 # env 0's hand (the pose viewer's)

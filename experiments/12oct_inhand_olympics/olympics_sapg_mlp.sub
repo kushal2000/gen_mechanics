@@ -42,7 +42,8 @@ PEN_SHAPE="${PEN_SHAPE:-capsule}"       # env.pen.shape: capsule | box (cannot r
 HAND="${HAND:-wuji2_left_uniform_handonly}"   # env.hand.robot_spec, e.g. wuji2_left_uniform_handonly_only_thumb_index
 STUDY="${TASKS//,/+}_sapg_${ARCH}_e${NUM_ENVS}_s${SEED}_g${GAMMA}_fr${FINGER_RESET}_kp${KEYPOINT}"
 [[ "$PEN_SHAPE" == capsule ]] || STUDY="${STUDY}_${PEN_SHAPE}"
-[[ "$HAND" == wuji2_left_uniform_handonly ]] || STUDY="${STUDY}_${HAND#wuji2_left_uniform_handonly_}"
+# HAND_TAG: the run name's label for HAND (default: HAND past the full hand's name; set it for a multi: hand set)
+[[ "$HAND" == wuji2_left_uniform_handonly ]] || STUDY="${STUDY}_${HAND_TAG:-${HAND#wuji2_left_uniform_handonly_}}"
 [[ -n "${RUN_TAG:-}" ]] && STUDY="${STUDY}_${RUN_TAG}"   # a label for what EXTRA_HYDRA changes
 EXTRA=()                                 # EXTRA_HYDRA: further overrides, space-separated
 # CHECKPOINT: start from a .pth (CHECKPOINT_MODE weights: the model only, epochs count from 0; resume: everything)
