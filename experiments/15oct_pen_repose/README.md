@@ -28,4 +28,16 @@ MLP, box pen, random first goal, first goal 3 cm then 1 cm, stagger on, seed 100
 | 35/65/195/65 | 292020 |
 | 50/65/55/190 | 292021 |
 
+### Designed hand: the even cross, 0/90/180/270
+
+A subagent's static analysis picked it for repose. It found that every layout holds the pen at any in-hand axis, and
+that the wrist carries a fixed grip through a median of 16 goals, so about 90% of the turning is the wrist's. The
+cross wins on the rest: it can pinch the pen at every pickup yaw (the flip pick manages 82%), and it can pivot the pen
+about the most pinch-line directions (110° of 180°, against 55° for the flip pick). This needs a pair at least 127°
+apart plus a third finger to push. The runner-up is 0/95/180/275, which scores the same. The same recipe as above:
+
+| Hand (gaps) | Job |
+|---|---|
+| 90/90/90/90 | 292201 |
+
 Earlier submissions with a flat pickup as the first goal were cancelled within minutes (291747-9, then 291830-2).
