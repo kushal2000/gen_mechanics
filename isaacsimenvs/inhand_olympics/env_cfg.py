@@ -200,6 +200,22 @@ class PenFlipAirCfg:
 
 
 @configclass
+class PenReposeCfg:
+    """Repose the pen in 6D in the air (tasks/pen_repose.py): picked up flat to ``first_height`` at its starting yaw (the
+    first goal), then a random walk -- each goal the previous one's centre moved up to ``step_pos`` (kept in a box
+    ``half_width_xy`` around ``centre_xy`` and ``height_range`` above the pen's resting height) and turned by an angle
+    drawn from ``step_deg`` about a random axis."""
+
+    centre_xy: tuple[float, float] = (0.0, 0.0)
+    first_height: float = 0.08               # m above resting: pen_lift's lift_height
+    half_width_xy: float = 0.04              # m
+    # Centre heights above resting: even a vertical pen (half-length 5 cm) clears the table by ~2.5 cm at the bottom.
+    height_range: tuple[float, float] = (0.06, 0.12)
+    step_pos: float = 0.05                   # m, at most
+    step_deg: tuple[float, float] = (15.0, 30.0)
+
+
+@configclass
 class PenLiftCfg:
     """Lift the pen flat and hold it (tasks/pen_lift.py). The goal: the pen at its starting yaw, flat, centred at
     ``centre_xy``, ``lift_height`` above where it rests on the table. A goal counts after ``hold_steps``
@@ -312,6 +328,7 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     pen_lift: PenLiftCfg = PenLiftCfg()
     pen_spin_air: PenSpinAirCfg = PenSpinAirCfg()
     pen_flip_air: PenFlipAirCfg = PenFlipAirCfg()
+    pen_repose: PenReposeCfg = PenReposeCfg()
     perturb: PerturbCfg = PerturbCfg()
     goal: GoalCfg = GoalCfg()
     reward: RewardCfg = RewardCfg()
