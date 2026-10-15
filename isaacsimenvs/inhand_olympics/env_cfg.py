@@ -202,15 +202,16 @@ class PenFlipAirCfg:
 @configclass
 class PenReposeCfg:
     """Repose the pen in 6D in the air (tasks/pen_repose.py): picked up flat to ``first_height`` at its starting yaw (the
-    first goal), then a random walk -- each goal the previous one's centre moved up to ``step_pos`` (kept in a box
-    ``half_width_xy`` around ``centre_xy`` and ``height_range`` above the pen's resting height) and turned by an angle
-    drawn from ``step_deg`` about a random axis."""
+    first goal), then a random walk -- each goal the previous one turned by an angle drawn from ``step_deg`` about a
+    random axis, and its centre moved up to ``step_pos``, kept within ``half_width_xy`` of ``centre_xy`` and between
+    an orientation-dependent floor (the pen's lowest point ``min_clearance`` above the table, in THAT orientation)
+    and ``max_height`` above the pen's resting height."""
 
     centre_xy: tuple[float, float] = (0.0, 0.0)
     first_height: float = 0.08               # m above resting: pen_lift's lift_height
     half_width_xy: float = 0.04              # m
-    # Centre heights above resting: even a vertical pen (half-length 5 cm) clears the table by ~2.5 cm at the bottom.
-    height_range: tuple[float, float] = (0.06, 0.12)
+    min_clearance: float = 0.02              # m: the goal pose's lowest point above the table top
+    max_height: float = 0.12                 # m: the goal centre's ceiling above the pen's resting height
     step_pos: float = 0.05                   # m, at most
     step_deg: tuple[float, float] = (15.0, 30.0)
 
