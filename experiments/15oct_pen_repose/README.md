@@ -39,5 +39,6 @@ apart plus a third finger to push. The runner-up is 0/95/180/275, which scores t
 | Hand (gaps) | Job |
 |---|---|
 | 90/90/90/90 | 292201 |
+| 85/95/85/95 (runner-up 0/95/180/275; built under its canonical rotation 0/85/180/265) | 292295 |
 
 Earlier submissions with a flat pickup as the first goal were cancelled within minutes (291747-9, then 291830-2).
