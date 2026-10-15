@@ -13,6 +13,31 @@ Started 15 Oct 2026 on branch `2026-10-15-pen_repose`. The `pen_repose` task is 
   (`env.goal.first_goal_tolerance=0.03`).
 - **Pushes and dropping:** pushes start after the pickup, and touching the table after it ends the episode.
 
+## Fine-tuning the v2 policies on spin and flip (15 Oct)
+
+Played zero-shot on spin and flip goals, the repose policies snap to each 45° goal by the shortest route and stop.
+They don't turn continuously. So each v2 hand's best-reward checkpoint (weights only) is fine-tuned on
+`pen_spin_air` and on `pen_flip_air`, with each task's own one-hot. The reward is unchanged; only success and
+termination change (`isaacsimenvs/inhand_olympics/tasks/rotation_course.py`):
+- **Forward-only success** (`forward_only=True`): a goal counts only once the pen has also turned that far, in the
+  episode's direction, about the task's axis since the pickup.
+- **Off course** (a new termination, no penalty): the episode ends once the pen's long axis is more than 30° out of
+  the task's plane (`max_off_axis_deg=30`), or once it has turned back 30° from its furthest (`max_backward_deg=30`).
+
+Checked with scripted motion: turning 450° forward scores 11 goals (the pickup plus 10 × 45°) on both tasks; turning
+back or out of the plane ends the episode at 30-33°.
+
+wandb **`gen_mechanics_pen_spin_ft`** and **`gen_mechanics_pen_flip_ft`**; logs in
+`debug_outputs/train_logs/15oct_spin_flip_ft/`; 5,000 epochs; first goal (the pickup) at 3 cm.
+
+| Hand (gaps) | From | Spin job | Flip job |
+|---|---|---|---|
+| 30/55/55/220 | 292505 | 301039 | 301040 |
+| 35/65/195/65 | 292506 | 301041 | 301042 |
+| 50/65/55/190 | 292507 | 301043 | 301044 |
+| 90/90/90/90 (the cross) | 292508 | 301045 | 301046 |
+| 85/95/85/95 | 292509 | 301047 | 301048 |
+
 ## Runs
 
 ### v2: wrist orientation fixed, every goal uniform (15 Oct, current)
