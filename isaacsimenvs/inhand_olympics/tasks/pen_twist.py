@@ -11,7 +11,8 @@ also follows the cap's total turn (the joint angle, which PhysX wraps to +-pi, a
 doesn't see it) and gates success on it: a goal counts only with the total turn within half a step of the goal's.
 
 Tightness curriculum (PenTwistCfg.curriculum): the cap's friction torque goes up by curriculum_factor each time a
-window of finished episodes averages curriculum_turns full turns; logged as twist/friction_torque.
+window of finished episodes averages curriculum_turns full turns -- no sooner than curriculum_min_steps after the last
+step-up, and counting only episodes that started after it; logged as twist/friction_torque.
 """
 from __future__ import annotations
 
@@ -46,6 +47,8 @@ class PenTwist:
         self.window = c.curriculum_window or env.num_envs
         self.need = c.curriculum_turns * 360.0 / c.step_deg          # goals per episode for curriculum_turns
         self.ep_goals, self.ep_count, self.last_mean = 0.0, 0, 0.0
+        self.last_advance = 0                                         # env step of the last step-up
+        self.ep_start = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)   # each episode's first step
 
     def _goal(self, ids: torch.Tensor) -> None:
         """The pen where it stands; the cap at self.angle (the upright pen's orientation turned about its own axis)."""
@@ -62,8 +65,11 @@ class PenTwist:
         n = len(ids)
         # The episodes ending here: the env zeroes successes only after the tasks' resets. Not at the env's first
         # reset, before any episode has run.
-        if self.cfg.curriculum and self.env.common_step_counter > 0:
-            self._curriculum(self.env.successes[ids])
+        step = self.env.common_step_counter
+        if self.cfg.curriculum and step > 0:
+            fresh = self.ep_start[ids] >= self.last_advance               # started at the current torque
+            self._curriculum(self.env.successes[ids][fresh])
+        self.ep_start[ids] = step
         self.env.place_pen(ids, self.pos.repeat(n, 1), self.quat.repeat(n, 1))      # the barrel; the cap at 0
         self.angle[ids] = self.step
         self.turned[ids] = 0.0
@@ -78,8 +84,11 @@ class PenTwist:
         self.last_mean = self.ep_goals / self.ep_count
         self.ep_goals, self.ep_count = 0.0, 0
         c = self.cfg
-        if self.last_mean >= self.need and self.torque < c.curriculum_max_torque:
+        step = self.env.common_step_counter
+        cooled = step - self.last_advance >= c.curriculum_min_steps
+        if self.last_mean >= self.need and cooled and self.torque < c.curriculum_max_torque:
             self.torque = min(self.torque * c.curriculum_factor, c.curriculum_max_torque)
+            self.last_advance = step
             env = self.env
             env.pen.write_joint_effort_limit_to_sim(
                 torch.full((env.num_envs, 1), self.torque, device=env.device), joint_ids=[0])
@@ -88,6 +97,7 @@ class PenTwist:
 
     def log(self) -> dict:
         return {"twist/friction_torque": torch.tensor(self.torque),
+                "twist/steps_since_step_up": torch.tensor(float(self.env.common_step_counter - self.last_advance)),
                 "twist/curriculum_window_turns": torch.tensor(self.last_mean * self.cfg.step_deg / 360.0)}
 
     def gate(self, near: torch.Tensor) -> torch.Tensor:

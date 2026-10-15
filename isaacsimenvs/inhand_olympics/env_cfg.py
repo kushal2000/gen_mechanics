@@ -253,6 +253,9 @@ class PenTwistCfg:
     curriculum_factor: float = 1.5
     curriculum_max_torque: float = 0.2       # N m
     curriculum_window: int = 0
+    # Cool-off: at least this many env steps between step-ups (16 per epoch at horizon 16: 3200 = 200 epochs), and a
+    # window counts only episodes that started after the last step-up (none played partly at the easier torque).
+    curriculum_min_steps: int = 3200
 
 
 @configclass
