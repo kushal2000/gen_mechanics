@@ -8,6 +8,9 @@ Panels:
   pen      place the pen at the palm (its axis across the palm, along the fingers, or out of the palm; how far out;
            sideways offset), the cap's friction torque (live), and a twist test: equal and opposite torques on cap and
            barrel for a second, to feel the friction (below it the cap holds, above it it turns)
+  tether   a soft spring holding the barrel at its placed pose (on at placement). With gravity off and nothing else
+           holding it, the first finger to touch the pen pushes it away before an opposing finger arrives; close the
+           fingers with the tether on, then turn it off to see whether the grip holds on its own
   joints   a slider per joint, wrist first (the env's own action pipeline steers each joint to its slider)
 
 Kit and viser cannot share an interpreter: the sim runs in a child (this file with --worker) and streams frames back.
@@ -63,6 +66,8 @@ def worker(args) -> None:
 
 
 def _loop(args, conn) -> None:
+    import math
+
     import numpy as np
     import torch
     from scipy.spatial.transform import Rotation
@@ -118,12 +123,15 @@ def _loop(args, conn) -> None:
         w, xx, yy, zz = np.roll(Rotation.from_matrix(R).as_quat(), 1)
         env.place_pen(ids, torch.tensor([centre], dtype=torch.float32, device=dev),
                       torch.tensor([[w, xx, yy, zz]], dtype=torch.float32, device=dev))
+        tether.update(on=True, pos=centre, quat=np.array([w, xx, yy, zz]))
+        twist.update(turned=0.0, prev=0.0)
 
     targets = env.robot.data.default_joint_pos.clone()
     test = {"until": 0.0, "torque": 0.0}
+    tether = {"on": True, "pos": None, "quat": None}
+    twist = {"turned": 0.0, "prev": 0.0}                # PhysX wraps the joint angle to +-pi: accumulate the change
     last_place = {"axis": AXES[0], "out": 0.04, "side": 0.0, "along": 0.04}
     place(last_place)
-    turns0 = 0.0
     t_next = time.time()
     while True:
         while conn.poll():
@@ -141,32 +149,47 @@ def _loop(args, conn) -> None:
             elif c == "place":
                 last_place = m
                 place(m)
-                turns0 = float(env.pen_twist()[0])
             elif c == "friction":
                 env.pen.write_joint_effort_limit_to_sim(torch.tensor([[float(m["value"])]], device=dev), joint_ids=[0])
             elif c == "twist_test":
                 test = {"until": time.time() + float(m["seconds"]), "torque": float(m["torque"])}
             elif c == "zero_twist":
-                turns0 = float(env.pen_twist()[0])
+                twist["turned"] = 0.0
+            elif c == "tether":
+                tether["on"] = bool(m["on"])
         # The twist test: +torque on the cap and -torque on the barrel, about the barrel's axis (an internal twist:
         # the pen as a whole feels none).
         torques = torch.zeros(1, 2, 3, device=dev)
+        forces = torch.zeros(1, 2, 3, device=dev)
+        if tether["on"]:
+            # A spring-damper on the barrel toward its placed pose: about 30 rad/s for the 30 g pen, critically damped.
+            o = env.scene.env_origins[0].cpu().numpy()
+            x = env.pen.data.body_pos_w[0, barrel].cpu().numpy() - o
+            v = env.pen.data.body_lin_vel_w[0, barrel].cpu().numpy()
+            wv = env.pen.data.body_ang_vel_w[0, barrel].cpu().numpy()
+            q = env.pen.data.body_quat_w[0, barrel].tolist()
+            err = (Rotation.from_quat(np.roll(tether["quat"], -1)) * Rotation.from_quat([q[1], q[2], q[3], q[0]]).inv())
+            forces[0, barrel] = torch.tensor(25.0 * (tether["pos"] - x) - 1.7 * v, dtype=torch.float32, device=dev)
+            torques[0, barrel] = torch.tensor(0.008 * err.as_rotvec() - 4e-4 * wv, dtype=torch.float32, device=dev)
         if time.time() < test["until"]:
             q = env.pen.data.body_quat_w[0, barrel].tolist()
             axis = Rotation.from_quat([q[1], q[2], q[3], q[0]]).as_matrix()[:, 0]
             t = torch.tensor(axis, dtype=torch.float32, device=dev) * test["torque"]
-            torques[0, cap], torques[0, barrel] = t, -t
-        env.pen.set_external_force_and_torque(forces=torch.zeros(1, 2, 3, device=dev), torques=torques, is_global=True,
-                                              body_ids=[barrel, cap])
+            torques[0, cap] += t
+            torques[0, barrel] -= t
+        env.pen.set_external_force_and_torque(forces=forces, torques=torques, is_global=True, body_ids=[barrel, cap])
         env.step(env.action_toward(targets))
         qj = env.robot.data.joint_pos[0]
         o = env.scene.env_origins[0]
         palm, *_ = palm_axes()
         bp = env.pen.data.body_pos_w[0] - o
+        now = float(env.pen_twist()[0])
+        twist["turned"] += (now - twist["prev"] + math.pi) % (2 * math.pi) - math.pi
+        twist["prev"] = now
         conn.send({"kind": "frame", "q": qj.tolist(), "err": float((qj - targets[0]).abs().max()),
                    "barrel": [bp[barrel].tolist(), env.pen.data.body_quat_w[0, barrel].tolist()],
                    "cap": [bp[cap].tolist(), env.pen.data.body_quat_w[0, cap].tolist()],
-                   "twist": float(env.pen_twist()[0]) - turns0, "twist_vel": float(env.pen.data.joint_vel[0, 0]),
+                   "twist": twist["turned"], "twist_vel": float(env.pen.data.joint_vel[0, 0]), "tether": tether["on"],
                    "palm_dist": float(np.linalg.norm(bp[barrel].cpu().numpy() - palm)),
                    "testing": time.time() < test["until"],
                    "ended": [k for k, v in env.termination_reasons.items() if bool(v[0])]})
@@ -250,7 +273,8 @@ def main() -> None:
         g_out = server.gui.add_slider("out from the palm (cm)", 0.0, 15.0, 0.1, 4.0)
         g_along = server.gui.add_slider("toward the fingertips (cm)", -5.0, 15.0, 0.1, 4.0)
         g_side = server.gui.add_slider("sideways (cm)", -8.0, 8.0, 0.1, 0.0)
-        b_place = server.gui.add_button("place the pen at the palm (at rest, untwisted)")
+        b_place = server.gui.add_button("place the pen at the palm (at rest, untwisted, tethered)")
+        g_tether = server.gui.add_checkbox("tether the barrel (a soft spring to its placed pose)", True)
         g_fric = server.gui.add_slider("cap friction torque (N m)", 0.0, 0.1, 0.001, ARGS.friction)
         g_tq = server.gui.add_slider("twist test torque (N m)", 0.0, 0.1, 0.001, 0.02)
         b_test = server.gui.add_button("twist test: opposite torques on cap and barrel for 1 s")
@@ -261,7 +285,12 @@ def main() -> None:
         return {"cmd": "place", "axis": str(g_axis.value), "out": g_out.value / 100, "side": g_side.value / 100,
                 "along": g_along.value / 100}
 
-    b_place.on_click(lambda _: outbox.put(place_msg()))
+    def _place(_) -> None:
+        g_tether.value = True
+        outbox.put(place_msg())
+
+    b_place.on_click(_place)
+    g_tether.on_update(lambda _: outbox.put({"cmd": "tether", "on": bool(g_tether.value)}))
     g_fric.on_update(lambda _: outbox.put({"cmd": "friction", "value": float(g_fric.value)}))
     b_test.on_click(lambda _: outbox.put({"cmd": "twist_test", "torque": float(g_tq.value), "seconds": 1.0}))
     b_zero.on_click(lambda _: outbox.put({"cmd": "zero_twist"}))
@@ -314,6 +343,7 @@ def main() -> None:
     def _(_) -> None:
         for s, d in view.get("sliders", {}).values():
             s.value = d
+        g_tether.value = True
         outbox.put({"cmd": "reset"})
         outbox.put(place_msg())
 
@@ -372,7 +402,8 @@ def main() -> None:
             tw = frame["twist"]
             md.content = (f"**cap twist {math.degrees(tw):+.0f}°** ({tw / (2 * math.pi):+.2f} turns) · "
                           f"{math.degrees(frame['twist_vel']):+.0f}°/s"
-                          f"{' · **twist test on**' if frame['testing'] else ''}  \n"
+                          f"{' · **twist test on**' if frame['testing'] else ''}"
+                          f"{' · tethered' if frame['tether'] else ' · **free**'}  \n"
                           f"pen centre {frame['palm_dist'] * 100:.1f} cm from the palm · worst |q - target| "
                           f"{frame['err']:.3f}"
                           + (f"  \nepisode ended: {', '.join(frame['ended'])}" if frame["ended"] else ""))
