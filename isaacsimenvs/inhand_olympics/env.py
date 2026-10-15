@@ -446,6 +446,9 @@ class InHandOlympicsEnv(DirectRLEnv):
             self.closest_goal_dist[hit] = math.nan
         self.extras["log"] = {f"reward/{k}": v.mean() for k, v in self.reward_terms.items()}
         self.extras["log"]["successes"] = self.successes.mean()
+        for task in self.tasks:                          # a task's own scalars (e.g. a curriculum's level)
+            if hasattr(task, "log"):
+                self.extras["log"].update(task.log())
         # Per env; the training observer averages them over the envs whose episode ends this step (as in-hand's
         # episode_final/*).
         final = {"successes": self.successes.clone(),

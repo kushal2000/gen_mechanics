@@ -244,6 +244,15 @@ class PenTwistCfg:
     # Subgoals: the pen's goal is where it stands; the cap's is turned step_deg further than the last, in the
     # unscrewing direction (counter-clockwise seen from above, as a bottle cap).
     step_deg: float = 90.0
+    # Tightness curriculum: the cap's friction torque starts at pen.twist_friction_torque. After every window of
+    # finished episodes (curriculum_window; 0 = as many as there are envs), if they averaged at least
+    # curriculum_turns full turns, it is multiplied by curriculum_factor (up to curriculum_max_torque); the next
+    # window then has to recover that many turns at the new torque before it advances again.
+    curriculum: bool = False
+    curriculum_turns: float = 1.0
+    curriculum_factor: float = 1.5
+    curriculum_max_torque: float = 0.2       # N m
+    curriculum_window: int = 0
 
 
 @configclass
