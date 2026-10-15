@@ -30,7 +30,8 @@ class PenRepose:
         self.env = env
         self.cfg = env.cfg.pen_repose
         # Every goal clear of the table: the lowest centre in the box minus the farthest the pen reaches below its
-        # centre in ANY orientation (half its space diagonal for a box, half-length + radius for a capsule).
+        # centre in ANY orientation (half its space diagonal for a box; half its overall length, caps included, for a
+        # capsule).
         p = env.cfg.pen
         reach = (math.sqrt((p.length / 2) ** 2 + 2 * (p.diameter / 2) ** 2) if p.shape == "box"
                  else p.length / 2)
