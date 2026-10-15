@@ -1,8 +1,11 @@
-"""Prototype of the twist-apart pen task, live in viser: a hand on the dummy wrist and the twist pen (barrel + cap on a
-friction joint about the long axis, isaacsimenvs/inhand_olympics/twist_pen.py) floating at the palm, gravity off.
-Drive every joint with a slider and try to twist the cap against the barrel; the page shows the twist angle.
+"""The twist pen live in viser: a hand on the dummy wrist and the twist pen (barrel + cap on a friction joint about the
+long axis, isaacsimenvs/inhand_olympics/twist_pen.py). Drive every joint with a slider and try to twist the cap; the
+page shows the twist angle.
 
-    .venv_isaacsim/bin/python experiments/15oct_pen_twist/viser_twist_play.py [--port 8095] [--hand <spec>]
+  --level 1 (default)  the pen_twist task: the pen upright on the table, cap up, its barrel fixed; gravity on
+  --level 2            the pen floating at the palm, gravity off, nothing holding the barrel (the panels below)
+
+    .venv_isaacsim/bin/python experiments/15oct_pen_twist/viser_twist_play.py [--level 1] [--port 8095] [--hand <spec>]
 
 Panels:
   pen      place the pen at the palm (its axis across the palm, along the fingers, or out of the palm; how far out;
@@ -78,10 +81,13 @@ def _loop(args, conn) -> None:
     from isaacsimenvs.inhand_olympics.twist_pen import link_extents
     from isaacsimenvs.inhand_olympics.wrist import palm_frame
 
+    level1 = args.level == 1
     cfg = InHandOlympicsEnvCfg()
     cfg.hand.robot_spec = args.hand
     cfg.scene.num_envs = 1
-    cfg.task.names = ("pen_spin",)                 # no pushes, not carried: the task only places the pen at reset
+    # Level 1: pen_twist places the pen upright with its barrel fixed. Level 2: pen_spin only places it at reset (no
+    # pushes, not carried), then the worker moves it to the palm.
+    cfg.task.names = ("pen_twist",) if level1 else ("pen_spin",)
     cfg.goal.seconds_per_goal = 1e6
     cfg.goal.max_successes = 10 ** 6
     cfg.termination.max_goal_distance = 0.0        # no "away": the pen lives at the palm here, not near a goal
@@ -90,7 +96,8 @@ def _loop(args, conn) -> None:
     cfg.reset.finger_vel = 0.0
     cfg.pen.shape = args.pen_shape
     cfg.pen.twist = True
-    cfg.pen.gravity = False
+    cfg.pen.twist_fixed_barrel = level1
+    cfg.pen.gravity = level1
     cfg.pen.twist_friction_torque = args.friction
     env = InHandOlympicsEnv(cfg)
     env.reset()
@@ -103,7 +110,7 @@ def _loop(args, conn) -> None:
                "lower": env.joint_lower[0].tolist(), "upper": env.joint_upper[0].tolist(),
                "default": env.robot.data.default_joint_pos[0].tolist(), "base_pos": [0.0, 0.0, cfg.table.top_height],
                "table_size": list(cfg.table.size), "table_top": cfg.table.top_height,
-               "pen": {"length": p.length, "diameter": p.diameter, "shape": p.shape,
+               "level": args.level, "pen": {"length": p.length, "diameter": p.diameter, "shape": p.shape,
                        "links": link_extents(p.length, p.cap_length, 0.001)}, "friction": p.twist_friction_torque})
 
     def palm_axes():
@@ -123,15 +130,16 @@ def _loop(args, conn) -> None:
         w, xx, yy, zz = np.roll(Rotation.from_matrix(R).as_quat(), 1)
         env.place_pen(ids, torch.tensor([centre], dtype=torch.float32, device=dev),
                       torch.tensor([[w, xx, yy, zz]], dtype=torch.float32, device=dev))
-        tether.update(on=True, pos=centre, quat=np.array([w, xx, yy, zz]))
+        tether.update(on=not level1, pos=centre, quat=np.array([w, xx, yy, zz]))
         twist.update(turned=0.0, prev=0.0)
 
     targets = env.robot.data.default_joint_pos.clone()
     test = {"until": 0.0, "torque": 0.0}
-    tether = {"on": True, "pos": None, "quat": None}
+    tether = {"on": False, "pos": None, "quat": None}         # on once the pen is placed (level 2)
     twist = {"turned": 0.0, "prev": 0.0}                # PhysX wraps the joint angle to +-pi: accumulate the change
     last_place = {"axis": AXES[0], "out": 0.04, "side": 0.0, "along": 0.04}
-    place(last_place)
+    if not level1:
+        place(last_place)
     t_next = time.time()
     while True:
         while conn.poll():
@@ -145,8 +153,10 @@ def _loop(args, conn) -> None:
             elif c == "reset":
                 env.reset()
                 targets = env.robot.data.default_joint_pos.clone()
-                place(last_place)
-            elif c == "place":
+                twist.update(turned=0.0, prev=0.0)
+                if not level1:
+                    place(last_place)
+            elif c == "place" and not level1:
                 last_place = m
                 place(m)
             elif c == "friction":
@@ -203,7 +213,7 @@ class Sim:
     def __init__(self, listener, authkey: bytes, hand: str, pen_shape: str, friction: float):
         host, port = listener.address
         self.proc = subprocess.Popen(
-            [sys.executable, __file__, "--worker", "--hand", hand, "--pen-shape", pen_shape, "--friction",
+            [sys.executable, __file__, "--worker", "--level", str(ARGS.level), "--hand", hand, "--pen-shape", pen_shape, "--friction",
              str(friction), "--host", host, "--wport", str(port), "--authkey", authkey.hex()],
             cwd=REPO, env={**os.environ, "OMNI_KIT_ACCEPT_EULA": "YES"})
         self.conn = None
@@ -268,13 +278,16 @@ def main() -> None:
         g_hand = server.gui.add_dropdown("hand", tuple(hs), initial_value=first)
         b_load = server.gui.add_button("load (restarts the sim, about a minute)")
     md = server.gui.add_markdown("")
-    with server.gui.add_folder("pen"):
+    level1 = ARGS.level == 1
+    with server.gui.add_folder("pen") as f_pen:
         g_axis = server.gui.add_dropdown("pen axis", AXES, initial_value=AXES[0])
         g_out = server.gui.add_slider("out from the palm (cm)", 0.0, 15.0, 0.1, 4.0)
         g_along = server.gui.add_slider("toward the fingertips (cm)", -5.0, 15.0, 0.1, 4.0)
         g_side = server.gui.add_slider("sideways (cm)", -8.0, 8.0, 0.1, 0.0)
         b_place = server.gui.add_button("place the pen at the palm (at rest, untwisted, tethered)")
         g_tether = server.gui.add_checkbox("tether the barrel (a soft spring to its placed pose)", True)
+        for h in (g_axis, g_out, g_along, g_side, b_place, g_tether):
+            h.visible = not level1                 # level 1: the task stands the pen up; nothing to place
         g_fric = server.gui.add_slider("cap friction torque (N m)", 0.0, 0.1, 0.001, ARGS.friction)
         g_tq = server.gui.add_slider("twist test torque (N m)", 0.0, 0.1, 0.001, 0.02)
         b_test = server.gui.add_button("twist test: opposite torques on cap and barrel for 1 s")
@@ -403,7 +416,7 @@ def main() -> None:
             md.content = (f"**cap twist {math.degrees(tw):+.0f}°** ({tw / (2 * math.pi):+.2f} turns) · "
                           f"{math.degrees(frame['twist_vel']):+.0f}°/s"
                           f"{' · **twist test on**' if frame['testing'] else ''}"
-                          f"{' · tethered' if frame['tether'] else ' · **free**'}  \n"
+                          f"{'' if level1 else (' · tethered' if frame['tether'] else ' · **free**')}  \n"
                           f"pen centre {frame['palm_dist'] * 100:.1f} cm from the palm · worst |q - target| "
                           f"{frame['err']:.3f}"
                           + (f"  \nepisode ended: {', '.join(frame['ended'])}" if frame["ended"] else ""))
@@ -417,6 +430,7 @@ def main() -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8095)
+    ap.add_argument("--level", type=int, default=1, choices=(1, 2))
     ap.add_argument("--hand", default="wuji2_left_uniform_handonly")
     ap.add_argument("--pen-shape", default="box", choices=("box",))
     ap.add_argument("--friction", type=float, default=0.01, help="the cap's friction torque at start (N m)")

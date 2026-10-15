@@ -185,7 +185,8 @@ def _twist_pen(env, cfg, layer, pen_init: dict) -> None:
                                       static_friction=pen.friction, dynamic_friction=pen.friction)
         author_twist_pen(layer, "/World/envs/env_0/Pen", length=pen.length, diameter=pen.diameter,
                          cap_length=pen.cap_length, mass=pen.mass, friction=pen.friction, shape=pen.shape,
-                         material_path=mat, damping=pen.twist_damping, friction_torque=pen.twist_friction_torque)
+                         material_path=mat, damping=pen.twist_damping, friction_torque=pen.twist_friction_torque,
+                         fixed_barrel=pen.twist_fixed_barrel)
         if not pen.gravity:
             _float(layer, [f"/World/envs/env_0/Pen/{n}" for n in LINKS])
     env.pen = Articulation(ArticulationCfg(

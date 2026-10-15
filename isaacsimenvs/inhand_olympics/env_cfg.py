@@ -145,6 +145,7 @@ class PenCfg:
     twist_friction_torque: float = 0.01      # N m
     twist_damping: float = 10.0              # N m s/rad: below the friction torque the cap creeps at torque/damping
     gravity: bool = True                     # False: the pen floats (the twist prototype starts it at the palm)
+    twist_fixed_barrel: bool = False         # the barrel fixed where the task puts it; only the cap moves (pen_twist)
 
 
 @configclass
@@ -228,6 +229,15 @@ class PenReposeCfg:
     # Each goal after the first: "walk" (the previous goal moved by step_pos / step_deg) or "uniform" (a fresh pose
     # from the whole goal space, as the random first goal is: uniform orientation, centre uniform in its bounds).
     goal_sampling: str = "walk"
+
+
+@configclass
+class PenTwistCfg:
+    """Twist the cap off the pen (tasks/pen_twist.py; needs pen.twist). Level 1: the pen stands upright on the table,
+    cap up, its barrel fixed (pen.twist_fixed_barrel), and the hand twists the cap."""
+
+    centre_xy: tuple[float, float] = (0.0, 0.0)
+    lift: float = 0.001                      # m: the barrel's bottom this far above the table top
 
 
 @configclass
@@ -344,6 +354,7 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     pen_spin_air: PenSpinAirCfg = PenSpinAirCfg()
     pen_flip_air: PenFlipAirCfg = PenFlipAirCfg()
     pen_repose: PenReposeCfg = PenReposeCfg()
+    pen_twist: PenTwistCfg = PenTwistCfg()
     perturb: PerturbCfg = PerturbCfg()
     goal: GoalCfg = GoalCfg()
     reward: RewardCfg = RewardCfg()

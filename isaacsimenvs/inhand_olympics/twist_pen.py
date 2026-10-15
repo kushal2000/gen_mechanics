@@ -6,6 +6,7 @@ One articulation, authored straight into a layer as scene.py authors the rigid p
     <path>/barrel         the root link: x from -length/2 to length/2 - cap_length - gap
     <path>/cap            x from length/2 - cap_length to length/2
     <path>/twist          revolute about x, barrel -> cap, no limits
+    <path>/barrel_to_world  (fixed_barrel only) a fixed joint holding the barrel in place
 
 Both links' frames sit at the pen's centre (each shape and centre of mass offset along x), so the articulation's root
 pose is the pen's centre and orientation, as the rigid pen's root pose is, and the joint angle is the cap's twist
@@ -25,6 +26,7 @@ from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
 
 LINKS = ("barrel", "cap")
 JOINT = "twist"
+FIXED = "barrel_to_world"
 
 
 def link_extents(length: float, cap_length: float, gap: float) -> dict[str, tuple[float, float]]:
@@ -35,10 +37,12 @@ def link_extents(length: float, cap_length: float, gap: float) -> dict[str, tupl
 
 def author_twist_pen(layer, path: str, *, length: float, diameter: float, cap_length: float, mass: float,
                      friction: float, shape: str = "box", gap: float = 0.001, material_path: str | None = None,
-                     damping: float = 10.0, friction_torque: float = 0.02) -> None:
+                     damping: float = 10.0, friction_torque: float = 0.02, fixed_barrel: bool = False) -> None:
     """Author the two-link pen at ``path`` (an Xform made here). ``shape`` box or capsule (a capsule's caps make the
     two links rounded at the pen's ends and at the split). damping (N m s/rad) and friction_torque (N m) are the
-    authored drive; the env's actuator cfg sets them again at runtime."""
+    authored drive; the env's actuator cfg sets them again at runtime. ``fixed_barrel``: a fixed joint from the world
+    to the barrel, so the barrel stays where the env puts it (a fixed-base articulation, as Isaac Lab fixes a root
+    link: the articulation root on the parent, a world joint to the root link) and only the cap moves."""
     from pxr import Gf, Sdf
 
     if material_path is None:
@@ -85,6 +89,12 @@ def author_twist_pen(layer, path: str, *, length: float, diameter: float, cap_le
     attr(joint, "drive:angular:physics:damping", Sdf.ValueTypeNames.Float, float(damping) * math.pi / 180)
     attr(joint, "drive:angular:physics:maxForce", Sdf.ValueTypeNames.Float, float(friction_torque))
     attr(joint, "drive:angular:physics:targetVelocity", Sdf.ValueTypeNames.Float, 0.0)
+    if fixed_barrel:
+        base = define(layer, f"{path}/{FIXED}", "PhysicsFixedJoint")
+        rel(base, "physics:body1", f"{path}/barrel")
+        for k in ("0", "1"):
+            attr(base, f"physics:localPos{k}", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(0.0, 0.0, 0.0))
+            attr(base, f"physics:localRot{k}", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, 0.0, 0.0, 0.0))
 
 
 __all__ = ["JOINT", "LINKS", "author_twist_pen", "link_extents"]
