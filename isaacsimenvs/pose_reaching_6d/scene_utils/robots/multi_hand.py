@@ -156,11 +156,11 @@ def hand_labels(specs) -> tuple[str, ...]:
 
 @functools.lru_cache(maxsize=None)
 def hand_set(ref: str) -> HandSet:
-    from . import REGISTRY                       # the per-hand specs, by name
-    missing = [n for n in spec_names(ref) if n not in REGISTRY]
+    from . import REGISTRY, _spec_from_file      # the per-hand specs, by name or by spec-JSON path
+    missing = [n for n in spec_names(ref) if n not in REGISTRY and not n.endswith(".spec.json")]
     if missing:
         raise KeyError(f"{ref!r}: unknown robot specs {missing}")
-    specs = tuple(REGISTRY[n] for n in spec_names(ref))
+    specs = tuple(REGISTRY[n] if n in REGISTRY else _spec_from_file(n) for n in spec_names(ref))
     for s in specs:
         if s.num_arm_joints:
             raise ValueError(f"{ref!r}: {s.name} has an arm; a multi-hand scene is hand-only")

@@ -138,7 +138,10 @@ def setup_scene(env) -> None:
     else:
         _rigid_pen(env, cfg, layer, pen_init, handle, density)
     spawn_ground_plane("/World/ground", GroundPlaneCfg())
-    env.scene.clone_environments(copy_from_source=False)
+    # A multi-hand scene clones by COPY: inheriting clones (copy_from_source=False) compose env_0's own hand
+    # reference into every env, and an inherited opinion beats an env's own reference, so every env got env_0's hand
+    # merged over its own (found 15 Oct: in a 6-primitive-hand scene every env had hand 0's finger bearings).
+    env.scene.clone_environments(copy_from_source=multi)
     if multi:
         with Sdf.ChangeBlock():
             for env_path in env.scene.env_prim_paths:
