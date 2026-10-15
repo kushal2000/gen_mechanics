@@ -217,6 +217,9 @@ class PenReposeCfg:
     max_height: float = 0.12                 # m: the goal centre's ceiling above the pen's resting height
     step_pos: float = 0.05                   # m, at most
     step_deg: tuple[float, float] = (15.0, 30.0)
+    # Each goal after the first: "walk" (the previous goal moved by step_pos / step_deg) or "uniform" (a fresh pose
+    # from the whole goal space, as the random first goal is: uniform orientation, centre uniform in its bounds).
+    goal_sampling: str = "walk"
 
 
 @configclass
