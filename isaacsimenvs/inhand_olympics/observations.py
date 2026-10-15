@@ -40,6 +40,8 @@ def field_sizes(n_joints: int, n_hand: int, n_tips: int, n_tasks: int) -> dict[s
         "palm_keypoints": 12, "palm_extents": 3,
         "ee_pos": 3, "ee_rot": 4, "ee_vel": 6,
         "object_rot": 4, "object_vel": 6,
+        # The twist pen's two objects and their goals: position (env frame) + quaternion (xyzw).
+        "pen_pose": 7, "cap_pose": 7, "pen_goal_pose": 7, "cap_goal_pose": 7,
         "keypoints_rel_ee": 12, "keypoints_rel_goal": 12, "keypoints_rel_palm": 12,
         "fingertip_pos_rel_palm": 3 * n_tips,
         "closest_keypoint_max_dist": 1, "closest_fingertip_dist": n_tips,
@@ -68,6 +70,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     ones = torch.ones(env.num_envs, 1, device=env.device)
 
     pen_pos, pen_quat = env.pen_pose()
+    barrel_pos, barrel_quat, cap_pos, cap_quat = env.pen_part_poses()
     kp = keypoints(pen_pos, pen_quat, env.pen_offsets)
     kp_goal = keypoints(env.goal_pos, env.goal_quat, env.pen_offsets)
     bbox, joint_origins, valid = _joint_link_geometry_obs(env, centre_w, palm_rot, origins, ones)
@@ -88,6 +91,11 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "ee_pos": ee_pos, "ee_rot": convert_quat(palm_rot, to="xyzw"), "ee_vel": palm_vel,
         "object_rot": convert_quat(pen_quat, to="xyzw"),
         "object_vel": torch.cat([env.pen.data.root_lin_vel_w, env.pen.data.root_ang_vel_w], dim=-1),
+        "pen_pose": torch.cat([barrel_pos, convert_quat(barrel_quat, to="xyzw")], dim=-1),
+        "cap_pose": torch.cat([cap_pos, convert_quat(cap_quat, to="xyzw")], dim=-1),
+        "pen_goal_pose": torch.cat([env.goal_pos, convert_quat(env.goal_quat, to="xyzw")], dim=-1),
+        "cap_goal_pose": (torch.cat([env.cap_goal_pos, convert_quat(env.cap_goal_quat, to="xyzw")], dim=-1)
+                          if env.two_part else torch.zeros(env.num_envs, 7, device=env.device)),
         "keypoints_rel_ee": _rotate_into(palm_rot, kp - ee_pos.unsqueeze(1)),
         "keypoints_rel_goal": kp - kp_goal,
         "keypoints_rel_palm": kp - ee_pos.unsqueeze(1),

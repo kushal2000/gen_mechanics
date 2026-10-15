@@ -101,6 +101,21 @@ class InHandOlympicsEnv(DirectRLEnv):
             self.tip_offsets = torch.tensor(spec.fingertip_offsets, device=dev).expand(n, -1, -1)
             self.tip_valid = torch.ones(n, len(self.tip_bodies), device=dev)
         self.pen_offsets = pen_keypoint_offsets(self.cfg.pen.length, dev)
+        # The twist pen: two objects, each with a 6D goal -- the pen (its barrel's frame: goal_pos / goal_quat) and
+        # the cap (cap_goal_pos / cap_goal_quat). Keypoints, for the reward and success only: the pen's and the cap's
+        # each fix its whole 6D pose (twist_pen.*_keypoint_offsets); the goal distance is the worse of the two.
+        self.two_part = bool(self.cfg.pen.twist)
+        if self.two_part:
+            from .twist_pen import barrel_keypoint_offsets, cap_keypoint_offsets, link_extents
+            p = self.cfg.pen
+            a, b = link_extents(p.length, p.cap_length, 0.001)["cap"]
+            self.barrel_body, self.cap_body = self.pen.body_names.index("barrel"), self.pen.body_names.index("cap")
+            self.cap_centre = torch.tensor([(a + b) / 2, 0.0, 0.0], device=dev)   # in the cap's frame
+            self.pen_offsets = barrel_keypoint_offsets(p.length, p.cap_length, p.twist_keypoint_radius, dev)
+            self.cap_offsets = cap_keypoint_offsets(p.twist_keypoint_radius, b - a, dev)
+            self.cap_goal_pos = torch.zeros(n, 3, device=dev)
+            self.cap_goal_quat = torch.zeros(n, 4, device=dev)
+            self.cap_goal_quat[:, 0] = 1.0
         self.pen_rest_height = self.cfg.table.top_height + self.cfg.pen.diameter / 2   # centre, lying on the table
         self._init_hand_geometry(spec)
 
@@ -156,6 +171,13 @@ class InHandOlympicsEnv(DirectRLEnv):
     def _setup_scene(self) -> None:
         setup_scene(self)
         spec, o = self.robot_spec, self.cfg.obs
+        if self.cfg.pen.twist:
+            # The twist pen: the actor and critic see the 6D pose of the pen and of the cap and of their goals, and no
+            # keypoints (those are the reward's and success's only).
+            new = ("pen_pose", "cap_pose", "pen_goal_pose", "cap_goal_pose")
+            for name in ("obs_list", "state_list"):
+                fields = tuple(f for f in getattr(o, name) if "keypoint" not in f)
+                setattr(o, name, fields + tuple(f for f in new if f not in fields))
         sizes = field_sizes(self.cfg.action_space, spec.num_hand_joints, spec.num_fingertips, NUM_TASK_SLOTS)
         self.cfg.observation_space = width(o.obs_list, sizes)
         self.cfg.state_space = width(o.state_list, sizes)
@@ -301,8 +323,25 @@ class InHandOlympicsEnv(DirectRLEnv):
 
     # --- state ------------------------------------------------------------------------------------------------
     def pen_pose(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """The pen's position (env frame) and orientation (wxyz)."""
+        """The pen's position (env frame) and orientation (wxyz): the twist pen's barrel frame (the pen's centre)."""
         return self.pen.data.root_pos_w - self.scene.env_origins, self.pen.data.root_quat_w
+
+    def pen_part_poses(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """The pen's pose (the barrel's frame: the pen's centre and orientation) and the cap's (its centre), env
+        frame, wxyz. The one-piece pen: its pose for both."""
+        o = self.scene.env_origins
+        if not self.cfg.pen.twist:
+            pos, quat = self.pen.data.root_pos_w - o, self.pen.data.root_quat_w
+            return pos, quat, pos, quat
+        b, c = self.barrel_body, self.cap_body
+        q = self.pen.data.body_quat_w[:, c]
+        cap = self.pen.data.body_pos_w[:, c] + quat_apply(q, self.cap_centre.expand(self.num_envs, 3))
+        return self.pen.data.body_pos_w[:, b] - o, self.pen.data.body_quat_w[:, b], cap - o, q
+
+    def set_cap_goal(self, ids: torch.Tensor, pos: torch.Tensor, quat: torch.Tensor) -> None:
+        """The twist pen's cap goal: its centre (env frame) and orientation (wxyz)."""
+        self.cap_goal_pos[ids] = pos
+        self.cap_goal_quat[ids] = quat
 
     def pen_twist(self) -> torch.Tensor:
         """(N,) the twist pen's cap angle relative to its barrel (rad; PhysX wraps it to +-pi, so integrate joint_vel for turns); zeros for the one-piece pen."""
@@ -332,12 +371,22 @@ class InHandOlympicsEnv(DirectRLEnv):
         pos, quat = self.pen_pose()
         kp = keypoints(pos, quat, self.pen_offsets)
         kp_goal = keypoints(self.goal_pos, self.goal_quat, self.pen_offsets)
-        return (kp - kp_goal).norm(dim=-1).amax(dim=-1)
+        d = (kp - kp_goal).norm(dim=-1).amax(dim=-1)
+        if self.two_part:
+            _, _, cap_pos, cap_quat = self.pen_part_poses()
+            kc = keypoints(cap_pos, cap_quat, self.cap_offsets)
+            kc_goal = keypoints(self.cap_goal_pos, self.cap_goal_quat, self.cap_offsets)
+            d = torch.maximum(d, (kc - kc_goal).norm(dim=-1).amax(dim=-1))
+        return d
 
     # --- RL hooks ---------------------------------------------------------------------------------------------
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self.goal_dist = self._goal_distance()
         near = self.goal_dist < self.goal_tolerance()
+        for k, task in enumerate(self.tasks):            # a task may veto a goal its pose alone can't settle
+            if hasattr(task, "gate"):
+                mine = self.task_id == k
+                near = torch.where(mine, task.gate(near), near)
         self.near_goal = near
         self.near_goal_steps = torch.where(near, self.near_goal_steps + 1, torch.zeros_like(self.near_goal_steps))
         self.is_success = self.near_goal_steps >= self.goal_steps()
@@ -361,7 +410,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         progress = (self.closest_goal_dist - d).clamp(min=0.0)
         self.closest_goal_dist = torch.minimum(self.closest_goal_dist, d)
 
-        pos, _ = self.pen_pose()
+        pos = self.pen_part_poses()[2] if self.two_part else self.pen_pose()[0]       # the twist pen: its cap
         tip = (self.fingertips() - pos.unsqueeze(1)).norm(dim=-1)                     # (N, F)
         self.closest_tip_dist = torch.where(torch.isnan(self.closest_tip_dist), tip, self.closest_tip_dist)
         # Over the env's real fingertips (a multi-hand scene's ghost tips read the palm).

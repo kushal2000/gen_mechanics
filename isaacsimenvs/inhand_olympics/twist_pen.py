@@ -97,4 +97,24 @@ def author_twist_pen(layer, path: str, *, length: float, diameter: float, cap_le
             attr(base, f"physics:localRot{k}", Sdf.ValueTypeNames.Quatf, Gf.Quatf(1.0, 0.0, 0.0, 0.0))
 
 
-__all__ = ["JOINT", "LINKS", "author_twist_pen", "link_extents"]
+def barrel_keypoint_offsets(length: float, cap_length: float, radius: float, device):
+    """(4, 3) keypoints fixing the pen's (barrel's) whole 6D pose, in its frame (the pen's centre, axis local x): the
+    barrel's two ends on the axis, and two points on a ring of ``radius`` around the centre, at 0 and 90 deg -- so
+    turning the barrel about its own axis counts too (the cap's goal is then a twist relative to it)."""
+    import torch
+    return torch.tensor([[-length / 2, 0.0, 0.0], [length / 2 - cap_length, 0.0, 0.0], [0.0, radius, 0.0],
+                         [0.0, 0.0, radius]], device=device)
+
+
+def cap_keypoint_offsets(radius: float, cap_length: float, device):
+    """(4, 3) keypoints fixing the cap's 6D pose, in the cap's frame about its centre (its axis local x): three on a
+    ring of ``radius`` around the axis, at 0, 90 and 180 deg (the last at half the radius), and its top. Off the
+    axis, so twisting moves them; no turn but a full one maps the set onto itself, so a quarter-turn goal is never
+    already reached. Twisted by d, the farthest moves 2 radius sin(d / 2): 1 cm at about 14 deg for a 4 cm ring."""
+    import torch
+    return torch.tensor([[0.0, radius, 0.0], [0.0, 0.0, radius], [0.0, -radius / 2, 0.0], [cap_length / 2, 0.0, 0.0]],
+                        device=device)
+
+
+__all__ = ["FIXED", "JOINT", "LINKS", "author_twist_pen", "barrel_keypoint_offsets", "cap_keypoint_offsets",
+           "link_extents"]

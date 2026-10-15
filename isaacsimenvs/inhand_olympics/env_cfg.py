@@ -146,6 +146,9 @@ class PenCfg:
     twist_damping: float = 10.0              # N m s/rad: below the friction torque the cap creeps at torque/damping
     gravity: bool = True                     # False: the pen floats (the twist prototype starts it at the palm)
     twist_fixed_barrel: bool = False         # the barrel fixed where the task puts it; only the cap moves (pen_twist)
+    # The keypoints (reward and success only) of the twist pen's barrel and cap sit on rings of this radius around
+    # the axis, so turns about it count: the 1 cm success tolerance is then about +-14 deg of twist.
+    twist_keypoint_radius: float = 0.04      # m
 
 
 @configclass
@@ -234,10 +237,13 @@ class PenReposeCfg:
 @configclass
 class PenTwistCfg:
     """Twist the cap off the pen (tasks/pen_twist.py; needs pen.twist). Level 1: the pen stands upright on the table,
-    cap up, its barrel fixed (pen.twist_fixed_barrel), and the hand twists the cap."""
+    cap up, its barrel fixed (pen.twist_fixed_barrel), and the hand twists the cap, a quarter turn per goal."""
 
     centre_xy: tuple[float, float] = (0.0, 0.0)
     lift: float = 0.001                      # m: the barrel's bottom this far above the table top
+    # Subgoals: the pen's goal is where it stands; the cap's is turned step_deg further than the last, in the
+    # unscrewing direction (counter-clockwise seen from above, as a bottle cap).
+    step_deg: float = 90.0
 
 
 @configclass
