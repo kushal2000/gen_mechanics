@@ -35,6 +35,18 @@ wandb project **`gen_mechanics_pen_twist`**; logs in `debug_outputs/train_logs/1
 |---|---|---|---|
 | 1 | Wuji full | MLP, SAPG defaults, seed 100, 5,000 epochs, `RUN_TAG=lvl1` | 293321 |
 | 1 | Wuji full | the same, plus the tightness curriculum (`env.pen_twist.curriculum=True`), `RUN_TAG=lvl1_cur` | 295202 |
+| 1 | Wuji full | the curriculum from 0.1 to 1.0 N·m (`env.pen.twist_friction_torque=0.1 env.pen_twist.curriculum_max_torque=1.0`), `RUN_TAG=lvl1_cur01to1` | 296479 |
+
+## Early result
+
+`viser_twist_policy.py --check 293321` on the epoch-400 checkpoint, 64 envs for 30 s:
+
+| Cap friction | Turns per episode (of 12.5) | Episodes reaching ≥ 1 turn |
+|---|---|---|
+| 0.01 N·m | 11.65 | 100% |
+| 0.05 N·m | 12.33 | 99% |
+
+Level 1 at 0.01 N·m is solved early, which is why the curriculum run 296479 starts at 0.1 N·m and goes up to 1 N·m.
 
 ## Background
 
