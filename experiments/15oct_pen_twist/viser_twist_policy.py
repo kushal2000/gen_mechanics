@@ -339,7 +339,7 @@ def main(args) -> None:
         g_envs = server.gui.add_number("envs (for the statistics)", args.envs, min=1, max=4096, step=1)
         b_load = server.gui.add_button("load (a new run restarts the sim, about a minute)")
     with server.gui.add_folder("cap"):
-        g_torque = server.gui.add_slider("friction torque (N m)", 0.001, 0.25, 0.001, args.torque or 0.01)
+        g_torque = server.gui.add_slider("friction torque (N m)", 0.001, 1.5, 0.001, args.torque or 0.01)
         md_torque = server.gui.add_markdown("")
     with server.gui.add_folder("play"):
         b_run = server.gui.add_button("pause / run")
