@@ -137,6 +137,14 @@ class PenCfg:
     # world +x. Each task places the pen at reset itself; this is only where it is built.
     init_xy: tuple[float, float] = (0.0, 0.0)
     init_yaw: float = 0.0                    # rad
+    # The twist-apart pen (twist_pen.py): the pen split into a barrel and a cap on a revolute joint about its long
+    # axis, one articulation instead of a rigid body. The cap resists turning like a friction fit up to
+    # twist_friction_torque (a damped drive, its effort capped there). Off: the one-piece pen.
+    twist: bool = False
+    cap_length: float = 0.03                 # m, the +x end
+    twist_friction_torque: float = 0.01      # N m
+    twist_damping: float = 10.0              # N m s/rad: below the friction torque the cap creeps at torque/damping
+    gravity: bool = True                     # False: the pen floats (the twist prototype starts it at the palm)
 
 
 @configclass

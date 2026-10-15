@@ -131,6 +131,74 @@ def setup_scene(env) -> None:
         raise ValueError(f"pen.shape must be 'capsule' or 'box', got {pen.shape!r}")
     density = pen.mass / compute_mass_and_inertia(handle, 1.0)[0]
     layer = get_current_stage().GetRootLayer()
+    pen_init = dict(pos=(pen.init_xy[0], pen.init_xy[1], top + pen.diameter / 2),
+                    rot=(math.cos(pen.init_yaw / 2), 0.0, 0.0, math.sin(pen.init_yaw / 2)))
+    if pen.twist:
+        _twist_pen(env, cfg, layer, pen_init)
+    else:
+        _rigid_pen(env, cfg, layer, pen_init, handle, density)
+    spawn_ground_plane("/World/ground", GroundPlaneCfg())
+    env.scene.clone_environments(copy_from_source=False)
+    if multi:
+        with Sdf.ChangeBlock():
+            for env_path in env.scene.env_prim_paths:
+                h = int(hand_of_env[int(env_path.rsplit("_", 1)[1])])
+                _, usd, root_path = hands[h]
+                prim = define(layer, f"{env_path}/Robot", "Xform")
+                prim.referenceList.explicitItems.append(Sdf.Reference(usd, Sdf.Path(root_path)))
+                set_xform(layer.GetPrimAtPath(f"{env_path}/Robot"), (0.0, 0.0, float(top)))
+        from .multi_hand import OlympicsMultiHand
+        arts = [Articulation(_robot_cfg(s, cfg, _block_regex(np.nonzero(hand_of_env == h)[0]), None))
+                for h, s in enumerate(hs.specs)]
+        env.robot = OlympicsMultiHand(hs, arts, torch.as_tensor(hand_of_env), env.device)
+        counts = {s.name: int((hand_of_env == h).sum()) for h, s in enumerate(hs.specs)}
+        print(f"[olympics] hands dealt round-robin: {counts}", flush=True)
+    env.scene.filter_collisions(global_prim_paths=["/World/ground"])
+    env.scene.articulations["robot"] = env.robot
+    env.scene.rigid_objects["table"] = env.table
+    if cfg.pen.twist:
+        env.scene.articulations["pen"] = env.pen
+    else:
+        env.scene.rigid_objects["pen"] = env.pen
+    sim_utils.DomeLightCfg(intensity=2000.0).func("/World/Light", sim_utils.DomeLightCfg(intensity=2000.0))
+
+    env.robot_spec = spec                      # a multi-hand scene: the padded template (hs.template)
+    env.hand_set = hs
+    env.hand_of_env = torch.as_tensor(hand_of_env, device=env.device)
+    env.wrist_urdf_path = urdf                 # env 0's hand (the pose viewer's)
+    env.hand_urdf_paths = [h[0] for h in hands] if multi else [urdf]   # per hand, env i's is [hand_of_env[i]]
+
+
+def _float(layer, bodies: list[str]) -> None:
+    """Gravity off on these bodies (PenCfg.gravity False)."""
+    for b in bodies:
+        attr(layer.GetPrimAtPath(b), "physxRigidBody:disableGravity", Sdf.ValueTypeNames.Bool, True)
+
+
+def _twist_pen(env, cfg, layer, pen_init: dict) -> None:
+    """The twist-apart pen (twist_pen.py): barrel and cap on a revolute joint, one articulation, into env_0
+    (clone_environments copies it)."""
+    from .twist_pen import JOINT, LINKS, author_twist_pen
+    pen = cfg.pen
+    with Sdf.ChangeBlock():
+        mat = author_physics_material(layer, "/World/PhysicsMaterials/pen",
+                                      static_friction=pen.friction, dynamic_friction=pen.friction)
+        author_twist_pen(layer, "/World/envs/env_0/Pen", length=pen.length, diameter=pen.diameter,
+                         cap_length=pen.cap_length, mass=pen.mass, friction=pen.friction, shape=pen.shape,
+                         material_path=mat, damping=pen.twist_damping, friction_torque=pen.twist_friction_torque)
+        if not pen.gravity:
+            _float(layer, [f"/World/envs/env_0/Pen/{n}" for n in LINKS])
+    env.pen = Articulation(ArticulationCfg(
+        prim_path=PEN_PATH, spawn=None,
+        init_state=ArticulationCfg.InitialStateCfg(**pen_init, joint_pos={JOINT: 0.0}, joint_vel={JOINT: 0.0}),
+        actuators={"twist": ImplicitActuatorCfg(joint_names_expr=[JOINT], stiffness=0.0, damping=pen.twist_damping,
+                                                effort_limit_sim=pen.twist_friction_torque)},
+    ))
+
+
+def _rigid_pen(env, cfg, layer, pen_init: dict, handle, density) -> None:
+    """The one-piece pen, into env_0 (clone_environments copies it)."""
+    pen = cfg.pen
     with Sdf.ChangeBlock():
         mat = author_physics_material(layer, "/World/PhysicsMaterials/pen",
                                       static_friction=pen.friction, dynamic_friction=pen.friction)
@@ -151,36 +219,7 @@ def setup_scene(env) -> None:
             for name in ("torsionalPatchRadius", "minTorsionalPatchRadius"):
                 _set(f"{body}/collisions/mesh_0/{'box' if pen.shape == 'box' else 'capsule'}",
                      f"physxCollision:{name}", float(pen.torsional_patch_radius))
-    env.pen = RigidObject(RigidObjectCfg(
-        prim_path=PEN_PATH, spawn=None,
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(pen.init_xy[0], pen.init_xy[1], top + pen.diameter / 2),
-            rot=(math.cos(pen.init_yaw / 2), 0.0, 0.0, math.sin(pen.init_yaw / 2))),
-    ))
-    spawn_ground_plane("/World/ground", GroundPlaneCfg())
-    env.scene.clone_environments(copy_from_source=False)
-    if multi:
-        with Sdf.ChangeBlock():
-            for env_path in env.scene.env_prim_paths:
-                h = int(hand_of_env[int(env_path.rsplit("_", 1)[1])])
-                _, usd, root_path = hands[h]
-                prim = define(layer, f"{env_path}/Robot", "Xform")
-                prim.referenceList.explicitItems.append(Sdf.Reference(usd, Sdf.Path(root_path)))
-                set_xform(layer.GetPrimAtPath(f"{env_path}/Robot"), (0.0, 0.0, float(top)))
-        from .multi_hand import OlympicsMultiHand
-        arts = [Articulation(_robot_cfg(s, cfg, _block_regex(np.nonzero(hand_of_env == h)[0]), None))
-                for h, s in enumerate(hs.specs)]
-        env.robot = OlympicsMultiHand(hs, arts, torch.as_tensor(hand_of_env), env.device)
-        counts = {s.name: int((hand_of_env == h).sum()) for h, s in enumerate(hs.specs)}
-        print(f"[olympics] hands dealt round-robin: {counts}", flush=True)
-    env.scene.filter_collisions(global_prim_paths=["/World/ground"])
-    env.scene.articulations["robot"] = env.robot
-    env.scene.rigid_objects["table"] = env.table
-    env.scene.rigid_objects["pen"] = env.pen
-    sim_utils.DomeLightCfg(intensity=2000.0).func("/World/Light", sim_utils.DomeLightCfg(intensity=2000.0))
-
-    env.robot_spec = spec                      # a multi-hand scene: the padded template (hs.template)
-    env.hand_set = hs
-    env.hand_of_env = torch.as_tensor(hand_of_env, device=env.device)
-    env.wrist_urdf_path = urdf                 # env 0's hand (the pose viewer's)
-    env.hand_urdf_paths = [h[0] for h in hands] if multi else [urdf]   # per hand, env i's is [hand_of_env[i]]
+        if not pen.gravity:
+            _float(layer, [body])
+    env.pen = RigidObject(RigidObjectCfg(prim_path=PEN_PATH, spawn=None,
+                                         init_state=RigidObjectCfg.InitialStateCfg(**pen_init)))

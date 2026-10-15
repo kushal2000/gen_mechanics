@@ -209,6 +209,9 @@ class InHandOlympicsEnv(DirectRLEnv):
         pose = torch.cat([pos + self.scene.env_origins[ids], quat], dim=-1)
         self.pen.write_root_pose_to_sim(pose, ids)
         self.pen.write_root_velocity_to_sim(torch.zeros(len(ids), 6, device=self.device), ids)
+        if self.cfg.pen.twist:                                    # the cap back on, untwisted
+            zero = torch.zeros(len(ids), 1, device=self.device)
+            self.pen.write_joint_state_to_sim(zero, zero, env_ids=ids)
 
     def start_pen_yaw(self, n: int) -> torch.Tensor:
         """(n,) the pen's starting yaw (rad) for n resetting envs: uniform over +-pi, or reset.pen_yaw_deg."""
@@ -257,7 +260,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         p, dt, n = self.cfg.perturb, self.step_dt, self.num_envs
         self.pen_forces *= p.force_decay ** (dt / p.decay_interval) if p.force_decay > 0 else 0.0
         self.pen_torques *= p.torque_decay ** (dt / p.decay_interval) if p.torque_decay > 0 else 0.0
-        mass = self.pen.data.default_mass.to(self.device).view(n, 1, 1)
+        mass = self.pen.data.default_mass.to(self.device).sum(-1).view(n, 1, 1)   # the twist pen: both links
         f_new = torch.randn(n, 1, 3, device=self.device) * mass * p.force_scale
         t_new = torch.randn(n, 1, 3, device=self.device) * mass * p.torque_scale
         fire_f = (torch.rand(n, device=self.device) < self.force_prob).view(n, 1, 1)
@@ -271,7 +274,8 @@ class InHandOlympicsEnv(DirectRLEnv):
         a = active.float().view(n, 1, 1)
         self.pen_forces *= a
         self.pen_torques *= a
-        self.pen.set_external_force_and_torque(forces=self.pen_forces, torques=self.pen_torques, is_global=True)
+        self.pen.set_external_force_and_torque(forces=self.pen_forces, torques=self.pen_torques, is_global=True,
+                                               body_ids=[0] if self.cfg.pen.twist else None)   # twist: the barrel
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         if bool(self.task_perturbed.any()):
@@ -299,6 +303,12 @@ class InHandOlympicsEnv(DirectRLEnv):
     def pen_pose(self) -> tuple[torch.Tensor, torch.Tensor]:
         """The pen's position (env frame) and orientation (wxyz)."""
         return self.pen.data.root_pos_w - self.scene.env_origins, self.pen.data.root_quat_w
+
+    def pen_twist(self) -> torch.Tensor:
+        """(N,) the twist pen's cap angle relative to its barrel (rad; PhysX wraps it to +-pi, so integrate joint_vel for turns); zeros for the one-piece pen."""
+        if not self.cfg.pen.twist:
+            return torch.zeros(self.num_envs, device=self.device)
+        return self.pen.data.joint_pos[:, 0]
 
     def palm_pose(self) -> tuple[torch.Tensor, torch.Tensor]:
         return (self.robot.data.body_pos_w[:, self.palm_body] - self.scene.env_origins,
