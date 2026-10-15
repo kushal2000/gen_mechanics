@@ -380,11 +380,15 @@ def build_pose_viewer_html(
     github_raw_base: str | None = None,
     url_check: str = "skip",
     fps: float = 60.0,
+    extra_objects: list[tuple[str, str, float]] | None = None,
 ) -> str:
     """Build a self-contained-ish viewer HTML string from captured frames.
 
     Object and table URDFs are embedded. The robot URDF stays URL-backed because
     it references mesh files the browser must fetch.
+
+    ``extra_objects``: more embedded bodies, (name, urdf_text, opacity) each, posed by the frames' ``<name>_pose``
+    (drawn only when every frame has one).
 
     ``robot_urdf_relpath`` MUST match the robot the frames were captured from.
     It used to be hardcoded, so a run published the wrong hand's
@@ -459,6 +463,10 @@ def build_pose_viewer_html(
     if hole_urdf_text is not None and all("hole_pose" in frame for frame in frames):
         robots.insert(2, make_embedded_robot(name="hole", urdf_text=hole_urdf_text))
         object_poses["hole"] = np.stack([frame["hole_pose"] for frame in frames])
+    for name, urdf_text, opacity in extra_objects or ():
+        if all(f"{name}_pose" in frame for frame in frames):
+            robots.append(make_embedded_robot(name=name, urdf_text=urdf_text, opacity=opacity))
+            object_poses[name] = np.stack([frame[f"{name}_pose"] for frame in frames])
 
     return create_html(
         joint_names=frames[0]["robot_joint_names"],
@@ -578,6 +586,7 @@ class PoseViewerWrapper(gym.Wrapper):
             robot_urdf_text=self._robot_urdf_text,
             github_raw_base=self.github_raw_base,
             url_check=self.url_check,
+            extra_objects=getattr(self, "_extra_objects", None),
         )
         html_path.write_text(html_text, encoding="utf-8")
         print(f"[pose_viewer] wrote {len(frames)} frames to {html_path}", flush=True)

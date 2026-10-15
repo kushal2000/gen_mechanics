@@ -5,6 +5,8 @@ env's rollout, captured every ``capture_interval`` steps for ``capture_len`` ste
     object  the pen: a cylinder with spherical caps (or a box) along +x, its tip red
     goal    the same pen, translucent, at the goal pose
     table   the env's table box
+The twist pen (pen.twist): object and goal are its barrel, and two more bodies -- cap (red, a white stripe so its
+turning shows) and cap_goal (the same, translucent).
 
 train.py picks this class up from ``env.POSE_VIEWER`` in place of the PoseReach one.
 """
@@ -33,6 +35,18 @@ def _pen_urdf(length: float, diameter: float) -> str:
             f'<visual><origin rpy="0 1.5707963 0"/><geometry><cylinder radius="{r:g}" length="{h:g}"/></geometry>'
             f'<material name="body"><color rgba="0.15 0.35 0.8 1"/></material></visual>'
             f'{cap(h / 2, "0.86 0.16 0.16 1")}{cap(-h / 2, "0.15 0.35 0.8 1")}</link></robot>')
+
+
+def _twist_part_urdf(name: str, x0: float, x1: float, diameter: float, rgba: str, stripe: bool) -> str:
+    """One part of the twist pen as a box from x0 to x1 along +x (its frame at the pen's centre, as the sim's link
+    frames are), optionally a white stripe along one face."""
+    mid, ln, d = (x0 + x1) / 2, x1 - x0, diameter
+    body = (f'<visual><origin xyz="{mid:g} 0 0"/><geometry><box size="{ln:g} {d:g} {d:g}"/></geometry>'
+            f'<material name="{name}"><color rgba="{rgba}"/></material></visual>')
+    if stripe:
+        body += (f'<visual><origin xyz="{mid:g} 0 {d / 2 + 0.04 * d:g}"/><geometry><box size="{ln:g} {0.25 * d:g} '
+                 f'{0.08 * d:g}"/></geometry><material name="{name}_stripe"><color rgba="1 1 1 1"/></material></visual>')
+    return f'<robot name="{name}"><link name="{name}">{body}</link></robot>'
 
 
 def _table_urdf(size) -> str:
@@ -82,6 +96,15 @@ class OlympicsPoseViewer(PoseViewerWrapper):
         cfg = inner.cfg
         pen_urdf = _pen_box_urdf if cfg.pen.shape == "box" else _pen_urdf
         self._object_urdf_text, self._object_urdf_path = pen_urdf(cfg.pen.length, cfg.pen.diameter), None
+        self._extra_objects = None
+        if cfg.pen.twist:
+            from .twist_pen import link_extents
+            ext = link_extents(cfg.pen.length, cfg.pen.cap_length, 0.001)
+            self._object_urdf_text = _twist_part_urdf("barrel", *ext["barrel"], cfg.pen.diameter, "0.15 0.35 0.8 1",
+                                                      stripe=True)
+            # The cap's frame is the pen's centre too: drawn at the cap link's pose, so offset back from its centre.
+            cap = _twist_part_urdf("cap", *ext["cap"], cfg.pen.diameter, "0.86 0.24 0.16 1", stripe=True)
+            self._extra_objects = [("cap", cap, 1.0), ("cap_goal", cap, 0.38)]
         self._table_urdf_text, self._table_urdf_path = _table_urdf(cfg.table.size), None
         self._hole_urdf_text = self._hole_urdf_path = None
         self._robot_urdf_text = _inline_primitive_palm(Path(inner.wrist_urdf_path).read_text(encoding="utf-8"))
@@ -118,4 +141,17 @@ def capture_frame(env, i: int) -> dict:
         "object_pose": _pose_xyzw(pen_pos[i], pen_quat[i]),
         "goal_pose": _pose_xyzw(env.goal_pos[i], env.goal_quat[i]),
         "table_pose": _pose_xyzw(env.table.data.root_pos_w[i] - origin, env.table.data.root_quat_w[i]),
+        **(_twist_frame(env, i) if env.cfg.pen.twist else {}),
     }
+
+
+def _twist_frame(env, i: int) -> dict:
+    """The cap's and its goal's poses, at the cap's LINK frame (the pen's centre) as the cap URDF is drawn: the cap
+    goal is stored at the cap's centre, so step back along its axis."""
+    from isaaclab.utils.math import quat_apply
+    origin = env.scene.env_origins[i]
+    q = env.pen.data.body_quat_w[i, env.cap_body]
+    gq = env.cap_goal_quat[i]
+    goal_link = env.cap_goal_pos[i] - quat_apply(gq.unsqueeze(0), env.cap_centre.unsqueeze(0))[0]
+    return {"cap_pose": _pose_xyzw(env.pen.data.body_pos_w[i, env.cap_body] - origin, q),
+            "cap_goal_pose": _pose_xyzw(goal_link, gq)}
