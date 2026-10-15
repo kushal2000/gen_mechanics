@@ -56,6 +56,7 @@ def main() -> None:
     cfg.scene.num_envs = args.envs
     cfg.seed = 0
     cfg.reset.stagger_initial_episodes = False    # the first episode is a whole one in every env
+    cfg.goal.first_goal_tolerance = 0.0           # scored at the strict tolerance, whatever the run trained with
     env = InHandOlympicsEnv(cfg)
     obs, _ = env.reset()
 

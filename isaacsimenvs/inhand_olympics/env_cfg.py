@@ -240,6 +240,9 @@ class GoalCfg:
     pen_lift its hold_steps). Roll about the long axis is invisible to it, as it is to a capsule."""
 
     success_tolerance: float = 0.01          # m, max keypoint distance
+    # An episode's FIRST goal only (the pickup, in the carried tasks): a looser tolerance, so a run stuck before its
+    # first success has an easier one to find; every later goal keeps success_tolerance. 0 = success_tolerance.
+    first_goal_tolerance: float = 0.0
     max_successes: int = 50                  # goals after which the episode ends
     # Each goal gets this long (s); a hit restarts the clock, as in in-hand reorientation.
     seconds_per_goal: float = 10.0

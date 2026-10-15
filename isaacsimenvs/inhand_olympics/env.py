@@ -190,6 +190,14 @@ class InHandOlympicsEnv(DirectRLEnv):
         return torch.where(self.successes == 0, self.task_first_goal_steps[self.task_id],
                            self.task_success_steps[self.task_id])
 
+    def goal_tolerance(self) -> torch.Tensor:
+        """The success tolerance per env: goal.first_goal_tolerance (if set) for an episode's first goal,
+        goal.success_tolerance after that."""
+        g = self.cfg.goal
+        first = g.first_goal_tolerance if g.first_goal_tolerance > 0 else g.success_tolerance
+        return torch.where(self.successes == 0, torch.full_like(self.successes, first),
+                           torch.full_like(self.successes, g.success_tolerance))
+
     def task_onehot(self) -> torch.Tensor:
         onehot = torch.zeros(self.num_envs, NUM_TASK_SLOTS, device=self.device)
         onehot[torch.arange(self.num_envs, device=self.device), self.task_onehot_index[self.task_id]] = 1.0
@@ -319,7 +327,7 @@ class InHandOlympicsEnv(DirectRLEnv):
     # --- RL hooks ---------------------------------------------------------------------------------------------
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self.goal_dist = self._goal_distance()
-        near = self.goal_dist < self.cfg.goal.success_tolerance
+        near = self.goal_dist < self.goal_tolerance()
         self.near_goal = near
         self.near_goal_steps = torch.where(near, self.near_goal_steps + 1, torch.zeros_like(self.near_goal_steps))
         self.is_success = self.near_goal_steps >= self.goal_steps()
