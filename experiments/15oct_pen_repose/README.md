@@ -15,10 +15,34 @@ Started 15 Oct 2026 on branch `2026-10-15-pen_repose`. The `pen_repose` task is 
 
 ## Runs
 
+### v2: wrist orientation fixed, every goal uniform (15 Oct, current)
+
+The first version was too easy. The wrist did about 90% of the turning, and consecutive goals were only 15-30° apart.
+Two changes:
+
+- **The wrist can't rotate.** `env.action.wrist_max_speed_ang=0` freezes the roll, pitch and yaw commands at the
+  default (palm down). The wrist still translates. All reorientation must happen in the hand.
+- **Every goal is a fresh random pose from the whole goal space.** `env.pen_repose.goal_sampling=uniform`: a uniform
+  orientation and a centre uniform in that orientation's bounds, as for the first goal. Consecutive goals now differ by
+  127° on average (checked with the task's own sampler).
+
+Everything else is the same as before: MLP, box pen, first goal 3 cm then 1 cm, stagger on, seed 100, 5,000 epochs.
+wandb project **`gen_mechanics_pen_repose_v2`**, `RUN_TAG=uni_fw`:
+
+| Hand (gaps) | Job |
+|---|---|
+| 30/55/55/220 | 292505 |
+| 35/65/195/65 | 292506 |
+| 50/65/55/190 | 292507 |
+| 90/90/90/90 (designed: the cross) | 292508 |
+| 85/95/85/95 (runner-up) | 292509 |
+
+### v1: random walk, free wrist (cancelled 15 Oct at about epoch 350-400, for v2)
+
 All repose runs go to wandb project **`gen_mechanics_pen_repose`** and log under
 `debug_outputs/train_logs/15oct_pen_repose/` (`LOG_GROUP=15oct_pen_repose`, with sbatch `--output` to match).
 
-### Three random primitive hands
+#### Three random primitive hands
 
 MLP, box pen, random first goal, first goal 3 cm then 1 cm, stagger on, seed 100, 5,000 epochs:
 
@@ -28,7 +52,7 @@ MLP, box pen, random first goal, first goal 3 cm then 1 cm, stagger on, seed 100
 | 35/65/195/65 | 292020 |
 | 50/65/55/190 | 292021 |
 
-### Designed hand: the even cross, 0/90/180/270
+#### Designed hand: the even cross, 0/90/180/270
 
 A subagent's static analysis picked it for repose. It found that every layout holds the pen at any in-hand axis, and
 that the wrist carries a fixed grip through a median of 16 goals, so about 90% of the turning is the wrist's. The

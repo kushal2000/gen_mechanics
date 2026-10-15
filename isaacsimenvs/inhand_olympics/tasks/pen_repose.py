@@ -2,8 +2,8 @@
 
 The pen starts flat on the table at a random yaw. The first goal is a random pose: a uniformly random orientation at a
 random centre within the bounds below (``random_first_goal``; or, with it off, the pen picked up flat to ``first_height``
-at its starting yaw, the pen_lift / pen_flip_air pickup). Each goal after that is the previous one moved by a random
-step --
+at its starting yaw, the pen_lift / pen_flip_air pickup). Each goal after that is either a fresh random pose from the
+whole goal space (``goal_sampling`` "uniform") or (``walk``) the previous one moved by a random step --
 its orientation turned by ``step_deg`` (drawn from the range) about a random axis -- so the pen's long axis can come to
 point anywhere -- and its centre moved by up to ``step_pos`` in a random direction, then clipped: sideways into a box,
 and in height between a floor set by THAT orientation (the pen's lowest point ``min_clearance`` above the table: a
@@ -35,6 +35,8 @@ class PenRepose:
         self.cfg = env.cfg.pen_repose
         p = env.cfg.pen
         self.half = (p.length / 2, p.diameter / 2)
+        if self.cfg.goal_sampling not in ("walk", "uniform"):
+            raise ValueError(f"pen_repose.goal_sampling must be 'walk' or 'uniform', got {self.cfg.goal_sampling!r}")
         if self.cfg.min_clearance <= env.cfg.termination.table_touch_margin:
             raise ValueError(f"pen_repose.min_clearance {self.cfg.min_clearance}: goals would count as touching the "
                              f"table (termination.table_touch_margin {env.cfg.termination.table_touch_margin})")
@@ -80,18 +82,27 @@ class PenRepose:
         pos[:, 2] = env.pen_rest_height
         env.place_pen(ids, pos, yaw_quat(yaw))
         if self.cfg.random_first_goal:
-            quat = normalize(torch.randn(n, 4, device=env.device))      # uniform over orientations
-            quat = quat * torch.where(quat[:, :1] < 0, -1.0, 1.0)       # w >= 0, a canonical sign
-            lo, hi = self._box(quat)
-            env.set_goal(ids, lo + (hi - lo) * torch.rand(n, 3, device=env.device), quat)
+            env.set_goal(ids, *self._random_pose(n))
         else:
             pos[:, 2] += self.cfg.first_height
             env.set_goal(ids, pos, yaw_quat(yaw))
 
+    def _random_pose(self, n: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """A pose drawn from the whole goal space: a uniformly random orientation, its centre uniform in the bounds for
+        that orientation."""
+        quat = normalize(torch.randn(n, 4, device=self.env.device))     # uniform over orientations
+        quat = quat * torch.where(quat[:, :1] < 0, -1.0, 1.0)           # w >= 0, a canonical sign
+        lo, hi = self._box(quat)
+        return lo + (hi - lo) * torch.rand(n, 3, device=self.env.device), quat
+
     def next_goal(self, ids: torch.Tensor) -> None:
-        """The previous goal, turned by step_deg about a random axis, then its centre moved by up to step_pos and
-        clipped into the bounds for the NEW orientation (so its lowest point stays min_clearance above the table)."""
+        """goal_sampling "uniform": a fresh pose from the whole goal space. "walk": the previous goal, turned by step_deg
+        about a random axis, then its centre moved by up to step_pos and clipped into the bounds for the NEW
+        orientation (so its lowest point stays min_clearance above the table)."""
         env, n, c = self.env, len(ids), self.cfg
+        if c.goal_sampling == "uniform":
+            env.set_goal(ids, *self._random_pose(n))
+            return
         axis = normalize(torch.randn(n, 3, device=env.device))
         a0, a1 = (math.radians(v) for v in c.step_deg)
         angle = a0 + (a1 - a0) * torch.rand(n, device=env.device)
