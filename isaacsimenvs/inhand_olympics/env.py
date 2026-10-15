@@ -256,7 +256,8 @@ class InHandOlympicsEnv(DirectRLEnv):
 
     def wrist_action_toward(self, pose: torch.Tensor) -> torch.Tensor:
         """The wrist action that moves the integrated command toward ``pose`` (N, 6) as fast as allowed."""
-        return ((pose - self.wrist_command) / (self.wrist_speed * self.step_dt)).clamp(-1.0, 1.0)
+        # A locked axis (speed 0): any action there is a no-op, and dividing by its zero speed would give NaN.
+        return ((pose - self.wrist_command) / (self.wrist_speed * self.step_dt).clamp(min=1e-9)).clamp(-1.0, 1.0)
 
     def action_toward(self, joint_pos: torch.Tensor) -> torch.Tensor:
         """The (canonical-order) action steering every joint to ``joint_pos`` (N, J, Lab order): absolute for the

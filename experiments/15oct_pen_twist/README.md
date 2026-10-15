@@ -36,6 +36,15 @@ wandb project **`gen_mechanics_pen_twist`**; logs in `debug_outputs/train_logs/1
 | 1 | Wuji full | MLP, SAPG defaults, seed 100, 5,000 epochs, `RUN_TAG=lvl1` | 293321 |
 | 1 | Wuji full | the same, plus the tightness curriculum (`env.pen_twist.curriculum=True`), `RUN_TAG=lvl1_cur` | 295202 |
 | 1 | Wuji full | the curriculum from 0.1 to 1.0 N·m (`env.pen.twist_friction_torque=0.1 env.pen_twist.curriculum_max_torque=1.0`), `RUN_TAG=lvl1_cur01to1` | 296479 |
+| 1 | Wuji full | as 296479, plus the curriculum cool-off (200 epochs between step-ups, fresh episodes only) and **the wrist's rotation locked** (`env.action.wrist_max_speed_ang=0`; it can still translate), `RUN_TAG=lvl1_cur01to1_fw` | 299898 |
+
+**Notes on the curriculum runs (15 Oct):**
+- 295202 and 296479 used the curriculum before its cool-off. Each stepped up whenever a window filled (about every 40
+  epochs), because the 1-turn bar sat far below the policy's ~12 turns. Both reached their ceilings, 0.2 and 1.0 N·m,
+  by about epoch 1,900.
+- 1 N·m on a 3 cm cap is far beyond fingertip strength. The likely explanation is that the hand grips the square cap
+  like a wrench while the wrist turns it. 299898 locks the wrist's rotation to test that.
+- Since 15 Oct, locked wrist rotation is the default for every olympics task (`ActionCfg.wrist_max_speed_ang = 0`).
 
 ## Early result
 

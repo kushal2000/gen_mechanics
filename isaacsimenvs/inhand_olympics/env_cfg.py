@@ -76,7 +76,9 @@ class ActionCfg:
     """
 
     wrist_max_speed_lin: float = 0.2         # m/s, x/y/z
-    wrist_max_speed_ang: float = 1.5         # rad/s, roll/pitch/yaw (~86 deg/s)
+    # rad/s, roll/pitch/yaw. 0 since 15 Oct (the user's default): the palm keeps its orientation (palm down) and
+    # only translates, so reorienting is the hand's job, not the wrist's. 1.5 (~86 deg/s) before.
+    wrist_max_speed_ang: float = 0.0
     wrist_ema: float = 0.1
     hand_ema: float = 0.1
     # Action latency, as in-hand training (pose_reaching_6d actions.py): every step each env applies one of its
