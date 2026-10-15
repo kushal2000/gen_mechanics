@@ -1,7 +1,9 @@
 """Repose the pen in 6D in the air: a random walk of goal poses (env_cfg.PenReposeCfg).
 
-The pen starts flat on the table at a random yaw. The first goal is it picked up flat to ``first_height`` at that yaw
-(the same pickup as pen_lift and pen_flip_air); each goal after that is the previous one moved by a random step --
+The pen starts flat on the table at a random yaw. The first goal is a random pose: a uniformly random orientation at a
+random centre within the bounds below (``random_first_goal``; or, with it off, the pen picked up flat to ``first_height``
+at its starting yaw, the pen_lift / pen_flip_air pickup). Each goal after that is the previous one moved by a random
+step --
 its orientation turned by ``step_deg`` (drawn from the range) about a random axis -- so the pen's long axis can come to
 point anywhere -- and its centre moved by up to ``step_pos`` in a random direction, then clipped: sideways into a box,
 and in height between a floor set by THAT orientation (the pen's lowest point ``min_clearance`` above the table: a
@@ -69,15 +71,22 @@ class PenRepose:
         return lo, hi
 
     def reset(self, ids: torch.Tensor) -> None:
-        """Pen flat on the table at a random yaw; the first goal straight above it, flat, at first_height."""
+        """Pen flat on the table at a random yaw. The first goal: a random pose in the bounds (random_first_goal), or
+        straight above the pen, flat, at first_height."""
         env, n = self.env, len(ids)
         yaw = env.start_pen_yaw(n)
         pos = torch.zeros(n, 3, device=env.device)
         pos[:, 0], pos[:, 1] = self.cfg.centre_xy
         pos[:, 2] = env.pen_rest_height
         env.place_pen(ids, pos, yaw_quat(yaw))
-        pos[:, 2] += self.cfg.first_height
-        env.set_goal(ids, pos, yaw_quat(yaw))
+        if self.cfg.random_first_goal:
+            quat = normalize(torch.randn(n, 4, device=env.device))      # uniform over orientations
+            quat = quat * torch.where(quat[:, :1] < 0, -1.0, 1.0)       # w >= 0, a canonical sign
+            lo, hi = self._box(quat)
+            env.set_goal(ids, lo + (hi - lo) * torch.rand(n, 3, device=env.device), quat)
+        else:
+            pos[:, 2] += self.cfg.first_height
+            env.set_goal(ids, pos, yaw_quat(yaw))
 
     def next_goal(self, ids: torch.Tensor) -> None:
         """The previous goal, turned by step_deg about a random axis, then its centre moved by up to step_pos and

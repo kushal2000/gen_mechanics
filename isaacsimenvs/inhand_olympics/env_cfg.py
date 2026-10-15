@@ -208,7 +208,10 @@ class PenReposeCfg:
     and ``max_height`` above the pen's resting height."""
 
     centre_xy: tuple[float, float] = (0.0, 0.0)
-    first_height: float = 0.08               # m above resting: pen_lift's lift_height
+    # The first goal: a uniformly random orientation at a random centre in the bounds (True), or the pen picked up
+    # flat to first_height at its starting yaw (False, the pen_lift / pen_flip_air pickup).
+    random_first_goal: bool = True
+    first_height: float = 0.08               # m above resting: pen_lift's lift_height (random_first_goal=False)
     half_width_xy: float = 0.04              # m
     min_clearance: float = 0.02              # m: the goal pose's lowest point above the table top
     max_height: float = 0.12                 # m: the goal centre's ceiling above the pen's resting height
