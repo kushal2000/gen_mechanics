@@ -1,6 +1,6 @@
 """Watch a trained pen_twist policy in viser and set how tight the cap is.
 
-Pick a run (every run under debug_outputs/train_logs/15oct_pen_twist) and a checkpoint; its policy plays in the run's
+Pick a run (every run under debug_outputs/train_logs/15oct_pen_twist; the lists rescan every 10 s) and a checkpoint; its policy plays in the run's
 own env, built from its saved config, in --envs envs (64 by default). The page draws one env -- the hand, the barrel,
 the cap (red, a white stripe so its turning shows) and the cap's goal (translucent, a quarter turn ahead) -- and
 keeps statistics of every episode finished since the last change: goals (quarter turns) and full turns per episode,
@@ -402,8 +402,26 @@ def main(args) -> None:
                 f"**{st['turns']:.2f} turns / episode** ({st['goals']:.1f} quarter-turn goals) · "
                 f"{100 * st['one_turn']:.0f}% reach ≥ 1 turn  \nended: {ends}")
 
+    t_scan = time.time()
     try:
         while True:
+            if time.time() - t_scan > 10.0:        # new runs and checkpoints join the dropdowns as they are saved
+                t_scan = time.time()
+                now = runs()
+                if now:
+                    run_now, ck_now = str(g_run.value), str(g_ckpt.value)
+                    rs.clear()
+                    rs.update(now)
+                    if tuple(rs) != tuple(g_run.options):
+                        g_run.options = tuple(rs)
+                        if run_now in rs:
+                            g_run.value = run_now
+                    if str(g_run.value) in rs:
+                        cks = tuple(checkpoints(rs[str(g_run.value)]))
+                        if cks != tuple(g_ckpt.options):
+                            g_ckpt.options = cks
+                            if ck_now in cks:
+                                g_ckpt.value = ck_now
             if state.pop("load", False):
                 run_label, ckpt = str(g_run.value), checkpoints(rs[str(g_run.value)])[str(g_ckpt.value)]
                 if state["worker"] is not None and state["run"] == run_label and state["worker"].proc.poll() is None:
