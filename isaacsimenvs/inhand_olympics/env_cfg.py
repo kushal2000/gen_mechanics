@@ -201,6 +201,13 @@ class PenSpinAirCfg:
 
     centre_xy: tuple[float, float] = (0.0, 0.0)
     step_deg: float = 45.0
+    # Staying on course (all off by default; tasks/rotation_course.py): forward_only -- a goal counts only once the
+    # pen has also turned that far, in the episode's direction, about the task's axis since the pickup (its angular
+    # velocity integrated); max_off_axis_deg -- the episode ends ("off_course") once the pen's long axis leaves the
+    # task's plane by more than this; max_backward_deg -- or once it has turned back this far from its furthest.
+    forward_only: bool = False
+    max_off_axis_deg: float = 0.0
+    max_backward_deg: float = 0.0
 
 
 @configclass
@@ -211,6 +218,13 @@ class PenFlipAirCfg:
 
     centre_xy: tuple[float, float] = (0.0, 0.0)
     step_deg: float = 45.0
+    # Staying on course (all off by default; tasks/rotation_course.py): forward_only -- a goal counts only once the
+    # pen has also turned that far, in the episode's direction, about the task's axis since the pickup (its angular
+    # velocity integrated); max_off_axis_deg -- the episode ends ("off_course") once the pen's long axis leaves the
+    # task's plane by more than this; max_backward_deg -- or once it has turned back this far from its furthest.
+    forward_only: bool = False
+    max_off_axis_deg: float = 0.0
+    max_backward_deg: float = 0.0
 
 
 @configclass

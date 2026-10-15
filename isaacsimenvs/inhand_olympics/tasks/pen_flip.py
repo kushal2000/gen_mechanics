@@ -14,9 +14,10 @@ import torch
 from isaaclab.utils.math import quat_from_angle_axis, quat_mul
 
 from ..goals import yaw_quat
+from .rotation_course import RotationCourse
 
 
-class PenFlipAir:
+class PenFlipAir(RotationCourse):
     name = "pen_flip_air"
     carried = True                  # the pen touching the table after the first goal ends the episode
     success_steps = 1
@@ -31,6 +32,12 @@ class PenFlipAir:
         self.yaw = torch.zeros(n, device=env.device)
         self.pitch = torch.zeros(n, device=env.device)
         self.direction = torch.ones(n, device=env.device)
+        self.init_course()
+
+    def axis(self) -> torch.Tensor:
+        """The flip's axis: horizontal, across the pen at the episode's yaw (the goals turn about it)."""
+        y = self.yaw
+        return torch.stack([-torch.sin(y), torch.cos(y), torch.zeros_like(y)], dim=-1)
 
     def _goal(self, ids: torch.Tensor) -> None:
         env = self.env
@@ -53,6 +60,7 @@ class PenFlipAir:
         pos[:, 2] = env.pen_rest_height
         env.place_pen(ids, pos, yaw_quat(self.yaw[ids]))
         self._goal(ids)
+        self.reset_course(ids)
 
     def next_goal(self, ids: torch.Tensor) -> None:
         self.pitch[ids] = torch.remainder(self.pitch[ids] + self.direction[ids] * self.step, 2 * math.pi)

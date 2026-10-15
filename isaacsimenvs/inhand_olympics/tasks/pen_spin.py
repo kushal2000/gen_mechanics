@@ -8,6 +8,7 @@ import math
 import torch
 
 from ..goals import yaw_quat
+from .rotation_course import RotationCourse
 
 
 class PenSpin:
@@ -50,9 +51,9 @@ class PenSpin:
         self.env.set_goal(ids, pos, quat)
 
 
-class PenSpinAir(PenSpin):
+class PenSpinAir(RotationCourse, PenSpin):
     """Spin the pen in the air: picked up flat to pen_lift's lift_height at its starting yaw (the first goal), then
-    each goal ``step_deg`` further round at that height."""
+    each goal ``step_deg`` further round at that height. Staying on course (rotation_course.py): about the vertical."""
 
     name = "pen_spin_air"
     carried = True                  # the pen touching the table after the first goal ends the episode
@@ -62,6 +63,10 @@ class PenSpinAir(PenSpin):
         self.cfg = env.cfg.pen_spin_air
         self.step = math.radians(self.cfg.step_deg)
         self.goal_height = env.cfg.pen_lift.lift_height        # the same height as the held pen
+        self.init_course()
+
+    def axis(self) -> torch.Tensor:
+        return torch.tensor([0.0, 0.0, 1.0], device=self.env.device).expand(self.env.num_envs, 3)
 
     def reset(self, ids: torch.Tensor) -> None:
         """Pen flat on the table at a random yaw; a spin direction; the first goal straight above it."""
@@ -71,3 +76,4 @@ class PenSpinAir(PenSpin):
         self.direction[ids] = torch.where(torch.rand(n, device=env.device) < 0.5, -1.0, 1.0)
         self.goal_yaw[ids] = yaw
         env.set_goal(ids, *self._flat_at_centre(ids, yaw, self.goal_height))
+        self.reset_course(ids)

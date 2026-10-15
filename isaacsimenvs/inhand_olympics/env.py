@@ -400,9 +400,13 @@ class InHandOlympicsEnv(DirectRLEnv):
         all_goals = (self.successes + self.is_success.float()) >= self.cfg.goal.max_successes
         dropped = self.task_carried[self.task_id] & (self.successes > 0) & (
             self.pen_lowest_height() < t.table_touch_margin)
-        self.termination_reasons = {"away": away, "fell": fell, "dropped": dropped, "timeout": out_of_time,
-                                    "max_successes": all_goals}
-        return away | fell | dropped, out_of_time | all_goals
+        off_course = torch.zeros_like(near)               # a task's own failure (rotation_course.py)
+        for k, task in enumerate(self.tasks):
+            if hasattr(task, "failed"):
+                off_course = torch.where(self.task_id == k, task.failed(), off_course)
+        self.termination_reasons = {"away": away, "fell": fell, "dropped": dropped, "off_course": off_course,
+                                    "timeout": out_of_time, "max_successes": all_goals}
+        return away | fell | dropped | off_course, out_of_time | all_goals
 
     def _get_rewards(self) -> torch.Tensor:
         r = self.cfg.reward
