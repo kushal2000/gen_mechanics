@@ -21,6 +21,12 @@ turning like a friction fit: it holds below `pen.twist_friction_torque` (0.01 N�
 - `viser_twist_play.py`: drive a hand by sliders against the pen (`--level 1`, the default).
 - The wandb pose viewer draws the barrel, the cap (with a stripe) and both goals.
 
+## Tightness curriculum
+
+`env.pen_twist.curriculum=True`: the cap's friction torque starts at 0.01 N·m. After each window of finished
+episodes (as many as there are envs), if they averaged at least 1 full turn, the torque is multiplied by 1.5, up to
+0.2 N·m. The next window must then get back to 1 turn before it rises again. On wandb as `twist/friction_torque`.
+
 ## Runs
 
 wandb project **`gen_mechanics_pen_twist`**; logs in `debug_outputs/train_logs/15oct_pen_twist/`.
@@ -28,6 +34,7 @@ wandb project **`gen_mechanics_pen_twist`**; logs in `debug_outputs/train_logs/1
 | Level | Hand | Recipe | Job |
 |---|---|---|---|
 | 1 | Wuji full | MLP, SAPG defaults, seed 100, 5,000 epochs, `RUN_TAG=lvl1` | 293321 |
+| 1 | Wuji full | the same, plus the tightness curriculum (`env.pen_twist.curriculum=True`), `RUN_TAG=lvl1_cur` | 295202 |
 
 ## Background
 
