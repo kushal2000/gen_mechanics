@@ -3,7 +3,8 @@
 Started 15 Oct 2026 on branch `2026-10-15-pen_repose`. The `pen_repose` task is in the in-hand olympics env
 (`isaacsimenvs/inhand_olympics/tasks/pen_repose.py`):
 
-- **Start:** the pen lies flat on the table at a random yaw. The first goal is the pickup: flat, 8 cm up.
+- **Start:** the pen lies flat on the table at a random yaw. The first goal is a random pose (uniform orientation, random
+  centre in the bounds below; `env.pen_repose.random_first_goal`, on by default since 15 Oct).
 - **Then a random walk of goals.** Each goal turns the pen 15-30° about a random axis, so its long axis can point
   anywhere, and moves its centre up to 5 cm within ±4 cm sideways.
 - **Goal height:** clipped between an orientation-dependent floor (the pen's lowest point 2 cm above the table) and
@@ -19,12 +20,12 @@ All repose runs go to wandb project **`gen_mechanics_pen_repose`** and log under
 
 ### Three random primitive hands
 
-MLP, box pen, first goal 3 cm then 1 cm, stagger on, seed 100, 5,000 epochs:
+MLP, box pen, random first goal, first goal 3 cm then 1 cm, stagger on, seed 100, 5,000 epochs:
 
 | Hand (gaps) | Job |
 |---|---|
-| 30/55/55/220 | 291830 |
-| 35/65/195/65 | 291831 |
-| 50/65/55/190 | 291832 |
+| 30/55/55/220 | 292019 |
+| 35/65/195/65 | 292020 |
+| 50/65/55/190 | 292021 |
 
-These were first started in `gen_mechanics_design_search` (291747/48/49) and restarted here two minutes in.
+Earlier submissions with a flat pickup as the first goal were cancelled within minutes (291747-9, then 291830-2).
