@@ -14,15 +14,17 @@ Started 15 Oct 2026 on branch `2026-10-15-pen_repose`. The `pen_repose` task is 
 
 ## Runs
 
-The first runs were started on the design-search branch and log under `debug_outputs/train_logs/14oct_design_search/`.
-They are the three random primitive hands, with MLP, box pen, stagger on, seed 100 and 5,000 epochs, in wandb
-project `gen_mechanics_design_search`:
+All repose runs go to wandb project **`gen_mechanics_pen_repose`** and log under
+`debug_outputs/train_logs/15oct_pen_repose/` (`LOG_GROUP=15oct_pen_repose`, with sbatch `--output` to match).
+
+### Three random primitive hands
+
+MLP, box pen, first goal 3 cm then 1 cm, stagger on, seed 100, 5,000 epochs:
 
 | Hand (gaps) | Job |
 |---|---|
-| 30/55/55/220 | 291747 |
-| 35/65/195/65 | 291748 |
-| 50/65/55/190 | 291749 |
+| 30/55/55/220 | 291830 |
+| 35/65/195/65 | 291831 |
+| 50/65/55/190 | 291832 |
 
-New runs from this branch log under `debug_outputs/train_logs/15oct_pen_repose/`
-(`LOG_GROUP=15oct_pen_repose`, with sbatch `--output` to match).
+These were first started in `gen_mechanics_design_search` (291747/48/49) and restarted here two minutes in.
