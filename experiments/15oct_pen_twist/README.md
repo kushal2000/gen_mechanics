@@ -37,7 +37,7 @@ wandb project **`gen_mechanics_pen_twist`**; logs in `debug_outputs/train_logs/1
 | 1 | Wuji full | the same, plus the tightness curriculum (`env.pen_twist.curriculum=True`), `RUN_TAG=lvl1_cur` | 295202 |
 | 1 | Wuji full | the curriculum from 0.1 to 1.0 N·m (`env.pen.twist_friction_torque=0.1 env.pen_twist.curriculum_max_torque=1.0`), `RUN_TAG=lvl1_cur01to1` | 296479 |
 | 1 | Wuji full | as 296479, plus the curriculum cool-off (200 epochs between step-ups, fresh episodes only) and **the wrist's rotation locked** (`env.action.wrist_max_speed_ang=0`; it can still translate), `RUN_TAG=lvl1_cur01to1_fw` | 299898 |
-| 1 | Wuji full | as 299898 (curriculum 0.1 → 1 N·m, cool-off, wrist rotation locked) with a **round** pen (`env.pen.shape=cylinder`), so turning the cap takes grip friction, `RUN_TAG=lvl1_cur01to1_round` | 303468 |
+| 1 | Wuji full | as 299898 (curriculum 0.1 → 1 N·m, cool-off, wrist rotation locked) with a **round** pen (`env.pen.shape=round`: a 24-sided convex prism, so turning the cap takes grip friction), `RUN_TAG=lvl1_round` | 303825 |
 
 **Notes on the curriculum runs (15 Oct):**
 - 295202 and 296479 used the curriculum before its cool-off. Each stepped up whenever a window filled (about every 40
@@ -46,6 +46,8 @@ wandb project **`gen_mechanics_pen_twist`**; logs in `debug_outputs/train_logs/1
 - 1 N·m on a 3 cm cap is far beyond fingertip strength. The likely explanation is that the hand grips the square cap
   like a wrench while the wrist turns it. 299898 locks the wrist's rotation to test that.
 - Since 15 Oct, locked wrist rotation is the default for every olympics task (`ActionCfg.wrist_max_speed_ang = 0`).
+
+303468 used PhysX's cylinder shape, which jitters in contact, and was cancelled at start (15 Oct) for the convex prism.
 
 ## Early result
 
