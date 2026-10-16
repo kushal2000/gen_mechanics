@@ -139,8 +139,9 @@ def test_the_mount_blocks_motors_behind_the_palm():
 
 def test_a_cut_through_a_base_motor_fails():
     """The line z = 40 leaves the finger at (0, 80) beyond it with its motor's
-    housing clear of the seam; at z = 60 the seam runs through that housing."""
-    h = Hand(fingers=(_finger(0, 80), _finger(80, 0, facing=90), _finger(-80, 0, facing=270)))
+    housing clear of the seam; at z = 60 the seam runs through that housing.
+    (The side fingers sit at z = -40 so the mount is at the palm's centre.)"""
+    h = Hand(fingers=(_finger(0, 80), _finger(80, -40, facing=90), _finger(-80, -40, facing=270)))
     good = replace(h, palm_joints=(PalmJoint(facing=90, offset=40),))
     assert check(good, FEETECH_RULES) == [] and V.c1_self_overlap(good).ok
     bad = replace(h, palm_joints=(PalmJoint(facing=90, offset=60),))

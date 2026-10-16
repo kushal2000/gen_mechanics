@@ -4,6 +4,7 @@ operators."""
 
 from __future__ import annotations
 
+import itertools
 import math
 import os
 from dataclasses import replace
@@ -11,6 +12,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
+from hand_sampler.grammar import conform as CF
 from hand_sampler.grammar import derive as dv
 from hand_sampler.grammar import motor as mt
 from hand_sampler.grammar import operators as ops
@@ -21,6 +23,7 @@ from hand_sampler.grammar.hand import (
     EVOLUTION_RULES,
     FEETECH_RULES,
     KIND_AXIS,
+    KIND_MIX,
     MIN_CUT_OFFSET_MM,
     NO_RULES,
     PALM_OUTLINE_MAX_VERTICES,
@@ -31,6 +34,7 @@ from hand_sampler.grammar.hand import (
     PalmJoint,
     Rules,
     allowed_lengths,
+    bend_first,
     canonical_axis,
     check,
     finger_length_mm,
@@ -38,6 +42,7 @@ from hand_sampler.grammar.hand import (
     hand_from_dict,
     hand_to_dict,
     parameter_count,
+    turned_servo,
 )
 
 N_SAMPLES = int(os.environ.get("GRAMMAR_SAMPLES", "2000"))
@@ -117,8 +122,9 @@ def _edit_joints(h: Hand, i: int, joints) -> Hand:
     (lambda h: _edit_finger(h, 0, y=-70), "off the 40 mm grid"),
     (lambda h: _edit_finger(h, 2, z=0), "from the palm centre, allowed 40-90"),
     (lambda h: _edit_finger(h, 0, y=-80, z=40, facing=90), "faces back across the palm"),
-    (lambda h: _edit_joints(h, 0, ((BEND, 40), (BEND, 30))), "not allowed (50-90"),
-    (lambda h: _edit_joints(h, 0, ((BEND, 50), (BEND, 20))), "fingertip 30-90"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 20), (BEND, 40))), "not allowed (30-90"),          # 30-40 turn the next bend servo
+    (lambda h: _edit_joints(h, 0, ((BEND, 40), (BEND, 30))), "fingertip 40-90"),             # after a turned bend servo
+    (lambda h: _edit_joints(h, 0, ((SPREAD, 30), (SPREAD, 30))), "not allowed (40-90"),
     (lambda h: _edit_joints(h, 0, ((BEND, 0), (TWIST, 30))), "link length 0 mm not allowed"),
     (lambda h: _edit_joints(h, 0, ((BEND, 0), (SPREAD, 0), (BEND, 30))), "link length 0 mm not allowed"),
     (lambda h: _edit_joints(h, 0, ((BEND, 50), (BEND, 95))), "link length 95"),
@@ -128,6 +134,8 @@ def _edit_joints(h: Hand, i: int, joints) -> Hand:
     (lambda h: _edit_joints(h, 0, ((BEND, 50), ((180, 0), 30))), "not canonical"),
     (lambda h: _edit_finger(h, 0, facing=10), "grid"),
     (lambda h: _edit_finger(h, 0, tilt=120), "tilt 120 outside"),
+    (lambda h: _edit_finger(h, 0, tilt=-30), "tilt -30 outside"),       # never under the palm
+    (lambda h: _edit_finger(h, 0, tilt=30), "with a bend first"),       # the first bend already tilts it
     (lambda h: replace(h, palm_joints=(PalmJoint(0, 20),)), "through the mount"),
     (lambda h: replace(h, palm_joints=(PalmJoint(0, 15),)), "off the 10 mm grid"),
     (lambda h: replace(h, palm_joints=(PalmJoint(0, 300),)), "no finger beyond the cut"),
@@ -149,10 +157,14 @@ def test_coupled_and_sliding_joints_only_without_rules():
 
 def test_allowed_lengths_follow_the_motor_floors():
     f = _finger(0, 40, joints=((SPREAD, 50), (BEND, 50), (TWIST, 50), (BEND, 30)))
-    assert allowed_lengths(f, 0, True, 90) == [0, 40, 50, 60, 70, 80, 90]      # spread then bend may cross
+    assert allowed_lengths(f, 0, True, 90) == [0] + list(range(30, 91, 10))    # spread then bend (30 turns it); may cross
     assert allowed_lengths(f, 1, True, 90) == list(range(40, 91, 10))           # bend then twist: no crossing
-    assert allowed_lengths(f, 2, True, 90) == list(range(50, 91, 10))           # twist then bend
-    assert allowed_lengths(f, 3, True, 90) == list(range(30, 91, 10))           # the fingertip
+    assert allowed_lengths(f, 2, True, 90) == list(range(30, 91, 10))           # twist then bend (30-40 turn it)
+    assert allowed_lengths(f, 3, True, 90) == list(range(30, 91, 10))           # the fingertip (its servo lies along 50 mm)
+    assert not any(turned_servo(f, j) for j in range(4))
+    b = _finger(0, 40, joints=((BEND, 40), (BEND, 40), (BEND, 40)))        # 40 mm links turn the bend servos after them
+    assert [turned_servo(b, j) for j in range(3)] == [False, True, True]
+    assert [allowed_lengths(b, j, True, 90)[0] for j in range(3)] == [30, 40, 40]
     assert allowed_lengths(f, 0, False, 90) == [0] + list(range(10, 91, 10))
     assert allowed_lengths(f, 3, False, 90) == list(range(10, 91, 10))
     assert allowed_lengths(f, 3, False)[-1] == NO_RULES.max_link_mm              # the grammar's own longest link
@@ -389,7 +401,7 @@ def test_object_start_is_the_lowest_clear_height():
 
         def gap(x):
             cube = dv.box_corners(np.array([x, p[1], p[2]]), np.full(3, 30.0)) * 1e-3
-            return min(dv.gjk_distance(cube, s.points) for s in solids) * 1e3
+            return min(dv.gjk_distance(cube, s.points) - s.radius for s in solids) * 1e3
 
         assert gap(p[0]) >= 5.0 - 1e-6
         if p[0] > PLATE_HALF_MM + 35 + 1e-6:
@@ -455,7 +467,7 @@ def test_random_hands_are_uniform_over_the_limits():
             spots.add((f.y, f.z))
     R = abs(np.mean(np.exp(1j * np.array(bearings))))
     assert R < 0.1
-    assert facings == set(range(0, 360, 30)) and tilts == {-30, 0, 30, 60, 90}
+    assert facings == set(range(0, 360, 30)) and tilts == {0, 30, 60, 90}     # fingers not starting with a bend
     assert nj == {1, 2, 3, 4, 5}
     assert spots == set(ops.base_spots(FEETECH_RULES)) and len(spots) == 20
 
@@ -540,6 +552,12 @@ def test_parameter_steps_change_one_value_by_one_step():
                     assert len(axes) == 1 and _angle_between_lines(axes[0][3], axes[0][4]) <= 30 + 1e-9
                     assert all(x[2] in ("axis", "length") and x[0] == mv[0] for x in d)   # lengths refit to floors
                     continue
+                if op.name == "length":       # one link one step; links after it may grow (a short link turns a servo)
+                    (step,) = [x for x in d if x[1] == mv[1]]
+                    assert all(x[2] == "length" and x[0] == mv[0] and x[1] > mv[1] for x in d if x is not step)
+                    allowed = allowed_lengths(h.fingers[mv[0]], mv[1], True)
+                    assert abs(allowed.index(step[3]) - allowed.index(step[4])) == 1
+                    continue
                 assert len(d) == 1, (op.name, d)
                 (item,) = d
                 if op.name == "move_finger":
@@ -548,10 +566,6 @@ def test_parameter_steps_change_one_value_by_one_step():
                     assert min((item[3] - item[2]) % 360, (item[2] - item[3]) % 360) == 30
                 elif op.name == "tilt_finger":
                     assert abs(item[3] - item[2]) == 30
-                elif op.name == "length":
-                    a, b = item[3], item[4]
-                    allowed = allowed_lengths(h.fingers[item[0]], item[1], True)
-                    assert abs(allowed.index(a) - allowed.index(b)) == 1
                 elif op.name == "move_cut":
                     assert abs(item[2].offset - item[3].offset) == 10
                 elif op.name == "turn_cut":
@@ -561,10 +575,12 @@ def test_parameter_steps_change_one_value_by_one_step():
 
 def test_length_steps_follow_the_allowed_lengths():
     f = _finger(0, 40, joints=((SPREAD, 40), (BEND, 50), (BEND, 30)))
-    assert ops.step_length(f, 0, -1, FEETECH_RULES) == 0          # the floor down to a crossing
+    assert ops.step_length(f, 0, -1, FEETECH_RULES) == 30          # 30 turns the bend servo
+    assert ops.step_length(_finger(0, 40, joints=((SPREAD, 30), (BEND, 50), (BEND, 30))), 0, -1, FEETECH_RULES) == 0
     g = _finger(0, 40, joints=((SPREAD, 0), (BEND, 50), (BEND, 30)))
-    assert ops.step_length(g, 0, 1, FEETECH_RULES) == 40           # a crossing up to the floor
-    assert ops.step_length(f, 1, -1, FEETECH_RULES) is None        # bend then bend: 50 is the floor
+    assert ops.step_length(g, 0, 1, FEETECH_RULES) == 30           # a crossing up to the floor
+    assert ops.step_length(f, 1, -1, FEETECH_RULES) == 40          # bend then bend: 40 turns the next servo
+    assert ops.step_length(_finger(0, 40, joints=((SPREAD, 40), (BEND, 30), (BEND, 40))), 1, -1, FEETECH_RULES) is None
     assert ops.step_length(f, 2, -1, FEETECH_RULES) is None        # the fingertip floor
     assert ops.step_length(_finger(0, 40, joints=((BEND, 90), (BEND, 30))), 0, 1, FEETECH_RULES) is None
     assert ops.step_length(f, 1, -1, NO_RULES) == 40
@@ -573,7 +589,7 @@ def test_length_steps_follow_the_allowed_lengths():
 def test_fit_lengths_moves_links_to_their_nearest_allowed_length():
     f = _finger(0, 40, joints=((BEND, 30), (TWIST, 0), (BEND, 10)))
     g = ops.fit_lengths(f, FEETECH_RULES)
-    assert [j.length for j in g.joints] == [40, 50, 30]
+    assert [j.length for j in g.joints] == [40, 30, 40]     # 30 turns the last bend servo, whose tip needs 40
     assert ops.fit_lengths(g, FEETECH_RULES) == g
 
 
@@ -635,36 +651,54 @@ def test_split_keeps_the_finger_length_when_the_floors_allow():
     child = ops.OPERATOR_BY_NAME["split"].apply(h, (0, 0, 40, "abduction"), FEETECH_RULES)
     assert [j.length for j in child.fingers[0].joints] == [50, 50, 30]      # bend then spread needs 50
     child = ops.OPERATOR_BY_NAME["split"].apply(h, (0, 1, 10, "flexion"), FEETECH_RULES)
-    assert [j.length for j in child.fingers[0].joints] == [90, 50, 30]      # the tip grows to its floors
+    assert [j.length for j in child.fingers[0].joints] == [90, 30, 40]      # 30 turns the new servo; its tip needs 40
     moves = ops.OPERATOR_BY_NAME["split"].moves(h, FEETECH_RULES)
     assert {m[2] for m in moves if m[:2] == (0, 0)} == set(range(0, 91, 10))
 
 
-def test_remove_any_finger_in_one_step():
+def test_remove_a_finger_in_one_step():
+    """Any finger can go in one step unless the hand, moved to put the mount
+    back at the palm's centre, would leave the rules (a base inside the 40 mm
+    ring): nearly every hand can lose some finger, and most fingers can go."""
     rng = np.random.default_rng(12)
-    full = hands = 0
+    some = hands = fingers = removable = 0
     for _ in range(40):
         h = ops.random_hand(rng, FEETECH_RULES)
         if len(h.fingers) <= 2:
             continue
         hands += 1
+        fingers += len(h.fingers)
         cands = sorted(c[0] for c in ops.candidates(h, ops.OPERATOR_BY_NAME["remove_finger"], FEETECH_RULES))
-        full += cands == list(range(len(h.fingers)))
+        some += bool(cands)
+        removable += len(cands)
         for i in cands:
-            child = ops.OPERATOR_BY_NAME["remove_finger"].apply(h, (i,), FEETECH_RULES)
+            child = ops.recentre(ops.OPERATOR_BY_NAME["remove_finger"].apply(h, (i,), FEETECH_RULES), FEETECH_RULES)
             assert len(child.fingers) == len(h.fingers) - 1
             assert check(child, FEETECH_RULES) == []          # a cut left without a finger on a side went too
-    assert full >= 0.8 * hands
+    assert some >= 0.9 * hands and removable >= 0.7 * fingers
 
 
-def test_add_finger_is_one_bending_joint_at_a_free_spot():
+def test_add_finger_has_the_mean_joint_count_rounded_up_at_a_free_spot():
+    """The added finger has as many joints as the hand's fingers on average,
+    rounded up; its joints are drawn as a random hand's (kinds from the
+    commercial mix), so different draws give different fingers."""
     rng = np.random.default_rng(13)
-    h = Hand(fingers=simple_hand().fingers[:2])
-    child, mv = ops.apply_operator(h, "add_finger", rng, FEETECH_RULES)
-    f = child.fingers[-1]
-    assert len(f.joints) == 1 and f.joints[0].axis == BEND and f.joints[0].type == "hinge"
-    assert (f.y, f.z) not in {(g.y, g.z) for g in h.fingers}
-    assert check(child, FEETECH_RULES) == []
+    h = ops.recentre(Hand(fingers=simple_hand().fingers[:2]), FEETECH_RULES)
+    want = math.ceil(sum(len(f.joints) for f in h.fingers) / len(h.fingers))
+    assert ops.added_finger_joints(h, FEETECH_RULES) == want
+    added = set()
+    for _ in range(8):
+        child, mv = ops.apply_operator(h, "add_finger", rng, FEETECH_RULES)
+        f = child.fingers[-1]
+        assert len(f.joints) == want and all(j.type == "hinge" for j in f.joints)
+        assert len({(g.y, g.z) for g in child.fingers}) == len(child.fingers) and f.tilt == 0    # a free spot
+        assert check(child, FEETECH_RULES) == []
+        added_hand = ops.OPERATOR_BY_NAME["add_finger"].apply(h, mv, FEETECH_RULES)
+        assert ops.recentre(added_hand, FEETECH_RULES) == child       # the move fixes the draw; then centred
+        added.add(f.joints)
+    assert len(added) > 1
+    h3 = Hand(fingers=(replace(h.fingers[0], joints=h.fingers[0].joints[:1]),) + h.fingers[1:])
+    assert ops.added_finger_joints(h3, FEETECH_RULES) == math.ceil((1 + len(h.fingers[1].joints)) / 2)
 
 
 def test_operators_that_cannot_act_have_no_candidates():
@@ -691,12 +725,50 @@ def test_mutating_a_hand_outside_the_rules_never_adds_violations():
 
 def test_search_space_counts():
     """The Feetech rules' search space, counted exactly (no geometry): about
-    10^29.5 four-finger hands with joints on the three kinds, 10^43.6 with all
-    31 axis directions (E16; fingers at most 225 mm since 2026-10-16)."""
+    10^29.7 four-finger hands with joints on the three kinds, 10^44.2 with all
+    31 axis directions (E16; since 2026-10-16 fingers at most 225 mm, tilts
+    0-90 degrees, tilt 0 when the first joint is a bend, and links down to 30
+    mm before a bend servo, which then turns)."""
     from hand_sampler.grammar import space
 
     assert len(space.AXES_ALL) == 31
-    assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (21, 371, 5572, 27570, 56261)
-    assert space.hands_log10(FEETECH_RULES)[4] == pytest.approx(29.52, abs=0.01)
-    assert space.hands_log10(FEETECH_RULES, space.AXES_ALL)[4] == pytest.approx(43.64, abs=0.01)
+    assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (21, 401, 6731, 44189, 122448)
+    assert space.hands_log10(FEETECH_RULES)[4] == pytest.approx(29.75, abs=0.01)
+    assert space.hands_log10(FEETECH_RULES, space.AXES_ALL)[4] == pytest.approx(44.24, abs=0.01)
     assert space.hands_log10(NO_RULES)[4] > space.hands_log10(FEETECH_RULES)[4] + 20
+
+
+def test_a_bend_first_finger_has_tilt_0():
+    """A tilt turns a finger about its bend axis, so a finger whose first joint
+    is a bend has tilt 0: random hands never tilt one (their first joints keep
+    the 69/27/4 kind mix), the tilt operator cannot, and a commercial fit folds
+    the tilt into that joint's zero-pose offset (the same chain)."""
+    rng = np.random.default_rng(21)
+    first = []
+    for _ in range(N_SAMPLES // 8):
+        h = ops.random_hand(rng, FEETECH_RULES)
+        for f in h.fingers:
+            assert not (f.tilt and bend_first(f))
+            first.append(f.joints[0].axis)
+    assert abs(first.count(BEND) / len(first) - KIND_MIX["flexion"]) < 0.06
+    h = simple_hand()                     # four bend-first fingers and a thumb starting with a spread
+    assert all(bend_first(f) for f in h.fingers[:4]) and not bend_first(h.fingers[4])
+    assert {mv[0] for mv in ops.candidates(h, ops.OPERATOR_BY_NAME["tilt_finger"], FEETECH_RULES)} <= {4}
+    for fa in (0, 90, 210):
+        for t in (30, 60, 90):
+            for q in (-0.4, 0.7):
+                A = dv.frame_of(fa, t) @ CF._rot(dv.direction(*BEND), q)
+                B = dv.frame_of(fa, 0) @ CF._rot(dv.direction(*BEND), q + math.radians(t))
+                assert np.allclose(A, B)
+
+
+def test_five_joint_fingers_fit_the_length_cap():
+    """Five joints on the three kinds, each link at its shortest from the palm
+    out (a link that short turns the next bend servo): at most 200 mm, inside
+    the Feetech cap (225 mm); five bends need 190 (30 + 40 + 40 + 40 + a 40 mm
+    fingertip)."""
+    tot = {}
+    for kinds in itertools.product(("flexion", "abduction", "roll"), repeat=5):
+        js = [Joint("hinge", KIND_AXIS[k], 90) for k in kinds]
+        tot[kinds] = ops._shortest_rest_mm(Finger(y=0, z=40), js, -1, 0, FEETECH_RULES)
+    assert max(tot.values()) == 200 <= FEETECH_RULES.max_finger_length_mm and tot[("flexion",) * 5] == 190

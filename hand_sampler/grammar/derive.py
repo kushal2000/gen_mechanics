@@ -27,8 +27,10 @@ Derived geometry (one motor, `motor.py`):
 - solids: the main plate, the part beyond the cut, the mount, the hinge
   motor, each finger's base motor (fixed to its plate) and one box per
   link, square to its frame, around its yoke (the bracket around its
-  joint's motor) and its far end (the next motor, which sits in this link,
-  or the fingertip pad): links are servo-sized;
+  joint's motor) and its far end (the next motor, which sits in this link):
+  links are servo-sized; the fingertip (the last link) is a capsule along
+  the link instead, from the yoke's back to the tip, as thick as the yoke is
+  wide (`TIP_RADIUS_MM`);
 - the palm outline: the convex hull of the mount disc, every base motor's
   housing and the hinge motor's housing; a cut splits it into two convex
   plates, each half a seam short of the line.
@@ -65,6 +67,7 @@ from .hand import (
     cut_direction_yz,
     cut_normal_yz,
     finger_section,
+    turned_servo,
 )
 from .kinematics import AffineCoupling, Body, Frame, Joint as KJoint, KinematicModel, Pose, validate
 
@@ -78,6 +81,15 @@ limit, every other joint at 0, coupled joints following their source."""
 
 CLEARANCE_MM = mt.WALL_MM
 """Solids that do not touch by construction keep one printed wall apart."""
+
+TIP_RADIUS_MM = float(mt.YOKE_HALF_MM[0])
+"""The fingertip capsule's radius (16.5 mm): half the yoke's width along the
+last servo's axis (its 29 mm and two walls), so the fingertip is as wide as
+the bracket around that servo. Martin, 2026-10-16: a capsule instead of a
+box, then a little thicker than the yoke's 24 mm depth."""
+CAPSULE_AROUND = 12
+"""Points around a capsule's mesh; with rings at 0 and 45 degrees and the
+poles it has 50 vertices and 60 faces (PhysX GPU hulls: at most 64 each)."""
 
 
 # --------------------------------------------------------------------------
@@ -197,6 +209,55 @@ class Box:
 def box_corners(centre: np.ndarray, half: np.ndarray) -> np.ndarray:
     """(8, 3) corners of an axis-aligned box."""
     return mt.box_corners(centre, np.eye(3), half)
+
+
+@dataclass
+class Capsule:
+    """The segment p0-p1 grown by `radius`."""
+
+    p0: np.ndarray
+    p1: np.ndarray
+    radius: float
+
+    def ends(self) -> np.ndarray:
+        return np.stack([self.p0, self.p1])
+
+    def moved(self, T: np.ndarray, scale: float = 1.0) -> "Capsule":
+        """The capsule in the frame `T` (as `Box.moved`) is expressed in."""
+        R, t = T[:3, :3], T[:3, 3] / scale
+        return Capsule(R @ self.p0 + t, R @ self.p1 + t, self.radius)
+
+    def surface_points(self, around: int = CAPSULE_AROUND) -> np.ndarray:
+        """Points on the surface whose convex hull is the capsule's mesh:
+        rings at 0 and 45 degrees on each end and the two poles."""
+        d = self.p1 - self.p0
+        n = float(np.linalg.norm(d))
+        a = d / n if n > EPS else np.array([1.0, 0.0, 0.0])
+        u = np.cross(a, [0.0, 0.0, 1.0] if abs(a[2]) < 0.9 else [0.0, 1.0, 0.0])
+        u /= np.linalg.norm(u)
+        v = np.cross(a, u)
+        th = np.arange(around) * (2.0 * math.pi / around)
+        ring = np.cos(th)[:, None] * u + np.sin(th)[:, None] * v
+        r = self.radius
+        out = []
+        for c, s in ((self.p0, -1.0), (self.p1, 1.0)):
+            out += [c + r * ring, c + r * (math.cos(math.pi / 4) * ring + s * math.sin(math.pi / 4) * a),
+                    (c + s * r * a)[None, :]]
+        return np.concatenate(out)
+
+    def aabb(self) -> "Box":
+        lo = np.minimum(self.p0, self.p1) - self.radius
+        hi = np.maximum(self.p0, self.p1) + self.radius
+        return Box((lo + hi) / 2.0, np.eye(3), (hi - lo) / 2.0)
+
+
+def shape_points(shape) -> Tuple[np.ndarray, float]:
+    """A box's corners or a capsule's segment ends, and its radius (0 for a
+    box), in the shape's units: the convex hull of the points grown by the
+    radius is the shape."""
+    if isinstance(shape, Capsule):
+        return shape.ends(), float(shape.radius)
+    return shape.corners(), 0.0
 
 
 def _hull2d(pts: np.ndarray) -> np.ndarray:
@@ -420,16 +481,16 @@ class FingerGeometry:
     slides_mm: np.ndarray         # (n,): each motor's slide along its own axis (crossings)
     motors: List[Box]             # motor j in joint j's frame before it turns (origin at the joint)
     yokes: List[Box]              # yoke j in link j's frame
-    fars: List[Box]               # link j's far end in its frame: the next motor, or the fingertip pad
-    links: List[Box]              # link j's solid in its frame: the box around its yoke and its far end
+    fars: List                    # link j's far end in its frame: the next motor (Box), or the fingertip's end (Capsule)
+    links: List[Box]              # link j's box in its frame, around its yoke and its far end (the tip: its capsule's box)
+    tip: Capsule                  # the fingertip (the last link) in its frame
     base_joints: Tuple[int, ...]  # the joints at the base point (0, and 1 when link 0 is 0 mm)
 
 
-def _pad_start_mm(a: np.ndarray) -> float:
+def _pad_start_mm(a: np.ndarray, turned: bool = False) -> float:
     """Where the fingertip pad starts along the last link: past the last
-    motor's swinging front and a wall (`motor.tip_floor_mm` without the pad)."""
-    t = abs(float(a[0]))
-    return mt.WALL_MM + mt.MOTOR_HALF_MM[0] * t + mt.front_sweep_mm(a) * math.sqrt(max(0.0, 1.0 - t * t))
+    motor's swept front and a wall (`motor.tip_floor_mm` without the pad)."""
+    return mt.WALL_MM + mt.swept_front_mm(a, turned)
 
 
 def _aabb_box(points: np.ndarray) -> Box:
@@ -442,29 +503,35 @@ def finger_geometry(f: Finger) -> FingerGeometry:
     n = len(f.joints)
     B = finger_frame(f)
     axes = np.array([axis_unit(jt.axis) for jt in f.joints])
+    turned = [turned_servo(f, j) for j in range(n)]       # bend servos after a short link: body on the back
     slides = np.zeros(n)
     for j in range(n - 1):
         if f.joints[j].length == 0:
-            slides[j] = -mt.crossing_slide_mm(axes[j], axes[j + 1])
+            slides[j] = -mt.crossing_slide_mm(axes[j], axes[j + 1], turned[j + 1])
     motors, yokes = [], []
     for j in range(n):
-        M = mt.motor_axes(axes[j])
-        motors.append(Box(mt.motor_centre(axes[j], slides[j]), M, mt.MOTOR_HALF_MM.copy()))
+        M = mt.motor_axes(axes[j], turned[j])
+        motors.append(Box(mt.motor_centre(axes[j], slides[j], turned[j]), M, mt.MOTOR_HALF_MM.copy()))
         yokes.append(Box(slides[j] * M[:, 0], M, mt.YOKE_HALF_MM.copy()))
     fars, links = [], []
+    tip = None
     for j in range(n):
         yc = yokes[j].corners()
         if j < n - 1:
             nxt = motors[j + 1]
             far = Box(nxt.centre + np.array([float(f.joints[j].length), 0.0, 0.0]), nxt.axes, nxt.half)
-        else:     # the pad: the yoke's cross-section, from past the motor's swing to the fingertip
-            L = float(f.joints[j].length)
-            x0 = min(_pad_start_mm(axes[j]), L - 1.0)
-            lo, hi = yc.min(axis=0), yc.max(axis=0)
-            far = Box(np.array([(x0 + L) / 2.0, (lo[1] + hi[1]) / 2.0, (lo[2] + hi[2]) / 2.0]), np.eye(3),
-                      np.array([(L - x0) / 2.0, (hi[1] - lo[1]) / 2.0, (hi[2] - lo[2]) / 2.0]))
+            links.append(_aabb_box(np.concatenate([yc, far.corners()])))
+        else:     # the fingertip: a capsule along the link from the yoke's back to the tip
+            L, r = float(f.joints[j].length), TIP_RADIUS_MM
+            x_back = float(yc[:, 0].min())
+            a0 = x_back + r
+            a1 = max(L - r, a0)
+            tip = Capsule(np.array([a0, 0.0, 0.0]), np.array([a1, 0.0, 0.0]), r)
+            # its far end (what must clear the plate it is hinged to): past the motor's swing and a wall
+            x0 = min(max(_pad_start_mm(axes[j], turned[j]) + r, a0), a1)
+            far = Capsule(np.array([x0, 0.0, 0.0]), tip.p1.copy(), r)
+            links.append(tip.aabb())
         fars.append(far)
-        links.append(_aabb_box(np.concatenate([yc, far.corners()])))
     base_joints = [0]
     for j in range(n - 1):
         if f.joints[j].length != 0:
@@ -475,7 +542,7 @@ def finger_geometry(f: Finger) -> FingerGeometry:
     depth = max(mt.support(motors[j].centre, motors[j].axes, mt.ENCLOSURE_HALF_MM, nrm) for j in base_joints)
     base = np.array([PLATE_HALF_MM - depth, float(f.y), float(f.z)])
     return FingerGeometry(B=B, base_mm=base, depth_mm=float(depth), axes=axes, slides_mm=slides, motors=motors,
-                          yokes=yokes, fars=fars, links=links, base_joints=tuple(base_joints))
+                          yokes=yokes, fars=fars, links=links, tip=tip, base_joints=tuple(base_joints))
 
 
 def base_depth_mm(f: Finger) -> float:
@@ -504,15 +571,26 @@ def base_motor_boxes_mm(f: Finger) -> List[Box]:
 
 
 def link_box_mm(f: Finger, j: int) -> Box:
-    """Link j's solid in its own frame (mm): the box, square to the link
-    frame, around its yoke and its far end (the next motor, or the pad). The
-    simulator's collider, the policy's token box and the mass all use it."""
+    """Link j's box in its own frame (mm): square to the link frame, around
+    its yoke and its far end (the next motor); for the fingertip, its
+    capsule's box."""
     return finger_geometry(f).links[j]
 
 
+def link_shape_mm(f: Finger, j: int):
+    """Link j's solid in its own frame (mm): its box, or the fingertip's
+    capsule."""
+    g = finger_geometry(f)
+    return g.tip if j == len(f.joints) - 1 else g.links[j]
+
+
 def link_points_m(hand: Hand, i: int, j: int) -> np.ndarray:
-    """(8, 3): link j's corners in its own frame, metres."""
-    return link_box_mm(hand.fingers[i], j).corners() * MM
+    """Link j's mesh points in its own frame (metres): a box's 8 corners, or
+    the fingertip capsule's 50 surface points. Their convex hull is the
+    simulator's collider and the viewer's mesh; their bounding box the
+    policy's token box."""
+    s = link_shape_mm(hand.fingers[i], j)
+    return (s.surface_points() if isinstance(s, Capsule) else s.corners()) * MM
 
 
 # --------------------------------------------------------------------------
@@ -615,6 +693,15 @@ def palm_outlines_mm(hand: Hand) -> Dict[int, np.ndarray]:
 def outline_mm(hand: Hand) -> np.ndarray:
     """The palm's whole outline before the cut."""
     return hand_geometry(hand).outline
+
+
+def palm_centre_mm(hand: Hand) -> np.ndarray:
+    """The palm's centre (y, z) in mm from the mount: the centroid of the
+    hull of the base servos' housings (the palm without the mount, so moving
+    every base by d moves it by exactly d). The rules keep it within half a
+    base step of the mount."""
+    g = hand_geometry(hand)
+    return polygon_centroid(_hull2d(np.concatenate([_footprint(b) for bs in g.base_boxes.values() for b in bs])))
 
 
 def plate_points_m(outline_mm: np.ndarray, origin_mm: Tuple[float, float] = (0.0, 0.0)) -> np.ndarray:
@@ -833,14 +920,22 @@ def derive(hand: Hand, name: str = "grammar_hand") -> KinematicModel:
 @dataclass
 class Solid:
     key: Tuple                 # ("palm", -1 | 0), ("mount",), ("hinge",), ("motor", i), ("link", i, j)
-    points: np.ndarray         # (k, 3) corners, palm frame, metres
+    points: np.ndarray         # (k, 3) corners (a capsule: its segment's ends), palm frame, metres
     box: Optional[Box] = None  # the same solid as a box (palm frame, mm), for boxes
-    far: Optional[Box] = None  # a link's far end (palm frame, mm): the next motor or the pad
+    far: Optional[object] = None  # a link's far end (palm frame, mm): the next motor (Box) or the tip's end (Capsule)
+    radius: float = 0.0        # metres: the solid is the points' convex hull grown by it (a capsule)
 
 
 def _box_solid(key: Tuple, box_local: Box, T: np.ndarray) -> Solid:
     b = box_local.moved(T, MM)            # T in metres; the box in mm
     return Solid(key, b.corners() * MM, b)
+
+
+def _link_solid(key: Tuple, shape, T: np.ndarray) -> Solid:
+    if isinstance(shape, Capsule):
+        c = shape.moved(T, MM)
+        return Solid(key, c.ends() * MM, None, radius=c.radius * MM)
+    return _box_solid(key, shape, T)
 
 
 def solids_at(hand: Hand, q: Optional[np.ndarray] = None) -> List[Solid]:
@@ -859,7 +954,7 @@ def solids_at(hand: Hand, q: Optional[np.ndarray] = None) -> List[Solid]:
         fg = finger_geometry(f)
         out.append(_box_solid(("motor", i), fg.motors[0], pose.pre[i][0]))
         for j in range(len(f.joints)):
-            s = _box_solid(("link", i, j), fg.links[j], pose.links[i][j])
+            s = _link_solid(("link", i, j), fg.tip if j == len(f.joints) - 1 else fg.links[j], pose.links[i][j])
             s.far = fg.fars[j].moved(pose.links[i][j], MM)
             out.append(s)
     return out
@@ -894,8 +989,25 @@ def box_mass_props(points_m: np.ndarray, density: float = LINK_DENSITY_KG_M3) ->
     return float(m), c, I
 
 
+def capsule_mass_props(c: Capsule, density: float = LINK_DENSITY_KG_M3) -> Tuple[float, np.ndarray, np.ndarray]:
+    """(mass, centre of mass, diagonal inertia about it) of a capsule along
+    x (in metres, in its frame), at the uniform density."""
+    r, h = float(c.radius), float(np.linalg.norm(c.p1 - c.p0))
+    mc = density * math.pi * r * r * h                 # the cylinder
+    ms = density * 4.0 / 3.0 * math.pi * r ** 3        # the two half spheres
+    m = mc + ms
+    ix = mc * r * r / 2.0 + ms * 2.0 * r * r / 5.0
+    iy = mc * (r * r / 4.0 + h * h / 12.0) + ms * (2.0 * r * r / 5.0 + h * h / 4.0 + 3.0 * h * r / 8.0)
+    return float(m), (c.p0 + c.p1) / 2.0, np.array([ix, iy, iy])
+
+
 def link_mass_props(hand: Hand, i: int, j: int) -> Tuple[float, np.ndarray, np.ndarray]:
-    return box_mass_props(link_points_m(hand, i, j))
+    """(mass, centre of mass, diagonal inertia) of link j in its frame
+    (metres): its box, or the fingertip's capsule."""
+    s = link_shape_mm(hand.fingers[i], j)
+    if isinstance(s, Capsule):
+        return capsule_mass_props(Capsule(s.p0 * MM, s.p1 * MM, s.radius * MM))
+    return box_mass_props(s.corners() * MM)
 
 
 # --------------------------------------------------------------------------
@@ -916,8 +1028,9 @@ def _object_start_cached(hand: Hand, half_mm: float, clearance_mm: float) -> Tup
     yc, zc = polygon_centroid(outline_mm(hand))
     solids = [s for s in solids_at(hand, start_q(hand)) if s.key[0] != "mount"]
     pts = [s.points / MM for s in solids]
+    rads = [s.radius / MM for s in solids]
     centres = [p.mean(axis=0) for p in pts]
-    reach = [float(np.max(np.linalg.norm(p - c, axis=1))) for p, c in zip(pts, centres)]
+    reach = [float(np.max(np.linalg.norm(p - c, axis=1))) + rr for p, c, rr in zip(pts, centres, rads)]
     cube_reach = half_mm * math.sqrt(3.0)
     x = PLATE_HALF_MM + half_mm + clearance_mm
     top = x + OBJECT_MAX_RAISE_MM
@@ -925,10 +1038,10 @@ def _object_start_cached(hand: Hand, half_mm: float, clearance_mm: float) -> Tup
         centre = np.array([x, yc, zc])
         cube = box_corners(centre, np.full(3, half_mm))
         clear = True
-        for p, c, r in zip(pts, centres, reach):
+        for p, c, r, rr in zip(pts, centres, reach, rads):
             if float(np.linalg.norm(c - centre)) > r + cube_reach + clearance_mm:
                 continue
-            if gjk_distance(cube, p) < clearance_mm - 1e-6:
+            if gjk_distance(cube, p) - rr < clearance_mm - 1e-6:
                 clear = False
                 break
         if clear:

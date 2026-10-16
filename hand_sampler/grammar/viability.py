@@ -5,7 +5,8 @@ printed wall (2 mm) apart, at the zero pose and at the episode start pose
 (`derive.START_CURL`); and every base motor's housing stays out of a palm
 cut's seam. Solids are `derive.solids_at`: the plates, the mount, the hinge
 motor, each finger's base motor and each link (a box around its yoke and the
-next motor or the pad). Distances are exact (GJK on the corners).
+next motor; the fingertip a capsule). Distances are exact (GJK on the corners,
+or a capsule's segment less its radius).
 
 Touching by construction (skipped):
 - the main plate with the mount, the hinge motor and the part beyond the
@@ -123,7 +124,7 @@ def overlaps(hand: Hand, q: Optional[np.ndarray] = None, focus_finger: Optional[
     skip = touching_pairs(hand)
     far = plate_far_pairs(hand) if q is None else set()
     centres = [s.points.mean(axis=0) for s in solids]
-    reach = [float(np.max(np.linalg.norm(s.points - c, axis=1))) for s, c in zip(solids, centres)]
+    reach = [float(np.max(np.linalg.norm(s.points - c, axis=1))) + s.radius for s, c in zip(solids, centres)]
     margin = CLEARANCE_MM * MM
     out = []
     for a in range(len(solids)):
@@ -132,17 +133,19 @@ def overlaps(hand: Hand, q: Optional[np.ndarray] = None, focus_finger: Optional[
             if focus_finger is not None and focus_finger not in (_finger_of(A.key), _finger_of(B.key)) \
                     and A.key[0] != "palm" and B.key[0] != "palm":
                 continue
-            PA, PB = A.points, B.points
+            PA, PB, rA, rB = A.points, B.points, A.radius, B.radius
             if (A.key, B.key) in skip:
                 if (A.key, B.key) in far:
-                    PB = B.far.corners() * MM
+                    PB, rB = dv.shape_points(B.far)
+                    PB, rB = PB * MM, rB * MM
                 elif (B.key, A.key) in far:
-                    PA = A.far.corners() * MM
+                    PA, rA = dv.shape_points(A.far)
+                    PA, rA = PA * MM, rA * MM
                 else:
                     continue
             if float(np.linalg.norm(centres[a] - centres[b])) > reach[a] + reach[b] + margin:
                 continue
-            d = gjk_distance(PA, PB)
+            d = max(0.0, gjk_distance(PA, PB) - rA - rB)      # intersecting solids: 0, as for boxes
             ov = CLEARANCE_MM - d / MM
             if ov > C1_TOLERANCE_MM:
                 out.append((A.key, B.key, ov))

@@ -72,10 +72,12 @@ from .hand import (
     Rules,
     SEAM_MM,
     allowed_lengths,
+    bend_first,
     canonical_axis,
     check,
     cut_direction_yz,
     cut_normal_yz,
+    shifted,
 )
 
 MM = 1e-3
@@ -431,7 +433,12 @@ def snap_continuous(x: np.ndarray, layout: dict, t: FingerTarget, mount_mm: Tupl
             F_c = F_c @ _rot(A[j], float(qs[j]))
             F = F @ _rot(dv.direction(*ax), float(qs[j]))
         joints.append(Joint(t.types[j], ax, snap_length(Ls[j], j == n - 1, rules.max_link_mm)))
-    return ops.fit_lengths(replace(f, joints=tuple(joints)), rules), np.asarray(qs, dtype=float)
+    f = ops.fit_lengths(replace(f, joints=tuple(joints)), rules)
+    qs = np.asarray(qs, dtype=float).copy()
+    if f.tilt and bend_first(f):      # the tilt turns about the first bend's axis: fold it into that joint
+        qs[0] += math.radians(f.tilt)
+        f = replace(f, tilt=0)
+    return f, qs
 
 
 def _neighbours(f: Finger, mount_fixed: bool = False, rules: Rules = NO_RULES) -> List[Finger]:
@@ -461,7 +468,9 @@ def _neighbours(f: Finger, mount_fixed: bool = False, rules: Rules = NO_RULES) -
             for kk in (k - 1, k + 1):
                 if 0 <= kk < len(allowed):
                     out.append(put(replace(jt, length=allowed[kk])))
-    return out
+    # a bend first has tilt 0 (the zero-pose fit takes the difference)
+    out = [replace(g, tilt=0) if g.tilt and bend_first(g) else g for g in out]
+    return [g for g in out if g != f]
 
 
 def refine_finger(fit: FingerFit, t: FingerTarget, mount_fixed: bool = True,
@@ -523,7 +532,7 @@ def kinds_kept(hand: Hand, palm_T: np.ndarray, q_off: np.ndarray, real: RealHand
 
 
 def _frame_sweep(t: FingerTarget, f: Finger, rules: Rules, guard: Guard) -> List[FingerFit]:
-    """Finger f fitted in every grid frame (12 facings x 5 tilts) on its
+    """Finger f fitted in every grid frame (12 facings x 4 tilts) on its
     base, the clash with the rest of the hand counted, best first (not yet
     refined). A thumb fitted lying along the palm can come out standing off
     it, the difference taken into its zero-pose offsets."""
@@ -1022,10 +1031,41 @@ def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm
     return best[1]
 
 
+def _recentred(fits: List[FingerFit], frame: np.ndarray, rules: Rules) -> Tuple[List[FingerFit], np.ndarray]:
+    """The fitted fingers moved on the base grid so the mount sits at the
+    palm's centre (`operators.recentre`), the palm frame moved back with them:
+    the hand stays where it is, so every error is unchanged."""
+    hand = Hand(fingers=tuple(r.finger for r in fits))
+    moved = ops.recentre(hand, rules)
+    if moved == hand:
+        return fits, frame
+    d = np.array([0.0, moved.fingers[0].y - hand.fingers[0].y, moved.fingers[0].z - hand.fingers[0].z]) * MM
+    T = frame.copy()
+    T[:3, 3] = frame[:3, 3] - frame[:3, :3] @ d
+    return [replace(r, finger=g) for r, g in zip(fits, moved.fingers)], T
+
+
+def recentre_fit(fit: "HandFit", real: RealHand, rules: Rules) -> "HandFit":
+    """`fit` with the mount moved back to the palm's centre after a refit
+    turned a base servo (the cut moves with the fingers, to the nearest 10
+    mm; its errors are measured again)."""
+    fits, T = _recentred(fit.fingers, fit.palm_T, rules)
+    if T is fit.palm_T:
+        return fit
+    f0, g0 = fit.fingers[0].finger, fits[0].finger
+    hand = shifted(fit.hand, g0.y - f0.y, g0.z - f0.z)
+    fit.hand, fit.fingers, fit.palm_T = hand, fits, T
+    if hand.palm_joints and "palm0_joint" in fit.name_map:
+        e_mm, e_deg = _palm_errors(real, T, hand, fit.name_map["palm0_joint"])
+        fit.palm_joint_mm, fit.palm_axis_deg = [e_mm], [e_deg]
+    return fit
+
+
 def _conform_in(real: RealHand, frame: np.ndarray, rules: Rules = NO_RULES) -> HandFit:
     notes = list(real.notes)
     targets = _targets_for(real, frame)
     fits = [_fit_free(t, b, rules) for t, b in zip(targets, _bases(targets))]
+    fits, frame = _recentred(fits, frame, replace(rules, mount_at_centre=True))   # every fit: the mount at the centre
     for f, t in zip(real.fingers, targets):
         for j, jt in enumerate(f.joints):
             if jt.coupled_to and t.types[j] != "coupled":
@@ -1153,6 +1193,7 @@ def conform_buildable(real: RealHand, ladder: Sequence[float] = SCALE_LADDER, st
             fit = conform(real_s, palm_frame=T, rules=COMMERCIAL_RULES)
         if not check(fit.hand, COMMERCIAL_RULES) and not gvb.c1_self_overlap(fit.hand).ok:
             fit = refit_clear(fit, real_s, COMMERCIAL_RULES)
+            fit = recentre_fit(fit, real_s, COMMERCIAL_RULES)     # a refit can turn a base servo
         fit.scale = float(s)
         return fit
 

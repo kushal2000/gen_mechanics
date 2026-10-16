@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import math
+from functools import lru_cache
 from dataclasses import dataclass, replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -86,10 +87,16 @@ SEAM_MM = 2.0 * (PLATE_HALF_MM * math.sin(math.radians(30.0)) + mt.WALL_MM) / (1
 # The cut must leave the whole mount on the fixed part.
 MIN_CUT_OFFSET_MM = mt.ceil10(MOUNT_RADIUS_MM + SEAM_MM / 2.0)   # 30
 
-# Finger tilt out of the plate (commercial extremes x 1.1, rounded out to the
-# grid: Barrett's thumb -25 and DClaw's fingers +90). Facing covers the full
-# circle unless a rule set asks for outward-facing fingers.
-TILT_RANGE_DEG = (-30, 90)
+# Finger tilt out of the plate, toward the grasp side: from lying in the
+# plate's directions (0) to standing straight up (+90, DClaw's fingers). No
+# finger points under the palm (Martin, 2026-10-16; the range was -30 to +90
+# for Barrett's thumb at -25). Facing covers the full circle unless a rule set
+# asks for outward-facing fingers.
+TILT_RANGE_DEG = (0, 90)
+# A finger whose first joint is a bend has tilt 0: the tilt turns the finger
+# about its bend axis (in the plate, whatever the tilt), so a tilted bend-first
+# finger is the same chain as an untilted one with its first bend offset by
+# the tilt (Martin, 2026-10-16). `bend_first`.
 
 # Joint ranges, degrees; sliding joints in millimetres (Dex1's jaws, -20 to
 # +24.5 mm, the only commercial sliding joints, rounded out).
@@ -241,7 +248,13 @@ class Rules:
     set may only tighten them. `FEETECH_RULES` (the simulator's and
     evolution's) are the hands buildable from Feetech servos: hinges only,
     bases on a 40 mm grid 40-90 mm from the palm centre, fingers facing
-    outward, links at least the motor floors."""
+    outward, links at least the motor floors, the mount at the palm's centre.
+
+    `mount_at_centre`: the centroid of the base servos' hull lies within half
+    a base step of the mount (`derive.palm_centre_mm`), so no two hands
+    differ only in where the mount sits (Martin, 2026-10-16). It belongs to
+    the rule set because the step does: the grammar's own limits leave the
+    mount free and so contain every rule set's hands."""
 
     joint_types: Tuple[str, ...] = JOINT_TYPES
     min_fingers: int = 2
@@ -254,6 +267,7 @@ class Rules:
     outward_facing: bool = False
     buildable_links: bool = False
     max_link_mm: int = LINK_MAX_MM
+    mount_at_centre: bool = False
 
     def clamp(self) -> "Rules":
         """The same rules, every field inside the grammar's own limits."""
@@ -271,14 +285,16 @@ class Rules:
             base_pitch_mm=pitch, base_distance_mm=(lo, max(lo, hi)),
             outward_facing=bool(self.outward_facing), buildable_links=bool(self.buildable_links),
             max_link_mm=max(TIP_MIN_MM, min(int(self.max_link_mm) // GRID_MM * GRID_MM, g.max_link_mm)),
+            mount_at_centre=bool(self.mount_at_centre),
         )
 
 
 NO_RULES = Rules()
 FEETECH_RULES = Rules(joint_types=("hinge",), base_pitch_mm=40, base_distance_mm=(40, 90),
-                      outward_facing=True, buildable_links=True, max_finger_length_mm=225, max_link_mm=90)
+                      outward_facing=True, buildable_links=True, max_finger_length_mm=225, max_link_mm=90,
+                      mount_at_centre=True)
 EVOLUTION_RULES = FEETECH_RULES
-COMMERCIAL_RULES = Rules(buildable_links=True)
+COMMERCIAL_RULES = Rules(buildable_links=True, mount_at_centre=True)
 """The grammar's own limits with servo link lengths: what a commercial hand,
 scaled up until it is buildable from Feetech servos, is fitted under."""
 
@@ -287,12 +303,54 @@ def _is_int(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
+def bend_first(f: Finger) -> bool:
+    """The finger's first joint turns about its bend axis (a hinge on the
+    flexion axis), which is what its tilt turns it about: such a finger has
+    tilt 0."""
+    return bool(f.joints) and f.joints[0].type in REVOLUTE_TYPES and tuple(f.joints[0].axis) == KIND_AXIS["flexion"]
+
+
+def tilts_for(kind: str) -> List[int]:
+    """The tilts a finger whose first joint is of `kind` may take."""
+    if kind == "flexion":
+        return [0]
+    return list(range(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1] + 1, GRID_DEG))
+
+
 def faces_outward(f: Finger) -> bool:
     """The finger does not point back across the palm: its direction in the
     plate makes at most 90 degrees with the line from the palm centre to its
     base (tangential allowed)."""
     fa = math.radians(f.facing)
     return math.sin(fa) * f.y + math.cos(fa) * f.z >= -1e-9
+
+
+@lru_cache(maxsize=None)
+def _link_floor(ax_a: Tuple[int, int], ax_b: Tuple[int, int], turned_a: bool, turned_b: bool) -> int:
+    return mt.link_floor_mm(axis_unit(ax_a), axis_unit(ax_b), turned_a, turned_b)
+
+
+@lru_cache(maxsize=None)
+def _tip_floor(ax: Tuple[int, int], turned: bool) -> int:
+    return mt.tip_floor_mm(axis_unit(ax), turned)
+
+
+@lru_cache(maxsize=None)
+def _is_bend(ax: Tuple[int, int]) -> bool:
+    return mt.is_bend(axis_unit(ax))
+
+
+def turned_servo(f: Finger, j: int) -> bool:
+    """Whether joint j's servo is turned, its body on the back of the finger
+    instead of along the link: a bend servo whose link before it is too short
+    for it to lie along the link (Martin, 2026-10-16). Servos at the base and
+    after a 0 mm link lie along the finger."""
+    if j == 0:
+        return False
+    jt, prev = f.joints[j], f.joints[j - 1]
+    if jt.type == "sliding" or prev.length == 0 or not _is_bend(tuple(jt.axis)):
+        return False
+    return prev.length < _link_floor(tuple(prev.axis), tuple(jt.axis), turned_servo(f, j - 1), False)
 
 
 def zero_link_ok(f: Finger, j: int, buildable: bool) -> bool:
@@ -310,14 +368,17 @@ def zero_link_ok(f: Finger, j: int, buildable: bool) -> bool:
 
 
 def length_floor_mm(f: Finger, j: int, buildable: bool) -> int:
-    """The shortest non-zero length link j may have."""
+    """The shortest non-zero length link j may have: before a bend servo,
+    the length at which it turns (`turned_servo`)."""
     n = len(f.joints)
     if not buildable:
         return TIP_MIN_MM if j == n - 1 else LINK_MIN_MM
-    a = axis_unit(f.joints[j].axis)
+    a = tuple(f.joints[j].axis)
     if j == n - 1:
-        return mt.tip_floor_mm(a)
-    return mt.link_floor_mm(a, axis_unit(f.joints[j + 1].axis))
+        return _tip_floor(a, turned_servo(f, j))
+    nxt = f.joints[j + 1]
+    b = tuple(nxt.axis)
+    return _link_floor(a, b, turned_servo(f, j), nxt.type != "sliding" and _is_bend(b))
 
 
 def allowed_lengths(f: Finger, j: int, buildable: bool, max_mm: int = LINK_MAX_MM) -> List[int]:
@@ -354,6 +415,9 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
             out.append(f"{tag}: facing {f.facing} outside [0, 360)")
         if not (TILT_RANGE_DEG[0] <= f.tilt <= TILT_RANGE_DEG[1]):
             out.append(f"{tag}: tilt {f.tilt} outside {TILT_RANGE_DEG[0]} to {TILT_RANGE_DEG[1]}")
+        if f.tilt and bend_first(f):
+            out.append(f"{tag}: tilt {f.tilt} with a bend first (the bend already turns the finger out of "
+                       f"the plate; tilt 0)")
         if f.y % r.base_pitch_mm or f.z % r.base_pitch_mm:
             out.append(f"{tag}: base ({f.y}, {f.z}) off the {r.base_pitch_mm} mm grid")
         d = base_distance_mm(f)
@@ -407,6 +471,14 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
             out.append(f"palm joint {k}: no finger beyond the cut")
         if moving == n:
             out.append(f"palm joint {k}: no finger left on the main palm")
+    if r.mount_at_centre and n and not out:
+        # the mount sits at the palm's centre (Martin, 2026-10-16): so no two hands differ only in where it sits
+        from .derive import palm_centre_mm      # derive builds on this module
+        cy, cz = palm_centre_mm(hand)
+        h = r.base_pitch_mm / 2.0
+        if not (-h <= cy < h and -h <= cz < h):
+            out.append(f"palm centre ({cy:.1f}, {cz:.1f}) mm from the mount; the mount sits at the palm's centre, "
+                       f"within half a base step ({h:g} mm)")
     return out
 
 
@@ -434,6 +506,15 @@ def with_joint(hand: Hand, i: int, j: int, joint: Joint) -> Hand:
     js = list(f.joints)
     js[j] = joint
     return with_finger(hand, i, replace(f, joints=tuple(js)))
+
+
+def shifted(hand: Hand, dy: int, dz: int) -> Hand:
+    """The same hand with the mount moved by (-dy, -dz): every base moved by
+    (dy, dz), the cut with them (its offset to the nearest 10 mm)."""
+    fingers = tuple(replace(f, y=f.y + dy, z=f.z + dz) for f in hand.fingers)
+    cuts = tuple(replace(p, offset=int(round((p.offset + float(cut_normal_yz(p) @ (dy, dz))) / GRID_MM)) * GRID_MM)
+                 for p in hand.palm_joints)
+    return replace(hand, fingers=fingers, palm_joints=cuts)
 
 
 def drop_empty_cut(hand: Hand) -> Hand:

@@ -4,12 +4,14 @@ the link and fingertip floors, crossing slides (E15)."""
 from __future__ import annotations
 
 import itertools
+import math
 
 import numpy as np
 import pytest
 
 from hand_sampler.grammar import motor as mt
 from hand_sampler.grammar.derive import direction
+from hand_sampler.grammar.hand import KIND_RANGE_DEG
 
 BEND, SPREAD, TWIST = mt.Z, mt.Y, mt.X
 KINDS = {"bend": BEND, "spread": SPREAD, "twist": TWIST}
@@ -40,14 +42,24 @@ def test_floors_over_the_coarse_axes():
     assert max(floors) == 50 and min(floors) == 30
     assert {mt.tip_floor_mm(a) for a in KINDS.values()} == {30}
     assert max(mt.tip_floor_mm(a) for a in COARSE_AXES) == 40
-    five = {c: sum(mt.link_floor_mm(KINDS[a], KINDS[b]) for a, b in zip(c, c[1:])) + mt.tip_floor_mm(KINDS[c[-1]])
-            for c in itertools.product(KINDS, repeat=5)}
-    # five on-kind joints at their floors need at most 230 mm; the Feetech cap (225 mm) leaves out the four whose
-    # links all need 50 mm (three bends in the middle, a bend or twist first, a bend or spread last)
-    assert max(five.values()) == 230
-    assert sorted(c for c, L in five.items() if L > 225) == [("bend",) * 5, ("bend",) * 4 + ("spread",),
-                                                             ("twist",) + ("bend",) * 4,
-                                                             ("twist",) + ("bend",) * 3 + ("spread",)]
+
+
+def test_a_turned_bend_motor():
+    """A turned bend motor lies with its body on the back of the finger: 10
+    mm of it behind its axis along the link instead of 24.5, but its back
+    corner swings 20.9 mm forward at the -30 degree hyperextension (13.8 for
+    a motor lying along the link)."""
+    M = mt.motor_axes(BEND, turned=True)
+    assert np.allclose(M[:, 1], -mt.Y) and np.allclose(M[:, 2], mt.X)
+    assert mt.back_mm(BEND, True) == pytest.approx(10.0) and mt.back_mm(BEND) == pytest.approx(24.5)
+    assert mt.swept_front_mm(BEND, True) == pytest.approx(10 * math.cos(math.radians(30)) + 24.5 * 0.5)
+    assert mt.swept_front_mm(BEND) == pytest.approx(math.hypot(9.5, 10.0))
+    assert [mt.link_floor_mm(BEND, BEND, ta, tb) for ta, tb in ((False, False), (False, True), (True, True), (True, False))] \
+        == [50, 30, 40, 50]
+    assert mt.link_floor_mm(SPREAD, BEND, False, True) == 30 and mt.link_floor_mm(TWIST, BEND, False, True) == 30
+    assert mt.tip_floor_mm(BEND, True) == 40 and mt.tip_floor_mm(BEND) == 30
+    assert mt.crossing_slide_mm(SPREAD, BEND, turned_b=True) == pytest.approx(41.0)
+    assert mt.BEND_RANGE_DEG == tuple(float(v) for v in KIND_RANGE_DEG["flexion"])
 
 
 def test_motor_box():

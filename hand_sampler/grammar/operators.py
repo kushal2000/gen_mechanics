@@ -38,7 +38,6 @@ from .hand import (
     KIND_MIX,
     MIN_CUT_OFFSET_MM,
     REVOLUTE_TYPES,
-    TILT_RANGE_DEG,
     EVOLUTION_RULES,
     NO_RULES,
     Finger,
@@ -54,20 +53,16 @@ from .hand import (
     faces_outward,
     finger_section,
     length_floor_mm,
+    shifted,
+    tilts_for,
     with_finger,
     with_joint,
 )
 
 P_PALM_JOINT = 0.5
 """Share of random hands drawn with a palm cut (when the rules allow one)."""
-ADD_FINGER_LENGTH_MM = 40
 MAX_FINGER_ATTEMPTS = 50
 MAX_HAND_ATTEMPTS = 20
-
-
-def _grid(lo: int, hi: int, step: int) -> List[int]:
-    start = int(math.ceil(lo / step) * step)
-    return list(range(start, hi + 1, step))
 
 
 def _pick(rng: np.random.Generator, values: Sequence):
@@ -184,12 +179,17 @@ def _joint_moves(hand: Hand, rules: Rules) -> List[tuple]:
 
 
 def _length(hand: Hand, mv: tuple, rules: Rules) -> Hand:
+    """Link j one allowed length up or down; a link after it that becomes
+    too short (a shorter link can turn the next bend servo) grows to its
+    shortest."""
     i, j, s = mv
     f = hand.fingers[i]
     out = step_length(f, j, s, rules)
     if out is None:
         return hand
-    return with_joint(hand, i, j, replace(f.joints[j], length=out))
+    js = list(f.joints)
+    js[j] = replace(js[j], length=out)
+    return with_finger(hand, i, fit_lengths(replace(f, joints=tuple(js)), rules))
 
 
 def step_axis(axis: Tuple[int, int], which: int, s: int, deg: int = GRID_DEG) -> Tuple[int, int]:
@@ -256,17 +256,34 @@ def _radial_facing(y: int, z: int) -> int:
 
 
 def _add_finger_moves(hand: Hand, rules: Rules) -> List[tuple]:
+    """`(y, z, seed)` per free spot; the seed draws the new finger's joints
+    (0 here; `iter_valid` gives each a random one when it has a generator)."""
     if len(hand.fingers) >= rules.max_fingers:
         return []
     taken = {(f.y, f.z) for f in hand.fingers}
-    return [(y, z) for (y, z) in base_spots(rules) if (y, z) not in taken]
+    return [(y, z, 0) for (y, z) in base_spots(rules) if (y, z) not in taken]
+
+
+def added_finger_joints(hand: Hand, rules: Rules) -> int:
+    """How many joints an added finger has: the mean over the hand's
+    fingers, rounded up (Martin, 2026-10-16), within the rules."""
+    if not hand.fingers:
+        return 1
+    mean = sum(len(f.joints) for f in hand.fingers) / len(hand.fingers)
+    return max(1, min(rules.max_joints, math.ceil(mean - 1e-9)))
 
 
 def _add_finger(hand: Hand, mv: tuple, rules: Rules) -> Hand:
-    y, z = mv
-    f = Finger(y=y, z=z, facing=_radial_facing(y, z), tilt=0,
-               joints=(Joint("hinge", KIND_AXIS["flexion"], ADD_FINGER_LENGTH_MM),))
-    return replace(hand, fingers=hand.fingers + (f,))
+    """A finger at spot (y, z), pointing straight out from the palm centre,
+    tilt 0, with `added_finger_joints` joints drawn as a random hand's are
+    (`_draw_joints`, from generator `seed`)."""
+    y, z, seed = mv
+    rng = np.random.default_rng(seed)
+    base = Finger(y=y, z=z, facing=_radial_facing(y, z), tilt=0)
+    joints = _draw_joints(rng, rules, _draw_kind(rng), base, n=added_finger_joints(hand, rules))
+    if joints is None:
+        return hand
+    return replace(hand, fingers=hand.fingers + (replace(base, joints=joints),))
 
 
 def _remove_finger_moves(hand: Hand, rules: Rules) -> List[tuple]:
@@ -395,7 +412,8 @@ OPERATORS: Tuple[Operator, ...] = (
              False, _cut_moves, _turn_cut),
     # structure
     Operator("add_finger", "add a finger",
-             "Add a one-joint finger (a bending joint, 40 mm) at a free spot on the palm, pointing outward.",
+             "Add a finger at a free spot on the palm, pointing outward, with as many joints as the other fingers "
+             "have on average (rounded up), its joints and links drawn as for a random hand.",
              True, _add_finger_moves, _add_finger),
     Operator("remove_finger", "remove a finger",
              "Remove one whole finger; a palm cut left with no finger on one side goes too.",
@@ -421,6 +439,18 @@ INVERSES: Dict[str, str] = {
 }
 
 
+def recentre(hand: Hand, rules: Rules) -> Hand:
+    """The hand moved on the base grid so that its palm's centre lies within
+    half a base step of the mount (`Rules.mount_at_centre`): the same
+    fingers, the mount at their centre. Unchanged under rules that leave the
+    mount free."""
+    if not hand.fingers or not rules.mount_at_centre:
+        return hand
+    p = rules.base_pitch_mm
+    k = np.floor((dv.palm_centre_mm(hand) + p / 2.0) / p).astype(int)    # 0 when within half a step
+    return shifted(hand, int(-k[0] * p), int(-k[1] * p)) if k.any() else hand
+
+
 def _weighted_order(rng: np.random.Generator, weights: Sequence[float]) -> List[int]:
     """A random order in which item i comes early with weight w_i
     (Efraimidis-Spirakis keys u ** (1 / w))."""
@@ -443,10 +473,15 @@ def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, rng: Op
         else:
             order = list(rng.permutation(len(moves)))
         moves = [moves[int(k)] for k in order]
+        if op.name == "add_finger":       # each new finger's joints from its own draw
+            moves = [m[:-1] + (int(rng.integers(1 << 62)),) for m in moves]
     pv = len(check(hand, rules))
     parent_worst = None
     for mv in moves:
         child = op.apply(hand, mv, rules)
+        centred = recentre(child, rules)          # the mount stays at the palm's centre
+        if centred != child and (pv == 0 or _admissible(centred, pv, rules)):
+            child = centred                       # (a hand already off-centre may also stay where it is)
         if child == hand or not _admissible(child, pv, rules):
             continue
         if parent_worst is None:
@@ -511,14 +546,14 @@ def _base_placements(rules: Rules) -> Tuple[List[Tuple[int, int, int, int, str]]
 
 @lru_cache(maxsize=16)
 def _base_placements_cached(rules: Rules):
-    tilts = _grid(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1], GRID_DEG)
     out, w = [], []
     for (y, z) in base_spots(rules):
         for fa in facings_at(y, z, rules):
-            for t in tilts:
-                for k, p in KIND_MIX.items():
+            for k, p in KIND_MIX.items():
+                ts = tilts_for(k)            # a bend first: tilt 0 only
+                for t in ts:
                     out.append((y, z, fa, t, k))
-                    w.append(p)
+                    w.append(p / len(ts))    # the first joint's kinds keep the mix
     return out, np.array(w)
 
 
@@ -586,25 +621,40 @@ def _draw_kind(rng: np.random.Generator) -> str:
     return kinds[int(rng.choice(len(kinds), p=w / w.sum()))]
 
 
-def _draw_joints(rng: np.random.Generator, rules: Rules, first: str, base: Finger) -> Optional[Tuple[Joint, ...]]:
-    """1 to the rules' maximum joints, uniformly; the first of the base's
-    kind, the others drawn with the commercial mix, every axis exactly on its
-    kind; each link uniform over its allowed lengths, among those that leave
-    the rest of the finger room under the length cap."""
+def _shortest_rest_mm(base: Finger, js: List[Joint], j: int, v: int, rules: Rules) -> int:
+    """The links after link j at their shortest, link j at `v` (j = -1: the
+    whole finger), each from the palm out (a short link can turn the next
+    bend servo, which changes the floors after it)."""
+    js = list(js)
+    if j >= 0:
+        js[j] = replace(js[j], length=v)
+    total = 0
+    for k in range(j + 1, len(js)):
+        L = length_floor_mm(replace(base, joints=tuple(js)), k, rules.buildable_links)
+        js[k] = replace(js[k], length=L)
+        total += L
+    return total
+
+
+def _draw_joints(rng: np.random.Generator, rules: Rules, first: str, base: Finger,
+                 n: Optional[int] = None) -> Optional[Tuple[Joint, ...]]:
+    """`n` joints (default 1 to the rules' maximum, uniformly); the first of
+    the base's kind, the others drawn with the commercial mix, every axis
+    exactly on its kind; each link uniform over its allowed lengths, among
+    those that leave the rest of the finger room under the length cap."""
+    fixed = n
     for _ in range(20):
-        n = int(rng.integers(1, rules.max_joints + 1))
+        n = fixed if fixed is not None else int(rng.integers(1, rules.max_joints + 1))
         kinds = [first] + [_draw_kind(rng) for _ in range(n - 1)]
         js = [Joint("hinge", KIND_AXIS[k], rules.max_link_mm) for k in kinds]
-        f = replace(base, joints=tuple(js))
-        floors = [length_floor_mm(f, j, rules.buildable_links) for j in range(n)]
-        if sum(floors) > rules.max_finger_length_mm:
+        if _shortest_rest_mm(base, js, -1, 0, rules) > rules.max_finger_length_mm:
             continue
         budget = rules.max_finger_length_mm
         ok = True
         for j in range(n):
             f = replace(base, joints=tuple(js))
-            rest = sum(floors[j + 1:])
-            values = [v for v in allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm) if v <= budget - rest]
+            values = [v for v in allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm)
+                      if v + _shortest_rest_mm(base, js, j, v, rules) <= budget]
             if not values:
                 ok = False
                 break
@@ -628,6 +678,8 @@ def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES) -> Han
     - a finger is kept if the hand stays clear (C1); otherwise its base and
       joints are drawn again, up to 50 times, then the whole hand again with
       the same finger count (up to 20 times; `NoHand` after that);
+    - the hand is moved on the base grid so the mount sits at the palm's
+      centre (`recentre`); if it then breaks a rule or C1, it is drawn again;
     - with probability `P_PALM_JOINT` (when the rules allow a palm joint) a
       cut drawn uniformly among those that leave a finger on each side and
       keep the hand clear (none: the hand is drawn again).
@@ -637,6 +689,9 @@ def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES) -> Han
     for _ in range(MAX_HAND_ATTEMPTS):
         hand = _draw_fingers(rng, rules, n)
         if hand is None:
+            continue
+        hand = recentre(hand, rules)          # the mount at the palm's centre
+        if check(hand, rules) or not clear(hand):
             continue
         if want_cut:
             cut = None
