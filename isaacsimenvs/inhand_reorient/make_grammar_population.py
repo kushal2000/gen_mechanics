@@ -72,10 +72,11 @@ def cut_hand() -> Hand:
 def zero_link_hand() -> Hand:
     """Knuckles with two joints at one point (0 mm links: a spread crossing a
     bend, its motor slid behind the palm), and a 2-2-1 thumb with a second
-    crossing in its middle."""
+    crossing in its middle, opposite the row so the mount is at the palm's
+    centre."""
     knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
     fingers = [_finger(y, 80, knuckle) for y in (-40, 0, 40)]
-    fingers.append(_finger(80, -40, THUMB_221, facing=90))
+    fingers.append(_finger(40, -80, THUMB_221, facing=180))      # opposite the row: the mount at the palm's centre
     return Hand(fingers=tuple(fingers))
 
 

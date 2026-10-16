@@ -148,6 +148,8 @@ def test_ghost_tail_sits_at_the_fingertip():
 
 
 def test_link_colliders_are_servo_sized_boxes_and_plates_fit_gpu_hulls():
+    """Links are boxes and fingertips 50-point capsules, every hull inside
+    PhysX's GPU limits (64 vertices, 64 faces)."""
     from scipy.spatial import ConvexHull
 
     for h in list(SPECIAL.values()) + _random_hands(40, seed=4):
@@ -155,7 +157,9 @@ def test_link_colliders_are_servo_sized_boxes_and_plates_fit_gpu_hulls():
         for s in range(ge.N_SLOTS):
             if d.slot_real[s] and ge.slot_joint_index(s) >= 0:
                 pts = ge.link_points(d, s)
-                assert pts.shape == (8, 3)
+                assert pts.shape in ((8, 3), (50, 3))      # a box, or the fingertip capsule's mesh points
+                hull = ConvexHull(pts)
+                assert len(hull.vertices) <= 64 and len({tuple(np.round(e, 6)) for e in hull.equations}) <= 64
                 ext = pts.max(0) - pts.min(0)
                 assert ext.min() >= 0.020 - 1e-12          # at least a motor's width
         for node in [ge.ROOT_NODE] + [c for c in ge.CARRIER_SLOTS if d.slot_valid[c]]:

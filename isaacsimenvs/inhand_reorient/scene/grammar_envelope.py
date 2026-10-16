@@ -33,8 +33,9 @@ topology):
       joints and leader carriers); `slot_real` every joint with a real link
       (coupled joints included) and leader carriers.
     - Links are servo-sized boxes (`hand_sampler.grammar.derive.link_box_mm`:
-      each link's yoke and the motor it carries), along each link body's +x,
-      with a 1 mm rest offset (two solids rest one printed wall apart). Ghost
+      each link's yoke and the motor it carries), along each link body's +x;
+      the fingertip is a capsule (`derive.TIP_RADIUS_MM`) as a 50-vertex
+      convex hull. All with a 1 mm rest offset (two solids rest one printed wall apart). Ghost
       slots (no finger joint) are tiny, collider-less and locked near zero.
 
 Every grammar hand fits (at most 6 fingers of at most 5 joints, at most one
@@ -650,8 +651,9 @@ def grammar_fk_reference(design: EnvelopeDesign, q: np.ndarray) -> np.ndarray:
 
 
 def link_points(design: EnvelopeDesign, idx: int) -> np.ndarray:
-    """(8, 3): slot `idx`'s link box corners in its body frame (metres): the
-    collider's convex hull points."""
+    """Slot `idx`'s link points in its body frame (metres): a box's 8
+    corners, or the fingertip capsule's 50 surface points; the collider's
+    convex hull points."""
     f, d = slot_finger(idx), slot_joint_index(idx)
     return gdv.link_points_m(design.hand, design.finger_index[f], d)
 
@@ -711,7 +713,8 @@ def plate_mass_props(points: np.ndarray) -> Tuple[float, np.ndarray, np.ndarray]
 
 
 def link_mass_props(design: EnvelopeDesign, idx: int) -> Tuple[float, np.ndarray, np.ndarray]:
-    return gdv.box_mass_props(link_points(design, idx))
+    f, d = slot_finger(idx), slot_joint_index(idx)
+    return gdv.link_mass_props(design.hand, design.finger_index[f], d)
 
 
 def carrier_mass_props(design: EnvelopeDesign, node: int) -> Tuple[float, np.ndarray, np.ndarray]:

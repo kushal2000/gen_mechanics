@@ -86,7 +86,7 @@ def _author_convex_hull(layer, path: str, points: np.ndarray, *, contact_offset:
                         vertex_limit: int = 64) -> None:
     """A convex-hull mesh collider at `path` (points in its parent body's
     frame): the hull's triangles, PhysX `convexHull` approximation. A link's
-    or a motor's 8 box corners with `rest_offset` = half the printed wall;
+    or a motor's 8 box corners (a fingertip capsule's 50 points) with `rest_offset` = half the printed wall;
     a palm plate's prism has at most 64 vertices and 34 faces (GPU hull
     limits)."""
     from pxr import Gf, Sdf, Vt
