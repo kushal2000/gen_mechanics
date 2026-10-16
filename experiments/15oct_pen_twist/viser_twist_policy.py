@@ -209,7 +209,8 @@ def _work(args, conn) -> None:
     sx, sy, sz = cfg.table.size
     conn.send({"kind": "ready", "urdf": str(env.wrist_urdf_path), "joints": list(env.robot.joint_names),
                "table": [sx, sy, sz, cfg.table.top_height],
-               "pen": {"diameter": cfg.pen.diameter, "links": link_extents(cfg.pen.length, cfg.pen.cap_length, 0.001)},
+               "pen": {"diameter": cfg.pen.diameter, "shape": cfg.pen.shape,
+                       "links": link_extents(cfg.pen.length, cfg.pen.cap_length, 0.001)},
                "torque": s.torque, "trained_torque": s.trained_torque, "num_envs": env.num_envs,
                "curriculum_run": _curriculum_run(pathlib.Path(args.run_dir))})
     running, det, watch, speed = True, False, 0, 1.0
@@ -301,11 +302,17 @@ class Worker:
             self.proc.kill()
 
 
-def _part(server, name: str, x0: float, x1: float, diameter: float, color, opacity: float = 1.0):
-    """A pen part as drawn: a box from x0 to x1 along the pen (its frame at the pen's centre, as the sim's link frames
-    are), with a white stripe along one face."""
+def _part(server, name: str, x0: float, x1: float, diameter: float, color, opacity: float = 1.0,
+          round_: bool = False):
+    """A pen part as drawn: a box (or a cylinder, round_) from x0 to x1 along the pen (its frame at the pen's centre,
+    as the sim's link frames are), with a white stripe along its top."""
+    import numpy as np
     import trimesh
-    box = trimesh.creation.box(extents=(x1 - x0, diameter, diameter))
+    if round_:
+        box = trimesh.creation.cylinder(radius=diameter / 2, height=x1 - x0, sections=32)
+        box.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))
+    else:
+        box = trimesh.creation.box(extents=(x1 - x0, diameter, diameter))
     box.apply_translation(((x0 + x1) / 2, 0.0, 0.0))
     node = server.scene.add_mesh_simple(name, vertices=box.vertices, faces=box.faces, color=color, opacity=opacity)
     stripe = trimesh.creation.box(extents=(x1 - x0, diameter * 0.25, diameter * 0.08))
@@ -382,9 +389,11 @@ def main(args) -> None:
                  server.scene.add_frame("/base", position=(0.0, 0.0, top), show_axes=False)]
         urdf = ViserUrdf(server, pathlib.Path(m["urdf"]), root_node_name="/base/robot")
         p = m["pen"]
-        parts = {"barrel": _part(server, "/barrel", *p["links"]["barrel"], p["diameter"], (38, 89, 204)),
-                 "cap": _part(server, "/cap", *p["links"]["cap"], p["diameter"], (220, 60, 40)),
-                 "cap_goal": _part(server, "/cap_goal", *p["links"]["cap"], p["diameter"], (220, 60, 40), 0.35)}
+        rnd = p.get("shape") == "cylinder"
+        parts = {"barrel": _part(server, "/barrel", *p["links"]["barrel"], p["diameter"], (38, 89, 204), round_=rnd),
+                 "cap": _part(server, "/cap", *p["links"]["cap"], p["diameter"], (220, 60, 40), round_=rnd),
+                 "cap_goal": _part(server, "/cap_goal", *p["links"]["cap"], p["diameter"], (220, 60, 40), 0.35,
+                                   round_=rnd)}
         state["view"] = {"urdf": urdf, "parts": parts, "nodes": nodes + list(parts.values()), "joints": m["joints"]}
         g_watch.max = max(m["num_envs"] - 1, 1)
         if abs(float(g_torque.value) - m["torque"]) > 1e-9:

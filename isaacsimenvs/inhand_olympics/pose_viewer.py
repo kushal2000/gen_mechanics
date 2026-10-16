@@ -37,11 +37,14 @@ def _pen_urdf(length: float, diameter: float) -> str:
             f'{cap(h / 2, "0.86 0.16 0.16 1")}{cap(-h / 2, "0.15 0.35 0.8 1")}</link></robot>')
 
 
-def _twist_part_urdf(name: str, x0: float, x1: float, diameter: float, rgba: str, stripe: bool) -> str:
-    """One part of the twist pen as a box from x0 to x1 along +x (its frame at the pen's centre, as the sim's link
-    frames are), optionally a white stripe along one face."""
+def _twist_part_urdf(name: str, x0: float, x1: float, diameter: float, rgba: str, stripe: bool,
+                     round_: bool = False) -> str:
+    """One part of the twist pen from x0 to x1 along +x (its frame at the pen's centre, as the sim's link frames
+    are): a box, or a cylinder (round_); optionally a white stripe along its top."""
     mid, ln, d = (x0 + x1) / 2, x1 - x0, diameter
-    body = (f'<visual><origin xyz="{mid:g} 0 0"/><geometry><box size="{ln:g} {d:g} {d:g}"/></geometry>'
+    geom = (f'<origin xyz="{mid:g} 0 0" rpy="0 1.5707963 0"/><geometry><cylinder radius="{d / 2:g}" length="{ln:g}"/>'
+            if round_ else f'<origin xyz="{mid:g} 0 0"/><geometry><box size="{ln:g} {d:g} {d:g}"/>')
+    body = (f'<visual>{geom}</geometry>'
             f'<material name="{name}"><color rgba="{rgba}"/></material></visual>')
     if stripe:
         body += (f'<visual><origin xyz="{mid:g} 0 {d / 2 + 0.04 * d:g}"/><geometry><box size="{ln:g} {0.25 * d:g} '
@@ -100,10 +103,11 @@ class OlympicsPoseViewer(PoseViewerWrapper):
         if cfg.pen.twist:
             from .twist_pen import link_extents
             ext = link_extents(cfg.pen.length, cfg.pen.cap_length, 0.001)
+            rnd = cfg.pen.shape == "cylinder"
             self._object_urdf_text = _twist_part_urdf("barrel", *ext["barrel"], cfg.pen.diameter, "0.15 0.35 0.8 1",
-                                                      stripe=True)
+                                                      stripe=True, round_=rnd)
             # The cap's frame is the pen's centre too: drawn at the cap link's pose, so offset back from its centre.
-            cap = _twist_part_urdf("cap", *ext["cap"], cfg.pen.diameter, "0.86 0.24 0.16 1", stripe=True)
+            cap = _twist_part_urdf("cap", *ext["cap"], cfg.pen.diameter, "0.86 0.24 0.16 1", stripe=True, round_=rnd)
             self._extra_objects = [("cap", cap, 1.0), ("cap_goal", cap, 0.38)]
         self._table_urdf_text, self._table_urdf_path = _table_urdf(cfg.table.size), None
         self._hole_urdf_text = self._hole_urdf_path = None

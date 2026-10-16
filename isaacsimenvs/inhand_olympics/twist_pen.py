@@ -35,11 +35,33 @@ def link_extents(length: float, cap_length: float, gap: float) -> dict[str, tupl
                                                                                 length / 2)}
 
 
+def _cylinder_prim(layer, path: str, length: float, radius: float, x: float, material_path: str) -> None:
+    """A cylinder collider along +x centred at x, structured as author_objects._shape_prim's shapes are (an Xform
+    with the translate > the shape, its collision and contact settings, the material bound on it)."""
+    from pxr import Gf, Sdf
+    wrap = define(layer, path, "Xform")
+    attr(wrap, "xformOp:translate", Sdf.ValueTypeNames.Double3, Gf.Vec3d(float(x), 0.0, 0.0))
+    attr(wrap, "xformOpOrder", Sdf.ValueTypeNames.TokenArray, ["xformOp:translate"])
+    shape = define(layer, f"{path}/cylinder", "Cylinder",
+                   ["PhysicsCollisionAPI", "PhysxCollisionAPI", "MaterialBindingAPI"])
+    attr(shape, "height", Sdf.ValueTypeNames.Double, float(length))
+    attr(shape, "radius", Sdf.ValueTypeNames.Double, float(radius))
+    attr(shape, "axis", Sdf.ValueTypeNames.Token, "X")
+    attr(shape, "extent", Sdf.ValueTypeNames.Float3Array,
+         [Gf.Vec3f(-length / 2, -radius, -radius), Gf.Vec3f(length / 2, radius, radius)])
+    for name, value in (("contactOffset", 0.002), ("restOffset", 0.0),
+                        ("torsionalPatchRadius", 0.0), ("minTorsionalPatchRadius", 0.0)):
+        attr(shape, f"physxCollision:{name}", Sdf.ValueTypeNames.Float, value)
+    binding = Sdf.RelationshipSpec(shape, "material:binding:physics", custom=False)
+    binding.targetPathList.explicitItems.append(Sdf.Path(material_path))
+
+
 def author_twist_pen(layer, path: str, *, length: float, diameter: float, cap_length: float, mass: float,
                      friction: float, shape: str = "box", gap: float = 0.001, material_path: str | None = None,
                      damping: float = 10.0, friction_torque: float = 0.02, fixed_barrel: bool = False) -> None:
-    """Author the two-link pen at ``path`` (an Xform made here). ``shape`` box or capsule (a capsule's caps make the
-    two links rounded at the pen's ends and at the split). damping (N m s/rad) and friction_torque (N m) are the
+    """Author the two-link pen at ``path`` (an Xform made here). ``shape`` box, capsule (a capsule's caps make the
+    two links rounded at the pen's ends and at the split) or cylinder (round, flat-ended: a real cap -- turning it
+    takes grip friction, where a box's flat faces can be pushed like a wrench). damping (N m s/rad) and friction_torque (N m) are the
     authored drive; the env's actuator cfg sets them again at runtime. ``fixed_barrel``: a fixed joint from the world
     to the barrel, so the barrel stays where the env puts it (a fixed-base articulation, as Isaac Lab fixes a root
     link: the articulation root on the parent, a world joint to the root link) and only the cap moves."""
@@ -64,18 +86,21 @@ def author_twist_pen(layer, path: str, *, length: float, diameter: float, cap_le
             scale = (seg, diameter, diameter)
             ixx, iyy = m * diameter ** 2 / 6, m * (seg ** 2 + diameter ** 2) / 12
             rpy = (0.0, 0.0, 0.0)
-        elif shape == "capsule":
+        elif shape in ("capsule", "cylinder"):
             scale = (max(seg - diameter, 1e-4), diameter)
-            ixx, iyy = m * r * r / 2, m * (3 * r * r + seg ** 2) / 12     # as a solid cylinder; close enough
+            ixx, iyy = m * r * r / 2, m * (3 * r * r + seg ** 2) / 12     # a solid cylinder (the capsule: close)
             rpy = (0.0, -math.pi / 2, 0.0)
         else:
-            raise ValueError(f"twist pen shape must be 'box' or 'capsule', got {shape!r}")
+            raise ValueError(f"twist pen shape must be 'box', 'capsule' or 'cylinder', got {shape!r}")
         attr(body, "physics:mass", Sdf.ValueTypeNames.Float, float(m))
         attr(body, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3, Gf.Vec3f(float(ixx), float(iyy), float(iyy)))
         attr(body, "physics:centerOfMass", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(float(mid), 0.0, 0.0))
         define(layer, f"{path}/{name}/collisions", "Xform")
-        _shape_prim(layer, f"{path}/{name}/collisions/mesh_0", scale, (mid, 0.0, 0.0), rpy, collision=True,
-                    material_path=material_path)
+        if shape == "cylinder":
+            _cylinder_prim(layer, f"{path}/{name}/collisions/mesh_0", seg, r, mid, material_path)
+        else:
+            _shape_prim(layer, f"{path}/{name}/collisions/mesh_0", scale, (mid, 0.0, 0.0), rpy, collision=True,
+                        material_path=material_path)
     joint = define(layer, f"{path}/{JOINT}", "PhysicsRevoluteJoint", ["PhysicsDriveAPI:angular", "PhysxJointAPI"])
     rel(joint, "physics:body0", f"{path}/barrel")
     rel(joint, "physics:body1", f"{path}/cap")

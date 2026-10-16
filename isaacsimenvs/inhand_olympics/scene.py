@@ -123,13 +123,17 @@ def setup_scene(env) -> None:
     # density),
     # into env_0; clone_environments copies it.
     pen = cfg.pen
-    if pen.shape == "capsule":
+    handle = density = None
+    if pen.twist:                                         # twist_pen.py checks its own shapes (box/capsule/cylinder)
+        pass
+    elif pen.shape == "capsule":
         handle = (pen.length - pen.diameter, pen.diameter)    # (cylinder length, diameter): a capsule along +x
     elif pen.shape == "box":
         handle = (pen.length, pen.diameter, pen.diameter)     # (x, y, z): a box, its long axis along +x
     else:
         raise ValueError(f"pen.shape must be 'capsule' or 'box', got {pen.shape!r}")
-    density = pen.mass / compute_mass_and_inertia(handle, 1.0)[0]
+    if handle is not None:
+        density = pen.mass / compute_mass_and_inertia(handle, 1.0)[0]
     layer = get_current_stage().GetRootLayer()
     pen_init = dict(pos=(pen.init_xy[0], pen.init_xy[1], top + pen.diameter / 2),
                     rot=(math.cos(pen.init_yaw / 2), 0.0, 0.0, math.sin(pen.init_yaw / 2)))
