@@ -28,37 +28,44 @@
 | Commercial hands scaled up by the smallest factor Feetech servos can build | Martin, 10/14 afternoon: "scale commercial hands up minimally so that they can be built with feetechs ... without collisions" |
 | Joint torque limit 1.39 N m, the HL-3915's stall torque (was 0.5) | Martin, 10/14 afternoon: "use feetech torque numbers" |
 | Fingers at most 225 mm under the Feetech rules (was 250) | Martin, 10/16 |
+| Tilt 0 to 90 degrees: no finger points under the palm (was -30 to 90) | Martin, 10/16 |
+| Tilt 0 when a finger's first joint is a bend | Martin, 10/16: the tilt turns the finger about the bend's own axis, so it duplicates that joint |
+| The fingertip a capsule, radius 16.5 mm (half the yoke's width) | Martin, 10/16: a rounded fingertip, a little thicker than the yoke's depth |
+| Add a finger: the hand's mean joint count rounded up, joints drawn as for a random hand | Martin, 10/16 (was one 40 mm bend) |
+| A bend servo turns (its body on the back of the finger) only when the link before it is too short for it to lie along the link | Martin, 10/16: turned, only its 20 mm width lies along the link, so that link can be 30 mm instead of 40-50; ranges unchanged |
+| The mount at the palm's centre: the base servos' hull centred within half a base step of it; draws and mutations move a hand on the grid to centre it | Martin, 10/16: no two hands may differ only in where the mount sits (13% of random hands had such a twin) |
 
-## Measured (1000 random hands under the Feetech rules, seed 20261014; re-measured on 10/16 with fingers at most 225 mm, `ours/feetech_1000.json`)
+## Measured (1000 random hands under the Feetech rules, seed 20261014; re-measured on 10/16 after the day's rule changes, `ours/feetech_1000.json`)
 
 | Quantity | Value |
 |---|---|
-| Time to draw a hand | 0.049 s |
+| Time to draw a hand | 0.096 s (0.049 before the centre rule and turned servos) |
 | Pass C1 (clearance) | 100% (by construction) |
-| Pass C2 (fingertips can meet) | 80%: 1.25 draws per usable hand |
-| Numbers per hand | 14-104, mean 53 |
-| Finger counts 2 / 3 / 4 / 5 / 6 | 196 / 199 / 205 / 217 / 183 |
-| Joints per finger 1 / 2 / 3 / 4 / 5 | 476 / 994 / 953 / 1005 / 564 (five-joint fingers are fewer: four of their kind sequences need 230 mm at their shortest and are drawn again; with the 250 mm cap: 382 / 965 / 926 / 893 / 831) |
-| Palm area (median) | 174 cm^2; commercial hands under the same outline rule 97 cm^2 at their real size, 196 cm^2 at the scale Feetech servos build them |
-| Hands with a palm cut | 47% (fingers beyond it: 1 in 332 hands, 2 in 132, 3 in 9) |
-| 0 mm links | 8% of links |
-| Something sticking out behind the palm | 99.1% of hands; median 21 mm, at most 43 mm |
-| Finger length | median 190 mm, at most 220 mm |
-| Finger mass | median 369 g, at most 867 g |
-| Gravity torque on a finger's first joint at rest, palm up | median 0.02 N m, at most 0.69 N m: none above the 1.39 N m limit (3% above the old 0.5 N m) |
-| Object start raised (60 mm cube / 72 mm cube) | 66% / 79% of hands; median raise 105 mm, at most 211 mm |
+| Pass C2 (fingertips can meet) | 73%: 1.37 draws per usable hand |
+| Numbers per hand | 14-98, mean 51 |
+| Finger counts 2 / 3 / 4 / 5 / 6 | 211 / 199 / 212 / 183 / 195 |
+| Joints per finger 1 / 2 / 3 / 4 / 5 | 586 / 1057 / 973 / 899 / 437 (every five-joint finger fits the 225 mm cap now, but long fingers fail the clearance check more often and are drawn again) |
+| Palm area (median) | 162 cm^2; commercial hands under the same outline rule 174 cm^2 at the scale Feetech servos build them |
+| Hands with a palm cut | 46% (fingers beyond it: 1 in 356 hands, 2 in 102, 3 in 5) |
+| 0 mm links | 6% of links |
+| Something sticking out behind the palm | 73% of hands; median 14 mm, at most 43 mm |
+| Finger length | median 170 mm, at most 220 mm |
+| Finger mass | median 344 g, at most 862 g |
+| Gravity torque on a finger's first joint at rest, palm up | median 0.13 N m, at most 0.71 N m: none above the 1.39 N m limit (8% above the old 0.5 N m) |
+| Object start raised (60 mm cube / 72 mm cube) | 43% / 60% of hands; median raise 17 mm, at most 209 mm |
 
 One mutation of a usable hand returns a child 94% of the time, and 96% of those children are usable.
 
-Search space (`ours/search_space.py`, `ours/search_space.json`; counted exactly, before the clearance check; re-counted on 10/16 with fingers at most 225 mm): 10^29.5 four-finger hands with joints on the three kinds (10^31.3 with the 250 mm cap; Codex's estimate for its proposal: 10^30.8), 10^43.3 for 2-6 fingers; 10^43.6 and 10^64.5 with all 31 axis directions; a palm cut multiplies a hand by at most 73. Of 3000 uniform samples of four-finger hands, 2.4% pass C1 and C2 (0.17% with all axes): about 10^27.9 (10^40.9) usable four-finger hands. Before the rebuild: about 10^50 (10^70).
+Search space (`ours/search_space.py`, `ours/search_space.json`; counted exactly, before the clearance check; re-counted on 10/16 with fingers at most 225 mm, tilts 0-90 degrees, tilt 0 for a bend first, capsule fingertips, the mount at the palm's centre, and short links turning the bend servo after them): 10^29.7 four-finger hands with joints on the three kinds (10^31.3 on 10/14; Codex's estimate for its proposal: 10^30.8), 10^43.7 for 2-6 fingers; 10^44.2 and 10^65.4 with all 31 axis directions; a palm cut multiplies a hand by at most 73. Of 20,000 uniform samples of four-finger hands, 42% have the mount at the palm's centre and 0.27% also pass C1 and C2 (0.015% with all axes): about 10^27.2 (10^40.4) usable four-finger hands. Before the rebuild: about 10^50 (10^70).
 
-Commercial hands (`hand_sampler/grammar_bench/conformed_hands.json`; `ours/commercial_scaled.py` and `.json`): in the morning, fitted at their real size, 18 of 19 fit within 10 mm / 20 degrees and none was buildable from Feetech servos (their bases sit closer than the servos allow). In the afternoon each was scaled up by the smallest factor (0.05 steps, at most 5 x) at which its fit keeps the servo link lengths, passes C1, keeps every joint's kind and stays within twice the target, fingers that clash refitted clear: 17 of 19 are buildable, at 1-3.1 x (SHARPA, now KaRMA's model of the hand alone, at 3.1 x and 9.5 mm / 8.2 degrees); 9 fit within the target and all within twice it, errors counted at the real size. ARMS and Dex1 are not buildable up to 5 x and keep their real-size fits and collision filters. Every hand keeps its finger count, joints per finger, joint types and kinds; SHARPA's, Shadow's and SVH's palm joints each become a cut with the same fingers beyond it; ARMS's two become one cut. The grammar's own limits follow the scaled hands x 1.1: links 200 mm, fingers 500 mm, bases 370 mm (10^63 four-finger hands); the Feetech rules were unchanged (10^31; 10^29.5 since fingers are capped at 225 mm on 10/16).
+Commercial hands (`hand_sampler/grammar_bench/conformed_hands.json`; `ours/commercial_scaled.py` and `.json`): in the morning, fitted at their real size, 18 of 19 fit within 10 mm / 20 degrees and none was buildable from Feetech servos (their bases sit closer than the servos allow). In the afternoon each was scaled up by the smallest factor (0.05 steps, at most 5 x) at which its fit keeps the servo link lengths, passes C1, keeps every joint's kind and stays within twice the target, fingers that clash refitted clear: 17 of 19 are buildable, at 1-3.1 x (SHARPA, now KaRMA's model of the hand alone, at 3.1 x and 9.5 mm / 8.2 degrees); 9 fit within the target and all within twice it, errors counted at the real size. ARMS and Dex1 are not buildable up to 5 x and keep their real-size fits and collision filters. Every hand keeps its finger count, joints per finger, joint types and kinds; SHARPA's, Shadow's and SVH's palm joints each become a cut with the same fingers beyond it; ARMS's two become one cut. The grammar's own limits follow the scaled hands x 1.1: links 200 mm, fingers 500 mm, bases 370 mm (10^63 four-finger hands); the Feetech rules were unchanged (10^31; 10^29.5 since fingers are capped at 225 mm on 10/16). Rebuilt on 10/16 with the day's rules: 17 of 19 buildable, 7 within the target, all within twice it; ARMS is now buildable (3 x) and SHARPA is not (at 3.1 x two fingers touch the palm plate at rest and a base servo reaches into the cut's seam; at 4 x its thumb passes 500 mm), so SHARPA keeps its real-size fit and collision filter.
 
-Isaac (RTX 4090, the validation population, 64 envs, 300 random steps): PASS: the simulated bodies match the grammar's kinematics to 0.0005 mm at reset, no NaN, mimic ties within 1.1e-3 rad, no collider-cooking warning. Again in the afternoon, with the scaled commercial hands and 1.39 N m (the validation population and the default one with SHARPA at 3.1 x): PASS both; at most 0.26 mm after 20 random steps; speeds up to 6.5 rad/s against the 5 rad/s limit; no contact between collision-filtered pairs.
+Isaac (RTX 4090, the validation population, 64 envs, 300 random steps): PASS: the simulated bodies match the grammar's kinematics to 0.0005 mm at reset, no NaN, mimic ties within 1.1e-3 rad, no collider-cooking warning. Again in the afternoon, with the scaled commercial hands and 1.39 N m (the validation population and the default one with SHARPA at 3.1 x): PASS both; at most 0.26 mm after 20 random steps; speeds up to 6.5 rad/s against the 5 rad/s limit; no contact between collision-filtered pairs. On 10/16, after the day's rule changes (capsule fingertips as 50-point hulls, turned servos): PASS for 16 random hands, the validation population and the default one (SHARPA at real size); 0.0005 mm at reset, no NaN, no contact between collision-filtered pairs, no cooking warning.
 
 ## Open
 
-- **The object start.** The object starts at the lowest height where it clears the hand by 5 mm at the start pose. At the 31.5-degree start curl, tilted fingers on the inner ring fill the space over the palm's centre, so most cubes start 10 cm or more up and fall onto the fingers; the worst (211 mm) come close to the 0.24 m drop termination. Even with straight fingers 49% of hands raise the 72 mm cube. A smaller object, a lower start curl or another spawn point are task decisions.
-- **Torque.** The limit is now the HL-3915's stall torque, 1.39 N m (was Kushal's 0.5): no random finger exceeds it; SHARPA at 3.1 x needs 2.9 N m. The rated load is 0.44 N m, so stall is an upper bound.
+- **The object start.** The object starts at the lowest height where it clears the hand by 5 mm at the start pose. At the 31.5-degree start curl, tilted fingers on the inner ring fill the space over the palm's centre, so many cubes started 10 cm or more up and fell onto the fingers. Since 10/16 (tilts 0-90 degrees, tilt 0 for a bend first) the object starts raised on 43% of random hands, by 17 mm at the median (was 66% and 105 mm); the worst (209 mm) still come close to the 0.24 m drop termination. Even with straight fingers 49% of hands raise the 72 mm cube. A smaller object, a lower start curl or another spawn point are task decisions.
+- **Torque.** The limit is now the HL-3915's stall torque, 1.39 N m (was Kushal's 0.5): no random finger exceeds it (at most 0.71 N m), nor any commercial hand at its scale (at most 1.04 N m). The rated load is 0.44 N m, so stall is an upper bound.
 - **The mount's size** (40 mm disc, 40 mm deep) is assumed until the real mount is drawn.
+- **SHARPA is not buildable since 10/16** (see above); why the refit cannot clear it is not yet confirmed.
 - **Two neighbouring bend-first fingers cannot be separated by a palm cut**: their housings are 7 mm apart and the seam needs 8.6 mm.
