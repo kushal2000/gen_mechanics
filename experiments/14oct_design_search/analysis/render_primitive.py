@@ -49,13 +49,21 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--hand", default="prim4x4_r10l25_g090_090_090_090")
     ap.add_argument("--curl", type=float, default=45.0, help="degrees on every joint for the curled view")
+    ap.add_argument("--extent", type=float, default=0.0,
+                    help="face view: a fixed square +-extent (m) around the palm centre, so hands share a scale "
+                         "(0: fit each hand)")
+    ap.add_argument("--out", default="", help="the folder for the pictures (default: this experiment's plots)")
     args = ap.parse_args()
     urdf = ph.OUT / f"{args.hand}.urdf"
-    out = HERE.parent / "plots"
+    out = pathlib.Path(args.out) if args.out else HERE.parent / "plots"
+    out.mkdir(parents=True, exist_ok=True)
     # ``view`` points from the camera into the scene, so a camera on the grasp side (+x) looks along -x.
     # The grasp face, straight on, bearing 0 (+z) up.
     t, c = faces(urdf, 0.0)
     lims, up = view_limits(t, np.array([-1.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0]))
+    if args.extent > 0:
+        e = args.extent
+        lims = (-e, e, -e, e)
     rh.render(t, c, np.array([-1.0, 0.0, 0.0]), up, out / f"{args.hand}_face.png", lims)
     # Curled, three-quarter: from the grasp side and a little to the side.
     t, c = faces(urdf, math.radians(args.curl))

@@ -122,6 +122,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         # Tasks and goals. Goal poses are in the env frame.
         self.tasks = make_tasks(self)
         self.task_id = torch.zeros(n, dtype=torch.long, device=dev)          # index into self.tasks
+        self.forced_task: int | None = None                                 # None: each reset draws a task
         self.task_onehot_index = torch.tensor([TASK_NAMES.index(t.name) for t in self.tasks], device=dev)
         self.task_success_steps = torch.tensor([getattr(t, "success_steps", 1) for t in self.tasks], device=dev)
         self.task_first_goal_steps = torch.tensor(
@@ -506,7 +507,10 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.prev_joint_pos_canon[ids] = q[:, self.perm_lab_to_canon]
         self.prev_joint_vel_canon[ids] = qd[:, self.perm_lab_to_canon]
 
-        self.task_id[ids] = torch.randint(0, len(self.tasks), (len(ids),), device=self.device)
+        if self.forced_task is None:
+            self.task_id[ids] = torch.randint(0, len(self.tasks), (len(ids),), device=self.device)
+        else:                                            # a viewer or eval pinning every env to one task
+            self.task_id[ids] = int(self.forced_task)
         for k, task in enumerate(self.tasks):
             sel = ids[self.task_id[ids] == k]
             if len(sel):
