@@ -2,7 +2,7 @@
   "schema": "hand_grammar_state/0.1",
   "pilot_id": "pilot-2026-09-25",
   "plan_file": "~/.claude/plans/floating-spinning-waterfall.md",
-  "branch": "martin/hand-grammar",
+  "branch": "hand-grammar",
   "started_at": "2026-09-25T17:29:32-04:00",
   "deadline": "2026-09-25T19:29:32-04:00",
   "iteration": 8,

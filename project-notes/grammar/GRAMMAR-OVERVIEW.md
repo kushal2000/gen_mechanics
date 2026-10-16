@@ -1,5 +1,7 @@
 # The hand grammar (October 2026)
 
+**This is the current, up-to-date grammar**: branch `hand-grammar`, labelled with the tag `hand-grammar-2026-10-16` (moved from `martin/hand-grammar` on 2026-10-16).
+
 Evolve to generalize trains one joint-token transformer across many hands and lets evolution choose which hands it trains on. The grammar defines the space of hands evolution searches. It has to do three things: express the commercial hands we train or test on (their structure, roughly in place), narrow down to hands evolution can search and we can build (the Feetech rules), and produce hands that all load into one simulator layout for one shared policy.
 
 Since 2026-10-14 the grammar is built around one motor, the Feetech HL-3915 servo. The rebuild followed Martin's notes of 10/13, the Feetech study (`experiments/E15_feetech_buildability/summary.md`) and an independent review (`experiments/E16_grammar_rebuild/summary.md`). Every decision, with its reason, is in `GRAMMAR-LOCK-2026-10-07.md` (revision of 2026-10-14). It combines three lines of work: ours on `martin/hand-grammar`, Vatsal's physical grammar (the hull palm, the finger mount, joint kinds, building each finger clear of the others) and Kushal's uniform commercial hands (shared dynamics, the joint sign convention).
@@ -305,4 +307,4 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 - **Coupled joints and the policy:** they are tied and not controlled; whether they appear as tokens is open.
 - **A physics grasp check (C5)** comes up again once the grammar work is done.
 
-Status: the grammar is being built on `martin/hand-grammar`; the grammar viewer is `experiments/grammar_viewer/`.
+Status: the current grammar is on the branch `hand-grammar` (until 2026-10-16 it was built on `martin/hand-grammar`); the grammar viewer is `experiments/grammar_viewer/`.
