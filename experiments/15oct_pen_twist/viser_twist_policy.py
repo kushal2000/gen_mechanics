@@ -389,7 +389,7 @@ def main(args) -> None:
                  server.scene.add_frame("/base", position=(0.0, 0.0, top), show_axes=False)]
         urdf = ViserUrdf(server, pathlib.Path(m["urdf"]), root_node_name="/base/robot")
         p = m["pen"]
-        rnd = p.get("shape") == "cylinder"
+        rnd = p.get("shape") == "round"
         parts = {"barrel": _part(server, "/barrel", *p["links"]["barrel"], p["diameter"], (38, 89, 204), round_=rnd),
                  "cap": _part(server, "/cap", *p["links"]["cap"], p["diameter"], (220, 60, 40), round_=rnd),
                  "cap_goal": _part(server, "/cap_goal", *p["links"]["cap"], p["diameter"], (220, 60, 40), 0.35,

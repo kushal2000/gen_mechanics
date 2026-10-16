@@ -103,7 +103,7 @@ class OlympicsPoseViewer(PoseViewerWrapper):
         if cfg.pen.twist:
             from .twist_pen import link_extents
             ext = link_extents(cfg.pen.length, cfg.pen.cap_length, 0.001)
-            rnd = cfg.pen.shape == "cylinder"
+            rnd = cfg.pen.shape == "round"
             self._object_urdf_text = _twist_part_urdf("barrel", *ext["barrel"], cfg.pen.diameter, "0.15 0.35 0.8 1",
                                                       stripe=True, round_=rnd)
             # The cap's frame is the pen's centre too: drawn at the cap link's pose, so offset back from its centre.

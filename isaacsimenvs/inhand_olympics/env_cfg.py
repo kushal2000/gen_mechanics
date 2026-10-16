@@ -121,7 +121,8 @@ class PenCfg:
     """The pen, lying on the table. ``shape``: "capsule" (``length`` tip to tip, caps included; the PhysX capsule's
     cylinder is length - diameter long) or "box" (``length`` long, a ``diameter`` x ``diameter`` square section:
     it rests on a face and cannot roll; 13 Oct, the capsule rolls off by itself on GPU PhysX). The twist pen (twist
-    below) also takes "cylinder": round and flat-ended, so turning its cap takes grip friction."""
+    below) also takes "round": a 24-sided convex prism (PhysX's cylinder shape jitters in contact), flat-ended, so turning
+    its cap takes grip friction."""
 
     shape: str = "capsule"
 
