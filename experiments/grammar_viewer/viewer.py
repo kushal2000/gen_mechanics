@@ -469,7 +469,7 @@ class GrammarViewer:
                                                                             "jaws: in the grammar, not in evolution.")
             self.gui_length = g.add_number("max finger length (mm)", r.max_finger_length_mm, min=10,
                                            max=NO_RULES.max_finger_length_mm, step=10,
-                                           hint="Sum of a finger's link lengths (Feetech: 250 mm).")
+                                           hint="Sum of a finger's link lengths (Feetech: 225 mm).")
             self.gui_link_max = g.add_number("max link length (mm)", r.max_link_mm, min=10, max=NO_RULES.max_link_mm,
                                              step=10, hint="The longest link (Feetech: 90 mm).")
             self.gui_pitch = g.add_number("base grid (mm)", r.base_pitch_mm, min=10, max=80, step=10,

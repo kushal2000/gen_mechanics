@@ -194,6 +194,11 @@ Martin, 10/14, on the viewer: "scale commercial hands up minimally so that they 
 - **Item 19 (reference set): SHARPA is KaRMA's model of the hand alone** (`sharpa_right`, local-only, not committed), replacing SHARPA on the iiwa arm.
 - Effect: 17 of 19 commercial hands are buildable, at 1-3.1 x (SHARPA 3.1, SVH and Wuji v2 right 3.05, Shadow 2.6, Wuji v1 2.55; DClaw at its real size); 9 fit within 10 mm / 20 degrees and all within twice that. ARMS and Dex1 are not buildable at any scale up to 5 x and keep their real-size fits and collision filters. The grammar's own limits become links up to 200 mm, fingers up to 500 mm, bases up to 370 mm from the centre (10^63 four-finger hands; the Feetech rules stay at 10^31). With 1.39 N m no random Feetech finger is too heavy to hold flat; SHARPA at 3.1 x needs 2.9 N m.
 
+## Revision of 2026-10-16: fingers at most 225 mm
+
+- **Item 12 (finger length at most 250 mm) -> at most 225 mm under the Feetech rules.** **Why:** Martin, 10/16 ("Change it to 225"). Link lengths are on the 10 mm grid, so the longest finger is 220 mm. The grammar's own limit stays 500 mm, so the commercial fits are unaffected.
+- Effect: five joints on the three kinds need at most 230 mm at their shortest (240 over all 31 axes), so the cap leaves out the five-joint fingers whose four links all need 50 mm: three bends in the middle, a bend or twist first, a bend or spread last (those ending in a bend and a spread still fit when the two meet at one point). Finger chains per base orientation drop from 249,941 to 89,795 (five-joint chains by 70%), and the search space from 10^31.3 to 10^29.5 four-finger hands (about 10^27.9 pass C1 and C2). Of 1000 random hands, 14% of fingers have five joints (21% before); the heaviest finger needs 0.69 N m flat (0.94 before); C2 is unchanged at 80%.
+
 ## Still to decide
 - After the grammar work: raise C5 (physics grasp test) again.
 - The object start and the effort limit for servo-sized hands (above).

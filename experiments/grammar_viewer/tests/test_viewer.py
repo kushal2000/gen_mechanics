@@ -235,9 +235,9 @@ def test_palm_bend_folds_the_part_beyond_the_cut(evo):
 
 
 def test_search_space_line_follows_the_rules(evo):
-    assert "10^31 four-finger hands" in evo.md_space.content
+    assert "10^30 four-finger hands" in evo.md_space.content
     evo.choose_rules(V.NONE)
-    assert "four-finger hands" in evo.md_space.content and "10^31 four-finger" not in evo.md_space.content
+    assert "four-finger hands" in evo.md_space.content and "10^30 four-finger" not in evo.md_space.content
     evo.choose_rules(V.FEETECH)
 
 

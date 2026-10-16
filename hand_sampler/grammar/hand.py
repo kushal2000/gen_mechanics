@@ -61,7 +61,8 @@ GRID_DEG = 30               # every stored angle
 # commercial hands' extremes at the scale they are buildable from Feetech
 # servos (`build_conformed`, 2026-10-14: 180 mm, SHARPA x 3.1; 450 mm, SHARPA;
 # 329 mm, SVH x 3.05), x 1.1, rounded out to 10 mm; the Feetech rules keep
-# 90 mm links, 250 mm fingers and bases 40-90 mm out.
+# 90 mm links and bases 40-90 mm out, and fingers at most 225 mm (Martin,
+# 2026-10-16).
 LINK_MIN_MM = 10
 TIP_MIN_MM = 10
 LINK_MAX_MM = 200
@@ -275,7 +276,7 @@ class Rules:
 
 NO_RULES = Rules()
 FEETECH_RULES = Rules(joint_types=("hinge",), base_pitch_mm=40, base_distance_mm=(40, 90),
-                      outward_facing=True, buildable_links=True, max_finger_length_mm=250, max_link_mm=90)
+                      outward_facing=True, buildable_links=True, max_finger_length_mm=225, max_link_mm=90)
 EVOLUTION_RULES = FEETECH_RULES
 COMMERCIAL_RULES = Rules(buildable_links=True)
 """The grammar's own limits with servo link lengths: what a commercial hand,

@@ -1,4 +1,5 @@
-"""How many hands the Feetech rules allow (2026-10-14), and how many of them
+"""How many hands the Feetech rules allow (2026-10-14; fingers at most 225 mm
+since 2026-10-16), and how many of them
 pass the clearance check (C1) and C2.
 
     PYTHONPATH=. python3 project-notes/grammar/experiments/E16_grammar_rebuild/ours/search_space.py [samples]
@@ -7,7 +8,7 @@ Counted exactly (no geometry): every finger is a base spot (20), a facing
 (outward at that spot), a tilt (5) and a chain of 1-5 joints, each axis from
 the axis set and each link from its allowed lengths (`hand.allowed_lengths`:
 the servo floors to 90 mm, 0 for crossings, fingertips from their floor),
-the finger at most 250 mm. A hand is 2-6 such fingers on distinct spots
+the finger at most the rules' cap (225 mm since 2026-10-16; 250 before). A hand is 2-6 such fingers on distinct spots
 (finger order does not count). A palm cut multiplies a hand by at most 1 +
 72 (12 directions x offsets 30-80 mm), counted separately.
 

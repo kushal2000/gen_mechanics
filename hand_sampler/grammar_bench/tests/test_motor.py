@@ -40,7 +40,14 @@ def test_floors_over_the_coarse_axes():
     assert max(floors) == 50 and min(floors) == 30
     assert {mt.tip_floor_mm(a) for a in KINDS.values()} == {30}
     assert max(mt.tip_floor_mm(a) for a in COARSE_AXES) == 40
-    assert 4 * 50 + 40 <= 250          # five joints at their floors fit the finger-length cap
+    five = {c: sum(mt.link_floor_mm(KINDS[a], KINDS[b]) for a, b in zip(c, c[1:])) + mt.tip_floor_mm(KINDS[c[-1]])
+            for c in itertools.product(KINDS, repeat=5)}
+    # five on-kind joints at their floors need at most 230 mm; the Feetech cap (225 mm) leaves out the four whose
+    # links all need 50 mm (three bends in the middle, a bend or twist first, a bend or spread last)
+    assert max(five.values()) == 230
+    assert sorted(c for c, L in five.items() if L > 225) == [("bend",) * 5, ("bend",) * 4 + ("spread",),
+                                                             ("twist",) + ("bend",) * 4,
+                                                             ("twist",) + ("bend",) * 3 + ("spread",)]
 
 
 def test_motor_box():

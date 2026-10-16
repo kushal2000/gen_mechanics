@@ -122,7 +122,7 @@ def _edit_joints(h: Hand, i: int, joints) -> Hand:
     (lambda h: _edit_joints(h, 0, ((BEND, 0), (TWIST, 30))), "link length 0 mm not allowed"),
     (lambda h: _edit_joints(h, 0, ((BEND, 0), (SPREAD, 0), (BEND, 30))), "link length 0 mm not allowed"),
     (lambda h: _edit_joints(h, 0, ((BEND, 50), (BEND, 95))), "link length 95"),
-    (lambda h: _edit_joints(h, 0, ((BEND, 90), (BEND, 90), (BEND, 90))), "mm long, allowed 250"),
+    (lambda h: _edit_joints(h, 0, ((BEND, 90), (BEND, 90), (BEND, 90))), "mm long, allowed 225"),
     (lambda h: _edit_joints(h, 0, ((BEND, 55), (BEND, 30))), "link length 55"),
     (lambda h: _edit_joints(h, 0, ((BEND, 50), ((5, 0), 30))), "axis off the 30 degree grid"),
     (lambda h: _edit_joints(h, 0, ((BEND, 50), ((180, 0), 30))), "not canonical"),
@@ -166,7 +166,7 @@ def test_rules_clamp_never_widen_the_grammar():
     assert r.max_fingers == 6 and r.max_joints == 5 and r.max_palm_joints == 1
     assert r.max_finger_length_mm == NO_RULES.max_finger_length_mm and r.base_pitch_mm == 10
     assert r.base_distance_mm == NO_RULES.base_distance_mm and r.max_link_mm == NO_RULES.max_link_mm
-    assert (FEETECH_RULES.max_link_mm, FEETECH_RULES.max_finger_length_mm) == (90, 250)
+    assert (FEETECH_RULES.max_link_mm, FEETECH_RULES.max_finger_length_mm) == (90, 225)
     assert FEETECH_RULES.clamp() == FEETECH_RULES and EVOLUTION_RULES == FEETECH_RULES
 
 
@@ -691,12 +691,12 @@ def test_mutating_a_hand_outside_the_rules_never_adds_violations():
 
 def test_search_space_counts():
     """The Feetech rules' search space, counted exactly (no geometry): about
-    10^31 four-finger hands with joints on the three kinds, 10^47 with all 31
-    axis directions (E16)."""
+    10^29.5 four-finger hands with joints on the three kinds, 10^43.6 with all
+    31 axis directions (E16; fingers at most 225 mm since 2026-10-16)."""
     from hand_sampler.grammar import space
 
     assert len(space.AXES_ALL) == 31
-    assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (21, 371, 6409, 58089, 185051)
-    assert space.hands_log10(FEETECH_RULES)[4] == pytest.approx(31.30, abs=0.01)
-    assert space.hands_log10(FEETECH_RULES, space.AXES_ALL)[4] == pytest.approx(46.55, abs=0.01)
+    assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (21, 371, 5572, 27570, 56261)
+    assert space.hands_log10(FEETECH_RULES)[4] == pytest.approx(29.52, abs=0.01)
+    assert space.hands_log10(FEETECH_RULES, space.AXES_ALL)[4] == pytest.approx(43.64, abs=0.01)
     assert space.hands_log10(NO_RULES)[4] > space.hands_log10(FEETECH_RULES)[4] + 20
