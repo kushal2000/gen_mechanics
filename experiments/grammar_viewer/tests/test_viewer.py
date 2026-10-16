@@ -125,9 +125,10 @@ def test_pose_slider_moves_the_links(evo):
     evo.random(wait=True)
     evo.set_curl(0.0)
     key = next(k for k in evo.drawing.bodies if k[0] == "link" and k[2] == len(evo.hand.fingers[k[1]].joints) - 1)
-    p0 = np.array(evo.drawing.bodies[key].position)
+    pose = lambda: np.concatenate([evo.drawing.bodies[key].position, evo.drawing.bodies[key].wxyz])  # noqa: E731
+    p0 = pose()
     evo.set_curl(1.0)
-    moved = np.linalg.norm(np.array(evo.drawing.bodies[key].position) - p0)
+    moved = np.linalg.norm(pose() - p0)     # a bend at the link's own joint turns it in place
     assert moved > 1e-4 or len(evo.hand.fingers[key[1]].joints) == 1
     evo.set_curl(gdv.START_CURL)
 

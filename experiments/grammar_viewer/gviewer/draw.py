@@ -44,11 +44,12 @@ def hull_mesh(points: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 
 @lru_cache(maxsize=1024)
 def _box_mesh(key: Tuple[float, ...]) -> Tuple[np.ndarray, np.ndarray]:
-    return hull_mesh(np.array(key, dtype=float).reshape(8, 3))
+    return hull_mesh(np.array(key, dtype=float).reshape(-1, 3))
 
 
 def box_mesh(corners_m: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """A box's mesh from its 8 corners (metres, in the frame it is drawn in)."""
+    """The mesh of a box's 8 corners or a capsule's surface points (metres,
+    in the frame it is drawn in)."""
     return _box_mesh(tuple(np.round(np.asarray(corners_m, dtype=float), 9).ravel().tolist()))
 
 

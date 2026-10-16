@@ -24,7 +24,7 @@ Open http://127.0.0.1:8080 (from a laptop: `ssh -L 8080:127.0.0.1:8080 <this mac
 One line per item; longer explanations are hover text.
 
 - **Grammar**: **Random** draws hands under the current rules until the ticked viability checks pass, and says "found after N tries". Every draw is within the rules and passes C1 by construction (the hand is built finger by finger, each finger's base drawn among the placements whose servo fits and the finger redrawn until it clears the hand so far), so only C2 can reject.
-- **Rules**: **Feetech Rules** (hands buildable from Feetech servos: what the simulator builds and evolution uses), **No Rules** (the whole grammar: coupled and sliding joints too) or **Custom Rules** (any field edited). The fields can only tighten the grammar: max fingers (2-6), max joints per finger (1-5), max palm joints (0-1), coupled and sliding joints, max finger length (Feetech: 225 mm), max link length (Feetech: 90 mm), the base grid (Feetech: 40 mm), min and max base distance from the palm centre (Feetech: 40-90 mm), fingers face outward, servo link lengths (links at least as long as two servos need, fingertips at least 30 mm). The next line says whether the hand on screen follows the rules; the last one gives the search space under these rules (hands with joints on the three kinds and with all 31 axis directions, before the clearance check; `hand_sampler/grammar/space.py`).
+- **Rules**: **Feetech Rules** (hands buildable from Feetech servos: what the simulator builds and evolution uses), **No Rules** (the whole grammar: coupled and sliding joints too) or **Custom Rules** (any field edited). The fields can only tighten the grammar: max fingers (2-6), max joints per finger (1-5), max palm joints (0-1), coupled and sliding joints, max finger length (Feetech: 225 mm), max link length (Feetech: 90 mm), the base grid (Feetech: 40 mm), min and max base distance from the palm centre (Feetech: 40-90 mm), fingers face outward, servo link lengths (links at least as long as two servos need, fingertips at least 30 mm), mount at the palm's centre (the base servos' centre within half a base step of the mount; Feetech: on). The next line says whether the hand on screen follows the rules; the last one gives the search space under these rules (hands with joints on the three kinds and with all 31 axis directions, before the clearance check; `hand_sampler/grammar/space.py`).
 - **Viability**: the two checks, one line each with the measured value; untick one to stop Random requiring it.
   - **C1, clearance**: every two solids (links, base servos, the mount, the hinge servo, the palm) keep one printed wall (2 mm) apart at the zero pose and at the episode start pose, except parts that touch by construction; no base servo in a palm cut's seam.
   - **C2, fingertips meet above the palm**: at least one pair of fingers whose fingertips' reachable regions come within 20 mm above the plate, over the palm.
@@ -58,11 +58,11 @@ Per hand: what evolution changes. Global: one value for every hand. Ranges under
 | palm cut | per hand | none or one straight line, a finger on each side | cut / remove; move 10 mm; turn 30° |
 | base position (y, z) | per finger | the 40 mm grid, 40-90 mm from the palm centre (10 mm grid, 10-160 mm) | one grid step |
 | facing | per finger | outward (any) | 30° |
-| tilt | per finger | -30° to +90° | 30° |
+| tilt | per finger | 0° to +90° (never under the palm); 0° when the first joint is a bend | 30° |
 | joint axis (two angles) | per joint | 31 directions (a line; its sign is derived), in the link frame: x along the finger, y the closing direction (the palm normal turned by the tilt), z = x × y | 30° |
 | joint type | per joint | hinge (hinge, coupled x1.1 the joint before it, sliding) | couple / uncouple |
-| link length | per link | the servo floor for its two axes (30-50 mm) to 90 mm, 0 for two joints at one point between different axes square to the finger; fingertip 30-90 mm (0 or 10-90; fingertip 10-90); finger at most 225 mm | 10 mm |
-| links | global | servo-sized: one box around each link's yoke and the servo it carries | - |
+| link length | per link | the servo floor for its two axes (30-50 mm; a link too short for the next bend servo to lie along it turns that servo, body on the back of the finger) to 90 mm, 0 for two joints at one point between different axes square to the finger; fingertip 30-90 mm (40 after a turned bend) (0 or 10-90; fingertip 10-90); finger at most 225 mm | 10 mm |
+| links | global | servo-sized: one box around each link's yoke and the servo it carries; the fingertip a capsule, radius 16.5 mm | - |
 | palm plate | global | 24 mm thick; outline: hull of the mount and the servos' housings; a cut leaves an 8.6 mm seam | - |
 | base depth | derived | the first servo's housing flush with the front face | - |
 | clearance | random hands and every mutant | C1 at rest and at the start pose; a random finger is redrawn up to 50 times, a mutation keeps the first child that passes | - |
@@ -82,8 +82,8 @@ Per hand: what evolution changes. Global: one value for every hand. Ranges under
 | turn a joint axis | `axis_az` | the axis around the link by 30° (links move to their new shortest if needed) |
 | tip a joint axis | `axis_el` | the axis toward or away from the link by 30° |
 | move / turn the palm cut | `move_cut`, `turn_cut` | the line by 10 mm or 30° |
-| add a finger | `add_finger` | a one-joint finger (bend, 40 mm) at a free spot, facing away from the centre |
-| remove a finger | `remove_finger` | any finger in one step; a cut left with no finger on a side goes too |
+| add a finger | `add_finger` | a finger at a free spot, facing away from the centre, with the hand's mean joint count rounded up, its joints drawn as for a random hand |
+| remove a finger | `remove_finger` | a finger in one step, unless centring the rest would put a base outside the ring; a cut left with no finger on a side goes too |
 | add a joint (split a link) | `split` | a new joint at any 10 mm point of a link, kind drawn with the commercial mix; links too short grow to their shortest |
 | remove a joint (merge two links) | `merge` | one joint; the links on either side become one (at most 90 mm) |
 | couple or uncouple a joint | `couple` | No Rules only: a joint follows the joint before it (x1.1), or moves on its own |

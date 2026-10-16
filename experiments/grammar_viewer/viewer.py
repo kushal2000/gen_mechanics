@@ -136,7 +136,8 @@ class GrammarViewer:
                      max_palm_joints=int(self.gui_palm.value), max_finger_length_mm=int(self.gui_length.value),
                      base_pitch_mm=int(self.gui_pitch.value), max_link_mm=int(self.gui_link_max.value),
                      base_distance_mm=(int(self.gui_base_min.value), int(self.gui_base.value)),
-                     outward_facing=bool(self.gui_outward.value), buildable_links=bool(self.gui_buildable.value)).clamp()
+                     outward_facing=bool(self.gui_outward.value), buildable_links=bool(self.gui_buildable.value),
+                     mount_at_centre=bool(self.gui_centre.value)).clamp()
 
     def _show_rules(self, r: Rules) -> None:
         self._suppress = True
@@ -153,6 +154,7 @@ class GrammarViewer:
             self.gui_base.value = r.base_distance_mm[1]
             self.gui_outward.value = r.outward_facing
             self.gui_buildable.value = r.buildable_links
+            self.gui_centre.value = r.mount_at_centre
         finally:
             self._suppress = False
 
@@ -485,9 +487,14 @@ class GrammarViewer:
                                               hint="No finger points back across the palm (tangential is fine).")
             self.gui_buildable = g.add_checkbox("servo link lengths", r.buildable_links,
                                                 hint="Links at least as long as two servos need (30-50 mm by their "
-                                                     "axes), fingertips at least 30 mm, two joints at one point only "
+                                                     "axes; a shorter link turns the bend servo after it, body on "
+                                                     "the back of the finger), fingertips at least 30 mm, two joints at one point only "
                                                      "between different axes square to the finger. Off: 0 or 10-90 "
                                                      "mm, fingertips 10-90 mm.")
+            self.gui_centre = g.add_checkbox("mount at the palm's centre", r.mount_at_centre,
+                                             hint="The base servos' centre lies within half a base step of the "
+                                                  "mount, so no two hands differ only in where the mount sits. "
+                                                  "Random hands and mutations move the hand to centre it.")
             self.md_rules = g.add_markdown("")
             self.md_space = g.add_markdown(gspace.summary(FEETECH_RULES))
 
@@ -537,7 +544,7 @@ class GrammarViewer:
         self.gui_rules.on_update(lambda _: None if self._suppress else self.choose_rules(self.gui_rules.value))
         for h in (self.gui_fingers, self.gui_joints, self.gui_palm, self.gui_coupled, self.gui_sliding,
                   self.gui_length, self.gui_link_max, self.gui_pitch, self.gui_base_min, self.gui_base,
-                  self.gui_outward, self.gui_buildable):
+                  self.gui_outward, self.gui_buildable, self.gui_centre):
             h.on_update(lambda _: self._on_field())
 
         @self.gui_hand.on_update
