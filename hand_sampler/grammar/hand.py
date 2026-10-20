@@ -268,6 +268,8 @@ class Rules:
     buildable_links: bool = False
     max_link_mm: int = LINK_MAX_MM
     mount_at_centre: bool = False
+    link_step_mm: int = GRID_MM       # links: the floor, then every this many mm (the coarse stage: 20)
+    axis_step_deg: int = GRID_DEG     # joint axes on this grid: 30 (31 directions) or 90 (the three kinds)
 
     def clamp(self) -> "Rules":
         """The same rules, every field inside the grammar's own limits."""
@@ -286,6 +288,8 @@ class Rules:
             outward_facing=bool(self.outward_facing), buildable_links=bool(self.buildable_links),
             max_link_mm=max(TIP_MIN_MM, min(int(self.max_link_mm) // GRID_MM * GRID_MM, g.max_link_mm)),
             mount_at_centre=bool(self.mount_at_centre),
+            link_step_mm=max(GRID_MM, int(self.link_step_mm) // GRID_MM * GRID_MM),
+            axis_step_deg=90 if int(self.axis_step_deg) >= 90 else GRID_DEG,
         )
 
 
@@ -293,6 +297,12 @@ NO_RULES = Rules()
 FEETECH_RULES = Rules(joint_types=("hinge",), base_pitch_mm=40, base_distance_mm=(40, 90),
                       outward_facing=True, buildable_links=True, max_finger_length_mm=225, max_link_mm=90,
                       mount_at_centre=True)
+FEETECH_COARSE_RULES = replace(FEETECH_RULES, link_step_mm=20, axis_step_deg=90)
+"""The coarse stage (Martin, 2026-10-20): the Feetech rules with joints only on
+the three kinds and links in 20 mm steps from their shortest. Random hands
+start here and evolve here first; the fine stage (`FEETECH_RULES`: 31 axis
+directions, 10 mm steps) then refines them. Every coarse hand is a fine one."""
+STAGE_RULES = {"coarse": FEETECH_COARSE_RULES, "fine": FEETECH_RULES}
 EVOLUTION_RULES = FEETECH_RULES
 COMMERCIAL_RULES = Rules(buildable_links=True, mount_at_centre=True)
 """The grammar's own limits with servo link lengths: what a commercial hand,
@@ -381,10 +391,11 @@ def length_floor_mm(f: Finger, j: int, buildable: bool) -> int:
     return _link_floor(a, b, turned_servo(f, j), nxt.type != "sliding" and _is_bend(b))
 
 
-def allowed_lengths(f: Finger, j: int, buildable: bool, max_mm: int = LINK_MAX_MM) -> List[int]:
+def allowed_lengths(f: Finger, j: int, buildable: bool, max_mm: int = LINK_MAX_MM, step: int = GRID_MM) -> List[int]:
     """Every length link j of finger f may take, ascending, given its
-    neighbours: the floor to `max_mm` on the grid, and 0 where allowed."""
-    out = list(range(length_floor_mm(f, j, buildable), max_mm + 1, GRID_MM))
+    neighbours: the floor, then every `step` mm up to `max_mm`, and 0 where
+    allowed."""
+    out = list(range(length_floor_mm(f, j, buildable), max_mm + 1, step))
     if zero_link_ok(f, j, buildable):
         out = [0] + out
     return out
@@ -439,20 +450,20 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
             if jt.type == "coupled" and (j == 0 or f.joints[j - 1].type not in REVOLUTE_TYPES):
                 out.append(f"{jtag}: a coupled joint must follow a hinge or coupled joint in its finger")
             az, el = jt.axis
-            if not (_is_int(az) and _is_int(el)) or az % GRID_DEG or el % GRID_DEG:
-                out.append(f"{jtag}: axis off the {GRID_DEG} degree grid")
+            if not (_is_int(az) and _is_int(el)) or az % r.axis_step_deg or el % r.axis_step_deg:
+                out.append(f"{jtag}: axis off the {r.axis_step_deg} degree grid")
                 bad_axis = True
             elif canonical_axis(az, el) != (az, el):
                 out.append(f"{jtag}: axis {jt.axis} not canonical ({canonical_axis(az, el)})")
         if not bad_axis:
             for j, jt in enumerate(f.joints):
-                allowed = allowed_lengths(f, j, r.buildable_links, r.max_link_mm)
+                allowed = allowed_lengths(f, j, r.buildable_links, r.max_link_mm, r.link_step_mm)
                 if not _is_int(jt.length) or jt.length not in allowed:
                     lo_mm = length_floor_mm(f, j, r.buildable_links)
                     zero = "0 or " if zero_link_ok(f, j, r.buildable_links) else ""
                     out.append(f"{tag} joint {j}: link length {jt.length} mm not allowed "
                                f"({'fingertip ' if j == nj - 1 else ''}{zero}{lo_mm}-{r.max_link_mm} mm "
-                               f"in {GRID_MM} mm steps)")
+                               f"in {r.link_step_mm} mm steps)")
         if finger_length_mm(f) > r.max_finger_length_mm:
             out.append(f"{tag}: {finger_length_mm(f)} mm long, allowed {r.max_finger_length_mm}")
     for k, p in enumerate(hand.palm_joints):

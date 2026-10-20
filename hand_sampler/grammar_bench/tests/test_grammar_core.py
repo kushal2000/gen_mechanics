@@ -390,7 +390,7 @@ def test_object_start_is_the_lowest_clear_height():
     the start pose: never inside the hand, no higher than it must be."""
     h = simple_hand()
     p = dv.object_start_m(h, 0.03)
-    assert p[0] == pytest.approx((PLATE_HALF_MM + 30 + 5 + 1) * 1e-3)    # the row's curled first links: 1 mm up
+    assert p[0] == pytest.approx((PLATE_HALF_MM + 30 + 5) * 1e-3)        # the fingers start open: right above the face
     assert np.allclose(p[1:] * 1e3, dv.polygon_centroid(dv.outline_mm(h)))
     rng = np.random.default_rng(18)
     raised = 0
@@ -605,9 +605,9 @@ def test_parameter_steps_are_inverse_pairs():
             for mv in ops.candidates(h, op, rules):
                 child = op.apply(h, mv, rules)
                 back = op.apply(child, mv[:-1] + (-mv[-1],), rules)
+                if op.name in ("axis_az", "axis_el", "length") and len(_diff(h, child)) > 1:
+                    continue                       # later links were refit: not a pure step
                 if op.name in ("axis_az", "axis_el"):
-                    if len(_diff(h, child)) > 1:
-                        continue                   # lengths were refit: not a pure step
                     ax = child.fingers[mv[0]].joints[mv[1]].axis
                     if ax == (0, 90):              # through the pole, az is not kept
                         continue
@@ -689,12 +689,12 @@ def test_add_finger_has_the_mean_joint_count_rounded_up_at_a_free_spot():
     added = set()
     for _ in range(8):
         child, mv = ops.apply_operator(h, "add_finger", rng, FEETECH_RULES)
-        f = child.fingers[-1]
+        added_hand = ops.OPERATOR_BY_NAME["add_finger"].apply(h, mv, FEETECH_RULES)
+        f = added_hand.fingers[-1]                                    # the move fixes the draw
         assert len(f.joints) == want and all(j.type == "hinge" for j in f.joints)
         assert len({(g.y, g.z) for g in child.fingers}) == len(child.fingers) and f.tilt == 0    # a free spot
         assert check(child, FEETECH_RULES) == []
-        added_hand = ops.OPERATOR_BY_NAME["add_finger"].apply(h, mv, FEETECH_RULES)
-        assert ops.recentre(added_hand, FEETECH_RULES) == child       # the move fixes the draw; then centred
+        assert ops.canonical(ops.recentre(added_hand, FEETECH_RULES), FEETECH_RULES) == child   # centred, one copy
         added.add(f.joints)
     assert len(added) > 1
     h3 = Hand(fingers=(replace(h.fingers[0], joints=h.fingers[0].joints[:1]),) + h.fingers[1:])
@@ -724,18 +724,21 @@ def test_mutating_a_hand_outside_the_rules_never_adds_violations():
 
 
 def test_search_space_counts():
-    """The Feetech rules' search space, counted exactly (no geometry): about
-    10^29.7 four-finger hands with joints on the three kinds, 10^44.2 with all
-    31 axis directions (E16; since 2026-10-16 fingers at most 225 mm, tilts
-    0-90 degrees, tilt 0 when the first joint is a bend, and links down to 30
-    mm before a bend servo, which then turns)."""
+    """The search space, counted exactly (no geometry), every finger count
+    together: 10^38.3 hands in the coarse stage (joints on the three kinds,
+    20 mm link steps), 10^65.4 in the fine stage (31 axis directions, 10 mm
+    steps); four-finger hands with joints on the three kinds and 10 mm steps:
+    10^29.7 (E16; 2026-10-20)."""
     from hand_sampler.grammar import space
+    from hand_sampler.grammar.hand import FEETECH_COARSE_RULES
 
     assert len(space.AXES_ALL) == 31
+    assert space.rule_axes(FEETECH_COARSE_RULES) == space.AXES_KINDS and space.rule_axes(FEETECH_RULES) == space.AXES_ALL
     assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (21, 401, 6731, 44189, 122448)
-    assert space.hands_log10(FEETECH_RULES)[4] == pytest.approx(29.75, abs=0.01)
-    assert space.hands_log10(FEETECH_RULES, space.AXES_ALL)[4] == pytest.approx(44.24, abs=0.01)
-    assert space.hands_log10(NO_RULES)[4] > space.hands_log10(FEETECH_RULES)[4] + 20
+    assert space.hands_log10(FEETECH_RULES, space.AXES_KINDS)[4] == pytest.approx(29.75, abs=0.01)
+    assert space.total_log10(FEETECH_RULES) == pytest.approx(65.42, abs=0.01)
+    assert space.total_log10(FEETECH_COARSE_RULES) == pytest.approx(38.34, abs=0.01)
+    assert space.total_log10(NO_RULES) > space.total_log10(FEETECH_RULES) + 20
 
 
 def test_a_bend_first_finger_has_tilt_0():

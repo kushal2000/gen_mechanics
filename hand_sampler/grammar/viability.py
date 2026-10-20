@@ -2,7 +2,8 @@
 
 C1, clearance: every two solids that do not touch by construction keep one
 printed wall (2 mm) apart, at the zero pose and at the episode start pose
-(`derive.START_CURL`); and every base motor's housing stays out of a palm
+(`derive.START_CURL`; since 2026-10-20 the fingers start open, so that is the
+zero pose); and every base motor's housing stays out of a palm
 cut's seam. Solids are `derive.solids_at`: the plates, the mount, the hinge
 motor, each finger's base motor and each link (a box around its yoke and the
 next motor; the fingertip a capsule). Distances are exact (GJK on the corners,
@@ -183,7 +184,7 @@ def c1_self_overlap(hand: Hand, max_overlap_mm: float = C1_MAX_OVERLAP_MM) -> C1
     bad = []
     worst = 0.0
     found = seam_overlaps(hand)
-    for q in (None, dv.start_q(hand)):
+    for q in dv.check_poses(hand):
         found += overlaps(hand, q)
     for a, b, ov in found:
         worst = max(worst, ov)
@@ -197,7 +198,7 @@ def clear(hand: Hand, focus_finger: Optional[int] = None) -> bool:
     plate, for building a hand finger by finger)."""
     if seam_overlaps(hand):
         return False
-    for q in (None, dv.start_q(hand)):
+    for q in dv.check_poses(hand):
         if overlaps(hand, q, focus_finger):
             return False
     return True

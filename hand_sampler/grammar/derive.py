@@ -75,9 +75,11 @@ DEG = math.pi / 180.0
 MM = 1e-3
 EPS = 1e-9
 
-START_CURL = 0.35
+START_CURL = 0.0
 """The episode start pose: every flexion joint at this fraction of its upper
-limit, every other joint at 0, coupled joints following their source."""
+limit, every other joint at 0, coupled joints following their source. The
+fingers start open (Martin, 2026-10-20; it was 0.35, which stood curled
+fingers over the palm and raised the object's start on many hands)."""
 
 CLEARANCE_MM = mt.WALL_MM
 """Solids that do not touch by construction keep one printed wall apart."""
@@ -779,6 +781,12 @@ def curl_q(hand: Hand, curl: float = START_CURL, ds: Optional[List[Dof]] = None)
 
 def start_q(hand: Hand) -> np.ndarray:
     return curl_q(hand, START_CURL)
+
+
+def check_poses(hand: Hand) -> Tuple[Optional[np.ndarray], ...]:
+    """The poses the clearance check looks at: the zero pose (None), and the
+    start pose when it differs from it."""
+    return (None,) + ((start_q(hand),) if START_CURL else ())
 
 
 def sample_q(hand: Hand, n: int, rng: np.random.Generator, ds: Optional[List[Dof]] = None) -> np.ndarray:

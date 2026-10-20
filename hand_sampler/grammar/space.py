@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import math
 from functools import lru_cache
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from . import motor as mt
 from .hand import (GRID_DEG, KIND_AXIS, TILT_RANGE_DEG, Rules, axis_unit, canonical_axis)
@@ -48,7 +48,7 @@ def chains_by_first(rules: Rules, axes: Tuple[Tuple[int, int], ...]) -> Tuple[Tu
     buildable = rules.buildable_links
     extra_types = [t for t in ("sliding",) if t in rules.joint_types]
     coupled = "coupled" in rules.joint_types
-    step = 10
+    step = rules.link_step_mm
     top = rules.max_link_mm
 
     def links(i: int, j: int, prev_zero: bool, turned_i: bool, bend_j: bool) -> List[Tuple[int, bool]]:
@@ -107,32 +107,44 @@ def chains(rules: Rules, axes: Tuple[Tuple[int, int], ...]) -> Tuple[int, ...]:
     return tuple(b + o for b, o in chains_by_first(rules, axes))
 
 
-def fingers_per_spot(rules: Rules, axes: Tuple[Tuple[int, int], ...] = AXES_KINDS) -> List[int]:
+def fingers_per_spot(rules: Rules, axes: Optional[Tuple[Tuple[int, int], ...]] = None) -> List[int]:
     """Per base spot: its facings times (the chains with a bend first, at
     tilt 0, plus the others at every tilt)."""
     from .operators import base_spots, facings_at
 
     tilts = len(range(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1] + 1, GRID_DEG))
-    rows = chains_by_first(rules, axes)
+    rows = chains_by_first(rules, axes if axes is not None else rule_axes(rules))
     per = sum(b for b, _ in rows) + tilts * sum(o for _, o in rows)
     return [len(facings_at(y, z, rules)) * per for (y, z) in base_spots(rules)]
 
 
-def hands_log10(rules: Rules, axes: Tuple[Tuple[int, int], ...] = AXES_KINDS) -> Dict[int, float]:
+def rule_axes(rules: Rules) -> Tuple[Tuple[int, int], ...]:
+    """The joint axes a rule set allows: the three kinds (a 90 degree axis
+    grid, the coarse stage) or all 31 directions."""
+    return AXES_KINDS if rules.axis_step_deg >= 90 else AXES_ALL
+
+
+def hands_log10(rules: Rules, axes: Optional[Tuple[Tuple[int, int], ...]] = None) -> Dict[int, float]:
     """log10 of the number of hands per finger count (no palm cut): sets of
     fingers on distinct spots."""
-    o = fingers_per_spot(rules, axes)
+    o = fingers_per_spot(rules, axes if axes is not None else rule_axes(rules))
     return {n: math.log10(_elementary(o, n))
             for n in range(rules.min_fingers, rules.max_fingers + 1) if _elementary(o, n) > 0}
 
 
+def total_log10(rules: Rules) -> float:
+    """log10 of the hands a rule set allows, every finger count together."""
+    return math.log10(sum(10 ** v for v in hands_log10(rules).values()))
+
+
+SYMMETRY_LOG10 = math.log10(8)
+"""Turns by 90 degrees and mirror images count as one hand (`operators.canonical`):
+about 8 hands per hand (fewer for the rare symmetric ones)."""
+
+
 def summary(rules: Rules) -> str:
-    """One line for the viewer: hands with joints on the three kinds (four
-    fingers, and any count), and with all 31 axis directions."""
-    k = hands_log10(rules, AXES_KINDS)
-    a = hands_log10(rules, AXES_ALL)
-    total_k = math.log10(sum(10 ** v for v in k.values()))
-    total_a = math.log10(sum(10 ** v for v in a.values()))
-    four = f"10^{k[4]:.0f} four-finger hands, " if 4 in k else ""
-    return (f"search space: {four}10^{total_k:.0f} in all with joints on the three kinds; "
-            f"10^{total_a:.0f} with all 31 axis directions (before the centre rule and the clearance check)")
+    """One line for the viewer: the hands these rules allow, every finger
+    count together, and with turns and mirror images counted once."""
+    t = total_log10(rules)
+    return (f"search space: 10^{t:.0f} hands (2-{rules.max_fingers} fingers), about 10^{t - SYMMETRY_LOG10:.0f} with turns "
+            f"and mirror images counted once (before the centre rule and the clearance check)")

@@ -218,10 +218,11 @@ def test_object_starts_above_the_palm():
 
 def test_object_starts_clear_of_a_finger_standing_by_it():
     """A finger tilted straight up next to the palm centre: the object starts
-    where it clears every solid by 5 mm at the start pose."""
+    where it clears every solid by 5 mm at the start pose (the fingers open,
+    so here right above the face)."""
     up = _finger(0, 40, facing=0, tilt=90, joints=((BEND, 50), (BEND, 30)))
     h = Hand(fingers=(up, _finger(0, -80, facing=180)))
     p = dv.object_start_m(h, 0.03) * 1e3
-    assert p[0] > PLATE_HALF_MM + 35
+    assert p[0] >= PLATE_HALF_MM + 35 - 1e-6
     cube = dv.box_corners(p, np.full(3, 30.0)) * 1e-3
     assert min(V.gjk_distance(cube, s.points) for s in dv.solids_at(h, dv.start_q(h))) * 1e3 >= 5.0 - 1e-6

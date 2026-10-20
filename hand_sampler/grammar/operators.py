@@ -112,7 +112,8 @@ def fit_lengths(f: Finger, rules: Rules) -> Finger:
     to the longer), from the palm out."""
     js = list(f.joints)
     for j in range(len(js)):
-        allowed = allowed_lengths(replace(f, joints=tuple(js)), j, rules.buildable_links, rules.max_link_mm)
+        allowed = allowed_lengths(replace(f, joints=tuple(js)), j, rules.buildable_links, rules.max_link_mm,
+                                  rules.link_step_mm)
         if js[j].length not in allowed:
             js[j] = replace(js[j], length=_nearest(allowed, js[j].length))
     return replace(f, joints=tuple(js))
@@ -122,7 +123,7 @@ def step_length(f: Finger, j: int, s: int, rules: Rules) -> Optional[int]:
     """Link j's next allowed length up (s = +1) or down (s = -1): 10 mm
     steps, the floor down to 0 where a 0 mm link is allowed. None at the
     ends."""
-    allowed = allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm)
+    allowed = allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm, rules.link_step_mm)
     L = f.joints[j].length
     if L in allowed:
         k = allowed.index(L) + s
@@ -203,7 +204,7 @@ def _turn_axis(hand: Hand, mv: tuple, rules: Rules, which: int) -> Hand:
     i, j, s = mv
     f = hand.fingers[i]
     js = list(f.joints)
-    js[j] = replace(js[j], axis=step_axis(js[j].axis, which, s))
+    js[j] = replace(js[j], axis=step_axis(js[j].axis, which, s, rules.axis_step_deg))
     return with_finger(hand, i, fit_lengths(replace(f, joints=tuple(js)), rules))
 
 
@@ -307,7 +308,7 @@ def _split_moves(hand: Hand, rules: Rules) -> List[tuple]:
         if len(f.joints) >= rules.max_joints:
             continue
         for j, jt in enumerate(f.joints):
-            for a in range(0, jt.length + 1, GRID_MM):
+            for a in range(0, jt.length + 1, rules.link_step_mm):
                 out.extend((i, j, a, k) for k in _split_kinds(rules))
     return out
 
@@ -451,6 +452,66 @@ def recentre(hand: Hand, rules: Rules) -> Hand:
     return shifted(hand, int(-k[0] * p), int(-k[1] * p)) if k.any() else hand
 
 
+def _turned(hand: Hand, k: int, mirror: bool) -> Hand:
+    """The hand mirrored (y -> -y) if `mirror`, then turned k x 90 degrees
+    about the palm normal (a facing f goes to f + 90 k)."""
+    def point(y: int, z: int) -> Tuple[int, int]:
+        y = -y if mirror else y
+        for _ in range(k % 4):
+            y, z = z, -y
+        return y, z
+
+    def facing(f: int) -> int:
+        return ((-f if mirror else f) + 90 * k) % 360
+
+    fingers = []
+    for f in hand.fingers:
+        y, z = point(f.y, f.z)
+        js = f.joints if not mirror else tuple(replace(j, axis=canonical_axis(180 - j.axis[0], j.axis[1]))
+                                               for j in f.joints)
+        fingers.append(replace(f, y=y, z=z, facing=facing(f.facing), joints=js))
+    cuts = tuple(replace(p, facing=(((180 - p.facing) if mirror else p.facing) + 90 * k) % 360)
+                 for p in hand.palm_joints)
+    return replace(hand, fingers=tuple(fingers), palm_joints=cuts)
+
+
+def _finger_key(f: Finger) -> tuple:
+    return (f.y, f.z, f.facing, f.tilt, tuple((j.type, tuple(j.axis), j.length) for j in f.joints))
+
+
+def _hand_key(hand: Hand) -> tuple:
+    return (tuple(sorted(_finger_key(f) for f in hand.fingers)), tuple((p.facing, p.offset) for p in hand.palm_joints))
+
+
+def canonical(hand: Hand, rules: Rules) -> Hand:
+    """One hand for the eight that differ only by a turn of the palm by 90
+    degrees or a mirror image, which the palm-up task cannot tell apart
+    (Martin, 2026-10-20): the copy whose sorted fingers come first among
+    those that keep the rules and C1 (a copy is checked again: a servo slid
+    by a crossing keeps its side, so a mirror image is not always clear),
+    its fingers in that order. A hand that breaks the rules is returned
+    unchanged."""
+    if check(hand, rules):
+        return hand
+    h = rules.base_pitch_mm / 2.0
+    c = dv.palm_centre_mm(hand) if rules.mount_at_centre else None
+    cands = []
+    for mirror in (False, True):
+        for k in range(4):
+            if c is not None:            # the palm's centre turns with the hand
+                y, z = (-c[0] if mirror else c[0]), c[1]
+                for _ in range(k):
+                    y, z = z, -y
+                if not (-h <= y < h and -h <= z < h):
+                    continue
+            t = _turned(hand, k, mirror)
+            cands.append((_hand_key(t), bool(k or mirror), t))
+    for _key, moved, t in sorted(cands, key=lambda x: (x[0], x[1])):
+        if not moved or (not check(t, rules) and gvb.clear(t)):
+            return replace(t, fingers=tuple(sorted(t.fingers, key=_finger_key)))
+    return replace(hand, fingers=tuple(sorted(hand.fingers, key=_finger_key)))
+
+
 def _weighted_order(rng: np.random.Generator, weights: Sequence[float]) -> List[int]:
     """A random order in which item i comes early with weight w_i
     (Efraimidis-Spirakis keys u ** (1 / w))."""
@@ -487,7 +548,9 @@ def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, rng: Op
         if parent_worst is None:
             parent_worst = _c1_worst(hand)
         if _c1_keeps(child, parent_worst):
-            yield mv, child
+            child = canonical(child, rules)       # turns and mirror images of a hand are one hand
+            if child != hand:
+                yield mv, child
 
 
 def candidates(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES) -> List[tuple]:
@@ -653,7 +716,7 @@ def _draw_joints(rng: np.random.Generator, rules: Rules, first: str, base: Finge
         ok = True
         for j in range(n):
             f = replace(base, joints=tuple(js))
-            values = [v for v in allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm)
+            values = [v for v in allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm, rules.link_step_mm)
                       if v + _shortest_rest_mm(base, js, j, v, rules) <= budget]
             if not values:
                 ok = False
@@ -707,7 +770,7 @@ def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES) -> Han
         problems = check(hand, rules)
         if problems:   # every draw keeps the limits by construction; this guards the construction itself
             raise AssertionError(f"random_hand broke its rules: {problems}")
-        return hand
+        return canonical(hand, rules)     # turns and mirror images of a hand are one hand
     raise NoHand(f"no {n}-finger hand under these rules after {MAX_HAND_ATTEMPTS} attempts")
 
 
