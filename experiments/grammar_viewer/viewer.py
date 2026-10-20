@@ -39,13 +39,15 @@ from hand_sampler.grammar import space as gspace  # noqa: E402
 from hand_sampler.grammar import viability as gvb  # noqa: E402
 from hand_sampler.grammar.fk import forward_kinematics  # noqa: E402
 from hand_sampler.grammar.hand import (  # noqa: E402
-    FEETECH_RULES, MOUNT_DEPTH_MM, NO_RULES, PLATE_HALF_MM, Hand, Rules, check, parameter_count)
+    FEETECH_COARSE_RULES, FEETECH_RULES, MOUNT_DEPTH_MM, NO_RULES, PLATE_HALF_MM, Hand, Rules, check, parameter_count)
 
 from gviewer import draw  # noqa: E402
 from gviewer import meshes as gmesh  # noqa: E402
 
-FEETECH, NONE, CUSTOM = "Feetech Rules", "No Rules", "Custom Rules"
-RULE_SETS: Dict[str, Optional[Rules]] = {FEETECH: FEETECH_RULES, NONE: NO_RULES, CUSTOM: None}
+COARSE, FEETECH, NONE, CUSTOM = "Feetech coarse", "Feetech fine", "No Rules", "Custom Rules"
+RULE_SETS: Dict[str, Optional[Rules]] = {COARSE: FEETECH_COARSE_RULES, FEETECH: FEETECH_RULES, NONE: NO_RULES,
+                                         CUSTOM: None}
+KINDS_ONLY, ALL_AXES = "the three kinds", "31 directions"
 NO_HAND = "(none)"
 MAX_TRIES = 2000
 MESH_OPACITY = 0.35
@@ -53,7 +55,7 @@ OBJECT_HALF_M = 0.036
 """The repose task's cube (72 mm), shown where it starts."""
 
 C1_HINT = ("Every two solids (servo-sized links, base motors, the mount, the hinge motor, the palm) keep one printed "
-           "wall (2 mm) apart, with every joint at 0 and at the start pose (bending joints at 0.35 of their range), "
+           "wall (2 mm) apart with every joint at 0 (where episodes start: the fingers open), "
            "except parts that touch by construction (a joint's two sides, a motor in its palm pocket); no base "
            "motor in a palm cut's seam.")
 C2_HINT = ("At least one pair of fingers whose fingertips can meet above the palm: each fingertip is swept over its "
@@ -137,7 +139,8 @@ class GrammarViewer:
                      base_pitch_mm=int(self.gui_pitch.value), max_link_mm=int(self.gui_link_max.value),
                      base_distance_mm=(int(self.gui_base_min.value), int(self.gui_base.value)),
                      outward_facing=bool(self.gui_outward.value), buildable_links=bool(self.gui_buildable.value),
-                     mount_at_centre=bool(self.gui_centre.value)).clamp()
+                     mount_at_centre=bool(self.gui_centre.value), link_step_mm=int(self.gui_link_step.value),
+                     axis_step_deg=90 if self.gui_axes.value == KINDS_ONLY else 30).clamp()
 
     def _show_rules(self, r: Rules) -> None:
         self._suppress = True
@@ -155,6 +158,8 @@ class GrammarViewer:
             self.gui_outward.value = r.outward_facing
             self.gui_buildable.value = r.buildable_links
             self.gui_centre.value = r.mount_at_centre
+            self.gui_link_step.value = r.link_step_mm
+            self.gui_axes.value = KINDS_ONLY if r.axis_step_deg >= 90 else ALL_AXES
         finally:
             self._suppress = False
 
@@ -455,13 +460,14 @@ class GrammarViewer:
             self.md_random = g.add_markdown("")
 
         with g.add_folder("Rules"):
-            self.gui_rules = g.add_dropdown("rules", list(RULE_SETS), initial_value=FEETECH,
-                                            hint="Random hands and every mutation follow these rules. Feetech Rules: "
-                                                 "hands buildable from Feetech servos, what the simulator builds and "
-                                                 "evolution uses. No Rules: the whole grammar (coupled and sliding "
-                                                 "joints too). Editing a field makes them Custom Rules; fields can "
-                                                 "only tighten the grammar.")
-            r = FEETECH_RULES
+            self.gui_rules = g.add_dropdown("rules", list(RULE_SETS), initial_value=COARSE,
+                                            hint="Random hands and every mutation follow these rules. Feetech coarse: "
+                                                 "hands buildable from Feetech servos, joints on the three kinds, "
+                                                 "links in 20 mm steps (where evolution starts). Feetech fine: 31 axis "
+                                                 "directions and 10 mm steps (the refinement stage). No Rules: the "
+                                                 "whole grammar (coupled and sliding joints too). Editing a field "
+                                                 "makes them Custom Rules; fields can only tighten the grammar.")
+            r = FEETECH_COARSE_RULES
             self.gui_fingers = g.add_slider("max fingers", 2, 6, 1, r.max_fingers, hint="Fingers per hand: 2-6.")
             self.gui_joints = g.add_slider("max joints per finger", 1, 5, 1, r.max_joints,
                                            hint="Joints per finger: 1-5.")
@@ -477,6 +483,13 @@ class GrammarViewer:
                                            hint="Sum of a finger's link lengths (Feetech: 225 mm).")
             self.gui_link_max = g.add_number("max link length (mm)", r.max_link_mm, min=10, max=NO_RULES.max_link_mm,
                                              step=10, hint="The longest link (Feetech: 90 mm).")
+            self.gui_link_step = g.add_number("link step (mm)", r.link_step_mm, min=10, max=40, step=10,
+                                              hint="Links take their shortest length, then every this many mm "
+                                                   "(coarse: 20, fine: 10).")
+            self.gui_axes = g.add_dropdown("joint axes", [KINDS_ONLY, ALL_AXES],
+                                           initial_value=KINDS_ONLY if r.axis_step_deg >= 90 else ALL_AXES,
+                                           hint="The three kinds (bend, spread, twist; coarse) or all 31 directions "
+                                                "on the 30 degree grid (fine).")
             self.gui_pitch = g.add_number("base grid (mm)", r.base_pitch_mm, min=10, max=80, step=10,
                                           hint="Finger bases sit on a square grid of this pitch (Feetech: 40 mm, a "
                                                "servo housing plus room).")
@@ -499,7 +512,7 @@ class GrammarViewer:
                                                   "mount, so no two hands differ only in where the mount sits. "
                                                   "Random hands and mutations move the hand to centre it.")
             self.md_rules = g.add_markdown("")
-            self.md_space = g.add_markdown(gspace.summary(FEETECH_RULES))
+            self.md_space = g.add_markdown(gspace.summary(FEETECH_COARSE_RULES))
 
         with g.add_folder("Viability"):
             self.gui_c1 = g.add_checkbox("C1 clearance", True, hint=C1_HINT + " Untick: Random stops requiring it.")
@@ -524,7 +537,8 @@ class GrammarViewer:
         with g.add_folder("Pose"):
             self.gui_curl = g.add_slider("curl", 0.0, 1.0, 0.01, gdv.START_CURL,
                                          hint="Sets every joint slider: bending joints at this fraction of their "
-                                              "range (0.35: the pose every episode starts from), other joints at 0.")
+                                              "range, other joints at 0 (0: the open pose every episode starts "
+                                              "from).")
             self.gui_palm_bend = g.add_slider("palm bend", -1.0, 1.0, 0.05, 0.0,
                                               hint="The palm joint at this fraction of its range (±30°): the part "
                                                    "beyond the cut folds. Shown when the hand has a palm cut.")
@@ -536,7 +550,7 @@ class GrammarViewer:
             self.gui_object = g.add_checkbox("show the object at its start", False,
                                              hint="The repose task's 72 mm cube where an episode starts: over the "
                                                   "palm's centre, at the lowest height where it clears the hand by 5 mm "
-                                                  "with the fingers at the start curl (0.35).")
+                                                  "with the fingers open, as every episode starts.")
             btn_center = g.add_button("re-centre view", hint="Point the camera at the whole hand.")
 
         self.joint_folder = g.add_folder("Joints", expand_by_default=True)
@@ -546,7 +560,8 @@ class GrammarViewer:
         btn_random.on_click(lambda _: self.random())
         self.gui_rules.on_update(lambda _: None if self._suppress else self.choose_rules(self.gui_rules.value))
         for h in (self.gui_fingers, self.gui_joints, self.gui_palm, self.gui_coupled, self.gui_sliding,
-                  self.gui_length, self.gui_link_max, self.gui_pitch, self.gui_base_min, self.gui_base,
+                  self.gui_length, self.gui_link_max, self.gui_link_step, self.gui_axes, self.gui_pitch,
+                  self.gui_base_min, self.gui_base,
                   self.gui_outward, self.gui_buildable, self.gui_centre):
             h.on_update(lambda _: self._on_field())
 

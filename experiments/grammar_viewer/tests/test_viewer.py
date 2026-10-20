@@ -236,9 +236,27 @@ def test_palm_bend_folds_the_part_beyond_the_cut(evo):
 
 
 def test_search_space_line_follows_the_rules(evo):
-    assert "10^30 four-finger hands" in evo.md_space.content
+    """The line counts every finger count: the fine stage 10^65, the coarse
+    stage 10^38, the whole grammar more."""
+    assert "10^65 hands (2-6 fingers)" in evo.md_space.content
+    evo.choose_rules(V.COARSE)
+    assert "10^38 hands (2-6 fingers)" in evo.md_space.content
     evo.choose_rules(V.NONE)
-    assert "four-finger hands" in evo.md_space.content and "10^30 four-finger" not in evo.md_space.content
+    assert "hands (2-6 fingers)" in evo.md_space.content and "10^65 hands" not in evo.md_space.content
+    evo.choose_rules(V.FEETECH)
+
+
+def test_the_coarse_stage_draws_kinds_and_20_mm_steps(evo):
+    """Under the coarse stage random hands have joints on the three kinds
+    only and links on their floor plus 20 mm steps; they keep the fine rules
+    too."""
+    from hand_sampler.grammar.hand import FEETECH_COARSE_RULES
+
+    evo.choose_rules(V.COARSE)
+    assert evo.rules() == FEETECH_COARSE_RULES
+    evo.random(wait=True)
+    assert check(evo.hand, FEETECH_COARSE_RULES) == [] and check(evo.hand, FEETECH_RULES) == []
+    assert {tuple(j.axis) for f in evo.hand.fingers for j in f.joints} <= {(0, 0), (90, 0), (0, 90)}
     evo.choose_rules(V.FEETECH)
 
 
