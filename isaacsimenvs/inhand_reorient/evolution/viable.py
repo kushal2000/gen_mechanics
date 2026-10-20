@@ -349,7 +349,7 @@ def main(argv=None) -> int:
     from . import driver as drv
 
     ap = argparse.ArgumentParser(description=main.__doc__)
-    ap.add_argument("--rules", default="evolution", help="comma-separated rule sets: evolution, none")
+    ap.add_argument("--rules", default="coarse", help="comma-separated rule sets: coarse, fine, none")
     ap.add_argument("--probes", default="allegro_right,sharpa_right,leap_right")
     ap.add_argument("--designs", type=int, default=32)
     ap.add_argument("--seed", type=int, default=0)

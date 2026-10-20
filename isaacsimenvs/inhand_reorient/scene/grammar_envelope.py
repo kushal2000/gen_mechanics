@@ -773,8 +773,8 @@ def finger_valid(design: EnvelopeDesign) -> np.ndarray:
 
 def palm_up(design: EnvelopeDesign, object_half_size: float = 0.03) -> PalmUpResult:
     """The palm frame is known, so this is exact: base_rot turns the palm
-    normal to world +z; the start pose is `derive.start_q` (every flexion
-    joint at 0.35 of its upper limit); the object starts over the palm
+    normal to world +z; the start pose is `derive.start_q` (since
+    2026-10-20 every joint at 0: the fingers start open); the object starts over the palm
     outline's centroid, 5 mm above the highest solid under it at the start
     pose (`derive.object_start_m`)."""
     fvalid = finger_valid(design)

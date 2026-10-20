@@ -267,7 +267,7 @@ class FakeTrainer:
 
 def _args(tmp_path, *extra):
     return drv.parse_args([
-        "--rules", "evolution", "--generations", "2", "--designs", "3", "--probes", "",
+        "--rules", "fine", "--generations", "2", "--designs", "3", "--probes", "",
         "--num-envs", "64", "--epochs-per-gen", "6", "--run-dir", str(tmp_path / "run"), *extra,
     ])
 
@@ -366,7 +366,7 @@ def test_main_stops_cleanly_with_state_at_the_last_good_generation(tmp_path, mon
     monkeypatch.setattr(drv, "run_training_subprocess", fake)
     run_dir = tmp_path / "run"
     rc = drv.main([
-        "--rules", "evolution", "--generations", "3", "--designs", "3", "--probes", "",
+        "--rules", "fine", "--generations", "3", "--designs", "3", "--probes", "",
         "--num-envs", "64", "--epochs-per-gen", "6", "--run-dir", str(run_dir),
     ])
     assert rc != 0

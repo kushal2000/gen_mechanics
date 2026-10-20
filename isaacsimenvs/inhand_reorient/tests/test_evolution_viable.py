@@ -169,7 +169,7 @@ def test_rates_and_log_row():
 
 
 def test_viable_generation_keeps_elites_drops_non_viable_probes_and_fills_new_designs():
-    dist = drv.resolve_rules("evolution")
+    dist = drv.resolve_rules("fine")
     rng = np.random.default_rng(0)
     a = arch.Archive()
     minter = drv.IdMinter()
@@ -204,7 +204,7 @@ def test_viable_generation_keeps_elites_drops_non_viable_probes_and_fills_new_de
 
 
 def test_viable_generation_after_gen_0_reuses_elites_and_known_probes():
-    dist = drv.resolve_rules("evolution")
+    dist = drv.resolve_rules("fine")
     rng = np.random.default_rng(1)
     minter = drv.IdMinter()
     known = {}
@@ -236,7 +236,7 @@ def test_viable_generation_after_gen_0_reuses_elites_and_known_probes():
 
 
 def test_viable_only_flag_needs_the_grasp_cache_and_adds_csv_columns():
-    base = ["--rules", "evolution", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "hora",
+    base = ["--rules", "fine", "--generations", "1", "--run-dir", "/tmp/x", "--task-profile", "hora",
             "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT]
     with pytest.raises(SystemExit):
         drv.parse_args(base + ["--viable-only"])
@@ -261,7 +261,7 @@ def test_state_round_trips_the_known_viability_map(tmp_path):
 def test_founders_cycle_through_several_variants():
     """A mixed population (e.g. G_V3S and G_V1 founders): founders are drawn
     round-robin over the distributions."""
-    dists = {"none": drv.resolve_rules("none"), "evolution": drv.resolve_rules("evolution")}
+    dists = {"none": drv.resolve_rules("none"), "fine": drv.resolve_rules("fine")}
     rng = np.random.default_rng(0)
     seen = []
 
@@ -273,7 +273,7 @@ def test_founders_cycle_through_several_variants():
                                               search=search, batch_size=6, max_batches=1)
     assert len(plan.entries) == 6
     # every draw (pre-filter rejects included) takes the next variant
-    assert report["founder_variants"] == [("none", "evolution")[i % 2] for i in range(report["candidates_drawn"])]
+    assert report["founder_variants"] == [("none", "fine")[i % 2] for i in range(report["candidates_drawn"])]
 
 
 def test_kit_cache_path_follows_the_job_environment(monkeypatch, tmp_path):
@@ -308,7 +308,7 @@ def test_grasp_search_command_bounds_the_peak_joint_speed(tmp_path):
     """--viable-max-joint-speed (default 5 rad/s): a design whose joints sit at
     the 10 rad/s velocity limit while holding is not viable (2026-10-02:
     founders 373, 420, 101 dominated population training)."""
-    base = ["--rules", "evolution", "--generations", "1", "--run-dir", str(tmp_path), "--task-profile", "hora",
+    base = ["--rules", "fine", "--generations", "1", "--run-dir", str(tmp_path), "--task-profile", "hora",
             "--agent-entry-point", drv.ANYROTATE_POP_AGENT_ENTRY_POINT, "--grasp-cache", "--viable-only"]
     args = drv.parse_args(base)
     assert args.viable_max_joint_speed == 5.0
@@ -324,7 +324,7 @@ def test_grasp_search_command_bounds_the_peak_joint_speed(tmp_path):
 def test_surplus_viable_designs_become_spares_drawn_first_next_generation():
     """Viable designs beyond the target are returned as spares; the next
     generation proposes them first (known viable: no search)."""
-    dist = drv.resolve_rules("evolution")
+    dist = drv.resolve_rules("fine")
     rng = np.random.default_rng(2)
     known = {}
 
