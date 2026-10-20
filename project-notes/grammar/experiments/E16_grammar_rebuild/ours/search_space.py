@@ -1,5 +1,5 @@
-"""How many hands the Feetech rules allow (2026-10-14; fingers at most 225 mm
-since 2026-10-16), and how many of them
+"""How many hands the Feetech rules allow, in the coarse and the fine stage
+(2026-10-20), every finger count together, and how many of them
 pass the clearance check (C1) and C2.
 
     PYTHONPATH=. python3 project-notes/grammar/experiments/E16_grammar_rebuild/ours/search_space.py [samples]
@@ -13,8 +13,11 @@ the finger at most the rules' cap (225 mm since 2026-10-16; 250 before). A hand 
 (finger order does not count). A palm cut multiplies a hand by at most 1 +
 72 (12 directions x offsets 30-80 mm), counted separately.
 
-Two axis sets: the three kinds (what random hands start from) and all 31
-grid directions (what mutation reaches).
+Two stages (2026-10-20): coarse (`FEETECH_COARSE_RULES`: the three kinds,
+links in 20 mm steps), where random hands start and evolution runs first,
+and fine (`FEETECH_RULES`: all 31 grid directions, 10 mm steps). Turns and
+mirror images counted once divide each count by at most 8
+(`space.SYMMETRY_LOG10`).
 
 The count leaves out the centre rule (since 2026-10-16 the mount sits at the
 palm's centre, within half a base step; it depends on the servos'
@@ -35,7 +38,7 @@ import numpy as np
 from hand_sampler.grammar import motor as mt
 from hand_sampler.grammar import operators as ops
 from hand_sampler.grammar import viability as V
-from hand_sampler.grammar.hand import (FEETECH_RULES, KIND_AXIS, TILT_RANGE_DEG, Finger, Hand,
+from hand_sampler.grammar.hand import (FEETECH_RULES, KIND_AXIS, STAGE_RULES, TILT_RANGE_DEG, Finger, Hand,
                                        Joint, axis_unit, canonical_axis, check)
 
 R = FEETECH_RULES
@@ -47,7 +50,7 @@ AXES_KINDS = [KIND_AXIS["flexion"], KIND_AXIS["abduction"], KIND_AXIS["roll"]]
 AXES_ALL = sorted({canonical_axis(az, el) for az in range(0, 180, 30) for el in range(-90, 91, 30)})
 
 
-def chain_counter(axes):
+def chain_counter(axes, step=10):
     U = [axis_unit(a) for a in axes]
 
     def lengths(i, j, prev_zero, turned_i):
@@ -55,13 +58,13 @@ def chain_counter(axes):
         too short for it to lie along the link (`hand.turned_servo`)."""
         std = mt.link_floor_mm(U[i], U[j], turned_i, False)
         lo = mt.link_floor_mm(U[i], U[j], turned_i, True) if mt.is_bend(U[j]) else std
-        out = [(L, L < std) for L in range(lo, R.max_link_mm + 1, 10)]
+        out = [(L, L < std) for L in range(lo, R.max_link_mm + 1, step)]
         if not prev_zero and mt.crossing_ok(U[i], U[j]):
             out = [(0, False)] + out
         return out
 
     def tips(i, turned_i):
-        return list(range(mt.tip_floor_mm(U[i], turned_i), R.max_link_mm + 1, 10))
+        return list(range(mt.tip_floor_mm(U[i], turned_i), R.max_link_mm + 1, step))
 
     @lru_cache(maxsize=None)
     def rec(left, i, prev_zero, budget, turned_i):
@@ -130,30 +133,37 @@ def sample_spots(n, rng):
 
 
 def main(samples: int = 400) -> dict:
+    """Per stage (coarse, fine): the exact count by finger number and in all,
+    then a uniform sample over every hand (the finger number drawn by its
+    share of the count) checked for the centre rule, C1 and C2."""
     result = {"spots": len(SPOTS), "facings_per_spot": sorted(set(FACINGS)), "tilts": TILTS,
-              "cut_factor_at_most": 1 + 12 * 6}
+              "cut_factor_at_most": 1 + 12 * 6, "symmetry_log10": round(math.log10(8), 2)}
     rng = np.random.default_rng(20261014)
-    for name, axes in (("kinds", AXES_KINDS), ("all_31_axes", AXES_ALL)):
-        count, sample = chain_counter(axes)
+    for name, rules in STAGE_RULES.items():
+        axes = AXES_KINDS if rules.axis_step_deg >= 90 else AXES_ALL
+        count, sample = chain_counter(axes, rules.link_step_mm)
         by_joints = [count(n)[0] for n in range(1, 6)]
         per_facing = sum(count(n)[1] for n in range(1, 6))       # fingers per spot and facing
         hands = {n: elementary([fa * per_facing for fa in FACINGS], n) for n in range(2, 7)}
         total = sum(hands.values())
-        rec = {"chains_by_joint_count": by_joints, "fingers_per_spot_and_facing": per_facing,
+        rec = {"axes": len(axes), "link_step_mm": rules.link_step_mm, "chains_by_joint_count": by_joints,
+               "fingers_per_spot_and_facing": per_facing,
                "log10_hands_by_fingers": {n: round(math.log10(v), 2) for n, v in hands.items()},
-               "log10_hands_total": round(math.log10(total), 2)}
-        # a uniform sample of 4-finger hands, checked
+               "log10_hands_total": round(math.log10(total), 2),
+               "log10_hands_total_symmetry_once": round(math.log10(total) - math.log10(8), 2)}
+        ns = list(hands)
+        w = np.array([hands[n] / total for n in ns], float)
         centred = c1 = c2 = 0
         for _ in range(samples):
-            spots = sample_spots(4, rng)
+            n = ns[int(rng.choice(len(ns), p=w / w.sum()))]
             fingers = []
-            for s in spots:
-                y, z = SPOTS[s]
+            for sp in sample_spots(n, rng):
+                y, z = SPOTS[sp]
                 fa = ops.facings_at(y, z, R)
                 tilt, joints = sample(rng)
                 fingers.append(Finger(y=y, z=z, facing=fa[int(rng.integers(len(fa)))], tilt=tilt, joints=joints))
             h = Hand(fingers=tuple(fingers))
-            v = check(h, R)
+            v = check(h, rules)
             assert all(x.startswith("palm centre") for x in v), v      # only the centre rule is not counted
             if v:
                 continue
@@ -161,10 +171,10 @@ def main(samples: int = 400) -> dict:
             if V.clear(h):
                 c1 += 1
                 c2 += V.c2_workspace_overlap(h).ok
-        rec["four_finger_sample"] = {"samples": samples, "mount_at_centre": centred / samples,
-                                     "and_pass_c1": c1 / samples, "and_pass_c1_and_c2": c2 / samples}
+        rec["sample"] = {"samples": samples, "mount_at_centre": centred / samples,
+                         "and_pass_c1": c1 / samples, "and_pass_c1_and_c2": c2 / samples}
         p = c2 / samples
-        rec["log10_usable_four_finger_hands"] = round(math.log10(hands[4] * p), 2) if p > 0 else None
+        rec["log10_usable_hands"] = round(math.log10(total * p), 2) if p > 0 else None
         result[name] = rec
     return result
 

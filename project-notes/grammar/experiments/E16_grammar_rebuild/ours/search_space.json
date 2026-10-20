@@ -11,32 +11,38 @@
   90
  ],
  "cut_factor_at_most": 73,
- "kinds": {
+ "symmetry_log10": 0.9,
+ "coarse": {
+  "axes": 3,
+  "link_step_mm": 20,
   "chains_by_joint_count": [
-   21,
-   401,
-   6731,
-   44189,
-   122448
+   12,
+   129,
+   1219,
+   5938,
+   15200
   ],
-  "fingers_per_spot_and_facing": 512850,
+  "fingers_per_spot_and_facing": 65992,
   "log10_hands_by_fingers": {
-   "2": 15.31,
-   "3": 22.61,
-   "4": 29.75,
-   "5": 36.77,
-   "6": 43.68
+   "2": 13.53,
+   "3": 19.93,
+   "4": 26.19,
+   "5": 32.32,
+   "6": 38.34
   },
-  "log10_hands_total": 43.68,
-  "four_finger_sample": {
-   "samples": 20000,
-   "mount_at_centre": 0.4218,
-   "and_pass_c1": 0.00295,
-   "and_pass_c1_and_c2": 0.0027
+  "log10_hands_total": 38.34,
+  "log10_hands_total_symmetry_once": 37.44,
+  "sample": {
+   "samples": 3000,
+   "mount_at_centre": 0.65,
+   "and_pass_c1": 0.0006666666666666666,
+   "and_pass_c1_and_c2": 0.0006666666666666666
   },
-  "log10_usable_four_finger_hands": 27.18
+  "log10_usable_hands": 35.16
  },
- "all_31_axes": {
+ "fine": {
+  "axes": 31,
+  "link_step_mm": 10,
   "chains_by_joint_count": [
    193,
    31885,
@@ -53,12 +59,13 @@
    "6": 65.42
   },
   "log10_hands_total": 65.42,
-  "four_finger_sample": {
-   "samples": 20000,
-   "mount_at_centre": 0.42475,
-   "and_pass_c1": 0.00015,
-   "and_pass_c1_and_c2": 0.00015
+  "log10_hands_total_symmetry_once": 64.51,
+  "sample": {
+   "samples": 3000,
+   "mount_at_centre": 0.6656666666666666,
+   "and_pass_c1": 0.0,
+   "and_pass_c1_and_c2": 0.0
   },
-  "log10_usable_four_finger_hands": 40.41
+  "log10_usable_hands": null
  }
 }
