@@ -433,13 +433,16 @@ class GrammarViewer:
         look = tuple(float(v) for v in c)
         pos = tuple(float(v) for v in c + np.array([-1.2, -1.6, 1.4]) * r * 1.6)
         try:                                   # clients that connect later start here
-            self.server.initial_camera.look_at = look
             self.server.initial_camera.position = pos
+            self.server.initial_camera.look_at = look
         except AttributeError:
             pass
+        # viser moves look_at with the camera when the position is set, so the position goes first, then look_at,
+        # in one update
         for client in (clients if clients is not None else self.server.get_clients().values()):
-            client.camera.look_at = look
-            client.camera.position = pos
+            with client.atomic():
+                client.camera.position = pos
+                client.camera.look_at = look
 
     # ------------------------------------------------------------------ GUI
     def _build_gui(self) -> None:
