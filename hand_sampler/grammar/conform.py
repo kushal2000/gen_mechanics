@@ -183,6 +183,8 @@ class FingerTarget:
     names: List[str]
     raw_points: List[np.ndarray]
     scale: float = 1.0           # the hand is this many times its real size; errors count at the real size
+    q_samples: Optional[np.ndarray] = None    # (K, n) joint angles drawn over the commercial ranges (`tip_map_mm`)
+    tip_samples: Optional[np.ndarray] = None  # (K, 3) the commercial fingertip at them, palm frame (m)
 
 
 @dataclass
@@ -193,6 +195,8 @@ class FingerFit:
     axis_deg: List[float]
     tip_mm: float
     clash_mm: float = 0.0
+    map_rms_mm: float = -1.0       # the fingertip map (`tip_map_mm`), mm at the real size; -1 = not measured
+    map_worst_mm: float = -1.0
 
     @property
     def cost(self) -> float:
@@ -503,7 +507,7 @@ class Guard:
     def clash_mm(self, f: Finger) -> float:
         h = replace(self.hand, fingers=tuple(f if k == self.i else g for k, g in enumerate(self.hand.fingers)))
         total = sum(ov for (a, _b, ov) in gvb.seam_overlaps(h) if a[1] == self.i)
-        for q in (None, dv.start_q(h)):
+        for q in dv.check_poses(h):
             total += sum(ov for _a, _b, ov in gvb.overlaps(h, q, focus_finger=self.i))
         return float(total)
 
@@ -544,6 +548,104 @@ def _frame_sweep(t: FingerTarget, f: Finger, rules: Rules, guard: Guard) -> List
             g, q = snap_continuous(x, layout, t, (f.y, f.z), rules)
             cands.append(best_q(g, t, q, iters=10, guard=guard))
     return sorted(cands, key=lambda r: r.cost)
+
+
+
+# --------------------------------------------------------------------------
+# Fitting the fingertip map (Martin, 2026-10-20)
+# --------------------------------------------------------------------------
+
+TIP_FIT_SAMPLES = 64
+"""How many of the sampled configurations the fingertip-map fit uses."""
+
+MAP_RMS_MM = 15.0
+"""A scaled commercial fit counts when every finger's fingertip map stays
+within this RMS (mm at the real size) ..."""
+MAP_WORST_MM = 40.0
+"""... and its worst sampled fingertip within this (Martin, 2026-10-20:
+match the fingertips, not every joint)."""
+
+
+def _map_fit(f: Finger, t: FingerTarget, q: np.ndarray, guard: Optional["Guard"] = None) -> FingerFit:
+    r = evaluate_finger(f, t, np.asarray(q, dtype=float), guard)
+    r.map_rms_mm, r.map_worst_mm = tip_map_mm(f, t, r.q_off)
+    return r
+
+
+def map_cost(r: FingerFit) -> float:
+    """What the fingertip-map fit minimises: the map's RMS and worst miss
+    against their limits, and any clash with the rest of the hand."""
+    return r.map_rms_mm / MAP_RMS_MM + 0.5 * r.map_worst_mm / MAP_WORST_MM + CLASH_WEIGHT * r.clash_mm
+
+
+def best_q_map(f: Finger, t: FingerTarget, q0: np.ndarray, iters: int = 15,
+               guard: Optional["Guard"] = None) -> FingerFit:
+    """The zero-pose differences that make `f`'s fingertip follow the
+    commercial one best over the sampled configurations (least squares)."""
+    rev = [j for j, jt in enumerate(f.joints) if jt.type == "hinge"]
+    Qs, Ps = t.q_samples[:TIP_FIT_SAMPLES], t.tip_samples[:TIP_FIT_SAMPLES]
+    q = np.asarray(q0, dtype=float).copy()
+    if rev:
+        def fun(x):
+            qq = q.copy()
+            qq[rev] = x
+            return np.concatenate([((_tips_batch(f, t, qq, Qs) - Ps) / (TARGET_MM * MM * t.scale)).ravel(),
+                                   Q_WEIGHT * x])
+
+        q[rev] = _lm(fun, q[rev], iters=iters)
+    return _map_fit(f, t, q, guard)
+
+
+def refine_map(fit: FingerFit, t: FingerTarget, rules: Rules, guard: Optional["Guard"] = None,
+               max_passes: int = 8) -> FingerFit:
+    """Local search over one-step changes of every value of the finger, its
+    base too, for the best fingertip map clear of the rest of the hand: the
+    joints may move away from the commercial ones as long as the fingertip
+    follows. Every joint keeps its kind."""
+    kinds = [dv.kind_of(dv.direction(*jt.axis)) for jt in fit.finger.joints]
+    best = fit if fit.map_rms_mm >= 0 else _map_fit(fit.finger, t, fit.q_off, guard)
+    for _ in range(max_passes):
+        improved = False
+        for g in _neighbours(best.finger, mount_fixed=False, rules=rules):
+            if [dv.kind_of(dv.direction(*jt.axis)) for jt in g.joints] != kinds:
+                continue
+            r = best_q_map(g, t, best.q_off, iters=6, guard=guard)
+            if map_cost(r) < map_cost(best) - 1e-9:
+                best, improved = r, True
+        if not improved:
+            break
+    return best_q_map(best.finger, t, best.q_off, iters=30, guard=guard)
+
+
+def map_refit(fit: "HandFit", real: RealHand, rules: Rules, rounds: int = 2) -> "HandFit":
+    """Every finger refitted for its fingertip map (`refine_map`), clear of
+    the rest of the hand, then the mount moved back to the palm's centre."""
+    targets = _targets_for(real, fit.palm_T)
+    for _ in range(rounds):
+        changed = False
+        for i in range(len(fit.hand.fingers)):
+            guard = Guard(fit.hand, i)
+            start = _map_fit(fit.hand.fingers[i], targets[i], fit.fingers[i].q_off, guard)
+            new = refine_map(start, targets[i], rules, guard)
+            fit.fingers[i] = replace(start, clash_mm=0.0)
+            if map_cost(new) < map_cost(start) - 1e-9:
+                old_hand, old = fit.hand, fit.fingers[i]
+                fingers = list(fit.hand.fingers)
+                fingers[i] = new.finger
+                fit.hand = replace(fit.hand, fingers=tuple(fingers))
+                fit.fingers[i] = replace(new, clash_mm=0.0)
+                if kinds_kept(fit.hand, fit.palm_T, fit.q_off(), real, [i]):
+                    changed = True
+                else:          # moving the finger's frame can change how a commercial axis's kind reads
+                    fit.hand, fit.fingers[i] = old_hand, old
+        if not changed:
+            break
+    return recentre_fit(fit, real, rules)
+
+
+def map_within(fit: "HandFit") -> bool:
+    """Every finger's fingertip map within `MAP_RMS_MM` and `MAP_WORST_MM`."""
+    return all(0.0 <= f.map_rms_mm <= MAP_RMS_MM and f.map_worst_mm <= MAP_WORST_MM for f in fit.fingers)
 
 
 SWEEP_TRIES = 8
@@ -836,9 +938,94 @@ def _targets_for(real: RealHand, frame: np.ndarray) -> List[FingerTarget]:
                 types.append("coupled")
             else:
                 types.append("hinge")
-        out.append(FingerTarget(points=S, axes=U, types=types, tip=R.T @ (f.tip - o), names=names,
-                                raw_points=[R.T @ (j.point - o) for j in f.joints], scale=real.scale))
+        tip = R.T @ (f.tip - o)
+        Q, P = _real_tip_samples(real, f, S, U, tip)
+        out.append(FingerTarget(points=S, axes=U, types=types, tip=tip, names=names,
+                                raw_points=[R.T @ (j.point - o) for j in f.joints], scale=real.scale,
+                                q_samples=Q, tip_samples=P))
     return out
+
+
+TIP_MAP_SAMPLES = 256
+"""Joint configurations of each commercial finger, drawn uniformly over its
+joint ranges (fixed seed), at which the fingertip map is compared."""
+
+
+def _rot_points(a: np.ndarray, angles: np.ndarray, V: np.ndarray) -> np.ndarray:
+    """Each row of `V` turned about the unit axis `a` by its own angle."""
+    c, s = np.cos(angles)[:, None], np.sin(angles)[:, None]
+    return V * c + np.cross(a[None], V) * s + a[None] * (V @ a)[:, None] * (1.0 - c)
+
+
+def _real_tip_samples(real: RealHand, f: RealFinger, S: List[np.ndarray], U: List[np.ndarray],
+                      tip: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """(K, n) joint configurations of commercial finger `f`, uniform over its
+    joint ranges (a joint coupled to another of the finger follows it), and
+    (K, 3) its fingertip at each, palm frame: each joint turns (or slides)
+    about its axis line at the zero pose, the last joint first."""
+    lim = {j.name: j.limits for j in real.model.joints}
+    names = [j.name for j in f.joints]
+    rng = np.random.default_rng(TIP_MAP_SAMPLES)
+    K, n = TIP_MAP_SAMPLES, len(f.joints)
+    Q = np.zeros((K, n))
+    for k, j in enumerate(f.joints):
+        lo, hi = lim.get(j.name) or (-math.pi / 2, math.pi / 2)
+        Q[:, k] = rng.uniform(lo, hi, K)
+    for k, j in enumerate(f.joints):
+        if j.coupled_to in names:
+            Q[:, k] = j.ratio * Q[:, names.index(j.coupled_to)]
+    P = np.repeat(np.asarray(tip, dtype=float)[None], K, axis=0)
+    for k in range(n - 1, -1, -1):
+        a, c = _unit(U[k]), np.asarray(S[k], dtype=float)
+        if f.joints[k].type == "prismatic":
+            P = P + Q[:, k:k + 1] * a[None]
+        else:
+            P = c[None] + _rot_points(a, Q[:, k], P - c[None])
+    return Q, P
+
+
+def _rot_mats(a: np.ndarray, angles: np.ndarray) -> np.ndarray:
+    """(K, 3, 3) rotations about the unit axis `a` by each angle."""
+    a = _unit(a)
+    c, s = np.cos(angles), np.sin(angles)
+    K = np.array([[0.0, -a[2], a[1]], [a[2], 0.0, -a[0]], [-a[1], a[0], 0.0]])
+    return (np.eye(3)[None] + s[:, None, None] * K[None] + (1.0 - c)[:, None, None] * (K @ K)[None])
+
+
+def _tips_batch(f: Finger, t: FingerTarget, q_off: np.ndarray, Q: np.ndarray) -> np.ndarray:
+    """(K, 3) grammar fingertips (palm frame, m) at each row of the
+    commercial joint angles `Q`: every grammar joint at its zero-pose
+    difference plus the commercial angle, signed so the two turn the same
+    way about their axes; coupled joints follow the joint before them."""
+    B = dv.finger_frame(f)
+    mount = dv.mount_point_m(f)
+    axes = [dv.direction(*jt.axis) for jt in f.joints]
+    lengths = [jt.length for jt in f.joints]
+    q_off = np.asarray(q_off, dtype=float)
+    _, axw, _ = _chain(mount, B, axes, lengths, t.types, q_off)
+    sigma = np.array([1.0 if float(_unit(axw[j]) @ t.axes[j]) >= 0.0 else -1.0 for j in range(len(axes))])
+    Qg = q_off[None] + sigma[None] * Q
+    signs = [dv.axis_sign(_unit(a), B, ty == "sliding") for a, ty in zip(axes, t.types)]
+    for j, ty in enumerate(t.types):
+        if ty == "coupled" and j > 0:
+            Qg[:, j] = signs[j] * COUPLING_RATIO * signs[j - 1] * Qg[:, j - 1]
+    Kn = len(Q)
+    F = np.repeat(B[None], Kn, axis=0)
+    G = np.repeat(np.asarray(mount, dtype=float)[None], Kn, axis=0)
+    for j, (a, L) in enumerate(zip(axes, lengths)):
+        if t.types[j] != "sliding":
+            F = F @ _rot_mats(a, Qg[:, j])
+        G = G + F[:, :, 0] * (L * MM)
+    return G
+
+
+def tip_map_mm(f: Finger, t: FingerTarget, q_off: np.ndarray) -> Tuple[float, float]:
+    """How closely grammar finger `f` (at its zero-pose differences `q_off`)
+    follows the commercial fingertip over the commercial joint ranges: the
+    RMS and the worst fingertip miss, mm at the real size, over the sampled
+    configurations (`TIP_MAP_SAMPLES`)."""
+    d = np.linalg.norm(_tips_batch(f, t, q_off, t.q_samples) - t.tip_samples, axis=1) / (MM * t.scale)
+    return float(np.sqrt(np.mean(d * d))), float(d.max())
 
 
 def _aimed_chain(t: FingerTarget, mount: np.ndarray):
@@ -1152,10 +1339,10 @@ degrees at 2 x)."""
 
 def acceptable(fit: HandFit, real: RealHand) -> bool:
     """Buildable, every joint keeps its commercial kind (the hand's
-    structure), and the fit is within `ACCEPT_FACTOR` x the target."""
-    close = (fit.max_joint_mm <= ACCEPT_FACTOR * TARGET_MM and fit.max_tip_mm <= ACCEPT_FACTOR * TARGET_MM
-             and fit.max_axis_deg <= ACCEPT_FACTOR * TARGET_DEG)
-    return close and buildable(fit) and kinds_kept(fit.hand, fit.palm_T, fit.q_off(), real)
+    structure), and every finger's fingertip map is within `MAP_RMS_MM` /
+    `MAP_WORST_MM` (Martin, 2026-10-20: the fingertips must follow the
+    commercial ones; a joint may sit elsewhere)."""
+    return map_within(fit) and buildable(fit) and kinds_kept(fit.hand, fit.palm_T, fit.q_off(), real)
 
 
 def fallback_fit(real: RealHand, top: float = SCALE_LADDER[-1]) -> HandFit:
@@ -1164,8 +1351,11 @@ def fallback_fit(real: RealHand, top: float = SCALE_LADDER[-1]) -> HandFit:
     the fit), as before commercial hands were scaled."""
     fit = conform(real)
     fit.scale = 1.0
+    for f, t, r in zip(fit.hand.fingers, _targets_for(real, fit.palm_T), fit.fingers):
+        r.map_rms_mm, r.map_worst_mm = tip_map_mm(f, t, r.q_off)
     fit.notes.append(f"no scale up to {top:g} x gives a fit buildable from Feetech servos that keeps every joint's "
-                     f"kind within {ACCEPT_FACTOR:g} x the fit target: kept at its real size, without servo lengths")
+                     f"kind with every fingertip map within {MAP_RMS_MM:g} mm RMS and {MAP_WORST_MM:g} mm worst: kept "
+                     f"at its real size, without servo lengths")
     return fit
 
 
@@ -1194,6 +1384,7 @@ def conform_buildable(real: RealHand, ladder: Sequence[float] = SCALE_LADDER, st
         if not check(fit.hand, COMMERCIAL_RULES) and not gvb.c1_self_overlap(fit.hand).ok:
             fit = refit_clear(fit, real_s, COMMERCIAL_RULES)
             fit = recentre_fit(fit, real_s, COMMERCIAL_RULES)     # a refit can turn a base servo
+        fit = map_refit(fit, real_s, COMMERCIAL_RULES)             # the fingertips, clear of each other
         fit.scale = float(s)
         return fit
 
