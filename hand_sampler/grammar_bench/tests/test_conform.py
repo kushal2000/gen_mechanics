@@ -126,11 +126,12 @@ def test_conformed_file_covers_the_reference_set():
     assert len(doc["hands"]) >= 15
 
 
-NOT_BUILDABLE = {"sharpa_right", "dex1"}
-"""Hands no scale up to 5 x makes buildable with every joint's kind kept
-within twice the fit target (the rebuild of 2026-10-16; why each fails is in
-GRAMMAR-OVERVIEW step 18; ARMS became buildable, SHARPA stopped being). They keep their real-size fit under the grammar's
-own limits (`conform.fallback_fit`)."""
+NOT_BUILDABLE = {"leap_right", "wuji2_left"}
+"""Hands no scale up to 5 x makes buildable with every joint's kind kept and
+every fingertip map within `MAP_RMS_MM` / `MAP_WORST_MM` (the rebuild of
+2026-10-20: a finger's map stays 23-24 mm RMS; GRAMMAR-OVERVIEW step 18).
+They keep their real-size fit under the grammar's own limits
+(`conform.fallback_fit`)."""
 
 
 def _acceptable(rec) -> bool:
