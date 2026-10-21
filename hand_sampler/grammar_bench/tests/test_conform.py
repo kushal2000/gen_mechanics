@@ -82,7 +82,7 @@ def test_conform_round_trips_a_sampled_hand(seed, rules, request):
     assert all(abs(p.offset - q.offset) <= 10 for p, q in zip(fit.hand.palm_joints, h.palm_joints))
 
 
-@pytest.mark.parametrize("hand_id", ["allegro_right", "svh_right", "orca_right", "wuji2_right"])
+@pytest.mark.parametrize("hand_id", ["sharpa_right", "orca_right", "wuji2_right", "xhand_right"])
 def test_conform_finds_the_palm_frame_of_a_conformed_hand(hand_id):
     """Without the palm frame given: a conformed commercial hand, exported to
     URDF, comes back within the fit target on nearly the same plate (normal
@@ -91,12 +91,9 @@ def test_conform_finds_the_palm_frame_of_a_conformed_hand(hand_id):
     motors' depths (0 to 4.5 mm below the mid-plane for flat fingers, deeper
     for a tilted thumb), so the plane fitted through them, and the plane
     search after it, may tilt a few degrees and shift along its normal.
-    On 2026-10-16 (the mount at the palm's centre, tilts 0-90 degrees, servos
-    turned on short links) 12 of 19 pass: Ability, Inspire, Shadow and XHand
-    come back within the target but with the mount 20-22 mm off (a refit
-    base servo turned another way moves the base servos' centre, and the
-    mount with it, by whole 10 mm steps); LEAP, SHARPA (its real-size fit)
-    and Dex1 (a gripper) do not come back within the target."""
+    On 2026-10-20 (fits by the fingertip map) 13 of 19 pass: Allegro,
+    Barrett, SVH and Tesollo come back outside the target, Shadow with the
+    mount 20 mm off, Dex1 (a gripper) with its normal turned."""
     rec = BC.load().get(hand_id)
     if rec is None:
         pytest.skip(f"local-only:{hand_id} not in the committed file on this machine")

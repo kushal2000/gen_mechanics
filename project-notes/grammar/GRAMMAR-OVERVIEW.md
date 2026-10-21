@@ -1,6 +1,6 @@
 # The hand grammar (October 2026)
 
-**This is the current, up-to-date grammar**: branch `hand-grammar`, labelled with the tag `hand-grammar-2026-10-16` (moved from `martin/hand-grammar` on 2026-10-16).
+**This is the current, up-to-date grammar**: branch `hand-grammar`, latest label the tag `hand-grammar-2026-10-20` (moved from `martin/hand-grammar` on 2026-10-16).
 
 Evolve to generalize trains one joint-token transformer across many hands and lets evolution choose which hands it trains on. The grammar defines the space of hands evolution searches. It has to do three things: express the commercial hands we train or test on (their structure, roughly in place), narrow down to hands evolution can search and we can build (the Feetech rules), and produce hands that all load into one simulator layout for one shared policy.
 
@@ -154,32 +154,32 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 - **Moving fingers clear:** a finger that fails C1 is refitted with its clash counted, first by local search, then in each of the 48 grid frames (12 facings x 4 tilts), the best frames refined in turn; the difference goes into its zero-pose offset. A thumb lying along the palm comes out standing off it.
 - **Judged by the fingertip** (Martin, 10/20: "maybe doing it in fingertip manipulability space rather than joint space?"). Each finger is sampled at 256 joint configurations drawn uniformly over the commercial ranges (couplings followed). The fingertip map's error is the distance between the grammar fingertip and the commercial one over those samples, in real-size mm: RMS at most 15 mm, worst at most 40 mm (`conform.map_within`; both thresholds a first guess, pending Martin). At every scale, after the clearing refit, each finger is refitted on 64 of the samples (`conform.map_refit`), keeping every joint's kind; its base may move. Until 10/20 a fit was accepted when each joint, axis and fingertip was within twice the target (20 mm, 40 degrees). That passed LEAP's thumb with axes 22-33 degrees off and a fingertip map off by 39-72 mm RMS. Judging joint by joint also dragged bases together, leaving collisions the clearing refit could not remove.
 - **Errors** are millimetres at the real hand's size (20 mm on a hand at 2 x counts 10 mm), so fits at different scales compare. The target is 10 mm / 20 degrees.
-- **Result** (`experiments/E16_grammar_rebuild/ours/commercial_scaled.py`; rebuilt 2026-10-16 with the tilt rules, capsule fingertips, the mount at the palm's centre and turned servos): 17 of 19 buildable; 7 within the target and every fit within twice it. Each keeps its finger count, joints per finger, joint types and kinds; SHARPA's, Shadow's and SVH's palm joints each become a cut with the same fingers beyond it, ARMS's two one cut carrying both. The table below is that installed 10/16 file. The 10/20 rebuild judged by the fingertip (`outputs/scratch/conformed_map.json`, not yet installed, awaiting Martin) also builds 17 of 19 hands. Ability, Dex3, XHand, ORCA, Shadow, SVH and Wuji v2 right come out smaller (Ability 1.8 -> 1.3 x), Tesollo and MIDAS larger (2.05 and 2.1 x), and Dex1 and SHARPA buildable (1.75 and 1.8 x). LEAP and Wuji v2 left lose their fits: no scale keeps their fingertip maps within the limits.
+- **Result** (`experiments/E16_grammar_rebuild/ours/commercial_scaled.py`; rebuilt 2026-10-20, judged by the fingertip map with the fingers starting open): 17 of 19 buildable, every one with each finger's fingertip map within 15 mm RMS and 40 mm worst at the real size. Scales are mostly lower than on 10/16 (Ability 1.8 to 1.3, XHand 2 to 1.5, Shadow 2.6 to 2, SVH 2.35 to 2, Wuji v2 right 2.55 to 2, Orca 2.15 to 1.75, Dex3 1.3 to 1); MIDAS (1.55 to 2.1) and Tesollo (1.65 to 2.05) rise, because the fingertip map is stricter for them than per-joint matching. Joints may now sit up to 29 mm (SHARPA) from the commercial ones while the fingertips follow. Each hand keeps its finger count, joints per finger, joint types and kinds; SHARPA's, Shadow's and SVH's palm joints each become a cut with the same fingers beyond it, ARMS's two one cut.
 
-| Hand | Scale | Joint (mm) | Axis (deg) | Tip (mm) | Heaviest finger flat (N m) |
+| Hand | Scale | Fingertip map, worst finger: RMS / worst (mm) | Joint (mm) | Axis (deg) | Heaviest finger flat (N m) |
 |---|---|---|---|---|---|
-| Ability | 1.8 | 4.2 | 13.1 | 3.6 | 0.21 |
-| Allegro | 1.3 | 17.8 | 15.5 | 5.8 | 0.40 |
-| ARMS | 3 | 12.5 | 25.2 | 8.6 | 0.33 |
-| Barrett | 1.45 | 3.7 | 3.6 | 1.2 | 0.24 |
-| DClaw | 1 | 3.9 | 2.4 | 2.0 | 0.00 |
-| Dex1 | 1 (not buildable) | 9.6 | 15.7 | 8.4 | 0.01 |
-| Dex3 | 1.3 | 9.3 | 1.8 | 2.9 | 0.11 |
-| Inspire | 1.8 | 13.1 | 14.1 | 2.6 | 0.37 |
-| LEAP | 1.5 | 16.2 | 32.6 | 12.4 | 0.65 |
-| MIDAS | 1.55 | 9.8 | 20.3 | 8.6 | 0.56 |
-| Orca | 2.15 | 7.6 | 24.6 | 6.0 | 0.30 |
-| Shadow | 2.6 | 7.6 | 15.6 | 1.2 | 0.08 |
-| SHARPA | 1 (not buildable) | 7.6 | 12.2 | 3.2 | 0.31 |
-| SVH | 2.35 | 10.5 | 26.1 | 10.6 | 0.29 |
-| Tesollo DG-5F | 1.65 | 13.0 | 22.5 | 3.5 | 0.28 |
-| Wuji v1 | 2.25 | 19.9 | 30.9 | 1.7 | 0.70 |
-| Wuji v2 left | 2.15 | 9.9 | 21.0 | 8.4 | 0.81 |
-| Wuji v2 right | 2.55 | 8.3 | 28.0 | 7.8 | 1.04 |
-| XHand | 2 | 16.2 | 15.2 | 2.1 | 0.75 |
+| Ability | 1.3 | 14.5 / 20.9 | 17.1 | 27.6 | 0.13 |
+| Allegro | 1.3 | 13.2 / 28.4 | 23.9 | 15.3 | 0.60 |
+| ARMS | 3 | 10.0 / 21.0 | 25.1 | 83.8 | 0.38 |
+| Barrett | 1.45 | 6.1 / 14.9 | 11.9 | 3.6 | 0.24 |
+| DClaw | 1 | 6.3 / 11.8 | 5.2 | 2.6 | 0.00 |
+| Dex1 | 1.75 | 14.9 / 28.0 | 21.5 | 25.2 | 0.00 |
+| Dex3 | 1 | 12.1 / 20.8 | 20.5 | 1.8 | 0.07 |
+| Inspire | 1.65 | 13.0 / 23.7 | 21.6 | 36.3 | 0.72 |
+| LEAP | 1 (not buildable) | 23.1 / 45.5 | 7.4 | 10.1 | 0.19 |
+| MIDAS | 2.1 | 11.8 / 28.6 | 20.0 | 13.4 | 0.51 |
+| Orca | 1.75 | 13.2 / 23.7 | 21.1 | 33.5 | 0.11 |
+| Shadow | 2 | 10.4 / 24.2 | 13.3 | 30.0 | 0.04 |
+| SHARPA | 1.8 | 9.8 / 20.4 | 29.2 | 32.1 | 1.07 |
+| SVH | 2 | 6.2 / 11.9 | 21.0 | 30.9 | 0.42 |
+| Tesollo DG-5F | 2.05 | 10.6 / 24.9 | 9.9 | 9.7 | 0.39 |
+| Wuji v1 | 2.15 | 12.6 / 23.9 | 18.8 | 42.4 | 0.80 |
+| Wuji v2 left | 1 (not buildable) | 24.2 / 53.6 | 7.9 | 16.0 | 0.16 |
+| Wuji v2 right | 2 | 13.6 / 36.5 | 14.2 | 13.9 | 0.43 |
+| XHand | 1.5 | 12.7 / 36.6 | 16.1 | 45.5 | 0.40 |
 
-- **Not buildable up to 5 x:** SHARPA and Dex1. SHARPA at 3.1 x (buildable on 10/14) fits closely (4.7 mm, 9.2 degrees) but fails C1: two of its fingers touch the palm plate at rest and a base servo reaches 6.3 mm into the cut's seam, and the refit cannot clear them; at 4 x its thumb is 550 mm, past the grammar's own 500 mm. The likely cause is the mount moving to the palm's centre (it sat beside the thumb, 270 mm from the fingers), which moves the cut up to 5 mm relative to the fingers; not yet confirmed. Dex1 is a gripper whose two sliding jaws face each other; pulling them clear spoils the fingertips at any scale. Both keep their real-size fit under the grammar's own limits and their overlaps collision-filtered in the simulator. ARMS, not buildable on 10/14, is buildable at 3 x.
-- **Torque:** no commercial hand at its scale has a finger heavier than the 1.39 N m limit can hold flat, palm up (the heaviest: Wuji v2 right at 2.55 x, 1.04 N m).
+- **Not buildable up to 5 x:** LEAP and Wuji v2 left: at every scale one finger's fingertip map stays 23-24 mm RMS. Both keep their real-size fit under the grammar's own limits and their overlaps collision-filtered in the simulator. SHARPA (not buildable on 10/16) is buildable at 1.8 x, Dex1 at 1.75 x.
+- **Torque:** no commercial hand at its scale has a finger heavier than the 1.39 N m limit can hold flat, palm up (the heaviest: SHARPA at 1.8 x, 1.07 N m).
 - Scaled, commercial palms have a median area of 174 cm^2 under the outline rule; random Feetech palms 162 cm^2.
 
 ## The grammar in one table

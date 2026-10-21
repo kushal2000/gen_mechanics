@@ -4,12 +4,16 @@ A viser viewer for the hand grammar (`hand_sampler/grammar/`). The grammar itsel
 
 ## Setup (once)
 
+From the repository root, on the `hand-grammar` branch, with Python 3.11 (CPU only, no Isaac):
+
 ```bash
-cd "/home/singularity/Evolve to Generalize/gen_mechanics"
-/home/singularity/.local/bin/uv venv .venv_viewer --python 3.11
-/home/singularity/.local/bin/uv pip install --python .venv_viewer/bin/python viser "numpy==1.26.*" scipy trimesh yourdfpy pycollada pytest
-/home/singularity/.local/bin/uv pip install --python .venv_viewer/bin/python -e . --no-deps
+git checkout hand-grammar && git pull
+uv venv .venv_viewer --python 3.11          # or: python3.11 -m venv .venv_viewer
+uv pip install --python .venv_viewer/bin/python viser "numpy==1.26.*" scipy trimesh yourdfpy pycollada pytest
+uv pip install --python .venv_viewer/bin/python -e . --no-deps
 ```
+
+Without `uv`: `python3.11 -m venv .venv_viewer`, then `.venv_viewer/bin/pip install viser "numpy==1.26.*" scipy trimesh yourdfpy pycollada pytest` and `.venv_viewer/bin/pip install -e . --no-deps`.
 
 ## Run
 
@@ -17,7 +21,9 @@ cd "/home/singularity/Evolve to Generalize/gen_mechanics"
 .venv_viewer/bin/python experiments/grammar_viewer/viewer.py --port 8080 --host 127.0.0.1
 ```
 
-Open http://127.0.0.1:8080 (from a laptop: `ssh -L 8080:127.0.0.1:8080 <this machine>`). `--hand allegro_right` starts with a commercial hand instead of a random one.
+Open http://127.0.0.1:8080. On a remote machine, forward the port from your laptop first: `ssh -L 8080:127.0.0.1:8080 <machine>`. `--hand <id>` starts with a commercial hand instead of a random one.
+
+Commercial hands: the fits of all 19 are in the repository (`hand_sampler/grammar_bench/conformed_hands.json`), but drawing one needs its URDF. Four ship with the repository (Dex3, MIDAS, Wuji v2 left and right); the other fifteen are read from the KaRMA data folder named in `hand_sampler/grammar_bench/manifest.json` (`source_root`, plus a few absolute paths), so on a machine without it choosing them shows an error line. Random hands, the rules, mutations and the checks need no commercial files.
 
 ## The panel
 
