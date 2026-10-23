@@ -411,7 +411,8 @@ def length_floor_mm(f: Finger, j: int, buildable: bool) -> int:
         return _tip_floor(a, turned_servo(f, j))
     nxt = f.joints[j + 1]
     b = tuple(nxt.axis)
-    crossing = j + 1 < n - 1 and nxt.length == 0
+    crossing = (j + 1 < n - 1 and nxt.length == 0
+                and mt.crossing_ok(axis_unit(b), axis_unit(f.joints[j + 2].axis)))
     can_turn = nxt.type != "sliding" and _is_bend(b) and not crossing
     fl = _link_floor(a, b, turned_servo(f, j), can_turn)
     if crossing:

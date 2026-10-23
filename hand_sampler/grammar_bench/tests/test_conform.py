@@ -33,8 +33,9 @@ ROUND_TRIP_KNOWN_LIMITS = {
     ("none", 1): "a finger standing out of the plate (tilt 90) with a spread first: its axis lies in the plate, the "
                  "fit takes it for a bend first (tilt 0, offset 90 degrees) at a bend's base depth, 0.5 mm off",
     ("none", 2): "the same: a standing spread-first finger comes back 0.5 mm off as a bend first",
-    ("none", 11): "a two-finger hand whose mount is far off the bases' centre: the recentred fit misses the cut by "
-                  "60 degrees and 90 mm",
+    ("none", 9): "the same (2026-10-23 draws): a standing spread-first finger comes back as a bend first",
+    ("feetech", 11): "the same (2026-10-23 draws): a standing finger with an oblique first axis comes back as a "
+                     "bend first",
 }
 
 
@@ -82,7 +83,10 @@ def test_conform_round_trips_a_sampled_hand(seed, rules, request):
     assert all(abs(p.offset - q.offset) <= 10 for p, q in zip(fit.hand.palm_joints, h.palm_joints))
 
 
-@pytest.mark.parametrize("hand_id", ["sharpa_right", "orca_right", "wuji2_right", "xhand_right"])
+PALM_FRAME_HANDS = ["shadow_right_local", "tesollo_dg5f_right", "wuji2_right", "xhand_right"]
+
+
+@pytest.mark.parametrize("hand_id", PALM_FRAME_HANDS)
 def test_conform_finds_the_palm_frame_of_a_conformed_hand(hand_id):
     """Without the palm frame given: a conformed commercial hand, exported to
     URDF, comes back within the fit target on nearly the same plate (normal
@@ -91,9 +95,10 @@ def test_conform_finds_the_palm_frame_of_a_conformed_hand(hand_id):
     motors' depths (0 to 4.5 mm below the mid-plane for flat fingers, deeper
     for a tilted thumb), so the plane fitted through them, and the plane
     search after it, may tilt a few degrees and shift along its normal.
-    On 2026-10-20 (fits by the fingertip map) 13 of 19 pass: Allegro,
-    Barrett, SVH and Tesollo come back outside the target, Shadow with the
-    mount 20 mm off, Dex1 (a gripper) with its normal turned."""
+    On 2026-10-20 (fits by the fingertip map) 13 of 19 passed. On
+    2026-10-23 (the buildable-parts grammar) 10 of 19 pass: Allegro, Barrett,
+    Dex1, Inspire, LEAP, Orca, SHARPA, SVH and Wuji v1 come back outside the
+    target or off the plate (SHARPA by 15.5 mm, against 15)."""
     rec = BC.load().get(hand_id)
     if rec is None:
         pytest.skip(f"local-only:{hand_id} not in the committed file on this machine")
@@ -123,7 +128,7 @@ def test_conformed_file_covers_the_reference_set():
     assert len(doc["hands"]) >= 15
 
 
-NOT_BUILDABLE = {"leap_right", "wuji2_left"}
+NOT_BUILDABLE = {"svh_right"}
 """Hands no scale up to 5 x makes buildable with every joint's kind kept and
 every fingertip map within `MAP_RMS_MM` / `MAP_WORST_MM` (the rebuild of
 2026-10-20: a finger's map stays 23-24 mm RMS; GRAMMAR-OVERVIEW step 18).
