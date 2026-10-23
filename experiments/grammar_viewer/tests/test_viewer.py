@@ -271,3 +271,28 @@ def test_object_at_its_start(evo):
     V_ = np.asarray(evo.drawing.object.vertices)
     assert np.allclose((V_.max(0) + V_.min(0)) / 2, want, atol=1e-6)
     evo.gui_object.value = False
+
+
+def test_generate_full_design_draws_the_parts_and_follows_the_joints(evo, tmp_path, monkeypatch):
+    """The Build button's job: the hand's kit (zip, STLs), its parts drawn over
+    the hand, posed with the joint sliders; a new hand clears them."""
+    from hand_sampler.cad import package, render
+
+    try:
+        render.openscad()
+    except render.OpenSCADMissing:
+        pytest.skip("OpenSCAD not installed")
+    monkeypatch.setattr(package, "DESIGNS_DIR", tmp_path)
+    monkeypatch.setattr(package.generate, "__defaults__", (tmp_path, None))
+    evo.random(wait=True)
+    assert evo.generate_design(wait=True)
+    assert evo.kit is not None and evo.kit.zip_path.exists()
+    assert "parts in" in evo.md_build.content
+    assert set(evo.printed.handles) == set(evo.kit.parts)
+    tips = [n for n in evo.kit.parts if n.endswith("_tip")]
+    before = [np.array(evo.printed.handles[n][0].wxyz) for n in tips]
+    evo.gui_curl.value = 0.8
+    after = [np.array(evo.printed.handles[n][0].wxyz) for n in tips]
+    assert max(np.linalg.norm(a - b) for a, b in zip(after, before)) > 1e-3     # the fingertips turned
+    evo.random(wait=True)
+    assert evo.kit is None and not evo.printed.handles

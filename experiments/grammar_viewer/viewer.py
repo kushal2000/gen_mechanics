@@ -6,7 +6,9 @@ Grammar (Random, "found after N tries"), Rules (Feetech Rules / No Rules /
 Custom Rules, the limits in plain words), Viability (C1 and C2, one line
 each), Commercial hand (the conformed hand over its URDF meshes, with its
 fit), Mutation (one grid: 10 mm / 30 deg, bases by the grid pitch; only the
-operators that can act are shown) and Pose (curl, palm bend, re-centre).
+operators that can act are shown), Build ("Generate full design": the
+hand's printable parts, parts list and assembly steps as a zip, the parts
+drawn over the hand; needs OpenSCAD) and Pose (curl, palm bend, re-centre).
 CPU only; Isaac is never imported.
 """
 
@@ -93,6 +95,9 @@ class GrammarViewer:
                               position=(0.0, 0.0, -(PLATE_HALF_MM + MOUNT_DEPTH_MM) * 1e-3 - 0.002))
         self.drawing = draw.HandDrawing(server, "/hand")
         self.overlay = draw.MeshOverlay(server, "/hand/urdf")
+        self.printed = draw.MeshOverlay(server, "/hand/printed")
+        self.kit = None                               # the last generated design and its hand
+        self.kit_hand: Optional[Hand] = None
         self._build_gui()
         if build_initial:
             self.random(wait=True)
@@ -122,6 +127,67 @@ class GrammarViewer:
         if wait:
             t.join()
         return True
+
+    # ---------------------------------------------------------------- build
+    def generate_design(self, client=None, wait: bool = False) -> bool:
+        """The hand's printable kit (`hand_sampler.cad`): parts rendered with
+        OpenSCAD, checked, laid out for printing, zipped; drawn over the hand
+        and, from a button, sent to that browser."""
+        if self.hand is None:
+            return False
+
+        def job():
+            from hand_sampler.cad import package as gcad
+
+            hand = self.hand
+            t0 = time.time()
+
+            def say(s: str) -> None:
+                self.md_build.content = f"{s} ({time.time() - t0:.0f} s)"
+
+            kit = gcad.generate(hand, progress=say)
+            with self.lock:
+                self.kit, self.kit_hand = kit, hand
+                self._build_printed()
+                self._render_pose()
+            rep = kit.report
+            verdict = "every check passes" if rep.ok else f"{len(rep.clashes) + sum(not p['ok'] for p in rep.parts.values())} problems (see checks.md)"
+            self.md_build.content = (f"{len(kit.parts)} parts in {kit.seconds:.0f} s, {verdict}. "
+                                     f"Kit: `{kit.zip_path}`" + (" (downloading)" if client is not None else ""))
+            if client is not None:
+                client.send_file_download(kit.zip_path.name, kit.zip_path.read_bytes())
+
+        return self.run_job("design", job, wait)
+
+    def _build_printed(self) -> None:
+        import trimesh
+
+        class _Set:
+            def __init__(self, pieces):
+                self.pieces = pieces
+
+        pieces = {}
+        for n in self.kit.parts:
+            path = self.kit.folder / "stl" / f"{n}.stl"
+            if path.exists():
+                pieces[n] = [trimesh.load(str(path), force="mesh")]
+        self.printed.build(_Set(pieces), opacity=0.95, color=(150, 175, 215), scale=1e-3)
+        self.printed.set_visible(bool(self.gui_printed.value))
+
+    def _printed_poses(self, q: np.ndarray) -> Dict[str, np.ndarray]:
+        pose = gdv.fk(self.hand, q)
+        out = {}
+        for n, (body, M) in self.kit.part_frames().items():
+            if body[0] == "link":
+                B = pose.links[body[1]][body[2]]
+            elif body == ("palm", 0):
+                B = pose.palm[0]
+            else:
+                B = np.eye(4)
+            Mm = M.copy()
+            Mm[:3, 3] *= 1e-3
+            out[n] = B @ Mm
+        return out
 
     def wait_idle(self, timeout: float = 120.0) -> bool:
         t0 = time.time()
@@ -297,6 +363,10 @@ class GrammarViewer:
                 self.history = [hand]
             elif history == "push":
                 self.history.append(hand)
+            if hand != self.kit_hand:
+                self.printed.clear()
+                self.kit, self.kit_hand = None, None
+                self.md_build.content = ""
             if commercial is None:
                 self.commercial, self.real, self.jmap = None, None, {}
                 self.overlay.clear()
@@ -394,6 +464,8 @@ class GrammarViewer:
             return
         q = self.q()
         self.drawing.pose(q)
+        if self.kit is not None and self.kit_hand == self.hand:
+            self.printed.update(self._printed_poses(q))
         if self.commercial is not None and self.real is not None:
             vals = gcf.urdf_joint_values(self.jmap, q, self.commercial["q_off"])
             model = self.real.model
@@ -534,6 +606,16 @@ class GrammarViewer:
             for op in gops.OPERATORS:
                 self.op_buttons[op.name] = g.add_button(op.label, hint=op.hover)
 
+        with g.add_folder("Build"):
+            btn_design = g.add_button("Generate full design",
+                                      hint="This hand's printable parts for Feetech HL-3915 servos: OpenSCAD source, "
+                                           "STLs laid out for printing, the parts list and the assembly steps, "
+                                           "checked and zipped (about 10-60 s). The parts are drawn over the hand "
+                                           "and the zip downloads.")
+            self.gui_printed = g.add_checkbox("show printed parts", True,
+                                              hint="The generated parts over the hand, moving with the joints.")
+            self.md_build = g.add_markdown("")
+
         with g.add_folder("Pose"):
             self.gui_curl = g.add_slider("curl", 0.0, 1.0, 0.01, gdv.START_CURL,
                                          hint="Sets every joint slider: bending joints at this fraction of their "
@@ -599,6 +681,8 @@ class GrammarViewer:
                     self.drawing.set_link_opacity(float(self.gui_links.value), self.q())
 
         btn_center.on_click(lambda _: self.recentre())
+        btn_design.on_click(lambda event: self.generate_design(client=event.client))
+        self.gui_printed.on_update(lambda _: self.printed.set_visible(bool(self.gui_printed.value)))
 
 
 def main(argv=None) -> int:
