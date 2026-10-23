@@ -83,15 +83,15 @@ MOUNT_POINTS = 16
 # The board bay: a box at the far end of the mount's column, where the hand
 # meets the arm, holding the Palm Hub board (Martin, 2026-10-23: the board
 # behind the palm). Outline: the board (69.5 x 38 mm) with 8 mm of plug room
-# along each long edge, 1 mm of play and 2 mm walls; depth: a 3.5 mm floor
-# (the arm adapter bolts to it), the board on 1 mm pads under its 7.75 mm
-# parts, 1.15 mm of play and the 3 mm lid the column stands on. Deeper behind
-# the palm than a base link reaches as it turns, except a finger's link
-# swinging back across the palm centre: each hand turns and shifts the bay
-# to clear its base links over their ranges (`derive.hand_geometry`).
+# along each long edge, 1 mm of play and 2 mm walls. Depth: a 4.5 mm floor
+# that bolts straight to the arm's flange (slots for ISO 9409-1-31.5-4-M5 and
+# -50-4-M6, button heads inside), the board on 4 mm standoffs over those
+# heads, its 7.75 mm parts, 1.15 mm of play and the 3 mm lid the column
+# stands on. Each hand turns and shifts the bay to clear its base links over
+# their ranges (`derive.hand_geometry`).
 BAY_SIZE_MM = (76.0, 60.0)         # along its long axis, across it
-BAY_DEPTH_MM = 18.0
-BAY_GAP_MM = MOUNT_DEPTH_MM - BAY_DEPTH_MM     # from the back face to the lid: 22 mm
+BAY_DEPTH_MM = 22.0
+BAY_GAP_MM = MOUNT_DEPTH_MM - BAY_DEPTH_MM     # from the back face to the lid: 18 mm
 PALM_OUTLINE_MAX_VERTICES = 32     # a GPU convex hull: 2 x 32 vertices, 34 faces
 # A palm cut is an open seam: a 24 mm plate cannot swing +/-30 degrees through
 # a zero-width cut. Both parts stop half the seam short of the line (the gap
