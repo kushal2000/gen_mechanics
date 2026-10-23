@@ -57,7 +57,8 @@ PALM_BOLTS_MAX = 6
 PALM_BOLT_EDGE_MM = 6.0       # a palm bolt this far inside the plate's outline
 PALM_BOLT_CLEAR_MM = 5.0      # and this far from any base sweep
 PALM_BOLT_SPACING_MM = 18.0
-BORE_CLEAR_MM = 11.5          # palm bolts stay off the column's cable bore (7 mm) by a nut
+BORE_R_MM = 7.0               # the cables' bore (library BORE_R)
+BORE_CLEAR_MM = 11.5          # palm bolts stay off the column's cable bore by a nut
 COLUMN_SCREW_R_MM = 16.5
 CLIP_MM = 2.4
 """Every link and fingertip is clipped to its simulator body grown by this
@@ -215,11 +216,21 @@ class Part:
     carries: Optional[ServoSpot] = None        # the servo whose horns it holds
     split_x: Optional[float] = None            # cut into front/back halves at this x (palm parts)
     clip: Optional[str] = None                 # a convex body the part stays inside (its simulator body, grown)
+    swept_by: Dict[int, List[str]] = field(default_factory=dict)   # palm parts: each finger's sweeps
+    kept: List[Tuple[int, str]] = field(default_factory=list)      # palm parts: (finger, pocket walls kept from other fingers)
 
     def scad(self) -> str:
         pos = "\n        ".join(self.positive) or "cube(0.001);"
-        neg = "\n    ".join(self.negative)
+        neg = "\n    ".join(self.negative + [n for ns in self.swept_by.values() for n in ns])
         body = f"difference() {{\n        union() {{\n        {pos}\n        }}\n    {neg}\n    }}"
+        if self.kept:
+            # a servo's pocket keeps its walls against other fingers' sweeps (fingers colliding in
+            # motion is left to the physics and the policy, as in the simulator)
+            keep = []
+            for i, walls in self.kept:
+                own = "\n        ".join(self.swept_by.get(i, []))
+                keep.append(f"difference() {{ {walls}\n        {own} }}")
+            body = f"union() {{\n    {body}\n    " + "\n    ".join(keep) + "\n    }"
         if self.clip:
             body = f"intersection() {{\n    {body}\n    {self.clip}\n    }}"
         return f"module part_{self.name}() {{\n    {body}\n}}\n"
@@ -365,8 +376,17 @@ class Design:
             tip = fg.tip
             p1 = tip.p1
             r = tip.radius
-            body: Piece = lambda g, jp=joint_piece, p1=p1, r=r: (
-                f"hull() {{ {jp(g)} translate({v3(p1)}) sphere(r = {r:.3f} + ({g}), $fn = 48); }}")
+            # the rounded end only ahead of the yoke (behind it, round the servo's front, the
+            # fingertip is cut away anyway; the part before it should not give way to it)
+            if sp.yoke == "u":
+                x_cut = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
+            else:
+                th = np.linspace(0.0, 2.0 * math.pi, 24, endpoint=False)
+                disc = np.array([[x, 9.5 * math.cos(t), 9.5 * math.sin(t)] for x in (ARM_X0, ARM_X0 + ARM_DRIVEN) for t in th])
+                x_cut = float((disc @ sp.S_child[:3, :3].T + sp.S_child[:3, 3])[:, 0].min())
+            body: Piece = lambda g, jp=joint_piece, p1=p1, r=r, xc=x_cut: (
+                f"hull() {{ {jp(g)} intersection() {{ translate({v3(p1)}) sphere(r = {r:.3f} + ({g}), $fn = 48); "
+                f"translate([{xc:.3f} - ({g}), -100, -100]) cube([300, 200, 200]); }} }}")
             pieces = pieces + [body]
         elif sp.yoke != "crossing":
             Sn = mm(nxt.S_parent)
@@ -411,27 +431,40 @@ class Design:
             if sp.clamped:
                 pieces.append(lambda gg, Sp=Sp: f"{Sp} pocket_box({gg});")
                 part.negative.append(f"{Sp} pocket_keepout();")
+                if sp.key[0] == "f":
+                    part.kept.append((sp.key[1], f"difference() {{ {Sp} pocket_box(0); {Sp} pocket_keepout(); }}"))
             else:
                 # a servo slid out behind the plate (a crossing at the base): its housing, joined
                 # to the plate's back face by a block over its footprint (what turns past it is
                 # cut away later)
                 pieces.append(lambda gg, Sp=Sp: f"{Sp} housing_box({gg});")
-                # a beam from it toward the palm centre, under what link 0 sweeps (that reaches
-                # about 30 mm from the axis, down to 2.4 mm behind the plate), then up into the plate
+                # joined to the plate by several ways, each cut back where something turns through it:
+                # straight up onto the plate over its footprint, and beams under what the finger's
+                # first links sweep (about 30 mm round the axis, down to 2.4 mm behind the plate) toward
+                # the palm centre and 60 degrees either side, each with a post up into the plate
                 o = sp.S_parent[:3, 3]
-                d = -np.array([0.0, o[1], o[2]])
-                d = d / np.linalg.norm(d) if np.linalg.norm(d) > 1e-6 else np.array([0.0, 1.0, 0.0])
-                end = np.array([0.0, o[1], o[2]]) + BASE_BEAM_MM * d
-                side = np.cross([1.0, 0.0, 0.0], d)
+                C = mt.box_corners(np.array([0.0, 8.6, 0.0]), np.eye(3), np.array([13.7, 18.1, 12.2]))
+                P = C @ sp.S_parent[:3, :3].T + sp.S_parent[:3, 3]
+                up = P.copy()
+                up[:, 0] = -PLATE_HALF_MM + 1.0
+                pts_u = " ".join(f"translate({v3(q)}) cube(0.01, center = true);" for q in np.concatenate([P, up]))
+                pieces.append(lambda gg, pts_u=pts_u: f"hull() {{ {pts_u} }}")
+                d0 = -np.array([0.0, o[1], o[2]])
+                d0 = d0 / np.linalg.norm(d0) if np.linalg.norm(d0) > 1e-6 else np.array([0.0, 1.0, 0.0])
                 xb = -PLATE_HALF_MM
-                beam = [end + s1 * 10.0 * side + np.array([x, 0.0, 0.0]) for s1 in (-1, 1)
-                        for x in (xb - 10.0, xb - 3.0)]
-                post = [end + s1 * 10.0 * side + s2 * 6.0 * d + np.array([x, 0.0, 0.0]) for s1 in (-1, 1)
-                        for s2 in (-1, 1) for x in (xb - 10.0, xb + 1.0)]
-                pts_b = " ".join(f"translate({v3(q)}) cube(0.01, center = true);" for q in beam)
-                pts_p = " ".join(f"translate({v3(q)}) cube(0.01, center = true);" for q in post)
-                pieces.append(lambda gg, Sp=Sp, pts_b=pts_b: f"hull() {{ {Sp} housing_box({gg}); {pts_b} }}")
-                pieces.append(lambda gg, pts_p=pts_p: f"hull() {{ {pts_p} }}")
+                for turn in (0.0, 60.0, -60.0):
+                    c, s_ = math.cos(math.radians(turn)), math.sin(math.radians(turn))
+                    d = np.array([0.0, c * d0[1] - s_ * d0[2], s_ * d0[1] + c * d0[2]])
+                    end = np.array([0.0, o[1], o[2]]) + BASE_BEAM_MM * d
+                    side = np.cross([1.0, 0.0, 0.0], d)
+                    beam = [end + s1 * 10.0 * side + np.array([x, 0.0, 0.0]) for s1 in (-1, 1)
+                            for x in (xb - 10.0, xb - 3.0)]
+                    post = [end + s1 * 10.0 * side + s2 * 6.0 * d + np.array([x, 0.0, 0.0]) for s1 in (-1, 1)
+                            for s2 in (-1, 1) for x in (xb - 10.0, xb + 1.0)]
+                    pts_b = " ".join(f"translate({v3(q)}) cube(0.01, center = true);" for q in beam)
+                    pts_p = " ".join(f"translate({v3(q)}) cube(0.01, center = true);" for q in post)
+                    pieces.append(lambda gg, Sp=Sp, pts_b=pts_b: f"hull() {{ {Sp} housing_box({gg}); {pts_b} }}")
+                    pieces.append(lambda gg, pts_p=pts_p: f"hull() {{ {pts_p} }}")
                 part.negative.append(f"{Sp} housing_keepout({str(sp.yoke != 'u').lower()}, {sp.cable});")
         if sec == 0 and part.carries is not None:      # the hinge's yoke on the part beyond the cut
             sp = part.carries
@@ -485,7 +518,9 @@ class Design:
                 part.column_screws = screws
                 for y, z in screws:
                     part.negative.append(f"column_screw({y:.3f}, {z:.3f});")
-                part.negative.append(f"cyl_x(BORE_R, {-PLATE_HALF_MM - 1}, 0.01);")
+                self.bore = self._bore_spot(screws)
+                part.negative.append(f"translate([0, {self.bore[0]:.3f}, {self.bore[1]:.3f}]) "
+                                     f"cyl_x(BORE_R, {-PLATE_HALF_MM - 1}, 0.01);")
             part.bolts = []
             # cable holes: each servo plug held in this plate reaches the back face
             for sp in part.holds:
@@ -516,7 +551,7 @@ class Design:
                 q = np.array([y, z])
                 if self._dist_out(q, outline) > -PALM_BOLT_EDGE_MM:
                     continue
-                if sec < 0 and float(np.linalg.norm(q)) < BORE_CLEAR_MM:
+                if sec < 0 and float(np.linalg.norm(q - np.array(getattr(self, "bore", (0.0, 0.0))))) < BORE_CLEAR_MM:
                     continue
                 if any(float(np.linalg.norm(q - np.array(c))) < 7.5 for c in screws):
                     continue
@@ -529,6 +564,29 @@ class Design:
         part.bolts = list(bolts)
         for y, z in bolts:
             part.negative.append(f"palm_bolt({y:.3f}, {z:.3f});")
+
+    def _bore_spot(self, screws: List[Tuple[float, float]]) -> Tuple[float, float]:
+        """Where the cables' bore goes through the palm's back half: inside the
+        column, off its screws, as far as it goes from every servo pocket
+        reaching into the back half."""
+        boxes = []
+        for sp in self.parts[("palm", -1)].holds:
+            C = mt.box_corners(np.array([0.0, 7.5, 0.0]), np.eye(3), np.array([13.9, 19.4, 12.4]))
+            P = C @ sp.S_parent[:3, :3].T + sp.S_parent[:3, 3]
+            if float(P[:, 0].min()) < 0.0:
+                boxes.append(dv._hull2d(P[:, 1:]))
+        best, best_d = (0.0, 0.0), -math.inf
+        for y in np.arange(-9.0, 9.01, 1.5):
+            for z in np.arange(-9.0, 9.01, 1.5):
+                q = np.array([y, z])
+                if float(np.linalg.norm(q)) > 20.0 - BORE_R_MM - 2.5:
+                    continue
+                if any(float(np.linalg.norm(q - np.array(c))) < BORE_R_MM + 3.5 for c in screws):
+                    continue
+                d = min((self._dist_out(q, b) for b in boxes), default=math.inf) - BORE_R_MM
+                if d > best_d + 1e-9 or (abs(d - best_d) < 1e-9 and float(np.linalg.norm(q)) < float(np.linalg.norm(best))):
+                    best, best_d = (float(y), float(z)), d
+        return best
 
     def _column_screws(self, clear: List[np.ndarray]) -> List[Tuple[float, float]]:
         r = COLUMN_SCREW_R_MM
@@ -551,8 +609,16 @@ class Design:
         sb = [(float(np.array([0.0, y, z]) @ u), float(np.array([0.0, y, z]) @ v)) for y, z in screws]
         cup = Part("bay", ("palm", -1), B)
         cup.positive = [f"bay_cup({cy:.3f}, {cz:.3f});"]
+        bore = getattr(self, "bore", (0.0, 0.0))
+        bb = (float(np.array([0.0, *bore]) @ u), float(np.array([0.0, *bore]) @ v))
         mount = Part("mount", ("palm", -1), B)
-        mount.positive = [f"mount({cy:.3f}, {cz:.3f}, {[list(q) for q in sb]});"]
+        mount.positive = [f"mount({cy:.3f}, {cz:.3f}, {[list(q) for q in sb]}, {list(bb)});"]
+        # both give way to everything of the main palm but its plate (housings are 2.2 mm walls past
+        # the bare servo the grammar keeps the bay a wall from; hanging housings' joining paths)
+        Binv = mm(inv(B))
+        for pc in self.parts[("palm", -1)].pieces[1:]:
+            for part in (cup, mount):
+                part.negative.append(f"{Binv} {pc('FIT + 0.3')}")
         self.extras = [cup, mount]
 
     # --------------------------------------------------------------- sweeps
@@ -573,7 +639,11 @@ class Design:
             for h in child.holds:
                 occupants += _case_pieces(h.S_parent, h.cable, h.idler_horn)
             for pc in occupants:
-                parent.negative.append(f"{mm(Sp)} sweep_x({lo:.3f}, {hi:.3f}) {mm(to_child)} {pc('PART_CLEAR')}")
+                stmt = f"{mm(Sp)} sweep_x({lo:.3f}, {hi:.3f}) {mm(to_child)} {pc('PART_CLEAR')}"
+                if sp.parent[0] == "palm":
+                    parent.swept_by.setdefault(sp.key[1] if sp.key[0] == "f" else -1, []).append(stmt)
+                else:
+                    parent.negative.append(stmt)
             if sp.yoke == "crossing":
                 self._crossing_sweeps(sp)
 
@@ -592,8 +662,12 @@ class Design:
         for h in far.holds:
             occupants += _case_pieces(h.S_parent, h.cable, h.idler_horn)
         for pc in occupants:
-            grand.negative.append(f"{mm(sp.S_parent)} sweep_x2({_mat(Tn)}, {lo1:.3f}, {hi1:.3f}, {lo2:.3f}, "
-                                  f"{hi2:.3f}) {mm(inv(nxt.S_child))} {pc('PART_CLEAR')}")
+            stmt = (f"{mm(sp.S_parent)} sweep_x2({_mat(Tn)}, {lo1:.3f}, {hi1:.3f}, {lo2:.3f}, "
+                    f"{hi2:.3f}) {mm(inv(nxt.S_child))} {pc('PART_CLEAR')}")
+            if sp.parent[0] == "palm":
+                grand.swept_by.setdefault(i, []).append(stmt)
+            else:
+                grand.negative.append(stmt)
         # link j + 1 gives room to servo j's case, turning back about both joints
         Tb = inv(nxt.S_parent) @ sp.S_child          # servo j's frame in servo j + 1's
         for pc in _case_pieces(np.eye(4), sp.cable, sp.idler_horn):

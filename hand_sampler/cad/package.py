@@ -99,7 +99,7 @@ def generate(hand: Hand, out_root: Path = DESIGNS_DIR, progress: Optional[Callab
             if max(ext[:2]) > PRINT_BED_MM:
                 rep.warnings.append(f"{n} is {max(ext[:2]):.0f} mm across: larger than a {PRINT_BED_MM:.0f} mm bed")
     (folder / "BOM.md").write_text(bom(d, rep))
-    (folder / "ASSEMBLY.md").write_text(assembly(d))
+    (folder / "ASSEMBLY.md").write_text(assembly(d, rep.orders))
     (folder / "checks.md").write_text("# Checks\n\n```\n" + rep.summary() + "\n```\n")
     (folder / "report.json").write_text(json.dumps({"id": did, "ok": rep.ok, "parts": rep.parts,
                                                     "clashes": rep.clashes, "warnings": rep.warnings}, indent=1))
@@ -264,7 +264,7 @@ def wiring(d: Design) -> Dict[int, str]:
     return out
 
 
-def assembly(d: Design) -> str:
+def assembly(d: Design, orders: Optional[Dict] = None) -> str:
     hand = d.hand
     ports = wiring(d)
     L = ["# Assembly", "",
@@ -273,7 +273,7 @@ def assembly(d: Design) -> str:
          "## 1. Servos", "",
          "Set each servo's ID and move it to its centre (position 2048) before fitting anything to its horns "
          "(Feetech's FD software, or the board).", "",
-         "| Servo | ID | Joint | Held by | Horns in | Arms | Board port |", "|---|---|---|---|---|---|---|"]
+         "| Servo | ID | Joint | Held by | Horns in | Arms | Order | Board port |", "|---|---|---|---|---|---|---|---|"]
     names = {k: p.name for k, p in d.parts.items()}
     main_finger = next((i for i in range(len(hand.fingers)) if finger_section(hand, i) < 0), 0)
     for sp in sorted(d.servos.values(), key=servo_id):
@@ -285,8 +285,9 @@ def assembly(d: Design) -> str:
             joint, port = f"finger {i} joint {j} ({kind}{', turned' if sp.turned else ''})", ports[i]
         arms = {"u": "two (driven + idler)", "single": "one (idler horn off)", "crossing": "plate on the driven horn"}[sp.yoke]
         held = names[sp.parent] + (" (clamped)" if sp.clamped else "")
+        order = (orders or {}).get(sp.key) or "servo first"
         L.append(f"| {'/'.join(map(str, sp.key))} | {servo_id(sp)} | {joint} | {held} | {names[sp.child]} | "
-                 f"{arms} | {port} |")
+                 f"{arms} | {order} | {port} |")
     L += ["",
           "Servos marked 'one (idler horn off)': unscrew the idler horn's centre screw and pull the horn off; "
           "the bare stub sits in the housing's side plate.", "",
@@ -306,9 +307,12 @@ def assembly(d: Design) -> str:
         L += ["4. The hinge servo sits in the main palm's pocket; fit `palm_beyond_*` to its horns as in step 2 "
               "before closing the halves.", ""]
     L += ["## 4. Fingers, from the palm out", "",
-          "For each link: slide the next servo into its housing from the front (its horns pass through the "
+          "For each joint, in the order the table gives:", "",
+          "- **servo first:** slide the servo into its housing from the front (its horns pass through the "
           "slots), push it to the back wall and screw the case to the side plates (4 of the servo's box screws, "
-          "through the far holes). Then fit the next link to its horns (step 2).", "",
+          "through the far holes). Then fit the next link to its horns (step 2).",
+          "- **link first:** fit the next link to the servo's horns on the bench (step 2), then slide the "
+          "servo, link and all, into its housing from the front and screw the case to the side plates.", "",
           "## 5. Cables", "",
           "Each finger's servos are chained on the finger's back: board port -> base servo -> next servo. Leave "
           "about 25 mm of slack across each joint and tie the cable to the links. The palm's cables run over "

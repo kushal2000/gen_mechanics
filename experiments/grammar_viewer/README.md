@@ -15,6 +15,17 @@ uv pip install --python .venv_viewer/bin/python -e . --no-deps
 
 Without `uv`: `python3.11 -m venv .venv_viewer`, then `.venv_viewer/bin/pip install viser "numpy==1.26.*" scipy trimesh yourdfpy pycollada pytest` and `.venv_viewer/bin/pip install -e . --no-deps`.
 
+For **Generate full design** (printable parts), also `manifold3d` (`uv pip install --python .venv_viewer/bin/python manifold3d`) and OpenSCAD 2025 or newer (the Manifold backend). Without sudo, the AppImage extracted under your home (no FUSE needed):
+
+```bash
+mkdir -p ~/.local/opt/openscad ~/.local/bin && cd ~/.local/opt/openscad
+curl -LO https://files.openscad.org/snapshots/OpenSCAD-2026.10.11-x86_64.AppImage   # sha256 35b7248e...ad0c
+chmod +x OpenSCAD-*.AppImage && ./OpenSCAD-*.AppImage --appimage-extract && mv squashfs-root openscad-2026.10.11
+ln -sf ~/.local/opt/openscad/openscad-2026.10.11/AppRun ~/.local/bin/openscad
+```
+
+Or point `$OPENSCAD` at any OpenSCAD binary. On macOS or Windows, the nightly installers from openscad.org work the same.
+
 ## Run
 
 ```bash
@@ -36,6 +47,7 @@ One line per item; longer explanations are hover text.
   - **C2, fingertips meet above the palm**: at least one pair of fingers whose fingertips' reachable regions come within 20 mm above the plate, over the palm.
 - **Commercial hand**: a commercial hand conformed onto the grammar's grid (10 mm / 30°) at the scale it can be built from Feetech servos (the smallest, in steps of 0.05 up to 5 x, with servo link lengths, no collisions and every joint keeping its kind), drawn over its own URDF meshes at that scale (ghosted), with one line: fingers and joints, the scale, the fit (largest joint, axis and fingertip error in millimetres at the real hand's size, target 10 mm / 20°) and whether it follows the rules. Curl 0 is the real hand's zero pose (the conformed hand at its zero-pose difference); the meshes follow the pose. SHARPA is the KaRMA model, hand only. MIDAS has no meshes on this branch (only its URDF was copied).
 - **Mutation**: **Random mutation**, **Back**, and one button per operator, shown only when it has a child that keeps these rules and C1. One grid: every value moves 10 mm or 30°, a base one grid step. A mutation tries the operator's applications in random order and keeps the first such child. After a mutation, one line says what changed.
+- **Build**: **Generate full design** turns the hand on screen into a kit for Feetech HL-3915 (or HL-2915) servos and the Palm Hub board, in 10-60 s: the OpenSCAD source (`hand.scad`, its build settings editable at the top), every part as an STL in its own frame and laid flat for printing, the parts list (`BOM.md`), the assembly steps with servo IDs and board ports (`ASSEMBLY.md`) and the check report, zipped under `outputs/designs/` and downloaded to the browser. The parts are drawn over the hand and move with the joint sliders (**show printed parts**). What the parts are and how they are checked: `hand_sampler/cad/` (CLI: `python -m hand_sampler.cad --hand hand.json`).
 - **Pose**: **curl** and **palm bend** set every joint slider at once (bending joints at this fraction of their upper limit, 0.35 being the episode start pose, other joints at 0; the palm joint at this fraction of its ±30° range, shown only when the hand has a cut), **link bodies** (the opacity of each link's body, a box around its yoke and the servo it carries out to the fingertip, which the clearance check and the simulator use; see-through by default so the servos and fingertips show, 0 hides them), **show the object at its start** (the repose task's 72 mm cube where an episode starts, blue and half transparent; off by default) and **re-centre view**.
 - **Joints**: one slider per joint of the hand on screen, in degrees (mm for a sliding joint): "finger 2 joint 1 (spread)" moves only that joint, so an MCP's spread and bend can be seen one at a time. A coupled joint's slider is disabled and follows the joint before it.
 
@@ -67,9 +79,9 @@ Per hand: what evolution changes. Global: one value for every hand. Ranges under
 | tilt | per finger | 0° to +90° (never under the palm); 0° when the first joint is a bend | 30° |
 | joint axis (two angles) | per joint | 31 directions (a line; its sign is derived), in the link frame: x along the finger, y the closing direction (the palm normal turned by the tilt), z = x × y | 30° |
 | joint type | per joint | hinge (hinge, coupled x1.1 the joint before it, sliding) | couple / uncouple |
-| link length | per link | the servo floor for its two axes (30-50 mm; a link too short for the next bend servo to lie along it turns that servo, body on the back of the finger) to 90 mm, 0 for two joints at one point between different axes square to the finger; fingertip 30-90 mm (40 after a turned bend) (0 or 10-90; fingertip 10-90); finger at most 225 mm | 10 mm |
-| links | global | servo-sized: one box around each link's yoke and the servo it carries; the fingertip a capsule, radius 16.5 mm | - |
-| palm plate | global | 24 mm thick; outline: hull of the mount and the servos' housings; a cut leaves an 8.6 mm seam | - |
+| link length | per link | the servo floor for its two axes (30-51 mm, on the 10 mm grid or 1 mm past it where the grid leaves the printed bridge under 1 mm of clearance, e.g. 41 after a spread; a link too short for the next bend servo to lie along it turns that servo, body on the back of the finger) to 90 mm; 0 for two joints at one point between different axes square to the finger (a crossing: its first servo lies along the finger, and the link before it fits the second servo too, 44-52 mm); fingertip 30-90 mm (40 after a turned bend) (0 or 10-90; fingertip 10-90); finger at most 225 mm | 10 mm |
+| links | global | servo-sized: one box around each link's yoke and the servo it carries; the fingertip the hull of a capsule (radius 16.5 mm) and its yoke's box | - |
+| palm plate | global | 24 mm thick; outline: hull of the mount and the servos' housings; a cut leaves an 8.6 mm seam; the board bay (76 x 60 x 22 mm) at the mount's far end, turned per hand to clear the base links | - |
 | base depth | derived | the first servo's housing flush with the front face | - |
 | clearance | random hands and every mutant | C1 at rest and at the start pose; a random finger is redrawn up to 50 times, a mutation keeps the first child that passes | - |
 | joint ranges | global per kind | bend -30° to +90°, spread ±30°, twist ±90°, palm ±30°, sliding -20 to +25 mm | - |
@@ -103,4 +115,4 @@ Inverse pairs: each parameter step and its opposite (when no link was refit and 
 cd experiments/grammar_viewer && ../../.venv_viewer/bin/python -m pytest -q tests
 ```
 
-`tests/test_viewer.py` drives the viewer's callbacks headless against a local viser server: Random under the rules, the Rules dropdown and fields, the checks, the operator buttons, mutation and Back, a commercial hand over its meshes, the pose, one drawn body per solid, and a link's box mesh.
+`tests/test_viewer.py` drives the viewer's callbacks headless against a local viser server: Random under the rules, the Rules dropdown and fields, the checks, the operator buttons, mutation and Back, a commercial hand over its meshes, the pose, one drawn body per solid, a link's box mesh, and Generate full design (skipped without OpenSCAD). The parts themselves: `.venv_viewer/bin/python -m pytest -q hand_sampler/cad/tests` from the repository root.

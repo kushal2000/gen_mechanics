@@ -180,14 +180,22 @@ module arm_slab(s, g = 0) {
     else box_lh([-ARM_X0 - t - g, -200, -200], [-ARM_X0 + g, 200, 200]);
 }
 
-// what an arm leaves empty: the centre screw head (driven: and its seat),
-// the horn screws (the driven arm on 4 holes, the idler arm on 2)
+// what an arm leaves empty: the centre screw head, the horn screws (the
+// driven arm on 4 holes, the idler arm on 2), and a way in for the
+// screwdriver: each hole runs on outward through whatever else is there
+SCREWDRIVER_REACH = 25;
 module arm_keepout(s, holes) {
     t = s > 0 ? ARM_DRIVEN : ARM_IDLER;
-    x0 = s > 0 ? ARM_X0 - 1 : -ARM_X0 - t - 1;
-    x1 = s > 0 ? ARM_X0 + t + 1 : -ARM_X0 + 1;
-    cyl_x(HEAD_R + 0.4, x0, x1);
-    for (a = holes) cyl_x_at(HORN_HOLE_R * sin(a), HORN_HOLE_R * cos(a), M2_CLEAR / 2, x0, x1);
+    x0 = s > 0 ? ARM_X0 - 1 : -ARM_X0 - t - SCREWDRIVER_REACH;
+    x1 = s > 0 ? ARM_X0 + t + SCREWDRIVER_REACH : -ARM_X0 + 1;
+    xa0 = s > 0 ? ARM_X0 - 1 : -ARM_X0 - t;            // the arm's own thickness
+    xa1 = s > 0 ? ARM_X0 + t : -ARM_X0 + 1;
+    cyl_x(HEAD_R + 0.4, xa0, xa1);
+    cyl_x(HEAD_R + 0.6, s > 0 ? ARM_X0 + t : x0, s > 0 ? x1 : -ARM_X0 - t);
+    for (a = holes) {
+        cyl_x_at(HORN_HOLE_R * sin(a), HORN_HOLE_R * cos(a), M2_CLEAR / 2, xa0, xa1);
+        cyl_x_at(HORN_HOLE_R * sin(a), HORN_HOLE_R * cos(a), M2_HEAD / 2, s > 0 ? ARM_X0 + t : x0, s > 0 ? x1 : -ARM_X0 - t);
+    }
 }
 
 // ------------------------------------------------------------- the palm
@@ -276,7 +284,7 @@ module board_model(cy, cz) {
 // the lid, its skirt over the cup's rim, the column up to the palm's back
 // face; a bore for the cables; screw holes for the column's top (`screws`:
 // [y, z] in the bay frame, M3 self-tapping from the palm's split plane)
-module mount(cy, cz, screws) {
+module mount(cy, cz, screws, bore = [0, 0]) {
     top = BAY_D - BAY_LID;
     difference() {
         union() {
@@ -285,7 +293,7 @@ module mount(cy, cz, screws) {
             cyl_x(COLUMN_R, BAY_D - 0.01, MOUNT_TOP);
         }
         box_lh([top - SKIRT_H - 1, cy - BAY_L / 2 - SKIRT_FIT, cz - BAY_W / 2 - SKIRT_FIT], [top + 0.01, cy + BAY_L / 2 + SKIRT_FIT, cz + BAY_W / 2 + SKIRT_FIT]);
-        cyl_x(BORE_R, top - 1, MOUNT_TOP + 1);
+        translate([0, bore[0], bore[1]]) cyl_x(BORE_R, top - 1, MOUNT_TOP + 1);
         for (sy = [-1, 1], z = SKIRT_SCREWS_Z)
             translate([top - SKIRT_H / 2, sy > 0 ? cy + BAY_L / 2 - 1 : cy - BAY_L / 2 + 1, cz + z])
                 rotate([sy > 0 ? -90 : 90, 0, 0]) cylinder(r = M3_CLEAR / 2, h = 10);
