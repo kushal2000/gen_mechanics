@@ -3,15 +3,19 @@
 C1, clearance: every two solids that do not touch by construction keep one
 printed wall (2 mm) apart, at the zero pose and at the episode start pose
 (`derive.START_CURL`; since 2026-10-20 the fingers start open, so that is the
-zero pose); and every base motor's housing stays out of a palm
-cut's seam. Solids are `derive.solids_at`: the plates, the mount, the hinge
-motor, each finger's base motor and each link (a box around its yoke and the
-next motor; the fingertip a capsule). Distances are exact (GJK on the corners,
-or a capsule's segment less its radius).
+zero pose); every base motor's housing stays out of a palm cut's seam;
+and the board bay keeps a wall from every finger's base links over their
+whole ranges (`derive.base_sweep_mm`; Martin, 2026-10-23: the built hand
+must hold its board). Solids are `derive.solids_at`: the plates, the mount,
+the board bay, the hinge motor, each finger's base motor and each link (a box around
+its yoke and the next motor; the fingertip the hull of a capsule and its
+yoke). Distances are exact (GJK on the corners, or a capsule's segment less
+its radius).
 
 Touching by construction (skipped):
 - the main plate with the mount, the hinge motor and the part beyond the
-  cut; the hinge motor with that part;
+  cut; the bay with the mount (on its column); the hinge motor with that
+  part;
 - a plate with the base motors on it (they sit in pockets);
 - within a finger, each joint's two sides: its plate and base motor with
   link 0, link j - 1 with link j, and across a 0 mm link the links on either
@@ -71,6 +75,7 @@ def touching_pairs(hand: Hand) -> Set[Tuple[Tuple, Tuple]]:
         out.add((b, a))
 
     add(("palm", -1), ("mount",))
+    add(("mount",), ("bay",))
     if hand.palm_joints:
         add(("palm", -1), ("palm", 0))
         add(("hinge",), ("palm", -1))
@@ -173,6 +178,16 @@ def seam_overlaps(hand: Hand) -> List[Tuple[Tuple, Tuple, float]]:
     return out
 
 
+def bay_overlaps(hand: Hand) -> List[Tuple[Tuple, Tuple, float]]:
+    """`(("bay",), ("base sweep",), mm)` when no turn and shift of the board
+    bay keeps a wall from every finger's base links over their ranges
+    (`derive.base_sweep_mm`) and off a cut, by how much."""
+    gap = dv.hand_geometry(hand).bay_gap_mm
+    if gap >= CLEARANCE_MM - C1_TOLERANCE_MM:
+        return []
+    return [(("bay",), ("base sweep",), float(CLEARANCE_MM - max(gap, 0.0)))]
+
+
 @dataclass
 class C1Result:
     ok: bool
@@ -183,7 +198,7 @@ class C1Result:
 def c1_self_overlap(hand: Hand, max_overlap_mm: float = C1_MAX_OVERLAP_MM) -> C1Result:
     bad = []
     worst = 0.0
-    found = seam_overlaps(hand)
+    found = seam_overlaps(hand) + bay_overlaps(hand)
     for q in dv.check_poses(hand):
         found += overlaps(hand, q)
     for a, b, ov in found:
@@ -196,7 +211,7 @@ def c1_self_overlap(hand: Hand, max_overlap_mm: float = C1_MAX_OVERLAP_MM) -> C1
 def clear(hand: Hand, focus_finger: Optional[int] = None) -> bool:
     """C1 as a yes/no (`focus_finger`: only what involves that finger or a
     plate, for building a hand finger by finger)."""
-    if seam_overlaps(hand):
+    if seam_overlaps(hand) or bay_overlaps(hand):
         return False
     for q in dv.check_poses(hand):
         if overlaps(hand, q, focus_finger):

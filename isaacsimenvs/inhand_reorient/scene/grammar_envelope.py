@@ -15,8 +15,8 @@ topology):
       fixed to `f{f}_link4` at the real fingertip (`tip_offsets`).
     - The root body is the palm frame (x = palm normal on the grasp side, y
       and z in the plate; origin at the palm centre, where the hand mounts)
-      and carries the main palm plate, the mount, the hinge motor and the
-      main palm's base motors (`root_colliders`).
+      and carries the main palm plate, the mount, the board bay, the hinge
+      motor and the main palm's base motors (`root_colliders`).
     - Each carrier has a role (`carrier_roles`): LOCKED (a finger on the main
       palm, or an empty finger slot: ghost limits, no collider, the finger's
       mount folded into its base origin), LEADER (the first finger beyond the
@@ -432,7 +432,7 @@ def node_of_key(design: EnvelopeDesign, key: Tuple) -> int:
     """`hand_sampler.grammar.viability` solid key -> envelope node (the body
     that carries the solid)."""
     kind = key[0]
-    if kind in ("mount", "hinge"):
+    if kind in ("mount", "bay", "hinge"):
         return ROOT_NODE
     if kind == "palm":
         return ROOT_NODE if key[1] < 0 else _leader_of(design, key[1])
@@ -675,8 +675,9 @@ def plate_points(design: EnvelopeDesign, node: int) -> np.ndarray:
 
 def root_colliders(design: EnvelopeDesign) -> Dict[str, np.ndarray]:
     """The root body's solids besides the main plate (root frame, metres):
-    the mount, the hinge motor and every main-palm finger's base motor."""
-    out = {"mount": gdv.mount_points_m()}
+    the mount, the board bay, the hinge motor and every main-palm finger's
+    base motor."""
+    out = {"mount": gdv.mount_points_m(), "bay": gdv.bay_points_m(design.hand)}
     g = gdv.hand_geometry(design.hand)
     if g.hinge_box is not None:
         out["hinge_motor"] = g.hinge_box.corners() * 1e-3

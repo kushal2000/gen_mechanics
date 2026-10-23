@@ -51,20 +51,22 @@ def chains_by_first(rules: Rules, axes: Tuple[Tuple[int, int], ...]) -> Tuple[Tu
     step = rules.link_step_mm
     top = rules.max_link_mm
 
-    def links(i: int, j: int, prev_zero: bool, turned_i: bool, bend_j: bool) -> List[Tuple[int, bool]]:
-        """(length, joint j's servo turned) for the links after joint i before
+    def links(i: int, j: int, turned_i: bool, bend_j: bool, j_crosses: bool) -> List[Tuple[int, bool]]:
+        """(length, joint j's servo turned) for a non-zero link from joint i to
         joint j: a bend servo turns when its link is too short for it to lie
-        along the link (`hand.turned_servo`)."""
-        if not buildable:
-            return [(L, False) for L in [0] + list(range(10, top + 1, step))]
+        along the link (`hand.turned_servo`), unless joint j starts a crossing
+        (`j_crosses`), whose link must also fit the servo after it
+        (`motor.crossing_floor_mm`)."""
         std = mt.link_floor_mm(U[i], U[j], turned_i, False)
+        if j_crosses:
+            lo = max(std, mt.crossing_floor_mm(U[i], turned_i))
+            return [(L, False) for L in mt.lengths_from(lo, top, step)]
         lo = mt.link_floor_mm(U[i], U[j], turned_i, True) if bend_j else std
-        out = [(L, L < std) for L in range(lo, top + 1, step)]
-        return ([(0, False)] + out) if (not prev_zero and mt.crossing_ok(U[i], U[j])) else out
+        return [(L, L < std) for L in mt.lengths_from(lo, top, step)]
 
     def tips(i: int, turned_i: bool) -> List[int]:
         lo = mt.tip_floor_mm(U[i], turned_i) if buildable else 10
-        return list(range(lo, top + 1, step))
+        return mt.lengths_from(lo, top, step)
 
     def types(revolute_before: bool) -> List[Tuple[str, bool]]:
         """(type, revolute) choices for a joint whose predecessor is
@@ -75,17 +77,31 @@ def chains_by_first(rules: Rules, axes: Tuple[Tuple[int, int], ...]) -> Tuple[Tu
         return out
 
     @lru_cache(maxsize=None)
-    def rec(left: int, i: int, prev_zero: bool, budget: int, revolute: bool, turned_i: bool) -> int:
+    def rec(left: int, i: int, prev_zero: bool, budget: int, revolute: bool, turned_i: bool, crosses: bool) -> int:
         """Ways to finish a finger from joint i (`left` joints to the end;
-        `turned_i`: its servo is turned)."""
+        `turned_i`: its servo is turned; `crosses`: its own link is 0 mm, a
+        crossing, or not)."""
         if left == 1:
-            return sum(1 for t in tips(i, turned_i) if t <= budget)
+            return 0 if crosses else sum(1 for t in tips(i, turned_i) if t <= budget)
         total = 0
         for j in range(len(axes)):
             for _, rev in types(revolute):
-                for L, turned_j in links(i, j, prev_zero, turned_i, rev and mt.is_bend(U[j])):
-                    if L <= budget:
-                        total += rec(left - 1, j, L == 0, budget - L, rev, turned_j)
+                if not buildable:
+                    for L in ([0] if crosses else list(range(10, top + 1, step))):
+                        if L <= budget:
+                            total += sum(rec(left - 1, j, L == 0, budget - L, rev, False, c)
+                                         for c in ((False,) if L == 0 else (False, True)))
+                    continue
+                if crosses:
+                    # a crossing's first servo lies along the finger (`hand.turned_servo`)
+                    if not prev_zero and not turned_i and mt.crossing_ok(U[i], U[j]):
+                        total += rec(left - 1, j, True, budget, rev, False, False)
+                    continue
+                bend_j = rev and mt.is_bend(U[j])
+                for j_crosses in ((False, True) if left - 1 > 1 else (False,)):
+                    for L, turned_j in links(i, j, turned_i, bend_j, j_crosses):
+                        if L <= budget:
+                            total += rec(left - 1, j, False, budget - L, rev, turned_j, j_crosses)
         return total
 
     out = []
@@ -93,7 +109,7 @@ def chains_by_first(rules: Rules, axes: Tuple[Tuple[int, int], ...]) -> Tuple[Tu
         bend = other = 0
         for i in range(len(axes)):
             for t, rev in types(False):
-                c = rec(n, i, False, rules.max_finger_length_mm, rev, False)
+                c = sum(rec(n, i, False, rules.max_finger_length_mm, rev, False, cr) for cr in (False, True))
                 if t == "hinge" and axes[i] == BEND:
                     bend += c
                 else:

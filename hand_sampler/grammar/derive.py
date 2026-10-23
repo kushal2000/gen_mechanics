@@ -28,9 +28,13 @@ Derived geometry (one motor, `motor.py`):
   motor, each finger's base motor (fixed to its plate) and one box per
   link, square to its frame, around its yoke (the bracket around its
   joint's motor) and its far end (the next motor, which sits in this link):
-  links are servo-sized; the fingertip (the last link) is a capsule along
-  the link instead, from the yoke's back to the tip, as thick as the yoke is
-  wide (`TIP_RADIUS_MM`);
+  links are servo-sized; the fingertip (the last link) is the convex hull
+  of a capsule along the link, from the yoke's back to the tip, as thick as
+  the yoke is wide (`TIP_RADIUS_MM`), and of its yoke's box (Martin,
+  2026-10-23: the printed bracket sticks out of the capsule);
+- the board bay: a box on the mount's column behind the plate
+  (`BAY_SIZE_MM`), turned and shifted per hand to clear its base links over
+  their ranges;
 - the palm outline: the convex hull of the mount disc, every base motor's
   housing and the hinge motor's housing; a cut splits it into two convex
   plates, each half a seam short of the line.
@@ -38,6 +42,7 @@ Derived geometry (one motor, `motor.py`):
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -47,6 +52,9 @@ import numpy as np
 
 from . import motor as mt
 from .hand import (
+    BAY_DEPTH_MM,
+    BAY_GAP_MM,
+    BAY_SIZE_MM,
     COUPLING_RATIO,
     GRID_MM,
     KIND_RANGE_DEG,
@@ -250,6 +258,24 @@ class Capsule:
     def aabb(self) -> "Box":
         lo = np.minimum(self.p0, self.p1) - self.radius
         hi = np.maximum(self.p0, self.p1) + self.radius
+        return Box((lo + hi) / 2.0, np.eye(3), (hi - lo) / 2.0)
+
+
+@dataclass
+class Hull:
+    """The convex hull of `points` (k, 3)."""
+
+    points: np.ndarray
+
+    def corners(self) -> np.ndarray:
+        return self.points
+
+    def moved(self, T: np.ndarray, scale: float = 1.0) -> "Hull":
+        """The hull in the frame `T` (as `Box.moved`) is expressed in."""
+        return Hull(self.points @ T[:3, :3].T + T[:3, 3] / scale)
+
+    def aabb(self) -> "Box":
+        lo, hi = self.points.min(axis=0), self.points.max(axis=0)
         return Box((lo + hi) / 2.0, np.eye(3), (hi - lo) / 2.0)
 
 
@@ -484,8 +510,9 @@ class FingerGeometry:
     motors: List[Box]             # motor j in joint j's frame before it turns (origin at the joint)
     yokes: List[Box]              # yoke j in link j's frame
     fars: List                    # link j's far end in its frame: the next motor (Box), or the fingertip's end (Capsule)
-    links: List[Box]              # link j's box in its frame, around its yoke and its far end (the tip: its capsule's box)
-    tip: Capsule                  # the fingertip (the last link) in its frame
+    links: List[Box]              # link j's box in its frame, around its yoke and its far end (the tip: its hull's box)
+    tip: Capsule                  # the fingertip's capsule (the last link) in its frame
+    tip_hull: Hull                # the fingertip's solid: the hull of its capsule and its yoke's box
     base_joints: Tuple[int, ...]  # the joints at the base point (0, and 1 when link 0 is 0 mm)
 
 
@@ -529,10 +556,11 @@ def finger_geometry(f: Finger) -> FingerGeometry:
             a0 = x_back + r
             a1 = max(L - r, a0)
             tip = Capsule(np.array([a0, 0.0, 0.0]), np.array([a1, 0.0, 0.0]), r)
+            tip_hull = Hull(np.concatenate([tip.surface_points(), yc]))
             # its far end (what must clear the plate it is hinged to): past the motor's swing and a wall
             x0 = min(max(_pad_start_mm(axes[j], turned[j]) + r, a0), a1)
             far = Capsule(np.array([x0, 0.0, 0.0]), tip.p1.copy(), r)
-            links.append(tip.aabb())
+            links.append(tip_hull.aabb())
         fars.append(far)
     base_joints = [0]
     for j in range(n - 1):
@@ -544,7 +572,8 @@ def finger_geometry(f: Finger) -> FingerGeometry:
     depth = max(mt.support(motors[j].centre, motors[j].axes, mt.ENCLOSURE_HALF_MM, nrm) for j in base_joints)
     base = np.array([PLATE_HALF_MM - depth, float(f.y), float(f.z)])
     return FingerGeometry(B=B, base_mm=base, depth_mm=float(depth), axes=axes, slides_mm=slides, motors=motors,
-                          yokes=yokes, fars=fars, links=links, tip=tip, base_joints=tuple(base_joints))
+                          yokes=yokes, fars=fars, links=links, tip=tip, tip_hull=tip_hull,
+                          base_joints=tuple(base_joints))
 
 
 def base_depth_mm(f: Finger) -> float:
@@ -575,24 +604,24 @@ def base_motor_boxes_mm(f: Finger) -> List[Box]:
 def link_box_mm(f: Finger, j: int) -> Box:
     """Link j's box in its own frame (mm): square to the link frame, around
     its yoke and its far end (the next motor); for the fingertip, its
-    capsule's box."""
+    hull's box."""
     return finger_geometry(f).links[j]
 
 
 def link_shape_mm(f: Finger, j: int):
     """Link j's solid in its own frame (mm): its box, or the fingertip's
-    capsule."""
+    hull (its capsule and its yoke's box)."""
     g = finger_geometry(f)
-    return g.tip if j == len(f.joints) - 1 else g.links[j]
+    return g.tip_hull if j == len(f.joints) - 1 else g.links[j]
 
 
 def link_points_m(hand: Hand, i: int, j: int) -> np.ndarray:
     """Link j's mesh points in its own frame (metres): a box's 8 corners, or
-    the fingertip capsule's 50 surface points. Their convex hull is the
-    simulator's collider and the viewer's mesh; their bounding box the
-    policy's token box."""
-    s = link_shape_mm(hand.fingers[i], j)
-    return (s.surface_points() if isinstance(s, Capsule) else s.corners()) * MM
+    the fingertip's 58 (the capsule's 50 surface points and its yoke's 8
+    corners). Their convex hull is the simulator's collider, the clearance
+    check's solid and the viewer's mesh; their bounding box the policy's
+    token box."""
+    return link_shape_mm(hand.fingers[i], j).corners() * MM
 
 
 # --------------------------------------------------------------------------
@@ -622,6 +651,8 @@ class HandGeometry:
     hinge_box: Optional[Box] = None        # the hinge motor, palm frame, mm
     hinge_clear: bool = True               # a spot on the cut clears every base motor
     base_boxes: Dict[int, List[Box]] = field(default_factory=dict)   # per finger, its base motors (palm, mm)
+    bay: Optional[Box] = None              # the board bay on the mount's column (palm frame, mm)
+    bay_gap_mm: float = math.inf           # its outline's gap to the nearest base sweep (-inf: on the cut)
 
 
 def _hinge_box_mm(p_yz: np.ndarray, d_yz: np.ndarray, n_yz: np.ndarray) -> Box:
@@ -639,14 +670,151 @@ def _footprint(box: Box) -> np.ndarray:
     return box.grown(mt.WALL_MM).corners()[:, 1:]
 
 
+BAY_ANGLE_STEP_DEG = 15
+BAY_SHIFTS_MM = ((0, 0), (5, 0), (-5, 0), (0, 5), (0, -5), (10, 0), (-10, 0), (5, 5), (5, -5), (-5, 5),
+                 (-5, -5), (15, 0), (-15, 0), (10, 5), (10, -5), (-10, 5), (-10, -5), (15, 5), (15, -5),
+                 (-15, 5), (-15, -5))
+"""The bay's shifts (along, across its long axis), nearest first: at most
+15 and 5 mm, so the mount's column (20 mm radius) stays on its lid with a
+wall to spare."""
+
+
+def bay_box_mm(angle_deg: float, along_mm: float = 0.0, across_mm: float = 0.0) -> Box:
+    """The board bay (palm frame, mm): its long axis at `angle_deg` in the
+    plate (from +y toward +z), shifted along and across it, from
+    `BAY_GAP_MM` behind the back face `BAY_DEPTH_MM` back."""
+    t = math.radians(angle_deg)
+    u = np.array([0.0, math.cos(t), math.sin(t)])
+    v = np.array([0.0, -math.sin(t), math.cos(t)])
+    centre = (np.array([-PLATE_HALF_MM - BAY_GAP_MM - BAY_DEPTH_MM / 2.0, 0.0, 0.0])
+              + along_mm * u + across_mm * v)
+    return Box(centre, np.column_stack([np.array([1.0, 0.0, 0.0]), u, v]),
+               np.array([BAY_DEPTH_MM / 2.0, BAY_SIZE_MM[0] / 2.0, BAY_SIZE_MM[1] / 2.0]))
+
+
+def _principal_angle_deg(points_yz: np.ndarray) -> float:
+    """The direction (degrees in [0, 180), from +y toward +z) along which
+    the points spread most."""
+    P = points_yz - points_yz.mean(axis=0)
+    w, V = np.linalg.eigh(P.T @ P)
+    d = V[:, int(np.argmax(w))]
+    return math.degrees(math.atan2(d[1], d[0])) % 180.0
+
+
+BAY_SWEEP_STEP_DEG = 10.0
+
+
+def _rot(axis: np.ndarray, t: float) -> np.ndarray:
+    return _rot_batch(axis, np.array([t]))[0]
+
+
+def base_sweep_mm(hand: Hand, i: int) -> np.ndarray:
+    """Corners (palm frame, mm) of finger i's base motors and of the links at
+    its base point (link 0, and link 1 after a 0 mm link 0) turned over
+    their joints' ranges in `BAY_SWEEP_STEP_DEG` steps (the main palm, its
+    hinge at 0)."""
+    return _base_sweep_cached(hand.fingers[i])
+
+
+@lru_cache(maxsize=65536)
+def _base_sweep_cached(f: Finger) -> np.ndarray:
+    hand = Hand(fingers=(f,))
+    i = 0
+    fg = finger_geometry(f)
+    out = [b.corners() for b in base_motor_boxes_mm(f)]
+    shapes = [fg.tip_hull if j == len(f.joints) - 1 else fg.links[j] for j in fg.base_joints]
+    grids = []
+    for j in fg.base_joints:
+        lo, hi = joint_limits(hand, i, j)
+        if f.joints[j].type == "sliding":
+            grids.append([0.0])
+            continue
+        n = max(2, int(math.ceil((hi - lo) / (BAY_SWEEP_STEP_DEG * DEG))) + 1)
+        grids.append(list(np.linspace(lo, hi, n)) if j == fg.base_joints[0] else [lo, 0.0, hi])
+    axes = [joint_axis(hand, i, j) for j in fg.base_joints]
+    for qs in itertools.product(*grids):
+        R = fg.B.copy()
+        for k, j in enumerate(fg.base_joints):
+            R = R @ _rot(axes[k], qs[k])
+            out.append(shapes[k].corners() @ R.T + fg.base_mm)
+    return np.concatenate(out)
+
+
+@lru_cache(maxsize=65536)
+def _bay_obstacle_yz(f: Finger) -> Optional[np.ndarray]:
+    """Finger f's base sweep (`base_sweep_mm`, its convex hull) where it
+    comes within a wall of the bay's front, projected on the plate: a convex
+    (y, z) polygon, or None if it stays clear in depth. The bay keeps a wall
+    from it if their outlines do (a conservative test)."""
+    from scipy.spatial import ConvexHull
+
+    P = _base_sweep_cached(f)
+    c = -PLATE_HALF_MM - BAY_GAP_MM + CLEARANCE_MM
+    if float(P[:, 0].min()) >= c - 1e-9:
+        return None
+    pts = [P[P[:, 0] <= c][:, 1:]]
+    if float(P[:, 0].max()) > c:
+        try:
+            S = ConvexHull(P).simplices
+        except Exception:
+            S = None
+        if S is not None:
+            E = np.concatenate([S[:, [0, 1]], S[:, [1, 2]], S[:, [2, 0]]])
+            A, B = P[E[:, 0]], P[E[:, 1]]
+            cross = (A[:, 0] - c) * (B[:, 0] - c) < 0.0
+            A, B = A[cross], B[cross]
+            t = (c - A[:, 0]) / (B[:, 0] - A[:, 0])
+            pts.append((A + t[:, None] * (B - A))[:, 1:])
+    return _hull2d(np.concatenate(pts))
+
+
+def _place_bay(hand: Hand, base_boxes: Dict[int, List[Box]],
+               cut: Optional[Tuple[np.ndarray, float]]) -> Tuple[Box, float]:
+    """The bay's pose: its long axis along the base motors' spread if it fits,
+    else the nearest turn (15 degree steps) and shift that keeps it a wall
+    from every finger's base sweep (`base_sweep_mm`) and, with a cut, on the
+    main side a seam and a wall short of the line. If none does, the one
+    farthest from those sweeps (the clearance check then fails the hand).
+    Returns the bay and its gap to the nearest sweep's outline (mm; inf:
+    nothing reaches its depth; -inf: no turn keeps it off a cut)."""
+    boxes = [b for bs in base_boxes.values() for b in bs]
+    near = [np.column_stack([np.zeros(len(Q)), Q]) for Q in map(_bay_obstacle_yz, hand.fingers) if Q is not None]
+    foot = np.concatenate([_footprint(b) for b in boxes])
+    a0 = _principal_angle_deg(foot)
+    angles = sorted(range(0, 180, BAY_ANGLE_STEP_DEG),
+                    key=lambda a: (min(abs(a - a0), 180.0 - abs(a - a0)), a))
+    best, best_d = None, -math.inf
+    for sh in BAY_SHIFTS_MM:
+        for a in angles:
+            box = bay_box_mm(a, *sh)
+            C = box.corners()
+            if cut is not None:
+                nrm, limit = cut
+                if float(np.max(C[:, 1:] @ nrm)) > limit + 1e-9:
+                    continue
+            R2 = np.column_stack([np.zeros(4), C[:4, 1:]])      # its outline (y, z): the back face's corners
+            d = min((gjk_distance(R2, M) for M in near), default=math.inf)
+            if d >= CLEARANCE_MM - 1e-6:
+                return box, float(d)
+            if d > best_d:
+                best, best_d = box, d
+    return (best if best is not None else bay_box_mm(angles[0])), float(best_d)
+
+
 @lru_cache(maxsize=8192)
 def hand_geometry(hand: Hand) -> HandGeometry:
     base_boxes = {i: base_motor_boxes_mm(f) for i, f in enumerate(hand.fingers)}
+    cut = None
+    if hand.palm_joints:
+        p0 = hand.palm_joints[0]
+        cut = (cut_normal_yz(p0), p0.offset - SEAM_MM / 2.0 - CLEARANCE_MM)
+    bay, bay_gap = _place_bay(hand, base_boxes, cut)
     pts = [mount_outline_mm()] + [_footprint(b) for bs in base_boxes.values() for b in bs]
     outline0 = _hull2d(np.concatenate(pts))
     if not hand.palm_joints:
         return HandGeometry(outline=_simplify(outline0, PALM_OUTLINE_MAX_VERTICES),
-                            outlines={-1: _simplify(outline0, PALM_OUTLINE_MAX_VERTICES)}, base_boxes=base_boxes)
+                            outlines={-1: _simplify(outline0, PALM_OUTLINE_MAX_VERTICES)}, base_boxes=base_boxes,
+                            bay=bay, bay_gap_mm=bay_gap)
     p = hand.palm_joints[0]
     d, nrm = cut_direction_yz(p), cut_normal_yz(p)
     foot = p.offset * nrm
@@ -682,7 +850,8 @@ def hand_geometry(hand: Hand) -> HandGeometry:
     return HandGeometry(outline=_simplify(outline, PALM_OUTLINE_MAX_VERTICES),
                         outlines={-1: _simplify(main, PALM_OUTLINE_MAX_VERTICES),
                                   0: _simplify(section, PALM_OUTLINE_MAX_VERTICES)},
-                        hinge_mm=hinge, hinge_axis=axis, hinge_box=hbox, hinge_clear=clear, base_boxes=base_boxes)
+                        hinge_mm=hinge, hinge_axis=axis, hinge_box=hbox, hinge_clear=clear, base_boxes=base_boxes,
+                        bay=bay, bay_gap_mm=bay_gap)
 
 
 def palm_outlines_mm(hand: Hand) -> Dict[int, np.ndarray]:
@@ -704,6 +873,11 @@ def palm_centre_mm(hand: Hand) -> np.ndarray:
     base step of the mount."""
     g = hand_geometry(hand)
     return polygon_centroid(_hull2d(np.concatenate([_footprint(b) for bs in g.base_boxes.values() for b in bs])))
+
+
+def bay_points_m(hand: Hand) -> np.ndarray:
+    """The board bay's 8 corners (palm frame, metres)."""
+    return hand_geometry(hand).bay.corners() * MM
 
 
 def plate_points_m(outline_mm: np.ndarray, origin_mm: Tuple[float, float] = (0.0, 0.0)) -> np.ndarray:
@@ -927,7 +1101,7 @@ def derive(hand: Hand, name: str = "grammar_hand") -> KinematicModel:
 
 @dataclass
 class Solid:
-    key: Tuple                 # ("palm", -1 | 0), ("mount",), ("hinge",), ("motor", i), ("link", i, j)
+    key: Tuple                 # ("palm", -1 | 0), ("mount",), ("bay",), ("hinge",), ("motor", i), ("link", i, j)
     points: np.ndarray         # (k, 3) corners (a capsule: its segment's ends), palm frame, metres
     box: Optional[Box] = None  # the same solid as a box (palm frame, mm), for boxes
     far: Optional[object] = None  # a link's far end (palm frame, mm): the next motor (Box) or the tip's end (Capsule)
@@ -943,16 +1117,19 @@ def _link_solid(key: Tuple, shape, T: np.ndarray) -> Solid:
     if isinstance(shape, Capsule):
         c = shape.moved(T, MM)
         return Solid(key, c.ends() * MM, None, radius=c.radius * MM)
+    if isinstance(shape, Hull):
+        return Solid(key, shape.moved(T, MM).points * MM)
     return _box_solid(key, shape, T)
 
 
 def solids_at(hand: Hand, q: Optional[np.ndarray] = None) -> List[Solid]:
     """Every solid of the hand at joint vector `q` (default the zero pose):
-    the plates, the mount, the hinge motor, each finger's base motor (fixed
+    the plates, the mount, the bay, the hinge motor, each finger's base motor (fixed
     to its plate) and each link (with the motor it carries)."""
     pose = fk(hand, q)
     g = hand_geometry(hand)
-    out: List[Solid] = [Solid(("palm", -1), plate_points_m(g.outlines[-1])), Solid(("mount",), mount_points_m())]
+    out: List[Solid] = [Solid(("palm", -1), plate_points_m(g.outlines[-1])), Solid(("mount",), mount_points_m()),
+                        Solid(("bay",), g.bay.corners() * MM, g.bay)]
     if hand.palm_joints:
         T = pose.palm[0]
         pts = plate_points_m(g.outlines[0])
@@ -962,7 +1139,8 @@ def solids_at(hand: Hand, q: Optional[np.ndarray] = None) -> List[Solid]:
         fg = finger_geometry(f)
         out.append(_box_solid(("motor", i), fg.motors[0], pose.pre[i][0]))
         for j in range(len(f.joints)):
-            s = _link_solid(("link", i, j), fg.tip if j == len(f.joints) - 1 else fg.links[j], pose.links[i][j])
+            s = _link_solid(("link", i, j), fg.tip_hull if j == len(f.joints) - 1 else fg.links[j],
+                            pose.links[i][j])
             s.far = fg.fars[j].moved(pose.links[i][j], MM)
             out.append(s)
     return out
@@ -973,7 +1151,7 @@ def solid_owner(hand: Hand, key: Tuple) -> Tuple:
     kind = key[0]
     if kind == "palm":
         return key
-    if kind in ("mount", "hinge"):
+    if kind in ("mount", "bay", "hinge"):
         return ("palm", -1)
     if kind == "motor":
         return ("palm", finger_section(hand, key[1]))
@@ -1012,10 +1190,11 @@ def capsule_mass_props(c: Capsule, density: float = LINK_DENSITY_KG_M3) -> Tuple
 def link_mass_props(hand: Hand, i: int, j: int) -> Tuple[float, np.ndarray, np.ndarray]:
     """(mass, centre of mass, diagonal inertia) of link j in its frame
     (metres): its box, or the fingertip's capsule."""
-    s = link_shape_mm(hand.fingers[i], j)
-    if isinstance(s, Capsule):
+    f = hand.fingers[i]
+    if j == len(f.joints) - 1:
+        s = finger_geometry(f).tip
         return capsule_mass_props(Capsule(s.p0 * MM, s.p1 * MM, s.radius * MM))
-    return box_mass_props(s.corners() * MM)
+    return box_mass_props(link_shape_mm(f, j).corners() * MM)
 
 
 # --------------------------------------------------------------------------

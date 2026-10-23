@@ -3,7 +3,8 @@
 
 A hand is a flat palm plate with 2-6 fingers, built from one motor (the
 Feetech HL-3915, `motor.py`). Everything is stored as integers on one grid:
-millimetres in steps of 10, degrees in steps of 30.
+millimetres in steps of 10, degrees in steps of 30; a link at a servo floor
+1 mm past the grid (41 mm, `motor.floor_mm`) is the one exception.
 
 Frames
 ------
@@ -52,7 +53,7 @@ GRAMMAR_VERSION = "hand_grammar/2.0"
 # Constants
 # --------------------------------------------------------------------------
 
-GRID_MM = 10                # every stored length and position
+GRID_MM = 10                # every stored position and length (but an off-grid servo floor)
 GRID_DEG = 30               # every stored angle
 
 # Links: 0 mm (two joints at one point) or 10 mm up to the longest link; the
@@ -79,6 +80,18 @@ PLATE_HALF_MM = PALM_THICKNESS_MM / 2.0
 MOUNT_RADIUS_MM = 20.0
 MOUNT_DEPTH_MM = 40.0
 MOUNT_POINTS = 16
+# The board bay: a box at the far end of the mount's column, where the hand
+# meets the arm, holding the Palm Hub board (Martin, 2026-10-23: the board
+# behind the palm). Outline: the board (69.5 x 38 mm) with 8 mm of plug room
+# along each long edge, 1 mm of play and 2 mm walls; depth: a 3.5 mm floor
+# (the arm adapter bolts to it), the board on 1 mm pads under its 7.75 mm
+# parts, 1.15 mm of play and the 3 mm lid the column stands on. Deeper behind
+# the palm than a base link reaches as it turns, except a finger's link
+# swinging back across the palm centre: each hand turns and shifts the bay
+# to clear its base links over their ranges (`derive.hand_geometry`).
+BAY_SIZE_MM = (76.0, 60.0)         # along its long axis, across it
+BAY_DEPTH_MM = 18.0
+BAY_GAP_MM = MOUNT_DEPTH_MM - BAY_DEPTH_MM     # from the back face to the lid: 22 mm
 PALM_OUTLINE_MAX_VERTICES = 32     # a GPU convex hull: 2 x 32 vertices, 34 faces
 # A palm cut is an open seam: a 24 mm plate cannot swing +/-30 degrees through
 # a zero-width cut. Both parts stop half the seam short of the line (the gap
@@ -341,6 +354,11 @@ def _link_floor(ax_a: Tuple[int, int], ax_b: Tuple[int, int], turned_a: bool, tu
 
 
 @lru_cache(maxsize=None)
+def _crossing_floor(ax: Tuple[int, int], turned: bool) -> int:
+    return mt.crossing_floor_mm(axis_unit(ax), turned)
+
+
+@lru_cache(maxsize=None)
 def _tip_floor(ax: Tuple[int, int], turned: bool) -> int:
     return mt.tip_floor_mm(axis_unit(ax), turned)
 
@@ -353,12 +371,16 @@ def _is_bend(ax: Tuple[int, int]) -> bool:
 def turned_servo(f: Finger, j: int) -> bool:
     """Whether joint j's servo is turned, its body on the back of the finger
     instead of along the link: a bend servo whose link before it is too short
-    for it to lie along the link (Martin, 2026-10-16). Servos at the base and
-    after a 0 mm link lie along the finger."""
+    for it to lie along the link (Martin, 2026-10-16). Servos at the base, on
+    either side of a 0 mm link lie along the finger: the servo after a
+    crossing shares its point and lies along the finger, so the link before
+    the crossing must fit it too (2026-10-23, found building the parts)."""
     if j == 0:
         return False
     jt, prev = f.joints[j], f.joints[j - 1]
     if jt.type == "sliding" or prev.length == 0 or not _is_bend(tuple(jt.axis)):
+        return False
+    if j < len(f.joints) - 1 and jt.length == 0:
         return False
     return prev.length < _link_floor(tuple(prev.axis), tuple(jt.axis), turned_servo(f, j - 1), False)
 
@@ -379,7 +401,8 @@ def zero_link_ok(f: Finger, j: int, buildable: bool) -> bool:
 
 def length_floor_mm(f: Finger, j: int, buildable: bool) -> int:
     """The shortest non-zero length link j may have: before a bend servo,
-    the length at which it turns (`turned_servo`)."""
+    the length at which it turns (`turned_servo`); before a crossing, room
+    for the servo after it too (`motor.crossing_floor_mm`)."""
     n = len(f.joints)
     if not buildable:
         return TIP_MIN_MM if j == n - 1 else LINK_MIN_MM
@@ -388,14 +411,26 @@ def length_floor_mm(f: Finger, j: int, buildable: bool) -> int:
         return _tip_floor(a, turned_servo(f, j))
     nxt = f.joints[j + 1]
     b = tuple(nxt.axis)
-    return _link_floor(a, b, turned_servo(f, j), nxt.type != "sliding" and _is_bend(b))
+    crossing = j + 1 < n - 1 and nxt.length == 0
+    can_turn = nxt.type != "sliding" and _is_bend(b) and not crossing
+    fl = _link_floor(a, b, turned_servo(f, j), can_turn)
+    if crossing:
+        fl = max(fl, _crossing_floor(a, turned_servo(f, j)))
+    return fl
 
 
 def allowed_lengths(f: Finger, j: int, buildable: bool, max_mm: int = LINK_MAX_MM, step: int = GRID_MM) -> List[int]:
     """Every length link j of finger f may take, ascending, given its
-    neighbours: the floor, then every `step` mm up to `max_mm`, and 0 where
-    allowed."""
-    out = list(range(length_floor_mm(f, j, buildable), max_mm + 1, step))
+    neighbours: the floor, then every `step` mm up to `max_mm`
+    (`motor.lengths_from`), and 0 where allowed. Without the servo floors the
+    grid also takes the servo floor where it is off the grid (41 mm), so every
+    buildable hand stays inside the grammar's own limits."""
+    out = mt.lengths_from(length_floor_mm(f, j, buildable), max_mm, step)
+    if not buildable and f.joints[j].type != "sliding" and (j == len(f.joints) - 1 or
+                                                             f.joints[j + 1].type != "sliding"):
+        fl = length_floor_mm(f, j, True)
+        if fl % GRID_MM and out and out[0] <= fl <= max_mm:
+            out = sorted(set(out) | {fl})
     if zero_link_ok(f, j, buildable):
         out = [0] + out
     return out

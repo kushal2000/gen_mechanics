@@ -148,8 +148,9 @@ def test_ghost_tail_sits_at_the_fingertip():
 
 
 def test_link_colliders_are_servo_sized_boxes_and_plates_fit_gpu_hulls():
-    """Links are boxes and fingertips 50-point capsules, every hull inside
-    PhysX's GPU limits (64 vertices, 64 faces)."""
+    """Links are boxes and fingertips the hull of a 50-point capsule and its
+    yoke's 8 corners, every hull inside PhysX's GPU limits (64 vertices, 64
+    faces)."""
     from scipy.spatial import ConvexHull
 
     for h in list(SPECIAL.values()) + _random_hands(40, seed=4):
@@ -157,7 +158,7 @@ def test_link_colliders_are_servo_sized_boxes_and_plates_fit_gpu_hulls():
         for s in range(ge.N_SLOTS):
             if d.slot_real[s] and ge.slot_joint_index(s) >= 0:
                 pts = ge.link_points(d, s)
-                assert pts.shape in ((8, 3), (50, 3))      # a box, or the fingertip capsule's mesh points
+                assert pts.shape in ((8, 3), (58, 3))      # a box, or the fingertip's capsule and yoke
                 hull = ConvexHull(pts)
                 assert len(hull.vertices) <= 64 and len({tuple(np.round(e, 6)) for e in hull.equations}) <= 64
                 ext = pts.max(0) - pts.min(0)
@@ -182,13 +183,13 @@ def test_token_boxes_are_the_link_boxes():
 
 
 def test_extra_colliders_carry_the_motors_and_the_mount():
-    """The root carries the mount, the hinge motor and the main palm's base
-    motors; the leader carrier the base motors beyond the cut (relative to
-    the hinge)."""
+    """The root carries the mount, the board bay, the hinge motor and the main
+    palm's base motors; the leader carrier the base motors beyond the cut
+    (relative to the hinge)."""
     h = SPECIAL["cut"]
     d = ge.canonicalize(h)
     root = ge.root_colliders(d)
-    assert set(root) == {"mount", "hinge_motor", "motor_0", "motor_1", "motor_2", "motor_5"}
+    assert set(root) == {"mount", "bay", "hinge_motor", "motor_0", "motor_1", "motor_2", "motor_5"}
     leader = ge.carrier_slot(4)
     carried = ge.carrier_colliders(d, leader)
     assert set(carried) == {"motor_3", "motor_4"}

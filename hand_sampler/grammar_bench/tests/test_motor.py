@@ -20,11 +20,21 @@ COARSE_AXES = [direction(az, el) for az in range(0, 180, 30) for el in (-60, -30
 
 @pytest.mark.parametrize("a,b,floor", [
     ("bend", "bend", 50), ("bend", "spread", 50), ("bend", "twist", 40),
-    ("spread", "bend", 40), ("spread", "spread", 40), ("spread", "twist", 30),
+    ("spread", "bend", 41), ("spread", "spread", 41), ("spread", "twist", 31),
     ("twist", "bend", 50), ("twist", "spread", 50), ("twist", "twist", 40),
 ])
 def test_on_kind_link_floors(a, b, floor):
+    """On the 10 mm grid, or 1 mm past it where the grid leaves less than
+    `BUILD_CLEARANCE_MM` (after a spread: 39.73 -> 41, Martin 2026-10-23)."""
     assert mt.link_floor_mm(KINDS[a], KINDS[b]) == floor
+
+
+def test_floor_rounding_and_lengths():
+    assert [mt.floor_mm(v) for v in (40.29, 39.73, 39.0, 41.0, 49.5, 30.0)] == [50, 41, 40, 50, 51, 31]
+    assert mt.lengths_from(41, 90, 10) == [41, 50, 60, 70, 80, 90]
+    assert mt.lengths_from(41, 90, 20) == [41, 60, 80]
+    assert mt.lengths_from(30, 90, 20) == [30, 50, 70, 90]
+    assert mt.lengths_from(100, 90, 10) == []
 
 
 def test_link_floors_match_e15():
@@ -39,7 +49,7 @@ def test_link_floors_match_e15():
 def test_floors_over_the_coarse_axes():
     assert len(COARSE_AXES) == 31
     floors = {mt.link_floor_mm(a, b) for a in COARSE_AXES for b in COARSE_AXES}
-    assert max(floors) == 50 and min(floors) == 30
+    assert floors == {31, 40, 41, 50, 51}
     assert {mt.tip_floor_mm(a) for a in KINDS.values()} == {30}
     assert max(mt.tip_floor_mm(a) for a in COARSE_AXES) == 40
 
@@ -58,7 +68,7 @@ def test_a_turned_bend_motor():
         == [50, 30, 40, 50]
     assert mt.link_floor_mm(SPREAD, BEND, False, True) == 30 and mt.link_floor_mm(TWIST, BEND, False, True) == 30
     assert mt.tip_floor_mm(BEND, True) == 40 and mt.tip_floor_mm(BEND) == 30
-    assert mt.crossing_slide_mm(SPREAD, BEND, turned_b=True) == pytest.approx(41.0)
+    assert mt.crossing_slide_mm(SPREAD, BEND, turned_b=True) == pytest.approx(42.5)
     assert mt.BEND_RANGE_DEG == tuple(float(v) for v in KIND_RANGE_DEG["flexion"])
 
 
@@ -81,10 +91,11 @@ def test_crossing_rules_and_slides():
     assert mt.crossing_ok(BEND, SPREAD) and mt.crossing_ok(SPREAD, BEND)
     assert not mt.crossing_ok(BEND, BEND)                 # the same line
     assert not mt.crossing_ok(BEND, TWIST) and not mt.crossing_ok(TWIST, SPREAD)
-    assert mt.crossing_slide_mm(SPREAD, BEND) == pytest.approx(26.5)
-    assert mt.crossing_slide_mm(BEND, SPREAD) == pytest.approx(26.5)
-    assert mt.crossing_slide_mm(BEND, BEND) == pytest.approx(31.0)
-    assert mt.crossing_slide_mm(BEND, direction(30, 0)) == pytest.approx(34.057, abs=1e-3)
+    # a wall plus 1.5 mm for the near horn's screw head (Martin, 2026-10-23)
+    assert mt.crossing_slide_mm(SPREAD, BEND) == pytest.approx(28.0)
+    assert mt.crossing_slide_mm(BEND, SPREAD) == pytest.approx(28.0)
+    assert mt.crossing_slide_mm(BEND, BEND) == pytest.approx(32.5)
+    assert mt.crossing_slide_mm(BEND, direction(30, 0)) == pytest.approx(35.557, abs=1e-3)
 
 
 def test_crossed_motors_stay_a_wall_apart_over_the_range():
@@ -99,3 +110,13 @@ def test_crossed_motors_stay_a_wall_apart_over_the_range():
         B0 = mt.box_corners(mt.motor_centre(b), mt.motor_axes(b), mt.MOTOR_HALF_MM)
         for R in _rot_batch(a, np.linspace(-np.pi / 2, np.pi / 2, 13)):
             assert gjk_distance(A, B0 @ R.T) >= mt.WALL_MM - 1e-6
+
+
+def test_a_link_before_a_crossing_fits_the_servo_after_it():
+    """A crossing's second servo shares the crossing's point, lies along the
+    finger (24.5 mm behind it) and sits in the next part: the link before the
+    crossing keeps its housing wall and a gap past the plane floor
+    (2026-10-23): 45 mm after a bend, 44 after a spread, 52 after a turned
+    bend."""
+    assert mt.crossing_floor_mm(BEND) == 45 and mt.crossing_floor_mm(SPREAD) == 44
+    assert mt.crossing_floor_mm(BEND, True) == 52

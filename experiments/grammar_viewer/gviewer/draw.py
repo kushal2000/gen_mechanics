@@ -201,6 +201,7 @@ class HandDrawing:
         outlines = gdv.palm_outlines_mm(hand)
         self._add(("palm", -1), "palm", plate_mesh(outlines[-1]), PALM_RGB, opacity=PALM_OPACITY)
         self._add(("mount",), "mount", hull_mesh(gdv.mount_points_m()), MOUNT_RGB)
+        self._add(("bay",), "bay", box_mesh(gdv.bay_points_m(hand)), MOUNT_RGB)
         g = gdv.hand_geometry(hand)
         if hand.palm_joints:
             hinge = gdv.palm_hinge_m(hand) / MM
