@@ -274,8 +274,9 @@ def test_object_at_its_start(evo):
 
 
 def test_generate_full_design_draws_the_parts_and_follows_the_joints(evo, tmp_path, monkeypatch):
-    """The Build button's job: the hand's kit (zip, STLs), its parts drawn over
-    the hand, posed with the joint sliders; a new hand clears them."""
+    """The Build button's job: the hand's kit (zip, STLs), its parts and its
+    servos (case and horns) drawn in place of the grammar's bodies, posed
+    with the joint sliders; a new hand clears them and shows the bodies."""
     from hand_sampler.cad import package, render
 
     try:
@@ -288,7 +289,13 @@ def test_generate_full_design_draws_the_parts_and_follows_the_joints(evo, tmp_pa
     assert evo.generate_design(wait=True)
     assert evo.kit is not None and evo.kit.zip_path.exists()
     assert "parts in" in evo.md_build.content
-    assert set(evo.printed.handles) == set(evo.kit.parts)
+    tags = ["_".join(str(k) for k in sp.key) for sp in evo.kit.design.servos.values()]
+    assert set(evo.printed.handles) == (set(evo.kit.parts) | {f"servo_{t}" for t in tags}
+                                        | {f"horns_{t}" for t in tags})
+    assert not evo.drawing.shown and not any(h.visible for h in evo.drawing.handles)
+    evo.gui_printed.value = False
+    assert evo.drawing.shown and not any(h.visible for hs in evo.printed.handles.values() for h in hs)
+    evo.gui_printed.value = True
     tips = [n for n in evo.kit.parts if n.endswith("_tip")]
     before = [np.array(evo.printed.handles[n][0].wxyz) for n in tips]
     evo.gui_curl.value = 0.8
@@ -296,3 +303,4 @@ def test_generate_full_design_draws_the_parts_and_follows_the_joints(evo, tmp_pa
     assert max(np.linalg.norm(a - b) for a, b in zip(after, before)) > 1e-3     # the fingertips turned
     evo.random(wait=True)
     assert evo.kit is None and not evo.printed.handles
+    assert evo.drawing.shown

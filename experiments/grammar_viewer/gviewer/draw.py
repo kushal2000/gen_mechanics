@@ -145,6 +145,8 @@ class HandDrawing:
         self.hand: Optional[Hand] = None
         self.hot: set = set()
         self.link_opacity = LINK_OPACITY
+        self.shown = True                       # False while printed parts stand in for these bodies
+        self.wanted: Dict[int, bool] = {}       # each mesh's own visibility
         self.frame = server.scene.add_frame(root, show_axes=False, wxyz=_pose(_pad(PALM_UP))[0])
 
     def clear(self) -> None:
@@ -159,7 +161,8 @@ class HandDrawing:
         V, F = mesh
         hot = key in self.hot or (key[0] == "motor" and len(key) == 3 and key[2] == 0 and ("motor", key[1]) in self.hot)
         h = self.server.scene.add_mesh_simple(f"{self.root}/{name}", V, F, color=HOT_RGB if hot else color,
-                                              opacity=opacity, flat_shading=True, visible=visible)
+                                              opacity=opacity, flat_shading=True, visible=visible and self.shown)
+        self.wanted[id(h)] = visible
         self.bodies[key] = h
         self.handles.append(h)
 
@@ -253,6 +256,13 @@ class HandDrawing:
         for h in self.handles:
             h.visible = visible
 
+    def set_shown(self, shown: bool) -> None:
+        """Show or hide the grammar's bodies (the task's cube stays)."""
+        self.shown = bool(shown)
+        for h in self.handles:
+            if h is not self.object:
+                h.visible = self.shown and self.wanted.get(id(h), True)
+
     def bounds(self, q: np.ndarray) -> Tuple[np.ndarray, float]:
         """(centre, radius) of the hand in viewer world coordinates."""
         if self.hand is None:
@@ -300,13 +310,19 @@ class MeshOverlay:
                     pass
         self.handles = {}
 
-    def build(self, meshset, opacity: float = 0.35, color=(205, 205, 210), scale: float = 1.0) -> None:
+    def build(self, meshset, opacity: Optional[float] = 0.35, color=(205, 205, 210), scale: float = 1.0,
+              colors: Optional[Dict[str, tuple]] = None, solid: bool = False) -> None:
         """The meshes, `scale` x their size (a commercial hand is fitted at the
-        scale it is buildable from Feetech servos)."""
+        scale it is buildable from Feetech servos); `colors` per link.
+        `solid`: closed, outward-facing meshes drawn opaque, front faces only,
+        flat shaded (printed parts; see-through double-sided faces sort
+        wrongly in the browser)."""
         self.clear()
+        colors = colors or {}
         for link, pieces in meshset.pieces.items():
             self.handles[link] = [self.server.scene.add_mesh_simple(
-                f"{self.root}/{link}/{n}", p.vertices, p.faces, color=color, opacity=opacity, side="double",
+                f"{self.root}/{link}/{n}", p.vertices, p.faces, color=colors.get(link, color),
+                opacity=None if solid else opacity, side="front" if solid else "double", flat_shading=solid,
                 scale=float(scale), visible=self.visible) for n, p in enumerate(pieces)]
 
     def update(self, link_poses: Dict[str, np.ndarray]) -> None:

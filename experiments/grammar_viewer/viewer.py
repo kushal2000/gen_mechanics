@@ -55,6 +55,8 @@ MAX_TRIES = 2000
 MESH_OPACITY = 0.35
 OBJECT_HALF_M = 0.036
 """The repose task's cube (72 mm), shown where it starts."""
+PRINTED_LINK_RGB, PRINTED_PALM_RGB = (150, 175, 215), (175, 180, 190)   # generated parts: links, palm side
+SERVO_RGB, HORN_RGB = (60, 60, 66), (220, 220, 225)                      # Feetech's case, its horns
 
 C1_HINT = ("Every two solids (servo-sized links, base motors, the mount, the hinge motor, the palm) keep one printed "
            "wall (2 mm) apart with every joint at 0 (where episodes start: the fingers open), "
@@ -98,6 +100,7 @@ class GrammarViewer:
         self.printed = draw.MeshOverlay(server, "/hand/printed")
         self.kit = None                               # the last generated design and its hand
         self.kit_hand: Optional[Hand] = None
+        self.printed_frames: Dict[str, tuple] = {}     # printed part or servo -> (its rigid body, frame there, mm)
         self._build_gui()
         if build_initial:
             self.random(wait=True)
@@ -160,24 +163,48 @@ class GrammarViewer:
         return self.run_job("design", job, wait)
 
     def _build_printed(self) -> None:
+        """The kit's parts and its servos (Feetech's model where its meshes
+        are in `outputs/build_ref`, `hand_sampler.cad.servo_mesh`), each with
+        the rigid body it moves with and its frame there (mm)."""
         import trimesh
+
+        from hand_sampler.cad import servo_mesh
 
         class _Set:
             def __init__(self, pieces):
                 self.pieces = pieces
 
-        pieces = {}
-        for n in self.kit.parts:
+        pieces, colors, frames = {}, {}, {}
+        for n, (body, M) in self.kit.part_frames().items():
             path = self.kit.folder / "stl" / f"{n}.stl"
             if path.exists():
                 pieces[n] = [trimesh.load(str(path), force="mesh")]
-        self.printed.build(_Set(pieces), opacity=0.95, color=(150, 175, 215), scale=1e-3)
-        self.printed.set_visible(bool(self.gui_printed.value))
+                colors[n] = PRINTED_PALM_RGB if body[0] == "palm" else PRINTED_LINK_RGB
+                frames[n] = (body, M)
+        case, driven, idler = servo_mesh.load()
+        for sp in self.kit.design.servos.values():
+            tag = "_".join(str(k) for k in sp.key)
+            pieces[f"servo_{tag}"], colors[f"servo_{tag}"] = [case], SERVO_RGB
+            frames[f"servo_{tag}"] = (sp.parent, sp.S_parent)
+            pieces[f"horns_{tag}"] = [driven] + ([idler] if sp.idler_horn else [])
+            colors[f"horns_{tag}"], frames[f"horns_{tag}"] = HORN_RGB, (sp.child, sp.S_child)
+        self.printed_frames = frames
+        self.printed.build(_Set(pieces), color=PRINTED_LINK_RGB, colors=colors, scale=1e-3, solid=True)
+        self._sync_printed()
+
+    def _printed_on(self) -> bool:
+        return bool(self.gui_printed.value) and self.kit is not None and self.kit_hand == self.hand
+
+    def _sync_printed(self) -> None:
+        """Printed parts and servos shown stand in for the grammar's bodies."""
+        on = self._printed_on()
+        self.printed.set_visible(on)
+        self.drawing.set_shown(not on)
 
     def _printed_poses(self, q: np.ndarray) -> Dict[str, np.ndarray]:
         pose = gdv.fk(self.hand, q)
         out = {}
-        for n, (body, M) in self.kit.part_frames().items():
+        for n, (body, M) in self.printed_frames.items():
             if body[0] == "link":
                 B = pose.links[body[1]][body[2]]
             elif body == ("palm", 0):
@@ -366,6 +393,7 @@ class GrammarViewer:
             if hand != self.kit_hand:
                 self.printed.clear()
                 self.kit, self.kit_hand = None, None
+                self.drawing.set_shown(True)
                 self.md_build.content = ""
             if commercial is None:
                 self.commercial, self.real, self.jmap = None, None, {}
@@ -380,6 +408,7 @@ class GrammarViewer:
             # commercial hands are exempt from C1 in the simulator (their bases and links sit closer than
             # servo-sized solids allow; the overlaps are collision-filtered), so they are not painted red
             bad = [(a, b) for a, b, _ in viability.c1.pairs] if self.gui_c1.value else []
+            self.drawing.shown = not self._printed_on()
             self.drawing.build(hand, highlight=bad,
                                object_half_m=OBJECT_HALF_M if self.gui_object.value else None,
                                link_opacity=float(self.gui_links.value))
@@ -682,7 +711,7 @@ class GrammarViewer:
 
         btn_center.on_click(lambda _: self.recentre())
         btn_design.on_click(lambda event: self.generate_design(client=event.client))
-        self.gui_printed.on_update(lambda _: self.printed.set_visible(bool(self.gui_printed.value)))
+        self.gui_printed.on_update(lambda _: self._sync_printed())
 
 
 def main(argv=None) -> int:
