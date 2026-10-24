@@ -131,6 +131,21 @@ def test_the_parts_list_adds_up(tmp_path):
     used = package._count_screws(d)["box"]
     assert used <= HL3915.box_screws * n                      # the servos' own screws are enough
     assert package._count_screws(d)["M2x5"] == 4 * n
-    assert len(d.parts[("palm", -1)].bolts) >= 2              # the palm's halves are bolted
+    assert len(d.parts[("palm", -1)].column_screws) >= 3      # the mount's column is screwed on
     steps = (kit.folder / "ASSEMBLY.md").read_text()
     assert "| 11 |" in steps and "CH1" in steps and "CH2" in steps
+
+
+def test_every_placement_is_a_proper_rotation():
+    """No transform in a hand file mirrors (a mirrored piece turns inside out
+    in a hull, and a cut by it adds material)."""
+    import re
+
+    from hand_sampler.cad import scad
+
+    for make in HANDS.values():
+        txt = scad.hand_scad(Design(make()))
+        mats = re.findall(r"multmatrix\(\[\[(.*?)\]\]\)", txt) + re.findall(r"tube\(\[\[(.*?)\]\], \[", txt)
+        for m in mats:
+            R = np.array([list(map(float, r.split(","))) for r in m.split("],[")])[:3, :3]
+            assert abs(np.linalg.det(R) - 1.0) < 1e-3

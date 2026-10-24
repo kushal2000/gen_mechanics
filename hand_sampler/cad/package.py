@@ -51,13 +51,11 @@ class Kit:
 
     def part_frames(self) -> Dict[str, tuple]:
         """Each printed part's STL: (its rigid body, its frame in that body,
-        mm). Palm halves are in the palm's frame; the bay and the mount in
+        mm). Palm parts are in the palm's frame; the bay and the mount in
         the bay's frame, fixed to the main palm."""
         out = {}
         for p in self.design.parts.values():
-            names = [f"{p.name}_front", f"{p.name}_back"] if p.split_x is not None else [p.name]
-            for n in names:
-                out[n] = (p.body, np.eye(4))
+            out[p.name] = (p.body, np.eye(4))
         for p in self.design.extras:
             out[p.name] = (("palm", -1), p.frame)
         return out
@@ -76,12 +74,18 @@ def generate(hand: Hand, out_root: Path = DESIGNS_DIR, progress: Optional[Callab
     say("designing the parts")
     d = Design(hand)
     path = scad.write(d, folder / "scad")
-    say("placing the palm's bolts")
-    place_palm_bolts(d, path, folder / "work")
-    path = scad.write(d, folder / "scad")
     names = scad.printed_names(d)
     say(f"rendering {len(names)} parts with OpenSCAD")
     res = render.render_all(path, names, folder / "stl")
+    # a link that came out in pieces (something turns through its tube) gets tubes to its cradle's
+    # other faces; the design is rebuilt so its neighbours give way to them, and rendered again
+    split = {k for k, p in d.parts.items() if k[0] == "link" and res.get(p.name) is not None
+             and res[p.name].ok and _pieces(res[p.name].stl) > 1}
+    if split:
+        say(f"joining {len(split)} links again")
+        d = Design(hand, more_tubes=split)
+        path = scad.write(d, folder / "scad")
+        res = render.render_all(path, names, folder / "stl")
     failed = [n for n, r in res.items() if not r.ok]
     say("checking the parts")
     rep = checks.check(d, folder / "stl")
@@ -98,8 +102,10 @@ def generate(hand: Hand, out_root: Path = DESIGNS_DIR, progress: Optional[Callab
             rep.parts[n]["print_extent_mm"] = ext
             if max(ext[:2]) > PRINT_BED_MM:
                 rep.warnings.append(f"{n} is {max(ext[:2]):.0f} mm across: larger than a {PRINT_BED_MM:.0f} mm bed")
+    say("drawing the assembly steps")
+    steps = step_pictures(d, path, folder / "steps")
     (folder / "BOM.md").write_text(bom(d, rep))
-    (folder / "ASSEMBLY.md").write_text(assembly(d, rep.orders))
+    (folder / "ASSEMBLY.md").write_text(assembly(d, rep.orders, steps))
     (folder / "checks.md").write_text("# Checks\n\n```\n" + rep.summary() + "\n```\n")
     (folder / "report.json").write_text(json.dumps({"id": did, "ok": rep.ok, "parts": rep.parts,
                                                     "clashes": rep.clashes, "warnings": rep.warnings}, indent=1))
@@ -107,53 +113,14 @@ def generate(hand: Hand, out_root: Path = DESIGNS_DIR, progress: Optional[Callab
     zpath = folder.with_suffix(".zip")
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(folder.rglob("*")):
-            if f.is_file():
+            if f.is_file() and f.suffix != ".off":        # the OFF meshes are only for the checks
                 z.write(f, f"hand_{did}/{f.relative_to(folder)}")
     return Kit(folder, zpath, rep, names, time.time() - t0, d)
 
 
-PALM_BOLTS_MAX = 6
-PALM_BOLT_SPACING_MM = 16.0
-BOLT_SOLID_R_MM = 3.6         # a bolt's head and nut need solid plate this far round it
-BOLT_SOLID_SHARE = 0.97
-
-
-def place_palm_bolts(d: Design, scad_path: Path, work: Path) -> None:
-    """Render each palm plate whole, keep the bolt spots with solid plate
-    all round them through both halves, and spread up to `PALM_BOLTS_MAX`
-    of them as far apart as they go."""
-    import manifold3d as m3
-    import trimesh
-
-    for p in list(d.parts.values()):
-        if p.split_x is None:
-            continue
-        sec = p.body[1]
-        r = render.render_part(scad_path, f"{p.name}_whole", work)
-        if not r.ok:
-            continue
-        tm = trimesh.load(str(r.stl), force="mesh")
-        plate = m3.Manifold(m3.Mesh(vert_properties=np.asarray(tm.vertices, dtype=np.float32),
-                                    tri_verts=np.asarray(tm.faces, dtype=np.uint32)))
-        t = 2.0 * 12.0 - 1.0
-        cyl = m3.Manifold.cylinder(t, BOLT_SOLID_R_MM, BOLT_SOLID_R_MM, 24).rotate([0.0, 90.0, 0.0])
-        full = cyl.volume()
-        ok = []
-        for y, z in d.bolt_candidates(sec):
-            c = cyl.translate([-t / 2.0, y, z])
-            if (c ^ plate).volume() >= BOLT_SOLID_SHARE * full:
-                ok.append(np.array([y, z]))
-        chosen: List[np.ndarray] = []
-        centre = np.mean(ok, axis=0) if ok else np.zeros(2)
-        while ok and len(chosen) < PALM_BOLTS_MAX:
-            if not chosen:
-                q = max(ok, key=lambda c: float(np.linalg.norm(c - centre)))
-            else:
-                q = max(ok, key=lambda c: min(float(np.linalg.norm(c - e)) for e in chosen))
-                if min(float(np.linalg.norm(q - e)) for e in chosen) < PALM_BOLT_SPACING_MM:
-                    break
-            chosen.append(q)
-        d.set_bolts(sec, [tuple(map(float, q)) for q in chosen])
+def _pieces(stl: Path) -> int:
+    _, man = render.load(stl)
+    return sum(1 for q in man.decompose() if q.volume() > 1.0)
 
 
 # --------------------------------------------------------------------------
@@ -196,19 +163,15 @@ def lay_flat(src: Path, dst: Path) -> List[float]:
 
 
 def _count_screws(d: Design) -> Dict[str, int]:
-    out = {"box": 0, "M2x5": 0, "M3x16_palm": 0, "M3_nut": 0, "M3x16_column": 0, "M3x8_skirt": 4,
-           "M2x6_board": 4}
+    out = {"box": 0, "M2x5": 0, "M3x12_column": 0, "M3x8_skirt": 4, "M2x6_board": 4, "M3x8_cradle": 0}
     for sp in d.servos.values():
-        if not sp.clamped:
-            out["box"] += 4                       # the case's far holes
+        out["box"] += 4                           # the case's far holes
         out["M2x5"] += 4                          # the driven arm (or the crossing plate)
         if sp.yoke == "u":
             out["box"] += 2                       # the idler arm
     for p in d.part_list():
-        nb = len(getattr(p, "bolts", []))
-        out["M3x16_palm"] += nb
-        out["M3_nut"] += nb
-        out["M3x16_column"] += len(getattr(p, "column_screws", []))
+        out["M3x12_column"] += len(getattr(p, "column_screws", []))
+        out["M3x8_cradle"] += len(p.pads)
     return out
 
 
@@ -226,10 +189,10 @@ def bom(d: Design, rep: checks.Report) -> str:
              "| Palm Hub rev B.2 board | 1 | `feetech-hand-pcb` |",
              f"| M2 x 5 pan head | {sc['M2x5']} | the driven horn's arm (4 per servo) |",
              f"| M2 x 6 pan head | {sc['M2x6_board']} | the board on its standoffs |",
-             f"| M3 x 16 socket head | {sc['M3x16_palm'] + sc['M3x16_column']} | {sc['M3x16_palm']} join the palm's "
-             f"halves, {sc['M3x16_column']} hold the mount's column |",
-             f"| M3 nut | {sc['M3_nut']} | in the palm's front half |",
-             f"| M3 x 8 pan head | {sc['M3x8_skirt']} | the lid's skirt to the bay |",
+             f"| M3 x 12 socket head | {sc['M3x12_column']} | through the palm's plate into the mount's column |",
+             f"| M3 x 8 pan head | {sc['M3x8_skirt'] + sc['M3x8_cradle']} | the lid's skirt to the bay ("
+             f"{sc['M3x8_skirt']})" + (f"; each base servo's cradle to the palm's plate, from behind "
+                                       f"({sc['M3x8_cradle']})" if sc['M3x8_cradle'] else "") + " |",
              "| M5 x 12 or M6 x 12 button head, washer | 4 | the bay floor to the arm's flange "
              "(ISO 9409-1-31.5-4-M5 or -50-4-M6) |",
              "| 3-pin 1.25 mm (PicoBlade) servo cable | "
@@ -264,12 +227,42 @@ def wiring(d: Design) -> Dict[int, str]:
     return out
 
 
-def assembly(d: Design, orders: Optional[Dict] = None) -> str:
+def step_pictures(d: Design, scad_path: Path, out: Path) -> Dict[tuple, str]:
+    """One picture per joint (`step_<servo>` in hand.scad), looking at the
+    servo's driven horn from in front: {servo key: file name}."""
+    import subprocess
+    from concurrent.futures import ThreadPoolExecutor
+
+    out.mkdir(parents=True, exist_ok=True)
+
+    def one(sp):
+        tag = "_".join(str(k) for k in sp.key)
+        S = sp.S_parent
+        c = S[:3, 3]
+        dirn = S[:3, 0] - 0.8 * S[:3, 1] + 0.5 * S[:3, 2]
+        eye = c + 250.0 * dirn / np.linalg.norm(dirn)
+        png = out / f"step_{tag}.png"
+        cam = ",".join(f"{v:.2f}" for v in (*eye, *c))
+        cmd = [render.openscad(), "-o", str(png.resolve()), "--render", "--imgsize=900,700", "--viewall",
+               "--autocenter", "--projection=p", f"--camera={cam}", "--colorscheme=Tomorrow", *render.backend_flags(),
+               "-D", f'part="step_{tag}"', str(Path(scad_path).resolve())]
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=300, cwd=str(Path(scad_path).parent))
+        except Exception:
+            return sp.key, None
+        return sp.key, (png.name if png.exists() else None)
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        return {k: v for k, v in ex.map(one, list(d.servos.values())) if v}
+
+
+def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = None) -> str:
     hand = d.hand
     ports = wiring(d)
     L = ["# Assembly", "",
          f"Hand `{design_id(hand)}`. Parts are named `f<finger>_l<link>` (the link after joint <link>), "
-         "`f<finger>_tip`, `palm_front` / `palm_back` (and `palm_beyond_*` past the cut), `bay`, `mount`.", "",
+         "`f<finger>_tip`, `palm` (and `palm_beyond` past the cut), `f<finger>_cradle` (a base servo's cradle; "
+         "`hinge_cradle` for the hinge), `bay`, `mount`.", "",
          "## 1. Servos", "",
          "Set each servo's ID and move it to its centre (position 2048) before fitting anything to its horns "
          "(Feetech's FD software, or the board).", "",
@@ -284,7 +277,7 @@ def assembly(d: Design, orders: Optional[Dict] = None) -> str:
             kind = "bend" if abs(sp.S_child[2, 0]) > 0.99 else ("twist" if abs(sp.S_child[0, 0]) > 0.99 else "spread/oblique")
             joint, port = f"finger {i} joint {j} ({kind}{', turned' if sp.turned else ''})", ports[i]
         arms = {"u": "two (driven + idler)", "single": "one (idler horn off)", "crossing": "plate on the driven horn"}[sp.yoke]
-        held = names[sp.parent] + (" (clamped)" if sp.clamped else "")
+        held = names[sp.holder or sp.parent]
         order = (orders or {}).get(sp.key) or "servo first"
         L.append(f"| {'/'.join(map(str, sp.key))} | {servo_id(sp)} | {joint} | {held} | {names[sp.child]} | "
                  f"{arms} | {order} | {port} |")
@@ -298,14 +291,28 @@ def assembly(d: Design, orders: Optional[Dict] = None) -> str:
           "3. Put the centre screws back through the arms' holes.",
           "4. Driven arm: 4 x M2 x 5. Idler arm: 2 of the servo's box screws.", "",
           "## 3. Palm", "",
-          "1. Screw the mount's column to `palm_back` from the split face (M3 x 16).",
-          "2. For each servo held in the palm: fit its link 0 to it on the bench (step 2), then lay the servo in "
-          "its pocket in `palm_back`, its cable out through the hole to the back face.",
-          "3. Put an M3 nut in each hexagonal pocket of `palm_front`, close the halves and bolt them from the "
-          "back face (M3 x 16).", ""]
+          "1. A base servo with a cradle of its own (`f<finger>_cradle`, `hinge_cradle`) is put together on the "
+          "bench: the servo into the cradle and its link onto its horns as the table's order says (step 4). "
+          "Then stand the cradle in its window in the plate, pads on the plate's front face, and fix it from "
+          "behind with 2 x M3 x 8. These go on first, while nothing is behind the plate.",
+          "2. Screw the mount's column to the back of `palm` through the plate from the front (M3 x 12), "
+          "before any servo the palm itself holds goes in (turn the links of step 1 out of the way).",
+          "3. Each servo the palm itself holds goes into its cradle as the table's order says (step 4), and its "
+          "link onto its horns (step 2); the cable leaves through the side wall's window.", ""]
     if hand.palm_joints:
-        L += ["4. The hinge servo sits in the main palm's pocket; fit `palm_beyond_*` to its horns as in step 2 "
-              "before closing the halves.", ""]
+        h = d.servos.get(("hinge",))
+        where = ("`hinge_cradle` (step 1: `palm_beyond` goes on its horns on the bench)" if h is not None and h.holder
+                 else "a cradle of the main palm")
+        L += [f"4. The hinge servo sits in {where}; `palm_beyond` is fitted to its horns as in step 2.", ""]
+    if steps:
+        L += ["## Pictures", "",
+              "Each joint: the part holding the servo, the servo (horns, centre screws, case screws in gold) and "
+              "the next link pulled off the way it slides on, with its arm screws.", ""]
+        for sp in sorted(d.servos.values(), key=servo_id):
+            if sp.key in steps:
+                L += [f"**Servo {'/'.join(map(str, sp.key))}** (ID {servo_id(sp)}, "
+                      f"{(orders or {}).get(sp.key) or 'servo first'}): `{names[sp.holder or sp.parent]}` holds it, "
+                      f"`{names[sp.child]}` goes on its horns.", "", f"![servo {sp.key}](steps/{steps[sp.key]})", ""]
     L += ["## 4. Fingers, from the palm out", "",
           "For each joint, in the order the table gives:", "",
           "- **servo first:** slide the servo into its housing from the front (its horns pass through the "

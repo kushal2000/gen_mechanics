@@ -19,6 +19,7 @@ from hand_sampler.grammar.hand import hand_to_json
 from .design import Design, Part, mm
 
 LIBRARY = Path(__file__).with_name("scad") / "feetech_hand.scad"
+STEP_PULL_MM = 35.0           # the assembly pictures pull each link this far off its servo
 
 
 def settings_block() -> str:
@@ -31,22 +32,8 @@ def settings_block() -> str:
 
 
 def printed_names(design: Design) -> List[str]:
-    """Every printable part's name: palm parts come as two halves."""
-    out = []
-    for p in design.part_list():
-        if p.split_x is not None:
-            out += [f"{p.name}_front", f"{p.name}_back"]
-        else:
-            out.append(p.name)
-    return out
-
-
-def _split_modules(p: Part) -> str:
-    big = 1000
-    return (f"module part_{p.name}_front() intersection() {{ part_{p.name}(); "
-            f"translate([{p.split_x}, -{big / 2}, -{big / 2}]) cube([{big}, {big}, {big}]); }}\n"
-            f"module part_{p.name}_back() intersection() {{ part_{p.name}(); "
-            f"translate([{p.split_x - big}, -{big / 2}, -{big / 2}]) cube([{big}, {big}, {big}]); }}\n")
+    """Every printable part's name."""
+    return [p.name for p in design.part_list()]
 
 
 def hand_scad(design: Design) -> str:
@@ -59,8 +46,6 @@ def hand_scad(design: Design) -> str:
             settings_block(), 'part = "assembly";', ""]
     for p in design.part_list():
         out.append(p.scad())
-        if p.split_x is not None:
-            out.append(_split_modules(p))
     # the preview: every part where it sits at the zero pose, and the servos
     out.append("module assembly() {")
     for p in design.part_list():
@@ -81,15 +66,30 @@ def hand_scad(design: Design) -> str:
         if p.carries is not None:
             out.append(f"    {mm(p.carries.S_child)} servo_model({str(p.carries.idler_horn).lower()});")
         out.append("}")
+    # one picture per joint: the part holding the servo, the servo with its screws, the next link
+    # pulled off the way it goes on (along the servo's front)
+    for sp in design.servos.values():
+        tag = "_".join(str(k) for k in sp.key)
+        parent, child = design.parts[sp.holder or sp.parent], design.parts[sp.child]
+        pull = sp.S_parent @ np.array([[1, 0, 0, 0], [0, 1, 0, -STEP_PULL_MM], [0, 0, 1, 0], [0, 0, 0, 1.0]]) \
+            @ np.linalg.inv(sp.S_child)
+        single = str(sp.yoke != "u").lower()
+        out.append(f"module step_{tag}() {{")
+        out.append(f"    color(\"lightsteelblue\") part_{parent.name}();")
+        out.append(f"    {mm(sp.S_parent)} {{ servo_model({str(sp.idler_horn).lower()}); case_screws(); }}")
+        out.append(f"    color(\"lightskyblue\", 0.85) {mm(pull)} part_{child.name}();")
+        out.append(f"    {mm(sp.S_parent @ np.array([[1, 0, 0, 0], [0, 1, 0, -STEP_PULL_MM], [0, 0, 1, 0], [0, 0, 0, 1.0]]))} "
+                   f"arm_screws({single});")
+        out.append("}")
     names = printed_names(design)
     out.append('if (part == "assembly") assembly();')
+    for sp in design.servos.values():
+        tag = "_".join(str(k) for k in sp.key)
+        out.append(f'else if (part == "step_{tag}") step_{tag}();')
     for p in design.part_list():
         out.append(f'else if (part == "view_{p.name}") view_{p.name}();')
     for n in names:
         out.append(f'else if (part == "{n}") part_{n}();')
-    for p in design.part_list():
-        if p.split_x is not None:
-            out.append(f'else if (part == "{p.name}_whole") part_{p.name}();')
     return "\n".join(out) + "\n"
 
 
