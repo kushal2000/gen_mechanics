@@ -423,10 +423,10 @@ class Design:
             Sn = mm(nxt.S_parent)
             A, sa = self._tube_start(sp, a)
             B, sb, face = self._tube_end(nxt, A[:3, 3])
-            # a spread and a bend at one knuckle (the cradle turned a quarter turn against the yoke): the
-            # next servo is held by plates over its whole horn faces, its near holes screwed too (Martin,
-            # 10/24); servos in line along the finger keep the short socket
-            nxt.full_plates = nxt.yoke != "crossing" and abs(float(B[:3, 1] @ A[:3, 1])) < 0.5
+            # a servo lying across the finger (its 23 x 34 face toward the palm, as a turned bend near the
+            # tip or at a knuckle) is held by plates over its whole horn faces, its near holes screwed too;
+            # servos stacked lengthwise along the finger keep the short socket (Martin, 10/24)
+            nxt.full_plates = nxt.yoke != "crossing" and abs(float(nxt.S_parent[0, 1])) < 0.7
             A2, sa2, B, sb = self._connector(A, sa, B, sb)
             if face != 0 and nxt.cable == face:
                 nxt.cable = -face                        # the tube lands on that side: the cable takes the other
