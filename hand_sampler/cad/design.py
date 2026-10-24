@@ -427,7 +427,7 @@ class Design:
             # tip or at a knuckle) is held by plates over its whole horn faces, its near holes screwed too;
             # servos stacked lengthwise along the finger keep the short socket (Martin, 10/24)
             nxt.full_plates = nxt.yoke != "crossing" and abs(float(nxt.S_parent[0, 1])) < 0.7
-            A2, sa2, B, sb = self._connector(A, sa, B, sb)
+            A2, sa2, B, sb = self._connector(A, sa, B, sb, square=nxt.full_plates)
             if face != 0 and nxt.cable == face:
                 nxt.cable = -face                        # the tube lands on that side: the cable takes the other
             tube: Piece = lambda g, A=A2, B=B, sa=sa2, sb=sb: f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g});"
@@ -436,7 +436,7 @@ class Design:
                 # this link came out in pieces (something turns through its tube): a tube to every face
                 for Bx, sbx, fx in self._tube_ends(nxt):
                     if fx != face and not (fx != 0 and fx == nxt.cable):
-                        Ax, sax, Bx, sbx = self._connector(A, sa, Bx, sbx)
+                        Ax, sax, Bx, sbx = self._connector(A, sa, Bx, sbx, square=nxt.full_plates)
                         extra.append(lambda g, A=Ax, B=Bx, sa=sax, sb=sbx:
                                      f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g});")
             if nxt.yoke == "crossing":
@@ -469,16 +469,17 @@ class Design:
                                  f"{ch}, {full});")
 
     @staticmethod
-    def _connector(A: np.ndarray, sa, B: np.ndarray, sb) -> Tuple[np.ndarray, Tuple[float, float], np.ndarray,
-                                                                  Tuple[float, float]]:
+    def _connector(A: np.ndarray, sa, B: np.ndarray, sb, square: bool = False) -> Tuple[
+            np.ndarray, Tuple[float, float], np.ndarray, Tuple[float, float]]:
         """The two rectangles a link's connector joins (frames with the
         rectangle in their y-z plane, and sizes). Where the cradle face is
         turned a quarter turn against the bridge's (a spread and a bend at
         one knuckle), a hull between them twists: then the connector is a
         straight block in the bridge's frame, wide enough for both faces,
         from the bridge to the cradle face's far edge (Martin, 10/24: work
-        in right angles there)."""
-        if abs(float(B[:3, 1] @ A[:3, 1])) >= 0.5:
+        in right angles there). `square`: a block whatever the faces (a
+        servo lying across the finger)."""
+        if not square and abs(float(B[:3, 1] @ A[:3, 1])) >= 0.5:
             return A, tuple(sa), B, tuple(sb)
         cb = np.array([B @ np.array([0.0, sy * sb[0] / 2.0, sz * sb[1] / 2.0, 1.0]) for sy in (-1, 1) for sz in (-1, 1)])
         loc = (cb[:, :3] - A[:3, 3]) @ A[:3, :3]
