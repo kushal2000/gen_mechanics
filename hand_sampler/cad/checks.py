@@ -141,17 +141,24 @@ BOSS_SHARE = 0.7            # a boss counts if this much of it is there; three o
 BACK_SHARE = 0.4            # under this much back wall, a warning (the screws carry the load)
 
 
-def _bosses():
-    """The four screw bosses round the case's far holes (servo frame), each
-    less its hole and its head's seat."""
+FAR_YZ = ((22.5, -8.0), (22.5, 8.0))
+NEAR_YZ = ((-7.5, -8.0), (-7.5, 8.0))
+
+
+def _bosses(full: bool = False):
+    """The screw bosses round the case's far holes (servo frame), each less
+    its hole; for full-face plates also the plate under each near hole's
+    head (seated 1 mm deep, out to 0.5 mm past the head: the next link's
+    bridge swings round just outside)."""
     import manifold3d as m3
 
-    out = []
-    for y, z in ((22.5, -8.0), (22.5, 8.0)):
-        for x0 in (11.6, -13.6):
-            c = m3.Manifold.cylinder(2.0, 3.5, 3.5, 24).rotate([0.0, 90.0, 0.0]).translate([x0, y, z])
-            c = c - m3.Manifold.cylinder(2.2, 1.2, 1.2, 16).rotate([0.0, 90.0, 0.0]).translate([x0 - 0.1, y, z])
-            out.append(c)
+    def boss(x0, length, r, y, z):
+        c = m3.Manifold.cylinder(length, r, r, 24).rotate([0.0, 90.0, 0.0]).translate([x0, y, z])
+        return c - m3.Manifold.cylinder(length + 0.2, 1.2, 1.2, 16).rotate([0.0, 90.0, 0.0]).translate([x0 - 0.1, y, z])
+
+    out = [boss(x0, 2.0, 3.5, y, z) for y, z in FAR_YZ for x0 in (11.6, -13.6)]
+    if full:
+        out += [boss(x0, 1.0, 2.25, y, z) for y, z in NEAR_YZ for x0 in (11.6, -12.6)]
     return out
 
 
@@ -238,19 +245,24 @@ def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
             e = _xf(e, p.frame)
             extras = e if extras is None else extras + e
     rep.orders = {}
-    bosses, back = _bosses(), _back_wall_solid()
+    back = _back_wall_solid()
     for sp in design.servos.values():
         H = solids.get(sp.holder or sp.parent)                 # what its case is screwed to
         P, C = bodies.get(sp.parent), bodies.get(sp.child)     # the bodies turning against each other
         if P is None or C is None or H is None:
             continue
         name = "/".join(str(k) for k in sp.key)
-        kept = sum((H ^ _xf(b, sp.S_parent)).volume() >= BOSS_SHARE * b.volume() for b in bosses)
+        bosses = _bosses(sp.full_plates)
+        held = [(H ^ _xf(b, sp.S_parent)).volume() >= BOSS_SHARE * b.volume() for b in bosses]
+        kept, near = sum(held[:4]), sum(held[4:])
         w = (H ^ _xf(back, sp.S_parent)).volume() / back.volume()
         if kept < 3:
             rep.clashes.append(f"servo {name}: its housing keeps {kept} of its 4 screw bosses")
         elif kept < 4:
             rep.warnings.append(f"servo {name}: its housing keeps 3 of its 4 screw bosses (use 3 screws)")
+        if sp.full_plates and near < 4:
+            # the near screws add to the far ones' hold; where what turns there takes a boss, fewer go in
+            rep.warnings.append(f"servo {name}: its plates keep {near} of its 4 near screw bosses (use {near})")
         if w < BACK_SHARE:
             rep.warnings.append(f"servo {name}: its housing keeps {100 * w:.0f}% of its back wall (something "
                                 f"turns close to it; the case screws hold it)")
@@ -307,7 +319,9 @@ def _assembly_order(sp: ServoSpot, P, C) -> Optional[str]:
     on the bench, then both slid into the housing from the front: the link
     must pass the parent on the way in and leave the case screws reachable).
     Either way a screwdriver must reach the case screws past the parent.
-    None if it cannot or neither order works."""
+    Full-face plates take the case with its horns off (their holes leave
+    room only for the spline): "servo first, horns off". None if it
+    cannot or no order works."""
     # the case screws are driven past the part holding the servo, whatever the order: at least two
     reach = sum((P ^ _xf(dv_, sp.S_parent)).volume() <= TOUCH_MM3 for dv_ in _case_driver_list())
     if reach < 2:
@@ -317,7 +331,9 @@ def _assembly_order(sp: ServoSpot, P, C) -> Optional[str]:
     for a in (0.0, lo, hi):
         M = sp.S_parent @ _rot_x(a) @ inv(sp.S_child)
         if (P ^ _xf(_xf(drivers, sp.S_child), M)).volume() <= TOUCH_MM3:
-            return "servo first"
+            return "servo first, horns off" if sp.full_plates else "servo first"
+    if sp.full_plates:
+        return None
     # link first: the child slid in along the servo's back (+Y), from 60 mm in front of where it ends up
     Cs = _xf(C, inv(sp.S_child))                  # the child in the servo's frame
     Ps = _xf(P, inv(sp.S_parent))                 # the parent in the servo's frame
@@ -330,11 +346,11 @@ def _assembly_order(sp: ServoSpot, P, C) -> Optional[str]:
     return "link first"
 
 
-def _case_driver_list():
+def _case_driver_list(holes=FAR_YZ):
     import manifold3d as m3
 
     out = []
-    for y, z in ((22.5, -8.0), (22.5, 8.0)):
+    for y, z in holes:
         for s in (-1, 1):
             c = m3.Manifold.cylinder(25.0, 1.6, 1.6, 16).rotate([0.0, 90.0, 0.0])
             out.append(c.translate([14.0 if s > 0 else -39.0, y, z]))

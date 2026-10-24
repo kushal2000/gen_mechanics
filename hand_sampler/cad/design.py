@@ -148,6 +148,7 @@ class ServoSpot:
     flip: bool = False
     sign: float = 1.0             # + joint angle turns the driven horn this way about S's X (servo's own sign)
     holder: Optional[Tuple] = None    # the part holding its case when that is not the parent (a palm cradle)
+    full_plates: bool = False         # plates over its whole horn faces, near holes screwed too (a knuckle)
 
     @property
     def idler_horn(self) -> bool:
@@ -422,6 +423,10 @@ class Design:
             Sn = mm(nxt.S_parent)
             A, sa = self._tube_start(sp, a)
             B, sb, face = self._tube_end(nxt, A[:3, 3])
+            # a spread and a bend at one knuckle (the cradle turned a quarter turn against the yoke): the
+            # next servo is held by plates over its whole horn faces, its near holes screwed too (Martin,
+            # 10/24); servos in line along the finger keep the short socket
+            nxt.full_plates = nxt.yoke != "crossing" and abs(float(B[:3, 1] @ A[:3, 1])) < 0.5
             A2, sa2, B, sb = self._connector(A, sa, B, sb)
             if face != 0 and nxt.cable == face:
                 nxt.cable = -face                        # the tube lands on that side: the cable takes the other
@@ -439,7 +444,9 @@ class Design:
                 # full housing (the plate's swing opens the near side)
                 pieces = pieces + [lambda g, Sn=Sn: f"{Sn} housing_box({g});", tube] + extra
             else:
-                pieces = pieces + [lambda g, Sn=Sn: f"{Sn} cradle_socket({g});", tube] + extra
+                plates = ([lambda g, Sn=Sn: f"{Sn} cradle_plate(1, {g});", lambda g, Sn=Sn: f"{Sn} cradle_plate(-1, {g});"]
+                          if nxt.full_plates else [])
+                pieces = pieces + [lambda g, Sn=Sn: f"{Sn} cradle_socket({g});"] + plates + [tube] + extra
         part.pieces = pieces
         part.positive = [p("0") for p in pieces]
         part.clip = _clip_body(f, j)
@@ -455,9 +462,11 @@ class Design:
         else:
             part.negative.append(f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});")
         if nxt is not None:
-            part.tunnels.append(f"{mm(nxt.S_parent)} case_screw_tunnels(40);")
+            full = str(nxt.full_plates).lower()
+            part.tunnels.append(f"{mm(nxt.S_parent)} case_screw_tunnels(40, {full});")
             ch = 80 if nxt.yoke == "crossing" else CRADLE_CHANNEL_MM
-            part.negative.append(f"{mm(nxt.S_parent)} housing_keepout({str(nxt.yoke != 'u').lower()}, {nxt.cable}, {ch});")
+            part.negative.append(f"{mm(nxt.S_parent)} housing_keepout({str(nxt.yoke != 'u').lower()}, {nxt.cable}, "
+                                 f"{ch}, {full});")
 
     @staticmethod
     def _connector(A: np.ndarray, sa, B: np.ndarray, sb) -> Tuple[np.ndarray, Tuple[float, float], np.ndarray,

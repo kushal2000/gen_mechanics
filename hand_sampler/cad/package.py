@@ -165,7 +165,7 @@ def lay_flat(src: Path, dst: Path) -> List[float]:
 def _count_screws(d: Design) -> Dict[str, int]:
     out = {"box": 0, "M2x5": 0, "M3x12_column": 0, "M3x8_skirt": 4, "M2x6_board": 4, "M3x8_cradle": 0}
     for sp in d.servos.values():
-        out["box"] += 4                           # the case's far holes
+        out["box"] += 8 if sp.full_plates else 4  # the case's far holes (and near ones at a knuckle)
         out["M2x5"] += 4                          # the driven arm (or the crossing plate)
         if sp.yoke == "u":
             out["box"] += 2                       # the idler arm
@@ -185,7 +185,9 @@ def bom(d: Design, rep: checks.Report) -> str:
              "## Bought", "",
              "| Item | Count | Notes |", "|---|---|---|",
              f"| {HL3915.name} (or HL-2915-C001) | {n_servo} | each comes with 8 M2 x 3.5 screws; "
-             f"{sc['box']} of them are used here |",
+             f"{sc['box']} of them are used here"
+             + (f" (a knuckle's servo takes 10, the rest from other bags)" if any(sp.full_plates for sp in d.servos.values()) else "")
+             + (f"; buy {sc['box'] - 8 * n_servo} more M2 x 3.5 pan heads" if sc['box'] > 8 * n_servo else "") + " |",
              "| Palm Hub rev B.2 board | 1 | `feetech-hand-pcb` |",
              f"| M2 x 5 pan head | {sc['M2x5']} | the driven horn's arm (4 per servo) |",
              f"| M2 x 6 pan head | {sc['M2x6_board']} | the board on its standoffs |",
@@ -319,7 +321,11 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
           "slots), push it to the back wall and screw the case to the side plates (4 of the servo's box screws, "
           "through the far holes). Then fit the next link to its horns (step 2).",
           "- **link first:** fit the next link to the servo's horns on the bench (step 2), then slide the "
-          "servo, link and all, into its housing from the front and screw the case to the side plates.", "",
+          "servo, link and all, into its housing from the front and screw the case to the side plates.",
+          "- **servo first, horns off** (a knuckle: plates over the whole horn faces): take both horns off "
+          "(centre screws out, horns pulled off the splines), slide the bare case in from the front (the plates "
+          "leave a slot only for the splines), screw it through the near and the far holes (8 box screws), put the "
+          "horns back on through the plates' round holes at the zero mark, then fit the next link (step 2).", "",
           "## 5. Cables", "",
           "Each finger's servos are chained on the finger's back: board port -> base servo -> next servo. Leave "
           "about 25 mm of slack across each joint and tie the cable to the links. The palm's cables run over "

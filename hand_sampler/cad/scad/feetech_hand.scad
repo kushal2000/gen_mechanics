@@ -45,6 +45,9 @@ HEAD_X = 17.0;
 STUB_R = 2.5;                 // the idler stub (idler horn removed)
 STUB_X = -14.0;
 FAR_HOLES = [[22.5, -8.0], [22.5, 8.0]];   // (Y, Z) of the case holes the housings use
+NEAR_HOLES = [[-7.5, -8.0], [-7.5, 8.0]];  // the holes by the horns (a full-face cradle's too)
+NEAR_SEAT = 1.0;                           // their heads sit deeper: the next link's arm passes over them
+SPLINE_R = 2.9;                            // the output spline and the idler stub (2.5) past the case faces
 CONN_Y = [6.1, 11.85];        // the 3-pin sockets, one in each Z face
 CONN_X = [-7.7, -4.4];
 
@@ -115,8 +118,8 @@ module arm_screws(single = false) {
 }
 
 // the case screws a cradle takes
-module case_screws() {
-    color("goldenrod") for (yz = FAR_HOLES, s = [-1, 1])
+module case_screws(full = false) {
+    color("goldenrod") for (yz = full ? concat(FAR_HOLES, NEAR_HOLES) : FAR_HOLES, s = [-1, 1])
         translate([s * (HOUSING_X - HEAD_SEAT), yz[0], yz[1]]) {
             if (s > 0) { cyl_x(1.75, 0, 1.4); cyl_x(1.0, -3.5, 0); }
             else { cyl_x(1.75, -1.4, 0); cyl_x(1.0, 0, 3.5); }
@@ -143,6 +146,14 @@ module housing_box(g = 0) box_lh([-HOUSING_X - g, CASE_Y[0] - g, -HOUSING_Z - g]
 // case's keep-out hollows it)
 module cradle_socket(g = 0) box_lh([-HOUSING_X - g, SOCKET_Y0 - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g]);
 
+// a full-face cradle's plate on the horn face s (Martin, 10/24: where a spread
+// and a bend meet at a knuckle, both the near and the far holes take screws)
+// (2 mm past the case's front, round the near holes' bosses)
+module cradle_plate(s, g = 0) {
+    if (s > 0) box_lh([CASE_X[1] + FIT - g, CASE_Y[0] - 2 - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g]);
+    else box_lh([-HOUSING_X - g, CASE_Y[0] - 2 - g, -HOUSING_Z - g], [CASE_X[0] - FIT + g, HOUSING_Y + g, HOUSING_Z + g]);
+}
+
 // a link's connector between two rectangles, each given as a frame (origin
 // at its centre, its plane the frame's y-z) and a size: their hull, hollow
 // inside with its walls and both ends TUBE_WALL thick (solid when short)
@@ -166,8 +177,23 @@ module tube(A, sa, B, sb, g = 0) {
 // (`channel`: how far ahead of the case its way in is kept clear: a closed
 // housing's servo slides in from the front; a cradle's, open on two more
 // sides, only needs its own front clear)
-module housing_keepout(single = false, cable = 0, channel = 80) {
+// (`full`: full-face plates; the case goes in with its horns off, so the
+// plates keep a round hole for each horn and a slot only for the spline)
+module housing_keepout(single = false, cable = 0, channel = 80, full = false) {
     box_lh([CASE_X[0] - FIT, CASE_Y[0] - channel, CASE_Z[0] - FIT], [CASE_X[1] + FIT, CASE_Y[1] + FIT, CASE_Z[1] + FIT]);
+    if (full) {
+        cyl_x(HORN_R + CASE_CLEAR, DRIVEN_X[0] - FIT, HORN_REACH);
+        if (!single) cyl_x(HORN_R + CASE_CLEAR, -HORN_REACH, -(DRIVEN_X[0] - FIT));
+        for (s = [-1, 1]) hull() {
+            cyl_x(SPLINE_R, s > 0 ? CASE_X[1] : -HOUSING_X - 1, s > 0 ? HOUSING_X + 1 : CASE_X[0]);
+            translate([0, -channel, 0]) cyl_x(SPLINE_R, s > 0 ? CASE_X[1] : -HOUSING_X - 1, s > 0 ? HOUSING_X + 1 : CASE_X[0]);
+        }
+        if (single) cyl_x(STUB_R + 0.4, -HORN_REACH, CASE_X[0] + FIT);
+        for (yz = NEAR_HOLES, s = [-1, 1]) {
+            cyl_x_at(yz[0], yz[1], M2_CLEAR / 2, s > 0 ? CASE_X[1] : -HOUSING_X - 3, s > 0 ? HOUSING_X + 3 : CASE_X[0]);
+            cyl_x_at(yz[0], yz[1], M2_HEAD / 2, s > 0 ? HOUSING_X - NEAR_SEAT : -HOUSING_X - 3, s > 0 ? HOUSING_X + 3 : -(HOUSING_X - NEAR_SEAT));
+        }
+    } else {
     // the driven horn: a keyhole through the plate, open to the front
     hull() {
         cyl_x(HORN_R + PART_CLEAR, DRIVEN_X[0] - FIT, HORN_REACH);
@@ -183,6 +209,7 @@ module housing_keepout(single = false, cable = 0, channel = 80) {
             cyl_x(HORN_R + PART_CLEAR, -HORN_REACH, -(DRIVEN_X[0] - FIT));
             translate([0, -channel, 0]) cyl_x(HORN_R + PART_CLEAR, -HORN_REACH, -(DRIVEN_X[0] - FIT));
         }
+    }
     }
     // case screws through both side plates, heads seated HEAD_SEAT deep
     for (yz = FAR_HOLES, s = [-1, 1]) {
@@ -201,8 +228,8 @@ module housing_keepout(single = false, cable = 0, channel = 80) {
 // a screwdriver's way to the four case screws, `reach` out from the side
 // plates (cut through the part's own plate, tube and arms, never through
 // another servo's cradle)
-module case_screw_tunnels(reach = 30) {
-    for (yz = FAR_HOLES, s = [-1, 1])
+module case_screw_tunnels(reach = 30, full = false) {
+    for (yz = full ? concat(FAR_HOLES, NEAR_HOLES) : FAR_HOLES, s = [-1, 1])
         cyl_x_at(yz[0], yz[1], 1.9, s > 0 ? HOUSING_X : -HOUSING_X - reach, s > 0 ? HOUSING_X + reach : -HOUSING_X);
 }
 
