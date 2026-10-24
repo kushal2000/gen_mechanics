@@ -73,7 +73,7 @@ def hand_scad(design: Design) -> str:
         parent, child = design.parts[sp.holder or sp.parent], design.parts[sp.child]
         pull = sp.S_parent @ np.array([[1, 0, 0, 0], [0, 1, 0, -STEP_PULL_MM], [0, 0, 1, 0], [0, 0, 0, 1.0]]) \
             @ np.linalg.inv(sp.S_child)
-        single = str(sp.yoke != "u").lower()
+        single = str(not sp.idler_horn).lower()
         out.append(f"module step_{tag}() {{")
         out.append(f"    color(\"lightsteelblue\") part_{parent.name}();")
         out.append(f"    {mm(sp.S_parent)} {{ servo_model({str(sp.idler_horn).lower()}); "

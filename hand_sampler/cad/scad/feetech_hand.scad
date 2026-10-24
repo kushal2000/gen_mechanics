@@ -13,8 +13,8 @@
 // before the joint (side plates on the two horn faces, screwed through the
 // case's far holes, a back wall, side walls). The part after the joint holds
 // the horns in a yoke: a U (two arms on the horns and a bridge ahead of the
-// case's swing), or one arm on the driven horn for a joint whose axis leans
-// along the finger. Every part is its positive pieces, less the servo and
+// case's swing; for a joint whose axis leans along the finger, a wrap: the
+// bridge past the case's front instead). Every part is its positive pieces, less the servo and
 // screw keep-outs, less what its neighbours sweep over the joints' ranges.
 
 // ---------------------------------------------------------------- settings
@@ -254,6 +254,15 @@ module arm_slab(s, g = 0) {
 // driven arm on 4 holes, the idler arm on 2), and a way in for the
 // screwdriver: each hole runs on outward through whatever else is there
 SCREWDRIVER_REACH = 25;
+// a screwdriver's way to one arm's screws through the part holding the
+// servo (a wrap's idler arm faces it), at the zero pose
+module arm_screw_tunnels(s, holes, reach = SCREWDRIVER_REACH + 1) {
+    t = s > 0 ? ARM_DRIVEN : ARM_IDLER;
+    for (a = holes)
+        cyl_x_at(HORN_HOLE_R * sin(a), HORN_HOLE_R * cos(a), M2_HEAD / 2 + 0.3,
+                 s > 0 ? ARM_X0 + t : -ARM_X0 - t - reach, s > 0 ? ARM_X0 + t + reach : -ARM_X0 - t);
+}
+
 module arm_keepout(s, holes) {
     t = s > 0 ? ARM_DRIVEN : ARM_IDLER;
     x0 = s > 0 ? ARM_X0 - 1 : -ARM_X0 - t - SCREWDRIVER_REACH;

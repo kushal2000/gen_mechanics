@@ -25,7 +25,7 @@ the palm, the rigid body.
 
 A servo's frame S (servo.py): X along its axis toward the driven horn. It
 is the grammar's motor frame (a, v, w), flipped to (-a, v, -w) where the
-driven horn must face the other way: along the finger for a single-arm yoke.
+driven horn must face the other way: toward the fingertip for a wrap yoke (a twist).
 """
 
 from __future__ import annotations
@@ -41,11 +41,7 @@ from hand_sampler.grammar import derive as dv
 from hand_sampler.grammar import motor as mt
 from hand_sampler.grammar.hand import PLATE_HALF_MM, Hand, finger_section, turned_servo
 
-SINGLE_ARM_LEAN = 0.5
-"""A joint whose axis leans this much along the finger (|a . x| >= 0.5:
-twist, and 30 degrees of elevation or more) gets a one-arm yoke on its
-driven horn (the idler horn comes off): a U's rear arm would need room
-behind the servo that the link floors do not budget."""
+ARM_R_MM = 9.5                # an arm's disc round the axis (library ARM_R)
 
 BRIDGE_HALF_MM = float(mt.YOKE_HALF_MM[2])   # a U's bridge, either side of the axis across the finger (12)
 ARM_X0 = 14.6                                # an arm's inner face from the servo's mid-plane (horn face 14.5 + 0.1)
@@ -65,7 +61,6 @@ PALM_BOLT_CLEAR_MM = 5.0      # and this far from any base sweep
 PALM_BOLT_SPACING_MM = 18.0
 BORE_R_MM = 7.0               # the cables' bore (library BORE_R)
 COLUMN_SCREW_R_MM = 16.5
-TUBE_H_MM = 16.0              # a single-arm yoke's square where its connector leaves the arm
 HOUSING_MM = (13.6, 26.6, 11.3)   # a housing's outer faces in its servo's frame: side plates (X), back (Y), walls (Z)
 SOCKET_Y0_MM = 17.0               # where a cradle's socket starts (library SOCKET_Y0)
 CRADLE_BACK_MM = (2 * HOUSING_MM[0], 2 * HOUSING_MM[2])     # a cradle's back face (along its servo's X, Z)
@@ -142,7 +137,7 @@ class ServoSpot:
     S_child: np.ndarray           # 4x4: the servo frame in the child's frame (q = 0)
     S_parent: np.ndarray          # 4x4: the servo frame in the parent's frame (q = 0)
     rot_deg: Tuple[float, float]  # the child's turn about the servo's X over the joint's range
-    yoke: str                     # "u", "single" or "crossing"
+    yoke: str                     # "u", "wrap" (a U round a twist, its bridge past the case's front) or "crossing"
     cable: int                    # the Z face whose socket takes the cable (+1 / -1)
     turned: bool = False
     flip: bool = False
@@ -152,7 +147,7 @@ class ServoSpot:
 
     @property
     def idler_horn(self) -> bool:
-        return self.yoke == "u"
+        return self.yoke in ("u", "wrap")
 
 
 def _servo_frame(a: np.ndarray, v: np.ndarray, origin: np.ndarray, flip: bool) -> np.ndarray:
@@ -181,8 +176,8 @@ def finger_servos(hand: Hand, i: int) -> List[ServoSpot]:
         M = fg.motors[j].axes                      # (a, v, w), joint j frame
         turned = turned_servo(f, j)
         crossing = j < len(f.joints) - 1 and jt.length == 0
-        single = abs(float(a[0])) >= SINGLE_ARM_LEAN - 1e-9 and not crossing
-        flip = single and float(a[0]) < 0.0        # a one-arm yoke's driven horn faces the fingertip
+        wrap = mt.is_wrap(a, crossing)
+        flip = wrap and float(a[0]) < 0.0          # a wrap's driven horn faces the fingertip
         origin = fg.slides_mm[j] * a
         S_child = _servo_frame(M[:, 0], M[:, 1], origin, flip)
         if j == 0:
@@ -201,7 +196,7 @@ def finger_servos(hand: Hand, i: int) -> List[ServoSpot]:
         dorsal = -np.array([0.0, 1.0, 0.0])        # the link frame's -y
         cable = _cable_side(S_child, dorsal, -np.array([1.0, 0.0, 0.0]))
         out.append(ServoSpot(("f", i, j), parent, ("link", i, j), S_child, S_parent, rot,
-                             "crossing" if crossing else ("single" if single else "u"),
+                             "crossing" if crossing else ("wrap" if wrap else "u"),
                              cable, turned, flip, sgn))
     return out
 
@@ -274,10 +269,10 @@ def _bridge_frame(origin: np.ndarray, front: np.ndarray, a: np.ndarray, x_b: flo
 
 def _yoke_pieces(sp: ServoSpot, a: np.ndarray, front: np.ndarray, x_b: float) -> Tuple[List[Piece], Piece]:
     """The yoke's convex pieces in the child's frame, and the piece the rest
-    of the part joins to (the bridge, or the one arm). A U's bridge lies
-    `x_b` along `front` from the joint, past the case's swing."""
+    of the part joins to (a U's bridge; a wrap's driven arm). The bridge
+    lies `x_b` along `front` from the joint, past the case's swing."""
     S = mm(sp.S_child)
-    if sp.yoke == "u":
+    if sp.yoke in ("u", "wrap"):
         B = _bridge_frame(sp.S_child[:3, 3], front, a, x_b)
         # the arms along the canonical axis: the driven side is +a unless flipped
         s_pos = -1.0 if sp.flip else 1.0
@@ -292,10 +287,7 @@ def _yoke_pieces(sp: ServoSpot, a: np.ndarray, front: np.ndarray, x_b: float) ->
         def arm(s: int) -> Piece:
             return lambda g: (f"hull() {{ {S} arm_disc({s}, {g}); intersection() {{ {bridge(g)} {S} arm_slab({s}, {g}); }} }}")
 
-        return [arm(1), arm(-1), bridge], bridge
-    if sp.yoke == "single":
-        arm1: Piece = lambda g: f"{S} arm_disc(1, {g});"
-        return [arm1], arm1
+        return [arm(1), arm(-1), bridge], (arm(1) if sp.yoke == "wrap" else bridge)
     # crossing: one plate on the near (driven) horn, as thick as the gap to the next case
     raise ValueError("crossing yokes are built with their next housing")
 
@@ -397,6 +389,9 @@ class Design:
                 f"hull() {{ {S} cyl_x(ARM_R + ({g}), ARM_X0 - ({g}), {gap:.3f} + ({g})); {Sn} housing_box({g}); }}")
             pieces = [plate]
             joint_piece = plate
+        elif sp.yoke == "wrap":
+            # both horns held, the bridge past the case's front (its swing over the joint's range)
+            pieces, joint_piece = _yoke_pieces(sp, a, -sp.S_child[:3, 1], mt.FRONT_SWEEP_MM + CASE_CLEAR)
         else:
             x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
             pieces, joint_piece = _yoke_pieces(sp, a, np.array([1.0, 0.0, 0.0]), x_b)
@@ -418,7 +413,7 @@ class Design:
             pieces = pieces + [body]
         elif sp.yoke != "crossing":
             # a bracket frame: the next servo in a cradle (side plates and back plate), joined to the
-            # yoke by a hollow connector from the bridge's (or the one arm's) whole face to the whole
+            # yoke by a hollow connector from the bridge's (a wrap's: its driven arm's) whole face to the whole
             # cradle face toward it (`_connector`)
             Sn = mm(nxt.S_parent)
             A, sa = self._tube_start(sp, a)
@@ -456,7 +451,7 @@ class Design:
         part.negative.append(f"{S} cyl_x(HORN_R + CASE_CLEAR, DRIVEN_X[0] - FIT, DRIVEN_X[1]);")
         if sp.idler_horn:
             part.negative.append(f"{S} cyl_x(HORN_R + CASE_CLEAR, IDLER_X[0], -(DRIVEN_X[0] - FIT));")
-        if sp.yoke == "u":
+        if sp.idler_horn:
             part.negative += [f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});",
                               f"{S} arm_keepout(-1, {list(HORN_HOLES_IDLER)});"]
         else:
@@ -464,8 +459,10 @@ class Design:
         if nxt is not None:
             full = str(nxt.full_plates).lower()
             part.tunnels.append(f"{mm(nxt.S_parent)} case_screw_tunnels(40, {full});")
+            if nxt.yoke == "wrap":           # the next link's idler arm faces this part: its screws driven through it
+                part.tunnels.append(f"{mm(nxt.S_parent)} arm_screw_tunnels(-1, {list(HORN_HOLES_IDLER)});")
             ch = 80 if nxt.yoke == "crossing" else CRADLE_CHANNEL_MM
-            part.negative.append(f"{mm(nxt.S_parent)} housing_keepout({str(nxt.yoke != 'u').lower()}, {nxt.cable}, "
+            part.negative.append(f"{mm(nxt.S_parent)} housing_keepout({str(not nxt.idler_horn).lower()}, {nxt.cable}, "
                                  f"{ch}, {full});")
 
     @staticmethod
@@ -491,8 +488,9 @@ class Design:
         return A @ T(None, (0.0, yc, zc)), size, A @ T(None, (x_end, yc, zc)), size
 
     def _tube_start(self, sp: ServoSpot, a: np.ndarray) -> Tuple[np.ndarray, Tuple[float, float]]:
-        """Where a link's connector leaves its yoke (link frame): the bridge's
-        whole outer face, or the one arm's outer face."""
+        """Where a link's connector leaves its yoke (link frame): a U's
+        bridge's whole outer face; a wrap's driven arm's outer face, from its
+        disc to the bridge."""
         if sp.yoke == "u":
             x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
             B = _bridge_frame(sp.S_child[:3, 3], np.array([1.0, 0.0, 0.0]), a, x_b)
@@ -500,41 +498,49 @@ class Design:
             a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
             a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
             return B @ T(None, (WALL, (a_lo + a_hi) / 2.0, 0.0)), (a_hi - a_lo, 2.0 * BRIDGE_HALF_MM)
-        return sp.S_child @ T(None, (ARM_X0 + ARM_DRIVEN, 0.0, 0.0)), (TUBE_H_MM, TUBE_H_MM)
+        bot = mt.FRONT_SWEEP_MM + CASE_CLEAR + WALL           # the bridge's outer face, past the case's front
+        return (sp.S_child @ T(None, (ARM_X0 + ARM_DRIVEN, (ARM_R_MM - bot) / 2.0, 0.0)),
+                (ARM_R_MM + bot, 2.0 * ARM_R_MM))
 
-    def _tube_ends(self, nxt: ServoSpot) -> List[Tuple[np.ndarray, Tuple[float, float], int]]:
-        """Every cradle face a tube can arrive at: the back plate and both
-        side walls."""
+    @staticmethod
+    def _faces(nxt: ServoSpot) -> List[Tuple[int, np.ndarray, np.ndarray, Tuple[float, float]]]:
+        """The faces of a cradle a connector can arrive at, in the link's
+        frame: (side, outward normal, the face's frame (its rectangle in the
+        frame's y-z plane), size). Side 0 is the back plate, +/-1 the open Z
+        sides (across the socket), +/-2 the full-face plates' outer faces."""
         S = nxt.S_parent
-        R = S[:3, :3]
-        out = []
-        hz = HOUSING_MM[2]
-        for side, c, F in ((0, np.array([0.0, HOUSING_MM[1], 0.0]), np.column_stack([R[:, 1], R[:, 0], R[:, 2]])),
-                           (1, np.array([0.0, CRADLE_SIDE_Y, hz]), np.column_stack([R[:, 2], R[:, 0], R[:, 1]])),
-                           (-1, np.array([0.0, CRADLE_SIDE_Y, -hz]), np.column_stack([-R[:, 2], -R[:, 0], R[:, 1]]))):
-            out.append((T(F, R @ c + S[:3, 3]), CRADLE_BACK_MM if side == 0 else CRADLE_SIDE_MM, side))
+        R, o = S[:3, :3], S[:3, 3]
+        hx, hy, hz = HOUSING_MM
+        out = [(0, R[:, 1], T(np.column_stack([R[:, 1], R[:, 0], R[:, 2]]), R @ np.array([0.0, hy, 0.0]) + o), CRADLE_BACK_MM),
+               (1, R[:, 2], T(np.column_stack([R[:, 2], R[:, 0], R[:, 1]]), R @ np.array([0.0, CRADLE_SIDE_Y, hz]) + o),
+                CRADLE_SIDE_MM),
+               (-1, -R[:, 2], T(np.column_stack([-R[:, 2], -R[:, 0], R[:, 1]]), R @ np.array([0.0, CRADLE_SIDE_Y, -hz]) + o),
+                CRADLE_SIDE_MM)]
+        if nxt.full_plates:
+            y0 = -9.5 - 2.0                           # the plates reach 2 mm past the case's front
+            c = (y0 + hy) / 2.0
+            out += [(2, R[:, 0], T(np.column_stack([R[:, 0], R[:, 1], R[:, 2]]), R @ np.array([hx, c, 0.0]) + o),
+                     (hy - y0, 2.0 * hz)),
+                    (-2, -R[:, 0], T(np.column_stack([-R[:, 0], R[:, 1], -R[:, 2]]), R @ np.array([-hx, c, 0.0]) + o),
+                     (hy - y0, 2.0 * hz))]
         return out
 
+    def _tube_ends(self, nxt: ServoSpot) -> List[Tuple[np.ndarray, Tuple[float, float], int]]:
+        """Every cradle face a connector can arrive at (`_faces`)."""
+        return [(F, size, side) for side, _, F, size in self._faces(nxt)]
+
     def _tube_end(self, nxt: ServoSpot, start: np.ndarray) -> Tuple[np.ndarray, Tuple[float, float], int]:
-        """The cradle face a tube arrives at (link frame): its back plate or
-        a side wall (Z face), whichever faces the tube's start; the face's
-        Z side (0 for the back plate)."""
-        S = nxt.S_parent
-        R = S[:3, :3]
-        hz = HOUSING_MM[2]
-        faces = [(0, R[:, 1], np.array([0.0, HOUSING_MM[1], 0.0]), np.column_stack([R[:, 1], R[:, 0], R[:, 2]])),
-                 (1, R[:, 2], np.array([0.0, CRADLE_SIDE_Y, hz]), np.column_stack([R[:, 2], R[:, 0], R[:, 1]])),
-                 (-1, -R[:, 2], np.array([0.0, CRADLE_SIDE_Y, -hz]), np.column_stack([-R[:, 2], -R[:, 0], R[:, 1]]))]
+        """The cradle face a connector arrives at (link frame): whichever of
+        `_faces` faces the connector's start most squarely; its frame, size
+        and side."""
         best = None
-        for side, n, c, F in faces:
-            p = S[:3, :3] @ c + S[:3, 3]
-            d = start - p
+        for side, n, F, size in self._faces(nxt):
+            d = start - F[:3, 3]
             score = float(n @ d) / (np.linalg.norm(d) + 1e-9)
             if best is None or score > best[0] + 1e-6:
-                best = (score, side, T(F, p))
-        _, side, M = best
-        # the whole face: the back plate, or an open side across both side plates
-        return M, (CRADLE_BACK_MM if side == 0 else CRADLE_SIDE_MM), side
+                best = (score, F, size, side)
+        _, F, size, side = best
+        return F, size, side
 
     def _crossing_gap(self, sp: ServoSpot, nxt: ServoSpot) -> float:
         """How far from servo j's mid-plane (along its X) the next servo's
@@ -565,7 +571,9 @@ class Design:
             P = housing_corners(sp.S_parent)
             standing = float(P[:, 0].max()) >= x0 + 0.5
             ch = 80 if (sp.yoke == "crossing" or not standing) else CRADLE_CHANNEL_MM
-            part.negative.append(f"{Sp} housing_keepout({str(sp.yoke != 'u').lower()}, {sp.cable}, {ch});")
+            part.negative.append(f"{Sp} housing_keepout({str(not sp.idler_horn).lower()}, {sp.cable}, {ch});")
+            if sp.yoke == "wrap":
+                part.negative.append(f"{Sp} arm_screw_tunnels(-1, {list(HORN_HOLES_IDLER)});")
             # the socket (a crossing's servo: its full housing) on a pedestal: its hull with its outline
             # straight down to the plate, so a servo standing off the plate is joined to it (the case's
             # keep-out leaves the pedestal's walls; a servo lying on the plate gains nothing)
@@ -645,7 +653,7 @@ class Design:
                 # its cradle keeps its walls against other fingers' sweeps (the hinge's: against every finger)
                 walls = " ".join(c("0") for c in cradle)
                 part.kept.append((sp.key[1] if sp.key[0] == "f" else -1, f"difference() {{ union() {{ {walls} }} "
-                                             f"{Sp} housing_keepout({str(sp.yoke != 'u').lower()}, {sp.cable}, {ch}); }}"))
+                                             f"{Sp} housing_keepout({str(not sp.idler_horn).lower()}, {sp.cable}, {ch}); }}"))
         if sec == 0 and part.carries is not None:      # the hinge's yoke on the part beyond the cut
             sp = part.carries
             front = -sp.S_child[:3, 1]                 # ahead of the hinge servo: across the cut
@@ -951,6 +959,10 @@ class Design:
         for pc in self.parts[("palm", -1)].pieces[1:]:
             for part in (cup, mount):
                 part.negative.append(f"{Binv} {pc('FIT + 0.3')}")
+        # the column is on before the palm's own servos: a screwdriver reaches a base wrap's idler arm through it
+        for sp in self.parts[("palm", -1)].holds:
+            if sp.yoke == "wrap" and sp.holder is None:
+                mount.negative.append(f"{Binv} {mm(sp.S_parent)} arm_screw_tunnels(-1, {list(HORN_HOLES_IDLER)});")
         self.extras = [cup, mount]
 
     # --------------------------------------------------------------- sweeps

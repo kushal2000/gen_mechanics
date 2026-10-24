@@ -167,7 +167,7 @@ def _count_screws(d: Design) -> Dict[str, int]:
     for sp in d.servos.values():
         out["box"] += 8 if sp.full_plates else 4  # the case's far holes (and near ones at a knuckle)
         out["M2x5"] += 4                          # the driven arm (or the crossing plate)
-        if sp.yoke == "u":
+        if sp.idler_horn:
             out["box"] += 2                       # the idler arm
     for p in d.part_list():
         out["M3x12_column"] += len(getattr(p, "column_screws", []))
@@ -278,14 +278,15 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
             _, i, j = sp.key
             kind = "bend" if abs(sp.S_child[2, 0]) > 0.99 else ("twist" if abs(sp.S_child[0, 0]) > 0.99 else "spread/oblique")
             joint, port = f"finger {i} joint {j} ({kind}{', turned' if sp.turned else ''})", ports[i]
-        arms = {"u": "two (driven + idler)", "single": "one (idler horn off)", "crossing": "plate on the driven horn"}[sp.yoke]
+        arms = {"u": "two (driven + idler)", "wrap": "two, round the servo (driven + idler)",
+                "crossing": "plate on the driven horn"}[sp.yoke]
         held = names[sp.holder or sp.parent]
         order = (orders or {}).get(sp.key) or "servo first"
         L.append(f"| {'/'.join(map(str, sp.key))} | {servo_id(sp)} | {joint} | {held} | {names[sp.child]} | "
                  f"{arms} | {order} | {port} |")
     L += ["",
-          "Servos marked 'one (idler horn off)': unscrew the idler horn's centre screw and pull the horn off; "
-          "the bare stub sits in the housing's side plate.", "",
+          "Servos marked 'round the servo' (a twist): the next link's arms take both horns and its bridge ends "
+          "just past the case's front; it slides on from the front like any U (step 2).", "",
           "## 2. Fitting a link to a servo's horns (every joint)", "",
           "1. Take out both horns' centre screws.",
           "2. Slide the link's yoke over the horns from the servo's front, its arms flat on the horns, with the "

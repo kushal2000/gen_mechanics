@@ -541,7 +541,8 @@ def finger_geometry(f: Finger) -> FingerGeometry:
     for j in range(n):
         M = mt.motor_axes(axes[j], turned[j])
         motors.append(Box(mt.motor_centre(axes[j], slides[j], turned[j]), M, mt.MOTOR_HALF_MM.copy()))
-        yokes.append(Box(slides[j] * M[:, 0], M, mt.YOKE_HALF_MM.copy()))
+        crossing = j < n - 1 and f.joints[j].length == 0
+        yokes.append(Box(*mt.yoke_box(axes[j], slides[j], turned[j], crossing)))
     fars, links = [], []
     tip = None
     for j in range(n):

@@ -20,7 +20,7 @@ COARSE_AXES = [direction(az, el) for az in range(0, 180, 30) for el in (-60, -30
 
 @pytest.mark.parametrize("a,b,floor", [
     ("bend", "bend", 50), ("bend", "spread", 50), ("bend", "twist", 40),
-    ("spread", "bend", 41), ("spread", "spread", 41), ("spread", "twist", 31),
+    ("spread", "bend", 41), ("spread", "spread", 41), ("spread", "twist", 40),
     ("twist", "bend", 50), ("twist", "spread", 50), ("twist", "twist", 40),
 ])
 def test_on_kind_link_floors(a, b, floor):
@@ -49,7 +49,7 @@ def test_link_floors_match_e15():
 def test_floors_over_the_coarse_axes():
     assert len(COARSE_AXES) == 31
     floors = {mt.link_floor_mm(a, b) for a in COARSE_AXES for b in COARSE_AXES}
-    assert floors == {31, 40, 41, 50, 51}
+    assert floors == {40, 41, 50, 51}         # 31 (spread then twist) went with the wrap yokes
     assert {mt.tip_floor_mm(a) for a in KINDS.values()} == {30}
     assert max(mt.tip_floor_mm(a) for a in COARSE_AXES) == 40
 
