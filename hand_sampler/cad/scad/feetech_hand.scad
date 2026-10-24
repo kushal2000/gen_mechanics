@@ -18,7 +18,7 @@
 // screw keep-outs, less what its neighbours sweep over the joints' ranges.
 
 // ---------------------------------------------------------------- settings
-FIT = 0.2;          // printed pocket around a servo case
+FIT = 0.1;          // printed socket around a servo case (Martin, 10/24: 0.1 mm a side)
 CASE_CLEAR = 0.5;   // a turning servo case to a printed part
 PART_CLEAR = 1.0;   // two printed parts that turn against each other
 WALL = 2.0;         // housing plates, back wall, bridge
@@ -127,35 +127,38 @@ module case_screws() {
 module case_box(g = 0) box_lh([CASE_X[0] - g, CASE_Y[0] - g, CASE_Z[0] - g], [CASE_X[1] + g, CASE_Y[1] + g, CASE_Z[1] + g]);
 
 // ------------------------------------------- the housing (part before a joint)
-HOUSING_X = CASE_X[1] + FIT + WALL;          // its side plates' outer faces
+SOCKET_WALL = 1.2;                           // a socket's thin walls on the case's 34 x 23 faces
+HOUSING_X = CASE_X[1] + FIT + WALL;          // its side plates' outer faces (the case screws go through)
 HOUSING_Y = CASE_Y[1] + FIT + WALL;          // its back wall's outer face
-HOUSING_Z = CASE_Z[1] + FIT + WALL;          // its side walls' outer faces
+HOUSING_Z = CASE_Z[1] + FIT + SOCKET_WALL;   // its thin walls' outer faces
+SOCKET_Y0 = FAR_HOLES[0][0] - 5.5;           // where a socket starts: just ahead of the far screws' bosses
 
 // a box around the case (convex; the keep-outs hollow it): side plates,
 // back wall, side walls, open at the front
 module housing_box(g = 0) box_lh([-HOUSING_X - g, CASE_Y[0] - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g]);
 
-// a cradle: the housing's two side plates and its back plate, open on the
-// other sides (bracket-frame links)
-module cradle_side(s, g = 0) {
-    if (s > 0) box_lh([CASE_X[1] + FIT - g, CASE_Y[0] - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g]);
-    else box_lh([-HOUSING_X - g, CASE_Y[0] - g, -HOUSING_Z - g], [CASE_X[0] - FIT + g, HOUSING_Y + g, HOUSING_Z + g]);
-}
-module cradle_back(g = 0) box_lh([-HOUSING_X - g, CASE_Y[1] + FIT - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g]);
+// a cradle (bracket-frame links, the palm): a socket the case's back end
+// slides into (0.1 mm a side), its two plates as far as the far screws'
+// bosses, thin walls on the other two faces, the back plate (convex; the
+// case's keep-out hollows it)
+module cradle_socket(g = 0) box_lh([-HOUSING_X - g, SOCKET_Y0 - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g]);
 
-// a hollow tube between two rectangles, each given as a frame (origin at its
-// centre, its plane the frame's y-z, the tube leaving along +x) and a size
+// a link's connector between two rectangles, each given as a frame (origin
+// at its centre, its plane the frame's y-z) and a size: their hull, hollow
+// inside with its walls and both ends TUBE_WALL thick (solid when short)
 TUBE_WALL = 2.5;
 module tube(A, sa, B, sb, g = 0) {
     module rect(M, sz, d) multmatrix(M) translate([0, -sz[0] / 2 - d, -sz[1] / 2 - d]) cube([0.01, sz[0] + 2 * d, sz[1] + 2 * d]);
+    ca = [A[0][3], A[1][3], A[2][3]];
+    cb = [B[0][3], B[1][3], B[2][3]];
+    len = norm(cb - ca);
+    u = len > 0 ? (cb - ca) / len : [0, 0, 0];
     difference() {
         hull() { rect(A, sa, g); rect(B, sb, g); }
-        if (g == 0) hull() { rect(A, sa, -TUBE_WALL); rect(B, sb, -TUBE_WALL); }
+        if (g == 0 && len > 2 * TUBE_WALL + 2)
+            hull() { translate(u * TUBE_WALL) rect(A, sa, -TUBE_WALL); translate(-u * TUBE_WALL) rect(B, sb, -TUBE_WALL); }
     }
 }
-
-// the back of a housing, for joining it to the rest of its part
-module housing_back(g = 0) box_lh([-HOUSING_X - g, CASE_Y[1] - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g]);
 
 // what a housing leaves empty: the case and its way in from the front, the
 // horns (or the idler stub) and their way in, the four case screws, the

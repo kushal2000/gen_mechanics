@@ -148,7 +148,7 @@ def _bosses():
 
     out = []
     for y, z in ((22.5, -8.0), (22.5, 8.0)):
-        for x0 in (11.7, -13.7):
+        for x0 in (11.6, -13.6):
             c = m3.Manifold.cylinder(2.0, 3.5, 3.5, 24).rotate([0.0, 90.0, 0.0]).translate([x0, y, z])
             c = c - m3.Manifold.cylinder(2.2, 1.2, 1.2, 16).rotate([0.0, 90.0, 0.0]).translate([x0 - 0.1, y, z])
             out.append(c)
@@ -159,13 +159,13 @@ def _pocket_solid():
     """A palm pocket's outer box (servo frame)."""
     import manifold3d as m3
 
-    return m3.Manifold.cube([27.4, 36.2, 24.4]).translate([-13.7, -9.5, -12.2])
+    return m3.Manifold.cube([27.2, 36.1, 22.6]).translate([-13.6, -9.5, -11.3])
 
 
 def _back_wall_solid():
     import manifold3d as m3
 
-    return m3.Manifold.cube([23.0, 2.0, 20.0]).translate([-11.5, 24.7, -10.0])
+    return m3.Manifold.cube([23.0, 2.0, 20.0]).translate([-11.5, 24.6, -10.0])
 
 
 def _bodies(design: Design, solids: Dict) -> Dict:
