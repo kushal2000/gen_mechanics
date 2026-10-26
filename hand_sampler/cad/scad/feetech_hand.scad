@@ -192,6 +192,28 @@ module tube(A, sa, B, sb, g = 0, ea = 0, eb = 0) {
     }
 }
 
+// a connector's outer hull, solid (what its gussets join)
+module tube_outer(A, sa, B, sb, g = 0, ea = 0, eb = 0) {
+    module rect(M, sz, d) multmatrix(M) translate([0, -sz[0] / 2 - d, -sz[1] / 2 - d]) cube([0.01, sz[0] + 2 * d, sz[1] + 2 * d]);
+    ca = [A[0][3], A[1][3], A[2][3]];
+    cb = [B[0][3], B[1][3], B[2][3]];
+    len = norm(cb - ca);
+    u = len > 0 ? (cb - ca) / len : [0, 0, 0];
+    hull() { translate(-u * ea) rect(A, sa, g); translate(u * eb) rect(B, sb, g); }
+}
+
+// a gusset (Martin, 10/26: stiffen the inside corners, 45 degrees or so):
+// the hull of its children (a connector and a piece it joins) within
+// `reach` of their joint's plane on the connector's side (F: a frame with
+// that plane its y-z, x toward the connector) and `back` on the other, so
+// every inside corner there is filled with a flat diagonal web; what turns
+// or must stay clear is cut away from it like the rest of the part
+GUSSET = 8;
+module gusset(F, reach = GUSSET, back = GUSSET) intersection() {
+    hull() children();
+    multmatrix(F) translate([-back, -500, -500]) cube([reach + back, 1000, 1000]);
+}
+
 // what a housing leaves empty: the case and its way in from the front, the
 // horns (or the idler stub) and their way in, the four case screws, the
 // connector windows (and the plug on the cable side: +1 / -1 along Z, 0 none)

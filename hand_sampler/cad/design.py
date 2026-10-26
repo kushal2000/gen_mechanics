@@ -403,6 +403,7 @@ class Design:
         else:
             x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
             pieces, joint_piece = _yoke_pieces(sp, a, np.array([1.0, 0.0, 0.0]), x_b)
+        yoke_pieces = list(pieces)
         if last:
             tip = fg.tip
             p1 = tip.p1
@@ -431,6 +432,7 @@ class Design:
             nxt.flange = nxt.yoke == "single"
             A, sa = self._tube_start(sp, a)
             B, sb, face = self._tube_end(nxt, A[:3, 3])
+            Bf = B                                     # the face it lands on (its gusset's plane)
             A2, sa2, B, sb = self._connector(A, sa, B, sb, square=nxt.across)
             if face != 0 and nxt.cable == face:
                 nxt.cable = -face                        # the tube lands on that side: the cable takes the other
@@ -450,11 +452,21 @@ class Design:
             if nxt.yoke == "crossing":
                 # a crossing's first servo: its near horn carries the crossing plate, so its cradle is a
                 # full housing (the plate's swing opens the near side)
-                pieces = pieces + [lambda g, Sn=Sn: f"{Sn} housing_box({g});", tube] + extra
+                cradle: Piece = lambda g, Sn=Sn: f"{Sn} housing_box({g});"
             elif nxt.flange:
-                pieces = pieces + [lambda g, Sn=Sn: f"{Sn} flange_cup({g});", tube] + extra
+                cradle = lambda g, Sn=Sn: f"{Sn} flange_cup({g});"
             else:
-                pieces = pieces + [lambda g, Sn=Sn: f"{Sn} cradle_socket({g});", tube] + extra
+                cradle = lambda g, Sn=Sn: f"{Sn} cradle_socket({g});"
+            # gussets in the inside corners where the connector meets the cradle and the yoke (Martin, 10/26)
+            outer = lambda g, A=A2, B=B, sa=sa2, sb=sb, ea=ea: (
+                f"tube_outer({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {FILLET_MM});")
+            gussets: List[Piece] = [lambda g, o=outer, c=cradle, F=Bf: f"gusset({_mat(F)}) {{ {o(g)} {c(g)} }}"]
+            if sp.yoke == "u":
+                # on the yoke's side only from the bridge's back face forward: behind it the gusset would turn
+                # with the joint through the part holding the servo (its screw bosses)
+                gussets += [lambda g, o=outer, y=y, F=A: f"gusset({_mat(F)}, GUSSET, WALL) {{ {o(g)} {y(g)} }}"
+                            for y in yoke_pieces]
+            pieces = pieces + [cradle, tube] + gussets + extra
         part.pieces = pieces
         part.positive = [p("0") for p in pieces]
         part.clip = _clip_body(f, j)
