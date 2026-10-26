@@ -21,12 +21,7 @@ body stands 24.5 mm out behind the finger.
 Every motor's body sits in the link before its joint (the palm for a
 finger's first joint). The link after it holds the horn and the idler in a
 yoke, a 33 x 24 x 24 mm box around the axis (the motor's length plus a wall
-at each end, its front plus a wall). A joint whose axis leans along the
-finger (a twist; `WRAP_LEAN`) has a wrap yoke instead: both horns held, the
-bridge passing the motor's front (toward the palm for a twist) past its
-swing, so its yoke box reaches `WRAP_BRIDGE_MM` that way and the link before
-keeps clear of its idler arm (Martin, 2026-10-24: no joint cantilevered off
-one horn; provisional, to be undone if it bloats the grammar).
+at each end, its front plus a wall).
 
 Link floors (E15's plane rule): a plane square to the finger separates the
 next motor's back from the corners of this motor's front, which swing on a
@@ -70,13 +65,10 @@ PAD_MM = 10.0                                   # the fingertip pad beyond the l
 BUILD_CLEARANCE_MM = 1.0                        # a floor keeps this much between the swinging front and the wall
 CROSSING_EXTRA_MM = 1.5                         # a crossing's plate: the near horn's 2.4 mm screw head in a 3.5 mm plate
 BEFORE_CROSSING_MM = WALL_MM + 1.0              # a link before a crossing: the next part's housing wall and a gap
-WRAP_LEAN = 0.5                                 # |axis . x| from which a joint's yoke wraps its motor (30 degrees)
 
 FRONT_SWEEP_MM = math.hypot(MOTOR_FRONT_MM, MOTOR_HALF_MM[2])                      # 13.79
 SPREAD_FRONT_SWEEP_MM = (MOTOR_FRONT_MM * math.cos(math.radians(30.0))
                          + MOTOR_HALF_MM[2] * math.sin(math.radians(30.0)))         # 13.23
-
-WRAP_BRIDGE_MM = FRONT_SWEEP_MM + 0.5 + WALL_MM  # a wrap yoke's bridge past the motor's front: its swing, a gap, a wall
 
 X, Y, Z = np.eye(3)
 
@@ -121,25 +113,6 @@ def motor_centre(a: Sequence[float], slide_mm: float = 0.0, turned: bool = False
     """The motor box's centre relative to its joint point (joint frame)."""
     M = motor_axes(a, turned)
     return slide_mm * M[:, 0] + MOTOR_CENTRE_BACK_MM * M[:, 1]
-
-
-def is_wrap(a: Sequence[float], crossing: bool = False) -> bool:
-    """Whether a joint with axis `a` has a wrap yoke (`WRAP_LEAN`; a
-    crossing's first joint keeps its plate)."""
-    return not crossing and abs(float(np.asarray(a, dtype=float)[0])) >= WRAP_LEAN - 1e-9
-
-
-def yoke_box(a: Sequence[float], slide_mm: float = 0.0, turned: bool = False,
-             crossing: bool = False) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """The yoke round joint `a` in the next link's frame at the joint:
-    (centre, axes (a, v, w) as columns, half sizes). A wrap yoke's box
-    reaches `WRAP_BRIDGE_MM` past the motor's front (-v)."""
-    M = motor_axes(a, turned)
-    if is_wrap(a, crossing):
-        half = YOKE_HALF_MM.copy()
-        half[1] = (YOKE_HALF_MM[1] + WRAP_BRIDGE_MM) / 2.0
-        return slide_mm * M[:, 0] + (YOKE_HALF_MM[1] - WRAP_BRIDGE_MM) / 2.0 * M[:, 1], M, half
-    return slide_mm * M[:, 0], M, YOKE_HALF_MM.copy()
 
 
 def support(centre: np.ndarray, axes: np.ndarray, half: np.ndarray, n: Sequence[float]) -> float:
@@ -195,18 +168,14 @@ def swept_front_mm(a: Sequence[float], turned: bool = False) -> float:
 
 def back_mm(b: Sequence[float], turned: bool = False) -> float:
     """How far motor `b`'s body reaches behind its joint along the finger:
-    24.5 mm for a bend, 10 for a turned bend; for a twist its wrap yoke's
-    idler arm, 16.5."""
+    24.5 mm for a bend, 10 for a turned bend, 14.5 for a twist."""
     return _back_cached(_key(b), bool(turned))
 
 
 @lru_cache(maxsize=4096)
 def _back_cached(b: Tuple[float, ...], turned: bool) -> float:
     v = np.array(b)
-    back = support(motor_centre(v, 0.0, turned), motor_axes(v, turned), MOTOR_HALF_MM, -X)
-    if is_wrap(v):
-        back = max(back, support(*yoke_box(v, 0.0, turned), -X))
-    return back
+    return support(motor_centre(v, 0.0, turned), motor_axes(v, turned), MOTOR_HALF_MM, -X)
 
 
 def plane_floor_mm(a: Sequence[float], b: Sequence[float], turned_a: bool = False, turned_b: bool = False) -> float:
@@ -236,7 +205,7 @@ def link_floor_mm(a: Sequence[float], b: Sequence[float], turned_a: bool = False
     """The shortest link between two joints with axes `a` then `b`, either
     turned (`floor_mm`): 30-51 mm (bend then bend 50, 30 when the next bend
     motor is turned and 40 when both are; spread then bend 41, spread then
-    twist 40, past the twist's wrap yoke)."""
+    twist 31)."""
     return _link_floor_cached(_key(a), _key(b), bool(turned_a), bool(turned_b))
 
 

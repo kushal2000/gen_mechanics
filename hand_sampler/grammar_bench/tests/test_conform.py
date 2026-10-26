@@ -34,10 +34,8 @@ ROUND_TRIP_KNOWN_LIMITS = {
                  "fit takes it for a bend first (tilt 0, offset 90 degrees) at a bend's base depth, 0.5 mm off",
     ("none", 2): "the same: a standing spread-first finger comes back 0.5 mm off as a bend first",
     ("none", 9): "the same (2026-10-23 draws): a standing spread-first finger comes back as a bend first",
-    ("feetech", 3): "the same (2026-10-24 draws, wrap yokes): a standing spread-first finger comes back as a bend "
-                    "first",
-    ("none", 6): "a palm cut that comes back offset by more than 10 mm (2026-10-24 draws; the fitter's known cut limit, "
-                 "as No Rules seed 11 on 2026-10-20)",
+    ("feetech", 11): "the same (2026-10-23 draws): a standing finger with an oblique first axis comes back as a "
+                     "bend first",
 }
 
 

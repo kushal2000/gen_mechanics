@@ -60,9 +60,8 @@ def oblique_hand() -> Hand:
 
 def kinds_hand() -> Hand:
     """Every yoke: a U on bends and spreads, a turned bend after a spread's
-    40 mm link, a wrap on a twist (41 mm after the turned bend), a bend
-    fingertip."""
-    f = _finger(0, 40, (("hinge", FLEX, 50), ("hinge", ABD, 40), ("hinge", FLEX, 41), ("hinge", ROLL, 30)))
+    40 mm link, a one-arm yoke on a twist, a bend fingertip."""
+    f = _finger(0, 40, (("hinge", FLEX, 50), ("hinge", ABD, 40), ("hinge", FLEX, 40), ("hinge", ROLL, 30)))
     g = _finger(0, -40, (("hinge", FLEX, 50), ("hinge", FLEX, 30)), facing=180)
     return Hand(fingers=(f, g))
 
@@ -107,7 +106,7 @@ def test_each_servo_has_one_yoke_and_one_holder():
     for sp in d.servos.values():
         assert sp.parent in d.parts and sp.child in d.parts and sp.parent != sp.child
     d = Design(kinds_hand())
-    assert [d.servos[("f", 0, j)].yoke for j in range(4)] == ["u", "u", "u", "wrap"]
+    assert [d.servos[("f", 0, j)].yoke for j in range(4)] == ["u", "u", "u", "single"]
     assert d.servos[("f", 0, 2)].turned
 
 

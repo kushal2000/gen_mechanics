@@ -379,7 +379,7 @@ def _drivers(sp: ServoSpot):
     import manifold3d as m3
 
     out = None
-    sides = [(1, (45.0, 135.0, 225.0, 315.0), 17.6)] + ([(-1, (90.0, 270.0), 16.6)] if sp.idler_horn else [])
+    sides = [(1, (45.0, 135.0, 225.0, 315.0), 17.6)] + ([(-1, (90.0, 270.0), 16.6)] if sp.yoke == "u" else [])
     for s, holes, x in sides:
         for a in holes:
             c = m3.Manifold.cylinder(25.0, 2.0, 2.0, 16).rotate([0.0, 90.0, 0.0])

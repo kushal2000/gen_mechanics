@@ -375,9 +375,9 @@
     },
     {
       "id": "I47",
-      "status": "provisional",
+      "status": "dropped",
       "hypothesis": "Twist joints (axis leaning >= 30 deg along the finger) need double support: a wrap yoke holding both horns, its bridge past the servo's front on the palm side (motor.WRAP_LEAN, WRAP_BRIDGE_MM, yoke_box, is_wrap; back_mm includes the idler arm).",
-      "decision": "Martin 2026-10-24: do it, but mark as something we may undo if it bloats the grammar",
+      "decision": "Martin 2026-10-24: do it, but mark as something we may undo if it bloats the grammar; 2026-10-26 Martin: drop the double support, a cantilever on the output horn is OK (reverted: 450d77e, 221060a)",
       "evidence": "costs: coarse 10^38.03 -> 10^37.72, fine 10^64.79 -> 10^64.58; 5-joint chains on the kinds 98529 -> 84742; spread->twist floor 31 -> 40, turned bend->twist 40 -> 41; twist yoke box 4.3 mm deeper on the palm side; longest shortest 5-joint finger 203 -> 211 mm; Dex3 refitted (its base twist met the mount). To undo: revert the wrap commit (motor.py, derive.py, cad yokes, test updates, Dex3's record)."
     }
   ],

@@ -758,23 +758,22 @@ def test_chain_counts_match_the_grammar_s_own_lengths():
 
 def test_search_space_counts():
     """The search space, counted exactly (no geometry), every finger count
-    together: 10^37.7 hands in the coarse stage (joints on the three kinds,
-    20 mm link steps), 10^64.6 in the fine stage (31 axis directions, 10 mm
+    together: 10^38.0 hands in the coarse stage (joints on the three kinds,
+    20 mm link steps), 10^64.8 in the fine stage (31 axis directions, 10 mm
     steps); four-finger hands with joints on the three kinds and 10 mm steps:
-    10^29.2 (10^29.7 on 2026-10-20, E16). 2026-10-23: floors 1 mm past the grid (the
+    10^29.5 (10^29.7 on 2026-10-20, E16). 2026-10-23: floors 1 mm past the grid (the
     same number of lengths; the 225 mm cap trims a few chains), and a
     crossing's first servo never turned with room before it for the second
-    (`motor.crossing_floor_mm`). 2026-10-24: wrap yokes on twists (spread then
-    twist 40 mm, was 31; 10^38.0 and 10^64.8 before)."""
+    (`motor.crossing_floor_mm`)."""
     from hand_sampler.grammar import space
     from hand_sampler.grammar.hand import FEETECH_COARSE_RULES
 
     assert len(space.AXES_ALL) == 31
     assert space.rule_axes(FEETECH_COARSE_RULES) == space.AXES_KINDS and space.rule_axes(FEETECH_RULES) == space.AXES_ALL
-    assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (21, 393, 6430, 38593, 84742)
-    assert space.hands_log10(FEETECH_RULES, space.AXES_KINDS)[4] == pytest.approx(29.23, abs=0.01)
-    assert space.total_log10(FEETECH_RULES) == pytest.approx(64.58, abs=0.01)
-    assert space.total_log10(FEETECH_COARSE_RULES) == pytest.approx(37.72, abs=0.01)
+    assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (21, 400, 6673, 42383, 98529)
+    assert space.hands_log10(FEETECH_RULES, space.AXES_KINDS)[4] == pytest.approx(29.47, abs=0.01)
+    assert space.total_log10(FEETECH_RULES) == pytest.approx(64.79, abs=0.01)
+    assert space.total_log10(FEETECH_COARSE_RULES) == pytest.approx(38.03, abs=0.01)
     assert space.total_log10(NO_RULES) > space.total_log10(FEETECH_RULES) + 20
 
 
@@ -804,12 +803,11 @@ def test_a_bend_first_finger_has_tilt_0():
 
 def test_five_joint_fingers_fit_the_length_cap():
     """Five joints on the three kinds, each link at its shortest from the palm
-    out (a link that short turns the next bend servo): at most 211 mm (spreads
-    with a twist among them: a spread then a twist needs 40 mm past the twist's
-    wrap yoke), inside the Feetech cap (225 mm); five bends need 190 (30 + 40 +
-    40 + 40 + a 40 mm fingertip)."""
+    out (a link that short turns the next bend servo): at most 203 mm (a bend
+    or twist then four spreads: 50 + 41 + 41 + 41 + 30), inside the Feetech cap
+    (225 mm); five bends need 190 (30 + 40 + 40 + 40 + a 40 mm fingertip)."""
     tot = {}
     for kinds in itertools.product(("flexion", "abduction", "roll"), repeat=5):
         js = [Joint("hinge", KIND_AXIS[k], 90) for k in kinds]
         tot[kinds] = ops._shortest_rest_mm(Finger(y=0, z=40), js, -1, 0, FEETECH_RULES)
-    assert max(tot.values()) == 211 <= FEETECH_RULES.max_finger_length_mm and tot[("flexion",) * 5] == 190
+    assert max(tot.values()) == 203 <= FEETECH_RULES.max_finger_length_mm and tot[("flexion",) * 5] == 190
