@@ -171,9 +171,10 @@ module flange_cup(g = 0) rbox_lh([-HOUSING_X - g, FLANGE_Y[0] - g, -HOUSING_Z - 
 // a link's connector between two rectangles, each given as a frame (origin
 // at its centre, its plane the frame's y-z) and a size: their hull (its long
 // edges rounded), hollow inside with its walls and both ends TUBE_WALL thick
-// (solid when short)
+// (solid when short). Its ends reach `ea` / `eb` into the pieces they meet
+// (past those pieces' rounded edges, so the joint has no groove)
 TUBE_WALL = 2.5;
-module tube(A, sa, B, sb, g = 0) {
+module tube(A, sa, B, sb, g = 0, ea = 0, eb = 0) {
     module rect(M, sz, d, r = 0) multmatrix(M) {
         rr = min(r, min(sz[0], sz[1]) / 2 + d - 0.01);
         if (rr <= 0) translate([0, -sz[0] / 2 - d, -sz[1] / 2 - d]) cube([0.01, sz[0] + 2 * d, sz[1] + 2 * d]);
@@ -185,7 +186,7 @@ module tube(A, sa, B, sb, g = 0) {
     len = norm(cb - ca);
     u = len > 0 ? (cb - ca) / len : [0, 0, 0];
     difference() {
-        hull() { rect(A, sa, g, g == 0 ? 2 * FILLET : 0); rect(B, sb, g, g == 0 ? 2 * FILLET : 0); }
+        hull() { translate(-u * ea) rect(A, sa, g, g == 0 ? 2 * FILLET : 0); translate(u * eb) rect(B, sb, g, g == 0 ? 2 * FILLET : 0); }
         if (g == 0 && len > 2 * TUBE_WALL + 2)
             hull() { translate(u * TUBE_WALL) rect(A, sa, -TUBE_WALL); translate(-u * TUBE_WALL) rect(B, sb, -TUBE_WALL); }
     }

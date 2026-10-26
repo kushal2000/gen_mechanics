@@ -65,7 +65,9 @@ PALM_BOLT_CLEAR_MM = 5.0      # and this far from any base sweep
 PALM_BOLT_SPACING_MM = 18.0
 BORE_R_MM = 7.0               # the cables' bore (library BORE_R)
 COLUMN_SCREW_R_MM = 16.5
-TUBE_H_MM = 16.0              # a single-arm yoke's square where its connector leaves the arm
+ARM_R_MM = 9.5                # an arm's disc round the axis (library ARM_R)
+FILLET_MM = 1.2               # outer edges' rounding (library FILLET)
+BLOCK_MIN_MM = 6.0            # a right-angle connector at least this thick (Martin, 10/26: not a thin plate)
 HOUSING_MM = (13.6, 26.6, 11.3)   # a housing's outer faces in its servo's frame: side plates (X), back (Y), walls (Z)
 SOCKET_Y0_MM = 17.0               # where a cradle's socket starts (library SOCKET_Y0)
 CRADLE_BACK_MM = (2 * HOUSING_MM[0], 2 * HOUSING_MM[2])     # a cradle's back face (along its servo's X, Z)
@@ -432,15 +434,19 @@ class Design:
             A2, sa2, B, sb = self._connector(A, sa, B, sb, square=nxt.across)
             if face != 0 and nxt.cable == face:
                 nxt.cable = -face                        # the tube lands on that side: the cable takes the other
-            tube: Piece = lambda g, A=A2, B=B, sa=sa2, sb=sb: f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g});"
+            # its ends reach past the bridge's and the cradle's rounded edges (a single arm's start stays on
+            # its horn's face: nothing round a horn)
+            ea = FILLET_MM if sp.yoke == "u" else 0.0
+            tube: Piece = lambda g, A=A2, B=B, sa=sa2, sb=sb, ea=ea: (
+                f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {FILLET_MM});")
             extra: List[Piece] = []
             if ("link", i, j) in self.more_tubes:
                 # this link came out in pieces (something turns through its tube): a tube to every face
                 for Bx, sbx, fx in self._tube_ends(nxt):
                     if fx != face and not (fx != 0 and fx == nxt.cable):
                         Ax, sax, Bx, sbx = self._connector(A, sa, Bx, sbx, square=nxt.across)
-                        extra.append(lambda g, A=Ax, B=Bx, sa=sax, sb=sbx:
-                                     f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g});")
+                        extra.append(lambda g, A=Ax, B=Bx, sa=sax, sb=sbx, ea=ea:
+                                     f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {FILLET_MM});")
             if nxt.yoke == "crossing":
                 # a crossing's first servo: its near horn carries the crossing plate, so its cradle is a
                 # full housing (the plate's swing opens the near side)
@@ -491,12 +497,13 @@ class Design:
         zs = np.concatenate([loc[:, 2], [-sa[1] / 2.0, sa[1] / 2.0]])
         yc, zc = (ys.min() + ys.max()) / 2.0, (zs.min() + zs.max()) / 2.0
         size = (float(ys.max() - ys.min()), float(zs.max() - zs.min()))
-        x_end = max(float(loc[:, 0].max()), 1.0)
+        x_end = max(float(loc[:, 0].max()), BLOCK_MIN_MM)
         return A @ T(None, (0.0, yc, zc)), size, A @ T(None, (x_end, yc, zc)), size
 
     def _tube_start(self, sp: ServoSpot, a: np.ndarray) -> Tuple[np.ndarray, Tuple[float, float]]:
         """Where a link's connector leaves its yoke (link frame): the bridge's
-        whole outer face, or the one arm's outer face."""
+        whole outer face; a single arm's horn face, as wide as the arm's disc
+        (the connector and the arm are one plate, Martin 10/26)."""
         if sp.yoke == "u":
             x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
             B = _bridge_frame(sp.S_child[:3, 3], np.array([1.0, 0.0, 0.0]), a, x_b)
@@ -504,7 +511,7 @@ class Design:
             a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
             a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
             return B @ T(None, (WALL, (a_lo + a_hi) / 2.0, 0.0)), (a_hi - a_lo, 2.0 * BRIDGE_HALF_MM)
-        return sp.S_child @ T(None, (ARM_X0 + ARM_DRIVEN, 0.0, 0.0)), (TUBE_H_MM, TUBE_H_MM)
+        return sp.S_child @ T(None, (ARM_X0, 0.0, 0.0)), (2.0 * ARM_R_MM, 2.0 * ARM_R_MM)
 
     @staticmethod
     def _flange_face(nxt: ServoSpot) -> Tuple[np.ndarray, Tuple[float, float]]:
