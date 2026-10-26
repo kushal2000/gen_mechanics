@@ -18,7 +18,7 @@ import math
 import shutil
 import time
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -42,12 +42,22 @@ def design_id(hand: Hand) -> str:
 
 @dataclass
 class Kit:
+    """A hand's kit. `build_parts` fills in what drawing it needs (the
+    design, every part's STL); `finish` adds the checks, the print layout,
+    the pictures, the parts list and the steps, and the zip."""
     folder: Path
-    zip_path: Path
-    report: checks.Report
+    zip_path: Optional[Path]
+    report: Optional[checks.Report]
     parts: List[str]
     seconds: float
     design: Optional[Design] = None
+    rendered: Dict = field(default_factory=dict, repr=False)   # part name -> render.Rendered
+    scad_path: Optional[Path] = None
+    started: float = 0.0
+
+    @property
+    def ready(self) -> bool:
+        return self.zip_path is not None
 
     def part_frames(self) -> Dict[str, tuple]:
         """Each printed part's STL: (its rigid body, its frame in that body,
@@ -63,6 +73,13 @@ class Kit:
 
 def generate(hand: Hand, out_root: Path = DESIGNS_DIR, progress: Optional[Callable[[str], None]] = None) -> Kit:
     """Design, render, check and package `hand`."""
+    return finish(build_parts(hand, out_root, progress), progress)
+
+
+def build_parts(hand: Hand, out_root: Path = DESIGNS_DIR, progress: Optional[Callable[[str], None]] = None) -> Kit:
+    """What drawing the parts needs: the design and every part rendered
+    (a link that came out in pieces is joined again). `finish` does the
+    rest."""
     say = progress or (lambda s: None)
     t0 = time.time()
     did = design_id(hand)
@@ -86,6 +103,16 @@ def generate(hand: Hand, out_root: Path = DESIGNS_DIR, progress: Optional[Callab
         d = Design(hand, more_tubes=split)
         path = scad.write(d, folder / "scad")
         res = render.render_all(path, names, folder / "stl")
+    return Kit(folder, None, None, names, time.time() - t0, d, res, path, t0)
+
+
+def finish(kit: Kit, progress: Optional[Callable[[str], None]] = None) -> Kit:
+    """The rest of the kit, after `build_parts`: the checks, the parts laid
+    out for printing, the assembly pictures, the parts list and the steps,
+    the report and the zip."""
+    say = progress or (lambda s: None)
+    folder, d, res, names, path = kit.folder, kit.design, kit.rendered, kit.parts, kit.scad_path
+    did = folder.name
     failed = [n for n, r in res.items() if not r.ok]
     say("checking the parts")
     rep = checks.check(d, folder / "stl")
@@ -115,7 +142,8 @@ def generate(hand: Hand, out_root: Path = DESIGNS_DIR, progress: Optional[Callab
         for f in sorted(folder.rglob("*")):
             if f.is_file() and f.suffix != ".off":        # the OFF meshes are only for the checks
                 z.write(f, f"hand_{did}/{f.relative_to(folder)}")
-    return Kit(folder, zpath, rep, names, time.time() - t0, d)
+    kit.report, kit.zip_path, kit.seconds = rep, zpath, time.time() - kit.started
+    return kit
 
 
 def _pieces(stl: Path) -> int:

@@ -101,6 +101,7 @@ class GrammarViewer:
         self.kit = None                               # the last generated design and its hand
         self.kit_hand: Optional[Hand] = None
         self.printed_frames: Dict[str, tuple] = {}     # printed part or servo -> (its rigid body, frame there, mm)
+        self._finishing: Optional[threading.Thread] = None   # the last kit's checks, pictures and zip, in the background
         self._build_gui()
         if build_initial:
             self.random(wait=True)
@@ -133,9 +134,11 @@ class GrammarViewer:
 
     # ---------------------------------------------------------------- build
     def generate_design(self, client=None, wait: bool = False) -> bool:
-        """The hand's printable kit (`hand_sampler.cad`): parts rendered with
-        OpenSCAD, checked, laid out for printing, zipped; drawn over the hand
-        and, from a button, sent to that browser."""
+        """The hand's printable kit (`hand_sampler.cad`): its parts rendered
+        with OpenSCAD and drawn over the hand first; then, in the background
+        while the hand can be looked at and changed, the checks, the print
+        layout, the assembly pictures and steps and the zip, which is then
+        sent to that browser (`wait`: all of it before returning)."""
         if self.hand is None:
             return False
 
@@ -148,17 +151,38 @@ class GrammarViewer:
             def say(s: str) -> None:
                 self.md_build.content = f"{s} ({time.time() - t0:.0f} s)"
 
-            kit = gcad.generate(hand, progress=say)
+            if self._finishing is not None:
+                self._finishing.join()                 # one kit written at a time (the same hand: one folder)
+            kit = gcad.build_parts(hand, progress=say)
             with self.lock:
                 self.kit, self.kit_hand = kit, hand
                 self._build_printed()
                 self._render_pose()
-            rep = kit.report
-            verdict = "every check passes" if rep.ok else f"{len(rep.clashes) + sum(not p['ok'] for p in rep.parts.values())} problems (see checks.md)"
-            self.md_build.content = (f"{len(kit.parts)} parts in {kit.seconds:.0f} s, {verdict}. "
-                                     f"Kit: `{kit.zip_path}`" + (" (downloading)" if client is not None else ""))
-            if client is not None:
-                client.send_file_download(kit.zip_path.name, kit.zip_path.read_bytes())
+            say(f"{len(kit.parts)} parts drawn; checking them and writing the kit in the background")
+
+            def finish() -> None:
+                current = lambda: self.kit is kit
+                try:
+                    gcad.finish(kit, progress=lambda s: say(s) if current() else None)
+                except Exception as exc:  # noqa: BLE001
+                    traceback.print_exc()
+                    if current():
+                        self.md_build.content = f"error writing the kit: {type(exc).__name__}: {exc}"
+                    return
+                rep = kit.report
+                verdict = ("every check passes" if rep.ok else
+                           f"{len(rep.clashes) + sum(not p['ok'] for p in rep.parts.values())} problems (see checks.md)")
+                if current():
+                    self.md_build.content = (f"{len(kit.parts)} parts in {kit.seconds:.0f} s, {verdict}. "
+                                             f"Kit: `{kit.zip_path}`" + (" (downloading)" if client is not None else ""))
+                    if client is not None:
+                        client.send_file_download(kit.zip_path.name, kit.zip_path.read_bytes())
+
+            if wait:
+                finish()
+            else:
+                self._finishing = threading.Thread(target=finish, daemon=True)
+                self._finishing.start()
 
         return self.run_job("design", job, wait)
 
