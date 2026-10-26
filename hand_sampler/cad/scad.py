@@ -77,7 +77,7 @@ def hand_scad(design: Design) -> str:
         out.append(f"module step_{tag}() {{")
         out.append(f"    color(\"lightsteelblue\") part_{parent.name}();")
         out.append(f"    {mm(sp.S_parent)} {{ servo_model({str(sp.idler_horn).lower()}); "
-                   f"case_screws({str(sp.full_plates).lower()}); }}")
+                   f"case_screws({str(sp.flange).lower()}); }}")
         out.append(f"    color(\"lightskyblue\", 0.85) {mm(pull)} part_{child.name}();")
         out.append(f"    {mm(sp.S_parent @ np.array([[1, 0, 0, 0], [0, 1, 0, -STEP_PULL_MM], [0, 0, 1, 0], [0, 0, 0, 1.0]]))} "
                    f"arm_screws({single});")

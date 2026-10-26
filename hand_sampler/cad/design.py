@@ -47,12 +47,12 @@ twist, and 30 degrees of elevation or more) gets a one-arm yoke on its
 driven horn (the idler horn comes off): a U's rear arm would need room
 behind the servo that the link floors do not budget."""
 
-BRIDGE_HALF_MM = float(mt.YOKE_HALF_MM[2])   # a U's bridge, either side of the axis across the finger (12)
+BRIDGE_HALF_MM = 9.5         # a U's bridge, either side of the axis across the finger: as wide as its arms' discs
 ARM_X0 = 14.6                                # an arm's inner face from the servo's mid-plane (horn face 14.5 + 0.1)
 ARM_DRIVEN, ARM_IDLER = 3.0, 2.0
 CASE_CLEAR, PART_CLEAR, WALL, FIT = 0.5, 1.0, 2.0, 0.2
 HORN_HOLES_DRIVEN = (45.0, 135.0, 225.0, 315.0)   # degrees from +Z about X (the 12 mm circle)
-HORN_HOLES_IDLER = (90.0, 270.0)
+HORN_HOLES_IDLER = (45.0, 135.0, 225.0, 315.0)     # four screws on every horn (Martin, 10/26)
 PLUG = ((-9.2, -2.9), (4.8, 13.2), 9.0)          # (X range, Y range, length beyond the case face)
 CASE_Z = 10.0
 BASE_BEAM_MM = 38.0
@@ -148,7 +148,8 @@ class ServoSpot:
     flip: bool = False
     sign: float = 1.0             # + joint angle turns the driven horn this way about S's X (servo's own sign)
     holder: Optional[Tuple] = None    # the part holding its case when that is not the parent (a palm cradle)
-    full_plates: bool = False         # plates over its whole horn faces, near holes screwed too (a knuckle)
+    across: bool = False              # lies across the finger (its 23 x 34 face toward the palm): a square connector
+    flange: bool = False              # held by its idler face in a flange cup (its idler horn off: a one-arm yoke)
 
     @property
     def idler_horn(self) -> bool:
@@ -286,8 +287,8 @@ def _yoke_pieces(sp: ServoSpot, a: np.ndarray, front: np.ndarray, x_b: float) ->
         Bm = mm(B)
 
         def bridge(g: str, Bm=Bm, a_lo=a_lo, a_hi=a_hi) -> str:
-            return (f"{Bm} box_lh([-({g}), {a_lo:.3f} - ({g}), {-BRIDGE_HALF_MM:.3f} - ({g})], "
-                    f"[{WALL:.3f} + ({g}), {a_hi:.3f} + ({g}), {BRIDGE_HALF_MM:.3f} + ({g})]);")
+            return (f"{Bm} rbox_lh([-({g}), {a_lo:.3f} - ({g}), {-BRIDGE_HALF_MM:.3f} - ({g})], "
+                    f"[{WALL:.3f} + ({g}), {a_hi:.3f} + ({g}), {BRIDGE_HALF_MM:.3f} + ({g})], ({g}) == 0 ? FILLET : 0);")
 
         def arm(s: int) -> Piece:
             return lambda g: (f"hull() {{ {S} arm_disc({s}, {g}); intersection() {{ {bridge(g)} {S} arm_slab({s}, {g}); }} }}")
@@ -421,13 +422,14 @@ class Design:
             # yoke by a hollow connector from the bridge's (or the one arm's) whole face to the whole
             # cradle face toward it (`_connector`)
             Sn = mm(nxt.S_parent)
+            # a servo lying across the finger (its 23 x 34 face toward the palm: a turned bend, a twist) gets
+            # a square connector (Martin, 10/24); a servo whose idler horn is off (a one-arm yoke on its
+            # output horn) is held by its idler face in a flange cup, nothing round its horn (10/26)
+            nxt.across = nxt.yoke != "crossing" and abs(float(nxt.S_parent[0, 1])) < 0.7
+            nxt.flange = nxt.yoke == "single"
             A, sa = self._tube_start(sp, a)
             B, sb, face = self._tube_end(nxt, A[:3, 3])
-            # a servo lying across the finger (its 23 x 34 face toward the palm, as a turned bend near the
-            # tip or at a knuckle) is held by plates over its whole horn faces, its near holes screwed too;
-            # servos stacked lengthwise along the finger keep the short socket (Martin, 10/24)
-            nxt.full_plates = nxt.yoke != "crossing" and abs(float(nxt.S_parent[0, 1])) < 0.7
-            A2, sa2, B, sb = self._connector(A, sa, B, sb, square=nxt.full_plates)
+            A2, sa2, B, sb = self._connector(A, sa, B, sb, square=nxt.across)
             if face != 0 and nxt.cable == face:
                 nxt.cable = -face                        # the tube lands on that side: the cable takes the other
             tube: Piece = lambda g, A=A2, B=B, sa=sa2, sb=sb: f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g});"
@@ -436,17 +438,17 @@ class Design:
                 # this link came out in pieces (something turns through its tube): a tube to every face
                 for Bx, sbx, fx in self._tube_ends(nxt):
                     if fx != face and not (fx != 0 and fx == nxt.cable):
-                        Ax, sax, Bx, sbx = self._connector(A, sa, Bx, sbx, square=nxt.full_plates)
+                        Ax, sax, Bx, sbx = self._connector(A, sa, Bx, sbx, square=nxt.across)
                         extra.append(lambda g, A=Ax, B=Bx, sa=sax, sb=sbx:
                                      f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g});")
             if nxt.yoke == "crossing":
                 # a crossing's first servo: its near horn carries the crossing plate, so its cradle is a
                 # full housing (the plate's swing opens the near side)
                 pieces = pieces + [lambda g, Sn=Sn: f"{Sn} housing_box({g});", tube] + extra
+            elif nxt.flange:
+                pieces = pieces + [lambda g, Sn=Sn: f"{Sn} flange_cup({g});", tube] + extra
             else:
-                plates = ([lambda g, Sn=Sn: f"{Sn} cradle_plate(1, {g});", lambda g, Sn=Sn: f"{Sn} cradle_plate(-1, {g});"]
-                          if nxt.full_plates else [])
-                pieces = pieces + [lambda g, Sn=Sn: f"{Sn} cradle_socket({g});"] + plates + [tube] + extra
+                pieces = pieces + [lambda g, Sn=Sn: f"{Sn} cradle_socket({g});", tube] + extra
         part.pieces = pieces
         part.positive = [p("0") for p in pieces]
         part.clip = _clip_body(f, j)
@@ -462,11 +464,13 @@ class Design:
         else:
             part.negative.append(f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});")
         if nxt is not None:
-            full = str(nxt.full_plates).lower()
-            part.tunnels.append(f"{mm(nxt.S_parent)} case_screw_tunnels(40, {full});")
-            ch = 80 if nxt.yoke == "crossing" else CRADLE_CHANNEL_MM
-            part.negative.append(f"{mm(nxt.S_parent)} housing_keepout({str(nxt.yoke != 'u').lower()}, {nxt.cable}, "
-                                 f"{ch}, {full});")
+            part.tunnels.append(f"{mm(nxt.S_parent)} case_screw_tunnels(40, {str(nxt.flange).lower()});")
+            if nxt.flange:
+                part.negative.append(f"{mm(nxt.S_parent)} flange_keepout({nxt.cable});")
+            else:
+                ch = 80 if nxt.yoke == "crossing" else CRADLE_CHANNEL_MM
+                part.negative.append(f"{mm(nxt.S_parent)} housing_keepout({str(nxt.yoke != 'u').lower()}, {nxt.cable}, "
+                                     f"{ch});")
 
     @staticmethod
     def _connector(A: np.ndarray, sa, B: np.ndarray, sb, square: bool = False) -> Tuple[
@@ -502,9 +506,22 @@ class Design:
             return B @ T(None, (WALL, (a_lo + a_hi) / 2.0, 0.0)), (a_hi - a_lo, 2.0 * BRIDGE_HALF_MM)
         return sp.S_child @ T(None, (ARM_X0 + ARM_DRIVEN, 0.0, 0.0)), (TUBE_H_MM, TUBE_H_MM)
 
+    @staticmethod
+    def _flange_face(nxt: ServoSpot) -> Tuple[np.ndarray, Tuple[float, float]]:
+        """A flange cup's plate, seen from behind (link frame): its frame
+        (the plate in the frame's y-z plane, x out of it) and size."""
+        S = nxt.S_parent
+        R = S[:3, :3]
+        y0, y1 = -9.5 - FIT - 1.2, 24.5 + FIT + 1.2               # library FLANGE_Y
+        F = np.column_stack([-R[:, 0], R[:, 1], -R[:, 2]])
+        return T(F, R @ np.array([-HOUSING_MM[0], (y0 + y1) / 2.0, 0.0]) + S[:3, 3]), (y1 - y0, 2.0 * HOUSING_MM[2])
+
     def _tube_ends(self, nxt: ServoSpot) -> List[Tuple[np.ndarray, Tuple[float, float], int]]:
         """Every cradle face a tube can arrive at: the back plate and both
-        side walls."""
+        side walls (a flange cup: its plate)."""
+        if nxt.flange:
+            F, size = self._flange_face(nxt)
+            return [(F, size, 2)]
         S = nxt.S_parent
         R = S[:3, :3]
         out = []
@@ -518,7 +535,10 @@ class Design:
     def _tube_end(self, nxt: ServoSpot, start: np.ndarray) -> Tuple[np.ndarray, Tuple[float, float], int]:
         """The cradle face a tube arrives at (link frame): its back plate or
         a side wall (Z face), whichever faces the tube's start; the face's
-        Z side (0 for the back plate)."""
+        Z side (0 for the back plate). A flange cup: its plate (side 2)."""
+        if nxt.flange:
+            F, size = self._flange_face(nxt)
+            return F, size, 2
         S = nxt.S_parent
         R = S[:3, :3]
         hz = HOUSING_MM[2]

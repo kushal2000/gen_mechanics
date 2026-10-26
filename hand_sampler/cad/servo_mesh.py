@@ -41,16 +41,17 @@ def _write_stl(path: Path, V: np.ndarray, F: np.ndarray, title: str) -> None:
 
 
 def mesh_step(step: Path = STEP, out: Path = REF) -> None:
-    """Mesh the STEP coarsely (about 21,000 triangles in all) into the two STLs."""
+    """Mesh the STEP (about 30,000 triangles in all) into the two STLs
+    (each surface as gmsh orients it; `load` turns every body outward)."""
     import gmsh
 
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 0)
     gmsh.model.occ.importShapes(str(step))
     gmsh.model.occ.synchronize()
-    gmsh.option.setNumber("Mesh.MeshSizeMax", 4.0)
-    gmsh.option.setNumber("Mesh.MeshSizeMin", 0.8)
-    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 5)
+    gmsh.option.setNumber("Mesh.MeshSizeMax", 2.5)
+    gmsh.option.setNumber("Mesh.MeshSizeMin", 0.4)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 10)
     gmsh.model.mesh.generate(2)
     for name, vols in GROUPS.items():
         V, F, n = [], [], 0
@@ -86,6 +87,17 @@ def _disc_x(r, x0, x1):
     return c
 
 
+def _outward(m):
+    """Every closed body of `m` wound outward (gmsh's surfaces come either
+    way round, which showed the servos' insides), stray triangles dropped."""
+    import trimesh
+
+    bodies = [b for b in m.split(only_watertight=False) if len(b.faces) >= 4]
+    for b in bodies:
+        trimesh.repair.fix_normals(b)
+    return trimesh.util.concatenate(bodies)
+
+
 @lru_cache(maxsize=1)
 def load() -> Tuple[object, object, object]:
     """(case, driven horn, idler horn) as trimesh meshes in S (mm)."""
@@ -93,8 +105,8 @@ def load() -> Tuple[object, object, object]:
 
     body, horns = REF / "hl3915_body.stl", REF / "hl3915_horns.stl"
     if body.exists() and horns.exists():
-        b = trimesh.load(str(body), force="mesh")
-        h = trimesh.load(str(horns), force="mesh")
+        b = _outward(trimesh.load(str(body), force="mesh"))
+        h = _outward(trimesh.load(str(horns), force="mesh"))
         driven = h.triangles_center[:, 0] > 0.0
         return b, h.submesh([np.nonzero(driven)[0]], append=True), h.submesh([np.nonzero(~driven)[0]], append=True)
     return _box((-11.5, -9.5, -10.0), (11.5, 24.5, 10.0)), _disc_x(8.0, 11.5, 14.5), _disc_x(8.0, -14.5, -12.1)

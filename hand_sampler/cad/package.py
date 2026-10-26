@@ -165,10 +165,10 @@ def lay_flat(src: Path, dst: Path) -> List[float]:
 def _count_screws(d: Design) -> Dict[str, int]:
     out = {"box": 0, "M2x5": 0, "M3x12_column": 0, "M3x8_skirt": 4, "M2x6_board": 4, "M3x8_cradle": 0}
     for sp in d.servos.values():
-        out["box"] += 8 if sp.full_plates else 4  # the case's far holes (and near ones at a knuckle)
+        out["box"] += 4                           # the case: its far holes, or its idler face's four (a flange cup)
         out["M2x5"] += 4                          # the driven arm (or the crossing plate)
         if sp.yoke == "u":
-            out["box"] += 2                       # the idler arm
+            out["box"] += 4                       # the idler arm
     for p in d.part_list():
         out["M3x12_column"] += len(getattr(p, "column_screws", []))
         out["M3x8_cradle"] += len(p.pads)
@@ -186,7 +186,6 @@ def bom(d: Design, rep: checks.Report) -> str:
              "| Item | Count | Notes |", "|---|---|---|",
              f"| {HL3915.name} (or HL-2915-C001) | {n_servo} | each comes with 8 M2 x 3.5 screws; "
              f"{sc['box']} of them are used here"
-             + (f" (a knuckle's servo takes 10, the rest from other bags)" if any(sp.full_plates for sp in d.servos.values()) else "")
              + (f"; buy {sc['box'] - 8 * n_servo} more M2 x 3.5 pan heads" if sc['box'] > 8 * n_servo else "") + " |",
              "| Palm Hub rev B.2 board | 1 | `feetech-hand-pcb` |",
              f"| M2 x 5 pan head | {sc['M2x5']} | the driven horn's arm (4 per servo) |",
@@ -278,20 +277,24 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
             _, i, j = sp.key
             kind = "bend" if abs(sp.S_child[2, 0]) > 0.99 else ("twist" if abs(sp.S_child[0, 0]) > 0.99 else "spread/oblique")
             joint, port = f"finger {i} joint {j} ({kind}{', turned' if sp.turned else ''})", ports[i]
-        arms = {"u": "two (driven + idler)", "single": "one (idler horn off)", "crossing": "plate on the driven horn"}[sp.yoke]
+        arms = {"u": "two (driven + idler)", "single": "one on the driven horn (idler horn off; flange cup)",
+                "crossing": "plate on the driven horn"}[sp.yoke]
         held = names[sp.holder or sp.parent]
         order = (orders or {}).get(sp.key) or "servo first"
         L.append(f"| {'/'.join(map(str, sp.key))} | {servo_id(sp)} | {joint} | {held} | {names[sp.child]} | "
                  f"{arms} | {order} | {port} |")
     L += ["",
-          "Servos marked 'one (idler horn off)': unscrew the idler horn's centre screw and pull the horn off; "
-          "the bare stub sits in the housing's side plate.", "",
+          "Servos marked 'one on the driven horn' (a twist): unscrew the idler horn's centre screw and pull the "
+          "horn off. The bare stub goes through the plate of a flange cup on the part before the joint: slide the "
+          "case into the cup along its axis and screw its idler face to the plate (4 box screws, near and far "
+          "holes). Do this before that part goes onto the previous servo's horns: the screwdriver reaches the "
+          "screws through the holes in that part's bridge.", "",
           "## 2. Fitting a link to a servo's horns (every joint)", "",
           "1. Take out both horns' centre screws.",
           "2. Slide the link's yoke over the horns from the servo's front, its arms flat on the horns, with the "
           "joint at its zero pose (the finger straight, the link on the line of the one before).",
           "3. Put the centre screws back through the arms' holes.",
-          "4. Driven arm: 4 x M2 x 5. Idler arm: 2 of the servo's box screws.", "",
+          "4. Driven arm: 4 x M2 x 5. Idler arm: 4 of the servo's box screws.", "",
           "## 3. Palm", "",
           "1. A base servo with a cradle of its own (`f<finger>_cradle`, `hinge_cradle`) is put together on the "
           "bench: the servo into the cradle and its link onto its horns as the table's order says (step 4). "
@@ -321,11 +324,7 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
           "slots), push it to the back wall and screw the case to the side plates (4 of the servo's box screws, "
           "through the far holes). Then fit the next link to its horns (step 2).",
           "- **link first:** fit the next link to the servo's horns on the bench (step 2), then slide the "
-          "servo, link and all, into its housing from the front and screw the case to the side plates.",
-          "- **servo first, horns off** (a knuckle: plates over the whole horn faces): take both horns off "
-          "(centre screws out, horns pulled off the splines), slide the bare case in from the front (the plates "
-          "leave a slot only for the splines), screw it through the near and the far holes (8 box screws), put the "
-          "horns back on through the plates' round holes at the zero mark, then fit the next link (step 2).", "",
+          "servo, link and all, into its housing from the front and screw the case to the side plates.", "",
           "## 5. Cables", "",
           "Each finger's servos are chained on the finger's back: board port -> base servo -> next servo. Leave "
           "about 25 mm of slack across each joint and tie the cable to the links. The palm's cables run over "
