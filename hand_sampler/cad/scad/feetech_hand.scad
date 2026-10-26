@@ -28,6 +28,7 @@ ARM_IDLER = 2.0;    // the arm on the idler horn (4 x the servo's box screws)
 ARM_R = 9.5;        // an arm's disc around the axis
 HEAD_SEAT = 0.6;    // case screws: counterbore depth in the side plates
 SWEEP_STEP = 5;     // degrees between swept copies
+CROSS_STEP = 10;    // the same about both joints of a crossing
 HORN_REACH = 18.6;  // how far out along the axis the horns' clearance reaches (an arm's outer face and a gap)
 PLUG_OUT = 9;       // a servo plug and its cable bend beyond the case face
 FILLET = 1.2;       // outer edges rounded (sockets, cups, bridges; connectors twice this)
@@ -94,7 +95,7 @@ module sweep_x(lo, hi, step = SWEEP_STEP) {
 // second joint's X over lo2..hi2 and then, placed by T (that frame in the
 // first joint's S frame), about the first joint's X over lo1..hi1: a
 // crossing's two joints, coarser steps
-module sweep_x2(T, lo1, hi1, lo2, hi2, step = 10) {
+module sweep_x2(T, lo1, hi1, lo2, hi2, step = CROSS_STEP) {
     n1 = max(1, ceil((hi1 - lo1) / step));
     n2 = max(1, ceil((hi2 - lo2) / step));
     for (k = [0 : n1 - 1], m = [0 : n2 - 1]) hull() {
@@ -202,16 +203,41 @@ module tube_outer(A, sa, B, sb, g = 0, ea = 0, eb = 0) {
     hull() { translate(-u * ea) rect(A, sa, g); translate(u * eb) rect(B, sb, g); }
 }
 
-// a gusset (Martin, 10/26: stiffen the inside corners, 45 degrees or so):
-// the hull of its children (a connector and a piece it joins) within
-// `reach` of their joint's plane on the connector's side (F: a frame with
-// that plane its y-z, x toward the connector) and `back` on the other, so
-// every inside corner there is filled with a flat diagonal web; what turns
-// or must stay clear is cut away from it like the rest of the part
-GUSSET = 8;
-module gusset(F, reach = GUSSET, back = GUSSET) intersection() {
-    hull() children();
-    multmatrix(F) translate([-back, -500, -500]) cube([reach + back, 1000, 1000]);
+// gussets (Martin, 10/26: stiffen the inside corners of the L pieces, 45
+// degrees, then bigger): triangles GUSSET a leg, in the layers beside the
+// servo where an L's corner is open (the case fills it in between); each its
+// own module call, one convex piece (a sweep hulls each piece)
+GUSSET = 16;
+
+// a triangle (three (y, z) points) as a prism along x from x0 to x1, grown by g
+module tri_prism(p0, p1, p2, x0, x1, g = 0) hull()
+    for (p = [p0, p1, p2], x = [x0, x1]) translate([x, p[0], p[1]]) cube(0.01 + 2 * g, center = true);
+
+// a socket whose connector lands on its Z side `face` (+1 / -1): in side
+// plate `s`'s layer (+1 / -1), the corner between the connector's plate and
+// the socket's front face; its 45-degree face stays clear of the horn's
+// keyhole (HORN_R + PART_CLEAR round the axis), so at most about 14.9 mm a leg
+module socket_gusset(face, s, L = GUSSET, g = 0) {
+    zf = face > 0 ? HOUSING_Z : -HOUSING_Z;
+    l = min(L, SOCKET_Y0 + HOUSING_Z - sqrt(2) * (HORN_R + PART_CLEAR + 0.5));
+    tri_prism([SOCKET_Y0, zf], [SOCKET_Y0 - l, zf], [SOCKET_Y0, face > 0 ? zf - l : zf + l],
+              s > 0 ? CASE_X[1] + FIT : -HOUSING_X, s > 0 ? HOUSING_X : CASE_X[0] - FIT, g);
+}
+
+// a flange cup's collar: the corner between the connector's face (where it
+// reaches past the cup's plate) and the cup's side k (0, 1: -Z, +Z; 2, 3:
+// the two Y ends)
+module flange_gusset(k, L = GUSSET, g = 0) {
+    x0 = -HOUSING_X + FILLET;
+    if (k < 2) {
+        z = k == 0 ? -HOUSING_Z : HOUSING_Z;
+        hull() for (y = FLANGE_Y, p = [[x0, z], [x0 + L, z], [x0, z + sign(z) * L]])
+            translate([p[0], y, p[1]]) cube(0.01 + 2 * g, center = true);
+    } else {
+        y = FLANGE_Y[k - 2];
+        hull() for (z = [-HOUSING_Z, HOUSING_Z], p = [[x0, y], [x0 + L, y], [x0, y + (k > 2 ? L : -L)]])
+            translate([p[0], p[1], z]) cube(0.01 + 2 * g, center = true);
+    }
 }
 
 // what a housing leaves empty: the case and its way in from the front, the
@@ -265,9 +291,10 @@ module flange_keepout(cable = 0) {
     for (s = [-1, 1])
         box_lh([CONN_X[0] - 1.5, CONN_Y[0] - 1.3, s > 0 ? CASE_Z[1] - 2 : -HOUSING_Z - 1],
                [CONN_X[1] + 1.5, CONN_Y[1] + 1.3, s > 0 ? HOUSING_Z + 1 : CASE_Z[0] + 2]);
+    // the plug, and its cable's way out through the gusset on that side
     if (cable != 0)
-        box_lh([CONN_X[0] - 1.5, CONN_Y[0] - 1.3, cable > 0 ? CASE_Z[1] : -CASE_Z[1] - PLUG_OUT],
-               [CONN_X[1] + 1.5, CONN_Y[1] + 1.3, cable > 0 ? CASE_Z[1] + PLUG_OUT : -CASE_Z[1]]);
+        box_lh([CONN_X[0] - 1.5, CONN_Y[0] - 1.3, cable > 0 ? CASE_Z[1] : -HOUSING_Z - GUSSET - 1],
+               [CONN_X[1] + 1.5, CONN_Y[1] + 1.3, cable > 0 ? HOUSING_Z + GUSSET + 1 : -CASE_Z[1]]);
 }
 
 // a screwdriver's way to the case screws, `reach` out from the side plates

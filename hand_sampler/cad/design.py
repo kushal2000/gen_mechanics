@@ -68,6 +68,7 @@ COLUMN_SCREW_R_MM = 16.5
 ARM_R_MM = 9.5                # an arm's disc round the axis (library ARM_R)
 FILLET_MM = 1.2               # outer edges' rounding (library FILLET)
 BLOCK_MIN_MM = 6.0            # a right-angle connector at least this thick (Martin, 10/26: not a thin plate)
+GUSSET_MM = 16.0              # a gusset's legs (library GUSSET)
 HOUSING_MM = (13.6, 26.6, 11.3)   # a housing's outer faces in its servo's frame: side plates (X), back (Y), walls (Z)
 SOCKET_Y0_MM = 17.0               # where a cradle's socket starts (library SOCKET_Y0)
 CRADLE_BACK_MM = (2 * HOUSING_MM[0], 2 * HOUSING_MM[2])     # a cradle's back face (along its servo's X, Z)
@@ -403,7 +404,6 @@ class Design:
         else:
             x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
             pieces, joint_piece = _yoke_pieces(sp, a, np.array([1.0, 0.0, 0.0]), x_b)
-        yoke_pieces = list(pieces)
         if last:
             tip = fg.tip
             p1 = tip.p1
@@ -432,7 +432,6 @@ class Design:
             nxt.flange = nxt.yoke == "single"
             A, sa = self._tube_start(sp, a)
             B, sb, face = self._tube_end(nxt, A[:3, 3])
-            Bf = B                                     # the face it lands on (its gusset's plane)
             A2, sa2, B, sb = self._connector(A, sa, B, sb, square=nxt.across)
             if face != 0 and nxt.cable == face:
                 nxt.cable = -face                        # the tube lands on that side: the cable takes the other
@@ -457,15 +456,26 @@ class Design:
                 cradle = lambda g, Sn=Sn: f"{Sn} flange_cup({g});"
             else:
                 cradle = lambda g, Sn=Sn: f"{Sn} cradle_socket({g});"
-            # gussets in the inside corners where the connector meets the cradle and the yoke (Martin, 10/26)
+            # gussets in the L pieces' inside corners (Martin, 10/26), each kept to where the connector is
             outer = lambda g, A=A2, B=B, sa=sa2, sb=sb, ea=ea: (
                 f"tube_outer({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {FILLET_MM});")
-            gussets: List[Piece] = [lambda g, o=outer, c=cradle, F=Bf: f"gusset({_mat(F)}) {{ {o(g)} {c(g)} }}"]
+
+            def along(o: Piece, v: np.ndarray) -> Piece:
+                """The connector and its copy moved `GUSSET_MM` along v: where a gusset may stand on it."""
+                sh = mm(T(None, tuple(float(c) for c in v * GUSSET_MM)))
+                return lambda g: f"hull() {{ {o(g)} {sh} {o(g)} }}"
+
+            gussets: List[Piece] = []
+            if nxt.flange:
+                on = along(outer, nxt.S_parent[:3, 0])                   # past the cup's plate, along the servo
+                gussets += [lambda g, on=on, Sn=Sn, k=k: f"intersection() {{ {Sn} flange_gusset({k}, GUSSET, {g}); {on(g)} }}"
+                            for k in range(4)]
+            elif nxt.yoke != "crossing" and face in (1, -1):
+                on = along(outer, -face * nxt.S_parent[:3, 2])           # from the side it lands on, into the socket
+                gussets += [lambda g, on=on, Sn=Sn, f=face, s=s: f"intersection() {{ {Sn} socket_gusset({f}, {s}, GUSSET, {g}); {on(g)} }}"
+                            for s in (1, -1)]
             if sp.yoke == "u":
-                # on the yoke's side only from the bridge's back face forward: behind it the gusset would turn
-                # with the joint through the part holding the servo (its screw bosses)
-                gussets += [lambda g, o=outer, y=y, F=A: f"gusset({_mat(F)}, GUSSET, WALL) {{ {o(g)} {y(g)} }}"
-                            for y in yoke_pieces]
+                gussets += self._arm_gussets(sp, a, along(outer, -A[:3, 0]))
             pieces = pieces + [cradle, tube] + gussets + extra
         part.pieces = pieces
         part.positive = [p("0") for p in pieces]
@@ -489,6 +499,27 @@ class Design:
                 ch = 80 if nxt.yoke == "crossing" else CRADLE_CHANNEL_MM
                 part.negative.append(f"{mm(nxt.S_parent)} housing_keepout({str(nxt.yoke != 'u').lower()}, {nxt.cable}, "
                                      f"{ch});")
+
+    @staticmethod
+    def _arm_gussets(sp: ServoSpot, a: np.ndarray, on: Piece) -> List[Piece]:
+        """A U's gussets: in each arm's layer, the corners between the arm's
+        edges and the connector's back face, where the connector is wider
+        than the bridge (`on`: where they may stand). Outboard of the case,
+        so they turn clear of the part holding the servo."""
+        x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
+        B = _bridge_frame(sp.S_child[:3, 3], np.array([1.0, 0.0, 0.0]), a, x_b)
+        s_pos = -1.0 if sp.flip else 1.0
+        a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
+        a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
+        x0, L, h = WALL - FILLET_MM, GUSSET_MM, BRIDGE_HALF_MM
+        out: List[Piece] = []
+        for y0, y1 in ((a_lo, -ARM_X0), (ARM_X0, a_hi)):
+            for zs in (1.0, -1.0):
+                pts = [B @ np.array([x, y, z, 1.0])[:4] for x, z in ((x0, zs * h), (x0 - L, zs * h), (x0, zs * (h + L)))
+                       for y in (y0, y1)]
+                cubes = " ".join(f"translate({v3(q[:3])}) cube(0.01 + 2 * ({{g}}), center = true);" for q in pts)
+                out.append(lambda g, cubes=cubes, on=on: f"intersection() {{ hull() {{ {cubes.format(g=g)} }} {on(g)} }}")
+        return out
 
     @staticmethod
     def _connector(A: np.ndarray, sa, B: np.ndarray, sb, square: bool = False) -> Tuple[
@@ -1039,11 +1070,14 @@ class Design:
                 grand.swept_by.setdefault(i, []).append(stmt)
             else:
                 grand.negative.append(stmt)
-        # link j + 1 gives room to servo j's case, turning back about both joints
+        # link j + 1 gives room to servo j's case, turning back about both joints: the
+        # convex hull of what it takes from each piece, since the case grazes a face
+        # in lobes there (Martin, 10/26: a bridge's edge looked bitten)
         Tb = inv(nxt.S_parent) @ sp.S_child          # servo j's frame in servo j + 1's
         for pc in _case_pieces(np.eye(4), sp.cable, sp.idler_horn):
-            far.negative.append(f"{mm(nxt.S_child)} sweep_x2({_mat(Tb)}, {-hi2:.3f}, {-lo2:.3f}, {-hi1:.3f}, "
-                                f"{-lo1:.3f}) {pc('CASE_CLEAR')}")
+            sw = (f"{mm(nxt.S_child)} sweep_x2({_mat(Tb)}, {-hi2:.3f}, {-lo2:.3f}, {-hi1:.3f}, "
+                  f"{-lo1:.3f}) {pc('CASE_CLEAR')}")
+            far.negative += [f"hull() intersection() {{ {q} {sw} }}" for q in far.positive]
 
     # --------------------------------------------------------------- output
 
