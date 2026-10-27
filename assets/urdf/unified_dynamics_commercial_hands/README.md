@@ -5,7 +5,7 @@ meshes are referenced there, not copied); every dynamic property replaced by one
 comparison across hands compares embodiment, not each vendor's actuator and mass guesses.
 
 Regenerate with `.venv_isaacsim/bin/python assets/urdf/unified_dynamics_commercial_hands/make_uniform.py`.
-Registered as `<hand>_left_uniform_handonly` (`isaacsimenvs/.../robots/unified_dynamics_hands.py`); run
+Registered as `<hand>_left_uniform_handonly` (`isaacsimenvs/common/robots/unified_dynamics_hands.py`); run
 files via `experiments/old_experiments/30sep_ten_hands/make_runs.py --uniform`.
 
 | property | value | source |
