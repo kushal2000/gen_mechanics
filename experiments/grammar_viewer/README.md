@@ -4,10 +4,13 @@ A viser viewer for the hand grammar (`hand_sampler/grammar/`). The grammar itsel
 
 ## Setup (once)
 
-From the repository root, on the `hand-grammar` branch, with Python 3.11 (CPU only, no Isaac):
+**In this repo** the main environment already has everything: run it with `.venv_isaacsim/bin/python
+experiments/grammar_viewer/viewer.py --port 8098 --host 0.0.0.0` (the grammar, its benchmark and this viewer were brought
+in from Martin's `hand-grammar` branch, tag `hand-grammar-2026-10-20`).
+
+Or a light CPU-only environment, from the repository root with Python 3.11:
 
 ```bash
-git checkout hand-grammar && git pull
 uv venv .venv_viewer --python 3.11          # or: python3.11 -m venv .venv_viewer
 uv pip install --python .venv_viewer/bin/python viser "numpy==1.26.*" scipy trimesh yourdfpy pycollada pytest
 uv pip install --python .venv_viewer/bin/python -e . --no-deps

@@ -13,6 +13,9 @@ Started 15 Oct 2026 on branch `2026-10-15-pen_repose`. The `pen_repose` task is 
   (`env.goal.first_goal_tolerance=0.03`).
 - **Pushes and dropping:** pushes start after the pickup, and touching the table after it ends the episode.
 
+**Training** goes through `experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub` (see its README) with
+`LOG_GROUP=15oct_pen_repose` and a matching `sbatch --output`; the commands are in the run tables below.
+
 ## Fine-tuning the v2 policies on spin and flip (15 Oct)
 
 Played zero-shot on spin and flip goals, the repose policies snap to each 45° goal by the shortest route and stop.

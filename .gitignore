@@ -38,9 +38,7 @@ bench_dir/
 
 # Sampled hand URDFs are REGENERABLE from the population manifest, which stores
 # every parameter vector. Committing ~100 near-identical generated files per
-# population would bury real diffs. gen_sharpa_like.urdf is NOT ignored: it is a
-# hand-checked reference that training runs and the wandb pose viewer fetch by
-# URL, so it must exist in the repo.
+# population would bury real diffs.
 assets/urdf/generated/gen_[0-9]*.urdf
 assets/urdf/generated/population/**/*.urdf
 assets/urdf/generated/mut_*.urdf
@@ -53,7 +51,7 @@ assets/urdf/generated/_*preview*.urdf
 # The viewers write their preview HERE rather than /tmp on purpose: build_hand_urdf
 # emits arm mesh references as ../kuka_sharpa_description/, which resolves only
 # from this directory, and a preview written elsewhere renders an arm with no
-# meshes and no colliders (docs/multi_embodiment.md 4).
+# meshes and no colliders.
 
 # ...and the manifests themselves. A 24,576-hand manifest is 266 MB of JSON and
 # each of its 10 shards is another 25 MB; `git add -A` swept 509 MB into a

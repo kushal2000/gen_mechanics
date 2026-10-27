@@ -13,7 +13,7 @@ authors = [{ name = "Kushal Kedia", email = "kk837@cornell.edu" }]
 keywords = ["robotics", "rl", "dexterous manipulation", "isaac sim"]
 
 # Deliberately minimal. torch, isaacsim, and isaaclab are installed by the
-# recipe in docs/installation.md with exact pins (newer Isaac Lab changes the
+# recipe in README.md (Installation) with exact pins (newer Isaac Lab changes the
 # DirectRLEnv / UrdfConverter APIs this code depends on), so they are NOT
 # listed here — a resolver must never be given the chance to move them.
 # rl_games is the vendored SAPG fork at third_party/rl_games, installed

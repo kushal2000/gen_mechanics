@@ -21,6 +21,9 @@ turning like a friction fit: it holds below `pen.twist_friction_torque` (0.01 NÂ
 - `viser_twist_play.py`: drive a hand by sliders against the pen (`--level 1`, the default).
 - The wandb pose viewer draws the barrel, the cap (with a stripe) and both goals.
 
+**Training** goes through `experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub` (see its README) with
+`LOG_GROUP=15oct_pen_twist` and a matching `sbatch --output`; the commands are in the run tables below.
+
 ## Tightness curriculum
 
 `env.pen_twist.curriculum=True`: the cap's friction torque starts at 0.01 NÂ·m. After each window of finished

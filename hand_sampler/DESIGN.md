@@ -896,7 +896,7 @@ made a new finger rare and hid palm exhaustion behind a still-succeeding split.
 
 ## 13. Evidence
 
-Numbers above come from `docs/analysis.md` — all 24,576 seed-3 designs at 3 cm
+Numbers above come from an analysis note (no longer in the repo) — all 24,576 seed-3 designs at 3 cm
 tolerance against the epoch-16,600 checkpoint (14% of training), mean 1.893 / 10
 goals. Layout matters and bulk does not: mount separation is an inverted U
 peaking at 4–5 cm against a 4 cm object, fingertip reach an inverted U peaking at

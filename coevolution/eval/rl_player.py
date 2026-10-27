@@ -149,7 +149,7 @@ class RlPlayer:
         What V means here: the critic was trained on the TRAINING reward, which
         carries two morphology-dependent shaping terms -- fingertip approach
         sums over fingertips, and the hand action penalty sums over hand DoF
-        (docs/proposal_codesign.md 1 measures these at ~20% and ~27%). So V is
+        (an earlier co-design analysis measured these at ~20% and ~27%). So V is
         NOT a clean stand-in for goals achieved: it systematically favours more
         fingers and more joints for reasons that are about reward shaping rather
         than the task. Use it as a predictor to be validated, never as a fitness
