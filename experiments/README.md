@@ -1,97 +1,58 @@
 # experiments
 
-SLURM submit scripts. Copy
-[`train_single_embodiment_sharpa.sub`](train_single_embodiment_sharpa.sub) —
-it is the reference run, and every knob is an environment variable with a
-default, so a variant is a prefix rather than an edited file.
+One folder per experiment, named `<date>_<what>`: its SLURM scripts, analysis, plots and a README with the runs and
+results. Training logs and checkpoints go to `debug_outputs/train_logs/<experiment>/` (not tracked).
 
-```bash
-sbatch experiments/train_single_embodiment_sharpa.sub
-SEED=1 NUM_ENVS=8192 sbatch experiments/train_single_embodiment_sharpa.sub
-```
+## Current
 
-## Name the run for what it is
-
-`RUN_NAME` sets the folder under `debug_outputs/train_logs/` and
-`train_dir/`, and the wandb run name — one label for all three.
-
-```bash
-RUN_NAME=debug_single_embodiment_sharpa_aug31 sbatch experiments/train_single_embodiment_sharpa.sub
-```
-
-`LOG_GROUP` picks the directory under `debug_outputs/` — `train_logs` by
-default, `smoke_tests` for a short verification run.
-
-These folders accumulate fast, and the point of the name is a directory
-listing you can read. The default `sharpa_iiwa14_seed0_2026-08-31_12-40-59`
-is unique but every run looks alike; purpose plus date both groups and sorts:
-
-```
-debug_single_embodiment_sharpa_aug31
-sweep_friction_aug31
-finetune_population24k_sep02
-```
-
-Keep the date in it — reusing a name writes two runs into the same folder.
-
-## Ask for the minimum you need
-
-Queue time is dominated by the size of the request, not by how busy the
-cluster is, so size it from what runs actually use:
-
-| | peak RSS |
+| Folder | What |
 |---|---|
-| 24,576-env population run | ~34.5 GB |
-| single-hand run | ~17 GB |
+| [`12oct_inhand_olympics/`](12oct_inhand_olympics/) | **The olympics trainer** (`olympics_sapg_mlp.sub`, used by every olympics run below), per-task evals, the embodiment-curriculum result |
+| [`14oct_design_search/`](14oct_design_search/) | Primitive hands from finger bearings (`primitive_hands.py`), the joint-slider sim viewer, design-search runs on lift and flip |
+| [`15oct_pen_repose/`](15oct_pen_repose/) | 6D pen repose (v2: palm rotation locked, uniform goals) across hand designs; spin / flip fine-tunes |
+| [`15oct_pen_twist/`](15oct_pen_twist/) | Twisting a cap off the pen: the twist pen, the tightness curriculum, square vs round cap |
+| [`16oct_viser_evals/`](16oct_viser_evals/) | One viewer for every fixed-palm policy (switch its task and goals live); the design gallery |
+| [`grammar_viewer/`](grammar_viewer/) | Browse Martin's hand grammar (CPU only) |
+| [`_shared/`](_shared/) | Helpers several experiments call (launchers, run templates, figure style, renderers) |
 
-`--cpus-per-task=8 --mem=50000` is the current default — about 45% headroom
-over the worst case observed. Do not go lower on CPUs: 1 CPU regressed Kit boot
-from 733 s to 916 s.
+## Reference results (1–8 Oct, in-hand cube reorientation on the palm-up hand)
 
-Check a finished run with `sacct -j <jobid> --format=MaxRSS`, or watch it live
-in the run's `usage.ram_usage.csv`. Both sample on an interval, so a spike
-between samples is invisible — which is why the headroom is not trimmed
-further.
+Kept for their results and figures; they run through `_shared/common.sh` and the `inhand_reorient` task.
 
-## Pick the right GPU
+| Folder | What |
+|---|---|
+| `01oct_uniform_dynamics/` | The commercial hands rerun with uniform dynamics |
+| `01oct_unified_rl/` | One policy across 8 commercial hands (`multi:uniform`) |
+| `01oct_embodiment_niches/` | Do hands rank differently on other axes (OOD physics, objects)? `eval_niches.py` is the shared OOD eval |
+| `02oct_ood_evals/` | OOD push / mass / friction sweeps, unified vs single-hand policies |
+| `05oct_embodiment_generalization/` | Missing-finger and action-noise sweeps |
+| `06oct_minimal_embodiment/` | The smallest Wuji reduction that still does the task |
+| `06oct_wuji_5rads/` | Wuji v2 at the 5 rad/s servo cap |
+| `06oct_wuji2_multi_embodiment/` | The first 52-hand Wuji policy |
+| `07oct_commercial_vs_generated/` | Commercial hands vs their grammar replicas |
+| `08oct_repro_wuji_full/` | Reproduction of the Wuji runs; OOD robustness and multi-embodiment headline plots |
+| `08oct_multi_embodiment_evolution/` | One policy per Wuji finger-drop family |
 
-```bash
-#SBATCH --partition=portal
-#SBATCH --exclude=portal-compute-01
-```
+`train_single_embodiment_sharpa.sub` is the original SHARPA + iiwa14 pose-reaching run (the `pose_reaching_6d` task).
 
-`portal` has four nodes, and `portal-compute-01` is the odd one out:
+## Archive
 
-| node | GPU | generation |
-|---|---|---|
-| `portal-compute-01` | 8x RTX **A6000** | Ampere, 2020 |
-| `portal-compute-02/03/04` | 8x RTX **6000 Ada** | Ada Lovelace, 2022 |
+`old_experiments/` (Aug–Sep): pose reaching, co-evolution V1/V2, the first in-hand reorientation runs, the scaling-law
+study. A record, not working code: some scripts launch modules that were deleted (all reachable at git tag
+`pre-cleanup-2026-10-27`).
 
-Exclude 01. The naming misleads — NVIDIA dropped the `A` prefix for the Ada
-generation, so "A6000" reads as the newer card when it is a generation older
-and roughly half the FP32 throughput. The epoch budget in the reference script
-was characterised on the Ada cards.
+## Running on the cluster
 
-A6000s are plentiful *outside* `portal` (many nodes on `default_partition`
-carry 8-10 of them). If `portal` is congested, that is where the short queue
-is — at the cost of the slower card.
+**Ask for the minimum you need.** Queue time is dominated by the size of the request. Peak RSS: ~34.5 GB for a
+24,576-env population run, ~17 GB for a single-hand run; `--cpus-per-task=4-8 --mem=50000-64000` leaves headroom. Don't
+go below 4 CPUs (Kit boot slows sharply). Check a finished run with `sacct -j <jobid> --format=MaxRSS`.
 
-## Runs are time-bound
+**Pick the right GPU.** `--partition=portal --exclude=portal-compute-01`: nodes 02–04 have RTX 6000 **Ada** cards;
+01 has the older, roughly half-speed RTX **A6000** (the names mislead — NVIDIA dropped the "A" for Ada). Benchmark on a
+pinned node: nodes differ by up to ~40%.
 
-`SBATCH -t` is the budget — the reference script sets no `max_epochs`, and the
-config's default of 1,000,000 never fires. The run trains until SLURM stops it.
+**Bound runs by epochs, not wall clock,** when comparing hands: a hand that simulates faster gets more gradient steps
+in the same time. The olympics trainer takes `EPOCHS` (5,000 by default).
 
-`save_frequency: 3000` means a kill costs at most one checkpoint interval
-(~2.3 h at the measured ~2.8 s/epoch), so pick `-t` for how long you want to
-train, not for when you expect convergence.
-
-One case still needs an epoch cap: comparing *two different hands* head to
-head. The hand that simulates faster collects more gradient steps in the same
-wall clock, which is indistinguishable in the results from it being better
-hardware. That does not apply to a single morphology-conditioned policy, where
-every design shares one run.
-
----
-
-`old_experiments/` is an archive of pre-split runs. Several of its scripts
-launch modules that no longer exist; it is a record, not working code.
+**Name runs for what they are.** The olympics trainer builds the name from the task, network, envs, seed, hand and
+`RUN_TAG`; `LOG_GROUP` picks the folder under `debug_outputs/train_logs/` (pass `sbatch --output` to match).
