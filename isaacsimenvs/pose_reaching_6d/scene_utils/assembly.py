@@ -32,10 +32,9 @@ from ..common_utils.urdf_to_usd import (
 )
 from ..obs_utils import derive_spaces
 from .author_objects import author_handle_head, author_physics_material
-from hand_sampler import build
 from hand_sampler.robot_param_constants import ARM_ADJACENT_LINKS, ARM_TIP_LINK
 from hand_sampler.robot_spec import design_index, object_index
-from .author_robot import ARM_PRIM, arm_only_urdf, flatten_robot_usd, stub_urdf
+from .author_robot import ARM_PRIM, arm_only_urdf, author_hand, flatten_robot_usd, stub_urdf
 from .materials import apply_physx_material_properties
 from .sdf import define, set_xform
 from .objects.generate_objects import generate_handle_head_urdfs
@@ -317,7 +316,7 @@ def _convert_arm(tmp_dir, offsets: dict, hand_only: bool = False):
     # fixed robot filters its whole map: self_collision=True above turns the
     # articulation's self-collisions on, and nothing else on this path masks
     # anything. Convert -> filter -> flatten, the order _convert_fixed_robot
-    # uses; the hand's pairs are authored per env by build.author_hand, which
+    # uses; the hand's pairs are authored per env by author_robot.author_hand, which
     # has no file to edit.
     # One link has no consecutive-link pairs to filter.
     if not hand_only:
@@ -392,7 +391,7 @@ def _author_robots_into_envs(env, spec, population, design_idx, asset_dir: Path,
                 arm = define(layer, f"{root}{ARM_PRIM}", "Xform")
                 arm.referenceList.explicitItems.append(
                     Sdf.Reference(str(arm_usd), Sdf.Path(arm_root)))
-                collider_links[idx] = build.author_hand(
+                collider_links[idx] = author_hand(
                     layer, root, population.hands[idx],
                     palm_body_path=f"{root}{ARM_PRIM}/{ARM_TIP_LINK}",
                     link7_world=link7_world, link7_mass_props=link7_mass)

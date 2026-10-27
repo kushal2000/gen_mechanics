@@ -39,6 +39,10 @@ from hand_sampler.robot_param_constants import (ARM_JOINTS, ARM_LINKS, ARM_TIP_L
 from hand_sampler.design_space import mat_to_pos_quat, rpy_to_mat, rpy_to_quat_wxyz
 
 from .sdf import MAX_DEPEN_VELOCITY, attr, define, rel, set_xform
+from hand_sampler import design_space
+from hand_sampler import robot_param_constants as rpc
+from hand_sampler.build import (GHOST_LENGTH_M, filtered_pairs, flange_to_palm, joint_local_frames, link_frames,
+                                link_mass_props, merge_rigid_bodies, palm_box, palm_mass_props, principal_axes)
 
 ARM_PRIM = "/arm"
 PALM_BODY = "iiwa14_link_7"  # post-merge palm body
@@ -129,7 +133,7 @@ def arm_only_urdf(out_path: Path) -> Path:
 def stub_urdf(out_path: Path) -> Path:
     """Just ``ARM_TIP_LINK``, for hand-only tasks with no arm.
 
-    The palm is not a body of its own -- ``build._author_palm`` merges it into
+    The palm is not a body of its own -- ``_author_palm`` (below) merges it into
     ``iiwa14_link_7`` as an OVER on the referenced link -- so a hand-only robot
     still needs a link by that name to hang the fingers off. This emits exactly
     that and nothing else: one link, zero joints. Converted with
@@ -309,5 +313,176 @@ def flatten_robot_usd(usd_path: str, out_path: Path, *,
     return str(out_path), str(root.GetPath())
 
 
-__all__ = ["ARM_PRIM", "arm_only_urdf", "stub_urdf", "flatten_robot_usd",
+# --- a generated design's hand (moved here from hand_sampler/build.py, 27 Oct: it needs pxr, and hand_sampler is
+# pure Python; the geometry it places -- link_frames, mass properties, filtered pairs -- stays in hand_sampler.build)
+
+def author_hand(layer, root_path: str, hand: design_space.Hand, *,
+                palm_body_path: str, link7_world, link7_mass_props=None) -> dict[str, int]:
+    """Write one design's bodies, colliders and joints under ``root_path``.
+
+    Returns ``{link: n_colliders}`` for the friction pass. Needs ``pxr``, so it
+    only runs inside Kit -- the geometry it places is in ``link_frames``, which
+    does not.
+
+    ``link7_mass_props`` is the arm flange's own ``(mass, centre, 3x3 inertia)``.
+    Given it, the design's palm is merged into that body: a collider for it, and
+    the combined mass. Without it the palm is authored with geometry only, which
+    is what a caller that cannot read the arm gets.
+    """
+    from pxr import Gf, Sdf
+
+
+    F, D = design_space.MAX_FINGERS, design_space.MAX_JOINTS_PER_FINGER
+    palm_mat = np.asarray(link7_world, float) @ flange_to_palm()
+    frames = link_frames(hand)
+    joint_frames = joint_local_frames(hand)
+    pairs = filtered_pairs(root_path, palm_body_path)
+    if hand.collision_filter:              # an imported hand's own exclusions (Hand.collision_filter), both ways
+        path_of = lambda n: palm_body_path if n == rpc.ARM_TIP_LINK else f"{root_path}/{n}"
+        pairs = {k: list(v) for k, v in pairs.items()}
+        for a, b in hand.collision_filter:
+            for x, y in ((a, b), (b, a)):
+                if path_of(y) not in pairs.setdefault(x, []):
+                    pairs[x].append(path_of(y))
+    colliders: dict[str, int] = {}
+    define(layer, f"{root_path}/joints", "Scope")
+
+    for f in range(F):
+        finger = hand.fingers[f] if f < hand.n_fingers else None
+        for d in range(D):
+            real = finger is not None and d < finger.n_joints
+            seg = finger.segments[d] if real else None
+            length = seg.length if real else GHOST_LENGTH_M
+            name = f"f{f}_link{d}"
+
+            body = define(layer, f"{root_path}/{name}", "Xform",
+                          ["PhysicsRigidBodyAPI", "PhysicsMassAPI",
+                           "PhysicsFilteredPairsAPI"])
+            if pairs.get(name):
+                rel(body, "physics:filteredPairs", pairs[name])
+            # An imported link with a measured cross_section is simulated at its own thickness.
+            r_seg = design_space.link_radius(seg, rpc.GEN_LINK_RADIUS_M) if real else rpc.GEN_LINK_RADIUS_M
+            mass, inertia = link_mass_props(length, real=real, radius=r_seg)
+            attr(body, "physics:mass", Sdf.ValueTypeNames.Float, float(mass))
+            attr(body, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
+                 Gf.Vec3f(*[float(v) for v in inertia]))
+            attr(body, "physics:centerOfMass", Sdf.ValueTypeNames.Float3,
+                 Gf.Vec3f(float(length / 2.0), 0.0, 0.0))
+            pos, quat = design_space.mat_to_pos_quat(palm_mat @ frames[(f, d)])
+            set_xform(body, pos, quat)
+
+            # A ghost link carries no collider: it must not touch anything.
+            if real:
+                r = r_seg
+                define(layer, f"{root_path}/{name}/collisions", "Xform")
+                mesh = define(layer, f"{root_path}/{name}/collisions/mesh_0", "Xform")
+                set_xform(mesh, (length / 2.0, 0.0, 0.0),
+                          design_space.rpy_to_quat_wxyz((0.0, math.pi / 2.0, 0.0)))
+                cap = define(layer, f"{root_path}/{name}/collisions/mesh_0/capsule",
+                             "Capsule", ["PhysicsCollisionAPI"])
+                attr(cap, "radius", Sdf.ValueTypeNames.Double, float(r))
+                attr(cap, "height", Sdf.ValueTypeNames.Double,
+                     float(rpc.cylinder_part(length, r)))
+                attr(cap, "axis", Sdf.ValueTypeNames.Token, "Z")
+                colliders[name] = colliders.get(name, 0) + 1
+
+            j = define(layer, f"{root_path}/joints/f{f}_j{d}", "PhysicsRevoluteJoint",
+                       ["PhysicsDriveAPI:angular", "PhysxJointAPI"])
+            rel(j, "physics:body0",
+                palm_body_path if d == 0 else f"{root_path}/f{f}_link{d - 1}")
+            rel(j, "physics:body1", f"{root_path}/{name}")
+            frame0, frame1 = joint_frames[(f, d)]
+            jpos, jquat = design_space.mat_to_pos_quat(frame0)
+            _, j1quat = design_space.mat_to_pos_quat(frame1)
+            attr(j, "physics:localPos0", Sdf.ValueTypeNames.Point3f,
+                 Gf.Vec3f(*[float(v) for v in jpos]))
+            attr(j, "physics:localRot0", Sdf.ValueTypeNames.Quatf,
+                 Gf.Quatf(float(jquat[0]), Gf.Vec3f(*[float(v) for v in jquat[1:]])))
+            attr(j, "physics:localPos1", Sdf.ValueTypeNames.Point3f, Gf.Vec3f(0.0, 0.0, 0.0))
+            attr(j, "physics:localRot1", Sdf.ValueTypeNames.Quatf,
+                 Gf.Quatf(float(j1quat[0]), Gf.Vec3f(*[float(v) for v in j1quat[1:]])))
+            attr(j, "physics:axis", Sdf.ValueTypeNames.Token, "Z")
+            # A ghost is locked by coincident limits, which is exactly what
+            # reset.py reads back as joint_enabled = 0.
+            # (0, 1e-8), not (0, 0): the old multi-embodiment path locked ghosts
+            # this way, and exactly coincident limits are a degenerate
+            # constraint. Still far below reset.py's 1e-6 enabled threshold.
+            lo, hi = (seg.joint.limits or design_space.JOINT_LIMIT) if real else (0.0, 1e-8)
+            attr(j, "physics:lowerLimit", Sdf.ValueTypeNames.Float, float(math.degrees(lo)))
+            attr(j, "physics:upperLimit", Sdf.ValueTypeNames.Float, float(math.degrees(hi)))
+            attr(j, "physics:jointEnabled", Sdf.ValueTypeNames.Bool, True)
+            attr(j, "physics:excludeFromArticulation", Sdf.ValueTypeNames.Bool, False)
+            attr(j, "drive:angular:physics:stiffness", Sdf.ValueTypeNames.Float,
+                 rpc.CONVERTER_DRIVE_STIFFNESS)
+            attr(j, "drive:angular:physics:damping", Sdf.ValueTypeNames.Float,
+                 rpc.CONVERTER_DRIVE_DAMPING)
+            # Full effort for ghosts too: the drive is what holds a locked joint shut.
+            attr(j, "drive:angular:physics:maxForce", Sdf.ValueTypeNames.Float,
+                 float(rpc.GEN_JOINT_EFFORT_NM))
+            attr(j, "drive:angular:physics:targetPosition", Sdf.ValueTypeNames.Float, 0.0)
+            # Unset, this is no limit at all (5.9e36), and the reaction moves the arm.
+            attr(j, "physxJoint:maxJointVelocity", Sdf.ValueTypeNames.Float,
+                 float(math.degrees(rpc.GEN_JOINT_VELOCITY_RAD_S)))
+
+    _author_palm(layer, root_path, hand, palm_body_path, link7_mass_props, colliders)
+    return colliders
+
+
+def _author_palm(layer, root_path, hand, palm_body_path, link7_mass_props, colliders):
+    """The palm slab, ON the flange body rather than beside it.
+
+    ``ARM_TIP_LINK`` is "the link the hand's palm merges into under
+    merge_fixed_joints", and ``flange_to_palm`` and ``palm_center_offset`` say
+    the same -- so the palm is a collider and a mass on link_7, not a body of
+    its own. That also leaves the articulation's link count and every joint name
+    untouched, so a checkpoint still loads.
+    """
+    from pxr import Gf, Sdf
+
+
+    mass, inertia_local = palm_mass_props(hand)
+    pos, quat = design_space.mat_to_pos_quat(flange_to_palm())
+
+    wrap = define(layer, f"{palm_body_path}/hand_palm", "Xform")
+    set_xform(wrap, pos, quat)
+    # A derived outline is a MESH, not a Cube. It is convex by construction, so
+    # the collider is told so and PhysX needs no decomposition.
+    verts, faces = design_space.palm_hull(hand)
+    shape = define(layer, f"{palm_body_path}/hand_palm/mesh", "Mesh",
+                   ["PhysicsCollisionAPI", "PhysxCollisionAPI",
+                    "PhysicsMeshCollisionAPI"])
+    attr(shape, "points", Sdf.ValueTypeNames.Point3fArray,
+         [Gf.Vec3f(*(float(c) for c in v)) for v in verts])
+    attr(shape, "faceVertexCounts", Sdf.ValueTypeNames.IntArray,
+         [len(f) for f in faces])
+    attr(shape, "faceVertexIndices", Sdf.ValueTypeNames.IntArray,
+         [int(i) for f in faces for i in f])
+    attr(shape, "physics:approximation", Sdf.ValueTypeNames.Token, "convexHull")
+    lo, hi = verts.min(axis=0), verts.max(axis=0)
+    attr(shape, "extent", Sdf.ValueTypeNames.Float3Array,
+         [Gf.Vec3f(*(float(c) for c in lo)), Gf.Vec3f(*(float(c) for c in hi))])
+    colliders[rpc.ARM_TIP_LINK] = colliders.get(rpc.ARM_TIP_LINK, 0) + 1
+
+    if link7_mass_props is None:
+        return
+    # One body now, so the inertias add about the JOINT centre of mass. The palm's mass sits at its centre
+    # (palm_box), in the palm's axes: palm_mass_props' inertia is about that centre.
+    _, pose = palm_box(hand)
+    arm_mass, arm_com, arm_inertia = link7_mass_props
+    total, com, inertia = merge_rigid_bodies([
+        (float(arm_mass), np.asarray(arm_com, float), np.asarray(arm_inertia, float), np.eye(3)),
+        (mass, pose[:3, 3], inertia_local, pose[:3, :3]),
+    ])
+    diag, principal = principal_axes(inertia)
+    body = Sdf.CreatePrimInLayer(layer, Sdf.Path(palm_body_path))   # an OVER: the
+    attr(body, "physics:mass", Sdf.ValueTypeNames.Float, float(total))  # arm defines it
+    attr(body, "physics:centerOfMass", Sdf.ValueTypeNames.Float3,
+         Gf.Vec3f(*[float(v) for v in com]))
+    attr(body, "physics:diagonalInertia", Sdf.ValueTypeNames.Float3,
+         Gf.Vec3f(*[float(v) for v in diag]))
+    attr(body, "physics:principalAxes", Sdf.ValueTypeNames.Quatf,
+         Gf.Quatf(float(principal[0]), Gf.Vec3f(*[float(v) for v in principal[1:]])))
+
+
+__all__ = ["author_hand", "ARM_PRIM", "arm_only_urdf", "stub_urdf", "flatten_robot_usd",
            "keep_visuals_requested"]
