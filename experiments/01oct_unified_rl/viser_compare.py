@@ -338,10 +338,10 @@ def main(args):
                     info = m
                     if not m["urdf"]:
                         # A generated design: author its capsule URDF here (Kit-free), as viser_play does.
-                        from coevolution.eval import viser_play as vp
+                        from coevolution.pose_viewer import viewing_urdf
                         from hand_sampler import population_io
                         hand = population_io.load_population(str(GEN_SHARPA_POP))[0]
-                        m["urdf"] = str(vp._viewing_urdf(hand, spec_ref(args.hand),
+                        m["urdf"] = str(viewing_urdf(hand, spec_ref(args.hand),
                                                          pathlib.Path(tempfile.mkdtemp()) / "hand.urdf"))
                     n = len(m["labels"])
                     for i in range(n):

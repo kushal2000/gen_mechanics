@@ -610,3 +610,42 @@ class PoseViewerWrapper(gym.Wrapper):
         except Exception as exc:
             print(f"[pose_viewer] WandB log failed: {exc}", flush=True)
 
+
+def viewing_urdf(hand, pop_ref: str, out: Path) -> Path:
+    """A URDF carrying every joint the trajectory animates (for a generated design viewed in viser; moved here
+    from the old coevolution/eval/viser_play.py).
+
+    urdf_for_viewing writes the hand's 30 envelope slots and is rooted at
+    ARM_TIP_LINK. With an arm that is not enough: the trajectory is
+    joint_names_canonical, 37 names, and ViserUrdf raises KeyError on the first
+    one the URDF lacks -- 'iiwa14_joint_1'. pose_viewer._graft_hand_onto_arm
+    hangs the hand off the arm's flange and supplies exactly those 7.
+
+    With no arm the hand URDF already IS the robot (the stub carries link_7 at
+    the articulation root), so the graft is skipped -- the same branch
+    pose_viewer takes.
+    """
+    from hand_sampler import build, robot_spec
+
+    text = build.urdf_for_viewing(hand, out).read_text(encoding="utf-8")
+    if robot_spec.population_from_ref(pop_ref).spec.num_arm_joints:
+        text = _graft_hand_onto_arm(text, ARM_URDF_PATH)
+        # The grafted arm links keep the VENDOR urdf's relative <mesh filename>
+        # entries, and ViserUrdf resolves those against the urdf's own
+        # directory -- which is a temp dir. Every arm link then loads nothing
+        # and the arm is invisible while its joints still animate. Point them
+        # at the real files. (The hand needs none of this: it is capsules and a
+        # box, no meshes at all.)
+        # Inlined rather than imported from scene_utils.author_robot: that
+        # package pulls in pxr, and this process has no Kit.
+        import xml.etree.ElementTree as ET
+
+        root = ET.fromstring(text)
+        mesh_root = str(Path(ARM_URDF_PATH).parent) + "/"
+        for mesh in root.iter("mesh"):
+            fn = mesh.get("filename", "")
+            if fn and not fn.startswith("/"):
+                mesh.set("filename", mesh_root + fn)
+        text = ET.tostring(root, encoding="unicode")
+    out.write_text(text, encoding="utf-8")
+    return out

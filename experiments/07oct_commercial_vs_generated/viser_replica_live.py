@@ -6,7 +6,7 @@ Both run the SAME policy (06oct_wuji2_multi_embodiment, 31826, epoch 5000) live 
 replica: the joint transformer is rebuilt for the hand's joints with the same weights.
 
 Built on experiments/01oct_unified_rl/viser_compare.py (its --worker) and 05oct's viser_missing_finger.py: Kit and
-viser cannot share an interpreter (coevolution/eval/viser_play.py), so each panel's simulation is a child worker
+viser cannot share an interpreter (the old coevolution/eval/viser_play.py), so each panel's simulation is a child worker
 streaming joint angles and object poses back; changing a panel's hand restarts its worker (about a minute).
 
     .venv_isaacsim/bin/python experiments/07oct_commercial_vs_generated/viser_replica_live.py --port 8084
@@ -97,11 +97,11 @@ class Panel:
         from viser_unified import _face_cube
         spec = self.opts[self.current]
         if not m["urdf"]:                       # a generated design: its viewing URDF, as viser_compare does
-            from coevolution.eval import viser_play as vp
+            from coevolution.pose_viewer import viewing_urdf
             from hand_sampler import population_io
             from viser_compare import spec_ref
             hand = population_io.load_population(spec_ref(spec)[len("handonly:"):])[0]
-            m["urdf"] = str(vp._viewing_urdf(hand, spec_ref(spec), pathlib.Path(tempfile.mkdtemp()) / "hand.urdf"))
+            m["urdf"] = str(viewing_urdf(hand, spec_ref(spec), pathlib.Path(tempfile.mkdtemp()) / "hand.urdf"))
         s = self.server
         s.scene.add_frame(f"/p{self.i}", position=(self.x, 0.0, 0.0), show_axes=False)
         s.scene.add_frame(f"/p{self.i}/base", position=tuple(m["base_pos"]), wxyz=tuple(m["base_rot"]),
