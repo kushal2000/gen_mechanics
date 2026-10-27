@@ -168,9 +168,9 @@ def main() -> None:
                 except Exception:
                     obj_urdfs.append(None)
             _lim_canon = inner.robot.data.joint_pos_limits[0][inner._perm_lab_to_canon]
-            # The parent cannot resolve a spec itself: importing the registry pulls in
-            # scene_utils/__init__ -> assembly -> pxr, which only exists inside Kit.
-            # So the side that already has the spec reports the file to draw.
+            # The side that already has the spec reports the file to draw (the parent
+            # could resolve it too since the registry moved to isaacsimenvs.common.robots,
+            # which is Kit-free, but this keeps the two sides from ever disagreeing).
             import hand_sampler as _hs
 
             send(kind="ready",

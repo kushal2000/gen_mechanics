@@ -1,8 +1,9 @@
 """Task registry.
 
-One subpackage per task, each holding everything that task needs: its env and
-config, scene construction and USD authoring, its robot specs and its viewer.
-Each registers its own gym ids as an import side effect, so importing this
+One subpackage per task (its env and config, scene construction, observations,
+rewards), plus ``common/``: what the tasks share (the robot registry, URDF -> USD,
+object authoring, the observation layout). ``common`` imports no task. Each task
+registers its own gym ids as an import side effect, so importing this
 package exposes every task to ``gym.make`` / ``gym.spec``.
 
 Importing a task pulls in Isaac Lab, whose sub-namespaces only resolve once

@@ -1,7 +1,8 @@
 """Config for the in-hand olympics env: one hand on a 6-DOF dummy wrist, palm down above a table.
 
 Every task is a sequence of 6D goal poses for the pen; the task decides where the pen starts and how the next goal
-follows a hit one, while success, rewards and terminations are shared (env.py). Today's tasks: pen_spin.
+follows a hit one, while success, rewards and terminations are shared (env.py). Tasks (tasks/): pen_lift, pen_spin,
+pen_spin_air, pen_flip_air, pen_repose, pen_twist.
 
 Never use a ``None`` default here: a hydra override of a ``None`` default is rejected
 (pose_reaching_6d/env_cfg.py says the same).

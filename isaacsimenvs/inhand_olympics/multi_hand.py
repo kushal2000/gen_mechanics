@@ -1,6 +1,6 @@
 """Several hands in one olympics scene, each on its dummy wrist over its own envs (round-robin), presented to the env
-as one articulation: pose_reaching_6d's multi-hand scene (scene_utils/multi_articulation.py, robots/multi_hand.py)
-with the 6 wrist joints ahead of the padded finger slots.
+as one articulation: the hand sets of common/robots/multi_hand.py, presented as pose_reaching_6d's multi-hand scene
+presents them (scene_utils/multi_articulation.py), with the 6 wrist joints ahead of the padded finger slots.
 
 Selected by ``hand.robot_spec = "multi:<spec>+<spec>+..."``. Joint order (Isaac Lab order = canonical order here):
 the wrist joints, then finger slots s0..s{J-1}, slot k being the hand's k-th joint in its spec's canonical order; a

@@ -39,7 +39,8 @@ PY=.venv_isaacsim/bin/python
 | Browse the hand grammar (CPU only, no Isaac) | `$PY experiments/grammar_viewer/viewer.py` |
 | The original pose-reaching env | `$PY coevolution/train.py --task GenMech-PoseReach-Direct-v0 --agent rl_games_sapg_cfg_entry_point --headless` |
 
-Every experiment folder (`experiments/<date>_<name>/`) has a README with its runs, results and figures; training logs
+[`experiments/README.md`](experiments/README.md) lists which folders are current. Every experiment folder
+(`experiments/<date>_<name>/`) has a README with its runs, results and figures; training logs
 and checkpoints go to `debug_outputs/train_logs/<experiment>/`.
 
 ## Layout
@@ -54,8 +55,11 @@ hand_sampler  <--  isaacsimenvs  <--  coevolution
 hand_sampler/        hand designs -- PURE PYTHON, no Isaac
   grammar/             the hand grammar (Martin): what a hand can be, the Feetech rules, viability checks
   grammar_bench/       the grammar's tests and benchmarks (analytic and oracle FK, commercial-hand fits)
-  design_space.py, mutate_design.py, evolve.py, build.py   the earlier generated-hand design space
-isaacsimenvs/        everything that touches Isaac; one subpackage per task
+  robot_spec.py        RobotSpec: what a task needs to know about a robot (joints, fingertips, gains, URDF)
+  design_space.py, build.py   the earlier generated-hand design space (see hand_sampler/README.md)
+isaacsimenvs/        everything that touches Isaac; one subpackage per task, plus what they share
+  common/              shared by every task, imports none of them: robots/ (the robot registry, multi-hand sets),
+                       URDF -> USD, object authoring, observation layout and geometry, the sim config
   inhand_olympics/     FLAGSHIP: hand on a dummy wrist + pen; tasks/ (lift, spin, flip, repose, twist),
                        scene.py (single- and multi-hand scenes), twist_pen.py, observations.py, pose_viewer.py
   pose_reaching_6d/    the original task: grasp a tool and drive it through SE(3) goals (arm + hand)
@@ -65,7 +69,7 @@ coevolution/         training and evaluation
   eval/                checkpoint player, evals; pose_viewer.py: the wandb interactive pose viewer
 assets/urdf/         robot + table URDFs and meshes; generated hands land in assets/urdf/generated/
 third_party/rl_games/  vendored SAPG fork (NOT the PyPI package)
-experiments/         one folder per experiment: SLURM scripts, analysis, plots, README
+experiments/         one folder per experiment: SLURM scripts, analysis, plots, README (index: experiments/README.md)
 ```
 
 `hand_sampler` imports no simulator, so design sampling, mutation and the grammar's checks run on CPU without booting
@@ -141,7 +145,7 @@ the SAPG additions this project trains with (`expl_coef_block_size`,
 **Keep the pins exact.** The validated set is `isaaclab==2.3.2.post1`,
 `isaacsim==5.1.0.0`, `torch==2.7.0+cu126`, `numpy==1.26.0` — copied from
 simtoolreal's working environment. Newer Isaac Lab releases change the
-`DirectRLEnv` and `UrdfConverter` APIs that `isaacsimenvs/pose_reaching_6d/` depends
+`DirectRLEnv` and `UrdfConverter` APIs that `isaacsimenvs/` depends
 on, and an unpinned `torch` resolves far past what the isaacsim wheels support.
 
 ### Running
