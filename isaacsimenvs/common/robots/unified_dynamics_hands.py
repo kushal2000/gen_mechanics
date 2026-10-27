@@ -13,8 +13,8 @@ import json
 from pathlib import Path
 
 from hand_sampler.design_space import joint_link_boxes
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_handonly import SHARPA_HANDONLY
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.unified_hands import LEFT_HANDS, REPO, spec_from_json
+from isaacsimenvs.common.robots.sharpa_handonly import SHARPA_HANDONLY
+from isaacsimenvs.common.robots.unified_hands import LEFT_HANDS, REPO, spec_from_json
 
 UNIFORM_DIR = REPO / "assets/urdf/unified_dynamics_commercial_hands"
 

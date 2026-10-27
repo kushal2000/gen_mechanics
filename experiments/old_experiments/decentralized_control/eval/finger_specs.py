@@ -28,7 +28,7 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots import (
+from isaacsimenvs.common.robots import (
     REGISTRY, SHARPA_IIWA14,
 )
 

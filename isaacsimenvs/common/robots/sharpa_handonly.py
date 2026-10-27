@@ -44,7 +44,7 @@ from hand_sampler.robot_param_constants import (
     hand_only_base_rot,
 )
 from hand_sampler.robot_spec import RobotSpec
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.sharpa_handonly import (
+from isaacsimenvs.common.robots.adjacency.sharpa_handonly import (
     SHARPA_HANDONLY_ADJACENT_LINKS,
 )
 

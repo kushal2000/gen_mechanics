@@ -30,17 +30,8 @@ def _load(name: str, relpath: str):
 
 @pytest.fixture(scope="module")
 def spec():
-    """SHARPA_IIWA14 without its package's Kit imports."""
-    adjacency = _load(
-        "adj", "isaacsimenvs/pose_reaching_6d/scene_utils/robots/adjacency/sharpa_iiwa14.py")
-    src = (ROOT / "isaacsimenvs/pose_reaching_6d/scene_utils/robots/sharpa_iiwa14.py").read_text()
-    src = src.replace(
-        "from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.sharpa_iiwa14 "
-        "import SHARPA_IIWA14_ADJACENT_LINKS",
-        "SHARPA_IIWA14_ADJACENT_LINKS = _ADJ")
-    ns = {"__name__": "sharpa", "_ADJ": adjacency.SHARPA_IIWA14_ADJACENT_LINKS}
-    exec(compile(src, "sharpa_iiwa14.py", "exec"), ns)
-    return ns["SHARPA_IIWA14"]
+    from isaacsimenvs.common.robots.sharpa_iiwa14 import SHARPA_IIWA14
+    return SHARPA_IIWA14
 
 
 def test_joint_set_and_order(spec):

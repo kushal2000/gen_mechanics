@@ -18,7 +18,7 @@ from isaacsimenvs.common.sim_cfg import default_sim_cfg
 
 @configclass
 class HandCfg:
-    # A registered single-hand spec (pose_reaching_6d/scene_utils/robots). Its URDF is wrapped by the wrist chain.
+    # A registered single-hand spec (isaacsimenvs/common/robots). Its URDF is wrapped by the wrist chain.
     robot_spec: str = "wuji2_left_uniform_handonly"
     # 0 = the URDF's own per-joint speed cap (the uniform assets: 5 rad/s).
     velocity_limit: float = 0.0

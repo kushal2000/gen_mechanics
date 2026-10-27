@@ -1,41 +1,14 @@
 """Multi-hand scene layout (robots/multi_hand.py): slots, per-env tables, env blocks. Kit-free."""
 from __future__ import annotations
 
-import importlib.util
-import sys
-import types
-from pathlib import Path
-
 import numpy as np
 import pytest
-
-ROOT = Path(__file__).resolve().parents[3]
-PKG = "isaacsimenvs.pose_reaching_6d.scene_utils.robots"
-
-
-def _load(name, rel):
-    sp = importlib.util.spec_from_file_location(name, ROOT / rel)
-    m = importlib.util.module_from_spec(sp)
-    sys.modules[name] = m
-    sp.loader.exec_module(m)
-    return m
 
 
 @pytest.fixture(scope="module")
 def mh():
-    import isaacsimenvs.pose_reaching_6d  # noqa: F401
-    for n in ("isaacsimenvs.pose_reaching_6d.scene_utils", PKG + ".adjacency"):
-        if n not in sys.modules:
-            m = types.ModuleType(n); m.__path__ = []; sys.modules[n] = m
-    pkg = types.ModuleType(PKG); pkg.__path__ = [str(ROOT / "isaacsimenvs/pose_reaching_6d/scene_utils/robots")]
-    sys.modules[PKG] = pkg
-    for mod in ("sharpa_iiwa14", "sharpa_handonly"):
-        _load(f"{PKG}.adjacency.{mod}", f"isaacsimenvs/pose_reaching_6d/scene_utils/robots/adjacency/{mod}.py")
-    _load(PKG + ".sharpa_handonly", "isaacsimenvs/pose_reaching_6d/scene_utils/robots/sharpa_handonly.py")
-    _load(PKG + ".unified_hands", "isaacsimenvs/pose_reaching_6d/scene_utils/robots/unified_hands.py")
-    uni = _load(PKG + ".unified_dynamics_hands", "isaacsimenvs/pose_reaching_6d/scene_utils/robots/unified_dynamics_hands.py")
-    pkg.REGISTRY = {s.name: s for s in uni.UNIFORM_LEFT.values()}
-    return _load(PKG + ".multi_hand", "isaacsimenvs/pose_reaching_6d/scene_utils/robots/multi_hand.py")
+    from isaacsimenvs.common.robots import multi_hand
+    return multi_hand
 
 
 def test_template_pads_to_the_largest_hand(mh):

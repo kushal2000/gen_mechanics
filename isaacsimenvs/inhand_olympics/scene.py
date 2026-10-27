@@ -23,8 +23,8 @@ from ..pose_reaching_6d.scene_utils.author_objects import author_handle_head, au
 from ..pose_reaching_6d.scene_utils.author_robot import flatten_robot_usd
 from ..pose_reaching_6d.scene_utils.objects.generate_objects import compute_mass_and_inertia
 from isaacsimenvs.common.sdf import attr, define, set_xform
-from ..pose_reaching_6d.scene_utils.robots import get_robot_spec
-from ..pose_reaching_6d.scene_utils.robots.multi_hand import hand_set, is_multi_ref
+from isaacsimenvs.common.robots import get_robot_spec
+from isaacsimenvs.common.robots.multi_hand import hand_set, is_multi_ref
 from .wrist import WRIST_JOINTS, build_wrist_urdf
 
 ROBOT_PATH = "/World/envs/env_.*/Robot"

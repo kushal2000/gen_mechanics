@@ -93,7 +93,7 @@ def main() -> None:
 
         # The hand count is the scene's; build once at a placeholder size to learn it would cost a second
         # Kit scene, so size from the spec instead: round-robin dealing needs a multiple of the hand count.
-        from isaacsimenvs.pose_reaching_6d.scene_utils.robots.multi_hand import spec_names
+        from isaacsimenvs.common.robots.multi_hand import spec_names
         n_hands = len(spec_names(saved.env.assets.robot_spec))
         env_cfg.scene.num_envs = n_hands * args.envs_per_hand
 

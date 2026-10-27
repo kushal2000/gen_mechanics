@@ -53,17 +53,7 @@ MIN_OVERLAP_M = 0.5e-3
 def _filtered_pairs(hand: str, uniform: bool) -> set[frozenset]:
     """Pairs PhysX does NOT collide: the spec's adjacency filter (jointed pairs are added separately)."""
     if hand == "sharpa":
-        import importlib.util
-        import types
-        pkg = "isaacsimenvs.pose_reaching_6d.scene_utils.robots"
-        for n in ("isaacsimenvs.pose_reaching_6d.scene_utils", pkg, pkg + ".adjacency"):
-            if n not in sys.modules:
-                m = types.ModuleType(n); m.__path__ = []; sys.modules[n] = m
-        for mod in ("sharpa_iiwa14", "sharpa_handonly"):
-            sp = importlib.util.spec_from_file_location(
-                f"{pkg}.adjacency.{mod}", REPO / f"isaacsimenvs/pose_reaching_6d/scene_utils/robots/adjacency/{mod}.py")
-            m = importlib.util.module_from_spec(sp); sys.modules[sp.name] = m; sp.loader.exec_module(m)
-        adj = m.SHARPA_HANDONLY_ADJACENT_LINKS
+        from isaacsimenvs.common.robots.adjacency.sharpa_handonly import SHARPA_HANDONLY_ADJACENT_LINKS as adj
     else:
         d = HERE if uniform else REPO / "assets/urdf/unified_commercial_hands"
         adj = json.loads((d / hand / f"{hand}_left.spec.json").read_text())["adjacent_links"]

@@ -96,7 +96,7 @@ def main() -> None:
 
     # Each hand on the env's dummy wrist (wrist.build_wrist_urdf: the URDF the env converts), for the viewer.
     from isaacsimenvs.inhand_olympics.wrist import build_wrist_urdf
-    from isaacsimenvs.pose_reaching_6d.scene_utils.robots import get_robot_spec
+    from isaacsimenvs.common.robots import get_robot_spec
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     names = [h for h in args.hands.split(",") if h] or (

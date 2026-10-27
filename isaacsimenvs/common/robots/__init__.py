@@ -17,11 +17,11 @@ from __future__ import annotations
 import functools
 
 from hand_sampler.robot_spec import RobotSpec
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.allegro_handonly import ALLEGRO_HANDONLY
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_handonly import SHARPA_HANDONLY
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.sharpa_iiwa14 import SHARPA_IIWA14
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.unified_hands import UNIFIED_LEFT
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.unified_dynamics_hands import MISSING_FINGER, UNIFORM_LEFT, UNIFORM_RIGHT
+from isaacsimenvs.common.robots.allegro_handonly import ALLEGRO_HANDONLY
+from isaacsimenvs.common.robots.sharpa_handonly import SHARPA_HANDONLY
+from isaacsimenvs.common.robots.sharpa_iiwa14 import SHARPA_IIWA14
+from isaacsimenvs.common.robots.unified_hands import UNIFIED_LEFT
+from isaacsimenvs.common.robots.unified_dynamics_hands import MISSING_FINGER, UNIFORM_LEFT, UNIFORM_RIGHT
 
 
 REGISTRY: dict[str, RobotSpec] = {
@@ -39,7 +39,7 @@ def _spec_from_file(path: str) -> RobotSpec:
     import json
     from pathlib import Path
 
-    from isaacsimenvs.pose_reaching_6d.scene_utils.robots.unified_hands import REPO, spec_from_json
+    from isaacsimenvs.common.robots.unified_hands import REPO, spec_from_json
     p = Path(path) if Path(path).is_absolute() else REPO / path
     if not p.is_file():
         raise KeyError(f"robot_spec {path!r}: no such spec JSON")
@@ -57,7 +57,7 @@ def get_robot_spec(name: str) -> RobotSpec:
     if name.endswith(".spec.json"):
         return _spec_from_file(name)
     # Several hands in one scene: a padded template over their specs (robots/multi_hand.py).
-    from isaacsimenvs.pose_reaching_6d.scene_utils.robots.multi_hand import hand_set, is_multi_ref
+    from isaacsimenvs.common.robots.multi_hand import hand_set, is_multi_ref
     if is_multi_ref(name):
         return hand_set(name).template
     # A generated population's shared template, by name or by file. Resolved

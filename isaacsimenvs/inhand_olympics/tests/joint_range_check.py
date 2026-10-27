@@ -60,7 +60,7 @@ def main() -> None:
 
     # Poses as {joint name: "lower" | "upper"}.
     probe = InHandOlympicsEnvCfg()
-    from isaacsimenvs.pose_reaching_6d.scene_utils.robots import get_robot_spec
+    from isaacsimenvs.common.robots import get_robot_spec
     hand = list(get_robot_spec(probe.hand.robot_spec).hand_joint_names)
     thumb = [j for j in hand if "thumb" in j]
     others = [j for j in hand if "thumb" not in j]

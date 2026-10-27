@@ -110,7 +110,7 @@ def main() -> None:
 
         # The hand count is the scene's; build once at a placeholder size to learn it would cost a second
         # Kit scene, so size from the spec instead: round-robin dealing needs a multiple of the hand count.
-        from isaacsimenvs.pose_reaching_6d.scene_utils.robots.multi_hand import is_multi_ref, spec_names
+        from isaacsimenvs.common.robots.multi_hand import is_multi_ref, spec_names
         if not is_multi_ref(spec):
             raise SystemExit(f"--spec {spec}: per-hand eval needs a multi: family")
         n_hands = len(spec_names(spec))

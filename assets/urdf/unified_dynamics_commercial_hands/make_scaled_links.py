@@ -15,7 +15,7 @@ diag(width, width, length) in its own frame:
     centre and self-collision filters unchanged (the link boxes the policy observes are recomputed from the URDF).
 
 Written next to the full hand as <hand>_<side>_<tag>.{urdf,spec.json}; registered like make_missing_fingers.py's
-variants as <hand>_<side>_uniform_handonly_<tag> (scene_utils/robots/unified_dynamics_hands.py). Also reports any
+variants as <hand>_<side>_uniform_handonly_<tag> (isaacsimenvs/common/robots/unified_dynamics_hands.py). Also reports any
 pair of links that overlap at the default pose and is NOT collision-filtered (wider links can touch neighbours).
 
     python3 assets/urdf/unified_dynamics_commercial_hands/make_scaled_links.py --length 0.5 --tag len50

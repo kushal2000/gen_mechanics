@@ -166,7 +166,7 @@ def main() -> None:
         load_run_config, synthesise_policy_config,
     )
     from isaacsimenvs.pose_reaching_6d.env_cfg import PoseReachEnvCfg
-    from isaacsimenvs.pose_reaching_6d.scene_utils.robots import SHARPA_IIWA14
+    from isaacsimenvs.common.robots import SHARPA_IIWA14
 
     # RlPlayer reads cfg["train"]; a run stores the identical rl_games block
     # under "agent". The repo already synthesises one from the other, and it

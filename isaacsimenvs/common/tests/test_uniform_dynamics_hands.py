@@ -1,12 +1,11 @@
 """Uniform-dynamics commercial hands: same kinematics as the vendor-dynamics specs, gen-SHARPA's actuation.
 
-Kit-free, loading the robot modules by path as test_unified_hands.py does.
+Kit-free.
 """
 from __future__ import annotations
 
 import importlib.util
 import sys
-import types
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -14,7 +13,6 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-PKG = "isaacsimenvs.pose_reaching_6d.scene_utils.robots"
 
 
 def _load(name, rel):
@@ -27,17 +25,8 @@ def _load(name, rel):
 
 @pytest.fixture(scope="module")
 def mods():
-    import isaacsimenvs.pose_reaching_6d  # noqa: F401
-    for n in ("isaacsimenvs.pose_reaching_6d.scene_utils", PKG, PKG + ".adjacency"):
-        if n not in sys.modules:
-            m = types.ModuleType(n); m.__path__ = []; sys.modules[n] = m
-    _load(PKG + ".adjacency.sharpa_iiwa14", "isaacsimenvs/pose_reaching_6d/scene_utils/robots/adjacency/sharpa_iiwa14.py")
-    _load(PKG + ".adjacency.sharpa_handonly", "isaacsimenvs/pose_reaching_6d/scene_utils/robots/adjacency/sharpa_handonly.py")
-    _load(PKG + ".sharpa_handonly", "isaacsimenvs/pose_reaching_6d/scene_utils/robots/sharpa_handonly.py")
-    unified = _load(PKG + ".unified_hands", "isaacsimenvs/pose_reaching_6d/scene_utils/robots/unified_hands.py")
-    uniform = _load(PKG + ".unified_dynamics_hands",
-                    "isaacsimenvs/pose_reaching_6d/scene_utils/robots/unified_dynamics_hands.py")
-    return unified, uniform
+    from isaacsimenvs.common.robots import unified_dynamics_hands, unified_hands
+    return unified_hands, unified_dynamics_hands
 
 
 def test_every_hand_has_a_uniform_spec(mods):
@@ -89,7 +78,8 @@ def test_same_hand_under_the_canonical_map(mods):
 def test_canonical_home_is_zero_and_same_tokens_otherwise(mods):
     unified, uniform = mods
     pairs = [(unified.UNIFIED_LEFT[h], uniform.UNIFORM_LEFT[h]) for h in unified.UNIFIED_LEFT]
-    pairs.append((sys.modules[PKG + ".sharpa_handonly"].SHARPA_HANDONLY, uniform.UNIFORM_LEFT["sharpa"]))
+    from isaacsimenvs.common.robots.sharpa_handonly import SHARPA_HANDONLY
+    pairs.append((SHARPA_HANDONLY, uniform.UNIFORM_LEFT["sharpa"]))
     for a, b in pairs:
         assert set(b.hand_default_joint_pos.values()) == {0.0}, b.name
         assert a.hand_joint_names == b.hand_joint_names and a.fingertip_body_names == b.fingertip_body_names

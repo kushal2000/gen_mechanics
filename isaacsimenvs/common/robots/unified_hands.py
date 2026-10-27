@@ -22,7 +22,7 @@ from hand_sampler.design_space import joint_link_boxes
 from hand_sampler.robot_param_constants import hand_only_base_pos, hand_only_base_rot
 from hand_sampler.robot_spec import RobotSpec
 
-REPO = Path(__file__).resolve().parents[4]
+from hand_sampler import REPO_ROOT as REPO  # noqa: E402  (the repo root, wherever this package sits)
 HANDS_DIR = REPO / "assets/urdf/unified_commercial_hands"
 # Onboarded and accepted for training. (allegro right stays the hand-written allegro_handonly.)
 LEFT_HANDS = ("allegro", "leap", "shadow", "dex3", "tesollo", "wuji2", "xhand")

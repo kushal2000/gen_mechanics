@@ -38,7 +38,7 @@ from .author_robot import ARM_PRIM, arm_only_urdf, author_hand, flatten_robot_us
 from .materials import apply_physx_material_properties
 from isaacsimenvs.common.sdf import define, set_xform
 from .objects.generate_objects import generate_handle_head_urdfs
-from .robots import get_robot_spec
+from isaacsimenvs.common.robots import get_robot_spec
 
 ROBOT_PATH = "/World/envs/env_.*/Robot"
 TABLE_PATH = "/World/envs/env_.*/Table"
@@ -440,7 +440,7 @@ def setup_scene(env) -> None:
     """Build and register robot, table, object, goal, ground, and light;
     leaves the decisions in ``env.scene_record``."""
     # Spaces first: DirectRLEnv reads them in _configure_gym_env_spaces, after this hook.
-    from .robots.multi_hand import hand_set as _hand_set, is_multi_ref
+    from isaacsimenvs.common.robots.multi_hand import hand_set as _hand_set, is_multi_ref
     hs = _hand_set(env.cfg.assets.robot_spec) if is_multi_ref(env.cfg.assets.robot_spec) else None
     population, spec = (None, hs.template) if hs is not None else _resolve_spec(env.cfg)
     derive_spaces(env.cfg, spec)

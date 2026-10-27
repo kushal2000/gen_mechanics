@@ -20,7 +20,7 @@ import re
 
 import torch
 
-from .robots.multi_hand import PALM, slot_link, slot_tip
+from isaacsimenvs.common.robots.multi_hand import PALM, slot_link, slot_tip
 
 
 class _MultiData:

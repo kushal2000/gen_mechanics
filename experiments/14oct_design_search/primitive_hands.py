@@ -3,7 +3,7 @@
 A hand is a ``PrimitiveHand``: the bearings at which its fingers leave the palm's rim, plus the module dimensions
 (fixed for now). Everything else is derived from it, so a design is a few numbers in a JSON -- what a sampler, a
 mutation or an agent proposes -- and ``build`` turns it into the URDF and spec JSON the envs load
-(``isaacsimenvs.pose_reaching_6d.scene_utils.robots.unified_hands.spec_from_json``: the same format as the uniform
+(``isaacsimenvs.common.robots.unified_hands.spec_from_json``: the same format as the uniform
 Wuji hands, so a primitive hand goes into the olympics env, the joint transformer and the multi-hand scene as is).
 
 Geometry (the palm frame is the "ours" palm frame of the spec: palm_frame is the identity):

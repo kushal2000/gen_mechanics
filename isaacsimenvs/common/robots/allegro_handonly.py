@@ -28,7 +28,7 @@ from hand_sampler.build import palm_keypoints
 from hand_sampler.design_space import joint_link_boxes
 from hand_sampler.robot_param_constants import hand_only_base_pos, hand_only_base_rot
 from hand_sampler.robot_spec import RobotSpec, Vec3
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.allegro_handonly import (
+from isaacsimenvs.common.robots.adjacency.allegro_handonly import (
     ALLEGRO_HANDONLY_ADJACENT_LINKS,
 )
 

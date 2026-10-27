@@ -14,7 +14,7 @@ which is documented there as the swap-a-new-hand failure mode.
 
 from __future__ import annotations
 
-from isaacsimenvs.pose_reaching_6d.scene_utils.robots.adjacency.sharpa_iiwa14 import (
+from isaacsimenvs.common.robots.adjacency.sharpa_iiwa14 import (
     SHARPA_IIWA14_ADJACENT_LINKS,
 )
 

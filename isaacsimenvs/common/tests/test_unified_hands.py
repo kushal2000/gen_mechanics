@@ -1,43 +1,22 @@
 """The onboarded commercial hands: every spec is valid, and the pipeline reproduces the hand-written Allegro.
 
-Kit-free: the scene_utils package __init__ imports pxr, so the robot modules are loaded by path.
+Kit-free.
 """
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
-import types
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-PKG = "isaacsimenvs.pose_reaching_6d.scene_utils.robots"
-
-
-def _load(name, rel):
-    sp = importlib.util.spec_from_file_location(name, ROOT / rel)
-    m = importlib.util.module_from_spec(sp)
-    sys.modules[name] = m
-    sp.loader.exec_module(m)
-    return m
 
 
 @pytest.fixture(scope="module")
 def mods():
-    import isaacsimenvs.pose_reaching_6d  # noqa: F401
-    for n in ("isaacsimenvs.pose_reaching_6d.scene_utils", PKG, PKG + ".adjacency"):
-        if n not in sys.modules:
-            m = types.ModuleType(n); m.__path__ = []; sys.modules[n] = m
-    _load(PKG + ".adjacency.allegro_handonly",
-          "isaacsimenvs/pose_reaching_6d/scene_utils/robots/adjacency/allegro_handonly.py")
-    allegro = _load(PKG + ".allegro_handonly",
-                    "isaacsimenvs/pose_reaching_6d/scene_utils/robots/allegro_handonly.py")
-    unified = _load(PKG + ".unified_hands",
-                    "isaacsimenvs/pose_reaching_6d/scene_utils/robots/unified_hands.py")
-    return allegro, unified
+    from isaacsimenvs.common.robots import allegro_handonly, unified_hands
+    return allegro_handonly, unified_hands
 
 
 def test_every_onboarded_left_hand_is_a_valid_spec(mods):

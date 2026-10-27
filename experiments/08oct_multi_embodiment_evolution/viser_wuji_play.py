@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import glob
-import importlib.util
 import os
 import pathlib
 import queue
@@ -60,17 +59,7 @@ PUSH_PERIOD = 18             # control steps between pushes: 0.3 s
 CONTROL_DT = 1.0 / 60.0      # every Wuji run: sim dt 1/120 s x decimation 2 -- for the measured-rate readout
 
 
-def _multi_hand():
-    """robots/multi_hand.py without its package __init__ (which needs Kit's pxr)."""
-    path = REPO / "isaacsimenvs/pose_reaching_6d/scene_utils/robots/multi_hand.py"
-    spec = importlib.util.spec_from_file_location("_multi_hand", path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["_multi_hand"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-MH = _multi_hand()
+from isaacsimenvs.common.robots import multi_hand as MH  # noqa: E402  (Kit-free)
 WUJI = REPO / "assets/urdf/unified_dynamics_commercial_hands/wuji2"
 
 
