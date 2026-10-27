@@ -1,0 +1,702 @@
+[
+  {
+    "finger_1_dist_joint": -0.6599973361200833,
+    "finger_1_med_joint": -1.9632870430385259,
+    "finger_1_prox_joint": -1.6552664795602545,
+    "finger_2_dist_joint": -0.4524931882235178,
+    "finger_2_med_joint": -1.1946349228070088,
+    "finger_2_prox_joint": 1.0257688369173827,
+    "finger_3_dist_joint": -0.6484957589534912,
+    "finger_3_med_joint": -0.17400719444014134
+  },
+  {
+    "finger_1_dist_joint": -0.42885084985078353,
+    "finger_1_med_joint": -2.4148092372877628,
+    "finger_1_prox_joint": -1.7094866257743822,
+    "finger_2_dist_joint": -0.5814277708059203,
+    "finger_2_med_joint": -1.7531156260527005,
+    "finger_2_prox_joint": 0.6551427464534622,
+    "finger_3_dist_joint": -0.6351453495976136,
+    "finger_3_med_joint": -2.278771813999596
+  },
+  {
+    "finger_1_dist_joint": -0.110627224060031,
+    "finger_1_med_joint": -0.8805566845676467,
+    "finger_1_prox_joint": -2.9640926491207313,
+    "finger_2_dist_joint": -0.2348295852751403,
+    "finger_2_med_joint": -0.9921618197846338,
+    "finger_2_prox_joint": 2.98887608766807,
+    "finger_3_dist_joint": -0.17671424158896498,
+    "finger_3_med_joint": -0.7022002767396087
+  },
+  {
+    "finger_1_dist_joint": -0.5112263810565965,
+    "finger_1_med_joint": -1.2930615883620893,
+    "finger_1_prox_joint": -0.24702574629520502,
+    "finger_2_dist_joint": -0.7456726553912894,
+    "finger_2_med_joint": -0.99837065531527,
+    "finger_2_prox_joint": 2.491089846523009,
+    "finger_3_dist_joint": -0.42995909164884527,
+    "finger_3_med_joint": -1.4837552579171072
+  },
+  {
+    "finger_1_dist_joint": -0.14232642733687884,
+    "finger_1_med_joint": -0.6911295922410337,
+    "finger_1_prox_joint": -0.10750342136815094,
+    "finger_2_dist_joint": -0.5536066526763878,
+    "finger_2_med_joint": -0.5308265421378762,
+    "finger_2_prox_joint": 1.4249948821384042,
+    "finger_3_dist_joint": -0.38856894245120555,
+    "finger_3_med_joint": -2.2818158478423163
+  },
+  {
+    "finger_1_dist_joint": -0.69180163820348,
+    "finger_1_med_joint": -2.41342467281993,
+    "finger_1_prox_joint": -2.167543500493308,
+    "finger_2_dist_joint": -0.34291739983980574,
+    "finger_2_med_joint": -0.5838651049407211,
+    "finger_2_prox_joint": 0.26546748915099155,
+    "finger_3_dist_joint": -0.5305038354894334,
+    "finger_3_med_joint": -1.437745178305275
+  },
+  {
+    "finger_1_dist_joint": -0.1602837494085977,
+    "finger_1_med_joint": -2.158266371360272,
+    "finger_1_prox_joint": -3.0445670985250324,
+    "finger_2_dist_joint": -0.513704527886418,
+    "finger_2_med_joint": -0.8800994597835035,
+    "finger_2_prox_joint": 0.9293794456234137,
+    "finger_3_dist_joint": -0.48799393185577017,
+    "finger_3_med_joint": -2.146593562560767
+  },
+  {
+    "finger_1_dist_joint": -0.18690167695040305,
+    "finger_1_med_joint": -0.4972073709506908,
+    "finger_1_prox_joint": -0.3628974470888271,
+    "finger_2_dist_joint": -0.008405824857577682,
+    "finger_2_med_joint": -1.6832088105985208,
+    "finger_2_prox_joint": 0.5483093185185363,
+    "finger_3_dist_joint": -0.057708191542495735,
+    "finger_3_med_joint": -2.162951268021597
+  },
+  {
+    "finger_1_dist_joint": -0.18757710090911295,
+    "finger_1_med_joint": -2.4357831689577902,
+    "finger_1_prox_joint": -2.3578645996543988,
+    "finger_2_dist_joint": -0.6877376608071253,
+    "finger_2_med_joint": -0.3756667311126147,
+    "finger_2_prox_joint": 0.2766127332109736,
+    "finger_3_dist_joint": -0.6649803547991009,
+    "finger_3_med_joint": -2.1824025815282315
+  },
+  {
+    "finger_1_dist_joint": -0.46368724408355183,
+    "finger_1_med_joint": -1.8816176439163388,
+    "finger_1_prox_joint": -2.9373657798307793,
+    "finger_2_dist_joint": -0.32249155226566295,
+    "finger_2_med_joint": -2.3428092895193564,
+    "finger_2_prox_joint": 0.9633882808178887,
+    "finger_3_dist_joint": -0.6718713097911573,
+    "finger_3_med_joint": -0.7837547669557603
+  },
+  {
+    "finger_1_dist_joint": -0.7725794615976134,
+    "finger_1_med_joint": -0.4181724877057147,
+    "finger_1_prox_joint": -1.9054016376417195,
+    "finger_2_dist_joint": -0.2563642467864933,
+    "finger_2_med_joint": -0.3414988682618749,
+    "finger_2_prox_joint": 2.725950938701404,
+    "finger_3_dist_joint": -0.4262238453941536,
+    "finger_3_med_joint": -1.3675171900093928
+  },
+  {
+    "finger_1_dist_joint": -0.716608745269637,
+    "finger_1_med_joint": -0.8010005420655935,
+    "finger_1_prox_joint": -0.48997002949245694,
+    "finger_2_dist_joint": -0.1430495216546741,
+    "finger_2_med_joint": -1.295592499134326,
+    "finger_2_prox_joint": 3.03309216966018,
+    "finger_3_dist_joint": -0.39214391316208436,
+    "finger_3_med_joint": -1.1494833724448574
+  },
+  {
+    "finger_1_dist_joint": -0.6950725530532157,
+    "finger_1_med_joint": -2.3380247844180664,
+    "finger_1_prox_joint": -0.23522048497128534,
+    "finger_2_dist_joint": -0.7622045508786623,
+    "finger_2_med_joint": -2.282912201073385,
+    "finger_2_prox_joint": 1.7324052810089392,
+    "finger_3_dist_joint": -0.6365618647769196,
+    "finger_3_med_joint": -0.5523821554057686
+  },
+  {
+    "finger_1_dist_joint": -0.0036415730011060132,
+    "finger_1_med_joint": -0.35052716692623465,
+    "finger_1_prox_joint": -0.09465532830247625,
+    "finger_2_dist_joint": -0.7343593228685465,
+    "finger_2_med_joint": -1.9744707887066983,
+    "finger_2_prox_joint": 1.6386489827178956,
+    "finger_3_dist_joint": -0.45099790417045643,
+    "finger_3_med_joint": -0.21216070123343522
+  },
+  {
+    "finger_1_dist_joint": -0.7509828978605356,
+    "finger_1_med_joint": -2.112078129559859,
+    "finger_1_prox_joint": -0.6151308997588418,
+    "finger_2_dist_joint": -0.45583655864655154,
+    "finger_2_med_joint": -1.9624378193581957,
+    "finger_2_prox_joint": 0.48179346661975975,
+    "finger_3_dist_joint": -0.4419163701367024,
+    "finger_3_med_joint": -0.9298518510100451
+  },
+  {
+    "finger_1_dist_joint": -0.7488300713709981,
+    "finger_1_med_joint": -0.2856453949989288,
+    "finger_1_prox_joint": -0.49258013293600333,
+    "finger_2_dist_joint": -0.6742415924816058,
+    "finger_2_med_joint": -0.3910112885382304,
+    "finger_2_prox_joint": 2.807534879608699,
+    "finger_3_dist_joint": -0.7445561430824519,
+    "finger_3_med_joint": -1.2582411801845925
+  },
+  {
+    "finger_1_dist_joint": -0.31100801604563866,
+    "finger_1_med_joint": -0.5875414503737992,
+    "finger_1_prox_joint": -1.1511044073529586,
+    "finger_2_dist_joint": -0.6713336084831998,
+    "finger_2_med_joint": -0.1862211691806217,
+    "finger_2_prox_joint": 1.7462388381430516,
+    "finger_3_dist_joint": -0.19976139432126339,
+    "finger_3_med_joint": -1.4440008270607099
+  },
+  {
+    "finger_1_dist_joint": -0.09053351010361266,
+    "finger_1_med_joint": -0.3347292418745069,
+    "finger_1_prox_joint": -2.2503219624165256,
+    "finger_2_dist_joint": -0.61408700389694,
+    "finger_2_med_joint": -1.1645822233765075,
+    "finger_2_prox_joint": 2.178361622137305,
+    "finger_3_dist_joint": -0.17778862991504085,
+    "finger_3_med_joint": -1.9625975343603597
+  },
+  {
+    "finger_1_dist_joint": -0.6594788249357146,
+    "finger_1_med_joint": -2.1590211443419416,
+    "finger_1_prox_joint": -0.6176517582761001,
+    "finger_2_dist_joint": -0.4865675801388716,
+    "finger_2_med_joint": -0.5995211632084443,
+    "finger_2_prox_joint": 3.1137586318047914,
+    "finger_3_dist_joint": -0.146475122312545,
+    "finger_3_med_joint": -0.530043360860051
+  },
+  {
+    "finger_1_dist_joint": -0.40198025715382935,
+    "finger_1_med_joint": -2.0993128070675082,
+    "finger_1_prox_joint": -1.7309286043448289,
+    "finger_2_dist_joint": -0.6324930736694836,
+    "finger_2_med_joint": -1.4273110555354664,
+    "finger_2_prox_joint": 2.9346715962963246,
+    "finger_3_dist_joint": -0.22776152415273732,
+    "finger_3_med_joint": -1.4037941821602091
+  },
+  {
+    "finger_1_dist_joint": -0.3013381593389164,
+    "finger_1_med_joint": -1.684468312454825,
+    "finger_1_prox_joint": -0.32651048962058704,
+    "finger_2_dist_joint": -0.6498505071513183,
+    "finger_2_med_joint": -0.06111502020388082,
+    "finger_2_prox_joint": 0.3533231066344966,
+    "finger_3_dist_joint": -0.35273153397762375,
+    "finger_3_med_joint": -1.6642988937896113
+  },
+  {
+    "finger_1_dist_joint": -0.2987209144415512,
+    "finger_1_med_joint": -2.10732951019519,
+    "finger_1_prox_joint": -0.4597231741062342,
+    "finger_2_dist_joint": -0.4390503084734873,
+    "finger_2_med_joint": -1.6186158908799708,
+    "finger_2_prox_joint": 0.7943626825470413,
+    "finger_3_dist_joint": -0.1013935046197485,
+    "finger_3_med_joint": -1.1464431185491502
+  },
+  {
+    "finger_1_dist_joint": -0.7037130102269591,
+    "finger_1_med_joint": -0.19742108826834182,
+    "finger_1_prox_joint": -2.3339304342304583,
+    "finger_2_dist_joint": -0.12246573771181068,
+    "finger_2_med_joint": -2.03059092278416,
+    "finger_2_prox_joint": 0.37784939006555474,
+    "finger_3_dist_joint": -0.02351323998629573,
+    "finger_3_med_joint": -1.050899846060996
+  },
+  {
+    "finger_1_dist_joint": -0.6860479898089269,
+    "finger_1_med_joint": -0.12540167615256337,
+    "finger_1_prox_joint": -1.6095366407947997,
+    "finger_2_dist_joint": -0.7607937159772786,
+    "finger_2_med_joint": -0.6387715048854408,
+    "finger_2_prox_joint": 2.2365664711545934,
+    "finger_3_dist_joint": -0.4055860241019933,
+    "finger_3_med_joint": -0.8421744820990151
+  },
+  {
+    "finger_1_dist_joint": -0.32895005845806063,
+    "finger_1_med_joint": -1.0288037828925314,
+    "finger_1_prox_joint": -0.08830225118982726,
+    "finger_2_dist_joint": -0.14317534234861218,
+    "finger_2_med_joint": -2.2108171043839744,
+    "finger_2_prox_joint": 1.4789428074636928,
+    "finger_3_dist_joint": -0.5000851578842664,
+    "finger_3_med_joint": -0.17068520096750595
+  },
+  {
+    "finger_1_dist_joint": -0.5958485340380835,
+    "finger_1_med_joint": -0.31970948889167605,
+    "finger_1_prox_joint": -1.0825346262111326,
+    "finger_2_dist_joint": -0.4172509679092014,
+    "finger_2_med_joint": -0.2989558202933824,
+    "finger_2_prox_joint": 2.233179991166779,
+    "finger_3_dist_joint": -0.32180007954024903,
+    "finger_3_med_joint": -2.255983704243041
+  },
+  {
+    "finger_1_dist_joint": -0.6144657769349775,
+    "finger_1_med_joint": -1.209864326870792,
+    "finger_1_prox_joint": -1.102652202116181,
+    "finger_2_dist_joint": -0.5387155772054728,
+    "finger_2_med_joint": -0.7569270556135297,
+    "finger_2_prox_joint": 1.0556686216755555,
+    "finger_3_dist_joint": -0.44288717515003695,
+    "finger_3_med_joint": -2.2177214591924646
+  },
+  {
+    "finger_1_dist_joint": -0.40227622170327626,
+    "finger_1_med_joint": -0.6612636769697517,
+    "finger_1_prox_joint": -3.105260398661039,
+    "finger_2_dist_joint": -0.08662150034668492,
+    "finger_2_med_joint": -1.5626483768437507,
+    "finger_2_prox_joint": 1.2356734055352088,
+    "finger_3_dist_joint": -0.25860620282525393,
+    "finger_3_med_joint": -0.3348633673065273
+  },
+  {
+    "finger_1_dist_joint": -0.3701608091622738,
+    "finger_1_med_joint": -2.3696602245897234,
+    "finger_1_prox_joint": -1.5746660151564766,
+    "finger_2_dist_joint": -0.17767283598752626,
+    "finger_2_med_joint": -1.536954910665857,
+    "finger_2_prox_joint": 0.4243992104557259,
+    "finger_3_dist_joint": -0.5805082287606474,
+    "finger_3_med_joint": -0.7139219030933792
+  },
+  {
+    "finger_1_dist_joint": -0.25497795239797105,
+    "finger_1_med_joint": -0.9978228219809357,
+    "finger_1_prox_joint": -1.0534947710627787,
+    "finger_2_dist_joint": -0.7175958028701261,
+    "finger_2_med_joint": -0.19846002765725634,
+    "finger_2_prox_joint": 2.270000053666741,
+    "finger_3_dist_joint": -0.09160782504364495,
+    "finger_3_med_joint": -0.15315658541747457
+  },
+  {
+    "finger_1_dist_joint": -0.18482669067839952,
+    "finger_1_med_joint": -0.04355419073069733,
+    "finger_1_prox_joint": -1.558512109324483,
+    "finger_2_dist_joint": -0.4755717313682597,
+    "finger_2_med_joint": -0.4664162913414156,
+    "finger_2_prox_joint": 2.214117295306051,
+    "finger_3_dist_joint": -0.5283270579716385,
+    "finger_3_med_joint": -1.5577744261773545
+  },
+  {
+    "finger_1_dist_joint": -0.7423057308661893,
+    "finger_1_med_joint": -1.618735351995927,
+    "finger_1_prox_joint": -0.9403082413454547,
+    "finger_2_dist_joint": -0.6193844163483687,
+    "finger_2_med_joint": -1.23817652684842,
+    "finger_2_prox_joint": 2.9722550070706273,
+    "finger_3_dist_joint": -0.5331655156495262,
+    "finger_3_med_joint": -1.0924780731140602
+  },
+  {
+    "finger_1_dist_joint": -0.5636814193337886,
+    "finger_1_med_joint": -2.0395948475764394,
+    "finger_1_prox_joint": -2.020654207202094,
+    "finger_2_dist_joint": -0.36180593658910576,
+    "finger_2_med_joint": -1.9247539626650143,
+    "finger_2_prox_joint": 2.4088056980004704,
+    "finger_3_dist_joint": -0.3237652617988884,
+    "finger_3_med_joint": -2.0285016387131187
+  },
+  {
+    "finger_1_dist_joint": -0.3252283774215795,
+    "finger_1_med_joint": -1.0306297145142975,
+    "finger_1_prox_joint": -1.9332105797002856,
+    "finger_2_dist_joint": -0.5590520701929255,
+    "finger_2_med_joint": -0.5956880721206936,
+    "finger_2_prox_joint": 0.963136258629358,
+    "finger_3_dist_joint": -0.27889176491134415,
+    "finger_3_med_joint": -1.7913971154478339
+  },
+  {
+    "finger_1_dist_joint": -0.0018899014953737137,
+    "finger_1_med_joint": -1.4296488057954353,
+    "finger_1_prox_joint": -2.8961005760541894,
+    "finger_2_dist_joint": -0.5176338232811517,
+    "finger_2_med_joint": -0.62108606436418,
+    "finger_2_prox_joint": 2.5506281219101554,
+    "finger_3_dist_joint": -0.4427047108474627,
+    "finger_3_med_joint": -0.5223737540602249
+  },
+  {
+    "finger_1_dist_joint": -0.6179038883464355,
+    "finger_1_med_joint": -0.601206409426124,
+    "finger_1_prox_joint": -3.044562134329123,
+    "finger_2_dist_joint": -0.5028137829142099,
+    "finger_2_med_joint": -1.857715526089943,
+    "finger_2_prox_joint": 0.21981226688024147,
+    "finger_3_dist_joint": -0.09695689764267745,
+    "finger_3_med_joint": -2.217662903363562
+  },
+  {
+    "finger_1_dist_joint": -0.7719403994483544,
+    "finger_1_med_joint": -0.8845140088259063,
+    "finger_1_prox_joint": -1.403123056458031,
+    "finger_2_dist_joint": -0.356185576740107,
+    "finger_2_med_joint": -0.35518444870399524,
+    "finger_2_prox_joint": 2.2998497036930163,
+    "finger_3_dist_joint": -0.24186915588011593,
+    "finger_3_med_joint": -0.7799230492123119
+  },
+  {
+    "finger_1_dist_joint": -0.6613331495284552,
+    "finger_1_med_joint": -1.715401357683001,
+    "finger_1_prox_joint": -1.5449860025876516,
+    "finger_2_dist_joint": -0.042397962309270065,
+    "finger_2_med_joint": -0.5806900013695997,
+    "finger_2_prox_joint": 2.99614439339238,
+    "finger_3_dist_joint": -0.049020009686308263,
+    "finger_3_med_joint": -1.3645986313648417
+  },
+  {
+    "finger_1_dist_joint": -0.11222346093289637,
+    "finger_1_med_joint": -2.4192533770830367,
+    "finger_1_prox_joint": -2.3634457039610215,
+    "finger_2_dist_joint": -0.18809191450721796,
+    "finger_2_med_joint": -0.19426306119546055,
+    "finger_2_prox_joint": 0.5369832636688942,
+    "finger_3_dist_joint": -0.5516070262539748,
+    "finger_3_med_joint": -1.0973264911303373
+  },
+  {
+    "finger_1_dist_joint": -0.4440260950916232,
+    "finger_1_med_joint": -2.278474642864912,
+    "finger_1_prox_joint": -1.6353026739539334,
+    "finger_2_dist_joint": -0.7322953890135443,
+    "finger_2_med_joint": -0.40738983682163443,
+    "finger_2_prox_joint": 1.169803709495457,
+    "finger_3_dist_joint": -0.6995665591441349,
+    "finger_3_med_joint": -0.1436258536628814
+  },
+  {
+    "finger_1_dist_joint": -0.41311101121025223,
+    "finger_1_med_joint": -2.0797159807192096,
+    "finger_1_prox_joint": -1.7628379207634448,
+    "finger_2_dist_joint": -0.48469387379101736,
+    "finger_2_med_joint": -1.7587972001802115,
+    "finger_2_prox_joint": 1.1823615374467076,
+    "finger_3_dist_joint": -0.43989821849497535,
+    "finger_3_med_joint": -1.167125134749288
+  },
+  {
+    "finger_1_dist_joint": -0.44625802292425737,
+    "finger_1_med_joint": -0.14585624676321896,
+    "finger_1_prox_joint": -2.8873543009898497,
+    "finger_2_dist_joint": -0.13852206675272527,
+    "finger_2_med_joint": -0.8482148931212423,
+    "finger_2_prox_joint": 1.571560730784252,
+    "finger_3_dist_joint": -0.057787016480929654,
+    "finger_3_med_joint": -1.5509890359700762
+  },
+  {
+    "finger_1_dist_joint": -0.73444383243571,
+    "finger_1_med_joint": -0.7501653526031997,
+    "finger_1_prox_joint": -1.484643725647412,
+    "finger_2_dist_joint": -0.42719063414982505,
+    "finger_2_med_joint": -0.7969665974005389,
+    "finger_2_prox_joint": 2.009341015410991,
+    "finger_3_dist_joint": -0.47199875039905104,
+    "finger_3_med_joint": -2.344818334533856
+  },
+  {
+    "finger_1_dist_joint": -0.3447492796234015,
+    "finger_1_med_joint": -0.8740772137789194,
+    "finger_1_prox_joint": -0.6025312684379478,
+    "finger_2_dist_joint": -0.5034899745689311,
+    "finger_2_med_joint": -0.9782112593124261,
+    "finger_2_prox_joint": 2.2942705644990125,
+    "finger_3_dist_joint": -0.6992446896825222,
+    "finger_3_med_joint": -0.7813469022750272
+  },
+  {
+    "finger_1_dist_joint": -0.5482232596301422,
+    "finger_1_med_joint": -0.3463590458331618,
+    "finger_1_prox_joint": -3.003291311384816,
+    "finger_2_dist_joint": -0.1893641621089207,
+    "finger_2_med_joint": -1.6804289746178638,
+    "finger_2_prox_joint": 0.3148709933213387,
+    "finger_3_dist_joint": -0.5795560918001625,
+    "finger_3_med_joint": -1.225921456830417
+  },
+  {
+    "finger_1_dist_joint": -0.09215491324606506,
+    "finger_1_med_joint": -1.924104386792851,
+    "finger_1_prox_joint": -1.8655623655338356,
+    "finger_2_dist_joint": -0.24843057720262451,
+    "finger_2_med_joint": -1.0115057458435242,
+    "finger_2_prox_joint": 1.881440318391119,
+    "finger_3_dist_joint": -0.33847970292453866,
+    "finger_3_med_joint": -1.2305549365823925
+  },
+  {
+    "finger_1_dist_joint": -0.15169955545443914,
+    "finger_1_med_joint": -0.3759585338069402,
+    "finger_1_prox_joint": -0.1294295386698634,
+    "finger_2_dist_joint": -0.126159924036511,
+    "finger_2_med_joint": -0.8920646272513195,
+    "finger_2_prox_joint": 1.730625799541622,
+    "finger_3_dist_joint": -0.6909897822172794,
+    "finger_3_med_joint": -2.4172189058794635
+  },
+  {
+    "finger_1_dist_joint": -0.5346151691252873,
+    "finger_1_med_joint": -0.6549728495744422,
+    "finger_1_prox_joint": -0.7171216547780457,
+    "finger_2_dist_joint": -0.07049344371081134,
+    "finger_2_med_joint": -0.34274659245194394,
+    "finger_2_prox_joint": 3.003844791394914,
+    "finger_3_dist_joint": -0.6215541838818105,
+    "finger_3_med_joint": -1.7559166734010856
+  },
+  {
+    "finger_1_dist_joint": -0.73613878033493,
+    "finger_1_med_joint": -0.4256523458732806,
+    "finger_1_prox_joint": -0.5065312459841191,
+    "finger_2_dist_joint": -0.3224231415902492,
+    "finger_2_med_joint": -0.9560256789274262,
+    "finger_2_prox_joint": 3.0616964202101054,
+    "finger_3_dist_joint": -0.6855265229195954,
+    "finger_3_med_joint": -0.07482781617323386
+  },
+  {
+    "finger_1_dist_joint": -0.024962674919483674,
+    "finger_1_med_joint": -0.5356429580236275,
+    "finger_1_prox_joint": -1.6588819236618304,
+    "finger_2_dist_joint": -0.7648879332761276,
+    "finger_2_med_joint": -1.1173656776084082,
+    "finger_2_prox_joint": 1.7473199774149837,
+    "finger_3_dist_joint": -0.5176383630313945,
+    "finger_3_med_joint": -1.639130523568444
+  },
+  {
+    "finger_1_dist_joint": -0.2786598080174343,
+    "finger_1_med_joint": -0.1975971406385324,
+    "finger_1_prox_joint": -2.8865227291145805,
+    "finger_2_dist_joint": -0.654731663587323,
+    "finger_2_med_joint": -0.11441540017659069,
+    "finger_2_prox_joint": 1.6928029247979823,
+    "finger_3_dist_joint": -0.5526630423061359,
+    "finger_3_med_joint": -0.04034004449079864
+  },
+  {
+    "finger_1_dist_joint": -0.519907353975125,
+    "finger_1_med_joint": -1.473733185046965,
+    "finger_1_prox_joint": -0.9572633250241038,
+    "finger_2_dist_joint": -0.13808558014816208,
+    "finger_2_med_joint": -2.3423881531234048,
+    "finger_2_prox_joint": 2.2007361479580405,
+    "finger_3_dist_joint": -0.33480583278522347,
+    "finger_3_med_joint": -0.4734812307806162
+  },
+  {
+    "finger_1_dist_joint": -0.16701796065283592,
+    "finger_1_med_joint": -2.318526669130444,
+    "finger_1_prox_joint": -1.623068492717743,
+    "finger_2_dist_joint": -0.1530751988441783,
+    "finger_2_med_joint": -0.8527144249385552,
+    "finger_2_prox_joint": 2.164562406119554,
+    "finger_3_dist_joint": -0.6511375466928842,
+    "finger_3_med_joint": -0.4801957735182525
+  },
+  {
+    "finger_1_dist_joint": -0.7344017662143406,
+    "finger_1_med_joint": -0.08753598203766355,
+    "finger_1_prox_joint": -0.965001838892273,
+    "finger_2_dist_joint": -0.6030444405689612,
+    "finger_2_med_joint": -0.04874072885531788,
+    "finger_2_prox_joint": 1.4065274160383934,
+    "finger_3_dist_joint": -0.34240770040797885,
+    "finger_3_med_joint": -1.7850710605425495
+  },
+  {
+    "finger_1_dist_joint": -0.48249435915943817,
+    "finger_1_med_joint": -1.7713502352245873,
+    "finger_1_prox_joint": -3.0550705715710516,
+    "finger_2_dist_joint": -0.15618897443824786,
+    "finger_2_med_joint": -1.2635587868093947,
+    "finger_2_prox_joint": 1.6148795232135909,
+    "finger_3_dist_joint": -0.6530990862867986,
+    "finger_3_med_joint": -1.4109490390987405
+  },
+  {
+    "finger_1_dist_joint": -0.6886823698740776,
+    "finger_1_med_joint": -2.266943614254648,
+    "finger_1_prox_joint": -2.8857076127927725,
+    "finger_2_dist_joint": -0.4304544437061521,
+    "finger_2_med_joint": -1.7211646094214825,
+    "finger_2_prox_joint": 0.036837095108122234,
+    "finger_3_dist_joint": -0.26270083720335635,
+    "finger_3_med_joint": -1.3500249544085519
+  },
+  {
+    "finger_1_dist_joint": -0.27066777805138986,
+    "finger_1_med_joint": -1.2537429036426697,
+    "finger_1_prox_joint": -1.0452656221406946,
+    "finger_2_dist_joint": -0.3824348312021357,
+    "finger_2_med_joint": -0.4160443433869472,
+    "finger_2_prox_joint": 3.067213289299765,
+    "finger_3_dist_joint": -0.12707508211211427,
+    "finger_3_med_joint": -0.2573461438416147
+  },
+  {
+    "finger_1_dist_joint": -0.32367269200779725,
+    "finger_1_med_joint": -2.3885571915690433,
+    "finger_1_prox_joint": -0.8233655034377998,
+    "finger_2_dist_joint": -0.5307940987708012,
+    "finger_2_med_joint": -0.6786860539593449,
+    "finger_2_prox_joint": 1.8700633131227822,
+    "finger_3_dist_joint": -0.3920643004649166,
+    "finger_3_med_joint": -0.1943417861698622
+  },
+  {
+    "finger_1_dist_joint": -0.3684258091947287,
+    "finger_1_med_joint": -2.2294800941594497,
+    "finger_1_prox_joint": -3.089122823151137,
+    "finger_2_dist_joint": -0.6100723903599251,
+    "finger_2_med_joint": -0.07661581826096286,
+    "finger_2_prox_joint": 0.46078366735745707,
+    "finger_3_dist_joint": -0.5715017977776422,
+    "finger_3_med_joint": -0.8798664566203602
+  },
+  {
+    "finger_1_dist_joint": -0.3553682224337323,
+    "finger_1_med_joint": -0.22156185886404023,
+    "finger_1_prox_joint": -0.1408357979014152,
+    "finger_2_dist_joint": -0.40164682888485287,
+    "finger_2_med_joint": -0.49160364042226345,
+    "finger_2_prox_joint": 2.9446919054551755,
+    "finger_3_dist_joint": -0.6584663409120148,
+    "finger_3_med_joint": -0.23462189518016396
+  },
+  {
+    "finger_1_dist_joint": -0.2745492019678384,
+    "finger_1_med_joint": -0.045908777192444905,
+    "finger_1_prox_joint": -1.924575714632044,
+    "finger_2_dist_joint": -0.7408593508087443,
+    "finger_2_med_joint": -0.3958277298877366,
+    "finger_2_prox_joint": 1.6563560478653048,
+    "finger_3_dist_joint": -0.48685499688017103,
+    "finger_3_med_joint": -1.9226501982044573
+  },
+  {
+    "finger_1_dist_joint": -0.6652471384910702,
+    "finger_1_med_joint": -1.7531863120521507,
+    "finger_1_prox_joint": -0.08869692255568618,
+    "finger_2_dist_joint": -0.021525138740073335,
+    "finger_2_med_joint": -1.5340780795518745,
+    "finger_2_prox_joint": 2.731674510294776,
+    "finger_3_dist_joint": -0.6837197966802145,
+    "finger_3_med_joint": -2.2801278361538957
+  },
+  {
+    "finger_1_dist_joint": -0.578720298421467,
+    "finger_1_med_joint": -0.20565381894141765,
+    "finger_1_prox_joint": -2.844096641406819,
+    "finger_2_dist_joint": -0.15308256040784018,
+    "finger_2_med_joint": -1.9755542959221541,
+    "finger_2_prox_joint": 2.389061831888996,
+    "finger_3_dist_joint": -0.174525753614029,
+    "finger_3_med_joint": -1.5628547085602484
+  },
+  {
+    "finger_1_dist_joint": -0.2646996505245547,
+    "finger_1_med_joint": -1.3224155355377887,
+    "finger_1_prox_joint": -0.8303929073892156,
+    "finger_2_dist_joint": -0.2240706266166218,
+    "finger_2_med_joint": -2.4069637157396833,
+    "finger_2_prox_joint": 1.027544904409356,
+    "finger_3_dist_joint": -0.26732341907609614,
+    "finger_3_med_joint": -2.0862352221334466
+  },
+  {
+    "finger_1_dist_joint": -0.7849999992150001,
+    "finger_1_med_joint": -2.4399999975599997,
+    "finger_1_prox_joint": -3.1399999968600003,
+    "finger_2_dist_joint": -0.7849999992150001,
+    "finger_2_med_joint": -2.4399999975599997,
+    "finger_2_prox_joint": 3.1400000000000003e-09,
+    "finger_3_dist_joint": -0.7849999992150001,
+    "finger_3_med_joint": -2.4399999975599997
+  },
+  {
+    "finger_1_dist_joint": -7.850000000000001e-10,
+    "finger_1_med_joint": -2.4400000000000003e-09,
+    "finger_1_prox_joint": -3.1400000000000003e-09,
+    "finger_2_dist_joint": -7.850000000000001e-10,
+    "finger_2_med_joint": -2.4400000000000003e-09,
+    "finger_2_prox_joint": 3.1399999968600003,
+    "finger_3_dist_joint": -7.850000000000001e-10,
+    "finger_3_med_joint": -2.4400000000000003e-09
+  },
+  {
+    "finger_1_dist_joint": -7.850000000000001e-10,
+    "finger_1_med_joint": -2.4399999975599997,
+    "finger_1_prox_joint": -3.1400000000000003e-09,
+    "finger_2_dist_joint": -0.7849999992150001,
+    "finger_2_med_joint": -2.4400000000000003e-09,
+    "finger_2_prox_joint": 3.1400000000000003e-09,
+    "finger_3_dist_joint": -7.850000000000001e-10,
+    "finger_3_med_joint": -2.4399999975599997
+  },
+  {
+    "finger_1_dist_joint": -0.7849999992150001,
+    "finger_1_med_joint": -2.4400000000000003e-09,
+    "finger_1_prox_joint": -3.1399999968600003,
+    "finger_2_dist_joint": -7.850000000000001e-10,
+    "finger_2_med_joint": -2.4399999975599997,
+    "finger_2_prox_joint": 3.1399999968600003,
+    "finger_3_dist_joint": -0.7849999992150001,
+    "finger_3_med_joint": -2.4400000000000003e-09
+  },
+  {
+    "finger_1_dist_joint": -7.850000000000001e-10,
+    "finger_1_med_joint": -2.4399999975599997,
+    "finger_1_prox_joint": -3.1400000000000003e-09,
+    "finger_2_dist_joint": -0.7849999992150001,
+    "finger_2_med_joint": -2.4400000000000003e-09,
+    "finger_2_prox_joint": 3.1400000000000003e-09,
+    "finger_3_dist_joint": -7.850000000000001e-10,
+    "finger_3_med_joint": -2.4399999975599997
+  },
+  {
+    "finger_1_dist_joint": -0.7849999992150001,
+    "finger_1_med_joint": -2.4400000000000003e-09,
+    "finger_1_prox_joint": -3.1399999968600003,
+    "finger_2_dist_joint": -7.850000000000001e-10,
+    "finger_2_med_joint": -2.4399999975599997,
+    "finger_2_prox_joint": 3.1399999968600003,
+    "finger_3_dist_joint": -0.7849999992150001,
+    "finger_3_med_joint": -2.4400000000000003e-09
+  }
+]

@@ -1,0 +1,78 @@
+<?xml version="1.0"?>
+<robot name="offaxis_tree">
+  <link name="base"/>
+  <link name="link1"/>
+  <link name="link2"/>
+  <link name="link3"/>
+  <link name="link4a"/>
+  <link name="link4b"/>
+  <link name="link5a"/>
+  <link name="link5b"/>
+  <link name="link6b"/>
+
+  <!-- j1: revolute, missing <axis> (defaults to x), asymmetric limits -->
+  <joint name="j1" type="revolute">
+    <parent link="base"/>
+    <child link="link1"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    <limit lower="-0.3" upper="1.2" effort="1.0" velocity="1.0"/>
+  </joint>
+
+  <!-- j2: continuous, rpy roll above pi, axis antiparallel to z -->
+  <joint name="j2" type="continuous">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0.02 0 0" rpy="3.3 0 0"/>
+    <axis xyz="0 0 -1"/>
+  </joint>
+
+  <!-- j3: revolute, zero-length link (xyz all zero), pitch exactly pi/2, non-unit axis -->
+  <joint name="j3" type="revolute">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <origin xyz="0 0 0" rpy="0 1.5707963267948966 0"/>
+    <axis xyz="0 3 4"/>
+    <limit lower="-1.0" upper="1.0" effort="1.0" velocity="1.0"/>
+  </joint>
+
+  <!-- branch: link3 has two child chains, j4/j5 -->
+  <joint name="j4" type="revolute">
+    <parent link="link3"/>
+    <child link="link4a"/>
+    <origin xyz="0.03 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.5" upper="0.5" effort="1.0" velocity="1.0"/>
+  </joint>
+
+  <!-- j5: prismatic -->
+  <joint name="j5" type="prismatic">
+    <parent link="link3"/>
+    <child link="link4b"/>
+    <origin xyz="-0.03 0 0.01" rpy="0 0 0.2"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.01" upper="0.05" effort="1.0" velocity="1.0"/>
+  </joint>
+
+  <joint name="j6" type="revolute">
+    <parent link="link4a"/>
+    <child link="link5a"/>
+    <origin xyz="0.02 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-0.2" upper="0.9" effort="1.0" velocity="1.0"/>
+  </joint>
+
+  <joint name="j7" type="revolute">
+    <parent link="link4b"/>
+    <child link="link5b"/>
+    <origin xyz="0 0.02 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.0" upper="1.0" effort="1.0" velocity="1.0"/>
+  </joint>
+
+  <joint name="j8" type="revolute">
+    <parent link="link5b"/>
+    <child link="link6b"/>
+    <origin xyz="0 0 0.02" rpy="0 0 0"/>
+    <limit lower="-0.4" upper="0.6" effort="1.0" velocity="1.0"/>
+  </joint>
+</robot>
