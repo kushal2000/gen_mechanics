@@ -15,9 +15,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 TASKS = ("isaacsimenvs.pose_reaching_6d", "isaacsimenvs.inhand_reorient", "isaacsimenvs.inhand_olympics")
-# Known exceptions, each a lazy import inside one function. The legacy old-genotype viewer grafts a design onto the
-# arm with coevolution's viewer helpers (only for its interactive view; its PNG drawings import nothing upward).
-ALLOWED = {("hand_sampler/viewer.py", "coevolution.pose_viewer")}
 
 
 def _imports(path: Path) -> list[tuple[int, str]]:
@@ -45,8 +42,7 @@ def _sources(folder: str) -> list[Path]:
 def test_no_upward_imports(folder, banned):
     bad = [f"{p.relative_to(ROOT)}:{line} imports {mod}"
            for p in _sources(folder) for line, mod in _imports(p)
-           if any(mod == b or mod.startswith(b + ".") for b in banned)
-           and (str(p.relative_to(ROOT)), mod) not in ALLOWED]
+           if any(mod == b or mod.startswith(b + ".") for b in banned)]
     assert not bad, "\n".join(bad)
 
 

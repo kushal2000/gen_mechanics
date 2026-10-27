@@ -166,11 +166,10 @@ def test_the_viewer_draws_the_palm_on_the_flange(hands, tmp_path):
     because the arm already declared one, taking the palm with it."""
     import xml.etree.ElementTree as ET
 
-    from coevolution import pose_viewer
-
+    
     for i, hand in enumerate(hands[:8]):
         text = build.urdf_for_viewing(hand, tmp_path / "d.urdf").read_text(encoding="utf-8")
-        root = ET.fromstring(pose_viewer._graft_hand_onto_arm(text, pose_viewer.ARM_URDF_PATH))
+        root = ET.fromstring(build.graft_hand_onto_arm(text))
         flange = [l for l in root.findall("link")
                   if l.get("name") == rpc.ARM_TIP_LINK][0]
         # the palm is a convex hull MESH now, not a box

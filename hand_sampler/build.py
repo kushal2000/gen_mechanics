@@ -547,3 +547,82 @@ def urdf_for_viewing(hand: design_space.Hand, out_path) -> "pathlib.Path":
     write_palm_mesh(hand, mesh_path)
     ET.ElementTree(root).write(out_path, encoding="utf-8", xml_declaration=True)
     return out_path
+
+
+def _arm_chain_root(arm_urdf_path):
+    """The arm URDF with everything past the flange removed.
+
+    The vendor file is arm + SHARPA. A generated design replaces the hand but
+    keeps the arm, and the viewer animates the arm joints too -- so the chain
+    down to the flange has to survive and the SHARPA half has to go, or the
+    grafted design would hang beside a second hand.
+    """
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(arm_urdf_path).getroot()
+    children: dict[str, list[str]] = {}
+    for joint in root.findall("joint"):
+        children.setdefault(joint.find("parent").get("link"), []).append(
+            joint.find("child").get("link"))
+
+    drop: set[str] = set()
+    stack = list(children.get(rpc.ARM_TIP_LINK, ()))
+    while stack:
+        link = stack.pop()
+        if link in drop:
+            continue
+        drop.add(link)
+        stack.extend(children.get(link, ()))
+
+    for link in root.findall("link"):
+        if link.get("name") in drop:
+            root.remove(link)
+    for joint in root.findall("joint"):
+        if joint.find("child").get("link") in drop:
+            root.remove(joint)
+    return root
+
+
+def graft_hand_onto_arm(hand_urdf_text: str, arm_urdf_path=None, *, absolute_meshes: bool = False) -> str:
+    """Hang a generated hand's links (``urdf_for_viewing``) off the arm's flange, as one robot. Viewing only.
+
+    The frames a viewer plays back are the arm's -- ``robot_base_pose`` is the
+    articulation root, i.e. ``iiwa14_link_0``. A hand-only URDF therefore draws
+    the fingers at the base of the arm, and its joint names cover 30 of the 37
+    the trajectory carries, so the viewer stops at ``iiwa14_joint_1`` before
+    drawing anything at all.
+
+    None of which applies to a robot with NO arm: there the articulation root
+    already IS the flange, so the caller skips this entirely.
+
+    ``arm_urdf_path`` defaults to ``ARM_URDF`` (the SHARPA + iiwa14 vendor file), cut at the flange.
+    ``absolute_meshes=True`` points the arm's relative ``<mesh filename>`` entries at the real files, for a
+    caller that writes the result somewhere else (a temp dir): viewers resolve them against the URDF's own
+    directory, and the arm would load no meshes while its joints still animate. The hand needs none of this
+    (its only mesh, the palm, is already an absolute path).
+    """
+    import xml.etree.ElementTree as ET
+
+    arm_urdf_path = pathlib.Path(arm_urdf_path) if arm_urdf_path is not None else ARM_URDF
+    arm = _arm_chain_root(arm_urdf_path)
+    hand = ET.fromstring(hand_urdf_text)
+    arm_links = {link.get("name") for link in arm.findall("link")}
+    if rpc.ARM_TIP_LINK not in arm_links:
+        raise RuntimeError(f"{arm_urdf_path} has no {rpc.ARM_TIP_LINK} to graft onto")
+
+    by_name = {l.get("name"): l for l in arm.findall("link")}
+    for element in hand:
+        # The hand's root link IS the flange, which the arm already declares --
+        # so MERGE into it rather than skipping it. Skipping dropped the palm,
+        # which the design hangs on the flange exactly as author_hand does.
+        if element.tag == "link" and element.get("name") in arm_links:
+            by_name[element.get("name")].extend(list(element))
+            continue
+        arm.append(element)
+    arm.set("name", "generated_hand_on_" + (arm.get("name") or "arm"))
+    if absolute_meshes:
+        for mesh in arm.iter("mesh"):
+            name = mesh.get("filename", "")
+            if name and not name.startswith(("/", "http", "package://")):
+                mesh.set("filename", str((arm_urdf_path.parent / name).resolve()))
+    return ET.tostring(arm, encoding="unicode")

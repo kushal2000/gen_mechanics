@@ -565,11 +565,8 @@ def urdf_for(hand) -> "yourdfpy.URDF":
     capsules as cylinder-plus-caps, ghost slots and all.
     """
     import tempfile
-    import xml.etree.ElementTree as ET
 
     import yourdfpy
-
-    from coevolution.pose_viewer import ARM_URDF_PATH, _graft_hand_onto_arm
 
     # ONE scratch directory for the process, not a context manager: the URDF
     # names a palm mesh beside it, and a TemporaryDirectory deletes that file
@@ -578,15 +575,8 @@ def urdf_for(hand) -> "yourdfpy.URDF":
     if _SCRATCH is None:
         _SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="hand_viewer_"))
     text = build.urdf_for_viewing(hand, _SCRATCH / "d.urdf").read_text()
-    root = ET.fromstring(_graft_hand_onto_arm(text, ARM_URDF_PATH))
-    # yourdfpy resolves a relative mesh against the file it loaded; there is no
-    # file here, so make them absolute instead of writing into the asset tree.
-    for mesh in root.findall(".//mesh"):
-        name = mesh.get("filename")
-        if name and not name.startswith(("/", "http")):
-            mesh.set("filename", str((ARM_URDF_PATH.parent / name).resolve()))
     with tempfile.NamedTemporaryFile("w", suffix=".urdf", delete=False) as f:
-        f.write(ET.tostring(root, encoding="unicode"))
+        f.write(build.graft_hand_onto_arm(text, absolute_meshes=True))
         path = f.name
     try:
         return yourdfpy.URDF.load(path, load_meshes=True, build_collision_scene_graph=False)

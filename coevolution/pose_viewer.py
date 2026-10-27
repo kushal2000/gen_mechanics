@@ -146,69 +146,6 @@ def object_urdf_for_env(env, env_id: int) -> tuple[str, Path]:
     return urdf_path.read_text(encoding="utf-8"), urdf_path
 
 
-def _arm_chain_root(arm_urdf_path: Path) -> "ET.Element":
-    """The arm URDF with everything past the flange removed.
-
-    The vendor file is arm + SHARPA. A generated design replaces the hand but
-    keeps the arm, and the viewer animates the arm joints too -- so the chain
-    down to the flange has to survive and the SHARPA half has to go, or the
-    grafted design would hang beside a second hand.
-    """
-    root = ET.parse(arm_urdf_path).getroot()
-    children: dict[str, list[str]] = {}
-    for joint in root.findall("joint"):
-        children.setdefault(joint.find("parent").get("link"), []).append(
-            joint.find("child").get("link"))
-
-    drop: set[str] = set()
-    stack = list(children.get(ARM_TIP_LINK, ()))
-    while stack:
-        link = stack.pop()
-        if link in drop:
-            continue
-        drop.add(link)
-        stack.extend(children.get(link, ()))
-
-    for link in root.findall("link"):
-        if link.get("name") in drop:
-            root.remove(link)
-    for joint in root.findall("joint"):
-        if joint.find("child").get("link") in drop:
-            root.remove(joint)
-    return root
-
-
-def _graft_hand_onto_arm(hand_urdf_text: str, arm_urdf_path: Path) -> str:
-    """Hang a generated hand's links off the arm's flange, as one robot.
-
-    The frames the viewer plays back are the arm's -- ``robot_base_pose`` is the
-    articulation root, i.e. ``iiwa14_link_0``. A hand-only URDF therefore draws
-    the fingers at the base of the arm, and its joint names cover 30 of the 37
-    the trajectory carries, so the viewer stops at ``iiwa14_joint_1`` before
-    drawing anything at all.
-
-    None of which applies to a robot with NO arm: there the articulation root
-    already IS the flange, so the caller skips this entirely.
-    """
-    arm = _arm_chain_root(arm_urdf_path)
-    hand = ET.fromstring(hand_urdf_text)
-    arm_links = {link.get("name") for link in arm.findall("link")}
-    if ARM_TIP_LINK not in arm_links:
-        raise RuntimeError(f"{arm_urdf_path} has no {ARM_TIP_LINK} to graft onto")
-
-    by_name = {l.get("name"): l for l in arm.findall("link")}
-    for element in hand:
-        # The hand's root link IS the flange, which the arm already declares --
-        # so MERGE into it rather than skipping it. Skipping dropped the palm,
-        # which the design hangs on the flange exactly as author_hand does.
-        if element.tag == "link" and element.get("name") in arm_links:
-            by_name[element.get("name")].extend(list(element))
-            continue
-        arm.append(element)
-    arm.set("name", "generated_hand_on_" + (arm.get("name") or "arm"))
-    return ET.tostring(arm, encoding="unicode")
-
-
 def _generated_robot_urdf_text(env, env_id: int) -> str | None:
     """The viewing geometry of this env's design, or None for a fixed robot."""
     record = getattr(env, "scene_record", None)
@@ -234,7 +171,7 @@ def _generated_robot_urdf_text(env, env_id: int) -> str | None:
     # draw an arm that is not in the scene.
     if population.spec.num_arm_joints == 0:
         return hand_urdf_text
-    return _graft_hand_onto_arm(hand_urdf_text, ARM_URDF_PATH)
+    return build.graft_hand_onto_arm(hand_urdf_text, ARM_URDF_PATH)
 
 
 def object_urdf_text_for_env(env, env_id: int) -> str:
@@ -618,7 +555,7 @@ def viewing_urdf(hand, pop_ref: str, out: Path) -> Path:
     urdf_for_viewing writes the hand's 30 envelope slots and is rooted at
     ARM_TIP_LINK. With an arm that is not enough: the trajectory is
     joint_names_canonical, 37 names, and ViserUrdf raises KeyError on the first
-    one the URDF lacks -- 'iiwa14_joint_1'. pose_viewer._graft_hand_onto_arm
+    one the URDF lacks -- 'iiwa14_joint_1'. build.graft_hand_onto_arm
     hangs the hand off the arm's flange and supplies exactly those 7.
 
     With no arm the hand URDF already IS the robot (the stub carries link_7 at
@@ -629,23 +566,6 @@ def viewing_urdf(hand, pop_ref: str, out: Path) -> Path:
 
     text = build.urdf_for_viewing(hand, out).read_text(encoding="utf-8")
     if robot_spec.population_from_ref(pop_ref).spec.num_arm_joints:
-        text = _graft_hand_onto_arm(text, ARM_URDF_PATH)
-        # The grafted arm links keep the VENDOR urdf's relative <mesh filename>
-        # entries, and ViserUrdf resolves those against the urdf's own
-        # directory -- which is a temp dir. Every arm link then loads nothing
-        # and the arm is invisible while its joints still animate. Point them
-        # at the real files. (The hand needs none of this: it is capsules and a
-        # box, no meshes at all.)
-        # Inlined rather than imported from scene_utils.author_robot: that
-        # package pulls in pxr, and this process has no Kit.
-        import xml.etree.ElementTree as ET
-
-        root = ET.fromstring(text)
-        mesh_root = str(Path(ARM_URDF_PATH).parent) + "/"
-        for mesh in root.iter("mesh"):
-            fn = mesh.get("filename", "")
-            if fn and not fn.startswith("/"):
-                mesh.set("filename", mesh_root + fn)
-        text = ET.tostring(root, encoding="unicode")
+        text = build.graft_hand_onto_arm(text, ARM_URDF_PATH, absolute_meshes=True)
     out.write_text(text, encoding="utf-8")
     return out

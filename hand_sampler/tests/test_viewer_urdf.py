@@ -13,7 +13,6 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import pytest
 
-from coevolution import pose_viewer
 from hand_sampler import build, design_space, gen_init_pop
 from hand_sampler import robot_param_constants as rpc
 from hand_sampler.robot_spec import population_spec
@@ -107,7 +106,7 @@ def test_graft_covers_the_canonical_joint_order(pop, tmp_path):
     """Grafted onto the arm, the URDF answers every name the viewer replays."""
     for i, hand in enumerate(pop.hands):
         text = build.urdf_for_viewing(hand, tmp_path / "d.urdf").read_text(encoding="utf-8")
-        root = ET.fromstring(pose_viewer._graft_hand_onto_arm(text, pose_viewer.ARM_URDF_PATH))
+        root = ET.fromstring(build.graft_hand_onto_arm(text))
 
         names = {j.get("name") for j in root.findall("joint")}
         assert set(pop.spec.joint_names_canonical) <= names, f"design {i}"
