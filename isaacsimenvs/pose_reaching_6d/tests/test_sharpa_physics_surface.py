@@ -134,7 +134,7 @@ CHECKPOINT_OBS_LIST = (
 
 def test_the_pretrained_checkpoints_observation_can_still_be_built(spec):
     """Its running_mean_std is (140,); the env must be able to produce 140."""
-    layout = _load("layout", "isaacsimenvs/pose_reaching_6d/obs_utils/layout.py")
+    layout = _load("layout", "isaacsimenvs/common/obs_layout.py")
     assert layout.compute_obs_dim(list(CHECKPOINT_OBS_LIST), spec) == 140
 
 
@@ -148,7 +148,7 @@ def test_fingertip_pad_offsets_exist(spec):
 
 
 def test_current_state_list_is_unchanged_at_800(spec):
-    layout = _load("layout", "isaacsimenvs/pose_reaching_6d/obs_utils/layout.py")
+    layout = _load("layout", "isaacsimenvs/common/obs_layout.py")
     current = [
         "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel",
         "prev_action_targets", "joint_link_bbox", "joint_lower", "joint_upper",

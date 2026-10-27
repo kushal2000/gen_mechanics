@@ -12,8 +12,8 @@ from __future__ import annotations
 import torch
 from isaaclab.utils.math import convert_quat, quat_mul
 
-from ..pose_reaching_6d.obs_utils.observations import (
-    _apply_local_offset, _joint_link_geometry_obs, _normalize_joint_pos, _object_keypoints_rel_joint, _rotate_into,
+from isaacsimenvs.common.obs_geometry import (
+    apply_local_offset, joint_link_geometry_obs, normalize_joint_pos, object_keypoints_rel_joint, rotate_into,
 )
 from .goals import keypoints
 
@@ -64,7 +64,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
 
     palm = env.robot.data.body_state_w[:, env.palm_body]
     palm_pos_w, palm_rot_body, palm_vel = palm[:, 0:3], palm[:, 3:7], palm[:, 7:13]
-    centre_w = _apply_local_offset(palm_pos_w, palm_rot_body, env.palm_center_offset, (env.num_envs,))
+    centre_w = apply_local_offset(palm_pos_w, palm_rot_body, env.palm_center_offset, (env.num_envs,))
     palm_rot = quat_mul(palm_rot_body, env.palm_frame_quat)          # canonical palm frame
     ee_pos = centre_w - origins
     ones = torch.ones(env.num_envs, 1, device=env.device)
@@ -73,19 +73,19 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     barrel_pos, barrel_quat, cap_pos, cap_quat = env.pen_part_poses()
     kp = keypoints(pen_pos, pen_quat, env.pen_offsets)
     kp_goal = keypoints(env.goal_pos, env.goal_quat, env.pen_offsets)
-    bbox, joint_origins, valid = _joint_link_geometry_obs(env, centre_w, palm_rot, origins, ones)
+    bbox, joint_origins, valid = joint_link_geometry_obs(env, centre_w, palm_rot, origins, ones)
     tips = env.fingertips()
 
     fields = {
-        "joint_pos": _normalize_joint_pos(env.robot.data.joint_pos[:, perm], lower, upper),
+        "joint_pos": normalize_joint_pos(env.robot.data.joint_pos[:, perm], lower, upper),
         "joint_vel": env.robot.data.joint_vel[:, perm],
-        "prev_joint_pos": _normalize_joint_pos(env.prev_joint_pos_canon, lower, upper),
+        "prev_joint_pos": normalize_joint_pos(env.prev_joint_pos_canon, lower, upper),
         "prev_joint_vel": env.prev_joint_vel_canon,
         "prev_action_targets": env.targets[:, perm],
         "joint_link_bbox": bbox,
         "joint_lower": env.joint_lower_hand, "joint_upper": env.joint_upper_hand,
         "joint_enabled": env.joint_enabled,
-        "object_keypoints_rel_joint": _object_keypoints_rel_joint(kp, joint_origins, palm_rot, ones, valid),
+        "object_keypoints_rel_joint": object_keypoints_rel_joint(kp, joint_origins, palm_rot, ones, valid),
         "palm_keypoints": env.palm_keypoints_canon,
         "palm_extents": env.palm_extents,
         "ee_pos": ee_pos, "ee_rot": convert_quat(palm_rot, to="xyzw"), "ee_vel": palm_vel,
@@ -96,7 +96,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "pen_goal_pose": torch.cat([env.goal_pos, convert_quat(env.goal_quat, to="xyzw")], dim=-1),
         "cap_goal_pose": (torch.cat([env.cap_goal_pos, convert_quat(env.cap_goal_quat, to="xyzw")], dim=-1)
                           if env.two_part else torch.zeros(env.num_envs, 7, device=env.device)),
-        "keypoints_rel_ee": _rotate_into(palm_rot, kp - ee_pos.unsqueeze(1)),
+        "keypoints_rel_ee": rotate_into(palm_rot, kp - ee_pos.unsqueeze(1)),
         "keypoints_rel_goal": kp - kp_goal,
         "keypoints_rel_palm": kp - ee_pos.unsqueeze(1),
         "fingertip_pos_rel_palm": tips - ee_pos.unsqueeze(1),

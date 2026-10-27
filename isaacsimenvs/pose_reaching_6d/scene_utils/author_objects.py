@@ -19,7 +19,7 @@ import math
 from hand_sampler.design_space import compute_mass_and_inertia
 from hand_sampler.design_space import rpy_to_quat_wxyz
 
-from .sdf import MAX_DEPEN_VELOCITY, attr, define
+from isaacsimenvs.common.sdf import MAX_DEPEN_VELOCITY, attr, define
 from .objects.generate_objects import OBJECT_ROOT_LINK
 
 

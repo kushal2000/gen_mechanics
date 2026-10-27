@@ -14,9 +14,14 @@ from isaaclab.utils.math import convert_quat, quat_apply, quat_from_angle_axis, 
 # ----------------------------------------------------------------------------
 
 
-# The field-size table and keypoint count live in Kit-free ``layout.py`` so the
+# The field-size table and keypoint count live in Kit-free ``common/obs_layout.py`` so the
 # network can build exact gather indices without booting the simulator.
-from .layout import (  # noqa: E402
+from isaacsimenvs.common.obs_geometry import (  # noqa: E402  (shared with the other tasks)
+    apply_local_offset as _apply_local_offset, joint_link_geometry_obs as _joint_link_geometry_obs,
+    normalize_joint_pos as _normalize_joint_pos, object_keypoints_rel_joint as _object_keypoints_rel_joint,
+    rotate_into as _rotate_into,
+)
+from isaacsimenvs.common.obs_layout import (  # noqa: E402
     NUM_KEYPOINTS, compute_obs_dim, obs_field_sizes,
 )
 
@@ -60,28 +65,6 @@ def _perturb_quat(q_wxyz: torch.Tensor, max_deg: float) -> torch.Tensor:
     return quat_mul(dq, q_wxyz)
 
 
-def _apply_local_offset(
-    pos_w: torch.Tensor,
-    rot_wxyz: torch.Tensor,
-    offset,
-    batch_shape: tuple[int, ...],
-) -> torch.Tensor:
-    """Apply a local-frame offset to batched world poses.
-
-    ``offset`` is either one 3-vector broadcast over the whole batch (the palm
-    center) or a per-item ``(F, 3)`` stack (fingertip pad centers, which differ
-    per finger on hands with asymmetric distal geometry).
-    """
-    # A (3,) offset broadcasts across the whole batch; an (F, 3) stack
-    # broadcasts across the leading env dim, giving each finger its own offset.
-    offset_t = torch.as_tensor(offset, device=pos_w.device, dtype=pos_w.dtype)
-    offset_t = offset_t.expand(*batch_shape, 3)
-    shifted = quat_apply(
-        rot_wxyz.reshape(-1, 4), offset_t.reshape(-1, 3)
-    ).reshape(*batch_shape, 3)
-    return pos_w + shifted
-
-
 def _keypoints_world(
     center_pos: torch.Tensor,    # (N, 3)
     center_rot: torch.Tensor,    # (N, 4) wxyz
@@ -115,21 +98,6 @@ def _sample_delay(
     return queue, delayed
 
 
-def _normalize_joint_pos(raw, lower, upper) -> torch.Tensor:
-    # A slot with no range -- a multi-hand scene's ghost slot, limits (0, 0) -- reads 0, not 0/0.
-    # (Generated designs' ghosts carry a 1e-8 range for the same reason.)
-    rng = upper - lower
-    ok = rng > 1e-6
-    return torch.where(ok, 2.0 * (raw - lower) / torch.where(ok, rng, 1.0) - 1.0, torch.zeros_like(raw))
-
-
-def _quat_apply_broadcast(quat: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
-    """Quaternion rotation with broadcast views, avoiding flattened copies."""
-    xyz = quat[..., 1:].expand_as(vec)
-    t = torch.cross(xyz, vec, dim=-1) * 2.0
-    return vec + quat[..., 0:1] * t + torch.cross(xyz, t, dim=-1)
-
-
 def _canonical_joint_obs(env) -> tuple[torch.Tensor, ...]:
     """Return current/history proprioception and applied targets in policy order."""
     perm = env._perm_lab_to_canon
@@ -149,44 +117,6 @@ def _canonical_joint_obs(env) -> tuple[torch.Tensor, ...]:
     )
 
 
-def _joint_link_geometry_obs(env, origin_w, palm_rot, env_origins, scale):
-    """Batched link boxes relative to ``origin_w`` in the palm body's orientation,
-    divided by ``scale``, plus joint origins."""
-    state = env.robot.data.body_state_w[:, env._joint_link_body_ids, :]
-    body_pos = state[:, :, 0:3]
-    body_rot = state[:, :, 3:7]
-    n, joints, points, _ = env._joint_link_bbox_local.shape
-
-    box_world = body_pos.unsqueeze(2) + _quat_apply_broadcast(
-        body_rot.unsqueeze(2), env._joint_link_bbox_local
-    )
-
-    palm_inv = palm_rot.clone()
-    palm_inv[:, 1:] *= -1.0
-    box_palm = _quat_apply_broadcast(
-        palm_inv[:, None, None, :],
-        box_world - origin_w[:, None, None, :],
-    )
-    box_palm = box_palm / scale[:, None, None, :]
-
-    valid = env._joint_geometry_valid
-    box_palm = box_palm * valid[:, :, None, None].to(box_palm.dtype)
-    joint_origins = body_pos - env_origins.unsqueeze(1)
-    return box_palm, joint_origins, valid
-
-
-def _object_keypoints_rel_joint(
-    object_keypoints, joint_origins, palm_rot, scale, valid
-) -> torch.Tensor:
-    """Object keypoints from every joint, in the palm body's orientation, / scale."""
-    rel_world = object_keypoints[:, None, :, :] - joint_origins[:, :, None, :]
-    palm_inv = palm_rot.clone()
-    palm_inv[:, 1:] *= -1.0
-    rel_palm = _quat_apply_broadcast(palm_inv[:, None, None, :], rel_world)
-    rel_palm = rel_palm / scale[:, None, None, :]
-    return rel_palm * valid[:, :, None, None].to(rel_palm.dtype)
-
-
 # Physical joint units (ActionCfg.joint_units): velocities observed as (rad/s) / this -- the joint speed
 # cap every uniform hand shares, so 1.0 reads "at the cap".
 JOINT_VEL_SCALE = 10.0
@@ -199,13 +129,6 @@ def _quat_angle(q1, q2):
     conj[:, 1:] *= -1.0
     rel = quat_mul(conj, q1)
     return 2.0 * torch.atan2(rel[:, 1:].norm(dim=-1), rel[:, 0].abs())
-
-
-def _rotate_into(palm_rot, vectors_w):
-    """World vectors ``(N, K, 3)`` expressed in the palm body's orientation."""
-    palm_inv = palm_rot.clone()
-    palm_inv[:, 1:] *= -1.0
-    return _quat_apply_broadcast(palm_inv[:, None, :], vectors_w)
 
 
 # ----------------------------------------------------------------------------

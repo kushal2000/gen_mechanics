@@ -27,7 +27,7 @@ import coevolution.networks.joint_transformer as JT
 
 ROOT = Path(__file__).resolve().parents[3]
 _sp = importlib.util.spec_from_file_location(
-    "layout", ROOT / "isaacsimenvs/pose_reaching_6d/obs_utils/layout.py")
+    "layout", ROOT / "isaacsimenvs/common/obs_layout.py")
 L = importlib.util.module_from_spec(_sp)
 _sp.loader.exec_module(L)
 

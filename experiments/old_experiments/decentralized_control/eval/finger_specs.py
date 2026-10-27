@@ -122,7 +122,7 @@ def obs_column_map(full_spec, sub_spec, field_list) -> list[int]:
     across. Returned in reduced-observation order, so
     ``full_tensor[..., cols]`` is the reduced tensor.
     """
-    from isaacsimenvs.pose_reaching_6d.obs_utils.layout import (
+    from isaacsimenvs.common.obs_layout import (
         JOINT_WIDTH_FIELDS, HAND_TOKEN_FIELDS, field_offsets, obs_field_sizes,
     )
     full_off = field_offsets(field_list, full_spec)

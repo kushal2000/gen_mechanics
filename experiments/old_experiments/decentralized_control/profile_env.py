@@ -269,7 +269,7 @@ def cmd_obs(args) -> None:
     """Token layout correctness, and that the aliased noisy fields are exact."""
     import torch
     from isaacsimenvs.pose_reaching_6d.obs_utils import observations as O
-    from isaacsimenvs.pose_reaching_6d.obs_utils.layout import field_offsets
+    from isaacsimenvs.common.obs_layout import field_offsets
 
     env = _make_env(args)
     inner = env.unwrapped

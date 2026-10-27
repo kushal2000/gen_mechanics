@@ -549,7 +549,7 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # Imported here, not at module scope: this module is imported by
         # train.py before the env package is touched, and the layout builder
         # reaches into isaacsimenvs.
-        from isaacsimenvs.pose_reaching_6d.obs_utils.layout import build_token_layout
+        from isaacsimenvs.common.obs_layout import build_token_layout
         from isaacsimenvs.pose_reaching_6d.scene_utils.robots import get_robot_spec
 
         spec = get_robot_spec(self.robot_spec_name)

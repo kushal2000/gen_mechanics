@@ -66,7 +66,7 @@ def main() -> None:
 
     import isaacsimenvs  # noqa: F401
     from coevolution.utils.hydra_utils import hydra_task_config_with_yaml
-    from isaacsimenvs.pose_reaching_6d.obs_utils.layout import field_offsets
+    from isaacsimenvs.common.obs_layout import field_offsets
     from isaacsimenvs.pose_reaching_6d.scene_utils.assembly import _resolve_spec
 
     run = sorted(glob.glob(str(REPO / args.run)))

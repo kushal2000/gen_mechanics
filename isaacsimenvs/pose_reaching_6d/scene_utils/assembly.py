@@ -36,7 +36,7 @@ from hand_sampler.robot_param_constants import ARM_ADJACENT_LINKS, ARM_TIP_LINK
 from hand_sampler.robot_spec import design_index, object_index
 from .author_robot import ARM_PRIM, arm_only_urdf, author_hand, flatten_robot_usd, stub_urdf
 from .materials import apply_physx_material_properties
-from .sdf import define, set_xform
+from isaacsimenvs.common.sdf import define, set_xform
 from .objects.generate_objects import generate_handle_head_urdfs
 from .robots import get_robot_spec
 

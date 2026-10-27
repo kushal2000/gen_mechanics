@@ -22,7 +22,7 @@ from ..pose_reaching_6d.common_utils.urdf_to_usd import (
 from ..pose_reaching_6d.scene_utils.author_objects import author_handle_head, author_physics_material
 from ..pose_reaching_6d.scene_utils.author_robot import flatten_robot_usd
 from ..pose_reaching_6d.scene_utils.objects.generate_objects import compute_mass_and_inertia
-from ..pose_reaching_6d.scene_utils.sdf import attr, define, set_xform
+from isaacsimenvs.common.sdf import attr, define, set_xform
 from ..pose_reaching_6d.scene_utils.robots import get_robot_spec
 from ..pose_reaching_6d.scene_utils.robots.multi_hand import hand_set, is_multi_ref
 from .wrist import WRIST_JOINTS, build_wrist_urdf

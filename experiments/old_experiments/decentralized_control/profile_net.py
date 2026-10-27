@@ -459,7 +459,7 @@ def cmd_sanity(args, device, autocast):
     torch.cuda.empty_cache()
 
     print("\n=== 4. token gather: correctness and cost ===")
-    from isaacsimenvs.pose_reaching_6d.obs_utils.layout import (
+    from isaacsimenvs.common.obs_layout import (
         HAND_TOKEN_FIELDS, JOINT_WIDTH_FIELDS, build_token_layout, field_offsets)
     from isaacsimenvs.pose_reaching_6d.scene_utils.robots import get_robot_spec
     spec = get_robot_spec("sharpa_iiwa14")

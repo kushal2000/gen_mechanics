@@ -22,7 +22,7 @@ import math
 
 from isaacsimenvs.pose_reaching_6d.scene_utils.author_objects import (_rigid_body_defaults, _shape_prim,
                                                                       author_physics_material)
-from isaacsimenvs.pose_reaching_6d.scene_utils.sdf import attr, define, rel
+from isaacsimenvs.common.sdf import attr, define, rel
 
 LINKS = ("barrel", "cap")
 JOINT = "twist"

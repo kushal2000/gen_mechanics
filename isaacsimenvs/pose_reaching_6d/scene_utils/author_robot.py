@@ -38,7 +38,7 @@ from hand_sampler.robot_param_constants import (ARM_JOINTS, ARM_LINKS, ARM_TIP_L
                                                 SHARPA_URDF)
 from hand_sampler.design_space import mat_to_pos_quat, rpy_to_mat, rpy_to_quat_wxyz
 
-from .sdf import MAX_DEPEN_VELOCITY, attr, define, rel, set_xform
+from isaacsimenvs.common.sdf import MAX_DEPEN_VELOCITY, attr, define, rel, set_xform
 from hand_sampler import design_space
 from hand_sampler import robot_param_constants as rpc
 from hand_sampler.build import (GHOST_LENGTH_M, filtered_pairs, flange_to_palm, joint_local_frames, link_frames,

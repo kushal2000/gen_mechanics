@@ -13,7 +13,7 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
 
-from ..pose_reaching_6d.env_cfg import _default_sim_cfg
+from isaacsimenvs.common.sim_cfg import default_sim_cfg
 
 
 @configclass
@@ -374,7 +374,7 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
 
     # In-hand reorientation's simulation settings, unchanged (120 Hz TGS, 8 position iterations, its friction and
     # GPU buffer settings).
-    sim: SimulationCfg = _default_sim_cfg()
+    sim: SimulationCfg = default_sim_cfg()
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=1.5, replicate_physics=True)
 
     hand: HandCfg = HandCfg()

@@ -38,7 +38,7 @@ def main():
     from isaaclab.utils.math import quat_apply
     import isaacsimenvs  # noqa: F401
     from coevolution.utils.hydra_utils import hydra_task_config_with_yaml
-    from isaacsimenvs.pose_reaching_6d.obs_utils.layout import field_offsets
+    from isaacsimenvs.common.obs_layout import field_offsets
 
     sys.argv = [sys.argv[0]]
 
