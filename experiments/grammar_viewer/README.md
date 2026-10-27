@@ -1,6 +1,6 @@
 # Grammar viewer
 
-A viser viewer for the hand grammar (`hand_sampler/grammar/`). The grammar itself, every decision and its reason, is explained in [`project-notes/grammar/GRAMMAR-OVERVIEW.md`](../../project-notes/grammar/GRAMMAR-OVERVIEW.md) and decided in `project-notes/grammar/GRAMMAR-LOCK-2026-10-07.md`. Everything here runs on the CPU; Isaac is never imported.
+A viser viewer for the hand grammar (`hand_sampler/grammar/`). The grammar itself, every decision and its reason, is explained in [`project-notes/grammar/GRAMMAR-OVERVIEW.md`](https://github.com/kushal2000/gen_mechanics/blob/hand-grammar-2026-10-20/project-notes/grammar/GRAMMAR-OVERVIEW.md) (on Martin's `hand-grammar` branch; project-notes isn't merged here) and decided in `project-notes/grammar/GRAMMAR-LOCK-2026-10-07.md`. Everything here runs on the CPU; Isaac is never imported.
 
 ## Setup (once)
 

@@ -1,104 +1,82 @@
-# gen_mechanics
+# gen_mechanics — Evolve to Generalize
 
-**Does dexterous hand hardware generalize?**
+**How does a hand's hardware design shape how efficiently it learns, and how well it generalizes across tasks?**
 
-A benchmark for comparing dexterous hands on a 6D pose-reaching task — grasp a
-tool-like object off a table and drive it through a sequence of SE(3) goals —
-under held-out object physics, object geometry, domain-randomization settings,
-and goal distributions.
+Human-like hands are the default in dexterous manipulation, but nothing says they are the best design for a given task
+or set of tasks. This project studies design and control together: train the same policy recipe on many hand designs,
+measure what each design makes easy or hard to learn, and evolve designs toward hands that learn quickly and transfer
+across tasks.
 
-The question is not which hand scores highest on its training distribution, but
-which hand's policy **retains** the most performance when the world shifts.
+- **Flagship environment: in-hand olympics** (`isaacsimenvs/inhand_olympics/`). A hand on a 6-DOF dummy wrist, palm down
+  over a table, with a pen and a family of tasks under one observation and reward format: pen lift, spin (on the table
+  and in the air), flip, 6D repose and twisting a cap off. One run can train several tasks at once (a task one-hot
+  tells the policy which), and one scene can hold several hands, each on its own envs.
+- **Learning efficiency.** Designs are compared by how fast they learn under one recipe (epochs to one goal per
+  episode), not only by final score. Early results: many reasonable designs reach similar final performance, but
+  differ in how quickly and reliably they get there; growing the embodiment during training (a thumb+index policy
+  fine-tuned toward the full hand) helps the complex hand get started.
+- **Generalization across tasks and hands.** Policies are fine-tuned from one task to another (repose to spin and
+  flip), and joint-token transformer policies control each joint from its own token, so one policy can run on hands
+  it never trained on.
+- **Evolution with the hand grammar** (`hand_sampler/grammar/`, Martin's latest). The grammar defines a space of hands
+  buildable from Feetech servos; evolution experiments search it with in-hand olympics as the fitness.
 
-Built on the Isaac Sim path of
-[simtoolreal](https://github.com/tylerlum/simtoolreal) (Kedia, Lum, Bohg, Liu).
-Isaac Gym, ROS deployment, FoundationPose, and the retargeting baselines are not
-carried over.
+## Main code
 
-## Status
+```bash
+export OMNI_KIT_ACCEPT_EULA=YES
+PY=.venv_isaacsim/bin/python
+```
 
-| Milestone | State |
+| What | Command |
 |---|---|
-| M0 — repo bootstrap, venv | in progress |
-| M1 — SHARPA port parity vs simtoolreal | pending |
-| M2 — `RobotSpec` registry (swappable hands) | pending |
-| M3 — SHARPA training run | pending |
-| M4 — generalization eval harness | pending |
-| M5 — iiwa14 + SHARPA robot | done |
+| Train a hand on olympics tasks (SLURM) | `TASKS=pen_repose HAND=<robot spec> sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub` |
+| ... the same, locally, as a quick check | `NUM_ENVS=3072 MINIBATCH=12288 EPOCHS=20 WANDB=0 bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub` |
+| Play any trained fixed-palm policy; switch its task and goals live | `$PY experiments/16oct_viser_evals/viser_play_all.py` |
+| Drive a hand by joint sliders in the sim | `$PY experiments/14oct_design_search/viser_hand_play.py` |
+| Evaluate checkpoints per task | `$PY experiments/12oct_inhand_olympics/analysis/eval_tasks.py` |
+| Build a primitive hand from finger bearings | `$PY experiments/14oct_design_search/primitive_hands.py --bearings 0,90,180,270` |
+| Browse the hand grammar (CPU only, no Isaac) | `$PY experiments/grammar_viewer/viewer.py` |
+| The original pose-reaching env | `$PY coevolution/train.py --task GenMech-PoseReach-Direct-v0 --agent rl_games_sapg_cfg_entry_point --headless` |
+
+Every experiment folder (`experiments/<date>_<name>/`) has a README with its runs, results and figures; training logs
+and checkpoints go to `debug_outputs/train_logs/<experiment>/`.
 
 ## Layout
 
-Three source packages, in dependency order. The arrow points the only way an
-import is allowed to go:
+Three source packages, in dependency order. The arrow points the only way an import is allowed to go:
 
 ```
 hand_sampler  <--  isaacsimenvs  <--  coevolution
 ```
 
 ```
-hand_sampler/        the generated-hand design space -- PURE PYTHON, no Isaac
-  params.py            HandParams: the grammar, tiers, validity
-  mutate.py            the five operators (palm, scale, mounting, num_joints +/-1)
-  population.py        sample, gate and serialise a population
-  synth_spec.py        hand params -> RobotSpec, mounted on the iiwa14
-  urdf.py              the URDF backend; inertia.py, flexion.py, spec.py
-  gates/               capsule.py (analytic) and mesh.py self-collision gates
-  minimal/             a discrete, fully-enumerable successor design space
-  workspace.py         table + goal-volume geometry shared by the viewers
-  *_viewer.py          design-space, grammar and mutation viser viewers
-isaacsimenvs/        everything that touches Isaac
-  __init__.py          the task registry; one subpackage per task
-  pose_reaching_6d/    the only task today, holding everything it needs
-    env.py  env_cfg.py   one env; a population is what makes it multi-embodiment
-    common_utils/        shared helpers: urdf->usd conversion, PhysX defaults
-    obs_utils/           observations, morphology descriptor, actions
-    reset_utils/         reset, goal sampling, step logging
-    reward_utils/        rewards, termination, tolerance curriculum
-    scene_utils/         assembly, materials, authoring, objects/, robots/
-coevolution/         searching over designs and control together
+hand_sampler/        hand designs -- PURE PYTHON, no Isaac
+  grammar/             the hand grammar (Martin): what a hand can be, the Feetech rules, viability checks
+  grammar_bench/       the grammar's tests and benchmarks (analytic and oracle FK, commercial-hand fits)
+  design_space.py, mutate_design.py, evolve.py, build.py   the earlier generated-hand design space
+isaacsimenvs/        everything that touches Isaac; one subpackage per task
+  inhand_olympics/     FLAGSHIP: hand on a dummy wrist + pen; tasks/ (lift, spin, flip, repose, twist),
+                       scene.py (single- and multi-hand scenes), twist_pen.py, observations.py, pose_viewer.py
+  pose_reaching_6d/    the original task: grasp a tool and drive it through SE(3) goals (arm + hand)
+  inhand_reorient/     palm-up in-hand reorientation, a config-only sibling of pose_reaching_6d
+coevolution/         training and evaluation
   train.py, cfg/       entry point + hydra task / train (PPO, SAPG) configs
-  eval/                DR suites, checkpoint player, cross-body eval
-  population/          population eval: 24,576 designs, one per env
-  loop/                the training-free design-evolution loop + its viewer
-  pose_viewer.py       the wandb interactive pose viewer
-assets/urdf/         robot + table URDFs and meshes; generated hands land here
+  eval/                checkpoint player, evals; pose_viewer.py: the wandb interactive pose viewer
+assets/urdf/         robot + table URDFs and meshes; generated hands land in assets/urdf/generated/
 third_party/rl_games/  vendored SAPG fork (NOT the PyPI package)
-experiments/         SLURM job scripts (+ old_experiments/ archive)
+experiments/         one folder per experiment: SLURM scripts, analysis, plots, README
 ```
 
-`hand_sampler` imports no simulator. That is what lets a design search run on
-CPU: sampling, mutation, the geometry gates and value-function scoring all work
-without booting Kit.
+`hand_sampler` imports no simulator, so design sampling, mutation and the grammar's checks run on CPU without booting
+Kit.
 
-## Quick start
+## Origins
 
-Installation is at the bottom of this file.
-
-```bash
-export OMNI_KIT_ACCEPT_EULA=YES
-PY=.venv_isaacsim/bin/python
-
-# Sample a population of hands -- no Isaac needed, runs on CPU
-$PY -m hand_sampler.population --seed 0 --count 64
-
-# Train
-sbatch experiments/train_single_embodiment_sharpa.sub
-```
-
-## Methodology
-
-What is held fixed to keep this a *hardware* comparison — identical arm, byte-identical reward, equal gradient
-steps (not equal walltime), frozen held-out sets, retention rather than raw
-reward — and the residual confounds that remain.
-
-## Where this is going
-
-The follow-on: instead of comparing two fixed hands, *search* over hand morphology jointly with
-a morphology-conditioned policy. It covers the two target results (co-design as
-a training curriculum; co-design for generalization and sim-to-real), the
-Thompson-sampling outer loop. Heterogeneous morphology per environment was
-measured to be feasible in this stack, and is what `isaacsimenvs/pose_reaching_6d/`
-now does: 24,576 distinct hands share one articulation view.
+The repo began as a benchmark for comparing dexterous hands on 6D pose reaching (grasp a tool off a table and drive it
+through SE(3) goals) under held-out physics, geometry and goals, built on the Isaac Sim path of
+[simtoolreal](https://github.com/tylerlum/simtoolreal) (Kedia, Lum, Bohg, Liu). That env lives on as
+`isaacsimenvs/pose_reaching_6d/`.
 
 ## Installation
 
