@@ -26,7 +26,7 @@ import time
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "experiments/old_experiments/30sep_ten_hands"))
+sys.path.insert(0, str(REPO / "experiments/_shared"))
 
 TASK = "GenMech-InHandReorient-Direct-v0"
 
@@ -157,7 +157,7 @@ def main() -> None:
         pths = glob.glob(f"{logs}/0_scale_train_left_{args.hand}_uniform_c01_*/rank_0/*/nn/*.pth")
         ckpt = pathlib.Path(args.checkpoint) if args.checkpoint else pathlib.Path(max(pths, key=os.path.getmtime))
     else:
-        from viser_zero_shot import HANDS, latest_checkpoint
+        from ten_hands import HANDS, latest_checkpoint
         spec_ref, study, _ = HANDS[args.hand]
         ckpt = pathlib.Path(args.checkpoint) if args.checkpoint else latest_checkpoint(study)
     run_dir = ckpt.parents[3]

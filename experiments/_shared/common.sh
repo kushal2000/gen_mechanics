@@ -272,7 +272,7 @@ run_and_chain() {   # run_and_chain <path to this .sub>
     trap "echo '[$STUDY_ID] USR1: 15 min to the limit, chaining now'; chain_next '$self'" USR1
     cd "$REPO"
     set +e
-    bash "${RUN_SH:-experiments/old_experiments/decentralized_control/scaling_laws/run.sh}" &
+    bash "${RUN_SH:-experiments/_shared/scaling_laws/run.sh}" &
     local payload=$!
     wait $payload; local status=$?
     # A signal interrupts wait, so wait again until the payload is really gone.

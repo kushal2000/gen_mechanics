@@ -8,4 +8,4 @@ hand from scratch (orange, 3 seeds). The x axis is total training epochs, so the
 The curriculum's 5-finger hand learns within about 100 fine-tune epochs; 2 of the 3 from-scratch seeds never reach
 1 goal per episode, and the third gets there at epoch 2,695. Write-up and caveats: `../embodiment_curriculum.md`.
 
-Redraw with `analysis/plot_embodiment_curriculum.py` (style: `08oct_repro_wuji_full/analysis/paper_style.py`).
+Redraw with `analysis/plot_embodiment_curriculum.py` (style: `experiments/_shared/paper_style.py`).

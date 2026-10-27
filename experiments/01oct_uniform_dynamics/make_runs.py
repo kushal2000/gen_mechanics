@@ -18,8 +18,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-sys.path.insert(0, str(REPO / "experiments/old_experiments/30sep_ten_hands"))
-from make_runs import OBS_LIST, TEMPLATE  # noqa: E402  (the ten-hands template, unchanged)
+sys.path.insert(0, str(REPO / "experiments/_shared"))
+from ten_hands import OBS_LIST, TEMPLATE  # noqa: E402  (the ten-hands template, unchanged)
 
 LOGS = REPO / "debug_outputs/train_logs/01oct_uniform_dynamics"
 HANDS = ("sharpa", "allegro", "leap", "shadow", "dex3", "tesollo", "wuji2", "xhand", "gen_sharpa")

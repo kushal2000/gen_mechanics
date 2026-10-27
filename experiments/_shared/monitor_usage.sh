@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sample CPU/RAM and GPU usage for as long as the parent job lives.
 #
-#   experiments/monitor_usage.sh <out_prefix> [interval_seconds] &
+#   experiments/_shared/monitor_usage.sh <out_prefix> [interval_seconds] &
 #   MONITOR_PID=$!
 #   trap 'kill $MONITOR_PID 2>/dev/null || true' EXIT
 #

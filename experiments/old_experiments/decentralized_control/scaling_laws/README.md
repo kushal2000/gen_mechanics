@@ -58,8 +58,8 @@ MAX_EPOCHS=3 sbatch --array=0 experiments/old_experiments/decentralized_control/
 sbatch experiments/old_experiments/decentralized_control/scaling_laws/d32_l1.sub
 sbatch experiments/old_experiments/decentralized_control/scaling_laws/d128_l2.sub
 
-python experiments/old_experiments/decentralized_control/scaling_laws/study.py report
-python experiments/old_experiments/decentralized_control/scaling_laws/study.py best --model d128_l2
+python experiments/_shared/scaling_laws/study.py report
+python experiments/_shared/scaling_laws/study.py best --model d128_l2
 ```
 
 The three-epoch smoke run is excluded from throughput ranking. Submitting all

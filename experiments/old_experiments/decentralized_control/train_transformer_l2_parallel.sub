@@ -160,7 +160,7 @@ mkdir -p "$TORCHINDUCTOR_CACHE_DIR"
 
 echo "block=$([ "$PARALLEL_BLOCK" = true ] && echo parallel || echo serial) ff_mult=$FF_MULT mu_head=$MU_HEAD_UNITS arm_head=$ARM_HEAD_UNITS affine_norm=$AFFINE_NORM"
 echo "path=transformer_l${TRANSFORMER_LAYERS} agent=$AGENT obs=778 critic=800 tokens=22x32 d_model=$D_MODEL heads=$N_HEADS compile=$COMPILE_NET/${COMPILE_MODE:-default} robot=$ROBOT seed=$SEED envs=$NUM_ENVS assets_per_type=$NUM_ASSETS_PER_TYPE minibatch=$MINIBATCH_SIZE blocks=$NUM_BLOCKS aug_batch=$AUG_BATCH"
-experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
+experiments/_shared/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
 
 [ "$CAPTURE_VIEWER" = "1" ] && VIEWER_ARGS=(--capture_viewer) || VIEWER_ARGS=()
 read -r -a EXTRA_ARGS <<< "${EXTRA_OVERRIDES:-}"

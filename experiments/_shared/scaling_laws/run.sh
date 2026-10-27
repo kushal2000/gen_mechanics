@@ -19,7 +19,7 @@ export ARCH="${ARCH:-transformer}"
 export D_MODEL="${D_MODEL:-0}"
 export TRANSFORMER_LAYERS="${TRANSFORMER_LAYERS:-0}"
 export MODEL_TAG="${MODEL_TAG:-d${D_MODEL}_l${TRANSFORMER_LAYERS}}"
-STUDY_SCRIPT=experiments/old_experiments/decentralized_control/scaling_laws/study.py
+STUDY_SCRIPT=experiments/_shared/scaling_laws/study.py
 if [[ "$PHASE" == tune ]]; then
     PAIR=$(python "$STUDY_SCRIPT" trial "${SLURM_ARRAY_TASK_ID:-0}")
     read -r NUM_ENVS_PER_GPU GLOBAL_MINIBATCH <<< "$PAIR"
@@ -84,7 +84,7 @@ if [[ "${DRY_RUN:-0}" == 1 ]]; then
     export SCALING_RUN_DIR="/tmp/scaling_dry_run/$RUN_NAME"
     export LOCAL_RANK=0
     export WORLD_SIZE="$GPUS"
-    bash experiments/old_experiments/decentralized_control/scaling_laws/run_rank.sh
+    bash experiments/_shared/scaling_laws/run_rank.sh
     exit
 fi
 RUN_ROOT="${SCALING_RUN_ROOT:-$PWD/debug_outputs/scaling_laws}"
@@ -128,13 +128,13 @@ else
 fi
 nvidia-smi > "$SCALING_RUN_DIR/gpus.txt"
 python "$STUDY_SCRIPT" record --status running
-experiments/monitor_usage.sh "$SCALING_RUN_DIR/usage" 30 &
+experiments/_shared/monitor_usage.sh "$SCALING_RUN_DIR/usage" 30 &
 MONITOR_PID=$!
 trap 'kill "$MONITOR_PID" 2>/dev/null || true' EXIT
 set +e
 python -m torch.distributed.run --standalone --nnodes=1 --nproc_per_node="$GPUS" \
     --log-dir "$SCALING_RUN_DIR/torchrun" --redirects 3 --tee 3 \
-    --no-python bash experiments/old_experiments/decentralized_control/scaling_laws/run_rank.sh
+    --no-python bash experiments/_shared/scaling_laws/run_rank.sh
 STATUS=$?
 set -e
 if (( STATUS == 0 )); then

@@ -38,5 +38,5 @@ export EPOCHS="${EPOCHS:-2000}" MAX_CONT="${MAX_CONT:-1}" CONT="${CONT:-1}"
 export WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_gen_sharpa_tf_sweep}"
 export SCALING_RUN_ROOT="${SCALING_RUN_ROOT:-/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29sep_transformer_hparam_sweep}"
 
-source /share/portal/kk837/gen_mechanics/experiments/old_experiments/28sep_inhand_reorientation/common.sh
+source /share/portal/kk837/gen_mechanics/experiments/_shared/common.sh
 run_and_chain "$0"

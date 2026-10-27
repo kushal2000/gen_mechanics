@@ -41,5 +41,5 @@ export SUCCESS_TOLERANCE_DEG=20
 export EPISODE_STEPS=200
 export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
 
-source /share/portal/kk837/gen_mechanics/experiments/old_experiments/28sep_inhand_reorientation/common.sh
+source /share/portal/kk837/gen_mechanics/experiments/_shared/common.sh
 run_and_chain "$0"

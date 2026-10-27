@@ -16,4 +16,4 @@ set -euo pipefail
 export D_MODEL=32
 export TRANSFORMER_LAYERS=4
 export PHASE="${PHASE:-tune}"
-bash /share/portal/kk837/gen_mechanics/experiments/old_experiments/decentralized_control/scaling_laws/run.sh
+bash /share/portal/kk837/gen_mechanics/experiments/_shared/scaling_laws/run.sh

@@ -3,7 +3,7 @@ policy versus from scratch. Goals per episode of the 5-finger hand (training-tim
 against total training epochs (the curriculum's 900 thumb + index epochs, with no 5-finger experience, count), for
 the curriculum run (thumb + index joint transformer s102 at epoch 900 -> the 2 + 5 mix, default pushes) and the same
 network trained on the full hand from scratch (seeds 101-103, stagger). The numbers also cover the full-hand MLP runs. In the lab's paper style
-(08oct_repro_wuji_full/analysis/paper_style.py), PNG only. Re-run to update while runs train.
+(experiments/_shared/paper_style.py), PNG only. Re-run to update while runs train.
 
     .venv_isaacsim/bin/python experiments/12oct_inhand_olympics/analysis/plot_embodiment_curriculum.py
     # -> experiments/12oct_inhand_olympics/plots/embodiment_curriculum.png (the headline figure, tracked);
@@ -49,7 +49,7 @@ def main() -> None:
     from matplotlib.lines import Line2D
 
     # The lab's paper style (Times, no grid, bottom legend, hero blue = ours), shared with 08oct's figures.
-    sys.path.insert(0, str(REPO / "experiments/08oct_repro_wuji_full/analysis"))
+    sys.path.insert(0, str(REPO / "experiments/_shared"))
     import paper_style as ps
 
     cur = series(*CURRICULUM)

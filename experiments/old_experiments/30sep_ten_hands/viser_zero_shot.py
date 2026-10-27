@@ -41,29 +41,10 @@ sys.path.insert(0, str(REPO))
 from coevolution.eval import viser_play as vp  # noqa: E402  (stdlib-only at import)
 
 TASK = "GenMech-InHandReorient-Direct-v0"
-LOGS = REPO / "debug_outputs/train_logs/30sep_ten_hands"
 WORKER = REPO / "coevolution/eval/_play_worker.py"
 
-# hand -> (robot_spec, study whose checkpoint is "that hand's policy", joint speed cap the hand
-# trained with: 0 = the vendor URDF's). The four slow-joint hands use their 10 rad/s reruns.
-HANDS = {
-    "sharpa":     ("sharpa_handonly", "left_sharpa", 0.0),
-    "gen_sharpa": (f"handonly:{REPO}/assets/populations/sharpa_capsule.json", "left_gen_sharpa", 0.0),
-    "allegro":    ("allegro_left_handonly", "left_allegro_v10", 10.0),
-    "leap":       ("leap_left_handonly", "left_leap_v10", 10.0),
-    "shadow":     ("shadow_left_handonly", "left_shadow_v10", 10.0),
-    "tesollo":    ("tesollo_left_handonly", "left_tesollo_v10", 10.0),
-    "dex3":       ("dex3_left_handonly", "left_dex3", 0.0),
-    "xhand":      ("xhand_left_handonly", "left_xhand", 0.0),
-    "wuji2":      ("wuji2_left_handonly", "left_wuji2", 0.0),
-}
-
-
-def latest_checkpoint(study: str) -> pathlib.Path | None:
-    """The newest .pth any run of this study has written (runs still training included)."""
-    pths = glob.glob(f"{LOGS}/0_scale_train_{study}_c01_*/rank_0/*/nn/*.pth")
-    return pathlib.Path(max(pths, key=os.path.getmtime)) if pths else None
-
+sys.path.insert(0, str(REPO / "experiments/_shared"))
+from ten_hands import HANDS, LOGS, latest_checkpoint  # noqa: E402,F401
 
 class Session:
     """One Kit child: one hand, one policy."""

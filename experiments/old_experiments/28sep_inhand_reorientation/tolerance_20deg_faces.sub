@@ -46,5 +46,5 @@ export STUDY_ID="${STUDY_ID:-inhand_tol20_faces}"
 export SUCCESS_TOLERANCE_DEG=20
 export EPOCHS="${EPOCHS:-15000}" MAX_CONT="${MAX_CONT:-10}" CONT="${CONT:-1}"
 
-source /share/portal/kk837/gen_mechanics/experiments/old_experiments/28sep_inhand_reorientation/common.sh
+source /share/portal/kk837/gen_mechanics/experiments/_shared/common.sh
 run_and_chain "$0"

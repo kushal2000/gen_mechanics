@@ -40,4 +40,4 @@ export WANDB_PROJECT=gen_mechanics WANDB_ENTITY=kk837
 export WANDB_GROUP=multi_embodiment_v1
 export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
 export MAX_EPOCHS=1000000
-bash /share/portal/kk837/gen_mechanics/experiments/old_experiments/decentralized_control/scaling_laws/run.sh
+bash /share/portal/kk837/gen_mechanics/experiments/_shared/scaling_laws/run.sh

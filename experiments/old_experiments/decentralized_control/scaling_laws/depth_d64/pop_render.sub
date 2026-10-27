@@ -43,4 +43,4 @@ export CAPTURE_VIDEO=1 VIDEO_INTERVAL=10000 VIDEO_FRAMES=10 VIDEO_FPS=5
 export EXTRA_HYDRA="env.viewer.eye=[0.55,-0.35,0.95] env.viewer.lookat=[0.0,0.098,0.73] env.viewer.resolution=[1280,960]"
 export SCALING_RUN_ROOT=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/depth_d64
 export MAX_EPOCHS=2
-bash /share/portal/kk837/gen_mechanics/experiments/old_experiments/decentralized_control/scaling_laws/run.sh
+bash /share/portal/kk837/gen_mechanics/experiments/_shared/scaling_laws/run.sh

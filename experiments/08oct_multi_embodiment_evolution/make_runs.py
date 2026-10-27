@@ -24,8 +24,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-sys.path.insert(0, str(REPO / "experiments/old_experiments/30sep_ten_hands"))
-from make_runs import OBS_LIST, TEMPLATE  # noqa: E402
+sys.path.insert(0, str(REPO / "experiments/_shared"))
+from ten_hands import OBS_LIST, TEMPLATE  # noqa: E402
 
 LOGS = REPO / "debug_outputs/train_logs/08oct_multi_embodiment_evolution"
 WANDB = "gen_mechanics_wuji2_multi_embodiment"      # 31826's project, so the curves sit side by side

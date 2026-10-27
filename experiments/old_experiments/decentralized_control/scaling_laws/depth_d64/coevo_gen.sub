@@ -65,7 +65,7 @@ echo "[coevo] policy from: ${CHECKPOINT:-scratch}"
 echo "[coevo] curriculum from: ${RESUME_TOL:-start (0.075)}"
 cd /share/portal/kk837/gen_mechanics
 set +e
-bash experiments/old_experiments/decentralized_control/scaling_laws/run.sh
+bash experiments/_shared/scaling_laws/run.sh
 STATUS=$?
 set -e
 RUN_DIR=$(ls -dt "$SCALING_RUN_ROOT"/*_"${SLURM_JOB_ID}"_* 2>/dev/null | head -1)

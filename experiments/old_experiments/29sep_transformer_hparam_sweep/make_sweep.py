@@ -152,7 +152,7 @@ export EPOCHS="${{EPOCHS:-2000}}" MAX_CONT="${{MAX_CONT:-1}}" CONT="${{CONT:-1}}
 export WANDB_PROJECT="${{WANDB_PROJECT:-gen_mechanics_gen_sharpa_tf_sweep}}"
 export SCALING_RUN_ROOT="${{SCALING_RUN_ROOT:-{logs}}}"
 
-source {repo}/experiments/old_experiments/28sep_inhand_reorientation/common.sh
+source {repo}/experiments/_shared/common.sh
 run_and_chain "$0"
 """
 

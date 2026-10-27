@@ -46,7 +46,7 @@ export MAX_EPOCHS="$EPOCHS_PER_GEN"
 echo "[coevo] $STUDY_ID generation $GEN of $MAX_GEN: $POP"
 echo "[coevo] policy from: ${CHECKPOINT:-scratch}   curriculum from: ${RESUME_TOL:-start (0.075)}"
 cd "$REPO"
-set +e; bash "${RUN_SH:-experiments/old_experiments/decentralized_control/scaling_laws/run.sh}"; STATUS=$?; set -e
+set +e; bash "${RUN_SH:-experiments/_shared/scaling_laws/run.sh}"; STATUS=$?; set -e
 RUN_DIR=$(own_run_dir)
 echo "[coevo] training exited $STATUS; run dir $RUN_DIR"
 echo "$RUN_DIR" > "$COEVO_DIR/gen_$GEN/run_dir.txt"

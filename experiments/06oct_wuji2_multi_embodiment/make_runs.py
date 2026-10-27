@@ -23,8 +23,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-sys.path.insert(0, str(REPO / "experiments/old_experiments/30sep_ten_hands"))
-from make_runs import OBS_LIST, TEMPLATE  # noqa: E402
+sys.path.insert(0, str(REPO / "experiments/_shared"))
+from ten_hands import OBS_LIST, TEMPLATE  # noqa: E402
 
 SPEC = "multi:wuji2_lr_2plus"
 LOGS = REPO / "debug_outputs/train_logs/06oct_wuji2_multi_embodiment"

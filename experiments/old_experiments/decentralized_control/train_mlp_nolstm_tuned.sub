@@ -96,7 +96,7 @@ export WANDB_DIR="$RUN_DIR"
 mkdir -p "$OMNI_KIT_CACHE_PATH"
 
 echo "path=mlp_tuned agent=$AGENT obs=778 critic=800 robot=$ROBOT seed=$SEED envs=$NUM_ENVS assets_per_type=$NUM_ASSETS_PER_TYPE minibatch=$MINIBATCH_SIZE blocks=$NUM_BLOCKS aug_batch=$AUG_BATCH"
-experiments/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
+experiments/_shared/monitor_usage.sh "${RUN_DIR}/usage" "${MONITOR_INTERVAL:-30}" &
 
 [ "$CAPTURE_VIEWER" = "1" ] && VIEWER_ARGS=(--capture_viewer) || VIEWER_ARGS=()
 read -r -a EXTRA_ARGS <<< "${EXTRA_OVERRIDES:-}"

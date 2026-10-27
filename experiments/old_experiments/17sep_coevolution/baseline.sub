@@ -65,7 +65,7 @@ trap 'echo "[baseline] USR1: 15 min to the limit, chaining now"; chain_next' USR
 
 cd "$REPO"
 set +e
-bash "${RUN_SH:-experiments/old_experiments/decentralized_control/scaling_laws/run.sh}" &
+bash "${RUN_SH:-experiments/_shared/scaling_laws/run.sh}" &
 PAYLOAD=$!
 wait $PAYLOAD; STATUS=$?
 while kill -0 $PAYLOAD 2>/dev/null; do wait $PAYLOAD; STATUS=$?; done   # a signal interrupts wait; wait again

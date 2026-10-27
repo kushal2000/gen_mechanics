@@ -1,5 +1,5 @@
 """Pictures of a primitive hand (primitive_hands.py) from its URDF: looking straight at the grasp face with the fingers
-straight, and a three-quarter view with every joint curled -- matplotlib only (the 12oct render_hands.py renderer).
+straight, and a three-quarter view with every joint curled -- matplotlib only (experiments/_shared/render_hands.py renderer).
 
     .venv_isaacsim/bin/python experiments/14oct_design_search/analysis/render_primitive.py \\
         --hand prim4x4_r10l25_g090_090_090_090 [--curl 45]
@@ -16,7 +16,7 @@ import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-sys.path.insert(0, str(REPO / "experiments/12oct_inhand_olympics/analysis"))
+sys.path.insert(0, str(REPO / "experiments/_shared"))
 sys.path.insert(0, str(HERE.parent))
 import primitive_hands as ph  # noqa: E402
 import render_hands as rh  # noqa: E402

@@ -79,7 +79,7 @@ chain_next() {
 trap 'echo "[continue] USR1: 15 min to the limit, chaining now"; chain_next' USR1
 
 set +e
-bash experiments/old_experiments/decentralized_control/scaling_laws/run.sh &
+bash experiments/_shared/scaling_laws/run.sh &
 PAYLOAD=$!
 wait $PAYLOAD; STATUS=$?
 # A signal interrupts `wait`; after the trap has chained, wait for the payload again.

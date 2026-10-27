@@ -3,7 +3,7 @@ the back), fingers up: the full hand and the thumb + index hand, at the same sca
 meshes (assets/urdf/unified_dynamics_commercial_hands/wuji2/, the uniform-dynamics hands every run here uses) with an
 orthographic projection, depth-sorted faces and Lambert shading -- matplotlib only, no OpenGL.
 
-    .venv_isaacsim/bin/python experiments/12oct_inhand_olympics/analysis/render_hands.py [--side palm|back]
+    .venv_isaacsim/bin/python experiments/_shared/render_hands.py [--side palm|back]
     # -> experiments/12oct_inhand_olympics/plots/hands/wuji_<hand>_flat[_back].png
 """
 from __future__ import annotations
@@ -13,9 +13,9 @@ import pathlib
 
 import numpy as np
 
-REPO = pathlib.Path(__file__).resolve().parents[3]
+REPO = pathlib.Path(__file__).resolve().parents[2]
 URDFS = REPO / "assets/urdf/unified_dynamics_commercial_hands/wuji2"
-OUT = pathlib.Path(__file__).resolve().parent.parent / "plots/hands"
+OUT = REPO / "experiments/12oct_inhand_olympics/plots/hands"           # where its pictures have always gone
 HANDS = {"full": "wuji2_left", "thumb_index": "wuji2_left_only_thumb_index"}
 
 

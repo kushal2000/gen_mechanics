@@ -3,8 +3,7 @@ a plain name, and one overview sheet with every design's face view, its role, fi
 
 Primitive hands: rendered here by experiments/14oct_design_search/analysis/render_primitive.py -- face: the grasp
 face, fingers straight, every hand on the same fixed +-17 cm frame (so equal palms look equal); curl45: a
-three-quarter view, every joint at 45 deg (each fitted to its hand). Wuji: experiments/12oct_inhand_olympics/analysis/
-render_hands.py (palm, joints at 0), at its own scale.
+three-quarter view, every joint at 45 deg (each fitted to its hand). Wuji: experiments/_shared/render_hands.py (palm, joints at 0), at its own scale.
 
     .venv_isaacsim/bin/python experiments/16oct_viser_evals/analysis/make_design_gallery.py
     # -> experiments/16oct_viser_evals/plots/designs/
@@ -20,7 +19,7 @@ import tempfile
 REPO = pathlib.Path(__file__).resolve().parents[3]
 WUJI = REPO / "experiments/12oct_inhand_olympics/plots/hands"
 OUT = pathlib.Path(__file__).resolve().parent.parent / "plots/designs"
-sys.path.insert(0, str(REPO / "experiments/08oct_repro_wuji_full/analysis"))
+sys.path.insert(0, str(REPO / "experiments/_shared"))
 
 # (file stem, role, finger bearings, gaps tag or None for Wuji, peak repose v2 goals/episode)
 DESIGNS = [
