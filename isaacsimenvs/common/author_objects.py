@@ -20,7 +20,8 @@ from hand_sampler.design_space import compute_mass_and_inertia
 from hand_sampler.design_space import rpy_to_quat_wxyz
 
 from isaacsimenvs.common.sdf import MAX_DEPEN_VELOCITY, attr, define
-from .objects.generate_objects import OBJECT_ROOT_LINK
+
+OBJECT_ROOT_LINK = "object_root"   # the body every authored object (and generate_objects' URDFs) roots at
 
 
 def _rigid_body_defaults(body_spec) -> None:

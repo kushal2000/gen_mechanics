@@ -10,7 +10,7 @@ import time
 
 import torch
 
-from ..common_utils.physx import _log_scene_step
+from .physx import _log_scene_step
 
 
 

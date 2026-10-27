@@ -16,12 +16,12 @@ import numpy as np
 import torch
 from pxr import Sdf
 
-from ..pose_reaching_6d.common_utils.urdf_to_usd import (
+from isaacsimenvs.common.urdf_to_usd import (
     _apply_self_collision_filters, _convert_urdf_to_usd, _robot_joint_drive_cfg,
 )
-from ..pose_reaching_6d.scene_utils.author_objects import author_handle_head, author_physics_material
-from ..pose_reaching_6d.scene_utils.author_robot import flatten_robot_usd
-from ..pose_reaching_6d.scene_utils.objects.generate_objects import compute_mass_and_inertia
+from hand_sampler.design_space import compute_mass_and_inertia
+from isaacsimenvs.common.author_objects import author_handle_head, author_physics_material
+from isaacsimenvs.common.usd_flatten import flatten_robot_usd
 from isaacsimenvs.common.sdf import attr, define, set_xform
 from isaacsimenvs.common.robots import get_robot_spec
 from isaacsimenvs.common.robots.multi_hand import hand_set, is_multi_ref

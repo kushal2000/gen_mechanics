@@ -20,8 +20,7 @@ from __future__ import annotations
 
 import math
 
-from isaacsimenvs.pose_reaching_6d.scene_utils.author_objects import (_rigid_body_defaults, _shape_prim,
-                                                                      author_physics_material)
+from isaacsimenvs.common.author_objects import _rigid_body_defaults, _shape_prim, author_physics_material
 from isaacsimenvs.common.sdf import attr, define, rel
 
 LINKS = ("barrel", "cap")

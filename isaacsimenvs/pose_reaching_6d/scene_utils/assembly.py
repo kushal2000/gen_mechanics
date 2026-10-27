@@ -26,16 +26,17 @@ from isaaclab.assets import Articulation, ArticulationCfg, RigidObject, RigidObj
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.sim.utils import find_matching_prim_paths, get_current_stage
 
-from ..common_utils.physx import _log_scene_step
-from ..common_utils.urdf_to_usd import (
+from isaacsimenvs.common.urdf_to_usd import (
     _apply_self_collision_filters, _convert_urdf_to_usd, _robot_joint_drive_cfg,
 )
 from ..obs_utils import derive_spaces
-from .author_objects import author_handle_head, author_physics_material
+from isaacsimenvs.common.author_objects import author_handle_head, author_physics_material
+from isaacsimenvs.common.usd_flatten import flatten_robot_usd
 from hand_sampler.robot_param_constants import ARM_ADJACENT_LINKS, ARM_TIP_LINK
 from hand_sampler.robot_spec import design_index, object_index
-from .author_robot import ARM_PRIM, arm_only_urdf, author_hand, flatten_robot_usd, stub_urdf
+from .author_robot import ARM_PRIM, arm_only_urdf, author_hand, stub_urdf
 from .materials import apply_physx_material_properties
+from .physx import _log_scene_step
 from isaacsimenvs.common.sdf import define, set_xform
 from .objects.generate_objects import generate_handle_head_urdfs
 from isaacsimenvs.common.robots import get_robot_spec

@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from hand_sampler.design_space import compute_mass_and_inertia
+from isaacsimenvs.common.author_objects import OBJECT_ROOT_LINK
 
 from .object_size_distributions import OBJECT_SIZE_DISTRIBUTIONS, Scale, Scale3
 
@@ -21,7 +22,6 @@ _SEED = 42
 _NUM_OBJECTS_PER_TYPE_DEFAULT = 100
 _OBJECT_BASE_SIZE = 0.04  # reward-space normalisation, the env's object_base_size
 # One link name for every object: RigidObject derives its view regex from env_0.
-OBJECT_ROOT_LINK = "object_root"
 _BROWN = '<material name="brown"><color rgba="0.55 0.27 0.07 1.0"/></material>'
 _GRAY = '<material name="gray"><color rgba="0.5 0.5 0.5 1.0"/></material>'
 # A CUBE'S ORIENTATION IS INVISIBLE without marked faces, which is the whole
@@ -314,7 +314,6 @@ def generate_handle_head_urdfs(
 
 
 __all__ = [
-    "OBJECT_ROOT_LINK",
     "generate_handle_head_urdfs",
     "matching_distributions",
     "sample_pool_params",
