@@ -103,7 +103,7 @@ echo "[common] palm pitch ${HAND_ONLY_PALM_PITCH_DEG} deg, roll ${HAND_ONLY_PALM
 # keypoint_scale cancels -- it multiplies the tolerance (observations.py:269) and
 # is already inside the keypoint radius (reset.py:233) -- so it must NOT appear
 # here. Changing keypoint_scale looks like a difficulty knob and moves nothing;
-# inhand_reorient/tests/test_orientation_metric.py pins that.
+# pose_reaching_6d/tests/test_orientation_metric.py pins that.
 #
 # The angle is the threshold on the MOST SENSITIVE rotation axis. The four reward
 # keypoints are two antipodal pairs and coplanar, so the same angle about the

@@ -49,7 +49,7 @@ palm frame / palm box / pads / self-collision pairs → `<hand>/<hand>_left.spec
 `robots/unified_hands.py` (JSON → RobotSpec `<hand>_left_handonly`). Validated by reproducing the hand-written
 Allegro right spec field for field (frame, palm box, mount pose, palm keypoints; pads within 1 cm).
 Step 3 = the report's checks (all PASS; Tesollo's 64 mm palm reviewed and waived: one continuous collider)
-and `isaacsimenvs/inhand_reorient/tests/test_unified_hands.py` (9 tests).
+and `isaacsimenvs/common/tests/test_unified_hands.py` (9 tests).
 
 Step 1 = `assets/urdf/unified_commercial_hands/import_vendor_left.py`: left URDF + only its meshes, pinned
 commit, mesh paths made local; each loads with every mesh resolved (checked with yourdfpy).

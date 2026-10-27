@@ -37,7 +37,7 @@ success_tolerance = edge · √3 · sin(θ/2)
 ```
 
 Two things about this are easy to get wrong, and both are pinned by
-`isaacsimenvs/inhand_reorient/tests/test_orientation_metric.py`:
+`isaacsimenvs/pose_reaching_6d/tests/test_orientation_metric.py`:
 
 **`keypoint_scale` cancels and is not a difficulty knob.** It multiplies the
 tolerance (`observations.py:269`) *and* is already inside the keypoint radius
