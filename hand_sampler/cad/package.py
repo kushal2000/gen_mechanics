@@ -191,15 +191,15 @@ def lay_flat(src: Path, dst: Path) -> List[float]:
 
 
 def _count_screws(d: Design) -> Dict[str, int]:
-    out = {"box": 0, "M2x5": 0, "M3x12_column": 0, "M3x8_skirt": 4, "M2x6_board": 4, "M3x8_cradle": 0}
+    out = {"box": 0, "M2x5": 0, "M3x30_column": 0, "M3x8_skirt": 4, "M2x6_board": 4, "M3x10_cradle": 0}
     for sp in d.servos.values():
         out["box"] += 4                           # the case: its far holes, or its idler face's four (a flange cup)
         out["M2x5"] += 4                          # the driven arm (or the crossing plate)
         if sp.yoke == "u":
             out["box"] += 4                       # the idler arm
     for p in d.part_list():
-        out["M3x12_column"] += len(getattr(p, "column_screws", []))
-        out["M3x8_cradle"] += len(p.pads)
+        out["M3x30_column"] += len(getattr(p, "column_screws", []))
+        out["M3x10_cradle"] += len(p.pads)
     return out
 
 
@@ -218,16 +218,18 @@ def bom(d: Design, rep: checks.Report) -> str:
              "| Palm Hub rev B.2 board | 1 | `feetech-hand-pcb` |",
              f"| M2 x 5 pan head | {sc['M2x5']} | the driven horn's arm (4 per servo) |",
              f"| M2 x 6 pan head | {sc['M2x6_board']} | the board on its standoffs |",
-             f"| M3 x 12 socket head | {sc['M3x12_column']} | through the palm's plate into the mount's column |",
-             f"| M3 x 8 pan head | {sc['M3x8_skirt'] + sc['M3x8_cradle']} | the lid's skirt to the bay ("
-             f"{sc['M3x8_skirt']})" + (f"; each base servo's cradle to the palm's plate, from behind "
-                                       f"({sc['M3x8_cradle']})" if sc['M3x8_cradle'] else "") + " |",
-             "| M5 x 12 or M6 x 12 button head, washer | 4 | the bay floor to the arm's flange "
-             "(ISO 9409-1-31.5-4-M5 or -50-4-M6) |",
-             "| 3-pin 1.25 mm (PicoBlade) servo cable | "
-             f"{n_servo + len(d.hand.fingers)} | one per servo, plus one from the board to each finger |",
-             "", "## Printed (PETG for the links and the palm; PLA is fine for the bay and the mount)", "",
-             "| Part | Grams (about) | Size laid flat (mm) |", "|---|---|---|"]
+             f"| M3 x 30 countersunk | {sc['M3x30_column']} | from the palm's face through its plate and posts "
+             f"into the mount's column |",
+             f"| M3 x 8 pan head | {sc['M3x8_skirt']} | the lid's skirt to the bay |"]
+    if sc["M3x10_cradle"]:
+        lines.append(f"| M3 x 10 countersunk | {sc['M3x10_cradle']} | each base servo's cradle to the palm's plate, "
+                     f"from the palm's face |")
+    lines += ["| M5 x 12 or M6 x 12 button head, washer | 4 | the bay floor to the arm's flange "
+              "(ISO 9409-1-31.5-4-M5 or -50-4-M6) |",
+              "| 3-pin 1.25 mm (PicoBlade) servo cable | "
+              f"{n_servo + len(d.hand.fingers)} | one per servo, plus one from the board to each finger |",
+              "", "## Printed (PETG for the links and the palm; PLA is fine for the bay and the mount)", "",
+              "| Part | Grams (about) | Size laid flat (mm) |", "|---|---|---|"]
     for n, info in rep.parts.items():
         ext = info.get("print_extent_mm", info.get("extent_mm", []))
         lines.append(f"| `{n}` | {grams.get(n, 0)} | {' x '.join(str(x) for x in ext)} |")
@@ -324,12 +326,14 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
           "3. Put the centre screws back through the arms' holes.",
           "4. Driven arm: 4 x M2 x 5. Idler arm: 4 of the servo's box screws.", "",
           "## 3. Palm", "",
+          "The palm is a plate whose face is level with the base servos' tops; the servos hang under it.", "",
           "1. A base servo with a cradle of its own (`f<finger>_cradle`, `hinge_cradle`) is put together on the "
           "bench: the servo into the cradle and its link onto its horns as the table's order says (step 4). "
-          "Then stand the cradle in its window in the plate, pads on the plate's front face, and fix it from "
-          "behind with 2 x M3 x 8. These go on first, while nothing is behind the plate.",
-          "2. Screw the mount's column to the back of `palm` through the plate from the front (M3 x 12), "
-          "before any servo the palm itself holds goes in (turn the links of step 1 out of the way).",
+          "Then push the cradle up into its window in the plate from below, the servo's top flush with the "
+          "palm's face and the pads under the plate, and fix it from the face with 2 x M3 x 10 countersunk.",
+          "2. Stand `palm` on the mount's column, its posts on the column's top, and screw it down from the "
+          "face (M3 x 30 countersunk through the plate and the posts), before any servo the palm itself holds "
+          "goes in (turn the links of step 1 out of the way).",
           "3. Each servo the palm itself holds goes into its cradle as the table's order says (step 4), and its "
           "link onto its horns (step 2); the cable leaves through the side wall's window.", ""]
     if hand.palm_joints:
@@ -355,8 +359,8 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
           "servo, link and all, into its housing from the front and screw the case to the side plates.", "",
           "## 5. Cables", "",
           "Each finger's servos are chained on the finger's back: board port -> base servo -> next servo. Leave "
-          "about 25 mm of slack across each joint and tie the cable to the links. The palm's cables run over "
-          "its back face into the mount's bore.", "",
+          "about 25 mm of slack across each joint and tie the cable to the links. The palm's cables run under "
+          "its plate, between the posts and down the mount's bore.", "",
           "| Finger | Board port |", "|---|---|"]
     for i in range(len(hand.fingers)):
         L.append(f"| {i} | {ports[i]} |")

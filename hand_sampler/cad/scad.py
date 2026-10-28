@@ -91,6 +91,7 @@ def hand_scad(design: Design) -> str:
         out.append(f'else if (part == "view_{p.name}") view_{p.name}();')
     for n in names:
         out.append(f'else if (part == "{n}") part_{n}();')
+        out.append(f'else if (part == "pieces_{n}") pieces_{n}();')
     return "\n".join(out) + "\n"
 
 

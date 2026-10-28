@@ -31,7 +31,9 @@ SWEEP_STEP = 5;     // degrees between swept copies
 CROSS_STEP = 10;    // the same about both joints of a crossing
 HORN_REACH = 18.6;  // how far out along the axis the horns' clearance reaches (an arm's outer face and a gap)
 PLUG_OUT = 9;       // a servo plug and its cable bend beyond the case face
-FILLET = 1.2;       // outer edges rounded (sockets, cups, bridges; connectors twice this)
+ROUNDED = true;     // each part's outer edges rounded 0.8 mm on its body as a whole (so faces that
+                    // run on from piece to piece stay flush): bodies/ holds the rounded bodies, made
+                    // by hand_sampler.cad; false builds them sharp here (after changing a setting)
 PLATE_ROUND = 3;    // the palm plate's corners
 RIM_DEPTH = 4;      // a flange cup's rim along the case, for alignment (stops short of the sockets)
 $fn = 40;
@@ -60,19 +62,18 @@ M3_CLEAR = 3.4;
 M3_PILOT = 2.5;               // an M3 screw cutting its own thread in a cradle's pad
 M3_NUT = 5.7;                 // across flats (5.5), with room
 M3_HEAD = 6.0;
+M3_CS_R = 3.2;                // a countersunk M3's head (6 mm), with room: its 90 degree seat
 
 // ------------------------------------------------------------------ helpers
 module box_lh(lo, hi) translate(lo) cube([hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]]);
 
-// a box with its edges rounded (r at most half its thinnest side; 0: sharp).
-// Its faces lie exactly on the box's (a 16-sided sphere reaches only
-// cos(11.25 deg) of its radius along the axes, so it is grown by that), so
-// a part touching one face to face joins it
-module rbox_lh(lo, hi, r = FILLET) {
-    rr = min(r, min(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2 - 0.01);
-    if (rr <= 0) box_lh(lo, hi);
-    else hull() for (x = [lo[0] + rr, hi[0] - rr], y = [lo[1] + rr, hi[1] - rr], z = [lo[2] + rr, hi[2] - rr])
-        translate([x, y, z]) sphere(r = rr / cos(180 / 16), $fn = 16);
+// pieces that join reach this far into each other, so no seam is left where they meet
+REACH = 1.2;
+
+// the convex hull of points, exactly (grown by g: a small cube at each point, for sweeps)
+module hull_pts(pts, g = 0) {
+    if (g == 0) hull() polyhedron(points = pts, faces = [[for (i = [0 : len(pts) - 1]) i]]);
+    else hull() for (p = pts) translate(p) cube(2 * g, center = true);
 }
 
 // a cylinder along X from x0 to x1
@@ -151,67 +152,52 @@ SOCKET_Y0 = FAR_HOLES[0][0] - 5.5;           // where a socket starts: just ahea
 
 // a box around the case (convex; the keep-outs hollow it): side plates,
 // back wall, side walls, open at the front
-module housing_box(g = 0) rbox_lh([-HOUSING_X - g, CASE_Y[0] - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g],
-                                   g == 0 ? FILLET : 0);
+module housing_box(g = 0) box_lh([-HOUSING_X - g, CASE_Y[0] - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g]);
 
 // a cradle (bracket-frame links, the palm): a socket the case's back end
 // slides into (0.1 mm a side), its two plates as far as the far screws'
 // bosses, thin walls on the other two faces, the back plate (convex; the
 // case's keep-out hollows it)
-module cradle_socket(g = 0) rbox_lh([-HOUSING_X - g, SOCKET_Y0 - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g],
-                                     g == 0 ? FILLET : 0);
+module cradle_socket(g = 0) box_lh([-HOUSING_X - g, SOCKET_Y0 - g, -HOUSING_Z - g], [HOUSING_X + g, HOUSING_Y + g, HOUSING_Z + g]);
 
 // a flange cup: a servo whose idler horn is off (a one-arm yoke on its driven
 // horn) is held by its idler face, nothing round a horn: a 2 mm plate with
 // that face's four holes and the stub's, and a thin rim RIM_DEPTH along the
 // case for alignment (0.1 mm a side); the case slides in along its axis
 FLANGE_Y = [CASE_Y[0] - FIT - SOCKET_WALL, CASE_Y[1] + FIT + SOCKET_WALL];
-module flange_cup(g = 0) rbox_lh([-HOUSING_X - g, FLANGE_Y[0] - g, -HOUSING_Z - g], [CASE_X[0] + RIM_DEPTH + g, FLANGE_Y[1] + g, HOUSING_Z + g],
-                                 g == 0 ? FILLET : 0);
+module flange_cup(g = 0) box_lh([-HOUSING_X - g, FLANGE_Y[0] - g, -HOUSING_Z - g], [CASE_X[0] + RIM_DEPTH + g, FLANGE_Y[1] + g, HOUSING_Z + g]);
 
 // a link's connector between two rectangles, each given as a frame (origin
-// at its centre, its plane the frame's y-z) and a size: their hull (its long
-// edges rounded), hollow inside with its walls and both ends TUBE_WALL thick
-// (solid when short). Its ends reach `ea` / `eb` into the pieces they meet
-// (past those pieces' rounded edges, so the joint has no groove)
-TUBE_WALL = 2.5;
+// at its centre, its plane the frame's y-z) and a size: their hull, solid (a
+// slicer's infill keeps it light; a hollow one opened wherever a servo's
+// keep-out or a sweep crossed it). Its ends reach `ea` / `eb` into the
+// pieces they meet
 module tube(A, sa, B, sb, g = 0, ea = 0, eb = 0) {
-    module rect(M, sz, d, r = 0) multmatrix(M) {
-        rr = min(r, min(sz[0], sz[1]) / 2 + d - 0.01);
-        if (rr <= 0) translate([0, -sz[0] / 2 - d, -sz[1] / 2 - d]) cube([0.01, sz[0] + 2 * d, sz[1] + 2 * d]);
-        else hull() for (sy = [-1, 1], sz2 = [-1, 1])
-            translate([0, sy * (sz[0] / 2 + d - rr), sz2 * (sz[1] / 2 + d - rr)]) rotate([0, 90, 0]) cylinder(r = rr, h = 0.01, $fn = 16);
-    }
+    function corners(M, sz, d, e) = [for (sy = [-1, 1], sz2 = [-1, 1])
+        let(p = M * [0, sy * (sz[0] / 2 + d), sz2 * (sz[1] / 2 + d), 1]) [p[0], p[1], p[2]] + e];
     ca = [A[0][3], A[1][3], A[2][3]];
     cb = [B[0][3], B[1][3], B[2][3]];
     len = norm(cb - ca);
     u = len > 0 ? (cb - ca) / len : [0, 0, 0];
-    difference() {
-        hull() { translate(-u * ea) rect(A, sa, g, g == 0 ? 2 * FILLET : 0); translate(u * eb) rect(B, sb, g, g == 0 ? 2 * FILLET : 0); }
-        if (g == 0 && len > 2 * TUBE_WALL + 2)
-            hull() { translate(u * TUBE_WALL) rect(A, sa, -TUBE_WALL); translate(-u * TUBE_WALL) rect(B, sb, -TUBE_WALL); }
-    }
-}
-
-// a connector's outer hull, solid (what its gussets join)
-module tube_outer(A, sa, B, sb, g = 0, ea = 0, eb = 0) {
-    module rect(M, sz, d) multmatrix(M) translate([0, -sz[0] / 2 - d, -sz[1] / 2 - d]) cube([0.01, sz[0] + 2 * d, sz[1] + 2 * d]);
-    ca = [A[0][3], A[1][3], A[2][3]];
-    cb = [B[0][3], B[1][3], B[2][3]];
-    len = norm(cb - ca);
-    u = len > 0 ? (cb - ca) / len : [0, 0, 0];
-    hull() { translate(-u * ea) rect(A, sa, g); translate(u * eb) rect(B, sb, g); }
+    hull_pts(concat(corners(A, sa, g, -u * ea), corners(B, sb, g, u * eb)));
 }
 
 // gussets (Martin, 10/26: stiffen the inside corners of the L pieces, 45
 // degrees, then bigger): triangles GUSSET a leg, in the layers beside the
-// servo where an L's corner is open (the case fills it in between); each its
-// own module call, one convex piece (a sweep hulls each piece)
+// servo where an L's corner is open (the case fills it in between): a
+// socket's side plates, a U's arms (none round a flange cup: they had nothing
+// to hold there; 10/28); each its own module call, one convex piece (a sweep
+// hulls each piece). Each reaches REACH into both pieces it joins
+// (`gusset_tri`), so it is one solid with them
 GUSSET = 16;
 
+// a gusset's triangle in its own (u, v) plane: the corner at the origin, a
+// leg L along u and one along v, moved REACH back into both pieces (its 45
+// degree face stays where it was)
+function gusset_tri(L) = [[-REACH, -REACH], [L + REACH, -REACH], [-REACH, L + REACH]];
+
 // a triangle (three (y, z) points) as a prism along x from x0 to x1, grown by g
-module tri_prism(p0, p1, p2, x0, x1, g = 0) hull()
-    for (p = [p0, p1, p2], x = [x0, x1]) translate([x, p[0], p[1]]) cube(0.01 + 2 * g, center = true);
+module tri_prism(p0, p1, p2, x0, x1, g = 0) hull_pts([for (p = [p0, p1, p2], x = [x0, x1]) [x, p[0], p[1]]], g);
 
 // a socket whose connector lands on its Z side `face` (+1 / -1): in side
 // plate `s`'s layer (+1 / -1), the corner between the connector's plate and
@@ -220,25 +206,10 @@ module tri_prism(p0, p1, p2, x0, x1, g = 0) hull()
 module socket_gusset(face, s, L = GUSSET, g = 0) {
     zf = face > 0 ? HOUSING_Z : -HOUSING_Z;
     l = min(L, SOCKET_Y0 + HOUSING_Z - sqrt(2) * (HORN_R + PART_CLEAR + 0.5));
-    tri_prism([SOCKET_Y0, zf], [SOCKET_Y0 - l, zf], [SOCKET_Y0, face > 0 ? zf - l : zf + l],
-              s > 0 ? CASE_X[1] + FIT : -HOUSING_X, s > 0 ? HOUSING_X : CASE_X[0] - FIT, g);
+    t = [for (q = gusset_tri(l)) [SOCKET_Y0 - q[0], zf - face * q[1]]];    // u along the connector, v down the socket's front
+    tri_prism(t[0], t[1], t[2], s > 0 ? CASE_X[1] + FIT : -HOUSING_X, s > 0 ? HOUSING_X : CASE_X[0] - FIT, g);
 }
 
-// a flange cup's collar: the corner between the connector's face (where it
-// reaches past the cup's plate) and the cup's side k (0, 1: -Z, +Z; 2, 3:
-// the two Y ends)
-module flange_gusset(k, L = GUSSET, g = 0) {
-    x0 = -HOUSING_X + FILLET;
-    if (k < 2) {
-        z = k == 0 ? -HOUSING_Z : HOUSING_Z;
-        hull() for (y = FLANGE_Y, p = [[x0, z], [x0 + L, z], [x0, z + sign(z) * L]])
-            translate([p[0], y, p[1]]) cube(0.01 + 2 * g, center = true);
-    } else {
-        y = FLANGE_Y[k - 2];
-        hull() for (z = [-HOUSING_Z, HOUSING_Z], p = [[x0, y], [x0 + L, y], [x0, y + (k > 2 ? L : -L)]])
-            translate([p[0], p[1], z]) cube(0.01 + 2 * g, center = true);
-    }
-}
 
 // what a housing leaves empty: the case and its way in from the front, the
 // horns (or the idler stub) and their way in, the four case screws, the
@@ -291,10 +262,9 @@ module flange_keepout(cable = 0) {
     for (s = [-1, 1])
         box_lh([CONN_X[0] - 1.5, CONN_Y[0] - 1.3, s > 0 ? CASE_Z[1] - 2 : -HOUSING_Z - 1],
                [CONN_X[1] + 1.5, CONN_Y[1] + 1.3, s > 0 ? HOUSING_Z + 1 : CASE_Z[0] + 2]);
-    // the plug, and its cable's way out through the gusset on that side
     if (cable != 0)
-        box_lh([CONN_X[0] - 1.5, CONN_Y[0] - 1.3, cable > 0 ? CASE_Z[1] : -HOUSING_Z - GUSSET - 1],
-               [CONN_X[1] + 1.5, CONN_Y[1] + 1.3, cable > 0 ? HOUSING_Z + GUSSET + 1 : -CASE_Z[1]]);
+        box_lh([CONN_X[0] - 1.5, CONN_Y[0] - 1.3, cable > 0 ? CASE_Z[1] : -CASE_Z[1] - PLUG_OUT],
+               [CONN_X[1] + 1.5, CONN_Y[1] + 1.3, cable > 0 ? CASE_Z[1] + PLUG_OUT : -CASE_Z[1]]);
 }
 
 // a screwdriver's way to the case screws, `reach` out from the side plates
@@ -343,14 +313,26 @@ module arm_keepout(s, holes) {
 }
 
 // ------------------------------------------------------------- the palm
+// The palm is a shell: a plate whose face is level with the base servos'
+// tops (Martin, 10/28), the servos' cradles hanging under it, posts down to
+// the mount's column at the palm's back (PLATE_HALF below its mid-plane)
+PALM_TOP = 10;      // the plate's face: the base servos' tops (the grammar's palm face less a wall)
+POST_R = 4.5;       // a post round each of the column's screws
+
 // the palm plate: an outline (y, z) extruded over the plate's thickness
 module plate(outline, x0, x1) translate([x0, 0, 0]) rotate([0, 90, 0]) linear_extrude(height = x1 - x0)
     offset(r = PLATE_ROUND) offset(delta = -PLATE_ROUND) polygon([for (p = outline) [-p[1], p[0]]]);
 
-// a screw from the palm's front through its plate into the mount's column
-module column_screw(y, z) {
-    translate([0, y, z]) cyl_x(M3_CLEAR / 2, -PLATE_HALF - 1, -PLATE_HALF + 3.5);
+// a countersunk M3 from the face at x = top, `depth` down (its head flush with the face)
+module cs_m3(top, depth) {
+    cyl_x(M3_CLEAR / 2, top - depth, top + 1);
+    translate([top - (M3_CS_R - M3_CLEAR / 2), 0, 0]) rotate([0, 90, 0])
+        cylinder(r1 = M3_CLEAR / 2, r2 = M3_CS_R, h = M3_CS_R - M3_CLEAR / 2 + 0.01);
+    cyl_x(M3_CS_R, top, top + 1);
 }
+
+// a screw from the palm's face through its plate and a post into the mount's column
+module column_screw(y, z) translate([0, y, z]) cs_m3(PALM_TOP, PALM_TOP + PLATE_HALF + 1);
 
 // ------------------------------------------------------- the bay and the mount
 // The bay frame: x along the palm normal (toward the palm), y along the bay's

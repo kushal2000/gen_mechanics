@@ -9,8 +9,8 @@ anyone prints it.
   horns stay clear of its parent;
 - a screwdriver reaches every screw in the order ASSEMBLY.md gives: the
   case screws past the part holding the servo, the arm screws at some joint
-  angle or the link slid in on the servo, a cradle's screws from behind the
-  bare plate, the mount's column screws past the cradles put on before;
+  angle or the link slid in on the servo, a cradle's screws and the mount's
+  column screws from the palm's face past the cradles put on before;
 - no two other parts touch at the zero pose;
 - how far each part reaches outside its simulator body (the grammar's
   solid; Martin, 2026-10-23: small overhangs are fine).
@@ -186,32 +186,33 @@ def _bodies(design: Design, solids: Dict) -> Dict:
 
 
 def _cradle_checks(design: Design, solids: Dict, rep: Report) -> None:
-    """A cradle's pads keep their screw bosses, and a screwdriver reaches
-    each screw from behind its plate (before the bay and the mount go on)."""
+    """A cradle's pads under the plate keep their screw bosses; a
+    screwdriver reaches each of their screws, and each of the mount's column
+    screws, from the palm's face past the cradles, their servos and their
+    links (turned anywhere in their range)."""
     import manifold3d as m3
 
-    from .design import PAD_H_MM, PALM_PLATE_MM, PLATE_HALF_MM
+    from .design import PAD_H_MM, PALM_PLATE_MM, PALM_TOP_MM
 
-    x0 = -PLATE_HALF_MM
-    x1 = x0 + PALM_PLATE_MM
+    x1 = PALM_TOP_MM
+    x0 = x1 - PALM_PLATE_MM
+    screws = []                               # (y, z, whose)
     for key, part in design.parts.items():
         if key[0] != "cradle" or key not in solids:
             continue
-        palm = solids.get(part.body)          # the bare plate: the cradles go on first (ASSEMBLY step 3.1)
         kept = 0
         for y, z in part.pads:
-            boss = m3.Manifold.cylinder(PAD_H_MM - 1.5, 3.5, 3.5, 24).rotate([0.0, 90.0, 0.0]).translate([x1, y, z])
-            boss = boss - m3.Manifold.cylinder(PAD_H_MM, 1.25, 1.25, 16).rotate([0.0, 90.0, 0.0]).translate([x1 - 0.1, y, z])
+            boss = m3.Manifold.cylinder(PAD_H_MM - 1.5, 3.5, 3.5, 24).rotate([0.0, 90.0, 0.0]).translate(
+                [x0 - PAD_H_MM + 1.5, y, z])
+            boss = boss - m3.Manifold.cylinder(PAD_H_MM, 1.25, 1.25, 16).rotate([0.0, 90.0, 0.0]).translate(
+                [x0 - PAD_H_MM, y, z])
             kept += (solids[key] ^ boss).volume() >= BOSS_SHARE * boss.volume()
-            driver = m3.Manifold.cylinder(25.0, 2.8, 2.8, 16).rotate([0.0, 90.0, 0.0]).translate([x0 - 25.05, y, z])
-            if palm is not None and (palm ^ driver).volume() > TOUCH_MM3:
-                rep.clashes.append(f"{part.name}: a screwdriver cannot reach its screw at ({y:.0f}, {z:.0f}) from "
-                                   f"behind the plate")
+            if part.body == ("palm", -1):
+                screws.append((y, z, f"{part.name}: its screw"))
         if kept < len(part.pads):
             rep.clashes.append(f"{part.name}: {kept} of its {len(part.pads)} pads keep their screw bosses")
-    # then the mount's column from the front: a screwdriver reaches each of its screws past the cradles,
-    # their servos and their links (turned anywhere in their range)
     palm = design.parts[("palm", -1)]
+    screws += [(y, z, "palm: the column's screw") for y, z in getattr(palm, "column_screws", [])]
     units = []
     for sp in design.servos.values():
         if sp.holder is None or design.parts[sp.holder].body != ("palm", -1) or sp.holder not in solids:
@@ -221,7 +222,7 @@ def _cradle_checks(design: Design, solids: Dict, rep: Report) -> None:
         lo, hi = sp.rot_deg
         poses = [sp.S_parent @ _rot_x(a) @ inv(sp.S_child) for a in (0.0, lo, hi)] if C is not None else []
         units.append((unit, C, poses))
-    for y, z in getattr(palm, "column_screws", []):
+    for y, z, whose in screws:
         driver = m3.Manifold.cylinder(40.0, 2.8, 2.8, 16).rotate([0.0, 90.0, 0.0]).translate([x1 + 0.05, y, z])
         blocked = False
         for unit, C, poses in units:
@@ -230,8 +231,8 @@ def _cradle_checks(design: Design, solids: Dict, rep: Report) -> None:
             elif poses and all((_xf(C, M) ^ driver).volume() > TOUCH_MM3 for M in poses):
                 blocked = True
         if blocked:
-            rep.clashes.append(f"palm: a screwdriver cannot reach the column's screw at ({y:.0f}, {z:.0f}) past "
-                               f"the base servos' cradles and links")
+            rep.clashes.append(f"{whose} at ({y:.0f}, {z:.0f}): a screwdriver cannot reach it from the palm's face "
+                               f"past the base servos' cradles and links")
 
 
 def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
