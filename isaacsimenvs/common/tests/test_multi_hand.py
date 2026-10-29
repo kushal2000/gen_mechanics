@@ -47,3 +47,19 @@ def test_uneven_split_and_bad_refs(mh):
     assert sizes.max() - sizes.min() <= 1 and sizes.sum() == 12289
     with pytest.raises(KeyError):
         mh.hand_set("multi:not_a_hand")
+
+
+def test_get_robot_spec_takes_a_multi_ref_of_spec_files(mh):
+    """A multi ref whose last member is a spec JSON path ends in .spec.json too; it is still a hand set (the
+    joint transformer looks the template up this way)."""
+    from isaacsimenvs.common.robots import get_robot_spec
+    a = "assets/urdf/unified_dynamics_commercial_hands/allegro/allegro_left.spec.json"
+    b = "assets/urdf/unified_dynamics_commercial_hands/wuji2/wuji2_left.spec.json"
+    t = get_robot_spec(f"multi:{a}+{b}")
+    assert t.num_hand_joints == max(get_robot_spec(a).num_hand_joints, get_robot_spec(b).num_hand_joints)
+
+
+def test_a_manifest_names_its_whole_family(mh):
+    hs = mh.hand_set("multi:assets/urdf/27oct_grammar_random_hands/manifest.json")
+    assert hs.n_hands == 100
+    assert hs.specs[0].hand_name == "coarse_s0_000" and hs.specs[-1].hand_name == "coarse_s0_099"

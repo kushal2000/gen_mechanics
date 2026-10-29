@@ -52,14 +52,15 @@ def get_robot_spec(name: str) -> RobotSpec:
     """Look up a spec by name, or fail with the list of valid names."""
     if name in REGISTRY:
         return REGISTRY[name]
+    # Several hands in one scene: a padded template over their specs (robots/multi_hand.py). Before the spec-JSON
+    # case: "multi:a.spec.json+b.spec.json" also ends in .spec.json.
+    from isaacsimenvs.common.robots.multi_hand import hand_set, is_multi_ref
+    if is_multi_ref(name):
+        return hand_set(name).template
     # A hand described by its own spec JSON (e.g. a generated primitive hand,
     # experiments/14oct_design_search/primitive_hands.py): a path, absolute or from the repo.
     if name.endswith(".spec.json"):
         return _spec_from_file(name)
-    # Several hands in one scene: a padded template over their specs (robots/multi_hand.py).
-    from isaacsimenvs.common.robots.multi_hand import hand_set, is_multi_ref
-    if is_multi_ref(name):
-        return hand_set(name).template
     # A generated population's shared template, by name or by file. Resolved
     # here so everything that asks -- the env AND the network, which
     # interpolates its own copy from the config -- gets the same answer.

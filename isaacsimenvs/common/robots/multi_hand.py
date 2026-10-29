@@ -5,7 +5,9 @@ reads a comma in an override as a sweep), or the shorthand
 ``"multi:uniform"`` for every uniform-dynamics commercial hand, or ``"multi:wuji2_lr_2plus"`` for every Wuji v2
 with two or more fingers, left and right (2 x 26 = 52: the full hand, 5 no_<finger>, 10 three- and 10
 two-finger only_<...>, from make_missing_fingers.py --all), or ``"multi:wuji2_lr_2to3"`` for just its two-
-and three-finger hands (2 x 20 = 40). Kit-free, so the network resolves the same
+and three-finger hands (2 x 20 = 40), or ``"multi:<path>/manifest.json"`` for every hand a generated family's
+manifest lists (``"multi:assets/urdf/27oct_grammar_random_hands/manifest.json"``: the 100 random grammar hands). Kit-free,
+so the network resolves the same
 layout as the env (``get_robot_spec`` returns :attr:`HandSet.template`).
 
 Nothing is padded in the SIMULATOR -- every hand keeps its own links and joints (a padded topology made
@@ -70,7 +72,14 @@ def spec_names(ref: str) -> tuple[str, ...]:
         return WUJI2_LR_2PLUS
     if body == "wuji2_lr_2to3":
         return WUJI2_LR_2TO3
-    names = tuple(n.strip() for n in body.split("+") if n.strip())
+    if body.endswith("manifest.json"):
+        # A generated hand family's manifest (e.g. assets/urdf/27oct_grammar_random_hands/manifest.json): every
+        # hand it lists, in its order, by spec JSON path.
+        import json
+        from hand_sampler import resolve
+        names = tuple(h["spec"] for h in json.loads(resolve(body).read_text())["hands"])
+    else:
+        names = tuple(n.strip() for n in body.split("+") if n.strip())
     if len(names) < 1 or len(set(names)) != len(names):
         raise ValueError(f"{ref!r}: need one or more distinct robot specs")
     return names
