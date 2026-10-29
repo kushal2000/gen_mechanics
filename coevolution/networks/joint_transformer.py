@@ -64,12 +64,15 @@ class _EncoderLayer(nn.Module):
     """
 
     def __init__(self, d_model: int, n_heads: int, ff_mult: int, dropout: float,
-                 affine_norm: bool = True):
+                 affine_norm: bool = True, attention: str = "matmul"):
         super().__init__()
         if d_model % n_heads:
             raise ValueError(f"d_model {d_model} not divisible by n_heads {n_heads}")
+        if attention not in ("matmul", "sdpa"):
+            raise ValueError(f"attention must be 'matmul' or 'sdpa', got {attention!r}")
         self.n_heads = n_heads
         self.dropout = dropout
+        self.attention = attention
         self.ln_attn = nn.LayerNorm(d_model, elementwise_affine=affine_norm)
         self.qkv = nn.Linear(d_model, 3 * d_model)
         self.proj = nn.Linear(d_model, d_model)
@@ -88,16 +91,23 @@ class _EncoderLayer(nn.Module):
             t.view(batch, tokens, heads, dim // heads).transpose(1, 2)
             for t in (q, k, v)
         )
-        scores = (q @ k.transpose(-2, -1)) * (q.shape[-1] ** -0.5)
-        if key_mask is not None:
-            # A ghost joint is a token the design does not have. Masking the KEY
-            # only: its own row still attends (to the global token at minimum,
-            # which is never masked), so no row is all -inf and no softmax NaNs.
-            scores = scores.masked_fill(~key_mask[:, None, None, :], float("-inf"))
-        weights = scores.softmax(dim=-1)
-        if self.dropout and self.training:
-            weights = F.dropout(weights, p=self.dropout)
-        attn = weights @ v
+        if self.attention == "sdpa":
+            # The fused kernel (flash / memory-efficient): no (B, heads, T, T) scores in memory. Its launch grid is
+            # batch x heads, capped at 65535: fine for 1 head at 24,576 and 16,384, not for 4 heads at 16,384.
+            mask = key_mask[:, None, None, :] if key_mask is not None else None
+            attn = F.scaled_dot_product_attention(q, k, v, attn_mask=mask,
+                                                  dropout_p=self.dropout if self.training else 0.0)
+        else:
+            scores = (q @ k.transpose(-2, -1)) * (q.shape[-1] ** -0.5)
+            if key_mask is not None:
+                # A ghost joint is a token the design does not have. Masking the KEY
+                # only: its own row still attends (to the global token at minimum,
+                # which is never masked), so no row is all -inf and no softmax NaNs.
+                scores = scores.masked_fill(~key_mask[:, None, None, :], float("-inf"))
+            weights = scores.softmax(dim=-1)
+            if self.dropout and self.training:
+                weights = F.dropout(weights, p=self.dropout)
+            attn = weights @ v
         x = x + self.proj(attn.transpose(1, 2).reshape(batch, tokens, dim))
         return x + self.ff(self.ln_ff(x))
 
@@ -361,8 +371,8 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         self.global_proj = nn.Linear(self.global_raw_dim, d_model)
         block = _ParallelEncoderLayer if self.parallel_block else _EncoderLayer
         self.layers = nn.ModuleList(
-            block(d_model, self.n_heads, self.ff_mult, self.dropout,
-                  affine_norm=self.affine_norm)
+            block(d_model, self.n_heads, self.ff_mult, self.dropout, affine_norm=self.affine_norm,
+                  **({"attention": self.attention} if block is _EncoderLayer else {}))
             for _ in range(self.n_layers)
         )
         self.ln_out = nn.LayerNorm(d_model, elementwise_affine=self.affine_norm)
@@ -531,6 +541,8 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # pure memory traffic) for ~7% and a little activation memory. Left on
         # by default so existing checkpoints keep loading.
         self.affine_norm = bool(params.get("affine_norm", True))
+        # "matmul" (explicit scores, the default) or "sdpa" (torch's fused kernel; see _EncoderLayer.forward).
+        self.attention = str(params.get("attention", "matmul"))
         self.value_head_units = list(params.get("value_head_units", [256, 128]))
         self.robot_spec_name = params["robot_spec"]
         # Joints ahead of the spec's own in canonical order that the spec does not know about, treated as arm

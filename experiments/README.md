@@ -15,7 +15,8 @@ results. Training logs and checkpoints go to `debug_outputs/train_logs/<experime
 | [`27oct_grammar_random_hands/`](27oct_grammar_random_hands/) | 100 random grammar hands (`make_random.py`), the two design agents' picks, their repose runs; viewers for hands, joint tokens and link boxes |
 | [`27oct_transformer_debug/`](27oct_transformer_debug/) | Why the joint transformer stalled on repose (the 27 Oct "fast config"), one-change arms, the conclusions |
 | [`29oct_multi_embodiment_transformer/`](29oct_multi_embodiment_transformer/) | One transformer policy across all 100 grammar hands (the 14 Oct setup, masks, home actions) |
-| [`29oct_mlp_vs_transformer/`](29oct_mlp_vs_transformer/) | MLP vs joint transformer on four hands x two seeds, same env |
+| [`29oct_mlp_vs_transformer/`](29oct_mlp_vs_transformer/) | MLP vs joint transformer on three hands, same env (home actions, action delay off) |
+| [`29oct_transformer_speed/`](29oct_transformer_speed/) | Network profiling: why the transformer is slower than the MLP per sample, and the route to a fast one with many parameters |
 | [`grammar_viewer/`](grammar_viewer/) | Browse Martin's hand grammar (CPU only) |
 | [`_shared/`](_shared/) | Helpers several experiments call (launchers, run templates, figure style, renderers) |
 

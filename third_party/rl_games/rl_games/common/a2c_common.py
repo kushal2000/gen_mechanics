@@ -258,6 +258,10 @@ class A2CBase(BaseAlgorithm):
 
         self.mixed_precision = self.config.get('mixed_precision', False)
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.mixed_precision and self.ppo_device != 'cpu')
+        # rollout_autocast (gen_mechanics, 29 Oct): run the policy's rollout forwards (get_action_values, get_values)
+        # under the same fp16 autocast the update uses. Off, every rollout forward is fp32 -- 2x the time for a
+        # bandwidth-bound network (the joint transformer: 102 vs 47 ms per step at 24,576 envs).
+        self.rollout_autocast = bool(self.config.get('rollout_autocast', False)) and self.mixed_precision
 
         self.last_lr = self.config['learning_rate']
         self.frame = 0
@@ -461,7 +465,7 @@ class A2CBase(BaseAlgorithm):
             'rnn_states' : rnn_states
         }
 
-        with torch.no_grad():
+        with torch.no_grad(), torch.cuda.amp.autocast(enabled=self.rollout_autocast):
             res_dict = self.model(input_dict)
             if self.has_central_value:
                 states = obs['states']
@@ -474,7 +478,7 @@ class A2CBase(BaseAlgorithm):
         return res_dict
 
     def get_values(self, obs, rnn_states):
-        with torch.no_grad():
+        with torch.no_grad(), torch.cuda.amp.autocast(enabled=self.rollout_autocast):
             if self.has_central_value:
                 states = obs['states']
                 self.central_value_net.eval()
