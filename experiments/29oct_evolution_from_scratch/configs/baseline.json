@@ -1,0 +1,19 @@
+{
+ "strategy": "archive",
+ "population": 30,
+ "children": 16,
+ "admitted": 8,
+ "protect_generations": 1,
+ "sigmoid_lambda": 10.0,
+ "sigmoid_midpoint": 0.5,
+ "screen_floor": 0.0,
+ "novelty_k": 5,
+ "rules": "FEETECH_COARSE_RULES",
+ "grid": {
+  "n_rigid": 5,
+  "n_moving": 2,
+  "n_slots": 5
+ },
+ "mutation_tries": 8,
+ "seed": 0
+}

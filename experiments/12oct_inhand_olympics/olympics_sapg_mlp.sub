@@ -64,7 +64,8 @@ mkdir -p "$RUN_DIR"
 WANDB_ARGS=()
 if [[ "${WANDB:-1}" == 1 ]]; then
     WANDB_ARGS=(--wandb_activate --wandb_project "${WANDB_PROJECT:-gen_mechanics_inhand_olympics}"
-                --wandb_entity "${WANDB_ENTITY:-kk837}" --wandb_group "$STUDY" --wandb_name "$RUN_NAME")
+                --wandb_entity "${WANDB_ENTITY:-kk837}" --wandb_group "${WANDB_GROUP:-$STUDY}"
+                --wandb_name "${WANDB_NAME:-$RUN_NAME}")   # WANDB_NAME / WANDB_GROUP: optional short names
 fi
 export WANDB_DIR="$RUN_DIR"
 echo "[olympics] node $(hostname)  run $RUN_DIR"

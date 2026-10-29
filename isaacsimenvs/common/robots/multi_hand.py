@@ -80,6 +80,25 @@ def slot_layout(ref: str) -> str:
     return head if sep and head in SLOT_LAYOUTS else "dense"
 
 
+def manifest_grid(ref: str):
+    """The slot grid a ``multi:template:<path>/manifest.json`` pins with a ``"grid": {"n_rigid", "n_moving",
+    "n_slots"}`` entry, or None. Embodiment evolution pins it so every generation's population, whatever its hands,
+    has the same slots -- the same network shape, so each generation's checkpoint loads into the next."""
+    body = ref[len(MULTI_PREFIX):]
+    head, sep, rest = body.partition(":")
+    if sep and head in SLOT_LAYOUTS:
+        body = rest
+    if not body.endswith("manifest.json"):
+        return None
+    import json
+    from hand_sampler import resolve
+    g = json.loads(resolve(body).read_text()).get("grid")
+    if g is None:
+        return None
+    from .finger_layout import SlotGrid
+    return SlotGrid(n_rigid=int(g["n_rigid"]), n_moving=int(g["n_moving"]), n_slots=int(g.get("n_slots", 5)))
+
+
 def spec_names(ref: str) -> tuple[str, ...]:
     body = ref[len(MULTI_PREFIX):]
     head, sep, rest = body.partition(":")
@@ -205,7 +224,7 @@ def hand_set(ref: str) -> HandSet:
     if layout in ("finger", "template"):
         from .finger_layout import DEFAULT_GRID, finger_layout, grid_for
         layouts = tuple(finger_layout(s) for s in specs)
-        grid = grid_for(layouts) if layout == "template" else DEFAULT_GRID
+        grid = (manifest_grid(ref) or grid_for(layouts)) if layout == "template" else DEFAULT_GRID
         layouts = tuple(l.with_grid(grid) for l in layouts)
         slots = tuple(l.slot_of_joint for l in layouts)
         fslots = tuple(l.finger_slot_of_finger for l in layouts)
@@ -269,4 +288,4 @@ def hand_set(ref: str) -> HandSet:
 
 
 __all__ = ["HandSet", "MULTI_PREFIX", "PALM", "SLOT_LAYOUTS", "UNIFORM_HANDS", "hand_labels", "hand_set",
-           "is_multi_ref", "slot_joint", "slot_layout", "slot_link", "slot_tip", "spec_names"]
+           "is_multi_ref", "manifest_grid", "slot_joint", "slot_layout", "slot_link", "slot_tip", "spec_names"]

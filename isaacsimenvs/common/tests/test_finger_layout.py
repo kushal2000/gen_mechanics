@@ -129,3 +129,18 @@ def test_joint_moving_flags_follow_the_cut():
     hs = hand_set("multi:template:" + str(GRAMMAR / "coarse_s0_000/coarse_s0_000.spec.json"))
     t = hs.per_env(np.zeros(3, dtype=np.int64))["joint_moving"]
     assert t.shape == (3, hs.n_joints) and t[0][list(lay.with_grid(hs.grid).slot_of_joint)].tolist() == list(mv)
+
+
+def test_a_manifest_can_pin_the_template_grid(tmp_path):
+    """Evolution pins the grid in its manifests: a small population keeps the full 5 + 2 grid (and network shape)."""
+    from isaacsimenvs.common.robots.multi_hand import hand_set, manifest_grid
+    hands = [{"spec": str(GRAMMAR / n / f"{n}.spec.json")} for n in ("coarse_s0_025", "coarse_s0_001")]
+    free = tmp_path / "free" / "manifest.json"
+    pinned = tmp_path / "pinned" / "manifest.json"
+    free.parent.mkdir(); pinned.parent.mkdir()
+    free.write_text(json.dumps({"hands": hands}))
+    pinned.write_text(json.dumps({"hands": hands, "grid": {"n_rigid": 5, "n_moving": 2, "n_slots": 5}}))
+    assert manifest_grid(f"multi:template:{free}") is None
+    hs_free, hs_pin = hand_set(f"multi:template:{free}"), hand_set(f"multi:template:{pinned}")
+    assert hs_pin.grid == SlotGrid(5, 2, 5) and hs_pin.n_joints == 36
+    assert hs_free.n_joints < hs_pin.n_joints
