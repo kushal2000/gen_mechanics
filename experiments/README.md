@@ -12,6 +12,10 @@ results. Training logs and checkpoints go to `debug_outputs/train_logs/<experime
 | [`15oct_pen_repose/`](15oct_pen_repose/) | 6D pen repose (v2: palm rotation locked, uniform goals) across hand designs; spin / flip fine-tunes |
 | [`15oct_pen_twist/`](15oct_pen_twist/) | Twisting a cap off the pen: the twist pen, the tightness curriculum, square vs round cap |
 | [`16oct_viser_evals/`](16oct_viser_evals/) | One viewer for every fixed-palm policy (switch its task and goals live); the design gallery |
+| [`27oct_grammar_random_hands/`](27oct_grammar_random_hands/) | 100 random grammar hands (`make_random.py`), the two design agents' picks, their repose runs; viewers for hands, joint tokens and link boxes |
+| [`27oct_transformer_debug/`](27oct_transformer_debug/) | Why the joint transformer stalled on repose (the 27 Oct "fast config"), one-change arms, the conclusions |
+| [`29oct_multi_embodiment_transformer/`](29oct_multi_embodiment_transformer/) | One transformer policy across all 100 grammar hands (the 14 Oct setup, masks, home actions) |
+| [`29oct_mlp_vs_transformer/`](29oct_mlp_vs_transformer/) | MLP vs joint transformer on four hands x two seeds, same env |
 | [`grammar_viewer/`](grammar_viewer/) | Browse Martin's hand grammar (CPU only) |
 | [`_shared/`](_shared/) | Helpers several experiments call (launchers, run templates, figure style, renderers) |
 

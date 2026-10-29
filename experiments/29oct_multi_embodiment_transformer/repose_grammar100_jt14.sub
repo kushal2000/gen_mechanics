@@ -8,18 +8,19 @@
 #SBATCH --partition=portal
 #SBATCH --exclude=portal-compute-01
 #SBATCH --gres=gpu:1
-#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/27oct_grammar_random_hands/%x-%j.log
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29oct_multi_embodiment_transformer/%x-%j.log
 # Pen repose v2, ONE policy across all 100 random grammar hands (multi-embodiment), the joint-token TRANSFORMER.
-# Replaces repose_grammar100_jt_d32.sub (job 697447: the 27 Oct "fast config", 0 goals at epoch 5000 -- see
+# Replaces experiments/27oct_grammar_random_hands/repose_grammar100_jt_d32.sub (job 697447: the 27 Oct "fast config", 0 goals at epoch 5000 -- see
 # experiments/27oct_transformer_debug/README.md). This run:
 #   network   the 14 Oct setup, OlympicsJointTransformerSAPG.yaml's own: width 128, 4 layers, 1 head, ff x4,
 #             minibatch 16384, 2 mini-epochs, lr 1e-4 adaptive (48 updates per epoch); not compiled
 #   masks     mask_ghost_actions true + masked_arm_dims [3, 4, 5] (the YAML's defaults since 28 Oct): a padded
 #             hand's ghost slots and the locked wrist rotation drop out of the PPO ratio, the KL and the entropy
-#   actions   env.action.finger_target=home: action 0 is each hand's default (open) pose, +-1 its limits
+#   actions   env.action.finger_target=home: action 0 is each hand's default (open) pose, +-1 its limits; action
+#             delay OFF (the user's call for the 29 Oct runs; the 7 Oct default has it on)
 #   tokens    the pre-27-Oct tokens (ordered boxes, no joint_origin): the 27 Oct tokens were worse for the
 #             transformer in the debug rounds; the env drops to ordered boxes when obs_list lacks joint_origin
-#   sbatch experiments/27oct_grammar_random_hands/repose_grammar100_jt14.sub
+#   sbatch experiments/29oct_multi_embodiment_transformer/repose_grammar100_jt14.sub
 set -euo pipefail
 cd /share/portal/kk837/gen_mechanics
 export HAND=multi:assets/urdf/27oct_grammar_random_hands/manifest.json
@@ -31,8 +32,8 @@ export NUM_ENVS=24576 EPOCHS=5000 SEED=100 GAMMA=0.99
 export FINGER_RESET=1.0 KEYPOINT=best_so_far
 OLD_OBS="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot]"
 OLD_STATE="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot,object_keypoints_rel_joint,palm_keypoints,ee_pos,ee_rot,ee_vel,object_rot,fingertip_pos_rel_palm,closest_keypoint_max_dist,closest_fingertip_dist,progress,successes,reward]"
-export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.obs.obs_list=$OLD_OBS env.obs.state_list=$OLD_STATE agent.params.network.mask_ghost_actions=true agent.params.network.masked_arm_dims=[3,4,5]"
+export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.action.use_action_delay=False env.obs.obs_list=$OLD_OBS env.obs.state_list=$OLD_STATE agent.params.network.mask_ghost_actions=true agent.params.network.masked_arm_dims=[3,4,5]"
 export RUN_TAG=jt14_home_mask
-export LOG_GROUP=27oct_grammar_random_hands
+export LOG_GROUP=29oct_multi_embodiment_transformer
 export WANDB_PROJECT=gen_mechanics_pen_repose_grammar100 WANDB=1
 exec bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub

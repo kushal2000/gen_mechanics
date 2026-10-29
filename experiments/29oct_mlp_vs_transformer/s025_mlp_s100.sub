@@ -1,0 +1,28 @@
+#!/bin/bash
+#SBATCH --job-name=MT_s025_mlp_s100
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29oct_mlp_vs_transformer/%x-%j.log
+# MLP vs transformer: coarse_s0_025, the pick-from-100 agent's choice (13 hand joints), the MLP (minibatch 114688, 5 mini-epochs, lr 5e-4), seed 100. Pen repose v2, finger_target=home,
+# action delay off, the pre-27-Oct tokens. Written by experiments/29oct_mlp_vs_transformer/make_subs.py (README.md).
+#   sbatch experiments/29oct_mlp_vs_transformer/s025_mlp_s100.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export HAND=assets/urdf/27oct_grammar_random_hands/coarse_s0_025/coarse_s0_025.spec.json
+export HAND_TAG=s025
+export TASKS=pen_repose
+export PEN_SHAPE=box
+export ARCH=mlp
+export NUM_ENVS=24576 MINIBATCH=114688 EPOCHS=5000 SEED=100 GAMMA=0.99
+export FINGER_RESET=1.0 KEYPOINT=best_so_far
+export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.action.use_action_delay=False env.obs.obs_list=[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot] env.obs.state_list=[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot,object_keypoints_rel_joint,palm_keypoints,ee_pos,ee_rot,ee_vel,object_rot,fingertip_pos_rel_palm,closest_keypoint_max_dist,closest_fingertip_dist,progress,successes,reward]"
+export RUN_TAG=mt_home
+export LOG_GROUP=29oct_mlp_vs_transformer
+export WANDB_PROJECT=gen_mechanics_mlp_vs_jt WANDB=1
+exec bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
