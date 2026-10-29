@@ -34,16 +34,19 @@ seed 100. Every setting is written out in the `.sub`.
 
 | `.sub` | hand | job | controls (same hand, env, seed) | wandb |
 |---|---|---|---|---|
-| `s025_finger_s100.sub` | `coarse_s0_025` (13 hand joints, 4 fingers) | | MLP 782703, per-joint transformer 782705 (`29oct_mlp_vs_transformer`) | `gen_mechanics_mlp_vs_jt` |
+| `s025_finger_s100.sub` | `coarse_s0_025` (13 hand joints, 4 fingers) | 796258 (portal-compute-02; the controls are on -03, so fps are not comparable across them, epochs and goals are) | MLP 782703, per-joint transformer 782705 (`29oct_mlp_vs_transformer`) | `gen_mechanics_mlp_vs_jt` |
 | `grammar100_finger_s100.sub` | all 100 grammar hands, `multi:finger:` | not submitted | per-joint transformer 782711 (`29oct_multi_embodiment_transformer`) | `gen_mechanics_pen_repose_grammar100` |
 
 Logs: `debug_outputs/train_logs/29oct_per_finger_transformer/`.
 
 ## Smoke (before submitting)
 
-3 epochs at 6,144 envs on this node: the single hand and the 100-hand finger-major template both build, compile and
-log epochs (observation width unchanged from the per-joint network on the single hand; 31 hand slots + 6 wrist on the
-template). Filled in below from the smoke logs.
+3 epochs at 6,144 envs on portal-compute-03 (29 Oct, logs under `debug_outputs/train_logs/29oct_per_finger_transformer_smoke/`):
+
+| smoke | builds, compiles, trains | epoch 2-3 | saved config |
+|---|---|---|---|
+| `coarse_s0_025` | yes | 0.8 s (sim 0.6 + update 0.2) | `token_mode: finger`, 128 x 2, 4 heads, compiled, no affine, fp16 rollouts |
+| all 100 grammar hands, `multi:finger:` | yes, hands dealt 61-62 envs each | 5.1-5.6 s (100 articulations in one scene) | the same, 31 hand slots + 6 wrist |
 
 ## Results
 
