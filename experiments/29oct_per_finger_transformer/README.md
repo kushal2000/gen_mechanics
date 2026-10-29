@@ -35,7 +35,7 @@ seed 100. Every setting is written out in the `.sub`.
 | `.sub` | hand | job | controls (same hand, env, seed) | wandb |
 |---|---|---|---|---|
 | `s025_finger_s100.sub` | `coarse_s0_025` (13 hand joints, 4 fingers) | 796258 (portal-compute-02; the controls are on -03, so fps are not comparable across them, epochs and goals are) | MLP 782703, per-joint transformer 782705 (`29oct_mlp_vs_transformer`) | `gen_mechanics_mlp_vs_jt` |
-| `grammar100_finger_s100.sub` | all 100 grammar hands, `multi:finger:` | not submitted | per-joint transformer 782711 (`29oct_multi_embodiment_transformer`) | `gen_mechanics_pen_repose_grammar100` |
+| `grammar100_finger_s100.sub` | all 100 grammar hands, `multi:finger:` | 796276 (portal-compute-02, 36 h limit) | per-joint transformer 782711 (`29oct_multi_embodiment_transformer`) | `gen_mechanics_pen_repose_grammar100` |
 
 Logs: `debug_outputs/train_logs/29oct_per_finger_transformer/`.
 
