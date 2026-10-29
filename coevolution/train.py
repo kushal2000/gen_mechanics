@@ -256,6 +256,10 @@ def main() -> None:
         observers.append(JointTransformerNormObserver())
         from coevolution.utils.rlgames_utils import SchedulerBoundsObserver
         observers.append(SchedulerBoundsObserver())
+        # GENMECH_UPDATE_STATS=<path.jsonl>: per-update gradient / step / KL diagnostics by part of the network.
+        from coevolution.utils.update_stats import maybe_observer
+        if (update_stats := maybe_observer()) is not None:
+            observers.append(update_stats)
         if args_cli.wandb_activate:
             from coevolution.utils.wandb_utils import WandbAlgoObserver
 
