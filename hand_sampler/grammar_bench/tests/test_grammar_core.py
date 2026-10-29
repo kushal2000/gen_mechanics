@@ -42,6 +42,7 @@ from hand_sampler.grammar.hand import (
     hand_from_dict,
     hand_to_dict,
     parameter_count,
+    servo_poses,
     turned_servo,
 )
 
@@ -155,6 +156,23 @@ def test_coupled_and_sliding_joints_only_without_rules():
     assert any("coupled joints not allowed" in o for o in check(h, FEETECH_RULES))
 
 
+def test_servo_poses_turn_the_fewest():
+    """Of the ways a finger's bend servos can sit with room in every link,
+    the one with the fewest turned (standing on the finger's back), then the
+    fewest flipped (lying along the link after their joint); the lengths a
+    finger may take do not change."""
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 40)))
+    assert servo_poses(f) == ("lying", "lying", "flipped")                  # 40 mm: two yokes, the body in the tip
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 30), (BEND, 40)))
+    assert servo_poses(f) == ("lying", "lying", "turned")                   # 30 mm: two yokes need 31
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 50), (BEND, 40)))
+    assert servo_poses(f) == ("lying", "lying", "flipped", "flipped")       # a cradle and a yoke in 50 mm
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 60), (BEND, 30)))
+    assert servo_poses(f) == ("lying", "lying", "flipped", "lying")         # two cradles in 60 mm
+    f = _finger(0, 40, joints=((BEND, 70), (BEND, 40), (TWIST, 30), (BEND, 40), (BEND, 40)))
+    assert servo_poses(f) == ("lying", "lying", "lying", "turned", "flipped")   # 30 mm after a twist: turned
+
+
 def test_allowed_lengths_follow_the_motor_floors():
     f = _finger(0, 40, joints=((SPREAD, 50), (BEND, 50), (TWIST, 50), (BEND, 30)))
     assert allowed_lengths(f, 0, True, 90) == [0] + list(range(30, 91, 10))    # spread then bend (30 turns it); may cross
@@ -164,6 +182,7 @@ def test_allowed_lengths_follow_the_motor_floors():
     assert not any(turned_servo(f, j) for j in range(4))
     b = _finger(0, 40, joints=((BEND, 40), (BEND, 40), (BEND, 40)))        # 40 mm links turn the bend servos after them
     assert [turned_servo(b, j) for j in range(3)] == [False, True, True]
+    assert servo_poses(b) == ("lying", "turned", "flipped")                 # where a link has room, one flips instead
     assert [allowed_lengths(b, j, True, 90)[0] for j in range(3)] == [30, 40, 40]
     assert allowed_lengths(f, 0, False, 90) == [0] + list(range(10, 91, 10))
     assert allowed_lengths(f, 3, False, 90) == list(range(10, 91, 10))

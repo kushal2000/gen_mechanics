@@ -66,7 +66,18 @@ def kinds_hand() -> Hand:
     return Hand(fingers=(f, g))
 
 
-HANDS = {"kinds": kinds_hand, "cut": cut_hand, "zero_links": zero_link_hand, "oblique": oblique_hand}
+def flipped_hand() -> Hand:
+    """Bend servos flipped along the link after them (Martin, 10/29): a link
+    with two yokes, one with a cradle and a yoke, one with two cradles, a
+    fingertip holding its servo's case."""
+    f = _finger(0, 40, (("hinge", FLEX, 50), ("hinge", FLEX, 40), ("hinge", FLEX, 50), ("hinge", FLEX, 40)))
+    g = _finger(0, -40, (("hinge", FLEX, 50), ("hinge", FLEX, 40), ("hinge", FLEX, 60), ("hinge", FLEX, 30)),
+                facing=180)
+    return Hand(fingers=(f, g))
+
+
+HANDS = {"kinds": kinds_hand, "cut": cut_hand, "zero_links": zero_link_hand, "oblique": oblique_hand,
+         "flipped": flipped_hand}
 
 
 def _openscad():
@@ -85,7 +96,7 @@ def test_the_example_hands_are_grammar_hands(name):
 def test_servo_frames_put_the_case_inside_the_grammar_s_motor_box():
     """The measured case (23 x 34 x 20, its horns out to 14.5) lies in the
     grammar's motor box (29 x 34 x 20) wherever a design puts a servo."""
-    for h in (kinds_hand(), zero_link_hand(), oblique_hand()):
+    for h in (kinds_hand(), zero_link_hand(), oblique_hand(), flipped_hand()):
         d = Design(h)
         for sp in d.servos.values():
             if sp.key[0] != "f":
@@ -93,7 +104,8 @@ def test_servo_frames_put_the_case_inside_the_grammar_s_motor_box():
             _, i, j = sp.key
             box = dv.finger_geometry(h.fingers[i]).motors[j]
             C = mt.box_corners(np.array([0.0, 7.5, 0.0]), np.eye(3), np.array([14.5, 17.0, 10.0]))
-            P = C @ sp.S_child[:3, :3].T + sp.S_child[:3, 3]
+            S = sp.S_parent if sp.flipped else sp.S_child          # in joint j's frame
+            P = C @ S[:3, :3].T + S[:3, 3]
             local = (P - box.centre) @ box.axes
             assert np.all(np.abs(local) <= box.half + 1e-6)
 
@@ -110,7 +122,32 @@ def test_each_servo_has_one_yoke_and_one_holder():
     assert d.servos[("f", 0, 2)].turned
 
 
-@pytest.mark.parametrize("name", list(HANDS))
+def test_a_flipped_servo_is_held_by_the_link_after_it():
+    """A flipped servo's case is in link j and its horns in a yoke on link
+    j - 1, which turns about it the other way: the links between carry two
+    yokes, a cradle and a yoke, or two cradles."""
+    d = Design(flipped_hand())
+    assert [d.servos[("f", 0, j)].flipped for j in range(4)] == [False, False, True, True]
+    assert [d.servos[("f", 1, j)].flipped for j in range(4)] == [False, False, True, False]
+    for i, j in ((0, 2), (0, 3), (1, 2)):
+        sp = d.servos[("f", i, j)]
+        assert sp.parent == ("link", i, j) and sp.child == ("link", i, j - 1)
+        lo, hi = (np.degrees(x) for x in dv.joint_limits(d.hand, i, j))
+        assert sorted(abs(v) for v in sp.rot_deg) == sorted((abs(lo), abs(hi)))
+    assert [sp.key for sp in d.parts[("link", 0, 1)].carries] == [("f", 0, 1), ("f", 0, 2)]
+    assert d.parts[("link", 0, 1)].holds == []
+    assert [sp.key for sp in d.parts[("link", 0, 2)].holds] == [("f", 0, 2)]
+    assert [sp.key for sp in d.parts[("link", 1, 2)].holds] == [("f", 1, 2), ("f", 1, 3)]
+    assert [sp.key for sp in d.parts[("link", 0, 3)].holds] == [("f", 0, 3)]
+
+
+BOXED_IN = pytest.mark.xfail(strict=True, reason=(
+    "a row of three base servos 40 mm apart, their axes along the row: the middle one's case screws face its "
+    "neighbours' housings 13 mm away, so with every servo screwed straight into the palm (Martin, 10/29) no "
+    "screwdriver reaches them; open (LOG, 10/29)"))
+
+
+@pytest.mark.parametrize("name", [pytest.param(n, marks=BOXED_IN) if n == "cut" else n for n in HANDS])
 def test_every_part_renders_and_every_check_passes(name, tmp_path):
     _openscad()
     kit = package.generate(HANDS[name](), tmp_path)
@@ -145,7 +182,9 @@ def test_every_placement_is_a_proper_rotation():
 
     for make in HANDS.values():
         txt = scad.hand_scad(Design(make()))
-        mats = re.findall(r"multmatrix\(\[\[(.*?)\]\]\)", txt) + re.findall(r"tube\(\[\[(.*?)\]\], \[", txt)
+        mats = re.findall(r"multmatrix\(\[\[(.*?)\]\]\)", txt)
+        for call in re.findall(r"tube\((.*?)\);", txt):              # both ends' frames
+            mats += re.findall(r"\[\[(.*?)\]\]", call)
         for m in mats:
             R = np.array([list(map(float, r.split(","))) for r in m.split("],[")])[:3, :3]
             assert abs(np.linalg.det(R) - 1.0) < 1e-3

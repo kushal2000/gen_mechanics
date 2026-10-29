@@ -9,7 +9,9 @@ throughout; a part's frame is its rigid body's frame (the palm frame for the
 palm, link j's frame for finger link j).
 
 Each joint has a parent (the part holding the servo's case: the palm or
-link j - 1) and a child (link j, holding the horns in a yoke). Every part is
+link j - 1) and a child (link j, holding the horns in a yoke); a flipped
+servo (`hand.servo_poses`) the other way round, its case in link j and its
+horns in a yoke on link j - 1, which turns about it. Every part is
 its positive pieces, less the keep-outs of the servos it holds, less
 - as a child: what its joint's servo case (and plug) sweeps over the joint's
   range relative to it;
@@ -17,13 +19,11 @@ its positive pieces, less the keep-outs of the servos it holds, less
   the child, its horns and the servo it carries, grown by `PART_CLEAR`).
 The child keeps its shape near a joint and the parent gives way.
 
-The palm is a shell: a plate whose face is level with the base servos'
-tops, their cradles hanging under it, posts down to the mount's column. A
-base servo whose cradle can take two pads under the plate has a cradle of
-its own (`_cradle_pads`, `_cradle_parts`): a part in the palm's frame,
-screwed to the servo on the bench, pushed up into a window of the plate and
-screwed to it from the palm's face. Its servo's `holder` names it; `parent`
-stays the palm, the rigid body.
+The palm is a shell (`_palm`): a plate whose face stands a few mm over the
+base servos' tops, a rim down from its edge, every base servo screwed
+straight into its housing under the face (the case screws' screwdrivers
+pass under the plate), and on the main palm a ring round the mount's column
+screws with a spoke out to each housing.
 
 A servo's frame S (servo.py): X along its axis toward the driven horn. It
 is the grammar's motor frame (a, v, w), flipped to (-a, v, -w) where the
@@ -41,7 +41,7 @@ import numpy as np
 
 from hand_sampler.grammar import derive as dv
 from hand_sampler.grammar import motor as mt
-from hand_sampler.grammar.hand import PLATE_HALF_MM, Hand, finger_section, turned_servo
+from hand_sampler.grammar.hand import PLATE_HALF_MM, SEAM_MM, Hand, cut_side_mm, finger_section
 
 SINGLE_ARM_LEAN = 0.5
 """A joint whose axis leans this much along the finger (|a . x| >= 0.5:
@@ -92,18 +92,19 @@ def housing_corners(S: np.ndarray, grow: float = 0.0, y0: float = -9.5) -> np.nd
     C = mt.box_corners(np.array([0.0, (y0 + hy) / 2.0, 0.0]), np.eye(3),
                        np.array([hx + grow, (hy - y0) / 2.0 + grow, hz + grow]))
     return C @ S[:3, :3].T + S[:3, 3]
-PALM_TOP_MM = PLATE_HALF_MM - mt.WALL_MM   # the palm's face: level with the base servos' tops (library PALM_TOP)
+PALM_TOP_MM = PLATE_HALF_MM - mt.WALL_MM   # the base servos' tops (the grammar's palm face less a wall)
+FACE_RAISE_MM = 3.5
+"""The palm's face stands this far over the base servos' tops, its plate's
+underside just above them (Martin, 10/29): the screwdrivers for their case
+screws pass under the plate, never through the face."""
+PALM_FACE_MM = PALM_TOP_MM + FACE_RAISE_MM   # the palm's face (library PALM_FACE)
 PALM_PLATE_MM = 3.0           # the palm's plate, under its face
+RIM_MM = 2.5                  # the shell's rim, down from the face's edge to the palm's back face
+SPOKE_MM = 3.0                # the ring round the column's screws and the spokes from it to the housings
+SPOKE_BOTTOM_MM = -4.0        # how deep the ring and the spokes reach (the cables run under them to the bore)
 POST_R_MM = 4.5               # a post round each of the mount's column screws (library POST_R)
-POST_CLEAR_MM = 6.0           # a post's screw this far from every base sweep and cradle
-CRADLE_CHANNEL_MM = 14.0      # a cradle's servo needs only its own front clear (it is open on two more sides)
-PAD_R_MM, PAD_H_MM = 4.5, 7.0
-"""A base servo's cradle is its own part: the servo is screwed into it on the
-bench, then it goes up into a window of the plate from below, and two pads
-(this radius and height) under the plate take a countersunk M3 x 10 each
-from the palm's face."""
-PAD_SWEEP_MARGIN_MM = 3.5     # pads keep this far from the links' simulator bodies turning (clip 2.4 + 1)
-PAD_COLUMN_R_MM = 24.0        # off the posts round the mount's column screws (16.5 + 4.5 + a gap)
+POST_CLEAR_MM = 6.0           # a post's screw this far from every base sweep and screwdriver
+CRADLE_CHANNEL_MM = 14.0      # a socket's servo needs only its own front clear (it is open on two more sides)
 CLIP_MM = 2.4
 """Every link and fingertip is clipped to its simulator body grown by this
 much (Martin, 2026-10-23: small overhangs are fine; the checks allow 2.5)."""
@@ -166,8 +167,8 @@ class ServoSpot:
     """One servo: its joint, its frame and how it is held and driven."""
 
     key: Tuple                    # ("f", i, j) or ("hinge",)
-    parent: Tuple                 # body holding its case: ("palm", k) or ("link", i, j - 1)
-    child: Tuple                  # body holding its horns: ("link", i, j) or ("palm", 0)
+    parent: Tuple                 # body holding its case: ("palm", k) or ("link", i, j - 1) (flipped: link j)
+    child: Tuple                  # body holding its horns: ("link", i, j) or ("palm", 0) (flipped: link j - 1)
     S_child: np.ndarray           # 4x4: the servo frame in the child's frame (q = 0)
     S_parent: np.ndarray          # 4x4: the servo frame in the parent's frame (q = 0)
     rot_deg: Tuple[float, float]  # the child's turn about the servo's X over the joint's range
@@ -176,9 +177,9 @@ class ServoSpot:
     turned: bool = False
     flip: bool = False
     sign: float = 1.0             # + joint angle turns the driven horn this way about S's X (servo's own sign)
-    holder: Optional[Tuple] = None    # the part holding its case when that is not the parent (a palm cradle)
     across: bool = False              # lies across the finger (its 23 x 34 face toward the palm): a square connector
     flange: bool = False              # held by its idler face in a flange cup (its idler horn off: a one-arm yoke)
+    flipped: bool = False             # lies along the link after its joint, which holds its case (`hand.servo_poses`)
 
     @property
     def idler_horn(self) -> bool:
@@ -209,30 +210,41 @@ def finger_servos(hand: Hand, i: int) -> List[ServoSpot]:
     for j, jt in enumerate(f.joints):
         a = fg.axes[j]
         M = fg.motors[j].axes                      # (a, v, w), joint j frame
-        turned = turned_servo(f, j)
+        turned, flipped = fg.poses[j] == "turned", fg.poses[j] == "flipped"
         crossing = j < len(f.joints) - 1 and jt.length == 0
         single = abs(float(a[0])) >= SINGLE_ARM_LEAN - 1e-9 and not crossing
-        flip = single and float(a[0]) < 0.0        # a one-arm yoke's driven horn faces the fingertip
+        # a one-arm yoke's driven horn faces the part carrying it: the fingertip's way (a flipped servo: the palm's)
+        flip = single and (float(a[0]) > 0.0 if flipped else float(a[0]) < 0.0)
         origin = fg.slides_mm[j] * a
-        S_child = _servo_frame(M[:, 0], M[:, 1], origin, flip)
+        S_joint = _servo_frame(M[:, 0], M[:, 1], origin, flip)       # at joint j, in link j's frame at q = 0
         if j == 0:
             Tpj = pose.pre[i][0].copy()
             Tpj[:3, 3] *= 1e3
-            if sec >= 0:                           # the part beyond the cut: its own frame is the palm frame at q = 0
-                pass
-            parent = ("palm", sec)
+            before = ("palm", sec)                 # beyond a cut, that part's own frame is the palm frame at q = 0
         else:
             Tpj = T(None, (float(f.joints[j - 1].length), 0.0, 0.0))
-            parent = ("link", i, j - 1)
-        S_parent = Tpj @ S_child
+            before = ("link", i, j - 1)
         sgn = dv.joint_sign(hand, i, j) * (-1.0 if flip else 1.0)
+        if flipped:
+            # its case turns with link j and its horns stay with the link before: that link turns about the servo,
+            # back by the joint's angle
+            parent, child, S_parent, S_child, sgn = ("link", i, j), before, S_joint, Tpj @ S_joint, -sgn
+        else:
+            parent, child, S_parent, S_child = before, ("link", i, j), Tpj @ S_joint, S_joint
         lo, hi = (math.degrees(x) for x in dv.joint_limits(hand, i, j))
         rot = tuple(sorted((sgn * lo, sgn * hi)))
         dorsal = -np.array([0.0, 1.0, 0.0])        # the link frame's -y
         cable = _cable_side(S_child, dorsal, -np.array([1.0, 0.0, 0.0]))
-        out.append(ServoSpot(("f", i, j), parent, ("link", i, j), S_child, S_parent, rot,
-                             "crossing" if crossing else ("single" if single else "u"),
-                             cable, turned, flip, sgn))
+        yoke = "crossing" if crossing else ("single" if single else "u")
+        sp = ServoSpot(("f", i, j), parent, child, S_child, S_parent, rot, yoke, cable, turned, flip, sgn,
+                       flipped=flipped)
+        if parent[0] == "link":
+            # a servo lying across the finger (its 23 x 34 face toward the palm: a turned bend, a twist) gets a square
+            # connector (Martin, 10/24); one whose idler horn is off (a one-arm yoke on its output horn) is held by its
+            # idler face in a flange cup, nothing round its horn (10/26)
+            sp.across = yoke != "crossing" and abs(float(S_parent[0, 1])) < 0.7
+            sp.flange = yoke == "single"
+        out.append(sp)
     return out
 
 
@@ -263,13 +275,11 @@ class Part:
     negative: List[str] = field(default_factory=list)
     pieces: List[Piece] = field(default_factory=list)   # convex pieces (for the parent's sweep)
     holds: List[ServoSpot] = field(default_factory=list)  # servos whose case it holds
-    carries: Optional[ServoSpot] = None        # the servo whose horns it holds
+    carries: List[ServoSpot] = field(default_factory=list)  # servos whose horns it holds (two where the next is flipped)
     clip: Optional[str] = None                 # a convex body the part stays inside (its simulator body, grown)
     swept_by: Dict[int, List[str]] = field(default_factory=dict)   # palm parts: each finger's sweeps
     kept: List[Tuple[int, str]] = field(default_factory=list)      # palm parts: (finger, pocket walls kept from other fingers)
-    tunnels: List[str] = field(default_factory=list)                # screwdrivers' ways in (never through a kept cradle)
-    windows: List[str] = field(default_factory=list)                # palm parts: room for the cradles standing in the plate
-    pads: List[Tuple[float, float]] = field(default_factory=list)   # cradles: (y, z) of the screws into the plate
+    tunnels: List[str] = field(default_factory=list)                # screwdrivers' ways in (never through a kept housing)
     face: Optional[np.ndarray] = None                                # palm parts: the face's outline (y, z)
 
     def scad(self) -> str:
@@ -281,16 +291,15 @@ class Part:
         pieces = "union() {\n        " + ("\n        ".join(self.positive) or "cube(0.001);") + "\n        }"
         if self.clip:
             pieces = f"intersection() {{\n    {pieces}\n    {self.clip}\n    }}"
-        neg = "\n    ".join(self.negative + [x for xs in self.swept_by.values() for x in xs] + self.tunnels
-                               + self.windows)
+        neg = "\n    ".join(self.negative + [x for xs in self.swept_by.values() for x in xs] + self.tunnels)
         body = f"difference() {{\n        body_{n}();\n    {neg}\n    }}"
         if self.kept:
-            # a servo's cradle keeps its walls against other fingers' sweeps (fingers colliding in
+            # a servo's housing keeps its walls against other fingers' sweeps (fingers colliding in
             # motion is left to the physics and the policy, as in the simulator), and gives way to
             # everything else: its own finger's sweeps, the cut's hinge, every servo's keep-outs
             keep = []
             for i, walls in self.kept:
-                rest = (self.negative + self.windows + self.swept_by.get(i, [])
+                rest = (self.negative + self.swept_by.get(i, [])
                         + (self.swept_by.get(-1, []) if i != -1 else []))
                 keep.append(f"difference() {{ intersection() {{ body_{n}(); {walls} }}\n        "
                             + "\n        ".join(rest) + " }")
@@ -397,7 +406,6 @@ class Design:
                                                   ("link", i, j), Tl)
         self.parts[("palm", -1)] = Part("palm", ("palm", -1), np.eye(4))
         self.extras: List[Part] = []          # parts fixed to the main palm: the bay and the mount
-        self._cradles: List[dict] = []        # base servos on their own cradles (`_palm`, then `_cradle_parts`)
         self._posts: set = set()              # the palm's posts down to the mount's column (`_palm_fixings`)
         self._slung: set = set()              # base servos hanging in a sling (`_sling`)
         h = hinge_servo(hand)
@@ -406,7 +414,7 @@ class Design:
             self.parts[("palm", 0)] = Part("palm_beyond", ("palm", 0), np.eye(4))
         for sp in self.servos.values():
             self.parts[sp.parent].holds.append(sp)
-            self.parts[sp.child].carries = sp
+            self.parts[sp.child].carries.append(sp)
         for i, f in enumerate(hand.fingers):
             for j in range(len(f.joints)):
                 self._link(i, j)
@@ -416,11 +424,16 @@ class Design:
         self._sweeps()
         self._palm_fixings()
         self._bay()
-        self._cradle_parts()
 
     # ---------------------------------------------------------------- links
 
     def _link(self, i: int, j: int) -> None:
+        """Link j: at its joint the yoke on servo j's horns (a U, one arm, or a
+        crossing's plate) or, where servo j is flipped, its case in a cradle;
+        at the next joint servo j + 1's case in a cradle or, where that one is
+        flipped, a yoke on its horns; a connector from one end's face to the
+        other's, with gussets in the L pieces' inside corners. The fingertip:
+        its yoke or cradle and a rounded end."""
         f = self.hand.fingers[i]
         fg = dv.finger_geometry(f)
         part = self.parts[("link", i, j)]
@@ -428,6 +441,9 @@ class Design:
         a = fg.axes[j]
         last = j == len(f.joints) - 1
         nxt = None if last else self.servos[("f", i, j + 1)]
+        X = np.array([1.0, 0.0, 0.0])
+        yokes: List[Tuple[ServoSpot, np.ndarray, np.ndarray]] = []    # (servo, its axis, the way its yoke leaves it)
+        cases: List[ServoSpot] = []                                  # servos whose case this link holds
         if sp.yoke == "crossing":
             # the plate on servo j's near horn, as far as the next servo's case
             S = mm(sp.S_child)
@@ -436,119 +452,169 @@ class Design:
             plate: Piece = lambda g, S=S, Sn=Sn, gap=gap: (
                 f"hull() {{ {S} cyl_x(ARM_R + ({g}), ARM_X0 - ({g}), {gap:.3f} + ({g})); {Sn} housing_box({g}); }}")
             pieces = [plate]
-            joint_piece = plate
+            near = None
+        elif sp.flipped:
+            cases.append(sp)
+            near = ("case", sp)
+            pieces = []
         else:
-            x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
-            pieces, joint_piece = _yoke_pieces(sp, a, np.array([1.0, 0.0, 0.0]), x_b)
+            yokes.append((sp, a, X))
+            near = ("yoke", sp, a, X)
+            pieces = []
+        far = None
+        if nxt is not None and sp.yoke != "crossing":
+            if nxt.flipped:
+                far = ("yoke", nxt, fg.axes[j + 1], -X)
+                yokes.append((nxt, fg.axes[j + 1], -X))
+            else:
+                far = ("case", nxt)
+                cases.append(nxt)
+        elif nxt is not None:
+            cases.append(nxt)
+        # each end's pieces and the face a connector meets
+        ends = []
+        for e in (near, far):
+            if e is None:
+                ends.append(None)
+            elif e[0] == "yoke":
+                _, y, ax, front = e
+                x_b = mt.swept_front_mm(ax, y.turned) + CASE_CLEAR
+                yp, jp = _yoke_pieces(y, ax, front, x_b)
+                A, sa = self._yoke_face(y, ax, front)
+                ends.append({"kind": "yoke", "sp": y, "axis": ax, "front": front, "pieces": yp, "joint": jp,
+                             "face": A, "size": sa, "reach": REACH_MM if y.yoke == "u" else 0.0})
+            else:
+                c = e[1]
+                Sc = mm(c.S_parent)
+                if c.flange:
+                    cradle: Piece = lambda g, Sc=Sc: f"{Sc} flange_cup({g});"
+                else:
+                    cradle = lambda g, Sc=Sc: f"{Sc} cradle_socket({g});"
+                ends.append({"kind": "case", "sp": c, "pieces": [cradle], "joint": cradle, "reach": REACH_MM})
+        for e in ends:
+            if e is not None:
+                pieces += e["pieces"]
         if last:
+            e = ends[0]
             tip = fg.tip
-            p1 = tip.p1
-            r = tip.radius
-            # the rounded end only ahead of the yoke (behind it, round the servo's front, the
-            # fingertip is cut away anyway; the part before it should not give way to it)
-            if sp.yoke == "u":
+            p1, r = tip.p1, tip.radius
+            # the rounded end only ahead of the yoke or the case (behind it, round the servo, the fingertip is cut
+            # away anyway; the part before it should not give way to it)
+            if e["kind"] == "case":
+                x_cut = float((sp.S_parent @ np.array([0.0, HOUSING_MM[1], 0.0, 1.0]))[0])
+            elif sp.yoke == "u":
                 x_cut = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
             else:
                 th = np.linspace(0.0, 2.0 * math.pi, 24, endpoint=False)
                 disc = np.array([[x, 9.5 * math.cos(t), 9.5 * math.sin(t)] for x in (ARM_X0, ARM_X0 + ARM_DRIVEN) for t in th])
                 x_cut = float((disc @ sp.S_child[:3, :3].T + sp.S_child[:3, 3])[:, 0].min())
-            body: Piece = lambda g, jp=joint_piece, p1=p1, r=r, xc=x_cut: (
+            body: Piece = lambda g, jp=e["joint"], p1=p1, r=r, xc=x_cut: (
                 f"hull() {{ {jp(g)} intersection() {{ translate({v3(p1)}) sphere(r = {r:.3f} + ({g}), $fn = 48); "
                 f"translate([{xc:.3f} - ({g}), -100, -100]) cube([300, 200, 200]); }} }}")
             pieces = pieces + [body]
-        elif sp.yoke != "crossing":
-            # a bracket frame: the next servo in a cradle (side plates and back plate), joined to the
-            # yoke by a hollow connector from the bridge's (or the one arm's) whole face to the whole
-            # cradle face toward it (`_connector`)
-            Sn = mm(nxt.S_parent)
-            # a servo lying across the finger (its 23 x 34 face toward the palm: a turned bend, a twist) gets
-            # a square connector (Martin, 10/24); a servo whose idler horn is off (a one-arm yoke on its
-            # output horn) is held by its idler face in a flange cup, nothing round its horn (10/26)
-            nxt.across = nxt.yoke != "crossing" and abs(float(nxt.S_parent[0, 1])) < 0.7
-            nxt.flange = nxt.yoke == "single"
-            A, sa = self._tube_start(sp, a)
-            B, sb, face = self._tube_end(nxt, A[:3, 3])
-            A2, sa2, B, sb = self._connector(A, sa, B, sb, square=nxt.across)
-            if face != 0 and nxt.cable == face:
-                nxt.cable = -face                        # the tube lands on that side: the cable takes the other
-            # its ends reach into the bridge and the cradle (a single arm's start stays on its horn's face:
-            # nothing round a horn)
-            ea = REACH_MM if sp.yoke == "u" else 0.0
-            tube: Piece = lambda g, A=A2, B=B, sa=sa2, sb=sb, ea=ea: (
-                f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {REACH_MM});")
+        elif far is not None:
+            # a bracket frame: a connector from the near end's whole face (a bridge's, a single arm's horn face, a
+            # cradle's) to the far end's (`_connector`)
+            n0, n1 = ends
+            if n0["kind"] == "case":
+                n0["face"], n0["size"], n0["side"] = self._tube_end(n0["sp"], self._end_centre(n1))
+            if n1["kind"] == "case":
+                n1["face"], n1["size"], n1["side"] = self._tube_end(n1["sp"], n0["face"][:3, 3])
+            square = any(e["kind"] == "case" and e["sp"].across for e in ends)
+            # a single arm's face leads: a quarter-turned connector's block then stands out from the arm, along its
+            # servo's axis, never round the front of that servo's case (the part holding the case gives way to it)
+            arm = [e for e in ends if e["kind"] == "yoke" and e["sp"].yoke == "single"]
+            lead, other = (n1, n0) if arm and arm[0] is n1 and len(arm) == 1 else (n0, n1)
+            A, sa, B, sb = self._connector(lead["face"], lead["size"], other["face"], other["size"], square=square)
+            for e in ends:
+                if e["kind"] == "case":
+                    side = e["side"]
+                    if side in (1, -1) and e["sp"].cable == side:
+                        e["sp"].cable = -side                    # the tube lands on that side: the cable takes the other
+            # its ends reach into a bridge and a cradle (a single arm's face stays on its horn's face: nothing round
+            # a horn)
+            tube: Piece = lambda g, A=A, B=B, sa=sa, sb=sb, ea=lead["reach"], eb=other["reach"]: (
+                f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {eb});")
             extra: List[Piece] = []
             if ("link", i, j) in self.more_tubes:
-                # this link came out in pieces (something turns through its tube): a tube to every face
-                for Bx, sbx, fx in self._tube_ends(nxt):
-                    if fx != face and not (fx != 0 and fx == nxt.cable):
-                        Ax, sax, Bx, sbx = self._connector(A, sa, Bx, sbx, square=nxt.across)
-                        extra.append(lambda g, A=Ax, B=Bx, sa=sax, sb=sbx, ea=ea:
-                                     f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {REACH_MM});")
-            if nxt.yoke == "crossing":
-                # a crossing's first servo: its near horn carries the crossing plate, so its cradle is a
-                # full housing (the plate's swing opens the near side)
-                cradle: Piece = lambda g, Sn=Sn: f"{Sn} housing_box({g});"
-            elif nxt.flange:
-                cradle = lambda g, Sn=Sn: f"{Sn} flange_cup({g});"
-            else:
-                cradle = lambda g, Sn=Sn: f"{Sn} cradle_socket({g});"
-            # gussets in the L pieces' inside corners (Martin, 10/26), each kept to where the connector is
-            outer = tube
+                # this link came out in pieces (something turns through its tube): a tube to every face of a cradle
+                for k, e in enumerate(ends):
+                    if e["kind"] != "case":
+                        continue
+                    o = ends[1 - k]
+                    for Bx, sbx, fx in self._tube_ends(e["sp"]):
+                        if fx != e["side"] and not (fx != 0 and fx == e["sp"].cable):
+                            Ax, sax, Bx, sbx = self._connector(o["face"], o["size"], Bx, sbx, square=square)
+                            extra.append(lambda g, A=Ax, B=Bx, sa=sax, sb=sbx, ea=o["reach"]:
+                                         f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {REACH_MM});")
 
             def along(o: Piece, v: np.ndarray) -> Piece:
                 """The connector and its copy moved `GUSSET_MM` along v: where a gusset may stand on it."""
                 sh = mm(T(None, tuple(float(c) for c in v * GUSSET_MM)))
                 return lambda g: f"hull() {{ {o(g)} {sh} {o(g)} }}"
 
-            # (none round a flange cup: lying along the servo's sides with nothing to hold, they only read as ears;
-            # Martin, 10/28)
+            # gussets in the L pieces' inside corners (Martin, 10/26), each kept to where the connector is (none
+            # round a flange cup: lying along the servo's sides with nothing to hold, they only read as ears; 10/28)
             gussets: List[Piece] = []
-            if not nxt.flange and nxt.yoke != "crossing" and face in (1, -1):
-                on = along(outer, -face * nxt.S_parent[:3, 2])           # from the side it lands on, into the socket
-                gussets += [lambda g, on=on, Sn=Sn, f=face, s=s: f"intersection() {{ {Sn} socket_gusset({f}, {s}, GUSSET, {g}); {on(g)} }}"
-                            for s in (1, -1)]
-            if sp.yoke == "u":
-                gussets += self._arm_gussets(sp, a, along(outer, -A[:3, 0]))
-            else:
-                # a single arm and its connector are one plate: the arm takes in the connector's footprint in
-                # its own layer, so where the connector leaves the horn's face at a slant they still meet
-                # through the arm's whole thickness (not a sliver the body's rounding would take away)
-                S0 = mm(sp.S_child)
-                arm1 = pieces[0]
-                pieces = [lambda g, arm1=arm1, S0=S0, tube=tube: (
-                    f"hull() {{ {arm1(g)} intersection() {{ {tube(g)} {S0} arm_slab(1, {g}); }} }}")] + pieces[1:]
-            pieces = pieces + [cradle, tube] + gussets + extra
+            for e in ends:
+                if e["kind"] == "case":
+                    c, side = e["sp"], e["side"]
+                    if not c.flange and side in (1, -1):
+                        Sc = mm(c.S_parent)
+                        on = along(tube, -side * c.S_parent[:3, 2])        # from the side it lands on, into the socket
+                        gussets += [lambda g, on=on, Sc=Sc, f=side, s=s: (
+                            f"intersection() {{ {Sc} socket_gusset({f}, {s}, GUSSET, {g}); {on(g)} }}") for s in (1, -1)]
+                elif e["sp"].yoke == "u":
+                    gussets += self._arm_gussets(e["sp"], e["axis"], along(tube, -e["face"][:3, 0]), e["front"])
+                else:
+                    # a single arm and its connector are one plate: the arm takes in the connector's footprint in
+                    # its own layer, so where the connector leaves the horn's face at a slant they still meet
+                    # through the arm's whole thickness (not a sliver the body's rounding would take away)
+                    S0 = mm(e["sp"].S_child)
+                    arm1 = e["pieces"][0]
+                    merged: Piece = lambda g, arm1=arm1, S0=S0: (
+                        f"hull() {{ {arm1(g)} intersection() {{ {tube(g)} {S0} arm_slab(1, {g}); }} }}")
+                    pieces = [merged if q is arm1 else q for q in pieces]
+            pieces = pieces + [tube] + gussets + extra
         part.pieces = pieces
         part.positive = [p("0") for p in pieces]
         part.clip = _clip_body(f, j)
-        # what this part leaves empty: its own servo's horns, its yoke's screws, the next
-        # servo's housing keep-outs
-        S = mm(sp.S_child)
-        part.negative.append(f"{S} cyl_x(HORN_R + CASE_CLEAR, DRIVEN_X[0] - FIT, DRIVEN_X[1]);")
-        if sp.idler_horn:
-            part.negative.append(f"{S} cyl_x(HORN_R + CASE_CLEAR, IDLER_X[0], -(DRIVEN_X[0] - FIT));")
-        if sp.yoke == "u":
-            part.negative += [f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});",
-                              f"{S} arm_keepout(-1, {list(HORN_HOLES_IDLER)});"]
-        else:
-            part.negative.append(f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});")
-        if nxt is not None:
-            part.tunnels.append(f"{mm(nxt.S_parent)} case_screw_tunnels(40, {str(nxt.flange).lower()});")
-            if nxt.flange:
-                part.negative.append(f"{mm(nxt.S_parent)} flange_keepout({nxt.cable});")
+        # what this part leaves empty: the horns of the servos it carries and their yokes' screws, the keep-outs of
+        # the servos it holds
+        for y, _, _ in yokes + ([(sp, a, X)] if sp.yoke == "crossing" else []):
+            S = mm(y.S_child)
+            part.negative.append(f"{S} cyl_x(HORN_R + CASE_CLEAR, DRIVEN_X[0] - FIT, DRIVEN_X[1]);")
+            if y.idler_horn:
+                part.negative.append(f"{S} cyl_x(HORN_R + CASE_CLEAR, IDLER_X[0], -(DRIVEN_X[0] - FIT));")
+            if y.yoke == "u":
+                part.negative += [f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});",
+                                  f"{S} arm_keepout(-1, {list(HORN_HOLES_IDLER)});"]
             else:
-                ch = 80 if nxt.yoke == "crossing" else CRADLE_CHANNEL_MM
-                part.negative.append(f"{mm(nxt.S_parent)} housing_keepout({str(nxt.yoke != 'u').lower()}, {nxt.cable}, "
-                                     f"{ch});")
+                part.negative.append(f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});")
+        for c in cases:
+            Sc = mm(c.S_parent)
+            part.tunnels.append(f"{Sc} case_screw_tunnels(40, {str(c.flange).lower()});")
+            if c.flange:
+                part.negative.append(f"{Sc} flange_keepout({c.cable});")
+            else:
+                ch = 80 if c.yoke == "crossing" else CRADLE_CHANNEL_MM
+                part.negative.append(f"{Sc} housing_keepout({str(c.yoke != 'u').lower()}, {c.cable}, {ch});")
 
     @staticmethod
-    def _arm_gussets(sp: ServoSpot, a: np.ndarray, on: Piece) -> List[Piece]:
+    def _end_centre(e: dict) -> np.ndarray:
+        """Where a link's end is (its face's centre; a cradle's servo's back)."""
+        if "face" in e:
+            return e["face"][:3, 3]
+        return (e["sp"].S_parent @ np.array([0.0, HOUSING_MM[1], 0.0, 1.0]))[:3]
+
+    @staticmethod
+    def _arm_gussets(sp: ServoSpot, a: np.ndarray, on: Piece, front: np.ndarray) -> List[Piece]:
         """A U's gussets: in each arm's layer, the corners between the arm's
         edges and the connector's back face, where the connector is wider
         than the bridge (`on`: where they may stand). Outboard of the case,
         so they turn clear of the part holding the servo."""
         x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
-        B = _bridge_frame(sp.S_child[:3, 3], np.array([1.0, 0.0, 0.0]), a, x_b)
+        B = _bridge_frame(sp.S_child[:3, 3], front, a, x_b)
         s_pos = -1.0 if sp.flip else 1.0
         a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
         a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
@@ -585,13 +651,14 @@ class Design:
         x_end = max(float(loc[:, 0].max()), BLOCK_MIN_MM)
         return A @ T(None, (0.0, yc, zc)), size, A @ T(None, (x_end, yc, zc)), size
 
-    def _tube_start(self, sp: ServoSpot, a: np.ndarray) -> Tuple[np.ndarray, Tuple[float, float]]:
-        """Where a link's connector leaves its yoke (link frame): the bridge's
-        whole outer face; a single arm's horn face, as wide as the arm's disc
-        (the connector and the arm are one plate, Martin 10/26)."""
+    def _yoke_face(self, sp: ServoSpot, a: np.ndarray, front: np.ndarray) -> Tuple[np.ndarray, Tuple[float, float]]:
+        """Where a link's connector leaves a yoke whose bridge lies along
+        `front` from the joint (link frame): the bridge's whole outer face; a
+        single arm's horn face, as wide as the arm's disc (the connector and
+        the arm are one plate, Martin 10/26)."""
         if sp.yoke == "u":
             x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
-            B = _bridge_frame(sp.S_child[:3, 3], np.array([1.0, 0.0, 0.0]), a, x_b)
+            B = _bridge_frame(sp.S_child[:3, 3], front, a, x_b)
             s_pos = -1.0 if sp.flip else 1.0
             a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
             a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
@@ -618,7 +685,7 @@ class Design:
         R = S[:3, :3]
         out = []
         hz = HOUSING_MM[2]
-        for side, c, F in ((0, np.array([0.0, HOUSING_MM[1], 0.0]), np.column_stack([R[:, 1], R[:, 0], R[:, 2]])),
+        for side, c, F in ((0, np.array([0.0, HOUSING_MM[1], 0.0]), np.column_stack([R[:, 1], -R[:, 0], R[:, 2]])),
                            (1, np.array([0.0, CRADLE_SIDE_Y, hz]), np.column_stack([R[:, 2], R[:, 0], R[:, 1]])),
                            (-1, np.array([0.0, CRADLE_SIDE_Y, -hz]), np.column_stack([-R[:, 2], -R[:, 0], R[:, 1]]))):
             out.append((T(F, R @ c + S[:3, 3]), CRADLE_BACK_MM if side == 0 else CRADLE_SIDE_MM, side))
@@ -634,7 +701,7 @@ class Design:
         S = nxt.S_parent
         R = S[:3, :3]
         hz = HOUSING_MM[2]
-        faces = [(0, R[:, 1], np.array([0.0, HOUSING_MM[1], 0.0]), np.column_stack([R[:, 1], R[:, 0], R[:, 2]])),
+        faces = [(0, R[:, 1], np.array([0.0, HOUSING_MM[1], 0.0]), np.column_stack([R[:, 1], -R[:, 0], R[:, 2]])),
                  (1, R[:, 2], np.array([0.0, CRADLE_SIDE_Y, hz]), np.column_stack([R[:, 2], R[:, 0], R[:, 1]])),
                  (-1, -R[:, 2], np.array([0.0, CRADLE_SIDE_Y, -hz]), np.column_stack([-R[:, 2], -R[:, 0], R[:, 1]]))]
         best = None
@@ -659,105 +726,81 @@ class Design:
     # ---------------------------------------------------------------- palm
 
     def _palm(self, sec: int) -> None:
-        """A palm part, face first (Martin, 10/28: the face is the first thing
-        in the design, the servos mounted under it): a plate whose face is
-        level with the base servos' tops (`PALM_TOP_MM`), over the palm's
-        outline less what lies ahead of a lying base servo's yoke (no cut-outs
-        round the U outputs: `_face_outline`), each base servo hanging under
-        it: a lying one in its socket under the face (in a cradle of its own
-        where two pads fit), one standing on its back end or slid down by a
-        crossing in a sling (`_sling`), the face open over its yoke."""
+        """A palm part, a shell designed face first (Martin, 10/28-29): a plate
+        whose face stands `FACE_RAISE_MM` over the base servos' tops, over the
+        palm's outline less what lies ahead of a lying base servo's yoke (no
+        cut-outs round the U outputs: `_face_outline`); a rim down from the
+        face's edge to the palm's back face (`_rim`); each base servo screwed
+        straight into its housing under the face, its case screws driven along
+        its axis under the plate (a lying one in its socket on a pedestal up
+        into the plate; one standing on its back end or slid down by a crossing
+        in a sling, `_sling`, the face open over its yoke); spokes out to every
+        housing from a ring round the mount's column screws (past a cut, from
+        the hinge yoke's bridge: `_spokes`)."""
         g = dv.hand_geometry(self.hand)
         part = self.parts[("palm", sec)]
-        x0, x1 = PALM_TOP_MM - PALM_PLATE_MM, PALM_TOP_MM          # the plate's underside and face
+        x0, x1 = PALM_FACE_MM - PALM_PLATE_MM, PALM_FACE_MM          # the plate's underside and face
         # the servos standing under the face hang in slings; the face reaches over their posts (and, past a
         # cut, over the hinge yoke's bridge, which carries it)
-        slings, keep = {}, []
+        slings, keep, posts = {}, [], {}
         for sp in part.holds:
             if not self._at_plate(sp):
-                slings[sp.key], tops = self._sling(sp, sec, g.outlines[sec], x1)
+                slings[sp.key], tops, posts[sp.key] = self._sling(sp, sec, g.outlines[sec], x1)
                 keep += tops
-        if sec == 0 and part.carries is not None:
-            h = part.carries
+        hub = np.zeros(2)
+        bridge_up: List[Piece] = []
+        if sec == 0 and part.carries:
+            h = part.carries[0]
             B = _bridge_frame(h.S_child[:3, 3], -h.S_child[:3, 1], h.S_child[:3, 0], mt.FRONT_SWEEP_MM + CASE_CLEAR)
             C = mt.box_corners(np.array([WALL / 2.0, 0.0, 0.0]), np.eye(3), np.array([WALL / 2.0, ARM_X0, BRIDGE_HALF_MM]))
-            keep += list((C @ B[:3, :3].T + B[:3, 3])[:, 1:])
+            Cp = C @ B[:3, :3].T + B[:3, 3]
+            keep += list(Cp[:, 1:])
+            hub = Cp[:, 1:].mean(axis=0)
+            # the yoke carries the part: its arms and bridge straight up into the plate
+            lift = (x0 + x1) / 2.0 - float(Cp[:, 0].max())
+            yp, _ = _yoke_pieces(h, h.S_child[:3, 0], -h.S_child[:3, 1], mt.FRONT_SWEEP_MM + CASE_CLEAR)
+            bridge_up += [lambda gg, q=q, lift=lift: f"hull() {{ {q(gg)} translate([{lift:.3f}, 0, 0]) {q(gg)} }}"
+                          for q in yp]
         outline = self._face_outline(part, g.outlines[sec], x0, keep)
         part.face = outline
         o = "[" + ",".join(f"[{y:.3f},{z:.3f}]" for y, z in outline) + "]"
         plate: Piece = lambda gg, o=o: f"plate({o}, {x0} - ({gg}), {x1} + ({gg}));"
         pieces: List[Piece] = [plate]
-        loose = set()                  # pieces of the cradles that are parts of their own
         part.clip = f"translate([-500, -500, -500]) cube([{500 + x1}, 1000, 1000]);"    # nothing above the face
         for sp in part.holds:
             Sp = mm(sp.S_parent)
-            cradle = ([lambda gg, Sp=Sp: f"{Sp} housing_box({gg});"] if sp.yoke == "crossing" else
-                      [lambda gg, Sp=Sp: f"{Sp} cradle_socket({gg});"])
-            body = "housing_box" if sp.yoke == "crossing" else "cradle_socket"
-            Pc = housing_corners(sp.S_parent, y0=-9.5 if sp.yoke == "crossing" else SOCKET_Y0_MM)
-            # its socket reaches up to the plate (a servo lying in the palm), or the servo stands on its
-            # back end under it, its yoke turning round its top end
-            hanging = self._at_plate(sp)
-            ch = 80 if (sp.yoke == "crossing" or not hanging) else CRADLE_CHANNEL_MM
+            at_plate = self._at_plate(sp)
+            ch = 80 if (sp.yoke == "crossing" or not at_plate) else CRADLE_CHANNEL_MM
             part.negative.append(f"{Sp} housing_keepout({str(sp.yoke != 'u').lower()}, {sp.cable}, {ch});")
-            # the socket (a crossing's servo: its full housing) hangs from the plate: its hull with its
-            # outline straight up to the plate (the case's keep-out leaves the walls)
-
-            def pedestal(x_to: float, Sp=Sp, body=body, Pc=Pc) -> Piece:
-                up = Pc.copy()
-                up[:, 0] = x_to
-                return lambda gg, pts=_pts(up): f"hull() {{ {Sp} {body}({gg}); hull_pts({pts}); }}"
-
-            pads = self._cradle_pads(sp, sec, outline, x0, x1, Pc) if hanging else None
-            if pads is not None:
-                # its own part: the servo is screwed in on the bench (nothing in a screwdriver's way),
-                # then the cradle goes up into a window of the plate from below, its top flush with the
-                # face and its pads under the plate, and two countersunk M3 go in from the face
-                cradle = [pedestal(x1)]
-                pad_pieces = []
-                for pd in pads:
-                    y, z = pd["at"]
-                    ny, nz = pd["near"]
-                    pad_pieces.append(lambda gg, y=y, z=z, ny=ny, nz=nz, w=cradle[0]: (
-                        f"hull() {{ translate([0, {y:.3f}, {z:.3f}]) cyl_x({PAD_R_MM} + ({gg}), "
-                        f"{x0 - PAD_H_MM} - ({gg}), {x0} + ({gg})); intersection() {{ {w(gg)} "
-                        f"translate([{x0 - PAD_H_MM} - ({gg}), {ny - 6.0:.3f}, {nz - 6.0:.3f}]) "
-                        f"cube([{PAD_H_MM} + 2 * ({gg}), 12, 12]); }} }}"))
-                    part.negative.append(f"translate([0, {y:.3f}, {z:.3f}]) cs_m3({x1}, {PALM_PLATE_MM + 1});")
-                # the plate inside the cradle's box is the cradle's (its top round the servo), the plate
-                # keeps the rest
-                floor: Piece = lambda gg, Sp=Sp, o=o: (f"intersection() {{ {Sp} housing_box({gg}); "
-                                                       f"plate({o}, {x0} - ({gg}), {x1} + ({gg})); }}")
-                own = cradle + [floor] + pad_pieces
-                pieces += own
-                loose.update(id(q) for q in own)
-                part.windows += [f"{Sp} housing_box(FIT);", cradle[0]("FIT")]
-                # and gives way to its pads under the plate
-                part.windows += [f"intersection() {{ {pc('FIT')} translate([-500, -500, -500]) cube([{500 + x0}, "
-                                 f"1000, 1000]); }}" for pc in pad_pieces]
-                self._cradles.append({"sp": sp, "sec": sec, "walls": cradle + [floor] + pad_pieces,
-                                      "pads": [pd["at"] for pd in pads]})
-                continue
-            if hanging:
-                pieces.append(pedestal((x0 + x1) / 2.0))     # into the plate
+            if at_plate:
+                # lying in the palm: its socket (a crossing's servo: its full housing) on a pedestal, its
+                # outline straight up into the plate (the case's keep-out leaves the walls)
+                body = "housing_box" if sp.yoke == "crossing" else "cradle_socket"
+                up = housing_corners(sp.S_parent, y0=-9.5 if sp.yoke == "crossing" else SOCKET_Y0_MM)
+                up[:, 0] = (x0 + x1) / 2.0
+                ped: Piece = lambda gg, Sp=Sp, body=body, pts=_pts(up): f"hull() {{ {Sp} {body}({gg}); hull_pts({pts}); }}"
+                pieces.append(ped)
                 # kept against other fingers only round the servo (as far as its housing box): a tilted
                 # servo's pedestal reaching up to the plate gives way to every finger
-                cradle = [lambda gg, ped=pieces[-1], Sp=Sp: f"intersection() {{ {ped(gg)} {Sp} housing_box({gg}); }}"]
+                housing = [lambda gg, ped=ped, Sp=Sp: f"intersection() {{ {ped(gg)} {Sp} housing_box({gg}); }}"]
             else:
-                cradle = [lambda gg, Sp=Sp: f"{Sp} housing_box({gg});"]
                 # standing on its back end under the face, or slid down by a crossing: a full housing in a
                 # sling (`_sling`), and the face open over its yoke
-                pieces.append(lambda gg, Sp=Sp: f"{Sp} housing_box({gg});")
+                housing = [lambda gg, Sp=Sp: f"{Sp} housing_box({gg});"]
+                pieces.append(housing[0])
                 pieces += slings[sp.key]
             part.tunnels += self._palm_tunnels(sp.S_parent, x0, x1)
-            part.negative += self._arm_access(sp, x0)
+            part.tunnels += self._arm_access(sp)
             if sp.key[0] in ("f", "hinge"):
-                # its cradle keeps its walls against other fingers' sweeps (the hinge's: against every finger)
-                walls = " ".join(c("0") for c in cradle)
+                # its housing keeps its walls against other fingers' sweeps (the hinge's: against every finger)
+                walls = " ".join(c("0") for c in housing)
                 part.kept.append((sp.key[1] if sp.key[0] == "f" else -1, f"difference() {{ union() {{ {walls} }} "
-                                             f"{Sp} housing_keepout({str(sp.yoke != 'u').lower()}, {sp.cable}, {ch}); }}"))
-        if sec == 0 and part.carries is not None:      # the hinge's yoke on the part beyond the cut
-            sp = part.carries
+                                  f"{Sp} housing_keepout({str(sp.yoke != 'u').lower()}, {sp.cable}, {ch}); }}"))
+        pieces += self._rim(outline, x0, sec)
+        pieces += self._spokes(part, sec, x0, hub, posts)
+        pieces += bridge_up
+        if sec == 0 and part.carries:                  # the hinge's yoke on the part beyond the cut
+            sp = part.carries[0]
             front = -sp.S_child[:3, 1]                 # ahead of the hinge servo: across the cut
             yp, _ = _yoke_pieces(sp, sp.S_child[:3, 0], front, mt.FRONT_SWEEP_MM + CASE_CLEAR)
             pieces += yp
@@ -765,7 +808,145 @@ class Design:
             part.negative += [f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});",
                               f"{S} arm_keepout(-1, {list(HORN_HOLES_IDLER)});"]
         part.pieces = pieces
-        part.positive = [p("0") for p in pieces if id(p) not in loose]
+        part.positive = [p("0") for p in pieces]
+
+    def _rim(self, outline: np.ndarray, x0: float, sec: int) -> List[Piece]:
+        """The shell's rim: a wall `RIM_MM` thick inside the face's edge, from
+        the palm's back face up into the plate; one convex piece per stretch
+        of edge (its strip within the rounded plate). None along a cut, where
+        the two parts turn against each other, nor in the way in of a base
+        servo's link whose arm screws may be out of a screwdriver's reach
+        (`_link_ways`: the link goes onto its servo on the bench and the two
+        slide in together from in front)."""
+        P = np.asarray(outline, float)
+        o = "[" + ",".join(f"[{y:.3f},{z:.3f}]" for y, z in P) + "]"
+        xb, xt = -PLATE_HALF_MM, x0 + REACH_MM
+        cut = self.hand.palm_joints[0] if self.hand.palm_joints else None
+        ways = self._link_ways(sec)
+        out: List[Piece] = []
+        n = len(P)
+        for k in range(n):
+            a, b = P[k], P[(k + 1) % n]
+            e = b - a
+            L = float(np.linalg.norm(e))
+            if L < 1.0:
+                continue
+            if cut is not None and all(abs(cut_side_mm(cut, *q)) < SEAM_MM + RIM_MM for q in (a, b)):
+                continue
+            u = e / L
+            nin = np.array([-u[1], u[0]])                     # counter-clockwise: the inside is on the left
+            # the stretches of this edge out of every way in (sampled every mm, the wall's whole depth)
+            ts = np.linspace(-1.0, L + 1.0, max(3, int(L) + 3))
+            free = [all(self._dist_out(a + t * u + w * nin, way) > PART_CLEAR + CLIP_MM for way in ways
+                        for w in (0.0, RIM_MM)) for t in ts]
+            runs, start = [], None
+            for t, f in zip(ts, free):
+                if f and start is None:
+                    start = t
+                if not f and start is not None:
+                    runs.append((start, prev))
+                    start = None
+                prev = t
+            if start is not None:
+                runs.append((start, ts[-1]))
+            for t0, t1 in runs:
+                if t1 - t0 < 4.0:
+                    continue
+                pts = [np.array([x, *(a + t * u + w * nin)]) for t in (t0, t1) for w in (-1.0, RIM_MM)
+                       for x in (xb, xt)]
+                out.append(lambda gg, pts=_pts(pts), o=o: (f"intersection() {{ hull_pts({pts}, {gg}); "
+                                                           f"plate({o}, {xb} - ({gg}), {xt} + ({gg})); }}"))
+        return out
+
+    def _link_ways(self, sec: int) -> List[np.ndarray]:
+        """Where a base servo's link passes on its way in (y, z), for each
+        servo whose arm screws a screwdriver may not reach once it is in (a
+        way to them crosses another servo's housing): the simulator body of
+        the link on its horns at the zero pose, slid out 60 mm in front of
+        the servo, as one convex outline (the checks' "link first")."""
+        out = []
+        for sp in self.parts[("palm", sec)].holds:
+            if sp.key[0] != "f" or sp.yoke == "crossing":
+                continue
+            others = self._held_footprints(sp, sec)
+            blocked = False
+            for a_, b_ in self._arm_driver_paths(sp):
+                for t in np.linspace(0.0, 1.0, 10):
+                    q = (a_ + t * (b_ - a_))[1:]
+                    if any(self._dist_out(q, fp) < 2.2 for fp in others):
+                        blocked = True
+                        break
+                if blocked:
+                    break
+            if not blocked:
+                continue
+            _, i, j = sp.key
+            f = self.hand.fingers[i]
+            fg = dv.finger_geometry(f)
+            shape = fg.tip_hull if j == len(f.joints) - 1 else fg.links[j]
+            C = self.parts[sp.child].frame
+            pts = shape.corners() @ C[:3, :3].T + C[:3, 3]
+            front = -sp.S_parent[:3, 1]
+            out.append(dv._hull2d(np.concatenate([pts, pts + 60.0 * front])[:, 1:]))
+        return out
+
+    def _spokes(self, part: "Part", sec: int, x0: float, hub: np.ndarray, posts: Dict) -> List[Piece]:
+        """Under the face, from the plate down to `SPOKE_BOTTOM_MM`: on the
+        main palm a ring round the mount's column screws (its posts stand on
+        it), and a spoke from the hub (the ring; past a cut, the hinge yoke's
+        bridge) straight out to each base servo's housing: to the middle of
+        its back wall where that faces the hub, else to where the line to its
+        middle meets it; to the nearest post of a sling. A spoke that a
+        finger's links turning at its base would cut is left out."""
+        xb, xt = SPOKE_BOTTOM_MM, x0 + REACH_MM
+        out: List[Piece] = []
+        r_hub = 0.0
+        if sec < 0:
+            r0, r1 = COLUMN_SCREW_R_MM - SPOKE_MM / 2.0, COLUMN_SCREW_R_MM + SPOKE_MM / 2.0
+            out.append(lambda gg: (f"difference() {{ cyl_x({r1} + ({gg}), {xb} - ({gg}), {xt} + ({gg})); "
+                                   f"cyl_x({r0} - ({gg}), {xb - 1.0}, {xt + 1.0}); }}"))
+            r_hub = COLUMN_SCREW_R_MM
+        hulls = self._sweep_hulls()
+        for sp in part.holds:
+            S = sp.S_parent
+            if sp.key in posts:
+                if not posts[sp.key]:
+                    continue
+                end = min(posts[sp.key], key=lambda c: float(np.linalg.norm(np.asarray(c) - hub)))
+                end = np.asarray(end, float)
+            else:
+                back = (S @ np.array([0.0, HOUSING_MM[1], 0.0, 1.0]))[1:3]
+                if float(S[1:3, 1] @ (hub - back)) < 0.0:
+                    end = back                                  # its back wall faces the hub
+                else:
+                    foot = dv._hull2d(housing_corners(S, y0=SOCKET_Y0_MM)[:, 1:])
+                    c = foot.mean(axis=0)
+                    end = None
+                    for t in np.linspace(0.0, 1.0, 101):
+                        q = hub + t * (c - hub)
+                        if self._dist_out(q, foot) <= 0.0:
+                            end = q
+                            break
+                    if end is None:
+                        continue
+            d = end - hub
+            L = float(np.linalg.norm(d))
+            if L <= r_hub + 1.0:
+                continue                                        # on the ring already
+            u = d / L
+            nrm = np.array([-u[1], u[0]])
+            a = hub + r_hub * u
+            b = end + REACH_MM * u
+            pts = np.array([np.array([x, *(q + s * SPOKE_MM / 2.0 * nrm)]) for q in (a, b) for s in (-1, 1)
+                            for x in (xb, xt)])
+            # clear of every finger's links turning at its base
+            ts = np.linspace(0.0, 1.0, max(2, int(L / 3.0)))
+            probe = np.array([np.array([x, *(a + t * (b - a) + s * SPOKE_MM / 2.0 * nrm)]) for t in ts
+                              for s in (-1, 1) for x in (xb, (xb + xt) / 2.0, xt)])
+            if any(np.all(probe @ eq[:, :3].T + eq[:, 3] <= PART_CLEAR + 1.0, axis=1).any() for eq in hulls):
+                continue
+            out.append(lambda gg, pts=_pts(pts): f"hull_pts({pts}, {gg});")
+        return out
 
     @staticmethod
     def _at_plate(sp: ServoSpot) -> bool:
@@ -814,7 +995,8 @@ class Design:
         along = max(float(np.abs(loc[:, 0]).max()), ARM_X0 + ARM_DRIVEN) + PART_CLEAR + 1.0
         return along, float(np.linalg.norm(loc[:, 1:], axis=1).max()) + PART_CLEAR + 1.0
 
-    def _beam_fan(self, sp: ServoSpot, sec: int, outline: np.ndarray, x1: float) -> Tuple[List[Piece], List[np.ndarray]]:
+    def _beam_fan(self, sp: ServoSpot, sec: int, outline: np.ndarray, x1: float) -> Tuple[
+            List[Piece], List[np.ndarray], List[np.ndarray]]:
         """A servo slid down by a crossing whose axis leans toward the palm's
         normal: what turns on it sweeps all round above it, so its housing
         hangs from beams under that (past a cut, just under the plate),
@@ -822,7 +1004,7 @@ class Design:
         palm) and 60 degrees either side, each as long as it goes (up to
         `BASE_BEAM_MM`) with its post inside its part's outline and off the
         mount's column, and from its footprint straight up (cut back where
-        something turns)."""
+        something turns). Its pieces, its posts' corners (y, z) and centres."""
         S = sp.S_parent
         Sp = mm(S)
         P = housing_corners(S)
@@ -844,6 +1026,7 @@ class Design:
         up[:, 0] = x1
         out: List[Piece] = [lambda gg, pts_u=_pts(np.concatenate([P, up])): f"hull_pts({pts_u});"]
         tops: List[np.ndarray] = []
+        centres: List[np.ndarray] = []
         beams, spare = [], None
         for turn in (0.0, 60.0, -60.0):
             c, s_ = math.cos(math.radians(turn)), math.sin(math.radians(turn))
@@ -868,19 +1051,22 @@ class Design:
             out.append(lambda gg, Sp=Sp, pts_b=_pts(beam): f"hull() {{ {Sp} housing_box({gg}); hull_pts({pts_b}); }}")
             out.append(lambda gg, pts_p=_pts(post): f"hull_pts({pts_p});")
             tops += [q[1:] for q in post]
-        return out, tops
+            centres.append(np.mean([q[1:] for q in post], axis=0))
+        return out, tops, centres
 
-    def _sling(self, sp: ServoSpot, sec: int, outline: np.ndarray, x1: float) -> Tuple[List[Piece], List[np.ndarray]]:
+    def _sling(self, sp: ServoSpot, sec: int, outline: np.ndarray, x1: float) -> Tuple[
+            List[Piece], List[np.ndarray], List[np.ndarray]]:
         """A base servo standing on its back end under the face (its axis
         level, its yoke turning round its top end) hangs in its housing from
-        a sling: straight bars below what turns on it, out along the axis to
-        straight posts up to the plate, past the yoke's width (the link folds
-        across the axis, never out along it) and off the arm screws' circle;
+        a sling: bars below what turns on it, from its bottom out along the
+        axis to straight posts up to the plate, past the yoke's width (the
+        link folds across the axis, never out along it) and off the arm
+        screws' circle;
         one at each end of the axis, on opposite sides of it, where both
         posts fall inside the palm's outline and off the mount's column, else
         the one that does (the nearest if none). A steeper axis: `_beam_fan`.
-        Its pieces, and its posts' corners (y, z): the face reaches over
-        them."""
+        Its pieces, its posts' corners (y, z) (the face reaches over them) and
+        their centres."""
         S = sp.S_parent
         P = housing_corners(S)
         oo, a = S[:3, 3], S[:3, 0]
@@ -899,10 +1085,23 @@ class Design:
         face = np.asarray(outline, float)
         c0 = np.array([0.0, oo[1], oo[2]])
 
+        others = self._held_footprints(sp, sec)
+        hulls = self._sweep_hulls()
+
         def fits(c) -> float:
             out = self._dist_out(c[1:], face) + SLING_POST_MM + 2.0
             if sec < 0:
                 out = max(out, dv.MOUNT_RADIUS_MM + SLING_POST_MM + 4.0 - float(np.linalg.norm(c[1:])))
+            # off every other servo held here (its case, its way in and its horns' keyholes)
+            for fp in others:
+                out = max(out, h + 1.0 - self._dist_out(c[1:], fp))
+            # the post and its bar from the housing clear of every finger's links turning at its base
+            probe = [c + t * ax + u * d + np.array([x, 0.0, 0.0]) for t in (-h, h) for u in (-h, h)
+                     for x in np.linspace(b0, x1, 5)]
+            probe += [c0 + t * (c - c0) + np.array([x, 0.0, 0.0]) for t in np.linspace(0.4, 1.0, 5) for x in (b0, b1)]
+            probe = np.array(probe)
+            if any(np.all(probe @ eq[:, :3].T + eq[:, 3] <= PART_CLEAR, axis=1).any() for eq in hulls):
+                out = max(out, 1.0)
             return out
 
         # beyond the yoke's width along the axis (the link folds across it, never there), off the arm
@@ -918,34 +1117,47 @@ class Design:
             good = ok[:1] if ok else [min(posts, key=lambda k: fits(posts[k]))]
         out: List[Piece] = []
         tops: List[np.ndarray] = []
+        centres: List[np.ndarray] = []
+        Sp = mm(S)
         for sa, sd in good:
             c = posts[(sa, sd)]
-            bar = [c0 + sd * off * d + t * sa * ax + u * d + np.array([x, 0.0, 0.0]) for t in (0.0, along + h)
-                   for u in (-h, h) for x in (b0, b1)]
+            foot = [c + t * ax + u * d + np.array([x, 0.0, 0.0]) for t in (-h, h) for u in (-h, h) for x in (b0, b1)]
             post = [c + t * ax + u * d + np.array([x, 0.0, 0.0]) for t in (-h, h) for u in (-h, h) for x in (b0, x1)]
-            out.append(lambda gg, pts=_pts(bar): f"hull_pts({pts}, {gg});")
+            # the bar: from the housing's own bottom (wherever a tilted servo puts it) to the post's foot
+            out.append(lambda gg, pts=_pts(foot), Sp=Sp: (
+                f"hull() {{ intersection() {{ {Sp} housing_box({gg}); translate([{b0} - ({gg}), -500, -500]) "
+                f"cube([{b1 - b0} + 2 * ({gg}), 1000, 1000]); }} hull_pts({pts}, {gg}); }}"))
             out.append(lambda gg, pts=_pts(post): f"hull_pts({pts}, {gg});")
             tops += [q[1:] for q in post]
-        return out, tops
+            centres.append(np.asarray(c[1:], float))
+        return out, tops, centres
+
+    def _held_footprints(self, sp: ServoSpot, sec: int) -> List[np.ndarray]:
+        """The (y, z) outlines of the other servos palm part `sec` holds, as
+        their keep-outs take them: the case and its way in (`housing_keepout`'s
+        channel), the horns' keyholes out to 18.6 mm along the axis."""
+        out = []
+        for o in self.parts[("palm", sec)].holds:
+            if o is sp:
+                continue
+            ch = 80.0 if (o.yoke == "crossing" or not self._at_plate(o)) else CRADLE_CHANNEL_MM
+            C = mt.box_corners(np.array([0.0, (HOUSING_MM[1] - 9.5 - ch) / 2.0, 0.0]), np.eye(3),
+                               np.array([18.6, (HOUSING_MM[1] + 9.5 + ch) / 2.0, HOUSING_MM[2]]))
+            out.append(dv._hull2d((C @ o.S_parent[:3, :3].T + o.S_parent[:3, 3])[:, 1:]))
+        return out
 
     @staticmethod
     def _palm_tunnels(S: np.ndarray, x0: float, x1: float, reach: float = 30.0) -> List[str]:
         """A screwdriver's way to each of a palm-held servo's case screws (as
-        the library's `case_screw_tunnels`), each opened up through the plate
-        where it would pass just under the palm's face (a slot, not a skin)."""
+        the library's `case_screw_tunnels`): under the plate for a servo lying
+        level (the face stands over the servos' tops), through it only where
+        the axis tilts up into it."""
         out = []
         hx = HOUSING_MM[0]
         for yy, zz in ((22.5, -8.0), (22.5, 8.0)):                  # the far holes (library FAR_HOLES)
             for sgn in (1.0, -1.0):
                 a, b = (hx, hx + reach) if sgn > 0 else (-hx - reach, -hx)
-                tunnel = f"{mm(S)} cyl_x_at({yy}, {zz}, 1.9, {a}, {b});"
-                ends = np.array([S @ np.array([x, yy, zz, 1.0]) for x in (a, b)])[:, :3]
-                r_x = 1.9 * math.sqrt(max(0.0, 1.0 - float(S[0, 0]) ** 2))   # the cylinder's reach along the normal
-                top = float(ends[:, 0].max()) + r_x
-                if top > x0 - 0.5:
-                    lift = x1 + 1.0 - (float(ends[:, 0].min()) - r_x)
-                    tunnel = f"hull() {{ {tunnel} translate([{lift:.3f}, 0, 0]) {tunnel} }}"
-                out.append(tunnel)
+                out.append(f"{mm(S)} cyl_x_at({yy}, {zz}, 1.9, {a}, {b});")
         return out
 
     @staticmethod
@@ -963,11 +1175,10 @@ class Design:
         return out
 
     @staticmethod
-    def _arm_access(sp: ServoSpot, x0: float, reach: float = 27.0) -> List[str]:
+    def _arm_access(sp: ServoSpot, reach: float = 27.0) -> List[str]:
         """A screwdriver's way to each arm screw of a palm-held base servo's
-        yoke, at the zero pose, where it would pass the plate (an axis
-        tilting up toward the palm's face): the yoke goes on after the servo
-        is in, and nothing can slide in from above the plate."""
+        yoke at the zero pose, through whatever of the palm is in its way but
+        the housings (the yoke goes on after the servo is in)."""
         out = []
         S = sp.S_parent
         sides = [(1.0, ARM_X0 + ARM_DRIVEN)] + ([(-1.0, ARM_X0 + ARM_IDLER)] if sp.yoke == "u" else [])
@@ -975,9 +1186,7 @@ class Design:
             a, b = (xa, xa + reach) if sgn > 0 else (-xa - reach, -xa)
             for ang in HORN_HOLES_DRIVEN:
                 yy, zz = 6.0 * math.sin(math.radians(ang)), 6.0 * math.cos(math.radians(ang))
-                top = max(float((S @ np.array([x, yy, zz, 1.0]))[0]) for x in (a, b)) + 2.2
-                if top > x0 - 0.5:
-                    out.append(f"{mm(S)} cyl_x_at({yy:.3f}, {zz:.3f}, 2.2, {a:.3f}, {b:.3f});")
+                out.append(f"{mm(S)} cyl_x_at({yy:.3f}, {zz:.3f}, 2.2, {a:.3f}, {b:.3f});")
         return out
 
     @staticmethod
@@ -1004,8 +1213,10 @@ class Design:
 
     def _sweep_hulls(self) -> List[np.ndarray]:
         """Every finger's links at its base turning over their joints' ranges
-        (as `derive.base_sweep_mm`, without the motors): one hull's plane
-        equations per pose and link (palm frame, mm, unit normals)."""
+        (as `derive.base_sweep_mm`, without the motors): the plane equations
+        (palm frame, mm, unit normals) of each link's hull over neighbouring
+        poses (every 5 degrees of the first joint, 10 of a crossing's second;
+        as the parts' chained sweeps)."""
         if getattr(self, "_hulls", None) is None:
             from scipy.spatial import ConvexHull
 
@@ -1015,188 +1226,57 @@ class Design:
                 fg = dv.finger_geometry(f)
                 shapes = [fg.tip_hull if j == len(f.joints) - 1 else fg.links[j] for j in fg.base_joints]
                 grids = []
-                for j in fg.base_joints:
+                for k, j in enumerate(fg.base_joints):
                     lo, hi = dv.joint_limits(hand, 0, j)
                     if f.joints[j].type == "sliding":
                         grids.append([0.0])
                         continue
-                    n = max(2, int(math.ceil((hi - lo) / (5.0 * dv.DEG))) + 1)
-                    grids.append(list(np.linspace(lo, hi, n)) if j == fg.base_joints[0] else [lo, 0.0, hi])
+                    n = max(2, int(math.ceil((hi - lo) / ((5.0 if k == 0 else 10.0) * dv.DEG))) + 1)
+                    grids.append(list(np.linspace(lo, hi, n)))
                 axes = [dv.joint_axis(hand, 0, j) for j in fg.base_joints]
-                for qs in itertools.product(*grids):
+
+                def corners(k: int, qs) -> np.ndarray:
                     R = fg.B.copy()
-                    for k, j in enumerate(fg.base_joints):
-                        R = R @ dv._rot(axes[k], qs[k])
-                        out.append(ConvexHull(shapes[k].corners() @ R.T + fg.base_mm).equations)
+                    for m in range(k + 1):
+                        R = R @ dv._rot(axes[m], qs[m])
+                    return shapes[k].corners() @ R.T + fg.base_mm
+
+                for k in range(len(fg.base_joints)):
+                    cells = [range(max(1, len(grids[m]) - 1)) for m in range(k + 1)]
+                    steps = [(0, 1) if len(grids[m]) > 1 else (0,) for m in range(k + 1)]
+                    for cell in itertools.product(*cells):
+                        P = [corners(k, [grids[m][cell[m] + b] for m, b in enumerate(bits)])
+                             for bits in itertools.product(*steps)]
+                        out.append(ConvexHull(np.concatenate(P)).equations)
                         owner.append(fi)
             self._hulls, self._hull_owner = out, owner
         return self._hulls
 
-    def _cradle_pads(self, sp: ServoSpot, sec: int, outline: np.ndarray, x0: float, x1: float,
-                     Pc: np.ndarray) -> Optional[List[dict]]:
-        """Two pads for a base servo's cradle under the plate: next to a side
-        or back plate (where the cradle has a wall to join), under the plate
-        and off the window it stands in, clear of every finger's links turning
-        at its base, of the other servos' housings (and the beams of those
-        hanging deep) and of the pads already placed; as far apart as they
-        go, toward the servo's back (away from its own link). None if two do
-        not fit."""
-        S = sp.S_parent
-        Si = inv(S)
-        hx, hy1, hz = HOUSING_MM
-        top = dv._hull2d(Pc[:, 1:])          # the pedestal's outline on the plate (`Pc`: its socket's corners)
-        win = self._slab_yz(S, (-hx - 0.2, -9.7, -hz - 0.2), (hx + 0.2, hy1 + 0.2, hz + 0.2), x0, x1)
-        if len(top) < 3:
-            return None
-        others = [o for o in self.servos.values() if o.parent[0] == "palm" and o is not sp]
-        taken = [np.array(c) for cr in self._cradles for c in cr["pads"]]
-        # no pad over the beams and posts of a servo hanging too deep to reach the plate (`_palm`)
-        behind = []
-        for o in others:
-            Po = housing_corners(o.S_parent)
-            if float(Po[:, 0].max()) >= x0 - 3.0:
-                continue
-            oo = o.S_parent[:3, 3][1:]
-            d0 = -oo / np.linalg.norm(oo) if np.linalg.norm(oo) > 1e-6 else np.array([1.0, 0.0])
-            pts2 = list(Po[:, 1:])
-            for turn in (0.0, 60.0, -60.0):
-                c_, s_ = math.cos(math.radians(turn)), math.sin(math.radians(turn))
-                d = np.array([c_ * d0[0] - s_ * d0[1], s_ * d0[0] + c_ * d0[1]])
-                side = np.array([-d[1], d[0]])
-                pts2 += [oo + BASE_BEAM_MM * d + k * 10.0 * side for k in (-1, 1)]
-            behind.append(dv._hull2d(np.array(pts2)))
-        # every finger's links turning at its base, its own too: under the plate a pad is above the servo's
-        # axis, where a link turning a right angle brings its sides round behind the axis
-        hulls = self._sweep_hulls()
-        ring = [np.array([0.0, math.cos(t), math.sin(t)]) for t in np.linspace(0, 2 * math.pi, 8, endpoint=False)]
-
-        def nearest(q):
-            best, bd = None, math.inf
-            for k in range(len(top)):
-                a, b = top[k], top[(k + 1) % len(top)]
-                e = b - a
-                t = float(np.clip((q - a) @ e / max(float(e @ e), 1e-12), 0.0, 1.0))
-                c = a + t * e
-                d = float(np.linalg.norm(q - c))
-                if d < bd:
-                    best, bd = c, d
-            return best
-
-        cands = []
-        n = len(top)
-        for k in range(n):
-            a, b = top[k], top[(k + 1) % n]
-            e = b - a
-            L = float(np.linalg.norm(e))
-            if L < 1e-6:
-                continue
-            nrm = np.array([e[1], -e[0]]) / L
-            for t in (0.15, 0.32, 0.5, 0.68, 0.85):
-                cands.append(a + t * e + (PAD_R_MM + 0.6) * nrm)
-        out = []
-        for q in cands:
-            if self._dist_out(q, outline) > -(PAD_R_MM + 1.0):
-                continue
-            if win is not None and self._dist_out(q, win) < 3.5:
-                continue
-            if sec < 0 and float(np.linalg.norm(q)) < PAD_COLUMN_R_MM:
-                continue
-            if any(float(np.linalg.norm(q - c)) < 2 * PAD_R_MM + 1.0 for c in taken):
-                continue
-            if any(self._dist_out(q, b) < 3.3 for b in behind):
-                continue
-            c = nearest(q)
-            # it joins the pedestal where that has a wall: outside the case's keep-out
-            ps = Si @ np.array([x0 - PAD_H_MM / 2.0, c[0], c[1], 1.0])
-            if not (abs(ps[0]) >= 11.7 or abs(ps[2]) >= 10.2 or ps[1] >= 24.7):
-                continue
-            pts = np.array([np.array([x, q[0], q[1]]) + r * u for x in (x0 - 0.5, x0 - PAD_H_MM / 2, x0 - PAD_H_MM + 0.5)
-                            for r, u in [(0.0, ring[0])] + [(PAD_R_MM, u) for u in ring]])
-            if any(np.all(pts @ eq[:, :3].T + eq[:, 3] <= PAD_SWEEP_MARGIN_MM, axis=1).any() for eq in hulls):
-                continue
-            hit = False
-            for o in others:
-                loc = (pts - o.S_parent[:3, 3]) @ o.S_parent[:3, :3]
-                if np.any((np.abs(loc[:, 0]) <= hx + 1.0) & (loc[:, 1] >= -9.5 - 1.0 - CRADLE_CHANNEL_MM)
-                          & (loc[:, 1] <= hy1 + 1.0) & (np.abs(loc[:, 2]) <= hz + 1.0)):
-                    hit = True
-                    break
-            if hit:
-                continue
-            # off every other base servo's arm-screw driver paths (the yokes go on after the cradles)
-            if any(_seg_dist(pts, a_, b_).min() < 2.0 + 1.0 for o in others for a_, b_ in self._arm_driver_paths(o)):
-                continue
-            # off its own yoke turning round its axis (the hinge's: the part past the cut)
-            loc = (pts - S[:3, 3]) @ S[:3, :3]
-            yx, yr = self._turn_extent(sp)
-            if np.any((np.abs(loc[:, 0]) <= yx + 1.0) & (np.linalg.norm(loc[:, 1:], axis=1) <= yr + 1.0)):
-                continue
-            back = float((Si @ np.array([x0, q[0], q[1], 1.0]))[1])
-            out.append({"at": (float(q[0]), float(q[1])), "near": (float(c[0]), float(c[1])), "back": back})
-        best, score = None, -math.inf
-        for a in range(len(out)):
-            for b in range(a + 1, len(out)):
-                d = float(np.linalg.norm(np.subtract(out[a]["at"], out[b]["at"])))
-                if d < 8.0:                     # two screw heads apart (the window keeps the cradle square)
-                    continue
-                sc = d + 0.3 * (out[a]["back"] + out[b]["back"])
-                if sc > score:
-                    best, score = [out[a], out[b]], sc
-        return best
-
-    def _cradle_parts(self) -> None:
-        """Each cradle set apart in `_palm` as a part of its own (in its palm
-        part's frame): its socket on its pedestal, its top in the plate and
-        its pads under it, less everything its palm part gives way to but the
-        other fingers' sweeps (as a kept cradle wall), less the cradles made
-        before it, with a pilot hole in each pad."""
-        done: List[Piece] = []
-        for cr in self._cradles:
-            sp, sec = cr["sp"], cr["sec"]
-            palm = self.parts[("palm", sec)]
-            i = sp.key[1] if sp.key[0] == "f" else -1
-            key = ("cradle", i)
-            part = Part(f"f{i}_cradle" if i >= 0 else "hinge_cradle", ("palm", sec), palm.frame)
-            part.positive = [w("0") for w in cr["walls"]]
-            part.clip = palm.clip
-            x0 = PALM_TOP_MM - PALM_PLATE_MM               # the plate's underside: the pads' tops
-            part.negative = list(palm.negative) + [w("FIT") for w in done]
-            part.negative += [f"translate([0, {y:.3f}, {z:.3f}]) cyl_x(M3_PILOT / 2, {x0 - PAD_H_MM + 1.5}, {x0 + 1});"
-                              for y, z in cr["pads"]]
-            part.swept_by = {i: list(palm.swept_by.get(i, []))}
-            if i != -1:
-                part.swept_by[-1] = list(palm.swept_by.get(-1, []))
-            part.holds = [sp]
-            part.pads = list(cr["pads"])
-            sp.holder = key
-            self.parts[key] = part
-            done += cr["walls"]
-
     # ------------------------------------------------- palm fixings, bay, mount
 
-    def _keep_clear_yz(self, sec: int) -> List[np.ndarray]:
-        """(y, z) outlines on plate `sec` that bolts and screws keep clear of:
-        each of its fingers' base sweeps, the cradles that are parts of their
-        own (on before the column's screws, a screwdriver's width more than
-        their walls) and their pads, and the hinge servo with its yoke."""
+    def _keep_clear_yz(self, sec: int, case_screws: bool = True) -> List[np.ndarray]:
+        """(y, z) outlines on plate `sec` that the column's posts keep clear
+        of (the fingers' links turning at their bases: `_post_clear`, in 3D):
+        the hinge servo with its yoke, and the screwdrivers' ways to every
+        base servo's arm screws and (with `case_screws`) case screws, where
+        they pass within a post's height."""
         out = []
-        for i in range(len(self.hand.fingers)):
-            if finger_section(self.hand, i) == sec:
-                out.append(dv._hull2d(dv.base_sweep_mm(self.hand, i)[:, 1:]))
         ring = np.array([[math.cos(t), math.sin(t)] for t in np.linspace(0, 2 * math.pi, 16, endpoint=False)])
-        for cr in self._cradles:
-            if cr["sec"] == sec:
-                S = cr["sp"].S_parent
-                out.append(dv._hull2d(housing_corners(S, grow=1.0)[:, 1:]))
-                out += [np.asarray(q) + (PAD_R_MM + 1.0) * ring for q in cr["pads"]]
         h = self.servos.get(("hinge",))
         if h is not None:
             c = h.S_parent[:3, 3]
             out.append(c[1:] + 24.0 * ring)
-        # every base servo's arm-screw driver paths (a post stands the plate's whole depth)
+        hx = HOUSING_MM[0]
         for sp in self.servos.values():
             if sp.parent == ("palm", sec):
-                for a_, b_ in self._arm_driver_paths(sp):
+                paths = list(self._arm_driver_paths(sp))
+                for yy, zz in ((22.5, -8.0), (22.5, 8.0)) if case_screws else ():
+                    for a, b in ((hx, hx + 25.0), (-hx - 25.0, -hx)):
+                        paths.append(tuple((sp.S_parent @ np.array([x, yy, zz, 1.0]))[:3] for x in (a, b)))
+                for a_, b_ in paths:
+                    # only where it passes within a post's height (a standing servo's lower screws are below it)
+                    if min(a_[0], b_[0]) - 3.0 > PALM_FACE_MM or max(a_[0], b_[0]) + 3.0 < -PLATE_HALF_MM:
+                        continue
                     out.append(dv._hull2d(np.array([q[1:] + 3.0 * u for q in (a_, b_) for u in ring])))
         return out
 
@@ -1217,18 +1297,19 @@ class Design:
         for sec in ([-1, 0] if self.hand.palm_joints else [-1]):
             part = self.parts[("palm", sec)]
             outline = g.outlines[sec]
-            clear = self._keep_clear_yz(sec)
             screws: List[Tuple[float, float]] = []
             if sec < 0:
                 # the mount's column under the palm's back: a post from it up to the plate round each of its
                 # screws (countersunk, from the palm's face); the cables run under the plate, between the
-                # posts and down the column's bore
-                screws = self._column_screws(clear)
+                # posts and down the column's bore. The posts keep off the base servos' case screws where
+                # three still fit (the checks see that two of each servo's four stay reachable)
+                screws = (self._column_screws(self._keep_clear_yz(sec))
+                          or self._column_screws(self._keep_clear_yz(sec, case_screws=False)))
                 part.column_screws = screws
                 for y, z in screws:
                     part.negative.append(f"column_screw({y:.3f}, {z:.3f});")
                     post: Piece = lambda gg, y=y, z=z: (f"translate([0, {y:.3f}, {z:.3f}]) cyl_x(POST_R + ({gg}), "
-                                                        f"{-PLATE_HALF_MM} - ({gg}), {PALM_TOP_MM} + ({gg}));")
+                                                        f"{-PLATE_HALF_MM} - ({gg}), {PALM_FACE_MM} + ({gg}));")
                     self._posts.add(id(post))
                     part.pieces.append(post)
                     part.positive.append(post("0"))
@@ -1258,18 +1339,37 @@ class Design:
         return best
 
     def _column_screws(self, clear: List[np.ndarray]) -> List[Tuple[float, float]]:
-        """Four (or three) screws on the column's circle, each with room for
-        its post (`POST_CLEAR_MM` from every outline in `clear`), or failing
-        that for the screw alone."""
-        r = COLUMN_SCREW_R_MM
+        """Four (or three) screws on a circle inside the column (16.5 mm
+        across, else 13), each with room for its post (`POST_CLEAR_MM` from
+        every outline in `clear`), or failing that for the screw alone, and
+        each post clear of every finger's links turning at its base."""
+        ok: Dict[Tuple[float, float], bool] = {}
+
+        def post_ok(q) -> bool:
+            key = (round(float(q[0]), 3), round(float(q[1]), 3))
+            if key not in ok:
+                ok[key] = self._post_clear(q)
+            return ok[key]
+
         for gap in (POST_CLEAR_MM, 2.5):
-            for n in (4, 3):
-                for k in range(0, 360 // n, 15):
-                    pts = [np.array([r * math.cos(math.radians(k + 360 / n * m)),
-                                     r * math.sin(math.radians(k + 360 / n * m))]) for m in range(n)]
-                    if all(self._dist_out(q, c) >= gap for q in pts for c in clear):
-                        return [tuple(map(float, q)) for q in pts]
+            for r in (COLUMN_SCREW_R_MM, 13.0):
+                for n in (4, 3):
+                    for k in range(0, 360 // n, 15):
+                        pts = [np.array([r * math.cos(math.radians(k + 360 / n * m)),
+                                         r * math.sin(math.radians(k + 360 / n * m))]) for m in range(n)]
+                        if all(self._dist_out(q, c) >= gap for q in pts for c in clear) and all(post_ok(q) for q in pts):
+                            return [tuple(map(float, q)) for q in pts]
         return []
+
+    def _post_clear(self, q) -> bool:
+        """A post round the column screw at (y, z) `q`, from the palm's back
+        face up into the plate, clear of every finger's links turning at its
+        base (their hulls, by a printed part's clip and a gap)."""
+        ring = [(math.cos(t), math.sin(t)) for t in np.linspace(0.0, 2.0 * math.pi, 12, endpoint=False)]
+        pts = np.array([[x, q[0] + POST_R_MM * c, q[1] + POST_R_MM * s] for x in np.linspace(-PLATE_HALF_MM, PALM_FACE_MM, 7)
+                        for c, s in ring])
+        return not any(np.all(pts @ eq[:, :3].T + eq[:, 3] <= PART_CLEAR + CLIP_MM, axis=1).any()
+                       for eq in self._sweep_hulls())
 
     def _bay(self) -> None:
         g = dv.hand_geometry(self.hand)
@@ -1322,7 +1422,7 @@ class Design:
         # the face open over a servo standing under it on a level axis (`_sling`): the convex hull of what its
         # finger sweeps through the plate round its yoke, a clean opening rather than the sweeps' lobes
         # (Martin, 10/28)
-        x0, x1 = PALM_TOP_MM - PALM_PLATE_MM, PALM_TOP_MM
+        x0, x1 = PALM_FACE_MM - PALM_PLATE_MM, PALM_FACE_MM
         for sp in self.servos.values():
             if sp.key in self._slung:
                 stmts = self.parts[sp.parent].swept_by.get(sp.key[1], [])

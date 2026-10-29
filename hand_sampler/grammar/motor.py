@@ -18,10 +18,14 @@ closing direction y reversed) instead of the finger direction reversed, so
 only its 20 mm width lies along the link (10 mm behind the axis) and its
 body stands 24.5 mm out behind the finger.
 
-Every motor's body sits in the link before its joint (the palm for a
-finger's first joint). The link after it holds the horn and the idler in a
-yoke, a 33 x 24 x 24 mm box around the axis (the motor's length plus a wall
-at each end, its front plus a wall).
+A motor's body sits in the link before its joint (the palm for a finger's
+first joint), and the link after it holds the horn and the idler in a yoke,
+a 33 x 24 x 24 mm box around the axis (the motor's length plus a wall at
+each end, its front plus a wall). A flipped bend motor (Martin, 2026-10-29:
+a thinner finger than a turned one) lies along the link after its joint
+instead, its back v the finger direction: its body is in that link and the
+link before holds its horns, so that link carries two yokes (which motors
+flip is `hand.servo_poses`).
 
 Link floors (E15's plane rule): a plane square to the finger separates the
 next motor's back from the corners of this motor's front, which swing on a
@@ -98,20 +102,22 @@ def is_bend(a: Sequence[float]) -> bool:
     return best[1] == 2
 
 
-def motor_axes(a: Sequence[float], turned: bool = False) -> np.ndarray:
+def motor_axes(a: Sequence[float], turned: bool = False, flipped: bool = False) -> np.ndarray:
     """3x3, columns (a, v, w): the motor's axis, its back and its width. A
-    turned motor's back is the back of the finger (-y)."""
+    turned motor's back is the back of the finger (-y), a flipped one's the
+    finger direction (+x: it lies along the link after its joint)."""
     a = np.asarray(a, dtype=float)
     a = a / np.linalg.norm(a)
-    back = -Y if turned else (-X if abs(a[0]) < 1.0 - 1e-12 else -Y)
+    back = -Y if turned else (X if flipped else (-X if abs(a[0]) < 1.0 - 1e-12 else -Y))
     v = back - a * float(a @ back)
     v = v / np.linalg.norm(v)
     return np.column_stack([a, v, np.cross(a, v)])
 
 
-def motor_centre(a: Sequence[float], slide_mm: float = 0.0, turned: bool = False) -> np.ndarray:
+def motor_centre(a: Sequence[float], slide_mm: float = 0.0, turned: bool = False,
+                 flipped: bool = False) -> np.ndarray:
     """The motor box's centre relative to its joint point (joint frame)."""
-    M = motor_axes(a, turned)
+    M = motor_axes(a, turned, flipped)
     return slide_mm * M[:, 0] + MOTOR_CENTRE_BACK_MM * M[:, 1]
 
 
@@ -212,6 +218,47 @@ def link_floor_mm(a: Sequence[float], b: Sequence[float], turned_a: bool = False
 @lru_cache(maxsize=16384)
 def _link_floor_cached(a: Tuple[float, ...], b: Tuple[float, ...], turned_a: bool, turned_b: bool) -> int:
     return floor_mm(plane_floor_mm(np.array(a), np.array(b), turned_a, turned_b))
+
+
+def reach_ahead_mm(a: Sequence[float], pose: str) -> float:
+    """How far what joint `a`'s motor puts in the link after its joint
+    reaches along that link: the yoke round a lying or turned motor's
+    swinging front (`swept_front_mm`), or a flipped motor's body (24.5 mm
+    for a bend: its back, which turns with the link)."""
+    if pose == "flipped":
+        return _flipped_back_cached(_key(a))
+    return swept_front_mm(a, pose == "turned")
+
+
+@lru_cache(maxsize=4096)
+def _flipped_back_cached(a: Tuple[float, ...]) -> float:
+    v = np.array(a)
+    return support(motor_centre(v, 0.0, False, True), motor_axes(v, False, True), MOTOR_HALF_MM, X)
+
+
+def reach_behind_mm(b: Sequence[float], pose: str) -> float:
+    """How far what joint `b`'s motor puts in the link before its joint
+    reaches back along that link: a lying or turned motor's body
+    (`back_mm`), or the yoke round a flipped motor's front, which swings
+    back as far as a lying one's swings forward (13.79 mm for a bend)."""
+    if pose == "flipped":
+        return swept_front_mm(b)
+    return back_mm(b, pose == "turned")
+
+
+def pose_floor_mm(a: Sequence[float], b: Sequence[float], pose_a: str, pose_b: str) -> int:
+    """The shortest link between joints with axes `a` then `b` whose motors
+    sit as `pose_a` and `pose_b` ("lying", "turned" or "flipped";
+    `link_floor_mm` for the first two): 31 mm for a bend then a flipped bend
+    (two yokes), 50 for a flipped bend then another, 60 for a flipped bend
+    then a lying one (two bodies)."""
+    return floor_mm(WALL_MM + reach_ahead_mm(a, pose_a) + reach_behind_mm(b, pose_b))
+
+
+def tip_pose_floor_mm(a: Sequence[float], pose: str) -> int:
+    """`tip_floor_mm` for a last motor sitting as `pose` (40 mm for a
+    flipped bend, its body in the fingertip)."""
+    return ceil10(WALL_MM + reach_ahead_mm(a, pose) + PAD_MM)
 
 
 def crossing_floor_mm(a: Sequence[float], turned_a: bool = False) -> int:

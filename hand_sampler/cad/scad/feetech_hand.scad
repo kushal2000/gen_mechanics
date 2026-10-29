@@ -59,7 +59,6 @@ M2_CLEAR = 2.4;
 M2_HEAD = 4.0;                // pan head 3.5 mm, with room
 M2_PILOT = 1.7;
 M3_CLEAR = 3.4;
-M3_PILOT = 2.5;               // an M3 screw cutting its own thread in a cradle's pad
 M3_NUT = 5.7;                 // across flats (5.5), with room
 M3_HEAD = 6.0;
 M3_CS_R = 3.2;                // a countersunk M3's head (6 mm), with room: its 90 degree seat
@@ -270,7 +269,7 @@ module flange_keepout(cable = 0) {
 // a screwdriver's way to the case screws, `reach` out from the side plates
 // (a flange: from its plate, for the idler face's four) cut through the
 // part's own plate, connector and bridge, never through another servo's
-// cradle
+// housing
 module case_screw_tunnels(reach = 30, flange = false) {
     if (flange) for (yz = concat(FAR_HOLES, NEAR_HOLES)) cyl_x_at(yz[0], yz[1], 1.9, -HOUSING_X - reach, -HOUSING_X);
     else for (yz = FAR_HOLES, s = [-1, 1])
@@ -313,10 +312,13 @@ module arm_keepout(s, holes) {
 }
 
 // ------------------------------------------------------------- the palm
-// The palm is a shell: a plate whose face is level with the base servos'
-// tops (Martin, 10/28), the servos' cradles hanging under it, posts down to
-// the mount's column at the palm's back (PLATE_HALF below its mid-plane)
-PALM_TOP = 10;      // the plate's face: the base servos' tops (the grammar's palm face less a wall)
+// The palm is a shell: a plate whose face stands a few mm over the base
+// servos' tops (Martin, 10/29: their case screws' screwdrivers pass under
+// it), a rim down from its edge, the servos screwed into housings under it,
+// a ring round the column's screws with spokes out to the housings, posts
+// down to the mount's column at the palm's back (PLATE_HALF below its
+// mid-plane)
+PALM_FACE = 13.5;   // the plate's face: 3.5 mm over the base servos' tops (the grammar's palm face less a wall)
 POST_R = 4.5;       // a post round each of the column's screws
 
 // the palm plate: an outline (y, z) extruded over the plate's thickness
@@ -332,7 +334,7 @@ module cs_m3(top, depth) {
 }
 
 // a screw from the palm's face through its plate and a post into the mount's column
-module column_screw(y, z) translate([0, y, z]) cs_m3(PALM_TOP, PALM_TOP + PLATE_HALF + 1);
+module column_screw(y, z) translate([0, y, z]) cs_m3(PALM_FACE, PALM_FACE + PLATE_HALF + 1);
 
 // ------------------------------------------------------- the bay and the mount
 // The bay frame: x along the palm normal (toward the palm), y along the bay's

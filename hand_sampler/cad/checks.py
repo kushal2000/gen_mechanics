@@ -9,8 +9,8 @@ anyone prints it.
   horns stay clear of its parent;
 - a screwdriver reaches every screw in the order ASSEMBLY.md gives: the
   case screws past the part holding the servo, the arm screws at some joint
-  angle or the link slid in on the servo, a cradle's screws and the mount's
-  column screws from the palm's face past the cradles put on before;
+  angle or the link slid in on the servo, the mount's column screws from the
+  palm's face past the base links;
 - no two other parts touch at the zero pose;
 - how far each part reaches outside its simulator body (the grammar's
   solid; Martin, 2026-10-23: small overhangs are fine).
@@ -128,13 +128,13 @@ def check(design: Design, stl_dir: Path) -> Report:
                 whole = whole + m
             solids[key] = whole
     _joint_checks(design, solids, rep)
-    _cradle_checks(design, solids, rep)
+    _face_screw_checks(design, solids, rep)
     _zero_pose_checks(design, solids, rep, frames)
     _overhangs(design, solids, rep)
     return rep
 
 
-"""A servo screwed into a cradle or housing is held if three of the four
+"""A servo screwed into a socket or housing is held if three of the four
 screw bosses round its case's far holes are there (`BOSS_SHARE`; a warning
 below four) and most of its back wall (`BACK_SHARE`)."""
 BOSS_SHARE = 0.7            # a boss counts if this much of it is there; three of four must
@@ -174,65 +174,36 @@ def _back_wall_solid():
 
 
 def _bodies(design: Design, solids: Dict) -> Dict:
-    """Each rigid body's printed parts as one solid (a palm part with the
-    cradles screwed to it), in the body's frame."""
-    out = {}
-    for key, man in solids.items():
-        if key[0] == "extra":
-            continue
-        b = design.parts[key].body if key[0] == "cradle" else key
-        out[b] = man if b not in out else out[b] + man
-    return out
+    """Each rigid body's printed parts as one solid, in the body's frame."""
+    return {key: man for key, man in solids.items() if key[0] != "extra"}
 
 
-def _cradle_checks(design: Design, solids: Dict, rep: Report) -> None:
-    """A cradle's pads under the plate keep their screw bosses; a
-    screwdriver reaches each of their screws, and each of the mount's column
-    screws, from the palm's face past the cradles, their servos and their
+def _face_screw_checks(design: Design, solids: Dict, rep: Report) -> None:
+    """The palm stands on the mount's column on 3 or 4 screws, and a
+    screwdriver reaches each from the palm's face past the base servos'
     links (turned anywhere in their range)."""
     import manifold3d as m3
 
-    from .design import PAD_H_MM, PALM_PLATE_MM, PALM_TOP_MM
+    from .design import PALM_FACE_MM
 
-    x1 = PALM_TOP_MM
-    x0 = x1 - PALM_PLATE_MM
-    screws = []                               # (y, z, whose)
-    for key, part in design.parts.items():
-        if key[0] != "cradle" or key not in solids:
-            continue
-        kept = 0
-        for y, z in part.pads:
-            boss = m3.Manifold.cylinder(PAD_H_MM - 1.5, 3.5, 3.5, 24).rotate([0.0, 90.0, 0.0]).translate(
-                [x0 - PAD_H_MM + 1.5, y, z])
-            boss = boss - m3.Manifold.cylinder(PAD_H_MM, 1.25, 1.25, 16).rotate([0.0, 90.0, 0.0]).translate(
-                [x0 - PAD_H_MM, y, z])
-            kept += (solids[key] ^ boss).volume() >= BOSS_SHARE * boss.volume()
-            if part.body == ("palm", -1):
-                screws.append((y, z, f"{part.name}: its screw"))
-        if kept < len(part.pads):
-            rep.clashes.append(f"{part.name}: {kept} of its {len(part.pads)} pads keep their screw bosses")
+    x1 = PALM_FACE_MM
     palm = design.parts[("palm", -1)]
-    screws += [(y, z, "palm: the column's screw") for y, z in getattr(palm, "column_screws", [])]
+    n = len(getattr(palm, "column_screws", []))
+    if n < 3:
+        rep.clashes.append(f"palm: room for {n} screws into the mount's column, not 3 (posts off every base sweep "
+                           f"and every screwdriver's way)")
     units = []
     for sp in design.servos.values():
-        if sp.holder is None or design.parts[sp.holder].body != ("palm", -1) or sp.holder not in solids:
-            continue
-        unit = solids[sp.holder] + _xf(_case_solid(), sp.S_parent)
         C = solids.get(sp.child)
+        if sp.parent != ("palm", -1) or C is None:
+            continue
         lo, hi = sp.rot_deg
-        poses = [sp.S_parent @ _rot_x(a) @ inv(sp.S_child) for a in (0.0, lo, hi)] if C is not None else []
-        units.append((unit, C, poses))
-    for y, z, whose in screws:
+        units.append((C, [sp.S_parent @ _rot_x(a) @ inv(sp.S_child) for a in (0.0, lo, hi)]))
+    for y, z in getattr(palm, "column_screws", []):
         driver = m3.Manifold.cylinder(40.0, 2.8, 2.8, 16).rotate([0.0, 90.0, 0.0]).translate([x1 + 0.05, y, z])
-        blocked = False
-        for unit, C, poses in units:
-            if (unit ^ driver).volume() > TOUCH_MM3:
-                blocked = True
-            elif poses and all((_xf(C, M) ^ driver).volume() > TOUCH_MM3 for M in poses):
-                blocked = True
-        if blocked:
-            rep.clashes.append(f"{whose} at ({y:.0f}, {z:.0f}): a screwdriver cannot reach it from the palm's face "
-                               f"past the base servos' cradles and links")
+        if any(all((_xf(C, M) ^ driver).volume() > TOUCH_MM3 for M in poses) for C, poses in units):
+            rep.clashes.append(f"palm: the column's screw at ({y:.0f}, {z:.0f}): a screwdriver cannot reach it "
+                               f"from the palm's face past the base servos' links")
 
 
 def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
@@ -246,7 +217,7 @@ def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
     rep.orders = {}
     back = _back_wall_solid()
     for sp in design.servos.values():
-        H = solids.get(sp.holder or sp.parent)                 # what its case is screwed to
+        H = solids.get(sp.parent)                              # what its case is screwed to
         P, C = bodies.get(sp.parent), bodies.get(sp.child)     # the bodies turning against each other
         if P is None or C is None or H is None:
             continue
@@ -281,7 +252,7 @@ def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
             # left to the physics and the policy (a warning), unless it still clashes without them
             others = None
             for o in design.parts[sp.parent].holds:
-                # other fingers' cradles and the hinge's (kept against every finger's sweep)
+                # other fingers' housings and the hinge's (kept against every finger's sweep)
                 if (o.key[0] == "f" and o.key[1] != sp.key[1]) or o.key == ("hinge",):
                     b = _xf(_pocket_solid(), o.S_parent)
                     others = b if others is None else others + b
@@ -289,7 +260,7 @@ def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
                 Po = Pc - others
                 rest = max((Po ^ _xf(C, sp.S_parent @ _rot_x(a) @ inv(sp.S_child))).volume() for a in _angles(lo, hi))
                 if rest <= TOUCH_MM3:
-                    rep.warnings.append(f"joint {name}: {sp.child} meets another servo's cradle in the palm at some "
+                    rep.warnings.append(f"joint {name}: {sp.child} meets another servo's housing in the palm at some "
                                         f"angles (in each other's way, as in the simulator)")
                     worst = 0.0
         if worst > TOUCH_MM3:
@@ -297,8 +268,7 @@ def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
         v = (C ^ _xf(_case_solid(), sp.S_child)).volume()
         if v > TOUCH_MM3:
             rep.clashes.append(f"joint {name}: {sp.child} cuts its servo's case at the zero pose ({v:.0f} mm3)")
-        # on the bench for a cradle of its own (the link alone either way)
-        order = _assembly_order(sp, H if sp.holder else P, solids.get(sp.child, C))
+        order = _assembly_order(sp, P, solids.get(sp.child, C))
         rep.orders[sp.key] = order
         if order is None:
             rep.clashes.append(f"joint {name}: no way to put it together: a screwdriver cannot reach the case "
@@ -390,11 +360,10 @@ def _zero_pose_checks(design: Design, solids: Dict, rep: Report, frames: Dict) -
     placed = {k: _xf(solids[k], frames[k]) for k in keys}
     adjacent = {frozenset((("palm", -1), ("extra", "mount"))), frozenset((("extra", "bay"), ("extra", "mount")))}
     for sp in design.servos.values():
-        for holder in {sp.parent, sp.holder or sp.parent}:
-            adjacent.add(frozenset((holder, sp.child)))
-            if sp.yoke == "crossing":
-                _, i, j = sp.key
-                adjacent.add(frozenset((holder, ("link", i, j + 1))))
+        adjacent.add(frozenset((sp.parent, sp.child)))
+        if sp.yoke == "crossing":
+            _, i, j = sp.key
+            adjacent.add(frozenset((sp.parent, ("link", i, j + 1))))
     for a in range(len(keys)):
         for b in range(a + 1, len(keys)):
             if frozenset((keys[a], keys[b])) in adjacent:
@@ -429,7 +398,7 @@ def _overhangs(design: Design, solids: Dict, rep: Report) -> None:
     for key, man in solids.items():
         if key[0] == "extra":
             continue
-        P = _sim_points_mm(design, design.parts[key].body if key[0] == "cradle" else key)
+        P = _sim_points_mm(design, key)
         if P is None:
             continue
         hull = ConvexHull(P)

@@ -37,6 +37,7 @@ and the last link to the fingertip.
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 from functools import lru_cache
@@ -383,6 +384,80 @@ def turned_servo(f: Finger, j: int) -> bool:
     if j < len(f.joints) - 1 and jt.length == 0:
         return False
     return prev.length < _link_floor(tuple(prev.axis), tuple(jt.axis), turned_servo(f, j - 1), False)
+
+
+SERVO_POSES = ("lying", "flipped", "turned")
+"""How a joint's servo sits (`servo_poses`): lying along the link before its
+joint (its back toward the palm), flipped along the link after it (its back
+toward the fingertip; the link before holds its horns), or turned (standing
+on the finger's back in the link before)."""
+
+
+def _flip_candidate(f: Finger, j: int) -> bool:
+    """A bend servo that may lie either way along the finger or turn: past a
+    non-zero link, clear of crossings and of sliding joints on either side."""
+    n = len(f.joints)
+    if j == 0:
+        return False
+    jt, prev = f.joints[j], f.joints[j - 1]
+    if jt.type == "sliding" or prev.length == 0 or not _is_bend(tuple(jt.axis)):
+        return False
+    if j < n - 1 and jt.length == 0:
+        return False
+    if j + 1 < n and (f.joints[j + 1].type == "sliding" or (j + 1 < n - 1 and f.joints[j + 1].length == 0)):
+        return False
+    return True
+
+
+@lru_cache(maxsize=None)
+def _pose_floor(ax_a: Tuple[int, int], ax_b: Tuple[int, int], pose_a: str, pose_b: str) -> int:
+    return mt.pose_floor_mm(axis_unit(ax_a), axis_unit(ax_b), pose_a, pose_b)
+
+
+@lru_cache(maxsize=None)
+def _tip_pose_floor(ax: Tuple[int, int], pose: str) -> int:
+    return mt.tip_pose_floor_mm(axis_unit(ax), pose)
+
+
+@lru_cache(maxsize=None)
+def servo_poses(f: Finger) -> Tuple[str, ...]:
+    """How each joint's servo sits (`SERVO_POSES`): of the ways the finger's
+    bend servos can sit with room in every link (`motor.pose_floor_mm`), the
+    one with the fewest turned, then the fewest flipped, then the turned ones
+    nearest the palm (the fingertip stays slim) (Martin, 2026-10-29: a servo flipped
+    to lie along the link after it keeps the finger as thin as a lying one,
+    where turning it stands it 24.5 mm out on the finger's back). The
+    grammar's floors come from turning (`turned_servo`), which always fits
+    where anything does, so the lengths a finger may take are unchanged; a
+    finger shorter than its floors keeps the turned servos."""
+    n = len(f.joints)
+    base = tuple("turned" if turned_servo(f, j) else "lying" for j in range(n))
+    cands = [j for j in range(n) if _flip_candidate(f, j)]
+    if not cands:
+        return base
+    links = sorted({k for j in cands for k in (j - 1, j)})
+    rank = {p: k for k, p in enumerate(SERVO_POSES)}
+    best, best_key = base, None
+    for combo in itertools.product(SERVO_POSES, repeat=len(cands)):
+        poses = list(base)
+        for j, p in zip(cands, combo):
+            poses[j] = p
+        ok = True
+        for k in links:
+            a = tuple(f.joints[k].axis)
+            if k == n - 1:
+                fl = _tip_pose_floor(a, poses[k])
+            else:
+                fl = _pose_floor(a, tuple(f.joints[k + 1].axis), poses[k], poses[k + 1])
+            if f.joints[k].length < fl:
+                ok = False
+                break
+        if not ok:
+            continue
+        key = (poses.count("turned"), poses.count("flipped"), tuple(rank[p] for p in reversed(poses)))
+        if best_key is None or key < best_key:
+            best, best_key = tuple(poses), key
+    return best
 
 
 def zero_link_ok(f: Finger, j: int, buildable: bool) -> bool:

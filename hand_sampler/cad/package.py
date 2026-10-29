@@ -191,15 +191,14 @@ def lay_flat(src: Path, dst: Path) -> List[float]:
 
 
 def _count_screws(d: Design) -> Dict[str, int]:
-    out = {"box": 0, "M2x5": 0, "M3x30_column": 0, "M3x8_skirt": 4, "M2x6_board": 4, "M3x10_cradle": 0}
+    out = {"box": 0, "M2x5": 0, "M3x35_column": 0, "M3x8_skirt": 4, "M2x6_board": 4}
     for sp in d.servos.values():
         out["box"] += 4                           # the case: its far holes, or its idler face's four (a flange cup)
         out["M2x5"] += 4                          # the driven arm (or the crossing plate)
         if sp.yoke == "u":
             out["box"] += 4                       # the idler arm
     for p in d.part_list():
-        out["M3x30_column"] += len(getattr(p, "column_screws", []))
-        out["M3x10_cradle"] += len(p.pads)
+        out["M3x35_column"] += len(getattr(p, "column_screws", []))
     return out
 
 
@@ -218,12 +217,9 @@ def bom(d: Design, rep: checks.Report) -> str:
              "| Palm Hub rev B.2 board | 1 | `feetech-hand-pcb` |",
              f"| M2 x 5 pan head | {sc['M2x5']} | the driven horn's arm (4 per servo) |",
              f"| M2 x 6 pan head | {sc['M2x6_board']} | the board on its standoffs |",
-             f"| M3 x 30 countersunk | {sc['M3x30_column']} | from the palm's face through its plate and posts "
+             f"| M3 x 35 countersunk | {sc['M3x35_column']} | from the palm's face through its plate and posts "
              f"into the mount's column |",
              f"| M3 x 8 pan head | {sc['M3x8_skirt']} | the lid's skirt to the bay |"]
-    if sc["M3x10_cradle"]:
-        lines.append(f"| M3 x 10 countersunk | {sc['M3x10_cradle']} | each base servo's cradle to the palm's plate, "
-                     f"from the palm's face |")
     lines += ["| M5 x 12 or M6 x 12 button head, washer | 4 | the bay floor to the arm's flange "
               "(ISO 9409-1-31.5-4-M5 or -50-4-M6) |",
               "| 3-pin 1.25 mm (PicoBlade) servo cable | "
@@ -292,8 +288,7 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
     ports = wiring(d)
     L = ["# Assembly", "",
          f"Hand `{design_id(hand)}`. Parts are named `f<finger>_l<link>` (the link after joint <link>), "
-         "`f<finger>_tip`, `palm` (and `palm_beyond` past the cut), `f<finger>_cradle` (a base servo's cradle; "
-         "`hinge_cradle` for the hinge), `bay`, `mount`.", "",
+         "`f<finger>_tip`, `palm` (and `palm_beyond` past the cut), `bay`, `mount`.", "",
          "## 1. Servos", "",
          "Set each servo's ID and move it to its centre (position 2048) before fitting anything to its horns "
          "(Feetech's FD software, or the board).", "",
@@ -306,10 +301,11 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
         else:
             _, i, j = sp.key
             kind = "bend" if abs(sp.S_child[2, 0]) > 0.99 else ("twist" if abs(sp.S_child[0, 0]) > 0.99 else "spread/oblique")
-            joint, port = f"finger {i} joint {j} ({kind}{', turned' if sp.turned else ''})", ports[i]
+            how = ", turned" if sp.turned else (", flipped" if sp.flipped else "")
+            joint, port = f"finger {i} joint {j} ({kind}{how})", ports[i]
         arms = {"u": "two (driven + idler)", "single": "one on the driven horn (idler horn off; flange cup)",
                 "crossing": "plate on the driven horn"}[sp.yoke]
-        held = names[sp.holder or sp.parent]
+        held = names[sp.parent]
         order = (orders or {}).get(sp.key) or "servo first"
         L.append(f"| {'/'.join(map(str, sp.key))} | {servo_id(sp)} | {joint} | {held} | {names[sp.child]} | "
                  f"{arms} | {order} | {port} |")
@@ -326,21 +322,17 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
           "3. Put the centre screws back through the arms' holes.",
           "4. Driven arm: 4 x M2 x 5. Idler arm: 4 of the servo's box screws.", "",
           "## 3. Palm", "",
-          "The palm is a plate whose face is level with the base servos' tops; the servos hang under it.", "",
-          "1. A base servo with a cradle of its own (`f<finger>_cradle`, `hinge_cradle`) is put together on the "
-          "bench: the servo into the cradle and its link onto its horns as the table's order says (step 4). "
-          "Then push the cradle up into its window in the plate from below, the servo's top flush with the "
-          "palm's face and the pads under the plate, and fix it from the face with 2 x M3 x 10 countersunk.",
-          "2. Stand `palm` on the mount's column, its posts on the column's top, and screw it down from the "
-          "face (M3 x 30 countersunk through the plate and the posts), before any servo the palm itself holds "
-          "goes in (turn the links of step 1 out of the way).",
-          "3. Each servo the palm itself holds goes into its cradle as the table's order says (step 4), and its "
-          "link onto its horns (step 2); the cable leaves through the side wall's window.", ""]
+          "The palm is a shell: a plate whose face stands 3.5 mm over the base servos' tops, a rim down from "
+          "its edge, a ring round the column's screws with a spoke out to each servo's housing. The servos hang "
+          "under the face, each screwed straight into its housing.", "",
+          "1. Stand `palm` on the mount's column, its posts on the column's top, and screw it down from the "
+          "face (M3 x 35 countersunk through the plate and the posts).",
+          "2. Each base servo goes into its housing from below as the table's order says (step 4): the "
+          "screwdriver reaches its case screws along its axis, under the plate. Then its link goes onto its "
+          "horns (step 2); the cable leaves through the side wall's window.", ""]
     if hand.palm_joints:
-        h = d.servos.get(("hinge",))
-        where = ("`hinge_cradle` (step 1: `palm_beyond` goes on its horns on the bench)" if h is not None and h.holder
-                 else "a cradle of the main palm")
-        L += [f"4. The hinge servo sits in {where}; `palm_beyond` is fitted to its horns as in step 2.", ""]
+        L += ["3. The hinge servo sits in a housing of the main palm; `palm_beyond` is fitted to its horns as in "
+              "step 2.", ""]
     if steps:
         L += ["## Pictures", "",
               "Each joint: the part holding the servo, the servo (horns, centre screws, case screws in gold) and "
@@ -348,19 +340,21 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
         for sp in sorted(d.servos.values(), key=servo_id):
             if sp.key in steps:
                 L += [f"**Servo {'/'.join(map(str, sp.key))}** (ID {servo_id(sp)}, "
-                      f"{(orders or {}).get(sp.key) or 'servo first'}): `{names[sp.holder or sp.parent]}` holds it, "
+                      f"{(orders or {}).get(sp.key) or 'servo first'}): `{names[sp.parent]}` holds it, "
                       f"`{names[sp.child]}` goes on its horns.", "", f"![servo {sp.key}](steps/{steps[sp.key]})", ""]
     L += ["## 4. Fingers, from the palm out", "",
           "For each joint, in the order the table gives:", "",
           "- **servo first:** slide the servo into its housing from the front (its horns pass through the "
           "slots), push it to the back wall and screw the case to the side plates (4 of the servo's box screws, "
-          "through the far holes). Then fit the next link to its horns (step 2).",
-          "- **link first:** fit the next link to the servo's horns on the bench (step 2), then slide the "
-          "servo, link and all, into its housing from the front and screw the case to the side plates.", "",
+          "through the far holes). Then fit the part the table's 'Horns in' names to its horns (step 2).",
+          "- **link first:** fit that part to the servo's horns on the bench (step 2), then slide the "
+          "servo, part and all, into its housing from the front and screw the case to the side plates.", "",
+          "A flipped servo lies along the link after its joint: that link holds its case, and the link before "
+          "it carries its horns (so that link has a yoke at each end). A turned one stands on the finger's back.", "",
           "## 5. Cables", "",
           "Each finger's servos are chained on the finger's back: board port -> base servo -> next servo. Leave "
           "about 25 mm of slack across each joint and tie the cable to the links. The palm's cables run under "
-          "its plate, between the posts and down the mount's bore.", "",
+          "its ring and spokes, between the posts and down the mount's bore.", "",
           "| Finger | Board port |", "|---|---|"]
     for i in range(len(hand.fingers)):
         L.append(f"| {i} | {ports[i]} |")

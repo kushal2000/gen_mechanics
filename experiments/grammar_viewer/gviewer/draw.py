@@ -246,9 +246,12 @@ class HandDrawing:
             put(("hinge_horn",), p.palm[0])
             put(("hinge_axis",), p.palm[0])
         for i, f in enumerate(self.hand.fingers):
+            poses = gdv.finger_geometry(f).poses
             for j in range(len(f.joints)):
-                put(("motor", i, j), p.pre[i][j])
-                put(("horn", i, j), p.links[i][j])
+                # a flipped servo's body turns with the link after its joint, its horns stay with the one before
+                body, horn = (p.links[i][j], p.pre[i][j]) if poses[j] == "flipped" else (p.pre[i][j], p.links[i][j])
+                put(("motor", i, j), body)
+                put(("horn", i, j), horn)
                 put(("axis", i, j), p.links[i][j])
                 put(("link", i, j), p.links[i][j])
 

@@ -72,6 +72,25 @@ def test_a_turned_bend_motor():
     assert mt.BEND_RANGE_DEG == tuple(float(v) for v in KIND_RANGE_DEG["flexion"])
 
 
+def test_a_flipped_bend_motor():
+    """A flipped bend motor lies along the link after its joint (Martin,
+    2026-10-29): its back is the finger direction, 24.5 mm of it ahead of
+    its axis; the link before holds its horns in a yoke round its front,
+    which swings back as far as a lying motor's swings forward."""
+    M = mt.motor_axes(BEND, flipped=True)
+    assert np.allclose(M[:, 1], mt.X)
+    assert mt.reach_ahead_mm(BEND, "flipped") == pytest.approx(24.5)
+    assert mt.reach_behind_mm(BEND, "flipped") == pytest.approx(math.hypot(9.5, 10.0))
+    for pa in ("lying", "turned"):
+        for pb in ("lying", "turned"):
+            assert mt.pose_floor_mm(BEND, BEND, pa, pb) == mt.link_floor_mm(BEND, BEND, pa == "turned", pb == "turned")
+    assert [mt.pose_floor_mm(BEND, BEND, *pp) for pp in (("lying", "flipped"), ("turned", "flipped"),
+                                                         ("flipped", "flipped"), ("flipped", "turned"),
+                                                         ("flipped", "lying"))] == [31, 40, 50, 40, 60]
+    assert mt.pose_floor_mm(TWIST, BEND, "lying", "flipped") == 40
+    assert mt.tip_pose_floor_mm(BEND, "flipped") == 40 == mt.tip_floor_mm(BEND, True)
+
+
 def test_motor_box():
     """The 34 x 20 x 29 mm servo: 24.5 mm behind its axis, 9.5 ahead, 29
     along it, 20 wide; its back is the finger direction reversed (for a twist

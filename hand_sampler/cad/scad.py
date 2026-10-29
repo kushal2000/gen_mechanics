@@ -63,14 +63,14 @@ def hand_scad(design: Design) -> str:
         out.append(f"    color(\"lightsteelblue\") part_{p.name}();")
         for sp in p.holds:
             out.append(f"    {mm(sp.S_parent)} servo_model({str(sp.idler_horn).lower()});")
-        if p.carries is not None:
-            out.append(f"    {mm(p.carries.S_child)} servo_model({str(p.carries.idler_horn).lower()});")
+        for sp in p.carries:
+            out.append(f"    {mm(sp.S_child)} servo_model({str(sp.idler_horn).lower()});")
         out.append("}")
     # one picture per joint: the part holding the servo, the servo with its screws, the next link
     # pulled off the way it goes on (along the servo's front)
     for sp in design.servos.values():
         tag = "_".join(str(k) for k in sp.key)
-        parent, child = design.parts[sp.holder or sp.parent], design.parts[sp.child]
+        parent, child = design.parts[sp.parent], design.parts[sp.child]
         pull = sp.S_parent @ np.array([[1, 0, 0, 0], [0, 1, 0, -STEP_PULL_MM], [0, 0, 1, 0], [0, 0, 0, 1.0]]) \
             @ np.linalg.inv(sp.S_child)
         single = str(sp.yoke != "u").lower()

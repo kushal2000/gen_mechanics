@@ -75,7 +75,7 @@ from .hand import (
     cut_direction_yz,
     cut_normal_yz,
     finger_section,
-    turned_servo,
+    servo_poses,
 )
 from .kinematics import AffineCoupling, Body, Frame, Joint as KJoint, KinematicModel, Pose, validate
 
@@ -507,8 +507,10 @@ class FingerGeometry:
     depth_mm: float               # joint 0 below the palm's front face
     axes: np.ndarray              # (n, 3): canonical unit joint axes, link frame
     slides_mm: np.ndarray         # (n,): each motor's slide along its own axis (crossings)
-    motors: List[Box]             # motor j in joint j's frame before it turns (origin at the joint)
-    yokes: List[Box]              # yoke j in link j's frame
+    motors: List[Box]             # motor j at the zero pose, origin at joint j: in the frame before the joint (fixed to
+                                  # the link before), or in link j's frame where it is flipped (fixed to link j)
+    yokes: List[Box]              # yoke j, origin at joint j: in link j's frame (in the link before where it is flipped)
+    poses: Tuple[str, ...]        # how each joint's servo sits (`hand.servo_poses`): lying, flipped or turned
     fars: List                    # link j's far end in its frame: the next motor (Box), or the fingertip's end (Capsule)
     links: List[Box]              # link j's box in its frame, around its yoke and its far end (the tip: its hull's box)
     tip: Capsule                  # the fingertip's capsule (the last link) in its frame
@@ -516,10 +518,11 @@ class FingerGeometry:
     base_joints: Tuple[int, ...]  # the joints at the base point (0, and 1 when link 0 is 0 mm)
 
 
-def _pad_start_mm(a: np.ndarray, turned: bool = False) -> float:
+def _pad_start_mm(a: np.ndarray, pose: str = "lying") -> float:
     """Where the fingertip pad starts along the last link: past the last
-    motor's swept front and a wall (`motor.tip_floor_mm` without the pad)."""
-    return mt.WALL_MM + mt.swept_front_mm(a, turned)
+    motor's swept front (a flipped one's body) and a wall
+    (`motor.tip_pose_floor_mm` without the pad)."""
+    return mt.WALL_MM + mt.reach_ahead_mm(a, pose)
 
 
 def _aabb_box(points: np.ndarray) -> Box:
@@ -532,22 +535,27 @@ def finger_geometry(f: Finger) -> FingerGeometry:
     n = len(f.joints)
     B = finger_frame(f)
     axes = np.array([axis_unit(jt.axis) for jt in f.joints])
-    turned = [turned_servo(f, j) for j in range(n)]       # bend servos after a short link: body on the back
+    poses = servo_poses(f)     # bend servos after a short link: flipped along the next link, or turned on the back
+    turned = [p == "turned" for p in poses]
+    flipped = [p == "flipped" for p in poses]
     slides = np.zeros(n)
     for j in range(n - 1):
         if f.joints[j].length == 0:
             slides[j] = -mt.crossing_slide_mm(axes[j], axes[j + 1], turned[j + 1])
     motors, yokes = [], []
     for j in range(n):
-        M = mt.motor_axes(axes[j], turned[j])
-        motors.append(Box(mt.motor_centre(axes[j], slides[j], turned[j]), M, mt.MOTOR_HALF_MM.copy()))
+        M = mt.motor_axes(axes[j], turned[j], flipped[j])
+        motors.append(Box(mt.motor_centre(axes[j], slides[j], turned[j], flipped[j]), M, mt.MOTOR_HALF_MM.copy()))
         yokes.append(Box(slides[j] * M[:, 0], M, mt.YOKE_HALF_MM.copy()))
     fars, links = [], []
     tip = None
     for j in range(n):
-        yc = yokes[j].corners()
+        # what link j holds at its joint: its yoke, or a flipped motor's body (a fingertip: the yoke's box either
+        # way, round the flipped body's front and horns; the capsule holds the rest, inside PhysX's 64 faces)
+        yc = (motors[j] if flipped[j] and j < n - 1 else yokes[j]).corners()
         if j < n - 1:
-            nxt = motors[j + 1]
+            # and at the next joint: that motor's body, or the yoke on a flipped one's horns
+            nxt = yokes[j + 1] if flipped[j + 1] else motors[j + 1]
             far = Box(nxt.centre + np.array([float(f.joints[j].length), 0.0, 0.0]), nxt.axes, nxt.half)
             links.append(_aabb_box(np.concatenate([yc, far.corners()])))
         else:     # the fingertip: a capsule along the link from the yoke's back to the tip
@@ -558,7 +566,7 @@ def finger_geometry(f: Finger) -> FingerGeometry:
             tip = Capsule(np.array([a0, 0.0, 0.0]), np.array([a1, 0.0, 0.0]), r)
             tip_hull = Hull(np.concatenate([tip.surface_points(), yc]))
             # its far end (what must clear the plate it is hinged to): past the motor's swing and a wall
-            x0 = min(max(_pad_start_mm(axes[j], turned[j]) + r, a0), a1)
+            x0 = min(max(_pad_start_mm(axes[j], poses[j]) + r, a0), a1)
             far = Capsule(np.array([x0, 0.0, 0.0]), tip.p1.copy(), r)
             links.append(tip_hull.aabb())
         fars.append(far)
@@ -572,7 +580,7 @@ def finger_geometry(f: Finger) -> FingerGeometry:
     depth = max(mt.support(motors[j].centre, motors[j].axes, mt.ENCLOSURE_HALF_MM, nrm) for j in base_joints)
     base = np.array([PLATE_HALF_MM - depth, float(f.y), float(f.z)])
     return FingerGeometry(B=B, base_mm=base, depth_mm=float(depth), axes=axes, slides_mm=slides, motors=motors,
-                          yokes=yokes, fars=fars, links=links, tip=tip, tip_hull=tip_hull,
+                          yokes=yokes, poses=poses, fars=fars, links=links, tip=tip, tip_hull=tip_hull,
                           base_joints=tuple(base_joints))
 
 
