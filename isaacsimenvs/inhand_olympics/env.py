@@ -104,14 +104,24 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.action_queue_filled = torch.zeros(n, dtype=torch.bool, device=dev)
 
         self.palm_body = self.robot.body_names.index(spec.palm_body_name)
-        self.tip_bodies = [self.robot.body_names.index(b) for b in spec.fingertip_body_names]
+        # (N, F) the body behind each fingertip slot. A template scene has no tip bodies: a finger's tip is its last
+        # slot's link, a different body per env (a ghost finger reads the palm, masked by tip_valid).
+        if self.hand_set is not None and self.hand_set.layout == "template":
+            self.tip_body_idx = self._template_tip_bodies()
+        else:
+            tips = [self.robot.body_names.index(b) for b in spec.fingertip_body_names]
+            self.tip_body_idx = torch.tensor(tips, device=dev).expand(n, -1)
+        n_tips = self.tip_body_idx.shape[1]
         if self.hand_set is not None:
             tables = self.hand_set.per_env(self.hand_of_env.cpu().numpy())
             self.tip_offsets = torch.as_tensor(tables["fingertip_offsets"], device=dev)          # (N, F, 3)
             self.tip_valid = torch.as_tensor(tables["fingertip_valid"], device=dev).float()     # (N, F)
+            self.joint_moving = torch.as_tensor(tables["joint_moving"], device=dev).float()     # (N, J)
         else:
+            from isaacsimenvs.common.robots.finger_layout import joint_moving_of
             self.tip_offsets = torch.tensor(spec.fingertip_offsets, device=dev).expand(n, -1, -1)
-            self.tip_valid = torch.ones(n, len(self.tip_bodies), device=dev)
+            self.tip_valid = torch.ones(n, n_tips, device=dev)
+            self.joint_moving = torch.tensor(joint_moving_of(spec), device=dev).float().expand(n, -1)
         self.pen_offsets = pen_keypoint_offsets(self.cfg.pen.length, dev)
         # The twist pen: two objects, each with a 6D goal -- the pen (its barrel's frame: goal_pos / goal_quat) and
         # the cap (cap_goal_pos / cap_goal_quat). Keypoints, for the reward and success only: the pen's and the cap's
@@ -165,7 +175,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.successes = torch.zeros(n, device=dev)
         # Best-so-far distances for the progress rewards; NaN = not measured yet (taken from the next step).
         self.closest_goal_dist = torch.full((n,), math.nan, device=dev)
-        self.closest_tip_dist = torch.full((n, len(self.tip_bodies)), math.nan, device=dev)
+        self.closest_tip_dist = torch.full((n, n_tips), math.nan, device=dev)
         self.goal_dist = torch.zeros(n, device=dev)
         self.is_success = torch.zeros(n, dtype=torch.bool, device=dev)
         self.near_goal = torch.zeros(n, dtype=torch.bool, device=dev)
@@ -381,10 +391,21 @@ class InHandOlympicsEnv(DirectRLEnv):
         return (self.robot.data.body_pos_w[:, self.palm_body] - self.scene.env_origins,
                 self.robot.data.body_quat_w[:, self.palm_body])
 
+    def _template_tip_bodies(self) -> torch.Tensor:
+        """(N, F) in a template scene: each env's hand's last slot link per finger slot, the palm for a ghost."""
+        from isaacsimenvs.common.robots.multi_hand import slot_link
+        hs, names = self.hand_set, list(self.robot.body_names)
+        idx = np.full((hs.n_hands, hs.n_tips), self.palm_body, dtype=np.int64)
+        for h, lay in enumerate(hs.layouts):
+            for f, s in enumerate(hs.finger_slots[h]):
+                idx[h, s] = names.index(slot_link(lay.tip_slot_of_finger[f]))
+        return torch.as_tensor(idx, device=self.device)[self.hand_of_env.long()]
+
     def fingertips(self) -> torch.Tensor:
         """(N, F, 3) fingertip pad points, env frame."""
-        pos = self.robot.data.body_pos_w[:, self.tip_bodies] - self.scene.env_origins.unsqueeze(1)
-        quat = self.robot.data.body_quat_w[:, self.tip_bodies]
+        rows = torch.arange(self.num_envs, device=self.device).unsqueeze(1)
+        pos = self.robot.data.body_pos_w[rows, self.tip_body_idx] - self.scene.env_origins.unsqueeze(1)
+        quat = self.robot.data.body_quat_w[rows, self.tip_body_idx]
         n, f = pos.shape[:2]
         off = quat_apply(quat.reshape(-1, 4), self.tip_offsets.reshape(-1, 3))
         return pos + off.view(n, f, 3)

@@ -31,8 +31,11 @@ Everything but the architecture is shared, and explicit in every `.sub` (`make_s
 | Dead action dims | counted | masked (ghost slots, locked wrist rotation) |
 | Time per epoch (hand 000) | ~3 s | ~11 s |
 
-The two differ in learner as well as network, on purpose: each runs its own established recipe. A learner-matched
-pair is a follow-up if the gap needs explaining.
+The two differ in learner as well as network, on purpose: each runs its own established recipe. The learner-matched
+run came on 29 Oct (the user's call): `s025_mlp_mb16k_s100.sub`, job 801082, the MLP on the transformer's
+minibatch 16,384 and 2 mini-epochs (lr stays its own 5e-4 adaptive), next to 782703 (its own recipe), 782705 (the
+per-joint transformer) and 796258 (the per-finger transformer, `experiments/29oct_per_finger_transformer`) on the
+same hand, env and seed.
 
 ## What to read off
 

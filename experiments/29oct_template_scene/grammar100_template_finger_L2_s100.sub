@@ -1,0 +1,33 @@
+#!/bin/bash
+#SBATCH --job-name=TS_g100_finger_L2
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29oct_template_scene/%x-%j.log
+# Token mode x depth on the 100 random grammar hands, on the TEMPLATE scene (multi:template:, one authored articulation
+# per env, ~3.3 s per epoch): this run is token_mode=finger with 2 layers. The 2 x 2 (finger/joint x 2/4 layers) shares
+# everything else: width 128, 4 heads, ff x4, no affine LayerNorm, compiled, fp16 rollouts, the 14 Oct learner
+# (minibatch 16384, 2 mini-epochs, lr 1e-4 adaptive), ghost slots and the locked wrist masked, pen repose v2,
+# finger_target=home, action delay OFF, the pre-27-Oct tokens, seed 100. Why: on the per-hand-articulation scene the
+# per-finger 2-layer run (796276) learned the keypoint shaping slower than the per-joint 4-layer run (782711);
+# finger_L2 here is also the sim-path control against 796276. (joint_moving is NOT in the obs list: a later variable.)
+#   sbatch experiments/29oct_template_scene/grammar100_template_finger_L2_s100.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export HAND=multi:template:assets/urdf/27oct_grammar_random_hands/manifest.json
+export HAND_TAG=g100t
+export TASKS=pen_repose
+export PEN_SHAPE=box
+export ARCH=transformer
+export NUM_ENVS=24576 EPOCHS=5000 SEED=100 GAMMA=0.99
+export FINGER_RESET=1.0 KEYPOINT=best_so_far
+export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.action.use_action_delay=False env.obs.obs_list=[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot] env.obs.state_list=[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot,object_keypoints_rel_joint,palm_keypoints,ee_pos,ee_rot,ee_vel,object_rot,fingertip_pos_rel_palm,closest_keypoint_max_dist,closest_fingertip_dist,progress,successes,reward] agent.params.network.token_mode=finger agent.params.network.d_model=128 agent.params.network.n_layers=2 agent.params.network.n_heads=4 agent.params.network.ff_mult=4 agent.params.network.decoder_units=[256] agent.params.network.arm_head_units=[1024,512] agent.params.network.value_head_units=[512,256] agent.params.network.compile_net=true agent.params.network.affine_norm=false agent.params.network.mask_ghost_actions=true agent.params.network.masked_arm_dims=[3,4,5] agent.params.config.rollout_autocast=true agent.params.config.minibatch_size=16384 agent.params.config.mini_epochs=2 agent.params.config.learning_rate=1e-4"
+export RUN_TAG=finger_L2_home
+export LOG_GROUP=29oct_template_scene
+export WANDB_PROJECT=gen_mechanics_pen_repose_grammar100 WANDB=1
+exec bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub

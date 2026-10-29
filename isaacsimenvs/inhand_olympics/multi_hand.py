@@ -14,9 +14,38 @@ from __future__ import annotations
 import re
 
 import torch
+from isaaclab.assets import Articulation
 
-from isaacsimenvs.common.robots.multi_hand import PALM, slot_link, slot_tip
+from isaacsimenvs.common.robots.multi_hand import PALM, slot_joint, slot_link, slot_tip
 from .wrist import WRIST_JOINTS
+
+
+class TemplateHand(Articulation):
+    """The ``multi:template:`` scene's one articulation over every env (scene.py, author_template.py): a plain
+    Isaac Lab Articulation -- the slots are real joints and bodies -- plus the lookups the viewers use on a
+    multi-hand robot. Joint and body order is Isaac Lab's (the env permutes by name as for any hand)."""
+
+    def __init__(self, cfg, hand_set, hand_of_env: torch.Tensor):
+        super().__init__(cfg)
+        self.hand_set = hand_set
+        self.hand_of_env = hand_of_env
+
+    def resolve(self) -> None:
+        """Nothing to map (the template IS the articulation); check the slots are all there."""
+        missing = [n for n in list(WRIST_JOINTS) + list(self.hand_set.template.hand_joint_names)
+                   if n not in self.joint_names]
+        if missing:
+            raise RuntimeError(f"template articulation lacks joints {missing[:6]}...")
+
+    def real_joint_names(self, env_id: int) -> list[str]:
+        """Env ``env_id``'s own joint names, wrist first; their columns are ``real_slots(env_id)``."""
+        return list(WRIST_JOINTS) + list(self.hand_set.specs[int(self.hand_of_env[env_id])].hand_joint_names)
+
+    def real_slots(self, env_id: int) -> list[int]:
+        """The joint columns (Isaac Lab order) holding env ``env_id``'s own joints, in ``real_joint_names`` order."""
+        h = int(self.hand_of_env[env_id])
+        names = list(WRIST_JOINTS) + [slot_joint(s) for s in self.hand_set.joint_slots[h]]
+        return [self.joint_names.index(n) for n in names]
 
 
 class _Data:

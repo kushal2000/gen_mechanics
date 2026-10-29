@@ -36,7 +36,7 @@ def field_sizes(n_joints: int, n_hand: int, n_tips: int, n_tasks: int) -> dict[s
     return {
         **per_joint,
         "joint_link_bbox": 12 * n_hand, "joint_origin": 3 * n_hand, "object_keypoints_rel_joint": 12 * n_hand,
-        "joint_lower": n_hand, "joint_upper": n_hand, "joint_enabled": n_hand,
+        "joint_lower": n_hand, "joint_upper": n_hand, "joint_enabled": n_hand, "joint_moving": n_hand,
         "palm_keypoints": 12, "palm_extents": 3,
         "ee_pos": 3, "ee_rot": 4, "ee_vel": 6,
         "object_rot": 4, "object_vel": 6,
@@ -87,6 +87,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "joint_origin": rotate_into(palm_rot, joint_origins - ee_pos.unsqueeze(1)) * env.joint_enabled.unsqueeze(-1),
         "joint_lower": env.joint_lower_hand, "joint_upper": env.joint_upper_hand,
         "joint_enabled": env.joint_enabled,
+        "joint_moving": env.joint_moving,
         "object_keypoints_rel_joint": object_keypoints_rel_joint(kp, joint_origins, palm_rot, ones, valid),
         "palm_keypoints": env.palm_keypoints_canon,
         "palm_extents": env.palm_extents,

@@ -80,10 +80,10 @@ def get_finger_layout(name: str):
     from isaacsimenvs.common.robots.multi_hand import hand_set, is_multi_ref
     if is_multi_ref(name):
         hs = hand_set(name)
-        if hs.layout != "finger":
+        if hs.layout not in ("finger", "template"):
             raise ValueError(f"{name!r} packs its joint slots densely; per-finger tokens need a finger-major "
                              f"template: 'multi:finger:{name[len('multi:'):]}'")
-        return template_layout(hs.n_joints)
+        return template_layout(hs.grid)
     return finger_layout(get_robot_spec(name))
 
 

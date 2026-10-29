@@ -34,6 +34,8 @@ def obs_field_sizes(spec, extra_sizes: dict[str, int] | None = None) -> dict[str
         "joint_lower": n_hand,
         "joint_upper": n_hand,
         "joint_enabled": n_hand,
+        # 1 on a joint behind the hand's palm cut (its finger moves with the palm joint), else 0; static per hand.
+        "joint_moving": n_hand,
         "object_keypoints_rel_joint": 3 * NUM_KEYPOINTS * n_hand,
         "hand_scale": 1,
         # The palm slab as four points in the end-effector frame; static per design.
@@ -107,6 +109,7 @@ HAND_TOKEN_FIELDS: dict[str, int] = {
     "joint_lower": 1,
     "joint_upper": 1,
     "joint_enabled": 1,
+    "joint_moving": 1,
     "object_keypoints_rel_joint": 3 * NUM_KEYPOINTS,
 }
 
@@ -114,7 +117,7 @@ HAND_TOKEN_FIELDS: dict[str, int] = {
 # required, so an accidental omission still raises. Without object_keypoints_rel_joint a joint
 # token carries only the joint's own state and geometry, and the object reaches it through the
 # global token by attention.
-OPTIONAL_HAND_TOKEN_FIELDS: frozenset[str] = frozenset({"object_keypoints_rel_joint", "joint_origin"})
+OPTIONAL_HAND_TOKEN_FIELDS: frozenset[str] = frozenset({"object_keypoints_rel_joint", "joint_origin", "joint_moving"})
 
 # Gathered per joint but never a token feature: only the attention mask reads it, raw.
 MASK_FIELD = "joint_enabled"
@@ -209,16 +212,17 @@ def build_finger_layout(spec, field_list, finger_layout, extra_sizes: dict[str, 
       slot_gather    (N_HAND_SLOTS,) the hand joint behind each slot, or ``n_hand`` for a ghost slot (the network
                      appends one all-zero joint row, so the same index_select fills ghosts)
       slot_of_joint  (n_hand,) each hand joint's slot: the network's per-slot actions back to canonical order
-      finger_dim     N_SLOTS x (token_dim + 1): a finger's joint tokens palm -> tip, then its N_SLOTS validity bits
+      finger_dim     n_slots x (token_dim + 1): a finger's joint tokens palm -> tip, then its n_slots validity bits
+    (``n_fingers`` and ``n_slots`` from the layout's grid: 6 x 5 by default, a ``multi:template:`` set's own grid.)
     """
-    from isaacsimenvs.common.robots.finger_layout import N_FINGERS, N_SLOTS
     layout = build_token_layout(spec, field_list, extra_sizes)
     if finger_layout.n_joints != layout["n_hand"]:
         raise ValueError(f"finger layout covers {finger_layout.n_joints} hand joints, the observation {layout['n_hand']}")
+    grid = finger_layout.grid
     layout["slot_gather"] = [j if j >= 0 else layout["n_hand"] for j in finger_layout.joint_of_slot]
     layout["slot_of_joint"] = list(finger_layout.slot_of_joint)
-    layout["n_fingers"], layout["n_slots"] = N_FINGERS, N_SLOTS
-    layout["finger_dim"] = N_SLOTS * (layout["token_dim"] + 1)
+    layout["n_fingers"], layout["n_slots"] = grid.n_fingers, grid.n_slots
+    layout["finger_dim"] = grid.n_slots * (layout["token_dim"] + 1)
     return layout
 
 

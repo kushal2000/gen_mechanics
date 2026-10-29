@@ -1,10 +1,15 @@
 """Scene: the hand on its dummy wrist (one articulation) above a kinematic table, the pen lying on the table, a
 ground plane and a light. With ``hand.robot_spec = "multi:<spec>+<spec>+..."`` several hands, each on its own envs
-(round-robin) and its own articulation, which ``env.robot`` presents as one (multi_hand.py)."""
+(round-robin) and its own articulation, which ``env.robot`` presents as one (multi_hand.py). With
+``"multi:template:<specs>"`` the hands share ONE authored articulation (common/robots/template_robot.py,
+author_template.py): every env gets its own hand's primitives on the set's slot template, so PhysX steps the whole
+scene as one view -- the September population path's speed (500k sim fps at 12k envs) against 46k for an
+articulation per hand."""
 from __future__ import annotations
 
 import math
 import tempfile
+import time
 from pathlib import Path
 
 import isaaclab.sim as sim_utils
@@ -25,7 +30,7 @@ from isaacsimenvs.common.usd_flatten import flatten_robot_usd
 from isaacsimenvs.common.sdf import attr, define, set_xform
 from isaacsimenvs.common.robots import get_robot_spec
 from isaacsimenvs.common.robots.multi_hand import hand_set, is_multi_ref
-from .wrist import WRIST_JOINTS, build_wrist_urdf
+from .wrist import WRIST_JOINTS, build_wrist_urdf, palm_down_rotation, palm_frame
 
 ROBOT_PATH = "/World/envs/env_.*/Robot"
 TABLE_PATH = "/World/envs/env_.*/Table"
@@ -94,7 +99,14 @@ def setup_scene(env) -> None:
 
     work = Path(tempfile.mkdtemp(prefix="olympics_assets_"))
     top = cfg.table.top_height
-    if multi:
+    template = multi and hs.layout == "template"
+    if template:
+        # One authored articulation for every env (below, after cloning); the wrist URDFs are for the viewers only.
+        hands = [(build_wrist_urdf(s, cfg.wrist, work / f"hand{h}" / "hand_on_wrist.urdf"), None, None)
+                 for h, s in enumerate(hs.specs)]
+        hand_of_env = hs.hand_of_env(env.num_envs)
+        urdf = hands[int(hand_of_env[0])][0]
+    elif multi:
         # Each hand converted once; referenced into its envs once they exist (below, after cloning).
         hands = [_hand_usd(s, cfg, work / f"hand{h}") for h, s in enumerate(hs.specs)]
         hand_of_env = hs.hand_of_env(env.num_envs)
@@ -146,7 +158,52 @@ def setup_scene(env) -> None:
     # reference into every env, and an inherited opinion beats an env's own reference, so every env got env_0's hand
     # merged over its own (found 15 Oct: in a 6-primitive-hand scene every env had hand 0's finger bearings).
     env.scene.clone_environments(copy_from_source=multi)
-    if multi:
+    if template:
+        from isaacsimenvs.common.robots.template_robot import template_robot
+        from .author_template import author_template_robot
+        from .multi_hand import TemplateHand
+        # One actuator group over the slot names takes the template spec's gains (hand 0's) and an all-zero home pose
+        # for every hand, so the hands must agree on both (the 100 random grammar hands do).
+        def _gains(s):      # the distinct values of each gain over the hand's joints
+            return tuple(frozenset(round(float(v), 9) for v in d.values())
+                         for d in (s.hand_stiffness, s.hand_damping, s.hand_armature))
+        ref_gains = _gains(hs.specs[0])
+        mixed = [s.name for s in hs.specs if _gains(s) != ref_gains or any(len(g) > 1 for g in _gains(s))
+                 or any(abs(float(v)) > 1e-12 for v in s.hand_default_joint_pos.values())]
+        if mixed:
+            raise ValueError(f"multi:template: shares one set of joint gains and a zero home pose across its hands; "
+                             f"{mixed[:3]} differ from {hs.specs[0].name}")
+        robots = [template_robot(s, hs.layouts[h], cfg.wrist, palm_down_rotation(palm_frame(s)))
+                  for h, s in enumerate(hs.specs)]
+        # Each hand's template robot authored ONCE into its own layer, then referenced into its envs: a reference
+        # composes in microseconds where authoring every env's prims took 33 ms per env.
+        t0 = time.perf_counter()
+        files = []
+        for h, rob in enumerate(robots):
+            f = work / f"hand{h}" / "template.usd"
+            f.parent.mkdir(parents=True, exist_ok=True)
+            lyr = Sdf.Layer.CreateNew(str(f))
+            with Sdf.ChangeBlock():
+                author_template_robot(lyr, "/Robot", rob, contact_offset=cfg.contact_offset,
+                                      rest_offset=cfg.rest_offset)
+            lyr.defaultPrim = "Robot"
+            lyr.Save()
+            files.append(str(f))
+        t1 = time.perf_counter()
+        with Sdf.ChangeBlock():
+            for env_path in env.scene.env_prim_paths:
+                h = int(hand_of_env[int(env_path.rsplit("_", 1)[1])])
+                prim = define(layer, f"{env_path}/Robot", "Xform")
+                prim.referenceList.explicitItems.append(Sdf.Reference(files[h], Sdf.Path("/Robot")))
+                set_xform(layer.GetPrimAtPath(f"{env_path}/Robot"), (0.0, 0.0, float(top)))
+        env.robot = TemplateHand(_robot_cfg(spec, cfg, ROBOT_PATH, None), hs, torch.as_tensor(hand_of_env))
+        counts = {s.name: int((hand_of_env == h).sum()) for h, s in enumerate(hs.specs)}
+        g = hs.grid
+        print(f"[olympics] template robots: {len(robots)} hands authored in {t1 - t0:.1f} s, referenced into "
+              f"{env.num_envs} envs in {time.perf_counter() - t1:.1f} s ({len(robots[0].bodies)} bodies, "
+              f"{len(robots[0].joints)} joints each; grid {g.n_rigid}+{g.n_moving} fingers x {g.n_slots}); hands "
+              f"dealt round-robin: {counts}", flush=True)
+    elif multi:
         with Sdf.ChangeBlock():
             for env_path in env.scene.env_prim_paths:
                 h = int(hand_of_env[int(env_path.rsplit("_", 1)[1])])

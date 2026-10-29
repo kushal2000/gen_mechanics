@@ -443,6 +443,11 @@ def setup_scene(env) -> None:
     # Spaces first: DirectRLEnv reads them in _configure_gym_env_spaces, after this hook.
     from isaacsimenvs.common.robots.multi_hand import hand_set as _hand_set, is_multi_ref
     hs = _hand_set(env.cfg.assets.robot_spec) if is_multi_ref(env.cfg.assets.robot_spec) else None
+    if hs is not None and hs.layout == "template":
+        # multi:template: is the olympics scene's shared authored articulation (inhand_olympics/scene.py); its tables
+        # are laid out by finger SLOT, while MultiHandArticulation puts each hand's tips in fingertip order.
+        raise ValueError(f"{env.cfg.assets.robot_spec!r}: multi:template: is an in-hand olympics scene only; use "
+                         "multi: or multi:finger: here")
     population, spec = (None, hs.template) if hs is not None else _resolve_spec(env.cfg)
     derive_spaces(env.cfg, spec)
 
