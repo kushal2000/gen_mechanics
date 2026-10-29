@@ -23,7 +23,7 @@ def _sharpa_uniform():
     s = json.loads((UNIFORM_DIR / "allegro/allegro_left.spec.json").read_text())   # the shared gains
     urdf = str((UNIFORM_DIR / "sharpa/sharpa_left.urdf").relative_to(REPO))
     joints = SHARPA_HANDONLY.hand_joint_names
-    bodies, boxes, valid, scale = joint_link_boxes(str(REPO / urdf), joints)
+    bodies, boxes, valid, scale = joint_link_boxes(str(REPO / urdf), joints, mode="ordered", capsules=False)
     # Same palm rule as make_uniform.py's spec JSONs: palm vs every link within two joints is filtered.
     import importlib.util
     sp = importlib.util.spec_from_file_location("make_uniform", UNIFORM_DIR / "make_uniform.py")

@@ -412,7 +412,7 @@ def _with_vendor_boxes(hand: D.Hand, name: str, digits_: list, vendor: dict, to_
     disc placement), the same for every base."""
     from hand_sampler import build as _build
     names = [j for d in digits_ for j in d.joints]
-    _, boxes, _, _ = D.joint_link_boxes(urdf_of(name), names)
+    _, boxes, _, _ = D.joint_link_boxes(urdf_of(name), names, mode="ordered", capsules=False)
     box_of = dict(zip(names, np.asarray(boxes, float)))
     frames = _build.link_frames(hand)
     delta = D.mount_position(hand.fingers[0].mount) - to_palm(digits_[0].pos[0])
@@ -729,7 +729,7 @@ def fit(name: str = "leap", spread: bool = True,
     sections: dict[str, tuple[float, float]] = {}
     if "links" in fidelity:
         names = [j for d in digits_ for j in d.joints]
-        _, boxes, _, _ = D.joint_link_boxes(urdf_of(name), names)
+        _, boxes, _, _ = D.joint_link_boxes(urdf_of(name), names, mode="ordered", capsules=False)
         J = _read(urdf_of(name))
         for jn, b in zip(names, np.asarray(boxes, float)):
             edges = b[1:] - b[0]

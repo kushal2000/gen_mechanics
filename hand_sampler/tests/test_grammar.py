@@ -853,7 +853,7 @@ def test_sharpa_imports_as_a_hand():
 def test_sharpa_tokens_match_its_urdf_exactly():
     """The tree is not an approximation of the asset: it reproduces it."""
     names = _sharpa_joint_names()
-    _bodies, truth, _valid, scale = design_space.joint_link_boxes(SHARPA_URDF, names)
+    _bodies, truth, _valid, scale = design_space.joint_link_boxes(SHARPA_URDF, names, mode="ordered", capsules=False)
     boxes, valid, tree_scale = design_space.joint_boxes(
         design_space.hand_from_urdf(SHARPA_URDF, names))
     assert boxes.shape == truth.shape

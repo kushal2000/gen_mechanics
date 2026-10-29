@@ -106,7 +106,7 @@ def test_joint_tokens_match_the_urdf(spec):
     import numpy as np
 
     from hand_sampler.design_space import joint_link_boxes
-    bodies, boxes, valid, scale = joint_link_boxes(spec.urdf_path, spec.hand_joint_names)
+    bodies, boxes, valid, scale = joint_link_boxes(spec.urdf_path, spec.hand_joint_names, mode="ordered", capsules=False)
     assert tuple(bodies) == spec.joint_link_bodies
     assert np.abs(np.asarray(spec.joint_link_boxes, np.float32) - boxes).max() == 0.0
     assert spec.hand_scale == pytest.approx(scale)

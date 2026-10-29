@@ -1155,7 +1155,9 @@ def _box_corners(extents) -> np.ndarray:
     ])
 
 
-def _collision_vertices(collision: ET.Element, base_dir: Path) -> np.ndarray:
+def _collision_vertices(collision: ET.Element, base_dir: Path, capsules: bool = False) -> np.ndarray:
+    """A collision element's vertices in its link's frame. ``capsules``: a cylinder is the capsule the importer makes
+    of it (``replace_cylinders_with_capsules``), so its two cap ends are added."""
     geom = collision.find("geometry")
     if geom is None:
         return np.empty((0, 3), dtype=np.float64)
@@ -1170,6 +1172,9 @@ def _collision_vertices(collision: ET.Element, base_dir: Path) -> np.ndarray:
         length = float(cylinder.get("length"))
         # Its AABB is sufficient; the ordered box is not a collision proxy.
         vertices = _box_corners((2.0 * radius, 2.0 * radius, length))
+        if capsules:
+            vertices = np.concatenate([vertices, [[0.0, 0.0, length / 2.0 + radius],
+                                                  [0.0, 0.0, -length / 2.0 - radius]]])
     elif sphere is not None:
         radius = float(sphere.get("radius"))
         vertices = _box_corners((2.0 * radius,) * 3)
@@ -1195,6 +1200,7 @@ def _nearest_geometry(
     links: dict[str, ET.Element],
     outgoing: dict[str, list[ET.Element]],
     base_dir: Path,
+    capsules: bool = False,
 ) -> np.ndarray:
     """Nearest collision-bearing descendant, expressed in ``start_link``."""
     frontier = [(start_link, np.eye(4, dtype=np.float64))]
@@ -1207,7 +1213,7 @@ def _nearest_geometry(
                 continue
             seen.add(link_name)
             link = links[link_name]
-            pieces = [_collision_vertices(c, base_dir) for c in link.findall("collision")]
+            pieces = [_collision_vertices(c, base_dir, capsules) for c in link.findall("collision")]
             pieces = [p for p in pieces if p.size]
             if pieces:
                 vertices = np.concatenate(pieces, axis=0)
@@ -1226,7 +1232,16 @@ def _nearest_geometry(
     return np.empty((0, 3), dtype=np.float64)
 
 
-def _ordered_box(vertices: np.ndarray, axis: np.ndarray) -> tuple[np.ndarray, bool]:
+def _ordered_box(vertices: np.ndarray, axis: np.ndarray, extent: bool = False) -> tuple[np.ndarray, bool]:
+    """The link's box as four points: a corner, then the far ends of its edges along "distal" (the joint toward the
+    link), "bend" (axis x distal: where +q moves it) and the joint axis.
+
+    Placement: ``extent=False`` (the "ordered" box every run before 27 Oct used) puts the corner at the joint along
+    distal and centres the box on the joint along bend and axis, so the joint is at corner + (bend + axis edges) / 2;
+    a link reaching behind its joint, or off-centre across it (a twist joint: its axis runs along the link), is
+    misplaced. ``extent=True`` puts each face at the geometry's own min and max, so the box covers the link exactly
+    (the joint's position then needs its own field: the olympics env's ``joint_origin``).
+    """
     if not vertices.size:
         return np.zeros((4, 3), dtype=np.float32), False
 
@@ -1250,6 +1265,11 @@ def _ordered_box(vertices: np.ndarray, axis: np.ndarray) -> tuple[np.ndarray, bo
         [vertices @ distal, vertices @ bend, vertices @ axis], axis=-1
     )
     spans = projected.max(axis=0) - projected.min(axis=0)
+    if extent:
+        lo = projected.min(axis=0)
+        e = np.maximum(spans, 1e-6)
+        p0 = lo[0] * distal + lo[1] * bend + lo[2] * axis
+        return np.asarray([p0, p0 + e[0] * distal, p0 + e[1] * bend, p0 + e[2] * axis], dtype=np.float32), True
     # Preserve the collision dimensions but anchor the proximal face at the
     # joint.  Link meshes occasionally overhang slightly behind their pivot.
     length = max(float(spans[0]), float(projected[:, 0].max()), 1e-6)
@@ -1270,8 +1290,17 @@ def joint_link_boxes(
     joint_names,
     *,
     base_dir: str | Path | None = None,
+    mode: str = "extent",
+    capsules: bool = True,
 ) -> tuple[list[str], np.ndarray, np.ndarray, float]:
-    """Return child bodies, ordered boxes, validity, and characteristic scale."""
+    """Return child bodies, ordered boxes, validity, and characteristic scale.
+
+    ``mode``: "extent" (the default since 27 Oct: the box covers the link exactly; see ``_ordered_box``) or
+    "ordered" (every run before; the RobotSpecs' stored ``joint_link_boxes`` stay ordered, so old checkpoints keep
+    their inputs). ``capsules``: cylinders count as the capsules the importer makes of them; pass the spec's
+    replace_cylinders_with_capsules where a hand keeps real cylinders (Shadow)."""
+    if mode not in ("ordered", "extent"):
+        raise ValueError(f"joint box mode must be 'ordered' or 'extent', got {mode!r}")
     if isinstance(urdf, ET.Element):
         root = urdf
         mesh_base = Path(base_dir or ".")
@@ -1296,8 +1325,8 @@ def joint_link_boxes(
         child = joint.find("child").get("link")
         axis_node = joint.find("axis")
         axis = _values(axis_node, "xyz", (1.0, 0.0, 0.0))
-        vertices = _nearest_geometry(child, links, outgoing, mesh_base)
-        box, ok = _ordered_box(vertices, axis)
+        vertices = _nearest_geometry(child, links, outgoing, mesh_base, capsules)
+        box, ok = _ordered_box(vertices, axis, extent=mode == "extent")
         child_links.append(child)
         boxes.append(box)
         valid.append(ok)
@@ -1319,7 +1348,7 @@ def hand_from_urdf(urdf, joint_names, *, base_dir=None, palm=None) -> "Hand":
     else:
         path = resolve(urdf)
         root, meshes = ET.parse(path).getroot(), base_dir or path.parent
-    _bodies, boxes, valid, _scale = joint_link_boxes(root, joint_names, base_dir=meshes)
+    _bodies, boxes, valid, _scale = joint_link_boxes(root, joint_names, base_dir=meshes, mode="ordered", capsules=False)
     joints = {j.get("name"): j for j in root.findall("joint")}
     parent_of = {n: j.find("parent").get("link") for n, j in joints.items()}
     child_of = {n: j.find("child").get("link") for n, j in joints.items()}

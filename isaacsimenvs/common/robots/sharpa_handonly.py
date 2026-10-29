@@ -57,7 +57,7 @@ PALM_FRAME = np.eye(3)
 
 # Read once, here, rather than at every run start: the env takes its tokens from the
 # spec and never learns that this hand happens to have a URDF.
-_BODIES, _BOXES, _VALID, _SCALE = joint_link_boxes(URDF, HAND_JOINT_NAMES)
+_BODIES, _BOXES, _VALID, _SCALE = joint_link_boxes(URDF, HAND_JOINT_NAMES, mode="ordered", capsules=False)
 
 SHARPA_HANDONLY = RobotSpec(
     name="sharpa_handonly",

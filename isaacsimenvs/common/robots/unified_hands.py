@@ -35,7 +35,7 @@ def spec_from_json(path: Path, name: str | None = None) -> RobotSpec:
     F_t = tuple(tuple(float(v) for v in row) for row in F)     # hashable: the placement helpers are cached
     centre_palm = tuple(float(v) for v in s["palm_centre_in_palm_body"])
     bodies, boxes, valid, scale = joint_link_boxes(s["urdf"] if Path(s["urdf"]).is_absolute()
-                                                   else str(REPO / s["urdf"]), joints)
+                                                   else str(REPO / s["urdf"]), joints, mode="ordered", capsules=False)
     return RobotSpec(
         name=name or f"{s['hand']}_{s['side']}_handonly",
         arm_name="",
