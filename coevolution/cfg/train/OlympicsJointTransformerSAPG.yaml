@@ -38,6 +38,12 @@ params:
     n_heads: 1
     ff_mult: 4
     dropout: 0.0
+    # Dead action dimensions count for nothing (28 Oct): a padded hand's ghost slots (per env, from joint_enabled)
+    # and the wrist's locked roll / pitch / yaw (arm dims 3, 4, 5; env.action.wrist_max_speed_ang is 0 since
+    # 15 Oct) get a constant mean 0 and log-std 0 with no gradient, so they drop out of the PPO ratio, the KL
+    # that steers the adaptive lr, and SAPG's entropy. Clear masked_arm_dims if the wrist's rotation is unlocked.
+    mask_ghost_actions: true
+    masked_arm_dims: [3, 4, 5]
     # torch.compile the WHOLE network (not just the encoder stack):
     # Inductor then fuses across the token gather, token_proj, the cat,
     # ln_out and the heads -- where the profile shows the time going.

@@ -505,8 +505,12 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # update for real joints also moves ghost means. With this on, a ghost dimension gets a constant
         # mean (0) and log-std (0), no gradient: it cancels out of the ratio and the KL and contributes a
         # constant entropy. Masked PER ENV from that env's raw joint_enabled, so a mixed population masks
-        # each design's own ghosts; arm dimensions are never masked. Off by default.
-        self.mask_ghost_actions = bool(params.get("mask_ghost_actions", False))
+        # each design's own ghosts. On by default since 28 Oct (the user's call: a dead dimension should not
+        # count); off was the 30 Sep default. ``masked_arm_dims``: arm action dimensions masked the same way,
+        # for joints the env has locked -- the olympics wrist's roll / pitch / yaw (dims 3, 4, 5) since 15 Oct
+        # (wrist_max_speed_ang 0: their actions are no-ops). Set in the olympics transformer YAML.
+        self.mask_ghost_actions = bool(params.get("mask_ghost_actions", True))
+        self.masked_arm_dims = [int(i) for i in (params.get("masked_arm_dims", None) or [])]
         # The final LayerNorm over the residual stream. Meaningful once there
         # are blocks to stabilize; with n_layers 0 there is no residual stream
         # and it only normalizes a bare Linear whose scale the next Linear can
@@ -698,9 +702,12 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
             )
             sigma = self.sigma_act(self.sigma[idxs])
         sigma = mu * 0 + sigma
-        if self.mask_ghost_actions:
+        if self.mask_ghost_actions or self.masked_arm_dims:
             arm_valid = torch.ones(valid.shape[0], self.n_arm, dtype=torch.bool, device=valid.device)
-            act_valid = torch.cat([arm_valid, valid], dim=1)       # policy order: arm, then hand
+            if self.masked_arm_dims:
+                arm_valid[:, self.masked_arm_dims] = False
+            hand_valid = valid if self.mask_ghost_actions else torch.ones_like(valid)
+            act_valid = torch.cat([arm_valid, hand_valid], dim=1)  # policy order: arm, then hand
             mu = torch.where(act_valid, mu, torch.zeros_like(mu))
             sigma = torch.where(act_valid, sigma, torch.zeros_like(sigma))
         return mu, sigma, value, None
