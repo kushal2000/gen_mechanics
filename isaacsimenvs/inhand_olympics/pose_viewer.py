@@ -83,6 +83,39 @@ def _inline_primitive_palm(urdf_text: str) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
+def _cylinders_as_capsules(urdf_text: str) -> str:
+    """Draw every visual cylinder as the capsule PhysX simulates (``replace_cylinders_with_capsules``): a sphere of the
+    cylinder's radius added at each end, in the same link with the same material. Links that already draw their caps
+    as spheres (the primitive hands) are left alone."""
+    import xml.etree.ElementTree as ET
+
+    import numpy as np
+    from scipy.spatial.transform import Rotation
+
+    root = ET.fromstring(urdf_text)
+    for link in root.findall("link"):
+        visuals = link.findall("visual")
+        if any(v.find("geometry/sphere") is not None for v in visuals):
+            continue
+        for v in visuals:
+            cyl = v.find("geometry/cylinder")
+            if cyl is None:
+                continue
+            r, half = float(cyl.get("radius")), float(cyl.get("length")) / 2.0
+            o = v.find("origin")
+            xyz = np.array((o.get("xyz", "0 0 0") if o is not None else "0 0 0").split(), float)
+            rpy = np.array((o.get("rpy", "0 0 0") if o is not None else "0 0 0").split(), float)
+            z = Rotation.from_euler("xyz", rpy).as_matrix()[:, 2]          # URDF rpy: fixed axes x, y, z
+            for k, sign in enumerate((-1.0, 1.0)):
+                cap = ET.SubElement(link, "visual", name=f"{v.get('name') or link.get('name')}_cap{k}")
+                ET.SubElement(cap, "origin", xyz=" ".join(f"{c:.9g}" for c in xyz + sign * half * z), rpy="0 0 0")
+                ET.SubElement(ET.SubElement(cap, "geometry"), "sphere", radius=f"{r:.9g}")
+                mat = v.find("material")
+                if mat is not None:
+                    cap.append(ET.fromstring(ET.tostring(mat)))
+    return ET.tostring(root, encoding="unicode")
+
+
 class OlympicsPoseViewer(PoseViewerWrapper):
     def __init__(self, env, *, output_dir, capture_len: int, capture_interval: int, env_id: int = 0,
                  wandb_key: str = "interactive_viewer", github_raw_base: str | None = None,
@@ -111,7 +144,12 @@ class OlympicsPoseViewer(PoseViewerWrapper):
             self._extra_objects = [("cap", cap, 1.0), ("cap_goal", cap, 0.38)]
         self._table_urdf_text, self._table_urdf_path = _table_urdf(cfg.table.size), None
         self._hole_urdf_text = self._hole_urdf_path = None
-        self._robot_urdf_text = _inline_primitive_palm(Path(inner.wrist_urdf_path).read_text(encoding="utf-8"))
+        text = Path(inner.wrist_urdf_path).read_text(encoding="utf-8")
+        spec = (inner.hand_set.specs[int(inner.hand_of_env[0])] if inner.hand_set is not None
+                else inner.robot_spec)                     # wrist_urdf_path is env 0's hand (scene.py)
+        if getattr(spec, "replace_cylinders_with_capsules", False):
+            text = _cylinders_as_capsules(text)           # before the primitive palm becomes a (real) cylinder
+        self._robot_urdf_text = _inline_primitive_palm(text)
         self._robot_urdf_relpath = None
         self._step, self._capture_index, self._frames = 0, 0, []
         self.output_dir.mkdir(parents=True, exist_ok=True)
