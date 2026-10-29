@@ -1,0 +1,100 @@
+{
+ "rows": [
+  {
+   "mode": "finger",
+   "layers": 2,
+   "packed": false,
+   "inference_ms": 9.018532233312726,
+   "train_ms": 14.046427514404058,
+   "network_s_per_epoch": 1.0428964565396308,
+   "max_abs_diff": 6.556510925292969e-07,
+   "caps": null
+  },
+  {
+   "mode": "finger",
+   "layers": 2,
+   "packed": true,
+   "inference_ms": 7.27131636813283,
+   "train_ms": 11.225119093433022,
+   "network_s_per_epoch": 0.8569477311223745,
+   "max_abs_diff": 6.556510925292969e-07,
+   "caps": {
+    "8192": 41216,
+    "24576": 122496,
+    "16384": 81664
+   }
+  },
+  {
+   "mode": "finger",
+   "layers": 4,
+   "packed": false,
+   "inference_ms": 13.898543454706669,
+   "train_ms": 22.23669094964862,
+   "network_s_per_epoch": 1.5796313884556294,
+   "max_abs_diff": 6.556510925292969e-07,
+   "caps": null
+  },
+  {
+   "mode": "finger",
+   "layers": 4,
+   "packed": true,
+   "inference_ms": 9.578279219567776,
+   "train_ms": 16.37293598614633,
+   "network_s_per_epoch": 1.182136882737279,
+   "max_abs_diff": 6.556510925292969e-07,
+   "caps": {
+    "8192": 41216,
+    "24576": 122496,
+    "16384": 81664
+   }
+  },
+  {
+   "mode": "joint",
+   "layers": 2,
+   "packed": false,
+   "inference_ms": 33.453189162537456,
+   "train_ms": 62.887925235554576,
+   "network_s_per_epoch": 4.168974839791655,
+   "max_abs_diff": 7.450580596923828e-07,
+   "caps": null
+  },
+  {
+   "mode": "joint",
+   "layers": 2,
+   "packed": true,
+   "inference_ms": 15.646798210218549,
+   "train_ms": 32.46556902304292,
+   "network_s_per_epoch": 2.1804206366539,
+   "max_abs_diff": 7.450580596923828e-07,
+   "caps": {
+    "8192": 112896,
+    "24576": 335104,
+    "16384": 222720
+   }
+  },
+  {
+   "mode": "joint",
+   "layers": 4,
+   "packed": false,
+   "inference_ms": 61.194846499711275,
+   "train_ms": 113.1845728494227,
+   "network_s_per_epoch": 7.4294536235630515,
+   "max_abs_diff": 8.344650268554688e-07,
+   "caps": null
+  },
+  {
+   "mode": "joint",
+   "layers": 4,
+   "packed": true,
+   "inference_ms": 23.386192647740245,
+   "train_ms": 49.4253093842417,
+   "network_s_per_epoch": 3.2539964078813792,
+   "max_abs_diff": 8.344650268554688e-07,
+   "caps": {
+    "8192": 112896,
+    "24576": 335104,
+    "16384": 222720
+   }
+  }
+ ]
+}

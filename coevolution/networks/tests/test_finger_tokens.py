@@ -137,3 +137,43 @@ def test_joint_mode_is_unchanged_by_default():
     with torch.no_grad():
         mu, _, _, _ = net({"obs": obs})
     assert mu.shape == (2, N_WRIST + n_hand)
+
+
+def test_packed_tokens_refuses_what_it_cannot_do():
+    hand = _grammar_hand(with_palm_joint=False)
+    n_hand = get_finger_layout(hand).n_joints
+    for over, msg in (({"compile_net": False}, "compile_net"), ({"mask_ghost_actions": False}, "mask_ghost_actions"),
+                      ({"parallel_block": True, "compile_net": True}, "parallel_block"),
+                      ({"compile_net": True}, "head dim")):
+        with pytest.raises(ValueError, match=msg):
+            _net_and_obs(hand, torch.ones(1, n_hand, dtype=torch.bool), packed_tokens=True,
+                         **({"compile_net": True} | over))
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="FlexAttention runs on CUDA")
+@pytest.mark.parametrize("mode", ["finger", "joint"])
+def test_packed_tokens_match_padded_on_a_mixed_template_set(mode):
+    """The packed encoder (real tokens only, FlexAttention document mask) gives the padded network's outputs on every
+    real dimension, per env over a set with ghosts, a cut hand and a spilled finger -- and stays right when a batch
+    outgrows its capacity (one regrow)."""
+    ref = "multi:template:" + "+".join(str(GRAMMAR / n / f"{n}.spec.json")
+                                       for n in ("coarse_s0_026", "coarse_s0_000", "coarse_s0_006"))
+    hs = hand_set(ref)
+    enabled = torch.as_tensor(hs.per_env(hs.hand_of_env(600))["joint_valid"])
+    net0, obs, _ = _net_and_obs(ref, enabled, token_mode=mode, compile_net=True, d_model=64)    # head dim 16
+    net1, _, _ = _net_and_obs(ref, enabled, token_mode=mode, compile_net=True, packed_tokens=True, d_model=64)
+    net1.load_state_dict(net0.state_dict())
+    net0, net1, obs = net0.cuda().eval(), net1.cuda().eval(), obs.cuda()
+    with torch.no_grad():
+        a, b = net0({"obs": obs}), net1({"obs": obs})
+    for x, y in zip(a[:3], b[:3]):
+        assert torch.allclose(x, y, atol=1e-5), float((x - y).abs().max())
+    assert 600 in net1._pack_caps
+    # a batch of the same size with every slot real overflows the capacity: it regrows and is still exact
+    obs2 = obs.clone()
+    obs2[:, net1.enabled_index] = 1.0
+    with torch.no_grad():
+        a, b = net0({"obs": obs2}), net1({"obs": obs2})
+    assert net1._pack_caps[600] >= 600 * (net1.n_fingers + 1 if mode == "finger" else net1.n_hand + 1)
+    for x, y in zip(a[:3], b[:3]):
+        assert torch.allclose(x, y, atol=1e-5), float((x - y).abs().max())

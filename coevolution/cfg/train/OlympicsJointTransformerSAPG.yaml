@@ -51,6 +51,11 @@ params:
     dropout: 0.0
     # Every LayerNorm here feeds a Linear, which absorbs gamma / beta; off saves the GammaBetaBackward pass (~7%).
     affine_norm: false
+    # Packed tokens (29 Oct, the user's call: the default for new runs): the encoder runs on each env's REAL tokens
+    # only, concatenated (as language models train on variable-length sequences), attention through FlexAttention
+    # with a document mask. Same outputs on real tokens (6e-7); a padded design's ghost tokens cost nothing. Needs
+    # compile_net and mask_ghost_actions. experiments/dummy_experiments/29oct_finger_token_batching/README.md.
+    packed_tokens: true
     # Dead action dimensions count for nothing (28 Oct): a padded hand's ghost slots (per env, from joint_enabled)
     # and the wrist's locked roll / pitch / yaw (arm dims 3, 4, 5; env.action.wrist_max_speed_ang is 0 since
     # 15 Oct) get a constant mean 0 and log-std 0 with no gradient, so they drop out of the PPO ratio, the KL

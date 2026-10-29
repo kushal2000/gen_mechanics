@@ -23,6 +23,16 @@ from the arm head. Which joint is which slot comes from the URDF tree
 (isaacsimenvs/common/robots/finger_layout.py); a multi-hand run needs the
 finger-major template (``multi:finger:<specs>``).
 
+Packed tokens (``packed_tokens``, 29 Oct). A padded design's ghost tokens (absent joints or fingers) are masked
+as attention keys, but every per-token LayerNorm, projection and feed-forward still runs on them: 38% of the finger
+tokens and 64% of the joint tokens on the 100-hand template grid. Packed, every row's real tokens are concatenated
+into one (R, d) matrix -- the way language models train on variable-length sequences -- so the per-token work runs
+on real tokens only, and attention goes through FlexAttention with a document mask (each env's tokens attend only to
+each other). Identical outputs on real tokens (max |diff| 6e-7); ghost token outputs are zero instead of computed,
+which nothing reads with mask_ghost_actions on. 1.3-1.45x on the per-finger network
+(experiments/dummy_experiments/29oct_finger_token_batching). Needs compile_net (FlexAttention's eager path is a
+reference implementation).
+
 Registered as ``joint_transformer``; select it with ``params.network.name`` in
 the train YAML. Nothing under ``third_party/rl_games`` is modified -- this
 plugs in through ``model_builder.register_network``.
@@ -44,6 +54,8 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 
 from rl_games.algos_torch.network_builder import NetworkBuilder
+
+PACK_BLOCK = 128      # FlexAttention's sparse block; a row's tokens must fit in it (T <= PACK_BLOCK)
 
 
 def _mlp(in_dim: int, units, out_dim: int) -> nn.Sequential:
@@ -179,6 +191,35 @@ class _ParallelEncoderLayer(nn.Module):
             weights = F.dropout(weights, p=self.dropout)
         attn = (weights @ v).transpose(1, 2).reshape(batch, tokens, dim)
         return x + self.w_out(torch.cat([attn, F.gelu(u)], dim=-1))
+
+
+def _pack_blocks(cap: int, device):
+    """The block structure of a packed batch of ``cap`` tokens (a multiple of PACK_BLOCK). A row has at most
+    PACK_BLOCK tokens, so it spans at most two adjacent blocks: query block i only ever needs key blocks i-1, i, i+1,
+    whatever the batch -- only the document ids (the mask function) change. Built eagerly, outside any compiled graph
+    (Inductor cannot lower in-graph block indices)."""
+    from torch.nn.attention.flex_attention import BlockMask
+    nb = cap // PACK_BLOCK
+    w = min(3, nb)
+    base = (torch.arange(nb, device=device) - 1).clamp(0, nb - w)
+    kv_idx = torch.zeros(1, 1, nb, nb, dtype=torch.int32, device=device)
+    kv_idx[0, 0, :, :w] = (base[:, None] + torch.arange(w, device=device)[None]).to(torch.int32)
+    kv_num = torch.full((1, 1, nb), w, dtype=torch.int32, device=device)
+    return BlockMask.from_kv_blocks(kv_num, kv_idx, BLOCK_SIZE=PACK_BLOCK, mask_mod=lambda b, h, q, k: q >= 0,
+                                    seq_lengths=(cap, cap))
+
+
+def _packed_layer(layer: "_EncoderLayer", x: torch.Tensor, block_mask) -> torch.Tensor:
+    """``layer`` on packed tokens (R, d): the same weights and arithmetic as _EncoderLayer.forward, attention through
+    FlexAttention (scale 1/sqrt(head dim), as there)."""
+    from torch.nn.attention.flex_attention import flex_attention
+    R, d = x.shape
+    H = layer.n_heads
+    q, k, v = layer.qkv(layer.ln_attn(x)).chunk(3, dim=-1)
+    q, k, v = (t.view(R, H, d // H).transpose(0, 1).unsqueeze(0) for t in (q, k, v))
+    a = flex_attention(q, k, v, block_mask=block_mask).squeeze(0).transpose(0, 1).reshape(R, d)
+    x = x + layer.proj(a)
+    return x + layer.ff(layer.ln_ff(x))
 
 
 class _RunningNorm(nn.Module):
@@ -391,6 +432,22 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
             for _ in range(self.n_layers)
         )
         self.ln_out = nn.LayerNorm(d_model, elementwise_affine=self.affine_norm)
+        if self.packed_tokens:
+            n_tok = (self.n_fingers if finger else n_hand) + 1
+            problems = [msg for bad, msg in (
+                (not self.compile_net, "compile_net is off (FlexAttention needs compiling)"),
+                (not self.n_layers, "there are no encoder layers"),
+                (self.parallel_block, "parallel_block is on (packing is written for the serial block)"),
+                (self.grad_checkpoint, "grad_checkpoint is on"),
+                (not self.mask_ghost_actions, "mask_ghost_actions is off (packed ghost outputs are zero, not "
+                                              "computed, so unmasked ghost actions would change)"),
+                (n_tok > PACK_BLOCK, f"a row has {n_tok} tokens, more than a {PACK_BLOCK}-token block"),
+                (d_model // self.n_heads < 16, f"head dim {d_model // self.n_heads} < 16 (FlexAttention's minimum)"),
+            ) if bad]
+            if problems:
+                raise ValueError("packed_tokens: " + "; ".join(problems))
+        self._pack_caps: dict[int, int] = {}       # batch rows -> packed token capacity
+        self._pack_masks: dict[int, object] = {}   # capacity -> block structure
 
         # Mean-pooled joint tokens, the global token, and the raw global vector.
         # The value must see the whole hand, not one joint's view of it.
@@ -489,6 +546,11 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         kwargs = {"dynamic": False}
         if self.compile_mode:
             kwargs["mode"] = self.compile_mode
+        if self.packed_tokens:
+            # The packed forward is compiled, the capacity check in front of it is not (it reads a count to the
+            # host). torch.compile on the bound method, not Module.compile, so state_dict keys are unchanged.
+            self._forward_packed = torch.compile(self._forward_impl, **kwargs)
+            return
         self.compile(**kwargs)
 
     # ------------------------------------------------------------------ setup
@@ -562,6 +624,16 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         self.affine_norm = bool(params.get("affine_norm", True))
         # "matmul" (explicit scores, the default) or "sdpa" (torch's fused kernel; see _EncoderLayer.forward).
         self.attention = str(params.get("attention", "matmul"))
+        # Packed tokens: see the module docstring. Off in code so saved configs replay as trained (and run
+        # uncompiled); OlympicsJointTransformerSAPG.yaml turns it on (29 Oct).
+        self.packed_tokens = bool(params.get("packed_tokens", False))
+        # Capacity margin, in standard deviations of the real-token count of a batch of that size: a batch with more
+        # real tokens than its capacity grows it (and recompiles once). ``pack_chunk``: rows that share an env in a
+        # minibatch -- rl_games shuffles SAPG batches in seq_length (16) step chunks of one env, so a 16,384-row
+        # minibatch is 1,024 envs and its count varies 4x more than independent rows would (29 Oct smoke: a margin
+        # without it overflowed within 10 epochs).
+        self.pack_margin_sigmas = float(params.get("pack_margin_sigmas", 5.0))
+        self.pack_chunk = int(params.get("pack_chunk", 16))
         self.value_head_units = list(params.get("value_head_units", [256, 128]))
         # "joint" (the original: a token per hand joint) or "finger" (a token per finger; see the module docstring).
         # The code default stays "joint" so every saved config replays; OlympicsJointTransformerSAPG.yaml sets
@@ -656,8 +728,9 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
 
     # ---------------------------------------------------------------- forward
 
-    def _trunk(self, obs: torch.Tensor):
-        """Flat observation -> (joint token outputs, global token output)."""
+    def _trunk(self, obs: torch.Tensor, pack_cap: int | None = None):
+        """Flat observation -> (joint token outputs, global token output). ``pack_cap``: run the encoder packed, with
+        that token capacity (forward() picks it)."""
         if self.net_type == "extra_param":
             # Exact float compare on the raw coefficient column, on the tensor
             # as it arrives -- network_builder.py:319 does the same.
@@ -708,11 +781,14 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
             key_mask = torch.cat(
                 [token_valid, torch.ones_like(token_valid[:, :1])], dim=1)
             ckpt = self.grad_checkpoint and self.training and torch.is_grad_enabled()
-            for layer in self.layers:
-                if ckpt:
-                    x = torch.utils.checkpoint.checkpoint(layer, x, key_mask, use_reentrant=False)
-                else:
-                    x = layer(x, key_mask)
+            if pack_cap is not None:
+                x = self._packed_encoder(x, key_mask, pack_cap)
+            else:
+                for layer in self.layers:
+                    if ckpt:
+                        x = torch.utils.checkpoint.checkpoint(layer, x, key_mask, use_reentrant=False)
+                    else:
+                        x = layer(x, key_mask)
             if self.final_norm:
                 x = self.ln_out(x)
             return x[:, :n_tok], x[:, n_tok], glob, valid, token_valid
@@ -743,9 +819,72 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         glob = torch.cat([glob, slots[:, n], svalid[:, n:].to(dtype)], dim=-1)
         return fingers, glob, bits.any(dim=-1)
 
+    def _packed_encoder(self, x: torch.Tensor, key_mask: torch.Tensor, cap: int) -> torch.Tensor:
+        """The encoder stack on the real tokens only: (B, T, d) padded in, (B, T, d) out with ghost tokens zero."""
+        from torch.nn.attention.flex_attention import BlockMask
+        B, T, d = x.shape
+        dev = x.device
+        flat = torch.cat([x.reshape(B * T, d), x.new_zeros(1, d)])          # a zero row for padding tokens
+        ar = torch.arange(B * T, device=dev)
+        key = torch.where(key_mask.reshape(-1), ar, ar + B * T)
+        if cap > B * T:        # a capacity rounded up past every slot: pad with keys that sort last and are not real
+            key = torch.cat([key, 2 * B * T + torch.arange(cap - B * T, device=dev)])
+        key = torch.sort(key)[0][:cap]                                       # real tokens first, in row order
+        real = key < B * T
+        idx = torch.where(real, key, torch.full_like(key, B * T))
+        doc = torch.where(real, key // T, B + torch.arange(cap, device=dev))  # a padding token is its own document
+        # Inductor (torch 2.7) cannot lower a mask function reading a buffer computed in the same graph: break so the
+        # document ids reach the attention graph as an input.
+        torch._dynamo.graph_break()
+        bm0 = self._pack_masks[cap]
+
+        def mask_mod(b, h, q_idx, kv_idx):
+            return doc[q_idx] == doc[kv_idx]
+        bm = BlockMask(bm0.seq_lengths, bm0.kv_num_blocks, bm0.kv_indices, bm0.full_kv_num_blocks, bm0.full_kv_indices,
+                       bm0.q_num_blocks, bm0.q_indices, bm0.full_q_num_blocks, bm0.full_q_indices, bm0.BLOCK_SIZE,
+                       mask_mod)
+        h = torch.index_select(flat, 0, idx)
+        for layer in self.layers:
+            h = _packed_layer(layer, h, bm)
+        inv = torch.full((B * T + 1,), cap, dtype=torch.long, device=dev).scatter(0, idx, torch.arange(cap, device=dev))
+        return torch.index_select(torch.cat([h, h.new_zeros(1, d)]), 0, inv[:B * T]).view(B, T, d)
+
+    @torch.no_grad()
+    def _pack_capacity(self, obs: torch.Tensor) -> int:
+        """The packed token capacity for this batch: set on the first batch of each size (its real-token count +
+        ``pack_margin_sigmas`` standard deviations of a batch's count, rows correlated in chunks of ``pack_chunk``, a
+        multiple of PACK_BLOCK) and grown by at least 3% -- one recompile -- if a batch ever has more. One small read
+        to the host per forward."""
+        env_obs = obs[:, : self.pid_idx] if self.net_type == "extra_param" else obs
+        valid = torch.index_select(env_obs, 1, self.enabled_index) > 0.5
+        if self.token_mode == "finger":
+            vpad = torch.cat([valid, torch.zeros_like(valid[:, :1])], dim=1)
+            n = self.n_fingers * self.n_slots
+            valid = torch.index_select(vpad, 1, self.slot_gather)[:, :n].reshape(-1, self.n_fingers, self.n_slots).any(-1)
+        per_row = valid.sum(dim=1).double() + 1.0
+        rows = obs.shape[0]
+        total, var = (float(v) for v in torch.stack([per_row.sum(), per_row.var(unbiased=False)]).tolist())
+        cap = self._pack_caps.get(rows)
+        if cap is None or total > cap:
+            margin = self.pack_margin_sigmas * (rows * self.pack_chunk * var) ** 0.5
+            want = max(total + margin + 1, 1.03 * cap if cap else 0.0)      # grow by 3% at least: few recompiles
+            new = int(-(-want // PACK_BLOCK) * PACK_BLOCK)
+            if cap is not None:
+                print(f"[joint_transformer] packed batch of {rows} rows has {int(total)} real tokens, over its "
+                      f"capacity {cap}: growing to {new} (one recompile)", flush=True)
+            cap = self._pack_caps[rows] = new
+        if cap not in self._pack_masks:
+            self._pack_masks[cap] = _pack_blocks(cap, obs.device)
+        return cap
+
     def forward(self, obs_dict):
+        if self.packed_tokens and self.compile_net:
+            return self._forward_packed(obs_dict, self._pack_capacity(obs_dict["obs"]))
+        return self._forward_impl(obs_dict)
+
+    def _forward_impl(self, obs_dict, pack_cap: int | None = None):
         obs = obs_dict["obs"]
-        joints, glob, glob_raw, valid, token_valid = self._trunk(obs)
+        joints, glob, glob_raw, valid, token_valid = self._trunk(obs, pack_cap)
         # Mean over the tokens (joints, or fingers) this design HAS. An unmasked mean would be mostly
         # ghosts for a small hand, and diluted by a design-dependent amount --
         # exactly the variable a co-design run is trying to measure.

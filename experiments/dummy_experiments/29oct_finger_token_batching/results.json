@@ -1,0 +1,170 @@
+{
+ "rows": [
+  {
+   "config": "d128 L2",
+   "variant": "padded",
+   "mode": "compiled",
+   "inference_ms": 6.545165693387389,
+   "train_ms": 11.113051185384393,
+   "rollout_s": 0.10472265109419823,
+   "update_s": 0.734330866381526
+  },
+  {
+   "config": "d128 L2",
+   "variant": "ceiling (5 tokens)",
+   "mode": "compiled",
+   "inference_ms": 4.721907898783684,
+   "train_ms": 8.1733837723732,
+   "rollout_s": 0.07555052638053894,
+   "update_s": 0.5697094912528992
+  },
+  {
+   "config": "d128 L2",
+   "variant": "bucketed, 2-D index",
+   "mode": "compiled",
+   "inference_ms": 4.453121637925506,
+   "train_ms": 12.230448564514518,
+   "rollout_s": 0.07124994620680809,
+   "update_s": 0.796905119612813
+  },
+  {
+   "config": "d128 L2",
+   "variant": "bucketed, flat index",
+   "mode": "compiled",
+   "inference_ms": 4.380444437265396,
+   "train_ms": 14.738260954618454,
+   "rollout_s": 0.07008711099624634,
+   "update_s": 0.9373426134586335
+  },
+  {
+   "config": "d128 L2",
+   "variant": "packed, document mask",
+   "mode": "compiled",
+   "inference_ms": 4.287434928119183,
+   "train_ms": 8.25123772956431,
+   "rollout_s": 0.06859895884990692,
+   "update_s": 0.5740693128556014
+  },
+  {
+   "config": "d128 L2",
+   "variant": "padded",
+   "mode": "eager",
+   "inference_ms": 11.196634406223893,
+   "train_ms": 17.020227015018463,
+   "rollout_s": 0.1791461504995823,
+   "update_s": 1.065132712841034
+  },
+  {
+   "config": "d128 L2",
+   "variant": "ceiling (5 tokens)",
+   "mode": "eager",
+   "inference_ms": 8.021903643384576,
+   "train_ms": 12.45315708220005,
+   "rollout_s": 0.1283504582941532,
+   "update_s": 0.8093767966032028
+  },
+  {
+   "config": "d128 L2",
+   "variant": "bucketed, 2-D index",
+   "mode": "eager",
+   "inference_ms": 8.650936931371689,
+   "train_ms": 28.289037942886353,
+   "rollout_s": 0.13841499090194703,
+   "update_s": 1.6961861248016357
+  },
+  {
+   "config": "d128 L2",
+   "variant": "bucketed, flat index",
+   "mode": "eager",
+   "inference_ms": 8.649245975539088,
+   "train_ms": 26.80378812365234,
+   "rollout_s": 0.13838793560862542,
+   "update_s": 1.613012134924531
+  },
+  {
+   "config": "d128 L4",
+   "variant": "padded",
+   "mode": "compiled",
+   "inference_ms": 11.448323540389538,
+   "train_ms": 19.39147566445172,
+   "rollout_s": 0.18317317664623262,
+   "update_s": 1.1979226372092961
+  },
+  {
+   "config": "d128 L4",
+   "variant": "ceiling (5 tokens)",
+   "mode": "compiled",
+   "inference_ms": 8.013674756512046,
+   "train_ms": 13.517890265211463,
+   "rollout_s": 0.12821879610419273,
+   "update_s": 0.8690018548518419
+  },
+  {
+   "config": "d128 L4",
+   "variant": "bucketed, 2-D index",
+   "mode": "compiled",
+   "inference_ms": 6.759386602789164,
+   "train_ms": 16.249594278633595,
+   "rollout_s": 0.10815018564462661,
+   "update_s": 1.0219772796034814
+  },
+  {
+   "config": "d128 L4",
+   "variant": "bucketed, flat index",
+   "mode": "compiled",
+   "inference_ms": 6.771903205662966,
+   "train_ms": 23.997945012524724,
+   "rollout_s": 0.10835045129060746,
+   "update_s": 1.4558849207013846
+  },
+  {
+   "config": "d128 L4",
+   "variant": "packed, document mask",
+   "mode": "compiled",
+   "inference_ms": 6.9583994802087545,
+   "train_ms": 13.389475038275123,
+   "rollout_s": 0.11133439168334007,
+   "update_s": 0.8618106021434069
+  },
+  {
+   "config": "d128 L4",
+   "variant": "padded",
+   "mode": "eager",
+   "inference_ms": 18.495689006522298,
+   "train_ms": 29.302281187847257,
+   "rollout_s": 0.2959310241043568,
+   "update_s": 1.7529277465194464
+  },
+  {
+   "config": "d128 L4",
+   "variant": "ceiling (5 tokens)",
+   "mode": "eager",
+   "inference_ms": 12.431886000558734,
+   "train_ms": 20.16378832049668,
+   "rollout_s": 0.19891017600893973,
+   "update_s": 1.241172145947814
+  },
+  {
+   "config": "d128 L4",
+   "variant": "bucketed, 2-D index",
+   "mode": "eager",
+   "inference_ms": 12.182061141356826,
+   "train_ms": 46.18567880243063,
+   "rollout_s": 0.19491297826170922,
+   "update_s": 2.6983980129361154
+  },
+  {
+   "config": "d128 L4",
+   "variant": "bucketed, flat index",
+   "mode": "eager",
+   "inference_ms": 11.966141732409596,
+   "train_ms": 43.29312816262245,
+   "rollout_s": 0.19145826771855354,
+   "update_s": 2.5364151771068575
+  }
+ ],
+ "envs": 24576,
+ "minibatch": 16384,
+ "updates": 56,
+ "log": "/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29oct_template_scene/TS_g100_finger_L2-801730.log"
+}
