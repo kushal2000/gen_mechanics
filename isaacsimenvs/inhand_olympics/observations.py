@@ -35,7 +35,7 @@ def field_sizes(n_joints: int, n_hand: int, n_tips: int, n_tasks: int) -> dict[s
                                "prev_action_targets"), n_joints)
     return {
         **per_joint,
-        "joint_link_bbox": 12 * n_hand, "object_keypoints_rel_joint": 12 * n_hand,
+        "joint_link_bbox": 12 * n_hand, "joint_origin": 3 * n_hand, "object_keypoints_rel_joint": 12 * n_hand,
         "joint_lower": n_hand, "joint_upper": n_hand, "joint_enabled": n_hand,
         "palm_keypoints": 12, "palm_extents": 3,
         "ee_pos": 3, "ee_rot": 4, "ee_vel": 6,
@@ -83,6 +83,8 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "prev_joint_vel": env.prev_joint_vel_canon,
         "prev_action_targets": env.targets[:, perm],
         "joint_link_bbox": bbox,
+        # Masked by joint_enabled, not by the box's validity: a multi-hand scene's ghost slot reads the palm's body.
+        "joint_origin": rotate_into(palm_rot, joint_origins - ee_pos.unsqueeze(1)) * env.joint_enabled.unsqueeze(-1),
         "joint_lower": env.joint_lower_hand, "joint_upper": env.joint_upper_hand,
         "joint_enabled": env.joint_enabled,
         "object_keypoints_rel_joint": object_keypoints_rel_joint(kp, joint_origins, palm_rot, ones, valid),

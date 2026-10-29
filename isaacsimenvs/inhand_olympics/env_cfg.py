@@ -73,7 +73,8 @@ class ActionCfg:
     not on the previous PD target, so the wrist really reaches max_speed (smoothing the previous PD target would
     cap it at ema * max_speed); it lags the command by about dt / ema = 0.17 s.
 
-    Fingers: absolute targets, a in [-1, 1] mapped onto each joint's range, through an EMA (as in-hand training).
+    Fingers: absolute targets, a in [-1, 1] mapped onto each joint (``finger_target``), through an EMA (as in-hand
+    training).
     """
 
     wrist_max_speed_lin: float = 0.2         # m/s, x/y/z
@@ -87,6 +88,14 @@ class ActionCfg:
     # At an episode's first step the queue is filled with that step's action.
     use_action_delay: bool = True
     action_delay_max: int = 3
+    # How a finger action a in [-1, 1] becomes a joint target. "range": lower + (a + 1) / 2 * (upper - lower), so 0
+    # is the middle of the range -- a different pose on every hand (a grammar bend joint, -30..90 deg: 30 deg curled;
+    # its start pose, 0 deg, is a = -0.5), and one unit of action moves a wide joint further than a narrow one.
+    # "home" (28 Oct, for runs across embodiments): 0 is the hand's default pose (the spec's hand_default_joint_pos,
+    # the grammar hands' open pose), +1 the upper limit, -1 the lower: home + a * (upper - home) for a >= 0,
+    # home + a * (home - lower) for a < 0. The default stays "range" because a run's saved config is replayed
+    # as is (eval_tasks, the viewers) and every run before 28 Oct trained on "range"; new runs set "home".
+    finger_target: str = "range"
 
 
 @configclass
@@ -162,18 +171,25 @@ class ObsCfg:
 
     obs_list: tuple[str, ...] = (
         "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel", "prev_action_targets",
-        "joint_link_bbox", "joint_lower", "joint_upper", "joint_enabled",
+        "joint_link_bbox", "joint_origin", "joint_lower", "joint_upper", "joint_enabled",
         "keypoints_rel_ee", "keypoints_rel_goal", "object_vel", "palm_extents", "task_onehot",
     )
     state_list: tuple[str, ...] = (
         "joint_pos", "joint_vel", "prev_joint_pos", "prev_joint_vel", "prev_action_targets",
-        "joint_link_bbox", "joint_lower", "joint_upper", "joint_enabled",
+        "joint_link_bbox", "joint_origin", "joint_lower", "joint_upper", "joint_enabled",
         "keypoints_rel_ee", "keypoints_rel_goal", "object_vel", "palm_extents", "task_onehot",
         "object_keypoints_rel_joint", "palm_keypoints", "ee_pos", "ee_rot", "ee_vel", "object_rot",
         "fingertip_pos_rel_palm", "closest_keypoint_max_dist", "closest_fingertip_dist",
         "progress", "successes", "reward",
     )
     clamp_abs_observations: float = 10.0
+    # The joint tokens' link boxes (hand_sampler.design_space.joint_link_boxes). "extent" (since 27 Oct) covers each
+    # link exactly, capsule ends included, and "joint_origin" (in the lists above) says where the joint is. "ordered"
+    # (every run before) puts each box at its joint, which misplaces a link that reaches behind its joint or runs along
+    # its axis (a twist joint) and leaves out capsule ends; the box then also locates the joint. An obs_list without
+    # joint_origin -- every config saved before 27 Oct -- gets "ordered" whatever this says (env.py), so an old
+    # checkpoint replayed from its saved config sees exactly its training inputs.
+    joint_box: str = "extent"
 
 
 @configclass

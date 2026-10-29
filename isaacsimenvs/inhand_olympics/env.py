@@ -35,16 +35,25 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
+import numpy as np
 import torch
 from isaaclab.envs import DirectRLEnv
 from isaaclab.utils.math import quat_apply, quat_apply_inverse, quat_from_matrix
 
+from . import action_map
 from .env_cfg import InHandOlympicsEnvCfg
 from .goals import keypoints, pen_keypoint_offsets
 from .observations import build_observations, field_sizes, width
 from .scene import setup_scene
 from .tasks import NUM_TASK_SLOTS, TASK_NAMES, make_tasks
 from .wrist import WRIST_JOINTS
+
+
+def _link_boxes(spec, mode: str) -> np.ndarray:
+    """(J, 4, 3) link boxes of ``spec``'s hand joints in ``mode`` (ObsCfg.joint_box), from its URDF (Kit-free)."""
+    from hand_sampler.design_space import joint_link_boxes
+    return joint_link_boxes(spec.urdf_path, spec.hand_joint_names, mode=mode,
+                            capsules=spec.replace_cylinders_with_capsules)[1]
 
 
 class InHandOlympicsEnv(DirectRLEnv):
@@ -85,6 +94,9 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.wrist_speed = torch.tensor([a.wrist_max_speed_lin] * 3 + [a.wrist_max_speed_ang] * 3, device=dev)
         # PD targets (all joints) and the wrist's integrated, un-smoothed target.
         self.targets = self.robot.data.default_joint_pos.clone()
+        if a.finger_target not in action_map.MODES:
+            raise ValueError(f"action.finger_target must be one of {action_map.MODES}, got {a.finger_target!r}")
+        self.joint_home = self.robot.data.default_joint_pos.clone()      # (N, J) Lab order: action 0 under "home"
         self.wrist_command = self.targets[:, self.wrist_ids].clone()
         # The last action_delay_max + 1 actions, newest first; and the action applied this step (after the delay).
         self.action_queue = torch.zeros(n, a.action_delay_max + 1, self.robot.num_joints, device=dev)
@@ -187,16 +199,27 @@ class InHandOlympicsEnv(DirectRLEnv):
         """The buffers in-hand's observation helpers read, built as pose_reaching_6d reset.py builds them for one
         fixed hand: link boxes per joint, the palm centre, and the canonical palm frame from the palm slab."""
         n, dev = self.num_envs, self.device
+        if self.cfg.obs.joint_box != "ordered" and "joint_origin" not in self.cfg.obs.obs_list:
+            # A pre-27-Oct observation list (no joint_origin): its policies were trained on ordered boxes.
+            print(f"[olympics] obs_list has no joint_origin: joint_box {self.cfg.obs.joint_box!r} -> 'ordered' "
+                  "(the boxes every run before 27 Oct saw)", flush=True)
+            self.cfg.obs.joint_box = "ordered"
         self._joint_link_body_ids = self.robot.find_bodies(list(spec.joint_link_bodies), preserve_order=True)[0]
         assert len(self._joint_link_body_ids) == spec.num_hand_joints
         if self.hand_set is not None:                 # per env, from each env's own hand
             t = {k: torch.as_tensor(v, device=dev) for k, v in self.hand_set.per_env(self.hand_of_env.cpu().numpy()).items()}
+            if self.cfg.obs.joint_box != "ordered":
+                boxes = np.zeros((len(self.hand_set.specs), spec.num_hand_joints, 4, 3), np.float32)
+                for h, s in enumerate(self.hand_set.specs):
+                    boxes[h, :s.num_hand_joints] = _link_boxes(s, self.cfg.obs.joint_box)
+                t["joint_link_bbox_local"] = torch.as_tensor(boxes, device=dev)[self.hand_of_env.long()]
             self._joint_link_bbox_local = t["joint_link_bbox_local"]
             self._joint_geometry_valid = t["joint_geometry_valid"]
             self.palm_center_offset = t["palm_center_offset"]
             kp = t["palm_keypoints"]
         else:
-            self._joint_link_bbox_local = torch.tensor(spec.joint_link_boxes, device=dev).expand(n, -1, -1, -1)
+            boxes = spec.joint_link_boxes if self.cfg.obs.joint_box == "ordered" else _link_boxes(spec, self.cfg.obs.joint_box)
+            self._joint_link_bbox_local = torch.as_tensor(np.asarray(boxes, np.float32), device=dev).expand(n, -1, -1, -1)
             self._joint_geometry_valid = torch.tensor(spec.joint_geometry_valid, device=dev).expand(n, -1)
             self.palm_center_offset = torch.tensor(spec.palm_center_offset, device=dev).expand(n, -1)
             kp = torch.tensor(spec.palm_keypoints, device=dev).expand(n, -1, -1)   # (N, 4, 3), palm body frame
@@ -249,11 +272,14 @@ class InHandOlympicsEnv(DirectRLEnv):
 
     # --- actions --------------------------------------------------------------------------------------------
     def target_to_action(self, targets: torch.Tensor) -> torch.Tensor:
-        """Absolute joint positions -> [-1, 1] over the joint ranges (the finger action; the obs scaling)."""
-        return 2.0 * (targets - self.joint_lower) / (self.joint_upper - self.joint_lower).clamp(min=1e-6) - 1.0
+        """Absolute joint positions (Lab order) -> the finger action in [-1, 1] (ActionCfg.finger_target)."""
+        return action_map.target_to_action(targets, self.joint_lower, self.joint_upper, self.joint_home,
+                                           self.cfg.action.finger_target)
 
     def action_to_target(self, actions: torch.Tensor) -> torch.Tensor:
-        return self.joint_lower + 0.5 * (actions.clamp(-1.0, 1.0) + 1.0) * (self.joint_upper - self.joint_lower)
+        """The finger action in [-1, 1] (Lab order) -> absolute joint positions (ActionCfg.finger_target)."""
+        return action_map.action_to_target(actions, self.joint_lower, self.joint_upper, self.joint_home,
+                                           self.cfg.action.finger_target)
 
     def wrist_action_toward(self, pose: torch.Tensor) -> torch.Tensor:
         """The wrist action that moves the integrated command toward ``pose`` (N, 6) as fast as allowed."""
