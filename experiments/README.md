@@ -17,6 +17,7 @@ results. Training logs and checkpoints go to `debug_outputs/train_logs/<experime
 | [`29oct_multi_embodiment_transformer/`](29oct_multi_embodiment_transformer/) | One transformer policy across all 100 grammar hands (the 14 Oct setup, masks, home actions) |
 | [`29oct_mlp_vs_transformer/`](29oct_mlp_vs_transformer/) | MLP vs joint transformer on three hands, same env (home actions, action delay off) |
 | [`29oct_transformer_speed/`](29oct_transformer_speed/) | Network profiling: why the transformer is slower than the MLP per sample, and the route to a fast one with many parameters |
+| [`29oct_per_finger_transformer/`](29oct_per_finger_transformer/) | The per-finger transformer (one token per finger; the transformer default since 29 Oct) against the per-joint one and the MLP |
 | [`grammar_viewer/`](grammar_viewer/) | Browse Martin's hand grammar (CPU only) |
 | [`_shared/`](_shared/) | Helpers several experiments call (launchers, run templates, figure style, renderers) |
 

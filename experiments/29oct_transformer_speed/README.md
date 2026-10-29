@@ -211,3 +211,20 @@ cannot run 4 heads at 16,384 anyway), no affine norm, fp16 rollouts; the 14 Oct 
 The 4 heads cost 4% over 1 head here (2.6 vs 2.5 s); the strict-parity fallback is 64 x 2 (2.2-2.3 s, 1.0M params)
 at the cost of a 64-wide global token on the finger pathway that stalled on 27 Oct; 128 x 3 is the depth fallback.
 All of it is random-input timing; the training run decides.
+
+### Confirmed on the real layout (29 Oct, after the plumbing: `token_mode: finger` on hand 000's own tokens)
+
+The same bench on the implemented network (`finger: real ...` rows in `results.json`; the mock rows above were a
+stand-in trunk with 100-feature tokens). Hand 000's finger tokens are 100 wide (5 slots x 19 + 5 bits), the global
+vector 71 + the palm-cut slot's 19 + 1:
+
+| real network | params | MACs / sample | inference @24,576 | train step @16,384 | modelled epoch | GB |
+|---|---|---|---|---|---|---|
+| **128 x 2, 4 heads, compiled, no affine (the pick)** | 1.52M | 4.1M | 6.2 ms | 11.9 ms | **2.6 s** | 1.4 |
+| the same, eager | 1.52M | 4.1M | 9.4 ms | 16.9 ms | 2.9 s | 1.6 |
+| 64 x 2, 4 heads, compiled, no affine | 1.06M | 1.8M | 3.4 ms | 6.9 ms | 2.3 s | 1.0 |
+| 128 x 3, 4 heads, compiled, no affine | 1.72M | 5.5M | 8.5 ms | 20.5 ms | 3.1 s | 2.1 |
+
+The mock's prediction held to the decimal (2.6 s; 1.45M -> 1.52M params, the palm-cut slot on the global vector
+being the difference). This configuration is OlympicsJointTransformerSAPG.yaml's default since 29 Oct; the first
+training run is `experiments/29oct_per_finger_transformer/`.

@@ -1,5 +1,8 @@
-# gen_mechanics rl_games SAPG config for in-hand olympics (GenMech-InHandOlympics-Direct-v0): the per-joint
-# transformer of PoseReachJointTransformerSAPG.yaml, unchanged, read off olympics' observation. Differences:
+# gen_mechanics rl_games SAPG config for in-hand olympics (GenMech-InHandOlympics-Direct-v0): the joint transformer
+# of PoseReachJointTransformerSAPG.yaml read off olympics' observation, in its PER-FINGER form since 29 Oct
+# (experiments/29oct_transformer_speed: token_mode finger, width 128, 2 layers, 4 heads, compiled, fp16 rollouts --
+# the 14 Oct per-joint network's epoch 10.1 s -> ~2.6 s, next to the MLP's 2.2 s, at 1.45M params). Differences from
+# the pose-reaching YAML:
 #   - robot_spec from env.hand.robot_spec (a hand-only spec); the 6 dummy-wrist joints, ahead of the hand in
 #     canonical order, are the "arm" (extra_arm_joints: global context in, the arm head out -- wrist actions are
 #     velocity deltas like the arm's)
@@ -33,11 +36,21 @@ params:
     extra_arm_joints: 6
     extra_field_sizes:
       task_onehot: 8
+    # One token per FINGER (joint_transformer.py's module docstring): its up-to-5 joint tokens palm -> tip side by
+    # side plus 5 validity bits, a shared decoder MLP giving each finger its 5 actions, the palm-cut joint on the
+    # global token. 7 tokens instead of up to 32, which is where the per-joint network's time went (it is
+    # memory-bound: per-token work, not attention). "joint" is the 14 Oct network; a multi-hand run in finger mode
+    # needs the finger-major template, hand.robot_spec "multi:finger:<specs>".
+    token_mode: finger
+    decoder_units: [256]
     d_model: 128
-    n_layers: 4
-    n_heads: 1
+    n_layers: 2
+    # 4 heads: no parameters, +8-13% time, the user's call (29 Oct).
+    n_heads: 4
     ff_mult: 4
     dropout: 0.0
+    # Every LayerNorm here feeds a Linear, which absorbs gamma / beta; off saves the GammaBetaBackward pass (~7%).
+    affine_norm: false
     # Dead action dimensions count for nothing (28 Oct): a padded hand's ghost slots (per env, from joint_enabled)
     # and the wrist's locked roll / pitch / yaw (arm dims 3, 4, 5; env.action.wrist_max_speed_ang is 0 since
     # 15 Oct) get a constant mean 0 and log-std 0 with no gradient, so they drop out of the PPO ratio, the KL
@@ -49,8 +62,9 @@ params:
     # ln_out and the heads -- where the profile shows the time going.
     # Measured at d_model 64, batch 16384: eager 21.66 ms, layer-scope
     # 15.42, whole-net 10.94, whole-net max-autotune 9.83. Numerically
-    # equivalent; opt-in because it moves startup cost and failure modes.
-    compile_net: false
+    # equivalent. On since 29 Oct: with explicit (matmul) attention the whole net compiles; fused "sdpa"
+    # attention breaks the compiled graph (2x the train step), so leave attention at its default.
+    compile_net: true
     # "" = default mode. "max-autotune" is worth a further ~1.12x at
     # d_model 64 but nothing at 128, and costs minutes at startup.
     compile_mode: ""
@@ -92,6 +106,10 @@ params:
     multi_gpu: False
     ppo: True
     mixed_precision: True
+    # Run the rollout forwards (get_action_values / get_values) under fp16 autocast too, like the train step; rl_games
+    # ran them in fp32 (29 Oct, experiments/29oct_transformer_speed). Numerically the same policy; 16 inferences per
+    # epoch at 24,576 envs were a third of the per-joint transformer's epoch.
+    rollout_autocast: True
     # False: joint_transformer normalises its own input (_RunningNorm), pooling token
     # statistics over joints and leaving joint_enabled raw for the attention mask. rl_games'
     # per-column normaliser on top broke both (until 2026-09-29 every joint was masked).

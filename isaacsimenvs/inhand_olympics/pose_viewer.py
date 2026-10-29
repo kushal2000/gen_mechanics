@@ -174,7 +174,7 @@ def capture_frame(env, i: int) -> dict:
     names, q = list(env.robot.joint_names), env.robot.data.joint_pos[i]
     if env.hand_set is not None:               # a multi-hand scene: env i's own hand (its URDF is the viewer's)
         names = env.robot.real_joint_names(i)
-        q = q[: len(names)]
+        q = q[env.robot.real_slots(i)]
     return {
         "env_id": i,
         "robot_joint_names": names,

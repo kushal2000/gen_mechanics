@@ -202,6 +202,26 @@ def build_token_layout(spec, field_list, extra_sizes: dict[str, int] | None = No
     }
 
 
+def build_finger_layout(spec, field_list, finger_layout, extra_sizes: dict[str, int] | None = None) -> dict:
+    """``build_token_layout`` plus the static maps from its joint tokens onto the finger-major slot grid of
+    robots/finger_layout.py (``finger_layout``: the spec's FingerLayout, from ``robots.get_finger_layout``):
+
+      slot_gather    (N_HAND_SLOTS,) the hand joint behind each slot, or ``n_hand`` for a ghost slot (the network
+                     appends one all-zero joint row, so the same index_select fills ghosts)
+      slot_of_joint  (n_hand,) each hand joint's slot: the network's per-slot actions back to canonical order
+      finger_dim     N_SLOTS x (token_dim + 1): a finger's joint tokens palm -> tip, then its N_SLOTS validity bits
+    """
+    from isaacsimenvs.common.robots.finger_layout import N_FINGERS, N_SLOTS
+    layout = build_token_layout(spec, field_list, extra_sizes)
+    if finger_layout.n_joints != layout["n_hand"]:
+        raise ValueError(f"finger layout covers {finger_layout.n_joints} hand joints, the observation {layout['n_hand']}")
+    layout["slot_gather"] = [j if j >= 0 else layout["n_hand"] for j in finger_layout.joint_of_slot]
+    layout["slot_of_joint"] = list(finger_layout.slot_of_joint)
+    layout["n_fingers"], layout["n_slots"] = N_FINGERS, N_SLOTS
+    layout["finger_dim"] = N_SLOTS * (layout["token_dim"] + 1)
+    return layout
+
+
 __all__ = [
     "HAND_TOKEN_FIELDS",
     "OPTIONAL_HAND_TOKEN_FIELDS",
@@ -210,6 +230,7 @@ __all__ = [
     "JOINT_WIDTH_FIELDS",
     "MASK_FIELD",
     "NUM_KEYPOINTS",
+    "build_finger_layout",
     "build_token_layout",
     "compute_obs_dim",
     "field_offsets",

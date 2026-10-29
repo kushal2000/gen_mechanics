@@ -211,7 +211,7 @@ class InHandOlympicsEnv(DirectRLEnv):
             if self.cfg.obs.joint_box != "ordered":
                 boxes = np.zeros((len(self.hand_set.specs), spec.num_hand_joints, 4, 3), np.float32)
                 for h, s in enumerate(self.hand_set.specs):
-                    boxes[h, :s.num_hand_joints] = _link_boxes(s, self.cfg.obs.joint_box)
+                    boxes[h, list(self.hand_set.joint_slots[h])] = _link_boxes(s, self.cfg.obs.joint_box)
                 t["joint_link_bbox_local"] = torch.as_tensor(boxes, device=dev)[self.hand_of_env.long()]
             self._joint_link_bbox_local = t["joint_link_bbox_local"]
             self._joint_geometry_valid = t["joint_geometry_valid"]

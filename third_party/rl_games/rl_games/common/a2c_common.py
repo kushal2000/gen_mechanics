@@ -465,7 +465,7 @@ class A2CBase(BaseAlgorithm):
             'rnn_states' : rnn_states
         }
 
-        with torch.no_grad(), torch.cuda.amp.autocast(enabled=self.rollout_autocast):
+        with torch.no_grad(), torch.amp.autocast("cuda", enabled=self.rollout_autocast):
             res_dict = self.model(input_dict)
             if self.has_central_value:
                 states = obs['states']
@@ -478,7 +478,7 @@ class A2CBase(BaseAlgorithm):
         return res_dict
 
     def get_values(self, obs, rnn_states):
-        with torch.no_grad(), torch.cuda.amp.autocast(enabled=self.rollout_autocast):
+        with torch.no_grad(), torch.amp.autocast("cuda", enabled=self.rollout_autocast):
             if self.has_central_value:
                 states = obs['states']
                 self.central_value_net.eval()

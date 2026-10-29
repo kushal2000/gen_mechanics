@@ -12,6 +12,17 @@ hand actions mean different things downstream (``obs_utils/actions.py``
 accumulates arm velocity deltas but rescales hand targets absolutely), and
 sharing one head across that boundary would be sharing across a real seam.
 
+Token modes (``token_mode``, 29 Oct). "joint": the above, one token per hand
+joint and one shared per-joint head. "finger": one token per FINGER slot -- the
+finger's up-to-five joint tokens, palm to tip, side by side (a slot the finger
+lacks reads zero) plus five raw slot-validity bits -- so a finger's joints share
+one token and the per-token work shrinks 3-4x; a shared decoder MLP reads a
+finger's five actions off its token, scattered back to canonical joint order by
+a static index, and a palm-cut joint rides on the global token with its action
+from the arm head. Which joint is which slot comes from the URDF tree
+(isaacsimenvs/common/robots/finger_layout.py); a multi-hand run needs the
+finger-major template (``multi:finger:<specs>``).
+
 Registered as ``joint_transformer``; select it with ``params.network.name`` in
 the train YAML. Nothing under ``third_party/rl_games`` is modified -- this
 plugs in through ``model_builder.register_network``.
@@ -349,6 +360,9 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         n_arm = layout["n_arm"]
         self.n_hand = n_hand
         self.n_arm = n_arm
+        finger = self.token_mode == "finger"
+        if finger:
+            self.n_fingers, self.n_slots = layout["n_fingers"], layout["n_slots"]
 
         self._register_indices(layout)
         # This network normalises its own input (_RunningNorm). rl_games' per-column
@@ -365,9 +379,10 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         self._warned_unhooked = False
 
         d_model = self.d_model
-        # The un-projected global vector, kept for the skip below.
-        self.global_raw_dim = layout["global_dim"] + coef_dim
-        self.token_proj = nn.Linear(layout["token_dim"], d_model)
+        # The un-projected global vector, kept for the skip below. In finger mode it also carries the palm-cut
+        # slot's token (normalised) and validity bit.
+        self.global_raw_dim = layout["global_dim"] + coef_dim + (layout["token_dim"] + 1 if finger else 0)
+        self.token_proj = nn.Linear(layout["finger_dim"] if finger else layout["token_dim"], d_model)
         self.global_proj = nn.Linear(self.global_raw_dim, d_model)
         block = _ParallelEncoderLayer if self.parallel_block else _EncoderLayer
         self.layers = nn.ModuleList(
@@ -397,7 +412,10 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # empty (the default) keeps the single Linear, and with it the
         # `mu_head.weight` state_dict key that existing checkpoints carry.
         mu_in = d_model + (d_model + self.global_raw_dim if self.hand_global_skip else 0)
-        if self.mu_head_units:
+        if finger:
+            # One decoder shared by every finger token: its N_SLOTS actions, palm -> tip.
+            self.decoder = _mlp(d_model, self.decoder_units, self.n_slots)
+        elif self.mu_head_units:
             self.mu_head = _mlp(mu_in, self.mu_head_units, 1)
         else:
             self.mu_head = nn.Linear(mu_in, 1)
@@ -407,7 +425,8 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # alone reached and lifted as well as the MLP baseline but scored ~0 on
         # the post-lift keypoint term -- every palm/object/keypoint/goal number
         # was being squeezed through one token. Hence the raw skip.
-        self.arm_head = _mlp(d_model + self.global_raw_dim, self.arm_head_units, n_arm)
+        # Finger mode: one more output, the palm-cut joint's action (its token sits on the global vector).
+        self.arm_head = _mlp(d_model + self.global_raw_dim, self.arm_head_units, n_arm + (1 if finger else 0))
         self.mu_act = self.activations_factory.create(
             self.space_config.get("mu_activation", "None")
         )
@@ -544,6 +563,17 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # "matmul" (explicit scores, the default) or "sdpa" (torch's fused kernel; see _EncoderLayer.forward).
         self.attention = str(params.get("attention", "matmul"))
         self.value_head_units = list(params.get("value_head_units", [256, 128]))
+        # "joint" (the original: a token per hand joint) or "finger" (a token per finger; see the module docstring).
+        # The code default stays "joint" so every saved config replays; OlympicsJointTransformerSAPG.yaml sets
+        # "finger" (29 Oct).
+        self.token_mode = str(params.get("token_mode", "joint"))
+        if self.token_mode not in ("joint", "finger"):
+            raise ValueError(f"token_mode must be 'joint' or 'finger', got {self.token_mode!r}")
+        if self.token_mode == "finger" and self.hand_global_skip:
+            raise ValueError("hand_global_skip has no meaning with finger tokens (each finger's actions come from "
+                             "its own token only)")
+        # Finger mode's shared decoder, finger token -> its N_SLOTS actions. [] is a single Linear.
+        self.decoder_units = list(params.get("decoder_units", [256]))
         self.robot_spec_name = params["robot_spec"]
         # Joints ahead of the spec's own in canonical order that the spec does not know about, treated as arm
         # joints (global context in, the arm head out): in-hand olympics' 6-DOF dummy wrist on a hand-only spec.
@@ -565,13 +595,17 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # Imported here, not at module scope: this module is imported by
         # train.py before the env package is touched, and the layout builder
         # reaches into isaacsimenvs.
-        from isaacsimenvs.common.obs_layout import build_token_layout
-        from isaacsimenvs.common.robots import get_robot_spec
+        from isaacsimenvs.common.obs_layout import build_finger_layout, build_token_layout
+        from isaacsimenvs.common.robots import get_finger_layout, get_robot_spec
 
         spec = get_robot_spec(self.robot_spec_name)
         if self.extra_arm_joints:
             spec = _WithArmJoints(spec, self.extra_arm_joints)
-        layout = build_token_layout(spec, self.field_list, self.extra_field_sizes)
+        if self.token_mode == "finger":
+            layout = build_finger_layout(spec, self.field_list, get_finger_layout(self.robot_spec_name),
+                                         self.extra_field_sizes)
+        else:
+            layout = build_token_layout(spec, self.field_list, self.extra_field_sizes)
         if layout["obs_dim"] != env_obs_dim:
             raise ValueError(
                 f"joint_transformer layout mismatch: {self.robot_spec_name} with "
@@ -614,6 +648,11 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
             "global_index", torch.tensor(global_index, dtype=torch.long),
             persistent=False,
         )
+        if self.token_mode == "finger":
+            self.register_buffer("slot_gather", torch.tensor(layout["slot_gather"], dtype=torch.long),
+                                 persistent=False)
+            self.register_buffer("slot_of_joint", torch.tensor(layout["slot_of_joint"], dtype=torch.long),
+                                 persistent=False)
 
     # ---------------------------------------------------------------- forward
 
@@ -650,18 +689,24 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
                   "statistics update on every mini-epoch instead of the first only", flush=True)
         self.token_norm.update(raw_tokens, valid)         # pooled over real joints only
         self.global_norm.update(glob)
-        tokens = self.token_proj(self.token_norm(raw_tokens))
+        tokens = self.token_norm(raw_tokens)
         glob = self.global_norm(glob)
         if coef is not None:
             glob = torch.cat([glob, coef], dim=-1)
+        if self.token_mode == "finger":
+            tokens, glob, token_valid = self._finger_tokens(tokens, valid, glob)
+        else:
+            token_valid = valid
+        tokens = self.token_proj(tokens)
+        n_tok = tokens.shape[1]
 
         global_token = self.global_proj(glob)
         if self.layers:
-            # Attention needs all n_hand + 1 tokens as one sequence.
+            # Attention needs all tokens + the global one as one sequence.
             x = torch.cat([tokens, global_token.unsqueeze(1)], dim=1)
             # The global token is always present, so every query keeps one key.
             key_mask = torch.cat(
-                [valid, torch.ones_like(valid[:, :1])], dim=1)
+                [token_valid, torch.ones_like(token_valid[:, :1])], dim=1)
             ckpt = self.grad_checkpoint and self.training and torch.is_grad_enabled()
             for layer in self.layers:
                 if ckpt:
@@ -670,7 +715,7 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
                     x = layer(x, key_mask)
             if self.final_norm:
                 x = self.ln_out(x)
-            return x[:, : self.n_hand], x[:, self.n_hand], glob, valid
+            return x[:, :n_tok], x[:, n_tok], glob, valid, token_valid
 
         # No blocks: the concatenation would be undone by the split on the very
         # next line with nothing in between, and LayerNorm reduces only over the
@@ -680,27 +725,51 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         if self.final_norm:
             tokens = self.ln_out(tokens)
             global_token = self.ln_out(global_token)
-        return tokens, global_token, glob, valid
+        return tokens, global_token, glob, valid, token_valid
+
+    def _finger_tokens(self, tokens: torch.Tensor, valid: torch.Tensor, glob: torch.Tensor):
+        """Normalised joint tokens (B, n_hand, token_dim) -> finger tokens (B, n_fingers, finger_dim): each finger's
+        n_slots joint slots palm -> tip side by side (a ghost slot all zero) plus its n_slots validity bits, raw. The
+        palm-cut slot's token and bit go onto the global vector. Static index maps (robots/finger_layout.py), so the
+        whole thing compiles with fixed shapes."""
+        B, dtype = tokens.shape[0], tokens.dtype
+        pad = torch.cat([tokens * valid.unsqueeze(-1).to(dtype), tokens.new_zeros(B, 1, tokens.shape[-1])], dim=1)
+        vpad = torch.cat([valid, torch.zeros_like(valid[:, :1])], dim=1)
+        slots = torch.index_select(pad, 1, self.slot_gather)            # (B, n_fingers * n_slots + 1, token_dim)
+        svalid = torch.index_select(vpad, 1, self.slot_gather)          # (B, n_fingers * n_slots + 1)
+        n = self.n_fingers * self.n_slots
+        bits = svalid[:, :n].reshape(B, self.n_fingers, self.n_slots)
+        fingers = torch.cat([slots[:, :n].reshape(B, self.n_fingers, -1), bits.to(dtype)], dim=-1)
+        glob = torch.cat([glob, slots[:, n], svalid[:, n:].to(dtype)], dim=-1)
+        return fingers, glob, bits.any(dim=-1)
 
     def forward(self, obs_dict):
         obs = obs_dict["obs"]
-        joints, glob, glob_raw, valid = self._trunk(obs)
-        # Mean over the joints this design HAS. An unmasked mean would be mostly
+        joints, glob, glob_raw, valid, token_valid = self._trunk(obs)
+        # Mean over the tokens (joints, or fingers) this design HAS. An unmasked mean would be mostly
         # ghosts for a small hand, and diluted by a design-dependent amount --
         # exactly the variable a co-design run is trying to measure.
-        w = valid.unsqueeze(-1).to(joints.dtype)
+        w = token_valid.unsqueeze(-1).to(joints.dtype)
         pooled = (joints * w).sum(dim=1) / w.sum(dim=1).clamp(min=1.0)
         value = self.value_head(torch.cat([pooled, glob, glob_raw], dim=-1))
         if self.central_value:
             return value, None
 
-        if self.hand_global_skip:
+        arm_out = self.arm_head(torch.cat([glob, glob_raw], dim=-1))
+        if self.token_mode == "finger":
+            # Every finger token -> its n_slots actions; the arm head's extra column is the palm-cut slot's. One
+            # static gather puts the (n_fingers * n_slots + 1) slot actions back in canonical joint order.
+            slot_mu = self.decoder(joints).reshape(joints.shape[0], -1)
+            mu_arm = arm_out[:, : self.n_arm]
+            mu_hand = torch.index_select(torch.cat([slot_mu, arm_out[:, self.n_arm:]], dim=-1), 1, self.slot_of_joint)
+        elif self.hand_global_skip:
             ctx = torch.cat([glob, glob_raw], dim=-1).unsqueeze(1).expand(
                 -1, joints.shape[1], -1)
             mu_hand = self.mu_head(torch.cat([joints, ctx], dim=-1)).squeeze(-1)
+            mu_arm = arm_out
         else:
             mu_hand = self.mu_head(joints).squeeze(-1)
-        mu_arm = self.arm_head(torch.cat([glob, glob_raw], dim=-1))
+            mu_arm = arm_out
         # Canonical policy order is arm joints first, then hand joints.
         mu = self.mu_act(torch.cat([mu_arm, mu_hand], dim=-1))
 

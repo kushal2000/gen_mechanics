@@ -302,8 +302,8 @@ def _work(args, plan: dict, conn) -> None:
             g = list(finished[h])
             stats.append({"policy": loaded[h], "episodes": len(g), "goals": sum(g) / len(g) if g else 0.0,
                           "one": sum(x >= 1 for x in g) / len(g) if g else 0.0, "ends": dict(ends[h])})
-        n_joints = (len(env.robot.real_joint_names(watch)) if env.hand_set is not None else env.robot.num_joints)
-        frame = {"kind": "frame", "slot": shown, "q": env.robot.data.joint_pos[watch, :n_joints].tolist(), "stats": stats,
+        cols = env.robot.real_slots(watch) if env.hand_set is not None else slice(None)
+        frame = {"kind": "frame", "slot": shown, "q": env.robot.data.joint_pos[watch, cols].tolist(), "stats": stats,
                  "status": (f"{loaded[shown]}, env {watch} · task **{env.tasks[int(env.task_id[watch])].name}** · goals "
                             f"**{int(env.successes[watch])}** · goal distance {float(env.goal_dist[watch]) * 1000:.0f} mm"
                             f" · {float(env.episode_length_buf[watch]) * env.step_dt:.1f} s into this goal"

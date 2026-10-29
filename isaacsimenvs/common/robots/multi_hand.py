@@ -14,10 +14,12 @@ Nothing is padded in the SIMULATOR -- every hand keeps its own links and joints 
 the sim much slower). The padding lives only in torch: the policy sees ``J = max joints`` slots and
 ``F = max fingertips`` tips, and a hand with fewer leaves the rest as ghosts:
 
-  joint slot k < n_h     the hand's k-th joint in its spec's canonical order; a ghost slot has zero range,
-                         so ``joint_enabled`` (read from the limits) masks it in attention, exactly as for a
-                         generated population
-  tip slot i < F_h       the hand's i-th fingertip; ``fingertip_valid`` masks the rest
+  joint slot k < n_h     the hand's k-th joint in its spec's canonical order ("dense", the default); or, with
+                         ``multi:finger:<...>``, finger-major slots (finger_layout.py): slot f*5+k is finger f's
+                         k-th joint from the palm, slot 30 the palm joint, 31 slots whatever the hands -- the
+                         per-finger transformer's token grid. A ghost slot has zero range, so ``joint_enabled``
+                         (read from the limits) masks it in attention, exactly as for a generated population
+  tip slot i < F_h       the hand's i-th fingertip (finger i, in the finger layout); ``fingertip_valid`` masks the rest
   per-env tables         joint-link boxes, palm keypoints, palm centre, fingertip pad offsets, hand scale --
                          gathered per env by :meth:`HandSet.per_env`, the interface ``allocate_state_buffers``
                          already reads a population through
@@ -38,6 +40,7 @@ import numpy as np
 from hand_sampler.robot_spec import RobotSpec
 
 MULTI_PREFIX = "multi:"
+SLOT_LAYOUTS = ("dense", "finger")
 UNIFORM_HANDS = ("sharpa", "allegro", "leap", "shadow", "dex3", "tesollo", "wuji2", "xhand")
 PALM = "palm"
 WUJI2_FINGERS = ("thumb", "index", "middle", "ring", "pinky")
@@ -64,8 +67,19 @@ def is_multi_ref(ref) -> bool:
     return isinstance(ref, str) and ref.startswith(MULTI_PREFIX)
 
 
+def slot_layout(ref: str) -> str:
+    """``"dense"`` (``multi:<specs>``: each hand's joints from slot 0) or ``"finger"`` (``multi:finger:<specs>``:
+    finger-major slots, see the module docstring)."""
+    body = ref[len(MULTI_PREFIX):]
+    head, sep, _ = body.partition(":")
+    return head if sep and head in SLOT_LAYOUTS else "dense"
+
+
 def spec_names(ref: str) -> tuple[str, ...]:
     body = ref[len(MULTI_PREFIX):]
+    head, sep, rest = body.partition(":")
+    if sep and head in SLOT_LAYOUTS:
+        body = rest
     if body == "uniform":
         return tuple(f"{h}_left_uniform_handonly" for h in UNIFORM_HANDS)
     if body == "wuji2_lr_2plus":
@@ -113,6 +127,8 @@ class HandSet:
     palm_center_offset: np.ndarray     # (H, 3)
     palm_keypoints: np.ndarray         # (H, 4, 3)
     hand_scale: np.ndarray             # (H,)
+    layout: str = "dense"              # slot_layout(ref)
+    joint_slots: tuple[tuple[int, ...], ...] = ()   # per hand, the slot of each of its joints (spec order)
     labels: tuple[str, ...] = ()       # short per-hand names for logging (hand_labels)
 
     @property
@@ -174,18 +190,25 @@ def hand_set(ref: str) -> HandSet:
         if s.num_arm_joints:
             raise ValueError(f"{ref!r}: {s.name} has an arm; a multi-hand scene is hand-only")
     H = len(specs)
-    J = max(s.num_hand_joints for s in specs)
-    F = max(s.num_fingertips for s in specs)
+    layout = slot_layout(ref)
+    if layout == "finger":
+        from .finger_layout import N_FINGERS, N_HAND_SLOTS, finger_layout
+        slots = tuple(finger_layout(s).slot_of_joint for s in specs)
+        J, F = N_HAND_SLOTS, N_FINGERS
+    else:
+        slots = tuple(tuple(range(s.num_hand_joints)) for s in specs)
+        J = max(s.num_hand_joints for s in specs)
+        F = max(s.num_fingertips for s in specs)
     boxes = np.zeros((H, J, 4, 3), np.float32)
     geom_valid = np.zeros((H, J), bool)
     joint_valid = np.zeros((H, J), bool)
     tip_valid = np.zeros((H, F), bool)
     tip_off = np.zeros((H, F, 3), np.float32)
     for h, s in enumerate(specs):
-        n = s.num_hand_joints
-        boxes[h, :n] = np.asarray(s.joint_link_boxes, np.float32)
-        geom_valid[h, :n] = np.asarray(s.joint_geometry_valid, bool)
-        joint_valid[h, :n] = True
+        k = list(slots[h])
+        boxes[h, k] = np.asarray(s.joint_link_boxes, np.float32)
+        geom_valid[h, k] = np.asarray(s.joint_geometry_valid, bool)
+        joint_valid[h, k] = True
         tip_valid[h, :s.num_fingertips] = True
         if s.fingertip_offsets:
             tip_off[h, :s.num_fingertips] = np.asarray(s.fingertip_offsets, np.float32)
@@ -221,9 +244,9 @@ def hand_set(ref: str) -> HandSet:
         palm_center_offset=np.asarray([s.palm_center_offset for s in specs], np.float32),
         palm_keypoints=np.asarray([s.palm_keypoints for s in specs], np.float32),
         hand_scale=np.asarray([s.hand_scale for s in specs], np.float32),
-        labels=hand_labels(specs),
+        layout=layout, joint_slots=slots, labels=hand_labels(specs),
     )
 
 
-__all__ = ["HandSet", "MULTI_PREFIX", "PALM", "UNIFORM_HANDS", "hand_labels", "hand_set", "is_multi_ref",
-           "slot_joint", "slot_link", "slot_tip", "spec_names"]
+__all__ = ["HandSet", "MULTI_PREFIX", "PALM", "SLOT_LAYOUTS", "UNIFORM_HANDS", "hand_labels", "hand_set",
+           "is_multi_ref", "slot_joint", "slot_layout", "slot_link", "slot_tip", "spec_names"]

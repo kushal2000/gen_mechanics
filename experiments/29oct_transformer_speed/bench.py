@@ -295,6 +295,19 @@ def main() -> None:
         ("jt candidate: d256 L2 big heads compiled noaffine",
          lambda: make_jt(obs_dim, n_actions, d_model=256, n_layers=2, arm_head_units=[2048, 1024],
                          value_head_units=[2048, 1024], compile_net=True, affine_norm=False), JT),
+        # the per-finger network on the REAL layout (token_mode finger, 29 Oct plumbing): the pick and its fallbacks
+        ("finger: real d128 L2 h4 compiled noaffine (the pick)",
+         lambda: make_jt(obs_dim, n_actions, token_mode="finger", d_model=128, n_layers=2, n_heads=4,
+                         decoder_units=[256], compile_net=True, affine_norm=False), JT),
+        ("finger: real d128 L2 h4 eager noaffine",
+         lambda: make_jt(obs_dim, n_actions, token_mode="finger", d_model=128, n_layers=2, n_heads=4,
+                         decoder_units=[256], affine_norm=False), JT),
+        ("finger: real d64 L2 h4 compiled noaffine",
+         lambda: make_jt(obs_dim, n_actions, token_mode="finger", d_model=64, n_layers=2, n_heads=4,
+                         decoder_units=[256], compile_net=True, affine_norm=False), JT),
+        ("finger: real d128 L3 h4 compiled noaffine",
+         lambda: make_jt(obs_dim, n_actions, token_mode="finger", d_model=128, n_layers=3, n_heads=4,
+                         decoder_units=[256], compile_net=True, affine_norm=False), JT),
     ]
     only = {s.strip() for s in args.only.split("|") if s.strip()}
     rows = []

@@ -73,5 +73,19 @@ def get_robot_spec(name: str) -> RobotSpec:
         "population .json written by hand_sampler.population_io")
 
 
-__all__ = ["ALLEGRO_HANDONLY", "RobotSpec", "REGISTRY", "get_robot_spec",
+def get_finger_layout(name: str):
+    """The per-finger token layout (robots/finger_layout.py) behind ``name``: a single hand's, read from its URDF;
+    a multi-hand ref's identity template, which must be laid out finger-major (``multi:finger:<specs>``)."""
+    from isaacsimenvs.common.robots.finger_layout import finger_layout, template_layout
+    from isaacsimenvs.common.robots.multi_hand import hand_set, is_multi_ref
+    if is_multi_ref(name):
+        hs = hand_set(name)
+        if hs.layout != "finger":
+            raise ValueError(f"{name!r} packs its joint slots densely; per-finger tokens need a finger-major "
+                             f"template: 'multi:finger:{name[len('multi:'):]}'")
+        return template_layout(hs.n_joints)
+    return finger_layout(get_robot_spec(name))
+
+
+__all__ = ["ALLEGRO_HANDONLY", "RobotSpec", "REGISTRY", "get_finger_layout", "get_robot_spec",
            "SHARPA_HANDONLY", "SHARPA_IIWA14"]

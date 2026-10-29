@@ -29,8 +29,9 @@ ARCH="${ARCH:-mlp}"
 case "$ARCH" in
     mlp) AGENT=rl_games_sapg_nolstm_cfg_entry_point ;;
     lstm) AGENT=rl_games_sapg_cfg_entry_point ;;
-    # transformer: OlympicsJointTransformerSAPG.yaml, the per-joint transformer, with its own training settings
-    # (lr 1e-4, 2 mini-epochs, minibatch 16384) in place of the MLP's below.
+    # transformer: OlympicsJointTransformerSAPG.yaml, the joint transformer (per-finger tokens since 29 Oct; a
+    # multi-hand run then needs HAND=multi:finger:<specs>), with its own training settings (lr 1e-4, 2 mini-epochs,
+    # minibatch 16384) in place of the MLP's below.
     transformer) AGENT=rl_games_joint_transformer_cfg_entry_point ;;
     *) echo "ARCH must be mlp, lstm or transformer, got $ARCH"; exit 1 ;;
 esac

@@ -8,8 +8,9 @@ scene in place of the hands, so the scene's ``reset(env_ids)`` / ``update`` / ``
 every hand with its env ids made local to its block (the hands' own articulations cover only their block,
 and handing them global ids is the indexing bug this avoids).
 
-Slots: joint slot k is the hand's k-th joint in its spec's canonical order; a ghost slot reads 0 with
-limits (0, 0), so ``joint_enabled`` masks it. Bodies are virtual: ``palm``, ``tip0..tip{F-1}``,
+Slots: a hand's joints take the slots ``HandSet.joint_slots`` gives them (its k-th joint for a dense
+``multi:`` ref, finger-major for ``multi:finger:``); a ghost slot reads 0 with limits (0, 0), so
+``joint_enabled`` masks it. Bodies are virtual: ``palm``, ``tip0..tip{F-1}``,
 ``link_s0..link_s{J-1}``; a ghost tip or link reads the palm's state (and is masked downstream by
 ``fingertip_valid`` / ``joint_geometry_valid``).
 """
@@ -33,7 +34,7 @@ class _MultiData:
         o = self._o
         out = torch.full((o.num_envs, o.n_joints), fill, device=o.device)
         for h, art in enumerate(o.arts):
-            out[o.blocks[h], : o.n_real[h]] = getattr(art.data, name)[:, o.joint_ids[h]]
+            out[o.blocks[h][:, None], o.slot_cols[h]] = getattr(art.data, name)[:, o.joint_ids[h]]
         return out
 
     @property
@@ -73,7 +74,7 @@ class _MultiData:
         o = self._o
         out = torch.zeros((o.num_envs, o.n_joints, 2), device=o.device)   # ghost slot: (0, 0)
         for h, art in enumerate(o.arts):
-            out[o.blocks[h], : o.n_real[h]] = art.data.joint_pos_limits[:, o.joint_ids[h]]
+            out[o.blocks[h][:, None], o.slot_cols[h]] = art.data.joint_pos_limits[:, o.joint_ids[h]]
         return out
 
     @property
@@ -127,6 +128,8 @@ class MultiHandArticulation:
         self.body_names = [PALM] + [slot_tip(i) for i in range(self.n_tips)] + \
                           [slot_link(k) for k in range(self.n_joints)]
         self.n_real = [s.num_hand_joints for s in hand_set.specs]
+        self.slot_cols = [torch.tensor(list(hand_set.joint_slots[h]), dtype=torch.long, device=device)
+                          for h in range(hand_set.n_hands)]
         self.joint_ids: list[list[int]] = []
         self.body_ids: list[list[int]] = []
         self.data = _MultiData(self)
@@ -137,7 +140,7 @@ class MultiHandArticulation:
     def resolve(self) -> None:
         """Map each hand's real joints and bodies onto the slots. Needs the started sim."""
         self.joint_ids, self.body_ids = [], []
-        for spec, art in zip(self.hand_set.specs, self.arts):
+        for h, (spec, art) in enumerate(zip(self.hand_set.specs, self.arts)):
             jid, jnames = art.find_joints(list(spec.hand_joint_names), preserve_order=True)
             if list(jnames) != list(spec.hand_joint_names):
                 raise RuntimeError(f"{spec.name}: joints {jnames} != spec {spec.hand_joint_names}")
@@ -146,11 +149,13 @@ class MultiHandArticulation:
             links = art.find_bodies(list(spec.joint_link_bodies), preserve_order=True)[0]
             if len(tips) != spec.num_fingertips or len(links) != spec.num_hand_joints:
                 raise RuntimeError(f"{spec.name}: found {len(tips)} tips / {len(links)} joint links")
-            ids = [palm] + list(tips) + [palm] * (self.n_tips - len(tips)) + \
-                  list(links) + [palm] * (self.n_joints - len(links))
+            link_of_slot = [palm] * self.n_joints
+            for j, s in enumerate(self.hand_set.joint_slots[h]):
+                link_of_slot[s] = links[j]
+            ids = [palm] + list(tips) + [palm] * (self.n_tips - len(tips)) + link_of_slot
             self.joint_ids.append(list(jid))
             self.body_ids.append(ids)
-            block = self.blocks[len(self.joint_ids) - 1]
+            block = self.blocks[h]
             if art.num_instances != block.numel():
                 raise RuntimeError(f"{spec.name}: articulation covers {art.num_instances} envs, "
                                    f"its block is {block.numel()}")
@@ -186,7 +191,8 @@ class MultiHandArticulation:
         if joint_ids is not None or env_ids is not None:
             raise NotImplementedError("multi-hand targets are set for every env and slot at once")
         for h, art in enumerate(self.arts):
-            art.set_joint_position_target(target[self.blocks[h], : self.n_real[h]], joint_ids=self.joint_ids[h])
+            art.set_joint_position_target(target[self.blocks[h][:, None], self.slot_cols[h]],
+                                          joint_ids=self.joint_ids[h])
 
     def _split(self, env_ids):
         """Global env ids -> per hand (global ids in the block, local ids)."""
@@ -208,9 +214,9 @@ class MultiHandArticulation:
         row = torch.empty(self.num_envs, dtype=torch.long, device=self.device)
         row[env_ids] = torch.arange(env_ids.numel(), device=self.device)
         for h, glob, local in self._split(env_ids):
-            r = row[glob]
+            r, cols = row[glob], self.slot_cols[h]
             self.arts[h].write_joint_state_to_sim(
-                position[r, : self.n_real[h]], velocity[r, : self.n_real[h]],
+                position[r[:, None], cols], velocity[r[:, None], cols],
                 joint_ids=self.joint_ids[h], env_ids=local)
 
     # -- the scene's hooks -----------------------------------------------------------------

@@ -3,8 +3,9 @@ as one articulation: the hand sets of common/robots/multi_hand.py, presented as 
 presents them (scene_utils/multi_articulation.py), with the 6 wrist joints ahead of the padded finger slots.
 
 Selected by ``hand.robot_spec = "multi:<spec>+<spec>+..."``. Joint order (Isaac Lab order = canonical order here):
-the wrist joints, then finger slots s0..s{J-1}, slot k being the hand's k-th joint in its spec's canonical order; a
-ghost slot reads 0 with limits (0, 0), so ``joint_enabled`` masks it. Bodies are virtual -- ``palm``, ``tip0..``,
+the wrist joints, then finger slots s0..s{J-1}; which slot a hand's joint takes is the HandSet's ``joint_slots`` (its
+k-th joint for a dense ``multi:`` ref, its finger-major slot for ``multi:finger:``); a ghost slot reads 0 with limits
+(0, 0), so ``joint_enabled`` masks it. Bodies are virtual -- ``palm``, ``tip0..``,
 ``link_s0..`` -- a ghost tip or link reading the palm's state (masked downstream by ``tip_valid`` /
 ``joint_geometry_valid``). Nothing is padded in the simulator: each hand keeps its own links and joints.
 """
@@ -28,7 +29,7 @@ class _Data:
         o = self._o
         out = torch.full((o.num_envs, o.num_joints, *tail), fill, device=o.device)
         for h, art in enumerate(o.arts):
-            out[o.blocks[h], : o.n_real[h]] = getattr(art.data, name)[:, o.joint_ids[h]]
+            out[o.blocks[h][:, None], o.slot_cols[h]] = getattr(art.data, name)[:, o.joint_ids[h]]
         return out
 
     @property
@@ -104,6 +105,9 @@ class OlympicsMultiHand:
         self.body_names = [PALM] + [slot_tip(i) for i in range(hand_set.n_tips)] + \
                           [slot_link(k) for k in range(hand_set.n_joints)]
         self.n_real = [n_w + s.num_hand_joints for s in hand_set.specs]
+        # Each hand's columns in slot space: the wrist, then its joints' slots (HandSet.joint_slots).
+        self.slot_cols = [torch.tensor(list(range(n_w)) + [n_w + s for s in hand_set.joint_slots[h]],
+                                       dtype=torch.long, device=device) for h in range(hand_set.n_hands)]
         self.joint_ids: list[list[int]] = []
         self.body_ids: list[list[int]] = []
         self.data = _Data(self)
@@ -124,8 +128,10 @@ class OlympicsMultiHand:
             if len(tips) != spec.num_fingertips or len(links) != spec.num_hand_joints:
                 raise RuntimeError(f"{spec.name}: found {len(tips)} tips / {len(links)} joint links")
             self.joint_ids.append(list(jid))
-            self.body_ids.append([palm] + list(tips) + [palm] * (F - len(tips)) + list(links)
-                                 + [palm] * (J - len(links)))
+            link_of_slot = [palm] * J
+            for j, s in enumerate(self.hand_set.joint_slots[h]):
+                link_of_slot[s] = links[j]
+            self.body_ids.append([palm] + list(tips) + [palm] * (F - len(tips)) + link_of_slot)
             block = self.blocks[h]
             if art.num_instances != block.numel():
                 raise RuntimeError(f"{spec.name}: articulation covers {art.num_instances} envs, block {block.numel()}")
@@ -144,8 +150,12 @@ class OlympicsMultiHand:
         return ids, [self.body_names[i] for i in ids]
 
     def real_joint_names(self, env_id: int) -> list[str]:
-        """Env ``env_id``'s own joint names, wrist first (its first ``n_real`` slots)."""
+        """Env ``env_id``'s own joint names, wrist first; their slot columns are ``real_slots(env_id)``."""
         return list(WRIST_JOINTS) + list(self.hand_set.specs[int(self.hand_of_env[env_id])].hand_joint_names)
+
+    def real_slots(self, env_id: int) -> list[int]:
+        """The slot columns holding env ``env_id``'s own joints, in ``real_joint_names`` order."""
+        return self.slot_cols[int(self.hand_of_env[env_id])].tolist()
 
     def _split(self, env_ids):
         env_ids = self._ALL_INDICES if env_ids is None else torch.as_tensor(env_ids, device=self.device,
@@ -159,12 +169,14 @@ class OlympicsMultiHand:
     # -- writes ------------------------------------------------------------------------------------------
     def set_joint_position_target(self, target: torch.Tensor) -> None:
         for h, art in enumerate(self.arts):
-            art.set_joint_position_target(target[self.blocks[h], : self.n_real[h]], joint_ids=self.joint_ids[h])
+            art.set_joint_position_target(target[self.blocks[h][:, None], self.slot_cols[h]],
+                                          joint_ids=self.joint_ids[h])
 
     def write_joint_state_to_sim(self, position, velocity, env_ids=None) -> None:
         """``position`` / ``velocity``: (len(env_ids), J) slot layout, rows in env_ids order."""
         for h, pick, local in self._split(env_ids):
-            self.arts[h].write_joint_state_to_sim(position[pick, : self.n_real[h]], velocity[pick, : self.n_real[h]],
+            cols = self.slot_cols[h]
+            self.arts[h].write_joint_state_to_sim(position[pick[:, None], cols], velocity[pick[:, None], cols],
                                                   joint_ids=self.joint_ids[h], env_ids=local)
 
     def write_root_pose_to_sim(self, pose, env_ids=None) -> None:
