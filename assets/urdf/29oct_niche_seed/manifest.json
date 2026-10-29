@@ -1,0 +1,523 @@
+{
+ "seed": 0,
+ "rules": "FEETECH_COARSE_RULES",
+ "grid": {
+  "n_rigid": 5,
+  "n_moving": 2,
+  "n_slots": 5
+ },
+ "draws": 113,
+ "missing": [],
+ "hands": [
+  {
+   "id": "seed_f2_nocut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f2_nocut_j0/seed_f2_nocut_j0.spec.json",
+   "niche": "f2_nocut_j0",
+   "draw": 13,
+   "fingers": 2,
+   "joints": 3,
+   "finger_joints": 3,
+   "palm_cut": false,
+   "joints_per_finger": [
+    2,
+    1
+   ],
+   "length_mm": 230
+  },
+  {
+   "id": "seed_f2_nocut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f2_nocut_j1/seed_f2_nocut_j1.spec.json",
+   "niche": "f2_nocut_j1",
+   "draw": 24,
+   "fingers": 2,
+   "joints": 6,
+   "finger_joints": 6,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    2
+   ],
+   "length_mm": 330
+  },
+  {
+   "id": "seed_f2_nocut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f2_nocut_j2/seed_f2_nocut_j2.spec.json",
+   "niche": "f2_nocut_j2",
+   "draw": 27,
+   "fingers": 2,
+   "joints": 10,
+   "finger_joints": 10,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    5
+   ],
+   "length_mm": 410
+  },
+  {
+   "id": "seed_f2_cut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f2_cut_j0/seed_f2_cut_j0.spec.json",
+   "niche": "f2_cut_j0",
+   "draw": 64,
+   "fingers": 2,
+   "joints": 3,
+   "finger_joints": 2,
+   "palm_cut": true,
+   "joints_per_finger": [
+    1,
+    1
+   ],
+   "length_mm": 140
+  },
+  {
+   "id": "seed_f2_cut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f2_cut_j1/seed_f2_cut_j1.spec.json",
+   "niche": "f2_cut_j1",
+   "draw": 5,
+   "fingers": 2,
+   "joints": 8,
+   "finger_joints": 7,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    2
+   ],
+   "length_mm": 320
+  },
+  {
+   "id": "seed_f2_cut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f2_cut_j2/seed_f2_cut_j2.spec.json",
+   "niche": "f2_cut_j2",
+   "draw": 14,
+   "fingers": 2,
+   "joints": 9,
+   "finger_joints": 8,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    3
+   ],
+   "length_mm": 340
+  },
+  {
+   "id": "seed_f3_nocut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f3_nocut_j0/seed_f3_nocut_j0.spec.json",
+   "niche": "f3_nocut_j0",
+   "draw": 11,
+   "fingers": 3,
+   "joints": 7,
+   "finger_joints": 7,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    2,
+    1
+   ],
+   "length_mm": 400
+  },
+  {
+   "id": "seed_f3_nocut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f3_nocut_j1/seed_f3_nocut_j1.spec.json",
+   "niche": "f3_nocut_j1",
+   "draw": 2,
+   "fingers": 3,
+   "joints": 10,
+   "finger_joints": 10,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    3,
+    2
+   ],
+   "length_mm": 470
+  },
+  {
+   "id": "seed_f3_nocut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f3_nocut_j2/seed_f3_nocut_j2.spec.json",
+   "niche": "f3_nocut_j2",
+   "draw": 62,
+   "fingers": 3,
+   "joints": 12,
+   "finger_joints": 12,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    4,
+    4
+   ],
+   "length_mm": 620
+  },
+  {
+   "id": "seed_f3_cut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f3_cut_j0/seed_f3_cut_j0.spec.json",
+   "niche": "f3_cut_j0",
+   "draw": 18,
+   "fingers": 3,
+   "joints": 7,
+   "finger_joints": 6,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    2,
+    2
+   ],
+   "length_mm": 360
+  },
+  {
+   "id": "seed_f3_cut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f3_cut_j1/seed_f3_cut_j1.spec.json",
+   "niche": "f3_cut_j1",
+   "draw": 10,
+   "fingers": 3,
+   "joints": 9,
+   "finger_joints": 8,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    3,
+    1
+   ],
+   "length_mm": 490
+  },
+  {
+   "id": "seed_f3_cut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f3_cut_j2/seed_f3_cut_j2.spec.json",
+   "niche": "f3_cut_j2",
+   "draw": 25,
+   "fingers": 3,
+   "joints": 13,
+   "finger_joints": 12,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    4,
+    4
+   ],
+   "length_mm": 630
+  },
+  {
+   "id": "seed_f4_nocut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f4_nocut_j0/seed_f4_nocut_j0.spec.json",
+   "niche": "f4_nocut_j0",
+   "draw": 74,
+   "fingers": 4,
+   "joints": 9,
+   "finger_joints": 9,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    3,
+    2,
+    1
+   ],
+   "length_mm": 470
+  },
+  {
+   "id": "seed_f4_nocut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f4_nocut_j1/seed_f4_nocut_j1.spec.json",
+   "niche": "f4_nocut_j1",
+   "draw": 32,
+   "fingers": 4,
+   "joints": 12,
+   "finger_joints": 12,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    4,
+    2,
+    1
+   ],
+   "length_mm": 550
+  },
+  {
+   "id": "seed_f4_nocut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f4_nocut_j2/seed_f4_nocut_j2.spec.json",
+   "niche": "f4_nocut_j2",
+   "draw": 61,
+   "fingers": 4,
+   "joints": 15,
+   "finger_joints": 15,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    4,
+    4,
+    2
+   ],
+   "length_mm": 800
+  },
+  {
+   "id": "seed_f4_cut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f4_cut_j0/seed_f4_cut_j0.spec.json",
+   "niche": "f4_cut_j0",
+   "draw": 20,
+   "fingers": 4,
+   "joints": 10,
+   "finger_joints": 9,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    2,
+    2,
+    2
+   ],
+   "length_mm": 480
+  },
+  {
+   "id": "seed_f4_cut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f4_cut_j1/seed_f4_cut_j1.spec.json",
+   "niche": "f4_cut_j1",
+   "draw": 7,
+   "fingers": 4,
+   "joints": 15,
+   "finger_joints": 14,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    4,
+    3,
+    3
+   ],
+   "length_mm": 780
+  },
+  {
+   "id": "seed_f4_cut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f4_cut_j2/seed_f4_cut_j2.spec.json",
+   "niche": "f4_cut_j2",
+   "draw": 68,
+   "fingers": 4,
+   "joints": 16,
+   "finger_joints": 15,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    4,
+    3,
+    3
+   ],
+   "length_mm": 730
+  },
+  {
+   "id": "seed_f5_nocut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f5_nocut_j0/seed_f5_nocut_j0.spec.json",
+   "niche": "f5_nocut_j0",
+   "draw": 112,
+   "fingers": 5,
+   "joints": 8,
+   "finger_joints": 8,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    2,
+    1,
+    1,
+    1
+   ],
+   "length_mm": 540
+  },
+  {
+   "id": "seed_f5_nocut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f5_nocut_j1/seed_f5_nocut_j1.spec.json",
+   "niche": "f5_nocut_j1",
+   "draw": 9,
+   "fingers": 5,
+   "joints": 16,
+   "finger_joints": 16,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    5,
+    3,
+    2,
+    1
+   ],
+   "length_mm": 800
+  },
+  {
+   "id": "seed_f5_nocut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f5_nocut_j2/seed_f5_nocut_j2.spec.json",
+   "niche": "f5_nocut_j2",
+   "draw": 51,
+   "fingers": 5,
+   "joints": 19,
+   "finger_joints": 19,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    4,
+    4,
+    4,
+    2
+   ],
+   "length_mm": 870
+  },
+  {
+   "id": "seed_f5_cut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f5_cut_j0/seed_f5_cut_j0.spec.json",
+   "niche": "f5_cut_j0",
+   "draw": 3,
+   "fingers": 5,
+   "joints": 9,
+   "finger_joints": 8,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    2,
+    2,
+    1,
+    1
+   ],
+   "length_mm": 540
+  },
+  {
+   "id": "seed_f5_cut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f5_cut_j1/seed_f5_cut_j1.spec.json",
+   "niche": "f5_cut_j1",
+   "draw": 4,
+   "fingers": 5,
+   "joints": 14,
+   "finger_joints": 13,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    3,
+    3,
+    2,
+    2
+   ],
+   "length_mm": 810
+  },
+  {
+   "id": "seed_f5_cut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f5_cut_j2/seed_f5_cut_j2.spec.json",
+   "niche": "f5_cut_j2",
+   "draw": 8,
+   "fingers": 5,
+   "joints": 22,
+   "finger_joints": 21,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    4,
+    4,
+    4,
+    4
+   ],
+   "length_mm": 1030
+  },
+  {
+   "id": "seed_f6_nocut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f6_nocut_j0/seed_f6_nocut_j0.spec.json",
+   "niche": "f6_nocut_j0",
+   "draw": 28,
+   "fingers": 6,
+   "joints": 14,
+   "finger_joints": 14,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    3,
+    3,
+    2,
+    2,
+    1
+   ],
+   "length_mm": 800
+  },
+  {
+   "id": "seed_f6_nocut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f6_nocut_j1/seed_f6_nocut_j1.spec.json",
+   "niche": "f6_nocut_j1",
+   "draw": 26,
+   "fingers": 6,
+   "joints": 18,
+   "finger_joints": 18,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    4,
+    3,
+    3,
+    2,
+    1
+   ],
+   "length_mm": 1040
+  },
+  {
+   "id": "seed_f6_nocut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f6_nocut_j2/seed_f6_nocut_j2.spec.json",
+   "niche": "f6_nocut_j2",
+   "draw": 75,
+   "fingers": 6,
+   "joints": 22,
+   "finger_joints": 22,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    5,
+    4,
+    4,
+    3,
+    1
+   ],
+   "length_mm": 1080
+  },
+  {
+   "id": "seed_f6_cut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f6_cut_j0/seed_f6_cut_j0.spec.json",
+   "niche": "f6_cut_j0",
+   "draw": 1,
+   "fingers": 6,
+   "joints": 13,
+   "finger_joints": 12,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    3,
+    2,
+    2,
+    1,
+    1
+   ],
+   "length_mm": 720
+  },
+  {
+   "id": "seed_f6_cut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f6_cut_j1/seed_f6_cut_j1.spec.json",
+   "niche": "f6_cut_j1",
+   "draw": 0,
+   "fingers": 6,
+   "joints": 20,
+   "finger_joints": 19,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    4,
+    3,
+    3,
+    2,
+    2
+   ],
+   "length_mm": 1040
+  },
+  {
+   "id": "seed_f6_cut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f6_cut_j2/seed_f6_cut_j2.spec.json",
+   "niche": "f6_cut_j2",
+   "draw": 109,
+   "fingers": 6,
+   "joints": 24,
+   "finger_joints": 23,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    4,
+    4,
+    4,
+    3,
+    3
+   ],
+   "length_mm": 1130
+  }
+ ]
+}
