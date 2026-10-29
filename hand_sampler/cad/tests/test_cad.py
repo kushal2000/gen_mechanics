@@ -168,7 +168,6 @@ def test_the_parts_list_adds_up(tmp_path):
     used = package._count_screws(d)["box"]
     assert used <= HL3915.box_screws * n                      # the servos' own screws are enough
     assert package._count_screws(d)["M2x5"] == 4 * n
-    assert len(d.parts[("palm", -1)].column_screws) >= 3      # the mount's column is screwed on
     steps = (kit.folder / "ASSEMBLY.md").read_text()
     assert "| 11 |" in steps and "CH1" in steps and "CH2" in steps
 

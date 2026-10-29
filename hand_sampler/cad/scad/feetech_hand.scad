@@ -215,9 +215,11 @@ module socket_gusset(face, s, L = GUSSET, g = 0) {
 // connector windows (and the plug on the cable side: +1 / -1 along Z, 0 none)
 // (`channel`: how far ahead of the case its way in is kept clear: a closed
 // housing's servo slides in from the front; a cradle's, open on two more
-// sides, only needs its own front clear)
-module housing_keepout(single = false, cable = 0, channel = 80) {
-    box_lh([CASE_X[0] - FIT, CASE_Y[0] - channel, CASE_Z[0] - FIT], [CASE_X[1] + FIT, CASE_Y[1] + FIT, CASE_Z[1] + FIT]);
+// sides, only needs its own front clear. `back`: the case's way in from
+// behind instead, for a servo standing in the palm's open back; it goes in
+// with its horns off, and they go back on through their keyholes)
+module housing_keepout(single = false, cable = 0, channel = 80, back = 0) {
+    box_lh([CASE_X[0] - FIT, CASE_Y[0] - channel, CASE_Z[0] - FIT], [CASE_X[1] + FIT, CASE_Y[1] + FIT + back, CASE_Z[1] + FIT]);
     // the driven horn: a keyhole through the plate, open to the front
     hull() {
         cyl_x(HORN_R + PART_CLEAR, DRIVEN_X[0] - FIT, HORN_REACH);

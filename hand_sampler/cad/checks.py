@@ -9,8 +9,7 @@ anyone prints it.
   horns stay clear of its parent;
 - a screwdriver reaches every screw in the order ASSEMBLY.md gives: the
   case screws past the part holding the servo, the arm screws at some joint
-  angle or the link slid in on the servo, the mount's column screws from the
-  palm's face past the base links;
+  angle or the link slid in on the servo;
 - no two other parts touch at the zero pose;
 - how far each part reaches outside its simulator body (the grammar's
   solid; Martin, 2026-10-23: small overhangs are fine).
@@ -30,6 +29,7 @@ from hand_sampler.grammar import derive as dv
 from .design import Design, ServoSpot, T, inv
 
 JOINT_STEP_DEG = 10.0
+STOP_FREE_DEG = 10.0          # a base joint must turn this far either way before its finger meets the palm
 TOUCH_MM3 = 1.0               # an intersection smaller than this is a touch, not a clash
 OVERHANG_LIMIT_MM = 2.5
 
@@ -128,7 +128,6 @@ def check(design: Design, stl_dir: Path) -> Report:
                 whole = whole + m
             solids[key] = whole
     _joint_checks(design, solids, rep)
-    _face_screw_checks(design, solids, rep)
     _zero_pose_checks(design, solids, rep, frames)
     _overhangs(design, solids, rep)
     return rep
@@ -178,34 +177,6 @@ def _bodies(design: Design, solids: Dict) -> Dict:
     return {key: man for key, man in solids.items() if key[0] != "extra"}
 
 
-def _face_screw_checks(design: Design, solids: Dict, rep: Report) -> None:
-    """The palm stands on the mount's column on 3 or 4 screws, and a
-    screwdriver reaches each from the palm's face past the base servos'
-    links (turned anywhere in their range)."""
-    import manifold3d as m3
-
-    from .design import PALM_FACE_MM
-
-    x1 = PALM_FACE_MM
-    palm = design.parts[("palm", -1)]
-    n = len(getattr(palm, "column_screws", []))
-    if n < 3:
-        rep.clashes.append(f"palm: room for {n} screws into the mount's column, not 3 (posts off every base sweep "
-                           f"and every screwdriver's way)")
-    units = []
-    for sp in design.servos.values():
-        C = solids.get(sp.child)
-        if sp.parent != ("palm", -1) or C is None:
-            continue
-        lo, hi = sp.rot_deg
-        units.append((C, [sp.S_parent @ _rot_x(a) @ inv(sp.S_child) for a in (0.0, lo, hi)]))
-    for y, z in getattr(palm, "column_screws", []):
-        driver = m3.Manifold.cylinder(40.0, 2.8, 2.8, 16).rotate([0.0, 90.0, 0.0]).translate([x1 + 0.05, y, z])
-        if any(all((_xf(C, M) ^ driver).volume() > TOUCH_MM3 for M in poses) for C, poses in units):
-            rep.clashes.append(f"palm: the column's screw at ({y:.0f}, {z:.0f}): a screwdriver cannot reach it "
-                               f"from the palm's face past the base servos' links")
-
-
 def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
     bodies = _bodies(design, solids)
     extras = None
@@ -241,12 +212,22 @@ def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
         # the child (with its horns) turning against the parent and its servo case
         Pc = P + case_in_parent
         lo, hi = sp.rot_deg
-        worst = 0.0
+        worst, hits = 0.0, []
         for a in _angles(lo, hi):
             # the child in the parent's frame: the servo frame turned by a about its X
             M = sp.S_parent @ _rot_x(a) @ inv(sp.S_child)
             v = (Pc ^ _xf(C, M)).volume()
             worst = max(worst, v)
+            if v > TOUCH_MM3:
+                hits.append(a)
+        if worst > TOUCH_MM3 and sp.parent[0] == "palm" and sp.key[0] == "f" and all(abs(a) > STOP_FREE_DEG for a in hits):
+            # past its pocket a finger folding onto the palm stops on it, as in the simulator (Martin, 10/29)
+            a0 = max([a for a in hits if a < 0.0], default=lo)
+            a1 = min([a for a in hits if a > 0.0], default=hi)
+            q0, q1 = sorted((a0 * sp.sign, a1 * sp.sign))
+            rep.warnings.append(f"joint {name}: its finger stops on the palm past its pocket (free from {q0:.0f} "
+                                f"to {q1:.0f} degrees)")
+            worst = 0.0
         if worst > TOUCH_MM3 and sp.parent[0] == "palm" and sp.key[0] == "f":
             # the palm keeps other fingers' pockets: meeting them in motion is finger against finger,
             # left to the physics and the policy (a warning), unless it still clashes without them
