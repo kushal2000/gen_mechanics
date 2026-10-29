@@ -1,0 +1,402 @@
+{
+ "coarse_s0_000": {
+  "gait_any": 0.3958333333333333,
+  "gait_all": 0.0
+ },
+ "coarse_s0_001": {
+  "gait_any": 0.3854166666666667,
+  "gait_all": 0.0
+ },
+ "coarse_s0_002": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_003": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_004": {
+  "gait_any": 0.16666666666666666,
+  "gait_all": 0.0
+ },
+ "coarse_s0_005": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_006": {
+  "gait_any": 0.7083333333333334,
+  "gait_all": 0.0
+ },
+ "coarse_s0_007": {
+  "gait_any": 0.07291666666666667,
+  "gait_all": 0.0
+ },
+ "coarse_s0_008": {
+  "gait_any": 0.8541666666666666,
+  "gait_all": 0.10416666666666667
+ },
+ "coarse_s0_009": {
+  "gait_any": 0.11458333333333333,
+  "gait_all": 0.0
+ },
+ "coarse_s0_010": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_011": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_012": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_013": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_014": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_015": {
+  "gait_any": 0.6458333333333334,
+  "gait_all": 0.010416666666666666
+ },
+ "coarse_s0_016": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_017": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_018": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_019": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_020": {
+  "gait_any": 0.020833333333333332,
+  "gait_all": 0.0
+ },
+ "coarse_s0_021": {
+  "gait_any": 0.9791666666666666,
+  "gait_all": 0.17708333333333334
+ },
+ "coarse_s0_022": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_023": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_024": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_025": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_026": {
+  "gait_any": 0.7083333333333334,
+  "gait_all": 0.0625
+ },
+ "coarse_s0_027": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_028": {
+  "gait_any": 0.052083333333333336,
+  "gait_all": 0.0
+ },
+ "coarse_s0_029": {
+  "gait_any": 1.0,
+  "gait_all": 0.4270833333333333
+ },
+ "coarse_s0_030": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_031": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_032": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_033": {
+  "gait_any": 0.03125,
+  "gait_all": 0.0
+ },
+ "coarse_s0_034": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_035": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_036": {
+  "gait_any": 0.9375,
+  "gait_all": 0.08333333333333333
+ },
+ "coarse_s0_037": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_038": {
+  "gait_any": 0.07291666666666667,
+  "gait_all": 0.0
+ },
+ "coarse_s0_039": {
+  "gait_any": 1.0,
+  "gait_all": 0.052083333333333336
+ },
+ "coarse_s0_040": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_041": {
+  "gait_any": 0.07291666666666667,
+  "gait_all": 0.0
+ },
+ "coarse_s0_042": {
+  "gait_any": 0.0625,
+  "gait_all": 0.0
+ },
+ "coarse_s0_043": {
+  "gait_any": 0.375,
+  "gait_all": 0.0
+ },
+ "coarse_s0_044": {
+  "gait_any": 0.6354166666666666,
+  "gait_all": 0.010416666666666666
+ },
+ "coarse_s0_045": {
+  "gait_any": 0.03125,
+  "gait_all": 0.0
+ },
+ "coarse_s0_046": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_047": {
+  "gait_any": 0.15625,
+  "gait_all": 0.0
+ },
+ "coarse_s0_048": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_049": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_050": {
+  "gait_any": 0.07291666666666667,
+  "gait_all": 0.0
+ },
+ "coarse_s0_051": {
+  "gait_any": 0.90625,
+  "gait_all": 0.0
+ },
+ "coarse_s0_052": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_053": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_054": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_055": {
+  "gait_any": 0.020833333333333332,
+  "gait_all": 0.0
+ },
+ "coarse_s0_056": {
+  "gait_any": 0.7395833333333334,
+  "gait_all": 0.0
+ },
+ "coarse_s0_057": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_058": {
+  "gait_any": 0.8958333333333334,
+  "gait_all": 0.010416666666666666
+ },
+ "coarse_s0_059": {
+  "gait_any": 0.19791666666666666,
+  "gait_all": 0.010416666666666666
+ },
+ "coarse_s0_060": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_061": {
+  "gait_any": 0.5729166666666666,
+  "gait_all": 0.0
+ },
+ "coarse_s0_062": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_063": {
+  "gait_any": 0.07291666666666667,
+  "gait_all": 0.0
+ },
+ "coarse_s0_064": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_065": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_066": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_067": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_068": {
+  "gait_any": 0.020833333333333332,
+  "gait_all": 0.0
+ },
+ "coarse_s0_069": {
+  "gait_any": 0.5104166666666666,
+  "gait_all": 0.010416666666666666
+ },
+ "coarse_s0_070": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_071": {
+  "gait_any": 0.16666666666666666,
+  "gait_all": 0.0
+ },
+ "coarse_s0_072": {
+  "gait_any": 0.4791666666666667,
+  "gait_all": 0.0
+ },
+ "coarse_s0_073": {
+  "gait_any": 0.71875,
+  "gait_all": 0.0
+ },
+ "coarse_s0_074": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_075": {
+  "gait_any": 0.8541666666666666,
+  "gait_all": 0.21875
+ },
+ "coarse_s0_076": {
+  "gait_any": 0.4270833333333333,
+  "gait_all": 0.020833333333333332
+ },
+ "coarse_s0_077": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_078": {
+  "gait_any": 0.53125,
+  "gait_all": 0.0
+ },
+ "coarse_s0_079": {
+  "gait_any": 0.08333333333333333,
+  "gait_all": 0.0
+ },
+ "coarse_s0_080": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_081": {
+  "gait_any": 0.3645833333333333,
+  "gait_all": 0.0
+ },
+ "coarse_s0_082": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_083": {
+  "gait_any": 0.8541666666666666,
+  "gait_all": 0.0
+ },
+ "coarse_s0_084": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_085": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_086": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_087": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_088": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_089": {
+  "gait_any": 0.7916666666666666,
+  "gait_all": 0.010416666666666666
+ },
+ "coarse_s0_090": {
+  "gait_any": 0.0625,
+  "gait_all": 0.0
+ },
+ "coarse_s0_091": {
+  "gait_any": 0.11458333333333333,
+  "gait_all": 0.0
+ },
+ "coarse_s0_092": {
+  "gait_any": 0.3645833333333333,
+  "gait_all": 0.0
+ },
+ "coarse_s0_093": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_094": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_095": {
+  "gait_any": 0.3645833333333333,
+  "gait_all": 0.0
+ },
+ "coarse_s0_096": {
+  "gait_any": 0.8645833333333334,
+  "gait_all": 0.09375
+ },
+ "coarse_s0_097": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ },
+ "coarse_s0_098": {
+  "gait_any": 0.0625,
+  "gait_all": 0.0
+ },
+ "coarse_s0_099": {
+  "gait_any": 0.0,
+  "gait_all": 0.0
+ }
+}

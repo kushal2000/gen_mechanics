@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --job-name=GR_claude_design_0
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/27oct_grammar_random_hands/%x-%j.log
+# Pen repose v2 on claude_design_0, the hand the design agent built from the grammar (FEETECH_COARSE_RULES): four
+# fingers in a cross pointing down from the palm, 12 joints (agent_design.md); set up exactly as the 15 Oct v2 runs.
+# Goes through the olympics trainer; every setting is written out here.
+#   sbatch experiments/27oct_grammar_random_hands/repose_claude_design_0.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export HAND=assets/urdf/27oct_grammar_claude_hands/claude_design_0/claude_design_0.spec.json
+export HAND_TAG=claude_design_0
+export TASKS=pen_repose
+export PEN_SHAPE=box
+export ARCH=mlp
+export NUM_ENVS=24576 MINIBATCH=114688 EPOCHS=5000 SEED=100 GAMMA=0.99
+export FINGER_RESET=1.0 KEYPOINT=best_so_far
+export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0"
+export RUN_TAG=uni_fw
+export LOG_GROUP=27oct_grammar_random_hands
+export WANDB_PROJECT=gen_mechanics_pen_repose_v2 WANDB=1
+exec bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub

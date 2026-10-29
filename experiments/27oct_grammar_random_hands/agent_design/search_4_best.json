@@ -1,0 +1,158 @@
+{
+ "metrics": {
+  "pickup": 1.0,
+  "hold2": 0.9791666666666666,
+  "hold3": 0.9791666666666666,
+  "pivot": 0.9375,
+  "pivot_h": 1.0,
+  "pivot_reach": 0.9791666666666666,
+  "fingers": 4,
+  "dof": 13,
+  "finger_len_mm": 147.5,
+  "mass_g": 1179.0177006774632,
+  "reset_clean": 0.7978473273874512,
+  "gait_any": 0.9791666666666666,
+  "gait_all": 0.9791666666666666,
+  "score": 0.9187499999999998,
+  "search_score": 1.0943680660720783
+ },
+ "design": {
+  "grammar": "hand_grammar/2.0",
+  "fingers": [
+   {
+    "y": -80,
+    "z": -40,
+    "facing": 240,
+    "tilt": 90,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     }
+    ]
+   },
+   {
+    "y": 0,
+    "z": -80,
+    "facing": 180,
+    "tilt": 90,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       90
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     }
+    ]
+   },
+   {
+    "y": 0,
+    "z": 80,
+    "facing": 0,
+    "tilt": 90,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 30
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 60
+     }
+    ]
+   },
+   {
+    "y": 80,
+    "z": 0,
+    "facing": 90,
+    "tilt": 90,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     }
+    ]
+   }
+  ],
+  "palm_joints": [
+   {
+    "facing": 60,
+    "offset": 30
+   }
+  ]
+ }
+}

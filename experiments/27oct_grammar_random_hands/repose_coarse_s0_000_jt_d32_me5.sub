@@ -1,0 +1,33 @@
+#!/bin/bash
+#SBATCH --job-name=GR_coarse_s0_000_jt_d32_me5
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/27oct_grammar_random_hands/%x-%j.log
+# Pen repose v2 on grammar hand coarse_s0_000 (6 fingers, 20 joints, palm cut) with the joint-token TRANSFORMER, else
+# as repose_coarse_s0_000.sub (the MLP run). The same as repose_coarse_s0_000_jt_d32.sub but 5 mini-epochs: does the
+# 2-mini-epoch run's slow start (0.07 goals/episode at epoch 1400, the MLP 0.89) come from too few updates?
+#   network   width (d_model) 32, else OlympicsJointTransformerSAPG.yaml's (4 layers, 1 head, ff x4), torch.compile'd
+#   learner   minibatch 114688 (= the MLP's; the SAPG-augmented 458752 rows / 4), 5 mini-epochs, lr 1e-4 adaptive:
+#             20 updates per epoch, as the MLP (repose_coarse_s0_000_jt_d32.sub: 2 mini-epochs, 8 updates). Measured on hand 000 at 24576 envs (no compile): 33.8 GB peak of 48, 5.2 s/epoch.
+#   tokens    "extent" link boxes + joint_origin (the 27 Oct joint tokens; 22 values per token)
+#   sbatch experiments/27oct_grammar_random_hands/repose_coarse_s0_000_jt_d32_me5.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export HAND=assets/urdf/27oct_grammar_random_hands/coarse_s0_000/coarse_s0_000.spec.json
+export HAND_TAG=coarse_s0_000
+export TASKS=pen_repose
+export PEN_SHAPE=box
+export ARCH=transformer
+export NUM_ENVS=24576 EPOCHS=5000 SEED=100 GAMMA=0.99
+export FINGER_RESET=1.0 KEYPOINT=best_so_far
+export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.obs.joint_box=extent agent.params.network.d_model=32 agent.params.network.compile_net=true agent.params.config.minibatch_size=114688 agent.params.config.mini_epochs=5 agent.params.config.learning_rate=1e-4"
+export RUN_TAG=uni_fw_ext_d32_me5
+export LOG_GROUP=27oct_grammar_random_hands
+export WANDB_PROJECT=gen_mechanics_pen_repose_v2 WANDB=1
+exec bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub

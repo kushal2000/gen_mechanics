@@ -1,0 +1,140 @@
+{
+ "metrics": {
+  "pickup": 1.0,
+  "hold2": 0.9791666666666666,
+  "hold3": 0.9791666666666666,
+  "pivot": 0.9166666666666666,
+  "pivot_h": 1.0,
+  "pivot_reach": 0.9375,
+  "fingers": 3,
+  "dof": 12,
+  "finger_len_mm": 150.0,
+  "mass_g": 1092.097401131781,
+  "reset_clean": 0.814446493263486,
+  "score": 0.9204166666666665,
+  "search_score": 0.9018613159930151
+ },
+ "design": {
+  "grammar": "hand_grammar/2.0",
+  "fingers": [
+   {
+    "y": -80,
+    "z": -40,
+    "facing": 270,
+    "tilt": 60,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 0
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 70
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 30
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 60
+     }
+    ]
+   },
+   {
+    "y": 40,
+    "z": -80,
+    "facing": 210,
+    "tilt": 90,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       90
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 30
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 60
+     }
+    ]
+   },
+   {
+    "y": 40,
+    "z": 40,
+    "facing": 30,
+    "tilt": 90,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 0
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     }
+    ]
+   }
+  ],
+  "palm_joints": [
+   {
+    "facing": 240,
+    "offset": 40
+   }
+  ]
+ }
+}

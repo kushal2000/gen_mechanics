@@ -1,0 +1,1499 @@
+{
+ "rules": "FEETECH_COARSE_RULES",
+ "seed": 0,
+ "hands": [
+  {
+   "name": "coarse_s0_000",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_000/coarse_s0_000.spec.json",
+   "fingers": 6,
+   "joints": 20,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    2,
+    2,
+    3,
+    4,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.3
+  },
+  {
+   "name": "coarse_s0_001",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_001/coarse_s0_001.spec.json",
+   "fingers": 6,
+   "joints": 13,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    1,
+    3,
+    3,
+    2,
+    1
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.0
+  },
+  {
+   "name": "coarse_s0_002",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_002/coarse_s0_002.spec.json",
+   "fingers": 3,
+   "joints": 10,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    2,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.5
+  },
+  {
+   "name": "coarse_s0_003",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_003/coarse_s0_003.spec.json",
+   "fingers": 5,
+   "joints": 9,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    1,
+    2,
+    2,
+    1
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 29.6
+  },
+  {
+   "name": "coarse_s0_004",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_004/coarse_s0_004.spec.json",
+   "fingers": 5,
+   "joints": 14,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    3,
+    2,
+    2,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.6
+  },
+  {
+   "name": "coarse_s0_005",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_005/coarse_s0_005.spec.json",
+   "fingers": 2,
+   "joints": 8,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.9
+  },
+  {
+   "name": "coarse_s0_006",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_006/coarse_s0_006.spec.json",
+   "fingers": 5,
+   "joints": 18,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    1,
+    4,
+    3,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.1
+  },
+  {
+   "name": "coarse_s0_007",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_007/coarse_s0_007.spec.json",
+   "fingers": 4,
+   "joints": 15,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    3,
+    4,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.2
+  },
+  {
+   "name": "coarse_s0_008",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_008/coarse_s0_008.spec.json",
+   "fingers": 5,
+   "joints": 22,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    4,
+    4,
+    4,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.0
+  },
+  {
+   "name": "coarse_s0_009",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_009/coarse_s0_009.spec.json",
+   "fingers": 5,
+   "joints": 16,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    5,
+    2,
+    5,
+    1
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 8.3
+  },
+  {
+   "name": "coarse_s0_010",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_010/coarse_s0_010.spec.json",
+   "fingers": 3,
+   "joints": 9,
+   "palm_cut": true,
+   "joints_per_finger": [
+    1,
+    4,
+    3
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 48.1
+  },
+  {
+   "name": "coarse_s0_011",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_011/coarse_s0_011.spec.json",
+   "fingers": 3,
+   "joints": 7,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    4,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.4
+  },
+  {
+   "name": "coarse_s0_012",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_012/coarse_s0_012.spec.json",
+   "fingers": 2,
+   "joints": 8,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.3
+  },
+  {
+   "name": "coarse_s0_013",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_013/coarse_s0_013.spec.json",
+   "fingers": 2,
+   "joints": 3,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    2
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 40.3
+  },
+  {
+   "name": "coarse_s0_014",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_014/coarse_s0_014.spec.json",
+   "fingers": 2,
+   "joints": 9,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    5
+   ],
+   "c2_ok": false,
+   "c2_best_mm": null
+  },
+  {
+   "name": "coarse_s0_015",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_015/coarse_s0_015.spec.json",
+   "fingers": 5,
+   "joints": 17,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    4,
+    4,
+    3,
+    1
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.5
+  },
+  {
+   "name": "coarse_s0_016",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_016/coarse_s0_016.spec.json",
+   "fingers": 3,
+   "joints": 11,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    3,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.5
+  },
+  {
+   "name": "coarse_s0_017",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_017/coarse_s0_017.spec.json",
+   "fingers": 2,
+   "joints": 4,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    3
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 168.9
+  },
+  {
+   "name": "coarse_s0_018",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_018/coarse_s0_018.spec.json",
+   "fingers": 3,
+   "joints": 7,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    2,
+    2
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 34.0
+  },
+  {
+   "name": "coarse_s0_019",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_019/coarse_s0_019.spec.json",
+   "fingers": 2,
+   "joints": 3,
+   "palm_cut": false,
+   "joints_per_finger": [
+    2,
+    1
+   ],
+   "c2_ok": false,
+   "c2_best_mm": null
+  },
+  {
+   "name": "coarse_s0_020",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_020/coarse_s0_020.spec.json",
+   "fingers": 4,
+   "joints": 10,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    2,
+    2,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.4
+  },
+  {
+   "name": "coarse_s0_021",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_021/coarse_s0_021.spec.json",
+   "fingers": 5,
+   "joints": 15,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    3,
+    4,
+    2,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.5
+  },
+  {
+   "name": "coarse_s0_022",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_022/coarse_s0_022.spec.json",
+   "fingers": 3,
+   "joints": 10,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    2,
+    2
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 47.5
+  },
+  {
+   "name": "coarse_s0_023",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_023/coarse_s0_023.spec.json",
+   "fingers": 3,
+   "joints": 9,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    2,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.4
+  },
+  {
+   "name": "coarse_s0_024",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_024/coarse_s0_024.spec.json",
+   "fingers": 2,
+   "joints": 6,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 7.8
+  },
+  {
+   "name": "coarse_s0_025",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_025/coarse_s0_025.spec.json",
+   "fingers": 3,
+   "joints": 13,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    4,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.6
+  },
+  {
+   "name": "coarse_s0_026",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_026/coarse_s0_026.spec.json",
+   "fingers": 6,
+   "joints": 18,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    1,
+    3,
+    4,
+    2,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.3
+  },
+  {
+   "name": "coarse_s0_027",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_027/coarse_s0_027.spec.json",
+   "fingers": 2,
+   "joints": 10,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.9
+  },
+  {
+   "name": "coarse_s0_028",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_028/coarse_s0_028.spec.json",
+   "fingers": 6,
+   "joints": 14,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    3,
+    2,
+    2,
+    3,
+    1
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.0
+  },
+  {
+   "name": "coarse_s0_029",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_029/coarse_s0_029.spec.json",
+   "fingers": 6,
+   "joints": 20,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    4,
+    2,
+    2,
+    5,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.3
+  },
+  {
+   "name": "coarse_s0_030",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_030/coarse_s0_030.spec.json",
+   "fingers": 5,
+   "joints": 15,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    2,
+    5,
+    2,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.0
+  },
+  {
+   "name": "coarse_s0_031",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_031/coarse_s0_031.spec.json",
+   "fingers": 2,
+   "joints": 6,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    3
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 79.2
+  },
+  {
+   "name": "coarse_s0_032",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_032/coarse_s0_032.spec.json",
+   "fingers": 4,
+   "joints": 12,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    1,
+    5,
+    2
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 47.9
+  },
+  {
+   "name": "coarse_s0_033",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_033/coarse_s0_033.spec.json",
+   "fingers": 6,
+   "joints": 18,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    4,
+    4,
+    2,
+    4,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.4
+  },
+  {
+   "name": "coarse_s0_034",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_034/coarse_s0_034.spec.json",
+   "fingers": 3,
+   "joints": 12,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    4,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.2
+  },
+  {
+   "name": "coarse_s0_035",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_035/coarse_s0_035.spec.json",
+   "fingers": 3,
+   "joints": 9,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    2,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.5
+  },
+  {
+   "name": "coarse_s0_036",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_036/coarse_s0_036.spec.json",
+   "fingers": 6,
+   "joints": 22,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    4,
+    2,
+    5,
+    4,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.7
+  },
+  {
+   "name": "coarse_s0_037",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_037/coarse_s0_037.spec.json",
+   "fingers": 3,
+   "joints": 14,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    3,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 18.6
+  },
+  {
+   "name": "coarse_s0_038",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_038/coarse_s0_038.spec.json",
+   "fingers": 4,
+   "joints": 14,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    2,
+    5,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.1
+  },
+  {
+   "name": "coarse_s0_039",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_039/coarse_s0_039.spec.json",
+   "fingers": 5,
+   "joints": 16,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    2,
+    4,
+    5,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.2
+  },
+  {
+   "name": "coarse_s0_040",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_040/coarse_s0_040.spec.json",
+   "fingers": 2,
+   "joints": 9,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.6
+  },
+  {
+   "name": "coarse_s0_041",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_041/coarse_s0_041.spec.json",
+   "fingers": 5,
+   "joints": 13,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    4,
+    2,
+    2,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.3
+  },
+  {
+   "name": "coarse_s0_042",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_042/coarse_s0_042.spec.json",
+   "fingers": 5,
+   "joints": 14,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    4,
+    2,
+    2,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 3.2
+  },
+  {
+   "name": "coarse_s0_043",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_043/coarse_s0_043.spec.json",
+   "fingers": 4,
+   "joints": 12,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    4,
+    1,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.9
+  },
+  {
+   "name": "coarse_s0_044",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_044/coarse_s0_044.spec.json",
+   "fingers": 6,
+   "joints": 19,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    5,
+    3,
+    1,
+    2,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.5
+  },
+  {
+   "name": "coarse_s0_045",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_045/coarse_s0_045.spec.json",
+   "fingers": 4,
+   "joints": 14,
+   "palm_cut": false,
+   "joints_per_finger": [
+    2,
+    4,
+    3,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 16.4
+  },
+  {
+   "name": "coarse_s0_046",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_046/coarse_s0_046.spec.json",
+   "fingers": 2,
+   "joints": 6,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    5
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 120.1
+  },
+  {
+   "name": "coarse_s0_047",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_047/coarse_s0_047.spec.json",
+   "fingers": 5,
+   "joints": 19,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    3,
+    4,
+    3,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.4
+  },
+  {
+   "name": "coarse_s0_048",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_048/coarse_s0_048.spec.json",
+   "fingers": 3,
+   "joints": 11,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    2,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.2
+  },
+  {
+   "name": "coarse_s0_049",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_049/coarse_s0_049.spec.json",
+   "fingers": 4,
+   "joints": 8,
+   "palm_cut": true,
+   "joints_per_finger": [
+    1,
+    1,
+    1,
+    4
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 46.6
+  },
+  {
+   "name": "coarse_s0_050",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_050/coarse_s0_050.spec.json",
+   "fingers": 4,
+   "joints": 11,
+   "palm_cut": false,
+   "joints_per_finger": [
+    2,
+    2,
+    4,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.2
+  },
+  {
+   "name": "coarse_s0_051",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_051/coarse_s0_051.spec.json",
+   "fingers": 5,
+   "joints": 19,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    4,
+    5,
+    4,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.0
+  },
+  {
+   "name": "coarse_s0_052",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_052/coarse_s0_052.spec.json",
+   "fingers": 4,
+   "joints": 10,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    5,
+    1,
+    3
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 40.0
+  },
+  {
+   "name": "coarse_s0_053",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_053/coarse_s0_053.spec.json",
+   "fingers": 3,
+   "joints": 15,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    5,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.3
+  },
+  {
+   "name": "coarse_s0_054",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_054/coarse_s0_054.spec.json",
+   "fingers": 2,
+   "joints": 4,
+   "palm_cut": false,
+   "joints_per_finger": [
+    2,
+    2
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 143.9
+  },
+  {
+   "name": "coarse_s0_055",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_055/coarse_s0_055.spec.json",
+   "fingers": 4,
+   "joints": 13,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    5,
+    5,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.6
+  },
+  {
+   "name": "coarse_s0_056",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_056/coarse_s0_056.spec.json",
+   "fingers": 4,
+   "joints": 12,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    5,
+    1,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.3
+  },
+  {
+   "name": "coarse_s0_057",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_057/coarse_s0_057.spec.json",
+   "fingers": 4,
+   "joints": 14,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    2,
+    5,
+    2
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 26.8
+  },
+  {
+   "name": "coarse_s0_058",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_058/coarse_s0_058.spec.json",
+   "fingers": 6,
+   "joints": 22,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    3,
+    4,
+    2,
+    5,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.5
+  },
+  {
+   "name": "coarse_s0_059",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_059/coarse_s0_059.spec.json",
+   "fingers": 6,
+   "joints": 13,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    3,
+    2,
+    1,
+    1,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.5
+  },
+  {
+   "name": "coarse_s0_060",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_060/coarse_s0_060.spec.json",
+   "fingers": 2,
+   "joints": 10,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    5
+   ],
+   "c2_ok": false,
+   "c2_best_mm": null
+  },
+  {
+   "name": "coarse_s0_061",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_061/coarse_s0_061.spec.json",
+   "fingers": 4,
+   "joints": 15,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    4,
+    2,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.8
+  },
+  {
+   "name": "coarse_s0_062",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_062/coarse_s0_062.spec.json",
+   "fingers": 3,
+   "joints": 12,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    4,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.3
+  },
+  {
+   "name": "coarse_s0_063",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_063/coarse_s0_063.spec.json",
+   "fingers": 4,
+   "joints": 13,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    2,
+    4,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.3
+  },
+  {
+   "name": "coarse_s0_064",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_064/coarse_s0_064.spec.json",
+   "fingers": 2,
+   "joints": 3,
+   "palm_cut": true,
+   "joints_per_finger": [
+    1,
+    1
+   ],
+   "c2_ok": false,
+   "c2_best_mm": null
+  },
+  {
+   "name": "coarse_s0_065",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_065/coarse_s0_065.spec.json",
+   "fingers": 2,
+   "joints": 3,
+   "palm_cut": false,
+   "joints_per_finger": [
+    2,
+    1
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 115.6
+  },
+  {
+   "name": "coarse_s0_066",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_066/coarse_s0_066.spec.json",
+   "fingers": 3,
+   "joints": 7,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    3,
+    1
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 5.4
+  },
+  {
+   "name": "coarse_s0_067",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_067/coarse_s0_067.spec.json",
+   "fingers": 3,
+   "joints": 9,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    3,
+    1
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 29.6
+  },
+  {
+   "name": "coarse_s0_068",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_068/coarse_s0_068.spec.json",
+   "fingers": 4,
+   "joints": 16,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    4,
+    3,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.6
+  },
+  {
+   "name": "coarse_s0_069",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_069/coarse_s0_069.spec.json",
+   "fingers": 5,
+   "joints": 21,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    4,
+    5,
+    4,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.2
+  },
+  {
+   "name": "coarse_s0_070",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_070/coarse_s0_070.spec.json",
+   "fingers": 3,
+   "joints": 8,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    3,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.9
+  },
+  {
+   "name": "coarse_s0_071",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_071/coarse_s0_071.spec.json",
+   "fingers": 6,
+   "joints": 14,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    2,
+    1,
+    2,
+    2,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.3
+  },
+  {
+   "name": "coarse_s0_072",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_072/coarse_s0_072.spec.json",
+   "fingers": 5,
+   "joints": 16,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    3,
+    2,
+    3,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.0
+  },
+  {
+   "name": "coarse_s0_073",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_073/coarse_s0_073.spec.json",
+   "fingers": 5,
+   "joints": 20,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    5,
+    2,
+    4,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.3
+  },
+  {
+   "name": "coarse_s0_074",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_074/coarse_s0_074.spec.json",
+   "fingers": 4,
+   "joints": 9,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    3,
+    2,
+    3
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 80.9
+  },
+  {
+   "name": "coarse_s0_075",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_075/coarse_s0_075.spec.json",
+   "fingers": 6,
+   "joints": 22,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    3,
+    1,
+    5,
+    4,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.7
+  },
+  {
+   "name": "coarse_s0_076",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_076/coarse_s0_076.spec.json",
+   "fingers": 5,
+   "joints": 21,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    5,
+    3,
+    3,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.0
+  },
+  {
+   "name": "coarse_s0_077",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_077/coarse_s0_077.spec.json",
+   "fingers": 3,
+   "joints": 9,
+   "palm_cut": false,
+   "joints_per_finger": [
+    3,
+    5,
+    1
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 15.1
+  },
+  {
+   "name": "coarse_s0_078",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_078/coarse_s0_078.spec.json",
+   "fingers": 6,
+   "joints": 15,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    2,
+    3,
+    2,
+    2,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.7
+  },
+  {
+   "name": "coarse_s0_079",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_079/coarse_s0_079.spec.json",
+   "fingers": 4,
+   "joints": 12,
+   "palm_cut": true,
+   "joints_per_finger": [
+    1,
+    1,
+    5,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.8
+  },
+  {
+   "name": "coarse_s0_080",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_080/coarse_s0_080.spec.json",
+   "fingers": 3,
+   "joints": 7,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    4,
+    2
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 36.4
+  },
+  {
+   "name": "coarse_s0_081",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_081/coarse_s0_081.spec.json",
+   "fingers": 6,
+   "joints": 18,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    1,
+    2,
+    5,
+    4,
+    1
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.4
+  },
+  {
+   "name": "coarse_s0_082",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_082/coarse_s0_082.spec.json",
+   "fingers": 2,
+   "joints": 6,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    3
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 52.6
+  },
+  {
+   "name": "coarse_s0_083",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_083/coarse_s0_083.spec.json",
+   "fingers": 6,
+   "joints": 19,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    1,
+    5,
+    1,
+    4,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.3
+  },
+  {
+   "name": "coarse_s0_084",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_084/coarse_s0_084.spec.json",
+   "fingers": 6,
+   "joints": 16,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    3,
+    2,
+    3,
+    2,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.6
+  },
+  {
+   "name": "coarse_s0_085",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_085/coarse_s0_085.spec.json",
+   "fingers": 3,
+   "joints": 11,
+   "palm_cut": true,
+   "joints_per_finger": [
+    5,
+    1,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.2
+  },
+  {
+   "name": "coarse_s0_086",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_086/coarse_s0_086.spec.json",
+   "fingers": 3,
+   "joints": 10,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    4,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.0
+  },
+  {
+   "name": "coarse_s0_087",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_087/coarse_s0_087.spec.json",
+   "fingers": 3,
+   "joints": 8,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    2,
+    1
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 58.6
+  },
+  {
+   "name": "coarse_s0_088",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_088/coarse_s0_088.spec.json",
+   "fingers": 3,
+   "joints": 11,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    2,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.4
+  },
+  {
+   "name": "coarse_s0_089",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_089/coarse_s0_089.spec.json",
+   "fingers": 6,
+   "joints": 20,
+   "palm_cut": false,
+   "joints_per_finger": [
+    1,
+    4,
+    4,
+    5,
+    3,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.5
+  },
+  {
+   "name": "coarse_s0_090",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_090/coarse_s0_090.spec.json",
+   "fingers": 5,
+   "joints": 15,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    1,
+    4,
+    2,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 4.3
+  },
+  {
+   "name": "coarse_s0_091",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_091/coarse_s0_091.spec.json",
+   "fingers": 5,
+   "joints": 14,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    1,
+    5,
+    2,
+    1
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.4
+  },
+  {
+   "name": "coarse_s0_092",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_092/coarse_s0_092.spec.json",
+   "fingers": 5,
+   "joints": 19,
+   "palm_cut": false,
+   "joints_per_finger": [
+    5,
+    2,
+    5,
+    3,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 1.1
+  },
+  {
+   "name": "coarse_s0_093",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_093/coarse_s0_093.spec.json",
+   "fingers": 2,
+   "joints": 5,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    1
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 38.6
+  },
+  {
+   "name": "coarse_s0_094",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_094/coarse_s0_094.spec.json",
+   "fingers": 2,
+   "joints": 8,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    4
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.7
+  },
+  {
+   "name": "coarse_s0_095",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_095/coarse_s0_095.spec.json",
+   "fingers": 4,
+   "joints": 12,
+   "palm_cut": true,
+   "joints_per_finger": [
+    2,
+    3,
+    1,
+    5
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.4
+  },
+  {
+   "name": "coarse_s0_096",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_096/coarse_s0_096.spec.json",
+   "fingers": 6,
+   "joints": 21,
+   "palm_cut": true,
+   "joints_per_finger": [
+    3,
+    2,
+    5,
+    4,
+    4,
+    2
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 0.7
+  },
+  {
+   "name": "coarse_s0_097",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_097/coarse_s0_097.spec.json",
+   "fingers": 2,
+   "joints": 8,
+   "palm_cut": true,
+   "joints_per_finger": [
+    4,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.0
+  },
+  {
+   "name": "coarse_s0_098",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_098/coarse_s0_098.spec.json",
+   "fingers": 4,
+   "joints": 11,
+   "palm_cut": false,
+   "joints_per_finger": [
+    2,
+    2,
+    4,
+    3
+   ],
+   "c2_ok": true,
+   "c2_best_mm": 2.1
+  },
+  {
+   "name": "coarse_s0_099",
+   "spec": "assets/urdf/27oct_grammar_random_hands/coarse_s0_099/coarse_s0_099.spec.json",
+   "fingers": 2,
+   "joints": 6,
+   "palm_cut": false,
+   "joints_per_finger": [
+    4,
+    2
+   ],
+   "c2_ok": false,
+   "c2_best_mm": 36.1
+  }
+ ]
+}

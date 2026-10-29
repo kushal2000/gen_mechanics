@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH --job-name=H3_jt2
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/27oct_h3_update_stats/%x-%j.log
+# H3 probe (transformer, width 32, 2 passes): repose_coarse_s0_000_jt_d32.sub's exact settings for 400 epochs, with GENMECH_UPDATE_STATS logging per-update
+# gradient norms (by part of the network), step sizes and per-action-dimension KL
+# (coevolution/utils/update_stats.py) to debug_outputs/train_logs/27oct_h3_update_stats/<name>.jsonl. No wandb.
+#   sbatch experiments/27oct_grammar_random_hands/h3_jt2.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export GENMECH_UPDATE_STATS=debug_outputs/train_logs/27oct_h3_update_stats/jt2.jsonl
+export HAND=assets/urdf/27oct_grammar_random_hands/coarse_s0_000/coarse_s0_000.spec.json
+export HAND_TAG=coarse_s0_000
+export TASKS=pen_repose
+export PEN_SHAPE=box
+export ARCH=transformer
+export NUM_ENVS=24576 EPOCHS=400 SEED=100 GAMMA=0.99
+export FINGER_RESET=1.0 KEYPOINT=best_so_far
+export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.obs.joint_box=extent agent.params.network.d_model=32 agent.params.network.compile_net=true agent.params.config.minibatch_size=114688 agent.params.config.mini_epochs=2 agent.params.config.learning_rate=1e-4"
+export RUN_TAG=uni_fw_ext_d32_h3
+export LOG_GROUP=27oct_h3_update_stats
+export WANDB=0   # a probe: stats go to GENMECH_UPDATE_STATS, not wandb
+exec bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
