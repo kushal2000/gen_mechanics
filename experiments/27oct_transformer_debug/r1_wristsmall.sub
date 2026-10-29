@@ -1,0 +1,32 @@
+#!/bin/bash
+#SBATCH --job-name=JD_r1_wristsmall
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/27oct_transformer_debug/%x-%j.log
+# Transformer debug, r1 arm "wristsmall": the wrist head absorbing the update (H7): arm head [1024, 512] -> [256, 128].
+# The base is repose_coarse_s0_000_jt_d32.sub (hand coarse_s0_000, pen repose v2, width 32, minibatch 114688, 2
+# mini-epochs, lr 1e-4 adaptive, compiled, extent tokens); this arm changes only:
+#   agent.params.network.arm_head_units=[256,128]
+# Written by experiments/27oct_transformer_debug/make_subs.py.
+#   sbatch experiments/27oct_transformer_debug/r1_wristsmall.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export GENMECH_UPDATE_STATS=debug_outputs/train_logs/27oct_transformer_debug/r1_wristsmall.update_stats.jsonl
+export HAND=assets/urdf/27oct_grammar_random_hands/coarse_s0_000/coarse_s0_000.spec.json
+export HAND_TAG=s0_000
+export TASKS=pen_repose
+export PEN_SHAPE=box
+export ARCH=transformer
+export NUM_ENVS=24576 EPOCHS=1500 SEED=100 GAMMA=0.99
+export FINGER_RESET=1.0 KEYPOINT=best_so_far
+export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.obs.joint_box=extent agent.params.network.d_model=32 agent.params.network.compile_net=true agent.params.config.minibatch_size=114688 agent.params.config.mini_epochs=2 agent.params.config.learning_rate=1e-4 agent.params.network.arm_head_units=[256,128]"
+export RUN_TAG=jd_r1_wristsmall
+export LOG_GROUP=27oct_transformer_debug
+export WANDB_PROJECT=gen_mechanics_jt_debug WANDB=1
+exec bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub

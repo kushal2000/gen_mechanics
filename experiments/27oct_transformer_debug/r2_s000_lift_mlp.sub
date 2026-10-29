@@ -1,0 +1,35 @@
+#!/bin/bash
+#SBATCH --job-name=JD_r2_s000_lift_mlp
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/27oct_transformer_debug/%x-%j.log
+# Transformer debug, r2 arm "s000_lift_mlp": the MLP on the same: hand coarse_s0_000, pen lift, wrist rotation locked.
+# The MLP with the olympics trainer's own learner (minibatch 114688, 5 mini-epochs, lr 5e-4); this arm changes only:
+#   env.action.wrist_max_speed_ang=0.0
+#   env.obs.joint_box=extent
+#   tasks: pen_lift
+#   arch: mlp
+#   minibatch: 114688
+# Written by experiments/27oct_transformer_debug/make_subs.py.
+#   sbatch experiments/27oct_transformer_debug/r2_s000_lift_mlp.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export GENMECH_UPDATE_STATS=debug_outputs/train_logs/27oct_transformer_debug/r2_s000_lift_mlp.update_stats.jsonl
+export HAND=assets/urdf/27oct_grammar_random_hands/coarse_s0_000/coarse_s0_000.spec.json
+export HAND_TAG=s0_000
+export TASKS=pen_lift
+export PEN_SHAPE=box
+export ARCH=mlp
+export NUM_ENVS=24576 MINIBATCH=114688 EPOCHS=1500 SEED=102 GAMMA=0.99
+export FINGER_RESET=1.0 KEYPOINT=best_so_far
+export EXTRA_HYDRA="env.action.wrist_max_speed_ang=0.0 env.obs.joint_box=extent"
+export RUN_TAG=jd_r2_s000_lift_mlp
+export LOG_GROUP=27oct_transformer_debug
+export WANDB_PROJECT=gen_mechanics_jt_debug WANDB=1
+exec bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
