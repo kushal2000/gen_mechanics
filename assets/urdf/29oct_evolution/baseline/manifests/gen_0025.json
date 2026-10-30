@@ -1,0 +1,130 @@
+{
+ "generation": 25,
+ "grid": {
+  "n_rigid": 5,
+  "n_moving": 2,
+  "n_slots": 5
+ },
+ "hands": [
+  {
+   "id": "g0023_c01",
+   "spec": "debug_outputs/evolution/baseline/hands/g0023_c01/g0023_c01.spec.json"
+  },
+  {
+   "id": "g0023_c03",
+   "spec": "debug_outputs/evolution/baseline/hands/g0023_c03/g0023_c03.spec.json"
+  },
+  {
+   "id": "g0023_c05",
+   "spec": "debug_outputs/evolution/baseline/hands/g0023_c05/g0023_c05.spec.json"
+  },
+  {
+   "id": "g0023_c06",
+   "spec": "debug_outputs/evolution/baseline/hands/g0023_c06/g0023_c06.spec.json"
+  },
+  {
+   "id": "g0023_c10",
+   "spec": "debug_outputs/evolution/baseline/hands/g0023_c10/g0023_c10.spec.json"
+  },
+  {
+   "id": "g0023_c11",
+   "spec": "debug_outputs/evolution/baseline/hands/g0023_c11/g0023_c11.spec.json"
+  },
+  {
+   "id": "g0023_c12",
+   "spec": "debug_outputs/evolution/baseline/hands/g0023_c12/g0023_c12.spec.json"
+  },
+  {
+   "id": "g0023_c13",
+   "spec": "debug_outputs/evolution/baseline/hands/g0023_c13/g0023_c13.spec.json"
+  },
+  {
+   "id": "g0021_c09",
+   "spec": "debug_outputs/evolution/baseline/hands/g0021_c09/g0021_c09.spec.json"
+  },
+  {
+   "id": "g0019_c04",
+   "spec": "debug_outputs/evolution/baseline/hands/g0019_c04/g0019_c04.spec.json"
+  },
+  {
+   "id": "g0011_c12",
+   "spec": "debug_outputs/evolution/baseline/hands/g0011_c12/g0011_c12.spec.json"
+  },
+  {
+   "id": "g0021_c06",
+   "spec": "debug_outputs/evolution/baseline/hands/g0021_c06/g0021_c06.spec.json"
+  },
+  {
+   "id": "g0022_c07",
+   "spec": "debug_outputs/evolution/baseline/hands/g0022_c07/g0022_c07.spec.json"
+  },
+  {
+   "id": "g0009_c13",
+   "spec": "debug_outputs/evolution/baseline/hands/g0009_c13/g0009_c13.spec.json"
+  },
+  {
+   "id": "g0006_c08",
+   "spec": "debug_outputs/evolution/baseline/hands/g0006_c08/g0006_c08.spec.json"
+  },
+  {
+   "id": "g0017_c02",
+   "spec": "debug_outputs/evolution/baseline/hands/g0017_c02/g0017_c02.spec.json"
+  },
+  {
+   "id": "g0022_c10",
+   "spec": "debug_outputs/evolution/baseline/hands/g0022_c10/g0022_c10.spec.json"
+  },
+  {
+   "id": "g0018_c13",
+   "spec": "debug_outputs/evolution/baseline/hands/g0018_c13/g0018_c13.spec.json"
+  },
+  {
+   "id": "g0019_c12",
+   "spec": "debug_outputs/evolution/baseline/hands/g0019_c12/g0019_c12.spec.json"
+  },
+  {
+   "id": "g0021_c05",
+   "spec": "debug_outputs/evolution/baseline/hands/g0021_c05/g0021_c05.spec.json"
+  },
+  {
+   "id": "g0019_c07",
+   "spec": "debug_outputs/evolution/baseline/hands/g0019_c07/g0019_c07.spec.json"
+  },
+  {
+   "id": "g0020_c01",
+   "spec": "debug_outputs/evolution/baseline/hands/g0020_c01/g0020_c01.spec.json"
+  },
+  {
+   "id": "g0024_c04",
+   "spec": "debug_outputs/evolution/baseline/hands/g0024_c04/g0024_c04.spec.json"
+  },
+  {
+   "id": "g0024_c10",
+   "spec": "debug_outputs/evolution/baseline/hands/g0024_c10/g0024_c10.spec.json"
+  },
+  {
+   "id": "g0024_c13",
+   "spec": "debug_outputs/evolution/baseline/hands/g0024_c13/g0024_c13.spec.json"
+  },
+  {
+   "id": "g0024_c05",
+   "spec": "debug_outputs/evolution/baseline/hands/g0024_c05/g0024_c05.spec.json"
+  },
+  {
+   "id": "g0024_c08",
+   "spec": "debug_outputs/evolution/baseline/hands/g0024_c08/g0024_c08.spec.json"
+  },
+  {
+   "id": "g0024_c06",
+   "spec": "debug_outputs/evolution/baseline/hands/g0024_c06/g0024_c06.spec.json"
+  },
+  {
+   "id": "g0024_c11",
+   "spec": "debug_outputs/evolution/baseline/hands/g0024_c11/g0024_c11.spec.json"
+  },
+  {
+   "id": "g0024_c01",
+   "spec": "debug_outputs/evolution/baseline/hands/g0024_c01/g0024_c01.spec.json"
+  }
+ ]
+}
