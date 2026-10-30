@@ -1,0 +1,75 @@
+{
+ "grammar": "hand_grammar/2.0",
+ "fingers": [
+  {
+   "y": -80,
+   "z": -40,
+   "facing": 210,
+   "tilt": 0,
+   "joints": [
+    {
+     "type": "hinge",
+     "axis": [
+      90,
+      0
+     ],
+     "length": 70
+    }
+   ]
+  },
+  {
+   "y": 40,
+   "z": -80,
+   "facing": 150,
+   "tilt": 0,
+   "joints": [
+    {
+     "type": "hinge",
+     "axis": [
+      90,
+      0
+     ],
+     "length": 70
+    }
+   ]
+  },
+  {
+   "y": 40,
+   "z": 80,
+   "facing": 30,
+   "tilt": 0,
+   "joints": [
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 50
+    }
+   ]
+  },
+  {
+   "y": 80,
+   "z": 0,
+   "facing": 90,
+   "tilt": 0,
+   "joints": [
+    {
+     "type": "hinge",
+     "axis": [
+      90,
+      0
+     ],
+     "length": 70
+    }
+   ]
+  }
+ ],
+ "palm_joints": [
+  {
+   "facing": 30,
+   "offset": 30
+  }
+ ]
+}
