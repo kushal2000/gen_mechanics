@@ -313,14 +313,18 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
           "3. Put the centre screws back through the arms' holes.",
           "4. Driven arm: 4 x M2 x 5. Idler arm: 4 of the servo's box screws.", "",
           "## 3. Palm", "",
-          "The palm is a tray: a plate whose face stands 3.5 mm over the base servos' tops and one wall round "
-          "its edge, open at the back. Each base servo screws straight into its housing under the face; each "
-          "finger's base turns in a walled pocket, open where the finger leaves the palm.", "",
-          "1. Each base servo goes into its housing from the palm's open back or through its pocket, as the "
-          "table's order says (step 4); one standing on its back end beside a crossing goes in from the back "
-          "with its horns off (they go back on through their holes in the side plates). The screwdriver "
-          "reaches the case screws along the servo's axis, under the face.",
-          "2. Then its link goes onto its horns (step 2); the cable leaves through the side wall's window.", ""]
+          "The palm is a tray: a plate whose face stands 3.5 mm over the base servos' tops, one wall round its "
+          "edge and a grid of ribs under the face, open at the back. Each base servo screws straight into its "
+          "housing under the face; each finger's base turns in a walled pocket, open where the finger leaves "
+          "the palm. Every finger is built off the hand on its base servo (step 4) and slotted into the palm "
+          "whole, so no screwdriver needs a way through the palm to an arm.", "",
+          "1. A finger whose base servo lies at the palm's edge slides in from the edge, the servo's back end "
+          "into its housing; one rising out of the face drops in through its window; a crossing's goes in from "
+          "the palm's open back, the finger up through its pocket.",
+          "2. Screw the base servo's case to its housing: the screwdriver reaches the case screws along the "
+          "servo's axis under the face, or from outside through the holes in the palm's wall. Two screws on "
+          "one side are enough where the other side is closed in.",
+          "3. The cables leave through the side walls' windows and out at the palm's open back.", ""]
     if hand.palm_joints:
         L += ["3. The hinge servo sits in a housing of the main palm; `palm_beyond` is fitted to its horns as in "
               "step 2.", ""]
@@ -333,8 +337,9 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
                 L += [f"**Servo {'/'.join(map(str, sp.key))}** (ID {servo_id(sp)}, "
                       f"{(orders or {}).get(sp.key) or 'servo first'}): `{names[sp.parent]}` holds it, "
                       f"`{names[sp.child]}` goes on its horns.", "", f"![servo {sp.key}](steps/{steps[sp.key]})", ""]
-    L += ["## 4. Fingers, from the palm out", "",
-          "For each joint, in the order the table gives:", "",
+    L += ["## 4. Fingers, built off the hand", "",
+          "Each finger from its base servo out, on the bench, then into the palm (step 3). For each joint, in "
+          "the order the table gives:", "",
           "- **servo first:** slide the servo into its housing from the front (its horns pass through the "
           "slots), push it to the back wall and screw the case to the side plates (4 of the servo's box screws, "
           "through the far holes). Then fit the part the table's 'Horns in' names to its horns (step 2).",

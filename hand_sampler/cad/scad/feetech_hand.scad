@@ -216,25 +216,17 @@ module socket_gusset(face, s, L = GUSSET, g = 0) {
 // (`channel`: how far ahead of the case its way in is kept clear: a closed
 // housing's servo slides in from the front; a cradle's, open on two more
 // sides, only needs its own front clear. `back`: the case's way in from
-// behind instead, for a servo standing in the palm's open back; it goes in
-// with its horns off, and they go back on through their keyholes)
+// behind instead, for a crossing's servo standing in the palm's open back;
+// it goes in with its finger on, the finger up through its pocket)
 module housing_keepout(single = false, cable = 0, channel = 80, back = 0) {
     box_lh([CASE_X[0] - FIT, CASE_Y[0] - channel, CASE_Z[0] - FIT], [CASE_X[1] + FIT, CASE_Y[1] + FIT + back, CASE_Z[1] + FIT]);
-    // the driven horn: a keyhole through the plate, open to the front
-    hull() {
-        cyl_x(HORN_R + PART_CLEAR, DRIVEN_X[0] - FIT, HORN_REACH);
-        translate([0, -channel, 0]) cyl_x(HORN_R + PART_CLEAR, DRIVEN_X[0] - FIT, HORN_REACH);
-    }
+    // the driven horn: a keyhole through the plate, open to the front (or the back, the case's way in)
+    hull() for (y = [-channel, 0, back]) translate([0, y, 0]) cyl_x(HORN_R + PART_CLEAR, DRIVEN_X[0] - FIT, HORN_REACH);
     if (single) {
-        hull() {
-            cyl_x(STUB_R + 0.4, -HORN_REACH, CASE_X[0] + FIT);
-            translate([0, -channel, 0]) cyl_x(STUB_R + 0.4, -HORN_REACH, CASE_X[0] + FIT);
-        }
+        // the idler stub, just past its end
+        hull() for (y = [-channel, 0, back]) translate([0, y, 0]) cyl_x(STUB_R + 0.4, STUB_X - 1, CASE_X[0] + FIT);
     } else {
-        hull() {
-            cyl_x(HORN_R + PART_CLEAR, -HORN_REACH, -(DRIVEN_X[0] - FIT));
-            translate([0, -channel, 0]) cyl_x(HORN_R + PART_CLEAR, -HORN_REACH, -(DRIVEN_X[0] - FIT));
-        }
+        hull() for (y = [-channel, 0, back]) translate([0, y, 0]) cyl_x(HORN_R + PART_CLEAR, -HORN_REACH, -(DRIVEN_X[0] - FIT));
     }
     // case screws through both side plates, heads seated HEAD_SEAT deep
     for (yz = FAR_HOLES, s = [-1, 1]) {
@@ -314,18 +306,22 @@ module arm_keepout(s, holes) {
 }
 
 // ------------------------------------------------------------- the palm
-// The palm is a shell: a plate whose face stands a few mm over the base
+// The palm is a tray: a plate whose face stands a few mm over the base
 // servos' tops (Martin, 10/29: their case screws' screwdrivers pass under
-// it), a rim down from its edge, the servos screwed into housings under it,
-// a ring round the column's screws with spokes out to the housings, posts
-// down to the mount's column at the palm's back (PLATE_HALF below its
-// mid-plane)
+// it), one wall round its edge, a grid of ribs under the face (10/30), the
+// servos screwed into housings under it, each finger turning in a pocket;
+// open at the back (PLATE_HALF below its mid-plane)
 PALM_FACE = 13.5;   // the plate's face: 3.5 mm over the base servos' tops (the grammar's palm face less a wall)
 POST_R = 4.5;       // a post round each of the column's screws
 
 // the palm plate: an outline (y, z) extruded over the plate's thickness
 module plate(outline, x0, x1) translate([x0, 0, 0]) rotate([0, 90, 0]) linear_extrude(height = x1 - x0)
     offset(r = PLATE_ROUND) offset(delta = -PLATE_ROUND) polygon([for (p = outline) [-p[1], p[0]]]);
+
+// a polygon (points (y, z); paths: its outline and holes) as a prism along x
+// from x0 to x1, grown by g (the tray's fills between its walls)
+module prism_yz(points, paths, x0, x1, g = 0) translate([x0 - g, 0, 0]) rotate([0, 90, 0])
+    linear_extrude(height = x1 - x0 + 2 * g) offset(delta = g) polygon([for (p = points) [-p[1], p[0]]], paths);
 
 // a countersunk M3 from the face at x = top, `depth` down (its head flush with the face)
 module cs_m3(top, depth) {

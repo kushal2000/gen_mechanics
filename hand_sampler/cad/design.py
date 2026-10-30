@@ -19,11 +19,12 @@ its positive pieces, less the keep-outs of the servos it holds, less
   the child, its horns and the servo it carries, grown by `PART_CLEAR`).
 The child keeps its shape near a joint and the parent gives way.
 
-The palm is a shell (`_palm`): a plate whose face stands a few mm over the
-base servos' tops, a rim down from its edge, every base servo screwed
-straight into its housing under the face (the case screws' screwdrivers
-pass under the plate), and on the main palm a ring round the mount's column
-screws with a spoke out to each housing.
+The palm is a tray (`_palm`): a plate whose face stands a few mm over the
+base servos' tops, one wall round its edge, a grid of ribs under the face,
+every base servo screwed straight into its housing under the face (the case
+screws' screwdrivers pass under the plate) and each finger's base turning in
+a pocket. Every finger is built off the hand and slotted into the palm with
+its base servo.
 
 A servo's frame S (servo.py): X along its axis toward the driven horn. It
 is the grammar's motor frame (a, v, w), flipped to (-a, v, -w) where the
@@ -91,6 +92,22 @@ CRADLE_CHANNEL_MM = 14.0      # a socket's servo needs only its own front clear 
 CLIP_MM = 2.4
 """Every link and fingertip is clipped to its simulator body grown by this
 much (Martin, 2026-10-23: small overhangs are fine; the checks allow 2.5)."""
+RIB_PITCH_MM = 30.0
+"""The ribs under the face (Martin, 10/30: the tray needs structure inside):
+a square grid along the palm's y and z, about this far apart, as deep as the
+wall round the edge."""
+RIB_MM = RIM_MM               # a rib's thickness
+RIB_MIN_MM = 12.0             # a rib shorter than this between what stops it is left out
+GAP_FILL_MM = 8.0
+"""Gaps narrower than this between what stands under the face (the wall,
+housings, pocket walls, ribs) are filled solid and the inside corners between
+them rounded as far (Martin, 10/30: material, not slots)."""
+FAR_HOLES = ((22.5, -8.0), (22.5, 8.0))   # (Y, Z) of the case holes a housing's screws take (library FAR_HOLES)
+LANE_MM = (30.0, 5.0)         # a lying servo's case screws: a screwdriver's way along its axis (reach, half-width)
+CAP_SHARE = 0.25
+"""A lying base servo's face stops along its trim line, out to the palm's
+outline, where what lies ahead of the line is at most this share of the
+palm and holds no other base servo."""
 
 Piece = Callable[[str], str]     # growth expression -> a convex OpenSCAD piece in its part's frame
 
@@ -137,6 +154,83 @@ def _seg_dist(P: np.ndarray, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     e = b - a
     t = np.clip((P - a) @ e / max(float(e @ e), 1e-12), 0.0, 1.0)
     return np.linalg.norm(P - (a + t[:, None] * e), axis=1)
+
+
+# the palm seen from its face: polygons (y, z), convex unless said
+
+
+def _area2d(P) -> float:
+    """A polygon's signed area (> 0 counter-clockwise)."""
+    P = np.asarray(P, float)
+    return 0.5 * float(P[:, 0] @ np.roll(P[:, 1], -1) - P[:, 1] @ np.roll(P[:, 0], -1))
+
+
+def _ccw(P) -> np.ndarray:
+    P = np.asarray(P, float)
+    return P if _area2d(P) >= 0.0 else P[::-1]
+
+
+def _edges(P):
+    """A counter-clockwise polygon's edges as (a, b, the outward normal as long as the edge)."""
+    for k in range(len(P)):
+        a, b = P[k], P[(k + 1) % len(P)]
+        e = b - a
+        yield a, b, np.array([e[1], -e[0]])
+
+
+def _clip_half(P, n, d) -> np.ndarray:
+    """A convex polygon's part where n . q <= d."""
+    out = []
+    for k in range(len(P)):
+        a, b = P[k], P[(k + 1) % len(P)]
+        ha, hb = float(a @ n) - d, float(b @ n) - d
+        if ha <= 0.0:
+            out.append(a)
+        if ha * hb < 0.0:
+            out.append(a + ha / (ha - hb) * (b - a))
+    return np.array(out, dtype=float).reshape(-1, 2)
+
+
+def _overlap2d(P, Q) -> float:
+    """The area two convex counter-clockwise polygons share."""
+    R = np.asarray(P, float)
+    for a, _, n in _edges(Q):
+        R = _clip_half(R, n, float(a @ n))
+        if len(R) < 3:
+            return 0.0
+    return abs(_area2d(R))
+
+
+def _line_in_convex(p, u, P) -> Optional[Tuple[float, float]]:
+    """Where the line p + t u is inside a convex counter-clockwise polygon:
+    (t0, t1), or None."""
+    t0, t1 = -math.inf, math.inf
+    for a, _, n in _edges(P):
+        num, den = float((p - a) @ n), float(u @ n)
+        if abs(den) < 1e-12:
+            if num > 0.0:
+                return None
+            continue
+        if den > 0.0:
+            t1 = min(t1, -num / den)
+        else:
+            t0 = max(t0, -num / den)
+    return (t0, t1) if t1 > t0 else None
+
+
+def _minus(spans: List[Tuple[float, float]], cut: Tuple[float, float]) -> List[Tuple[float, float]]:
+    """Intervals less one interval."""
+    a, b = cut
+    out = []
+    for s, e in spans:
+        if b <= s or a >= e:
+            out.append((s, e))
+            continue
+        if a > s:
+            out.append((s, a))
+        if b < e:
+            out.append((b, e))
+    return out
 
 
 
@@ -385,6 +479,8 @@ class Design:
         self.reach: Dict[Tuple[int, int], List[np.ndarray]] = {}   # and where its gussets may reach (the same, moved)
         self.servos: Dict[Tuple, ServoSpot] = {}
         self.parts: Dict[Tuple, Part] = {}
+        self.entry: Dict[Tuple, int] = {}         # a palm-held servo's way in: from its front (-1) or its back (+1)
+        self.tunnelled: List[Tuple] = []          # servos whose case screws are reached through a tunnel (`_screw_ways`)
         pose = dv.fk(hand)
         for i, f in enumerate(hand.fingers):
             for sp in finger_servos(hand, i):
@@ -715,22 +811,32 @@ class Design:
     # ---------------------------------------------------------------- palm
 
     def _palm(self, sec: int) -> None:
-        """A palm part, a tray designed face first (Martin, 10/28-29): a plate
+        """A palm part, a tray designed face first (Martin, 10/28-30): a plate
         whose face stands `FACE_RAISE_MM` over the base servos' tops, over the
         palm's outline less what lies ahead of a lying base servo's yoke (no
-        cut-outs round the U outputs: `_face_outline`), and one wall round the
-        whole outline down to the palm's back face, which stays open (servos
-        and cables go in from behind; the arm and the board come later). Each
-        base servo screws straight into its housing under the face and its
-        finger turns in a pocket (`_pocket`): a clean box round what turns at
-        the finger's base, walled where it lies inside the palm, open where
-        the finger leaves it (through the wall for a servo lying at the edge,
-        through the face for one under it). Past its pocket a finger folding
-        onto the palm stops on it, as in the simulator, whose palm is a solid
-        plate (Martin, 10/29)."""
+        cut-outs round the U outputs: `_face_outline`), one wall round the
+        whole outline down to the palm's back face, which stays open (cables
+        leave there; the arm and the board come later), and under the face a
+        grid of ribs as deep as the wall (`_ribs`), any gap narrower than
+        `GAP_FILL_MM` between all of these filled (`_fills`). Each base servo
+        screws straight into its housing under the face and its finger turns
+        in a pocket (`_pocket`): a clean box round what turns at the finger's
+        base, walled where it lies inside the palm, open where the finger
+        leaves it (through the wall for a servo lying at the edge, through the
+        face for one under it, and through the back too for a crossing's).
+        Past its pocket a finger folding onto the palm stops on it, as in the
+        simulator, whose palm is a solid plate (Martin, 10/29).
+
+        Every finger is built off the hand and slotted into the palm with its
+        base servo (Martin, 10/30): a lying one from the edge, one under the
+        face through its window, a crossing's from the back (`entry`), so no
+        screwdriver needs a way through the palm to an arm's screws; the case
+        screws are driven along lanes the ribs leave clear, or from outside
+        through the wall beside the palm's edge (`_screw_ways`)."""
         g = dv.hand_geometry(self.hand)
         part = self.parts[("palm", sec)]
         x0, x1 = PALM_FACE_MM - PALM_PLATE_MM, PALM_FACE_MM          # the plate's underside and face
+        xb = -PLATE_HALF_MM                                          # the palm's back face
         keep: List[np.ndarray] = []
         bridge_up: List[Piece] = []
         if sec == 0 and part.carries:
@@ -745,28 +851,50 @@ class Design:
             yp, _ = _yoke_pieces(h, h.S_child[:3, 0], -h.S_child[:3, 1], mt.FRONT_SWEEP_MM + CASE_CLEAR)
             bridge_up += [lambda gg, q=q, lift=lift: f"hull() {{ {q(gg)} translate([{lift:.3f}, 0, 0]) {q(gg)} }}"
                           for q in yp]
-        outline = self._face_outline(part, g.outlines[sec], x0, keep)
+        pockets = {sp.key: self._pocket(sp) for sp in part.holds if sp.key[0] == "f"}
+        outline = self._face_outline(part, g.outlines[sec], x0, keep, pockets)
         part.face = outline
         o = "[" + ",".join(f"[{y:.3f},{z:.3f}]" for y, z in outline) + "]"
         plate: Piece = lambda gg, o=o: f"plate({o}, {x0} - ({gg}), {x1} + ({gg}));"
         pieces: List[Piece] = [plate]
         part.clip = f"translate([-500, -500, -500]) cube([{500 + x1}, 1000, 1000]);"    # nothing above the face
+        walls: List[np.ndarray] = []         # what stands from the back face up to the plate, seen from the face
+        owners: List[Tuple] = []             # whose each is
+        if sec == 0 and part.carries:
+            # the hinge's yoke, its arms and bridge run up into the plate
+            h = part.carries[0]
+            reach = ARM_X0 + max(ARM_DRIVEN, ARM_IDLER)
+            yoke = (np.array([-reach, -(mt.FRONT_SWEEP_MM + CASE_CLEAR + WALL), -ARM_R_MM]), np.array([reach, ARM_R_MM, ARM_R_MM]))
+            C = mt.box_corners((yoke[0] + yoke[1]) / 2.0, np.eye(3), (yoke[1] - yoke[0]) / 2.0)
+            P = C @ h.S_child[:3, :3].T + h.S_child[:3, 3]
+            P = np.vstack([P, P + np.array([x1 - float(P[:, 0].min()), 0.0, 0.0])])
+            q = self._outline_between(P, xb, x0)
+            if q is not None:
+                walls.append(q)
+                owners.append(h.key + ("yoke",))
+        housings: List[np.ndarray] = []      # the servos' housings among them
+        voids: List[np.ndarray] = []         # the pockets, likewise
         for sp in part.holds:
             Sp = mm(sp.S_parent)
             crossing = sp.yoke == "crossing"
             at_plate = self._at_plate(sp)
-            pocket = self._pocket(sp) if sp.key[0] == "f" else None
+            pocket = pockets.get(sp.key)
             along_axis = pocket is not None and pocket[1] == 1        # the finger leaves along the servo's axis
-            ch, back = (80, 0) if (crossing or not at_plate) else (CRADLE_CHANNEL_MM, 0)
-            if crossing and float(sp.S_parent[0, 1]) < -0.7:
-                ch, back = 0, 80        # a crossing's servo standing on its back end: in from the open back, under the face
+            # a crossing's servo standing on its back end goes in from the open back with its finger on, the
+            # finger up through its pocket (open through the back too); every other one from its front
+            from_back = crossing and float(sp.S_parent[0, 1]) < -0.7
+            self.entry[sp.key] = 1 if from_back else -1
+            ch, back = (0, 80) if from_back else ((80, 0) if (crossing or not at_plate) else (CRADLE_CHANNEL_MM, 0))
             keepout = f"{Sp} housing_keepout({str(sp.yoke != 'u').lower()}, {sp.cable}, {ch}, {back});"
             part.negative.append(keepout)
             if at_plate or crossing or along_axis:
-                # its socket (a full housing for a crossing's servo, or one whose finger leaves along its axis),
-                # its outline straight up into the plate (the case's keep-out leaves the walls)
-                y0 = SOCKET_Y0_MM if (at_plate and not crossing and not along_axis) else -9.5
-                body = f"box_lh([{-HOUSING_MM[0]} - ({{g}}), {y0} - ({{g}}), {-HOUSING_MM[2]} - ({{g}})], " \
+                # its housing, its outline straight up into the plate (the case's keep-out leaves the walls): a
+                # lying servo's from its pocket's back face, the case closed in up to where its yoke turns
+                # (Martin, 10/30: material, not a slot between the socket and the pocket); a full one for a
+                # crossing's servo or one whose finger leaves along its axis
+                lying = at_plate and not crossing and not along_axis
+                y0 = (float(pocket[0][0][1][1]) if pocket is not None else SOCKET_Y0_MM) if lying else -9.5
+                body = f"box_lh([{-HOUSING_MM[0]} - ({{g}}), {y0:.3f} - ({{g}}), {-HOUSING_MM[2]} - ({{g}})], " \
                        f"[{HOUSING_MM[0]} + ({{g}}), {HOUSING_MM[1]} + ({{g}}), {HOUSING_MM[2]} + ({{g}})])"
                 up = housing_corners(sp.S_parent, y0=y0)
                 up[:, 0] = (x0 + x1) / 2.0
@@ -777,37 +905,54 @@ class Design:
             else:
                 # standing under the face: its housing from its pocket's floor down (the floor and the pocket's
                 # walls carry it up to the face)
-                y0 = pocket[0][0][1][1]
+                y0 = float(pocket[0][0][1][1])
                 box: Piece = lambda gg, Sp=Sp, y0=y0: (
                     f"{Sp} box_lh([{-HOUSING_MM[0]} - ({gg}), {y0:.3f} - ({gg}), {-HOUSING_MM[2]} - ({gg})], "
                     f"[{HOUSING_MM[0]} + ({gg}), {HOUSING_MM[1]} + ({gg}), {HOUSING_MM[2]} + ({gg})]);")
                 pieces.append(box)
                 housing = [box]
+            fps = self._footprints(sp.S_parent, [(np.array([-HOUSING_MM[0], y0, -HOUSING_MM[2]]), np.array(HOUSING_MM))],
+                                   xb, x0)
+            housings += fps
             if pocket is not None:
-                # the pocket: emptied of everything but the servos' housings (`kept`), walled where it is inside
-                # the palm and down to the servo's housing (a crossing's servo slid out under the palm's back)
+                # the pocket: emptied of everything but the other fingers' housings (`kept`), walled where it is
+                # inside the palm, down to the servo's housing
                 top = float(housing_corners(sp.S_parent, y0=-9.5 if crossing else SOCKET_Y0_MM)[:, 0].max())
-                x_bot = min(-PLATE_HALF_MM, top - RIM_MM)
+                x_bot = min(xb, top - RIM_MM)
                 if crossing:
-                    # a crossing's servo slid out under the palm: its pocket's floor (on the housing) and walls
-                    # reach down to it, a cup under the tray
-                    lo, hi = pocket[0][0]
-                    t = RIM_MM
-                    floor = np.array([[lo[0] - t, y, z, 1.0] for y in (-9.5 - t, hi[1] + t) for z in (lo[2] - t, hi[2] + t)])
-                    x_bot = min(x_bot, float((floor @ sp.S_parent.T)[:, 0].min()) - REACH_MM)
+                    # a crossing's servo slid out under the palm: the pocket's walls reach down to its housing, a
+                    # cup under the tray (a tilted one's housing hull up to the plate is cut by its own pocket)
+                    x_bot = min(x_bot, float(housing_corners(sp.S_parent, y0=-9.5)[:, 0].min()) - REACH_MM)
+                tray = f"plate({o}, {x_bot:.3f}, {x1 + REACH_MM});"
                 for lo, hi in pocket[0]:
                     part.swept_by.setdefault(sp.key[1], []).append(f"{Sp} box_lh({v3(lo)}, {v3(hi)});")
-                    pieces += self._pocket_walls(sp.S_parent, lo, hi, 0, f"plate({o}, {x_bot:.3f}, {x1 + REACH_MM});")
+                    pw, feet = self._pocket_walls(sp.S_parent, lo, hi, tray, outline, xb, x0)
+                    pieces += pw
+                    fps += feet
+                    voids += self._footprints(sp.S_parent, [(lo, hi)], xb, x0)
                 if pocket[2] is not None:
-                    part.swept_by[sp.key[1]].append(f"{Sp} hull_pts({_pts(pocket[2])}, {CLIP_MM + PART_CLEAR});")
-            part.tunnels += self._palm_tunnels(sp.S_parent, x0, x1)
-            part.tunnels += self._arm_access(sp)
+                    m = CLIP_MM + PART_CLEAR
+                    part.swept_by[sp.key[1]].append(f"{Sp} hull_pts({_pts(pocket[2])}, {m});")
+                    grown = np.array([q + np.array(s) * m for q in pocket[2] for s in itertools.product((-1, 1), repeat=3)])
+                    voids += [q for q in [self._outline_between(grown @ sp.S_parent[:3, :3].T + sp.S_parent[:3, 3],
+                                                                xb, x0)] if q is not None]
+            walls += fps
+            owners += [sp.key] * len(fps)
             if sp.key[0] in ("f", "hinge"):
                 # its housing keeps its walls against other fingers' pockets (the hinge's: against every finger)
-                walls = " ".join(c("0") for c in housing)
+                hw = " ".join(c("0") for c in housing)
                 part.kept.append((sp.key[1] if sp.key[0] == "f" else -1,
-                                  f"difference() {{ union() {{ {walls} }} {keepout} }}"))
+                                  f"difference() {{ union() {{ {hw} }} {keepout} }}"))
         pieces += self._rim(outline, x0, sec)
+        lanes: List[np.ndarray] = []
+        for sp in part.holds:
+            mine = [k != sp.key for k in owners]
+            ln, holes = self._screw_ways(sp, outline, [q for q, m in zip(walls, mine) if m and not any(q is h for h in housings)],
+                                         [q for q, m in zip(walls, mine) if m and any(q is h for h in housings)])
+            lanes += ln
+            part.tunnels += holes
+        ribs, feet = self._ribs(outline, x0, walls, voids + housings, lanes)
+        inside = ribs + self._fills(outline, x0, walls + feet, voids + lanes)
         pieces += bridge_up
         if sec == 0 and part.carries:                  # the hinge's yoke on the part beyond the cut
             sp = part.carries[0]
@@ -817,14 +962,17 @@ class Design:
             S = mm(sp.S_child)
             part.negative += [f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});",
                               f"{S} arm_keepout(-1, {list(HORN_HOLES_IDLER)});"]
+        # the ribs and fills stay inside the tray, under its plate and within its wall: the main palm gives way to
+        # those as the part beyond a cut turns (a fill is no convex piece to sweep), and the checks see the rest
         part.pieces = pieces
-        part.positive = [p("0") for p in pieces]
+        part.positive = [p("0") for p in pieces + inside]
 
     def _pocket(self, sp: ServoSpot) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], int, Optional[np.ndarray]]:
         """The pocket a base servo's finger turns in: boxes in the servo's
         frame (lo, hi) round what turns at the finger's base (`_turn_extent`),
         run out 200 mm along the axis the finger leaves the palm by most (its
-        front, -Y; along the axis past the driven horn for a twist); whether
+        front, -Y; along the axis past the driven horn for a twist; a
+        crossing's standing on its back end through the back as well); whether
         it leaves along the axis (1, else -2); and the corners of a convex
         pocket where the base link is in the palm ahead of the boxes, turned
         up to 10 degrees either way (or None). Behind a yoke the box stops
@@ -843,6 +991,10 @@ class Design:
             far = max(hx, float(jp[0]) + YOKE_REACH_MM + PART_CLEAR)
             r = max(r, YOKE_REACH_MM)
             lo, hi = np.array([ARM_X0 - PART_CLEAR, -r, -r]), np.array([far, r, r])
+            if float(S[0, 1]) < -0.7:
+                # standing on its back end under the face: it goes in from the palm's back with its finger on, the
+                # finger up through the pocket (Martin, 10/30), so the pocket runs out through the back as well
+                hi[1] = 200.0
         elif along_only(eS):
             # past the driven horn (the idler side: the stub); a twist out of the face from there on, any other
             # (along the palm) in the arm's layer beside the case
@@ -900,6 +1052,21 @@ class Design:
                 hi[k] = 200.0
             else:
                 lo[k] = -200.0
+        if hull is not None and not along_only(eS):
+            # where the printed link stays in the box inside the palm (bar a fraction of a millimetre), the box is
+            # the pocket: the convex one, grown past it, only shaved the box's walls thin (Martin, 10/30: awkward
+            # gaps)
+            O = _ccw(dv.hand_geometry(self.hand).outlines[finger_section(self.hand, sp.key[1])])
+            planes = []
+            for a, _, nn in _edges(O):
+                N = np.array([0.0, float(nn[0]), float(nn[1])])
+                planes.append((S[:3, :3].T @ N, float(a @ nn) - float(N @ S[:3, 3])))
+            within = self._clip_pts(hull, planes)
+            inside = np.zeros(len(within), dtype=bool)
+            for lo, hi in boxes:
+                inside |= np.all((within >= lo - 0.5) & (within <= hi + 0.5), axis=1)
+            if inside.all():
+                hull = None
         return boxes, 1 if along_only(eS) else -2, hull
 
     def _link0_corners(self, i: int) -> np.ndarray:
@@ -942,43 +1109,52 @@ class Design:
             c, s_ = math.cos(math.radians(q)), math.sin(math.radians(q))
             L = loc0.copy()
             L[:, 1], L[:, 2] = loc0[:, 1] * c - loc0[:, 2] * s_, loc0[:, 1] * s_ + loc0[:, 2] * c
-            for n, d in planes:
-                h = L @ n - d
-                cut = [L[a] + h[a] / (h[a] - h[b]) * (L[b] - L[a])
-                       for a, b in itertools.combinations(range(len(L)), 2) if h[a] * h[b] < 0.0]
-                L = np.array(list(L[h <= 0.0]) + cut).reshape(-1, 3)
-                if len(L) >= 4:
-                    try:
-                        L = L[ConvexHull(L).vertices]
-                    except QhullError:
-                        pass
-            out += list(L)
+            out += list(Design._clip_pts(L, planes))
         return np.array(out).reshape(-1, 3)
 
     @staticmethod
-    def _pocket_walls(S: np.ndarray, lo: np.ndarray, hi: np.ndarray, side: int, tray: str) -> List[Piece]:
-        """A pocket's walls (`RIM_MM`) on each of its box's faces but the open
-        one, outside the box, within the tray (the palm's outline from its back
-        face up into the plate): convex pieces."""
+    def _clip_pts(P: np.ndarray, planes) -> np.ndarray:
+        """A convex body (its corners P) cut by each plane (n, d): where n.p <
+        d. The corners of what is left."""
+        L = np.asarray(P, float)
+        for n, d in planes:
+            h = L @ n - d
+            cut = [L[a] + h[a] / (h[a] - h[b]) * (L[b] - L[a])
+                   for a, b in itertools.combinations(range(len(L)), 2) if h[a] * h[b] < 0.0]
+            L = np.array(list(L[h <= 0.0]) + cut).reshape(-1, 3)
+            if len(L) >= 4:
+                try:
+                    L = L[ConvexHull(L).vertices]
+                except QhullError:
+                    pass
+        return L
+
+    def _pocket_walls(self, S: np.ndarray, lo: np.ndarray, hi: np.ndarray, tray: str, outline: np.ndarray,
+                      xb: float, x0: float) -> Tuple[List[Piece], List[np.ndarray]]:
+        """A pocket's walls (`_wall_boxes`) within the tray (the palm's outline
+        from its back face up into the plate): convex pieces, and the outlines
+        (seen from the face) of those standing across it. A wall that would
+        lie in the tray's own wall round the edge (a pocket running along the
+        edge, just inside it) is left out: that wall does its work, and the
+        two side by side left a ledge."""
+        O = _ccw(outline)
+        inner = np.array(O)
+        for a, _, n in list(_edges(O)):
+            inner = _clip_half(inner, n, float(a @ n) - RIM_MM * float(np.linalg.norm(n)))
         Sm = mm(S)
-        out: List[Piece] = []
-        t = RIM_MM
-        for k in range(3):
-            for s in (-1, 1):
-                if s * 200.0 == (hi[k] if s > 0 else lo[k]):
-                    continue                                     # the open side, out of the palm
-                a, b = lo.copy() - t, hi.copy() + t
-                if s < 0:
-                    a[k], b[k] = lo[k] - t, lo[k]
-                else:
-                    a[k], b[k] = hi[k], hi[k] + t
-                for m in range(3):                               # no further than the box on its open side
-                    if lo[m] <= -199.0:
-                        a[m] = lo[m]
-                    if hi[m] >= 199.0:
-                        b[m] = hi[m]
-                out.append(lambda gg, a=v3(a), b=v3(b): (f"intersection() {{ {Sm} box_lh({a}, {b}); {tray} }}"))
-        return out
+        pieces: List[Piece] = []
+        feet: List[np.ndarray] = []
+        for a, b, k in self._wall_boxes(lo, hi):
+            fp = self._footprints(S, [(a, b)], xb, x0)
+            if fp and len(inner) >= 3:
+                q = _ccw(fp[0])
+                there = _overlap2d(q, O)
+                if there > 1.0 and _overlap2d(q, _ccw(inner)) < 0.25 * there:
+                    continue
+            pieces.append(lambda gg, a=v3(a), b=v3(b): f"intersection() {{ {Sm} box_lh({a}, {b}); {tray} }}")
+            if abs(float(S[0, k])) <= 0.3:
+                feet += fp                                       # across the face (not a floor)
+        return pieces, feet
 
     def _rim(self, outline: np.ndarray, x0: float, sec: int) -> List[Piece]:
         """The tray's wall: `RIM_MM` thick inside the face's edge, from the
@@ -1019,33 +1195,63 @@ class Design:
         the plate's plane (its yoke at the palm's edge, ahead of it)."""
         return sp.key[0] == "f" and self._at_plate(sp) and abs(float(sp.S_parent[0, 1])) < 0.7
 
-    def _face_outline(self, part: "Part", outline: np.ndarray, x0: float, keep=()) -> np.ndarray:
+    def _face_outline(self, part: "Part", outline: np.ndarray, x0: float, keep=(), pockets=None) -> np.ndarray:
         """The face's outline: the palm's outline less what lies ahead of a
         lying base servo's trim line (`FACE_TRIM_MM` behind its axis, where its
-        arms turning stand): the hull of the outline's corners not ahead of
-        one, those servos' housings behind it, every other base servo's
-        housing and the points `keep` (what hangs from the face)."""
-        lying = [sp.S_parent for sp in part.holds if self._lying(sp)]
+        arms turning stand). Where that is a strip along the palm's edge (no
+        other base servo's housing or window in it, at most `CAP_SHARE` of
+        the palm) the face stops along the line out to the outline (Martin,
+        10/30: no slanting cut past a window); otherwise the outline's corners
+        ahead of the line within the servo's reach drop out. The face is the
+        hull of what is left, those servos' housings behind their lines,
+        every other base servo's housing and the points `keep` (what hangs
+        from the face)."""
+        pockets = pockets or {}
+        P = _ccw(outline)
+        whole = abs(_area2d(P))
+        lying = [sp for sp in part.holds if self._lying(sp)]
+        windows = {}                          # a base servo's housing and window walls at the plate, from the face
+        for sp in part.holds:
+            if sp.key[0] != "f":
+                continue
+            y0 = -9.5 if sp.yoke == "crossing" else FACE_TRIM_MM
+            qs = [dv._hull2d(housing_corners(sp.S_parent, y0=y0)[:, 1:])]
+            if sp.key in pockets and not self._lying(sp):
+                qs += self._footprints(sp.S_parent, [(lo - RIM_MM, hi + RIM_MM) for lo, hi in pockets[sp.key][0]],
+                                       x0, PALM_FACE_MM)
+            windows[sp.key] = qs
+        fallback = []
+        for sp in lying:
+            Si = inv(sp.S_parent)
+            c, n = float(Si[1, 0] * x0 + Si[1, 3]), Si[1, 1:3].astype(float)     # its Y at the plate: c + n . q
+            cap = _clip_half(P, n, FACE_TRIM_MM - c)
+            if len(cap) < 3 or abs(_area2d(cap)) < 1.0:
+                continue
+            cap = _ccw(cap)
+            crowded = any(_overlap2d(cap, _ccw(q)) > 1.0 for k, qs in windows.items() if k != sp.key for q in qs)
+            if not crowded and abs(_area2d(cap)) <= CAP_SHARE * whole:
+                P = _ccw(_clip_half(P, -n, c - FACE_TRIM_MM))
+            else:
+                fallback.append(sp.S_parent)
         reach = ARM_X0 + ARM_DRIVEN + PART_CLEAR + 2.0
 
         def ahead(q) -> bool:
-            for S in lying:
+            for S in fallback:
                 loc = inv(S) @ np.array([x0, q[0], q[1], 1.0])
                 if loc[1] < FACE_TRIM_MM and abs(loc[0]) <= reach:
                     return True
             return False
 
-        pts = [np.asarray(q, float) for q in outline if not ahead(q)] + [np.asarray(q, float) for q in keep]
+        pts = [np.asarray(q, float) for q in P if not ahead(q)] + [np.asarray(q, float) for q in keep]
         hx, hy, hz = HOUSING_MM
-        for S in lying:
+        for sp in lying:
             C = mt.box_corners(np.array([0.0, (FACE_TRIM_MM + hy) / 2.0, 0.0]), np.eye(3),
                                np.array([hx, (hy - FACE_TRIM_MM) / 2.0, hz]))
-            pts += list((C @ S[:3, :3].T + S[:3, 3])[:, 1:])
+            pts += list((C @ sp.S_parent[:3, :3].T + sp.S_parent[:3, 3])[:, 1:])
         # every other base servo's housing under the face too (one standing under it, a crossing's slid servo)
         for sp in part.holds:
             if sp.key[0] == "f" and not self._lying(sp):
-                y0 = -9.5 if sp.yoke == "crossing" else FACE_TRIM_MM
-                pts += list(housing_corners(sp.S_parent, y0=y0)[:, 1:])
+                pts += list(windows[sp.key][0])
         return dv._hull2d(np.array(pts))
 
     def _turn_extent(self, sp: ServoSpot) -> Tuple[float, float]:
@@ -1060,32 +1266,246 @@ class Design:
         return along, float(np.linalg.norm(loc[:, 1:], axis=1).max()) + PART_CLEAR + 1.0
 
     @staticmethod
-    def _palm_tunnels(S: np.ndarray, x0: float, x1: float, reach: float = 30.0) -> List[str]:
-        """A screwdriver's way to each of a palm-held servo's case screws (as
-        the library's `case_screw_tunnels`): under the plate for a servo lying
-        level (the face stands over the servos' tops), through it only where
-        the axis tilts up into it."""
+    def _outline_between(P: np.ndarray, xa: float, xb: float) -> Optional[np.ndarray]:
+        """A convex body (its corners P, palm frame) where it is between palm
+        x = xa and xb, seen from the face: its outline (y, z), convex and
+        counter-clockwise, or None."""
+        P = np.asarray(P, float)
+        for n, d in ((np.array([1.0, 0.0, 0.0]), xb), (np.array([-1.0, 0.0, 0.0]), -xa)):
+            if len(P) >= 4:
+                try:
+                    P = P[ConvexHull(P).vertices]                # its corners only
+                except QhullError:
+                    pass
+            h = P @ n - d
+            cut = [P[a] + h[a] / (h[a] - h[b]) * (P[b] - P[a])
+                   for a, b in itertools.combinations(range(len(P)), 2) if h[a] * h[b] < 0.0]
+            P = np.array(list(P[h <= 0.0]) + cut).reshape(-1, 3)
+            if len(P) < 3:
+                return None
+        Q = dv._hull2d(P[:, 1:])
+        return Q if len(Q) >= 3 and abs(_area2d(Q)) > 0.5 else None
+
+    def _footprints(self, S: np.ndarray, boxes, xa: float, xb: float) -> List[np.ndarray]:
+        """Boxes (lo, hi in the servo frame S) where they are between palm x =
+        xa and xb, seen from the face."""
         out = []
-        hx = HOUSING_MM[0]
-        for yy, zz in ((22.5, -8.0), (22.5, 8.0)):                  # the far holes (library FAR_HOLES)
-            for sgn in (1.0, -1.0):
-                a, b = (hx, hx + reach) if sgn > 0 else (-hx - reach, -hx)
-                out.append(f"{mm(S)} cyl_x_at({yy}, {zz}, 1.9, {a}, {b});")
+        for lo, hi in boxes:
+            C = np.array([[a, b, c] for a in (lo[0], hi[0]) for b in (lo[1], hi[1]) for c in (lo[2], hi[2])], float)
+            q = self._outline_between(C @ S[:3, :3].T + S[:3, 3], xa, xb)
+            if q is not None:
+                out.append(q)
         return out
 
     @staticmethod
-    def _arm_access(sp: ServoSpot, reach: float = 27.0) -> List[str]:
-        """A screwdriver's way to each arm screw of a palm-held base servo's
-        yoke at the zero pose, through whatever of the palm is in its way but
-        the housings (the yoke goes on after the servo is in)."""
+    def _wall_boxes(lo: np.ndarray, hi: np.ndarray) -> List[Tuple[np.ndarray, np.ndarray, int]]:
+        """A pocket's walls (`RIM_MM`) as boxes in its servo's frame (and the
+        axis each faces along): one on each of its box's faces but the open
+        ones, outside the box (running on over the corners, no further than
+        the box on an open side)."""
+        t = RIM_MM
         out = []
+        for k in range(3):
+            for s in (-1, 1):
+                if s * 200.0 == (hi[k] if s > 0 else lo[k]):
+                    continue                                     # the open side, out of the palm
+                a, b = lo.copy() - t, hi.copy() + t
+                if s < 0:
+                    a[k], b[k] = lo[k] - t, lo[k]
+                else:
+                    a[k], b[k] = hi[k], hi[k] + t
+                for m in range(3):
+                    if m == k:
+                        continue                                 # its own thickness
+                    if lo[m] <= -199.0:
+                        a[m] = lo[m]
+                    if hi[m] >= 199.0:
+                        b[m] = hi[m]
+                out.append((a, b, k))
+        return out
+
+    def _screw_ways(self, sp: ServoSpot, outline: np.ndarray, walls, housings) -> Tuple[List[np.ndarray], List[str]]:
+        """How a screwdriver reaches the case screws of a servo lying in the
+        palm (a base servo or the cut's hinge): along its axis from one side
+        (its two screws are enough), the side with less in the way, never
+        through another servo's housing (`housings`) nor up through the face
+        where the axis tilts into it. A way (`LANE_MM`) out from that side
+        plate, cut through whatever else is in it (mostly nothing, or the
+        wall at the palm's edge: a hole straight out through it), which no
+        rib or fill enters. Through another wall (`walls`) only as a last
+        resort (`tunnelled`, a note in the checks): Martin, 10/30, no deep
+        screw holes. The lane (seen from the face) and the tunnels."""
         S = sp.S_parent
-        sides = [(1.0, ARM_X0 + ARM_DRIVEN)] + ([(-1.0, ARM_X0 + ARM_IDLER)] if sp.yoke == "u" else [])
-        for sgn, xa in sides:
-            a, b = (xa, xa + reach) if sgn > 0 else (-xa - reach, -xa)
-            for ang in HORN_HOLES_DRIVEN:
-                yy, zz = 6.0 * math.sin(math.radians(ang)), 6.0 * math.cos(math.radians(ang))
-                out.append(f"{mm(S)} cyl_x_at({yy:.3f}, {zz:.3f}, 2.2, {a:.3f}, {b:.3f});")
+        if not (self._at_plate(sp) and abs(float(S[0, 1])) < 0.7):
+            return [], []
+        reach, w = LANE_MM
+        hx, y = HOUSING_MM[0], FAR_HOLES[0][0]
+        O = _ccw(outline)
+        xb, xt = -PLATE_HALF_MM, PALM_FACE_MM - PALM_PLATE_MM
+        best = None
+        for s in (1.0, -1.0):
+            lo, hi = (np.array([hx, y - w, -8.0 - w]), np.array([hx + reach, y + w, 8.0 + w])) if s > 0 else \
+                (np.array([-hx - reach, y - w, -8.0 - w]), np.array([-hx, y + w, 8.0 + w]))
+            c = 2.5                                              # the screwdriver's shaft round the two screw lines
+            clo, chi = (np.array([hx, y - c, -8.0 - c]), np.array([hx + reach, y + c, 8.0 + c])) if s > 0 else \
+                (np.array([-hx - reach, y - c, -8.0 - c]), np.array([-hx, y + c, 8.0 + c]))
+            lane, core = self._footprints(S, [(lo, hi)], xb, xt), self._footprints(S, [(clo, chi)], xb, xt)
+            ends = [self._leaves_tray((S @ np.array([s * hx, y, z, 1.0]))[:3], s * S[:3, 0], O, xb, xt) for _, z in FAR_HOLES]
+            plate = any(kind == "plate" and t < reach for t, kind in ends)              # up through the face
+            inside = [(_overlap2d(core[0], _ccw(H)) if core else 0.0) for H in housings]
+            other = [(_overlap2d(core[0], _ccw(W)) if core else 0.0) for W in walls]
+            cost = 1e6 * plate + 1e3 * sum(inside) + sum(other)
+            if best is None or cost < best[0]:
+                best = (cost, s, lane, sum(other))
+        cost, s, lane, other = best
+        if other > 0.5:
+            self.tunnelled.append(sp.key)
+        a, b = (hx, hx + reach) if s > 0 else (-hx - reach, -hx)
+        return lane, [f"{mm(S)} cyl_x_at({yy}, {zz}, 1.9, {a:.3f}, {b:.3f});" for yy, zz in FAR_HOLES]
+
+    @staticmethod
+    def _leaves_tray(p: np.ndarray, d: np.ndarray, O: np.ndarray, xb: float, xt: float) -> Tuple[float, str]:
+        """How far along d (palm frame) a line from p runs inside the tray
+        (the outline O between the palm's back face xb and the plate's
+        underside xt) and where it leaves: "back", "plate" or "wall"."""
+        d = d / float(np.linalg.norm(d))
+        t1, kind = math.inf, "back"
+        for n, c, k in [((-1.0, 0.0, 0.0), -xb, "back"), ((1.0, 0.0, 0.0), xt, "plate")] + \
+                [((0.0, float(nn[0]), float(nn[1])), float(a @ nn), "wall") for a, _, nn in _edges(O)]:
+            n = np.array(n)
+            den = float(d @ n)
+            if den > 1e-9:
+                t = (c - float(p @ n)) / den
+                if t < t1:
+                    t1, kind = t, k
+        return max(t1, 0.0), kind
+
+    @staticmethod
+    def _ribs(outline: np.ndarray, x0: float, walls, stops, lanes) -> Tuple[List[Piece], List[np.ndarray]]:
+        """The ribs under the face (Martin, 10/30): a grid along the palm's y
+        and z, the lines spread evenly over the face about `RIB_PITCH_MM`
+        apart, from the palm's back face up into the plate, reaching into the
+        wall round the edge. A rib stops at a pocket or a housing (`stops`)
+        and at a case screw's lane, and none runs alongside a wall or a
+        housing closer than `GAP_FILL_MM` (the wall does its work there), nor
+        through one (a housing's insides took a rib apart). Every rib ends on
+        something (the wall, a housing, a pocket's wall or another rib): an
+        end left in the open goes back to the last rib it crosses, and what
+        is left shorter than `RIB_MIN_MM` goes. The pieces and their
+        outlines (y, z)."""
+        O = _ccw(outline)
+        inner = np.array(O)
+        for a, _, n in list(_edges(O)):
+            inner = _clip_half(inner, n, float(a @ n) - (RIM_MM - REACH_MM) * float(np.linalg.norm(n)))
+        if len(inner) < 3:
+            return [], []
+        inner = _ccw(inner)
+        walls = [_ccw(q) for q in walls]
+        lo, hi = O.min(axis=0), O.max(axis=0)
+        band = GAP_FILL_MM + RIB_MM / 2.0
+        near = [(O, band + RIM_MM)] + [(q, band) for q in walls]
+        segs: List[List[float]] = []                          # [k, c, t0, t1]: the line q[k] = c, from t0 to t1
+        for k in (0, 1):                                      # lines across y (running along z), then across z
+            u = np.array([0.0, 1.0]) if k == 0 else np.array([1.0, 0.0])
+            span = float(hi[k] - lo[k])
+            n_cells = max(1, int(round(span / RIB_PITCH_MM)))
+            for m in range(1, n_cells):
+                p = np.zeros(2)
+                p[k] = lo[k] + m * span / n_cells
+                seg = _line_in_convex(p, u, inner)
+                if seg is None:
+                    continue
+                keep = [seg]
+                side = np.array([-u[1], u[0]]) * RIB_MM / 2.0
+                for q in list(stops) + [dv._hull2d(np.vstack([q + side, q - side])) for q in lanes]:
+                    # (a lane widened by the rib's half-thickness across it: a rib crossing it on a slant keeps its
+                    # corners out of it too)
+                    cut = _line_in_convex(p, u, _ccw(q))
+                    if cut is not None:
+                        keep = _minus(keep, cut)
+                for Q, w in near:
+                    for a, b, nrm in _edges(Q):
+                        L = float(np.linalg.norm(b - a))
+                        if L < 1.0 or abs(float(nrm @ u)) / L > math.sin(math.radians(10.0)):
+                            continue                          # not alongside
+                        s = nrm / L * w
+                        cut = _line_in_convex(p, u, _ccw(np.array([a - s, b - s, b + s, a + s])))
+                        if cut is not None:
+                            keep = _minus(keep, cut)
+                segs += [[k, float(p[k]), t0, t1] for t0, t1 in keep]
+
+        def sdist(P, q) -> float:                             # > 0 outside a convex polygon
+            return max(float((q - a) @ n) / float(np.linalg.norm(n)) for a, _, n in _edges(P))
+
+        def held(k, c, t) -> bool:
+            q = np.array([c, t]) if k == 0 else np.array([t, c])
+            return sdist(inner, q) > -1.5 or any(sdist(W, q) < 1.5 for W in walls)
+
+        changed = True
+        while changed:
+            changed = False
+            for s in list(segs):
+                k, c, t0, t1 = s
+                cross = sorted(c2 for k2, c2, a2, b2 in segs if k2 != k and a2 <= c <= b2 and t0 <= c2 <= t1)
+                n0 = t0 if held(k, c, t0) else (cross[0] - RIB_MM / 2.0 if cross else None)
+                n1 = t1 if held(k, c, t1) else (cross[-1] + RIB_MM / 2.0 if cross else None)
+                if n0 is None or n1 is None or n1 - n0 < RIB_MIN_MM:
+                    segs.remove(s)
+                    changed = True
+                elif (n0, n1) != (t0, t1):
+                    s[2], s[3] = n0, n1
+                    changed = True
+        xb, xt = -PLATE_HALF_MM, x0 + REACH_MM
+        pieces: List[Piece] = []
+        feet: List[np.ndarray] = []
+        for k, c, t0, t1 in segs:
+            a, b = (np.array([c, t0]), np.array([c, t1])) if k == 0 else (np.array([t0, c]), np.array([t1, c]))
+            sd = (np.array([1.0, 0.0]) if k == 0 else np.array([0.0, 1.0])) * RIB_MM / 2.0
+            foot = np.array([a - sd, b - sd, b + sd, a + sd])
+            feet.append(foot)
+            pts = [[x, *q] for q in foot for x in (xb, xt)]
+            pieces.append(lambda gg, pts=_pts(pts): f"hull_pts({pts}, {gg});")
+        return pieces, feet
+
+    @staticmethod
+    def _fills(outline: np.ndarray, x0: float, walls, voids) -> List[Piece]:
+        """Material where what stands under the face (the wall round the
+        edge, housings, pocket walls, ribs: their outlines `walls`) leaves a
+        gap narrower than `GAP_FILL_MM`, the inside corners between them
+        rounded as far (Martin, 10/30: material, not slots): their
+        morphological closing, less themselves and what must stay empty
+        (`voids`: the pockets, the case screws' lanes), from the palm's back
+        face up into the plate."""
+        import manifold3d as m3
+
+        def cs(P):
+            return m3.CrossSection([_ccw(P).tolist()])
+
+        tray = cs(outline)
+        rim = tray - tray.offset(-RIM_MM, m3.JoinType.Miter)
+        W = rim
+        for q in walls:
+            W = W + (cs(q) ^ tray)
+        d = GAP_FILL_MM / 2.0
+        # (coarse arcs, the outlines simplified: a fill with fine fillets made the rounding of a palm's body
+        # run for a quarter of an hour)
+        F = (W.offset(d, m3.JoinType.Round, 2.0, 16).offset(-d, m3.JoinType.Round, 2.0, 16) - W) ^ tray
+        for q in voids:
+            F = F - cs(q)
+        F = F.simplify(0.2)
+        xb, xt = -PLATE_HALF_MM, x0 + REACH_MM
+        out: List[Piece] = []
+        for comp in F.decompose():
+            if comp.area() < 4.0:
+                continue
+            loops = comp.to_polygons()
+            pts = [q for loop in loops for q in loop]
+            paths, k = [], 0
+            for loop in loops:
+                paths.append(list(range(k, k + len(loop))))
+                k += len(loop)
+            P = "[" + ",".join(f"[{float(y):.3f},{float(z):.3f}]" for y, z in pts) + "]"
+            out.append(lambda gg, P=P, paths=str(paths): f"prism_yz({P}, {paths}, {xb}, {xt}, {gg});")
         return out
 
     @staticmethod

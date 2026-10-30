@@ -9,7 +9,8 @@ anyone prints it.
   horns stay clear of its parent;
 - a screwdriver reaches every screw in the order ASSEMBLY.md gives: the
   case screws past the part holding the servo, the arm screws at some joint
-  angle or the link slid in on the servo;
+  angle or the link slid in on the servo (a finger on the palm: built off
+  the hand and slotted in whole with its base servo);
 - no two other parts touch at the zero pose;
 - how far each part reaches outside its simulator body (the grammar's
   solid; Martin, 2026-10-23: small overhangs are fine).
@@ -195,11 +196,19 @@ def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
         name = "/".join(str(k) for k in sp.key)
         kept = sum((H ^ _xf(b, sp.S_parent)).volume() >= BOSS_SHARE * b.volume() for b in _bosses(sp.flange))
         w = (H ^ _xf(back, sp.S_parent)).volume() / back.volume()
-        if kept < 3:
+        from_back = design.entry.get(sp.key) == 1
+        if kept < (2 if from_back else 3):
             rep.clashes.append(f"servo {name}: its housing keeps {kept} of its 4 screw bosses")
+        elif from_back and kept < 4:
+            # in from the palm's back with its finger on, its driven horn up through the side plate (Martin, 10/30)
+            rep.warnings.append(f"servo {name}: goes in from the palm's back with its finger on: held by its socket "
+                                f"and the {kept} case screws on its idler side")
         elif kept < 4:
             rep.warnings.append(f"servo {name}: its housing keeps 3 of its 4 screw bosses (use 3 screws)")
-        if w < BACK_SHARE and not sp.flange:
+        if sp.key in getattr(design, "tunnelled", []):
+            rep.warnings.append(f"servo {name}: boxed in by other walls and housings: its case screws are reached "
+                                f"through a tunnel through the palm")
+        if w < BACK_SHARE and not sp.flange and not from_back:
             rep.warnings.append(f"servo {name}: its housing keeps {100 * w:.0f}% of its back wall (something "
                                 f"turns close to it; the case screws hold it)")
         if sp.parent == ("palm", -1) and extras is not None:
@@ -249,7 +258,8 @@ def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
         v = (C ^ _xf(_case_solid(), sp.S_child)).volume()
         if v > TOUCH_MM3:
             rep.clashes.append(f"joint {name}: {sp.child} cuts its servo's case at the zero pose ({v:.0f} mm3)")
-        order = _assembly_order(sp, P, solids.get(sp.child, C))
+        finger = _finger_solid(design, bodies, sp) if sp.parent[0] == "palm" and sp.key[0] == "f" else None
+        order = _assembly_order(sp, P, solids.get(sp.child, C), finger, design.entry.get(sp.key, -1))
         rep.orders[sp.key] = order
         if order is None:
             rep.clashes.append(f"joint {name}: no way to put it together: a screwdriver cannot reach the case "
@@ -257,16 +267,36 @@ def _joint_checks(design: Design, solids: Dict, rep: Report) -> None:
                                f"servo in with {sp.child} on it works")
 
 
-def _assembly_order(sp: ServoSpot, P, C) -> Optional[str]:
+def _finger_solid(design: Design, bodies: Dict, sp: ServoSpot):
+    """A palm-held finger servo with everything it carries, as the finger is
+    built off the hand: its case and horns, every link of the finger and the
+    servos in them, at the zero pose (the servo's frame)."""
+    i = sp.key[1]
+    to_s = inv(design.parts[sp.parent].frame @ sp.S_parent)
+    out = _servo_solid(sp.idler_horn)
+    for key, part in design.parts.items():
+        if key[0] == "link" and key[1] == i and key in bodies:
+            out = out + _xf(bodies[key], to_s @ part.frame)
+    for s2 in design.servos.values():
+        if s2.key[0] == "f" and s2.key[1] == i and s2.key != sp.key:
+            out = out + _xf(_servo_solid(s2.idler_horn), to_s @ design.parts[s2.parent].frame @ s2.S_parent)
+    return out
+
+
+def _assembly_order(sp: ServoSpot, P, C, finger=None, entry: int = -1) -> Optional[str]:
     """How a joint goes together: "servo first" (the servo into its housing,
     then the link onto its horns: a screwdriver must reach the arm's screws
     past the parent at some angle) or "link first" (the link onto the servo
     on the bench, then both slid into the housing from the front: the link
     must pass the parent on the way in and leave the case screws reachable).
-    Either way a screwdriver must reach the case screws past the parent
-    (two of the far four; a flange cup's servo, three of its idler face's
-    four, and it goes in along its axis: servo first only). None if it
-    cannot or no order works."""
+    A palm-held finger (`finger`: the whole of it on its base servo) is
+    built off the hand and slotted in, link first (Martin, 10/30): from the
+    servo's front, or from behind for `entry` +1 (a crossing's servo
+    standing in the palm's back), all of it passing the palm. Either way a
+    screwdriver must reach the case screws past the parent (two of the far
+    four; a flange cup's servo, three of its idler face's four, and it goes
+    in along its axis: servo first only). None if it cannot or no order
+    works."""
     # the case screws are driven past the part holding the servo, whatever the order
     if sp.flange:
         reach = sum((P ^ _xf(dv_, sp.S_parent)).volume() <= TOUCH_MM3 for dv_ in _case_driver_list(FAR_YZ + NEAR_YZ, (-1,)))
@@ -274,13 +304,21 @@ def _assembly_order(sp: ServoSpot, P, C) -> Optional[str]:
             return None
     elif sum((P ^ _xf(dv_, sp.S_parent)).volume() <= TOUCH_MM3 for dv_ in _case_driver_list()) < 2:
         return None
+    if finger is not None:
+        Ps = _xf(P, inv(sp.S_parent))
+        slides = all((Ps ^ finger.translate([0.0, entry * float(t), 0.0])).volume() <= TOUCH_MM3
+                     for t in np.arange(2.0, 61.0, 4.0))
+        drivers = sum((Ps ^ d).volume() <= TOUCH_MM3 and (finger ^ d).volume() <= TOUCH_MM3
+                      for d in _case_driver_list())
+        if slides and drivers >= 2:
+            return "link first"
     lo, hi = sp.rot_deg
     drivers = _drivers(sp)
     for a in (0.0, lo, hi):
         M = sp.S_parent @ _rot_x(a) @ inv(sp.S_child)
         if (P ^ _xf(_xf(drivers, sp.S_child), M)).volume() <= TOUCH_MM3:
             return "servo first"
-    if sp.flange:
+    if sp.flange or finger is not None:
         return None
     # link first: the child slid in along the servo's back (+Y), from 60 mm in front of where it ends up
     Cs = _xf(C, inv(sp.S_child))                  # the child in the servo's frame
