@@ -1,0 +1,38 @@
+{
+ "grammar": "hand_grammar/2.0",
+ "fingers": [
+  {
+   "y": -40,
+   "z": 0,
+   "facing": 210,
+   "tilt": 0,
+   "joints": [
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 90
+    }
+   ]
+  },
+  {
+   "y": 40,
+   "z": 0,
+   "facing": 120,
+   "tilt": 0,
+   "joints": [
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 90
+    }
+   ]
+  }
+ ],
+ "palm_joints": []
+}
