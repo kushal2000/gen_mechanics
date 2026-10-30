@@ -1,0 +1,194 @@
+{
+ "generation": 22,
+ "grid": {
+  "n_rigid": 5,
+  "n_moving": 2,
+  "n_slots": 5
+ },
+ "hands": [
+  {
+   "id": "seed_f2_nocut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f2_nocut_j0/seed_f2_nocut_j0.spec.json"
+  },
+  {
+   "id": "g0015_c03",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0015_c03/g0015_c03.spec.json"
+  },
+  {
+   "id": "g0003_c08",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0003_c08/g0003_c08.spec.json"
+  },
+  {
+   "id": "seed_f2_cut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f2_cut_j0/seed_f2_cut_j0.spec.json"
+  },
+  {
+   "id": "g0017_c02",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0017_c02/g0017_c02.spec.json"
+  },
+  {
+   "id": "g0020_c05",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0020_c05/g0020_c05.spec.json"
+  },
+  {
+   "id": "seed_f3_nocut_j0",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f3_nocut_j0/seed_f3_nocut_j0.spec.json"
+  },
+  {
+   "id": "g0017_c09",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0017_c09/g0017_c09.spec.json"
+  },
+  {
+   "id": "seed_f3_nocut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f3_nocut_j2/seed_f3_nocut_j2.spec.json"
+  },
+  {
+   "id": "g0014_c07",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0014_c07/g0014_c07.spec.json"
+  },
+  {
+   "id": "g0007_c04",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0007_c04/g0007_c04.spec.json"
+  },
+  {
+   "id": "g0017_c10",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0017_c10/g0017_c10.spec.json"
+  },
+  {
+   "id": "g0002_c04",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0002_c04/g0002_c04.spec.json"
+  },
+  {
+   "id": "g0018_c00",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0018_c00/g0018_c00.spec.json"
+  },
+  {
+   "id": "g0016_c11",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0016_c11/g0016_c11.spec.json"
+  },
+  {
+   "id": "g0011_c15",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0011_c15/g0011_c15.spec.json"
+  },
+  {
+   "id": "g0019_c13",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0019_c13/g0019_c13.spec.json"
+  },
+  {
+   "id": "g0013_c05",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0013_c05/g0013_c05.spec.json"
+  },
+  {
+   "id": "g0020_c08",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0020_c08/g0020_c08.spec.json"
+  },
+  {
+   "id": "g0004_c12",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0004_c12/g0004_c12.spec.json"
+  },
+  {
+   "id": "g0011_c13",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0011_c13/g0011_c13.spec.json"
+  },
+  {
+   "id": "g0017_c08",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0017_c08/g0017_c08.spec.json"
+  },
+  {
+   "id": "g0018_c02",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0018_c02/g0018_c02.spec.json"
+  },
+  {
+   "id": "g0003_c02",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0003_c02/g0003_c02.spec.json"
+  },
+  {
+   "id": "g0020_c04",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0020_c04/g0020_c04.spec.json"
+  },
+  {
+   "id": "g0017_c11",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0017_c11/g0017_c11.spec.json"
+  },
+  {
+   "id": "g0020_c14",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0020_c14/g0020_c14.spec.json"
+  },
+  {
+   "id": "g0020_c06",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0020_c06/g0020_c06.spec.json"
+  },
+  {
+   "id": "g0018_c01",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0018_c01/g0018_c01.spec.json"
+  },
+  {
+   "id": "g0018_c07",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0018_c07/g0018_c07.spec.json"
+  },
+  {
+   "id": "g0021_c00",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c00/g0021_c00.spec.json"
+  },
+  {
+   "id": "g0021_c01",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c01/g0021_c01.spec.json"
+  },
+  {
+   "id": "g0021_c02",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c02/g0021_c02.spec.json"
+  },
+  {
+   "id": "g0021_c03",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c03/g0021_c03.spec.json"
+  },
+  {
+   "id": "g0021_c04",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c04/g0021_c04.spec.json"
+  },
+  {
+   "id": "g0021_c05",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c05/g0021_c05.spec.json"
+  },
+  {
+   "id": "g0021_c06",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c06/g0021_c06.spec.json"
+  },
+  {
+   "id": "g0021_c07",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c07/g0021_c07.spec.json"
+  },
+  {
+   "id": "g0021_c08",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c08/g0021_c08.spec.json"
+  },
+  {
+   "id": "g0021_c09",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c09/g0021_c09.spec.json"
+  },
+  {
+   "id": "g0021_c10",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c10/g0021_c10.spec.json"
+  },
+  {
+   "id": "g0021_c11",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c11/g0021_c11.spec.json"
+  },
+  {
+   "id": "g0021_c12",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c12/g0021_c12.spec.json"
+  },
+  {
+   "id": "g0021_c13",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c13/g0021_c13.spec.json"
+  },
+  {
+   "id": "g0021_c14",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c14/g0021_c14.spec.json"
+  },
+  {
+   "id": "g0021_c15",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0021_c15/g0021_c15.spec.json"
+  }
+ ]
+}

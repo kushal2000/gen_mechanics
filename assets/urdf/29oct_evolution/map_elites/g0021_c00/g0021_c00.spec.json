@@ -1,0 +1,369 @@
+{
+ "hand": "g0021_c00",
+ "side": "left",
+ "urdf": "debug_outputs/evolution/map_elites/hands/g0021_c00/g0021_c00.urdf",
+ "palm_body": "palm",
+ "hand_joint_names": [
+  "palm0_joint",
+  "f0_j0",
+  "f0_j1",
+  "f1_j0",
+  "f1_j1",
+  "f2_j0",
+  "f2_j1",
+  "f2_j2",
+  "f3_j0",
+  "f3_j1",
+  "f4_j0",
+  "f4_j1",
+  "f4_j2"
+ ],
+ "joint_limits": {
+  "palm0_joint": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "f0_j0": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "f0_j1": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "f1_j0": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f1_j1": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "f2_j0": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f2_j1": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f2_j2": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f3_j0": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "f3_j1": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f4_j0": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f4_j1": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "f4_j2": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ]
+ },
+ "hand_default_joint_pos": {
+  "palm0_joint": 0.0,
+  "f0_j0": 0.0,
+  "f0_j1": 0.0,
+  "f1_j0": 0.0,
+  "f1_j1": 0.0,
+  "f2_j0": 0.0,
+  "f2_j1": 0.0,
+  "f2_j2": 0.0,
+  "f3_j0": 0.0,
+  "f3_j1": 0.0,
+  "f4_j0": 0.0,
+  "f4_j1": 0.0,
+  "f4_j2": 0.0
+ },
+ "fingertip_body_names": [
+  "f0_link1",
+  "f1_link1",
+  "f2_link2",
+  "f3_link1",
+  "f4_link2"
+ ],
+ "fingertip_offsets": [
+  [
+   0.05,
+   0.0,
+   0.0
+  ],
+  [
+   0.05,
+   0.0,
+   0.0
+  ],
+  [
+   0.03,
+   0.0,
+   0.0
+  ],
+  [
+   0.03,
+   0.0,
+   0.0
+  ],
+  [
+   0.05,
+   0.0,
+   0.0
+  ]
+ ],
+ "palm_frame": [
+  [
+   1.0,
+   0.0,
+   0.0
+  ],
+  [
+   0.0,
+   1.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_centre_in_palm_body": [
+  0.0,
+  -0.018966506350499998,
+  0.022165063508999997
+ ],
+ "palm_extents_ours": [
+  0.024,
+  0.154351596989,
+  0.15624871130600002
+ ],
+ "palm_centre_ours": [
+  0.0,
+  -0.018966506350499998,
+  0.022165063508999997
+ ],
+ "adjacent_links": {
+  "palm": [
+   "f1_link0",
+   "f2_link0",
+   "f3_link0",
+   "f4_link0",
+   "palm0"
+  ],
+  "palm0": [
+   "f0_link0",
+   "palm"
+  ],
+  "f0_link0": [
+   "f0_link1",
+   "palm0"
+  ],
+  "f0_link1": [
+   "f0_link0"
+  ],
+  "f1_link0": [
+   "f1_link1",
+   "palm"
+  ],
+  "f1_link1": [
+   "f1_link0"
+  ],
+  "f2_link0": [
+   "f2_link1",
+   "palm"
+  ],
+  "f2_link1": [
+   "f2_link0",
+   "f2_link2"
+  ],
+  "f2_link2": [
+   "f2_link1"
+  ],
+  "f3_link0": [
+   "f3_link1",
+   "palm"
+  ],
+  "f3_link1": [
+   "f3_link0"
+  ],
+  "f4_link0": [
+   "f4_link1",
+   "palm"
+  ],
+  "f4_link1": [
+   "f4_link0",
+   "f4_link2"
+  ],
+  "f4_link2": [
+   "f4_link1"
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.0775033248319064,
+ "armature": 0.00058,
+ "effort_limit": 0.5,
+ "velocity_limit": 5.0,
+ "link_density_kg_m3": 1750.0,
+ "friction": 0.5,
+ "replace_cylinders_with_capsules": true,
+ "rules": "FEETECH_COARSE_RULES",
+ "design": {
+  "grammar": "hand_grammar/2.0",
+  "fingers": [
+   {
+    "y": -80,
+    "z": -40,
+    "facing": 210,
+    "tilt": 0,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 40
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 50
+     }
+    ]
+   },
+   {
+    "y": -40,
+    "z": 40,
+    "facing": 270,
+    "tilt": 0,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 50
+     }
+    ]
+   },
+   {
+    "y": 0,
+    "z": -40,
+    "facing": 180,
+    "tilt": 0,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 90
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 30
+     }
+    ]
+   },
+   {
+    "y": 0,
+    "z": 80,
+    "facing": 330,
+    "tilt": 90,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 90
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 30
+     }
+    ]
+   },
+   {
+    "y": 40,
+    "z": 0,
+    "facing": 120,
+    "tilt": 0,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 70
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 50
+     }
+    ]
+   }
+  ],
+  "palm_joints": [
+   {
+    "facing": 330,
+    "offset": 50
+   }
+  ]
+ }
+}
