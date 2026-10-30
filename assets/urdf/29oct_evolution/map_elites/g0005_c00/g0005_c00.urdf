@@ -1,0 +1,174 @@
+<robot name="g0005_c00">
+  <link name="palm">
+    <visual name="palm_palm1">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm_palm1.obj" />
+      </geometry>
+      <material name="palm_palm1_mat">
+        <color rgba="0.55 0.57 0.62 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm_palm1.obj" />
+      </geometry>
+    </collision>
+    <visual name="palm_mount2">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm_mount2.obj" />
+      </geometry>
+      <material name="palm_mount2_mat">
+        <color rgba="0.55 0.57 0.62 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm_mount2.obj" />
+      </geometry>
+    </collision>
+    <visual name="palm_hinge3">
+      <origin xyz="0 -0.0344855716 -0.0147307621" rpy="-1.57079633 -1.04719755 1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+      <material name="palm_hinge3_mat">
+        <color rgba="0.15 0.15 0.17 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0.0344855716 -0.0147307621" rpy="-1.57079633 -1.04719755 1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+    </collision>
+    <visual name="palm_motor4">
+      <origin xyz="-0.0045 0.0725 0.04" rpy="-3.14159265 6.123234e-17 3.74939946e-33" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+      <material name="palm_motor4_mat">
+        <color rgba="0.15 0.15 0.17 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0045 0.0725 0.04" rpy="-3.14159265 6.123234e-17 3.74939946e-33" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="-4.90384851e-19 0.0195143569 0.00976155897" rpy="1.57079633 -0.536345845 1.57079633" />
+      <mass value="0.251895298" />
+      <inertia ixx="4.76537083e-05" ixy="0" ixz="0" iyy="0.000463768243" iyz="0" izz="0.000487240002" />
+    </inertial>
+  </link>
+  <link name="palm0">
+    <visual name="palm0_palm1">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm0_palm1.obj" />
+      </geometry>
+      <material name="palm0_palm1_mat">
+        <color rgba="0.55 0.57 0.62 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm0_palm1.obj" />
+      </geometry>
+    </collision>
+    <visual name="palm0_motor2">
+      <origin xyz="-0.0045 -0.0352692379 -0.0225240474" rpy="1.04719755 -3.061617e-17 -5.30287619e-17" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+      <material name="palm0_motor2_mat">
+        <color rgba="0.15 0.15 0.17 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0045 -0.0352692379 -0.0225240474" rpy="1.04719755 -3.061617e-17 -5.30287619e-17" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="-1.11478185e-19 -0.0259819769 -0.012704826" rpy="1.57079633 -0.904602894 1.57079633" />
+      <mass value="0.069254378" />
+      <inertia ixx="6.80535946e-06" ixy="0" ixz="0" iyy="3.11361662e-05" iyz="0" izz="3.12931054e-05" />
+    </inertial>
+  </link>
+  <link name="f0_link0">
+    <visual name="f0_link0_link1">
+      <origin xyz="0.029 0 -3.46944695e-18" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+      <material name="f0_link0_link1_mat">
+        <color rgba="0.85 0.35 0.25 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.029 0 -3.46944695e-18" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.029 0 0" rpy="0 0 0" />
+      <mass value="0.106270851" />
+      <inertia ixx="1.35696277e-05" ixy="0" ixz="0" iyy="5.30015704e-05" iyz="0" izz="5.30015704e-05" />
+    </inertial>
+  </link>
+  <link name="f1_link0">
+    <visual name="f1_link0_link1">
+      <origin xyz="0.029 0 0" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+      <material name="f1_link0_link1_mat">
+        <color rgba="0.85 0.35 0.25 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.029 0 0" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.029 0 0" rpy="0 0 0" />
+      <mass value="0.106270851" />
+      <inertia ixx="1.35696277e-05" ixy="0" ixz="0" iyy="5.30015704e-05" iyz="0" izz="5.30015704e-05" />
+    </inertial>
+  </link>
+  <joint name="palm0_joint" type="revolute">
+    <parent link="palm" />
+    <child link="palm0" />
+    <origin xyz="0 -0.0409807621 -0.0109807621" rpy="0 0 0" />
+    <axis xyz="0 0.5 0.866025404" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f0_j0" type="revolute">
+    <parent link="palm0" />
+    <child link="f0_link0" />
+    <origin xyz="-0.0045 -0.0390192379 -0.0290192379" rpy="0 1.04719755 -1.57079633" />
+    <axis xyz="0 1 6.123234e-17" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f1_j0" type="revolute">
+    <parent link="palm" />
+    <child link="f1_link0" />
+    <origin xyz="-0.0045 0.08 0.04" rpy="-3.14159265 -6.123234e-17 1.57079633" />
+    <axis xyz="0 1 6.123234e-17" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+</robot>
