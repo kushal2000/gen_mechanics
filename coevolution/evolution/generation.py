@@ -181,7 +181,8 @@ def propose(run: Path, fitness_path: Path) -> None:
     rng = np.random.default_rng([cfg.seed, g])
     taken = archive.keys()
     made, attempts = [], 0
-    while len(made) < cfg.children and attempts < 4 * cfg.children:
+    n_children = 0 if cfg.strategy == "static" else cfg.children      # static: the RL-only control, no children
+    while len(made) < n_children and attempts < 4 * n_children:
         parent = select_parents(archive, cfg, rng, 1, elites=state.get("map"))[0]
         attempts += 1
         cid = f"g{g:04d}_c{len(made):02d}"
@@ -222,7 +223,12 @@ def admit(run: Path, checkpoint: str, screen_path: Path | None) -> None:
     archive = Archive.load(run / "archive.json")
     cands = archive.with_status("candidate")
     active = archive.with_status("active")
-    if cfg.strategy == "map_elites":
+    if cfg.strategy == "static":                          # RL only: the same population every generation
+        nxt = active
+        niche_best = best_per_niche(archive.records.values())
+        extra = {"admitted": []}
+        state.pop("pending", None)
+    elif cfg.strategy == "map_elites":
         for c in cands:                                   # every child a challenger, trained before it is judged
             c.status, c.admitted = "active", g + 1
         nxt = [archive[i] for i in state["map"].values()] + cands

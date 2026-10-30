@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH --job-name=LONG_random_pick
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=48:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29oct_evolution_from_scratch/%x-%j.log
+# A random design (30 Oct, the user's call): seed_f5_cut_j1, drawn uniformly from the 30 seed hands with numpy default_rng(20261030) (random_pick/manifest.json), trained alone like the designer's picks.
+# One continuous run of 32 x 636 = 20,352 epochs (8B steps): the evolution runs' budget, but no per-generation restarts
+# (optimizer and adaptive lr never reset). Same policy, task and learner as rl_only.sub. save_frequency=636, but this
+# rl_games keeps a last_*_ep_* checkpoint only when epoch/636 is a perfect square (636, 2544, 5724, 10176, 15900) and
+# at the end (20352): the ends of generations 0, 3, 8, 15, 24 and 31, for eval_hands.py at matched steps.
+#   sbatch experiments/29oct_evolution_from_scratch/long_random_pick.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export HAND="multi:template:experiments/29oct_evolution_from_scratch/random_pick/manifest.json" HAND_TAG=evo RUN_TAG=random_pick_long LOG_GROUP=29oct_evolution_from_scratch/long_runs
+export EPOCHS=20352 WANDB_NAME=random_pick_long WANDB_GROUP=long_runs
+export TASKS=pen_repose PEN_SHAPE=box ARCH=transformer NUM_ENVS=24576 SEED=100 GAMMA=0.99 FINGER_RESET=1.0 \
+    KEYPOINT=best_so_far WANDB=1 WANDB_PROJECT=gen_mechanics_evolution_scratch VIEWER_INTERVAL=1000000
+OLD_OBS="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot]"
+OLD_STATE="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot,object_keypoints_rel_joint,palm_keypoints,ee_pos,ee_rot,ee_vel,object_rot,fingertip_pos_rel_palm,closest_keypoint_max_dist,closest_fingertip_dist,progress,successes,reward]"
+export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.action.use_action_delay=False env.obs.obs_list=$OLD_OBS env.obs.state_list=$OLD_STATE agent.params.network.token_mode=finger agent.params.network.d_model=128 agent.params.network.n_layers=2 agent.params.network.n_heads=4 agent.params.network.ff_mult=4 agent.params.network.decoder_units=[256] agent.params.network.arm_head_units=[1024,512] agent.params.network.value_head_units=[512,256] agent.params.network.compile_net=true agent.params.network.affine_norm=false agent.params.network.packed_tokens=true agent.params.network.mask_ghost_actions=true agent.params.network.masked_arm_dims=[3,4,5] agent.params.config.rollout_autocast=true agent.params.config.minibatch_size=16384 agent.params.config.mini_epochs=2 agent.params.config.learning_rate=1e-4 agent.params.config.save_frequency=636"
+exec bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub

@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --job-name=EV_rl_only
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=3:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29oct_evolution_from_scratch/%x-%j.log
+# The RL-only control (29 Oct, the user's call): the same 30 seed hands trained by the same shared policy for the same 32 x 636 epochs (8B steps), with no evolution -- no children, the population never changes. Run through the same generation loop as baseline and map_elites, so it shares their per-generation restarts (weights carried, optimizer and adaptive lr reset) and their per-generation evaluation (10 envs per hand, first episode).
+# One generation per job; the job submits the next (generation.sh). Every setting written out.
+#   sbatch experiments/29oct_evolution_from_scratch/rl_only.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+E=experiments/29oct_evolution_from_scratch
+export SUB_PATH="$PWD/$E/rl_only.sub"
+export EVO_RUN=debug_outputs/evolution/rl_only EVO_CONFIG=$E/configs/rl_only.json
+export SEED_MANIFEST=assets/urdf/29oct_niche_seed/manifest.json
+export WANDB_PREFIX=rl_only
+export MAX_GEN=32 EPOCHS_PER_GEN=636 EVAL_ENVS_PER_HAND=10
+# the trainer: pen repose v2 as the 29 Oct runs, the per-finger 2-layer transformer, from scratch at generation 0
+export TASKS=pen_repose PEN_SHAPE=box ARCH=transformer NUM_ENVS=24576 SEED=100 GAMMA=0.99 FINGER_RESET=1.0 \
+    KEYPOINT=best_so_far WANDB=1 WANDB_PROJECT=gen_mechanics_evolution_scratch VIEWER_INTERVAL=1000000
+OLD_OBS="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot]"
+OLD_STATE="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot,object_keypoints_rel_joint,palm_keypoints,ee_pos,ee_rot,ee_vel,object_rot,fingertip_pos_rel_palm,closest_keypoint_max_dist,closest_fingertip_dist,progress,successes,reward]"
+export TRAIN_ENV="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.action.use_action_delay=False env.obs.obs_list=$OLD_OBS env.obs.state_list=$OLD_STATE agent.params.network.token_mode=finger agent.params.network.d_model=128 agent.params.network.n_layers=2 agent.params.network.n_heads=4 agent.params.network.ff_mult=4 agent.params.network.decoder_units=[256] agent.params.network.arm_head_units=[1024,512] agent.params.network.value_head_units=[512,256] agent.params.network.compile_net=true agent.params.network.affine_norm=false agent.params.network.packed_tokens=true agent.params.network.mask_ghost_actions=true agent.params.network.masked_arm_dims=[3,4,5] agent.params.config.rollout_autocast=true agent.params.config.minibatch_size=16384 agent.params.config.mini_epochs=2 agent.params.config.learning_rate=1e-4"
+exec bash $E/generation.sh

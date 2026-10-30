@@ -52,7 +52,7 @@ def test_niche_and_vector_read_the_design():
     assert v.shape == (10,) and descriptors.novelty(v, [v]) == 0.0
 
 
-@pytest.mark.parametrize("strategy", ["archive", "map_elites", "greedy", "random"])
+@pytest.mark.parametrize("strategy", ["archive", "map_elites", "greedy", "random", "static"])
 def test_three_generations_from_scratch(tmp_path, strategy):
     cfg = EvolutionConfig(strategy=strategy, population=6, children=4, admitted=2, seed=1)
     cfg_path = tmp_path / "config.json"
@@ -75,7 +75,10 @@ def test_three_generations_from_scratch(tmp_path, strategy):
         generation.main(["propose", "--run-dir", str(run), "--fitness", str(fit)])   # resubmitted: a no-op
         arch = Archive.load(run / "archive.json")
         cands = arch.with_status("candidate")
-        assert 1 <= len(cands) <= 4 and all((c.parent is None) == (strategy == "random") for c in cands)
+        if strategy == "static":                    # RL only: no children, the population unchanged
+            assert not cands
+        else:
+            assert 1 <= len(cands) <= 4 and all((c.parent is None) == (strategy == "random") for c in cands)
         assert len({r.key for r in arch.records.values()}) == len(arch)            # never a duplicate
         args = ["admit", "--run-dir", str(run), "--checkpoint", f"gen{g}.pth"]
         if cfg.screened:
@@ -87,7 +90,9 @@ def test_three_generations_from_scratch(tmp_path, strategy):
         active = arch.with_status("active")
         nxt = json.loads((run / f"gen_{g + 1:04d}/manifest.json").read_text())["hands"]
         assert sorted(h["id"] for h in nxt) == sorted(r.id for r in active) and not arch.with_status("candidate")
-        if strategy == "map_elites":
+        if strategy == "static":
+            assert sorted(h["id"] for h in nxt) == sorted(h["id"] for h in first)
+        elif strategy == "map_elites":
             # the population is the map's elites plus this generation's challengers; elites are one per niche
             elites = set(state["map"].values())
             assert elites <= {r.id for r in active}

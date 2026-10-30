@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-STRATEGIES = ("archive", "map_elites", "greedy", "random")
+STRATEGIES = ("archive", "map_elites", "greedy", "random", "static")   # static: RL only, no evolution
 SCREENED = ("archive", "greedy", "random")      # strategies that admit children by a zero-shot screen
 
 

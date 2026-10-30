@@ -67,6 +67,8 @@ if [[ "$SCREENED" == 1 ]]; then
 fi
 $PY -m coevolution.evolution.generation admit "${ADMIT[@]}"
 $PY -m coevolution.evolution.generation status --run-dir "$EVO_RUN" | head -14
+# the generation's new hands onto master (the wandb pose viewer fetches meshes from there); never fatal
+$PY experiments/29oct_evolution_from_scratch/push_assets.py "$NAME" || echo "[evolution] push_assets failed; the run continues"
 
 # 6. the next generation
 if (( G + 1 < MAX_GEN )); then

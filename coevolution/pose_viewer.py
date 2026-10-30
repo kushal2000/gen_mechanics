@@ -82,12 +82,22 @@ def _check_url(url: str, url_check: str) -> None:
         print(message, flush=True)
 
 
+def _published_relpath(rel: str) -> str:
+    """Where master serves a repo file. Hands an evolution run builds live in its (ignored) run directory,
+    ``debug_outputs/evolution/<run>/hands/<id>/``; experiments/29oct_evolution_from_scratch/push_assets.py
+    publishes them at ``assets/urdf/29oct_evolution/<run>/<id>/``."""
+    parts = rel.split("/")
+    if len(parts) > 4 and parts[:2] == ["debug_outputs", "evolution"] and parts[3] == "hands":
+        return "/".join(["assets/urdf/29oct_evolution", parts[2], *parts[4:]])
+    return rel
+
+
 def _raw_url_for_repo_path(path: Path, raw_base: str) -> str | None:
     try:
         rel = path.resolve().relative_to(REPO_ROOT)
     except ValueError:
         return None
-    return raw_base + quote(rel.as_posix(), safe="/")
+    return raw_base + quote(_published_relpath(rel.as_posix()), safe="/")
 
 
 def _rewrite_embedded_urdf_mesh_urls(

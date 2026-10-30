@@ -1,0 +1,14 @@
+{
+ "generation": 0,
+ "grid": {
+  "n_rigid": 5,
+  "n_moving": 2,
+  "n_slots": 5
+ },
+ "hands": [
+  {
+   "id": "seed_f3_cut_j2",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f3_cut_j2/seed_f3_cut_j2.spec.json"
+  }
+ ]
+}

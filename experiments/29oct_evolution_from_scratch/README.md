@@ -35,6 +35,24 @@ a *solution* scored on a fixed task (POET's environments are challenges), so DGM
 | replacement | the fittest survivors keep the other 22 places | a challenger, after a generation of training, takes its niche if it beats the elite in the same evaluation pass (no margin) |
 | trained per generation | 30 hands | 30 elites + 16 challengers |
 
+**RL-only control** (`rl_only.sub`, strategy `static`; 29 Oct, the user's call): the same 30 seed hands, the same
+policy, the same 32 x 636 epochs, and no evolution at all -- no children, the population never changes. It runs
+through the same generation loop, so it shares the evolution runs' per-generation restarts (weights carried,
+optimizer and adaptive lr reset) and their evaluation: any gain the evolution runs show over it is evolution's.
+
+**Long single runs** (30 Oct, the user's call; `long_*.sub`, wandb group `long_runs`, logs
+`debug_outputs/train_logs/29oct_evolution_from_scratch/long_runs/`): the same 8B steps as ONE continuous run, no
+per-generation restarts, same policy and learner. Checkpoints kept at the ends of generations 0, 3, 8, 15, 24, 31
+(rl_games keeps `last_*_ep_*` only when epoch/636 is a perfect square, plus the last); matched evaluations with
+`eval_hands.py` in `debug_outputs/evolution/long_runs_eval/`.
+
+| run | hands | job |
+|---|---|---|
+| `long_rl_only.sub` | the 30 seed hands (the RL-only control without restarts) | 816867 |
+| `long_claude_pick.sub` | `seed_f6_nocut_j2`, a fresh Claude agent's blind pick from the 30 (`claude_pick/README.md`) | 816868 |
+| `long_claude_runner_up.sub` | `seed_f3_cut_j2`, that agent's second choice | 816881 |
+| `long_random_pick.sub` | `seed_f5_cut_j1`, drawn uniformly at random (`random_pick/README.md`) | 829901 |
+
 Expected (29 Oct, before results): MAP-Elites wins coverage and QD score by construction; the baseline likely leads
 on the best hand under the shared policy at 8B (it exploits, and trains fewer hands); the real co-design question --
 the winners retrained alone from scratch -- is open.
@@ -43,13 +61,17 @@ the winners retrained alone from scratch -- is open.
 
     sbatch experiments/29oct_evolution_from_scratch/baseline.sub        # job 806542 (29 Oct)
     sbatch experiments/29oct_evolution_from_scratch/map_elites.sub      # job 806543 (29 Oct)
+    sbatch experiments/29oct_evolution_from_scratch/rl_only.sub         # job 811622 (29 Oct)
     .venv_isaacsim/bin/python -m coevolution.evolution.generation status --run-dir debug_outputs/evolution/baseline
 
-- Run directories: `debug_outputs/evolution/{baseline,map_elites}/` (`archive.json`, `state.json` with the map and
+- Run directories: `debug_outputs/evolution/{baseline,map_elites,rl_only}/` (`archive.json`, `state.json` with the map and
   per-generation summaries, `gen_NNNN/` manifests, fitness, policy); training logs
   `debug_outputs/train_logs/evolution/<run>/gen_NNNN/`; job logs `debug_outputs/train_logs/29oct_evolution_from_scratch/`.
-- wandb `gen_mechanics_evolution_scratch`: one run per generation, `baseline_iter_<N>_<date>_<time>` and
-  `map_elites_iter_<N>_<date>_<time>`.
+- wandb `gen_mechanics_evolution_scratch`: one run per generation, `baseline_iter_<N>_<date>_<time>`,
+  `map_elites_iter_<N>_<date>_<time>`, `rl_only_iter_<N>_<date>_<time>`.
+- Every evolved hand goes onto master after each generation (`push_assets.py`, called by `generation.sh`;
+  plumbing on a temporary index, no checkout): `assets/urdf/29oct_evolution/<run>/<id>/` plus the generation
+  manifests, so the wandb pose viewer can fetch their meshes.
 - `dry_baseline.sub`, `dry_map_elites.sub`: 2-generation rehearsals at 3,072 envs (run 29 Oct; they found the
   zero-floor admission bug, fixed and tested).
 

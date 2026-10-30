@@ -1,0 +1,16 @@
+{
+ "generation": 0,
+ "grid": {
+  "n_rigid": 5,
+  "n_moving": 2,
+  "n_slots": 5
+ },
+ "seed": 20261030,
+ "drawn_from": "assets/urdf/29oct_niche_seed/manifest.json",
+ "hands": [
+  {
+   "id": "seed_f5_cut_j1",
+   "spec": "assets/urdf/29oct_niche_seed/seed_f5_cut_j1/seed_f5_cut_j1.spec.json"
+  }
+ ]
+}
