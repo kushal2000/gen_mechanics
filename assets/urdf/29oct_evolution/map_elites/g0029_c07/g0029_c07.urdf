@@ -1,0 +1,579 @@
+<robot name="g0029_c07">
+  <link name="palm">
+    <visual name="palm_palm1">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm_palm1.obj" />
+      </geometry>
+      <material name="palm_palm1_mat">
+        <color rgba="0.55 0.57 0.62 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm_palm1.obj" />
+      </geometry>
+    </collision>
+    <visual name="palm_mount2">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm_mount2.obj" />
+      </geometry>
+      <material name="palm_mount2_mat">
+        <color rgba="0.55 0.57 0.62 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm_mount2.obj" />
+      </geometry>
+    </collision>
+    <visual name="palm_hinge3">
+      <origin xyz="0 0.0335705081 0.0181458256" rpy="-1.57079633 0.523598776 1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+      <material name="palm_hinge3_mat">
+        <color rgba="0.15 0.15 0.17 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0335705081 0.0181458256" rpy="-1.57079633 0.523598776 1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+    </collision>
+    <visual name="palm_motor4">
+      <origin xyz="-0.007 -0.08 -0.04" rpy="1.06057524e-16 -1.04719755 1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+      <material name="palm_motor4_mat">
+        <color rgba="0.15 0.15 0.17 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.007 -0.08 -0.04" rpy="1.06057524e-16 -1.04719755 1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+    </collision>
+    <visual name="palm_motor5">
+      <origin xyz="-0.0045 -0.0725 1.37772765e-18" rpy="1.8369702e-16 -6.123234e-17 -1.12481984e-32" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+      <material name="palm_motor5_mat">
+        <color rgba="0.15 0.15 0.17 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0045 -0.0725 1.37772765e-18" rpy="1.8369702e-16 -6.123234e-17 -1.12481984e-32" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+    </collision>
+    <visual name="palm_motor6">
+      <origin xyz="-0.0045 0.0666996732 -0.0467548095" rpy="1.57079633 -0.523598776 -1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+      <material name="palm_motor6_mat">
+        <color rgba="0.15 0.15 0.17 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0045 0.0666996732 -0.0467548095" rpy="1.57079633 -0.523598776 -1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 -0.00714814614 -0.0171525592" rpy="-1.57079633 -0.168103068 -1.57079633" />
+      <mass value="0.704083995" />
+      <inertia ixx="0.000603669261" ixy="0" ixz="0" iyy="0.00171063061" iyz="0" izz="0.00224670781" />
+    </inertial>
+  </link>
+  <link name="palm0">
+    <visual name="palm0_palm1">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm0_palm1.obj" />
+      </geometry>
+      <material name="palm0_palm1_mat">
+        <color rgba="0.55 0.57 0.62 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="palm0_palm1.obj" />
+      </geometry>
+    </collision>
+    <visual name="palm0_motor2">
+      <origin xyz="0 0.00917468245 0.0516089838" rpy="-1.57079633 -1.04719755 1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+      <material name="palm0_motor2_mat">
+        <color rgba="0.15 0.15 0.17 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.00917468245 0.0516089838" rpy="-1.57079633 -1.04719755 1.57079633" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+    </collision>
+    <visual name="palm0_motor3">
+      <origin xyz="-0.0045 0.0351794919 0.0153589838" rpy="-3.14159265 6.123234e-17 3.74939946e-33" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+      <material name="palm0_motor3_mat">
+        <color rgba="0.15 0.15 0.17 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0045 0.0351794919 0.0153589838" rpy="-3.14159265 6.123234e-17 3.74939946e-33" />
+      <geometry>
+        <box size="0.029 0.034 0.02" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="-3.9364093e-19 0.0106349445 0.029171706" rpy="1.57079633 0.588509889 1.57079633" />
+      <mass value="0.235352123" />
+      <inertia ixx="7.75314663e-05" ixy="0" ixz="0" iyy="0.000207053519" iyz="0" izz="0.000261991182" />
+    </inertial>
+  </link>
+  <link name="f0_link0">
+    <visual name="f0_link0_link1">
+      <origin xyz="0.014 -0.004 0" rpy="4.06369831e-17 2.80588734e-33 -2.0827301e-33" />
+      <geometry>
+        <box size="0.052 0.041 0.029" />
+      </geometry>
+      <material name="f0_link0_link1_mat">
+        <color rgba="0.80 0.62 0.30 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.014 -0.004 0" rpy="4.06369831e-17 2.80588734e-33 -2.0827301e-33" />
+      <geometry>
+        <box size="0.052 0.041 0.029" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.014 -0.004 0" rpy="0 0 0" />
+      <mass value="0.108199" />
+      <inertia ixx="2.27398232e-05" ixy="0" ixz="0" iyy="3.19637879e-05" iyz="0" izz="3.95377179e-05" />
+    </inertial>
+  </link>
+  <link name="f0_link1">
+    <visual name="f0_link1_link1">
+      <origin xyz="0.014 0 -6.9388939e-18" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.019" />
+      </geometry>
+      <material name="f0_link1_link1_mat">
+        <color rgba="0.85 0.35 0.25 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.014 0 -6.9388939e-18" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.019" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.014 0 0" rpy="0 0 0" />
+      <mass value="0.0613676745" />
+      <inertia ixx="7.45718278e-06" ixy="0" ixz="0" iyy="1.32201625e-05" iyz="0" izz="1.32201625e-05" />
+    </inertial>
+  </link>
+  <link name="f1_link0">
+    <visual name="f1_link0_link1">
+      <origin xyz="0.03875 0 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1015 0.033 0.024" />
+      </geometry>
+      <material name="f1_link0_link1_mat">
+        <color rgba="0.80 0.62 0.30 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.03875 0 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1015 0.033 0.024" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.03875 0 0" rpy="0 0 0" />
+      <mass value="0.140679" />
+      <inertia ixx="1.95192113e-05" ixy="0" ixz="0" iyy="0.000127528444" iyz="0" izz="0.000133542472" />
+    </inertial>
+  </link>
+  <link name="f1_link1">
+    <visual name="f1_link1_link1">
+      <origin xyz="0.03875 0 3.08148791e-33" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1015 0.033 0.024" />
+      </geometry>
+      <material name="f1_link1_link1_mat">
+        <color rgba="0.80 0.62 0.30 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.03875 0 3.08148791e-33" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1015 0.033 0.024" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.03875 0 0" rpy="0 0 0" />
+      <mass value="0.140679" />
+      <inertia ixx="1.95192113e-05" ixy="0" ixz="0" iyy="0.000127528444" iyz="0" izz="0.000133542472" />
+    </inertial>
+  </link>
+  <link name="f1_link2">
+    <visual name="f1_link2_link1">
+      <origin xyz="0.009 0 0" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.009" />
+      </geometry>
+      <material name="f1_link2_link1_mat">
+        <color rgba="0.85 0.35 0.25 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.009 0 0" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.009" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.009 0 0" rpy="0 0 0" />
+      <mass value="0.046399949" />
+      <inertia ixx="5.41970115e-06" ixy="0" ixz="0" iyy="7.09430898e-06" iyz="0" izz="7.09430898e-06" />
+    </inertial>
+  </link>
+  <link name="f2_link0">
+    <visual name="f2_link0_link1">
+      <origin xyz="-0.00625 0 -0.0165" rpy="0 4.06369831e-17 0" />
+      <geometry>
+        <box size="0.0365 0.029 0.053" />
+      </geometry>
+      <material name="f2_link0_link1_mat">
+        <color rgba="0.80 0.62 0.30 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.00625 0 -0.0165" rpy="0 4.06369831e-17 0" />
+      <geometry>
+        <box size="0.0365 0.029 0.053" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="-0.00625 0 -0.0165" rpy="0 0 0" />
+      <mass value="0.098175875" />
+      <inertia ixx="2.98618286e-05" ixy="0" ixz="0" iyy="3.38809035e-05" iyz="0" izz="1.778006e-05" />
+    </inertial>
+  </link>
+  <link name="f2_link1">
+    <visual name="f2_link1_link1">
+      <origin xyz="0.03375 0 6.9388939e-18" rpy="0 4.06369831e-17 0" />
+      <geometry>
+        <box size="0.0915 0.033 0.029" />
+      </geometry>
+      <material name="f2_link1_link1_mat">
+        <color rgba="0.80 0.62 0.30 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.03375 0 6.9388939e-18" rpy="0 4.06369831e-17 0" />
+      <geometry>
+        <box size="0.0915 0.033 0.029" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.03375 0 0" rpy="0 0 0" />
+      <mass value="0.153239625" />
+      <inertia ixx="2.46460397e-05" ixy="0" ixz="0" iyy="0.000117652915" iyz="0" izz="0.000120819867" />
+    </inertial>
+  </link>
+  <link name="f2_link2">
+    <visual name="f2_link2_link1">
+      <origin xyz="0.03375 0 -1.38777878e-17" rpy="0 4.06369831e-17 0" />
+      <geometry>
+        <box size="0.0915 0.024 0.033" />
+      </geometry>
+      <material name="f2_link2_link1_mat">
+        <color rgba="0.80 0.62 0.30 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.03375 0 -1.38777878e-17" rpy="0 4.06369831e-17 0" />
+      <geometry>
+        <box size="0.0915 0.024 0.033" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.03375 0 0" rpy="0 0 0" />
+      <mass value="0.126819" />
+      <inertia ixx="1.75961363e-05" ixy="0" ixz="0" iyy="9.99888553e-05" iyz="0" izz="9.45673431e-05" />
+    </inertial>
+  </link>
+  <link name="f2_link3">
+    <visual name="f2_link3_link1">
+      <origin xyz="0.029 0 1.04083409e-17" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+      <material name="f2_link3_link1_mat">
+        <color rgba="0.85 0.35 0.25 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.029 0 1.04083409e-17" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.029 0 0" rpy="0 0 0" />
+      <mass value="0.106270851" />
+      <inertia ixx="1.35696277e-05" ixy="0" ixz="0" iyy="5.30015704e-05" iyz="0" izz="5.30015704e-05" />
+    </inertial>
+  </link>
+  <link name="f3_link0">
+    <visual name="f3_link0_link1">
+      <origin xyz="0.03375 0 0" rpy="0 7.03853194e-17 0" />
+      <geometry>
+        <box size="0.0915 0.024 0.033" />
+      </geometry>
+      <material name="f3_link0_link1_mat">
+        <color rgba="0.80 0.62 0.30 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.03375 0 0" rpy="0 7.03853194e-17 0" />
+      <geometry>
+        <box size="0.0915 0.024 0.033" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.03375 0 0" rpy="0 0 0" />
+      <mass value="0.126819" />
+      <inertia ixx="1.75961363e-05" ixy="0" ixz="0" iyy="9.99888553e-05" iyz="0" izz="9.45673431e-05" />
+    </inertial>
+  </link>
+  <link name="f3_link1">
+    <visual name="f3_link1_link1">
+      <origin xyz="0.029 0 -6.9388939e-18" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+      <material name="f3_link1_link1_mat">
+        <color rgba="0.85 0.35 0.25 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.029 0 -6.9388939e-18" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.029 0 0" rpy="0 0 0" />
+      <mass value="0.106270851" />
+      <inertia ixx="1.35696277e-05" ixy="0" ixz="0" iyy="5.30015704e-05" iyz="0" izz="5.30015704e-05" />
+    </inertial>
+  </link>
+  <link name="f4_link0">
+    <visual name="f4_link0_link1">
+      <origin xyz="0.02625 -0.004 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0765 0.041 0.024" />
+      </geometry>
+      <material name="f4_link0_link1_mat">
+        <color rgba="0.80 0.62 0.30 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.02625 -0.004 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0765 0.041 0.024" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.02625 -0.004 0" rpy="0 0 0" />
+      <mass value="0.131733" />
+      <inertia ixx="2.47767818e-05" ixy="0" ixz="0" iyy="7.05677214e-05" iyz="0" izz="8.26981352e-05" />
+    </inertial>
+  </link>
+  <link name="f4_link1">
+    <visual name="f4_link1_link1">
+      <origin xyz="0.0315 0 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.096 0.029 0.024" />
+      </geometry>
+      <material name="f4_link1_link1_mat">
+        <color rgba="0.80 0.62 0.30 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0315 0 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.096 0.029 0.024" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.0315 0 0" rpy="0 0 0" />
+      <mass value="0.116928" />
+      <inertia ixx="1.3807248e-05" ixy="0" ixz="0" iyy="9.5413248e-05" iyz="0" izz="9.7995408e-05" />
+    </inertial>
+  </link>
+  <link name="f4_link2">
+    <visual name="f4_link2_link1">
+      <origin xyz="0.029 0 0" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+      <material name="f4_link2_link1_mat">
+        <color rgba="0.85 0.35 0.25 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.029 0 0" rpy="-1.57079633 -0 -1.57079633" />
+      <geometry>
+        <cylinder radius="0.0165" length="0.049" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.029 0 0" rpy="0 0 0" />
+      <mass value="0.106270851" />
+      <inertia ixx="1.35696277e-05" ixy="0" ixz="0" iyy="5.30015704e-05" iyz="0" izz="5.30015704e-05" />
+    </inertial>
+  </link>
+  <joint name="palm0_joint" type="revolute">
+    <parent link="palm" />
+    <child link="palm0" />
+    <origin xyz="0 0.0373205081 0.0246410162" rpy="0 0 0" />
+    <axis xyz="0 0.866025404 -0.5" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f0_j0" type="revolute">
+    <parent link="palm" />
+    <child link="f0_link0" />
+    <origin xyz="0.0005 -0.08 -0.04" rpy="1.04719755 5.30287619e-17 -3.061617e-17" />
+    <axis xyz="0 1 6.123234e-17" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f0_j1" type="revolute">
+    <parent link="f0_link0" />
+    <child link="f0_link1" />
+    <origin xyz="0.03 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit effort="0.5" lower="-0.523598776" upper="1.57079633" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f1_j0" type="revolute">
+    <parent link="palm" />
+    <child link="f1_link0" />
+    <origin xyz="-0.0045 -0.08 0" rpy="0 1.8369702e-16 -1.57079633" />
+    <axis xyz="-0 -1 -6.123234e-17" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f1_j1" type="revolute">
+    <parent link="f1_link0" />
+    <child link="f1_link1" />
+    <origin xyz="0.08 0 0" rpy="0 0 0" />
+    <axis xyz="-0 -1 -6.123234e-17" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f1_j2" type="revolute">
+    <parent link="f1_link1" />
+    <child link="f1_link2" />
+    <origin xyz="0.08 0 0" rpy="0 0 0" />
+    <axis xyz="-0 -1 -6.123234e-17" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f2_j0" type="revolute">
+    <parent link="palm" />
+    <child link="f2_link0" />
+    <origin xyz="-0.0045 0.04 -0.04" rpy="0 1.04719755 -1.57079633" />
+    <axis xyz="0 0 1" />
+    <limit effort="0.5" lower="-0.523598776" upper="1.57079633" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f2_j1" type="revolute">
+    <parent link="f2_link0" />
+    <child link="f2_link1" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <axis xyz="0 1 6.123234e-17" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f2_j2" type="revolute">
+    <parent link="f2_link1" />
+    <child link="f2_link2" />
+    <origin xyz="0.07 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit effort="0.5" lower="-0.523598776" upper="1.57079633" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f2_j3" type="revolute">
+    <parent link="f2_link2" />
+    <child link="f2_link3" />
+    <origin xyz="0.07 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit effort="0.5" lower="-0.523598776" upper="1.57079633" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f3_j0" type="revolute">
+    <parent link="palm0" />
+    <child link="f3_link0" />
+    <origin xyz="0 0.00267949192 0.0553589838" rpy="-0 -0.523598776 -1.57079633" />
+    <axis xyz="0 0 1" />
+    <limit effort="0.5" lower="-0.523598776" upper="1.57079633" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f3_j1" type="revolute">
+    <parent link="f3_link0" />
+    <child link="f3_link1" />
+    <origin xyz="0.07 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit effort="0.5" lower="-0.523598776" upper="1.57079633" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f4_j0" type="revolute">
+    <parent link="palm0" />
+    <child link="f4_link0" />
+    <origin xyz="-0.0045 0.0426794919 0.0153589838" rpy="-3.14159265 -6.123234e-17 1.57079633" />
+    <axis xyz="0 1 6.123234e-17" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f4_j1" type="revolute">
+    <parent link="f4_link0" />
+    <child link="f4_link1" />
+    <origin xyz="0.05 0 0" rpy="0 0 0" />
+    <axis xyz="1 0 6.123234e-17" />
+    <limit effort="0.5" lower="-1.57079633" upper="1.57079633" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+  <joint name="f4_j2" type="revolute">
+    <parent link="f4_link1" />
+    <child link="f4_link2" />
+    <origin xyz="0.07 0 0" rpy="0 0 0" />
+    <axis xyz="0 1 6.123234e-17" />
+    <limit effort="0.5" lower="-0.523598776" upper="0.523598776" velocity="5" />
+    <dynamics damping="0.0775033" friction="0" />
+  </joint>
+</robot>
