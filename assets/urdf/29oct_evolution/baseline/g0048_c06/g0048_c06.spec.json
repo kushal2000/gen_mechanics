@@ -1,0 +1,306 @@
+{
+ "hand": "g0048_c06",
+ "side": "left",
+ "urdf": "debug_outputs/evolution/baseline/hands/g0048_c06/g0048_c06.urdf",
+ "palm_body": "palm",
+ "hand_joint_names": [
+  "f0_j0",
+  "f0_j1",
+  "f1_j0",
+  "f1_j1",
+  "f2_j0",
+  "f2_j1",
+  "f2_j2",
+  "f2_j3",
+  "f3_j0",
+  "f3_j1"
+ ],
+ "joint_limits": {
+  "f0_j0": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f0_j1": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f1_j0": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "f1_j1": [
+   -1.5707963267948966,
+   1.5707963267948966
+  ],
+  "f2_j0": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f2_j1": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "f2_j2": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f2_j3": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f3_j0": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "f3_j1": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ]
+ },
+ "hand_default_joint_pos": {
+  "f0_j0": 0.0,
+  "f0_j1": 0.0,
+  "f1_j0": 0.0,
+  "f1_j1": 0.0,
+  "f2_j0": 0.0,
+  "f2_j1": 0.0,
+  "f2_j2": 0.0,
+  "f2_j3": 0.0,
+  "f3_j0": 0.0,
+  "f3_j1": 0.0
+ },
+ "fingertip_body_names": [
+  "f0_link1",
+  "f1_link1",
+  "f2_link3",
+  "f3_link1"
+ ],
+ "fingertip_offsets": [
+  [
+   0.08,
+   0.0,
+   0.0
+  ],
+  [
+   0.05,
+   0.0,
+   0.0
+  ],
+  [
+   0.03,
+   0.0,
+   0.0
+  ],
+  [
+   0.07,
+   0.0,
+   0.0
+  ]
+ ],
+ "palm_frame": [
+  [
+   1.0,
+   0.0,
+   0.0
+  ],
+  [
+   0.0,
+   1.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_centre_in_palm_body": [
+  0.0,
+  -0.0005054538184999999,
+  0.014290063509
+ ],
+ "palm_extents_ours": [
+  0.024,
+  0.18198909236299998,
+  0.171498711306
+ ],
+ "palm_centre_ours": [
+  0.0,
+  -0.0005054538184999999,
+  0.014290063509
+ ],
+ "adjacent_links": {
+  "palm": [
+   "f0_link0",
+   "f1_link0",
+   "f2_link0",
+   "f2_link1",
+   "f3_link0"
+  ],
+  "f0_link0": [
+   "f0_link1",
+   "palm"
+  ],
+  "f0_link1": [
+   "f0_link0"
+  ],
+  "f1_link0": [
+   "f1_link1",
+   "palm"
+  ],
+  "f1_link1": [
+   "f1_link0"
+  ],
+  "f2_link0": [
+   "f2_link1",
+   "palm"
+  ],
+  "f2_link1": [
+   "f2_link0",
+   "f2_link2",
+   "palm"
+  ],
+  "f2_link2": [
+   "f2_link1",
+   "f2_link3"
+  ],
+  "f2_link3": [
+   "f2_link2"
+  ],
+  "f3_link0": [
+   "f3_link1",
+   "palm"
+  ],
+  "f3_link1": [
+   "f3_link0"
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.0775033248319064,
+ "armature": 0.00058,
+ "effort_limit": 0.5,
+ "velocity_limit": 5.0,
+ "link_density_kg_m3": 1750.0,
+ "friction": 0.5,
+ "replace_cylinders_with_capsules": true,
+ "rules": "FEETECH_COARSE_RULES",
+ "design": {
+  "grammar": "hand_grammar/2.0",
+  "fingers": [
+   {
+    "y": -80,
+    "z": 0,
+    "facing": 270,
+    "tilt": 0,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 30
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 80
+     }
+    ]
+   },
+   {
+    "y": -40,
+    "z": -40,
+    "facing": 240,
+    "tilt": 90,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 30
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       90
+      ],
+      "length": 50
+     }
+    ]
+   },
+   {
+    "y": 40,
+    "z": -40,
+    "facing": 210,
+    "tilt": 0,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 0
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       90,
+       0
+      ],
+      "length": 70
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 70
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 30
+     }
+    ]
+   },
+   {
+    "y": 40,
+    "z": 80,
+    "facing": 300,
+    "tilt": 0,
+    "joints": [
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 70
+     },
+     {
+      "type": "hinge",
+      "axis": [
+       0,
+       0
+      ],
+      "length": 70
+     }
+    ]
+   }
+  ],
+  "palm_joints": []
+ }
+}
