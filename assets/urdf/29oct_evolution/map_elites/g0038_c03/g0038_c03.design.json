@@ -1,0 +1,118 @@
+{
+ "grammar": "hand_grammar/2.0",
+ "fingers": [
+  {
+   "y": -80,
+   "z": -40,
+   "facing": 240,
+   "tilt": 0,
+   "joints": [
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 30
+    },
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 80
+    }
+   ]
+  },
+  {
+   "y": -80,
+   "z": 40,
+   "facing": 300,
+   "tilt": 0,
+   "joints": [
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 70
+    },
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 50
+    },
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 50
+    },
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 30
+    }
+   ]
+  },
+  {
+   "y": 80,
+   "z": 0,
+   "facing": 90,
+   "tilt": 0,
+   "joints": [
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 70
+    },
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 30
+    },
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 40
+    },
+    {
+     "type": "hinge",
+     "axis": [
+      0,
+      0
+     ],
+     "length": 0
+    },
+    {
+     "type": "hinge",
+     "axis": [
+      90,
+      0
+     ],
+     "length": 50
+    }
+   ]
+  }
+ ],
+ "palm_joints": []
+}
