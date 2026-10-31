@@ -16,7 +16,8 @@ a *solution* scored on a fixed task (POET's environments are challenges), so DGM
   14 Oct learner (minibatch 16,384, 2 mini-epochs, lr 1e-4); one template scene of the population (`multi:template:`,
   slot grid pinned at 5 rigid + 2 moving fingers so the network keeps one shape); pen repose v2, finger_target home,
   action delay off, the pre-27-Oct tokens; 24,576 envs.
-- **Budget:** 32 generations x 636 epochs (250M steps) = 8B steps per run, one SLURM job per generation
+- **Budget:** (extended 30 Oct, the user's call: baseline and MAP-Elites continue to 64 generations = 16B steps,
+  `MAX_GEN=64`, resumed from generation 32) 32 generations x 636 epochs (250M steps) = 8B steps per run, one SLURM job per generation
   (`generation.sh`; each job submits the next). Generation 0 trains from scratch; each later one from the last.
 - **Fitness** (`coevolution/eval/eval_hands.py`): after a generation's training, each hand gets 10 parallel envs,
   each scored on its FIRST episode (sampled actions); fitness = mean goals per episode, + 0.1 x reward per step as a
@@ -39,6 +40,8 @@ a *solution* scored on a fixed task (POET's environments are challenges), so DGM
 policy, the same 32 x 636 epochs, and no evolution at all -- no children, the population never changes. It runs
 through the same generation loop, so it shares the evolution runs' per-generation restarts (weights carried,
 optimizer and adaptive lr reset) and their evaluation: any gain the evolution runs show over it is evolution's.
+Stopped after iteration 27 (30 Oct, the user's call: job 848227 cancelled 2 min into iteration 28; iterations
+0-27 are complete): the long single run of the same 30 hands (`long_rl_only.sub`) is the RL-only control from here.
 
 **Long single runs** (30 Oct, the user's call; `long_*.sub`, wandb group `long_runs`, logs
 `debug_outputs/train_logs/29oct_evolution_from_scratch/long_runs/`): the same 8B steps as ONE continuous run, no

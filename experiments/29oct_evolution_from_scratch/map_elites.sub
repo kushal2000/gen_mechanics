@@ -19,7 +19,8 @@ export SUB_PATH="$PWD/$E/map_elites.sub"
 export EVO_RUN=debug_outputs/evolution/map_elites EVO_CONFIG=$E/configs/map_elites.json
 export SEED_MANIFEST=assets/urdf/29oct_niche_seed/manifest.json
 export WANDB_PREFIX=map_elites
-export MAX_GEN=32 EPOCHS_PER_GEN=636 EVAL_ENVS_PER_HAND=10
+# 30 Oct (the user's call): extended from 32 to 64 iterations (16B steps), resumed from iteration 32
+export MAX_GEN=64 EPOCHS_PER_GEN=636 EVAL_ENVS_PER_HAND=10
 # the trainer: pen repose v2 as the 29 Oct runs, the per-finger 2-layer transformer, from scratch at generation 0
 export TASKS=pen_repose PEN_SHAPE=box ARCH=transformer NUM_ENVS=24576 SEED=100 GAMMA=0.99 FINGER_RESET=1.0 \
     KEYPOINT=best_so_far WANDB=1 WANDB_PROJECT=gen_mechanics_evolution_scratch VIEWER_INTERVAL=1000000

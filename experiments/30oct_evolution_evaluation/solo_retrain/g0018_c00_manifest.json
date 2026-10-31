@@ -1,0 +1,14 @@
+{
+ "generation": 0,
+ "grid": {
+  "n_rigid": 5,
+  "n_moving": 2,
+  "n_slots": 5
+ },
+ "hands": [
+  {
+   "id": "g0018_c00",
+   "spec": "debug_outputs/evolution/map_elites/hands/g0018_c00/g0018_c00.spec.json"
+  }
+ ]
+}
