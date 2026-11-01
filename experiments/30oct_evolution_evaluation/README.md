@@ -72,9 +72,22 @@ iteration 30) and the Claude designer's runner-up (`seed_f3_cut_j2`) each traine
 6,360 epochs, the same policy and learner as every run. Under either run's shared policy the two evolved bests are not
 comparable (each policy scores the other run's best near 0). Compare epochs to 1 goal/episode and a final evaluation.
 
+**Result (31 Oct; `eval_solo.sh`: `eval_hands_cap.py`, the episode cap raised from 50 to 200, 20 envs per seed):**
+
+| trained alone, 6,360 epochs | seed 100 | 101 | 102 | mean | episodes at 200 | dropped |
+|---|---|---|---|---|---|---|
+| Claude's runner-up `seed_f3_cut_j2` | 136.7 | 121.2 | 129.2 | **129.0** | 53% | 43% |
+| MAP-Elites' best `g0018_c00` | 90.8 | 135.0 | 120.0 | **115.2** | 43% | 50% |
+| greedy's best `g0029_c02` | 72.1 | 86.4 | 74.0 | **77.5** | 13% | 80% |
+
+Claude's blind pick and MAP-Elites' best are not separable with 3 seeds; both beat greedy evolution's best on every seed
+(+50-65%), the reverse of the evolution runs' own scores (greedy's best looked 2x MAP-Elites' under its shared policy).
+Training curves agree: goals/ep at epoch 1,600, mean of seeds, 32.3 / 26.9 / 14.0; all three reach 1 goal/episode at
+~435-475 epochs. References, the single-hand long runs at 8B steps, same evaluation: runner-up 132.7, Claude's pick
+86.5, the random hand 14.2.
+
 ## To do
 
-- Evaluate the solo runs with the 50-goal cap raised (every single hand reaches it).
 - At the end of the runs: re-evaluate every niche's best hand under each run's final policy (the archive QD keeps stale
   scores for hands no longer trained).
 - Matched long-run evaluations at epochs 15900 and 20352.
