@@ -144,7 +144,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             if self.zero_rnn_on_done:
                 batch_dict['dones'] = input_dict['dones']            
 
-        with torch.cuda.amp.autocast(enabled=self.mixed_precision):
+        with torch.cuda.amp.autocast(enabled=self.mixed_precision, dtype=self.amp_dtype):
             res_dict = self.model(batch_dict)
             action_log_probs = res_dict['prev_neglogp']
             values = res_dict['values']
@@ -291,7 +291,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             sub = {k: input_dict[k][lo:hi] for k in keys}
             obs_batch = self._preproc_obs(sub['obs'])
             w = (hi - lo) / n
-            with torch.cuda.amp.autocast(enabled=self.mixed_precision):
+            with torch.cuda.amp.autocast(enabled=self.mixed_precision, dtype=self.amp_dtype):
                 res_dict = self.model({'is_train': True, 'prev_actions': sub['actions'], 'obs': obs_batch})
                 action_log_probs, values = res_dict['prev_neglogp'], res_dict['values']
                 entropy, mu, sigma = res_dict['entropy'], res_dict['mus'], res_dict['sigmas']

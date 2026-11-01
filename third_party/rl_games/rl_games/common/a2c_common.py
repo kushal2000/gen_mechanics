@@ -257,7 +257,19 @@ class A2CBase(BaseAlgorithm):
         self.mini_epochs_num = self.config['mini_epochs']
 
         self.mixed_precision = self.config.get('mixed_precision', False)
-        self.scaler = torch.cuda.amp.GradScaler(enabled=self.mixed_precision and self.ppo_device != 'cpu')
+        # amp_dtype (gen_mechanics, 31 Oct): the autocast dtype of the update and of rollout_autocast. 'float16' (the
+        # default) uses the GradScaler; 'bfloat16' has float32's exponent range, so it needs no loss scaling.
+        self.amp_dtype = {'float16': torch.float16, 'bfloat16': torch.bfloat16}[str(self.config.get('amp_dtype', 'float16'))]
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.mixed_precision and self.ppo_device != 'cpu'
+                                                and self.amp_dtype == torch.float16)
+        # min_loss_scale (gen_mechanics, 31 Oct): a floor under the GradScaler's scale (DeepSpeed / Megatron default 1).
+        # Without one, frequent fp16 overflows halve the scale for good: gradients underflow to 0 (a silent stall,
+        # which the adaptive lr answers by climbing to its ceiling), and at 2**-128 the unscale factor 1/scale is inf
+        # in float32, so NaN passes the scaler's found_inf check and Adam writes NaN into every weight (the 31 Oct
+        # crashes; experiments/30oct_evolution_evaluation/nan_debug/). Skips and floor hits are logged per epoch.
+        self.min_loss_scale = float(self.config.get('min_loss_scale', 1.0))
+        self._amp_skips = self._amp_floor_hits = None
+        self._amp_steps = 0
         # rollout_autocast (gen_mechanics, 29 Oct): run the policy's rollout forwards (get_action_values, get_values)
         # under the same fp16 autocast the update uses. Off, every rollout forward is fp32 -- 2x the time for a
         # bandwidth-bound network (the joint transformer: 102 vs 47 ms per step at 24,576 envs).
@@ -393,10 +405,19 @@ class A2CBase(BaseAlgorithm):
             self.scaler.unscale_(self.optimizer)
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
 
+        scale = getattr(self.scaler, '_scale', None) if self.scaler.is_enabled() else None
+        before = scale.clone() if scale is not None else None
         self.scaler.step(self.optimizer)
         self.scaler.update()
+        if before is not None:                    # on the device, no host sync: skips, then the floor
+            scale = self.scaler._scale
+            skipped = (scale < before).float()
+            low = (scale < self.min_loss_scale).float()
+            self._amp_skips = skipped if self._amp_skips is None else self._amp_skips + skipped
+            self._amp_floor_hits = low if self._amp_floor_hits is None else self._amp_floor_hits + low
+            scale.clamp_(min=self.min_loss_scale)
+            self._amp_steps += 1
 
-        
         return all_grads
 
     def load_networks(self, params):
@@ -429,6 +450,16 @@ class A2CBase(BaseAlgorithm):
         self.writer.add_scalar('info/lr_mul', lr_mul, frame)
         self.writer.add_scalar('info/e_clip', self.e_clip * lr_mul, frame)
         self.writer.add_scalar('info/kl', torch_ext.mean_list(kls).item(), frame)
+        if self.scaler.is_enabled() and getattr(self.scaler, '_scale', None) is not None and self._amp_steps:
+            skips, hits = float(self._amp_skips), float(self._amp_floor_hits)
+            self.writer.add_scalar('info/loss_scale', float(self.scaler._scale), frame)
+            self.writer.add_scalar('info/amp_skip_frac', skips / self._amp_steps, frame)
+            self.writer.add_scalar('info/amp_floor_hits', hits, frame)
+            if hits:
+                print(f"[rl_games] WARNING: the fp16 loss scale hit its floor {self.min_loss_scale:g} {hits:.0f} times "
+                      f"this epoch ({skips:.0f}/{self._amp_steps} steps skipped): gradients overflow persistently", flush=True)
+            self._amp_skips = self._amp_floor_hits = None
+            self._amp_steps = 0
         self.writer.add_scalar('info/epochs', epoch_num, frame)
         print(f"\nPolicy {self.policy_idx}:", end=' ')
         self.algo_observer.after_print_stats(frame, epoch_num, total_time)
@@ -465,7 +496,7 @@ class A2CBase(BaseAlgorithm):
             'rnn_states' : rnn_states
         }
 
-        with torch.no_grad(), torch.amp.autocast("cuda", enabled=self.rollout_autocast):
+        with torch.no_grad(), torch.amp.autocast("cuda", enabled=self.rollout_autocast, dtype=self.amp_dtype):
             res_dict = self.model(input_dict)
             if self.has_central_value:
                 states = obs['states']
@@ -478,7 +509,7 @@ class A2CBase(BaseAlgorithm):
         return res_dict
 
     def get_values(self, obs, rnn_states):
-        with torch.no_grad(), torch.amp.autocast("cuda", enabled=self.rollout_autocast):
+        with torch.no_grad(), torch.amp.autocast("cuda", enabled=self.rollout_autocast, dtype=self.amp_dtype):
             if self.has_central_value:
                 states = obs['states']
                 self.central_value_net.eval()

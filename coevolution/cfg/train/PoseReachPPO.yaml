@@ -79,6 +79,9 @@ params:
     tau: 0.95
     learning_rate: 1e-4
     lr_schedule: adaptive
+    # ceiling of the adaptive lr (rl_games hard-codes 1e-2, which ran away to NaN in long runs, 31 Oct);
+    # applied by coevolution/utils/rlgames_utils.SchedulerBoundsObserver
+    max_lr: 1e-3
     schedule_type: standard
     kl_threshold: 0.016
     score_to_win: 1000000

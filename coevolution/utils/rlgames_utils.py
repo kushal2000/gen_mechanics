@@ -294,8 +294,9 @@ class SchedulerBoundsObserver(AlgoObserver):
     """Optional ``max_lr`` / ``min_lr`` for rl_games' adaptive lr schedule.
 
     ``AdaptiveScheduler`` hard-codes its bounds (1e-6, 1e-2) with no config key. Set
-    ``agent.params.config.max_lr`` (hydra: ``++agent.params.config.max_lr=1e-3``) to cap it.
-    Absent keys leave rl_games untouched.
+    ``agent.params.config.max_lr`` (hydra: ``++agent.params.config.max_lr=1e-3``) to cap it; every
+    coevolution/cfg/train/*.yaml sets ``max_lr: 1e-3`` since 31 Oct. Absent keys leave rl_games untouched,
+    and a scheduler without bounds (a constant lr, ``lr_schedule`` neither adaptive nor linear) ignores them.
     """
 
     def after_init(self, algo):
@@ -304,8 +305,9 @@ class SchedulerBoundsObserver(AlgoObserver):
         for key in ("max_lr", "min_lr"):
             if key in cfg and cfg[key] is not None:
                 if not hasattr(sched, key):
-                    raise ValueError(f"{key} set but the lr scheduler "
-                                     f"({type(sched).__name__}) has no {key}")
+                    print(f"[rl_games] {key} ignored: the lr scheduler ({type(sched).__name__}) has no bounds",
+                          flush=True)
+                    continue
                 setattr(sched, key, float(cfg[key]))
                 print(f"[rl_games] adaptive lr {key} = {float(cfg[key]):g}", flush=True)
 
