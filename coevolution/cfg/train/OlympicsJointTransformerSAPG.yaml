@@ -32,6 +32,10 @@ params:
     max_log_std: 2.0
     # and floored at -5 (std 0.007): below ~-4.9, ((a - mu) / sigma)^2 overflows fp16 for actions in [-1, 1] (31 Oct).
     min_log_std: -5.0
+    # One learned log-std for every action dimension (per SAPG block) since 1 Nov (the user's call): a padded slot is a
+    # different joint on each design. Solo, SAPG: shared 100 / 97 / 103 vs per-slot 89 / 122 / 90 (cap-200 eval);
+    # experiments/30oct_evolution_evaluation/shared_log_std/. Checkpoints with per-slot noise need shared_log_std: false.
+    shared_log_std: true
     # The network is handed only a flat width by rl_games, so it reads the
     # robot and the field list across the config tree — four dots to the root,
     # exactly as params.config.num_actors does. Hydra resolves these before
