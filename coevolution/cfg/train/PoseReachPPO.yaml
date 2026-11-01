@@ -77,8 +77,8 @@ params:
     num_actors: ${....env.scene.num_envs}
     gamma: 0.99
     tau: 0.95
-    learning_rate: 1e-4
-    lr_schedule: adaptive
+    learning_rate: 3e-4   # fixed 3e-4 since 31 Oct (the user's call): matched the adaptive schedule in experiments/30oct_evolution_evaluation/lr_schedule_test/
+    lr_schedule: constant
     # ceiling of the adaptive lr (rl_games hard-codes 1e-2, which ran away to NaN in long runs, 31 Oct);
     # applied by coevolution/utils/rlgames_utils.SchedulerBoundsObserver
     max_lr: 1e-3

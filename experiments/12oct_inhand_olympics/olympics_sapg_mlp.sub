@@ -35,7 +35,9 @@ case "$ARCH" in
     transformer) AGENT=rl_games_joint_transformer_cfg_entry_point ;;
     *) echo "ARCH must be mlp, lstm or transformer, got $ARCH"; exit 1 ;;
 esac
-LEARNER=(agent.params.config.learning_rate=0.0005 agent.params.config.mini_epochs=5
+# 31 Oct (the user's call): every arch trains at a fixed lr of 3e-4 (the yaml's lr_schedule: constant; this script no
+# longer forces adaptive). Before: adaptive from 5e-4 (MLP) / 1e-4 (transformer). The MLP at 3e-4 fixed is untested.
+LEARNER=(agent.params.config.learning_rate=3e-4 agent.params.config.mini_epochs=5
          "agent.params.config.minibatch_size=$MINIBATCH")
 [[ "$ARCH" == transformer ]] && LEARNER=()
 KEYPOINT="${KEYPOINT:-best_so_far}"     # env.reward.keypoint_reward: best_so_far | absolute
@@ -85,7 +87,7 @@ exec .venv_isaacsim/bin/python -u coevolution/train.py \
     agent.params.config.central_value_config=null \
     agent.params.network.separate=false \
     "agent.params.config.gamma=$GAMMA" \
-    agent.params.config.lr_schedule=adaptive agent.params.config.horizon_length=16 \
+    agent.params.config.horizon_length=16 \
     ${LEARNER[@]+"${LEARNER[@]}"} \
     "agent.params.config.expl_coef_block_size=$((NUM_ENVS / 6))" \
     "agent.params.config.max_epochs=$EPOCHS" \
