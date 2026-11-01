@@ -490,15 +490,35 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         self.sigma_act = self.activations_factory.create(
             self.space_config.get("sigma_activation", "None")
         )
+        # ``shared_log_std``: one learned log-std for every action dimension (per SAPG block) instead of one per
+        # padded action slot. A slot is a template position, a different physical joint on each design of a
+        # population, so a per-slot noise level means nothing shared across hands, and a slot only a few designs
+        # have is trained by those few alone (31 Oct: such slots ran away to log-std 9.6). Off by default;
+        # checkpoints of the two kinds do not load into each other.
+        self.shared_log_std = bool(params.get("shared_log_std", False))
+        # ``predict_log_std``: each joint's log-std read off its own token, like its mean (finger tokens -> their
+        # slots' log-stds, the arm head's input -> the arm's and the palm-cut joint's), plus one learned offset
+        # per SAPG block, so blocks still explore at different levels. Linear read-outs, zero-initialised: the
+        # noise starts at log-std 0 everywhere, as the other variants do. Off by default; finger mode only.
+        self.predict_log_std = bool(params.get("predict_log_std", False))
+        if self.predict_log_std:
+            if not finger or self.shared_log_std:
+                raise ValueError("predict_log_std needs token_mode=finger and shared_log_std off")
+            self.log_std_decoder = nn.Linear(d_model, self.n_slots)
+            self.log_std_arm = nn.Linear(d_model + self.global_raw_dim, n_arm + 1)
+            for m in (self.log_std_decoder, self.log_std_arm):
+                nn.init.zeros_(m.weight)
+                nn.init.zeros_(m.bias)
+        n_sigma = 1 if self.shared_log_std or self.predict_log_std else actions_num
         if self.fixed_sigma == "fixed":
             self.sigma = nn.Parameter(
-                torch.zeros(actions_num, dtype=torch.float32), requires_grad=True
+                torch.zeros(n_sigma, dtype=torch.float32), requires_grad=True
             )
         elif self.fixed_sigma == "coef_cond":
             self.sigma_ids = kwargs["coef_ids"]
             self.sigma_id_idx = kwargs["coef_id_idx"]
             self.sigma = nn.Parameter(
-                torch.zeros(len(self.sigma_ids), actions_num, dtype=torch.float32),
+                torch.zeros(len(self.sigma_ids), n_sigma, dtype=torch.float32),
                 requires_grad=True,
             )
         else:
@@ -602,6 +622,19 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # (wrist_max_speed_ang 0: their actions are no-ops). Set in the olympics transformer YAML.
         self.mask_ghost_actions = bool(params.get("mask_ghost_actions", True))
         self.masked_arm_dims = [int(i) for i in (params.get("masked_arm_dims", None) or [])]
+        # ``max_log_std``: an upper bound on the learned action log-std (None = unbounded, the default). Actions
+        # are clipped to [-1, 1], so once a dimension's noise saturates it more noise changes nothing, PPO stops
+        # pushing back, and SAPG's entropy bonus inflates it without limit: on a population sharing one policy
+        # (RL-only, MAP-Elites, 31 Oct) rarely used joint slots reached log-std 9.6, where the variance
+        # overflows fp16 and the loss goes NaN. SAC's implementations clamp at 2 (std 7.4, still saturated).
+        mls = params.get("max_log_std", None)
+        self.max_log_std = None if mls is None else float(mls)
+        # ``min_log_std``: the matching lower bound (None = off). As the std shrinks, ((a - mu) / sigma)^2 overflows
+        # fp16 (65504) once |a - mu| / sigma > 256, i.e. sigma < 2/256 for actions in [-1, 1]: log-std ~ -4.9; sigma^2
+        # underflows below ~ -8.3. -5 (std 0.007, 0.3% of the range) is the default (31 Oct, the user's call); SAC's and
+        # PufferLib's -20 only protects fp32.
+        mins = params.get("min_log_std", None)
+        self.min_log_std = None if mins is None else float(mins)
         # The final LayerNorm over the residual stream. Meaningful once there
         # are blocks to stabilize; with n_layers 0 there is no residual stream
         # and it only normalizes a bare Linear whose scale the next Linear can
@@ -879,8 +912,13 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
 
     def forward(self, obs_dict):
         if self.packed_tokens and self.compile_net:
-            return self._forward_packed(obs_dict, self._pack_capacity(obs_dict["obs"]))
-        return self._forward_impl(obs_dict)
+            out = self._forward_packed(obs_dict, self._pack_capacity(obs_dict["obs"]))
+        else:
+            out = self._forward_impl(obs_dict)
+        if len(out) == 5:      # (mu, sigma, value, states, log-std bounds penalty): rl_games gets the usual four
+            self.log_std_bound_penalty = out[4]
+            out = out[:4]
+        return out
 
     def _forward_impl(self, obs_dict, pack_cap: int | None = None):
         obs = obs_dict["obs"]
@@ -912,16 +950,24 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
         # Canonical policy order is arm joints first, then hand joints.
         mu = self.mu_act(torch.cat([mu_arm, mu_hand], dim=-1))
 
-        if self.fixed_sigma == "fixed":
-            sigma = self.sigma_act(self.sigma)
-        else:
+        log_std = self.sigma
+        if self.fixed_sigma != "fixed":
             idxs = (
                 (obs[:, self.sigma_id_idx].reshape(-1, 1) == self.sigma_ids)
                 .float()
                 .argmax(dim=1)
             )
-            sigma = self.sigma_act(self.sigma[idxs])
-        sigma = mu * 0 + sigma
+            log_std = log_std[idxs]
+        if self.predict_log_std:
+            arm_ls = self.log_std_arm(torch.cat([glob, glob_raw], dim=-1))
+            slot_ls = self.log_std_decoder(joints).reshape(joints.shape[0], -1)
+            hand_ls = torch.index_select(torch.cat([slot_ls, arm_ls[:, self.n_arm:]], dim=-1), 1, self.slot_of_joint)
+            log_std = log_std + torch.cat([arm_ls[:, : self.n_arm], hand_ls], dim=-1)
+        raw_log_std = log_std
+        if self.max_log_std is not None or self.min_log_std is not None:
+            log_std = log_std.clamp(min=self.min_log_std, max=self.max_log_std)
+        sigma = mu * 0 + self.sigma_act(log_std)
+        act_valid = None
         if self.mask_ghost_actions or self.masked_arm_dims:
             arm_valid = torch.ones(valid.shape[0], self.n_arm, dtype=torch.bool, device=valid.device)
             if self.masked_arm_dims:
@@ -930,7 +976,21 @@ class JointTransformerNet(NetworkBuilder.BaseNetwork):
             act_valid = torch.cat([arm_valid, hand_valid], dim=1)  # policy order: arm, then hand
             mu = torch.where(act_valid, mu, torch.zeros_like(mu))
             sigma = torch.where(act_valid, sigma, torch.zeros_like(sigma))
-        return mu, sigma, value, None
+        # A predicted log-std outside [min_log_std, max_log_std] is clamped, so its gradient there is zero and nothing
+        # pulls the head back (31 Oct: uncapped predicted heads spiked to log-std 7-9 in some states). Its bounds loss
+        # (the user's call, 31 Oct): the squared excess of the RAW log-std past either bound, summed over real action
+        # dims like rl_games' bound_loss on mu, added to it in a2c_continuous.bound_loss (same bounds_loss_coef).
+        penalty = None
+        if self.predict_log_std and (self.max_log_std is not None or self.min_log_std is not None):
+            p = torch.zeros_like(raw_log_std)
+            if self.max_log_std is not None:
+                p = p + (raw_log_std - self.max_log_std).clamp_min(0.0) ** 2
+            if self.min_log_std is not None:
+                p = p + (self.min_log_std - raw_log_std).clamp_min(0.0) ** 2
+            if act_valid is not None:
+                p = torch.where(act_valid, p, torch.zeros_like(p))
+            penalty = p.sum(dim=-1)
+        return mu, sigma, value, None, penalty
 
     # ------------------------------------------------------ rl_games protocol
 

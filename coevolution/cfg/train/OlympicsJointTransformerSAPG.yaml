@@ -26,6 +26,12 @@ params:
   network:
     name: joint_transformer
     separate: False
+    # Action log-std capped at 2 (std 7.4) in every run since 31 Oct (the user's call): uncapped, rarely used joint slots'
+    # noise ran away to log-std 9.6 in many-hand runs and overflowed fp16 (the NaN crashes).
+    # experiments/30oct_evolution_evaluation/log_std_cap/README.md
+    max_log_std: 2.0
+    # and floored at -5 (std 0.007): below ~-4.9, ((a - mu) / sigma)^2 overflows fp16 for actions in [-1, 1] (31 Oct).
+    min_log_std: -5.0
     # The network is handed only a flat width by rl_games, so it reads the
     # robot and the field list across the config tree — four dots to the root,
     # exactly as params.config.num_actors does. Hydra resolves these before

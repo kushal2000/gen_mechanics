@@ -13,9 +13,11 @@ must append it; PPO-trained policies have no such column and appending one
 shifts the whole observation vector by a slot, silently producing garbage
 actions with no error. Since this project compares checkpoints across hands
 (and potentially across algorithms), an unconditional append would corrupt the
-comparison. ``sapg_expl_coef`` must therefore be passed explicitly: ``50.0``
-reproduces simtoolreal's SAPG behavior, ``None`` is the correct value for a
-plain PPO checkpoint.
+comparison. ``sapg_expl_coef`` must therefore be passed explicitly: ``0.0`` is
+SAPG's leader (the last env block: zero entropy bonus, the only block trained on
+the others' data -- checked 31 Oct against rl_games' augment_batch_for_mixed_expl
+and the paper), ``50.0`` the most exploratory follower (block 0, simtoolreal's
+old choice), ``None`` the correct value for a plain PPO checkpoint.
 """
 
 from __future__ import annotations

@@ -177,3 +177,92 @@ def test_packed_tokens_match_padded_on_a_mixed_template_set(mode):
     assert net1._pack_caps[600] >= 600 * (net1.n_fingers + 1 if mode == "finger" else net1.n_hand + 1)
     for x, y in zip(a[:3], b[:3]):
         assert torch.allclose(x, y, atol=1e-5), float((x - y).abs().max())
+
+
+def test_max_log_std_caps_the_noise_and_blocks_its_gradient():
+    hand = _grammar_hand(with_palm_joint=True)
+    n_hand = get_finger_layout(hand).n_joints
+    for cap in (None, 2.0):
+        net, obs, _ = _net_and_obs(hand, torch.ones(2, n_hand, dtype=torch.bool), max_log_std=cap)
+        with torch.no_grad():
+            net.sigma[N_WRIST] = 9.6                             # a saturated joint's runaway log-std
+            net.sigma[N_WRIST + 1] = -1.0
+        mu, sigma, _, _ = net({"obs": obs})
+        assert float(sigma[0, N_WRIST]) == pytest.approx(9.6 if cap is None else cap)
+        assert float(sigma[0, N_WRIST + 1]) == -1.0              # below the cap: untouched
+        sigma[:, N_WRIST].sum().backward()
+        assert float(net.sigma.grad[N_WRIST]) == (0.0 if cap else 2.0)
+
+
+def test_shared_log_std_is_one_noise_level_for_every_real_action():
+    hand = _grammar_hand(with_palm_joint=True)
+    n_hand = get_finger_layout(hand).n_joints
+    net, obs, _ = _net_and_obs(hand, torch.ones(3, n_hand, dtype=torch.bool), shared_log_std=True)
+    assert tuple(net.sigma.shape) == (1,)
+    with torch.no_grad():
+        net.sigma.fill_(-0.7)
+    mu, sigma, _, _ = net({"obs": obs})
+    assert sigma.shape == mu.shape
+    real = [i for i in range(mu.shape[1]) if i not in (3, 4, 5)]
+    assert torch.allclose(sigma[:, real], torch.full_like(sigma[:, real], -0.7))
+    assert (sigma[:, [3, 4, 5]] == 0).all()                     # locked wrist dims stay masked
+    sigma[:, real].sum().backward()
+    assert float(net.sigma.grad[0]) == pytest.approx(3 * len(real))
+
+
+def test_predict_log_std_reads_each_joints_noise_off_its_token():
+    hand = _grammar_hand(with_palm_joint=True)
+    n_hand = get_finger_layout(hand).n_joints
+    net, obs, _ = _net_and_obs(hand, torch.ones(3, n_hand, dtype=torch.bool), predict_log_std=True)
+    assert tuple(net.sigma.shape) == (1,)
+    real = [i for i in range(N_WRIST + n_hand) if i not in (3, 4, 5)]
+    with torch.no_grad():
+        _, sigma, _, _ = net({"obs": obs})
+    assert (sigma == 0).all()                                    # zero-initialised: log-std 0 everywhere
+    with torch.no_grad():
+        net.log_std_decoder.weight.normal_()
+        net.log_std_arm.weight.normal_()
+        mu, sigma, _, _ = net({"obs": obs})
+    assert (sigma[:, [3, 4, 5]] == 0).all()                      # locked wrist dims stay masked
+    assert not torch.allclose(sigma[0, real], sigma[1, real])    # state-dependent
+    assert sigma[0, real].std() > 0                              # and different per joint
+    net2, _, _ = _net_and_obs(hand, torch.ones(3, n_hand, dtype=torch.bool), predict_log_std=True, max_log_std=0.5)
+    with torch.no_grad():
+        net2.log_std_decoder.bias.fill_(3.0)
+        _, s2, _, _ = net2({"obs": obs})
+    assert float(s2[:, N_WRIST:].max()) == pytest.approx(0.5)    # the cap bounds the predicted noise too
+
+
+def test_min_log_std_floors_the_noise():
+    hand = _grammar_hand(with_palm_joint=True)
+    n_hand = get_finger_layout(hand).n_joints
+    net, obs, _ = _net_and_obs(hand, torch.ones(2, n_hand, dtype=torch.bool), max_log_std=2.0, min_log_std=-5.0)
+    with torch.no_grad():
+        net.sigma[N_WRIST] = -12.0
+        net.sigma[N_WRIST + 1] = -1.0
+        _, sigma, _, _ = net({"obs": obs})
+    assert float(sigma[0, N_WRIST]) == pytest.approx(-5.0)
+    assert float(sigma[0, N_WRIST + 1]) == pytest.approx(-1.0)
+    assert (sigma[:, [3, 4, 5]] == 0).all()                     # masked dims stay masked (0), not floored
+
+
+def test_predicted_log_std_bounds_penalty_pulls_the_raw_value_back():
+    hand = _grammar_hand(with_palm_joint=True)
+    n_hand = get_finger_layout(hand).n_joints
+    net, obs, _ = _net_and_obs(hand, torch.ones(2, n_hand, dtype=torch.bool), predict_log_std=True,
+                               max_log_std=2.0, min_log_std=-5.0)
+    out = net({"obs": obs})
+    assert len(out) == 4                                         # rl_games still gets (mu, sigma, value, states)
+    assert torch.allclose(net.log_std_bound_penalty, torch.zeros(2))   # zero-initialised head: inside the band
+    with torch.no_grad():
+        net.log_std_decoder.bias.fill_(3.0)                      # every hand slot 1 above the cap
+    _, sigma, _, _ = net({"obs": obs})
+    pen = net.log_std_bound_penalty
+    assert float(sigma[:, N_WRIST:].max()) == pytest.approx(2.0)  # the forward still clamps
+    # (3 - 2)^2 per finger joint; the palm-cut joint's log-std comes from the arm head (still 0), the wrist is masked
+    assert torch.allclose(pen, torch.full((2,), float(n_hand - 1)))
+    pen.sum().backward()
+    assert float(net.log_std_decoder.bias.grad.abs().sum()) > 0   # unlike the clamp, the penalty has a gradient
+    net2, _, _ = _net_and_obs(hand, torch.ones(2, n_hand, dtype=torch.bool), max_log_std=2.0, min_log_std=-5.0)
+    net2({"obs": obs})
+    assert getattr(net2, "log_std_bound_penalty", None) is None   # per-slot / shared noise: no penalty

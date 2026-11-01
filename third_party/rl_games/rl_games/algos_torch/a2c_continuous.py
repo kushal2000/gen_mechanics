@@ -357,6 +357,12 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             mu_loss_high = torch.clamp_min(mu - soft_bound, 0.0)**2
             mu_loss_low = torch.clamp_max(mu + soft_bound, 0.0)**2
             b_loss = (mu_loss_low + mu_loss_high).sum(axis=-1)
+            # gen_mechanics (31 Oct): a network that predicts its log-std (joint_transformer predict_log_std) leaves the
+            # same squared-hinge penalty on the raw log-std past its [min_log_std, max_log_std] band, per sample, from
+            # the forward pass just run; it shares this loss and its coefficient.
+            log_std_pen = getattr(getattr(self.model, 'a2c_network', None), 'log_std_bound_penalty', None)
+            if log_std_pen is not None:
+                b_loss = b_loss + log_std_pen
         else:
             b_loss = 0
         return b_loss
