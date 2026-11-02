@@ -139,8 +139,13 @@ module case_screws(flange = false) {
         }
 }
 
-// the case grown by g (a convex piece: what a turning case sweeps)
-module case_box(g = 0) box_lh([CASE_X[0] - g, CASE_Y[0] - g, CASE_Z[0] - g], [CASE_X[1] + g, CASE_Y[1] + g, CASE_Z[1] + g]);
+// the case grown by g (a convex piece: what a turning case sweeps), its edges
+// along the axis grown round, so its corners reach g farther as they turn, as
+// the grammar budgets (a box grown by g reached 0.2 mm into every U's bridge)
+module case_box(g = 0) {
+    if (g <= 0) box_lh([CASE_X[0], CASE_Y[0], CASE_Z[0]], [CASE_X[1], CASE_Y[1], CASE_Z[1]]);
+    else hull() for (y = CASE_Y, z = CASE_Z) translate([0, y, z]) cyl_x(g, CASE_X[0] - g, CASE_X[1] + g, $fn = 8);
+}
 
 // ------------------------------------------- the housing (part before a joint)
 SOCKET_WALL = 1.2;                           // a socket's thin walls on the case's 34 x 23 faces
@@ -169,8 +174,10 @@ module flange_cup(g = 0) box_lh([-HOUSING_X - g, FLANGE_Y[0] - g, -HOUSING_Z - g
 // a link's connector between two rectangles, each given as a frame (origin
 // at its centre, its plane the frame's y-z) and a size: their hull, solid (a
 // slicer's infill keeps it light; a hollow one opened wherever a servo's
-// keep-out or a sweep crossed it). Its ends reach `ea` / `eb` into the
-// pieces they meet
+// keep-out or a sweep crossed it). Its sides start exactly on the rectangles,
+// so they run on from the faces they meet without a step; each end reaches
+// `ea` / `eb` into the piece it meets, as a copy of its rectangle that much
+// smaller all round (inside that piece, one solid with it)
 module tube(A, sa, B, sb, g = 0, ea = 0, eb = 0) {
     function corners(M, sz, d, e) = [for (sy = [-1, 1], sz2 = [-1, 1])
         let(p = M * [0, sy * (sz[0] / 2 + d), sz2 * (sz[1] / 2 + d), 1]) [p[0], p[1], p[2]] + e];
@@ -178,7 +185,8 @@ module tube(A, sa, B, sb, g = 0, ea = 0, eb = 0) {
     cb = [B[0][3], B[1][3], B[2][3]];
     len = norm(cb - ca);
     u = len > 0 ? (cb - ca) / len : [0, 0, 0];
-    hull_pts(concat(corners(A, sa, g, -u * ea), corners(B, sb, g, u * eb)));
+    hull_pts(concat(corners(A, sa, g, [0, 0, 0]), corners(A, sa, g - ea, -u * ea),
+                    corners(B, sb, g, [0, 0, 0]), corners(B, sb, g - eb, u * eb)));
 }
 
 // gussets (Martin, 10/26: stiffen the inside corners of the L pieces, 45

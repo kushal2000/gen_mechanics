@@ -73,6 +73,12 @@ def round_body(src: Path, dst: Path, r: float) -> bool:
     _, man = load(src)
     if man.status() != m3.Error.NoError or man.is_empty():
         return False
+    # the pieces' union, less a link's reliefs, comes in sliver facets (19 554 triangles where 510 do, on one
+    # link); merging what lies within 0.01 mm first makes the rounding seconds, not minutes. Where the merge
+    # changes the solid it is not used (on one palm it closed a hole and took 1.6 cm3 away)
+    lean = man.simplify(0.01)
+    if lean.genus() == man.genus() and abs(lean.volume() - man.volume()) <= 1e-4 * man.volume() + 1.0:
+        man = lean
     ball = m3.Manifold.sphere(r, ROUND_SEGMENTS)
     core = man.minkowski_difference(ball)
     if core.is_empty():

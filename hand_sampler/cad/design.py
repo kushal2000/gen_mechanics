@@ -56,7 +56,9 @@ ARM_X0 = 14.6                                # an arm's inner face from the serv
 ARM_DRIVEN, ARM_IDLER = 3.0, 2.0
 CASE_CLEAR, PART_CLEAR, WALL, FIT = 0.5, 1.0, 2.0, 0.2
 HORN_HOLES_DRIVEN = (45.0, 135.0, 225.0, 315.0)   # degrees from +Z about X (the 12 mm circle)
-HORN_HOLES_IDLER = (45.0, 135.0, 225.0, 315.0)     # four screws on every horn (Martin, 10/26)
+HORN_HOLES_IDLER = (45.0, 135.0, 225.0, 315.0)     # four screws on every horn (Martin, 10/26); it has 8, every 45 degrees
+SCREWDRIVER_MM = 25.0         # an arm screw's screwdriver way out from the arm (library SCREWDRIVER_REACH)
+WINDOW_Z = (8.0, 12.3)        # a housing's connector window through its wall, along Z (library housing_keepout)
 PLUG = ((-9.2, -2.9), (4.8, 13.2), 9.0)          # (X range, Y range, length beyond the case face)
 CASE_Z = 10.0
 YOKE_REACH_MM = 20.0          # how far a yoke turning round its axis reaches from it (bridge corners and a gap)
@@ -257,6 +259,8 @@ class ServoSpot:
     across: bool = False              # lies across the finger (its 23 x 34 face toward the palm): a square connector
     flange: bool = False              # held by its idler face in a flange cup (its idler horn off: a one-arm yoke)
     flipped: bool = False             # lies along the link after its joint, which holds its case (`hand.servo_poses`)
+    holes: Dict[int, Tuple[float, ...]] = field(
+        default_factory=lambda: {1: HORN_HOLES_DRIVEN, -1: HORN_HOLES_IDLER})   # each arm's four horn holes (`_horn_holes`)
 
     @property
     def idler_horn(self) -> bool:
@@ -350,6 +354,7 @@ class Part:
     frame: np.ndarray                          # 4x4: the body frame in the palm frame at q = 0 (mm)
     positive: List[str] = field(default_factory=list)
     negative: List[str] = field(default_factory=list)
+    relief: List[str] = field(default_factory=list)     # links: what they give way to as they turn, cut before the rounding
     pieces: List[Piece] = field(default_factory=list)   # convex pieces (for the parent's sweep)
     holds: List[ServoSpot] = field(default_factory=list)  # servos whose case it holds
     carries: List[ServoSpot] = field(default_factory=list)  # servos whose horns it holds (two where the next is flipped)
@@ -361,13 +366,18 @@ class Part:
 
     def scad(self) -> str:
         """Three modules: `pieces_` (its positive pieces, sharp, within its
-        clip), `body_` (those rounded as a whole: imported from bodies/,
-        made by `render.round_body`) and `part_` (the body less everything
-        it gives way to)."""
+        clip, less its reliefs), `body_` (those rounded as a whole: imported
+        from bodies/, made by `render.round_body`) and `part_` (the body
+        less everything else it gives way to). A link's reliefs (what it
+        gives way to as the joints turn) are cut before the rounding, so
+        their edges come out rounded too (Martin, 11/02: no sharp edges);
+        the servos' keep-outs and screw holes after it, exact."""
         n = self.name
         pieces = "union() {\n        " + ("\n        ".join(self.positive) or "cube(0.001);") + "\n        }"
         if self.clip:
             pieces = f"intersection() {{\n    {pieces}\n    {self.clip}\n    }}"
+        if self.relief:
+            pieces = f"difference() {{\n    {pieces}\n    " + "\n    ".join(self.relief) + "\n    }"
         neg = "\n    ".join(self.negative + [x for xs in self.swept_by.values() for x in xs] + self.tunnels)
         body = f"difference() {{\n        body_{n}();\n    {neg}\n    }}"
         if self.kept:
@@ -446,6 +456,43 @@ def _case_pieces(S_in_body: np.ndarray, cable: int, idler_horn: bool = True) -> 
     if not idler_horn:
         pieces.append(lambda g: f"{S} cyl_x(STUB_R + ({g}), STUB_X - ({g}), 0);")
     return pieces
+
+
+def _hole_clear(S_yoke: np.ndarray, s: int, a: float, cases: List["ServoSpot"], swung=()) -> bool:
+    """Whether arm `s`'s horn hole at `a` degrees (the yoke's servo frame
+    S_yoke, in the part's frame) is clear: it and its screwdriver's way, 0.8
+    mm round, clear of the connector windows and plugs of the servos
+    `cases`; its screw head clear of where the next link's bridge swings
+    past as each servo of `swung` turns ((servo, its bridge's distance from
+    its axis): a crossing's plate is a wall of the next servo's housing, cut
+    back there)."""
+    t = ARM_DRIVEN if s > 0 else ARM_IDLER
+    r = 2.0 + ROUND_MM
+    ring = [(0.0, 0.0)] + [(rr * math.cos(f), rr * math.sin(f)) for rr in (r / 2.0, r)
+                           for f in np.linspace(0.0, 2.0 * math.pi, 12, endpoint=False)]
+
+    def points(x_out: float) -> np.ndarray:
+        xs = s * np.arange(ARM_X0, ARM_X0 + t + x_out + 1e-9, 1.0)
+        return np.array([[x, 6.0 * math.sin(math.radians(a)) + dy, 6.0 * math.cos(math.radians(a)) + dz, 1.0]
+                         for x in xs for dy, dz in ring])
+
+    P = points(SCREWDRIVER_MM)
+    (x0, x1), (y0, y1), out = PLUG
+    for c in cases:
+        Q = (inv(c.S_parent) @ S_yoke @ P.T).T
+        inside = (Q[:, 0] > x0) & (Q[:, 0] < x1) & (Q[:, 1] > y0) & (Q[:, 1] < y1)
+        z = Q[:, 2]
+        boxes = [WINDOW_Z, (-WINDOW_Z[1], -WINDOW_Z[0]), (CASE_Z, CASE_Z + out) if c.cable > 0 else (-CASE_Z - out, -CASE_Z)]
+        if np.any(inside & np.any([(z > lo) & (z < hi) for lo, hi in boxes], axis=0)):
+            return False
+    P = points(0.0)
+    for c, x_b in swung:
+        Q = inv(c.S_parent) @ S_yoke @ P.T
+        for th in np.radians(np.arange(c.rot_deg[0], c.rot_deg[1] + 1e-9, 2.0)):
+            y, z = Q[1] * math.cos(th) + Q[2] * math.sin(th), -Q[1] * math.sin(th) + Q[2] * math.cos(th)
+            if np.any((y <= -(x_b - PART_CLEAR)) & (y >= -(x_b + YOKE_REACH_MM)) & (np.abs(z) <= BRIDGE_HALF_MM + PART_CLEAR)):
+                return False
+    return True
 
 
 def _clip_body(f, j: int) -> str:
@@ -638,6 +685,18 @@ class Design:
                 self.reach.setdefault((i, j), []).append(self.tubes[(i, j)] + v * GUSSET_MM)
                 return lambda g: f"hull() {{ {o(g)} {sh} {o(g)} }}"
 
+            def behind(F: np.ndarray, size, v: np.ndarray) -> Piece:
+                """The connector's end face (frame F, its y-z plane) and its copy moved a gusset's legs along v:
+                where a U's gussets may stand, so none reaches past that face. Beside a bridge as tall as the
+                connector's end there is no corner to fill (Martin, 11/02: they stood a millimetre proud of the
+                arms, a step at each end)."""
+                P = [(F @ np.array([0.0, sy * size[0] / 2.0, sz * size[1] / 2.0, 1.0]))[:3] for sy in (-1, 1) for sz in (-1, 1)]
+                P = np.array(P + [p + v * (GUSSET_MM + 2.0 * REACH_MM) for p in P])
+                # the palm's pocket round a base link still takes the whole connector moved back (as before): a
+                # bound on where these gussets reach, and the palm unchanged by them
+                self.reach.setdefault((i, j), []).append(self.tubes[(i, j)] + v * GUSSET_MM)
+                return lambda g, P=_pts(P): f"hull_pts({P}, {g});"
+
             # gussets in the L pieces' inside corners (Martin, 10/26), each kept to where the connector is (none
             # round a flange cup: lying along the servo's sides with nothing to hold, they only read as ears; 10/28)
             gussets: List[Piece] = []
@@ -650,7 +709,8 @@ class Design:
                         gussets += [lambda g, on=on, Sc=Sc, f=side, s=s: (
                             f"intersection() {{ {Sc} socket_gusset({f}, {s}, GUSSET, {g}); {on(g)} }}") for s in (1, -1)]
                 elif e["sp"].yoke == "u":
-                    gussets += self._arm_gussets(e["sp"], e["axis"], along(tube, -e["face"][:3, 0]), e["front"])
+                    F, size = (A, sa) if e is lead else (B, sb)
+                    gussets += self._arm_gussets(e["sp"], e["axis"], behind(F, size, -e["face"][:3, 0]), e["front"])
                 else:
                     # a single arm and its connector are one plate: the arm takes in the connector's footprint in
                     # its own layer, so where the connector leaves the horn's face at a slant they still meet
@@ -671,11 +731,11 @@ class Design:
             part.negative.append(f"{S} cyl_x(HORN_R + CASE_CLEAR, DRIVEN_X[0] - FIT, DRIVEN_X[1]);")
             if y.idler_horn:
                 part.negative.append(f"{S} cyl_x(HORN_R + CASE_CLEAR, IDLER_X[0], -(DRIVEN_X[0] - FIT));")
-            if y.yoke == "u":
-                part.negative += [f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});",
-                                  f"{S} arm_keepout(-1, {list(HORN_HOLES_IDLER)});"]
-            else:
-                part.negative.append(f"{S} arm_keepout(1, {list(HORN_HOLES_DRIVEN)});")
+            # a crossing's plate is the next servo's housing's wall: the next link's bridge swings past its corner
+            swung = ([(nxt, mt.swept_front_mm(fg.axes[j + 1], nxt.turned) + CASE_CLEAR)]
+                     if y.yoke == "crossing" and nxt.yoke == "u" else [])
+            self._horn_holes(y, cases, swung)
+            part.negative += [f"{S} arm_keepout({s}, {list(y.holes[s])});" for s in ((1, -1) if y.yoke == "u" else (1,))]
         for c in cases:
             Sc = mm(c.S_parent)
             part.tunnels.append(f"{Sc} case_screw_tunnels(40, {str(c.flange).lower()});")
@@ -684,6 +744,27 @@ class Design:
             else:
                 ch = 80 if c.yoke == "crossing" else CRADLE_CHANNEL_MM
                 part.negative.append(f"{Sc} housing_keepout({str(c.yoke != 'u').lower()}, {c.cable}, {ch});")
+
+    @staticmethod
+    def _horn_holes(y: ServoSpot, cases: List[ServoSpot], swung=()) -> None:
+        """Each arm of y's yoke takes four of its horn's eight holes: the
+        usual four where they are clear (`_hole_clear`), else the other
+        square of four, else the clear four most like the usual, spread round
+        the horn (no gap over 135 degrees) (Martin, 11/02: a hole cut open
+        by a cable's window, on a single arm)."""
+        for s in ((1, -1) if y.yoke == "u" else (1,)):
+            usual = y.holes[s]
+            ok = [a for a in range(0, 360, 45) if _hole_clear(y.S_child, s, float(a), cases, swung)]
+            if all(int(a) in ok for a in usual):
+                continue
+            best = None
+            for four in itertools.combinations(ok, 4):
+                gaps = [(four[(k + 1) % 4] - four[k]) % 360 for k in range(4)]
+                if max(gaps) <= 135:
+                    rank = (max(gaps), -len(set(four) & {int(a) for a in usual}), four)
+                    best = rank if best is None or rank < best else best
+            if best is not None:
+                y.holes[s] = tuple(float(a) for a in best[2])
 
     @staticmethod
     def _end_centre(e: dict) -> np.ndarray:
@@ -697,21 +778,26 @@ class Design:
         """A U's gussets: in each arm's layer, the corners between the arm's
         edges and the connector's back face, where the connector is wider
         than the bridge (`on`: where they may stand). Outboard of the case,
-        so they turn clear of the part holding the servo."""
+        so they turn clear of the part holding the servo. Each is one piece
+        with its arm's disc (their hull), so its face runs on from the disc
+        at a tangent: a 45-degree face met the disc's round end in a notch
+        (Martin, 11/02)."""
         x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
         B = _bridge_frame(sp.S_child[:3, 3], front, a, x_b)
+        S = mm(sp.S_child)
         s_pos = -1.0 if sp.flip else 1.0
         a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
         a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
         x0, L, h = WALL - REACH_MM, GUSSET_MM, BRIDGE_HALF_MM
         out: List[Piece] = []
-        for y0, y1 in ((a_lo, -ARM_X0), (ARM_X0, a_hi)):
+        for (y0, y1), s in (((a_lo, -ARM_X0), int(-s_pos)), ((ARM_X0, a_hi), int(s_pos))):   # s: that arm in S
             for zs in (1.0, -1.0):
                 # the triangle reaches REACH back into the arm and the connector (one solid with both)
                 R = REACH_MM
                 pts = [(B @ np.array([x0 - u, y, zs * (h + v), 1.0]))[:3]
                        for u, v in ((-R, -R), (L + R, -R), (-R, L + R)) for y in (y0, y1)]
-                out.append(lambda g, pts=_pts(pts), on=on: f"intersection() {{ hull_pts({pts}, {g}); {on(g)} }}")
+                out.append(lambda g, pts=_pts(pts), on=on, s=s: (
+                    f"hull() {{ {S} arm_disc({s}, {g}); intersection() {{ hull_pts({pts}, {g}); {on(g)} }} }}"))
         return out
 
     @staticmethod
@@ -1526,10 +1612,11 @@ class Design:
         for sp in self.servos.values():
             child, parent = self.parts[sp.child], self.parts[sp.parent]
             lo, hi = sp.rot_deg
-            # the child gives room to the servo case (and plug) it turns against
+            # the child gives room to the servo case (and plug) it turns against (a link: before its rounding)
             Sc = sp.S_child
             for pc in _case_pieces(np.eye(4), sp.cable, sp.idler_horn):
-                child.negative.append(f"{mm(Sc)} sweep_x({-hi:.3f}, {-lo:.3f}) {pc('CASE_CLEAR')}")
+                (child.relief if child.body[0] == "link" else child.negative).append(
+                    f"{mm(Sc)} sweep_x({-hi:.3f}, {-lo:.3f}) {pc('CASE_CLEAR')}")
             # the parent gives room to everything the child carries: its pieces, its horns,
             # the servos it holds (case and plug), swept about this joint
             Sp = sp.S_parent
@@ -1546,7 +1633,7 @@ class Design:
                 if sp.parent[0] == "palm":
                     parent.swept_by.setdefault(sp.key[1] if sp.key[0] == "f" else -1, []).append(stmt)
                 else:
-                    parent.negative.append(stmt)
+                    parent.relief.append(stmt)
             if sp.yoke == "crossing":
                 self._crossing_sweeps(sp)
 
@@ -1570,15 +1657,16 @@ class Design:
             if sp.parent[0] == "palm":
                 grand.swept_by.setdefault(i, []).append(stmt)
             else:
-                grand.negative.append(stmt)
+                grand.relief.append(stmt)
         # link j + 1 gives room to servo j's case, turning back about both joints: the
         # convex hull of what it takes from each piece, since the case grazes a face
-        # in lobes there (Martin, 10/26: a bridge's edge looked bitten)
+        # in lobes there (Martin, 10/26: a bridge's edge looked bitten); cut before the
+        # rounding, so its edges come out round (11/02)
         Tb = inv(nxt.S_parent) @ sp.S_child          # servo j's frame in servo j + 1's
         for pc in _case_pieces(np.eye(4), sp.cable, sp.idler_horn):
             sw = (f"{mm(nxt.S_child)} sweep_x2({_mat(Tb)}, {-hi2:.3f}, {-lo2:.3f}, {-hi1:.3f}, "
                   f"{-lo1:.3f}) {pc('CASE_CLEAR')}")
-            far.negative += [f"hull() intersection() {{ {q} {sw} }}" for q in far.positive]
+            far.relief += [f"hull() intersection() {{ {q} {sw} }}" for q in far.positive]
 
     # --------------------------------------------------------------- output
 
