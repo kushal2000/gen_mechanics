@@ -47,6 +47,8 @@ def main() -> None:
     ap.add_argument("--max-steps", type=int, default=60000)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--max-successes", type=int, default=200, help="goals after which an episode ends")
+    ap.add_argument("--finger-pos-fraction", type=float, default=None,
+                    help="env.reset.finger_pos_fraction (default: the training run's; 0.1 = table-safe resets: the runs' 1.0 draws each finger joint over its whole range, which starts long fingers inside the table)")
     args = ap.parse_args()
     sys.path.insert(0, str(REPO))
 
@@ -81,6 +83,8 @@ def main() -> None:
     cfg.scene.num_envs = args.envs_per_hand * len(manifest["hands"])
     cfg.reset.stagger_initial_episodes = False
     cfg.goal.max_successes = args.max_successes
+    if args.finger_pos_fraction is not None:
+        cfg.reset.finger_pos_fraction = args.finger_pos_fraction
     cfg.seed = args.seed
     t0 = time.time()
     env = InHandOlympicsEnv(cfg)
@@ -134,6 +138,7 @@ def main() -> None:
         m = hand == h
         k = float(m.sum())
         out[spec] = {"envs": int(k), "goals_per_episode": float(goals[m].sum()) / k,
+                     "goals_sem": float(goals[m].std() / k ** 0.5) if k > 1 else None,     # standard error of the mean
                      "reward_per_step": float(reward_sum[m].sum()) / max(float(length[m].sum()), 1.0),
                      "episode_steps": float(length[m].sum()) / k, "unfinished": float(open_[m].float().sum()) / k,
                      **{f"done_{r}": float(reason[r][m].sum()) / k for r in reasons}}
