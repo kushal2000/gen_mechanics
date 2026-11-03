@@ -107,6 +107,13 @@ class ResetCfg:
 
     finger_pos_fraction: float = 1.0
     finger_vel: float = 0.5                  # rad/s
+    # Table-safe finger resets (1 Nov, the user's call): a drawn pose that puts any real fingertip's centre below the
+    # table top + table_clearance is redrawn (only those envs; forward kinematics, no physics step), up to max_redraws
+    # times, then that env starts at the home pose. Before, ~20% of long-fingered hands' episodes started with a finger
+    # inside the table and stayed stuck (experiments/30oct_evolution_evaluation/diag_table_contact.py).
+    table_safe: bool = True
+    table_clearance: float = 0.01            # m: a fingertip centre at least this far above the table top
+    max_redraws: int = 10
     # The pen's starting yaw (every task): uniform over +-180 deg, or fixed at pen_yaw_deg -- the angle of its tip
     # (local +x end) from world +x, the direction the fingers point. -90: across the hand, tip toward the thumb side
     # of the left hand (-y).

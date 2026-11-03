@@ -94,6 +94,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.wrist_speed = torch.tensor([a.wrist_max_speed_lin] * 3 + [a.wrist_max_speed_ang] * 3, device=dev)
         # PD targets (all joints) and the wrist's integrated, un-smoothed target.
         self.targets = self.robot.data.default_joint_pos.clone()
+        self.reset_redraws, self.reset_fallbacks = 0, 0          # table-safe finger resets (cfg.reset.table_safe)
         if a.finger_target not in action_map.MODES:
             raise ValueError(f"action.finger_target must be one of {action_map.MODES}, got {a.finger_target!r}")
         self.joint_home = self.robot.data.default_joint_pos.clone()      # (N, J) Lab order: action 0 under "home"
@@ -532,6 +533,37 @@ class InHandOlympicsEnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         return build_observations(self)
 
+    def _table_safe_fingers(self, ids: torch.Tensor, q: torch.Tensor, qd: torch.Tensor):
+        """Redraw the fingers of the reset envs whose drawn pose puts a real fingertip's centre below the table top +
+        reset.table_clearance, up to reset.max_redraws times; an env still below then starts at the home pose, at rest.
+        The check reads forward kinematics (the articulations' link poses updated from the written joint positions, no
+        physics step). Counts every redraw in self.reset_redraws and every home-pose fallback in self.reset_fallbacks."""
+        r, h = self.cfg.reset, self.hand_ids
+        floor = self.cfg.table.top_height + r.table_clearance
+        rows = torch.arange(len(ids), device=self.device)           # positions in ids still to check
+        for attempt in range(r.max_redraws + 1):
+            self.sim.physics_sim_view.update_articulations_kinematic()
+            env = ids[rows]
+            tips = self.tip_body_idx[env]
+            z = self.robot.root_physx_view.get_link_transforms()[env.unsqueeze(1), tips, 2] - self.scene.env_origins[env, 2:3]
+            below = ((z < floor) & (tips != self.palm_body)).any(1)
+            if not bool(below.any()):
+                break
+            rows, env = rows[below], env[below]
+            qb = self.robot.data.default_joint_pos[env].clone()
+            qdb = torch.zeros_like(qb)
+            if attempt < r.max_redraws:
+                lo, hi = self.joint_lower[env][:, h], self.joint_upper[env][:, h]
+                draw = lo + (hi - lo) * torch.rand(len(env), len(h), device=self.device)
+                qb[:, h] = torch.lerp(qb[:, h], draw, r.finger_pos_fraction).clamp(lo, hi)
+                qdb[:, h] = torch.empty(len(env), len(h), device=self.device).uniform_(-r.finger_vel, r.finger_vel)
+                self.reset_redraws += len(env)
+            else:                                                   # give up: the home pose
+                self.reset_fallbacks += len(env)
+            self.robot.write_joint_state_to_sim(qb, qdb, env_ids=env)
+            q[rows], qd[rows] = qb, qdb
+        return q, qd
+
     def _reset_idx(self, env_ids: Sequence[int] | None) -> None:
         if env_ids is None:
             env_ids = self.robot._ALL_INDICES
@@ -549,6 +581,8 @@ class InHandOlympicsEnv(DirectRLEnv):
         q[:, h] = torch.lerp(q[:, h], draw, r.finger_pos_fraction).clamp(lo, hi)
         qd[:, h] = torch.empty(len(ids), len(h), device=self.device).uniform_(-r.finger_vel, r.finger_vel)
         self.robot.write_joint_state_to_sim(q, qd, env_ids=ids)
+        if r.table_safe and r.finger_pos_fraction > 0:
+            q, qd = self._table_safe_fingers(ids, q, qd)
         self.targets[ids] = q
         self.wrist_command[ids] = q[:, self.wrist_ids]
         self.prev_joint_pos_canon[ids] = q[:, self.perm_lab_to_canon]
