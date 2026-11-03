@@ -92,6 +92,8 @@ def hand_scad(design: Design) -> str:
     for n in names:
         out.append(f'else if (part == "{n}") part_{n}();')
         out.append(f'else if (part == "pieces_{n}") pieces_{n}();')
+        out.append(f'else if (part == "solid_{n}") solid_{n}();')
+        out.append(f'else if (part == "reliefs_{n}") reliefs_{n}();')
     return "\n".join(out) + "\n"
 
 

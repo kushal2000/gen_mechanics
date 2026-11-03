@@ -41,7 +41,8 @@ from hand_sampler.grammar import space as gspace  # noqa: E402
 from hand_sampler.grammar import viability as gvb  # noqa: E402
 from hand_sampler.grammar.fk import forward_kinematics  # noqa: E402
 from hand_sampler.grammar.hand import (  # noqa: E402
-    FEETECH_COARSE_RULES, FEETECH_RULES, MOUNT_DEPTH_MM, NO_RULES, PLATE_HALF_MM, Hand, Rules, check, parameter_count)
+    FEETECH_COARSE_RULES, FEETECH_RULES, MOUNT_DEPTH_MM, NO_RULES, PLATE_HALF_MM, Hand, Rules, check, hand_from_json,
+    parameter_count)
 
 from gviewer import draw  # noqa: E402
 from gviewer import meshes as gmesh  # noqa: E402
@@ -325,6 +326,14 @@ class GrammarViewer:
 
     def _required_ok(self, v: gvb.Viability) -> bool:
         return (not self.gui_c1.value or v.c1.ok) and (not self.gui_c2.value or v.c2.ok)
+
+    def load_hand(self, hand: Hand, wait: bool = False) -> bool:
+        """Show `hand` (e.g. a generated design's hand.json, `--hand-file`):
+        the same hand again after the rules change what a seed draws."""
+        def job():
+            self._set_hand(hand, history="reset", commercial=None, viability=gvb.viability(hand), frame=True)
+            self.md_random.content = "loaded from a file"
+        return self.run_job("load", job, wait)
 
     def load_commercial(self, hand_id: str, wait: bool = False) -> bool:
         def job():
@@ -743,11 +752,15 @@ def main(argv=None) -> int:
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--hand", default="", help="start with this commercial hand (a manifest id) instead of a random one")
+    ap.add_argument("--hand-file", default="", help="start with the hand in this file (a hand.json, as a generated "
+                                                     "design writes) instead of a random one")
     args = ap.parse_args(argv)
     server = viser.ViserServer(host=args.host, port=args.port, label="grammar viewer")
-    app = GrammarViewer(server, build_initial=not args.hand)
+    app = GrammarViewer(server, build_initial=not (args.hand or args.hand_file))
     if args.hand:
         app.load_commercial(args.hand, wait=True)
+    elif args.hand_file:
+        app.load_hand(hand_from_json(Path(args.hand_file).read_text()), wait=True)
     print(f"grammar viewer at http://{args.host}:{args.port}", flush=True)
     try:
         server.sleep_forever()

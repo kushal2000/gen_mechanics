@@ -68,6 +68,12 @@ REACH_MM = 1.2                # pieces that join reach this far into each other 
 ROUND_MM = 0.8                # every part's outer edges, rounded on its whole body (render.round_body)
 BLOCK_MIN_MM = 6.0            # a right-angle connector at least this thick (Martin, 10/26: not a thin plate)
 GUSSET_MM = 16.0              # a gusset's legs (library GUSSET)
+GUSSET_ROUND_MM = 8.0
+"""Where a gusset's face meets the connector's (the gusset stops at the
+connector's edge), the corner is rounded this much, so the arm's edge runs
+on into the connector without an angle (Martin, 11/02: the sharp angles
+where a horn's arm joins the rest of the link); less where the gusset is
+too short for it."""
 HOUSING_MM = (13.6, 26.6, 11.3)   # a housing's outer faces in its servo's frame: side plates (X), back (Y), walls (Z)
 SOCKET_Y0_MM = 17.0               # where a cradle's socket starts (library SOCKET_Y0)
 CRADLE_BACK_MM = (2 * HOUSING_MM[0], 2 * HOUSING_MM[2])     # a cradle's back face (along its servo's X, Z)
@@ -365,19 +371,22 @@ class Part:
     face: Optional[np.ndarray] = None                                # palm parts: the face's outline (y, z)
 
     def scad(self) -> str:
-        """Three modules: `pieces_` (its positive pieces, sharp, within its
-        clip, less its reliefs), `body_` (those rounded as a whole: imported
-        from bodies/, made by `render.round_body`) and `part_` (the body
-        less everything else it gives way to). A link's reliefs (what it
-        gives way to as the joints turn) are cut before the rounding, so
-        their edges come out rounded too (Martin, 11/02: no sharp edges);
-        the servos' keep-outs and screw holes after it, exact."""
+        """Five modules: `solid_` (its positive pieces, sharp, within its
+        clip), `reliefs_` (what a link gives way to as the joints turn),
+        `pieces_` (the solid less its reliefs), `body_` (that rounded as a
+        whole: imported from bodies/, made by `render.round_body`) and
+        `part_` (the body less everything else it gives way to). A link's
+        solid has its inside corners filleted before its reliefs are cut and
+        the rest rounded (Martin, 11/02: no sharp edges, fillets where the
+        arms join the rest), so the reliefs stay exact and their edges come
+        out rounded too; the servos' keep-outs and screw holes are cut after
+        it, exact."""
         n = self.name
-        pieces = "union() {\n        " + ("\n        ".join(self.positive) or "cube(0.001);") + "\n        }"
+        solid = "union() {\n        " + ("\n        ".join(self.positive) or "cube(0.001);") + "\n        }"
         if self.clip:
-            pieces = f"intersection() {{\n    {pieces}\n    {self.clip}\n    }}"
-        if self.relief:
-            pieces = f"difference() {{\n    {pieces}\n    " + "\n    ".join(self.relief) + "\n    }"
+            solid = f"intersection() {{\n    {solid}\n    {self.clip}\n    }}"
+        reliefs = "union() {\n    " + "\n    ".join(self.relief) + "\n    }" if self.relief else ""
+        pieces = f"difference() {{\n    solid_{n}();\n    reliefs_{n}();\n    }}" if self.relief else f"solid_{n}();"
         neg = "\n    ".join(self.negative + [x for xs in self.swept_by.values() for x in xs] + self.tunnels)
         body = f"difference() {{\n        body_{n}();\n    {neg}\n    }}"
         if self.kept:
@@ -391,7 +400,9 @@ class Part:
                 keep.append(f"difference() {{ intersection() {{ body_{n}(); {walls} }}\n        "
                             + "\n        ".join(rest) + " }")
             body = f"union() {{\n    {body}\n    " + "\n    ".join(keep) + "\n    }"
-        return (f"module pieces_{n}() {{\n    {pieces}\n}}\n"
+        return (f"module solid_{n}() {{\n    {solid}\n}}\n"
+                f"module reliefs_{n}() {{\n    {reliefs}\n}}\n"
+                f"module pieces_{n}() {{\n    {pieces}\n}}\n"
                 f"module body_{n}() if (ROUNDED) import(\"bodies/{n}.stl\"); else pieces_{n}();\n"
                 f"module part_{n}() {{\n    {body}\n}}\n")
 
@@ -405,6 +416,61 @@ def _bridge_frame(origin: np.ndarray, front: np.ndarray, a: np.ndarray, x_b: flo
     ay = a - ex * float(a @ ex)
     ay /= np.linalg.norm(ay)
     return T(np.column_stack([ex, ay, np.cross(ex, ay)]), np.asarray(origin, float) + x_b * ex)
+
+
+FACE_PLATE_MIN_MM = 3.0
+"""A U's face is closed by a flat plate wherever its servo's case, swept over
+the joint's range, keeps at least this far from the bridge along that face
+(Martin, 11/02: no large openings in a link's face; a turned servo's U runs
+on 21.4 mm to clear its case's back corner, which swings forward on the
+back of the finger only, and left an 11 mm window on both faces)."""
+
+
+def _case_edge_points(cable: int, step: float = 0.25) -> np.ndarray:
+    """Points along the edges of a servo's case and its plug (its servo's
+    frame), `step` apart: over a convex piece cut by a plane, a linear
+    function is largest at a corner or where an edge crosses the plane."""
+    (x0, x1), (y0, y1), out = PLUG
+    z0, z1 = (CASE_Z, CASE_Z + out) if cable > 0 else (-CASE_Z - out, -CASE_Z)
+    pts = []
+    for lo, hi in (((-11.5, -9.5, -CASE_Z), (11.5, 24.5, CASE_Z)), ((x0, y0, z0), (x1, y1, z1))):
+        C = np.array([[(lo, hi)[i >> k & 1][k] for k in range(3)] for i in range(8)])
+        for a in range(8):
+            for b in range(a + 1, 8):
+                if bin(a ^ b).count("1") == 1:
+                    n = max(2, int(math.ceil(float(np.linalg.norm(C[b] - C[a])) / step)) + 1)
+                    pts.append(C[a] + np.linspace(0.0, 1.0, n)[:, None] * (C[b] - C[a]))
+    return np.concatenate(pts)
+
+
+def _face_plates(sp: "ServoSpot", B: np.ndarray, a_lo: float, a_hi: float) -> List[Piece]:
+    """A U's face plates (`FACE_PLATE_MIN_MM`): on each face of the U (its
+    bridge frame B's z = +/-BRIDGE_HALF_MM) along which the servo's case and
+    plug, swept over the joint's range, keep away from the bridge, a 2 mm
+    plate flush with the arms' and bridge's faces, from the sweep (and a
+    case's clearance) to the bridge, across the arms."""
+    P = _case_edge_points(sp.cable)
+    Bi = np.linalg.inv(B) @ sp.S_child
+    lo, hi = sp.rot_deg
+    swept = []
+    for q in np.arange(lo, hi + 0.5, 1.0):
+        c, s = math.cos(math.radians(-q)), math.sin(math.radians(-q))
+        M = Bi @ np.array([[1.0, 0.0, 0.0, 0.0], [0.0, c, -s, 0.0], [0.0, s, c, 0.0], [0.0, 0.0, 0.0, 1.0]])
+        swept.append(P @ M[:3, :3].T + M[:3, 3])
+    Q = np.concatenate(swept)
+    out: List[Piece] = []
+    Bm = mm(B)
+    for side in (1.0, -1.0):
+        band = Q[side * Q[:, 2] >= BRIDGE_HALF_MM - WALL - CASE_CLEAR]
+        x0 = (float(band[:, 0].max()) if len(band) else -1e9) + CASE_CLEAR
+        x0 = max(x0, float(Bi[0, 3]) + ARM_R_MM)          # never nearer the axis than the arms' discs reach
+        if -x0 < FACE_PLATE_MIN_MM:
+            continue
+        z0, z1 = sorted((side * (BRIDGE_HALF_MM - WALL), side * BRIDGE_HALF_MM))
+        out.append(lambda g, x0=x0, z0=z0, z1=z1: (
+            f"{Bm} box_lh([{x0:.3f} - ({g}), {a_lo:.3f} - ({g}), {z0:.3f} - ({g})], "
+            f"[{REACH_MM:.3f} + ({g}), {a_hi:.3f} + ({g}), {z1:.3f} + ({g})]);"))
+    return out
 
 
 def _yoke_pieces(sp: ServoSpot, a: np.ndarray, front: np.ndarray, x_b: float) -> Tuple[List[Piece], Piece]:
@@ -427,7 +493,7 @@ def _yoke_pieces(sp: ServoSpot, a: np.ndarray, front: np.ndarray, x_b: float) ->
         def arm(s: int) -> Piece:
             return lambda g: (f"hull() {{ {S} arm_disc({s}, {g}); intersection() {{ {bridge(g)} {S} arm_slab({s}, {g}); }} }}")
 
-        return [arm(1), arm(-1), bridge], bridge
+        return [arm(1), arm(-1), bridge] + _face_plates(sp, B, a_lo, a_hi), bridge
     if sp.yoke == "single":
         arm1: Piece = lambda g: f"{S} arm_disc(1, {g});"
         return [arm1], arm1
@@ -562,7 +628,7 @@ class Design:
         at the next joint servo j + 1's case in a cradle or, where that one is
         flipped, a yoke on its horns; a connector from one end's face to the
         other's, with gussets in the L pieces' inside corners. The fingertip:
-        its yoke or cradle and a rounded end."""
+        its yoke or cradle flared to a 33 mm cylinder ending in a dome."""
         f = self.hand.fingers[i]
         fg = dv.finger_geometry(f)
         part = self.parts[("link", i, j)]
@@ -627,8 +693,8 @@ class Design:
             e = ends[0]
             tip = fg.tip
             p1, r = tip.p1, tip.radius
-            # the rounded end only ahead of the yoke or the case (behind it, round the servo, the fingertip is cut
-            # away anyway; the part before it should not give way to it)
+            # the fingertip only ahead of the yoke or the case (behind it, round the servo, it would be cut away
+            # anyway; the part before it should not give way to it)
             if e["kind"] == "case":
                 x_cut = float((sp.S_parent @ np.array([0.0, HOUSING_MM[1], 0.0, 1.0]))[0])
             elif sp.yoke == "u":
@@ -637,10 +703,20 @@ class Design:
                 th = np.linspace(0.0, 2.0 * math.pi, 24, endpoint=False)
                 disc = np.array([[x, 9.5 * math.cos(t), 9.5 * math.sin(t)] for x in (ARM_X0, ARM_X0 + ARM_DRIVEN) for t in th])
                 x_cut = float((disc @ sp.S_child[:3, :3].T + sp.S_child[:3, 3])[:, 0].min())
-            body: Piece = lambda g, jp=e["joint"], p1=p1, r=r, xc=x_cut: (
-                f"hull() {{ {jp(g)} intersection() {{ translate({v3(p1)}) sphere(r = {r:.3f} + ({g}), $fn = 48); "
-                f"translate([{xc:.3f} - ({g}), -100, -100]) cube([300, 200, 200]); }} }}")
-            pieces = pieces + [body]
+            # the same on every finger (Martin, 11/02: a cylinder ending in a dome whatever the link's length, as on
+            # D'Claw; it was the hull of the yoke and the ball, which slanted more steeply the shorter the link): from
+            # where the yoke starts, a flare at 45 degrees to the simulator's 33 mm cylinder, which runs on to the
+            # dome; the flare runs on 1.2 mm into the cylinder, so they overlap (the floors leave room for both)
+            a1 = float(p1[0])
+            x_f = max(x_cut, min(x_cut + mt.TIP_FLARE_MM, a1))
+            a1 = max(a1, x_f + 0.01)
+            flare: Piece = lambda g, jp=e["joint"], x_f=x_f, r=r: (
+                f"hull() {{ {jp(g)} cyl_x({r:.3f} + ({g}), {x_f:.3f}, {x_f + REACH_MM:.3f}, $fn = 64); }}")
+            rod: Piece = lambda g, x_f=x_f, a1=a1, r=r: (
+                f"intersection() {{ hull() {{ cyl_x({r:.3f} + ({g}), {x_f:.3f} - ({g}), {a1:.3f}, $fn = 64); "
+                f"translate([{a1:.3f}, 0, 0]) sphere(r = {r:.3f} + ({g}), $fn = 64); }} "
+                f"translate([{x_f:.3f} - ({g}), -100, -100]) cube([300, 200, 200]); }}")
+            pieces = pieces + [flare, rod]
         elif far is not None:
             # a bracket frame: a connector from the near end's whole face (a bridge's, a single arm's horn face, a
             # cradle's) to the far end's (`_connector`)
@@ -664,8 +740,23 @@ class Design:
                         e["sp"].cable = -side                    # the tube lands on that side: the cable takes the other
             # its ends reach into a bridge and a cradle (a single arm's face stays on its horn's face: nothing round
             # a horn)
-            tube: Piece = lambda g, A=A, B=B, sa=sa, sb=sb, ea=lead["reach"], eb=other["reach"]: (
-                f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {eb});")
+            ea, eb = lead["reach"], other["reach"]
+            cut = self._block_chamfer(A, sa, B, sb, other) if other["kind"] == "case" else None
+            if cut is None:
+                tube: Piece = lambda g, A=A, B=B, sa=sa, sb=sb, ea=ea, eb=eb: (
+                    f"tube({_mat(A)}, {list(sa)}, {_mat(B)}, {list(sb)}, {g}, {ea}, {eb});")
+                tubes = [tube]
+            else:
+                # a block wider than the cradle's face: it ends in a 45-degree chamfer down to that face (Martin,
+                # 11/02: a step there should be "a gradual chamfer or fillet or some slant"); two convex pieces,
+                # reaching into each other
+                B1, Bc, sc = cut
+                block: Piece = lambda g, A=A, B1=B1, sa=sa, ea=ea: (
+                    f"tube({_mat(A)}, {list(sa)}, {_mat(B1)}, {list(sa)}, {g}, {ea}, {REACH_MM});")
+                chamfer: Piece = lambda g, B1=B1, Bc=Bc, sa=sa, sc=sc, eb=eb: (
+                    f"tube({_mat(B1)}, {list(sa)}, {_mat(Bc)}, {list(sc)}, {g}, {REACH_MM}, {eb});")
+                tube = lambda g, block=block, chamfer=chamfer: f"union() {{ {block(g)} {chamfer(g)} }}"
+                tubes = [block, chamfer]
             extra: List[Piece] = []
             if ("link", i, j) in self.more_tubes:
                 # this link came out in pieces (something turns through its tube): a tube to every face of a cradle
@@ -689,9 +780,10 @@ class Design:
                 """The connector's end face (frame F, its y-z plane) and its copy moved a gusset's legs along v:
                 where a U's gussets may stand, so none reaches past that face. Beside a bridge as tall as the
                 connector's end there is no corner to fill (Martin, 11/02: they stood a millimetre proud of the
-                arms, a step at each end)."""
+                arms, a step at each end). It runs on into the connector by `GUSSET_ROUND_MM`, where the
+                round at a gusset's end may run on along the connector's face."""
                 P = [(F @ np.array([0.0, sy * size[0] / 2.0, sz * size[1] / 2.0, 1.0]))[:3] for sy in (-1, 1) for sz in (-1, 1)]
-                P = np.array(P + [p + v * (GUSSET_MM + 2.0 * REACH_MM) for p in P])
+                P = np.array(P + [p + v * (GUSSET_MM + 2.0 * REACH_MM) for p in P] + [p - v * GUSSET_ROUND_MM for p in P])
                 # the palm's pocket round a base link still takes the whole connector moved back (as before): a
                 # bound on where these gussets reach, and the palm unchanged by them
                 self.reach.setdefault((i, j), []).append(self.tubes[(i, j)] + v * GUSSET_MM)
@@ -710,7 +802,8 @@ class Design:
                             f"intersection() {{ {Sc} socket_gusset({f}, {s}, GUSSET, {g}); {on(g)} }}") for s in (1, -1)]
                 elif e["sp"].yoke == "u":
                     F, size = (A, sa) if e is lead else (B, sb)
-                    gussets += self._arm_gussets(e["sp"], e["axis"], behind(F, size, -e["face"][:3, 0]), e["front"])
+                    gussets += self._arm_gussets(e["sp"], e["axis"], behind(F, size, -e["face"][:3, 0]), e["front"],
+                                                 (F, size))
                 else:
                     # a single arm and its connector are one plate: the arm takes in the connector's footprint in
                     # its own layer, so where the connector leaves the horn's face at a slant they still meet
@@ -720,7 +813,7 @@ class Design:
                     merged: Piece = lambda g, arm1=arm1, S0=S0: (
                         f"hull() {{ {arm1(g)} intersection() {{ {tube(g)} {S0} arm_slab(1, {g}); }} }}")
                     pieces = [merged if q is arm1 else q for q in pieces]
-            pieces = pieces + [tube] + gussets + extra
+            pieces = pieces + tubes + gussets + extra
         part.pieces = pieces
         part.positive = [p("0") for p in pieces]
         part.clip = _clip_body(f, j)
@@ -774,31 +867,70 @@ class Design:
         return (e["sp"].S_parent @ np.array([0.0, HOUSING_MM[1], 0.0, 1.0]))[:3]
 
     @staticmethod
-    def _arm_gussets(sp: ServoSpot, a: np.ndarray, on: Piece, front: np.ndarray) -> List[Piece]:
+    def _arm_gussets(sp: ServoSpot, a: np.ndarray, on: Piece, front: np.ndarray, face=None) -> List[Piece]:
         """A U's gussets: in each arm's layer, the corners between the arm's
         edges and the connector's back face, where the connector is wider
-        than the bridge (`on`: where they may stand). Outboard of the case,
-        so they turn clear of the part holding the servo. Each is one piece
-        with its arm's disc (their hull), so its face runs on from the disc
-        at a tangent: a 45-degree face met the disc's round end in a notch
-        (Martin, 11/02)."""
+        than the bridge (`on`: where they may stand; `face`: the connector's
+        end there, its frame and size). Outboard of the case, so they turn
+        clear of the part holding the servo. Each is one piece with its
+        arm's disc (their hull), so its face runs on from the disc at a
+        tangent: a 45-degree face met the disc's round end in a notch
+        (Martin, 11/02); where it stops at the connector's edge, that corner
+        is rounded (`GUSSET_ROUND_MM`)."""
         x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
         B = _bridge_frame(sp.S_child[:3, 3], front, a, x_b)
         S = mm(sp.S_child)
         s_pos = -1.0 if sp.flip else 1.0
         a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
         a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
-        x0, L, h = WALL - REACH_MM, GUSSET_MM, BRIDGE_HALF_MM
+        x0, L, h, R = WALL - REACH_MM, GUSSET_MM, BRIDGE_HALF_MM, REACH_MM
+        if face is not None:
+            # the connector's end in the bridge's frame (the same axes): how far out it reaches either side
+            c = (np.linalg.inv(B) @ face[0][:, 3])[:3]
+            reach_out = {1.0: c[2] + face[1][1] / 2.0, -1.0: face[1][1] / 2.0 - c[2]}
         out: List[Piece] = []
         for (y0, y1), s in (((a_lo, -ARM_X0), int(-s_pos)), ((ARM_X0, a_hi), int(s_pos))):   # s: that arm in S
             for zs in (1.0, -1.0):
-                # the triangle reaches REACH back into the arm and the connector (one solid with both)
-                R = REACH_MM
-                pts = [(B @ np.array([x0 - u, y, zs * (h + v), 1.0]))[:3]
-                       for u, v in ((-R, -R), (L + R, -R), (-R, L + R)) for y in (y0, y1)]
+                # the triangle (x along the link, w out from the bridge's middle), reaching REACH back into the
+                # arm and the connector (one solid with both): its corner, its leg along the arm, its leg up
+                # the connector's back face
+                prof = [(x0 + R, h - R), (x0 - L - R, h - R), (x0 + R, h + L + R)]
+                W = reach_out[zs] if face is not None else h + L + R
+                if h - R < W < h + L + R:
+                    # it stops at the connector's edge (w = W): there its face meets the connector's at an
+                    # angle, rounded by an arc tangent to both (135 degrees inside: the arc's ends lie
+                    # 0.414 r from the corner), which may run on along the connector's face past the
+                    # bridge (inside the connector, a block as wide there as at its end)
+                    xv = x0 - L - R + (W - (h - R))
+                    r = min(GUSSET_ROUND_MM, 3.4 * (W - h + R))
+                    cx, cw = xv + 0.4142 * r, W - r
+                    arc = [(cx + r * math.cos(t), cw + r * math.sin(t)) for t in np.linspace(0.75 * math.pi, 0.5 * math.pi, 13)]
+                    prof = prof[:2] + (arc if r > 0.5 else [(xv, W)]) + ([(x0 + R, W)] if cx < x0 + R else [])
+                pts = [(B @ np.array([x, y, zs * w, 1.0]))[:3] for x, w in prof for y in (y0, y1)]
                 out.append(lambda g, pts=_pts(pts), on=on, s=s: (
                     f"hull() {{ {S} arm_disc({s}, {g}); intersection() {{ hull_pts({pts}, {g}); {on(g)} }} }}"))
         return out
+
+    @staticmethod
+    def _block_chamfer(A: np.ndarray, sa, B: np.ndarray, sb, end: dict):
+        """Where a block connector (`_connector`: one size from end to end) is
+        wider than the cradle face it lands on (`end`), where it stops at
+        full size and how it ends: (its frame there, the end's frame and
+        size: the block's section within that face), a 45-degree chamfer as
+        long as the widest step it replaces. None where there is no step
+        (a millimetre or less) or the connector is not a block."""
+        if tuple(sa) != tuple(sb):
+            return None
+        F, size = end["face"], end["size"]
+        C = np.array([(F @ np.array([0.0, sy * size[0] / 2.0, sz * size[1] / 2.0, 1.0]))[:3] for sy in (-1, 1) for sz in (-1, 1)])
+        loc = (C - B[:3, 3]) @ B[:3, :3]
+        y0, y1 = max(-sa[0] / 2.0, loc[:, 1].min()), min(sa[0] / 2.0, loc[:, 1].max())
+        z0, z1 = max(-sa[1] / 2.0, loc[:, 2].min()), min(sa[1] / 2.0, loc[:, 2].max())
+        c = max(y0 + sa[0] / 2.0, sa[0] / 2.0 - y1, z0 + sa[1] / 2.0, sa[1] / 2.0 - z1)
+        length = float((B[:3, 3] - A[:3, 3]) @ A[:3, 0])
+        if c <= 1.0 or y1 - y0 < 2.0 or z1 - z0 < 2.0 or length - c < 2.0 * REACH_MM:
+            return None
+        return B @ T(None, (-c, 0.0, 0.0)), B @ T(None, (0.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0)), (y1 - y0, z1 - z0)
 
     @staticmethod
     def _connector(A: np.ndarray, sa, B: np.ndarray, sb, square: bool = False) -> Tuple[

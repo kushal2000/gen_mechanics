@@ -50,8 +50,9 @@ def test_floors_over_the_coarse_axes():
     assert len(COARSE_AXES) == 31
     floors = {mt.link_floor_mm(a, b) for a in COARSE_AXES for b in COARSE_AXES}
     assert floors == {31, 40, 41, 50, 51}
-    assert {mt.tip_floor_mm(a) for a in KINDS.values()} == {30}
-    assert max(mt.tip_floor_mm(a) for a in COARSE_AXES) == 40
+    # the fingertip holds its flare and dome whole (Martin, 11/02): 40 mm after every kind, 50 on some oblique axes
+    assert {mt.tip_floor_mm(a) for a in KINDS.values()} == {40}
+    assert max(mt.tip_floor_mm(a) for a in COARSE_AXES) == 50
 
 
 def test_a_turned_bend_motor():
@@ -67,7 +68,7 @@ def test_a_turned_bend_motor():
     assert [mt.link_floor_mm(BEND, BEND, ta, tb) for ta, tb in ((False, False), (False, True), (True, True), (True, False))] \
         == [50, 30, 40, 50]
     assert mt.link_floor_mm(SPREAD, BEND, False, True) == 30 and mt.link_floor_mm(TWIST, BEND, False, True) == 30
-    assert mt.tip_floor_mm(BEND, True) == 40 and mt.tip_floor_mm(BEND) == 30
+    assert mt.tip_floor_mm(BEND, True) == 50 and mt.tip_floor_mm(BEND) == 40
     assert mt.crossing_slide_mm(SPREAD, BEND, turned_b=True) == pytest.approx(42.5)
     assert mt.BEND_RANGE_DEG == tuple(float(v) for v in KIND_RANGE_DEG["flexion"])
 
@@ -88,7 +89,7 @@ def test_a_flipped_bend_motor():
                                                          ("flipped", "flipped"), ("flipped", "turned"),
                                                          ("flipped", "lying"))] == [31, 40, 50, 40, 60]
     assert mt.pose_floor_mm(TWIST, BEND, "lying", "flipped") == 40
-    assert mt.tip_pose_floor_mm(BEND, "flipped") == 40 == mt.tip_floor_mm(BEND, True)
+    assert mt.tip_pose_floor_mm(BEND, "flipped") == 50 == mt.tip_floor_mm(BEND, True)
 
 
 def test_motor_box():

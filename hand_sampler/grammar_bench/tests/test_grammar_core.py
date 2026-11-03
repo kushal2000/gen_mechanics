@@ -52,7 +52,7 @@ N_CHAIN = int(os.environ.get("GRAMMAR_CHAIN", "2000"))
 BEND, SPREAD, TWIST = KIND_AXIS["flexion"], KIND_AXIS["abduction"], KIND_AXIS["roll"]
 
 
-def _finger(y, z, facing=0, tilt=0, joints=((BEND, 50), (BEND, 50), (BEND, 30))) -> Finger:
+def _finger(y, z, facing=0, tilt=0, joints=((BEND, 50), (BEND, 50), (BEND, 40))) -> Finger:
     return Finger(y=y, z=z, facing=facing, tilt=tilt, joints=tuple(Joint("hinge", a, L) for a, L in joints))
 
 
@@ -60,7 +60,7 @@ def simple_hand() -> Hand:
     """A buildable hand: a row of four bending fingers and a 2-2-1 thumb
     (spread-bend-spread-bend-bend, both spreads crossing the next bend)."""
     row = [_finger(y, 40) for y in (-80, -40, 0, 40)]
-    thumb = _finger(80, -40, facing=90, joints=((SPREAD, 0), (BEND, 50), (SPREAD, 0), (BEND, 50), (BEND, 30)))
+    thumb = _finger(80, -40, facing=90, joints=((SPREAD, 0), (BEND, 50), (SPREAD, 0), (BEND, 50), (BEND, 40)))
     return Hand(fingers=tuple(row) + (thumb,))
 
 
@@ -124,7 +124,7 @@ def _edit_joints(h: Hand, i: int, joints) -> Hand:
     (lambda h: _edit_finger(h, 2, z=0), "from the palm centre, allowed 40-90"),
     (lambda h: _edit_finger(h, 0, y=-80, z=40, facing=90), "faces back across the palm"),
     (lambda h: _edit_joints(h, 0, ((BEND, 20), (BEND, 40))), "not allowed (30-90"),          # 30-40 turn the next bend servo
-    (lambda h: _edit_joints(h, 0, ((BEND, 40), (BEND, 30))), "fingertip 40-90"),             # after a turned bend servo
+    (lambda h: _edit_joints(h, 0, ((BEND, 40), (BEND, 30))), "fingertip 50-90"),             # after a turned bend servo
     (lambda h: _edit_joints(h, 0, ((SPREAD, 30), (SPREAD, 30))), "not allowed (41-90"),
     (lambda h: _edit_joints(h, 0, ((BEND, 0), (TWIST, 30))), "link length 0 mm not allowed"),
     (lambda h: _edit_joints(h, 0, ((BEND, 0), (SPREAD, 0), (BEND, 30))), "link length 0 mm not allowed"),
@@ -161,29 +161,31 @@ def test_servo_poses_turn_the_fewest():
     the one with the fewest turned (standing on the finger's back), then the
     fewest flipped (lying along the link after their joint); the lengths a
     finger may take do not change."""
-    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 40)))
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 50)))
     assert servo_poses(f) == ("lying", "lying", "flipped")                  # 40 mm: two yokes, the body in the tip
-    f = _finger(0, 40, joints=((BEND, 50), (BEND, 30), (BEND, 40)))
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 40)))
+    assert servo_poses(f) == ("lying", "lying", "turned")                   # a 40 mm tip cannot hold the body (50)
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 30), (BEND, 50)))
     assert servo_poses(f) == ("lying", "lying", "turned")                   # 30 mm: two yokes need 31
-    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 50), (BEND, 40)))
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 50), (BEND, 50)))
     assert servo_poses(f) == ("lying", "lying", "flipped", "flipped")       # a cradle and a yoke in 50 mm
-    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 60), (BEND, 30)))
+    f = _finger(0, 40, joints=((BEND, 50), (BEND, 40), (BEND, 60), (BEND, 40)))
     assert servo_poses(f) == ("lying", "lying", "flipped", "lying")         # two cradles in 60 mm
-    f = _finger(0, 40, joints=((BEND, 70), (BEND, 40), (TWIST, 30), (BEND, 40), (BEND, 40)))
+    f = _finger(0, 40, joints=((BEND, 70), (BEND, 40), (TWIST, 30), (BEND, 40), (BEND, 50)))
     assert servo_poses(f) == ("lying", "lying", "lying", "turned", "flipped")   # 30 mm after a twist: turned
 
 
 def test_allowed_lengths_follow_the_motor_floors():
-    f = _finger(0, 40, joints=((SPREAD, 50), (BEND, 50), (TWIST, 50), (BEND, 30)))
+    f = _finger(0, 40, joints=((SPREAD, 50), (BEND, 50), (TWIST, 50), (BEND, 40)))
     assert allowed_lengths(f, 0, True, 90) == [0] + list(range(30, 91, 10))    # spread then bend (30 turns it); may cross
     assert allowed_lengths(f, 1, True, 90) == list(range(40, 91, 10))           # bend then twist: no crossing
     assert allowed_lengths(f, 2, True, 90) == list(range(30, 91, 10))           # twist then bend (30-40 turn it)
-    assert allowed_lengths(f, 3, True, 90) == list(range(30, 91, 10))           # the fingertip (its servo lies along 50 mm)
+    assert allowed_lengths(f, 3, True, 90) == list(range(40, 91, 10))           # the fingertip (its servo lies along 50 mm)
     assert not any(turned_servo(f, j) for j in range(4))
-    b = _finger(0, 40, joints=((BEND, 40), (BEND, 40), (BEND, 40)))        # 40 mm links turn the bend servos after them
+    b = _finger(0, 40, joints=((BEND, 40), (BEND, 40), (BEND, 50)))        # 40 mm links turn the bend servos after them
     assert [turned_servo(b, j) for j in range(3)] == [False, True, True]
     assert servo_poses(b) == ("lying", "turned", "flipped")                 # where a link has room, one flips instead
-    assert [allowed_lengths(b, j, True, 90)[0] for j in range(3)] == [30, 40, 40]
+    assert [allowed_lengths(b, j, True, 90)[0] for j in range(3)] == [30, 40, 50]
     assert allowed_lengths(f, 0, False, 90) == [0] + list(range(10, 91, 10))
     assert allowed_lengths(f, 3, False, 90) == list(range(10, 91, 10))
     assert allowed_lengths(f, 3, False)[-1] == NO_RULES.max_link_mm              # the grammar's own longest link
@@ -611,7 +613,7 @@ def test_length_steps_follow_the_allowed_lengths():
 def test_fit_lengths_moves_links_to_their_nearest_allowed_length():
     f = _finger(0, 40, joints=((BEND, 30), (TWIST, 0), (BEND, 10)))
     g = ops.fit_lengths(f, FEETECH_RULES)
-    assert [j.length for j in g.joints] == [40, 30, 40]     # 30 turns the last bend servo, whose tip needs 40
+    assert [j.length for j in g.joints] == [40, 30, 50]     # 30 turns the last bend servo, whose tip needs 50
     assert ops.fit_lengths(g, FEETECH_RULES) == g
 
 
@@ -667,14 +669,14 @@ def test_structural_inverse_pairs():
 
 
 def test_split_keeps_the_finger_length_when_the_floors_allow():
-    h = Hand(fingers=(_finger(0, 40, joints=((BEND, 90), (BEND, 30))), _finger(0, -40, facing=180)))
+    h = Hand(fingers=(_finger(0, 40, joints=((BEND, 90), (BEND, 40))), _finger(0, -40, facing=180)))
     child = ops.OPERATOR_BY_NAME["split"].apply(h, (0, 0, 50, "abduction"), FEETECH_RULES)
-    # spread then bend at 40 mm: under the 41 mm floor, so the bend servo turns and its fingertip needs 40
-    assert [(j.axis, j.length) for j in child.fingers[0].joints] == [(BEND, 50), (SPREAD, 40), (BEND, 40)]
+    # spread then bend at 40 mm: under the 41 mm floor, so the bend servo turns and its fingertip needs 50
+    assert [(j.axis, j.length) for j in child.fingers[0].joints] == [(BEND, 50), (SPREAD, 40), (BEND, 50)]
     child = ops.OPERATOR_BY_NAME["split"].apply(h, (0, 0, 40, "abduction"), FEETECH_RULES)
-    assert [j.length for j in child.fingers[0].joints] == [50, 50, 30]      # bend then spread needs 50
+    assert [j.length for j in child.fingers[0].joints] == [50, 50, 40]      # bend then spread needs 50
     child = ops.OPERATOR_BY_NAME["split"].apply(h, (0, 1, 10, "flexion"), FEETECH_RULES)
-    assert [j.length for j in child.fingers[0].joints] == [90, 30, 40]      # 30 turns the new servo; its tip needs 40
+    assert [j.length for j in child.fingers[0].joints] == [90, 30, 50]      # 30 turns the new servo; its tip needs 50
     moves = ops.OPERATOR_BY_NAME["split"].moves(h, FEETECH_RULES)
     assert {m[2] for m in moves if m[:2] == (0, 0)} == set(range(0, 91, 10))
 
@@ -777,22 +779,24 @@ def test_chain_counts_match_the_grammar_s_own_lengths():
 
 def test_search_space_counts():
     """The search space, counted exactly (no geometry), every finger count
-    together: 10^38.0 hands in the coarse stage (joints on the three kinds,
-    20 mm link steps), 10^64.8 in the fine stage (31 axis directions, 10 mm
+    together: 10^37.1 hands in the coarse stage (joints on the three kinds,
+    20 mm link steps), 10^63.1 in the fine stage (31 axis directions, 10 mm
     steps); four-finger hands with joints on the three kinds and 10 mm steps:
-    10^29.5 (10^29.7 on 2026-10-20, E16). 2026-10-23: floors 1 mm past the grid (the
+    10^28.7 (10^29.7 on 2026-10-20, E16). 2026-10-23: floors 1 mm past the grid (the
     same number of lengths; the 225 mm cap trims a few chains), and a
     crossing's first servo never turned with room before it for the second
-    (`motor.crossing_floor_mm`)."""
+    (`motor.crossing_floor_mm`). 2026-11-02: fingertips at least 40 mm (50
+    after a turned or flipped bend), room for the printed tip's flare and
+    dome (10^38.0 and 10^64.8 before)."""
     from hand_sampler.grammar import space
     from hand_sampler.grammar.hand import FEETECH_COARSE_RULES
 
     assert len(space.AXES_ALL) == 31
     assert space.rule_axes(FEETECH_COARSE_RULES) == space.AXES_KINDS and space.rule_axes(FEETECH_RULES) == space.AXES_ALL
-    assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (21, 400, 6673, 42383, 98529)
-    assert space.hands_log10(FEETECH_RULES, space.AXES_KINDS)[4] == pytest.approx(29.47, abs=0.01)
-    assert space.total_log10(FEETECH_RULES) == pytest.approx(64.79, abs=0.01)
-    assert space.total_log10(FEETECH_COARSE_RULES) == pytest.approx(38.03, abs=0.01)
+    assert space.chains(FEETECH_RULES, space.AXES_KINDS) == (18, 342, 5569, 30298, 60306)
+    assert space.hands_log10(FEETECH_RULES, space.AXES_KINDS)[4] == pytest.approx(28.72, abs=0.01)
+    assert space.total_log10(FEETECH_RULES) == pytest.approx(63.13, abs=0.01)
+    assert space.total_log10(FEETECH_COARSE_RULES) == pytest.approx(37.10, abs=0.01)
     assert space.total_log10(NO_RULES) > space.total_log10(FEETECH_RULES) + 20
 
 
@@ -822,11 +826,11 @@ def test_a_bend_first_finger_has_tilt_0():
 
 def test_five_joint_fingers_fit_the_length_cap():
     """Five joints on the three kinds, each link at its shortest from the palm
-    out (a link that short turns the next bend servo): at most 203 mm (a bend
-    or twist then four spreads: 50 + 41 + 41 + 41 + 30), inside the Feetech cap
-    (225 mm); five bends need 190 (30 + 40 + 40 + 40 + a 40 mm fingertip)."""
+    out (a link that short turns the next bend servo): at most 213 mm (a bend
+    or twist then four spreads: 50 + 41 + 41 + 41 + 40), inside the Feetech cap
+    (225 mm); five bends need 200 (30 + 40 + 40 + 40 + a 50 mm fingertip)."""
     tot = {}
     for kinds in itertools.product(("flexion", "abduction", "roll"), repeat=5):
         js = [Joint("hinge", KIND_AXIS[k], 90) for k in kinds]
         tot[kinds] = ops._shortest_rest_mm(Finger(y=0, z=40), js, -1, 0, FEETECH_RULES)
-    assert max(tot.values()) == 203 <= FEETECH_RULES.max_finger_length_mm and tot[("flexion",) * 5] == 190
+    assert max(tot.values()) == 213 <= FEETECH_RULES.max_finger_length_mm and tot[("flexion",) * 5] == 200

@@ -22,8 +22,8 @@ from hand_sampler.cad.design import Design
 from hand_sampler.cad.servo import HL3915
 
 FLEX, ABD, ROLL = (0, 0), (90, 0), (0, 90)
-BENDS = (("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
-THUMB_221 = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
+BENDS = (("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 40))      # fingertips at least 40 mm (2026-11-02)
+THUMB_221 = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 40))
 
 
 def _finger(y, z, joints, facing=0, tilt=0):
@@ -42,7 +42,7 @@ def cut_hand() -> Hand:
 def zero_link_hand() -> Hand:
     """`make_grammar_population.zero_link_hand`: knuckles crossing at the
     base (the spread servo slid out behind the palm) and a 2-2-1 thumb."""
-    knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
+    knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 40))
     fingers = [_finger(y, 80, knuckle) for y in (-40, 0, 40)]
     fingers.append(_finger(40, -80, THUMB_221, facing=180))
     return Hand(fingers=tuple(fingers))
@@ -61,17 +61,17 @@ def oblique_hand() -> Hand:
 def kinds_hand() -> Hand:
     """Every yoke: a U on bends and spreads, a turned bend after a spread's
     40 mm link, a one-arm yoke on a twist, a bend fingertip."""
-    f = _finger(0, 40, (("hinge", FLEX, 50), ("hinge", ABD, 40), ("hinge", FLEX, 40), ("hinge", ROLL, 30)))
-    g = _finger(0, -40, (("hinge", FLEX, 50), ("hinge", FLEX, 30)), facing=180)
+    f = _finger(0, 40, (("hinge", FLEX, 50), ("hinge", ABD, 40), ("hinge", FLEX, 40), ("hinge", ROLL, 40)))
+    g = _finger(0, -40, (("hinge", FLEX, 50), ("hinge", FLEX, 40)), facing=180)
     return Hand(fingers=(f, g))
 
 
 def flipped_hand() -> Hand:
     """Bend servos flipped along the link after them (Martin, 10/29): a link
     with two yokes, one with a cradle and a yoke, one with two cradles, a
-    fingertip holding its servo's case."""
-    f = _finger(0, 40, (("hinge", FLEX, 50), ("hinge", FLEX, 40), ("hinge", FLEX, 50), ("hinge", FLEX, 40)))
-    g = _finger(0, -40, (("hinge", FLEX, 50), ("hinge", FLEX, 40), ("hinge", FLEX, 60), ("hinge", FLEX, 30)),
+    fingertip holding its servo's case (50 mm: room for its case, flare and dome)."""
+    f = _finger(0, 40, (("hinge", FLEX, 50), ("hinge", FLEX, 40), ("hinge", FLEX, 50), ("hinge", FLEX, 50)))
+    g = _finger(0, -40, (("hinge", FLEX, 50), ("hinge", FLEX, 40), ("hinge", FLEX, 60), ("hinge", FLEX, 40)),
                 facing=180)
     return Hand(fingers=(f, g))
 

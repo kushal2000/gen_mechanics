@@ -55,8 +55,8 @@ def _finger(y: int, z: int, joints, facing: int = 0, tilt: int = 0) -> Finger:
 
 
 FLEX, ABD, ROLL = (0, 0), (90, 0), (0, 90)
-BENDS = (("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
-THUMB_221 = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
+BENDS = (("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 40))      # fingertips at least 40 mm (2026-11-02)
+THUMB_221 = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 40))
 
 
 def cut_hand() -> Hand:
@@ -74,7 +74,7 @@ def zero_link_hand() -> Hand:
     bend, its motor slid behind the palm), and a 2-2-1 thumb with a second
     crossing in its middle, opposite the row so the mount is at the palm's
     centre."""
-    knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 30))
+    knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 50), ("hinge", FLEX, 40))
     fingers = [_finger(y, 80, knuckle) for y in (-40, 0, 40)]
     fingers.append(_finger(40, -80, THUMB_221, facing=180))      # opposite the row: the mount at the palm's centre
     return Hand(fingers=tuple(fingers))

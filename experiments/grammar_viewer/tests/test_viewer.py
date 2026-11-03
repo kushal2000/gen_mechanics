@@ -236,13 +236,14 @@ def test_palm_bend_folds_the_part_beyond_the_cut(evo):
 
 
 def test_search_space_line_follows_the_rules(evo):
-    """The line counts every finger count: the fine stage 10^65, the coarse
-    stage 10^38, the whole grammar more."""
-    assert "10^65 hands (2-6 fingers)" in evo.md_space.content
+    """The line counts every finger count: the fine stage 10^63, the coarse
+    stage 10^37 (10^65 and 10^38 before the fingertip floors of 2026-11-02),
+    the whole grammar more."""
+    assert "10^63 hands (2-6 fingers)" in evo.md_space.content
     evo.choose_rules(V.COARSE)
-    assert "10^38 hands (2-6 fingers)" in evo.md_space.content
+    assert "10^37 hands (2-6 fingers)" in evo.md_space.content
     evo.choose_rules(V.NONE)
-    assert "hands (2-6 fingers)" in evo.md_space.content and "10^65 hands" not in evo.md_space.content
+    assert "hands (2-6 fingers)" in evo.md_space.content and "10^63 hands" not in evo.md_space.content
     evo.choose_rules(V.FEETECH)
 
 
