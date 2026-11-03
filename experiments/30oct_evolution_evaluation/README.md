@@ -16,6 +16,14 @@ here until they finish.
     .venv_isaacsim/bin/python experiments/30oct_evolution_evaluation/plot_niches.py       # one hand per niche, as mounted
     .venv_isaacsim/bin/python experiments/30oct_evolution_evaluation/mutation_quality.py  # child vs parent, per operator
     bash experiments/30oct_evolution_evaluation/eval_long_runs.sh 10176                   # long runs at a matched checkpoint (GPU)
+    .venv_isaacsim/bin/python experiments/30oct_evolution_evaluation/final_archive_eval.py --top-k 2 --envs-per-hand 100 \
+        --tag _it73_100env                                                                # final archives, final policies (GPU)
+    .venv_isaacsim/bin/python experiments/30oct_evolution_evaluation/top_hands_100env.py  # top hands, both reset modes (GPU)
+    .venv_isaacsim/bin/python experiments/30oct_evolution_evaluation/plot_best_hand_comparison.py \
+        --summary-tag _it73_100env                                                        # best vs best, one image
+    .venv_isaacsim/bin/python experiments/30oct_evolution_evaluation/render_archive_videos.py --run map_elites \
+        --top 4 --summary-tag _it73_100env                                                # sim clips (GPU, cameras)
+    .venv_isaacsim/bin/python experiments/30oct_evolution_evaluation/diag_table_contact.py --hands g0058_c00 ...   # stuck fingers
 
 `eval_long_runs.sh`: the long runs keep checkpoints at epochs 636, 2544, 5724, 10176, 15900, 20352 = the ends of
 iterations 0, 3, 8, 15, 24, 31 (rl_games keeps `last_*_ep_*` only when epoch/636 is a perfect square, and the last).
@@ -25,6 +33,63 @@ Outputs `debug_outputs/evolution/long_runs_eval/<run>_ep<E>.json`.
 joints 0) mounted palm down as in the env, seen from below, one scale. Default: the seed (`plots/niches_seed.png`); with
 `--manifest <gen>/manifest.json --fitness <gen>/fitness.json` the best hand per niche of that pass, labelled with goals
 per episode (`plots/niches_map_elites_it21.png`: MAP-Elites' iteration 21, elites and challengers).
+
+## Final results (2 Nov: both runs at 74 iterations, ~18.5B steps)
+
+Both runs were extended to 74 iterations; iterations 64-73 used table-safe finger resets (below). The end-of-run
+evaluation (`final_archive_eval.py --top-k 2 --envs-per-hand 100 --tag _it73_100env`): per niche the top 2 hands by
+their latest loop score, re-evaluated under the run's FINAL policy, 100 envs each (s.e. ~+-2), sampled actions, SAPG
+leader, table-safe resets, 50-goal cap. `debug_outputs/evolution/final_archive_eval/*_it73_100env*`.
+
+| final archive | greedy evolution | MAP-Elites |
+|---|---|---|
+| QD (sum of niche winners' goals/ep) | 260.5 | **554.5 (2.13x)** |
+| niches with goals (/30) | 11 | **25** |
+| niches >= 20 goals/ep | 10 | **17** |
+| best hand | 34.0 (`g0063_c01`: 4 fingers, cut, medium) | **39.3** (`g0067_c12`: 4 fingers, cut, long) |
+| the loop's own QD at iteration 73 | 335 | 573 |
+
+- **MAP-Elites: twice the QD, twice the coverage, and the best hand** (+5.3 goals, well outside the error). The loop's QD
+  overstated greedy by 29%: its niche holders are scored iterations ago (greedy stops training most of them).
+- **Coverage:** MAP-Elites has working designs (25-34 goals/ep) in niches greedy never fills: 5- and 6-finger hands
+  without a palm cut, and long fingers for 3-6 fingers. Greedy stays in its 3-5-finger palm-cut family. The 2-finger
+  niches are empty in both (MAP-Elites' best 2.0; selection and the grammar's removal rule, see below).
+- **MAP-Elites' top hands are long-fingered 4-finger designs** once resets are table-safe: `g0067_c12` 39.3,
+  `g0058_c00` 36.7 (4 fingers, no cut, long), `g0062_c11` 36.5, `g0064_c00` 35.9 (3 fingers). Greedy: `g0063_c01` 34.0,
+  `g0050_c01` 33.2, `g0065_c04` 32.8.
+- Design files: `debug_outputs/evolution/<run>/hands/<id>/` (URDF, palm meshes, design and spec JSON); copies on
+  `master` under `assets/urdf/29oct_evolution/<run>/<id>/`.
+- Images: `plots/best_hand_it73_100env_g0067_c12_vs_g0063_c01.png` (best vs best, 1:1),
+  `plots/hand_g0058_c00_vs_g0058_c07_100env.png` (`g0058_c00` vs greedy's best at iteration 63), niche galleries
+  `plots/niches_{map_elites,baseline}_final_it73.png`. Videos (20 s clips under the final policies, top 4 per run, and
+  best vs best): `debug_outputs/evolution/videos/final_archive_it73/`.
+- Evaluation noise: the loop's 10-env "best hand" runs ~5-10 goals high (one env's goals have s.d. ~18, and the best is
+  a maximum over 30-46 noisy scores); single 20 s video clips vary even more. Quote the 100-env numbers.
+
+## The table-safe reset fix (1 Nov)
+
+The olympics reset drew each finger joint uniformly over its whole range with the wrist always 0.15 m above the table,
+so long fingers drawn bent downward started inside the table: ~20% of `g0058_c00`'s and `g0061_c04`'s episodes had a
+fingertip below the table top and stayed stuck (`diag_table_contact.py`). This understated long-fingered designs in
+training, evaluation and selection. The fix (`env.reset.table_safe`, on by default): forward kinematics after the draw,
+any env with a fingertip centre below table top + 1 cm is redrawn (up to 10 times, then the home pose). After it: 0%
+below the table and no slowdown. At 100 envs under the iteration-63 policy it lifted `g0058_c00` from 25.2 to 37.1 and
+`g0061_c04` from 30.3 to 37.4 (`top_hands_100env.py`); in the 10 extended iterations MAP-Elites' loop QD rose from
+~489-537 to ~491-586 and greedy's from ~308 to ~309-335.
+
+## Learner experiments (31 Oct - 1 Nov)
+
+MAP-Elites' best hand `g0018_c00` alone, 3,180 epochs, 3 seeds, cap-200 evaluation; each a subfolder with a README.
+Settled stack: SAPG, shared action noise, log-std clamp [-5, 2], fixed lr 3e-4, fp16, minibatch 16,384.
+
+| question | result | folder |
+|---|---|---|
+| adaptive lr? | fixed 3e-4 matches it (95 vs 100); fixed 1e-4 unreliable | `lr_schedule_test/` |
+| SAPG or PPO? | same ceiling; PPO slow on 2 of 3 seeds with every noise design | `ppo_vs_sapg/`, `ppo_noise/` |
+| action noise | shared 100 / 97 / 103 vs per-slot 89 / 122 / 90; predicted per joint worse (66.5 uncapped, 86.9 with clamp + bounds loss) | `shared_log_std/`, `predicted_log_std*/`, `log_std_cap/` |
+| precision | bf16 collapsed; fp32 no better (91) and 1.5x slower | `amp_bf16_test/`, `fp32_test/` |
+| minibatch 98k vs 16k | 98k fails for both (1-3 goals/ep) | `minibatch_96k/` |
+| the NaN crashes | runaway per-slot log-std on rare joint slots overflowed fp16; fixed by the clamp | `nan_debug/`, `log_std_cap/` |
 
 ## Findings so far (30 Oct, runs at iteration ~21 of 32)
 
@@ -88,6 +153,8 @@ Training curves agree: goals/ep at epoch 1,600, mean of seeds, 32.3 / 26.9 / 14.
 
 ## To do
 
-- At the end of the runs: re-evaluate every niche's best hand under each run's final policy (the archive QD keeps stale
-  scores for hands no longer trained).
+- Solo retraining of the final bests (`g0067_c12`, `g0058_c00` vs greedy's `g0063_c01`) with the settled stack and
+  table-safe resets: the fair design comparison for the paper (the 30 Oct solo runs used iteration-30 bests).
 - Matched long-run evaluations at epochs 15900 and 20352.
+- Representative videos: several episodes per hand, keep one near its mean (single clips are noisy).
+- Done (2 Nov): the end-of-run re-evaluation of every niche under each run's final policy (above).
