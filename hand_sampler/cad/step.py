@@ -29,6 +29,11 @@ SIMPLIFY_MM = 1e-3
 leave edges far shorter than the file's accuracy, which a CAD kernel
 collapses into loops it cannot mend (OpenCascade built no solid from four
 palms of the commercial fits until these merged away)."""
+PIECE_MM3 = 1.0
+"""Pieces of a part's mesh smaller than this are no solids: crumbs of no
+volume that a boolean leaves pinched onto the solid and that come apart when
+it is read back (11/04: a commercial palm's file held six beside the palm;
+the kit's checks count no piece under this either, `package._pieces`)."""
 
 
 def _num(x: float, digits: int = 6) -> str:
@@ -290,13 +295,18 @@ def write_part(off: Path, path: Path, name: str) -> Dict[str, float]:
     """A rendered part's OFF mesh (`render.load`, its indexing kept),
     simplified by `SIMPLIFY_MM` where that keeps its volume (as
     `render._lean`: a simplification took a 10 mm3 sliver off a palm that
-    came out in two pieces), as STEP."""
+    came out in two pieces), as STEP, its crumbs left out (`PIECE_MM3`)."""
+    import manifold3d as m3
+
     from .render import load
 
     _, man = load(off)
     lean = man.simplify(SIMPLIFY_MM)
     if abs(lean.volume() - man.volume()) <= 1e-4 * man.volume() + 1.0:
         man = lean
+    pieces = man.decompose()                     # (after the simplification, which pinches off crumbs of its own)
+    if len(pieces) > 1:
+        man = m3.Manifold.compose([q for q in pieces if q.volume() >= PIECE_MM3] or pieces)
     mesh = man.to_mesh()
     return write(np.asarray(mesh.vert_properties)[:, :3], np.asarray(mesh.tri_verts), path, name)
 

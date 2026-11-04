@@ -234,6 +234,49 @@ def test_the_ribs_are_one_grid(monkeypatch):
             assert np.allclose(steps, np.round(steps)) and np.all(np.round(steps) >= 1)
 
 
+def test_the_fills_under_the_face_leave_no_slit_and_no_sharp_inside_corner():
+    """Under a palm's face (Martin, 11/04: "some internal corners are
+    filleted while others are not", "thin gaps around some of the edges"):
+    the fills round every inside corner where walls and ribs meet, close a
+    slit between two walls even across a case screw's lane (keeping the rest
+    of the lane clear), and reach into the walls they join (fills that only
+    touched them left cracks)."""
+    import re
+
+    import manifold3d as m3
+
+    from hand_sampler.cad import design as D
+
+    def box(y0, z0, y1, z1):
+        return np.array([[y0, z0], [y1, z0], [y1, z1], [y0, z1]], float)
+
+    def cs(P):
+        return m3.CrossSection([D._ccw(P).tolist()])
+
+    outline = box(0.0, 0.0, 100.0, 60.0)
+    walls = [box(30.0, 0.0, 32.5, 60.0), box(0.0, 30.0, 100.0, 32.5),    # a rib crossing, its ends on the rim
+             box(60.0, 2.9, 90.0, 5.4)]                                   # a wall 0.4 mm inside the rim
+    lane = box(70.0, 0.0, 80.0, 20.0)                                     # a lane across that slit
+    tray = cs(outline)
+    W = tray - tray.offset(-D.RIM_MM, m3.JoinType.Miter)
+    for q in walls:
+        W = W + cs(q)
+    fills = []
+    for p in D.Design._fills(outline, 10.5, walls, [], [lane]):
+        pts, paths = re.match(r"prism_yz\((\[\[.*?\]\]), (\[\[.*?\]\]),", p("0")).groups()
+        pts, paths = eval(pts), eval(paths)
+        fills.append(m3.CrossSection([[pts[i] for i in path] for path in paths]))
+    assert fills and all((f ^ W).area() > 0.1 for f in fills)
+    U = W
+    for f in fills:
+        U = U + f
+    r = 0.75                     # a sharp 90-degree inside corner leaves a crumb of 0.12 mm2 in this closing, a slit more
+    gaps = U.offset(r, m3.JoinType.Round, 2.0, 64).offset(-r, m3.JoinType.Round, 2.0, 64) - U
+    assert max([g.area() for g in gaps.decompose()] + [0.0]) < 0.05
+    assert (cs(box(70.0, 2.5, 80.0, 2.9)) - U).area() < 0.01             # the slit, solid in the lane too
+    assert (cs(box(70.0, 5.4 + D.REACH_MM + 0.1, 80.0, 20.0)) ^ U).area() < 0.01   # the lane past it, clear
+
+
 def test_every_placement_is_a_proper_rotation():
     """No transform in a hand file mirrors (a mirrored piece turns inside out
     in a hull, and a cut by it adds material)."""

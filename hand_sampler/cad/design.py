@@ -95,6 +95,7 @@ underside just above them (Martin, 10/29): the screwdrivers for their case
 screws pass under the plate, never through the face."""
 PALM_FACE_MM = PALM_TOP_MM + FACE_RAISE_MM   # the palm's face (library PALM_FACE)
 PALM_PLATE_MM = 3.0           # the palm's plate, under its face
+PLATE_ROUND_MM = 3.0          # the plate's corners, and with them the wall's (library PLATE_ROUND)
 RIM_MM = 2.5                  # the tray's wall round the face's edge, and a pocket's walls
 CRADLE_CHANNEL_MM = 14.0      # a socket's servo needs only its own front clear (it is open on two more sides)
 CLIP_MM = 2.4
@@ -106,18 +107,21 @@ a square grid along the palm's y and z, this far apart, as deep as the wall
 round the edge."""
 RIB_MM = RIM_MM               # a rib's thickness
 RIB_MIN_MM = 12.0             # a rib that ends on nothing goes back to the last rib it crosses, or goes if shorter
-POCKET_ROUND_MM = 2.0
-"""A pocket's edges square to the face are rounded this much, so the palm's
-inside corners where a pocket cuts it are filleted (Martin, 11/03: "internal
-cutout corners should also be filleted a little")."""
+INSIDE_ROUND_MM = 2.0
+"""The palm's inside corners square to the face are filleted this much, as a
+link's are (render.FILLET_MM): where a pocket cuts the palm (its box's edges,
+`_pocket_box`; Martin, 11/03: "internal cutout corners should also be
+filleted a little") and wherever the wall, housings, pocket walls and ribs
+under the face meet (`_fills`; Martin, 11/04: some were filleted, others
+not)."""
 CORNER_ROUND_MM = 3.0
 """Where a pocket cuts the palm's edge, the palm's outside corners there are
 rounded this much, as the plate's own corners are (library PLATE_ROUND;
 Martin, 11/03: "a lot of palm corners are quite sharp")."""
 GAP_FILL_MM = 8.0
 """Gaps narrower than this between what stands under the face (the wall,
-housings, pocket walls, ribs) are filled solid and the inside corners between
-them rounded as far (Martin, 10/30: material, not slots)."""
+housings, pocket walls, ribs) are filled solid (Martin, 10/30: material, not
+slots)."""
 FAR_HOLES = ((22.5, -8.0), (22.5, 8.0))   # (Y, Z) of the case holes a housing's screws take (library FAR_HOLES)
 LANE_MM = (30.0, 5.0)         # a lying servo's case screws: a screwdriver's way along its axis (reach, half-width)
 CAP_SHARE = 0.25
@@ -565,14 +569,22 @@ def _hole_clear(S_yoke: np.ndarray, s: int, a: float, cases: List["ServoSpot"], 
     return True
 
 
-def _pocket_box(S: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> str:
-    """A pocket's box (lo, hi in its servo's frame S, in the palm): its edges
-    along whichever of the servo's axes stands square to the face rounded
-    `POCKET_ROUND_MM`; a tilted servo's box stays sharp."""
+def _pocket_round(S: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> Tuple[int, float]:
+    """Which of a pocket's box's axes (lo, hi in its servo's frame S, in the
+    palm) stands square to the face, and how much its edges along it are
+    rounded (`INSIDE_ROUND_MM`, less on a thin box); (-1, 0) for a tilted
+    servo's box, which stays sharp."""
     k = int(np.argmax(np.abs(S[0, :3])))
     if abs(float(S[0, k])) < 0.999:
+        return -1, 0.0
+    return k, min([INSIDE_ROUND_MM] + [0.5 * float(hi[i] - lo[i]) - 0.01 for i in range(3) if i != k])
+
+
+def _pocket_box(S: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> str:
+    """A pocket's box, its edges square to the face rounded (`_pocket_round`)."""
+    k, r = _pocket_round(S, lo, hi)
+    if k < 0:
         return f"box_lh({v3(lo)}, {v3(hi)});"
-    r = min([POCKET_ROUND_MM] + [0.5 * float(hi[i] - lo[i]) - 0.01 for i in range(3) if i != k])
     return f"box_round({v3(lo)}, {v3(hi)}, {k}, {r:.3f});"
 
 
@@ -1048,7 +1060,8 @@ class Design:
         whole outline down to the palm's back face, which stays open (cables
         leave there; the arm and the board come later), and under the face a
         grid of ribs as deep as the wall (`_ribs`), any gap narrower than
-        `GAP_FILL_MM` between all of these filled (`_fills`). Each base servo
+        `GAP_FILL_MM` between all of these filled and every inside corner
+        between them filleted (`_fills`). Each base servo
         screws straight into its housing under the face and its finger turns
         in a pocket (`_pocket`): a clean box round what turns at the finger's
         base, walled where it lies inside the palm, open where the finger
@@ -1127,8 +1140,15 @@ class Design:
                 y0 = (float(pocket[0][0][1][1]) if pocket is not None else SOCKET_Y0_MM) if lying else -9.5
                 body = f"box_lh([{-HOUSING_MM[0]} - ({{g}}), {y0:.3f} - ({{g}}), {-HOUSING_MM[2]} - ({{g}})], " \
                        f"[{HOUSING_MM[0]} + ({{g}}), {HOUSING_MM[1]} + ({{g}}), {HOUSING_MM[2]} + ({{g}})])"
-                up = housing_corners(sp.S_parent, y0=y0)
+                C = housing_corners(sp.S_parent, y0=y0)
+                up = C.copy()
                 up[:, 0] = (x0 + x1) / 2.0
+                if 0.0 < float(C[:, 0].min()) - xb < WALL:
+                    # ending just short of the back face (a lying servo's, 0.7 mm): down to it, flush with the wall,
+                    # the ribs and the fills beside it (Martin, 11/04: a fill hung below it)
+                    down = C.copy()
+                    down[:, 0] = xb
+                    up = np.vstack([up, down])
                 ped: Piece = lambda gg, Sp=Sp, body=body, pts=_pts(up): (
                     f"hull() {{ {Sp} {body.format(g=gg)}; hull_pts({pts}); }}")
                 pieces.append(ped)
@@ -1188,7 +1208,7 @@ class Design:
             lanes += ln
             part.tunnels += holes
         ribs, feet = self._ribs(outline, x0, walls, voids + housings, lanes)
-        inside = ribs + self._fills(outline, x0, walls + feet, voids + lanes)
+        inside = ribs + self._fills(outline, x0, walls + feet, voids, lanes)
         pieces += bridge_up
         if sec == 0 and part.carries:                  # the hinge's yoke on the part beyond the cut
             sp = part.carries[0]
@@ -1372,7 +1392,10 @@ class Design:
         (seen from the face) of those standing across it. A wall that would
         lie in the tray's own wall round the edge (a pocket running along the
         edge, just inside it) is left out: that wall does its work, and the
-        two side by side left a ledge."""
+        two side by side left a ledge. Where two walls meet square to the
+        face, a block fills the box's corner, which the pocket's cut rounds
+        as it rounds the face's window (`_pocket_round`; Martin, 11/04: the
+        walls' corners were square under the window's round ones)."""
         O = _ccw(outline)
         inner = np.array(O)
         for a, _, n in list(_edges(O)):
@@ -1390,6 +1413,16 @@ class Design:
             pieces.append(lambda gg, a=v3(a), b=v3(b): f"intersection() {{ {Sm} box_lh({a}, {b}); {tray} }}")
             if abs(float(S[0, k])) <= 0.3:
                 feet += fp                                       # across the face (not a floor)
+        kq, r = _pocket_round(S, lo, hi)
+        if kq >= 0:
+            m1, m2 = [m for m in range(3) if m != kq]
+            for s1, s2 in itertools.product((-1, 1), repeat=2):
+                if any(s * 200.0 == (hi[m] if s > 0 else lo[m]) for m, s in ((m1, s1), (m2, s2))):
+                    continue                                     # an open side: no corner
+                a, b = lo.copy(), hi.copy()
+                for m, s in ((m1, s1), (m2, s2)):
+                    a[m], b[m] = (hi[m] - r, hi[m] + REACH_MM) if s > 0 else (lo[m] - REACH_MM, lo[m] + r)
+                pieces.append(lambda gg, a=v3(a), b=v3(b): f"intersection() {{ {Sm} box_lh({a}, {b}); {tray} }}")
         return pieces, feet
 
     def _rim(self, outline: np.ndarray, x0: float, sec: int) -> List[Piece]:
@@ -1796,35 +1829,49 @@ class Design:
         return out
 
     @staticmethod
-    def _fills(outline: np.ndarray, x0: float, walls, voids) -> List[Piece]:
+    def _fills(outline: np.ndarray, x0: float, walls, voids, lanes) -> List[Piece]:
         """Material where what stands under the face (the wall round the
         edge, housings, pocket walls, ribs: their outlines `walls`) leaves a
-        gap narrower than `GAP_FILL_MM`, the inside corners between them
-        rounded as far (Martin, 10/30: material, not slots): their
-        morphological closing, less themselves and what must stay empty
-        (`voids`: the pockets, the case screws' lanes), from the palm's back
-        face up into the plate."""
+        gap narrower than `GAP_FILL_MM` (Martin, 10/30: material, not slots),
+        and in every inside corner between them, filleted `INSIDE_ROUND_MM`;
+        none in a pocket (`voids`), nor in a case screw's lane (`lanes`) but
+        the slits and fillets that rounding alone fills (the screwdriver's
+        tunnel goes through those). Each fill reaches `REACH_MM` into what
+        it joins: fills that only touched the walls left cracks, which the
+        body's rounding opened into slots along them (Martin, 11/04: "thin
+        gaps around some of the edges"). From the palm's back face up into
+        the plate."""
         import manifold3d as m3
 
         def cs(P):
             return m3.CrossSection([_ccw(P).tolist()])
 
+        def grow(X, r):
+            # (32 segments a circle: 16 left the fillets looking chamfered, and fine ones made the rounding of a palm's
+            # body run for a quarter of an hour)
+            return X.offset(r, m3.JoinType.Round, 2.0, 32)
+
         tray = cs(outline)
-        rim = tray - tray.offset(-RIM_MM, m3.JoinType.Miter)
-        W = rim
+        W = tray - tray.offset(-RIM_MM, m3.JoinType.Miter)
         for q in walls:
             W = W + (cs(q) ^ tray)
-        d = GAP_FILL_MM / 2.0
-        # (coarse arcs, the outlines simplified: a fill with fine fillets made the rounding of a palm's body
-        # run for a quarter of an hour)
-        F = (W.offset(d, m3.JoinType.Round, 2.0, 16).offset(-d, m3.JoinType.Round, 2.0, 16) - W) ^ tray
+        f, d = INSIDE_ROUND_MM, GAP_FILL_MM / 2.0
+        Cf = grow(grow(W, f), -f) ^ tray                  # the slits and corners the fillet alone fills
+        # the gaps it leaves that GAP_FILL_MM fills, without the crescents a wider fillet would add in the corners
+        gaps = grow(grow(grow(grow(W, d), -d) - Cf, -f / 2.0), f / 2.0)
+        K = grow(grow(W + gaps, f), -f) ^ tray            # all that stands solid
+        for q in lanes:
+            K = K - (cs(q) - Cf)
+        # within the plate's outline, as the wall is (library plate(), its corners rounded): a hairline left along the
+        # outline, grown, stood out where the plate rounds a corner
+        plate = grow(tray.offset(-PLATE_ROUND_MM, m3.JoinType.Miter), PLATE_ROUND_MM)
+        F = grow(K - W, REACH_MM) ^ K ^ plate
         for q in voids:
             F = F - cs(q)
-        F = F.simplify(0.2)
         xb, xt = -PLATE_HALF_MM, x0 + REACH_MM
         out: List[Piece] = []
         for comp in F.decompose():
-            if comp.area() < 4.0:
+            if comp.area() < 0.05:
                 continue
             loops = comp.to_polygons()
             pts = [q for loop in loops for q in loop]
