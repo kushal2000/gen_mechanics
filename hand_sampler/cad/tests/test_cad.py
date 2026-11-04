@@ -95,10 +95,9 @@ def test_the_example_hands_are_grammar_hands(name):
 
 def test_servo_frames_put_the_case_inside_the_grammar_s_motor_box():
     """The measured case (23 x 34 x 20) lies in the grammar's motor box (29 x
-    34 x 20, the datasheet's horns) wherever a design puts a servo, its horns
-    0.5 mm past either end (30 mm apart, as Martin's servos measure, 11/03)."""
-    over = np.array([HL3915.driven_horn_x[1] - mt.MOTOR_HALF_MM[0], 0.0, 0.0])
-    assert over[0] == pytest.approx(0.5)
+    34 x 20, the datasheet's horns, 29 mm apart as Martin's servos measure,
+    11/04) wherever a design puts a servo."""
+    assert HL3915.driven_horn_x[1] == pytest.approx(mt.MOTOR_HALF_MM[0])
     for h in (kinds_hand(), zero_link_hand(), oblique_hand(), flipped_hand()):
         d = Design(h)
         for sp in d.servos.values():
@@ -110,7 +109,7 @@ def test_servo_frames_put_the_case_inside_the_grammar_s_motor_box():
             S = sp.S_parent if sp.flipped else sp.S_child          # in joint j's frame
             P = C @ S[:3, :3].T + S[:3, 3]
             local = (P - box.centre) @ box.axes
-            assert np.all(np.abs(local) <= box.half + over + 1e-6)
+            assert np.all(np.abs(local) <= box.half + 1e-6)
 
 
 def test_each_servo_has_one_yoke_and_one_holder():

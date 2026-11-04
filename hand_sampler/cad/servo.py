@@ -4,9 +4,9 @@ Measured from Feetech's STEP model (`FEETECH_HL_3915_Servo_Motor.stp`, the
 robotopian.com listing, 2026-10-23; kept in `outputs/build_ref/`, not in
 git) and the HLS3915M specification A/0 (2025-02-28). The plastic-case
 HL-2915-C001 is taken to have the same outline (Martin, 2026-10-23). The
-horns' faces stand 30 mm apart, as Martin's servos measure (2026-11-03);
-the datasheet and the STEP give 29, so the build takes each horn's face
-(and its centre screw) 0.5 mm farther out.
+horns' faces stand 29 mm apart, as the datasheet and the STEP give and
+Martin's servos measure (28.8-29, 2026-11-04; the 30 mm of 11/03 took in
+the centre screws' heads).
 
 The servo frame S: origin on the output axis at the case's mid-plane; X
 along the axis toward the driven horn, Y the servo's back (the grammar's v:
@@ -15,10 +15,10 @@ the case runs from 9.5 mm ahead of the axis to 24.5 behind it), Z = X x Y
 the grammar's +a has S = (a, v, w); flipped (driven on -a), S = (-a, v, -w).
 
     case          X -11.5..11.5, Y -9.5..24.5, Z -10..10 (23 x 34 x 20)
-    horns         16 mm across, the driven one X 11.5..15.0 (from the case's
-                  face), the idler -15.0..-12.1; 8 x M2 tapped on a 12 mm
+    horns         16 mm across, the driven one X 11.5..14.5 (from the case's
+                  face), the idler -14.5..-12.1; 8 x M2 tapped on a 12 mm
                   circle every 45 degrees (0 along +Z)
-    centre screws heads 4.2 mm across, out to |X| = 17.5
+    centre screws heads 5 mm across (Martin, 2026-11-04), out to |X| = 17.0
     idler stub    5 mm across, out to X = -14.0 once the idler horn is off
     case holes    4 x M2 tapped on each horn face at Y -7.5 / 22.5, Z +/-8
     connectors    a 3-pin 1.25 mm socket on each Z face, Y 6.1..11.85,
@@ -59,12 +59,12 @@ class Servo:
     case_y: Range = (-9.5, 24.5)
     case_z: Range = (-10.0, 10.0)
     horn_r: float = 8.0
-    driven_horn_x: Range = (11.5, 15.0)
-    idler_horn_x: Range = (-15.0, -12.1)
+    driven_horn_x: Range = (11.5, 14.5)
+    idler_horn_x: Range = (-14.5, -12.1)
     horn_hole_circle_r: float = 6.0
     horn_hole_count: int = 8
-    centre_head_r: float = 2.1
-    centre_head_x: float = 17.5
+    centre_head_r: float = 2.5
+    centre_head_x: float = 17.0
     idler_stub_r: float = 2.5
     idler_stub_x: float = -14.0
     case_holes_yz: Tuple[Tuple[float, float], ...] = ((-7.5, -8.0), (-7.5, 8.0), (22.5, -8.0), (22.5, 8.0))

@@ -52,7 +52,7 @@ driven horn (the idler horn comes off): a U's rear arm would need room
 behind the servo that the link floors do not budget."""
 
 BRIDGE_HALF_MM = 9.5         # a U's bridge, either side of the axis across the finger: as wide as its arms' discs
-ARM_X0 = 15.0                 # an arm's inner face from the servo's mid-plane, on its horn's face (Martin, 11/03: 30 mm inside)
+ARM_X0 = 14.5                 # an arm's inner face from the servo's mid-plane, on its horn's face (Martin, 11/04: 29 mm inside, snug)
 ARM_MM = 3.0                  # each arm of a yoke, on either horn (Martin, 11/03: both alike; the idler's was 2 mm)
 CASE_CLEAR, PART_CLEAR, WALL, FIT = 0.5, 1.0, 2.0, 0.2
 HORN_HOLES_DRIVEN = (45.0, 135.0, 225.0, 315.0)   # degrees from +Z about X (the 12 mm circle)

@@ -10,8 +10,8 @@ which writes `outputs/build_ref/hl3915_body.stl` (case and connector seats)
 and `hl3915_horns.stl` (both horns and their centre screws). The STEP's
 axis is its z, the driven horn toward +z, the case's back toward -y: S =
 (z, -y, x), 8 mm along the axis. Its horns' faces are 14.5 mm either side
-of the case's mid-plane; `load` moves each horn out to the build's (`servo.py`:
-30 mm apart, as Martin's servos measure). Without these files, `load` gives a
+of the case's mid-plane, as the build's (`servo.py`); `load` would move each
+horn to the build's if they differed. Without these files, `load` gives a
 plain case box and horn discs.
 """
 
