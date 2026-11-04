@@ -9,8 +9,10 @@ not in git) meshed once with gmsh:
 which writes `outputs/build_ref/hl3915_body.stl` (case and connector seats)
 and `hl3915_horns.stl` (both horns and their centre screws). The STEP's
 axis is its z, the driven horn toward +z, the case's back toward -y: S =
-(z, -y, x), 8 mm along the axis. Without these files, `load` gives a plain
-case box and horn discs.
+(z, -y, x), 8 mm along the axis. Its horns' faces are 14.5 mm either side
+of the case's mid-plane; `load` moves each horn out to the build's (`servo.py`:
+30 mm apart, as Martin's servos measure). Without these files, `load` gives a
+plain case box and horn discs.
 """
 
 from __future__ import annotations
@@ -23,11 +25,14 @@ from typing import Tuple
 
 import numpy as np
 
+from .servo import HL3915
+
 REF = Path(__file__).resolve().parents[2] / "outputs" / "build_ref"
 STEP = REF / "FEETECH_HL_3915_Servo_Motor.stp"
 GROUPS = {"body": [1, 2, 3, 10, 14], "horns": [8, 22, 21, 23]}   # the STEP's volumes
 TO_S = np.array([[0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]])
 SHIFT = np.array([8.0, 0.0, 0.0])
+STEP_HORN_FACE = 14.5         # the STEP's horns' faces from the case's mid-plane
 
 
 def _write_stl(path: Path, V: np.ndarray, F: np.ndarray, title: str) -> None:
@@ -108,8 +113,14 @@ def load() -> Tuple[object, object, object]:
         b = _outward(trimesh.load(str(body), force="mesh"))
         h = _outward(trimesh.load(str(horns), force="mesh"))
         driven = h.triangles_center[:, 0] > 0.0
-        return b, h.submesh([np.nonzero(driven)[0]], append=True), h.submesh([np.nonzero(~driven)[0]], append=True)
-    return _box((-11.5, -9.5, -10.0), (11.5, 24.5, 10.0)), _disc_x(8.0, 11.5, 14.5), _disc_x(8.0, -14.5, -12.1)
+        out = HL3915.driven_horn_x[1] - STEP_HORN_FACE
+        d = h.submesh([np.nonzero(driven)[0]], append=True)
+        i = h.submesh([np.nonzero(~driven)[0]], append=True)
+        d.apply_translation([out, 0.0, 0.0])
+        i.apply_translation([-out, 0.0, 0.0])
+        return b, d, i
+    return (_box((-11.5, -9.5, -10.0), (11.5, 24.5, 10.0)), _disc_x(HL3915.horn_r, *HL3915.driven_horn_x),
+            _disc_x(HL3915.horn_r, *HL3915.idler_horn_x))
 
 
 if __name__ == "__main__":

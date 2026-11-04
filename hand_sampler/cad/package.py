@@ -5,6 +5,7 @@ the assembly steps, the check report, all in one folder and a zip.
         hand.json                 the genotype
         scad/hand.scad            the parametric source (and the library)
         stl/<part>.stl            each part in its own frame (the viewer's overlay)
+        step/<part>.step          the same as a solid for CAD (`step.py`: its mesh, flat faces merged)
         print/<part>.stl          each part laid flat for printing
         BOM.md  ASSEMBLY.md  checks.md  report.json
     outputs/designs/<id>.zip
@@ -29,6 +30,7 @@ from hand_sampler.grammar.hand import Hand, finger_section, hand_to_json
 from . import checks, render, scad
 from .design import Design, ServoSpot
 from .servo import HL3915
+from .step import write_part as write_step
 
 DESIGNS_DIR = Path("outputs/designs")
 PRINT_BED_MM = 256.0
@@ -108,8 +110,8 @@ def build_parts(hand: Hand, out_root: Path = DESIGNS_DIR, progress: Optional[Cal
 
 def finish(kit: Kit, progress: Optional[Callable[[str], None]] = None) -> Kit:
     """The rest of the kit, after `build_parts`: the checks, the parts laid
-    out for printing, the assembly pictures, the parts list and the steps,
-    the report and the zip."""
+    out for printing, the STEP files, the assembly pictures, the parts list
+    and the steps, the report and the zip."""
     say = progress or (lambda s: None)
     folder, d, res, names, path = kit.folder, kit.design, kit.rendered, kit.parts, kit.scad_path
     did = folder.name
@@ -129,6 +131,14 @@ def finish(kit: Kit, progress: Optional[Callable[[str], None]] = None) -> Kit:
             rep.parts[n]["print_extent_mm"] = ext
             if max(ext[:2]) > PRINT_BED_MM:
                 rep.warnings.append(f"{n} is {max(ext[:2]):.0f} mm across: larger than a {PRINT_BED_MM:.0f} mm bed")
+    say("writing the STEP files")
+    (folder / "step").mkdir()
+    for n in names:
+        if res[n].ok:
+            try:
+                write_step(folder / "stl" / f"{n}.off", folder / "step" / f"{n}.step", n)
+            except (ValueError, KeyError, ZeroDivisionError, FloatingPointError) as e:
+                rep.warnings.append(f"{n}: no STEP file ({type(e).__name__}: {e})")
     say("drawing the assembly steps")
     steps = step_pictures(d, path, folder / "steps")
     (folder / "BOM.md").write_text(bom(d, rep))
@@ -157,18 +167,22 @@ def _pieces(stl: Path) -> int:
 
 
 def lay_flat(src: Path, dst: Path) -> List[float]:
-    """The part turned onto the stable face that leaves the least overhanging
-    area (faces leaning more than 45 degrees out over nothing), on the bed at
-    z = 0, centred. Returns its extent (mm)."""
+    """The part turned onto the face of its convex hull that leaves the least
+    overhanging area (faces leaning more than 45 degrees out over nothing;
+    the hull's 12 largest face directions tried), on the bed at z = 0,
+    centred. Returns its extent (mm). (trimesh's stable poses sample the
+    centre of mass until one lands inside the hull, and never stopped on a
+    part whose welded STL turned its hull's normals inward.)"""
     import trimesh
 
-    m = trimesh.load(str(src), force="mesh")
-    try:
-        poses, probs = trimesh.poses.compute_stable_poses(m, n_samples=1, threshold=0.0)
-    except Exception:
-        poses = [np.eye(4)]
+    m, _ = render.load(src)
+    hull = m.convex_hull
+    dirs, inv = np.unique(np.round(hull.face_normals, 3), axis=0, return_inverse=True)
+    area = np.bincount(inv.ravel(), weights=hull.area_faces)
+    poses = [trimesh.geometry.align_vectors(d / np.linalg.norm(d), [0.0, 0.0, -1.0])
+             for d in dirs[np.argsort(-area)[:12]]]
     best, best_cost = np.eye(4), math.inf
-    for Tp in list(poses)[:12] + [np.eye(4)]:
+    for Tp in poses + [np.eye(4)]:
         mm = m.copy()
         mm.apply_transform(Tp)
         n = mm.face_normals
@@ -179,6 +193,10 @@ def lay_flat(src: Path, dst: Path) -> List[float]:
         if cost < best_cost:
             best, best_cost = Tp, cost
     m.apply_transform(best)
+    T2, _ = trimesh.bounds.oriented_bounds_2D(m.vertices[:, :2])      # turned on the bed to its smallest rectangle
+    R = np.eye(4)
+    R[:2, :2], R[:2, 3] = T2[:2, :2], T2[:2, 2]
+    m.apply_transform(R)
     lo, hi = m.bounds
     m.apply_translation([-(lo[0] + hi[0]) / 2.0, -(lo[1] + hi[1]) / 2.0, -lo[2]])
     m.export(str(dst))
@@ -196,7 +214,7 @@ def _count_screws(d: Design) -> Dict[str, int]:
         out["box"] += 4                           # the case: its far holes, or its idler face's four (a flange cup)
         out["M2x5"] += 4                          # the driven arm (or the crossing plate)
         if sp.yoke == "u":
-            out["box"] += 4                       # the idler arm
+            out["M2x5"] += 4                      # the idler arm (3 mm, as the driven one: a box screw is too short)
     return out
 
 
@@ -212,7 +230,7 @@ def bom(d: Design, rep: checks.Report) -> str:
              f"| {HL3915.name} (or HL-2915-C001) | {n_servo} | each comes with 8 M2 x 3.5 screws; "
              f"{sc['box']} of them are used here"
              + (f"; buy {sc['box'] - 8 * n_servo} more M2 x 3.5 pan heads" if sc['box'] > 8 * n_servo else "") + " |",
-             f"| M2 x 5 pan head | {sc['M2x5']} | the driven horn's arm (4 per servo) |",
+             f"| M2 x 5 pan head | {sc['M2x5']} | 4 on each arm of a yoke (or a crossing's plate) |",
              f"| 3-pin 1.25 mm (PicoBlade) servo cable | {n_servo} | one per servo, chained along each finger |",
              "", "The palm's mounting to the arm and the board (Palm Hub rev B.2) come later (Martin, 10/29).", "",
              "## Printed (PETG)", "",
@@ -311,7 +329,7 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
           "2. Slide the link's yoke over the horns from the servo's front, its arms flat on the horns, with the "
           "joint at its zero pose (the finger straight, the link on the line of the one before).",
           "3. Put the centre screws back through the arms' holes.",
-          "4. Driven arm: 4 x M2 x 5. Idler arm: 4 of the servo's box screws.", "",
+          "4. Each arm: 4 x M2 x 5 into its horn.", "",
           "## 3. Palm", "",
           "The palm is a tray: a plate whose face stands 3.5 mm over the base servos' tops, one wall round its "
           "edge and a grid of ribs under the face, open at the back. Each base servo screws straight into its "

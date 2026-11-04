@@ -27,7 +27,8 @@ import numpy as np
 
 from hand_sampler.grammar import derive as dv
 
-from .design import Design, ServoSpot, T, inv
+from .design import ARM_MM, ARM_X0, Design, ServoSpot, T, inv
+from .servo import HL3915
 
 JOINT_STEP_DEG = 10.0
 STOP_FREE_DEG = 10.0          # a base joint must turn this far either way before its finger meets the palm
@@ -49,11 +50,12 @@ def _servo_solid(idler_horn: bool):
     """The servo's case and horns (S frame) as one manifold."""
     import manifold3d as m3
 
-    case = m3.Manifold.cube([23.0, 34.0, 20.0]).translate([-11.5, -9.5, -10.0])
-    horn = m3.Manifold.cylinder(3.0, 8.0, 8.0, 48).rotate([0.0, 90.0, 0.0]).translate([11.5, 0.0, 0.0])
-    out = case + horn
+    def horn(x0: float, x1: float):
+        return m3.Manifold.cylinder(x1 - x0, HL3915.horn_r, HL3915.horn_r, 48).rotate([0.0, 90.0, 0.0]).translate([x0, 0.0, 0.0])
+
+    out = m3.Manifold.cube([23.0, 34.0, 20.0]).translate([-11.5, -9.5, -10.0]) + horn(*HL3915.driven_horn_x)
     if idler_horn:
-        out = out + m3.Manifold.cylinder(2.4, 8.0, 8.0, 48).rotate([0.0, 90.0, 0.0]).translate([-14.5, 0.0, 0.0])
+        out = out + horn(*HL3915.idler_horn_x)
     return out
 
 
@@ -365,8 +367,8 @@ def _drivers(sp: ServoSpot):
     import manifold3d as m3
 
     out = None
-    sides = [(1, sp.holes[1], 17.6)] + ([(-1, sp.holes[-1], 16.6)] if sp.yoke == "u" else [])
-    for s, holes, x in sides:
+    x = ARM_X0 + ARM_MM
+    for s, holes in [(1, sp.holes[1])] + ([(-1, sp.holes[-1])] if sp.yoke == "u" else []):
         for a in holes:
             c = m3.Manifold.cylinder(25.0, 2.0, 2.0, 16).rotate([0.0, 90.0, 0.0])
             c = c.translate([x + 0.5 if s > 0 else -x - 25.5, 6.0 * math.sin(math.radians(a)), 6.0 * math.cos(math.radians(a))])

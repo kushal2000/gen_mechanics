@@ -29,8 +29,8 @@ Derived geometry (one motor, `motor.py`):
   link, square to its frame, around its yoke (the bracket around its
   joint's motor) and its far end (the next motor, which sits in this link):
   links are servo-sized; the fingertip (the last link) is the convex hull
-  of a capsule along the link, from the yoke's back to the tip, as thick as
-  the yoke is wide (`TIP_RADIUS_MM`), and of its yoke's box (Martin,
+  of a capsule along the link, from the yoke's back to the tip, 28 mm
+  thick (`TIP_RADIUS_MM`), and of its yoke's box (Martin,
   2026-10-23: the printed bracket sticks out of the capsule);
 - the board bay: a box on the mount's column behind the plate
   (`BAY_SIZE_MM`), turned and shifted per hand to clear its base links over
@@ -92,11 +92,12 @@ fingers over the palm and raised the object's start on many hands)."""
 CLEARANCE_MM = mt.WALL_MM
 """Solids that do not touch by construction keep one printed wall apart."""
 
-TIP_RADIUS_MM = float(mt.YOKE_HALF_MM[0])
-"""The fingertip capsule's radius (16.5 mm): half the yoke's width along the
-last servo's axis (its 29 mm and two walls), so the fingertip is as wide as
-the bracket around that servo. Martin, 2026-10-16: a capsule instead of a
-box, then a little thicker than the yoke's 24 mm depth."""
+TIP_RADIUS_MM = mt.TIP_RADIUS_MM
+"""The fingertip capsule's radius (14 mm). Martin, 2026-10-16: a capsule
+instead of a box; it was half the yoke's width along the last servo's axis
+(16.5 mm, as wide as the bracket round that servo) until 2026-11-03, when
+the printed 33 mm fingertips were "too thick": 28 mm, narrower than the
+yoke (whose box stays in the fingertip's hull)."""
 CAPSULE_AROUND = 12
 """Points around a capsule's mesh; with rings at 0 and 45 degrees and the
 poles it has 50 vertices and 60 faces (PhysX GPU hulls: at most 64 each)."""

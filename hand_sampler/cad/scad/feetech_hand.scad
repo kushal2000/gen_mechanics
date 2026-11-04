@@ -22,14 +22,13 @@ FIT = 0.1;          // printed socket around a servo case (Martin, 10/24: 0.1 mm
 CASE_CLEAR = 0.5;   // a turning servo case to a printed part
 PART_CLEAR = 1.0;   // two printed parts that turn against each other
 WALL = 2.0;         // housing plates, back wall, bridge
-ARM_GAP = 0.1;      // each yoke arm's inner face to its horn's face
-ARM_DRIVEN = 3.0;   // the arm on the driven horn (4 x M2 x 5)
-ARM_IDLER = 2.0;    // the arm on the idler horn (4 x the servo's box screws)
+ARM_GAP = 0;        // each yoke arm's inner face to its horn's face (Martin, 11/03: the U 30 mm inside)
+ARM_T = 3.0;        // each yoke arm, on either horn (4 x M2 x 5; Martin, 11/03: both alike)
 ARM_R = 9.5;        // an arm's disc around the axis
 HEAD_SEAT = 0.6;    // case screws: counterbore depth in the side plates
 SWEEP_STEP = 5;     // degrees between swept copies
 CROSS_STEP = 10;    // the same about both joints of a crossing
-HORN_REACH = 18.6;  // how far out along the axis the horns' clearance reaches (an arm's outer face and a gap)
+HORN_REACH = 19.0;  // how far out along the axis the horns' clearance reaches (an arm's outer face and a gap)
 PLUG_OUT = 9;       // a servo plug and its cable bend beyond the case face
 ROUNDED = true;     // each part's outer edges rounded 0.8 mm on its body as a whole (so faces that
                     // run on from piece to piece stay flush): bodies/ holds the rounded bodies, made
@@ -43,11 +42,11 @@ CASE_X = [-11.5, 11.5];
 CASE_Y = [-9.5, 24.5];
 CASE_Z = [-10.0, 10.0];
 HORN_R = 8.0;
-DRIVEN_X = [11.5, 14.5];
-IDLER_X = [-14.5, -12.1];
+DRIVEN_X = [11.5, 15.0];      // the horns' faces 30 mm apart, as Martin's servos measure (11/03; 29 in the datasheet)
+IDLER_X = [-15.0, -12.1];
 HORN_HOLE_R = 6.0;            // 8 x M2 tapped on this radius, every 45 degrees from +Z
 HEAD_R = 2.1;                 // the horns' centre screw heads
-HEAD_X = 17.0;
+HEAD_X = 17.5;
 STUB_R = 2.5;                 // the idler stub (idler horn removed)
 STUB_X = -14.0;
 FAR_HOLES = [[22.5, -8.0], [22.5, 8.0]];   // (Y, Z) of the case holes the housings use
@@ -65,6 +64,12 @@ M3_CS_R = 3.2;                // a countersunk M3's head (6 mm), with room: its 
 
 // ------------------------------------------------------------------ helpers
 module box_lh(lo, hi) translate(lo) cube([hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]]);
+
+// a box from lo to hi whose four edges along axis k are rounded r (a pocket's inside corners in the palm)
+module box_round(lo, hi, k, r) hull()
+    for (u = [lo[(k + 1) % 3] + r, hi[(k + 1) % 3] - r], v = [lo[(k + 2) % 3] + r, hi[(k + 2) % 3] - r])
+        translate(k == 0 ? [lo[0], u, v] : k == 1 ? [v, lo[1], u] : [u, v, lo[2]])
+            rotate(k == 0 ? [0, 90, 0] : k == 1 ? [-90, 0, 0] : [0, 0, 0]) cylinder(r = r, h = hi[k] - lo[k], $fn = 24);
 
 // pieces that join reach this far into each other, so no seam is left where they meet
 REACH = 1.2;
@@ -121,11 +126,11 @@ module servo_model(idler_horn = true) {
 // the arm screws a yoke takes (for the assembly pictures)
 module arm_screws(single = false) {
     color("goldenrod") {
-        for (a = [45, 135, 225, 315]) translate([ARM_X0 + ARM_DRIVEN, HORN_HOLE_R * sin(a), HORN_HOLE_R * cos(a)]) {
+        for (a = [45, 135, 225, 315]) translate([ARM_X0 + ARM_T, HORN_HOLE_R * sin(a), HORN_HOLE_R * cos(a)]) {
             cyl_x(1.75, 0, 1.4); cyl_x(1.0, -5, 0);
         }
-        if (!single) for (a = [45, 135, 225, 315]) translate([-ARM_X0 - ARM_IDLER, HORN_HOLE_R * sin(a), HORN_HOLE_R * cos(a)]) {
-            cyl_x(1.75, -1.4, 0); cyl_x(1.0, 0, 3.5);
+        if (!single) for (a = [45, 135, 225, 315]) translate([-ARM_X0 - ARM_T, HORN_HOLE_R * sin(a), HORN_HOLE_R * cos(a)]) {
+            cyl_x(1.75, -1.4, 0); cyl_x(1.0, 0, 5);
         }
     }
 }
@@ -279,18 +284,18 @@ module case_screw_tunnels(reach = 30, flange = false) {
 }
 
 // ----------------------------------------------- the yoke (part after a joint)
-ARM_X0 = DRIVEN_X[1] + ARM_GAP;              // both arms' inner faces (the horns' faces are at +/-14.5)
+ARM_X0 = DRIVEN_X[1] + ARM_GAP;              // both arms' inner faces (on the horns' faces, +/-15)
 
 // an arm's disc (convex): s = +1 the driven arm, -1 the idler arm
 module arm_disc(s, g = 0) {
-    t = s > 0 ? ARM_DRIVEN : ARM_IDLER;
+    t = ARM_T;
     if (s > 0) cyl_x(ARM_R + g, ARM_X0 - g, ARM_X0 + t + g);
     else cyl_x(ARM_R + g, -ARM_X0 - t - g, -ARM_X0 + g);
 }
 
 // the slab an arm lies in (for clipping the bridge into the arm's outline)
 module arm_slab(s, g = 0) {
-    t = s > 0 ? ARM_DRIVEN : ARM_IDLER;
+    t = ARM_T;
     if (s > 0) box_lh([ARM_X0 - g, -200, -200], [ARM_X0 + t + g, 200, 200]);
     else box_lh([-ARM_X0 - t - g, -200, -200], [-ARM_X0 + g, 200, 200]);
 }
@@ -300,7 +305,7 @@ module arm_slab(s, g = 0) {
 // screwdriver: each hole runs on outward through whatever else is there
 SCREWDRIVER_REACH = 25;
 module arm_keepout(s, holes) {
-    t = s > 0 ? ARM_DRIVEN : ARM_IDLER;
+    t = ARM_T;
     x0 = s > 0 ? ARM_X0 - 1 : -ARM_X0 - t - SCREWDRIVER_REACH;
     x1 = s > 0 ? ARM_X0 + t + SCREWDRIVER_REACH : -ARM_X0 + 1;
     xa0 = s > 0 ? ARM_X0 - 1 : -ARM_X0 - t;            // the arm's own thickness

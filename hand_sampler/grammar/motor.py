@@ -65,9 +65,9 @@ MOTOR_FRONT_MM = 9.5                            # the front face, ahead of the a
 WALL_MM = 2.0                                   # one printed wall between parts that move
 ENCLOSURE_HALF_MM = MOTOR_HALF_MM + WALL_MM     # the motor in its printed housing
 YOKE_HALF_MM = np.array([16.5, 12.0, 12.0])     # the next link's bracket around the axis
-TIP_FLARE_MM = 7.0                              # a printed fingertip widens from its yoke's 19 mm to 33 at 45 degrees
-PAD_MM = 0.5 + TIP_FLARE_MM + YOKE_HALF_MM[0] - WALL_MM   # past the last motor's front and a wall, the fingertip
-                                                          # (`tip_floor_mm`): 22 mm
+TIP_RADIUS_MM = 14.0                            # the fingertip: a 28 mm cylinder ending in a dome (Martin, 11/03: 33 "too thick")
+TIP_FLARE_MM = TIP_RADIUS_MM - 9.5              # a printed fingertip widens from its yoke's 19 mm at 45 degrees: 4.5 mm
+PAD_MM = 22.0                                   # past the last motor's front and a wall, the fingertip (`tip_floor_mm`)
 BUILD_CLEARANCE_MM = 1.0                        # a floor keeps this much between the swinging front and the wall
 CROSSING_EXTRA_MM = 1.5                         # a crossing's plate: the near horn's 2.4 mm screw head in a 3.5 mm plate
 BEFORE_CROSSING_MM = WALL_MM + 1.0              # a link before a crossing: the next part's housing wall and a gap
@@ -281,10 +281,13 @@ def tip_floor_mm(a: Sequence[float], turned: bool = False) -> int:
     motor's swept front, a wall and the pad (`PAD_MM`), on the 10 mm grid
     (40 mm for every joint kind, 50 after a turned bend motor, at most 60).
     The pad holds the printed fingertip whole on every finger (Martin,
-    2026-11-02: the same 33 mm cylinder and dome whatever the link's length):
-    its yoke's bridge, 0.5 mm past the swing, starts a 7 mm flare to the
-    cylinder, which ends in a 16.5 mm dome, 24 mm with the wall (the pad was
-    10 mm, too short for a whole dome on the shortest fingertips)."""
+    2026-11-02: the same cylinder and dome whatever the link's length): its
+    yoke's bridge, 0.5 mm past the swing, starts a flare to the cylinder,
+    which ends in a dome; 22 mm for the 33 mm fingertip of 11/02 (a 7 mm
+    flare, a 16.5 mm dome, less the wall; the pad was 10 mm, too short for a
+    whole dome on the shortest fingertips). The 28 mm fingertip of 11/03
+    needs 17 (a 4.5 mm flare, a 14 mm dome); the pad stays at 22, so the
+    floors are the ones of 11/02."""
     return ceil10(WALL_MM + swept_front_mm(a, turned) + PAD_MM)
 
 

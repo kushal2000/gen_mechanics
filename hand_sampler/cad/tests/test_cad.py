@@ -94,8 +94,11 @@ def test_the_example_hands_are_grammar_hands(name):
 
 
 def test_servo_frames_put_the_case_inside_the_grammar_s_motor_box():
-    """The measured case (23 x 34 x 20, its horns out to 14.5) lies in the
-    grammar's motor box (29 x 34 x 20) wherever a design puts a servo."""
+    """The measured case (23 x 34 x 20) lies in the grammar's motor box (29 x
+    34 x 20, the datasheet's horns) wherever a design puts a servo, its horns
+    0.5 mm past either end (30 mm apart, as Martin's servos measure, 11/03)."""
+    over = np.array([HL3915.driven_horn_x[1] - mt.MOTOR_HALF_MM[0], 0.0, 0.0])
+    assert over[0] == pytest.approx(0.5)
     for h in (kinds_hand(), zero_link_hand(), oblique_hand(), flipped_hand()):
         d = Design(h)
         for sp in d.servos.values():
@@ -103,11 +106,11 @@ def test_servo_frames_put_the_case_inside_the_grammar_s_motor_box():
                 continue
             _, i, j = sp.key
             box = dv.finger_geometry(h.fingers[i]).motors[j]
-            C = mt.box_corners(np.array([0.0, 7.5, 0.0]), np.eye(3), np.array([14.5, 17.0, 10.0]))
+            C = mt.box_corners(np.array([0.0, 7.5, 0.0]), np.eye(3), np.array([HL3915.driven_horn_x[1], 17.0, 10.0]))
             S = sp.S_parent if sp.flipped else sp.S_child          # in joint j's frame
             P = C @ S[:3, :3].T + S[:3, 3]
             local = (P - box.centre) @ box.axes
-            assert np.all(np.abs(local) <= box.half + 1e-6)
+            assert np.all(np.abs(local) <= box.half + over + 1e-6)
 
 
 def test_each_servo_has_one_yoke_and_one_holder():
@@ -155,6 +158,35 @@ def test_every_part_renders_and_every_check_passes(name, tmp_path):
     assert kit.zip_path.exists()
     for n in kit.parts:
         assert (kit.folder / "print" / f"{n}.stl").exists()
+        solids, faces, _, closed = _step_shell(kit.folder / "step" / f"{n}.step")
+        assert solids == 1 and faces > 0 and closed
+
+
+def _step_shell(path):
+    """A STEP file's solids, faces and loops, and whether its shell is closed
+    (every edge in two faces' loops, once each way)."""
+    import re
+
+    txt = path.read_text()
+    uses = {}
+    for e, o in re.findall(r"ORIENTED_EDGE\('',\*,\*,#(\d+),\.([TF])\.\)", txt):
+        uses.setdefault(e, []).append(o)
+    closed = bool(uses) and all(sorted(v) == ["F", "T"] for v in uses.values())
+    return txt.count("MANIFOLD_SOLID_BREP("), txt.count("ADVANCED_FACE("), txt.count("EDGE_LOOP("), closed
+
+
+def test_a_step_file_is_one_closed_solid_its_flat_faces_merged(tmp_path):
+    """A 10 mm cube with a 16-sided hole through it: its six faces (two with
+    the hole as a second loop) and the hole's 16, one closed shell."""
+    import manifold3d as m3
+
+    from hand_sampler.cad import step
+
+    man = m3.Manifold.cube([10.0, 10.0, 10.0]) - m3.Manifold.cylinder(12.0, 2.0, 2.0, 16).translate([5.0, 5.0, -1.0])
+    mesh = man.to_mesh()
+    info = step.write(np.asarray(mesh.vert_properties)[:, :3], np.asarray(mesh.tri_verts), tmp_path / "c.step", "c")
+    assert _step_shell(tmp_path / "c.step") == (1, 22, 24, True)
+    assert info["faces"] == 22 and info["plane_error_mm"] < step.UNCERTAINTY_MM
 
 
 def test_the_parts_list_adds_up(tmp_path):
@@ -167,9 +199,39 @@ def test_the_parts_list_adds_up(tmp_path):
     assert f"| {n} |" in bom
     used = package._count_screws(d)["box"]
     assert used <= HL3915.box_screws * n                      # the servos' own screws are enough
-    assert package._count_screws(d)["M2x5"] == 4 * n
+    arms = sum(2 if sp.yoke == "u" else 1 for sp in d.servos.values())
+    assert package._count_screws(d)["M2x5"] == 4 * arms                 # four on every arm (and crossing plate)
     steps = (kit.folder / "ASSEMBLY.md").read_text()
     assert "| 11 |" in steps and "CH1" in steps and "CH2" in steps
+
+
+def test_the_ribs_are_one_grid(monkeypatch):
+    """The ribs under a palm's face (Martin, 11/03: "add the ribs in a grid
+    inside"): every piece lies on a line of one square grid, the lines
+    `RIB_PITCH_MM` apart along the palm's y and along its z."""
+    from hand_sampler.cad import design as D
+
+    seen = []
+    ribs = D.Design._ribs
+
+    def spy(outline, x0, walls, stops, lanes):
+        out = ribs(outline, x0, walls, stops, lanes)
+        seen.append(out[1])
+        return out
+
+    monkeypatch.setattr(D.Design, "_ribs", staticmethod(spy))
+    for make in HANDS.values():
+        Design(make())
+    assert sum(len(feet) for feet in seen) > 0
+    for feet in seen:
+        lines = {0: set(), 1: set()}
+        for f in feet:
+            lo, hi = f.min(axis=0), f.max(axis=0)
+            k = 0 if hi[0] - lo[0] < hi[1] - lo[1] else 1        # a line at y = c runs along z
+            lines[k].add(float(lo[k] + hi[k]) / 2.0)
+        for cs in lines.values():
+            steps = np.diff(sorted(cs)) / D.RIB_PITCH_MM
+            assert np.allclose(steps, np.round(steps)) and np.all(np.round(steps) >= 1)
 
 
 def test_every_placement_is_a_proper_rotation():

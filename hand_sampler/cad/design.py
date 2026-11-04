@@ -52,8 +52,8 @@ driven horn (the idler horn comes off): a U's rear arm would need room
 behind the servo that the link floors do not budget."""
 
 BRIDGE_HALF_MM = 9.5         # a U's bridge, either side of the axis across the finger: as wide as its arms' discs
-ARM_X0 = 14.6                                # an arm's inner face from the servo's mid-plane (horn face 14.5 + 0.1)
-ARM_DRIVEN, ARM_IDLER = 3.0, 2.0
+ARM_X0 = 15.0                 # an arm's inner face from the servo's mid-plane, on its horn's face (Martin, 11/03: 30 mm inside)
+ARM_MM = 3.0                  # each arm of a yoke, on either horn (Martin, 11/03: both alike; the idler's was 2 mm)
 CASE_CLEAR, PART_CLEAR, WALL, FIT = 0.5, 1.0, 2.0, 0.2
 HORN_HOLES_DRIVEN = (45.0, 135.0, 225.0, 315.0)   # degrees from +Z about X (the 12 mm circle)
 HORN_HOLES_IDLER = (45.0, 135.0, 225.0, 315.0)     # four screws on every horn (Martin, 10/26); it has 8, every 45 degrees
@@ -102,10 +102,18 @@ CLIP_MM = 2.4
 much (Martin, 2026-10-23: small overhangs are fine; the checks allow 2.5)."""
 RIB_PITCH_MM = 30.0
 """The ribs under the face (Martin, 10/30: the tray needs structure inside):
-a square grid along the palm's y and z, about this far apart, as deep as the
-wall round the edge."""
+a square grid along the palm's y and z, this far apart, as deep as the wall
+round the edge."""
 RIB_MM = RIM_MM               # a rib's thickness
-RIB_MIN_MM = 12.0             # a rib shorter than this between what stops it is left out
+RIB_MIN_MM = 12.0             # a rib that ends on nothing goes back to the last rib it crosses, or goes if shorter
+POCKET_ROUND_MM = 2.0
+"""A pocket's edges square to the face are rounded this much, so the palm's
+inside corners where a pocket cuts it are filleted (Martin, 11/03: "internal
+cutout corners should also be filleted a little")."""
+CORNER_ROUND_MM = 3.0
+"""Where a pocket cuts the palm's edge, the palm's outside corners there are
+rounded this much, as the plate's own corners are (library PLATE_ROUND;
+Martin, 11/03: "a lot of palm corners are quite sharp")."""
 GAP_FILL_MM = 8.0
 """Gaps narrower than this between what stands under the face (the wall,
 housings, pocket walls, ribs) are filled solid and the inside corners between
@@ -480,10 +488,7 @@ def _yoke_pieces(sp: ServoSpot, a: np.ndarray, front: np.ndarray, x_b: float) ->
     S = mm(sp.S_child)
     if sp.yoke == "u":
         B = _bridge_frame(sp.S_child[:3, 3], front, a, x_b)
-        # the arms along the canonical axis: the driven side is +a unless flipped
-        s_pos = -1.0 if sp.flip else 1.0
-        a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
-        a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
+        a_lo, a_hi = -(ARM_X0 + ARM_MM), ARM_X0 + ARM_MM       # the arms' outer faces along the axis
         Bm = mm(B)
 
         def bridge(g: str, Bm=Bm, a_lo=a_lo, a_hi=a_hi) -> str:
@@ -532,13 +537,12 @@ def _hole_clear(S_yoke: np.ndarray, s: int, a: float, cases: List["ServoSpot"], 
     past as each servo of `swung` turns ((servo, its bridge's distance from
     its axis): a crossing's plate is a wall of the next servo's housing, cut
     back there)."""
-    t = ARM_DRIVEN if s > 0 else ARM_IDLER
     r = 2.0 + ROUND_MM
     ring = [(0.0, 0.0)] + [(rr * math.cos(f), rr * math.sin(f)) for rr in (r / 2.0, r)
                            for f in np.linspace(0.0, 2.0 * math.pi, 12, endpoint=False)]
 
     def points(x_out: float) -> np.ndarray:
-        xs = s * np.arange(ARM_X0, ARM_X0 + t + x_out + 1e-9, 1.0)
+        xs = s * np.arange(ARM_X0, ARM_X0 + ARM_MM + x_out + 1e-9, 1.0)
         return np.array([[x, 6.0 * math.sin(math.radians(a)) + dy, 6.0 * math.cos(math.radians(a)) + dz, 1.0]
                          for x in xs for dy, dz in ring])
 
@@ -559,6 +563,17 @@ def _hole_clear(S_yoke: np.ndarray, s: int, a: float, cases: List["ServoSpot"], 
             if np.any((y <= -(x_b - PART_CLEAR)) & (y >= -(x_b + YOKE_REACH_MM)) & (np.abs(z) <= BRIDGE_HALF_MM + PART_CLEAR)):
                 return False
     return True
+
+
+def _pocket_box(S: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> str:
+    """A pocket's box (lo, hi in its servo's frame S, in the palm): its edges
+    along whichever of the servo's axes stands square to the face rounded
+    `POCKET_ROUND_MM`; a tilted servo's box stays sharp."""
+    k = int(np.argmax(np.abs(S[0, :3])))
+    if abs(float(S[0, k])) < 0.999:
+        return f"box_lh({v3(lo)}, {v3(hi)});"
+    r = min([POCKET_ROUND_MM] + [0.5 * float(hi[i] - lo[i]) - 0.01 for i in range(3) if i != k])
+    return f"box_round({v3(lo)}, {v3(hi)}, {k}, {r:.3f});"
 
 
 def _clip_body(f, j: int) -> str:
@@ -628,7 +643,7 @@ class Design:
         at the next joint servo j + 1's case in a cradle or, where that one is
         flipped, a yoke on its horns; a connector from one end's face to the
         other's, with gussets in the L pieces' inside corners. The fingertip:
-        its yoke or cradle flared to a 33 mm cylinder ending in a dome."""
+        its yoke or cradle flared to a 28 mm cylinder ending in a dome."""
         f = self.hand.fingers[i]
         fg = dv.finger_geometry(f)
         part = self.parts[("link", i, j)]
@@ -701,12 +716,13 @@ class Design:
                 x_cut = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
             else:
                 th = np.linspace(0.0, 2.0 * math.pi, 24, endpoint=False)
-                disc = np.array([[x, 9.5 * math.cos(t), 9.5 * math.sin(t)] for x in (ARM_X0, ARM_X0 + ARM_DRIVEN) for t in th])
+                disc = np.array([[x, 9.5 * math.cos(t), 9.5 * math.sin(t)] for x in (ARM_X0, ARM_X0 + ARM_MM) for t in th])
                 x_cut = float((disc @ sp.S_child[:3, :3].T + sp.S_child[:3, 3])[:, 0].min())
             # the same on every finger (Martin, 11/02: a cylinder ending in a dome whatever the link's length, as on
             # D'Claw; it was the hull of the yoke and the ball, which slanted more steeply the shorter the link): from
-            # where the yoke starts, a flare at 45 degrees to the simulator's 33 mm cylinder, which runs on to the
-            # dome; the flare runs on 1.2 mm into the cylinder, so they overlap (the floors leave room for both)
+            # where the yoke starts, a flare to the simulator's 28 mm cylinder (Martin, 11/03; 33 until then), which
+            # runs on to the dome; the flare runs on 1.2 mm into the cylinder, so they overlap (the floors leave room
+            # for both)
             a1 = float(p1[0])
             x_f = max(x_cut, min(x_cut + mt.TIP_FLARE_MM, a1))
             a1 = max(a1, x_f + 0.01)
@@ -881,8 +897,7 @@ class Design:
         B = _bridge_frame(sp.S_child[:3, 3], front, a, x_b)
         S = mm(sp.S_child)
         s_pos = -1.0 if sp.flip else 1.0
-        a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
-        a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
+        a_lo, a_hi = -(ARM_X0 + ARM_MM), ARM_X0 + ARM_MM
         x0, L, h, R = WALL - REACH_MM, GUSSET_MM, BRIDGE_HALF_MM, REACH_MM
         if face is not None:
             # the connector's end in the bridge's frame (the same axes): how far out it reaches either side
@@ -962,10 +977,7 @@ class Design:
         if sp.yoke == "u":
             x_b = mt.swept_front_mm(a, sp.turned) + CASE_CLEAR
             B = _bridge_frame(sp.S_child[:3, 3], front, a, x_b)
-            s_pos = -1.0 if sp.flip else 1.0
-            a_lo = -(ARM_X0 + (ARM_DRIVEN if s_pos < 0 else ARM_IDLER))
-            a_hi = ARM_X0 + (ARM_DRIVEN if s_pos > 0 else ARM_IDLER)
-            return B @ T(None, (WALL, (a_lo + a_hi) / 2.0, 0.0)), (a_hi - a_lo, 2.0 * BRIDGE_HALF_MM)
+            return B @ T(None, (WALL, 0.0, 0.0)), (2.0 * (ARM_X0 + ARM_MM), 2.0 * BRIDGE_HALF_MM)
         return sp.S_child @ T(None, (ARM_X0, 0.0, 0.0)), (2.0 * ARM_R_MM, 2.0 * ARM_R_MM)
 
     @staticmethod
@@ -1081,7 +1093,7 @@ class Design:
         if sec == 0 and part.carries:
             # the hinge's yoke, its arms and bridge run up into the plate
             h = part.carries[0]
-            reach = ARM_X0 + max(ARM_DRIVEN, ARM_IDLER)
+            reach = ARM_X0 + ARM_MM
             yoke = (np.array([-reach, -(mt.FRONT_SWEEP_MM + CASE_CLEAR + WALL), -ARM_R_MM]), np.array([reach, ARM_R_MM, ARM_R_MM]))
             C = mt.box_corners((yoke[0] + yoke[1]) / 2.0, np.eye(3), (yoke[1] - yoke[0]) / 2.0)
             P = C @ h.S_child[:3, :3].T + h.S_child[:3, 3]
@@ -1092,6 +1104,7 @@ class Design:
                 owners.append(h.key + ("yoke",))
         housings: List[np.ndarray] = []      # the servos' housings among them
         voids: List[np.ndarray] = []         # the pockets, likewise
+        square: List[Tuple] = []             # the pockets' boxes whose edges stand square to the face
         for sp in part.holds:
             Sp = mm(sp.S_parent)
             crossing = sp.yoke == "crossing"
@@ -1143,7 +1156,9 @@ class Design:
                     x_bot = min(x_bot, float(housing_corners(sp.S_parent, y0=-9.5)[:, 0].min()) - REACH_MM)
                 tray = f"plate({o}, {x_bot:.3f}, {x1 + REACH_MM});"
                 for lo, hi in pocket[0]:
-                    part.swept_by.setdefault(sp.key[1], []).append(f"{Sp} box_lh({v3(lo)}, {v3(hi)});")
+                    part.swept_by.setdefault(sp.key[1], []).append(f"{Sp} {_pocket_box(sp.S_parent, lo, hi)}")
+                    if float(np.abs(sp.S_parent[0, :3]).max()) >= 0.999:
+                        square.append((sp.key[1], sp.S_parent, lo, hi))
                     pw, feet = self._pocket_walls(sp.S_parent, lo, hi, tray, outline, xb, x0)
                     pieces += pw
                     fps += feet
@@ -1161,6 +1176,9 @@ class Design:
                 hw = " ".join(c("0") for c in housing)
                 part.kept.append((sp.key[1] if sp.key[0] == "f" else -1,
                                   f"difference() {{ union() {{ {hw} }} {keepout} }}"))
+        for i, P, xa in self._corner_rounds(outline, square):
+            pts = "[" + ",".join(f"[{y:.3f},{z:.3f}]" for y, z in P) + "]"
+            part.swept_by.setdefault(i, []).append(f"prism_yz({pts}, [{list(range(len(P)))}], {xa:.3f}, {x1 + 1.0:.3f});")
         pieces += self._rim(outline, x0, sec)
         lanes: List[np.ndarray] = []
         for sp in part.holds:
@@ -1300,7 +1318,7 @@ class Design:
             return self._link_frame_points(i, body.corners())
         nxt = self.servos[("f", i, 1)]
         if nxt.flipped:
-            far = mt.box_corners(np.zeros(3), np.eye(3), np.array([ARM_X0 + ARM_DRIVEN, YOKE_REACH_MM, YOKE_REACH_MM]))
+            far = mt.box_corners(np.zeros(3), np.eye(3), np.array([ARM_X0 + ARM_MM, YOKE_REACH_MM, YOKE_REACH_MM]))
             far = far @ nxt.S_child[:3, :3].T + nxt.S_child[:3, 3]
         else:
             far = housing_corners(nxt.S_parent)
@@ -1451,7 +1469,7 @@ class Design:
                 P = _ccw(_clip_half(P, -n, c - FACE_TRIM_MM))
             else:
                 fallback.append(sp.S_parent)
-        reach = ARM_X0 + ARM_DRIVEN + PART_CLEAR + 2.0
+        reach = ARM_X0 + ARM_MM + PART_CLEAR + 2.0
 
         def ahead(q) -> bool:
             for S in fallback:
@@ -1477,10 +1495,10 @@ class Design:
         along the axis and round it. A yoke: its arms' span and its bridge's
         corners; a crossing: its next servo's housing, turning with it."""
         if sp.yoke != "crossing":
-            return ARM_X0 + ARM_DRIVEN + PART_CLEAR + 1.0, YOKE_REACH_MM
+            return ARM_X0 + ARM_MM + PART_CLEAR + 1.0, YOKE_REACH_MM
         nxt = self.servos[(sp.key[0], sp.key[1], sp.key[2] + 1)]
         loc = (housing_corners(nxt.S_parent) - sp.S_child[:3, 3]) @ sp.S_child[:3, :3]
-        along = max(float(np.abs(loc[:, 0]).max()), ARM_X0 + ARM_DRIVEN) + PART_CLEAR + 1.0
+        along = max(float(np.abs(loc[:, 0]).max()), ARM_X0 + ARM_MM) + PART_CLEAR + 1.0
         return along, float(np.linalg.norm(loc[:, 1:], axis=1).max()) + PART_CLEAR + 1.0
 
     @staticmethod
@@ -1600,17 +1618,22 @@ class Design:
 
     @staticmethod
     def _ribs(outline: np.ndarray, x0: float, walls, stops, lanes) -> Tuple[List[Piece], List[np.ndarray]]:
-        """The ribs under the face (Martin, 10/30): a grid along the palm's y
-        and z, the lines spread evenly over the face about `RIB_PITCH_MM`
-        apart, from the palm's back face up into the plate, reaching into the
-        wall round the edge. A rib stops at a pocket or a housing (`stops`)
-        and at a case screw's lane, and none runs alongside a wall or a
-        housing closer than `GAP_FILL_MM` (the wall does its work there), nor
-        through one (a housing's insides took a rib apart). Every rib ends on
-        something (the wall, a housing, a pocket's wall or another rib): an
-        end left in the open goes back to the last rib it crosses, and what
-        is left shorter than `RIB_MIN_MM` goes. The pieces and their
-        outlines (y, z)."""
+        """The ribs under the face (Martin, 11/03: "first start off without
+        any - just the outside edge of the palm with some wall thickness, and
+        then add the ribs in a grid inside"; the ribs of 10/30, each axis
+        spread to its own pitch and left out wherever they ran beside a wall,
+        ended in stubs and a square that held onto nothing): one square grid
+        `RIB_PITCH_MM` apart along the palm's y and z, set where its lines run
+        least beside the walls they meet (the slot a rib leaves beside a wall
+        is filled, `_fills`), every line from the wall round the edge to the
+        wall opposite, from the palm's back face up into the plate. A line
+        breaks where a pocket or a housing stands in it (`stops`; their walls
+        hold its ends) and at a case screw's lane; a piece ending at a lane
+        goes back to the last rib it crosses (or goes, if that leaves it
+        shorter than `RIB_MIN_MM`), one between two walls shorter than
+        `GAP_FILL_MM` goes (the fill closes that gap), and ribs that hold
+        onto nothing but each other go. The pieces and their outlines (y,
+        z)."""
         O = _ccw(outline)
         inner = np.array(O)
         for a, _, n in list(_edges(O)):
@@ -1622,35 +1645,56 @@ class Design:
         lo, hi = O.min(axis=0), O.max(axis=0)
         band = GAP_FILL_MM + RIB_MM / 2.0
         near = [(O, band + RIM_MM)] + [(q, band) for q in walls]
+
+        def line(k: int, c: float) -> Tuple[np.ndarray, np.ndarray]:
+            p = np.zeros(2)
+            p[k] = c
+            return p, (np.array([0.0, 1.0]) if k == 0 else np.array([1.0, 0.0]))
+
+        def pieces_of(k: int, c: float) -> List[Tuple[float, float]]:
+            p, u = line(k, c)
+            seg = _line_in_convex(p, u, inner)
+            if seg is None:
+                return []
+            keep = [seg]
+            side = np.array([-u[1], u[0]]) * RIB_MM / 2.0
+            for q in list(stops) + [dv._hull2d(np.vstack([q + side, q - side])) for q in lanes]:
+                # (a lane widened by the rib's half-thickness across it: a rib crossing it on a slant keeps its
+                # corners out of it too)
+                cut = _line_in_convex(p, u, _ccw(q))
+                if cut is not None:
+                    keep = _minus(keep, cut)
+            return keep
+
+        def beside(k: int, c: float, keep) -> float:
+            # how much of the line runs alongside a wall or the edge (within 10 degrees), nearer than `band`
+            p, u = line(k, c)
+            total = 0.0
+            for Q, w in near:
+                for a, b, nrm in _edges(Q):
+                    L = float(np.linalg.norm(b - a))
+                    if L < 1.0 or abs(float(nrm @ u)) / L > math.sin(math.radians(10.0)):
+                        continue
+                    s = nrm / L * w
+                    cut = _line_in_convex(p, u, _ccw(np.array([a - s, b - s, b + s, a + s])))
+                    if cut is not None:
+                        total += sum(max(0.0, min(t1, cut[1]) - max(t0, cut[0])) for t0, t1 in keep)
+            return total
+
         segs: List[List[float]] = []                          # [k, c, t0, t1]: the line q[k] = c, from t0 to t1
         for k in (0, 1):                                      # lines across y (running along z), then across z
-            u = np.array([0.0, 1.0]) if k == 0 else np.array([1.0, 0.0])
-            span = float(hi[k] - lo[k])
-            n_cells = max(1, int(round(span / RIB_PITCH_MM)))
-            for m in range(1, n_cells):
-                p = np.zeros(2)
-                p[k] = lo[k] + m * span / n_cells
-                seg = _line_in_convex(p, u, inner)
-                if seg is None:
+            a0, a1 = float(lo[k]) + RIM_MM + RIB_MM, float(hi[k]) - RIM_MM - RIB_MM
+            best = None
+            for off in np.arange(0.0, RIB_PITCH_MM, 1.0):
+                cs = list(np.arange(float(lo[k]) + off, a1, RIB_PITCH_MM))
+                cs = [c for c in cs if c > a0]
+                if not cs:
                     continue
-                keep = [seg]
-                side = np.array([-u[1], u[0]]) * RIB_MM / 2.0
-                for q in list(stops) + [dv._hull2d(np.vstack([q + side, q - side])) for q in lanes]:
-                    # (a lane widened by the rib's half-thickness across it: a rib crossing it on a slant keeps its
-                    # corners out of it too)
-                    cut = _line_in_convex(p, u, _ccw(q))
-                    if cut is not None:
-                        keep = _minus(keep, cut)
-                for Q, w in near:
-                    for a, b, nrm in _edges(Q):
-                        L = float(np.linalg.norm(b - a))
-                        if L < 1.0 or abs(float(nrm @ u)) / L > math.sin(math.radians(10.0)):
-                            continue                          # not alongside
-                        s = nrm / L * w
-                        cut = _line_in_convex(p, u, _ccw(np.array([a - s, b - s, b + s, a + s])))
-                        if cut is not None:
-                            keep = _minus(keep, cut)
-                segs += [[k, float(p[k]), t0, t1] for t0, t1 in keep]
+                score = sum(beside(k, c, pieces_of(k, c)) for c in cs) + 0.01 * abs((cs[0] - lo[k]) - (hi[k] - cs[-1]))
+                if best is None or score < best[0] - 1e-9:
+                    best = (score, cs)
+            for c in (best[1] if best else []):
+                segs += [[k, float(c), t0, t1] for t0, t1 in pieces_of(k, c)]
 
         def sdist(P, q) -> float:                             # > 0 outside a convex polygon
             return max(float((q - a) @ n) / float(np.linalg.norm(n)) for a, _, n in _edges(P))
@@ -1664,15 +1708,31 @@ class Design:
             changed = False
             for s in list(segs):
                 k, c, t0, t1 = s
+                h0, h1 = held(k, c, t0), held(k, c, t1)
                 cross = sorted(c2 for k2, c2, a2, b2 in segs if k2 != k and a2 <= c <= b2 and t0 <= c2 <= t1)
-                n0 = t0 if held(k, c, t0) else (cross[0] - RIB_MM / 2.0 if cross else None)
-                n1 = t1 if held(k, c, t1) else (cross[-1] + RIB_MM / 2.0 if cross else None)
-                if n0 is None or n1 is None or n1 - n0 < RIB_MIN_MM:
+                n0 = t0 if h0 else (cross[0] - RIB_MM / 2.0 if cross else None)
+                n1 = t1 if h1 else (cross[-1] + RIB_MM / 2.0 if cross else None)
+                if n0 is None or n1 is None or n1 - n0 < (GAP_FILL_MM if h0 and h1 else RIB_MIN_MM):
                     segs.remove(s)
                     changed = True
                 elif (n0, n1) != (t0, t1):
                     s[2], s[3] = n0, n1
                     changed = True
+        # ribs that hold onto nothing but each other (no end on the wall, a housing or a pocket's wall) go
+        comp = list(range(len(segs)))
+
+        def root(i: int) -> int:
+            while comp[i] != i:
+                comp[i] = comp[comp[i]]
+                i = comp[i]
+            return i
+
+        for i, (k, c, t0, t1) in enumerate(segs):
+            for j, (k2, c2, a2, b2) in enumerate(segs):
+                if k2 != k and a2 <= c <= b2 and t0 <= c2 <= t1:
+                    comp[root(i)] = root(j)
+        anchored = {root(i) for i, (k, c, t0, t1) in enumerate(segs) if held(k, c, t0) or held(k, c, t1)}
+        segs = [sg for i, sg in enumerate(segs) if root(i) in anchored]
         xb, xt = -PLATE_HALF_MM, x0 + REACH_MM
         pieces: List[Piece] = []
         feet: List[np.ndarray] = []
@@ -1684,6 +1744,56 @@ class Design:
             pts = [[x, *q] for q in foot for x in (xb, xt)]
             pieces.append(lambda gg, pts=_pts(pts): f"hull_pts({pts}, {gg});")
         return pieces, feet
+
+    @staticmethod
+    def _corner_rounds(outline: np.ndarray, boxes) -> List[Tuple[int, np.ndarray, float]]:
+        """Where pockets cut the palm's edge (`boxes`: (finger, servo frame,
+        lo, hi), each box's edges square to the face), its outside corners
+        rounded `CORNER_ROUND_MM`: at every convex corner a pocket makes in
+        the face's outline (with the edge, or with another pocket), the sliver
+        outside the fillet's arc (a little past the faces it rounds off), to
+        cut from where every pocket making the corner is open up through the
+        face: (finger, sliver (y, z), from palm x)."""
+        import manifold3d as m3
+
+        O = _ccw(outline)
+        rects = []
+        for i, S, lo, hi in boxes:
+            C = np.array([[a, b, c] for a in (lo[0], hi[0]) for b in (lo[1], hi[1]) for c in (lo[2], hi[2])], float)
+            C = C @ S[:3, :3].T + S[:3, 3]
+            rects.append((i, _ccw(dv._hull2d(C[:, 1:])), float(C[:, 0].min())))
+        F = m3.CrossSection([O.tolist()])
+        for _, R, _ in rects:
+            F = F - m3.CrossSection([R.tolist()])
+        out = []
+        for loop in F.to_polygons():
+            P = np.asarray(loop, float)
+            n = len(P)
+            for k in range(n):
+                p, v, q = P[k - 1], P[k], P[(k + 1) % n]
+                e1, e2 = v - p, q - v
+                l1, l2 = float(np.linalg.norm(e1)), float(np.linalg.norm(e2))
+                if l1 < 1e-6 or l2 < 1e-6 or float(e1[0] * e2[1] - e1[1] * e2[0]) <= 1e-6 * l1 * l2:
+                    continue                                  # not a convex corner (the material is on the left)
+                own = [(i, x) for i, R, x in rects if abs(Design._dist_out(v, R)) < 1e-3]
+                if not own:
+                    continue                                  # the outline's own: the plate rounds those
+                u1, u2 = e1 / l1, e2 / l2
+                th = math.acos(max(-1.0, min(1.0, float(-u1 @ u2))))
+                t = min(CORNER_ROUND_MM / math.tan(th / 2.0), 0.45 * min(l1, l2))
+                r = t * math.tan(th / 2.0)
+                b = (u2 - u1) / float(np.linalg.norm(u2 - u1))
+                c = v + b * r / math.sin(th / 2.0)
+                T1, T2 = v - t * u1, v + t * u2
+                f1 = math.atan2(*(T1 - c)[::-1])
+                d = (math.atan2(*(T2 - c)[::-1]) - f1 + math.pi) % (2.0 * math.pi) - math.pi
+                steps = max(4, int(math.ceil(abs(d) / math.radians(5.0))))       # facets of 5 degrees at most
+                arc = [c + r * np.array([math.cos(f1 + d * w), math.sin(f1 + d * w)])
+                       for w in np.linspace(0.0, 1.0, steps + 1)]
+                n1, n2 = np.array([-u1[1], u1[0]]), np.array([-u2[1], u2[0]])      # into the material
+                out.append((own[0][0], np.array([T1 - 0.3 * n1, v - 0.5 * b, T2 - 0.3 * n2] + arc[::-1]),
+                            max(x for _, x in own)))
+        return out
 
     @staticmethod
     def _fills(outline: np.ndarray, x0: float, walls, voids) -> List[Piece]:
