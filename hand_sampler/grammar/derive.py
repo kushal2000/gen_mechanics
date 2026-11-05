@@ -22,8 +22,8 @@ Derived geometry (one motor, `motor.py`):
 - every finger's base joint sits below the front face, just deep enough
   that the housings of the motors at its base point (motor 0, and motor 1
   when link 0 is 0 mm) end flush with the face (`base_depth_mm`);
-- a crossing (a 0 mm link) slides the earlier motor along its own axis
-  (`motor.crossing_slide_mm`);
+- a crossing (a 0 mm link, or a side mount: `hand.crossing_link`) slides
+  the earlier motor along its own axis (`motor.crossing_slide_mm`);
 - solids: the main plate, the part beyond the cut, the mount, the hinge
   motor, each finger's base motor (fixed to its plate) and one box per
   link, square to its frame, around its yoke (the bracket around its
@@ -72,6 +72,7 @@ from .hand import (
     Finger,
     Hand,
     axis_unit,
+    crossing_link,
     cut_direction_yz,
     cut_normal_yz,
     finger_section,
@@ -541,7 +542,7 @@ def finger_geometry(f: Finger) -> FingerGeometry:
     flipped = [p == "flipped" for p in poses]
     slides = np.zeros(n)
     for j in range(n - 1):
-        if f.joints[j].length == 0:
+        if crossing_link(f, j):            # a 0 mm link or a side mount
             slides[j] = -mt.crossing_slide_mm(axes[j], axes[j + 1], turned[j + 1])
     motors, yokes = [], []
     for j in range(n):
@@ -573,7 +574,7 @@ def finger_geometry(f: Finger) -> FingerGeometry:
         fars.append(far)
     base_joints = [0]
     for j in range(n - 1):
-        if f.joints[j].length != 0:
+        if not crossing_link(f, j):
             break
         base_joints.append(j + 1)
     # depth: the base motors' housings end flush with the front face

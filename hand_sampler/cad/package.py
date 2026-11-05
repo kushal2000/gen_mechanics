@@ -28,7 +28,7 @@ import numpy as np
 from hand_sampler.grammar.hand import Hand, finger_section, hand_to_json
 
 from . import checks, render, scad
-from .design import Design, ServoSpot
+from .design import MOUNT_DEPTH_MM, MOUNT_R_MM, Design, ServoSpot
 from .servo import HL3915
 from .step import write_part as write_step
 
@@ -232,7 +232,14 @@ def bom(d: Design, rep: checks.Report) -> str:
              + (f"; buy {sc['box'] - 8 * n_servo} more M2 x 3.5 pan heads" if sc['box'] > 8 * n_servo else "") + " |",
              f"| M2 x 5 pan head | {sc['M2x5']} | 4 on each arm of a yoke (or a crossing's plate) |",
              f"| 3-pin 1.25 mm (PicoBlade) servo cable | {n_servo} | one per servo, chained along each finger |",
-             "", "The palm's mounting to the arm and the board (Palm Hub rev B.2) come later (Martin, 10/29).", "",
+             "| Palm Hub rev B.2 | 1 | the board: "
+             + ("screwed to the palm's back |" if d.board else "no room on the palm's back: it floats on its cables |")]
+    if d.board:
+        lines.append("| M2 x 8 pan head | 4 | the board, into the 1.8 mm holes in its standoffs |")
+    if d.mount:
+        lines.append("| M5 heat-set insert (6.4 mm hole, up to 11 mm long) | 4 | the back mount: "
+                     "ISO 9409-1-31.5-4-M5 |")
+    lines += ["",
              "## Printed (PETG)", "",
               "| Part | Grams (about) | Size laid flat (mm) |", "|---|---|---|"]
     for n, info in rep.parts.items():
@@ -372,8 +379,31 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
           "| Finger | Board port |", "|---|---|"]
     for i in range(len(hand.fingers)):
         L.append(f"| {i} | {ports[i]} |")
-    L += ["", "## 6. Board and arm", "",
-          "Later: the palm's mounting to the arm and the board come at the end (Martin, 10/29).", "",
+    L += ["", "## 6. Board and arm", ""]
+    if d.mount and d.mount["column"]:
+        L += [f"The back mount is the column behind the palm ({2 * MOUNT_R_MM:.0f} mm across, "
+              f"{MOUNT_DEPTH_MM:.0f} mm long, where the simulator mounts the hand). Press the four M5 heat-set inserts "
+              "into its end with a soldering iron; they take an arm's ISO 9409-1-31.5-4-M5 flange, or an adapter "
+              "to another."]
+    elif d.mount:
+        L += ["Something stands behind the palm where the back mount's column would, so the four M5 heat-set "
+              "inserts go straight into the palm's back face round its centre (ISO 9409-1-31.5-4-M5)."]
+    if d.mount and d.mount["turn_deg"]:
+        L[-1] += f" The pattern is turned {d.mount['turn_deg']} degrees from the palm's axes."
+    if d.mount and d.mount["ways"]:
+        L += ["", f"The {d.mount['ways']} holes through the column (4 mm) are a screwdriver's way to the case "
+              "screws of the servos beside it: drive those screws with a long-shafted driver before fitting the "
+              "hand to the arm."]
+    if d.board:
+        y, z = d.board["centre"]
+        uy, uz = d.board["usb_faces"]
+        L += ["", f"The board lies on the palm's back, its parts facing out, screwed to the four standoffs "
+              f"with M2 x 8 pan heads (its centre at y {y:.0f}, z {z:.0f} mm in the palm's frame, its USB-C "
+              f"and 12 V edge facing ({uy:.2f}, {uz:.2f}) in y, z). Fit it last: it covers part of the palm's "
+              "open back, where the cables run under it."]
+    else:
+        L += ["", "The palm's back has no room for the board: it floats on its cables (tie it where it suits)."]
+    L += ["",
           "## 7. Calibration", "",
           "The horns' 8 holes every 45 degrees and the 25-tooth spline put each link within about a degree of "
           "its zero pose; set each servo's zero offset so that position 2048 is the finger straight. A "

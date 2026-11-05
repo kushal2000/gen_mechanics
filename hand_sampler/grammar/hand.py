@@ -100,6 +100,12 @@ PALM_OUTLINE_MAX_VERTICES = 32     # a GPU convex hull: 2 x 32 vertices, 34 face
 SEAM_MM = 2.0 * (PLATE_HALF_MM * math.sin(math.radians(30.0)) + mt.WALL_MM) / (1.0 + math.cos(math.radians(30.0)))
 # The cut must leave the whole mount on the fixed part.
 MIN_CUT_OFFSET_MM = mt.ceil10(MOUNT_RADIUS_MM + SEAM_MM / 2.0)   # 30
+CENTRE_TOLERANCE_MM = 20.0
+"""How far the palm's centre may lie from the mount (`Rules.mount_at_centre`):
+half the coarse stage's 40 mm base step, in every stage, so every coarse
+hand stays a fine one (2026-11-04: the fine stage's bases every 10 mm).
+Random draws, mutations and the commercial fits move a hand by the fewest
+grid steps that bring it within this (`operators.recentre`)."""
 
 # Finger tilt out of the plate, toward the grasp side: from lying in the
 # plate's directions (0) to standing straight up (+90, DClaw's fingers). No
@@ -308,14 +314,18 @@ class Rules:
 
 
 NO_RULES = Rules()
-FEETECH_RULES = Rules(joint_types=("hinge",), base_pitch_mm=40, base_distance_mm=(40, 90),
+FEETECH_RULES = Rules(joint_types=("hinge",), base_pitch_mm=10, base_distance_mm=(40, 90),
                       outward_facing=True, buildable_links=True, max_finger_length_mm=225, max_link_mm=90,
                       mount_at_centre=True)
-FEETECH_COARSE_RULES = replace(FEETECH_RULES, link_step_mm=20, axis_step_deg=90)
-"""The coarse stage (Martin, 2026-10-20): the Feetech rules with joints only on
-the three kinds and links in 20 mm steps from their shortest. Random hands
-start here and evolve here first; the fine stage (`FEETECH_RULES`: 31 axis
-directions, 10 mm steps) then refines them. Every coarse hand is a fine one."""
+FEETECH_COARSE_RULES = replace(FEETECH_RULES, base_pitch_mm=40, link_step_mm=20, axis_step_deg=90)
+"""The coarse stage (Martin, 2026-10-20): the Feetech rules with bases on a
+40 mm grid, joints only on the three kinds and links in 20 mm steps from
+their shortest. Random hands start here and evolve here first; the fine
+stage (`FEETECH_RULES`: bases every 10 mm, as the commercial fits'; 31 axis
+directions; 10 mm steps) then refines them (Martin, 11/04: "stick to the
+current grid for the coarse, and then the 'fine' stage can have its values
+adjusted to allow good matching to commercial hands"). Every coarse hand is
+a fine one."""
 STAGE_RULES = {"coarse": FEETECH_COARSE_RULES, "fine": FEETECH_RULES}
 EVOLUTION_RULES = FEETECH_RULES
 COMMERCIAL_RULES = Rules(buildable_links=True, mount_at_centre=True)
@@ -369,6 +379,44 @@ def _is_bend(ax: Tuple[int, int]) -> bool:
     return mt.is_bend(axis_unit(ax))
 
 
+@lru_cache(maxsize=None)
+def _side_floor(ax_a: Tuple[int, int], ax_b: Tuple[int, int]) -> int:
+    return mt.link_floor_mm(axis_unit(ax_a), axis_unit(ax_b), False, False)
+
+
+@lru_cache(maxsize=None)
+def _crossable(ax_a: Tuple[int, int], ax_b: Tuple[int, int]) -> bool:
+    return mt.crossing_ok(axis_unit(ax_a), axis_unit(ax_b))
+
+
+def _side_capable(f: Finger, j: int) -> bool:
+    """Link j joins two hinges whose axes are square to the finger and differ
+    (`motor.crossing_ok`): shorter than their servos' floor lying along the
+    finger, it is a side mount (`crossing_link`)."""
+    if j >= len(f.joints) - 1:
+        return False
+    jt, nxt = f.joints[j], f.joints[j + 1]
+    return (jt.type in REVOLUTE_TYPES and nxt.type in REVOLUTE_TYPES
+            and _crossable(tuple(jt.axis), tuple(nxt.axis)))
+
+
+def crossing_link(f: Finger, j: int) -> bool:
+    """Whether link j of finger f is a crossing: its first servo slides along
+    its own axis to sit beside the second (`motor.crossing_slide_mm`), whose
+    case the plate on its horn holds. A 0 mm link (the two joints share a
+    point), or a side mount: two hinges whose axes are square to the finger
+    and differ, closer than the floor their servos need lying along the
+    finger (`motor.link_floor_mm`, 41-42 mm) (Martin, 2026-11-04: LEAP bolts
+    its PIP servo by its side to the abduction servo's horn 15 mm on). Never
+    the fingertip."""
+    if j >= len(f.joints) - 1:
+        return False
+    jt = f.joints[j]
+    if jt.length == 0:
+        return True
+    return _side_capable(f, j) and jt.length < _side_floor(tuple(jt.axis), tuple(f.joints[j + 1].axis))
+
+
 def turned_servo(f: Finger, j: int) -> bool:
     """Whether joint j's servo is turned, its body on the back of the finger
     instead of along the link: a bend servo whose link before it is too short
@@ -379,11 +427,49 @@ def turned_servo(f: Finger, j: int) -> bool:
     if j == 0:
         return False
     jt, prev = f.joints[j], f.joints[j - 1]
-    if jt.type == "sliding" or prev.length == 0 or not _is_bend(tuple(jt.axis)):
+    if jt.type == "sliding" or crossing_link(f, j - 1) or not _is_bend(tuple(jt.axis)):
         return False
-    if j < len(f.joints) - 1 and jt.length == 0:
+    if crossing_link(f, j):
         return False
-    return prev.length < _link_floor(tuple(prev.axis), tuple(jt.axis), turned_servo(f, j - 1), False)
+    return prev.length < _pose_floor(tuple(prev.axis), tuple(jt.axis), short_pose(f, j - 1), "lying")
+
+
+def _flip_spread_ok(f: Finger, j: int) -> bool:
+    """Whether joint j's servo is a spread that may flip (`flipped_spread`):
+    a servo square to the finger but no bend, past a link that is no
+    crossing, clear of crossings and of sliding joints on either side (as a
+    bend's flip, `_flip_candidate`)."""
+    n = len(f.joints)
+    if j == 0:
+        return False
+    jt = f.joints[j]
+    if jt.type == "sliding" or _is_bend(tuple(jt.axis)) or not mt.is_transverse(axis_unit(jt.axis)):
+        return False
+    if crossing_link(f, j - 1) or crossing_link(f, j):
+        return False
+    return not (j + 1 < n and (f.joints[j + 1].type == "sliding" or crossing_link(f, j + 1)))
+
+
+def flipped_spread(f: Finger, j: int) -> bool:
+    """Whether joint j's servo is a spread flipped to lie along the link after
+    its joint (the link before holds its horns): a spread servo whose link
+    before it is too short for it to lie along that link, as LEAP's thumb
+    servos sit (2026-11-04; a bend servo turns there instead,
+    `turned_servo`)."""
+    if not _flip_spread_ok(f, j):
+        return False
+    prev, jt = f.joints[j - 1], f.joints[j]
+    return prev.length < _pose_floor(tuple(prev.axis), tuple(jt.axis), short_pose(f, j - 1), "lying")
+
+
+def short_pose(f: Finger, j: int) -> str:
+    """How joint j's servo sits by the grammar's floors (`SERVO_POSES`):
+    turned (a bend past a link too short for it to lie along), flipped (a
+    spread past one), else lying. `servo_poses` may flip or turn bend servos
+    besides, where every link keeps room."""
+    if turned_servo(f, j):
+        return "turned"
+    return "flipped" if flipped_spread(f, j) else "lying"
 
 
 SERVO_POSES = ("lying", "flipped", "turned")
@@ -400,11 +486,11 @@ def _flip_candidate(f: Finger, j: int) -> bool:
     if j == 0:
         return False
     jt, prev = f.joints[j], f.joints[j - 1]
-    if jt.type == "sliding" or prev.length == 0 or not _is_bend(tuple(jt.axis)):
+    if jt.type == "sliding" or crossing_link(f, j - 1) or not _is_bend(tuple(jt.axis)):
         return False
-    if j < n - 1 and jt.length == 0:
+    if crossing_link(f, j):
         return False
-    if j + 1 < n and (f.joints[j + 1].type == "sliding" or (j + 1 < n - 1 and f.joints[j + 1].length == 0)):
+    if j + 1 < n and (f.joints[j + 1].type == "sliding" or crossing_link(f, j + 1)):
         return False
     return True
 
@@ -421,7 +507,8 @@ def _tip_pose_floor(ax: Tuple[int, int], pose: str) -> int:
 
 @lru_cache(maxsize=None)
 def servo_poses(f: Finger) -> Tuple[str, ...]:
-    """How each joint's servo sits (`SERVO_POSES`): of the ways the finger's
+    """How each joint's servo sits (`SERVO_POSES`): a spread past a short
+    link flipped (`flipped_spread`); of the ways the finger's
     bend servos can sit with room in every link (`motor.pose_floor_mm`), the
     one with the fewest turned, then the fewest flipped, then the turned ones
     nearest the palm (the fingertip stays slim) (Martin, 2026-10-29: a servo flipped
@@ -431,7 +518,7 @@ def servo_poses(f: Finger) -> Tuple[str, ...]:
     where anything does, so the lengths a finger may take are unchanged; a
     finger shorter than its floors keeps the turned servos."""
     n = len(f.joints)
-    base = tuple("turned" if turned_servo(f, j) else "lying" for j in range(n))
+    base = tuple(short_pose(f, j) for j in range(n))
     cands = [j for j in range(n) if _flip_candidate(f, j)]
     if not cands:
         return base
@@ -463,35 +550,51 @@ def servo_poses(f: Finger) -> Tuple[str, ...]:
 def zero_link_ok(f: Finger, j: int, buildable: bool) -> bool:
     """Whether link j of finger f may be 0 mm: never the fingertip; under
     buildable rules only between two different axes square to the finger,
-    and never next to another 0 mm link."""
+    and never next to another crossing (`crossing_link`: a servo slides
+    beside one neighbour only)."""
     n = len(f.joints)
     if j >= n - 1:
         return False
     if not buildable:
         return True
-    if not mt.crossing_ok(axis_unit(f.joints[j].axis), axis_unit(f.joints[j + 1].axis)):
+    if not _crossable(tuple(f.joints[j].axis), tuple(f.joints[j + 1].axis)):
         return False
-    return not ((j > 0 and f.joints[j - 1].length == 0) or (j + 1 < n - 1 and f.joints[j + 1].length == 0))
+    return not ((j > 0 and crossing_link(f, j - 1)) or (j + 1 < n - 1 and crossing_link(f, j + 1)))
+
+
+def side_mount_ok(f: Finger, j: int, buildable: bool) -> bool:
+    """Whether link j may be a side mount (`crossing_link`) under buildable
+    rules: it joins two such hinges, and is not next to another crossing."""
+    return buildable and _side_capable(f, j) and zero_link_ok(f, j, True)
 
 
 def length_floor_mm(f: Finger, j: int, buildable: bool) -> int:
     """The shortest non-zero length link j may have: before a bend servo,
-    the length at which it turns (`turned_servo`); before a crossing, room
-    for the servo after it too (`motor.crossing_floor_mm`)."""
+    the length at which it turns (`turned_servo`), before a spread the one
+    at which it flips (`flipped_spread`); before a crossing, room for the
+    servo after it too (`motor.crossing_floor_mm`)."""
     n = len(f.joints)
     if not buildable:
         return TIP_MIN_MM if j == n - 1 else LINK_MIN_MM
     a = tuple(f.joints[j].axis)
+    pose = short_pose(f, j)
     if j == n - 1:
-        return _tip_floor(a, turned_servo(f, j))
+        return _tip_pose_floor(a, pose)
     nxt = f.joints[j + 1]
     b = tuple(nxt.axis)
-    crossing = (j + 1 < n - 1 and nxt.length == 0
-                and mt.crossing_ok(axis_unit(b), axis_unit(f.joints[j + 2].axis)))
-    can_turn = nxt.type != "sliding" and _is_bend(b) and not crossing
-    fl = _link_floor(a, b, turned_servo(f, j), can_turn)
+    # (a 0 mm link between hinges that cannot cross, which only the grammar's own limits allow, raises no floor)
+    crossing = crossing_link(f, j + 1) and _crossable(b, tuple(f.joints[j + 2].axis))
+    side = _side_capable(f, j)
+    # where this link is too short for the next servo to lie along it, a bend servo turns and a spread flips
+    short = None
+    if nxt.type != "sliding" and not crossing and not side:
+        short = "turned" if _is_bend(b) else ("flipped" if _flip_spread_ok(f, j + 1) else None)
+    fl = _pose_floor(a, b, pose, short or "lying")
+    if side:
+        fl = max(fl, _side_floor(a, b))           # any shorter is a side mount
     if crossing:
-        fl = max(fl, _crossing_floor(a, turned_servo(f, j)))
+        # the crossing's second servo reaches back past the joint by its offset less (a side mount's)
+        fl = max(fl, _crossing_floor(a, pose == "turned") - int(nxt.length))
     return fl
 
 
@@ -499,14 +602,26 @@ def allowed_lengths(f: Finger, j: int, buildable: bool, max_mm: int = LINK_MAX_M
     """Every length link j of finger f may take, ascending, given its
     neighbours: the floor, then every `step` mm up to `max_mm`
     (`motor.lengths_from`), and 0 where allowed. Without the servo floors the
-    grid also takes the servo floor where it is off the grid (41 mm), so every
+    grid also takes every servo length off the grid (27, 42 mm), so every
     buildable hand stays inside the grammar's own limits."""
+    if buildable and _side_capable(f, j):
+        # a side mount at any grid length short of the servos' lying floor (where one may be), lying from there on
+        side = _side_floor(tuple(f.joints[j].axis), tuple(f.joints[j + 1].axis))
+        short = list(range(0, min(side, max_mm + 1), step)) if side_mount_ok(f, j, True) else []
+        return short + mt.lengths_from(length_floor_mm(f, j, True), max_mm, step)
     out = mt.lengths_from(length_floor_mm(f, j, buildable), max_mm, step)
+    if buildable and out and j < len(f.joints) - 1 and not crossing_link(f, j + 1):
+        # where the next servo could turn or flip, also the length from which it lies along the link (off the
+        # grid: 42 mm)
+        lie = _pose_floor(tuple(f.joints[j].axis), tuple(f.joints[j + 1].axis), short_pose(f, j), "lying")
+        if out[0] < lie <= max_mm:
+            out = sorted(set(out) | {lie})
     if not buildable and f.joints[j].type != "sliding" and (j == len(f.joints) - 1 or
                                                              f.joints[j + 1].type != "sliding"):
-        fl = length_floor_mm(f, j, True)
-        if fl % GRID_MM and out and out[0] <= fl <= max_mm:
-            out = sorted(set(out) | {fl})
+        # every servo length off the grid too (the floor, and where a servo lies along the link: 27, 42 mm)
+        extra = [v for v in allowed_lengths(f, j, True, max_mm, step) if v % GRID_MM and out and out[0] <= v]
+        if extra:
+            out = sorted(set(out) | set(extra))
     if zero_link_ok(f, j, buildable):
         out = [0] + out
     return out
@@ -572,6 +687,9 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
                 if not _is_int(jt.length) or jt.length not in allowed:
                     lo_mm = length_floor_mm(f, j, r.buildable_links)
                     zero = "0 or " if zero_link_ok(f, j, r.buildable_links) else ""
+                    if side_mount_ok(f, j, r.buildable_links):
+                        side = _side_floor(tuple(jt.axis), tuple(f.joints[j + 1].axis))
+                        zero = f"0-{side - 1} side-mounted or "
                     out.append(f"{tag} joint {j}: link length {jt.length} mm not allowed "
                                f"({'fingertip ' if j == nj - 1 else ''}{zero}{lo_mm}-{r.max_link_mm} mm "
                                f"in {r.link_step_mm} mm steps)")
@@ -597,10 +715,10 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
         # the mount sits at the palm's centre (Martin, 2026-10-16): so no two hands differ only in where it sits
         from .derive import palm_centre_mm      # derive builds on this module
         cy, cz = palm_centre_mm(hand)
-        h = r.base_pitch_mm / 2.0
+        h = CENTRE_TOLERANCE_MM
         if not (-h <= cy < h and -h <= cz < h):
             out.append(f"palm centre ({cy:.1f}, {cz:.1f}) mm from the mount; the mount sits at the palm's centre, "
-                       f"within half a base step ({h:g} mm)")
+                       f"within {h:g} mm")
     return out
 
 

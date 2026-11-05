@@ -13,7 +13,10 @@ anyone prints it.
   the hand and slotted in whole with its base servo);
 - no two other parts touch at the zero pose;
 - how far each part reaches outside its simulator body (the grammar's
-  solid; Martin, 2026-10-23: small overhangs are fine).
+  solid, the main palm's with the mount's column behind it; Martin,
+  2026-10-23: small overhangs are fine);
+- what the design gave up (`Design.notes`: the back mount's column or its
+  inserts' material, the board left floating).
 """
 
 from __future__ import annotations
@@ -133,6 +136,7 @@ def check(design: Design, stl_dir: Path) -> Report:
     _joint_checks(design, solids, rep)
     _zero_pose_checks(design, solids, rep, frames)
     _overhangs(design, solids, rep)
+    rep.warnings += list(getattr(design, "notes", []))         # what the design itself had to give up
     return rep
 
 
@@ -422,11 +426,15 @@ def _overhangs(design: Design, solids: Dict, rep: Report) -> None:
         P = _sim_points_mm(design, key)
         if P is None:
             continue
-        hull = ConvexHull(P)
+        hulls = [ConvexHull(P)]
+        if key == ("palm", -1):
+            # the mount: the column behind the palm, where the design stands it
+            at = (getattr(design, "mount", None) or {}).get("at", (0.0, 0.0))
+            hulls.append(ConvexHull(dv.mount_points_m() / dv.MM + np.array([0.0, at[0], at[1]])))
         mesh = man.to_mesh()
         V = np.asarray(mesh.vert_properties)[:, :3].astype(float)
-        # how far each vertex lies outside the hull: the largest signed plane distance
-        d = (V @ hull.equations[:, :3].T + hull.equations[:, 3]).max(axis=1)
+        # how far each vertex lies outside the body: the largest signed plane distance, to the nearer hull
+        d = np.min([(V @ h.equations[:, :3].T + h.equations[:, 3]).max(axis=1) for h in hulls], axis=0)
         worst = float(max(0.0, d.max()))
         name = design.parts[key].name
         if name in rep.parts:

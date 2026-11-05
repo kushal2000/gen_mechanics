@@ -61,7 +61,7 @@ def test_rules_dropdown_and_custom_fields(evo):
     assert len(evo.hand.fingers) <= 3
     evo.choose_rules(V.FEETECH)
     assert evo.gui_fingers.value == 6 and evo.gui_rules.value == V.FEETECH
-    assert evo.gui_pitch.value == 40 and evo.gui_outward.value and evo.gui_buildable.value
+    assert evo.gui_pitch.value == 10 and evo.gui_outward.value and evo.gui_buildable.value     # the fine stage's grid
 
 
 def test_fields_cannot_widen_the_grammar(evo):
@@ -236,14 +236,15 @@ def test_palm_bend_folds_the_part_beyond_the_cut(evo):
 
 
 def test_search_space_line_follows_the_rules(evo):
-    """The line counts every finger count: the fine stage 10^63, the coarse
-    stage 10^37 (10^65 and 10^38 before the fingertip floors of 2026-11-02),
-    the whole grammar more."""
-    assert "10^63 hands (2-6 fingers)" in evo.md_space.content
+    """The line counts every finger count: the fine stage 10^76, the coarse
+    stage 10^43 (10^63 and 10^37 before the floors, side mounts, flipped
+    spreads and the fine stage's 10 mm base grid of 2026-11-04), the whole
+    grammar more."""
+    assert "10^76 hands (2-6 fingers)" in evo.md_space.content
     evo.choose_rules(V.COARSE)
-    assert "10^37 hands (2-6 fingers)" in evo.md_space.content
+    assert "10^43 hands (2-6 fingers)" in evo.md_space.content
     evo.choose_rules(V.NONE)
-    assert "hands (2-6 fingers)" in evo.md_space.content and "10^63 hands" not in evo.md_space.content
+    assert "hands (2-6 fingers)" in evo.md_space.content and "10^76 hands" not in evo.md_space.content
     evo.choose_rules(V.FEETECH)
 
 

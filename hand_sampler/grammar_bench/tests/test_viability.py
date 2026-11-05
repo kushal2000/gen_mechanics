@@ -107,7 +107,7 @@ def test_c1_ignores_solids_that_touch_by_construction():
     pairs = V.touching_pairs(h)
     for a, b in ((("palm", -1), ("motor", 0)), (("link", 0, 0), ("palm", -1)), (("link", 0, 1), ("palm", -1)),
                  (("link", 0, 2), ("palm", -1)), (("link", 0, 2), ("link", 0, 0)), (("link", 0, 1), ("link", 0, 0)),
-                 (("link", 0, 0), ("motor", 0)), (("palm", -1), ("mount",))):
+                 (("link", 0, 0), ("motor", 0))):
         assert (a, b) in pairs and (b, a) in pairs
     assert (("link", 0, 3), ("palm", -1)) not in pairs
     assert (("motor", 0), ("motor", 1)) not in pairs
@@ -125,16 +125,16 @@ def test_a_link_cannot_lie_in_the_palm():
     assert not r.ok and any({a, b} == {("palm", -1), ("link", 1, 0)} for a, b, _ in r.pairs)
 
 
-def test_the_mount_blocks_motors_behind_the_palm():
-    """A spread-first finger's motor sticks 9 mm out of the back: on the inner
-    ring, pointing outward, it hits the mount; a bend-first one (flush) clears
-    it by exactly a wall."""
-    for axis, ok in ((BEND, True), (SPREAD, False)):
+def test_the_mount_and_the_bay_do_not_shape_the_hand():
+    """The mount and the board bay exist but have no impact on a hand's shape
+    or its fit (Martin, 2026-11-04): a spread-first finger's motor, sticking 9
+    mm out of the back on the inner ring, no longer has to clear the mount
+    (until then it failed), and no pair with either is checked."""
+    for axis in (BEND, SPREAD):
         h = Hand(fingers=(_finger(0, 40, joints=((axis, 50), (BEND, 30))), _finger(0, -80, facing=180)))
         r = V.c1_self_overlap(h)
-        assert r.ok == ok, r.pairs
-        if not ok:
-            assert any({a, b} == {("mount",), ("motor", 0)} for a, b, _ in r.pairs)
+        assert r.ok, r.pairs
+    assert not any(k[0] in ("mount", "bay") for p in V.touching_pairs(h) for k in p)
 
 
 def test_a_cut_through_a_base_motor_fails():

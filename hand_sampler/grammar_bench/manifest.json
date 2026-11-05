@@ -18,13 +18,19 @@
       "commit_allowed": true,
       "source_url": "https://github.com/RobotLocomotion/drake/tree/master/manipulation/models/allegro_hand_description",
       "retrieved": "2026-09-25",
-      "notes": "",
+      "notes": "Its fingertip frames are the centres of 24 mm balls (link_3.0_tip.obj spans -11 to +12 mm in z); tip_points put each fingertip at its ball's end, 12 mm on (2026-11-04).",
       "hand_root": null,
       "fixture_path": "fixtures/real/allegro_right/allegro_hand_description_right.urdf",
       "license_evidence": "fixtures/real/allegro_right/LICENSE_EVIDENCE_LICENSE.TXT",
       "source_path": "Allegro/urdf/allegro_hand_description_right.urdf",
       "sha256": "f6da40348c71793d30a5d96b7e50db8e8234a05a6e66de550c95147d8e373c96",
-      "thumb_joint": "joint_12"
+      "thumb_joint": "joint_12",
+      "tip_points": {
+        "joint_3": [0.0, 0.0, 0.0387],
+        "joint_7": [0.0, 0.0, 0.0387],
+        "joint_11": [0.0, 0.0, 0.0387],
+        "joint_15": [0.0, 0.0, 0.0543]
+      }
     },
     {
       "id": "leap_right",

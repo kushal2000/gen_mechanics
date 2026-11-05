@@ -43,7 +43,10 @@ from scipy.spatial import ConvexHull, QhullError
 
 from hand_sampler.grammar import derive as dv
 from hand_sampler.grammar import motor as mt
-from hand_sampler.grammar.hand import PLATE_HALF_MM, SEAM_MM, Hand, cut_side_mm, finger_section
+from hand_sampler.grammar.hand import (MOUNT_DEPTH_MM, PLATE_HALF_MM, SEAM_MM, Hand, crossing_link, cut_side_mm,
+                                      finger_section)
+
+from .servo import HL3915
 
 SINGLE_ARM_LEAN = 0.5
 """A joint whose axis leans this much along the finger (|a . x| >= 0.5:
@@ -122,7 +125,46 @@ GAP_FILL_MM = 8.0
 """Gaps narrower than this between what stands under the face (the wall,
 housings, pocket walls, ribs) are filled solid (Martin, 10/30: material, not
 slots)."""
+MOUNT_R_MM = 22.0
+"""The back mount (Martin, 11/04: "add a simple back mount"; neither the
+mount nor the board has any say in a hand's fit): the grammar's mount, a
+column at the palm's origin standing `MOUNT_DEPTH_MM` (40 mm) behind the
+back face (the plan of 10/23: "the hand's 40 mm column bolts to whichever
+disc"), 44 mm across, rooted in a boss through the tray up into the plate
+(less the case screws' lanes and whatever the palm gives way to). Four M5
+heat-set inserts in its end on a 31.5 mm circle (ISO 9409-1-31.5-4-M5,
+whose flange is 40 mm across) take an arm's flange or an adapter to one.
+Where something stands or turns behind the back face across the column,
+there is no column and the inserts go into the boss from the back face,
+the pattern turned (5 degree steps) to keep as much material round them as
+it can (`MOUNT_WALL_MM`)."""
+MOUNT_PCD_MM = 31.5
+MOUNT_INSERT_MM = (6.4, 11.0)     # an M5 heat-set insert's hole: across, deep from the back face
+MOUNT_WALL_MM = 1.5               # less material than this round an insert is noted
+BOARD_MM = (69.5, 38.0)
+"""The board (Palm Hub rev B.2, every part on its top side, its back flat)
+lies on the palm's back face, screwed to four standoffs where it finds room
+(Martin, 11/04: "if there is space for the board to be screwed somewhere do
+it, if not ... just assume the board will be floating"): inside the palm's
+outline, its standoffs clear of the pockets, the servos and their ways in
+and the case screws' lanes, the board and the room in front of its plugs
+clear of the back mount's flange and of what stands or turns behind the
+back face (`_board_spot`). Board coordinates as its mechanical README: from
+its corner at the USB-C, x along the long edge, y toward CH1-CH3."""
+BOARD_HOLES = ((2.6, 2.6), (66.9, 2.6), (2.6, 35.4), (66.9, 35.4))
+BOARD_PLUGS = (((33.0, 38.0), (64.0, 46.0)),      # the room the plugs and their cables need: CH1-CH3 (8 mm),
+               ((33.0, -8.0), (64.0, 0.0)),       # CH4-CH6 (8 mm), the 12 V XT30 and the USB-C (20 mm)
+               ((-20.0, 7.0), (0.0, 31.0)))
+STANDOFF_MM = (7.0, 2.0)          # a standoff's diameter, how far it stands behind the back face (cables pass under)
+BOARD_OVER_MM = 10.0              # how far the board may reach past the palm's outline (where nothing turns there)
+BOARD_PILOT_MM = (1.8, 8.0)       # an M2 screw's hole in a standoff: across, deep
 FAR_HOLES = ((22.5, -8.0), (22.5, 8.0))   # (Y, Z) of the case holes a housing's screws take (library FAR_HOLES)
+NEAR_HOLES = ((-7.5, -8.0), (-7.5, 8.0))  # the idler face's other two (a flange cup's servo takes all four)
+DRIVER_R_MM = 2.0
+"""The way a case screw's screwdriver takes (the checks' 3.2 mm shaft, with
+room), along the servo's axis from either side plate (a flange cup's servo:
+from its idler face): the back mount and the board's standoffs leave it
+clear, run on past the column's end so a long-shafted driver passes."""
 LANE_MM = (30.0, 5.0)         # a lying servo's case screws: a screwdriver's way along its axis (reach, half-width)
 CAP_SHARE = 0.25
 """A lying base servo's face stops along its trim line, out to the palm's
@@ -188,6 +230,21 @@ def _area2d(P) -> float:
 def _ccw(P) -> np.ndarray:
     P = np.asarray(P, float)
     return P if _area2d(P) >= 0.0 else P[::-1]
+
+
+def _depth_in(p: np.ndarray, loops) -> float:
+    """How far p lies inside a region given by its loops (holes too; < 0 outside)."""
+    best, inside = math.inf, False
+    for L in loops:
+        a = np.asarray(L, float)
+        b = np.roll(a, -1, axis=0)
+        e = b - a
+        t = np.clip(((p - a) * e).sum(axis=1) / np.maximum((e * e).sum(axis=1), 1e-12), 0.0, 1.0)
+        best = min(best, float(np.linalg.norm(a + t[:, None] * e - p, axis=1).min()))
+        up = (a[:, 1] > p[1]) != (b[:, 1] > p[1])
+        x = a[up, 0] + (p[1] - a[up, 1]) * e[up, 0] / e[up, 1]
+        inside ^= bool(int((x > p[0]).sum()) % 2)
+    return best if inside else -best
 
 
 def _edges(P):
@@ -310,7 +367,7 @@ def finger_servos(hand: Hand, i: int) -> List[ServoSpot]:
         a = fg.axes[j]
         M = fg.motors[j].axes                      # (a, v, w), joint j frame
         turned, flipped = fg.poses[j] == "turned", fg.poses[j] == "flipped"
-        crossing = j < len(f.joints) - 1 and jt.length == 0
+        crossing = crossing_link(f, j)             # a 0 mm link, or a side mount (Martin, 11/04)
         single = abs(float(a[0])) >= SINGLE_ARM_LEAN - 1e-9 and not crossing
         # a one-arm yoke's driven horn faces the part carrying it: the fingertip's way (a flipped servo: the palm's)
         flip = single and (float(a[0]) > 0.0 if flipped else float(a[0]) < 0.0)
@@ -621,6 +678,9 @@ class Design:
         self.parts: Dict[Tuple, Part] = {}
         self.entry: Dict[Tuple, int] = {}         # a palm-held servo's way in: from its front (-1) or its back (+1)
         self.tunnelled: List[Tuple] = []          # servos whose case screws are reached through a tunnel (`_screw_ways`)
+        self.notes: List[str] = []                # what the design had to give up (the checks report them)
+        self.mount: Optional[Dict] = None         # the back mount's inserts: turned from 45 degrees, material round them
+        self.board: Optional[Dict] = None         # where the board lies on the palm's back (`_board_spot`), or None
         pose = dv.fk(hand)
         for i, f in enumerate(hand.fingers):
             for sp in finger_servos(hand, i):
@@ -1117,6 +1177,9 @@ class Design:
                 owners.append(h.key + ("yoke",))
         housings: List[np.ndarray] = []      # the servos' housings among them
         voids: List[np.ndarray] = []         # the pockets, likewise
+        case_voids: List[np.ndarray] = []    # the servos' cases and their ways in, likewise
+        behind: List[np.ndarray] = []        # what stands or turns behind the back face, likewise
+        drivers: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []    # the case screws' screwdrivers (`DRIVER_R_MM`)
         square: List[Tuple] = []             # the pockets' boxes whose edges stand square to the face
         for sp in part.holds:
             Sp = mm(sp.S_parent)
@@ -1128,9 +1191,27 @@ class Design:
             # finger up through its pocket (open through the back too); every other one from its front
             from_back = crossing and float(sp.S_parent[0, 1]) < -0.7
             self.entry[sp.key] = 1 if from_back else -1
+            if from_back and sp.key[0] == "f":
+                # its finger slides in from behind with it: nothing stands behind the palm where the finger passes
+                pts = [s_.points[:, 1:] / dv.MM + np.array(o) * s_.radius / dv.MM for s_ in dv.solids_at(self.hand)
+                       if s_.key[0] in ("link", "motor") and s_.key[1] == sp.key[1]
+                       for o in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1))]
+                behind.append(_ccw(dv._hull2d(np.vstack(pts))))
             ch, back = (0, 80) if from_back else ((80, 0) if (crossing or not at_plate) else (CRADLE_CHANNEL_MM, 0))
             keepout = f"{Sp} housing_keepout({str(sp.yoke != 'u').lower()}, {sp.cable}, {ch}, {back});"
             part.negative.append(keepout)
+            # (the case, its horns' keyholes and its way in, seen from the face: no insert or standoff goes there)
+            r = HL3915.horn_r + PART_CLEAR
+            ways = [(np.array([-11.5 - FIT, -9.5 - FIT - ch, -10.0 - FIT]), np.array([11.5 + FIT, 24.5 + FIT + back, 10.0 + FIT])),
+                    (np.array([-ARM_X0 - ARM_MM - 1.0, -r - ch, -r]), np.array([ARM_X0 + ARM_MM + 1.0, r + back, r]))]
+            case_voids += self._footprints(sp.S_parent, ways, xb, x0)
+            r = DRIVER_R_MM
+            for (y, z), sgn in itertools.product(FAR_HOLES + NEAR_HOLES if sp.flange else FAR_HOLES,
+                                                 (-1.0,) if sp.flange else (-1.0, 1.0)):
+                x = (14.0, 14.0 + 100.0) if sgn > 0 else (-14.0 - 100.0, -14.0)
+                drivers.append((sp.S_parent, np.array([x[0], y - r, z - r]), np.array([x[1], y + r, z + r])))
+            behind += self._footprints(sp.S_parent, ways[:1] + [(np.array([-HOUSING_MM[0], -9.5, -HOUSING_MM[2]]),
+                                                                 np.array(HOUSING_MM))], xb - 100.0, xb - 0.5)
             if at_plate or crossing or along_axis:
                 # its housing, its outline straight up into the plate (the case's keep-out leaves the walls): a
                 # lying servo's from its pocket's back face, the case closed in up to where its yoke turns
@@ -1183,6 +1264,7 @@ class Design:
                     pieces += pw
                     fps += feet
                     voids += self._footprints(sp.S_parent, [(lo, hi)], xb, x0)
+                    behind += self._footprints(sp.S_parent, [(lo, hi)], xb - 100.0, xb - 0.5)
                 if pocket[2] is not None:
                     m = CLIP_MM + PART_CLEAR
                     part.swept_by[sp.key[1]].append(f"{Sp} hull_pts({_pts(pocket[2])}, {m});")
@@ -1207,8 +1289,16 @@ class Design:
                                          [q for q, m in zip(walls, mine) if m and any(q is h for h in housings)])
             lanes += ln
             part.tunnels += holes
-        ribs, feet = self._ribs(outline, x0, walls, voids + housings, lanes)
-        inside = ribs + self._fills(outline, x0, walls + feet, voids, lanes)
+        back: List[Piece] = []
+        stops: List[np.ndarray] = []
+        if sec == -1:
+            # the back mount and the board's standoffs: the ribs end on them, the fills join them
+            back, outl = self._back(part, outline, x0, voids + case_voids, lanes, behind, drivers)
+            walls += outl
+            owners += [("back",)] * len(outl)
+            stops += outl[:1]
+        ribs, feet = self._ribs(outline, x0, walls, voids + housings + stops, lanes)
+        inside = ribs + self._fills(outline, x0, walls + feet, voids, lanes) + back
         pieces += bridge_up
         if sec == 0 and part.carries:                  # the hinge's yoke on the part beyond the cut
             sp = part.carries[0]
@@ -1894,6 +1984,212 @@ class Design:
             nrm = np.array([e[1], -e[0]]) / (np.linalg.norm(e) + 1e-12)
             best = max(best, float((p - a) @ nrm))
         return best
+
+    # ------------------------------------------------------- the palm's back
+
+    def _back(self, part: Part, outline: np.ndarray, x0: float, cuts, lanes, behind,
+              drivers) -> Tuple[List[Piece], List[np.ndarray]]:
+        """The palm's back (Martin, 11/04): the back mount (`MOUNT_R_MM`) and,
+        where the board finds room (`_board_spot`), its four standoffs; else
+        the board floats on its cables (a note). `cuts`: the pockets, the
+        servos' cases and their ways in, seen from the face; `behind`: what
+        stands or turns behind the back face; `drivers`: the case screws'
+        screwdrivers' ways (boxes in their servos' frames), which the mount
+        leaves clear (`DRIVER_R_MM`). The pieces and their outlines (y, z),
+        the boss's first; the inserts and screw holes go into
+        `part.negative`."""
+        import manifold3d as m3
+
+        xb, xt = -PLATE_HALF_MM, x0 + REACH_MM
+        tray = m3.CrossSection([_ccw(outline).tolist()])
+        plate = tray.offset(-PLATE_ROUND_MM, m3.JoinType.Miter).offset(PLATE_ROUND_MM, m3.JoinType.Round, 2.0, 32)
+        cuts = [_ccw(q) for q in cuts]
+
+        def circle(c, r: float, n: int = 32) -> np.ndarray:
+            t = np.linspace(0.0, 2.0 * math.pi, n, endpoint=False)
+            return np.column_stack([c[0] + r * np.cos(t), c[1] + r * np.sin(t)])
+
+        def prism(loops, lo: float) -> Piece:
+            pts = [q for loop in loops for q in loop]
+            paths, k = [], 0
+            for loop in loops:
+                paths.append(list(range(k, k + len(loop))))
+                k += len(loop)
+            P = "[" + ",".join(f"[{float(y):.3f},{float(z):.3f}]" for y, z in pts) + "]"
+            return lambda gg, P=P, paths=str(paths): f"prism_yz({P}, {paths}, {lo}, {xt}, {gg});"
+
+        carve = " ".join(f"{mm(S)} cyl_x_at({(lo[1] + hi[1]) / 2.0:.3f}, {(lo[2] + hi[2]) / 2.0:.3f}, {DRIVER_R_MM}, "
+                         f"{lo[0]:.3f}, {hi[0]:.3f});" for S, lo, hi in drivers)
+
+        def ways_between(xa: float, xz: float, reach: float = math.inf) -> List[np.ndarray]:
+            # the screwdrivers' ways between palm x = xa and xz (the first `reach` mm of each), seen from the face
+            out = []
+            for S, lo, hi in drivers:
+                lo, hi = lo.copy(), hi.copy()
+                if lo[0] > 0.0:
+                    hi[0] = min(hi[0], lo[0] + reach)
+                else:
+                    lo[0] = max(lo[0], hi[0] - reach)
+                out += self._footprints(S, [(lo, hi)], xa, xz)
+            return out
+
+        pieces: List[Piece] = []
+        outl: List[np.ndarray] = []
+        d, h = MOUNT_INSERT_MM
+        end = xb - MOUNT_DEPTH_MM
+        far = [_ccw(q) for q in ways_between(end - 1.0, end + h)]
+        disc = circle((0.0, 0.0), MOUNT_R_MM, 64)
+        O = _ccw(outline)
+
+        def turned(c, region, near) -> Tuple[float, int, np.ndarray]:
+            # the inserts round c turned to keep the most material round them: (room to the nearest cut, turn, centres)
+            best = None
+            for rot in range(0, 90, 5):
+                ts = np.radians(rot + 45.0 + 90.0 * np.arange(4))
+                P = np.asarray(c) + 0.5 * MOUNT_PCD_MM * np.column_stack([np.cos(ts), np.sin(ts)])
+                room = min([_depth_in(p, region) for p in P] + [self._dist_out(p, q) for p in P for q in near])
+                if best is None or room > best[0] + 1e-9:
+                    best = (room, rot, P)
+            return best
+
+        # the column at the origin, given way where something stands or turns behind the palm across it, as long as
+        # its inserts keep their material and half of it is left; else the nearest place clear of all that, wholly
+        # inside this palm part; else no column, the inserts in the boss from the back face
+        hit = [q for q in behind if _overlap2d(disc, q) > 0.5]
+        left = m3.CrossSection([disc.tolist()])
+        for q in hit:
+            left = left - m3.CrossSection([q.tolist()])
+        at, best = None, turned((0.0, 0.0), [disc], far + hit)
+        if best[0] - d / 2.0 >= MOUNT_WALL_MM and left.area() >= 0.5 * math.pi * MOUNT_R_MM ** 2:
+            at = np.zeros(2)
+        else:
+            for r in np.arange(2.0, 80.0, 2.0):
+                for t in np.linspace(0.0, 2.0 * math.pi, max(8, int(math.pi * r)), endpoint=False):
+                    c = r * np.array([math.cos(t), math.sin(t)])
+                    # (all of it on this palm part: a column crossing a cut met the part beyond it as that turned)
+                    if self._dist_out(c, O) <= -MOUNT_R_MM and all(_overlap2d(disc + c, q) <= 0.5 for q in behind):
+                        at = c
+                        break
+                if at is not None:
+                    break
+            if at is not None:
+                best = turned(at, [disc + at], far)
+                self.notes.append(f"the back mount stands {float(np.linalg.norm(at)):.0f} mm off the palm's centre (at "
+                                  f"y {at[0]:.0f}, z {at[1]:.0f}; the simulator mounts the hand at the centre): a finger "
+                                  f"turns or a servo goes in behind the palm there")
+        ring = disc + (at if at is not None else 0.0)
+        boss = m3.CrossSection([ring.tolist()]) ^ plate
+        for q in lanes:
+            boss = boss - m3.CrossSection([_ccw(q).tolist()])
+        loops = [np.asarray(q, float) for q in boss.to_polygons()]
+        if boss.area() > 1.0:
+            box = prism(loops, xb)
+            pieces.append(lambda gg, box=box: f"difference() {{ {box(gg)} {carve} }}")
+            outl += [q for q in loops if _area2d(q) > 0.0]
+        if at is None and boss.area() > 1.0:
+            self.notes.append("no room behind the palm for the back mount's column: its inserts go into the palm's "
+                              "back face")
+            best = turned((0.0, 0.0), loops, cuts + [_ccw(q) for q in ways_between(xb - 1.0, xb + h)])
+        if at is None and boss.area() <= 1.0:
+            self.notes.append("the palm has no room for the back mount at its origin")
+        else:
+            room, rot, P = best
+            x_in = end if at is not None else xb
+            if at is not None:
+                cy, cz = at
+                pieces.append(lambda gg: (f"difference() {{ cyl_x_at({cy:.3f}, {cz:.3f}, {MOUNT_R_MM} + ({gg}), "
+                                          f"{end} - ({gg}), {xb + REACH_MM} + ({gg}), $fn = 64); {carve} }}"))
+            ways = sum(_overlap2d(ring, q) > 0.5 for q in ways_between(end, xb - 0.5)) if at is not None else 0
+            self.mount = {"column": at is not None, "at": [round(float(v), 1) for v in (at if at is not None else (0, 0))],
+                          "turn_deg": rot, "wall_mm": round(room - d / 2.0, 1), "ways": ways}
+            if room - d / 2.0 < MOUNT_WALL_MM:
+                self.notes.append(f"the back mount's inserts keep {max(room - d / 2.0, 0.0):.1f} mm of material "
+                                  f"round them (a pocket, a servo or its way in, a screwdriver's way, or the mount's edge)")
+            part.negative += [f"cyl_x_at({y:.3f}, {z:.3f}, {d / 2.0}, {x_in - 1.0}, {x_in + h});" for y, z in P]
+        # (the standoffs leave a screwdriver as much room as a lane does: the checks' 25 mm shaft, and a little)
+        ways = ways_between(xb - STANDOFF_MM[1], x0, LANE_MM[0])
+        self.board = self._board_spot(outline, cuts + [_ccw(q) for q in lanes + ways], [_ccw(q) for q in behind],
+                                      np.array(self.mount["at"]) if self.mount else np.zeros(2))
+        if self.board is None:
+            self.notes.append("the board finds no room on the palm's back: it floats on its cables")
+        else:
+            r, out = STANDOFF_MM[0] / 2.0, STANDOFF_MM[1]
+            d, h = BOARD_PILOT_MM
+            for y, z in self.board["holes"]:
+                pieces.append(prism([circle((y, z), r)], xb - out))
+                outl.append(circle((y, z), r))
+                part.negative.append(f"cyl_x_at({y:.3f}, {z:.3f}, {d / 2.0}, {xb - out - 1.0}, {xb - out + h});")
+        return pieces, outl
+
+    def _board_spot(self, outline: np.ndarray, cuts, behind, mount: np.ndarray) -> Optional[Dict]:
+        """Where the board lies on the palm's back (`BOARD_MM`): turned in 15
+        degree steps, its centre on a 2 mm grid, its standoffs inside the
+        outline and 0.5 mm clear of `cuts`, the board reaching at most
+        `BOARD_OVER_MM` past the outline, the board and the room in front of
+        its plugs 2 mm clear of the back mount's column and clear of `behind`
+        (where a finger turns behind the palm, past its edge too); of those,
+        the one nearest the palm's origin. Its centre, angle (the board's x
+        from the palm's y), holes (y, z) and the way its USB-C edge faces, or
+        None. Seen from the face the board is mirrored (its top faces away).
+        The servos stand round the palm's edge and the column in its middle,
+        so on most hands there is no such place (LOG, 11/04)."""
+        O = _ccw(outline)
+        E = [(a, nrm / np.linalg.norm(nrm)) for a, _, nrm in _edges(O)]
+        lo, hi = O.min(axis=0) - BOARD_OVER_MM, O.max(axis=0) + BOARD_OVER_MM
+        gy, gz = np.meshgrid(np.arange(lo[0], hi[0] + 1e-9, 2.0), np.arange(lo[1], hi[1] + 1e-9, 2.0))
+        C = np.column_stack([gy.ravel(), gz.ravel()])
+        mid = np.array(BOARD_MM) / 2.0
+        r_s = STANDOFF_MM[0] / 2.0
+        rects = [((0.0, 0.0), BOARD_MM)] + list(BOARD_PLUGS)
+        flange = MOUNT_R_MM + 2.0
+
+        def depth(P, Q):
+            # signed distance outside a convex ccw polygon Q (a lower bound past its corners), for points P (..., 2)
+            return np.max(np.stack([((P - a) @ n) for a, n in [(a, nrm / np.linalg.norm(nrm)) for a, _, nrm in _edges(Q)]]),
+                          axis=0)
+
+        best = None
+        for ang in range(0, 360, 15):
+            t = math.radians(ang)
+            M = np.array([[math.cos(t), math.sin(t)], [math.sin(t), -math.cos(t)]])    # board (x, y) to palm (y, z)
+
+            def place(p):
+                return C[:, None, :] + ((np.asarray(p, float) - mid) @ M.T)[None, :, :]
+
+            corners = place([(0.0, 0.0), (BOARD_MM[0], 0.0), BOARD_MM, (0.0, BOARD_MM[1])])
+            ok = np.max(np.stack([(corners - a) @ n for a, n in E]), axis=0).max(axis=1) <= BOARD_OVER_MM
+            holes = place(BOARD_HOLES)
+            ok &= np.max(np.stack([(holes - a) @ n for a, n in E]), axis=0).max(axis=1) <= -r_s
+            # the column's axis in the board's frame, and how far each rectangle keeps from it
+            q = (mount - C) @ M + mid
+            for (x0, y0), (x1, y1) in rects:
+                dx = np.maximum(np.maximum(x0 - q[:, 0], q[:, 0] - x1), 0.0)
+                dy = np.maximum(np.maximum(y0 - q[:, 1], q[:, 1] - y1), 0.0)
+                ok &= np.hypot(dx, dy) >= flange
+            idx = np.flatnonzero(ok)                              # the rest only where these leave room
+            for Q in cuts:
+                if len(idx):
+                    idx = idx[depth(holes[idx], Q).min(axis=1) >= r_s + 0.5]
+            for Q in behind:
+                for (x0, y0), (x1, y1) in rects:
+                    if not len(idx):
+                        break
+                    R = place([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])[idx]
+                    apart = depth(R, Q).min(axis=1) > 0.0                        # Q's edges part them
+                    Qb = (Q[None, :, :] - C[idx][:, None, :]) @ M + mid           # Q in the board's frame
+                    apart |= ((Qb[:, :, 0].max(axis=1) <= x0) | (Qb[:, :, 0].min(axis=1) >= x1) |
+                              (Qb[:, :, 1].max(axis=1) <= y0) | (Qb[:, :, 1].min(axis=1) >= y1))
+                    idx = idx[apart]
+            if not len(idx):
+                continue
+            k = int(idx[np.argmin(np.linalg.norm(C[idx], axis=1))])
+            dist = float(np.linalg.norm(C[k]))
+            if best is None or dist < best[0] - 1e-9:
+                usb = -M[:, 0]
+                best = (dist, {"centre": [round(float(v), 2) for v in C[k]], "angle_deg": ang,
+                               "holes": [[round(float(v), 3) for v in p] for p in holes[k]],
+                               "usb_faces": [round(float(v), 3) for v in usb]})
+        return best[1] if best else None
 
     # --------------------------------------------------------------- sweeps
 

@@ -34,10 +34,13 @@ circle of sqrt(9.5^2 + 10^2) = 13.79 mm (13.23 mm for a spread motor, whose
 A turned motor's back reaches 10 mm behind its axis instead of 24.5; its
 body swings forward up to 20.9 mm (a back corner at the bend's -30 degree
 hyperextension), worked out from its corners over the bend's range.
-Rounded up to the 10 mm grid, or to the next whole mm when that grid
-step leaves less than `BUILD_CLEARANCE_MM` between the swinging front and
-the printed wall (Martin, 2026-10-23: raise those floors by the minimum, not
-a whole step; the build's bridge needs that clearance).
+Rounded up to the next whole mm past `BUILD_CLEARANCE_MM` between the
+swinging front and the printed wall (the build's bridge needs that
+clearance); lengths above a floor stay on the grid. Until 2026-11-04 a floor
+went up to the 10 mm grid (40.3 mm to 50), or a whole mm past the grid where
+that left less than the clearance (Martin, 10/23); LEAP and Allegro, built
+from servos this size, did not fit at their real size (Martin, 11/04: "we
+are clearly leaving certain sizes on the table").
 
 Crossing axes (a 0 mm link): the earlier motor slides along its own axis,
 away from the joint point, until a plane square to that axis separates it
@@ -194,10 +197,9 @@ def plane_floor_mm(a: Sequence[float], b: Sequence[float], turned_a: bool = Fals
 
 
 def floor_mm(plane_mm: float) -> int:
-    """A link floor from its continuous plane floor: rounded up to the 10 mm
-    grid, or 1 mm past that grid value when the grid leaves less than
-    `BUILD_CLEARANCE_MM` (39.73 mm -> 41, not 40 or 50)."""
-    return max(ceil10(plane_mm), int(math.ceil(float(plane_mm) + BUILD_CLEARANCE_MM - 1e-9)))
+    """A link floor from its continuous plane floor: the next whole mm past
+    `BUILD_CLEARANCE_MM` (40.29 mm -> 42, 39.73 -> 41)."""
+    return int(math.ceil(float(plane_mm) + BUILD_CLEARANCE_MM - 1e-9))
 
 
 def lengths_from(floor: int, max_mm: int, step: int) -> List[int]:
@@ -260,7 +262,7 @@ def pose_floor_mm(a: Sequence[float], b: Sequence[float], pose_a: str, pose_b: s
 def tip_pose_floor_mm(a: Sequence[float], pose: str) -> int:
     """`tip_floor_mm` for a last motor sitting as `pose` (50 mm for a
     flipped bend, its body in the fingertip)."""
-    return ceil10(WALL_MM + reach_ahead_mm(a, pose) + PAD_MM)
+    return int(math.ceil(WALL_MM + reach_ahead_mm(a, pose) + PAD_MM - 1e-9))
 
 
 def crossing_floor_mm(a: Sequence[float], turned_a: bool = False) -> int:
@@ -288,7 +290,7 @@ def tip_floor_mm(a: Sequence[float], turned: bool = False) -> int:
     whole dome on the shortest fingertips). The 28 mm fingertip of 11/03
     needs 17 (a 4.5 mm flare, a 14 mm dome); the pad stays at 22, so the
     floors are the ones of 11/02."""
-    return ceil10(WALL_MM + swept_front_mm(a, turned) + PAD_MM)
+    return int(math.ceil(WALL_MM + swept_front_mm(a, turned) + PAD_MM - 1e-9))
 
 
 def is_transverse(a: Sequence[float]) -> bool:
@@ -296,10 +298,20 @@ def is_transverse(a: Sequence[float]) -> bool:
     return abs(float(a[0])) < 1e-9
 
 
+def is_twist(a: Sequence[float]) -> bool:
+    """An axis along the finger (a twist)."""
+    return abs(abs(float(a[0])) - 1.0) < 1e-9
+
+
 def crossing_ok(a: Sequence[float], b: Sequence[float]) -> bool:
-    """Two joints may share a point (a 0 mm link) only if both axes are square
-    to the finger and they are different lines."""
-    return is_transverse(a) and is_transverse(b) and abs(abs(float(np.dot(a, b))) - 1.0) > 1e-9
+    """Two joints may share a point (a 0 mm link) only if the first axis is
+    square to the finger (its servo slides along it, out of the next one's
+    way: `crossing_slide_mm`), the second is square to the finger too or runs
+    along it (a twist, its servo standing on the finger's back across the
+    first one's axis, as at the base of LEAP's thumb: 2026-11-04), and they
+    are different lines."""
+    return (is_transverse(a) and (is_transverse(b) or is_twist(b))
+            and abs(abs(float(np.dot(a, b))) - 1.0) > 1e-9)
 
 
 def crossing_slide_mm(a: Sequence[float], b: Sequence[float], turned_b: bool = False) -> float:

@@ -1,5 +1,5 @@
 {
- "git_sha": "61f54055694f8619faad8398d70b185aafbb8f39",
+ "git_sha": "c19aee9b3713d9f9c1520c7bbba2a14feca41719",
  "grammar": "hand_grammar/2.0",
  "hands": [
   {
@@ -8,68 +8,68 @@
    "fingers": [
     {
      "axis_deg": [
-      7.043,
-      23.675
+      8.798,
+      21.819
      ],
      "joint_mm": [
-      2.779,
-      4.22
+      4.907,
+      1.18
      ],
-     "map_rms_mm": 4.614,
-     "map_worst_mm": 6.268,
-     "tip_mm": 2.217
+     "map_rms_mm": 4.986,
+     "map_worst_mm": 6.768,
+     "tip_mm": 5.59
     },
     {
      "axis_deg": [
-      2.118,
-      2.118
+      4.011,
+      4.011
      ],
      "joint_mm": [
-      4.979,
-      7.05
+      1.407,
+      6.514
      ],
-     "map_rms_mm": 3.283,
-     "map_worst_mm": 4.643,
-     "tip_mm": 4.688
+     "map_rms_mm": 7.688,
+     "map_worst_mm": 8.655,
+     "tip_mm": 5.811
     },
     {
      "axis_deg": [
-      6.347,
-      23.811
+      4.546,
+      25.853
      ],
      "joint_mm": [
-      2.962,
-      6.721
+      1.821,
+      3.87
      ],
-     "map_rms_mm": 3.802,
-     "map_worst_mm": 7.663,
-     "tip_mm": 7.764
+     "map_rms_mm": 4.014,
+     "map_worst_mm": 7.793,
+     "tip_mm": 7.932
     },
     {
      "axis_deg": [
-      3.186,
-      3.186
+      2.215,
+      2.215
      ],
      "joint_mm": [
-      0.648,
-      3.497
+      1.37,
+      4.033
      ],
-     "map_rms_mm": 6.388,
-     "map_worst_mm": 7.567,
-     "tip_mm": 3.038
+     "map_rms_mm": 4.566,
+     "map_worst_mm": 6.7,
+     "tip_mm": 2.2
     },
     {
      "axis_deg": [
-      13.097,
-      7.787
+      13.025,
+      9.104
      ],
      "joint_mm": [
-      2.031,
-      6.301
+      8.72,
+      6.766
      ],
-     "map_rms_mm": 7.937,
-     "map_worst_mm": 16.204,
-     "tip_mm": 16.261
+     "map_rms_mm": 10.978,
+     "map_worst_mm": 22.068,
+     "tip_mm": 22.582
     }
    ],
    "hand": {
@@ -82,7 +82,7 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 50,
         "type": "hinge"
        },
        {
@@ -95,8 +95,8 @@
        }
       ],
       "tilt": 0,
-      "y": 50,
-      "z": 40
+      "y": 60,
+      "z": 50
      },
      {
       "facing": 0,
@@ -114,12 +114,12 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 40,
         "type": "coupled"
        }
       ],
       "tilt": 0,
-      "y": 10,
+      "y": 20,
       "z": 50
      },
      {
@@ -130,7 +130,7 @@
          0,
          0
         ],
-        "length": 70,
+        "length": 50,
         "type": "hinge"
        },
        {
@@ -143,8 +143,8 @@
        }
       ],
       "tilt": 0,
-      "y": -70,
-      "z": 30
+      "y": -60,
+      "z": 40
      },
      {
       "facing": 0,
@@ -154,7 +154,7 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 50,
         "type": "hinge"
        },
        {
@@ -167,8 +167,8 @@
        }
       ],
       "tilt": 0,
-      "y": -30,
-      "z": 40
+      "y": -20,
+      "z": 50
      },
      {
       "facing": 90,
@@ -178,7 +178,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 40,
         "type": "hinge"
        },
        {
@@ -192,18 +192,18 @@
       ],
       "tilt": 0,
       "y": 30,
-      "z": -50
+      "z": -30
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "ability_right",
-   "max_axis_deg": 23.811,
-   "max_joint_mm": 7.05,
-   "max_map_rms_mm": 7.937,
-   "max_map_worst_mm": 16.204,
-   "max_tip_mm": 16.261,
+   "max_axis_deg": 25.853,
+   "max_joint_mm": 8.72,
+   "max_map_rms_mm": 10.978,
+   "max_map_worst_mm": 22.068,
+   "max_tip_mm": 22.582,
    "name_map": {
     "f0_j0": "index_q1",
     "f0_j1": "index_q2",
@@ -221,26 +221,26 @@
     "middle_q2: coupled x1.06 to middle_q1 in the URDF; x1.1 to the joint before it here",
     "pinky_q2: coupled x1.06 to pinky_q1 in the URDF; x1.1 to the joint before it here",
     "ring_q2: coupled x1.06 to ring_q1 in the URDF; x1.1 to the joint before it here",
-    "scaled up 1.6 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.45 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     0.010479427,
-     -0.999799472,
-     0.017064495,
-     -0.00382919
+     -0.022765062,
+     -0.999519731,
+     0.021025201,
+     0.001570325
     ],
     [
-     0.976426516,
-     0.006552029,
-     -0.215750621,
-     -0.007272741
+     0.976092269,
+     -0.026768833,
+     -0.215701903,
+     -0.003894809
     ],
     [
-     0.21559555,
-     0.018923168,
-     0.976299376,
-     0.117275753
+     0.216161128,
+     0.015612069,
+     0.976232877,
+     0.093857591
     ],
     [
      0.0,
@@ -252,19 +252,19 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    0.180811152,
-    0.198892267,
-    0.177629267,
-    0.195392194,
-    0.214043748,
-    0.235448123,
-    0.147637834,
-    0.162401618,
-    -0.095857198,
-    0.39377794
+    0.165161938,
+    0.181678131,
+    0.174350991,
+    0.19178609,
+    0.145500793,
+    0.160050872,
+    0.123565813,
+    0.135922394,
+    -0.031281966,
+    0.248041536
    ],
-   "root_out_of_plate_mm": -18.14,
-   "scale": 1.6,
+   "root_out_of_plate_mm": -16.45,
+   "scale": 1.45,
    "section": [],
    "source_sha256": "64b393cd404a8e058a3ec575d59ca2f7955d337c13bb6d6d5d50928dd522673f",
    "thumbs": [
@@ -279,71 +279,71 @@
    "fingers": [
     {
      "axis_deg": [
-      15.282,
-      4.861,
-      4.861,
-      4.861
+      15.224,
+      6.185,
+      6.185,
+      6.185
      ],
      "joint_mm": [
-      5.119,
-      5.24,
-      2.951,
-      2.665
+      10.631,
+      5.644,
+      5.952,
+      7.075
      ],
-     "map_rms_mm": 7.662,
-     "map_worst_mm": 21.2,
-     "tip_mm": 8.396
+     "map_rms_mm": 7.658,
+     "map_worst_mm": 19.782,
+     "tip_mm": 6.852
     },
     {
      "axis_deg": [
-      15.282,
-      4.869,
-      1.432,
-      1.432
+      15.224,
+      5.101,
+      2.197,
+      2.197
      ],
      "joint_mm": [
-      1.538,
-      5.908,
-      2.569,
-      23.895
+      1.223,
+      6.208,
+      4.527,
+      24.382
      ],
-     "map_rms_mm": 12.981,
-     "map_worst_mm": 26.808,
-     "tip_mm": 28.729
+     "map_rms_mm": 12.829,
+     "map_worst_mm": 27.774,
+     "tip_mm": 36.176
     },
     {
      "axis_deg": [
-      14.459,
-      2.328,
-      2.328,
-      2.328
+      14.398,
+      0.321,
+      0.321,
+      0.321
      ],
      "joint_mm": [
-      2.683,
-      9.448,
-      8.414,
-      6.58
+      3.676,
+      4.979,
+      4.827,
+      7.393
      ],
-     "map_rms_mm": 7.256,
-     "map_worst_mm": 15.613,
-     "tip_mm": 6.581
+     "map_rms_mm": 5.915,
+     "map_worst_mm": 16.114,
+     "tip_mm": 6.47
     },
     {
      "axis_deg": [
-      15.282,
-      4.993,
-      4.993,
-      4.993
+      15.224,
+      5.833,
+      5.833,
+      5.833
      ],
      "joint_mm": [
-      7.126,
-      5.316,
-      2.619,
-      2.742
+      10.631,
+      5.644,
+      5.647,
+      6.83
      ],
-     "map_rms_mm": 6.899,
-     "map_worst_mm": 18.559,
-     "tip_mm": 6.208
+     "map_rms_mm": 7.249,
+     "map_worst_mm": 18.347,
+     "tip_mm": 7.102
     }
    ],
    "hand": {
@@ -364,15 +364,7 @@
          0,
          0
         ],
-        "length": 70,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 50,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -381,6 +373,14 @@
          0
         ],
         "length": 40,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 45,
         "type": "hinge"
        }
       ],
@@ -396,7 +396,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 30,
         "type": "hinge"
        },
        {
@@ -404,29 +404,29 @@
          0,
          90
         ],
-        "length": 30,
+        "length": 40,
         "type": "hinge"
        },
        {
         "axis": [
-         150,
+         60,
          0
         ],
-        "length": 80,
+        "length": 70,
         "type": "hinge"
        },
        {
         "axis": [
-         150,
+         60,
          0
         ],
-        "length": 50,
+        "length": 60,
         "type": "hinge"
        }
       ],
       "tilt": 0,
       "y": 20,
-      "z": -60
+      "z": -40
      },
      {
       "facing": 0,
@@ -452,7 +452,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 40,
         "type": "hinge"
        },
        {
@@ -460,13 +460,13 @@
          0,
          0
         ],
-        "length": 40,
+        "length": 45,
         "type": "hinge"
        }
       ],
       "tilt": 0,
       "y": 0,
-      "z": 40
+      "z": 30
      },
      {
       "facing": 0,
@@ -484,15 +484,7 @@
          0,
          0
         ],
-        "length": 70,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 50,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -502,10 +494,18 @@
         ],
         "length": 40,
         "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 45,
+        "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": -70,
+      "y": -60,
       "z": 30
      }
     ],
@@ -513,11 +513,11 @@
     "palm_joints": []
    },
    "id": "allegro_right",
-   "max_axis_deg": 15.282,
-   "max_joint_mm": 23.895,
-   "max_map_rms_mm": 12.981,
-   "max_map_worst_mm": 26.808,
-   "max_tip_mm": 28.729,
+   "max_axis_deg": 15.224,
+   "max_joint_mm": 24.382,
+   "max_map_rms_mm": 12.829,
+   "max_map_worst_mm": 27.774,
+   "max_tip_mm": 36.176,
    "name_map": {
     "f0_j0": "joint_0",
     "f0_j1": "joint_1",
@@ -537,26 +537,26 @@
     "f3_j3": "joint_11"
    },
    "notes": [
-    "scaled up 1.35 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.15 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     0.968325306,
+     0.968591139,
      -0.0,
-     0.249692013,
-     -0.011403014
+     0.248658812,
+     -0.012171823
     ],
     [
      0.0,
      1.0,
      0.0,
-     0.0035
+     0.0
     ],
     [
-     -0.249692013,
+     -0.248658812,
      0.0,
-     0.968325306,
-     0.082975464
+     0.968591139,
+     0.060940709
     ],
     [
      0.0,
@@ -568,25 +568,25 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    -0.029444178,
-    -0.289771374,
-    0.009368631,
-    0.089540182,
-    0.012826729,
-    0.816499828,
-    -0.293163178,
-    0.234031047,
-    -0.040626287,
-    -0.225939849,
-    -0.107937697,
-    0.091291886,
-    0.043163756,
-    -0.295958206,
-    0.031781945,
-    0.063271068
+    -0.088973741,
+    -0.234240746,
+    -0.003321705,
+    -0.020303931,
+    -0.006273457,
+    -0.73703642,
+    0.240110035,
+    -0.080662173,
+    -0.005610162,
+    -0.263200688,
+    0.021896621,
+    -0.034971731,
+    0.078583406,
+    -0.239964903,
+    0.003540937,
+    -0.009187857
    ],
-   "root_out_of_plate_mm": 31.76,
-   "scale": 1.35,
+   "root_out_of_plate_mm": 26.94,
+   "scale": 1.15,
    "section": [],
    "source_sha256": "f6da40348c71793d30a5d96b7e50db8e8234a05a6e66de550c95147d8e373c96",
    "thumbs": [
@@ -596,95 +596,95 @@
    "within_target": false
   },
   {
-   "buildable": true,
+   "buildable": false,
    "dropped_palm_joints": [
     "CMC5"
    ],
    "fingers": [
     {
      "axis_deg": [
-      36.008,
-      6.428,
-      16.861,
-      16.096
+      8.425,
+      5.469,
+      15.12,
+      0.493
      ],
      "joint_mm": [
-      4.638,
-      7.224,
-      10.981,
-      4.283
+      6.465,
+      5.709,
+      4.942,
+      3.145
      ],
-     "map_rms_mm": 12.138,
-     "map_worst_mm": 25.431,
-     "tip_mm": 8.018
+     "map_rms_mm": 8.679,
+     "map_worst_mm": 17.236,
+     "tip_mm": 3.616
     },
     {
      "axis_deg": [
-      20.373,
-      9.154,
-      13.72,
-      24.357
+      10.768,
+      9.728,
+      4.994,
+      9.831
      ],
      "joint_mm": [
-      19.065,
-      4.765,
-      3.065,
-      3.328
+      4.938,
+      6.705,
+      5.239,
+      0.098
      ],
-     "map_rms_mm": 8.484,
-     "map_worst_mm": 16.047,
-     "tip_mm": 5.889
+     "map_rms_mm": 8.681,
+     "map_worst_mm": 16.831,
+     "tip_mm": 5.433
     },
     {
      "axis_deg": [
-      16.994,
-      6.056,
-      6.263,
-      0.638
+      10.118,
+      3.535,
+      9.42,
+      8.698
      ],
      "joint_mm": [
-      7.763,
-      6.984,
-      4.386,
-      4.509
+      5.013,
+      6.638,
+      2.97,
+      0.852
      ],
-     "map_rms_mm": 7.807,
-     "map_worst_mm": 21.566,
-     "tip_mm": 8.13
+     "map_rms_mm": 10.21,
+     "map_worst_mm": 14.546,
+     "tip_mm": 1.773
     },
     {
      "axis_deg": [
-      12.086,
-      9.64,
-      3.994,
-      13.94
+      8.799,
+      1.363,
+      7.453,
+      11.991
      ],
      "joint_mm": [
-      4.734,
-      1.712,
-      1.656,
-      0.256
+      4.233,
+      6.45,
+      6.065,
+      2.556
      ],
-     "map_rms_mm": 4.864,
-     "map_worst_mm": 14.256,
-     "tip_mm": 6.256
+     "map_rms_mm": 7.078,
+     "map_worst_mm": 14.754,
+     "tip_mm": 4.231
     },
     {
      "axis_deg": [
-      8.387,
-      12.262,
-      12.016,
-      12.423
+      5.544,
+      11.361,
+      7.11,
+      5.729
      ],
      "joint_mm": [
-      13.639,
-      5.71,
-      3.6,
-      3.621
+      4.995,
+      4.795,
+      2.564,
+      3.647
      ],
-     "map_rms_mm": 7.117,
-     "map_worst_mm": 14.806,
-     "tip_mm": 7.116
+     "map_rms_mm": 8.9,
+     "map_worst_mm": 21.751,
+     "tip_mm": 4.703
     }
    ],
    "hand": {
@@ -694,88 +694,136 @@
       "joints": [
        {
         "axis": [
-         90,
+         60,
          -30
         ],
-        "length": 50,
+        "length": 10,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         150,
+         30
+        ],
+        "length": 40,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         60,
+         30
+        ],
+        "length": 30,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         60,
+         0
+        ],
+        "length": 30,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 30,
+      "y": 20,
+      "z": -20
+     },
+     {
+      "facing": 30,
+      "joints": [
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 0,
         "type": "hinge"
        },
        {
         "axis": [
          0,
-         -30
-        ],
-        "length": 60,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         90,
-         30
-        ],
-        "length": 110,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         90,
          0
         ],
-        "length": 90,
+        "length": 42,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 30,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 20,
         "type": "hinge"
        }
       ],
-      "tilt": 60,
-      "y": 30,
-      "z": -100
-     },
-     {
-      "facing": 120,
-      "joints": [
-       {
-        "axis": [
-         90,
-         60
-        ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         60,
-         0
-        ],
-        "length": 120,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         60,
-         0
-        ],
-        "length": 70,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         30,
-         -30
-        ],
-        "length": 80,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 60,
-      "y": 120,
-      "z": 30
+      "tilt": 0,
+      "y": 20,
+      "z": 40
      },
      {
       "facing": 0,
       "joints": [
        {
         "axis": [
-         120,
-         60
+         90,
+         0
+        ],
+        "length": 10,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 42,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 27,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 30,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": 10,
+      "z": 40
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 10,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
         ],
         "length": 40,
         "type": "hinge"
@@ -785,32 +833,24 @@
          0,
          0
         ],
-        "length": 120,
+        "length": 20,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         150,
          0
         ],
-        "length": 90,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 80,
+        "length": 30,
         "type": "hinge"
        }
       ],
-      "tilt": 60,
-      "y": 30,
-      "z": 50
+      "tilt": 0,
+      "y": -10,
+      "z": 40
      },
      {
-      "facing": 0,
+      "facing": 330,
       "joints": [
        {
         "axis": [
@@ -825,7 +865,7 @@
          0,
          0
         ],
-        "length": 120,
+        "length": 30,
         "type": "hinge"
        },
        {
@@ -833,7 +873,7 @@
          0,
          0
         ],
-        "length": 80,
+        "length": 20,
         "type": "hinge"
        },
        {
@@ -841,69 +881,29 @@
          0,
          0
         ],
-        "length": 70,
+        "length": 20,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": -50,
-      "z": 60
-     },
-     {
-      "facing": 0,
-      "joints": [
-       {
-        "axis": [
-         90,
-         0
-        ],
-        "length": 0,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 100,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 60,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         30
-        ],
-        "length": 60,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 0,
-      "y": -120,
+      "y": -20,
       "z": 40
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": [
      {
-      "facing": 30,
+      "facing": 60,
       "offset": 30
      }
     ]
    },
    "id": "arms_skel",
-   "max_axis_deg": 36.008,
-   "max_joint_mm": 19.065,
-   "max_map_rms_mm": 12.138,
-   "max_map_worst_mm": 25.431,
-   "max_tip_mm": 8.13,
+   "max_axis_deg": 15.12,
+   "max_joint_mm": 6.705,
+   "max_map_rms_mm": 10.21,
+   "max_map_worst_mm": 21.751,
+   "max_tip_mm": 5.433,
    "name_map": {
     "f0_j0": "CMC1a",
     "f0_j1": "CMC1b",
@@ -929,26 +929,26 @@
    },
    "notes": [
     "palm joints ['CMC4', 'CMC5'] each carry 1 finger(s): one cut stands for them all",
-    "scaled up 3 x so Feetech servos fit (servo link lengths, no collisions)"
+    "no scale up to 5 x gives a fit buildable from Feetech servos that keeps every joint's kind with every fingertip map within 15 mm RMS and 40 mm worst: kept at its real size, without servo lengths"
    ],
    "palm_T": [
     [
-     0.111011211,
-     0.986493741,
-     -0.120443391,
-     -0.001943973
+     -0.047883287,
+     0.994803102,
+     -0.089855323,
+     -0.00245167
     ],
     [
-     -0.328223923,
-     -0.07799923,
-     -0.94137409,
-     -0.134538064
+     -0.27760575,
+     -0.099668391,
+     -0.955510994,
+     -0.022905087
     ],
     [
-     -0.938054139,
-     0.14403548,
-     0.315132057,
-     0.009885424
+     -0.959501036,
+     -0.020808653,
+     0.280935512,
+     -0.007497656
     ],
     [
      0.0,
@@ -958,36 +958,36 @@
     ]
    ],
    "palm_axis_deg": [
-    30.959
+    24.938
    ],
    "palm_joint_mm": [
-    20.055
+    21.133
    ],
    "q_off": [
     0.0,
-    0.127790488,
-    -0.353524453,
-    0.52904863,
-    -0.309029584,
-    2.885658636,
-    -1.202904485,
-    0.050814301,
-    0.335883015,
-    0.138979807,
-    -0.931323721,
-    0.127155982,
-    0.008539046,
-    0.118452928,
-    0.160147068,
-    0.022799378,
-    0.018188392,
-    -0.050263537,
-    0.187219909,
-    -5.109e-05,
-    0.160179328
+    -0.057579128,
+    0.217995811,
+    -0.083682964,
+    0.03804173,
+    -0.250584424,
+    0.00388023,
+    0.177685314,
+    0.021567335,
+    0.103809127,
+    0.050696305,
+    0.207642715,
+    -0.044701708,
+    0.059255772,
+    -0.013064698,
+    0.429571243,
+    -0.372549379,
+    0.223415423,
+    0.087490988,
+    0.07850209,
+    0.013215422
    ],
-   "root_out_of_plate_mm": -34.67,
-   "scale": 3.0,
+   "root_out_of_plate_mm": -13.67,
+   "scale": 1.0,
    "section": [
     3,
     4
@@ -996,8 +996,19 @@
    "thumbs": [
     0
    ],
-   "violations": [],
-   "within_target": false
+   "violations": [
+    "finger 0 joint 0: link length 10 mm not allowed (40-200 mm in 10 mm steps)",
+    "finger 0 joint 1: link length 40 mm not allowed (61-200 mm in 10 mm steps)",
+    "finger 0 joint 2: link length 30 mm not allowed (35-200 mm in 10 mm steps)",
+    "finger 0 joint 3: link length 30 mm not allowed (fingertip 49-200 mm in 10 mm steps)",
+    "finger 1 joint 3: link length 20 mm not allowed (fingertip 45-200 mm in 10 mm steps)",
+    "finger 2 joint 3: link length 30 mm not allowed (fingertip 45-200 mm in 10 mm steps)",
+    "finger 3 joint 1: link length 40 mm not allowed (42-200 mm in 10 mm steps)",
+    "finger 3 joint 3: link length 30 mm not allowed (fingertip 38-200 mm in 10 mm steps)",
+    "finger 4 joint 2: link length 20 mm not allowed (34-200 mm in 10 mm steps)",
+    "finger 4 joint 3: link length 20 mm not allowed (fingertip 45-200 mm in 10 mm steps)"
+   ],
+   "within_target": true
   },
   {
    "buildable": true,
@@ -1005,67 +1016,59 @@
    "fingers": [
     {
      "axis_deg": [
-      3.588,
-      0.679,
-      0.679
+      3.593,
+      0.482,
+      0.482
      ],
      "joint_mm": [
-      7.053,
-      4.527,
-      8.24
+      9.177,
+      8.918,
+      17.753
      ],
-     "map_rms_mm": 6.058,
-     "map_worst_mm": 14.885,
-     "tip_mm": 7.375
+     "map_rms_mm": 7.374,
+     "map_worst_mm": 16.49,
+     "tip_mm": 12.297
     },
     {
      "axis_deg": [
-      3.588,
-      0.067,
-      0.067
+      3.593,
+      0.219,
+      0.219
      ],
      "joint_mm": [
-      7.052,
-      8.267,
-      11.902
+      8.909,
+      8.565,
+      7.164
      ],
-     "map_rms_mm": 5.991,
-     "map_worst_mm": 11.88,
-     "tip_mm": 12.157
+     "map_rms_mm": 8.177,
+     "map_worst_mm": 14.76,
+     "tip_mm": 12.015
     },
     {
      "axis_deg": [
-      0.0,
-      0.0
+      0.408,
+      0.408
      ],
      "joint_mm": [
-      3.058,
-      3.503
+      1.677,
+      3.984
      ],
-     "map_rms_mm": 2.16,
-     "map_worst_mm": 3.488,
-     "tip_mm": 3.54
+     "map_rms_mm": 1.786,
+     "map_worst_mm": 3.564,
+     "tip_mm": 3.431
     }
    ],
    "hand": {
     "fingers": [
      {
-      "facing": 180,
+      "facing": 0,
       "joints": [
        {
         "axis": [
          90,
          30
         ],
-        "length": 80,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 110,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -1074,54 +1077,30 @@
          0
         ],
         "length": 80,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
         "type": "hinge"
        }
       ],
       "tilt": 60,
-      "y": -40,
-      "z": -40
-     },
-     {
-      "facing": 180,
-      "joints": [
-       {
-        "axis": [
-         90,
-         30
-        ],
-        "length": 90,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 100,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 80,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 60,
-      "y": 40,
-      "z": -40
+      "y": 20,
+      "z": 20
      },
      {
       "facing": 0,
       "joints": [
        {
         "axis": [
-         0,
-         0
+         90,
+         30
         ],
-        "length": 100,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -1129,24 +1108,56 @@
          0,
          0
         ],
-        "length": 80,
+        "length": 70,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 60,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 60,
+      "y": -30,
+      "z": 20
+     },
+     {
+      "facing": 180,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 70,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 60,
         "type": "hinge"
        }
       ],
       "tilt": 0,
       "y": 0,
-      "z": 60
+      "z": -50
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "barrett_bh",
-   "max_axis_deg": 3.588,
-   "max_joint_mm": 11.902,
-   "max_map_rms_mm": 6.058,
-   "max_map_worst_mm": 14.885,
-   "max_tip_mm": 12.157,
+   "max_axis_deg": 3.593,
+   "max_joint_mm": 17.753,
+   "max_map_rms_mm": 8.177,
+   "max_map_worst_mm": 16.49,
+   "max_tip_mm": 12.297,
    "name_map": {
     "f0_j0": "finger_1_prox_joint",
     "f0_j1": "finger_1_med_joint",
@@ -1158,26 +1169,26 @@
     "f2_j1": "finger_3_dist_joint"
    },
    "notes": [
-    "scaled up 1.45 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
      -1.656e-06,
-     -1.0,
-     3.334e-06,
-     8.5e-08
+     0.999974621,
+     -0.007124401,
+     0.000213657
     ],
     [
      0.444829058,
-     -3.722e-06,
-     -0.895615492,
-     -0.022734779
+     0.00638146,
+     0.895592757,
+     -0.006722321
     ],
     [
      0.895615492,
-     0.0,
-     0.444829058,
-     0.084613133
+     -0.003167657,
+     -0.44481778,
+     0.053905256
     ],
     [
      0.0,
@@ -1189,17 +1200,17 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    0.011840297,
-    -0.465248559,
-    0.674990831,
-    -0.001176686,
-    -0.386771088,
-    0.532301265,
-    -0.392006269,
-    0.651260124
+    -0.001455173,
+    -0.41295421,
+    0.637115422,
+    0.004784643,
+    -0.441485517,
+    0.602152496,
+    -0.481201106,
+    0.788146508
    ],
-   "root_out_of_plate_mm": -65.67,
-   "scale": 1.45,
+   "root_out_of_plate_mm": -45.29,
+   "scale": 1.0,
    "section": [],
    "source_sha256": "13cbfdb7715e54f4e10f9e1f2c7620db6c5f6b2b05adf9a16cdd795cda620fc1",
    "thumbs": [
@@ -1433,25 +1444,25 @@
    "fingers": [
     {
      "axis_deg": [
-      25.237
+      25.238
      ],
      "joint_mm": [
-      16.197
+      18.044
      ],
-     "map_rms_mm": 13.514,
-     "map_worst_mm": 23.944,
-     "tip_mm": 3.007
+     "map_rms_mm": 13.954,
+     "map_worst_mm": 24.48,
+     "tip_mm": 4.375
     },
     {
      "axis_deg": [
-      25.237
+      20.548
      ],
      "joint_mm": [
-      21.526
+      11.706
      ],
-     "map_rms_mm": 14.942,
-     "map_worst_mm": 27.991,
-     "tip_mm": 5.06
+     "map_rms_mm": 13.569,
+     "map_worst_mm": 23.253,
+     "tip_mm": 5.106
     }
    ],
    "hand": {
@@ -1464,65 +1475,65 @@
          30,
          -30
         ],
-        "length": 70,
+        "length": 50,
         "type": "sliding"
        }
       ],
       "tilt": 90,
-      "y": 50,
-      "z": 10
+      "y": 30,
+      "z": 20
      },
      {
-      "facing": 120,
+      "facing": 90,
       "joints": [
        {
         "axis": [
-         30,
-         30
+         90,
+         -30
         ],
-        "length": 80,
+        "length": 50,
         "type": "sliding"
        }
       ],
-      "tilt": 90,
+      "tilt": 60,
       "y": -40,
-      "z": -10
+      "z": 0
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "dex1",
-   "max_axis_deg": 25.237,
-   "max_joint_mm": 21.526,
-   "max_map_rms_mm": 14.942,
-   "max_map_worst_mm": 27.991,
-   "max_tip_mm": 5.06,
+   "max_axis_deg": 25.238,
+   "max_joint_mm": 18.044,
+   "max_map_rms_mm": 13.954,
+   "max_map_worst_mm": 24.48,
+   "max_tip_mm": 5.106,
    "name_map": {
     "f0_j0": "Joint1_1",
     "f1_j0": "Joint2_1"
    },
    "notes": [
-    "scaled up 1.75 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.05 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     -0.118380674,
-     0.936375938,
-     0.330433229,
-     2e-08
+     -0.118352979,
+     0.93637662,
+     0.330441218,
+     -0.003633618
     ],
     [
-     0.941408639,
-     0.0,
-     0.337268106,
-     0.10377485
+     0.941436267,
+     -1.1e-08,
+     0.337190976,
+     0.058560323
     ],
     [
-     0.315809739,
-     0.350998722,
-     -0.881512397,
-     -5.3e-08
+     0.31573775,
+     0.350996904,
+     -0.881538908,
+     0.009693634
     ],
     [
      0.0,
@@ -1537,8 +1548,8 @@
     0.0,
     0.0
    ],
-   "root_out_of_plate_mm": -97.69,
-   "scale": 1.75,
+   "root_out_of_plate_mm": -58.62,
+   "scale": 1.05,
    "section": [],
    "source_sha256": "31f2fa154e78a6d84a3c857fab797567cd156b5bf75fda9b5a6498faf09ae161",
    "thumbs": [],
@@ -1551,72 +1562,72 @@
    "fingers": [
     {
      "axis_deg": [
-      0.734,
-      0.734
+      8.646,
+      27.57
      ],
      "joint_mm": [
-      4.489,
-      5.653
+      5.765,
+      5.349
      ],
-     "map_rms_mm": 10.124,
-     "map_worst_mm": 10.718,
-     "tip_mm": 10.579
+     "map_rms_mm": 3.712,
+     "map_worst_mm": 5.124,
+     "tip_mm": 5.223
     },
     {
      "axis_deg": [
-      1.475,
-      1.475
+      6.924,
+      6.924
      ],
      "joint_mm": [
-      4.513,
-      5.205
+      3.678,
+      6.357
      ],
-     "map_rms_mm": 3.644,
-     "map_worst_mm": 5.381,
-     "tip_mm": 5.408
+     "map_rms_mm": 9.129,
+     "map_worst_mm": 13.037,
+     "tip_mm": 5.817
     },
     {
      "axis_deg": [
-      7.42,
-      30.803
+      3.922,
+      3.922
      ],
      "joint_mm": [
-      5.734,
-      3.603
+      2.563,
+      2.01
      ],
-     "map_rms_mm": 3.86,
-     "map_worst_mm": 7.004,
-     "tip_mm": 7.221
+     "map_rms_mm": 5.22,
+     "map_worst_mm": 7.664,
+     "tip_mm": 7.747
     },
     {
      "axis_deg": [
-      4.432,
-      4.432
+      4.761,
+      4.761
      ],
      "joint_mm": [
-      3.103,
-      5.083
+      1.007,
+      3.733
      ],
-     "map_rms_mm": 5.04,
-     "map_worst_mm": 8.309,
-     "tip_mm": 3.844
+     "map_rms_mm": 4.607,
+     "map_worst_mm": 7.35,
+     "tip_mm": 5.047
     },
     {
      "axis_deg": [
-      18.327,
-      33.133,
-      33.133,
-      40.149
+      12.819,
+      8.968,
+      8.968,
+      29.549
      ],
      "joint_mm": [
-      7.226,
-      14.812,
-      8.801,
-      26.063
+      7.326,
+      5.671,
+      18.597,
+      14.875
      ],
-     "map_rms_mm": 14.426,
-     "map_worst_mm": 32.617,
-     "tip_mm": 34.592
+     "map_rms_mm": 10.466,
+     "map_worst_mm": 20.884,
+     "tip_mm": 12.691
     }
    ],
    "hand": {
@@ -1629,12 +1640,12 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 60,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         30,
          0
         ],
         "length": 70,
@@ -1642,56 +1653,8 @@
        }
       ],
       "tilt": 0,
-      "y": 60,
+      "y": 80,
       "z": 50
-     },
-     {
-      "facing": 0,
-      "joints": [
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 60,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 70,
-        "type": "coupled"
-       }
-      ],
-      "tilt": 0,
-      "y": 20,
-      "z": 50
-     },
-     {
-      "facing": 0,
-      "joints": [
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 60,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         150,
-         0
-        ],
-        "length": 60,
-        "type": "coupled"
-       }
-      ],
-      "tilt": 0,
-      "y": -70,
-      "z": 40
      },
      {
       "facing": 0,
@@ -1709,13 +1672,61 @@
          0,
          0
         ],
+        "length": 80,
+        "type": "coupled"
+       }
+      ],
+      "tilt": 0,
+      "y": 30,
+      "z": 60
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 60,
+        "type": "coupled"
+       }
+      ],
+      "tilt": 0,
+      "y": -50,
+      "z": 70
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
         "length": 70,
         "type": "coupled"
        }
       ],
       "tilt": 0,
-      "y": -20,
-      "z": 50
+      "y": -10,
+      "z": 70
      },
      {
       "facing": 90,
@@ -1723,50 +1734,50 @@
        {
         "axis": [
          0,
-         -30
+         0
         ],
-        "length": 51,
+        "length": 20,
         "type": "hinge"
        },
        {
         "axis": [
          90,
-         -30
+         0
         ],
-        "length": 51,
+        "length": 80,
         "type": "hinge"
        },
        {
         "axis": [
          90,
-         -30
+         0
         ],
-        "length": 51,
+        "length": 45,
         "type": "coupled"
        },
        {
         "axis": [
-         120,
-         30
+         90,
+         -30
         ],
         "length": 50,
         "type": "coupled"
        }
       ],
-      "tilt": 90,
-      "y": 30,
-      "z": -70
+      "tilt": 0,
+      "y": 20,
+      "z": -60
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "inspire_right",
-   "max_axis_deg": 40.149,
-   "max_joint_mm": 26.063,
-   "max_map_rms_mm": 14.426,
-   "max_map_worst_mm": 32.617,
-   "max_tip_mm": 34.592,
+   "max_axis_deg": 29.549,
+   "max_joint_mm": 18.597,
+   "max_map_rms_mm": 10.466,
+   "max_map_worst_mm": 20.884,
+   "max_tip_mm": 12.691,
    "name_map": {
     "f0_j0": "index_proximal_joint",
     "f0_j1": "index_intermediate_joint",
@@ -1788,26 +1799,26 @@
     "ring_intermediate_joint: coupled x1.06 to ring_proximal_joint in the URDF; x1.1 to the joint before it here",
     "thumb_intermediate_joint: coupled x1.33 to thumb_proximal_pitch_joint in the URDF; x1.1 to the joint before it here",
     "thumb_distal_joint: coupled x0.667 to thumb_proximal_pitch_joint in the URDF; x1.1 to the joint before it here (via thumb_intermediate_joint)",
-    "scaled up 1.5 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.55 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     0.979141824,
-     0.007605217,
-     -0.203035586,
-     0.010814957
+     0.978980157,
+     -0.068216304,
+     -0.192209231,
+     0.01354101
     ],
     [
-     -0.002451304,
-     0.999668654,
-     0.025623701,
-     -0.00638222
+     0.047412291,
+     0.99270746,
+     -0.110833086,
+     -0.003546738
     ],
     [
-     0.203163185,
-     -0.024591535,
-     0.978836032,
-     0.150545497
+     0.198368161,
+     0.099390312,
+     0.975075196,
+     0.145331982
     ],
     [
      0.0,
@@ -1819,21 +1830,21 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    0.11209529,
-    0.12330482,
-    0.146704791,
-    0.16137527,
-    0.148524381,
-    0.16337682,
-    0.117694502,
-    0.129463953,
-    -1.573231394,
-    0.404662333,
-    0.445128566,
-    0.489641423
+    0.141849896,
+    0.156034886,
+    0.101850149,
+    0.112035163,
+    0.129499881,
+    0.142449869,
+    0.131185702,
+    0.144304273,
+    0.380771323,
+    0.170073403,
+    0.187080743,
+    0.205788817
    ],
-   "root_out_of_plate_mm": -41.19,
-   "scale": 1.5,
+   "root_out_of_plate_mm": -41.92,
+   "scale": 1.55,
    "section": [],
    "source_sha256": "bfc377800d1913a36d4bf4693ffce0003f8a2555bf2a803b9a02c1f24b055769",
    "thumbs": [
@@ -1843,76 +1854,76 @@
    "within_target": false
   },
   {
-   "buildable": false,
+   "buildable": true,
    "dropped_palm_joints": [],
    "fingers": [
     {
      "axis_deg": [
-      9.817,
-      0.862,
-      1.825,
-      1.825
+      6.411,
+      2.975,
+      6.179,
+      6.179
      ],
      "joint_mm": [
-      4.914,
-      5.886,
-      1.4,
-      4.757
+      3.24,
+      6.242,
+      1.782,
+      2.941
      ],
-     "map_rms_mm": 21.122,
-     "map_worst_mm": 45.526,
-     "tip_mm": 2.859
+     "map_rms_mm": 8.664,
+     "map_worst_mm": 17.712,
+     "tip_mm": 13.749
     },
     {
      "axis_deg": [
-      10.061,
-      9.819,
-      0.247,
-      0.247
+      6.78,
+      6.455,
+      6.028,
+      6.028
      ],
      "joint_mm": [
-      2.155,
-      4.475,
-      5.907,
-      0.664
+      0.91,
+      7.647,
+      9.398,
+      9.286
      ],
-     "map_rms_mm": 19.745,
-     "map_worst_mm": 39.01,
-     "tip_mm": 0.657
+     "map_rms_mm": 10.87,
+     "map_worst_mm": 23.219,
+     "tip_mm": 11.169
     },
     {
      "axis_deg": [
-      9.817,
-      0.792,
-      0.816,
-      0.816
+      6.411,
+      2.823,
+      5.048,
+      5.048
      ],
      "joint_mm": [
-      1.429,
-      2.035,
-      3.02,
-      3.093
+      1.976,
+      9.84,
+      2.666,
+      3.46
      ],
-     "map_rms_mm": 17.958,
-     "map_worst_mm": 41.405,
-     "tip_mm": 1.115
+     "map_rms_mm": 9.6,
+     "map_worst_mm": 21.185,
+     "tip_mm": 14.894
     },
     {
      "axis_deg": [
-      9.817,
-      1.135,
-      1.381,
-      1.381
+      6.411,
+      2.037,
+      3.55,
+      3.55
      ],
      "joint_mm": [
-      7.087,
-      7.367,
-      1.562,
-      4.585
+      2.161,
+      9.633,
+      1.918,
+      2.205
      ],
-     "map_rms_mm": 23.116,
-     "map_worst_mm": 44.909,
-     "tip_mm": 2.651
+     "map_rms_mm": 8.079,
+     "map_worst_mm": 17.513,
+     "tip_mm": 14.046
     }
    ],
    "hand": {
@@ -1925,7 +1936,7 @@
          0,
          0
         ],
-        "length": 30,
+        "length": 42,
         "type": "hinge"
        },
        {
@@ -1933,7 +1944,7 @@
          90,
          0
         ],
-        "length": 20,
+        "length": 10,
         "type": "hinge"
        },
        {
@@ -1941,7 +1952,7 @@
          0,
          0
         ],
-        "length": 30,
+        "length": 42,
         "type": "hinge"
        },
        {
@@ -1954,8 +1965,8 @@
        }
       ],
       "tilt": 0,
-      "y": 30,
-      "z": 30
+      "y": 60,
+      "z": 50
      },
      {
       "facing": 90,
@@ -1965,7 +1976,7 @@
          0,
          0
         ],
-        "length": 30,
+        "length": 10,
         "type": "hinge"
        },
        {
@@ -1973,7 +1984,7 @@
          0,
          90
         ],
-        "length": 0,
+        "length": 31,
         "type": "hinge"
        },
        {
@@ -1998,54 +2009,14 @@
       "z": -40
      },
      {
-      "facing": 330,
+      "facing": 0,
       "joints": [
-       {
-        "axis": [
-         0,
-         -30
-        ],
-        "length": 40,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         90,
-         0
-        ],
-        "length": 20,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 30,
-        "type": "hinge"
-       },
        {
         "axis": [
          0,
          0
         ],
         "length": 50,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 0,
-      "y": 10,
-      "z": 20
-     },
-     {
-      "facing": 330,
-      "joints": [
-       {
-        "axis": [
-         0,
-         -30
-        ],
-        "length": 40,
         "type": "hinge"
        },
        {
@@ -2061,7 +2032,47 @@
          0,
          0
         ],
-        "length": 30,
+        "length": 40,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": 10,
+      "z": 50
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 42,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 10,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 42,
         "type": "hinge"
        },
        {
@@ -2075,18 +2086,18 @@
       ],
       "tilt": 0,
       "y": -40,
-      "z": 20
+      "z": 60
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "leap_right",
-   "max_axis_deg": 10.061,
-   "max_joint_mm": 7.367,
-   "max_map_rms_mm": 23.116,
-   "max_map_worst_mm": 45.526,
-   "max_tip_mm": 2.859,
+   "max_axis_deg": 6.78,
+   "max_joint_mm": 9.84,
+   "max_map_rms_mm": 10.87,
+   "max_map_worst_mm": 23.219,
+   "max_tip_mm": 14.894,
    "name_map": {
     "f0_j0": "1",
     "f0_j1": "0",
@@ -2106,26 +2117,26 @@
     "f3_j3": "11"
    },
    "notes": [
-    "no scale up to 5 x gives a fit buildable from Feetech servos that keeps every joint's kind with every fingertip map within 15 mm RMS and 40 mm worst: kept at its real size, without servo lengths"
+    "scaled up 1.05 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
      0.99925553,
-     0.00657214,
-     -0.038015684,
-     0.019450771
+     -0.004269404,
+     -0.038342651,
+     0.021676079
     ],
     [
-     6.322e-06,
-     0.985355239,
-     0.170514085,
-     0.002082574
+     -3.8254e-05,
+     0.993747655,
+     -0.111649435,
+     -0.004690168
     ],
     [
      0.038579596,
-     -0.170387382,
-     0.98462163,
-     0.071483628
+     0.111567782,
+     0.993007676,
+     0.042605374
     ],
     [
      0.0,
@@ -2137,44 +2148,32 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    0.051553376,
-    -0.14051761,
-    -0.003392007,
-    -0.007913656,
-    -0.002283427,
-    0.038440251,
-    0.084190961,
-    0.085073833,
-    0.050186677,
-    0.341068907,
-    -0.003782718,
-    -0.006347174,
-    0.05672234,
-    0.374599029,
-    -0.007162038,
-    -0.009059287
+    0.090109868,
+    0.004061388,
+    -0.104103844,
+    0.095169237,
+    0.013233089,
+    -0.06647322,
+    0.041538822,
+    -0.036834262,
+    0.087444113,
+    0.023886146,
+    -0.102443775,
+    0.131179635,
+    0.073660106,
+    0.050171779,
+    -0.074247736,
+    0.067479781
    ],
-   "root_out_of_plate_mm": -22.19,
-   "scale": 1.0,
+   "root_out_of_plate_mm": -23.3,
+   "scale": 1.05,
    "section": [],
    "source_sha256": "7170056b44553779af566a33a3f80fc44c431f739d85fff809e9a16ed4887f76",
    "thumbs": [
     1
    ],
-   "violations": [
-    "finger 0 joint 0: link length 30 mm not allowed (0 or 50-200 mm in 10 mm steps)",
-    "finger 0 joint 1: link length 20 mm not allowed (0 or 30-200 mm in 10 mm steps)",
-    "finger 0 joint 2: link length 30 mm not allowed (40-200 mm in 10 mm steps)",
-    "finger 1 joint 0: link length 30 mm not allowed (40-200 mm in 10 mm steps)",
-    "finger 1 joint 1: link length 0 mm not allowed (50-200 mm in 10 mm steps)",
-    "finger 2 joint 0: link length 40 mm not allowed (50-200 mm in 10 mm steps)",
-    "finger 2 joint 1: link length 20 mm not allowed (0 or 30-200 mm in 10 mm steps)",
-    "finger 2 joint 2: link length 30 mm not allowed (40-200 mm in 10 mm steps)",
-    "finger 3 joint 0: link length 40 mm not allowed (50-200 mm in 10 mm steps)",
-    "finger 3 joint 1: link length 10 mm not allowed (0 or 30-200 mm in 10 mm steps)",
-    "finger 3 joint 2: link length 30 mm not allowed (40-200 mm in 10 mm steps)"
-   ],
-   "within_target": true
+   "violations": [],
+   "within_target": false
   },
   {
    "buildable": true,
@@ -2182,80 +2181,80 @@
    "fingers": [
     {
      "axis_deg": [
-      6.693,
-      5.425,
-      5.425
+      10.082,
+      6.746,
+      6.746
      ],
      "joint_mm": [
-      6.437,
-      6.895,
-      5.917
+      9.132,
+      11.583,
+      9.353
      ],
-     "map_rms_mm": 6.189,
-     "map_worst_mm": 10.35,
-     "tip_mm": 5.702
+     "map_rms_mm": 7.728,
+     "map_worst_mm": 14.642,
+     "tip_mm": 10.449
     },
     {
      "axis_deg": [
-      24.624,
-      4.577,
-      4.577
+      13.092,
+      8.527,
+      8.527
      ],
      "joint_mm": [
-      6.183,
-      15.385,
-      13.57
+      20.028,
+      4.429,
+      4.907
      ],
-     "map_rms_mm": 14.506,
-     "map_worst_mm": 25.595,
-     "tip_mm": 15.625
+     "map_rms_mm": 7.392,
+     "map_worst_mm": 13.069,
+     "tip_mm": 6.273
     },
     {
      "axis_deg": [
-      2.376,
-      1.713,
-      1.713
+      8.919,
+      9.714,
+      9.714
      ],
      "joint_mm": [
-      6.89,
-      6.01,
-      1.488
+      15.382,
+      15.926,
+      13.56
      ],
-     "map_rms_mm": 5.001,
-     "map_worst_mm": 8.921,
-     "tip_mm": 3.55
+     "map_rms_mm": 12.106,
+     "map_worst_mm": 20.871,
+     "tip_mm": 11.864
     },
     {
      "axis_deg": [
-      25.849,
-      2.225,
-      2.225
+      9.792,
+      6.517,
+      6.517
      ],
      "joint_mm": [
-      3.088,
-      19.518,
-      14.087
+      9.234,
+      6.358,
+      5.244
      ],
-     "map_rms_mm": 14.833,
-     "map_worst_mm": 27.34,
-     "tip_mm": 15.675
+     "map_rms_mm": 5.456,
+     "map_worst_mm": 12.156,
+     "tip_mm": 4.262
     },
     {
      "axis_deg": [
-      3.245,
-      26.546,
-      11.604,
-      11.604
+      16.514,
+      6.698,
+      15.527,
+      15.851
      ],
      "joint_mm": [
-      8.862,
-      21.571,
-      8.438,
-      9.292
+      9.959,
+      9.594,
+      1.585,
+      1.454
      ],
-     "map_rms_mm": 9.259,
-     "map_worst_mm": 22.273,
-     "tip_mm": 11.442
+     "map_rms_mm": 10.382,
+     "map_worst_mm": 22.478,
+     "tip_mm": 4.326
     }
    ],
    "hand": {
@@ -2266,9 +2265,9 @@
        {
         "axis": [
          90,
-         0
+         30
         ],
-        "length": 40,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -2288,19 +2287,19 @@
         "type": "hinge"
        }
       ],
-      "tilt": 30,
-      "y": 80,
-      "z": 0
+      "tilt": 60,
+      "y": 60,
+      "z": 40
      },
      {
-      "facing": 120,
+      "facing": 30,
       "joints": [
        {
         "axis": [
-         0,
-         90
+         90,
+         30
         ],
-        "length": 40,
+        "length": 70,
         "type": "hinge"
        },
        {
@@ -2320,64 +2319,64 @@
         "type": "hinge"
        }
       ],
-      "tilt": 90,
-      "y": 40,
+      "tilt": 60,
+      "y": 10,
       "z": 30
      },
      {
-      "facing": 0,
+      "facing": 300,
       "joints": [
        {
         "axis": [
-         90,
-         60
+         120,
+         -30
         ],
         "length": 40,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         30,
          0
         ],
-        "length": 70,
+        "length": 90,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         30,
          0
         ],
         "length": 70,
         "type": "hinge"
        }
       ],
-      "tilt": 90,
-      "y": -70,
-      "z": 50
+      "tilt": 0,
+      "y": -90,
+      "z": 0
      },
      {
       "facing": 330,
       "joints": [
        {
         "axis": [
-         0,
-         90
+         120,
+         60
         ],
-        "length": 40,
+        "length": 50,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         30,
          0
         ],
-        "length": 100,
+        "length": 90,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         30,
          0
         ],
         "length": 70,
@@ -2385,24 +2384,24 @@
        }
       ],
       "tilt": 90,
-      "y": -20,
-      "z": 30
+      "y": -50,
+      "z": 50
      },
      {
-      "facing": 120,
+      "facing": 90,
       "joints": [
        {
         "axis": [
-         0,
-         -30
+         30,
+         -60
         ],
-        "length": 60,
+        "length": 47,
         "type": "hinge"
        },
        {
         "axis": [
-         90,
-         -30
+         120,
+         0
         ],
         "length": 40,
         "type": "hinge"
@@ -2417,27 +2416,27 @@
        },
        {
         "axis": [
-         30,
+         60,
          0
         ],
         "length": 50,
         "type": "hinge"
        }
       ],
-      "tilt": 30,
-      "y": 20,
-      "z": -70
+      "tilt": 60,
+      "y": 30,
+      "z": -50
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "orca_right",
-   "max_axis_deg": 26.546,
-   "max_joint_mm": 21.571,
-   "max_map_rms_mm": 14.833,
-   "max_map_worst_mm": 27.34,
-   "max_tip_mm": 15.675,
+   "max_axis_deg": 16.514,
+   "max_joint_mm": 20.028,
+   "max_map_rms_mm": 12.106,
+   "max_map_worst_mm": 22.478,
+   "max_tip_mm": 11.864,
    "name_map": {
     "f0_j0": "right_index_abd",
     "f0_j1": "right_index_mcp",
@@ -2457,26 +2456,26 @@
     "f4_j3": "right_thumb_dip"
    },
    "notes": [
-    "scaled up 2 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.85 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     0.07608092,
-     -0.889348467,
-     0.45085585,
-     0.010262822
+     -0.064851158,
+     -0.989102189,
+     0.13217862,
+     2.7582e-05
     ],
     [
-     0.909061264,
-     -0.12390439,
-     -0.397813174,
-     0.006928183
+     0.781684413,
+     -0.132688254,
+     -0.609395853,
+     -0.000332456
     ],
     [
-     0.409657555,
-     0.440121581,
-     0.799045481,
-     0.022688407
+     0.620293323,
+     0.06380194,
+     0.781770751,
+     -0.000263815
     ],
     [
      0.0,
@@ -2488,25 +2487,25 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    0.329762497,
-    0.040512933,
-    0.131587015,
-    -1.54055878,
-    1.441025586,
-    -0.423515414,
-    -0.256257068,
-    -1.178274188,
-    0.459101566,
-    -0.770137663,
-    -1.479050386,
-    0.556191412,
-    0.432125891,
-    -0.681055287,
-    0.408166588,
-    -0.072964587
+    0.093328508,
+    -0.25284755,
+    0.145463456,
+    -0.30912856,
+    -0.42009299,
+    0.336371353,
+    0.558526506,
+    0.49850699,
+    0.299868332,
+    -0.148811637,
+    -1.056866331,
+    0.398136749,
+    -0.075930906,
+    0.855145365,
+    -0.072540895,
+    0.269547006
    ],
-   "root_out_of_plate_mm": -16.37,
-   "scale": 2.0,
+   "root_out_of_plate_mm": 0.43,
+   "scale": 1.85,
    "section": [],
    "source_sha256": "18d66fba6eeea0bb4b14c4d145afe4ddee7f0c472feffa30639112b73552d4e7",
    "thumbs": [
@@ -2521,103 +2520,103 @@
    "fingers": [
     {
      "axis_deg": [
-      7.019,
-      0.977,
-      0.977,
-      0.977
+      7.453,
+      0.446,
+      0.446,
+      0.446
      ],
      "joint_mm": [
-      1.045,
-      0.593,
-      1.325,
-      3.014
+      2.527,
+      2.029,
+      0.842,
+      2.327
      ],
-     "map_rms_mm": 1.816,
-     "map_worst_mm": 4.101,
-     "tip_mm": 2.687
+     "map_rms_mm": 2.546,
+     "map_worst_mm": 4.891,
+     "tip_mm": 2.569
     },
     {
      "axis_deg": [
-      7.019,
-      1.04,
-      1.04,
-      1.04
+      7.453,
+      0.388,
+      0.388,
+      0.388
      ],
      "joint_mm": [
-      1.021,
-      0.339,
-      0.86,
-      2.487
+      1.995,
+      1.371,
+      0.165,
+      1.951
      ],
-     "map_rms_mm": 2.763,
-     "map_worst_mm": 6.021,
-     "tip_mm": 2.252
+     "map_rms_mm": 2.354,
+     "map_worst_mm": 5.098,
+     "tip_mm": 1.66
     },
     {
      "axis_deg": [
-      7.019,
-      1.223,
-      1.223,
-      1.223
+      7.453,
+      0.074,
+      0.074,
+      0.074
      ],
      "joint_mm": [
-      1.049,
-      0.521,
-      1.378,
-      3.403
+      1.768,
+      2.118,
+      1.074,
+      2.672
      ],
-     "map_rms_mm": 2.616,
-     "map_worst_mm": 5.795,
-     "tip_mm": 3.259
+     "map_rms_mm": 2.624,
+     "map_worst_mm": 5.218,
+     "tip_mm": 2.838
     },
     {
      "axis_deg": [
-      7.019,
-      1.019,
-      1.019,
-      1.019
+      7.453,
+      0.077,
+      0.077,
+      0.077
      ],
      "joint_mm": [
-      1.051,
-      0.401,
-      1.349,
-      3.254
+      1.946,
+      2.028,
+      0.842,
+      2.4
      ],
-     "map_rms_mm": 1.91,
-     "map_worst_mm": 4.341,
-     "tip_mm": 3.161
+     "map_rms_mm": 2.579,
+     "map_worst_mm": 5.182,
+     "tip_mm": 2.562
     },
     {
      "axis_deg": [
-      15.71,
-      17.227,
-      13.377,
-      19.64,
-      19.64
+      16.106,
+      16.214,
+      16.214,
+      9.9,
+      9.9
      ],
      "joint_mm": [
-      12.677,
-      4.26,
-      29.023,
-      14.664,
-      3.724
+      11.968,
+      5.675,
+      3.116,
+      2.982,
+      0.926
      ],
-     "map_rms_mm": 11.343,
-     "map_worst_mm": 26.6,
-     "tip_mm": 3.01
+     "map_rms_mm": 11.689,
+     "map_worst_mm": 27.245,
+     "tip_mm": 7.758
     }
    ],
    "hand": {
     "fingers": [
      {
-      "facing": 120,
+      "facing": 150,
       "joints": [
        {
         "axis": [
          90,
          0
         ],
-        "length": 0,
+        "length": 10,
         "type": "hinge"
        },
        {
@@ -2633,7 +2632,7 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 70,
         "type": "hinge"
        },
        {
@@ -2646,87 +2645,7 @@
        }
       ],
       "tilt": 0,
-      "y": 50,
-      "z": 70
-     },
-     {
-      "facing": 0,
-      "joints": [
-       {
-        "axis": [
-         90,
-         0
-        ],
-        "length": 0,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 110,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 60,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 70,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 0,
-      "y": -120,
-      "z": 50
-     },
-     {
-      "facing": 30,
-      "joints": [
-       {
-        "axis": [
-         90,
-         0
-        ],
-        "length": 0,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 110,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 60,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 70,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 0,
-      "y": -10,
+      "y": 70,
       "z": 80
      },
      {
@@ -2745,7 +2664,7 @@
          0,
          0
         ],
-        "length": 110,
+        "length": 120,
         "type": "hinge"
        },
        {
@@ -2766,8 +2685,88 @@
        }
       ],
       "tilt": 0,
-      "y": -60,
-      "z": 70
+      "y": -110,
+      "z": 60
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 0,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 110,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 70,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 70,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": 10,
+      "z": 100
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 0,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 110,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 70,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 70,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": -50,
+      "z": 90
      },
      {
       "facing": 120,
@@ -2785,21 +2784,21 @@
          90,
          0
         ],
-        "length": 70,
+        "length": 110,
         "type": "hinge"
        },
        {
         "axis": [
-         60,
+         90,
          0
         ],
-        "length": 40,
+        "length": 0,
         "type": "hinge"
        },
        {
         "axis": [
          0,
-         -30
+         0
         ],
         "length": 90,
         "type": "hinge"
@@ -2807,31 +2806,31 @@
        {
         "axis": [
          0,
-         -30
+         0
         ],
-        "length": 80,
+        "length": 70,
         "type": "hinge"
        }
       ],
       "tilt": 0,
       "y": 80,
-      "z": -110
+      "z": -120
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": [
      {
       "facing": 0,
-      "offset": 90
+      "offset": 80
      }
     ]
    },
    "id": "shadow_right_local",
-   "max_axis_deg": 19.64,
-   "max_joint_mm": 29.023,
-   "max_map_rms_mm": 11.343,
-   "max_map_worst_mm": 26.6,
-   "max_tip_mm": 3.259,
+   "max_axis_deg": 16.214,
+   "max_joint_mm": 11.968,
+   "max_map_rms_mm": 11.689,
+   "max_map_worst_mm": 27.245,
+   "max_tip_mm": 7.758,
    "name_map": {
     "f0_j0": "rh_FFJ4",
     "f0_j1": "rh_FFJ3",
@@ -2857,26 +2856,26 @@
     "palm0_joint": "rh_LFJ5"
    },
    "notes": [
-    "scaled up 2.5 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 2.6 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     -0.017008273,
-     0.999853199,
-     0.002073395,
-     0.034853105
+     5.7098e-05,
+     0.999999998,
+     -7.475e-06,
+     0.020000554
     ],
     [
-     -0.99250561,
-     -0.017134185,
-     0.120991873,
-     -0.008871788
+     -0.991552443,
+     5.7585e-05,
+     0.1297064,
+     -0.009629937
     ],
     [
-     0.121009637,
+     0.1297064,
      6e-09,
-     0.992651332,
-     0.167230068
+     0.991552444,
+     0.162622981
     ],
     [
      0.0,
@@ -2886,37 +2885,37 @@
     ]
    ],
    "palm_axis_deg": [
-    35.481
+    35.688
    ],
    "palm_joint_mm": [
-    22.152
+    24.679
    ],
    "q_off": [
     0.0,
-    2.09538424,
-    0.106796355,
-    -0.056952059,
-    0.048856545,
-    0.004282316,
-    0.112612823,
-    -0.054955837,
-    0.042752438,
-    -0.512774711,
-    0.123294685,
-    -0.08891939,
-    0.056331456,
-    -0.007266901,
-    0.120245594,
-    -0.078281418,
-    0.047056789,
-    -1.512221886,
-    0.725681712,
-    1.318265402,
-    -0.615898429,
-    0.17384144
+    2.625769707,
+    0.145133198,
+    -0.087142926,
+    0.095505628,
+    0.006778246,
+    0.111095861,
+    0.023127675,
+    -0.033608128,
+    0.001299952,
+    0.152398808,
+    -0.104296088,
+    0.096734148,
+    -0.001341765,
+    0.144835959,
+    -0.089555307,
+    0.098278255,
+    -1.544728797,
+    1.723955191,
+    -0.187342176,
+    0.216327837,
+    -0.068847505
    ],
-   "root_out_of_plate_mm": -28.45,
-   "scale": 2.5,
+   "root_out_of_plate_mm": -30.64,
+   "scale": 2.6,
    "section": [
     1
    ],
@@ -2933,90 +2932,90 @@
    "fingers": [
     {
      "axis_deg": [
-      30.001,
-      29.77,
-      13.319,
-      31.199
+      30.324,
+      10.154,
+      10.519,
+      10.519
      ],
      "joint_mm": [
-      4.077,
-      0.639,
-      5.394,
-      4.261
+      3.601,
+      16.393,
+      8.946,
+      10.774
      ],
-     "map_rms_mm": 10.937,
-     "map_worst_mm": 28.916,
-     "tip_mm": 24.1
+     "map_rms_mm": 11.126,
+     "map_worst_mm": 28.117,
+     "tip_mm": 23.22
     },
     {
      "axis_deg": [
-      0.17,
-      29.201,
-      0.136,
-      0.136
+      0.324,
+      26.17,
+      1.156,
+      1.156
      ],
      "joint_mm": [
-      3.002,
-      22.188,
-      0.399,
-      2.765
+      3.734,
+      21.241,
+      2.363,
+      2.194
      ],
-     "map_rms_mm": 3.057,
-     "map_worst_mm": 10.263,
-     "tip_mm": 2.916
+     "map_rms_mm": 3.228,
+     "map_worst_mm": 9.132,
+     "tip_mm": 1.818
     },
     {
      "axis_deg": [
-      0.17,
-      2.447,
-      3.123,
-      3.123
+      0.323,
+      0.367,
+      5.242,
+      5.242
      ],
      "joint_mm": [
-      3.149,
-      4.307,
-      1.912,
-      1.146
+      3.678,
+      7.241,
+      2.998,
+      4.241
      ],
-     "map_rms_mm": 2.594,
-     "map_worst_mm": 4.98,
-     "tip_mm": 1.925
+     "map_rms_mm": 3.459,
+     "map_worst_mm": 7.268,
+     "tip_mm": 5.242
     },
     {
      "axis_deg": [
-      0.17,
-      30.495,
-      0.221,
-      0.221
+      0.324,
+      27.338,
+      0.286,
+      0.286
      ],
      "joint_mm": [
-      1.841,
-      23.166,
-      1.313,
-      2.719
+      2.954,
+      24.076,
+      2.282,
+      2.414
      ],
-     "map_rms_mm": 2.827,
-     "map_worst_mm": 10.374,
-     "tip_mm": 2.58
+     "map_rms_mm": 3.135,
+     "map_worst_mm": 10.563,
+     "tip_mm": 1.852
     },
     {
      "axis_deg": [
-      7.074,
-      16.745,
-      15.175,
-      14.829,
-      16.709
+      7.951,
+      8.116,
+      5.059,
+      5.723,
+      15.589
      ],
      "joint_mm": [
-      2.356,
-      26.863,
-      12.619,
-      18.418,
-      6.629
+      6.851,
+      17.371,
+      8.526,
+      9.658,
+      5.062
      ],
-     "map_rms_mm": 12.692,
-     "map_worst_mm": 23.816,
-     "tip_mm": 7.663
+     "map_rms_mm": 9.645,
+     "map_worst_mm": 18.264,
+     "tip_mm": 11.728
     }
    ],
    "hand": {
@@ -3026,23 +3025,15 @@
       "joints": [
        {
         "axis": [
-         150,
-         0
-        ],
-        "length": 0,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         60,
-         0
-        ],
-        "length": 90,
-        "type": "hinge"
-       },
-       {
-        "axis": [
          0,
+         -30
+        ],
+        "length": 36,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         120,
          0
         ],
         "length": 70,
@@ -3050,16 +3041,24 @@
        },
        {
         "axis": [
-         150,
+         30,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         30,
          0
         ],
         "length": 50,
         "type": "hinge"
        }
       ],
-      "tilt": 0,
-      "y": 50,
-      "z": 70
+      "tilt": 90,
+      "y": 70,
+      "z": 80
      },
      {
       "facing": 0,
@@ -3069,7 +3068,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 46,
         "type": "hinge"
        },
        {
@@ -3077,7 +3076,7 @@
          90,
          -30
         ],
-        "length": 50,
+        "length": 47,
         "type": "hinge"
        },
        {
@@ -3098,8 +3097,8 @@
        }
       ],
       "tilt": 0,
-      "y": 10,
-      "z": 70
+      "y": 20,
+      "z": 80
      },
      {
       "facing": 0,
@@ -3109,7 +3108,7 @@
          0,
          0
         ],
-        "length": 0,
+        "length": 10,
         "type": "hinge"
        },
        {
@@ -3117,7 +3116,7 @@
          90,
          0
         ],
-        "length": 100,
+        "length": 80,
         "type": "hinge"
        },
        {
@@ -3138,48 +3137,48 @@
        }
       ],
       "tilt": 0,
-      "y": -80,
-      "z": 50
-     },
-     {
-      "facing": 0,
-      "joints": [
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         90,
-         -30
-        ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 60,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 50,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 0,
-      "y": -30,
+      "y": -70,
       "z": 60
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         90,
+         -30
+        ],
+        "length": 40,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 60,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": -20,
+      "z": 70
      },
      {
       "facing": 90,
@@ -3189,7 +3188,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 42,
         "type": "hinge"
        },
        {
@@ -3197,12 +3196,12 @@
          90,
          0
         ],
-        "length": 120,
+        "length": 160,
         "type": "hinge"
        },
        {
         "axis": [
-         30,
+         60,
          0
         ],
         "length": 0,
@@ -3210,40 +3209,40 @@
        },
        {
         "axis": [
-         120,
+         150,
          0
         ],
-        "length": 90,
+        "length": 70,
         "type": "hinge"
        },
        {
         "axis": [
-         30,
-         -30
+         60,
+         0
         ],
         "length": 50,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": 40,
-      "z": -110
+      "y": 60,
+      "z": -70
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": [
      {
       "facing": 0,
-      "offset": 60
+      "offset": 50
      }
     ]
    },
    "id": "sharpa_right",
-   "max_axis_deg": 31.199,
-   "max_joint_mm": 26.863,
-   "max_map_rms_mm": 12.692,
-   "max_map_worst_mm": 28.916,
-   "max_tip_mm": 24.1,
+   "max_axis_deg": 30.324,
+   "max_joint_mm": 24.076,
+   "max_map_rms_mm": 11.126,
+   "max_map_worst_mm": 28.117,
+   "max_tip_mm": 23.22,
    "name_map": {
     "f0_j0": "right_index_MCP_FE",
     "f0_j1": "right_index_MCP_AA",
@@ -3269,26 +3268,26 @@
     "palm0_joint": "right_pinky_CMC"
    },
    "notes": [
-    "scaled up 2 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.85 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     0.992393994,
-     -0.000366064,
-     -0.123101693,
-     0.010724544
+     0.990372592,
+     -0.005601999,
+     -0.138313939,
+     0.013096095
     ],
     [
-     3.39e-07,
-     0.999995587,
-     -0.002970926,
-     0.009643453
+     0.005644747,
+     0.999984065,
+     -8.3193e-05,
+     0.000140926
     ],
     [
-     0.123102238,
-     0.002948288,
-     0.992389614,
-     0.122279453
+     0.138312201,
+     -0.000698355,
+     0.990388433,
+     0.096741219
     ],
     [
      0.0,
@@ -3298,37 +3297,37 @@
     ]
    ],
    "palm_axis_deg": [
-    7.073
+    7.95
    ],
    "palm_joint_mm": [
-    6.091
+    6.406
    ],
    "q_off": [
     0.0,
-    0.14140642,
-    0.345958004,
-    -0.15447902,
-    0.202142322,
-    0.109472357,
-    0.003975991,
-    0.081914908,
-    -0.09908127,
-    0.166119576,
-    0.057436963,
-    0.022192313,
-    -0.133113849,
-    0.132046827,
-    -0.00104647,
-    0.060823574,
-    -0.092073974,
-    0.265967946,
-    0.750789775,
-    0.000318133,
-    -0.463131789,
-    -0.113841023
+    -1.510149582,
+    0.242601686,
+    -0.021029691,
+    0.062630546,
+    0.071875157,
+    -0.0227159,
+    0.072554729,
+    0.046067037,
+    0.135648708,
+    0.090632583,
+    -0.041080374,
+    0.035575595,
+    0.092276767,
+    -0.001387044,
+    0.030249042,
+    0.041995403,
+    3.118669873,
+    2.526318005,
+    -0.256066147,
+    -0.28270395,
+    0.209498826
    ],
-   "root_out_of_plate_mm": -25.7,
-   "scale": 2.0,
+   "root_out_of_plate_mm": -26.35,
+   "scale": 1.85,
    "section": [
     2
    ],
@@ -3340,189 +3339,117 @@
    "within_target": false
   },
   {
-   "buildable": false,
+   "buildable": true,
    "dropped_palm_joints": [],
    "fingers": [
     {
      "axis_deg": [
-      6.839,
-      4.133,
-      4.133,
-      4.133
+      24.788,
+      6.743,
+      6.743,
+      6.743
      ],
      "joint_mm": [
-      5.903,
-      3.468,
-      2.436,
-      0.583
+      7.62,
+      3.877,
+      7.669,
+      8.427
      ],
-     "map_rms_mm": 10.494,
-     "map_worst_mm": 16.119,
-     "tip_mm": 4.554
+     "map_rms_mm": 3.269,
+     "map_worst_mm": 6.048,
+     "tip_mm": 2.467
     },
     {
      "axis_deg": [
-      7.186,
-      7.186,
-      7.186
+      6.32,
+      6.32,
+      23.686
      ],
      "joint_mm": [
-      5.333,
-      4.837,
-      2.67
+      1.457,
+      1.515,
+      3.881
      ],
-     "map_rms_mm": 6.974,
-     "map_worst_mm": 9.569,
-     "tip_mm": 1.626
+     "map_rms_mm": 3.849,
+     "map_worst_mm": 7.272,
+     "tip_mm": 4.137
     },
     {
      "axis_deg": [
-      10.579,
-      3.35,
-      3.35,
-      3.35
+      17.852,
+      6.978,
+      6.978,
+      33.117
      ],
      "joint_mm": [
-      8.052,
-      9.138,
-      7.323,
-      7.599
+      18.954,
+      7.108,
+      2.512,
+      9.531
      ],
-     "map_rms_mm": 15.464,
-     "map_worst_mm": 26.316,
-     "tip_mm": 5.476
+     "map_rms_mm": 5.379,
+     "map_worst_mm": 9.58,
+     "tip_mm": 4.751
     },
     {
      "axis_deg": [
-      6.829,
-      4.048,
-      4.048,
-      4.048
+      8.536,
+      6.335,
+      24.088,
+      7.552
      ],
      "joint_mm": [
-      4.698,
-      4.557,
-      0.091,
-      3.967
+      4.307,
+      16.824,
+      8.618,
+      11.21
      ],
-     "map_rms_mm": 4.507,
-     "map_worst_mm": 8.491,
-     "tip_mm": 1.187
+     "map_rms_mm": 4.854,
+     "map_worst_mm": 9.267,
+     "tip_mm": 7.13
     },
     {
      "axis_deg": [
-      6.839,
-      3.415,
-      3.415,
-      3.415
+      24.788,
+      10.138,
+      10.138,
+      32.931
      ],
      "joint_mm": [
-      2.993,
-      3.38,
-      1.899,
-      3.929
+      7.546,
+      24.921,
+      4.27,
+      7.665
      ],
-     "map_rms_mm": 5.909,
-     "map_worst_mm": 9.415,
-     "tip_mm": 2.201
+     "map_rms_mm": 10.078,
+     "map_worst_mm": 16.031,
+     "tip_mm": 15.827
     }
    ],
    "hand": {
     "fingers": [
      {
-      "facing": 0,
+      "facing": 240,
       "joints": [
        {
         "axis": [
          90,
          0
         ],
-        "length": 0,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 20,
-        "type": "coupled"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 10,
-        "type": "coupled"
-       }
-      ],
-      "tilt": 30,
-      "y": -40,
-      "z": 20
-     },
-     {
-      "facing": 0,
-      "joints": [
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 30,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 10,
-        "type": "coupled"
-       }
-      ],
-      "tilt": 0,
-      "y": 10,
-      "z": 40
-     },
-     {
-      "facing": 30,
-      "joints": [
-       {
-        "axis": [
-         150,
-         60
-        ],
         "length": 10,
         "type": "hinge"
        },
        {
         "axis": [
-         60,
+         0,
          0
         ],
-        "length": 50,
+        "length": 90,
         "type": "hinge"
        },
        {
         "axis": [
-         60,
+         0,
          0
         ],
         "length": 40,
@@ -3530,56 +3457,128 @@
        },
        {
         "axis": [
-         60,
-         0
-        ],
-        "length": 20,
-        "type": "coupled"
-       }
-      ],
-      "tilt": 30,
-      "y": 10,
-      "z": -50
-     },
-     {
-      "facing": 0,
-      "joints": [
-       {
-        "axis": [
-         90,
-         -30
-        ],
-        "length": 0,
-        "type": "hinge"
-       },
-       {
-        "axis": [
          0,
          0
         ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 30,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 10,
+        "length": 45,
         "type": "coupled"
        }
       ],
       "tilt": 0,
-      "y": 30,
-      "z": 30
+      "y": -90,
+      "z": 40
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 100,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 60,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         150,
+         0
+        ],
+        "length": 38,
+        "type": "coupled"
+       }
+      ],
+      "tilt": 0,
+      "y": 0,
+      "z": 90
+     },
+     {
+      "facing": 60,
+      "joints": [
+       {
+        "axis": [
+         150,
+         60
+        ],
+        "length": 70,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         60,
+         0
+        ],
+        "length": 80,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         60,
+         0
+        ],
+        "length": 45,
+        "type": "coupled"
+       },
+       {
+        "axis": [
+         60,
+         -30
+        ],
+        "length": 70,
+        "type": "coupled"
+       }
+      ],
+      "tilt": 30,
+      "y": 0,
+      "z": -90
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         60,
+         60
+        ],
+        "length": 40,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 80,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         150,
+         0
+        ],
+        "length": 40,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 38,
+        "type": "coupled"
+       }
+      ],
+      "tilt": 90,
+      "y": 40,
+      "z": 90
      },
      {
       "facing": 0,
@@ -3587,9 +3586,9 @@
        {
         "axis": [
          90,
-         0
+         30
         ],
-        "length": 0,
+        "length": 40,
         "type": "hinge"
        },
        {
@@ -3597,7 +3596,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -3605,37 +3604,37 @@
          0,
          0
         ],
-        "length": 30,
+        "length": 60,
         "type": "coupled"
        },
        {
         "axis": [
-         0,
-         0
+         150,
+         -30
         ],
-        "length": 20,
+        "length": 44,
         "type": "coupled"
        }
       ],
       "tilt": 30,
-      "y": -20,
-      "z": 30
+      "y": -60,
+      "z": 90
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": [
      {
-      "facing": 30,
-      "offset": 30
+      "facing": 0,
+      "offset": 40
      }
     ]
    },
    "id": "svh_right",
-   "max_axis_deg": 10.579,
-   "max_joint_mm": 9.138,
-   "max_map_rms_mm": 15.464,
-   "max_map_worst_mm": 26.316,
-   "max_tip_mm": 5.476,
+   "max_axis_deg": 33.117,
+   "max_joint_mm": 24.921,
+   "max_map_rms_mm": 10.078,
+   "max_map_worst_mm": 16.031,
+   "max_tip_mm": 15.827,
    "name_map": {
     "f0_j0": "right_hand_Finger_Spread",
     "f0_j1": "right_hand_Pinky",
@@ -3669,26 +3668,26 @@
     "right_hand_ring_spread follows right_hand_Finger_Spread (x0.5) in the URDF; not a coupling to the joint before it in its finger, so it moves on its own here",
     "right_hand_j12: coupled x1.36 to right_hand_Ring_Finger in the URDF; x1.1 to the joint before it here",
     "right_hand_j16: coupled x1.42 to right_hand_Ring_Finger in the URDF; x1.1 to the joint before it here (via right_hand_j12)",
-    "no scale up to 5 x gives a fit buildable from Feetech servos that keeps every joint's kind with every fingertip map within 15 mm RMS and 40 mm worst: kept at its real size, without servo lengths"
+    "scaled up 2 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     0.103860523,
-     -0.99214615,
-     0.069706589,
-     -0.00167316
+     0.100575606,
+     -0.993921708,
+     -0.044768138,
+     0.000968179
     ],
     [
-     0.909294525,
-     0.066322843,
-     -0.410834208,
-     0.00139889
+     0.907872258,
+     0.110089223,
+     -0.404534702,
+     0.008688731
     ],
     [
-     0.402984439,
-     0.106053276,
-     0.909041388,
-     0.077764712
+     0.407004312,
+     4.2572e-05,
+     0.913426236,
+     0.135268982
     ],
     [
      0.0,
@@ -3698,35 +3697,35 @@
     ]
    ],
    "palm_axis_deg": [
-    32.83
+    24.017
    ],
    "palm_joint_mm": [
-    3.521
+    7.455
    ],
    "q_off": [
     0.0,
-    0.066082087,
-    -0.071263627,
-    -0.07838999,
-    -0.086228989,
-    0.450890202,
-    -0.024513811,
-    -0.026965192,
-    0.234843658,
-    -0.323678257,
-    -0.356046082,
-    -0.39165069,
-    0.068495068,
-    0.334342122,
-    0.074605376,
-    0.082065913,
-    0.08995982,
-    -0.044488841,
-    -0.048937725,
-    -0.053831498
+    -2.110291867,
+    0.209975966,
+    0.230973562,
+    0.254070919,
+    0.418350429,
+    -0.040106505,
+    -0.044117156,
+    -0.271967053,
+    -0.067473448,
+    -0.074220793,
+    -0.081642872,
+    -0.014161363,
+    -1.355458306,
+    0.093698858,
+    0.103068744,
+    0.100633144,
+    0.048706623,
+    0.053577285,
+    0.058935013
    ],
-   "root_out_of_plate_mm": -32.44,
-   "scale": 1.0,
+   "root_out_of_plate_mm": -63.04,
+   "scale": 2.0,
    "section": [
     0,
     4
@@ -3735,18 +3734,8 @@
    "thumbs": [
     2
    ],
-   "violations": [
-    "finger 0 joint 2: link length 20 mm not allowed (30-200 mm in 10 mm steps)",
-    "finger 0 joint 3: link length 10 mm not allowed (fingertip 50-200 mm in 10 mm steps)",
-    "finger 1 joint 2: link length 10 mm not allowed (fingertip 50-200 mm in 10 mm steps)",
-    "finger 2 joint 0: link length 10 mm not allowed (50-200 mm in 10 mm steps)",
-    "finger 2 joint 2: link length 40 mm not allowed (41-200 mm in 10 mm steps)",
-    "finger 2 joint 3: link length 20 mm not allowed (fingertip 40-200 mm in 10 mm steps)",
-    "finger 3 joint 0: link length 0 mm not allowed (40-200 mm in 10 mm steps)",
-    "finger 3 joint 3: link length 10 mm not allowed (fingertip 50-200 mm in 10 mm steps)",
-    "finger 4 joint 3: link length 20 mm not allowed (fingertip 50-200 mm in 10 mm steps)"
-   ],
-   "within_target": true
+   "violations": [],
+   "within_target": false
   },
   {
    "buildable": true,
@@ -3754,131 +3743,171 @@
    "fingers": [
     {
      "axis_deg": [
-      9.316,
-      9.317,
-      9.316,
-      9.316
+      3.035,
+      2.377,
+      2.501,
+      2.501
      ],
      "joint_mm": [
-      14.951,
-      8.247,
-      14.109,
-      15.564
+      3.285,
+      8.233,
+      3.662,
+      5.542
      ],
-     "map_rms_mm": 13.288,
-     "map_worst_mm": 28.47,
-     "tip_mm": 18.153
+     "map_rms_mm": 7.629,
+     "map_worst_mm": 11.387,
+     "tip_mm": 8.496
     },
     {
      "axis_deg": [
-      9.316,
-      0.19,
-      0.19,
-      0.19
+      3.035,
+      2.194,
+      2.194,
+      2.194
      ],
      "joint_mm": [
-      4.428,
-      3.526,
-      3.256,
-      5.011
+      1.926,
+      16.841,
+      15.913,
+      14.178
      ],
-     "map_rms_mm": 5.49,
-     "map_worst_mm": 11.514,
-     "tip_mm": 4.57
+     "map_rms_mm": 10.132,
+     "map_worst_mm": 19.476,
+     "tip_mm": 14.597
     },
     {
      "axis_deg": [
-      9.316,
-      0.404,
-      0.404,
-      0.404
+      3.035,
+      2.213,
+      2.213,
+      2.213
      ],
      "joint_mm": [
-      1.58,
-      5.234,
-      4.421,
-      6.193
+      1.283,
+      17.576,
+      14.496,
+      17.286
      ],
-     "map_rms_mm": 5.503,
-     "map_worst_mm": 11.464,
-     "tip_mm": 5.817
+     "map_rms_mm": 10.625,
+     "map_worst_mm": 20.027,
+     "tip_mm": 17.628
     },
     {
      "axis_deg": [
-      9.316,
-      0.539,
-      0.539,
-      0.539
+      3.035,
+      2.267,
+      2.267,
+      2.267
      ],
      "joint_mm": [
-      0.336,
-      6.385,
-      4.509,
-      6.334
+      2.178,
+      18.564,
+      13.953,
+      17.04
      ],
-     "map_rms_mm": 5.194,
-     "map_worst_mm": 9.816,
-     "tip_mm": 5.978
+     "map_rms_mm": 10.85,
+     "map_worst_mm": 19.862,
+     "tip_mm": 17.343
     },
     {
      "axis_deg": [
-      9.414,
-      9.345,
-      7.896,
-      7.896
+      2.71,
+      23.384,
+      4.659,
+      4.659
      ],
      "joint_mm": [
-      6.999,
-      5.693,
-      6.153,
-      4.587
+      24.524,
+      5.24,
+      11.632,
+      8.204
      ],
-     "map_rms_mm": 6.642,
-     "map_worst_mm": 12.825,
-     "tip_mm": 10.126
+     "map_rms_mm": 12.038,
+     "map_worst_mm": 29.976,
+     "tip_mm": 12.709
     }
    ],
    "hand": {
     "fingers": [
      {
-      "facing": 90,
+      "facing": 210,
       "joints": [
        {
         "axis": [
          90,
-         60
+         0
         ],
-        "length": 51,
+        "length": 0,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
         "type": "hinge"
        },
        {
         "axis": [
          90,
-         -30
+         0
         ],
-        "length": 80,
+        "length": 60,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         90,
          0
         ],
-        "length": 100,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 100,
+        "length": 60,
         "type": "hinge"
        }
       ],
-      "tilt": 60,
+      "tilt": 0,
       "y": 30,
-      "z": -50
+      "z": -40
+     },
+     {
+      "facing": 30,
+      "joints": [
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 42,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 70,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 40,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": 50,
+      "z": 50
      },
      {
       "facing": 0,
@@ -3886,7 +3915,23 @@
        {
         "axis": [
          90,
-         30
+         0
+        ],
+        "length": 41,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
         ],
         "length": 60,
         "type": "hinge"
@@ -3896,69 +3941,13 @@
          0,
          0
         ],
-        "length": 100,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 100,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 70,
+        "length": 40,
         "type": "hinge"
        }
       ],
-      "tilt": 30,
-      "y": 70,
-      "z": 70
-     },
-     {
-      "facing": 330,
-      "joints": [
-       {
-        "axis": [
-         90,
-         30
-        ],
-        "length": 70,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 100,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 100,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 70,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 30,
+      "tilt": 0,
       "y": 10,
-      "z": 70
+      "z": 60
      },
      {
       "facing": 330,
@@ -3966,9 +3955,9 @@
        {
         "axis": [
          90,
-         30
+         0
         ],
-        "length": 70,
+        "length": 41,
         "type": "hinge"
        },
        {
@@ -3976,7 +3965,7 @@
          0,
          0
         ],
-        "length": 100,
+        "length": 50,
         "type": "hinge"
        },
        {
@@ -3984,7 +3973,7 @@
          0,
          0
         ],
-        "length": 100,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -3992,12 +3981,12 @@
          0,
          0
         ],
-        "length": 70,
+        "length": 40,
         "type": "hinge"
        }
       ],
-      "tilt": 30,
-      "y": -60,
+      "tilt": 0,
+      "y": -30,
       "z": 50
      },
      {
@@ -4008,15 +3997,15 @@
          0,
          60
         ],
-        "length": 130,
+        "length": 90,
         "type": "hinge"
        },
        {
         "axis": [
          90,
-         0
+         -30
         ],
-        "length": 80,
+        "length": 40,
         "type": "hinge"
        },
        {
@@ -4024,7 +4013,7 @@
          0,
          0
         ],
-        "length": 110,
+        "length": 70,
         "type": "hinge"
        },
        {
@@ -4032,24 +4021,24 @@
          0,
          0
         ],
-        "length": 100,
+        "length": 60,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": -50,
-      "z": -80
+      "y": -30,
+      "z": -30
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "tesollo_dg5f_right",
-   "max_axis_deg": 9.414,
-   "max_joint_mm": 15.564,
-   "max_map_rms_mm": 13.288,
-   "max_map_worst_mm": 28.47,
-   "max_tip_mm": 18.153,
+   "max_axis_deg": 23.384,
+   "max_joint_mm": 24.524,
+   "max_map_rms_mm": 12.038,
+   "max_map_worst_mm": 29.976,
+   "max_tip_mm": 17.628,
    "name_map": {
     "f0_j0": "rj_dg_1_1",
     "f0_j1": "rj_dg_1_2",
@@ -4073,26 +4062,26 @@
     "f4_j3": "rj_dg_5_4"
    },
    "notes": [
-    "scaled up 2.7 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.65 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     0.986809452,
-     -0.003832582,
-     -0.161840717,
-     0.032135743
+     0.998597561,
+     -0.033879435,
+     -0.040682856,
+     0.05521517
     ],
     [
-     0.0,
-     0.999719718,
-     -0.02367456,
-     0.002658084
+     0.032917917,
+     0.999168023,
+     -0.024076385,
+     -0.002158558
     ],
     [
-     0.161886091,
-     0.023362279,
-     0.986532867,
-     0.319567458
+     0.041464703,
+     0.022703425,
+     0.998881991,
+     0.177392667
     ],
     [
      0.0,
@@ -4104,29 +4093,29 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    -1.592977694,
-    1.571347011,
-    0.524753541,
-    -0.068725106,
-    0.026993029,
-    -0.432399811,
-    0.073925979,
-    -0.03951582,
-    0.540230554,
-    -0.476049851,
-    0.119420693,
-    -0.041343309,
-    0.556679703,
-    -0.497787593,
-    0.149231276,
-    -0.048227395,
-    -0.017187954,
-    0.410543754,
-    0.188451327,
-    -0.025064096
+    2.071170679,
+    0.019307982,
+    -0.001899093,
+    0.013754341,
+    -0.519052739,
+    -0.200966006,
+    0.263618384,
+    -0.04412659,
+    0.003894985,
+    -0.248903234,
+    0.327157221,
+    -0.097754167,
+    0.52574986,
+    -0.263187891,
+    0.354935413,
+    -0.098922653,
+    -0.344511392,
+    0.702442451,
+    0.035762778,
+    0.087949229
    ],
-   "root_out_of_plate_mm": -83.45,
-   "scale": 2.7,
+   "root_out_of_plate_mm": -62.42,
+   "scale": 1.65,
    "section": [],
    "source_sha256": "69e7b1d97eea46b6bee468e63550dfb1b28d7f747b832cd3e0f2ffb48f89073a",
    "thumbs": [
@@ -4141,101 +4130,101 @@
    "fingers": [
     {
      "axis_deg": [
-      12.667,
-      8.264,
-      8.515,
-      8.515
+      11.15,
+      6.79,
+      4.884,
+      4.884
      ],
      "joint_mm": [
-      5.207,
-      6.562,
-      4.558,
-      3.748
+      0.878,
+      0.656,
+      5.092,
+      7.248
      ],
-     "map_rms_mm": 8.403,
-     "map_worst_mm": 21.94,
-     "tip_mm": 15.941
+     "map_rms_mm": 8.348,
+     "map_worst_mm": 16.903,
+     "tip_mm": 11.762
     },
     {
      "axis_deg": [
-      41.414,
-      30.079,
-      29.86,
-      36.417
+      21.156,
+      7.565,
+      7.245,
+      7.245
      ],
      "joint_mm": [
-      10.825,
-      12.074,
-      8.334,
-      12.084
+      7.611,
+      5.991,
+      4.291,
+      3.344
      ],
-     "map_rms_mm": 14.504,
-     "map_worst_mm": 30.616,
-     "tip_mm": 20.347
+     "map_rms_mm": 11.468,
+     "map_worst_mm": 26.716,
+     "tip_mm": 8.914
     },
     {
      "axis_deg": [
-      2.414,
-      3.828,
-      2.343,
-      2.343
+      1.842,
+      2.825,
+      0.412,
+      0.412
      ],
      "joint_mm": [
-      1.607,
-      14.553,
-      1.389,
-      1.954
+      1.168,
+      0.8,
+      1.928,
+      1.585
      ],
-     "map_rms_mm": 4.087,
-     "map_worst_mm": 7.91,
-     "tip_mm": 0.743
+     "map_rms_mm": 1.475,
+     "map_worst_mm": 2.96,
+     "tip_mm": 2.092
     },
     {
      "axis_deg": [
-      5.569,
-      7.232,
-      6.314,
-      6.314
+      4.66,
+      4.15,
+      6.375,
+      6.375
      ],
      "joint_mm": [
-      0.879,
-      23.535,
-      3.015,
-      2.542
+      1.233,
+      2.323,
+      0.197,
+      0.147
      ],
-     "map_rms_mm": 6.585,
-     "map_worst_mm": 16.612,
-     "tip_mm": 9.945
+     "map_rms_mm": 4.372,
+     "map_worst_mm": 8.807,
+     "tip_mm": 7.868
     },
     {
      "axis_deg": [
-      14.551,
-      12.817,
-      17.392,
-      24.874
+      19.751,
+      5.403,
+      4.427,
+      4.427
      ],
      "joint_mm": [
-      8.897,
-      10.595,
-      5.616,
-      4.4
+      7.2,
+      8.876,
+      3.921,
+      3.324
      ],
-     "map_rms_mm": 13.408,
-     "map_worst_mm": 29.017,
-     "tip_mm": 22.101
+     "map_rms_mm": 11.529,
+     "map_worst_mm": 26.401,
+     "tip_mm": 9.652
     }
    ],
    "hand": {
     "fingers": [
      {
-      "facing": 60,
+      "facing": 90,
       "joints": [
        {
         "axis": [
          0,
-         -30
+         0
         ],
-        "length": 60,
+        "length": 40,
         "type": "hinge"
        },
        {
@@ -4243,7 +4232,7 @@
          90,
          0
         ],
-        "length": 70,
+        "length": 120,
         "type": "hinge"
        },
        {
@@ -4251,116 +4240,36 @@
          30,
          0
         ],
-        "length": 60,
+        "length": 100,
         "type": "hinge"
        },
        {
         "axis": [
          30,
-         0
-        ],
-        "length": 60,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 0,
-      "y": 50,
-      "z": -90
-     },
-     {
-      "facing": 0,
-      "joints": [
-       {
-        "axis": [
-         150,
-         30
-        ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         60,
          0
         ],
         "length": 80,
         "type": "hinge"
-       },
-       {
-        "axis": [
-         150,
-         0
-        ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         150,
-         30
-        ],
-        "length": 50,
-        "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": 80,
-      "z": 50
+      "y": 90,
+      "z": -90
      },
      {
-      "facing": 90,
+      "facing": 30,
       "joints": [
-       {
-        "axis": [
-         90,
-         0
-        ],
-        "length": 40,
-        "type": "hinge"
-       },
        {
         "axis": [
          0,
          0
         ],
-        "length": 60,
+        "length": 20,
         "type": "hinge"
        },
        {
         "axis": [
          90,
-         0
-        ],
-        "length": 60,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         90,
-         0
-        ],
-        "length": 60,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 90,
-      "y": 30,
-      "z": 60
-     },
-     {
-      "facing": 90,
-      "joints": [
-       {
-        "axis": [
-         90,
-         0
-        ],
-        "length": 40,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
          0
         ],
         "length": 140,
@@ -4368,39 +4277,7 @@
        },
        {
         "axis": [
-         90,
-         0
-        ],
-        "length": 70,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         90,
-         0
-        ],
-        "length": 50,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 90,
-      "y": -10,
-      "z": 50
-     },
-     {
-      "facing": 0,
-      "joints": [
-       {
-        "axis": [
          0,
-         0
-        ],
-        "length": 0,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         90,
          0
         ],
         "length": 90,
@@ -4409,9 +4286,33 @@
        {
         "axis": [
          0,
-         30
+         0
         ],
-        "length": 70,
+        "length": 80,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": 120,
+      "z": 70
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 10,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 130,
         "type": "hinge"
        },
        {
@@ -4419,24 +4320,112 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 90,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 80,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": -80,
-      "z": 30
+      "y": 50,
+      "z": 90
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 20,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 130,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 90,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 80,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": -20,
+      "z": 70
+     },
+     {
+      "facing": 330,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 20,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 140,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 90,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 80,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": -90,
+      "z": 20
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "wuji_right",
-   "max_axis_deg": 41.414,
-   "max_joint_mm": 23.535,
-   "max_map_rms_mm": 14.504,
-   "max_map_worst_mm": 30.616,
-   "max_tip_mm": 22.101,
+   "max_axis_deg": 21.156,
+   "max_joint_mm": 8.876,
+   "max_map_rms_mm": 11.529,
+   "max_map_worst_mm": 26.716,
+   "max_tip_mm": 11.762,
    "name_map": {
     "f0_j0": "right_finger1_joint1",
     "f0_j1": "right_finger1_joint2",
@@ -4460,26 +4449,26 @@
     "f4_j3": "right_finger5_joint4"
    },
    "notes": [
-    "scaled up 2.1 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 3.05 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     0.972785649,
-     0.024649338,
-     -0.23039204,
-     -0.006111828
+     0.965640104,
+     0.00236475,
+     -0.259872271,
+     -0.001116087
     ],
     [
-     -0.031735502,
-     0.999128803,
-     -0.027101532,
-     -0.015161703
+     -0.010589569,
+     0.999486146,
+     -0.030254007,
+     -0.026502661
     ],
     [
-     0.229523288,
-     0.033675589,
-     0.97272042,
-     0.127663587
+     0.259667192,
+     0.031966418,
+     0.965168948,
+     0.187436768
     ],
     [
      0.0,
@@ -4491,29 +4480,29 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    0.097841525,
-    0.023199121,
-    -0.061096986,
-    -0.022847907,
-    0.413481534,
-    0.155386256,
-    0.024713169,
-    -0.111276118,
-    1.486110924,
-    -0.057860354,
-    0.018481156,
-    -0.063126109,
-    -1.619210151,
-    -3.124197749,
-    0.195784049,
-    -0.129013722,
-    0.270929522,
-    0.14195754,
-    -0.26145225,
-    0.125838608
+    0.071067941,
+    0.36853837,
+    0.125860479,
+    -0.086070687,
+    0.171209443,
+    -0.311884316,
+    0.116085337,
+    -0.147482814,
+    0.126710392,
+    0.029674742,
+    0.030785278,
+    -0.040802667,
+    0.13041992,
+    0.035039689,
+    0.049880183,
+    -0.029427146,
+    0.154269205,
+    0.326326655,
+    0.082197522,
+    -0.071995622
    ],
-   "root_out_of_plate_mm": -23.84,
-   "scale": 2.1,
+   "root_out_of_plate_mm": -47.87,
+   "scale": 3.05,
    "section": [],
    "source_sha256": "a6b802db342c878d8e50c7ef673668d1650e5f3b9edc7d0fa2e56877762ac623",
    "thumbs": [
@@ -4528,18 +4517,31 @@
    "fingers": [
     {
      "axis_deg": [
-      3.366,
-      3.507,
-      3.507
+      3.35,
+      4.446,
+      26.893
      ],
      "joint_mm": [
-      2.126,
-      1.16,
-      3.515
+      17.363,
+      2.982,
+      3.092
      ],
-     "map_rms_mm": 3.085,
-     "map_worst_mm": 5.212,
-     "tip_mm": 4.875
+     "map_rms_mm": 8.06,
+     "map_worst_mm": 18.534,
+     "tip_mm": 11.693
+    },
+    {
+     "axis_deg": [
+      4.666,
+      26.485
+     ],
+     "joint_mm": [
+      9.265,
+      11.827
+     ],
+     "map_rms_mm": 9.838,
+     "map_worst_mm": 19.674,
+     "tip_mm": 17.27
     },
     {
      "axis_deg": [
@@ -4547,12 +4549,12 @@
       4.666
      ],
      "joint_mm": [
-      3.841,
-      4.441
+      7.495,
+      5.009
      ],
-     "map_rms_mm": 4.249,
-     "map_worst_mm": 10.987,
-     "tip_mm": 11.415
+     "map_rms_mm": 8.139,
+     "map_worst_mm": 15.919,
+     "tip_mm": 16.328
     },
     {
      "axis_deg": [
@@ -4560,40 +4562,27 @@
       4.666
      ],
      "joint_mm": [
-      5.694,
-      4.245
+      4.616,
+      4.365
      ],
-     "map_rms_mm": 4.897,
-     "map_worst_mm": 11.282,
-     "tip_mm": 11.697
+     "map_rms_mm": 7.128,
+     "map_worst_mm": 10.315,
+     "tip_mm": 6.958
     },
     {
      "axis_deg": [
-      4.666,
-      4.666
+      3.249,
+      15.005,
+      15.144
      ],
      "joint_mm": [
-      4.615,
-      3.729
+      0.838,
+      11.108,
+      3.826
      ],
-     "map_rms_mm": 4.354,
-     "map_worst_mm": 10.86,
-     "tip_mm": 11.263
-    },
-    {
-     "axis_deg": [
-      3.286,
-      15.487,
-      14.594
-     ],
-     "joint_mm": [
-      1.113,
-      2.864,
-      2.675
-     ],
-     "map_rms_mm": 11.755,
-     "map_worst_mm": 29.155,
-     "tip_mm": 11.922
+     "map_rms_mm": 13.553,
+     "map_worst_mm": 29.198,
+     "tip_mm": 15.887
     }
    ],
    "hand": {
@@ -4606,7 +4595,7 @@
          90,
          0
         ],
-        "length": 30,
+        "length": 20,
         "type": "hinge"
        },
        {
@@ -4614,21 +4603,21 @@
          0,
          0
         ],
-        "length": 110,
+        "length": 70,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         30,
          0
         ],
-        "length": 90,
+        "length": 60,
         "type": "hinge"
        }
       ],
       "tilt": 0,
       "y": 60,
-      "z": 30
+      "z": 40
      },
      {
       "facing": 0,
@@ -4638,20 +4627,20 @@
          0,
          0
         ],
-        "length": 110,
+        "length": 70,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         30,
          0
         ],
-        "length": 80,
+        "length": 50,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": 10,
+      "y": 30,
       "z": 70
      },
      {
@@ -4662,7 +4651,7 @@
          0,
          0
         ],
-        "length": 110,
+        "length": 70,
         "type": "hinge"
        },
        {
@@ -4670,13 +4659,13 @@
          0,
          0
         ],
-        "length": 80,
+        "length": 50,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": -70,
-      "z": 60
+      "y": -50,
+      "z": 50
      },
      {
       "facing": 0,
@@ -4686,7 +4675,7 @@
          0,
          0
         ],
-        "length": 110,
+        "length": 70,
         "type": "hinge"
        },
        {
@@ -4694,12 +4683,12 @@
          0,
          0
         ],
-        "length": 80,
+        "length": 50,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": -30,
+      "y": -10,
       "z": 60
      },
      {
@@ -4710,7 +4699,7 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 50,
         "type": "hinge"
        },
        {
@@ -4718,7 +4707,7 @@
          90,
          0
         ],
-        "length": 110,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -4726,24 +4715,24 @@
          60,
          0
         ],
-        "length": 110,
+        "length": 70,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": 50,
-      "z": -90
+      "y": 30,
+      "z": -40
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "xhand_right",
-   "max_axis_deg": 15.487,
-   "max_joint_mm": 5.694,
-   "max_map_rms_mm": 11.755,
-   "max_map_worst_mm": 29.155,
-   "max_tip_mm": 11.922,
+   "max_axis_deg": 26.893,
+   "max_joint_mm": 17.363,
+   "max_map_rms_mm": 13.553,
+   "max_map_worst_mm": 29.198,
+   "max_tip_mm": 17.27,
    "name_map": {
     "f0_j0": "right_hand_index_bend_joint",
     "f0_j1": "right_hand_index_joint1",
@@ -4759,26 +4748,26 @@
     "f4_j2": "right_hand_thumb_rota_joint2"
    },
    "notes": [
-    "scaled up 2 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.25 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
-     0.998274448,
-     -0.058433076,
-     -0.005805416,
-     0.020548473
+     0.998291132,
+     -0.058436165,
+     0.000174017,
+     0.012598552
     ],
     [
-     0.058008458,
-     0.996685976,
-     -0.057027049,
-     -0.00730941
+     0.058352074,
+     0.996685784,
+     -0.056678773,
+     -0.003515261
     ],
     [
-     0.009118443,
-     0.056591883,
-     0.998355755,
-     0.149949011
+     0.00313865,
+     0.056592071,
+     0.998392451,
+     0.074919003
     ],
     [
      0.0,
@@ -4790,21 +4779,21 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    1.533081722,
-    -0.037444864,
-    0.03928541,
-    0.024433125,
-    0.011719326,
-    -0.019748772,
-    0.074376109,
-    -0.018791562,
-    0.036102853,
-    0.059722282,
-    -0.125911306,
-    0.235100547
+    1.565138896,
+    -0.028591677,
+    0.139474739,
+    0.101359602,
+    0.06176398,
+    -0.072570523,
+    0.082847193,
+    -0.006478208,
+    0.073039203,
+    0.074278942,
+    -0.047458333,
+    0.140288336
    ],
-   "root_out_of_plate_mm": -21.46,
-   "scale": 2.0,
+   "root_out_of_plate_mm": -12.61,
+   "scale": 1.25,
    "section": [],
    "source_sha256": "911ffc19dd26c374b77c42d4c25a05eb73af02048c12f1b8d13496806fd94be1",
    "thumbs": [
@@ -4824,11 +4813,11 @@
      ],
      "joint_mm": [
       2.287,
-      6.495
+      4.521
      ],
-     "map_rms_mm": 3.53,
-     "map_worst_mm": 6.56,
-     "tip_mm": 6.818
+     "map_rms_mm": 2.804,
+     "map_worst_mm": 5.813,
+     "tip_mm": 3.74
     },
     {
      "axis_deg": [
@@ -4837,26 +4826,26 @@
      ],
      "joint_mm": [
       2.287,
-      6.495
+      4.521
      ],
-     "map_rms_mm": 3.564,
-     "map_worst_mm": 6.578,
-     "tip_mm": 6.836
+     "map_rms_mm": 2.847,
+     "map_worst_mm": 5.834,
+     "tip_mm": 3.772
     },
     {
      "axis_deg": [
       1.756,
-      0.641,
-      0.641
+      0.374,
+      0.374
      ],
      "joint_mm": [
-      15.619,
-      20.468,
-      9.013
+      4.372,
+      16.525,
+      4.984
      ],
-     "map_rms_mm": 12.126,
-     "map_worst_mm": 20.807,
-     "tip_mm": 8.201
+     "map_rms_mm": 9.27,
+     "map_worst_mm": 17.561,
+     "tip_mm": 1.14
     }
    ],
    "hand": {
@@ -4869,7 +4858,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 42,
         "type": "hinge"
        },
        {
@@ -4893,7 +4882,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 42,
         "type": "hinge"
        },
        {
@@ -4914,8 +4903,8 @@
       "joints": [
        {
         "axis": [
-         0,
-         90
+         90,
+         60
         ],
         "length": 40,
         "type": "hinge"
@@ -4937,9 +4926,9 @@
         "type": "hinge"
        }
       ],
-      "tilt": 90,
+      "tilt": 60,
       "y": 0,
-      "z": -40
+      "z": -20
      }
     ],
     "grammar": "hand_grammar/2.0",
@@ -4947,10 +4936,10 @@
    },
    "id": "dex3_left",
    "max_axis_deg": 1.756,
-   "max_joint_mm": 20.468,
-   "max_map_rms_mm": 12.126,
-   "max_map_worst_mm": 20.807,
-   "max_tip_mm": 8.201,
+   "max_joint_mm": 16.525,
+   "max_map_rms_mm": 9.27,
+   "max_map_worst_mm": 17.561,
+   "max_tip_mm": 3.772,
    "name_map": {
     "f0_j0": "left_hand_index_0_joint",
     "f0_j1": "left_hand_index_1_joint",
@@ -4992,13 +4981,13 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    0.024949196,
-    0.057565721,
-    0.024949196,
-    0.057565721,
-    0.512405466,
-    0.274331505,
-    -0.291937798
+    0.131955693,
+    -0.205364913,
+    0.131955692,
+    -0.205364913,
+    0.530131539,
+    0.923160044,
+    -0.541067476
    ],
    "root_out_of_plate_mm": -0.78,
    "scale": 1.0,
@@ -5017,138 +5006,98 @@
     {
      "axis_deg": [
       13.878,
-      1.758,
-      2.241,
-      41.169
+      2.579,
+      5.326,
+      5.326
      ],
      "joint_mm": [
-      5.049,
-      7.642,
-      2.353,
-      8.051
+      3.961,
+      3.403,
+      1.833,
+      1.016
      ],
-     "map_rms_mm": 12.322,
-     "map_worst_mm": 29.003,
-     "tip_mm": 5.2
+     "map_rms_mm": 10.386,
+     "map_worst_mm": 25.541,
+     "tip_mm": 8.494
     },
     {
      "axis_deg": [
       6.567,
-      2.863,
-      0.391,
-      0.391
+      1.547,
+      2.919,
+      2.919
      ],
      "joint_mm": [
-      2.942,
-      8.775,
-      0.897,
-      1.176
+      1.629,
+      1.049,
+      1.667,
+      2.502
      ],
-     "map_rms_mm": 6.935,
-     "map_worst_mm": 20.163,
-     "tip_mm": 3.713
+     "map_rms_mm": 4.982,
+     "map_worst_mm": 11.814,
+     "tip_mm": 4.473
     },
     {
      "axis_deg": [
       9.918,
-      6.969,
-      9.62,
-      9.62
+      6.962,
+      7.074,
+      7.074
      ],
      "joint_mm": [
-      2.276,
-      8.549,
-      0.829,
-      3.301
+      1.345,
+      5.283,
+      0.882,
+      1.996
      ],
-     "map_rms_mm": 10.773,
-     "map_worst_mm": 24.147,
-     "tip_mm": 7.532
+     "map_rms_mm": 9.428,
+     "map_worst_mm": 21.102,
+     "tip_mm": 6.437
     },
     {
      "axis_deg": [
       3.291,
-      3.724,
-      3.1,
-      3.1
+      3.449,
+      3.127,
+      3.127
      ],
      "joint_mm": [
-      1.549,
-      9.76,
-      2.048,
-      2.477
+      1.009,
+      2.653,
+      1.528,
+      0.861
      ],
-     "map_rms_mm": 5.948,
-     "map_worst_mm": 13.79,
-     "tip_mm": 3.346
+     "map_rms_mm": 3.718,
+     "map_worst_mm": 7.448,
+     "tip_mm": 1.838
     },
     {
      "axis_deg": [
-      15.497,
-      2.499,
-      0.937,
-      0.937
+      8.81,
+      5.109,
+      3.22,
+      3.22
      ],
      "joint_mm": [
-      6.015,
-      8.01,
-      6.408,
-      1.863
+      1.91,
+      5.273,
+      0.955,
+      3.023
      ],
-     "map_rms_mm": 13.373,
-     "map_worst_mm": 26.669,
-     "tip_mm": 10.28
+     "map_rms_mm": 7.795,
+     "map_worst_mm": 16.363,
+     "tip_mm": 3.05
     }
    ],
    "hand": {
     "fingers": [
-     {
-      "facing": 330,
-      "joints": [
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         90,
-         0
-        ],
-        "length": 70,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 40,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         150,
-         30
-        ],
-        "length": 60,
-        "type": "hinge"
-       }
-      ],
-      "tilt": 0,
-      "y": -60,
-      "z": 30
-     },
      {
       "facing": 0,
       "joints": [
        {
         "axis": [
          0,
-         0
+         30
         ],
         "length": 50,
         "type": "hinge"
@@ -5158,7 +5107,7 @@
          90,
          0
         ],
-        "length": 60,
+        "length": 130,
         "type": "hinge"
        },
        {
@@ -5166,7 +5115,7 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 100,
         "type": "hinge"
        },
        {
@@ -5174,12 +5123,12 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 70,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": -20,
+      "y": -100,
       "z": 50
      },
      {
@@ -5190,7 +5139,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 42,
         "type": "hinge"
        },
        {
@@ -5198,7 +5147,7 @@
          90,
          0
         ],
-        "length": 50,
+        "length": 120,
         "type": "hinge"
        },
        {
@@ -5206,7 +5155,7 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 90,
         "type": "hinge"
        },
        {
@@ -5214,13 +5163,53 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 80,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": 70,
-      "z": 20
+      "y": -30,
+      "z": 90
+     },
+     {
+      "facing": 0,
+      "joints": [
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 60,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 100,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 80,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 80,
+        "type": "hinge"
+       }
+      ],
+      "tilt": 0,
+      "y": 100,
+      "z": 40
      },
      {
       "facing": 0,
@@ -5238,7 +5227,7 @@
          90,
          0
         ],
-        "length": 60,
+        "length": 120,
         "type": "hinge"
        },
        {
@@ -5246,7 +5235,7 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 90,
         "type": "hinge"
        },
        {
@@ -5254,23 +5243,23 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 80,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": 20,
-      "z": 40
+      "y": 40,
+      "z": 70
      },
      {
-      "facing": 270,
+      "facing": 120,
       "joints": [
        {
         "axis": [
          150,
-         0
+         -30
         ],
-        "length": 50,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -5278,7 +5267,7 @@
          60,
          0
         ],
-        "length": 50,
+        "length": 100,
         "type": "hinge"
        },
        {
@@ -5286,7 +5275,7 @@
          120,
          0
         ],
-        "length": 80,
+        "length": 100,
         "type": "hinge"
        },
        {
@@ -5294,24 +5283,24 @@
          120,
          0
         ],
-        "length": 50,
+        "length": 100,
         "type": "hinge"
        }
       ],
-      "tilt": 90,
-      "y": -30,
-      "z": -60
+      "tilt": 60,
+      "y": -60,
+      "z": -90
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "wuji2_left",
-   "max_axis_deg": 41.169,
-   "max_joint_mm": 9.76,
-   "max_map_rms_mm": 13.373,
-   "max_map_worst_mm": 29.003,
-   "max_tip_mm": 10.28,
+   "max_axis_deg": 13.878,
+   "max_joint_mm": 5.283,
+   "max_map_rms_mm": 10.386,
+   "max_map_worst_mm": 25.541,
+   "max_tip_mm": 8.494,
    "name_map": {
     "f0_j0": "l_index_finger_mcp_flex",
     "f0_j1": "l_index_finger_mcp_abd",
@@ -5335,26 +5324,26 @@
     "f4_j3": "l_thumb_ip"
    },
    "notes": [
-    "scaled up 2 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 3.2 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
      -0.023742826,
      -0.992099861,
      -0.123183372,
-     -0.011787922
+     -0.00869331
     ],
     [
      -0.957748633,
      -0.012754599,
      0.287323642,
-     -0.002435
+     -0.004343101
     ],
     [
      -0.2866249,
      0.124800582,
      -0.949879456,
-     -0.093956719
+     -0.149678997
     ],
     [
      0.0,
@@ -5366,36 +5355,36 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    0.264149945,
-    0.21594391,
-    -0.171160872,
-    0.331849,
-    0.208554324,
-    -0.108240617,
-    0.03772117,
-    0.020544651,
-    0.311135864,
-    0.007443389,
-    0.004214484,
-    -0.054064159,
-    0.24824532,
-    0.019166803,
-    0.01945283,
-    0.060255436,
-    -1.150581609,
-    -1.017550758,
-    -0.087548498,
-    0.074215598
+    0.225521815,
+    -0.372772944,
+    0.09943668,
+    -0.06222499,
+    0.23212372,
+    -0.063820306,
+    0.005797253,
+    -0.017548337,
+    0.309952707,
+    0.101383001,
+    0.01128798,
+    -0.025413816,
+    0.258252042,
+    0.024323289,
+    0.029082181,
+    -0.006006766,
+    1.645660963,
+    1.175506602,
+    0.012197694,
+    -0.008968661
    ],
-   "root_out_of_plate_mm": -29.54,
-   "scale": 2.0,
+   "root_out_of_plate_mm": -47.27,
+   "scale": 3.2,
    "section": [],
    "source_sha256": "483d60b22d6c27074dd489593752b570f2ba28c9f9d81a7d97c7d1fc7fd9a765",
    "thumbs": [
     4
    ],
    "violations": [],
-   "within_target": false
+   "within_target": true
   },
   {
    "buildable": true,
@@ -5404,100 +5393,100 @@
     {
      "axis_deg": [
       13.874,
-      2.891,
-      2.577,
-      2.577
+      2.159,
+      3.56,
+      3.56
      ],
      "joint_mm": [
-      2.189,
-      14.222,
-      2.143,
-      1.847
+      5.519,
+      6.413,
+      2.831,
+      1.052
      ],
-     "map_rms_mm": 11.552,
-     "map_worst_mm": 28.043,
-     "tip_mm": 7.916
+     "map_rms_mm": 10.589,
+     "map_worst_mm": 29.064,
+     "tip_mm": 8.226
     },
     {
      "axis_deg": [
       6.566,
-      2.856,
-      0.383,
-      0.383
+      24.248,
+      3.956,
+      3.956
      ],
      "joint_mm": [
-      2.924,
-      8.792,
-      0.908,
-      1.193
+      2.658,
+      14.194,
+      2.946,
+      0.897
      ],
-     "map_rms_mm": 6.932,
-     "map_worst_mm": 20.143,
-     "tip_mm": 3.717
+     "map_rms_mm": 9.862,
+     "map_worst_mm": 26.222,
+     "tip_mm": 5.336
     },
     {
      "axis_deg": [
       9.925,
-      6.836,
-      9.63,
-      9.63
+      6.831,
+      8.712,
+      8.712
      ],
      "joint_mm": [
-      2.256,
-      8.572,
-      0.798,
-      3.274
+      1.181,
+      4.894,
+      1.036,
+      1.298
      ],
-     "map_rms_mm": 10.746,
-     "map_worst_mm": 24.118,
-     "tip_mm": 7.576
+     "map_rms_mm": 9.794,
+     "map_worst_mm": 20.703,
+     "tip_mm": 7.108
     },
     {
      "axis_deg": [
       3.3,
-      3.731,
-      3.11,
-      3.11
+      3.466,
+      4.143,
+      4.143
      ],
      "joint_mm": [
-      1.534,
-      9.778,
-      2.065,
-      2.495
+      2.861,
+      16.48,
+      1.881,
+      4.362
      ],
-     "map_rms_mm": 5.957,
-     "map_worst_mm": 13.798,
-     "tip_mm": 3.365
+     "map_rms_mm": 9.281,
+     "map_worst_mm": 19.043,
+     "tip_mm": 3.01
     },
     {
      "axis_deg": [
-      8.779,
-      13.214,
-      7.6,
-      7.6
+      15.46,
+      2.294,
+      2.859,
+      2.859
      ],
      "joint_mm": [
-      8.341,
-      9.351,
-      7.593,
-      9.932
+      9.244,
+      8.082,
+      3.535,
+      3.947
      ],
-     "map_rms_mm": 13.612,
-     "map_worst_mm": 36.533,
-     "tip_mm": 12.338
+     "map_rms_mm": 13.508,
+     "map_worst_mm": 28.067,
+     "tip_mm": 10.406
     }
    ],
    "hand": {
     "fingers": [
      {
-      "facing": 30,
+      "facing": 0,
       "joints": [
        {
         "axis": [
          0,
-         0
+         -30
         ],
-        "length": 50,
+        "length": 40,
         "type": "hinge"
        },
        {
@@ -5505,7 +5494,7 @@
          90,
          0
         ],
-        "length": 50,
+        "length": 52,
         "type": "hinge"
        },
        {
@@ -5513,7 +5502,7 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 42,
         "type": "hinge"
        },
        {
@@ -5521,12 +5510,12 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 38,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": 70,
+      "y": 60,
       "z": 40
      },
      {
@@ -5537,15 +5526,15 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 46,
         "type": "hinge"
        },
        {
         "axis": [
          90,
-         0
+         -30
         ],
-        "length": 60,
+        "length": 32,
         "type": "hinge"
        },
        {
@@ -5553,7 +5542,7 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 49,
         "type": "hinge"
        },
        {
@@ -5561,23 +5550,31 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 38,
         "type": "hinge"
        }
       ],
       "tilt": 0,
       "y": 20,
-      "z": 50
+      "z": 60
      },
      {
-      "facing": 0,
+      "facing": 270,
       "joints": [
+       {
+        "axis": [
+         90,
+         0
+        ],
+        "length": 30,
+        "type": "hinge"
+       },
        {
         "axis": [
          0,
          0
         ],
-        "length": 50,
+        "length": 42,
         "type": "hinge"
        },
        {
@@ -5585,29 +5582,21 @@
          90,
          0
         ],
-        "length": 50,
+        "length": 41,
         "type": "hinge"
        },
        {
         "axis": [
-         0,
+         90,
          0
         ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 50,
+        "length": 38,
         "type": "hinge"
        }
       ],
-      "tilt": 0,
-      "y": -70,
-      "z": 20
+      "tilt": 90,
+      "y": -50,
+      "z": 40
      },
      {
       "facing": 0,
@@ -5625,7 +5614,7 @@
          90,
          0
         ],
-        "length": 60,
+        "length": 30,
         "type": "hinge"
        },
        {
@@ -5633,7 +5622,7 @@
          0,
          0
         ],
-        "length": 60,
+        "length": 40,
         "type": "hinge"
        },
        {
@@ -5641,28 +5630,36 @@
          0,
          0
         ],
-        "length": 50,
+        "length": 45,
         "type": "hinge"
        }
       ],
       "tilt": 0,
       "y": -20,
-      "z": 40
+      "z": 50
      },
      {
       "facing": 90,
       "joints": [
        {
         "axis": [
-         30,
-         0
+         0,
+         -30
         ],
-        "length": 60,
+        "length": 47,
         "type": "hinge"
        },
        {
         "axis": [
-         120,
+         90,
+         0
+        ],
+        "length": 40,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         30,
          0
         ],
         "length": 50,
@@ -5670,35 +5667,27 @@
        },
        {
         "axis": [
-         60,
+         30,
          0
         ],
-        "length": 70,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         60,
-         0
-        ],
-        "length": 60,
+        "length": 40,
         "type": "hinge"
        }
       ],
-      "tilt": 60,
-      "y": 20,
-      "z": -70
+      "tilt": 0,
+      "y": 10,
+      "z": -40
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "wuji2_right",
-   "max_axis_deg": 13.874,
-   "max_joint_mm": 14.222,
-   "max_map_rms_mm": 13.612,
-   "max_map_worst_mm": 36.533,
-   "max_tip_mm": 12.338,
+   "max_axis_deg": 24.248,
+   "max_joint_mm": 16.48,
+   "max_map_rms_mm": 13.508,
+   "max_map_worst_mm": 29.064,
+   "max_tip_mm": 10.406,
    "name_map": {
     "f0_j0": "r_index_finger_mcp_flex",
     "f0_j1": "r_index_finger_mcp_abd",
@@ -5722,26 +5711,26 @@
     "f4_j3": "r_thumb_ip"
    },
    "notes": [
-    "scaled up 2 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.5 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
      -0.024045349,
      0.99211561,
      -0.122997716,
-     -0.011784247
+     -0.006070737
     ],
     [
      0.957380195,
      -0.012570422,
      -0.288557008,
-     0.002476248
+     0.008349719
     ],
     [
      -0.287828045,
      -0.124694031,
      -0.949529576,
-     -0.094009819
+     -0.049142949
     ],
     [
      0.0,
@@ -5753,29 +5742,29 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    0.299745052,
-    -0.260350468,
-    -0.100141307,
-    0.08371877,
-    0.209937412,
-    0.108309238,
-    0.037663238,
-    0.020773707,
-    0.292686977,
-    -0.007213528,
-    0.003696203,
-    -0.053586956,
-    0.249604041,
-    -0.019101161,
-    0.019446746,
-    0.060485106,
-    -0.658217747,
-    -0.891393881,
-    0.013406611,
-    -0.003939788
+    0.238491186,
+    0.339614737,
+    0.060565844,
+    -0.000756822,
+    0.158675745,
+    0.058181855,
+    0.150935051,
+    0.009830523,
+    1.302848084,
+    -0.030462227,
+    -0.01517424,
+    -0.002065742,
+    0.259234644,
+    0.028818934,
+    -0.073358652,
+    0.078044644,
+    0.42532828,
+    0.503868724,
+    -0.08704448,
+    0.005809075
    ],
-   "root_out_of_plate_mm": -29.71,
-   "scale": 2.0,
+   "root_out_of_plate_mm": -22.28,
+   "scale": 1.5,
    "section": [],
    "source_sha256": "dc8de546def7f517649de31f838ceb1484e4b33b320b3583189f2926e67a61d9",
    "thumbs": [
@@ -5791,70 +5780,70 @@
     {
      "axis_deg": [
       1.203,
-      0.263,
-      0.263,
-      0.195
+      1.746,
+      1.746,
+      1.814
      ],
      "joint_mm": [
-      1.26,
-      3.218,
-      1.889,
-      3.591
+      3.452,
+      1.872,
+      4.971,
+      3.021
      ],
-     "map_rms_mm": 2.454,
-     "map_worst_mm": 4.612,
-     "tip_mm": 3.391
+     "map_rms_mm": 5.41,
+     "map_worst_mm": 10.66,
+     "tip_mm": 7.335
     },
     {
      "axis_deg": [
       1.203,
-      0.063,
-      0.063,
-      0.005
+      0.038,
+      0.038,
+      0.105
      ],
      "joint_mm": [
-      1.458,
-      3.3,
-      1.722,
-      3.534
+      1.984,
+      1.798,
+      2.626,
+      0.933
      ],
-     "map_rms_mm": 2.525,
-     "map_worst_mm": 4.874,
-     "tip_mm": 3.348
+     "map_rms_mm": 4.691,
+     "map_worst_mm": 7.736,
+     "tip_mm": 3.357
     },
     {
      "axis_deg": [
       1.203,
-      0.028,
-      0.028,
-      0.096
+      1.92,
+      1.92,
+      1.852
      ],
      "joint_mm": [
-      1.382,
-      3.428,
-      1.039,
-      2.928
+      3.946,
+      1.313,
+      2.847,
+      1.814
      ],
-     "map_rms_mm": 2.135,
-     "map_worst_mm": 4.544,
-     "tip_mm": 3.237
+     "map_rms_mm": 5.027,
+     "map_worst_mm": 8.375,
+     "tip_mm": 2.753
     },
     {
      "axis_deg": [
-      13.438,
-      3.904,
-      4.167,
-      4.167
+      16.651,
+      5.817,
+      19.041,
+      19.041
      ],
      "joint_mm": [
-      17.688,
-      14.017,
-      11.027,
-      9.013
+      21.394,
+      8.691,
+      7.908,
+      11.88
      ],
-     "map_rms_mm": 10.929,
-     "map_worst_mm": 27.788,
-     "tip_mm": 7.833
+     "map_rms_mm": 13.564,
+     "map_worst_mm": 32.801,
+     "tip_mm": 20.533
     }
    ],
    "hand": {
@@ -5867,7 +5856,7 @@
          90,
          0
         ],
-        "length": 50,
+        "length": 30,
         "type": "hinge"
        },
        {
@@ -5875,15 +5864,7 @@
          0,
          0
         ],
-        "length": 80,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 80,
+        "length": 60,
         "type": "hinge"
        },
        {
@@ -5892,11 +5873,19 @@
          0
         ],
         "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 38,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": 40,
+      "y": 50,
       "z": 60
      },
      {
@@ -5907,23 +5896,7 @@
          90,
          0
         ],
-        "length": 50,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 80,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 80,
+        "length": 40,
         "type": "hinge"
        },
        {
@@ -5932,38 +5905,38 @@
          0
         ],
         "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 38,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": -30,
-      "z": 70
+      "y": 0,
+      "z": 60
      },
      {
-      "facing": 210,
+      "facing": 0,
       "joints": [
        {
         "axis": [
          90,
          0
         ],
-        "length": 60,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 80,
-        "type": "hinge"
-       },
-       {
-        "axis": [
-         0,
-         0
-        ],
-        "length": 80,
+        "length": 40,
         "type": "hinge"
        },
        {
@@ -5973,10 +5946,26 @@
         ],
         "length": 50,
         "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 50,
+        "type": "hinge"
+       },
+       {
+        "axis": [
+         0,
+         0
+        ],
+        "length": 38,
+        "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": -100,
+      "y": -50,
       "z": 50
      },
      {
@@ -5985,9 +5974,9 @@
        {
         "axis": [
          0,
-         -30
+         -60
         ],
-        "length": 50,
+        "length": 70,
         "type": "hinge"
        },
        {
@@ -5995,7 +5984,7 @@
          90,
          0
         ],
-        "length": 110,
+        "length": 70,
         "type": "hinge"
        },
        {
@@ -6003,7 +5992,7 @@
          30,
          0
         ],
-        "length": 80,
+        "length": 50,
         "type": "hinge"
        },
        {
@@ -6011,24 +6000,24 @@
          30,
          0
         ],
-        "length": 60,
+        "length": 40,
         "type": "hinge"
        }
       ],
       "tilt": 0,
-      "y": 70,
-      "z": -90
+      "y": 0,
+      "z": -60
      }
     ],
     "grammar": "hand_grammar/2.0",
     "palm_joints": []
    },
    "id": "midas",
-   "max_axis_deg": 13.438,
-   "max_joint_mm": 17.688,
-   "max_map_rms_mm": 10.929,
-   "max_map_worst_mm": 27.788,
-   "max_tip_mm": 7.833,
+   "max_axis_deg": 19.041,
+   "max_joint_mm": 21.394,
+   "max_map_rms_mm": 13.564,
+   "max_map_worst_mm": 32.801,
+   "max_tip_mm": 20.533,
    "name_map": {
     "f0_j0": "index_mcp_abad_joint",
     "f0_j1": "index_mcp_pitch_joint",
@@ -6048,26 +6037,26 @@
     "f3_j3": "thumb_dip_joint"
    },
    "notes": [
-    "scaled up 2.3 x so Feetech servos fit (servo link lengths, no collisions)"
+    "scaled up 1.5 x so Feetech servos fit (servo link lengths, no collisions)"
    ],
    "palm_T": [
     [
      -2.7134e-05,
      -0.999602762,
      -0.028183649,
-     -0.034075373
+     -0.002114205
     ],
     [
      0.020994275,
      -0.028178007,
      0.999382429,
-     0.144576567
+     0.07528724
     ],
     [
      -0.999779596,
      -0.000564578,
      0.0209867,
-     -0.02133015
+     -0.014310531
     ],
     [
      0.0,
@@ -6079,25 +6068,25 @@
    "palm_axis_deg": [],
    "palm_joint_mm": [],
    "q_off": [
-    -0.023600676,
-    0.072393193,
-    -0.113946224,
-    0.152165428,
-    -0.027090521,
-    0.077028416,
-    -0.117549897,
-    0.152196161,
-    -2.589316952,
-    0.08589729,
-    -0.09339189,
-    0.118857826,
-    0.064269229,
-    -0.537326948,
-    -0.121910292,
-    -0.139180202
+    -0.058661721,
+    -0.049171075,
+    0.194369159,
+    -0.054966889,
+    -0.028844374,
+    0.132136561,
+    -0.181224726,
+    0.154898899,
+    0.005316,
+    0.121518176,
+    -0.182725864,
+    0.162507886,
+    -0.110919494,
+    -0.10893948,
+    0.22504183,
+    0.050111406
    ],
-   "root_out_of_plate_mm": -24.36,
-   "scale": 2.3,
+   "root_out_of_plate_mm": -15.89,
+   "scale": 1.5,
    "section": [],
    "source_sha256": "4b71a7c09ec6dffa2d7b8653f78db690192c9d7840bb38f1fd866c54b1a1649f",
    "thumbs": [

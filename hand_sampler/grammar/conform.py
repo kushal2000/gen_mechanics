@@ -153,9 +153,11 @@ def snap_axis(v: np.ndarray, step: int = GRID_DEG) -> Tuple[int, int]:
 
 
 def snap_length(L_mm: float, is_tip: bool, max_mm: int = LINK_MAX_MM) -> int:
-    """The nearest length on the grid the grammar allows (0 or 10 mm up to
-    `max_mm`; a fingertip from 10 mm)."""
-    r = int(round(L_mm / GRID_MM)) * GRID_MM
+    """The nearest whole mm in the grammar's range (0 to `max_mm`; a
+    fingertip from 10 mm); `operators.fit_lengths` then moves it to the
+    nearest length the rules allow: the grid, or a servo floor off it (42 mm;
+    rounding to the grid first took 42 mm to 40, which turned its servo)."""
+    r = int(round(L_mm))
     lo = TIP_MIN_MM if is_tip else 0
     return int(min(max_mm, max(lo, r)))
 
@@ -446,8 +448,10 @@ def snap_continuous(x: np.ndarray, layout: dict, t: FingerTarget, mount_mm: Tupl
 
 
 def _neighbours(f: Finger, mount_fixed: bool = False, rules: Rules = NO_RULES) -> List[Finger]:
-    """Every finger one grid step away within `rules` (a turned axis moves
-    the links next to it to their nearest allowed lengths)."""
+    """Every finger one grid step away within `rules` (a turned axis, or a
+    link's next length, moves the links next to it to their nearest allowed
+    lengths: a link that turns or lays the servo after it, or becomes a
+    side mount, moves its neighbours' floors)."""
     out = []
     if not mount_fixed:
         for c in ("y", "z"):
@@ -471,7 +475,7 @@ def _neighbours(f: Finger, mount_fixed: bool = False, rules: Rules = NO_RULES) -
             k = allowed.index(jt.length)
             for kk in (k - 1, k + 1):
                 if 0 <= kk < len(allowed):
-                    out.append(put(replace(jt, length=allowed[kk])))
+                    out.append(ops.fit_lengths(put(replace(jt, length=allowed[kk])), rules))
     # a bend first has tilt 0 (the zero-pose fit takes the difference)
     out = [replace(g, tilt=0) if g.tilt and bend_first(g) else g for g in out]
     return [g for g in out if g != f]
@@ -895,12 +899,16 @@ def palm_frame_guess(real: RealHand) -> np.ndarray:
     return _frame_from(n, c, real)
 
 
-def _frame_from(n: np.ndarray, plane_point: np.ndarray, real: RealHand) -> np.ndarray:
+def _frame_from(n: np.ndarray, plane_point: np.ndarray, real: RealHand,
+                along: Optional[np.ndarray] = None) -> np.ndarray:
+    """The palm frame on the plane through `plane_point` square to `n`: z
+    toward the non-thumb fingers' bases from the point under the hand's root,
+    or along `along` (seen in the plane)."""
     n = _unit(n)
     origin = np.zeros(3) - n * float(n @ (np.zeros(3) - plane_point))
     nonthumb = [f for f in real.fingers if not f.thumb] or real.fingers
     cb = np.mean([f.joints[0].point for f in nonthumb], axis=0)
-    zdir = cb - origin
+    zdir = (cb - origin) if along is None else np.asarray(along, dtype=float)
     zdir = zdir - n * float(n @ zdir)
     if np.linalg.norm(zdir) < 5e-3:   # bases around the root: point z toward the mean fingertip
         zdir = np.mean([f.tip for f in real.fingers], axis=0) - origin
@@ -915,13 +923,34 @@ def _frame_from(n: np.ndarray, plane_point: np.ndarray, real: RealHand) -> np.nd
     return T
 
 
-def _perturb_frame(T0: np.ndarray, p: np.ndarray, real: RealHand) -> np.ndarray:
+def _perturb_frame(T0: np.ndarray, p: np.ndarray, real: RealHand, keep_z: bool = False) -> np.ndarray:
     """The palm frame with its normal tilted by (p[0], p[1]) radians and its
-    plane moved by p[2] m along the normal."""
+    plane moved by p[2] m along the normal (its z kept in the plane with
+    `keep_z`, else toward the bases again)."""
     R = T0[:3, :3]
     n = R @ _unit(np.array([1.0, p[0], p[1]]))
     plane_point = T0[:3, 3] + R[:, 0] * p[2]
-    return _frame_from(n, plane_point, real)
+    return _frame_from(n, plane_point, real, R[:, 2] if keep_z else None)
+
+
+def _variant_aligned(T0: np.ndarray, real: RealHand) -> np.ndarray:
+    """The palm frame turned in its plane so that z runs along the non-thumb
+    fingers' mean direction (first joint to fingertip): parallel fingers then
+    face 0 on the facing grid, their bases in one row. Pointed at the bases'
+    centroid from under the root, z sat 10-14 degrees off LEAP's fingers,
+    which the 30-degree facings split between 0 and 330 (2026-11-04)."""
+    n = T0[:3, 0]
+    dirs = []
+    for f in real.fingers:
+        if f.thumb:
+            continue
+        d = f.tip - f.joints[0].point
+        d = d - n * float(n @ d)
+        if np.linalg.norm(d) > 1e-6:
+            dirs.append(_unit(d))
+    if not dirs or np.linalg.norm(np.mean(dirs, axis=0)) < 0.5:
+        return T0
+    return _frame_from(n, T0[:3, 3], real, np.mean(dirs, axis=0))
 
 
 def _targets_for(real: RealHand, frame: np.ndarray) -> List[FingerTarget]:
@@ -1197,17 +1226,21 @@ def conform(real: RealHand, palm_frame: Optional[np.ndarray] = None, refine_palm
     (`COMMERCIAL_RULES`: the servo floors). `palm_frame`
     (4x4 in the hand-root frame) skips the palm-frame search; otherwise the
     plane fitted through the bases, its variant with the normal square to
-    the fingers' last axes, and each of them moved to lower the worst error
-    of a cheap unsnapped fit are all tried, and the best full fit is kept."""
+    the fingers' last axes, each of them turned in the plane to run along
+    the fingers (`_variant_aligned`), and each of these moved to lower the
+    worst error of a cheap unsnapped fit are all tried, and the best full
+    fit is kept."""
     if palm_frame is not None:
         return _conform_in(real, palm_frame, rules)
     T0 = palm_frame_guess(real)
     frames = [T0, _variant_b(T0, real)]
+    frames += [_variant_aligned(T, real) for T in frames]
+    keep = [False, False, True, True]
     if refine_palm:
-        for T in list(frames):
-            p = _nelder_mead(lambda x: _quick_cost(real, _perturb_frame(T, x, real)), np.zeros(3),
+        for T, k in list(zip(frames, keep)):
+            p = _nelder_mead(lambda x: _quick_cost(real, _perturb_frame(T, x, real, k)), np.zeros(3),
                              np.array([0.05, 0.05, 0.004]))
-            frames.append(_perturb_frame(T, p, real))
+            frames.append(_perturb_frame(T, p, real, k))
     best = None
     for T in frames:
         fit = _conform_in(real, T, rules)

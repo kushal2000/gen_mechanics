@@ -33,8 +33,13 @@ ROUND_TRIP_KNOWN_LIMITS = {
     ("none", 1): "a finger standing out of the plate (tilt 90) with a spread first: its axis lies in the plate, the "
                  "fit takes it for a bend first (tilt 0, offset 90 degrees) at a bend's base depth, 0.5 mm off",
     ("none", 2): "the same: a standing spread-first finger comes back 0.5 mm off as a bend first",
-    ("none", 9): "the same (2026-10-23 draws): a standing spread-first finger comes back as a bend first",
     # ("feetech", 11) drew such a finger from 2026-10-23 to 11-02; the fingertip floors of 11/02 change its draw
+    # ("feetech", 0) drew such a finger on 11/04 until the fine stage's bases went to every 10 mm
+    ("feetech", 7): "the same (2026-11-04 draws: the fine stage's bases every 10 mm): a standing spread-first finger "
+                    "comes back off as a bend first",
+    ("none", 3): "a palm cut that the fit's recentring (the mount to the palm's centre) puts within 30 mm of the "
+                 "mount: the fit takes the nearest line allowed (2026-11-04 draws)",
+    ("none", 11): "the same (2026-11-04 draws): the cut 40 mm the wrong side of the recentred mount",
 }
 
 
@@ -129,13 +134,13 @@ def test_conformed_file_covers_the_reference_set():
     assert len(doc["hands"]) >= 15
 
 
-NOT_BUILDABLE = {"svh_right", "leap_right"}
+NOT_BUILDABLE = {"arms_skel"}
 """Hands no scale up to 5 x makes buildable with every joint's kind kept and
-every fingertip map within `MAP_RMS_MM` / `MAP_WORST_MM` (the rebuild of
-2026-10-20: a finger's map stays 23-24 mm RMS; GRAMMAR-OVERVIEW step 18;
-LEAP since the fingertip floors of 2026-11-02, buildable at 2 x before).
-They keep their real-size fit under the grammar's own limits
-(`conform.fallback_fit`)."""
+every fingertip map within `MAP_RMS_MM` / `MAP_WORST_MM` (GRAMMAR-OVERVIEW
+step 18). Since 2026-11-04 (floors to the whole mm, side mounts, crossings
+into a twist, flipped spreads) LEAP fits at 1.05 x and SVH at 2.25 x; ARMS,
+3 x on 11/03, fits at none (open). They keep their real-size fit under the
+grammar's own limits (`conform.fallback_fit`)."""
 
 
 def _acceptable(rec) -> bool:

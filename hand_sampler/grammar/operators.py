@@ -32,6 +32,7 @@ import numpy as np
 from . import derive as dv
 from . import viability as gvb
 from .hand import (
+    CENTRE_TOLERANCE_MM,
     GRID_DEG,
     GRID_MM,
     KIND_AXIS,
@@ -62,7 +63,8 @@ from .hand import (
 P_PALM_JOINT = 0.5
 """Share of random hands drawn with a palm cut (when the rules allow one)."""
 MAX_FINGER_ATTEMPTS = 50
-MAX_HAND_ATTEMPTS = 20
+MAX_HAND_ATTEMPTS = 50       # (20 until 11/04: with bases every 10 mm, five- and six-finger hands with a cut
+                             # often moved off their rules when centred; one in 80 fine hands found none in 20)
 
 
 def _pick(rng: np.random.Generator, values: Sequence):
@@ -109,13 +111,24 @@ def _nearest(values: Sequence[int], v: int) -> int:
 
 def fit_lengths(f: Finger, rules: Rules) -> Finger:
     """The finger with every link moved to its nearest allowed length (ties
-    to the longer), from the palm out."""
+    to the longer), from the palm out, and again until none moves: a link's
+    allowed lengths hang on its neighbours' (a side mount after it raises its
+    floor, one before it keeps the next servo from turning), so each pass
+    moves every link from its own length to the nearest one its neighbours
+    now allow."""
+    want = [jt.length for jt in f.joints]
     js = list(f.joints)
-    for j in range(len(js)):
-        allowed = allowed_lengths(replace(f, joints=tuple(js)), j, rules.buildable_links, rules.max_link_mm,
-                                  rules.link_step_mm)
-        if js[j].length not in allowed:
-            js[j] = replace(js[j], length=_nearest(allowed, js[j].length))
+    for _ in range(2 * len(js) + 2):
+        moved = False
+        for j in range(len(js)):
+            allowed = allowed_lengths(replace(f, joints=tuple(js)), j, rules.buildable_links, rules.max_link_mm,
+                                      rules.link_step_mm)
+            L = want[j] if want[j] in allowed else _nearest(allowed, want[j])
+            if L != js[j].length:
+                js[j] = replace(js[j], length=L)
+                moved = True
+        if not moved:
+            break
     return replace(f, joints=tuple(js))
 
 
@@ -441,15 +454,25 @@ INVERSES: Dict[str, str] = {
 
 
 def recentre(hand: Hand, rules: Rules) -> Hand:
-    """The hand moved on the base grid so that its palm's centre lies within
-    half a base step of the mount (`Rules.mount_at_centre`): the same
-    fingers, the mount at their centre. Unchanged under rules that leave the
-    mount free."""
+    """The hand moved on its base grid by the fewest steps that bring its
+    palm's centre within `CENTRE_TOLERANCE_MM` of the mount
+    (`Rules.mount_at_centre`): the same fingers, the mount at their centre.
+    Unchanged under rules that leave the mount free, or where it is within
+    that already (on the coarse stage's 40 mm grid, within half a step: the
+    one placement that passes; on the fine stage's 10 mm grid a small change
+    no longer moves the whole hand, 2026-11-04)."""
     if not hand.fingers or not rules.mount_at_centre:
         return hand
-    p = rules.base_pitch_mm
-    k = np.floor((dv.palm_centre_mm(hand) + p / 2.0) / p).astype(int)    # 0 when within half a step
-    return shifted(hand, int(-k[0] * p), int(-k[1] * p)) if k.any() else hand
+    p, t = rules.base_pitch_mm, CENTRE_TOLERANCE_MM
+    move = []
+    for c in dv.palm_centre_mm(hand):
+        if c >= t:
+            move.append(-p * (math.floor((c - t) / p) + 1))
+        elif c < -t:
+            move.append(p * math.ceil((-t - c) / p))
+        else:
+            move.append(0)
+    return shifted(hand, int(move[0]), int(move[1])) if any(move) else hand
 
 
 def _turned(hand: Hand, k: int, mirror: bool) -> Hand:
@@ -493,7 +516,7 @@ def canonical(hand: Hand, rules: Rules) -> Hand:
     unchanged."""
     if check(hand, rules):
         return hand
-    h = rules.base_pitch_mm / 2.0
+    h = CENTRE_TOLERANCE_MM
     c = dv.palm_centre_mm(hand) if rules.mount_at_centre else None
     cands = []
     for mirror in (False, True):
@@ -635,15 +658,7 @@ def _base_box_corners(y: int, z: int, facing: int, tilt: int, kind: str) -> np.n
     return dv.base_motor_boxes_mm(f)[0].corners() * dv.MM
 
 
-@lru_cache(maxsize=200000)
-def _clears_mount(y: int, z: int, facing: int, tilt: int, kind: str) -> bool:
-    C = _base_box_corners(y, z, facing, tilt, kind)
-    return dv.gjk_distance(C, dv.mount_points_m()) / dv.MM >= gvb.CLEARANCE_MM - gvb.C1_TOLERANCE_MM
-
-
 def _base_clear(cand: Tuple[int, int, int, int, str], placed: List[np.ndarray]) -> bool:
-    if not _clears_mount(*cand):
-        return False
     C = _base_box_corners(*cand)
     c = C.mean(axis=0)
     r = float(np.max(np.linalg.norm(C - c, axis=1)))
@@ -699,12 +714,25 @@ def _shortest_rest_mm(base: Finger, js: List[Joint], j: int, v: int, rules: Rule
     return total
 
 
+def _keeps_last(base: Finger, js: List[Joint], j: int, v: int, rules: Rules) -> bool:
+    """Whether link j at `v` mm leaves the links before it their drawn
+    lengths (a side mount after a link keeps the servo between them from
+    turning, and raises the link's floor to the crossing's; one two links on
+    keeps a spread from flipping)."""
+    if j == 0:
+        return True
+    g = replace(base, joints=tuple(js[:j]) + (replace(js[j], length=v),) + tuple(js[j + 1:]))
+    return all(js[k].length in allowed_lengths(g, k, rules.buildable_links, rules.max_link_mm, rules.link_step_mm)
+               for k in range(j))
+
+
 def _draw_joints(rng: np.random.Generator, rules: Rules, first: str, base: Finger,
                  n: Optional[int] = None) -> Optional[Tuple[Joint, ...]]:
     """`n` joints (default 1 to the rules' maximum, uniformly); the first of
     the base's kind, the others drawn with the commercial mix, every axis
     exactly on its kind; each link uniform over its allowed lengths, among
-    those that leave the rest of the finger room under the length cap."""
+    those that leave the rest of the finger room under the length cap and
+    the link before it its length (`_keeps_last`)."""
     fixed = n
     for _ in range(20):
         n = fixed if fixed is not None else int(rng.integers(1, rules.max_joints + 1))
@@ -717,7 +745,7 @@ def _draw_joints(rng: np.random.Generator, rules: Rules, first: str, base: Finge
         for j in range(n):
             f = replace(base, joints=tuple(js))
             values = [v for v in allowed_lengths(f, j, rules.buildable_links, rules.max_link_mm, rules.link_step_mm)
-                      if v + _shortest_rest_mm(base, js, j, v, rules) <= budget]
+                      if v + _shortest_rest_mm(base, js, j, v, rules) <= budget and _keeps_last(base, js, j, v, rules)]
             if not values:
                 ok = False
                 break
@@ -740,7 +768,7 @@ def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES) -> Han
       other joints and links as `_draw_joints`;
     - a finger is kept if the hand stays clear (C1); otherwise its base and
       joints are drawn again, up to 50 times, then the whole hand again with
-      the same finger count (up to 20 times; `NoHand` after that);
+      the same finger count (up to 50 times; `NoHand` after that);
     - the hand is moved on the base grid so the mount sits at the palm's
       centre (`recentre`); if it then breaks a rule or C1, it is drawn again;
     - with probability `P_PALM_JOINT` (when the rules allow a palm joint) a

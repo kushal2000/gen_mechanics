@@ -625,8 +625,9 @@ class GrammarViewer:
                                            hint="The three kinds (bend, spread, twist; coarse) or all 31 directions "
                                                 "on the 30 degree grid (fine).")
             self.gui_pitch = g.add_number("base grid (mm)", r.base_pitch_mm, min=10, max=80, step=10,
-                                          hint="Finger bases sit on a square grid of this pitch (Feetech: 40 mm, a "
-                                               "servo housing plus room).")
+                                          hint="Finger bases sit on a square grid of this pitch (the coarse stage: "
+                                               "40 mm, a servo housing plus room; the fine stage: 10, as the "
+                                               "commercial fits).")
             self.gui_base_min = g.add_number("min base distance (mm)", r.base_distance_mm[0], min=10,
                                              max=NO_RULES.base_distance_mm[1], step=10,
                                              hint="Finger bases at least this far from the palm centre.")
@@ -636,15 +637,18 @@ class GrammarViewer:
             self.gui_outward = g.add_checkbox("fingers face outward", r.outward_facing,
                                               hint="No finger points back across the palm (tangential is fine).")
             self.gui_buildable = g.add_checkbox("servo link lengths", r.buildable_links,
-                                                hint="Links at least as long as two servos need (30-50 mm by their "
-                                                     "axes; a shorter link turns the bend servo after it, body on "
-                                                     "the back of the finger), fingertips at least 30 mm, two joints at one point only "
-                                                     "between different axes square to the finger. Off: 0 or 10-90 "
+                                                hint="Links at least as long as two servos need (27-61 mm by their "
+                                                     "axes; a shorter link turns a bend servo after it, body on the "
+                                                     "back of the finger, or flips a spread servo onto the link after "
+                                                     "its joint), fingertips at least 38 mm. Two hinges square to the "
+                                                     "finger and to each other, or the second a twist, may share a "
+                                                     "point or sit closer than that (side-mounted). Off: 0 or 10-90 "
                                                      "mm, fingertips 10-90 mm.")
             self.gui_centre = g.add_checkbox("mount at the palm's centre", r.mount_at_centre,
-                                             hint="The base servos' centre lies within half a base step of the "
-                                                  "mount, so no two hands differ only in where the mount sits. "
-                                                  "Random hands and mutations move the hand to centre it.")
+                                             hint="The base servos' centre lies within 20 mm of the mount (half "
+                                                  "the coarse base step), so no two hands differ only in where the "
+                                                  "mount sits. Random hands and mutations move the hand on its "
+                                                  "grid to centre it.")
             self.md_rules = g.add_markdown("")
             self.md_space = g.add_markdown(gspace.summary(FEETECH_COARSE_RULES))
 

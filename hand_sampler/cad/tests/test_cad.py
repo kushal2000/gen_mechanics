@@ -59,10 +59,12 @@ def oblique_hand() -> Hand:
 
 
 def kinds_hand() -> Hand:
-    """Every yoke: a U on bends and spreads, a turned bend after a spread's
-    40 mm link, a one-arm yoke on a twist, a bend fingertip."""
+    """Every yoke: a U on bends and spreads, a side mount after a spread's
+    40 mm link (a crossing's plate on the bend servo's side, 2026-11-04), a
+    one-arm yoke on a twist, a bend fingertip; a turned bend after a 30 mm
+    link."""
     f = _finger(0, 40, (("hinge", FLEX, 50), ("hinge", ABD, 40), ("hinge", FLEX, 40), ("hinge", ROLL, 40)))
-    g = _finger(0, -40, (("hinge", FLEX, 50), ("hinge", FLEX, 40)), facing=180)
+    g = _finger(0, -40, (("hinge", FLEX, 30), ("hinge", FLEX, 45)), facing=180)
     return Hand(fingers=(f, g))
 
 
@@ -74,6 +76,18 @@ def flipped_hand() -> Hand:
     g = _finger(0, -40, (("hinge", FLEX, 50), ("hinge", FLEX, 40), ("hinge", FLEX, 60), ("hinge", FLEX, 40)),
                 facing=180)
     return Hand(fingers=(f, g))
+
+
+def startup_hand() -> Hand:
+    """The viewer's first hand (its kit: `outputs/designs/d16535003d`)."""
+    return Hand(fingers=(
+        _finger(-80, -40, (("hinge", FLEX, 50),), facing=180),
+        _finger(-40, 80, (("hinge", FLEX, 70), ("hinge", FLEX, 70)), facing=60),
+        _finger(0, -40, (("hinge", FLEX, 60), ("hinge", FLEX, 40), ("hinge", ROLL, 30), ("hinge", FLEX, 40),
+                         ("hinge", FLEX, 50)), facing=180),
+        _finger(40, 0, (("hinge", ABD, 60), ("hinge", ABD, 50)), facing=90, tilt=90),
+        _finger(80, 40, (("hinge", ABD, 0), ("hinge", FLEX, 70), ("hinge", FLEX, 90), ("hinge", ABD, 50)),
+                facing=150, tilt=90)))
 
 
 HANDS = {"kinds": kinds_hand, "cut": cut_hand, "zero_links": zero_link_hand, "oblique": oblique_hand,
@@ -120,8 +134,8 @@ def test_each_servo_has_one_yoke_and_one_holder():
     for sp in d.servos.values():
         assert sp.parent in d.parts and sp.child in d.parts and sp.parent != sp.child
     d = Design(kinds_hand())
-    assert [d.servos[("f", 0, j)].yoke for j in range(4)] == ["u", "u", "u", "single"]
-    assert d.servos[("f", 0, 2)].turned
+    assert [d.servos[("f", 0, j)].yoke for j in range(4)] == ["u", "crossing", "u", "single"]
+    assert d.servos[("f", 1, 1)].turned
 
 
 def test_a_flipped_servo_is_held_by_the_link_after_it():
@@ -202,6 +216,7 @@ def test_the_parts_list_adds_up(tmp_path):
     assert package._count_screws(d)["M2x5"] == 4 * arms                 # four on every arm (and crossing plate)
     steps = (kit.folder / "ASSEMBLY.md").read_text()
     assert "| 11 |" in steps and "CH1" in steps and "CH2" in steps
+    assert "M5 heat-set insert" in bom and "floats on its cables" in bom and "column" in steps
 
 
 def test_the_ribs_are_one_grid(monkeypatch):
@@ -274,6 +289,36 @@ def test_the_fills_under_the_face_leave_no_slit_and_no_sharp_inside_corner():
     assert max([g.area() for g in gaps.decompose()] + [0.0]) < 0.05
     assert (cs(box(70.0, 2.5, 80.0, 2.9)) - U).area() < 0.01             # the slit, solid in the lane too
     assert (cs(box(70.0, 5.4 + D.REACH_MM + 0.1, 80.0, 20.0)) ^ U).area() < 0.01   # the lane past it, clear
+
+
+def test_the_back_mount_and_the_board():
+    """The back mount (Martin, 11/04): the grammar's mount column, 44 mm
+    across and 40 mm long, behind the main palm, its four M5 inserts in its
+    end 3 mm inside it. On the startup hand two case screws of finger 4's
+    base servo are driven through it (it leaves their ways clear), and the
+    board lies on the palm's back, its standoffs inside the outline and
+    clear of the column. A knuckle crossing at its base goes in from behind
+    with its finger on (its spread servo slid out behind the palm), so the
+    column keeps off its way in: it moves aside, wholly on the palm, where
+    there is room (a note); with none its inserts go into the back face (a
+    note). The board floats where its standoffs find no room (a note)."""
+    from hand_sampler.cad.design import MOUNT_INSERT_MM, MOUNT_R_MM, STANDOFF_MM, _ccw
+
+    d = Design(startup_hand())
+    assert d.mount == {"column": True, "at": [0.0, 0.0], "turn_deg": 0, "wall_mm": 3.0, "ways": 2} and not d.notes
+    palm = d.parts[("palm", -1)]
+    for p in d.board["holes"]:
+        assert Design._dist_out(np.array(p), _ccw(palm.face)) <= -STANDOFF_MM[0] / 2.0
+        assert np.hypot(*p) > MOUNT_R_MM + 2.0
+    assert sum(f", {MOUNT_INSERT_MM[0] / 2.0}, " in n for n in palm.negative) == 4
+    knuckle = (("hinge", ABD, 0), ("hinge", FLEX, 50), ("hinge", FLEX, 40))
+    d = Design(Hand(fingers=(_finger(0, 40, knuckle), _finger(-80, -40, BENDS, facing=180),
+                             _finger(80, -40, BENDS, facing=180))))
+    assert d.mount["column"] and np.hypot(*d.mount["at"]) > MOUNT_R_MM and d.mount["wall_mm"] == 3.0
+    assert any("off the palm's centre" in n for n in d.notes)
+    d = Design(Hand(fingers=(_finger(0, 40, knuckle), _finger(0, -40, BENDS, facing=180))))
+    assert not d.mount["column"] and any("back face" in n for n in d.notes)
+    assert d.board is None and any("floats" in n for n in d.notes)
 
 
 def test_every_placement_is_a_proper_rotation():
