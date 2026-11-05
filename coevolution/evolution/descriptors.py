@@ -29,6 +29,22 @@ def niche(design: dict) -> str:
     return f"f{s['fingers']}_{'cut' if s['palm_cut'] else 'nocut'}_j{b}"
 
 
+# The 32 niches of the no-cut grammar (FEETECH_COARSE_NOCUT_RULES; the user's call, 4-5 Nov): finger count x total
+# motors (hand joints) in pairs, every cell at least 1% of its finger count's random hands reach, the smallest 4-5
+# motors. A hand outside them (2-3 motors, or a rare edge) has no niche (None).
+MOTOR_BINS = {2: (4, 6, 8, 10), 3: (4, 6, 8, 10, 12, 14), 4: (6, 8, 10, 12, 14, 16, 18),
+              5: (8, 10, 12, 14, 16, 18, 20, 22), 6: (12, 14, 16, 18, 20, 22, 24)}
+NICHES32 = tuple(f"f{n}_m{lo}-{lo + 1}" for n, los in MOTOR_BINS.items() for lo in los)
+
+
+def niche32(design: dict):
+    """The hand's cell in NICHES32 ("f<fingers>_m<lo>-<hi>", total hand motors lo..hi), or None outside the map."""
+    n = len(design["fingers"])
+    m = sum(len(f["joints"]) for f in design["fingers"])
+    lo = m - m % 2
+    return f"f{n}_m{lo}-{lo + 1}" if lo in MOTOR_BINS.get(n, ()) else None
+
+
 def genetic_vector(design: dict) -> np.ndarray:
     s = summary(design)
     per = (s["joints_per_finger"] + [0] * MAX_FINGERS)[:MAX_FINGERS]
@@ -44,4 +60,4 @@ def novelty(vec: np.ndarray, others: list[np.ndarray], k: int = 5) -> float:
     return float(d[:k].mean())
 
 
-__all__ = ["JOINT_BINS", "genetic_vector", "niche", "novelty", "summary"]
+__all__ = ["JOINT_BINS", "MOTOR_BINS", "NICHES32", "genetic_vector", "niche", "niche32", "novelty", "summary"]

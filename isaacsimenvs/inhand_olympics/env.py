@@ -46,7 +46,7 @@ from .goals import keypoints, pen_keypoint_offsets
 from .observations import build_observations, field_sizes, width
 from .scene import setup_scene
 from .tasks import NUM_TASK_SLOTS, TASK_NAMES, make_tasks
-from .wrist import WRIST_JOINTS
+from .wrist import BASE_LINK, WRIST_JOINTS
 
 
 def _link_boxes(spec, mode: str) -> np.ndarray:
@@ -131,6 +131,20 @@ class InHandOlympicsEnv(DirectRLEnv):
             self.tip_offsets = torch.tensor(spec.fingertip_offsets, device=dev).expand(n, -1, -1)
             self.tip_valid = torch.ones(n, n_tips, device=dev)
             self.joint_moving = torch.tensor(joint_moving_of(spec), device=dev).float().expand(n, -1)
+        # (B,) the finger link bodies the table-safe reset checks, (N, B) which are real in each env: a template scene's
+        # slot links (link_s<k>, a ghost slot masked), else every body that is neither the palm nor the wrist chain.
+        names = list(self.robot.body_names)
+        if self.hand_set is not None and self.hand_set.layout == "template":
+            from isaacsimenvs.common.robots.multi_hand import slot_link
+            self.reset_link_idx = torch.tensor([names.index(slot_link(k)) for k in range(self.hand_set.n_joints)],
+                                               device=dev)
+            self.reset_link_valid = torch.as_tensor(tables["joint_valid"], device=dev).bool()
+        else:
+            wrist_links = {BASE_LINK} | {f"{j}_link" for j in WRIST_JOINTS[:-1]}
+            self.reset_link_idx = torch.tensor([i for i, b in enumerate(names) if b not in wrist_links
+                                                and i != self.palm_body], device=dev, dtype=torch.long)
+            self.reset_link_valid = torch.ones(n, len(self.reset_link_idx), dtype=torch.bool, device=dev)
+        self.reset_lifts, self.reset_lift_sum = 0, 0.0
         self.pen_offsets = pen_keypoint_offsets(self.cfg.pen.length, dev)
         # The twist pen: two objects, each with a 6D goal -- the pen (its barrel's frame: goal_pos / goal_quat) and
         # the cap (cap_goal_pos / cap_goal_quat). Keypoints, for the reward and success only: the pen's and the cap's
@@ -508,6 +522,8 @@ class InHandOlympicsEnv(DirectRLEnv):
             "hand_penalty": -r.hand_action_penalty * vel[:, self.hand_ids].abs().sum(-1),
         }
         reward = sum(self.reward_terms.values())
+        self._group_log_step(reward)
+        self._design_log_step(reward)
 
         hit = self.is_success.nonzero(as_tuple=False).squeeze(-1)
         if len(hit):
@@ -534,13 +550,175 @@ class InHandOlympicsEnv(DirectRLEnv):
             for name, value in overall:
                 final[f"task_{task.name}/{name}"] = torch.where(mine, value, nan)
         # And per hand in a multi-hand scene, as "per_hand_<metric>/<hand>" (rlgames_utils PER_HAND_PREFIX).
-        if self.hand_set is not None:
+        if self.hand_set is not None and self.hand_set.n_hands <= self.cfg.log.max_per_hand:
             for h, label in enumerate(self.hand_set.labels):
                 mine = self.hand_of_env == h
                 for name, value in overall:
                     final[f"per_hand_{name}/{label}"] = torch.where(mine, value, nan)
         self.extras["episode_final"] = final
         return reward
+
+    # --- grouped episode logging (cfg.log; the no-evolution population's per-niche metrics) --------------------
+    def _group_log_init(self) -> None:
+        hs = self.hand_set
+        self._grp = None
+        if not (self.cfg.log.group_stats and hs is not None and hs.groups):
+            return
+        dev, n = self.device, self.num_envs
+        names = list(dict.fromkeys(hs.groups))                    # manifest order
+        self._grp = {"names": names, "of_hand": torch.tensor([names.index(g) for g in hs.groups], device=dev),
+                     "acc": {}, "count": torch.zeros(hs.n_hands, device=dev), "steps": 0}
+        self._ep_return = torch.zeros(n, device=dev)
+        self._ep_len = torch.zeros(n, device=dev)
+        self._ep_terms: dict[str, torch.Tensor] = {}
+        print(f"[olympics] grouped logging: {len(names)} groups over {hs.n_hands} hands, every "
+              f"{self.cfg.log.group_interval_steps} steps", flush=True)
+
+    def _group_log_step(self, reward: torch.Tensor) -> None:
+        if not hasattr(self, "_grp"):
+            self._group_log_init()
+        self.extras.pop("group_stats", None)
+        if self._grp is None:
+            return
+        for k, v in self.reward_terms.items():
+            if k not in self._ep_terms:
+                self._ep_terms[k] = torch.zeros(self.num_envs, device=self.device)
+            self._ep_terms[k] += v
+        self._ep_return += reward
+        self._ep_len += 1
+        self._grp["steps"] += 1
+        if self._grp["steps"] % self.cfg.log.group_interval_steps == 0:
+            self.extras["group_stats"] = self._group_stats()
+
+    def _group_log_episodes(self, ids: torch.Tensor) -> None:
+        """Add the episodes ending in envs ``ids`` (those that ran at least a step) to their hands' sums."""
+        if getattr(self, "_grp", None) is None:
+            return
+        done = ids[self._ep_len[ids] > 0]
+        if len(done):
+            g, H = self._grp, self.hand_set.n_hands
+            h = self.hand_of_env[done].long()
+
+            def add(name, value):
+                if name not in g["acc"]:
+                    g["acc"][name] = torch.zeros(H, device=self.device)
+                g["acc"][name].index_add_(0, h, value[done].float())
+
+            add("successes", self.successes)
+            add("return", self._ep_return)
+            add("length_s", self._ep_len * float(self.step_dt))
+            for k, v in self._ep_terms.items():
+                add(f"reward_{k}", v)
+            reasons = self.termination_reasons
+            for k, v in reasons.items():
+                add(f"done_{k}", v)
+            if reasons:
+                add("done_timeout", ~torch.stack(list(reasons.values())).any(0))
+            g["count"].index_add_(0, h, torch.ones(len(done), device=self.device))
+        self._ep_return[ids] = 0.0
+        self._ep_len[ids] = 0.0
+        for v in self._ep_terms.values():
+            v[ids] = 0.0
+
+    def _group_stats(self) -> dict:
+        """Per group: min / avg / max over its hands (those with a finished episode) of each hand's mean episode
+        stats, the avg of each termination reason, and how many hands reported; then the sums restart."""
+        g = self._grp
+        cnt, of_hand = g["count"], g["of_hand"]
+        means = {k: v / cnt.clamp(min=1.0) for k, v in g["acc"].items()}
+        keys, vals = [], []
+        for gi, name in enumerate(g["names"]):
+            m = (of_hand == gi) & (cnt > 0)
+            keys.append(f"niche_{name}/designs_reporting")
+            vals.append(m.sum().float())
+            if not bool(m.any()):
+                continue
+            for k, v in means.items():
+                x = v[m]
+                if k.startswith("done_"):
+                    keys.append(f"niche_{name}/{k}")
+                    vals.append(x.mean())
+                    continue
+                keys += [f"niche_{name}/{k}_min", f"niche_{name}/{k}_avg", f"niche_{name}/{k}_max"]
+                vals += [x.min(), x.mean(), x.max()]
+                if k in ("successes", "return"):
+                    keys.append(f"niches_{k}/{name}")
+                    vals.append(x.mean())
+        for v in g["acc"].values():
+            v.zero_()
+        cnt.zero_()
+        return dict(zip(keys, torch.stack(vals).tolist())) if vals else {}
+
+    # --- per-episode training records (cfg.log.design_stats), dumped every design_interval_steps --------------
+    def _design_log_init(self) -> None:
+        lc = self.cfg.log
+        self._dl = None
+        if not (lc.design_stats and lc.design_dir):
+            return
+        import json
+        from pathlib import Path
+        out = Path(lc.design_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        n, dev = self.num_envs, self.device
+        hoe = getattr(self, "hand_of_env", None)
+        hoe = (hoe if hoe is not None else torch.zeros(n, device=dev)).long()
+        self._dl = {"dir": out, "steps": 0, "len": torch.zeros(n, device=dev), "ret": torch.zeros(n, device=dev),
+                    "terms": {}, "rows": [], "hand": hoe}
+        np.savez(out / "meta.npz", hand_of_env=hoe.cpu().numpy(), task_id=self.task_id.cpu().numpy(),
+                 step_dt=float(self.step_dt))
+        hs = self.hand_set
+        (out / "hands.json").write_text(json.dumps([s.name for s in hs.specs] if hs is not None else []))
+        print(f"[olympics] per-episode records every {lc.design_interval_steps} steps -> {out}", flush=True)
+
+    def _design_log_step(self, reward: torch.Tensor) -> None:
+        if not hasattr(self, "_dl"):
+            self._design_log_init()
+        d = self._dl
+        if d is None:
+            return
+        for k, v in self.reward_terms.items():
+            if k not in d["terms"]:
+                d["terms"][k] = torch.zeros(self.num_envs, device=self.device)
+            d["terms"][k] += v
+        d["len"] += 1
+        d["ret"] += reward
+        d["steps"] += 1
+        if d["steps"] % self.cfg.log.design_interval_steps == 0:
+            self._design_dump()
+
+    def _design_dump(self) -> None:
+        """One file per interval: a row per episode that ended in it (columns named in the file)."""
+        d = self._dl
+        rows = d["rows"]
+        cols = {}
+        if rows:
+            for k in rows[0]:
+                cols[k] = torch.cat([r[k] for r in rows]).cpu().numpy()
+        np.savez(d["dir"] / f"step_{d['steps']:08d}.npz", **cols)
+        d["rows"] = []
+
+    def _design_log_episodes(self, ids: torch.Tensor) -> None:
+        """Record each episode ending in envs ``ids`` (those that ran a step): its end step, env, hand, goals,
+        length, return, every reward term's episode sum, and how it ended (one flag per termination reason;
+        none set = timeout or the end of the run)."""
+        d = getattr(self, "_dl", None)
+        if d is None:
+            return
+        done = ids[d["len"][ids] > 0]
+        if len(done):
+            row = {"end_step": torch.full((len(done),), d["steps"], dtype=torch.int32, device=self.device),
+                   "env": done.int(), "hand": d["hand"][done].int(),
+                   "goals": self.successes[done].float(), "length": d["len"][done].clone(),
+                   "return": d["ret"][done].clone()}
+            for k, v in d["terms"].items():
+                row[f"reward_{k}"] = v[done].clone()
+            for k, v in getattr(self, "termination_reasons", {}).items():
+                row[f"done_{k}"] = v[done].bool()
+            d["rows"].append(row)
+        d["len"][ids] = 0.0
+        d["ret"][ids] = 0.0
+        for v in d["terms"].values():
+            v[ids] = 0.0
 
     def _next_goal(self, ids: torch.Tensor) -> None:
         for k, task in enumerate(self.tasks):
@@ -551,41 +729,78 @@ class InHandOlympicsEnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         return build_observations(self)
 
+    def _table_margin(self, env: torch.Tensor) -> torch.Tensor:
+        """(len(env),) the worst clearance excess over env's real finger points, from the current kinematics: every
+        finger link's frame (its joint) above the table top + reset.link_clearance and every fingertip pad above the top
+        + reset.table_clearance; negative = that far inside the margin."""
+        r = self.cfg.reset
+        top = self.cfg.table.top_height
+        T = self.robot.root_physx_view.get_link_transforms()                      # (N, B, 7) world
+        oz = self.scene.env_origins[env, 2:3]
+        lz = T[env.unsqueeze(1), self.reset_link_idx.unsqueeze(0), 2] - oz - top - r.link_clearance
+        lz = torch.where(self.reset_link_valid[env], lz, torch.full_like(lz, 9.0))
+        tips = self.tip_body_idx[env]
+        tp, tq = T[env.unsqueeze(1), tips, :3], T[env.unsqueeze(1), tips, 3:7]     # PhysX quats are xyzw
+        tq = torch.cat([tq[..., 3:4], tq[..., :3]], -1)
+        pad = tp + quat_apply(tq.reshape(-1, 4), self.tip_offsets[env].reshape(-1, 3)).view(tp.shape)
+        pz = pad[..., 2] - oz - top - r.table_clearance
+        pz = torch.where((self.tip_valid[env] > 0) & (tips != self.palm_body), pz, torch.full_like(pz, 9.0))
+        return torch.minimum(lz.amin(1), pz.amin(1))
+
     def _table_safe_fingers(self, ids: torch.Tensor, q: torch.Tensor, qd: torch.Tensor):
-        """Redraw the fingers of the reset envs whose drawn pose puts a real fingertip's centre below the table top +
-        reset.table_clearance, up to reset.max_redraws times; an env still below then starts at the home pose, at rest.
-        The check reads forward kinematics (the articulations' link poses updated from the written joint positions, no
-        physics step). Counts every redraw in self.reset_redraws and every home-pose fallback in self.reset_fallbacks."""
+        """Keep every reset clear of the table (6 Nov fix of the 1 Nov check, which read only each finger's LAST JOINT:
+        a long distal link pointing down passed with its tip several cm inside the table, and the home-pose fallback
+        was itself inside for some designs). An env whose drawn finger pose fails _table_margin is redrawn, up to
+        reset.max_redraws times (forward kinematics only, no physics step); one still failing keeps the best of its
+        draws and its wrist starts that much higher (wrist_z, within its limit), at rest. Counts redraws in
+        self.reset_redraws, lifted envs in self.reset_lifts (self.reset_lift_sum: metres) and envs that even the lift
+        could not clear in self.reset_fallbacks."""
         r, h = self.cfg.reset, self.hand_ids
-        floor = self.cfg.table.top_height + r.table_clearance
+        self.sim.physics_sim_view.update_articulations_kinematic()
         rows = torch.arange(len(ids), device=self.device)           # positions in ids still to check
-        for attempt in range(r.max_redraws + 1):
-            self.sim.physics_sim_view.update_articulations_kinematic()
-            env = ids[rows]
-            tips = self.tip_body_idx[env]
-            z = self.robot.root_physx_view.get_link_transforms()[env.unsqueeze(1), tips, 2] - self.scene.env_origins[env, 2:3]
-            below = ((z < floor) & (tips != self.palm_body)).any(1)
-            if not bool(below.any()):
+        margin = self._table_margin(ids)
+        best_q, best_qd, best_m = q.clone(), qd.clone(), margin.clone()
+        bad = margin < 0
+        for _ in range(r.max_redraws):
+            if not bool(bad.any()):
                 break
-            rows, env = rows[below], env[below]
+            rows = rows[bad]
+            env = ids[rows]
             qb = self.robot.data.default_joint_pos[env].clone()
+            lo, hi = self.joint_lower[env][:, h], self.joint_upper[env][:, h]
+            draw = lo + (hi - lo) * torch.rand(len(env), len(h), device=self.device)
+            qb[:, h] = torch.lerp(qb[:, h], draw, r.finger_pos_fraction).clamp(lo, hi)
             qdb = torch.zeros_like(qb)
-            if attempt < r.max_redraws:
-                lo, hi = self.joint_lower[env][:, h], self.joint_upper[env][:, h]
-                draw = lo + (hi - lo) * torch.rand(len(env), len(h), device=self.device)
-                qb[:, h] = torch.lerp(qb[:, h], draw, r.finger_pos_fraction).clamp(lo, hi)
-                qdb[:, h] = torch.empty(len(env), len(h), device=self.device).uniform_(-r.finger_vel, r.finger_vel)
-                self.reset_redraws += len(env)
-            else:                                                   # give up: the home pose
-                self.reset_fallbacks += len(env)
+            qdb[:, h] = torch.empty(len(env), len(h), device=self.device).uniform_(-r.finger_vel, r.finger_vel)
             self.robot.write_joint_state_to_sim(qb, qdb, env_ids=env)
+            self.sim.physics_sim_view.update_articulations_kinematic()
+            m = self._table_margin(env)
+            self.reset_redraws += len(env)
+            better = m > best_m[rows]
+            best_q[rows[better]], best_qd[rows[better]], best_m[rows[better]] = qb[better], qdb[better], m[better]
             q[rows], qd[rows] = qb, qdb
+            bad = m < 0
+        fail = (best_m < 0).nonzero().flatten()
+        if len(fail):                                                # the best draw, the wrist raised to clear it
+            env = ids[fail]
+            qb, qdb = best_q[fail].clone(), torch.zeros_like(best_qd[fail])
+            wz = self.wrist_ids[2]
+            lift = -best_m[fail]
+            room = self.robot.data.soft_joint_pos_limits[env, wz, 1] - qb[:, wz]
+            qb[:, wz] += torch.minimum(lift, room.clamp(min=0.0))
+            self.reset_lifts += len(env)
+            self.reset_lift_sum += float(lift.sum())
+            self.reset_fallbacks += int((lift > room).sum())
+            self.robot.write_joint_state_to_sim(qb, qdb, env_ids=env)
+            q[fail], qd[fail] = qb, qdb
         return q, qd
 
     def _reset_idx(self, env_ids: Sequence[int] | None) -> None:
         if env_ids is None:
             env_ids = self.robot._ALL_INDICES
         ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+        self._group_log_episodes(ids)
+        self._design_log_episodes(ids)
         super()._reset_idx(ids)
         root = self.robot.data.default_root_state[ids].clone()
         root[:, :3] += self.scene.env_origins[ids]

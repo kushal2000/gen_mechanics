@@ -5,7 +5,7 @@
 
 Each finger link f<i>_link<j> -- the body joint j moves -- takes its joint's kind colour (flexion blue, abduction red,
 roll green, as in the audit figures); the palm body (plate, mount, base servos) is grey; every roll tip's capsule
-gets light-to-dark green strips round it so its spin shows (`_roll_tip_stripes`). Only <material><color> of the
+gets light-to-dark green strips round it so its spin shows (hand_sampler/grammar/visual_colours.py). Only <material><color> of the
 visuals change; collisions, inertials, joints and the spec are copied as they are, except the spec's "urdf" path.
 Writes debug_outputs/grammar_audit/recoloured/<run>_<tag>/<id>/ (urdf, spec, meshes) and manifest.json there (the
 run's final-archive grid), the template manifest render_archive_videos.py takes with --manifest.
@@ -20,45 +20,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-KIND_RGBA = {(0, 0): "0.16 0.42 0.85 1", (90, 0): "0.86 0.20 0.18 1", (0, 90): "0.15 0.65 0.30 1"}
-PALM_RGBA = "0.62 0.62 0.64 1"
-
-
-STRIPES = 8
-
-
-def _roll_tip_stripes(tree, design) -> None:
-    """Visual-only strips around every roll tip's capsule, light to dark green round its circumference, so its spin
-    shows in a render (a capsule is the same shape at every roll angle). Each strip is a thin box on the cylinder's
-    surface along its length, in the tip link's frame; no collision, no inertia."""
-    import numpy as np
-    from scipy.spatial.transform import Rotation
-    root = tree.getroot()
-    for i, f in enumerate(design["fingers"]):
-        if tuple(f["joints"][-1]["axis"]) != (0, 90):
-            continue
-        link = root.find(f"link[@name='f{i}_link{len(f['joints']) - 1}']")
-        for vis in list(link.findall("visual")):
-            cyl = vis.find("geometry/cylinder")
-            if cyl is None:
-                continue
-            o = vis.find("origin")
-            c = np.array([float(v) for v in o.get("xyz").split()])
-            Rm = Rotation.from_euler("xyz", [float(v) for v in o.get("rpy").split()]).as_matrix()
-            r, L = float(cyl.get("radius")), float(cyl.get("length"))
-            for k in range(STRIPES):
-                th = 2 * np.pi * k / STRIPES
-                shade = k / (STRIPES - 1)
-                rgb = (0.62 - 0.57 * shade, 0.95 - 0.60 * shade, 0.62 - 0.52 * shade)
-                Rk = Rm @ Rotation.from_euler("z", th).as_matrix()
-                pos = c + Rm @ np.array([(r + 0.0006) * np.cos(th), (r + 0.0006) * np.sin(th), 0.0])
-                v = ET.SubElement(link, "visual", name=f"f{i}_rolltip_stripe{k}")
-                ET.SubElement(v, "origin", xyz=" ".join(f"{x:.9g}" for x in pos),
-                              rpy=" ".join(f"{x:.9g}" for x in Rotation.from_matrix(Rk).as_euler("xyz")))
-                g = ET.SubElement(v, "geometry")
-                ET.SubElement(g, "box", size=f"{0.0012:.6g} {2 * r * np.sin(np.pi / STRIPES) * 0.98:.6g} {max(L, 1e-3) * 0.98:.6g}")
-                m = ET.SubElement(v, "material", name=f"f{i}_rolltip_stripe{k}_mat")
-                ET.SubElement(m, "color", rgba=f"{rgb[0]:.3f} {rgb[1]:.3f} {rgb[2]:.3f} 1")
+sys.path.insert(0, str(REPO))
+from hand_sampler.grammar.visual_colours import colour_by_joint_kind  # noqa: E402
 
 
 def main() -> None:
@@ -84,18 +47,7 @@ def main() -> None:
         design = spec["design"] if isinstance(spec["design"], dict) else json.loads(spec["design"])
         urdf = dst / f"{hid}.urdf"
         tree = ET.parse(urdf)
-        for link in tree.getroot().findall("link"):
-            name = link.get("name")
-            if name.startswith("palm"):
-                rgba = PALM_RGBA
-            else:
-                i, j = (int(v) for v in name[1:].split("_link"))
-                rgba = KIND_RGBA[tuple(design["fingers"][i]["joints"][j]["axis"])]
-            for vis in link.findall("visual"):
-                for col in vis.iter("color"):
-                    col.set("rgba", rgba)
-        if not args.no_stripes:
-            _roll_tip_stripes(tree, design)
+        colour_by_joint_kind(tree.getroot(), design, stripes=not args.no_stripes)
         ET.indent(tree)
         tree.write(urdf, encoding="unicode", xml_declaration=False)
         spec["urdf"] = str(urdf.relative_to(REPO))

@@ -161,6 +161,11 @@ def main() -> None:
         # sim_device CLI flag still wins — it's a launcher-level concern, not
         # something we expect in the task YAML.
         env_cfg.sim.device = args_cli.sim_device
+        _log = getattr(env_cfg, "log", None)       # per-design training stats into the run dir (olympics)
+        if _log is not None and getattr(_log, "design_stats", False) and not _log.design_dir:
+            import os as _os
+            _log.design_dir = _os.path.join(hydra_run_dir, "design_stats" + (f"_rank{global_rank}" if world_size > 1
+                                                                             else ""))
         if world_size > 1:
             agent_cfg["params"]["config"]["multi_gpu"] = True
             env_cfg.seed = int(agent_cfg["params"]["seed"]) + global_rank
@@ -215,7 +220,19 @@ def main() -> None:
             # own wandb key "<key>/<hand>" -- one panel per hand under one section. Otherwise one.
             record = getattr(env.unwrapped, "scene_record", None)
             hs = getattr(record, "hand_set", None)
-            if hs is not None:
+            ehs = getattr(env.unwrapped, "hand_set", None)       # the olympics env keeps its own (template scenes)
+            if ehs is not None and getattr(ehs, "groups", ()):
+                # A grouped hand set (the no-evolution population's niches): one viewer per group, following the
+                # first env of the group's first hand, in the group's own wandb section ("niche_<group>/<key>",
+                # beside its metrics, env cfg.log).
+                hs = ehs
+                hand_idx = env.unwrapped.hand_of_env.long().tolist()
+                firsts = {}
+                for h, g in enumerate(hs.groups):
+                    firsts.setdefault(g, h)
+                viewers = [(hand_idx.index(h), f"niche_{g}/{args_cli.capture_viewer_wandb_key}",
+                            Path(hydra_run_dir) / "interactive_viewer" / g) for g, h in firsts.items()]
+            elif hs is not None:
                 hand_idx = record.robot_design_index.tolist()
                 names = hs.labels or tuple(s.hand_name for s in hs.specs)     # L5_full, ... as per_hand_successes
                 viewers = [(hand_idx.index(h), f"{args_cli.capture_viewer_wandb_key}/{names[h]}",

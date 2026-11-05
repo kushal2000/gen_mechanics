@@ -59,7 +59,7 @@ def _table_urdf(size) -> str:
 
 
 def _inline_primitive_palm(urdf_text: str) -> str:
-    """A generated primitive hand's palm (experiments/14oct_design_search/primitive_hands.py) is a prism mesh,
+    """A generated primitive hand's palm (experiments/oct_2026_experiments/14oct_design_search/primitive_hands.py) is a prism mesh,
     ``palm_disc_r<mm>_t<mm>.stl``, which lives in a gitignored folder: the HTML's raw-GitHub URL for it would 404.
     Draw it as the URDF cylinder it approximates instead (axis +x of the palm frame, as the mesh)."""
     import math
@@ -116,6 +116,19 @@ def _cylinders_as_capsules(urdf_text: str) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
+def _grammar_design(spec):
+    """The grammar design dict of a grammar hand (its spec JSON next to its URDF carries one), else None."""
+    import json
+    try:
+        from hand_sampler import resolve
+        d = json.loads(Path(resolve(spec.urdf_path)).with_suffix(".spec.json").read_text()).get("design")
+    except (OSError, ValueError, AttributeError):
+        return None
+    if isinstance(d, str):
+        d = json.loads(d)
+    return d if isinstance(d, dict) and "fingers" in d else None
+
+
 class OlympicsPoseViewer(PoseViewerWrapper):
     def __init__(self, env, *, output_dir, capture_len: int, capture_interval: int, env_id: int = 0,
                  wandb_key: str = "interactive_viewer", github_raw_base: str | None = None,
@@ -144,9 +157,16 @@ class OlympicsPoseViewer(PoseViewerWrapper):
             self._extra_objects = [("cap", cap, 1.0), ("cap_goal", cap, 0.38)]
         self._table_urdf_text, self._table_urdf_path = _table_urdf(cfg.table.size), None
         self._hole_urdf_text = self._hole_urdf_path = None
-        text = Path(inner.wrist_urdf_path).read_text(encoding="utf-8")
-        spec = (inner.hand_set.specs[int(inner.hand_of_env[0])] if inner.hand_set is not None
-                else inner.robot_spec)                     # wrist_urdf_path is env 0's hand (scene.py)
+        # The followed env's own hand (a multi-hand scene keeps one wrist URDF per hand, env.hand_urdf_paths; before
+        # 5 Nov every viewer drew env 0's hand, driven by its own env's joint angles)
+        h = int(inner.hand_of_env[self.env_id]) if inner.hand_set is not None else 0
+        paths = getattr(inner, "hand_urdf_paths", None)
+        text = Path(paths[h] if paths else inner.wrist_urdf_path).read_text(encoding="utf-8")
+        spec = inner.hand_set.specs[h] if inner.hand_set is not None else inner.robot_spec
+        design = _grammar_design(spec)
+        if design is not None:                            # a grammar hand: links coloured by their joint's kind
+            from hand_sampler.grammar.visual_colours import colour_urdf_text
+            text = colour_urdf_text(text, design)
         if getattr(spec, "replace_cylinders_with_capsules", False):
             text = _cylinders_as_capsules(text)           # before the primitive palm becomes a (real) cylinder
         self._robot_urdf_text = _inline_primitive_palm(text)

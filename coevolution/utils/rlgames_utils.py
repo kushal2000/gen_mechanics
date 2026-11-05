@@ -117,6 +117,7 @@ class EnvStatsAlgoObserver(AlgoObserver):
         self.episode_final_avg = {}
         self.direct_info = {}
         self.new_finished_episodes = False
+        self.group_stats = {}          # an env's grouped per-niche stats (infos["group_stats"], when it emits them)
 
     def after_init(self, algo):
         self.algo = algo
@@ -131,6 +132,8 @@ class EnvStatsAlgoObserver(AlgoObserver):
             infos = _remove_env_boundary_from_info(copy.deepcopy(infos), ignore_env_boundary)
             done_indices = done_indices[done_indices >= ignore_env_boundary] - ignore_env_boundary
 
+        if infos.get("group_stats"):
+            self.group_stats = dict(infos["group_stats"])
         done_index_tensor = done_indices.reshape(-1).detach()
         done_indices = done_index_tensor.cpu().tolist()
         self._process_episode_cumulative(
@@ -275,6 +278,10 @@ class EnvStatsAlgoObserver(AlgoObserver):
 
         for key, value in self.direct_info.items():
             self.writer.add_scalar(key, _as_float(value), frame)
+        # niche_<group>/<metric>_<stat> and niches_<metric>/<group>: their own wandb sections (env cfg.log)
+        for key, value in self.group_stats.items():
+            self.writer.add_scalar(key, float(value), frame)
+        self.group_stats = {}
 
 
 class JointTransformerNormObserver(AlgoObserver):

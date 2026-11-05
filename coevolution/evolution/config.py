@@ -27,9 +27,14 @@ class EvolutionConfig:
     rules: str = "FEETECH_COARSE_RULES"   # hand_sampler.grammar.hand rule set for mutation and random hands
     grid: dict = field(default_factory=lambda: {"n_rigid": 5, "n_moving": 2, "n_slots": 5})
     mutation_tries: int = 8            # operators tried before a parent is skipped this generation
+    # The niche map: "v1" (descriptors.niche: fingers x palm cut x joints per finger, 30 cells, the 29 Oct runs) or
+    # "niches32" (descriptors.niche32: fingers x total motors, the no-cut grammar's 32 cells, 5 Nov).
+    niches: str = "v1"
     seed: int = 0
 
     def __post_init__(self):
+        if self.niches not in ("v1", "niches32"):
+            raise ValueError(f"niches must be 'v1' or 'niches32', got {self.niches!r}")
         if self.strategy not in STRATEGIES:
             raise ValueError(f"strategy must be one of {STRATEGIES}, got {self.strategy!r}")
         if self.strategy in SCREENED:
@@ -50,6 +55,13 @@ class EvolutionConfig:
 
     def save(self, path) -> None:
         Path(path).write_text(json.dumps(dataclasses.asdict(self), indent=1))
+
+    def cell(self, design: dict) -> str:
+        """The niche a record carries (HandRecord.cell): "" under the default map, which computes its own."""
+        if self.niches == "niches32":
+            from .descriptors import niche32
+            return niche32(design) or "none"
+        return ""
 
     def rule_set(self):
         from hand_sampler.grammar import hand as gh

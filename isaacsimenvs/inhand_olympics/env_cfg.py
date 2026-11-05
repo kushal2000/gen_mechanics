@@ -107,12 +107,17 @@ class ResetCfg:
 
     finger_pos_fraction: float = 1.0
     finger_vel: float = 0.5                  # rad/s
-    # Table-safe finger resets (1 Nov, the user's call): a drawn pose that puts any real fingertip's centre below the
-    # table top + table_clearance is redrawn (only those envs; forward kinematics, no physics step), up to max_redraws
-    # times, then that env starts at the home pose. Before, ~20% of long-fingered hands' episodes started with a finger
-    # inside the table and stayed stuck (experiments/30oct_evolution_evaluation/diag_table_contact.py).
+    # Table-safe finger resets (1 Nov, the user's call; fixed 6 Nov): a drawn pose that puts any real finger link's frame
+    # (its joint) below the table top + link_clearance, or any fingertip pad below the top + table_clearance, is
+    # redrawn (only those envs; forward kinematics, no physics step), up to max_redraws times; an env still failing keeps
+    # its best draw with the wrist raised just enough. Before the fix the check read only each finger's last joint, so
+    # ~35% of the 5 Nov population's resets started a fingertip pad inside the table (52% of 6-finger hands';
+    # experiments/05nov_noevolution/studies/diag_reset_table.py), and the old home-pose fallback was itself inside for
+    # some designs. Before 1 Nov: ~20% of long-fingered hands' episodes started stuck in the table
+    # (experiments/oct_2026_experiments/30oct_evolution_evaluation/diag_table_contact.py).
     table_safe: bool = True
-    table_clearance: float = 0.01            # m: a fingertip centre at least this far above the table top
+    table_clearance: float = 0.02            # m: a fingertip pad (the tip capsule's end; radius 16.5 mm) this far above
+    link_clearance: float = 0.022            # m: a joint (motor housing 24 x 33 mm, half-diagonal 20 mm) this far above
     max_redraws: int = 10
     # The pen's starting yaw (every task): uniform over +-180 deg, or fixed at pen_yaw_deg -- the angle of its tip
     # (local +x end) from world +x, the direction the fingers point. -90: across the hand, tip toward the thumb side
@@ -197,6 +202,27 @@ class ObsCfg:
     # joint_origin -- every config saved before 27 Oct -- gets "ordered" whatever this says (env.py), so an old
     # checkpoint replayed from its saved config sees exactly its training inputs.
     joint_box: str = "extent"
+
+
+@configclass
+class LogCfg:
+    """Grouped episode logging (5 Nov): a multi-hand scene whose manifest gives each hand a group (its "niche")
+    logs, per group, the min / avg / max over its hands of each hand's mean episode stats -- successes, return,
+    length, every reward term's episode sum -- and the avg of each termination reason, every ``group_interval_steps``
+    env steps, as ``niche_<group>/<metric>_<stat>`` (plus ``niches_<metric>/<group>`` for the avg, one panel per
+    metric across groups). The per-hand ``per_hand_*`` metrics are logged only for up to ``max_per_hand`` hands."""
+
+    group_stats: bool = True
+    group_interval_steps: int = 400          # 25 epochs of 16 steps: ~4 episodes per hand at 6 envs per hand
+    max_per_hand: int = 64
+    # Per-episode training records (6 Nov): every episode that ends -- its end step, env, hand, goals, length, return,
+    # each reward term's episode sum, its termination flags -- one row each, written every design_interval_steps env
+    # steps to <design_dir>/step_<NNNNNNNN>.npz (meta.npz: hand_of_env, task_id, step_dt; hands.json: the hand set's
+    # spec paths in order). SAPG block of env e: e // expl_coef_block_size, the leader last. design_dir empty:
+    # train.py puts it in the run dir. Off by default.
+    design_stats: bool = False
+    design_interval_steps: int = 1600        # 100 epochs of 16 steps
+    design_dir: str = ""
 
 
 @configclass
@@ -408,6 +434,7 @@ class InHandOlympicsEnvCfg(DirectRLEnvCfg):
     table: TableCfg = TableCfg()
     pen: PenCfg = PenCfg()
     obs: ObsCfg = ObsCfg()
+    log: LogCfg = LogCfg()
     task: TaskCfg = TaskCfg()
     pen_spin: PenSpinCfg = PenSpinCfg()
     pen_lift: PenLiftCfg = PenLiftCfg()

@@ -99,6 +99,21 @@ def manifest_grid(ref: str):
     return SlotGrid(n_rigid=int(g["n_rigid"]), n_moving=int(g["n_moving"]), n_slots=int(g.get("n_slots", 5)))
 
 
+def manifest_groups(ref: str, key: str = "niche") -> tuple[str, ...]:
+    """Per hand, in spec_names order, its manifest entry's `key` (a template manifest's niche), or () when the ref
+    is not a manifest or some hand has none."""
+    body = ref[len(MULTI_PREFIX):]
+    head, sep, rest = body.partition(":")
+    if sep and head in SLOT_LAYOUTS:
+        body = rest
+    if not body.endswith("manifest.json"):
+        return ()
+    import json
+    from hand_sampler import resolve
+    vals = [h.get(key) for h in json.loads(resolve(body).read_text())["hands"]]
+    return tuple(str(v) for v in vals) if vals and all(v is not None for v in vals) else ()
+
+
 def spec_names(ref: str) -> tuple[str, ...]:
     body = ref[len(MULTI_PREFIX):]
     head, sep, rest = body.partition(":")
@@ -158,6 +173,9 @@ class HandSet:
     grid: object = None                # the SlotGrid ("finger", "template"); None for "dense"
     layouts: tuple = ()                # per hand, its FingerLayout on the grid ("finger", "template")
     labels: tuple[str, ...] = ()       # short per-hand names for logging (hand_labels)
+    # Per hand, its group for grouped logging and viewers (a template manifest's per-hand "niche", e.g. the
+    # no-evolution population's 32 niches, experiments/05nov_noevolution); () when the manifest gives none.
+    groups: tuple[str, ...] = ()
 
     @property
     def n_hands(self) -> int:
@@ -284,8 +302,9 @@ def hand_set(ref: str) -> HandSet:
         palm_keypoints=np.asarray([s.palm_keypoints for s in specs], np.float32),
         hand_scale=np.asarray([s.hand_scale for s in specs], np.float32),
         layout=layout, joint_slots=slots, finger_slots=fslots, grid=grid, layouts=layouts, labels=hand_labels(specs),
+        groups=manifest_groups(ref),
     )
 
 
-__all__ = ["HandSet", "MULTI_PREFIX", "PALM", "SLOT_LAYOUTS", "UNIFORM_HANDS", "hand_labels", "hand_set",
+__all__ = ["HandSet", "MULTI_PREFIX", "manifest_groups", "PALM", "SLOT_LAYOUTS", "UNIFORM_HANDS", "hand_labels", "hand_set",
            "is_multi_ref", "manifest_grid", "slot_joint", "slot_layout", "slot_link", "slot_tip", "spec_names"]

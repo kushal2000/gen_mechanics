@@ -513,8 +513,11 @@
 
           if (meshFormat === "obj") {
             const objLoader = new OBJLoader(loadingManager);
-            const meshUrl = new URL(path, window.location.href);
-            const baseUrl = new URL("./", meshUrl).toString();
+            // An embedded mesh (data: URI, 5 Nov) has no folder: "./" cannot resolve against it (the "Failed to
+            // construct 'URL'" error), and there is no material.mtl next to it to look for.
+            const embedded = path.startsWith("data:");
+            const meshUrl = embedded ? null : new URL(path, window.location.href);
+            const baseUrl = embedded ? "" : new URL("./", meshUrl).toString();
 
             const loadObj = (materials = null) => {
               if (materials && !robotConfig.color_override) {
@@ -530,7 +533,7 @@
               );
             };
 
-            if (robotConfig.color_override) {
+            if (robotConfig.color_override || embedded) {
               loadObj();
               return;
             }

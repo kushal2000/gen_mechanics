@@ -1,4 +1,4 @@
-"""The generation step's CLI (Kit-free); experiments/29oct_evolution_from_scratch/generation.sh calls it.
+"""The generation step's CLI (Kit-free); experiments/oct_2026_experiments/29oct_evolution_from_scratch/generation.sh calls it.
 
     python -m coevolution.evolution.generation init    --run-dir D --config C.json --seed-manifest M
                                                        [--seed-fitness F --checkpoint P]
@@ -63,7 +63,8 @@ def _save_state(run: Path, state: dict) -> None:
 
 def write_manifest(path: Path, records: list[HandRecord], cfg: EvolutionConfig, generation: int) -> None:
     path.write_text(json.dumps({"generation": generation, "grid": cfg.grid,
-                                "hands": [{"id": r.id, "spec": r.spec} for r in records]}, indent=1))
+                                "hands": [{"id": r.id, "spec": r.spec, **({"niche": r.cell} if r.cell else {})}
+                                          for r in records]}, indent=1))
 
 
 def _metrics(fitness: dict, spec: str) -> dict:
@@ -118,7 +119,7 @@ def init(run: Path, cfg: EvolutionConfig, seed_manifest: Path, seed_fitness: Pat
         design = json.loads(resolve(spec).with_name(Path(spec).name.replace(".spec.json", ".design.json")).read_text())
         rid = h.get("id") or Path(spec).name.replace(".spec.json", "")
         archive.add(HandRecord(id=rid, spec=spec, design=design, born=0, status="retired", operator="seed",
-                               key=design_key(gh.hand_from_dict(design), rules)))
+                               key=design_key(gh.hand_from_dict(design), rules), cell=cfg.cell(design)))
         if fit is not None:
             archive.record(rid, 0, _metrics(fit, spec), screen=False)
     seeds = list(archive.records.values())
@@ -189,7 +190,7 @@ def propose(run: Path, fitness_path: Path) -> None:
         child = make_child(None if parent is None else archive[parent].design, cid, run / "hands", cfg, rng, taken)
         if child is None:
             continue
-        archive.add(HandRecord(id=cid, born=g, status="candidate", parent=parent, **child))
+        archive.add(HandRecord(id=cid, born=g, status="candidate", parent=parent, cell=cfg.cell(child["design"]), **child))
         made.append(archive[cid])
     write_manifest(gdir / "children_manifest.json", made, cfg, g)
     state["pending"] = settled

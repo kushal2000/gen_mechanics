@@ -59,11 +59,37 @@ def _pose_xyzw(pos, quat_wxyz) -> np.ndarray:
     return pose
 
 
+def _current_branch_raw_base() -> str:
+    """The raw-GitHub base of the checked-out branch (where a mesh too big to embed is fetched from; 5 Nov: the
+    viewer no longer needs assets pushed to master), or master's when git cannot tell."""
+    import subprocess
+    try:
+        b = subprocess.run(["git", "-C", str(REPO_ROOT), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True,
+                           text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        b = ""
+    return GITHUB_RAW_BASE_MAIN if not b or b == "HEAD" else GITHUB_RAW_BASE_MAIN.replace("/master/", f"/{quote(b)}/")
+
+
 def _normalize_raw_base(github_raw_base: str | None) -> str:
-    # Meshes are immutable and present on main, so a fixed main URL is
-    # the most durable link (branch/commit pins break when refs vanish).
-    base = github_raw_base or GITHUB_RAW_BASE_MAIN
+    base = github_raw_base or _current_branch_raw_base()
     return base if base.endswith("/") else base + "/"
+
+
+# Mesh files up to this size are embedded in the viewer HTML as data: URIs (with the "#ext=" hint the page's loader
+# reads), so a page needs nothing published anywhere: a grammar hand's palm meshes are a few kB.
+EMBED_MESH_MAX_BYTES = 1_000_000
+
+
+def _embedded_mesh_uri(path: Path) -> str | None:
+    import base64
+    try:
+        if not path.is_file() or path.stat().st_size > EMBED_MESH_MAX_BYTES:
+            return None
+        data = base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError:
+        return None
+    return f"data:application/octet-stream;base64,{data}#ext={path.suffix.lower()}"
 
 
 def _check_url(url: str, url_check: str) -> None:
@@ -84,7 +110,7 @@ def _check_url(url: str, url_check: str) -> None:
 
 def _published_relpath(rel: str) -> str:
     """Where master serves a repo file. Hands an evolution run builds live in its (ignored) run directory,
-    ``debug_outputs/evolution/<run>/hands/<id>/``; experiments/29oct_evolution_from_scratch/push_assets.py
+    ``debug_outputs/evolution/<run>/hands/<id>/``; experiments/oct_2026_experiments/29oct_evolution_from_scratch/push_assets.py
     publishes them at ``assets/urdf/29oct_evolution/<run>/<id>/``."""
     parts = rel.split("/")
     if len(parts) > 4 and parts[:2] == ["debug_outputs", "evolution"] and parts[3] == "hands":
@@ -133,7 +159,7 @@ def _rewrite_embedded_urdf_mesh_urls(
             else:
                 mesh_path = source_urdf_path.parent / filename
 
-        mesh_url = _raw_url_for_repo_path(mesh_path, raw_base)
+        mesh_url = _embedded_mesh_uri(mesh_path) or _raw_url_for_repo_path(mesh_path, raw_base)
         if mesh_url is None:
             continue
         mesh_elem.set("filename", mesh_url)

@@ -31,10 +31,11 @@ class HandRecord:
     key: str = ""                      # canonical design JSON: duplicates are never re-made
     fitness: list = field(default_factory=list)
     children: list = field(default_factory=list)
+    cell: str = ""                     # the niche, when the run's map is not the default one (config.niches)
 
     @property
     def niche(self) -> str:
-        return descriptors.niche(self.design)
+        return self.cell or descriptors.niche(self.design)
 
     def latest(self, screen: Optional[bool] = None) -> Optional[dict]:
         """The latest fitness entry (of the given kind, if ``screen`` is set)."""
