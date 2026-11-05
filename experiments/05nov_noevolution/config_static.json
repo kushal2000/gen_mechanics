@@ -1,0 +1,10 @@
+{
+ "strategy": "static",
+ "population": 4096,
+ "children": 0,
+ "admitted": 0,
+ "rules": "FEETECH_COARSE_NOCUT_RULES",
+ "grid": {"n_rigid": 6, "n_moving": 0, "n_slots": 5},
+ "niches": "niches32",
+ "seed": 0
+}

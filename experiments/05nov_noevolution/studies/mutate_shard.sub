@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --job-name=MUT_shard
+#SBATCH --partition=default_partition
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=24000
+#SBATCH --time=1:00:00
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/05nov_noevolution/%x-%A_%a.log
+# One shard of a search round's mutations (mutate_shard.py); CPU only, on the cluster's default partition.
+#   JOBS=<round dir> sbatch --wait --array=0-<N-1> experiments/05nov_noevolution/studies/mutate_shard.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+exec .venv_isaacsim/bin/python -u experiments/05nov_noevolution/studies/mutate_shard.py --jobs "$JOBS" \
+    --shard "${SLURM_ARRAY_TASK_ID:-0}"

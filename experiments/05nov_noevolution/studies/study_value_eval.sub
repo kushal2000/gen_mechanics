@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH --job-name=STUDY_val
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=4:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/05nov_noevolution/%x-%A_%a.log
+# Study 3's evaluations: line <task id> of $JOBS (manifest, envs per hand, output, seed) through eval_values.py.
+#   sbatch --array=0-<lines-1> experiments/05nov_noevolution/studies/study_value_eval.sub   [JOBS=<jobs file>]
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+JOBS=${JOBS:-debug_outputs/noevolution/studies/it${ITERATION:-1}_value/jobs.txt}
+read -r MAN ENVS OUT SEED < <(sed -n "$(( ${SLURM_ARRAY_TASK_ID:-0} + 1 ))p" "$JOBS")
+RUN=$(ls -d debug_outputs/train_logs/evolution/noevolution_4096/gen_$(printf %04d "${ITERATION:-1}")/*/ | head -1)
+[ -f "$OUT" ] && { echo "exists: $OUT"; exit 0; }
+exec .venv_isaacsim/bin/python experiments/05nov_noevolution/studies/eval_values.py --manifest "$MAN" \
+    --checkpoint debug_outputs/evolution/noevolution_4096/gen_$(printf %04d "${ITERATION:-1}")/policy.pth \
+    --train-run "$RUN" --out "$OUT" --envs-per-hand "$ENVS" --seed "$SEED"

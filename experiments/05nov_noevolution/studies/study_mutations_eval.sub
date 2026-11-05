@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH --job-name=STUDY_mut
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=4:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/05nov_noevolution/%x-%A_%a.log
+# Study 2's evaluation, one chunk of children per array task (study_mutations.py --phase eval --chunk <task id>).
+#   sbatch --array=0-<chunks-1> experiments/05nov_noevolution/studies/study_mutations_eval.sub   [ITERATION=1]
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+exec .venv_isaacsim/bin/python experiments/05nov_noevolution/studies/study_mutations.py --phase eval \
+    --iteration "${ITERATION:-1}" --chunk "${SLURM_ARRAY_TASK_ID:-0}"

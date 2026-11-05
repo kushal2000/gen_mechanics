@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=STUDY_vftweak
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=48000
+#SBATCH --time=2:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/05nov_noevolution/%x-%A_%a.log
+# One configuration of study_vf_tweaks.py per array task.
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+exec .venv_isaacsim/bin/python -u experiments/05nov_noevolution/studies/study_vf_tweaks.py --config "${SLURM_ARRAY_TASK_ID:-0}" \
+    --iteration "${ITERATION:-3}"

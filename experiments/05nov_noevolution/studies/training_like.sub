@@ -1,0 +1,23 @@
+#!/bin/bash
+#SBATCH --job-name=STUDY_trainlike
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=96000
+#SBATCH --time=2:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/05nov_noevolution/%x-%j.log
+# Study 4's targets: per design, what training would log at the end of iteration ITERATION -- its policy rolled out
+# as in training (all 24,576 envs, every SAPG block's own coefficient, sampled actions, staggered episodes), no updates.
+#   [ITERATION=1 STEPS=8000] sbatch experiments/05nov_noevolution/studies/training_like.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+IT=$(printf %04d "${ITERATION:-1}")
+G=debug_outputs/evolution/noevolution_4096/gen_$IT
+RUN=$(ls -d debug_outputs/train_logs/evolution/noevolution_4096/gen_$IT/*/ | head -1)
+exec .venv_isaacsim/bin/python experiments/05nov_noevolution/studies/eval_training_like.py --manifest "$G/manifest.json" \
+    --checkpoint "$G/policy.pth" --train-run "$RUN" --steps "${STEPS:-8000}" \
+    ${TABLE_CLEARANCE:+--table-clearance "$TABLE_CLEARANCE"} \
+    --out-dir "debug_outputs/noevolution/studies/it${ITERATION:-1}_design_value/training_like${OUT_SUFFIX:-}"

@@ -1,0 +1,50 @@
+#!/bin/bash
+#SBATCH --job-name=NOEV_4096
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=96000
+#SBATCH --time=12:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/05nov_noevolution/%x-%j.log
+# No evolution (the House of Dextra protocol in our setup): one shared per-finger policy trained on a FIXED population
+# of 4,096 random hands, 128 in each of the 32 niches (make_seed.py), 24,576 envs = 6 envs per hand, dealt round-robin
+# so every SAPG block holds every hand once. No mutation and no search: how training alone spreads over the niches,
+# the baseline every design-search scheme is compared against.
+#
+# In 1.024B-step iterations (the user's call, 5 Nov), each its own job, chained: the evolution loop
+# (experiments/oct_2026_experiments/29oct_evolution_from_scratch/generation.sh) with the "static" strategy -- train 2,604 epochs from the
+# last checkpoint (24,576 envs x 16 steps each), keep the policy, evaluate every hand (eval_hands.py, 4 envs each),
+# record it in the archive, resubmit. Design search can then start from any iteration: switch the run's strategy, or
+# start a search run from that iteration's checkpoint and archive.
+#
+#   sbatch experiments/05nov_noevolution/noevolution.sub              (ROUNDS=10 iterations by default)
+#   ROUNDS=1 sbatch experiments/05nov_noevolution/noevolution.sub     (the 1B pilot)
+#
+# Grammar: FEETECH_COARSE_NOCUT_RULES (no cuts, derived mount, wrist frame at the palm centre). Joint token: state +
+# origin + axis + link vector + limits (16 per joint; no link box). Learner: the settled stack (SAPG, one shared
+# log-std clamped to [-5, 2], fixed lr 3e-4, fp16, 16k minibatch, 2 mini-epochs, gamma 0.99). Task: pen repose v2 as
+# the 29 Oct runs (wrist rotation locked, uniform goals, table-safe resets). Logging (wandb project
+# gen_mechanics_noevolution, one run per iteration, group noev4096): per niche, its own section niche_<cell>/ with
+# min / avg / max over its 128 hands of each hand's mean episode successes, return, length and reward-term sums, and
+# the niche's interactive viewer (its first hand, coloured by joint kind, meshes embedded).
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+SUB=experiments/05nov_noevolution/noevolution.sub
+OBS="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_origin,joint_axis,joint_link_vec,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot]"
+STATE="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_origin,joint_axis,joint_link_vec,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot,object_keypoints_rel_joint,palm_keypoints,ee_pos,ee_rot,ee_vel,object_rot,fingertip_pos_rel_palm,closest_keypoint_max_dist,closest_fingertip_dist,progress,successes,reward]"
+ENV="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.action.use_action_delay=False env.reset.table_safe=True env.obs.obs_list=$OBS env.obs.state_list=$STATE env.log.group_stats=True"
+NET="agent.params.network.token_mode=finger agent.params.network.d_model=128 agent.params.network.n_layers=2 agent.params.network.n_heads=4 agent.params.network.ff_mult=4 agent.params.network.decoder_units=[256] agent.params.network.arm_head_units=[1024,512] agent.params.network.value_head_units=[512,256] agent.params.network.compile_net=true agent.params.network.affine_norm=false agent.params.network.packed_tokens=true agent.params.network.mask_ghost_actions=true agent.params.network.masked_arm_dims=[3,4,5]"
+LEARN="agent.params.config.rollout_autocast=true agent.params.config.minibatch_size=16384 agent.params.config.mini_epochs=2"
+export EVO_RUN="${EVO_RUN:-debug_outputs/evolution/noevolution_4096}" \
+    EVO_CONFIG=experiments/05nov_noevolution/config_static.json \
+    SEED_MANIFEST="${SEED_MANIFEST:-debug_outputs/noevolution/seed_4096/manifest.json}" \
+    MAX_GEN="${ROUNDS:-10}" EPOCHS_PER_GEN="${EPOCHS_PER_GEN:-2604}" EVAL_ENVS_PER_HAND="${EVAL_ENVS_PER_HAND:-4}" \
+    TRAIN_ENV="$ENV $NET $LEARN ${EXTRA:-}" WANDB_PREFIX="${WANDB_PREFIX:-noev4096}" SKIP_PUSH_ASSETS=1 SUB_PATH="$SUB"
+export TASKS=pen_repose PEN_SHAPE=box ARCH=transformer NUM_ENVS="${NUM_ENVS:-24576}" SEED="${SEED:-100}" GAMMA=0.99 \
+    FINGER_RESET=1.0 KEYPOINT=best_so_far WANDB="${WANDB:-1}" WANDB_PROJECT="${WANDB_PROJECT:-gen_mechanics_noevolution}" \
+    VIEWER_INTERVAL="${VIEWER_INTERVAL:-20000}" VIEWER_LEN="${VIEWER_LEN:-600}"
+mkdir -p debug_outputs/train_logs/05nov_noevolution
+exec bash experiments/oct_2026_experiments/29oct_evolution_from_scratch/generation.sh
