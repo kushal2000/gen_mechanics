@@ -41,6 +41,12 @@ def main() -> None:
     ap.add_argument("--frame-only", action="store_true")
     ap.add_argument("--out", default=None)
     ap.add_argument("--summary-tag", default="", help="final_archive_eval.py output tag, e.g. _it73_100env")
+    ap.add_argument("--manifest", default=None,
+                    help="a template manifest whose hands' specs are rendered instead of the archive's own files (same "
+                         "ids), e.g. experiments/04nov_audit_grammar/recolour_hands.py's joint-kind-coloured copies")
+    ap.add_argument("--colour-joints", action="store_true",
+                    help="colour each link by its joint's kind and stripe roll tips "
+                         "(experiments/04nov_audit_grammar/joint_colours.py)")
     args = ap.parse_args()
     os.environ.setdefault("GENMECH_KEEP_VISUALS", "1")
     sys.path.insert(0, str(REPO))
@@ -52,7 +58,8 @@ def main() -> None:
         chosen = [(niche_of.get(h, "?"), h) for h in args.hands]
     else:
         chosen = [(n, b["hand"]) for n, b in sorted(best.items(), key=lambda kv: -kv[1]["final_goals"])[:args.top]]
-    full_man = json.loads((FINAL / (f"{args.run}{args.summary_tag}_manifest.json" if args.summary_tag else f"{args.run}_manifest.json")).read_text())
+    full_man = json.loads(Path(args.manifest).read_text()) if args.manifest else json.loads(
+        (FINAL / (f"{args.run}{args.summary_tag}_manifest.json" if args.summary_tag else f"{args.run}_manifest.json")).read_text())
     spec_of = {h["id"]: h["spec"] for h in full_man["hands"]}
     man = {"generation": full_man["generation"], "grid": full_man["grid"],
            "hands": [{"id": h, "spec": spec_of[h]} for _, h in chosen]}
@@ -101,6 +108,14 @@ def main() -> None:
     cfg.seed = 0
     cfg.viewer.resolution = (W, H)
     env = InHandOlympicsEnv(cfg, render_mode="rgb_array")
+    if args.colour_joints:
+        sys.path.insert(0, str(REPO / "experiments/04nov_audit_grammar"))
+        from joint_colours import colour_template_hands
+        designs = []
+        for hh in man["hands"]:
+            sp = json.loads((REPO / hh["spec"]).read_text())
+            designs.append(sp["design"] if isinstance(sp["design"], dict) else json.loads(sp["design"]))
+        print(f"[render] joint colours: {colour_template_hands(env, designs, int(man['grid']['n_slots']))}", flush=True)
     obs, _ = env.reset()
     acfg = full["agent"]
     acfg["params"]["config"]["multi_gpu"] = False
