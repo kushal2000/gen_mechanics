@@ -1285,6 +1285,39 @@ def _ordered_box(vertices: np.ndarray, axis: np.ndarray, extent: bool = False) -
     ], dtype=np.float32), True
 
 
+def joint_axes_and_link_vectors(urdf: str | Path | ET.Element, joint_names, fingertip_bodies=(),
+                                fingertip_offsets=()) -> tuple[np.ndarray, np.ndarray]:
+    """(J, 3) joint axes and (J, 3) link vectors of ``joint_names``, each in its child link's own frame (metres).
+
+    The axis is the URDF's (a joint's axis is given in its child's frame), as a unit vector: +q turns the link about
+    it by the right-hand rule. The link vector runs from the joint (the child link's origin) to the next joint of the
+    chain in ``joint_names`` (its origin, given in this link's frame) or, for a fingertip link, to its fingertip
+    point (``fingertip_offsets``, in the tip link's frame); zeros when the link has neither. Rotated by the link's
+    current orientation, they give the joint's axis and where its link goes at the current pose (the joint tokens'
+    ``joint_axis`` and ``joint_link_vec``, 2026-11-04)."""
+    root = urdf if isinstance(urdf, ET.Element) else ET.parse(Path(resolve(urdf))).getroot()
+    joints = {j.get("name"): j for j in root.findall("joint")}
+    names = list(joint_names)
+    child_of = {n: joints[n].find("child").get("link") for n in names}
+    next_of = {}
+    for n in names:                                   # the hand joint hung from this joint's child link
+        for m in names:
+            if joints[m].find("parent").get("link") == child_of[n]:
+                next_of.setdefault(n, m)
+    tip_offset = {b: np.asarray(o, float) for b, o in zip(fingertip_bodies, fingertip_offsets)}
+    axes, vecs = np.zeros((len(names), 3), np.float32), np.zeros((len(names), 3), np.float32)
+    for k, n in enumerate(names):
+        el = joints[n].find("axis")
+        a = np.array([float(v) for v in (el.get("xyz") if el is not None else "1 0 0").split()])
+        axes[k] = a / max(float(np.linalg.norm(a)), 1e-12)
+        if n in next_of:
+            o = joints[next_of[n]].find("origin")
+            vecs[k] = [float(v) for v in (o.get("xyz") if o is not None else "0 0 0").split()]
+        elif child_of[n] in tip_offset:
+            vecs[k] = tip_offset[child_of[n]]
+    return axes, vecs
+
+
 def joint_link_boxes(
     urdf: str | Path | ET.Element,
     joint_names,

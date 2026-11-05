@@ -13,7 +13,8 @@ import torch
 from isaaclab.utils.math import convert_quat, quat_mul
 
 from isaacsimenvs.common.obs_geometry import (
-    apply_local_offset, joint_link_geometry_obs, normalize_joint_pos, object_keypoints_rel_joint, rotate_into,
+    apply_local_offset, joint_link_geometry_obs, normalize_joint_pos, object_keypoints_rel_joint, quat_apply_broadcast,
+    rotate_into,
 )
 from .goals import keypoints
 
@@ -36,6 +37,7 @@ def field_sizes(n_joints: int, n_hand: int, n_tips: int, n_tasks: int) -> dict[s
     return {
         **per_joint,
         "joint_link_bbox": 12 * n_hand, "joint_origin": 3 * n_hand, "object_keypoints_rel_joint": 12 * n_hand,
+        "joint_axis": 3 * n_hand, "joint_link_vec": 3 * n_hand,
         "joint_lower": n_hand, "joint_upper": n_hand, "joint_enabled": n_hand, "joint_moving": n_hand,
         "palm_keypoints": 12, "palm_extents": 3,
         "ee_pos": 3, "ee_rot": 4, "ee_vel": 6,
@@ -74,6 +76,12 @@ def build_observations(env) -> dict[str, torch.Tensor]:
     kp = keypoints(pen_pos, pen_quat, env.pen_offsets)
     kp_goal = keypoints(env.goal_pos, env.goal_quat, env.pen_offsets)
     bbox, joint_origins, valid = joint_link_geometry_obs(env, centre_w, palm_rot, origins, ones)
+    # Each joint's axis and its link (joint -> next joint or fingertip) at the current pose, in the canonical palm frame
+    # (2026-11-04: the joint tokens' explicit kinematics, alongside joint_origin)
+    link_rot = env.robot.data.body_state_w[:, env._joint_link_body_ids, 3:7]
+    enabled = env.joint_enabled.unsqueeze(-1)
+    joint_axis = rotate_into(palm_rot, quat_apply_broadcast(link_rot, env._joint_axis_local)) * enabled
+    joint_link_vec = rotate_into(palm_rot, quat_apply_broadcast(link_rot, env._joint_link_vec_local)) * enabled
     tips = env.fingertips()
 
     fields = {
@@ -85,6 +93,7 @@ def build_observations(env) -> dict[str, torch.Tensor]:
         "joint_link_bbox": bbox,
         # Masked by joint_enabled, not by the box's validity: a multi-hand scene's ghost slot reads the palm's body.
         "joint_origin": rotate_into(palm_rot, joint_origins - ee_pos.unsqueeze(1)) * env.joint_enabled.unsqueeze(-1),
+        "joint_axis": joint_axis, "joint_link_vec": joint_link_vec,
         "joint_lower": env.joint_lower_hand, "joint_upper": env.joint_upper_hand,
         "joint_enabled": env.joint_enabled,
         "joint_moving": env.joint_moving,

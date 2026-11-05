@@ -56,6 +56,14 @@ def _link_boxes(spec, mode: str) -> np.ndarray:
                             capsules=spec.replace_cylinders_with_capsules)[1]
 
 
+def _axes_and_link_vecs(spec) -> tuple[np.ndarray, np.ndarray]:
+    """(J, 3) joint axes and (J, 3) link vectors of ``spec``'s hand joints, each in its child link's frame, from its
+    URDF (Kit-free; the joint tokens' joint_axis and joint_link_vec)."""
+    from hand_sampler.design_space import joint_axes_and_link_vectors
+    return joint_axes_and_link_vectors(spec.urdf_path, spec.hand_joint_names, spec.fingertip_body_names,
+                                       spec.fingertip_offsets)
+
+
 class InHandOlympicsEnv(DirectRLEnv):
     cfg: InHandOlympicsEnvCfg
 
@@ -225,12 +233,22 @@ class InHandOlympicsEnv(DirectRLEnv):
                     boxes[h, list(self.hand_set.joint_slots[h])] = _link_boxes(s, self.cfg.obs.joint_box)
                 t["joint_link_bbox_local"] = torch.as_tensor(boxes, device=dev)[self.hand_of_env.long()]
             self._joint_link_bbox_local = t["joint_link_bbox_local"]
+            ax = np.zeros((len(self.hand_set.specs), spec.num_hand_joints, 3), np.float32)
+            lv = np.zeros_like(ax)
+            for h, s in enumerate(self.hand_set.specs):
+                a, v = _axes_and_link_vecs(s)
+                ax[h, list(self.hand_set.joint_slots[h])], lv[h, list(self.hand_set.joint_slots[h])] = a, v
+            self._joint_axis_local = torch.as_tensor(ax, device=dev)[self.hand_of_env.long()]
+            self._joint_link_vec_local = torch.as_tensor(lv, device=dev)[self.hand_of_env.long()]
             self._joint_geometry_valid = t["joint_geometry_valid"]
             self.palm_center_offset = t["palm_center_offset"]
             kp = t["palm_keypoints"]
         else:
             boxes = spec.joint_link_boxes if self.cfg.obs.joint_box == "ordered" else _link_boxes(spec, self.cfg.obs.joint_box)
             self._joint_link_bbox_local = torch.as_tensor(np.asarray(boxes, np.float32), device=dev).expand(n, -1, -1, -1)
+            a, v = _axes_and_link_vecs(spec)
+            self._joint_axis_local = torch.as_tensor(a, device=dev).expand(n, -1, -1)
+            self._joint_link_vec_local = torch.as_tensor(v, device=dev).expand(n, -1, -1)
             self._joint_geometry_valid = torch.tensor(spec.joint_geometry_valid, device=dev).expand(n, -1)
             self.palm_center_offset = torch.tensor(spec.palm_center_offset, device=dev).expand(n, -1)
             kp = torch.tensor(spec.palm_keypoints, device=dev).expand(n, -1, -1)   # (N, 4, 3), palm body frame

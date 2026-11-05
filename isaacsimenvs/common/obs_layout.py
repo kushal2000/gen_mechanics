@@ -31,6 +31,10 @@ def obs_field_sizes(spec, extra_sizes: dict[str, int] | None = None) -> dict[str
         # The joint's own position (its child body's origin), palm frame, from the palm centre. Needed with the
         # "extent" link boxes, which no longer start at the joint (inhand_olympics ObsCfg.joint_box).
         "joint_origin": 3 * n_hand,
+        # The joint's axis (unit; +q by the right-hand rule) and its link (joint -> next joint or fingertip), palm
+        # frame, at the current pose (2026-11-04). With joint_origin: the joint tokens' explicit kinematics.
+        "joint_axis": 3 * n_hand,
+        "joint_link_vec": 3 * n_hand,
         "joint_lower": n_hand,
         "joint_upper": n_hand,
         "joint_enabled": n_hand,
@@ -106,6 +110,8 @@ JOINT_WIDTH_FIELDS: tuple[str, ...] = (
 HAND_TOKEN_FIELDS: dict[str, int] = {
     "joint_link_bbox": JOINT_BOX_DIM,
     "joint_origin": 3,
+    "joint_axis": 3,
+    "joint_link_vec": 3,
     "joint_lower": 1,
     "joint_upper": 1,
     "joint_enabled": 1,
@@ -117,7 +123,8 @@ HAND_TOKEN_FIELDS: dict[str, int] = {
 # required, so an accidental omission still raises. Without object_keypoints_rel_joint a joint
 # token carries only the joint's own state and geometry, and the object reaches it through the
 # global token by attention.
-OPTIONAL_HAND_TOKEN_FIELDS: frozenset[str] = frozenset({"object_keypoints_rel_joint", "joint_origin", "joint_moving"})
+OPTIONAL_HAND_TOKEN_FIELDS: frozenset[str] = frozenset({"object_keypoints_rel_joint", "joint_origin", "joint_moving",
+                                                        "joint_axis", "joint_link_vec", "joint_link_bbox"})
 
 # Gathered per joint but never a token feature: only the attention mask reads it, raw.
 MASK_FIELD = "joint_enabled"
