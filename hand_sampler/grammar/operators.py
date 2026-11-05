@@ -257,34 +257,47 @@ def _radial_facing(y: int, z: int) -> int:
 
 
 def _add_finger_moves(hand: Hand, rules: Rules) -> List[tuple]:
-    """`(y, z, seed)` per free spot; the seed draws the new finger's joints
-    (0 here; `iter_valid` gives each a random one when it has a generator)."""
+    """`(y, z, i)`: a copy of finger i at each free spot (the user's call, 2026-11-04: add a finger by duplicating
+    one the hand already has, so the operator is deterministic and its children enumerable)."""
     if len(hand.fingers) >= rules.max_fingers:
         return []
     taken = {(f.y, f.z) for f in hand.fingers}
-    return [(y, z, 0) for (y, z) in base_spots(rules) if (y, z) not in taken]
+    return [(y, z, i) for (y, z) in _free_spots(hand, rules) if (y, z) not in taken for i in range(len(hand.fingers))]
 
 
-def added_finger_joints(hand: Hand, rules: Rules) -> int:
-    """How many joints an added finger has: the mean over the hand's
-    fingers, rounded up (Martin, 2026-10-16), within the rules."""
-    if not hand.fingers:
-        return 1
-    mean = sum(len(f.joints) for f in hand.fingers) / len(hand.fingers)
-    return max(1, min(rules.max_joints, math.ceil(mean - 1e-9)))
+def _free_spots(hand: Hand, rules: Rules) -> List[Tuple[int, int]]:
+    """Where a new base may go: the rules' base spots; with a derived mount, the points of the hand's own base grid
+    (finger 0's base plus whole steps) within the reach limit of the palm centre, one step of slack (the rules then
+    check the new hand's centre)."""
+    if not rules.derived_mount or not hand.fingers:
+        return base_spots(rules)
+    p = rules.base_pitch_mm
+    c = dv.palm_centre_mm(hand)
+    oy, oz = hand.fingers[0].y, hand.fingers[0].z
+    reach = rules.base_distance_mm[1] + p
+    k = int(math.ceil((reach + abs(c[0] - oy) + abs(c[1] - oz)) / p)) + 1
+    return [(oy + a * p, oz + b * p) for a in range(-k, k + 1) for b in range(-k, k + 1)
+            if math.hypot(oy + a * p - c[0], oz + b * p - c[1]) <= reach]
+
+
+def _centre(hand: Hand, rules: Rules) -> Tuple[float, float]:
+    """The point facings are measured from: the mount (the origin), or the palm centre with a derived mount."""
+    if rules.derived_mount and hand.fingers:
+        c = dv.palm_centre_mm(hand)
+        return float(c[0]), float(c[1])
+    return 0.0, 0.0
 
 
 def _add_finger(hand: Hand, mv: tuple, rules: Rules) -> Hand:
-    """A finger at spot (y, z), pointing straight out from the palm centre,
-    tilt 0, with `added_finger_joints` joints drawn as a random hand's are
-    (`_draw_joints`, from generator `seed`)."""
-    y, z, seed = mv
-    rng = np.random.default_rng(seed)
-    base = Finger(y=y, z=z, facing=_radial_facing(y, z), tilt=0)
-    joints = _draw_joints(rng, rules, _draw_kind(rng), base, n=added_finger_joints(hand, rules))
-    if joints is None:
-        return hand
-    return replace(hand, fingers=hand.fingers + (replace(base, joints=joints),))
+    """A copy of finger i at spot (y, z): the same joints, links and tilt, and the same facing relative to its
+    spot's radial direction (a finger pointing straight out still does; one turned 30 degrees off radial still is).
+    The rules and C1 then decide whether the copy fits there (`iter_valid`)."""
+    y, z, i = mv
+    src = hand.fingers[i]
+    cy, cz = _centre(hand, rules)
+    facing = (_radial_facing(y - cy, z - cz) + src.facing - _radial_facing(src.y - cy, src.z - cz)) % 360
+    copy = fit_lengths(replace(src, y=y, z=z, facing=facing), rules)
+    return replace(hand, fingers=hand.fingers + (copy,))
 
 
 def _remove_finger_moves(hand: Hand, rules: Rules) -> List[tuple]:
@@ -413,8 +426,8 @@ OPERATORS: Tuple[Operator, ...] = (
              False, _cut_moves, _turn_cut),
     # structure
     Operator("add_finger", "add a finger",
-             "Add a finger at a free spot on the palm, pointing outward, with as many joints as the other fingers "
-             "have on average (rounded up), its joints and links drawn as for a random hand.",
+             "Copy one of the hand's fingers (its joints, links and tilt) to a free spot on the palm, at the same "
+             "angle to the outward direction.",
              True, _add_finger_moves, _add_finger),
     Operator("remove_finger", "remove a finger",
              "Remove one whole finger; a palm cut left with no finger on one side goes too.",
@@ -441,10 +454,16 @@ INVERSES: Dict[str, str] = {
 
 
 def recentre(hand: Hand, rules: Rules) -> Hand:
-    """The hand moved on the base grid so that its palm's centre lies within
-    half a base step of the mount (`Rules.mount_at_centre`): the same
-    fingers, the mount at their centre. Unchanged under rules that leave the
-    mount free."""
+    """The hand moved so its mount sits where the rules want it, the same
+    fingers: on the base grid so that its palm's centre lies within half a
+    base step of the mount (`Rules.mount_at_centre`); or, with a derived
+    mount (`Rules.derived_mount`), by whole millimetres so that the mount's
+    derived position (`viability.mount_position_mm`) is the origin --
+    unchanged when there is none (the rules then reject the hand). Unchanged
+    under rules that leave the mount free."""
+    if hand.fingers and rules.derived_mount:
+        m = gvb.mount_position_mm(hand)
+        return hand if m is None or m == (0, 0) else shifted(hand, -m[0], -m[1])
     if not hand.fingers or not rules.mount_at_centre:
         return hand
     p = rules.base_pitch_mm
@@ -473,6 +492,16 @@ def _turned(hand: Hand, k: int, mirror: bool) -> Hand:
     cuts = tuple(replace(p, facing=(((180 - p.facing) if mirror else p.facing) + 90 * k) % 360)
                  for p in hand.palm_joints)
     return replace(hand, fingers=tuple(fingers), palm_joints=cuts)
+
+
+def _base_centroid_shifted(hand: Hand) -> Hand:
+    """The hand moved by whole millimetres so its bases' centroid rounds to the origin: a translation-free form that
+    costs nothing (for ranking a hand's turned copies under a derived mount)."""
+    if not hand.fingers:
+        return hand
+    cy = int(round(sum(f.y for f in hand.fingers) / len(hand.fingers)))
+    cz = int(round(sum(f.z for f in hand.fingers) / len(hand.fingers)))
+    return shifted(hand, -cy, -cz) if (cy or cz) else hand
 
 
 def _finger_key(f: Finger) -> tuple:
@@ -505,8 +534,14 @@ def canonical(hand: Hand, rules: Rules) -> Hand:
                 if not (-h <= y < h and -h <= z < h):
                     continue
             t = _turned(hand, k, mirror)
+            if rules.derived_mount:      # ranked on a cheap translation-free form; the mount placed only when tried
+                t = _base_centroid_shifted(t)
             cands.append((_hand_key(t), bool(k or mirror), t))
     for _key, moved, t in sorted(cands, key=lambda x: (x[0], x[1])):
+        if rules.derived_mount:
+            if not moved:
+                return replace(hand, fingers=tuple(sorted(hand.fingers, key=_finger_key)))
+            t = recentre(t, rules)
         if not moved or (not check(t, rules) and gvb.clear(t)):
             return replace(t, fingers=tuple(sorted(t.fingers, key=_finger_key)))
     return replace(hand, fingers=tuple(sorted(hand.fingers, key=_finger_key)))
@@ -534,8 +569,6 @@ def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, rng: Op
         else:
             order = list(rng.permutation(len(moves)))
         moves = [moves[int(k)] for k in order]
-        if op.name == "add_finger":       # each new finger's joints from its own draw
-            moves = [m[:-1] + (int(rng.integers(1 << 62)),) for m in moves]
     pv = len(check(hand, rules))
     parent_worst = None
     for mv in moves:
@@ -641,8 +674,10 @@ def _clears_mount(y: int, z: int, facing: int, tilt: int, kind: str) -> bool:
     return dv.gjk_distance(C, dv.mount_points_m()) / dv.MM >= gvb.CLEARANCE_MM - gvb.C1_TOLERANCE_MM
 
 
-def _base_clear(cand: Tuple[int, int, int, int, str], placed: List[np.ndarray]) -> bool:
-    if not _clears_mount(*cand):
+def _base_clear(cand: Tuple[int, int, int, int, str], placed: List[np.ndarray], mount: bool = True) -> bool:
+    """The candidate base servo clears the mount (unless `mount` is False: a derived mount, placed afterwards) and
+    the base servos placed so far."""
+    if mount and not _clears_mount(*cand):
         return False
     C = _base_box_corners(*cand)
     c = C.mean(axis=0)
@@ -667,13 +702,13 @@ def _draw_base(rng: np.random.Generator, rules: Rules, placed: List[np.ndarray],
     cdf = _base_cdf(rules)
     for _ in range(200):
         c = cands[int(np.searchsorted(cdf, rng.random(), side="right"))]
-        if (c[0], c[1]) not in taken and _base_clear(c, placed):
+        if (c[0], c[1]) not in taken and _base_clear(c, placed, not rules.derived_mount):
             return c
     for k in _weighted_order(rng, w):
         c = cands[int(k)]
         if (c[0], c[1]) in taken:
             continue
-        if _base_clear(c, placed):
+        if _base_clear(c, placed, not rules.derived_mount):
             return c
     return None
 
@@ -789,7 +824,7 @@ def _draw_fingers(rng: np.random.Generator, rules: Rules, n: int) -> Optional[Ha
                 continue
             f = replace(stub, joints=joints)
             hand = Hand(fingers=tuple(fingers) + (f,))
-            if gvb.clear(hand, focus_finger=len(fingers)):
+            if gvb.clear(hand, focus_finger=len(fingers), mount=not rules.derived_mount):
                 fingers.append(f)
                 placed.extend(b.corners() * dv.MM for b in dv.base_motor_boxes_mm(f))
                 break

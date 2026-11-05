@@ -47,7 +47,7 @@ def make_child(parent_design: Optional[dict], name: str, out_dir: Path, cfg: Evo
     key = design_key(hand, rules)
     if key in taken:
         return None
-    row = build(hand, name, out_dir / name)
+    row = build(hand, name, out_dir / name, rules_name=cfg.rules)
     if not fits_grid(row["spec"], cfg.grid):
         shutil.rmtree(out_dir / name, ignore_errors=True)
         return None

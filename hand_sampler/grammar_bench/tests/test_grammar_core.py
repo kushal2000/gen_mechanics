@@ -678,27 +678,33 @@ def test_remove_a_finger_in_one_step():
     assert some >= 0.9 * hands and removable >= 0.7 * fingers
 
 
-def test_add_finger_has_the_mean_joint_count_rounded_up_at_a_free_spot():
-    """The added finger has as many joints as the hand's fingers on average,
-    rounded up; its joints are drawn as a random hand's (kinds from the
-    commercial mix), so different draws give different fingers."""
+def test_add_finger_copies_one_of_the_hands_fingers_to_a_free_spot():
+    """The added finger is a copy of finger i (2026-11-04): the same joints, links and tilt, at a free spot, at the
+    same angle to its spot's outward direction. The move fixes everything (no random draw), so the children are
+    enumerable: one per (free spot, source finger) that keeps the rules and C1."""
     rng = np.random.default_rng(13)
-    h = ops.recentre(Hand(fingers=simple_hand().fingers[:2]), FEETECH_RULES)
-    want = math.ceil(sum(len(f.joints) for f in h.fingers) / len(h.fingers))
-    assert ops.added_finger_joints(h, FEETECH_RULES) == want
-    added = set()
+    h = ops.random_hand(rng, FEETECH_RULES)              # a hand within the rules (children must then be too)
+    while not 2 <= len(h.fingers) <= 3 or check(h, FEETECH_RULES):
+        h = ops.random_hand(rng, FEETECH_RULES)
+    op = ops.OPERATOR_BY_NAME["add_finger"]
+    moves = op.moves(h, FEETECH_RULES)
+    assert {m[2] for m in moves} == set(range(len(h.fingers)))
+    free = [s for s in ops.base_spots(FEETECH_RULES) if s not in {(f.y, f.z) for f in h.fingers}]
+    assert sorted(moves) == sorted((y, z, i) for (y, z) in free for i in range(len(h.fingers)))
+    copied = set()
     for _ in range(8):
         child, mv = ops.apply_operator(h, "add_finger", rng, FEETECH_RULES)
-        added_hand = ops.OPERATOR_BY_NAME["add_finger"].apply(h, mv, FEETECH_RULES)
-        f = added_hand.fingers[-1]                                    # the move fixes the draw
-        assert len(f.joints) == want and all(j.type == "hinge" for j in f.joints)
-        assert len({(g.y, g.z) for g in child.fingers}) == len(child.fingers) and f.tilt == 0    # a free spot
+        y, z, i = mv
+        added_hand = op.apply(h, mv, FEETECH_RULES)
+        f, src = added_hand.fingers[-1], h.fingers[i]
+        assert (f.y, f.z) == (y, z) and (y, z) not in {(g.y, g.z) for g in h.fingers}      # a free spot
+        assert f.joints == src.joints and f.tilt == src.tilt                               # a copy
+        assert (f.facing - ops._radial_facing(y, z)) % 360 == (src.facing - ops._radial_facing(src.y, src.z)) % 360
         assert check(child, FEETECH_RULES) == []
         assert ops.canonical(ops.recentre(added_hand, FEETECH_RULES), FEETECH_RULES) == child   # centred, one copy
-        added.add(f.joints)
-    assert len(added) > 1
-    h3 = Hand(fingers=(replace(h.fingers[0], joints=h.fingers[0].joints[:1]),) + h.fingers[1:])
-    assert ops.added_finger_joints(h3, FEETECH_RULES) == math.ceil((1 + len(h.fingers[1].joints)) / 2)
+        assert op.apply(h, mv, FEETECH_RULES) == added_hand                                 # deterministic
+        copied.add(i)
+    assert copied == set(range(len(h.fingers)))
 
 
 def test_operators_that_cannot_act_have_no_candidates():

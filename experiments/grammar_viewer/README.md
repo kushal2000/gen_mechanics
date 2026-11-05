@@ -91,7 +91,7 @@ Per hand: what evolution changes. Global: one value for every hand. Ranges under
 | turn a joint axis | `axis_az` | the axis around the link by 30° (links move to their new shortest if needed) |
 | tip a joint axis | `axis_el` | the axis toward or away from the link by 30° |
 | move / turn the palm cut | `move_cut`, `turn_cut` | the line by 10 mm or 30° |
-| add a finger | `add_finger` | a finger at a free spot, facing away from the centre, with the hand's mean joint count rounded up, its joints drawn as for a random hand |
+| add a finger | `add_finger` | a copy of one of the hand's fingers (joints, links, tilt) at a free spot, at the same angle to the outward direction |
 | remove a finger | `remove_finger` | a finger in one step, unless centring the rest would put a base outside the ring; a cut left with no finger on a side goes too |
 | add a joint (split a link) | `split` | a new joint at any 10 mm point of a link, kind drawn with the commercial mix; links too short grow to their shortest |
 | remove a joint (merge two links) | `merge` | one joint; the links on either side become one (at most 90 mm) |

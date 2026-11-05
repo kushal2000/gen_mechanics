@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
@@ -114,14 +115,15 @@ def _finger_of(key: Tuple) -> int:
     return key[1] if key[0] in ("motor", "link") else -1
 
 
-def overlaps(hand: Hand, q: Optional[np.ndarray] = None, focus_finger: Optional[int] = None
-             ) -> List[Tuple[Tuple, Tuple, float]]:
+def overlaps(hand: Hand, q: Optional[np.ndarray] = None, focus_finger: Optional[int] = None,
+             mount: bool = True) -> List[Tuple[Tuple, Tuple, float]]:
     """`(solid_a, solid_b, overlap_mm)` for every pair not touching by
     construction that comes closer than the wall (overlap = wall - distance,
     so 2 mm when they intersect). `q` None is the zero pose (with the
     plate-against-far-end exception). `focus_finger`: only pairs involving
-    that finger or a plate (what changes when a finger is added)."""
-    solids = dv.solids_at(hand, q)
+    that finger or a plate (what changes when a finger is added). `mount`
+    False leaves the mount out (a hand whose mount is not placed yet)."""
+    solids = [s for s in dv.solids_at(hand, q) if mount or s.key != ("mount",)]
     skip = touching_pairs(hand)
     far = plate_far_pairs(hand) if q is None else set()
     centres = [s.points.mean(axis=0) for s in solids]
@@ -193,13 +195,86 @@ def c1_self_overlap(hand: Hand, max_overlap_mm: float = C1_MAX_OVERLAP_MM) -> C1
     return C1Result(ok=not bad, worst_mm=worst, pairs=bad)
 
 
-def clear(hand: Hand, focus_finger: Optional[int] = None) -> bool:
+def clear(hand: Hand, focus_finger: Optional[int] = None, mount: bool = True) -> bool:
     """C1 as a yes/no (`focus_finger`: only what involves that finger or a
-    plate, for building a hand finger by finger)."""
+    plate, for building a hand finger by finger; `mount` False: the mount
+    left out, for a hand whose mount is placed afterwards)."""
     if seam_overlaps(hand):
         return False
     for q in dv.check_poses(hand):
-        if overlaps(hand, q, focus_finger):
+        if overlaps(hand, q, focus_finger, mount):
+            return False
+    return True
+
+
+MOUNT_SEARCH_STEP_MM = 2
+
+
+def mount_position_mm(hand: Hand, step: int = MOUNT_SEARCH_STEP_MM) -> Optional[Tuple[int, int]]:
+    """Where a derived mount goes (`Rules.derived_mount`): the point inside the
+    hull of the base servos' housings nearest the palm centre at which the
+    mount clears every solid it does not touch by construction (every one
+    but the plates) by a wall, at every check pose; None if there is none.
+    Candidates sit on a `step` mm grid around the palm centre rounded to the
+    millimetre, nearest first (ties by offset), so translating the hand by
+    whole millimetres translates the answer with it -- which is how it is
+    cached: one search per arrangement, whatever its translation. Integer
+    (y, z) mm."""
+    if hand.palm_joints or not hand.fingers:
+        return None
+    cy = int(round(sum(f.y for f in hand.fingers) / len(hand.fingers)))
+    cz = int(round(sum(f.z for f in hand.fingers) / len(hand.fingers)))
+    from .hand import shifted
+    m = _mount_position_mm(shifted(hand, -cy, -cz) if (cy or cz) else hand, step)
+    return None if m is None else (m[0] + cy, m[1] + cz)
+
+
+@lru_cache(maxsize=16384)
+def _mount_position_mm(hand: Hand, step: int) -> Optional[Tuple[int, int]]:
+    feet = np.concatenate([dv._footprint(b) for f in hand.fingers for b in dv.base_motor_boxes_mm(f)])
+    hull = dv._hull2d(feet)
+    c = dv.palm_centre_mm(hand)
+    cy, cz = int(round(float(c[0]))), int(round(float(c[1])))
+    lo, hi = hull.min(0), hull.max(0)
+    r = int(math.ceil(max(abs(lo[0] - cy), abs(hi[0] - cy), abs(lo[1] - cz), abs(hi[1] - cz)) / step)) * step
+    g = np.arange(-r, r + 1, step)
+    dy, dz = (a.ravel() for a in np.meshgrid(g, g, indexing="ij"))
+    order = np.lexsort((dz, dy, np.hypot(cy + dy - c[0], cz + dz - c[1])))      # nearest first, ties by offset
+    offs = zip(dy[order].tolist(), dz[order].tolist())
+    # only solids reaching behind the plate's back face (less a wall) can come near the mount, which hangs behind it
+    reach_back = (-PLATE_HALF_MM + CLEARANCE_MM - C1_TOLERANCE_MM) * MM
+    solids = [s for q in dv.check_poses(hand) for s in dv.solids_at(hand, q)
+              if s.key[0] not in ("palm", "mount") and float(s.points[:, 0].min()) - s.radius < reach_back]
+    if not solids:
+        for oy, oz in offs:
+            if _inside(hull, (cy + oy, cz + oz)):
+                return (cy + oy, cz + oz)
+        return None
+    sc = np.stack([s.points.mean(axis=0) for s in solids])
+    sr = np.array([float(np.max(np.linalg.norm(s.points - c0, axis=1))) + s.radius for s, c0 in zip(solids, sc)])
+    base = dv.mount_points_m()
+    b0 = base.mean(axis=0)
+    br = float(np.max(np.linalg.norm(base - b0, axis=1)))
+    margin = CLEARANCE_MM * MM
+    for oy, oz in offs:
+        y, z = cy + oy, cz + oz
+        if not _inside(hull, (y, z)):
+            continue
+        t = np.array([0.0, y, z]) * MM
+        near = np.nonzero(np.linalg.norm(sc - (b0 + t), axis=1) <= br + sr + margin)[0]
+        M = base + t
+        if all(CLEARANCE_MM - max(0.0, gjk_distance(M, solids[k].points) - solids[k].radius) / MM <= C1_TOLERANCE_MM
+               for k in near):
+            return (y, z)
+    return None
+
+
+def _inside(poly: np.ndarray, p: Tuple[float, float]) -> bool:
+    """Whether point p lies in the convex polygon `poly` (counter-clockwise (y, z)), boundary included."""
+    n = len(poly)
+    for k in range(n):
+        a, b = poly[k], poly[(k + 1) % n]
+        if (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) < -1e-9:
             return False
     return True
 

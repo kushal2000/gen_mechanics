@@ -103,8 +103,13 @@ def _plate_mass(points_m: np.ndarray) -> tuple[float, np.ndarray, np.ndarray, np
     return float(m.mass), m.center_mass, vals, vecs.T      # principal_axis gives the axes as rows
 
 
-def build(hand: gh.Hand, name: str, out_dir: Path) -> dict:
+def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: str = RULES_NAME) -> dict:
+    """Write the hand's URDF, spec and design under `out_dir`. `rules_name`: the rule set it was made under (recorded
+    in the spec); with a derived mount (`Rules.derived_mount`) the root frame -- where the wrist attaches -- is moved
+    from the mount to the palm centre (the base servos' centroid), so every such hand sits over the task the same
+    way; the mount stays a solid of the palm, at `mount_in_root_m`."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    derived = bool(getattr(gh, rules_name).derived_mount)
     T = body_frames(hand)
     links = {b: ET.Element("link", name=b) for b in T}
     counts: dict[str, int] = {}
@@ -176,6 +181,17 @@ def build(hand: gh.Hand, name: str, out_dir: Path) -> dict:
         if ba != bc:
             adj[ba].add(bc)
 
+    shift = np.zeros(3)                                 # root frame origin in the grammar's palm frame, metres
+    if derived:
+        shift = np.array([0.0, *dv.palm_centre_mm(hand)]) * dv.MM
+        for el in root.find("link[@name='palm']"):           # the palm body's visuals, collisions and inertial
+            o = el.find("origin")
+            if o is not None:
+                o.set("xyz", _fmt(np.array([float(v) for v in o.get("xyz").split()]) - shift))
+        for el in root.findall("joint"):                     # every joint hung from the palm
+            if el.find("parent").get("link") == "palm":
+                o = el.find("origin")
+                o.set("xyz", _fmt(np.array([float(v) for v in o.get("xyz").split()]) - shift))
     tree = ET.ElementTree(root)
     ET.indent(tree)
     urdf = out_dir / f"{name}.urdf"
@@ -183,7 +199,7 @@ def build(hand: gh.Hand, name: str, out_dir: Path) -> dict:
 
     outline = g.outline                                 # the uncut palm, (y, z) mm
     lo_yz, hi_yz = outline.min(0) * dv.MM, outline.max(0) * dv.MM
-    centre = [0.0, *((lo_yz + hi_yz) / 2.0)]
+    centre = (np.array([0.0, *((lo_yz + hi_yz) / 2.0)]) - shift).tolist()
     n_tips = len(hand.fingers)
     spec = {
         "hand": name, "side": "left", "urdf": str(urdf.relative_to(REPO)) if urdf.is_relative_to(REPO) else str(urdf), "palm_body": "palm",
@@ -200,7 +216,8 @@ def build(hand: gh.Hand, name: str, out_dir: Path) -> dict:
         "effort_limit": EFFORT, "velocity_limit": VELOCITY,
         "link_density_kg_m3": DENSITY, "friction": FRICTION,
         "replace_cylinders_with_capsules": True,
-        "rules": RULES_NAME, "design": gh.hand_to_dict(hand),
+        "rules": rules_name, "design": gh.hand_to_dict(hand),
+        **({"mount_in_root_m": (-shift).tolist()} if derived else {}),
     }
     (out_dir / f"{name}.spec.json").write_text(json.dumps(spec, indent=1))
     (out_dir / f"{name}.design.json").write_text(json.dumps(gh.hand_to_dict(hand), indent=1))
