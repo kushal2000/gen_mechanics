@@ -27,8 +27,8 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "experiments/30oct_evolution_evaluation"))
-LEVEL = {"length": "chain", "axis_az": "chain", "axis_el": "chain", "split": "chain", "merge": "chain",
+sys.path.insert(0, str(REPO / "experiments/oct_2026_experiments/30oct_evolution_evaluation"))
+LEVEL = {"length": "chain", "kind": "chain", "axis_az": "chain", "axis_el": "chain", "split": "chain", "merge": "chain",
          "move_finger": "placement", "turn_finger": "placement", "tilt_finger": "placement",
          "add_finger": "topology", "remove_finger": "topology"}
 KIND = {(0, 0): "flex", (90, 0): "abd", (0, 90): "roll"}
@@ -47,6 +47,9 @@ def describe(op: str, mv: tuple, parent) -> str:
     if op == "length":
         i, j, s = mv
         return f"finger {i} link {j} {'longer' if s > 0 else 'shorter'} (was {F[i].joints[j].length} mm)"
+    if op == "kind":
+        i, j, k = mv
+        return f"finger {i} joint {j}: {kind(F[i].joints[j].axis)} -> {KIND[{'flexion': (0, 0), 'abduction': (90, 0), 'roll': (0, 90)}[k]]}"
     if op in ("axis_az", "axis_el"):
         i, j, s = mv
         return f"finger {i} joint {j} kind: {kind(F[i].joints[j].axis)} -> " + ("abd/flex swap" if op == "axis_az" else "roll/flex swap")

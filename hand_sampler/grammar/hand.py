@@ -269,6 +269,7 @@ class Rules:
     base_pitch_mm: int = GRID_MM
     base_distance_mm: Tuple[int, int] = (10, BASE_DISTANCE_MAX_MM)
     outward_facing: bool = False
+    outward_slack_deg: int = 0        # how far past tangential an outward-facing finger may point (mutation rules)
     buildable_links: bool = False
     max_link_mm: int = LINK_MAX_MM
     mount_at_centre: bool = False
@@ -295,7 +296,8 @@ class Rules:
             max_palm_joints=max(0, min(int(self.max_palm_joints), g.max_palm_joints)),
             max_finger_length_mm=max(TIP_MIN_MM, min(int(self.max_finger_length_mm), g.max_finger_length_mm)),
             base_pitch_mm=pitch, base_distance_mm=(lo, max(lo, hi)),
-            outward_facing=bool(self.outward_facing), buildable_links=bool(self.buildable_links),
+            outward_facing=bool(self.outward_facing), outward_slack_deg=max(0, min(int(self.outward_slack_deg), 90)),
+            buildable_links=bool(self.buildable_links),
             max_link_mm=max(TIP_MIN_MM, min(int(self.max_link_mm) // GRID_MM * GRID_MM, g.max_link_mm)),
             mount_at_centre=bool(self.mount_at_centre),
             link_step_mm=max(GRID_MM, int(self.link_step_mm) // GRID_MM * GRID_MM),
@@ -318,6 +320,19 @@ FEETECH_COARSE_NOCUT_RULES = replace(FEETECH_COARSE_RULES, max_palm_joints=0, ba
 """The coarse stage without palm cuts and with the mount derived (2026-11-04): a hand is its fingers' arrangement;
 every base within 90 mm of the palm centre; the mount at the clear point inside the base servos' hull nearest the
 palm centre. Built hands put the wrist frame at the palm centre (`urdf_export.build`)."""
+FEETECH_COARSE_NOCUT_MUTATION_RULES = replace(FEETECH_COARSE_NOCUT_RULES, outward_slack_deg=30, base_distance_mm=(0, 110))
+"""What a mutant of a FEETECH_COARSE_NOCUT_RULES hand must keep (6 Nov, the user's call): the same buildability --
+grids, joints, link lengths, finger length, the mount spot, C1 -- with the two priors that judge a finger against the
+derived palm centre relaxed, since that centre moves with every topology edit: a finger may point up to 30 degrees
+past tangential (outward_slack_deg), and a base may sit up to 110 mm from the centre. Random hands keep the strict set."""
+MUTATION_RULES = {FEETECH_COARSE_NOCUT_RULES: FEETECH_COARSE_NOCUT_MUTATION_RULES}
+
+
+def mutation_rules(rules: Rules) -> Rules:
+    """The rule set a mutant of a `rules` hand must keep: its relaxed variant if it has one (MUTATION_RULES)."""
+    return MUTATION_RULES.get(rules, rules)
+
+
 STAGE_RULES = {"coarse": FEETECH_COARSE_RULES, "fine": FEETECH_RULES}
 EVOLUTION_RULES = FEETECH_RULES
 COMMERCIAL_RULES = Rules(buildable_links=True, mount_at_centre=True)
@@ -343,16 +358,20 @@ def tilts_for(kind: str) -> List[int]:
     return list(range(TILT_RANGE_DEG[0], TILT_RANGE_DEG[1] + 1, GRID_DEG))
 
 
-def faces_outward(f: Finger, centre: Tuple[float, float] = (0.0, 0.0), tol_mm: float = 0.0) -> bool:
+def faces_outward(f: Finger, centre: Tuple[float, float] = (0.0, 0.0), tol_mm: float = 0.0,
+                  slack_deg: float = 0.0) -> bool:
     """The finger does not point back across the palm: its direction in the
     plate makes at most 90 degrees with the line from `centre` (the mount,
     or the palm centre under `Rules.derived_mount`) to its base (tangential
     allowed; a base at the centre itself may face anywhere). `tol_mm`: how
     far behind the tangent the centre may lie (a derived palm centre moves by
     fractions of a millimetre under a mirror image, which must not flip a
-    tangential finger)."""
+    tangential finger). `slack_deg`: how far past tangential the finger may point (the mutation rules' relaxation,
+    6 Nov: a near-tangential edge finger must not flip with every move of the derived centre)."""
     fa = math.radians(f.facing)
-    return math.sin(fa) * (f.y - centre[0]) + math.cos(fa) * (f.z - centre[1]) >= -1e-9 - tol_mm
+    ry, rz = f.y - centre[0], f.z - centre[1]
+    slack = math.hypot(ry, rz) * math.sin(math.radians(slack_deg))
+    return math.sin(fa) * ry + math.cos(fa) * rz >= -1e-9 - tol_mm - slack
 
 
 @lru_cache(maxsize=None)
@@ -460,7 +479,7 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
             lo, hi = r.base_distance_mm
             if not (lo <= d <= hi):
                 out.append(f"{tag}: base {d:.1f} mm from the palm centre, allowed {lo}-{hi}")
-            if r.outward_facing and not faces_outward(f):
+            if r.outward_facing and not faces_outward(f, slack_deg=r.outward_slack_deg):
                 out.append(f"{tag}: faces back across the palm")
         nj = len(f.joints)
         if not (1 <= nj <= r.max_joints):
@@ -511,16 +530,8 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
         out.append("palm joints are not allowed with a derived mount (a cut is placed relative to the mount)")
     if r.derived_mount and n and not out:
         # measured from the palm centre (the base servos' centroid), then the mount where the grammar puts it
-        from .derive import palm_centre_mm      # derive builds on this module
         from .viability import mount_position_mm
-        c = palm_centre_mm(hand)
-        lo, hi = r.base_distance_mm
-        for i, f in enumerate(hand.fingers):
-            d = math.hypot(f.y - c[0], f.z - c[1])
-            if not (lo <= d <= hi):
-                out.append(f"finger {i}: base {d:.1f} mm from the palm centre, allowed {lo}-{hi}")
-            if r.outward_facing and not faces_outward(f, (float(c[0]), float(c[1])), tol_mm=DERIVED_OUTWARD_TOL_MM):
-                out.append(f"finger {i}: faces back across the palm")
+        out += palm_centre_violations(hand, r)
         if not out:
             m = mount_position_mm(hand)
             if m is None:
@@ -535,6 +546,24 @@ def check(hand: Hand, rules: Optional[Rules] = None) -> List[str]:
         if not (-h <= cy < h and -h <= cz < h):
             out.append(f"palm centre ({cy:.1f}, {cz:.1f}) mm from the mount; the mount sits at the palm's centre, "
                        f"within half a base step ({h:g} mm)")
+    return out
+
+
+def palm_centre_violations(hand: Hand, r: Rules) -> List[str]:
+    """The derived-mount rules measured from the palm centre (the base servos' centroid): each base's distance and
+    each finger facing outward. Unchanged by translating the hand, so a mutant can be screened on them before the
+    (costly) mount search of recentring (operators.iter_valid, 6 Nov); check() uses this same function."""
+    from .derive import palm_centre_mm      # derive builds on this module
+    out = []
+    c = palm_centre_mm(hand)
+    lo, hi = r.base_distance_mm
+    for i, f in enumerate(hand.fingers):
+        d = math.hypot(f.y - c[0], f.z - c[1])
+        if not (lo <= d <= hi):
+            out.append(f"finger {i}: base {d:.1f} mm from the palm centre, allowed {lo}-{hi}")
+        if r.outward_facing and not faces_outward(f, (float(c[0]), float(c[1])), tol_mm=DERIVED_OUTWARD_TOL_MM,
+                                                  slack_deg=r.outward_slack_deg):
+            out.append(f"finger {i}: faces back across the palm")
     return out
 
 

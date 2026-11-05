@@ -216,6 +216,36 @@ def _axis_el(hand: Hand, mv: tuple, rules: Rules) -> Hand:
     return _turn_axis(hand, mv, rules, 1)
 
 
+# The three joint kinds of the 90-degree axis grid, as canonical (az, el): flexion, abduction, roll.
+JOINT_KINDS = {"flexion": (0, 0), "abduction": (90, 0), "roll": (0, 90)}
+
+
+def _coarse_axes(rules: Rules) -> bool:
+    return int(rules.axis_step_deg) >= 90
+
+
+def _kind_moves(hand: Hand, rules: Rules) -> List[tuple]:
+    """(i, j, kind): joint j of finger i becomes either other kind (the 90-degree grid only; the 30-degree grid turns
+    axes step by step with axis_az / axis_el)."""
+    if not _coarse_axes(rules):
+        return []
+    return [(i, j, k) for i, f in enumerate(hand.fingers) for j, jt in enumerate(f.joints)
+            for k, ax in JOINT_KINDS.items() if canonical_axis(*jt.axis) != ax]
+
+
+def _kind(hand: Hand, mv: tuple, rules: Rules) -> Hand:
+    i, j, k = mv
+    f = hand.fingers[i]
+    js = list(f.joints)
+    js[j] = replace(js[j], axis=JOINT_KINDS[k])
+    return with_finger(hand, i, fit_lengths(replace(f, joints=tuple(js)), rules))
+
+
+def _fine_joint_moves(hand: Hand, rules: Rules) -> List[tuple]:
+    """axis_az / axis_el's moves: the 30-degree grid only (on the 90-degree grid one `kind` edit replaces both)."""
+    return [] if _coarse_axes(rules) else _joint_moves(hand, rules)
+
+
 def _cut_moves(hand: Hand, rules: Rules) -> List[tuple]:
     return [(0, s) for s in (-1, 1)] if hand.palm_joints else []
 
@@ -416,10 +446,13 @@ OPERATORS: Tuple[Operator, ...] = (
     Operator("length", "lengthen or shorten a link",
              "Change one link to its next allowed length (10 mm steps; down from its shortest to 0 where allowed).",
              False, _joint_moves, _length),
-    Operator("axis_az", "turn a joint axis", "Turn one joint's axis 30 degrees around the link.",
-             False, _joint_moves, _axis_az),
-    Operator("axis_el", "tip a joint axis", "Tip one joint's axis 30 degrees toward or away from the link.",
-             False, _joint_moves, _axis_el),
+    Operator("kind", "change a joint's kind",
+             "Make one joint any other kind: flexion, abduction or roll (the 90-degree axis grid; 6 Nov, the user's "
+             "call: one edit, any kind to any kind).", False, _kind_moves, _kind),
+    Operator("axis_az", "turn a joint axis", "Turn one joint's axis 30 degrees around the link (30-degree grid).",
+             False, _fine_joint_moves, _axis_az),
+    Operator("axis_el", "tip a joint axis", "Tip one joint's axis 30 degrees toward or away from the link "
+             "(30-degree grid).", False, _fine_joint_moves, _axis_el),
     Operator("move_cut", "move the palm cut", "Move the palm's cut 10 mm.",
              False, _cut_moves, _move_cut),
     Operator("turn_cut", "turn the palm cut", "Turn the palm's cut 30 degrees.",
@@ -555,11 +588,23 @@ def _weighted_order(rng: np.random.Generator, weights: Sequence[float]) -> List[
     return list(np.argsort(-keys))
 
 
-def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, rng: Optional[np.random.Generator] = None):
+def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, rng: Optional[np.random.Generator] = None,
+               canonical_children: bool = False, strict_rules: bool = False, prescreen: bool = True):
     """The applications of `op` whose child keeps `rules` and C1, as
     `(move, child)`, in shuffled order when `rng` is given (a split's new
     joint kind weighted by the commercial mix), else in list order. Lazy:
-    a caller that needs one stops at the first (Vatsal's method)."""
+    a caller that needs one stops at the first (Vatsal's method).
+
+    A child keeps the orientation its edit gave it (only recentred, so the mount stays at the palm's centre): the
+    policy is not symmetry-invariant, so a turned or mirrored copy is a different hand to it (the user's call,
+    6 Nov). canonical_children=True restores the old behaviour, every child stored as `canonical` (one of the plate's
+    8 turns and mirror images).
+
+    A child keeps `hand_sampler.grammar.hand.mutation_rules(rules)`, the relaxed variant of `rules` where one exists
+    (6 Nov: the priors judged against the moving palm centre loosened for mutants); strict_rules=True keeps `rules`."""
+    if not strict_rules:
+        from .hand import mutation_rules
+        rules = mutation_rules(rules)
     moves = op.moves(hand, rules)
     if not moves:
         return
@@ -571,8 +616,13 @@ def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, rng: Op
         moves = [moves[int(k)] for k in order]
     pv = len(check(hand, rules))
     parent_worst = None
+    screen = pv == 0 and rules.derived_mount and prescreen
+    if screen:
+        from .hand import palm_centre_violations
     for mv in moves:
         child = op.apply(hand, mv, rules)
+        if screen and child.fingers and palm_centre_violations(child, rules):
+            continue                              # rejected after recentring anyway: skip its mount search
         centred = recentre(child, rules)          # the mount stays at the palm's centre
         if centred != child and (pv == 0 or _admissible(centred, pv, rules)):
             child = centred                       # (a hand already off-centre may also stay where it is)
@@ -581,15 +631,17 @@ def iter_valid(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, rng: Op
         if parent_worst is None:
             parent_worst = _c1_worst(hand)
         if _c1_keeps(child, parent_worst):
-            child = canonical(child, rules)       # turns and mirror images of a hand are one hand
+            if canonical_children:
+                child = canonical(child, rules)   # turns and mirror images of a hand as one hand (before 6 Nov)
             if child != hand:
                 yield mv, child
 
 
-def candidates(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES) -> List[tuple]:
+def candidates(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES, canonical_children: bool = False
+               ) -> List[tuple]:
     """Every application of `op` to `hand` whose child keeps `rules` and C1
     (exhaustive: for tests and analysis; `apply_operator` stops at the first)."""
-    return [mv for mv, _ in iter_valid(hand, op, rules)]
+    return [mv for mv, _ in iter_valid(hand, op, rules, canonical_children=canonical_children)]
 
 
 def can_act(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES) -> bool:
@@ -598,11 +650,11 @@ def can_act(hand: Hand, op: Operator, rules: Rules = EVOLUTION_RULES) -> bool:
     return next(iter_valid(hand, op, rules), None) is not None
 
 
-def apply_operator(hand: Hand, name: str, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES
-                   ) -> Optional[Tuple[Hand, tuple]]:
+def apply_operator(hand: Hand, name: str, rng: np.random.Generator, rules: Rules = EVOLUTION_RULES,
+                   canonical_children: bool = False) -> Optional[Tuple[Hand, tuple]]:
     """Operator `name`'s candidates in random order; the first child that
     keeps `rules` and C1, as `(child, move)`, or None."""
-    hit = next(iter_valid(hand, OPERATOR_BY_NAME[name], rules, rng), None)
+    hit = next(iter_valid(hand, OPERATOR_BY_NAME[name], rules, rng, canonical_children=canonical_children), None)
     if hit is None:
         return None
     mv, child = hit
@@ -805,7 +857,7 @@ def random_hand(rng: np.random.Generator, rules: Rules = EVOLUTION_RULES) -> Han
         problems = check(hand, rules)
         if problems:   # every draw keeps the limits by construction; this guards the construction itself
             raise AssertionError(f"random_hand broke its rules: {problems}")
-        return canonical(hand, rules)     # turns and mirror images of a hand are one hand
+        return hand                       # as drawn: no canonical turn or mirror (6 Nov, the user's call)
     raise NoHand(f"no {n}-finger hand under these rules after {MAX_HAND_ATTEMPTS} attempts")
 
 

@@ -423,6 +423,12 @@ def _closest_triangle(a: np.ndarray, b: np.ndarray, c: np.ndarray):
     return a + ab * v + ac * w, [a, b, c]
 
 
+def _cross3(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """u x v for 3-vectors: np.cross's formula without its general-purpose axis handling, which was most of GJK's time
+    (6 Nov profile: 233 of 418 s)."""
+    return np.array((u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]))
+
+
 def _closest_on_simplex(S: List[np.ndarray]) -> Tuple[np.ndarray, List[np.ndarray]]:
     """The point of the simplex S (1-4 points) closest to the origin, and the
     smallest sub-simplex containing it (a full tetrahedron: the origin is
@@ -437,7 +443,7 @@ def _closest_on_simplex(S: List[np.ndarray]) -> Tuple[np.ndarray, List[np.ndarra
     a, b, c, d = S
     best = None
     for tri, other in (((a, b, c), d), ((a, b, d), c), ((a, c, d), b), ((b, c, d), a)):
-        n = np.cross(tri[1] - tri[0], tri[2] - tri[0])
+        n = _cross3(tri[1] - tri[0], tri[2] - tri[0])
         s_origin = float(-tri[0] @ n)
         s_other = float((other - tri[0]) @ n)
         if s_origin * s_other < 0.0 or abs(s_other) < 1e-18:      # the origin is outside this face
@@ -451,6 +457,22 @@ def _closest_on_simplex(S: List[np.ndarray]) -> Tuple[np.ndarray, List[np.ndarra
 
 
 def gjk_distance(A: np.ndarray, B: np.ndarray, max_iter: int = 64) -> float:
+    """Euclidean distance between the convex hulls of point sets `A` and `B`
+    (0 when they intersect). The numba-compiled version (gjk_nb, 6 Nov) when numba is there; gjk_distance_py is the
+    same algorithm in Python."""
+    if _GJK_NB is not None:
+        return float(_GJK_NB(np.ascontiguousarray(A, dtype=np.float64), np.ascontiguousarray(B, dtype=np.float64),
+                             max_iter))
+    return gjk_distance_py(A, B, max_iter)
+
+
+try:
+    from .gjk_nb import gjk_distance as _GJK_NB
+except ImportError:                       # no numba: the Python version
+    _GJK_NB = None
+
+
+def gjk_distance_py(A: np.ndarray, B: np.ndarray, max_iter: int = 64) -> float:
     """Euclidean distance between the convex hulls of point sets `A` and `B`
     (0 when they intersect)."""
     v = A[0] - B[0]

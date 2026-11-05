@@ -16,8 +16,19 @@ from hand_sampler.grammar.urdf_export import build
 from .config import EvolutionConfig
 
 
-def design_key(hand, rules) -> str:
-    """Canonical JSON: the same hand turned or mirrored on the palm is the same key."""
+def design_key(hand, rules=None) -> str:
+    """The design as deployed: its JSON, orientation and finger order included (6 Nov, the user's call: no
+    canonicalisation -- the policy is not symmetry-invariant, so a turned or mirrored copy is a different hand).
+    `rules` is unused, kept for the callers."""
+    return gh.hand_to_json(hand)
+
+
+exact_key = design_key
+
+
+def canonical_key(hand, rules) -> str:
+    """The old key (before 6 Nov): one for the eight turns and mirror images of a hand. For matching designs stored
+    with it (archives and studies before 6 Nov)."""
     return gh.hand_to_json(gops.canonical(hand, rules))
 
 
@@ -42,7 +53,7 @@ def make_child(parent_design: Optional[dict], name: str, out_dir: Path, cfg: Evo
         if res is None:
             return None
         hand, op, _ = res
-    if gh.check(hand, rules):
+    if gh.check(hand, rules if parent_design is None else gh.mutation_rules(rules)):   # a mutant: the relaxed set
         return None
     key = design_key(hand, rules)
     if key in taken:
@@ -55,4 +66,4 @@ def make_child(parent_design: Optional[dict], name: str, out_dir: Path, cfg: Evo
     return {"spec": row["spec"], "design": gh.hand_to_dict(hand), "operator": op, "key": key}
 
 
-__all__ = ["design_key", "fits_grid", "make_child"]
+__all__ = ["canonical_key", "design_key", "exact_key", "fits_grid", "make_child"]

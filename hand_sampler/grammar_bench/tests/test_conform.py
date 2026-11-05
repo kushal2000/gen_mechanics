@@ -30,13 +30,10 @@ def _real_from_hand(hand: Hand) -> C.RealHand:
 # since 2026-10-20 (the open start and one copy per turn and mirror image
 # change the draws). The fitter at 1d68b41 fails these hands the same way.
 ROUND_TRIP_KNOWN_LIMITS = {
-    ("none", 1): "a finger standing out of the plate (tilt 90) with a spread first: its axis lies in the plate, the "
-                 "fit takes it for a bend first (tilt 0, offset 90 degrees) at a bend's base depth, 0.5 mm off",
+
     ("none", 2): "the same: a standing spread-first finger comes back 0.5 mm off as a bend first",
-    ("none", 5): "the same (since 2026-11-04: add_finger copies a finger and draws no random numbers, so this seed's "
-                 "mutations changed; its hand now has a standing finger with an off-bend first axis)",
-    ("none", 11): "a two-finger hand whose mount is far off the bases' centre: the recentred fit misses the cut by "
-                  "60 degrees and 90 mm",
+
+
 }
 
 

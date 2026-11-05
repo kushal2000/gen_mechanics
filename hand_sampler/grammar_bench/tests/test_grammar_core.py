@@ -507,6 +507,7 @@ def test_long_mutation_chains_keep_every_rule(rules):
             assert check(h, rules) == [], (name, check(h, rules))
             assert V.c1_self_overlap(h).ok, name                 # every mutant keeps C1
     expected = {op.name for op in ops.OPERATORS} - ({"couple"} if "coupled" not in rules.joint_types else set())
+    expected -= {"kind"} if int(rules.axis_step_deg) < 90 else {"axis_az", "axis_el"}   # one kind edit on the 90 grid
     assert used == expected, expected - used
     assert done / calls > 0.8
 
@@ -701,7 +702,10 @@ def test_add_finger_copies_one_of_the_hands_fingers_to_a_free_spot():
         assert f.joints == src.joints and f.tilt == src.tilt                               # a copy
         assert (f.facing - ops._radial_facing(y, z)) % 360 == (src.facing - ops._radial_facing(src.y, src.z)) % 360
         assert check(child, FEETECH_RULES) == []
-        assert ops.canonical(ops.recentre(added_hand, FEETECH_RULES), FEETECH_RULES) == child   # centred, one copy
+        assert ops.recentre(added_hand, FEETECH_RULES) == child          # centred, in the orientation the edit made
+        # (6 Nov: children keep their orientation; canonical_children=True restores the canonical form)
+        assert any(c == ops.canonical(ops.recentre(added_hand, FEETECH_RULES), FEETECH_RULES)
+                   for m, c in ops.iter_valid(h, op, FEETECH_RULES, canonical_children=True) if m == mv)
         assert op.apply(h, mv, FEETECH_RULES) == added_hand                                 # deterministic
         copied.add(i)
     assert copied == set(range(len(h.fingers)))

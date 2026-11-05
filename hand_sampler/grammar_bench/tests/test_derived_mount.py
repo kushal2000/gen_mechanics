@@ -42,8 +42,7 @@ def test_random_hands_keep_the_rules_with_the_mount_at_its_place(hands):
         assert check(h, R) == [], h
         assert V.clear(h)
         assert V.mount_position_mm(h) == (0, 0)
-        assert not h.palm_joints
-        assert ops.canonical(h, R) == h
+        assert not h.palm_joints        # (seeds are no longer canonicalised, 6 Nov)
 
 
 def test_a_hand_is_its_arrangement_translating_it_changes_nothing(hands):
@@ -53,16 +52,18 @@ def test_a_hand_is_its_arrangement_translating_it_changes_nothing(hands):
 
 
 def test_turned_and_mirrored_copies_are_one_hand(hands):
-    """Every valid turned or mirrored copy canonicalises back to the hand. (A mirror image is not always valid: a servo
-    slid at a crossing keeps its side, so the copy can fail C1 -- as under the coarse rules.)"""
+    """Every valid turned or mirrored copy canonicalises to the hand's own canonical form (canonical() is kept for the
+    symmetry-invariant key; seeds and mutants are no longer stored canonical, 6 Nov). (A mirror image is not always
+    valid: a servo slid at a crossing keeps its side, so the copy can fail C1 -- as under the coarse rules.)"""
     checked = 0
     for h in hands[:10]:
+        c = ops.canonical(h, R)
         for k in range(4):
             for mirror in (False, True):
                 t = ops.recentre(ops._turned(h, k, mirror), R)
                 if check(t, R) or not V.clear(t):
                     continue
-                assert ops.canonical(t, R) == h
+                assert ops.canonical(t, R) == c
                 checked += 1
     assert checked >= 70
 
@@ -89,8 +90,8 @@ def test_mutants_keep_the_rules(hands):
             res = ops.mutate(h, rng, R, tries=8)
             if res is None:
                 continue
-            child = res[0]
-            assert check(child, R) == [] and V.clear(child)
+            child = res[0]                # a mutant keeps the relaxed mutation rules (6 Nov)
+            assert check(child, gh.mutation_rules(R)) == [] and V.clear(child)
             assert V.mount_position_mm(child) == (0, 0)
 
 
