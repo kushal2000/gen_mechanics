@@ -1,0 +1,39 @@
+#!/bin/bash
+#SBATCH --job-name=EV_mapelites
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=3:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/29oct_evolution_from_scratch/%x-%j.log
+# Run B, ours: MAP-Elites over 30 niches (finger count x palm cut x finger joints in 3 bins); a filled niche chosen uniformly, its elite the parent; all 16 children a generation enter as challengers, train a generation, then take their niche if it is empty or they beat its elite (same evaluation pass, no margin). 32 generations x 636 epochs (250M steps) = 8B steps at 24,576 envs.
+# One generation per job; the job submits the next (generation.sh). Every setting written out.
+#   sbatch experiments/oct_2026_experiments/29oct_evolution_from_scratch/map_elites.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+E=experiments/oct_2026_experiments/29oct_evolution_from_scratch
+export SUB_PATH="$PWD/$E/map_elites.sub"
+export EVO_RUN=debug_outputs/evolution/map_elites EVO_CONFIG=$E/configs/map_elites.json
+export SEED_MANIFEST=assets/urdf/29oct_niche_seed/manifest.json
+export WANDB_PREFIX=map_elites
+# 30 Oct (the user's call): extended from 32 to 64 iterations (16B steps), resumed from iteration 32
+# 31 Oct (the user's call): adaptive lr capped at 1e-3 (rl_games' default ceiling 1e-2 let it run away to NaN)
+# 31 Oct, later (the user's call): action log-std capped at 2 from iteration 46. Rarely used joint slots' learned noise ran
+# away (log-std 8-9.6), overflowing fp16: the real cause of the NaN crashes; iteration 45 skipped up to 70% of steps per epoch
+# under the loss-scale floor. See experiments/oct_2026_experiments/30oct_evolution_evaluation/log_std_cap/. The greedy baseline is NOT capped
+# (its largest log-std is 2.7, no skipping), so from 46 on the two arms differ in this one setting.
+# 1 Nov (the user's call): 10 more iterations (64-73) with table-safe finger resets: full-range draws (FINGER_RESET=1.0)
+# as before, but a pose that puts a fingertip into the table is redrawn (env.reset.table_safe; before, ~20% of
+# long-fingered hands' episodes started inside the table and stayed stuck; diag_table_contact.py). The loop's
+# evaluation inherits it.
+export MAX_GEN=74 EPOCHS_PER_GEN=636 EVAL_ENVS_PER_HAND=10
+# the trainer: pen repose v2 as the 29 Oct runs, the per-finger 2-layer transformer, from scratch at generation 0
+export TASKS=pen_repose PEN_SHAPE=box ARCH=transformer NUM_ENVS=24576 SEED=100 GAMMA=0.99 FINGER_RESET=1.0 \
+    KEYPOINT=best_so_far WANDB=1 WANDB_PROJECT=gen_mechanics_evolution_scratch VIEWER_INTERVAL=1000000
+OLD_OBS="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot]"
+OLD_STATE="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot,object_keypoints_rel_joint,palm_keypoints,ee_pos,ee_rot,ee_vel,object_rot,fingertip_pos_rel_palm,closest_keypoint_max_dist,closest_fingertip_dist,progress,successes,reward]"
+export TRAIN_ENV="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.action.use_action_delay=False env.obs.obs_list=$OLD_OBS env.obs.state_list=$OLD_STATE agent.params.network.token_mode=finger agent.params.network.d_model=128 agent.params.network.n_layers=2 agent.params.network.n_heads=4 agent.params.network.ff_mult=4 agent.params.network.decoder_units=[256] agent.params.network.arm_head_units=[1024,512] agent.params.network.value_head_units=[512,256] agent.params.network.compile_net=true agent.params.network.affine_norm=false agent.params.network.packed_tokens=true env.reset.table_safe=True agent.params.network.mask_ghost_actions=true ++agent.params.network.shared_log_std=false agent.params.network.masked_arm_dims=[3,4,5] agent.params.config.rollout_autocast=true agent.params.config.minibatch_size=16384 agent.params.config.mini_epochs=2 agent.params.config.learning_rate=1e-4 agent.params.config.lr_schedule=adaptive ++agent.params.config.max_lr=1e-3 ++agent.params.config.min_loss_scale=1.0 ++agent.params.network.max_log_std=2.0"
+exec bash $E/generation.sh

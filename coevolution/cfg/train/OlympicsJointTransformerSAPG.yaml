@@ -1,6 +1,6 @@
 # gen_mechanics rl_games SAPG config for in-hand olympics (GenMech-InHandOlympics-Direct-v0): the joint transformer
 # of PoseReachJointTransformerSAPG.yaml read off olympics' observation, in its PER-FINGER form since 29 Oct
-# (experiments/29oct_transformer_speed: token_mode finger, width 128, 2 layers, 4 heads, compiled, fp16 rollouts --
+# (experiments/oct_2026_experiments/29oct_transformer_speed: token_mode finger, width 128, 2 layers, 4 heads, compiled, fp16 rollouts --
 # the 14 Oct per-joint network's epoch 10.1 s -> ~2.6 s, next to the MLP's 2.2 s, at 1.45M params). Differences from
 # the pose-reaching YAML:
 #   - robot_spec from env.hand.robot_spec (a hand-only spec); the 6 dummy-wrist joints, ahead of the hand in
@@ -28,13 +28,13 @@ params:
     separate: False
     # Action log-std capped at 2 (std 7.4) in every run since 31 Oct (the user's call): uncapped, rarely used joint slots'
     # noise ran away to log-std 9.6 in many-hand runs and overflowed fp16 (the NaN crashes).
-    # experiments/30oct_evolution_evaluation/log_std_cap/README.md
+    # experiments/oct_2026_experiments/30oct_evolution_evaluation/log_std_cap/README.md
     max_log_std: 2.0
     # and floored at -5 (std 0.007): below ~-4.9, ((a - mu) / sigma)^2 overflows fp16 for actions in [-1, 1] (31 Oct).
     min_log_std: -5.0
     # One learned log-std for every action dimension (per SAPG block) since 1 Nov (the user's call): a padded slot is a
     # different joint on each design. Solo, SAPG: shared 100 / 97 / 103 vs per-slot 89 / 122 / 90 (cap-200 eval);
-    # experiments/30oct_evolution_evaluation/shared_log_std/. Checkpoints with per-slot noise need shared_log_std: false.
+    # experiments/oct_2026_experiments/30oct_evolution_evaluation/shared_log_std/. Checkpoints with per-slot noise need shared_log_std: false.
     shared_log_std: true
     # The network is handed only a flat width by rl_games, so it reads the
     # robot and the field list across the config tree — four dots to the root,
@@ -122,7 +122,7 @@ params:
     ppo: True
     mixed_precision: True
     # Run the rollout forwards (get_action_values / get_values) under fp16 autocast too, like the train step; rl_games
-    # ran them in fp32 (29 Oct, experiments/29oct_transformer_speed). Numerically the same policy; 16 inferences per
+    # ran them in fp32 (29 Oct, experiments/oct_2026_experiments/29oct_transformer_speed). Numerically the same policy; 16 inferences per
     # epoch at 24,576 envs were a third of the per-joint transformer's epoch.
     rollout_autocast: True
     # False: joint_transformer normalises its own input (_RunningNorm), pooling token
@@ -137,7 +137,7 @@ params:
     num_actors: ${....env.scene.num_envs}
     gamma: 0.99
     tau: 0.95
-    learning_rate: 3e-4   # fixed 3e-4 since 31 Oct (the user's call): matched the adaptive schedule in experiments/30oct_evolution_evaluation/lr_schedule_test/
+    learning_rate: 3e-4   # fixed 3e-4 since 31 Oct (the user's call): matched the adaptive schedule in experiments/oct_2026_experiments/30oct_evolution_evaluation/lr_schedule_test/
     lr_schedule: constant
     # ceiling of the adaptive lr (rl_games hard-codes 1e-2, which ran away to NaN in long runs, 31 Oct);
     # applied by coevolution/utils/rlgames_utils.SchedulerBoundsObserver

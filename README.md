@@ -30,12 +30,12 @@ PY=.venv_isaacsim/bin/python
 
 | What | Command |
 |---|---|
-| Train a hand on olympics tasks (SLURM) | `TASKS=pen_repose HAND=<robot spec> sbatch experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub` |
-| ... the same, locally, as a quick check | `NUM_ENVS=3072 MINIBATCH=12288 EPOCHS=20 WANDB=0 bash experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub` |
-| Play any trained fixed-palm policy; switch its task and goals live | `$PY experiments/16oct_viser_evals/viser_play_all.py` |
-| Drive a hand by joint sliders in the sim | `$PY experiments/14oct_design_search/viser_hand_play.py` |
-| Evaluate checkpoints per task | `$PY experiments/12oct_inhand_olympics/analysis/eval_tasks.py` |
-| Build a primitive hand from finger bearings | `$PY experiments/14oct_design_search/primitive_hands.py --bearings 0,90,180,270` |
+| Train a hand on olympics tasks (SLURM) | `TASKS=pen_repose HAND=<robot spec> sbatch experiments/oct_2026_experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub` |
+| ... the same, locally, as a quick check | `NUM_ENVS=3072 MINIBATCH=12288 EPOCHS=20 WANDB=0 bash experiments/oct_2026_experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub` |
+| Play any trained fixed-palm policy; switch its task and goals live | `$PY experiments/oct_2026_experiments/16oct_viser_evals/viser_play_all.py` |
+| Drive a hand by joint sliders in the sim | `$PY experiments/oct_2026_experiments/14oct_design_search/viser_hand_play.py` |
+| Evaluate checkpoints per task | `$PY experiments/oct_2026_experiments/12oct_inhand_olympics/analysis/eval_tasks.py` |
+| Build a primitive hand from finger bearings | `$PY experiments/oct_2026_experiments/14oct_design_search/primitive_hands.py --bearings 0,90,180,270` |
 | Browse the hand grammar (CPU only, no Isaac) | `$PY experiments/grammar_viewer/viewer.py` |
 | The original pose-reaching env | `$PY coevolution/train.py --task GenMech-PoseReach-Direct-v0 --agent rl_games_sapg_cfg_entry_point --headless` |
 

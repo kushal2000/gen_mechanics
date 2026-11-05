@@ -4,7 +4,7 @@ meshes (assets/urdf/unified_dynamics_commercial_hands/wuji2/, the uniform-dynami
 orthographic projection, depth-sorted faces and Lambert shading -- matplotlib only, no OpenGL.
 
     .venv_isaacsim/bin/python experiments/_shared/render_hands.py [--side palm|back]
-    # -> experiments/12oct_inhand_olympics/plots/hands/wuji_<hand>_flat[_back].png
+    # -> experiments/oct_2026_experiments/12oct_inhand_olympics/plots/hands/wuji_<hand>_flat[_back].png
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import numpy as np
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 URDFS = REPO / "assets/urdf/unified_dynamics_commercial_hands/wuji2"
-OUT = REPO / "experiments/12oct_inhand_olympics/plots/hands"           # where its pictures have always gone
+OUT = REPO / "experiments/oct_2026_experiments/12oct_inhand_olympics/plots/hands"           # where its pictures have always gone
 HANDS = {"full": "wuji2_left", "thumb_index": "wuji2_left_only_thumb_index"}
 
 

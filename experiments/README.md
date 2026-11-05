@@ -7,20 +7,20 @@ results. Training logs and checkpoints go to `debug_outputs/train_logs/<experime
 
 | Folder | What |
 |---|---|
-| [`12oct_inhand_olympics/`](12oct_inhand_olympics/) | **The olympics trainer** (`olympics_sapg_mlp.sub`, used by every olympics run below), per-task evals, the embodiment-curriculum result |
-| [`14oct_design_search/`](14oct_design_search/) | Primitive hands from finger bearings (`primitive_hands.py`), the joint-slider sim viewer, design-search runs on lift and flip |
-| [`15oct_pen_repose/`](15oct_pen_repose/) | 6D pen repose (v2: palm rotation locked, uniform goals) across hand designs; spin / flip fine-tunes |
-| [`15oct_pen_twist/`](15oct_pen_twist/) | Twisting a cap off the pen: the twist pen, the tightness curriculum, square vs round cap |
-| [`16oct_viser_evals/`](16oct_viser_evals/) | One viewer for every fixed-palm policy (switch its task and goals live); the design gallery |
-| [`27oct_grammar_random_hands/`](27oct_grammar_random_hands/) | 100 random grammar hands (`make_random.py`), the two design agents' picks, their repose runs; viewers for hands, joint tokens and link boxes |
-| [`27oct_transformer_debug/`](27oct_transformer_debug/) | Why the joint transformer stalled on repose (the 27 Oct "fast config"), one-change arms, the conclusions |
-| [`29oct_multi_embodiment_transformer/`](29oct_multi_embodiment_transformer/) | One transformer policy across all 100 grammar hands (the 14 Oct setup, masks, home actions) |
-| [`29oct_mlp_vs_transformer/`](29oct_mlp_vs_transformer/) | MLP vs joint transformer on three hands, same env (home actions, action delay off) |
-| [`29oct_transformer_speed/`](29oct_transformer_speed/) | Network profiling: why the transformer is slower than the MLP per sample, and the route to a fast one with many parameters |
-| [`29oct_evolution_from_scratch/`](29oct_evolution_from_scratch/) | Co-design by evolution from scratch, one shared per-finger policy: the archive baseline (DGM-style) vs MAP-Elites (ours), from the same one-per-niche seed hands |
+| [`12oct_inhand_olympics/`](oct_2026_experiments/12oct_inhand_olympics/) | **The olympics trainer** (`olympics_sapg_mlp.sub`, used by every olympics run below), per-task evals, the embodiment-curriculum result |
+| [`14oct_design_search/`](oct_2026_experiments/14oct_design_search/) | Primitive hands from finger bearings (`primitive_hands.py`), the joint-slider sim viewer, design-search runs on lift and flip |
+| [`15oct_pen_repose/`](oct_2026_experiments/15oct_pen_repose/) | 6D pen repose (v2: palm rotation locked, uniform goals) across hand designs; spin / flip fine-tunes |
+| [`15oct_pen_twist/`](oct_2026_experiments/15oct_pen_twist/) | Twisting a cap off the pen: the twist pen, the tightness curriculum, square vs round cap |
+| [`16oct_viser_evals/`](oct_2026_experiments/16oct_viser_evals/) | One viewer for every fixed-palm policy (switch its task and goals live); the design gallery |
+| [`27oct_grammar_random_hands/`](oct_2026_experiments/27oct_grammar_random_hands/) | 100 random grammar hands (`make_random.py`), the two design agents' picks, their repose runs; viewers for hands, joint tokens and link boxes |
+| [`27oct_transformer_debug/`](oct_2026_experiments/27oct_transformer_debug/) | Why the joint transformer stalled on repose (the 27 Oct "fast config"), one-change arms, the conclusions |
+| [`29oct_multi_embodiment_transformer/`](oct_2026_experiments/29oct_multi_embodiment_transformer/) | One transformer policy across all 100 grammar hands (the 14 Oct setup, masks, home actions) |
+| [`29oct_mlp_vs_transformer/`](oct_2026_experiments/29oct_mlp_vs_transformer/) | MLP vs joint transformer on three hands, same env (home actions, action delay off) |
+| [`29oct_transformer_speed/`](oct_2026_experiments/29oct_transformer_speed/) | Network profiling: why the transformer is slower than the MLP per sample, and the route to a fast one with many parameters |
+| [`29oct_evolution_from_scratch/`](oct_2026_experiments/29oct_evolution_from_scratch/) | Co-design by evolution from scratch, one shared per-finger policy: the archive baseline (DGM-style) vs MAP-Elites (ours), from the same one-per-niche seed hands |
 | [`dummy_experiments/`](dummy_experiments/) | Synthetic one-question probes (no simulator): kernel/layout benchmarks and numerical checks, one dated subfolder each |
-| [`29oct_template_scene/`](29oct_template_scene/) | One authored articulation for every hand (`multi:template:`): the 100-hand scene at 250k sim fps instead of 46k, its physics check, and the token-mode x depth runs |
-| [`29oct_per_finger_transformer/`](29oct_per_finger_transformer/) | The per-finger transformer (one token per finger; the transformer default since 29 Oct) against the per-joint one and the MLP |
+| [`29oct_template_scene/`](oct_2026_experiments/29oct_template_scene/) | One authored articulation for every hand (`multi:template:`): the 100-hand scene at 250k sim fps instead of 46k, its physics check, and the token-mode x depth runs |
+| [`29oct_per_finger_transformer/`](oct_2026_experiments/29oct_per_finger_transformer/) | The per-finger transformer (one token per finger; the transformer default since 29 Oct) against the per-joint one and the MLP |
 | [`grammar_viewer/`](grammar_viewer/) | Browse Martin's hand grammar (CPU only) |
 | [`_shared/`](_shared/) | Helpers several experiments call (launchers, run templates, figure style, renderers) |
 

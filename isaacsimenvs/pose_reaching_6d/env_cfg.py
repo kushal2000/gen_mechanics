@@ -336,7 +336,7 @@ class DomainRandomizationCfg:
     fingertip_friction_scale_range: tuple[float, float] = (1.0, 1.0)
     friction_n_buckets: int = 16
 
-    # DR over the four OOD axes of experiments/08oct_repro_wuji_full (push, friction, mass, hand tilt). Off by
+    # DR over the four OOD axes of experiments/oct_2026_experiments/08oct_repro_wuji_full (push, friction, mass, hand tilt). Off by
     # default; each range is re-drawn per env at every reset, except mass (see object_mass_scale_range).
     # Push: every push is this many newtons (uniform in the range, drawn per episode) in a uniformly random
     # direction; replaces force_scale / force_magnitude_n when hi > 0. How often: force_prob_range.

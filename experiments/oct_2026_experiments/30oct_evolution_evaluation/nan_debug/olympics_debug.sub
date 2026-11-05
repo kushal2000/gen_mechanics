@@ -1,0 +1,94 @@
+#!/bin/bash
+#SBATCH --job-name=O_olympics
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=24:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/12oct_inhand_olympics/%x-%j.log
+# In-hand olympics: Wuji v2 left on the 6-DOF dummy wrist, SAPG with the MLP actor-critic, on TASKS (comma-separated,
+# default pen_spin; several are sampled per env at every reset). Agent
+# settings as the 8 Oct Wuji MLP runs (08oct_repro_wuji_full/*_mlp_e24k.sub through run_rank.sh) except gamma: 0.99,
+# pose reaching's / SAPG's own (the in-hand runs' 0.998 is ~8 s of horizon at 60 Hz; 13 Oct). lr 5e-4 adaptive, 5 mini-epochs, horizon 16, 24576 envs in 6 exploration blocks, minibatch 114688. The env's own
+# defaults carry EMA 0.1 + action latency. A pose viewer goes to wandb every VIEWER_INTERVAL env steps.
+#   TASKS=pen_spin,pen_lift [NUM_ENVS=... EPOCHS=... SEED=... GAMMA=... FINGER_RESET=... KEYPOINT=... PEN_SHAPE=box HAND=... ARCH=lstm EXTRA_HYDRA=... RUN_TAG=... CHECKPOINT=... CHECKPOINT_MODE=weights|resume] sbatch experiments/oct_2026_experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub
+#   (TASKS goes through the environment: sbatch --export splits on commas)
+#   local smoke: NUM_ENVS=3072 MINIBATCH=12288 EPOCHS=20 WANDB=0 VIEWER_INTERVAL=40 VIEWER_LEN=30 bash <this file>
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export OMNI_KIT_ACCEPT_EULA=YES
+NUM_ENVS="${NUM_ENVS:-24576}" MINIBATCH="${MINIBATCH:-114688}" EPOCHS="${EPOCHS:-5000}" SEED="${SEED:-100}"
+TASKS="${TASKS:-pen_spin}" GAMMA="${GAMMA:-0.99}"
+FINGER_RESET="${FINGER_RESET:-1.0}"     # env.reset.finger_pos_fraction: 1 = each finger joint uniform over its range
+# ARCH: mlp (PoseReachSAPGNoLSTM.yaml) or lstm (PoseReachSAPG.yaml: a 1024-unit LSTM before the same MLP, 16-step
+# sequences); the critic shares the actor's network and observation either way (central_value_config=null).
+ARCH="${ARCH:-mlp}"
+case "$ARCH" in
+    mlp) AGENT=rl_games_sapg_nolstm_cfg_entry_point ;;
+    lstm) AGENT=rl_games_sapg_cfg_entry_point ;;
+    # transformer: OlympicsJointTransformerSAPG.yaml, the joint transformer (per-finger tokens since 29 Oct; a
+    # multi-hand run then needs HAND=multi:finger:<specs>), with its own training settings (lr 1e-4, 2 mini-epochs,
+    # minibatch 16384) in place of the MLP's below.
+    transformer) AGENT=rl_games_joint_transformer_cfg_entry_point ;;
+    *) echo "ARCH must be mlp, lstm or transformer, got $ARCH"; exit 1 ;;
+esac
+LEARNER=(agent.params.config.learning_rate=0.0005 agent.params.config.mini_epochs=5
+         "agent.params.config.minibatch_size=$MINIBATCH")
+[[ "$ARCH" == transformer ]] && LEARNER=()
+KEYPOINT="${KEYPOINT:-best_so_far}"     # env.reward.keypoint_reward: best_so_far | absolute
+PEN_SHAPE="${PEN_SHAPE:-capsule}"       # env.pen.shape: capsule | box (cannot roll)
+HAND="${HAND:-wuji2_left_uniform_handonly}"   # env.hand.robot_spec, e.g. wuji2_left_uniform_handonly_only_thumb_index
+STUDY="${TASKS//,/+}_sapg_${ARCH}_e${NUM_ENVS}_s${SEED}_g${GAMMA}_fr${FINGER_RESET}_kp${KEYPOINT}"
+[[ "$PEN_SHAPE" == capsule ]] || STUDY="${STUDY}_${PEN_SHAPE}"
+# HAND_TAG: the run name's label for HAND (default: HAND past the full hand's name; set it for a multi: hand set)
+[[ "$HAND" == wuji2_left_uniform_handonly ]] || STUDY="${STUDY}_${HAND_TAG:-${HAND#wuji2_left_uniform_handonly_}}"
+[[ -n "${RUN_TAG:-}" ]] && STUDY="${STUDY}_${RUN_TAG}"   # a label for what EXTRA_HYDRA changes
+EXTRA=()                                 # EXTRA_HYDRA: further overrides, space-separated
+# CHECKPOINT: start from a .pth (CHECKPOINT_MODE weights: the model only, epochs count from 0; resume: everything)
+CKPT=()
+[[ -n "${CHECKPOINT:-}" ]] && CKPT=(--checkpoint "$CHECKPOINT" --checkpoint_load_mode "${CHECKPOINT_MODE:-weights}")
+[[ -n "${EXTRA_HYDRA:-}" ]] && read -r -a EXTRA <<< "$EXTRA_HYDRA"
+RUN_NAME="0_${STUDY}_${SLURM_JOB_ID:-local}"     # rl_games reads the policy index off the front
+# wandb caps a run's name at 128 characters and the logger appends _YYYYMMDD_HHMMSS (16): longer, and the run
+# trains without wandb (13 Oct: init fails "128 limit exceeded for Name", then is skipped after three retries).
+if (( ${#RUN_NAME} + 16 > 128 )); then
+    echo "[olympics] run name is ${#RUN_NAME} characters; wandb allows 112 before its timestamp. Shorten RUN_TAG/HAND_TAG: $RUN_NAME"
+    exit 1
+fi
+# LOG_GROUP: the folder under debug_outputs/train_logs (another experiment's runs; pass sbatch --output to match)
+RUN_DIR="debug_outputs/train_logs/${LOG_GROUP:-12oct_inhand_olympics}/${RUN_NAME}"
+mkdir -p "$RUN_DIR"
+WANDB_ARGS=()
+if [[ "${WANDB:-1}" == 1 ]]; then
+    WANDB_ARGS=(--wandb_activate --wandb_project "${WANDB_PROJECT:-gen_mechanics_inhand_olympics}"
+                --wandb_entity "${WANDB_ENTITY:-kk837}" --wandb_group "${WANDB_GROUP:-$STUDY}"
+                --wandb_name "${WANDB_NAME:-$RUN_NAME}")   # WANDB_NAME / WANDB_GROUP: optional short names
+fi
+export WANDB_DIR="$RUN_DIR"
+echo "[olympics] node $(hostname)  run $RUN_DIR"
+exec .venv_isaacsim/bin/python -u experiments/oct_2026_experiments/30oct_evolution_evaluation/nan_debug/debug_nan_train.py \
+    --task GenMech-InHandOlympics-Direct-v0 --agent "$AGENT" --headless \
+    "${WANDB_ARGS[@]}" ${CKPT[@]+"${CKPT[@]}"} \
+    --capture_viewer --capture_viewer_len "${VIEWER_LEN:-600}" --capture_viewer_interval "${VIEWER_INTERVAL:-10000}" \
+    "env.task.names=[$TASKS]" \
+    "env.reset.finger_pos_fraction=$FINGER_RESET" \
+    "env.reward.keypoint_reward=$KEYPOINT" \
+    "env.pen.shape=$PEN_SHAPE" \
+    "env.hand.robot_spec=$HAND" \
+    "env.scene.num_envs=$NUM_ENVS" \
+    "agent.params.seed=$SEED" \
+    "agent.params.config.name=$RUN_NAME" "agent.params.config.full_experiment_name=$RUN_NAME" \
+    agent.params.config.multi_gpu=false agent.params.config.mixed_precision=true \
+    agent.params.config.central_value_config=null \
+    agent.params.network.separate=false \
+    "agent.params.config.gamma=$GAMMA" \
+    agent.params.config.lr_schedule=adaptive agent.params.config.horizon_length=16 \
+    ${LEARNER[@]+"${LEARNER[@]}"} \
+    "agent.params.config.expl_coef_block_size=$((NUM_ENVS / 6))" \
+    "agent.params.config.max_epochs=$EPOCHS" \
+    agent.params.config.save_frequency=100 agent.params.config.save_best_after=0 \
+    ${EXTRA[@]+"${EXTRA[@]}"} \
+    "hydra.run.dir=$RUN_DIR"

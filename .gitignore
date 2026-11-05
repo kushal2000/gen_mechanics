@@ -84,10 +84,10 @@ assets/populations/*
 
 # The niche evaluations are small JSON tables (per hand x condition) that the tracked figures are
 # regenerated from -- keep them with the experiment, unlike bulky results/ elsewhere.
-!experiments/01oct_embodiment_niches/results/
+!experiments/oct_2026_experiments/01oct_embodiment_niches/results/
 experiments/**/slurm-*.out
-!experiments/02oct_ood_evals/results/
-!experiments/05oct_embodiment_generalization/results/
+!experiments/oct_2026_experiments/02oct_ood_evals/results/
+!experiments/oct_2026_experiments/05oct_embodiment_generalization/results/
 
-# primitive hands (experiments/14oct_design_search/primitive_hands.py): rebuilt from their design JSONs
+# primitive hands (experiments/oct_2026_experiments/14oct_design_search/primitive_hands.py): rebuilt from their design JSONs
 assets/urdf/generated/14oct_design_search/

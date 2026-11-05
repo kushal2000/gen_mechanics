@@ -1,0 +1,68 @@
+# 15 Oct: pen twist (twist the cap off)
+
+The twist pen is the pen split into a barrel and a cap (3 cm), joined by a joint about the long axis. The cap resists
+turning like a friction fit: it holds below `pen.twist_friction_torque` (0.01 N·m) and turns above it
+(`isaacsimenvs/inhand_olympics/twist_pen.py`; checked: it slips at 0.0102 N·m).
+
+**Two objects, two 6D goals.**
+- The policy sees `pen_pose`, `cap_pose`, `pen_goal_pose` and `cap_goal_pose`: position plus quaternion. It sees no
+  keypoints and no twist angle.
+- Keypoints are for the reward and success only. Each object has rings of 4 cm that fix its full pose. The goal
+  distance is the worse of pen-vs-goal and cap-vs-goal, and success means both are within 1 cm (about ±14° of twist).
+
+**Levels.**
+1. **Level 1:** the pen stands upright on the table, cap up, with the barrel fixed (`env.pen.twist_fixed_barrel=True`).
+   The pen's goal is where it stands. The cap's goal is a quarter turn further each time, in the unscrewing direction
+   (counter-clockwise seen from above). Goals per episode = quarter turns. The task also tracks the cap's total turn,
+   which the policy doesn't see, and counts a goal only on the right turn: screwing back 270° looks like unscrewing 90°.
+2. **Level 2:** the barrel is free (planned).
+
+**Tools.**
+- `viser_twist_play.py`: drive a hand by sliders against the pen (`--level 1`, the default).
+- The wandb pose viewer draws the barrel, the cap (with a stripe) and both goals.
+
+**Training** goes through `experiments/oct_2026_experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub` (see its README) with
+`LOG_GROUP=15oct_pen_twist` and a matching `sbatch --output`; the commands are in the run tables below.
+
+## Tightness curriculum
+
+`env.pen_twist.curriculum=True`: the cap's friction torque starts at 0.01 N·m. After each window of finished
+episodes (as many as there are envs), if they averaged at least 1 full turn, the torque is multiplied by 1.5, up to
+0.2 N·m. The next window must then get back to 1 turn before it rises again. On wandb as `twist/friction_torque`.
+
+## Runs
+
+wandb project **`gen_mechanics_pen_twist`**; logs in `debug_outputs/train_logs/15oct_pen_twist/`.
+
+| Level | Hand | Recipe | Job |
+|---|---|---|---|
+| 1 | Wuji full | MLP, SAPG defaults, seed 100, 5,000 epochs, `RUN_TAG=lvl1` | 293321 |
+| 1 | Wuji full | the same, plus the tightness curriculum (`env.pen_twist.curriculum=True`), `RUN_TAG=lvl1_cur` | 295202 |
+| 1 | Wuji full | the curriculum from 0.1 to 1.0 N·m (`env.pen.twist_friction_torque=0.1 env.pen_twist.curriculum_max_torque=1.0`), `RUN_TAG=lvl1_cur01to1` | 296479 |
+| 1 | Wuji full | as 296479, plus the curriculum cool-off (200 epochs between step-ups, fresh episodes only) and **the wrist's rotation locked** (`env.action.wrist_max_speed_ang=0`; it can still translate), `RUN_TAG=lvl1_cur01to1_fw` | 299898 |
+| 1 | Wuji full | as 299898 (curriculum 0.1 → 1 N·m, cool-off, wrist rotation locked) with a **round** pen (`env.pen.shape=round`: a 24-sided convex prism, so turning the cap takes grip friction), `RUN_TAG=lvl1_round` | 303825 |
+
+**Notes on the curriculum runs (15 Oct):**
+- 295202 and 296479 used the curriculum before its cool-off. Each stepped up whenever a window filled (about every 40
+  epochs), because the 1-turn bar sat far below the policy's ~12 turns. Both reached their ceilings, 0.2 and 1.0 N·m,
+  by about epoch 1,900.
+- 1 N·m on a 3 cm cap is far beyond fingertip strength. The likely explanation is that the hand grips the square cap
+  like a wrench while the wrist turns it. 299898 locks the wrist's rotation to test that.
+- Since 15 Oct, locked wrist rotation is the default for every olympics task (`ActionCfg.wrist_max_speed_ang = 0`).
+
+303468 used PhysX's cylinder shape, which jitters in contact, and was cancelled at start (15 Oct) for the convex prism.
+
+## Early result
+
+`viser_twist_policy.py --check 293321` on the epoch-400 checkpoint, 64 envs for 30 s:
+
+| Cap friction | Turns per episode (of 12.5) | Episodes reaching ≥ 1 turn |
+|---|---|---|
+| 0.01 N·m | 11.65 | 100% |
+| 0.05 N·m | 12.33 | 99% |
+
+Level 1 at 0.01 N·m is solved early, which is why the curriculum run 296479 starts at 0.1 N·m and goes up to 1 N·m.
+
+## Background
+
+`literature_bimanual_sim2real.md`: a subagent's report on bimanual sim-to-real work, with every paper checked online.

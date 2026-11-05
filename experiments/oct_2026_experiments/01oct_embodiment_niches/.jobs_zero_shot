@@ -1,0 +1,26 @@
+zero-shot sharpa_uniform 876140 | canon final 876142 (after 871441)
+wuji compare: unified 893214, wuji-only 893215
+wuji compare: wuji-only ep 1600 893614
+wuji compare: wuji-only ep 900 893615 (cancelled)
+unified final niche: evals 893940:893941:893942:893943:893944:893945:893946:893947 plots 893948 (after training 866192) -- cancelled, replaced by ep 6400 below
+unified ep6400 niche: evals 894036:894037:894038:894039:894040:894041:894042:894043 plots 894044
+gen-SHARPA zero-shot: unified ep6400 894045, sharpa-only 894046
+converged, cancelled: sharpa 871441, allegro 871442, wuji2 871447; zero-shot sweep 876142 replaced by 894315 on ep_3600
+wuji compare: unified ep 7086 (frozen copy) 894590
+wuji compare: unified ep 7827 (frozen copy) 896694
+push sweep (wuji2): jobs 900599 900600 900601 900602 900604 900605
+after training 866192 ends, on the final checkpoint: push sweeps + Wuji ID/OOD: 900684 900685 900686
+cancelled wuji_only_ep_3600 push sweeps 900601 900605 (user: only Wuji ep 1600 vs latest unified)
+push sweeps CAPPED at 50 goals/ep, 240 s/point (uncapped 900599 900600 900602 900604 900684 900685 cancelled): 900833 900834 900835 900836 900837 900838 900839 900840
+Wuji ID/OOD CAPPED at 50 goals/ep, 240 s/condition: 900964 900967 900968 900969
+after unified fine-tune 904314 (20k epochs total): push sweeps + capped Wuji ID/OOD: 925637 925638 925639
+Wuji-only at ~10k epochs (908714 ep 6400 = 10162 total): push sweeps + capped ID/OOD: 925660 925661 925662
+40k matched compute: unified 948509 ep-10000 ckpt now, Wuji-only after 990216: 990263 990264 990265 990266 990267 990268
+OOD sweeps (newton 0-100 N, mass 45.6-5 g, friction 0.5-0), 100 first episodes/point: unified 40k, Wuji-only ~32k (969180 end) and ~40k (after 990216): 990876 990877 990878 990879 990880 990881 990882 990883 990884
+cancelled earlier-protocol push sweeps (mass-scaled force) 990263 990264 990265 990266; kept capped ID/OOD 990267/990268
+force sweep now 0-25 N in 5 N steps: 992782 (unified 40k) 992783 (Wuji ~32k) 992784 (Wuji ~40k, after 990216); old 0-100 N Wuji-40k job 990878 cancelled
+missing-finger sweep (none/thumb/index/middle/ring/pinky): 996730 unified 40k, 996731 Wuji ~32k, 996732 Wuji ~40k (after 990216)
+action-noise sweep (std 0-1.0): 998306 unified 40k, 998307 Wuji ~32k, 998308 Wuji ~40k (after 990216)
+missing-finger Wuji-40k job 996732 cancelled: moved to experiments/oct_2026_experiments/05oct_embodiment_generalization
+Wuji ~40k object sweeps as SLURM arrays (after 990216): 998479 998480 998481; replaced 992784 990884 990881
+Wuji-only 40k object sweeps: 11001 11002 11003, capped ID/OOD 11004 (1024 envs, as the unified 40k one)

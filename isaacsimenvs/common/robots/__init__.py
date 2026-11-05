@@ -58,7 +58,7 @@ def get_robot_spec(name: str) -> RobotSpec:
     if is_multi_ref(name):
         return hand_set(name).template
     # A hand described by its own spec JSON (e.g. a generated primitive hand,
-    # experiments/14oct_design_search/primitive_hands.py): a path, absolute or from the repo.
+    # experiments/oct_2026_experiments/14oct_design_search/primitive_hands.py): a path, absolute or from the repo.
     if name.endswith(".spec.json"):
         return _spec_from_file(name)
     # A generated population's shared template, by name or by file. Resolved

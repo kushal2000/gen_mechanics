@@ -1,0 +1,40 @@
+#!/bin/bash
+#SBATCH --job-name=niche_u
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=06:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+# Niche evaluation of ONE hand's UNIFORM-dynamics policy: every condition + the 5-minute nominal
+# (goals before drop). Submitted with --dependency=afterok:<its training job>.
+#   sbatch --job-name=niche_u_<hand> --export=ALL,HAND=<hand> run_hand_uniform.sub
+set -uo pipefail
+REPO=/share/portal/kk837/gen_mechanics
+OUT=${OUT:-$REPO/experiments/oct_2026_experiments/01oct_embodiment_niches/results/uniform_run2}
+LOGS=$REPO/debug_outputs/embodiment_niches_uniform/logs
+mkdir -p $OUT $LOGS
+cd $REPO
+export OMNI_KIT_ACCEPT_EULA=YES
+# CKPT may be left empty with RUN_GLOB set: the newest checkpoint matching it when the job STARTS (for a
+# job chained after a training run whose final checkpoint does not exist yet).
+if [ -z "${CKPT:-}" ] && [ -n "${RUN_GLOB:-}" ]; then
+    CKPT=$(ls -t $RUN_GLOB 2>/dev/null | head -1)
+    # Never fall through to eval_niches' default (the hand's own single-hand policy) by accident.
+    [ -n "$CKPT" ] || { echo "no checkpoint matches $RUN_GLOB"; exit 1; }
+    echo "checkpoint $CKPT"
+fi
+run() {   # run <condition> <seconds> <out name>
+    f=$OUT/${HAND}__$3.json
+    [ -s "$f" ] && { echo "skip $f"; return; }
+    .venv_isaacsim/bin/python experiments/oct_2026_experiments/01oct_embodiment_niches/eval_niches.py --set uniform \
+        --hand "$HAND" --condition "$1" --num-envs ${NUM_ENVS:-100} --seconds "${EVAL_SECONDS:-$2}" ${MAX_GOALS:+--max-goals $MAX_GOALS} --out "$f" ${CKPT:+--checkpoint "$CKPT"} ${TARGET:+--target "$TARGET"} \
+        > $LOGS/${HAND}__$3.log 2>&1 || echo "FAILED $HAND $3"
+    [ -s "$f" ] && echo "done $HAND $3"
+}
+for c in nominal cube40 cube55 cube65 light heavy slippery push push_hard; do run $c 60 $c; done
+# MAX_GOALS (e.g. 50, as training) caps episodes so results carry goals_per_episode; EVAL_SECONDS overrides the
+# 60 s window (a capped episode needs ~50 goals' time to finish). The 5-minute run is only for uncapped sets.
+if [ -z "${MAX_GOALS:-}" ]; then run nominal 300 nominal_5min; fi

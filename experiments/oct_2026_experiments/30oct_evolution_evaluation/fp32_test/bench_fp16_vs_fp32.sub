@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH --job-name=BENCH_fp16_fp32
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64000
+#SBATCH --time=2:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/30oct_evolution_evaluation/fp32_test/%x-%j.log
+# fp32 vs fp16 SPEED, same GPU (31 Oct; README.md here): the solo g0018 setup run twice in one job, 200 epochs each, fp16
+# (as trained) then fp32 (agent.params.config.mixed_precision=false); each run's log in debug_outputs/.../fp32_test/bench_*.log,
+# then the mean 'Time to train epoch' (and play/update split) over epochs 51-200 of each.
+#   sbatch experiments/oct_2026_experiments/30oct_evolution_evaluation/fp32_test/bench_fp16_vs_fp32.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+export HAND="multi:template:experiments/oct_2026_experiments/30oct_evolution_evaluation/solo_retrain/g0018_c00_manifest.json" HAND_TAG=evo RUN_TAG=bench LOG_GROUP=30oct_evolution_evaluation/fp32_test
+export EPOCHS=200
+export TASKS=pen_repose PEN_SHAPE=box ARCH=transformer NUM_ENVS=24576 SEED=100 GAMMA=0.99 FINGER_RESET=1.0 \
+    KEYPOINT=best_so_far WANDB=0 WANDB_PROJECT=gen_mechanics_evolution_scratch VIEWER_INTERVAL=1000000
+OLD_OBS="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot]"
+OLD_STATE="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_link_bbox,joint_lower,joint_upper,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot,object_keypoints_rel_joint,palm_keypoints,ee_pos,ee_rot,ee_vel,object_rot,fingertip_pos_rel_palm,closest_keypoint_max_dist,closest_fingertip_dist,progress,successes,reward]"
+export EXTRA_HYDRA="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.action.use_action_delay=False env.obs.obs_list=$OLD_OBS env.obs.state_list=$OLD_STATE agent.params.network.token_mode=finger agent.params.network.d_model=128 agent.params.network.n_layers=2 agent.params.network.n_heads=4 agent.params.network.ff_mult=4 agent.params.network.decoder_units=[256] agent.params.network.arm_head_units=[1024,512] agent.params.network.value_head_units=[512,256] agent.params.network.compile_net=true agent.params.network.affine_norm=false agent.params.network.packed_tokens=true agent.params.network.mask_ghost_actions=true ++agent.params.network.shared_log_std=false agent.params.network.masked_arm_dims=[3,4,5] agent.params.config.rollout_autocast=true agent.params.config.minibatch_size=16384 agent.params.config.mini_epochs=2 agent.params.config.learning_rate=1e-4 agent.params.config.lr_schedule=adaptive ++agent.params.config.max_lr=1e-3 agent.params.config.save_frequency=636"
+O=debug_outputs/train_logs/30oct_evolution_evaluation/fp32_test; mkdir -p $O
+BASE="$EXTRA_HYDRA"
+RUN_TAG=bench_fp16 EXTRA_HYDRA="$BASE" bash experiments/oct_2026_experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub > $O/bench_fp16_$SLURM_JOB_ID.log 2>&1 || true
+RUN_TAG=bench_fp32 EXTRA_HYDRA="$BASE agent.params.config.mixed_precision=false" bash experiments/oct_2026_experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub > $O/bench_fp32_$SLURM_JOB_ID.log 2>&1 || true
+set +eo pipefail   # the summary below must not abort on a grep without matches
+for p in fp16 fp32; do
+  f=$O/bench_${p}_$SLURM_JOB_ID.log
+  echo "$p on $(hostname): last epoch $(grep -oE 'epoch +: [0-9,]+ / [0-9,]+' $f | tail -1 | tr -s ' ')"
+  for k in "Time to train epoch" "Play time" "Update time"; do
+    grep -oE "$k +: [0-9.]+" $f | awk -v k="$k" 'NR>50 {s+=$NF; n++} END {if (n) printf "  %-20s %.3f s (epochs 51-%d)\n", k, s/n, n+50}'
+  done
+done

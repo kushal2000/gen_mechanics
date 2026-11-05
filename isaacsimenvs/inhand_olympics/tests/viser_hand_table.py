@@ -6,7 +6,7 @@ absolute targets through the EMA; wrist: speed-limited deltas through the EMA), 
 joint positions. The status line shows the worst target-tracking error.
 
 Kit and viser cannot share an interpreter, so the sim runs in a child worker (as in
-experiments/01oct_unified_rl/viser_compare.py) and streams joint positions back.
+experiments/oct_2026_experiments/01oct_unified_rl/viser_compare.py) and streams joint positions back.
 
     OMNI_KIT_ACCEPT_EULA=YES .venv_isaacsim/bin/python isaacsimenvs/inhand_olympics/tests/viser_hand_table.py \\
         --port 8090                     # then open http://<node>:8090

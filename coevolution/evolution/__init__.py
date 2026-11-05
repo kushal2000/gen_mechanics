@@ -1,6 +1,6 @@
 """Embodiment evolution (29 Oct): co-design of grammar hands by evolution with an archive, one shared policy.
 
-Kit-free bookkeeping; the simulator side is the olympics trainer (experiments/12oct_inhand_olympics) and
+Kit-free bookkeeping; the simulator side is the olympics trainer (experiments/oct_2026_experiments/12oct_inhand_olympics) and
 coevolution/eval/eval_hands.py. One generation:
 
     train the active population (one shared policy, template scene, from the last checkpoint)

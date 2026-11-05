@@ -33,4 +33,4 @@ the changes that came out of it. Everything here is Kit-free except the two rend
 - `recolour_hands.py`: URDF copies coloured by joint kind (for URDF-based viewers; the template scene ignores URDF
   colours).
 - `joint_colours.py`: colours a live template scene's colliders by joint kind and stripes roll tips; used by
-  `experiments/30oct_evolution_evaluation/render_archive_videos.py --colour-joints`.
+  `experiments/oct_2026_experiments/30oct_evolution_evaluation/render_archive_videos.py --colour-joints`.

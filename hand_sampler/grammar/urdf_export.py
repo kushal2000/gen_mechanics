@@ -1,5 +1,5 @@
 """A grammar hand (``hand_sampler.grammar.hand.Hand``) as the files the simulator loads: URDF, RobotSpec JSON, design
-JSON and the plate meshes. Promoted 29 Oct from experiments/27oct_grammar_random_hands/make_random.py (which built
+JSON and the plate meshes. Promoted 29 Oct from experiments/oct_2026_experiments/27oct_grammar_random_hands/make_random.py (which built
 the 100 random hands with it, and now imports it) so embodiment evolution can build its children with the same code.
 Pure Python (numpy, trimesh): no simulator.
 
