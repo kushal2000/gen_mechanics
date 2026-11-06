@@ -730,3 +730,17 @@ The hand: g0058_c00 (`g0058_c00.zip`: the map-elites run's generation 58, drawn 
 - The viewer shows the hand as given on port 8080 and the raised tips on 8081. Its new `--generate` builds the starting hand's design at startup, as the Build folder's button does.
 
 Tests: CAD 19 and the cut hand's expected failure (a new one: which way up each part of a hand prints; every example hand's printed parts sit on the bed, none on its long side), viewer 19.
+
+## g0058_c00 to print, its fingertips at today's floors; print files a slicer reads whole (2026-11-06)
+
+Martin: "lets do the update minimum fingertip length yeah. please do that and regen, drop the old viewer and update the stls. then i will print the stls".
+
+- The kit to print is the raised tips' (`outputs/designs/b3536ba89d`): fingers 1-3's tips at today's floors (38, 45 and 39 mm), every other length as evolved. Under the fine rules its one break is finger 1 at 228 mm, 3 over the 225 mm cap (the coarse stage's too). Rebuilt with this code: 18 parts, every check passing, the board floating. The viewer runs once, on 8081, with this hand; the as-given one on 8080 is stopped.
+- Why the run drew short tips: its grammar had the 10 mm pad (tips 30 mm, 40 after a turned bend). The floors of 11/02 and 11/04 are only on the local `hand-build`, 8 commits ahead of `origin/hand-build` (10/30); `hand-grammar` and both remotes still draw the old tips. The genotype's tag (`hand_grammar/2.0`) did not change with the floors, and the CAD builds whatever lengths it is given. Not pushed (Martin's call).
+
+Print files a slicer reads whole:
+- STL keeps no vertex indices, and a slicer joins vertices by position. Where manifold3d keeps two vertices at one point (the solid touching itself; a sliver of two triangles on three points in a line), the joined mesh has edges of four faces and a second body of no volume. Of the 219 parts in the kits on disk, 20 read that way: mostly palms, and one fingertip shape that recurs in four kits (g0058_c00's finger 1; its palm too).
+- The STEP files were already cleaned of this (11/04). The print files now come from the same mesh (`step.part_mesh`, `step.opened`; volumes within 0.001 cm3, no point moved more than 0.01 mm): 19 of the 20 read whole, and the one left is the palm of an 11/02 kit built by older code.
+- The kit's checks read each part's OFF with its indexing (manifold3d), so they never saw it. The test now reads every print file joined, as a slicer does, and asks for one closed solid.
+
+Tests: CAD 19 and the cut hand's expected failure (every print file, its vertices joined, one closed solid), viewer 19.

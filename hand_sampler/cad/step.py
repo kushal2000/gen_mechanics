@@ -189,12 +189,20 @@ def _newell(P: np.ndarray) -> np.ndarray:
     return 0.5 * np.cross(P, np.roll(P, -1, axis=0)).sum(axis=0)
 
 
+def opened(V: np.ndarray, F: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """The closed mesh (V, F) as one solid to a reader that joins vertices
+    by position (a CAD kernel; a slicer reading an STL, 11/06: g0058_c00's
+    38 mm fingertip and its palm read with edges of four faces): its needles
+    collapsed and where it touches itself, opened (`_apart`)."""
+    V = np.asarray(V, dtype=np.float64)
+    F = _collapse_needles(V, np.asarray(F, dtype=np.int64))
+    return _apart(V, F), F
+
+
 def write(V: np.ndarray, F: np.ndarray, path: Path, name: str) -> Dict[str, float]:
     """Write the closed mesh (V, F) as one solid named `name`; returns
     counts and the largest distance of a face's corner from its plane."""
-    V = np.asarray(V, dtype=np.float64)
-    F = _collapse_needles(V, np.asarray(F, dtype=np.int64))
-    V = _apart(V, F)
+    V, F = opened(V, F)
     faces = _faces(V, F)
     lines: List[str] = []
 
@@ -291,11 +299,11 @@ def write(V: np.ndarray, F: np.ndarray, path: Path, name: str) -> Dict[str, floa
             "edges": len(edge), "plane_error_mm": worst}
 
 
-def write_part(off: Path, path: Path, name: str) -> Dict[str, float]:
+def part_mesh(off: Path) -> Tuple[np.ndarray, np.ndarray]:
     """A rendered part's OFF mesh (`render.load`, its indexing kept),
     simplified by `SIMPLIFY_MM` where that keeps its volume (as
     `render._lean`: a simplification took a 10 mm3 sliver off a palm that
-    came out in two pieces), as STEP, its crumbs left out (`PIECE_MM3`)."""
+    came out in two pieces), its crumbs left out (`PIECE_MM3`)."""
     import manifold3d as m3
 
     from .render import load
@@ -308,7 +316,12 @@ def write_part(off: Path, path: Path, name: str) -> Dict[str, float]:
     if len(pieces) > 1:
         man = m3.Manifold.compose([q for q in pieces if q.volume() >= PIECE_MM3] or pieces)
     mesh = man.to_mesh()
-    return write(np.asarray(mesh.vert_properties)[:, :3], np.asarray(mesh.tri_verts), path, name)
+    return np.asarray(mesh.vert_properties)[:, :3], np.asarray(mesh.tri_verts)
+
+
+def write_part(off: Path, path: Path, name: str) -> Dict[str, float]:
+    """A rendered part's mesh (`part_mesh`) as STEP."""
+    return write(*part_mesh(off), path, name)
 
 
 if __name__ == "__main__":

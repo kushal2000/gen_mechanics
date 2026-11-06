@@ -28,10 +28,9 @@ import numpy as np
 from hand_sampler.grammar import derive as dv
 from hand_sampler.grammar.hand import Hand, finger_section, hand_to_json
 
-from . import checks, render, scad
+from . import checks, render, scad, step
 from .design import MOUNT_DEPTH_MM, MOUNT_R_MM, Design, Part, ServoSpot
 from .servo import HL3915
-from .step import write_part as write_step
 
 DESIGNS_DIR = Path("outputs/designs")
 PRINT_BED_MM = 256.0
@@ -138,7 +137,7 @@ def finish(kit: Kit, progress: Optional[Callable[[str], None]] = None) -> Kit:
     for n in names:
         if res[n].ok:
             try:
-                write_step(folder / "stl" / f"{n}.off", folder / "step" / f"{n}.step", n)
+                step.write_part(folder / "stl" / f"{n}.off", folder / "step" / f"{n}.step", n)
             except (ValueError, KeyError, ZeroDivisionError, FloatingPointError) as e:
                 rep.warnings.append(f"{n}: no STEP file ({type(e).__name__}: {e})")
     say("drawing the assembly steps")
@@ -211,11 +210,12 @@ def print_up(d: Design, part: Part, verts: np.ndarray) -> np.ndarray:
 def lay_for_strength(src: Path, dst: Path, d: Design, part: Part) -> List[float]:
     """The part with `print_up` pointing up, on whichever of its two sides
     across that has more of it flat on the bed, turned on the bed to its
-    smallest rectangle, at z = 0, centred. Returns its extent (mm). Its
-    overhangs need supports."""
+    smallest rectangle, at z = 0, centred, its mesh the STEP file's (a
+    slicer, joining its vertices, reads one closed solid: `step.opened`).
+    Returns its extent (mm). Its overhangs need supports."""
     import trimesh
 
-    m, _ = render.load(src)
+    m = trimesh.Trimesh(*step.opened(*step.part_mesh(src)), process=False)
     up = print_up(d, part, np.asarray(m.vertices, dtype=float))
     best, best_area = np.eye(4), -1.0
     for s in (1.0, -1.0):

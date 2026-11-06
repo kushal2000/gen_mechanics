@@ -172,7 +172,8 @@ def test_every_part_renders_and_every_check_passes(name, tmp_path):
     import trimesh
 
     for n in kit.parts:
-        printed = trimesh.load(kit.folder / "print" / f"{n}.stl", force="mesh")
+        printed = trimesh.load(kit.folder / "print" / f"{n}.stl", force="mesh")     # its vertices joined, as a slicer
+        assert printed.is_watertight and len(printed.split(only_watertight=False)) == 1
         P = np.asarray(printed.vertices)
         across = max(np.ptp(P[:, :2] @ [np.cos(t), np.sin(t)]) for t in np.linspace(0.0, np.pi, 12, endpoint=False))
         assert abs(printed.bounds[0, 2]) < 1e-6 and printed.extents[2] <= across + 1e-6     # never on its long side
