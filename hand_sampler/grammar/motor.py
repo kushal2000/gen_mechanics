@@ -213,8 +213,8 @@ def lengths_from(floor: int, max_mm: int, step: int) -> List[int]:
 
 def link_floor_mm(a: Sequence[float], b: Sequence[float], turned_a: bool = False, turned_b: bool = False) -> int:
     """The shortest link between two joints with axes `a` then `b`, either
-    turned (`floor_mm`): 30-51 mm (bend then bend 50, 30 when the next bend
-    motor is turned and 40 when both are; spread then bend 41, spread then
+    turned (`floor_mm`): 27-61 mm (bend then bend 42, 27 when the next bend
+    motor is turned and 34 when both are; spread then bend 41, spread then
     twist 31)."""
     return _link_floor_cached(_key(a), _key(b), bool(turned_a), bool(turned_b))
 
@@ -280,16 +280,16 @@ def crossing_floor_mm(a: Sequence[float], turned_a: bool = False) -> int:
 
 def tip_floor_mm(a: Sequence[float], turned: bool = False) -> int:
     """The shortest fingertip link after a joint with axis `a`: the last
-    motor's swept front, a wall and the pad (`PAD_MM`), on the 10 mm grid
-    (40 mm for every joint kind, 50 after a turned bend motor, at most 60).
-    The pad holds the printed fingertip whole on every finger (Martin,
-    2026-11-02: the same cylinder and dome whatever the link's length): its
-    yoke's bridge, 0.5 mm past the swing, starts a flare to the cylinder,
-    which ends in a dome; 22 mm for the 33 mm fingertip of 11/02 (a 7 mm
-    flare, a 16.5 mm dome, less the wall; the pad was 10 mm, too short for a
-    whole dome on the shortest fingertips). The 28 mm fingertip of 11/03
-    needs 17 (a 4.5 mm flare, a 14 mm dome); the pad stays at 22, so the
-    floors are the ones of 11/02."""
+    motor's swept front, a wall and the pad (`PAD_MM`), to the next whole mm
+    (Martin, 11/04; 38 mm after a bend or a spread, 39 after a twist, 45
+    after a turned bend motor, 38-53 over every axis). The pad holds the
+    printed fingertip whole on every finger (Martin, 2026-11-02: the same
+    cylinder and dome whatever the link's length): its yoke's bridge,
+    0.5 mm past the swing, starts a flare to the cylinder, which ends in a
+    dome; 22 mm for the 33 mm fingertip of 11/02 (a 7 mm flare, a 16.5 mm
+    dome, less the wall; the pad was 10 mm, too short for a whole dome on
+    the shortest fingertips). The 28 mm fingertip of 11/03 needs 17 (a
+    4.5 mm flare, a 14 mm dome); the pad stays at 22."""
     return int(math.ceil(WALL_MM + swept_front_mm(a, turned) + PAD_MM - 1e-9))
 
 

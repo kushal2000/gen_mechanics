@@ -227,7 +227,7 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 | Joint | type | per joint | hinge, coupled, sliding | hinge only | couple / uncouple | E15: one servo per joint |
 | Joint | random draw | global | starts on a kind: 69% bend, 27% spread, 4% twist | same | - | commercial mix |
 | Link | shape | derived | one box around its yoke and the servo it carries; the fingertip the hull of a capsule and its yoke | same | - | Martin 10/13 (servo-sized), 10/23 (fingertip) |
-| Link | length | per link | 0 or 10-200 mm; fingertip 10-200 mm | the servo floors (30-51 mm, 1 mm past the grid where the grid is too tight; a link under 40-50 mm flips the bend servo after it where the next link has room, else turns it) to 90, fingertip >= 40 (50 after a turned or flipped bend), 0 only for crossings (44-52 mm before one) | 10 mm | E15; Martin 10/16 (turned servos), 10/23 (floors, crossings), 10/29 (flipped servos), 11/02 (fingertip floors) |
+| Link | length | per link | 0 or 10-200 mm; fingertip 10-200 mm | the servo floors (27-61 mm, to the next whole mm; a link too short for the bend servo after it to lie along it flips that servo where the next link has room, else turns it) to 90, fingertip >= 38 (39 after a twist, 45 after a turned bend, 49 after a flipped servo), 0 only for crossings (44-52 mm before one) | 10 mm | E15; Martin 10/16 (turned servos), 10/23 (floors, crossings), 10/29 (flipped servos), 11/02 (fingertip floors), 11/04 (whole mm) |
 | Physics | torque, speed, gains, density, friction | global | 1.39 N m (the Feetech's stall torque), 5 rad/s, 3, 0.078, 0.00058, 1750 kg/m^3, 0.5 | same | - | Feetech datasheet (torque); Kushal (the rest) |
 | Check | C1 clearance | - | solids a wall (2 mm) apart at the zero pose (the start pose: fingers open); the bay clear of the base links' sweeps | same | - | |
 | Check | C2 fingertips meet | - | some fingertip pair's reachable regions meet above the palm | same | - | Martin; every commercial hand passes |
@@ -256,7 +256,7 @@ A cut splits the outline into two convex plates, each stopping 4.3 mm short of t
 | Facing | finger | outward, 30 deg steps | uniform among outward facings | 30 deg |
 | Tilt | finger | 0, 30, 60, 90 deg; 0 when the first joint is a bend | uniform | 30 deg |
 | Joint axis | joint | 31 directions | exactly on a kind: 69% bend, 27% spread, 4% twist | 30 deg |
-| Link length | joint | the servo floor (30-51 mm; a short link flips or turns the bend servo after it) to 90 mm; 0 for a crossing (44-52 mm before one); fingertip 40-90 mm (50 after a turned or flipped bend); finger at most 225 mm | uniform among the allowed lengths | 10 mm (the floor and 0 are neighbours) |
+| Link length | joint | the servo floor (27-61 mm; a short link flips or turns the bend servo after it) to 90 mm; 0 for a crossing (44-52 mm before one); fingertip 38-90 mm (39 after a twist, 45 after a turned bend, 49 after a flipped servo); finger at most 225 mm | uniform among the allowed lengths | 10 mm (the floor and 0 are neighbours) |
 | Palm cut | hand | none, or a line 30-80 mm from the centre (30 deg directions) with a finger on each side | on half the hands, uniform among the cuts that fit | move 10 mm; turn 30 deg |
 
 ### 2. What is the same for every hand (fixed, not mutated)
