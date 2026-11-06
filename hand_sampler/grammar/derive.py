@@ -523,7 +523,7 @@ class FingerGeometry:
 def _pad_start_mm(a: np.ndarray, pose: str = "lying") -> float:
     """Where the fingertip pad starts along the last link: past the last
     motor's swept front (a flipped one's body) and a wall
-    (`motor.tip_pose_floor_mm` without the pad)."""
+    (`motor.tip_pose_floor_mm` without its gap and dome)."""
     return mt.WALL_MM + mt.reach_ahead_mm(a, pose)
 
 

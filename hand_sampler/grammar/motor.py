@@ -70,7 +70,7 @@ ENCLOSURE_HALF_MM = MOTOR_HALF_MM + WALL_MM     # the motor in its printed housi
 YOKE_HALF_MM = np.array([16.5, 12.0, 12.0])     # the next link's bracket around the axis
 TIP_RADIUS_MM = 14.0                            # the fingertip: a 28 mm cylinder ending in a dome (Martin, 11/03: 33 "too thick")
 TIP_FLARE_MM = TIP_RADIUS_MM - 9.5              # a printed fingertip widens from its yoke's 19 mm at 45 degrees: 4.5 mm
-PAD_MM = 22.0                                   # past the last motor's front and a wall, the fingertip (`tip_floor_mm`)
+TIP_GAP_MM = 5.0                                # from the last motor's swept front to the dome (`tip_floor_mm`)
 BUILD_CLEARANCE_MM = 1.0                        # a floor keeps this much between the swinging front and the wall
 CROSSING_EXTRA_MM = 1.5                         # a crossing's plate: the near horn's 2.4 mm screw head in a 3.5 mm plate
 BEFORE_CROSSING_MM = WALL_MM + 1.0              # a link before a crossing: the next part's housing wall and a gap
@@ -260,9 +260,9 @@ def pose_floor_mm(a: Sequence[float], b: Sequence[float], pose_a: str, pose_b: s
 
 
 def tip_pose_floor_mm(a: Sequence[float], pose: str) -> int:
-    """`tip_floor_mm` for a last motor sitting as `pose` (50 mm for a
+    """`tip_floor_mm` for a last motor sitting as `pose` (44 mm for a
     flipped bend, its body in the fingertip)."""
-    return int(math.ceil(WALL_MM + reach_ahead_mm(a, pose) + PAD_MM - 1e-9))
+    return int(math.ceil(reach_ahead_mm(a, pose) + TIP_GAP_MM + TIP_RADIUS_MM - 1e-9))
 
 
 def crossing_floor_mm(a: Sequence[float], turned_a: bool = False) -> int:
@@ -280,17 +280,16 @@ def crossing_floor_mm(a: Sequence[float], turned_a: bool = False) -> int:
 
 def tip_floor_mm(a: Sequence[float], turned: bool = False) -> int:
     """The shortest fingertip link after a joint with axis `a`: the last
-    motor's swept front, a wall and the pad (`PAD_MM`), to the next whole mm
-    (Martin, 11/04; 38 mm after a bend or a spread, 39 after a twist, 45
-    after a turned bend motor, 38-53 over every axis). The pad holds the
-    printed fingertip whole on every finger (Martin, 2026-11-02: the same
-    cylinder and dome whatever the link's length): its yoke's bridge,
-    0.5 mm past the swing, starts a flare to the cylinder, which ends in a
-    dome; 22 mm for the 33 mm fingertip of 11/02 (a 7 mm flare, a 16.5 mm
-    dome, less the wall; the pad was 10 mm, too short for a whole dome on
-    the shortest fingertips). The 28 mm fingertip of 11/03 needs 17 (a
-    4.5 mm flare, a 14 mm dome); the pad stays at 22."""
-    return int(math.ceil(WALL_MM + swept_front_mm(a, turned) + PAD_MM - 1e-9))
+    motor's swept front, a gap (`TIP_GAP_MM`) and the dome, to the next
+    whole mm (33 mm after a bend or a spread, 34 after a twist, 40 after a
+    turned bend motor). Martin, 11/06: "the minimum fingertip can be quite
+    short. it can be basically the end hemisphere + 5mm of gap"; the gap
+    holds the yoke's start 0.5 mm past the swing and the flare from its
+    19 mm to the 28 mm cylinder (4.5 mm), so the shortest fingertip is a
+    yoke, a flare and a dome, every fingertip the same cylinder and dome
+    (Martin, 11/02). Until 11/06 a wall and a 22 mm pad, sized for the
+    33 mm fingertip of 11/02 (38, 39, 45)."""
+    return int(math.ceil(swept_front_mm(a, turned) + TIP_GAP_MM + TIP_RADIUS_MM - 1e-9))
 
 
 def is_transverse(a: Sequence[float]) -> bool:

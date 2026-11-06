@@ -35,8 +35,9 @@ ROUND_TRIP_KNOWN_LIMITS = {
     ("none", 2): "the same: a standing spread-first finger comes back 0.5 mm off as a bend first",
     # ("feetech", 11) drew such a finger from 2026-10-23 to 11-02; the fingertip floors of 11/02 change its draw
     # ("feetech", 0) drew such a finger on 11/04 until the fine stage's bases went to every 10 mm
-    ("feetech", 7): "the same (2026-11-04 draws: the fine stage's bases every 10 mm): a standing spread-first finger "
-                    "comes back off as a bend first",
+    # ("feetech", 7) drew such a finger from 11/04 until the fingertip floors of 11/06
+    ("feetech", 9): "the same equivalences, not exact (2026-11-06 draws): a standing finger comes back with another "
+                    "facing (1.3 mm off) and a twist slid along its finger (3.3 mm), both within the fit target",
     ("none", 3): "a palm cut that the fit's recentring (the mount to the palm's centre) puts within 30 mm of the "
                  "mount: the fit takes the nearest line allowed (2026-11-04 draws)",
     ("none", 11): "the same (2026-11-04 draws): the cut 40 mm the wrong side of the recentred mount",

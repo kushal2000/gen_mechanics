@@ -64,7 +64,7 @@ def kinds_hand() -> Hand:
     one-arm yoke on a twist, a bend fingertip; a turned bend after a 30 mm
     link."""
     f = _finger(0, 40, (("hinge", FLEX, 50), ("hinge", ABD, 40), ("hinge", FLEX, 40), ("hinge", ROLL, 40)))
-    g = _finger(0, -40, (("hinge", FLEX, 30), ("hinge", FLEX, 45)), facing=180)
+    g = _finger(0, -40, (("hinge", FLEX, 30), ("hinge", FLEX, 40)), facing=180)
     return Hand(fingers=(f, g))
 
 

@@ -744,3 +744,12 @@ Print files a slicer reads whole:
 - The kit's checks read each part's OFF with its indexing (manifold3d), so they never saw it. The test now reads every print file joined, as a slicer does, and asks for one closed solid.
 
 Tests: CAD 19 and the cut hand's expected failure (every print file, its vertices joined, one closed solid), viewer 19.
+
+## Fingertip floors: the dome and a 5 mm gap (2026-11-06)
+
+Martin: "the permittable fingertip should adjust based on the preceding base joint. in other words, we shouldnt need all fingertips to be super long to accomodate the case of the flipped servo. Also, the minimum fingertip can be quite short. it can be basically the end hemisphere + 5mm of gap"; asked whether the gap runs to the base or the end of the dome, "3mm from the base of the dome is fine", then, with a 3 mm gap leaving the flare no room, "5mm sure just lock it in and push to the repo".
+- The floor already followed the last servo (38 after a bend or a spread, 39 after a twist, 45 after a turned bend, 49 after a flipped servo); every one carried 5 mm it did not need: a wall and a 22 mm pad sized for the 33 mm fingertip of 11/02, kept when the tip went to 28 mm on 11/03.
+- Now (`motor.tip_floor_mm`, `tip_pose_floor_mm`; `TIP_GAP_MM` replaces `PAD_MM`): the last servo's swept front, 5 mm (the yoke's start 0.5 mm past the swing and its 4.5 mm flare to the 28 mm cylinder), and the 14 mm dome, to the next whole mm: 33 after a bend or a spread, 34 after a twist, 40 after a turned bend, 44 after a flipped servo; 33-48 over every axis. The shortest fingertip is a yoke, a flare and a dome. The CAD builds it as it stands: g0058_c00 with its tips at 33, 40 and 34 (finger 1 223 mm, under the cap again; `outputs/designs/765c11e7e7`): 18 parts, every check passing, each dome whole.
+- Search space (2-6 fingers): coarse 10^42.8 to 10^43.0, fine 10^76.5 to 10^77.3 (more chains under the 225 mm cap); per finger count coarse 10^15.1, 22.2, 29.3, 36.2, 43.0, fine 10^26.4, 39.3, 52.1, 64.7, 77.3. Five joints at their shortest: at most 199 mm (204).
+- Tests: the floors pinned in the grammar tests; seed 7's round trip under the Feetech rules now passes (its known limit gone), seed 9 draws a hand with a standing finger back at another facing and a twist slid along its finger, 3.3 mm off at worst (within the 10 mm target; listed).
+- The kit Martin is printing (`b3536ba89d`, tips 38, 45, 39) builds as it is; under the new floors its tips are 5 mm over and off the fine grid.

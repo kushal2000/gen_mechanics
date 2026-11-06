@@ -50,9 +50,9 @@ def test_floors_over_the_coarse_axes():
     assert len(COARSE_AXES) == 31
     floors = {mt.link_floor_mm(a, b) for a in COARSE_AXES for b in COARSE_AXES}
     assert floors == {31, 32, 37, 41, 42, 43, 45, 46, 47, 48, 51}
-    # the fingertip holds its flare and dome whole (Martin, 11/02): 38-39 mm after every kind, 44 at most
-    assert {mt.tip_floor_mm(a) for a in KINDS.values()} == {38, 39}
-    assert max(mt.tip_floor_mm(a) for a in COARSE_AXES) == 44
+    # the fingertip: the swing, a 5 mm gap and the dome (Martin, 11/06): 33-34 mm after every kind, 39 at most
+    assert {mt.tip_floor_mm(a) for a in KINDS.values()} == {33, 34}
+    assert max(mt.tip_floor_mm(a) for a in COARSE_AXES) == 39
 
 
 def test_a_turned_bend_motor():
@@ -68,7 +68,7 @@ def test_a_turned_bend_motor():
     assert [mt.link_floor_mm(BEND, BEND, ta, tb) for ta, tb in ((False, False), (False, True), (True, True), (True, False))] \
         == [42, 27, 34, 49]
     assert mt.link_floor_mm(SPREAD, BEND, False, True) == 27 and mt.link_floor_mm(TWIST, BEND, False, True) == 28
-    assert mt.tip_floor_mm(BEND, True) == 45 and mt.tip_floor_mm(BEND) == 38
+    assert mt.tip_floor_mm(BEND, True) == 40 and mt.tip_floor_mm(BEND) == 33
     assert mt.crossing_slide_mm(SPREAD, BEND, turned_b=True) == pytest.approx(42.5)
     assert mt.BEND_RANGE_DEG == tuple(float(v) for v in KIND_RANGE_DEG["flexion"])
 
@@ -89,7 +89,7 @@ def test_a_flipped_bend_motor():
                                                          ("flipped", "flipped"), ("flipped", "turned"),
                                                          ("flipped", "lying"))] == [31, 38, 42, 38, 52]
     assert mt.pose_floor_mm(TWIST, BEND, "lying", "flipped") == 32
-    assert mt.tip_pose_floor_mm(BEND, "flipped") == 49 and mt.tip_floor_mm(BEND, True) == 45
+    assert mt.tip_pose_floor_mm(BEND, "flipped") == 44 and mt.tip_floor_mm(BEND, True) == 40
 
 
 def test_motor_box():
@@ -143,13 +143,13 @@ def test_a_flipped_spread_motor():
     """A spread servo past a link too short for it to lie along flips, its
     case along the link after its joint, as LEAP's thumb servos sit
     (2026-11-04; a bend servo turns there instead): 31 mm after a twist, 30
-    after a spread, 41 to another flipped spread, 52 to a lying servo, a 49
+    after a spread, 41 to another flipped spread, 52 to a lying servo, a 44
     mm fingertip."""
     assert mt.pose_floor_mm(TWIST, SPREAD, "lying", "flipped") == 31
     assert mt.pose_floor_mm(SPREAD, SPREAD, "lying", "flipped") == 30
     assert mt.pose_floor_mm(SPREAD, SPREAD, "flipped", "flipped") == 41
     assert mt.pose_floor_mm(SPREAD, BEND, "flipped", "lying") == 52
-    assert mt.tip_pose_floor_mm(SPREAD, "flipped") == 49
+    assert mt.tip_pose_floor_mm(SPREAD, "flipped") == 44
     assert mt.pose_floor_mm(TWIST, SPREAD, "lying", "lying") == 42      # lying, as before
 
 
