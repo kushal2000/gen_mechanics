@@ -1374,8 +1374,20 @@ def acceptable(fit: HandFit, real: RealHand) -> bool:
     """Buildable, every joint keeps its commercial kind (the hand's
     structure), and every finger's fingertip map is within `MAP_RMS_MM` /
     `MAP_WORST_MM` (Martin, 2026-10-20: the fingertips must follow the
-    commercial ones; a joint may sit elsewhere)."""
-    return map_within(fit) and buildable(fit) and kinds_kept(fit.hand, fit.palm_T, fit.q_off(), real)
+    commercial ones; a joint may sit elsewhere), and the palm cut keeps the
+    fingers it carries beyond it (`section_kept`)."""
+    return map_within(fit) and buildable(fit) and section_kept(fit) and \
+        kinds_kept(fit.hand, fit.palm_T, fit.q_off(), real)
+
+
+def section_kept(fit: HandFit) -> bool:
+    """Every finger the palm cut carries has its base beyond the cut and no
+    other finger does (2026-11-06: ARMS at 4 x left its little finger 19 mm
+    on the main palm)."""
+    h = fit.hand
+    if not h.palm_joints:
+        return True
+    return [i for i in range(len(h.fingers)) if dv.finger_section(h, i) == 0] == sorted(fit.section)
 
 
 def fallback_fit(real: RealHand, top: float = SCALE_LADDER[-1]) -> HandFit:

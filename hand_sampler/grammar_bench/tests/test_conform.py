@@ -135,12 +135,12 @@ def test_conformed_file_covers_the_reference_set():
     assert len(doc["hands"]) >= 15
 
 
-NOT_BUILDABLE = {"arms_skel"}
+NOT_BUILDABLE: set = set()          # ARMS builds from 2026-11-06 (4.25 x)
 """Hands no scale up to 5 x makes buildable with every joint's kind kept and
 every fingertip map within `MAP_RMS_MM` / `MAP_WORST_MM` (GRAMMAR-OVERVIEW
-step 18). Since 2026-11-04 (floors to the whole mm, side mounts, crossings
-into a twist, flipped spreads) LEAP fits at 1.05 x and SVH at 2.25 x; ARMS,
-3 x on 11/03, fits at none (open). They keep their real-size fit under the
+step 18). None since 2026-11-06 (the fingertip floors of the dome and a 5 mm
+gap, and the palm cut keeping its fingers): ARMS, at none on 11/04, fits at
+4.25 x. Such a hand would keep their real-size fit under the
 grammar's own limits (`conform.fallback_fit`)."""
 
 
