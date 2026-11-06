@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --job-name=K50_search
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=96000
+#SBATCH --time=12:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevolve/%x-%j.log
+# study_k50.py's search: coevolve.py next on the K=50 fork of v1/hod gen 0 (no training, no resubmission).
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+.venv_isaacsim/bin/python -u experiments/05nov_coevolve/coevolve.py next --run debug_outputs/coevolve/studies/k50_none

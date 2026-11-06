@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH --job-name=K50_watch
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32000
+#SBATCH --time=12:00:00
+#SBATCH --partition=default_partition
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevolve/%x-%j.log
+# study_k50.py watch: as each selected round's archive lands, build its unscored designs and submit their 100-env eval.
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+.venv_isaacsim/bin/python -u experiments/05nov_coevolve/study_k50.py watch ${ROUNDS:+--rounds $ROUNDS}
