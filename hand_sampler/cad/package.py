@@ -6,7 +6,7 @@ the assembly steps, the check report, all in one folder and a zip.
         scad/hand.scad            the parametric source (and the library)
         stl/<part>.stl            each part in its own frame (the viewer's overlay)
         step/<part>.step          the same as a solid for CAD (`step.py`: its mesh, flat faces merged)
-        print/<part>.stl          each part laid flat for printing
+        print/<part>.stl          each part on the bed the way up it is strongest (`print_up`)
         BOM.md  ASSEMBLY.md  checks.md  report.json
     outputs/designs/<id>.zip
 """
@@ -25,10 +25,11 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 
+from hand_sampler.grammar import derive as dv
 from hand_sampler.grammar.hand import Hand, finger_section, hand_to_json
 
 from . import checks, render, scad
-from .design import MOUNT_DEPTH_MM, MOUNT_R_MM, Design, ServoSpot
+from .design import MOUNT_DEPTH_MM, MOUNT_R_MM, Design, Part, ServoSpot
 from .servo import HL3915
 from .step import write_part as write_step
 
@@ -125,9 +126,10 @@ def finish(kit: Kit, progress: Optional[Callable[[str], None]] = None) -> Kit:
                                         if res[n].log.strip() else "OpenSCAD failed")
     say("laying the parts out for printing")
     (folder / "print").mkdir()
+    by_name = {p.name: p for p in d.part_list()}
     for n in names:
         if res[n].ok:
-            ext = lay_flat(folder / "stl" / f"{n}.stl", folder / "print" / f"{n}.stl")
+            ext = lay_for_strength(folder / "stl" / f"{n}.stl", folder / "print" / f"{n}.stl", d, by_name[n])
             rep.parts[n]["print_extent_mm"] = ext
             if max(ext[:2]) > PRINT_BED_MM:
                 rep.warnings.append(f"{n} is {max(ext[:2]):.0f} mm across: larger than a {PRINT_BED_MM:.0f} mm bed")
@@ -166,32 +168,65 @@ def _pieces(stl: Path) -> int:
 # --------------------------------------------------------------------------
 
 
-def lay_flat(src: Path, dst: Path) -> List[float]:
-    """The part turned onto the face of its convex hull that leaves the least
-    overhanging area (faces leaning more than 45 degrees out over nothing;
-    the hull's 12 largest face directions tried), on the bed at z = 0,
-    centred. Returns its extent (mm). (trimesh's stable poses sample the
-    centre of mass until one lands inside the hull, and never stopped on a
-    part whose welded STL turned its hull's normals inward.)"""
+FLEX_WEIGHT = 0.5
+"""What a link's own bend axis counts toward which way up it prints, beside
+the joints it carries (`print_up`): the finger closing on something bends
+it about that axis, and a fingertip on a twist has nothing else."""
+
+
+def print_up(d: Design, part: Part, verts: np.ndarray) -> np.ndarray:
+    """The direction in `part`'s frame that points up on the printer, for
+    strength rather than supports (Martin, 11/06). A printed part is weakest
+    across its layers, so the moments it carries should turn within them.
+    A link carries the torque of its own joint and of every joint beyond
+    it, so it stands on the axis most of those turn about: for most fingers
+    the bend axis, the U's arms flat on the bed, every layer a whole copy of
+    the link as it bends. A link never stands on its long side, which would
+    put its length across the layers. A palm part lies on its face."""
+    if part.body[0] != "link":
+        return np.array([1.0, 0.0, 0.0])
+    _, i, j = part.body
+    # at q = 0 every link of a finger has the same frame, so the joints beyond are in this one's too
+    turns = [np.asarray(a, float) / np.linalg.norm(a) for a in dv.finger_geometry(d.hand.fingers[i]).axes[j:]]
+    bend = np.array([0.0, 0.0, 1.0])
+
+    def extent(u: np.ndarray) -> float:
+        x = verts @ u
+        return float(x.max() - x.min())
+
+    best, key = bend, None
+    for c in turns + [np.array([0.0, 1.0, 0.0]), bend]:
+        e1 = np.cross(c, [1.0, 0.0, 0.0] if abs(c[0]) < 0.9 else [0.0, 1.0, 0.0])
+        e1 /= np.linalg.norm(e1)
+        e2 = np.cross(c, e1)
+        across = max(extent(math.cos(t) * e1 + math.sin(t) * e2) for t in np.linspace(0.0, math.pi, 12, endpoint=False))
+        if extent(c) > across:          # on its long side
+            continue
+        k = (round(sum(abs(float(c @ a)) for a in turns) + FLEX_WEIGHT * abs(float(c @ bend)), 6), -extent(c))
+        if key is None or k > key:
+            best, key = c, k
+    return best
+
+
+def lay_for_strength(src: Path, dst: Path, d: Design, part: Part) -> List[float]:
+    """The part with `print_up` pointing up, on whichever of its two sides
+    across that has more of it flat on the bed, turned on the bed to its
+    smallest rectangle, at z = 0, centred. Returns its extent (mm). Its
+    overhangs need supports."""
     import trimesh
 
     m, _ = render.load(src)
-    hull = m.convex_hull
-    dirs, inv = np.unique(np.round(hull.face_normals, 3), axis=0, return_inverse=True)
-    area = np.bincount(inv.ravel(), weights=hull.area_faces)
-    poses = [trimesh.geometry.align_vectors(d / np.linalg.norm(d), [0.0, 0.0, -1.0])
-             for d in dirs[np.argsort(-area)[:12]]]
-    best, best_cost = np.eye(4), math.inf
-    for Tp in poses + [np.eye(4)]:
+    up = print_up(d, part, np.asarray(m.vertices, dtype=float))
+    best, best_area = np.eye(4), -1.0
+    for s in (1.0, -1.0):
+        Tp = trimesh.geometry.align_vectors(s * up, [0.0, 0.0, 1.0])
         mm = m.copy()
         mm.apply_transform(Tp)
-        n = mm.face_normals
         z0 = float(mm.bounds[0, 2])
-        centres = mm.triangles_center
-        down = (n[:, 2] < -math.cos(math.radians(45.0))) & (centres[:, 2] > z0 + 0.3)
-        cost = float(mm.area_faces[down].sum())
-        if cost < best_cost:
-            best, best_cost = Tp, cost
+        foot = (mm.face_normals[:, 2] < -0.99) & (mm.triangles_center[:, 2] < z0 + 0.2)
+        area = float(mm.area_faces[foot].sum())
+        if area > best_area + 1e-6:
+            best, best_area = Tp, area
     m.apply_transform(best)
     T2, _ = trimesh.bounds.oriented_bounds_2D(m.vertices[:, :2])      # turned on the bed to its smallest rectangle
     R = np.eye(4)
@@ -241,7 +276,7 @@ def bom(d: Design, rep: checks.Report) -> str:
                      "ISO 9409-1-31.5-4-M5 |")
     lines += ["",
              "## Printed (PETG)", "",
-              "| Part | Grams (about) | Size laid flat (mm) |", "|---|---|---|"]
+              "| Part | Grams (about) | Size as printed (mm) |", "|---|---|---|"]
     for n, info in rep.parts.items():
         ext = info.get("print_extent_mm", info.get("extent_mm", []))
         lines.append(f"| `{n}` | {grams.get(n, 0)} | {' x '.join(str(x) for x in ext)} |")
@@ -305,6 +340,12 @@ def assembly(d: Design, orders: Optional[Dict] = None, steps: Optional[Dict] = N
     L = ["# Assembly", "",
          f"Hand `{design_id(hand)}`. Parts are named `f<finger>_l<link>` (the link after joint <link>), "
          "`f<finger>_tip`, `palm` (and `palm_beyond` past the cut).", "",
+         "## Printing", "",
+         "Each part in `print/` lies the way up it is strongest, not the way that needs the fewest supports. A "
+         "printed part is weakest across its layers, so each link stands on the axis its joints turn about (for "
+         "most links the bend axis, the U's arms flat on the bed): its length, its bending and the servos' torques "
+         "all lie within its layers. The palm lies on its face. Print with supports: the upper arm of each U and "
+         "a fingertip's round side overhang.", "",
          "## 1. Servos", "",
          "Set each servo's ID and move it to its centre (position 2048) before fitting anything to its horns "
          "(Feetech's FD software, or the board).", "",

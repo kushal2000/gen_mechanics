@@ -675,7 +675,7 @@ class GrammarViewer:
         with g.add_folder("Build"):
             btn_design = g.add_button("Generate full design",
                                       hint="This hand's printable parts for Feetech HL-3915 servos: OpenSCAD source, "
-                                           "STLs laid out for printing, the parts list and the assembly steps, "
+                                           "STLs turned for strength, the parts list and the assembly steps, "
                                            "checked and zipped (about 10-60 s). The parts are drawn over the hand "
                                            "and the zip downloads.")
             self.gui_printed = g.add_checkbox("show printed parts", True,
@@ -758,6 +758,8 @@ def main(argv=None) -> int:
     ap.add_argument("--hand", default="", help="start with this commercial hand (a manifest id) instead of a random one")
     ap.add_argument("--hand-file", default="", help="start with the hand in this file (a hand.json, as a generated "
                                                      "design writes) instead of a random one")
+    ap.add_argument("--generate", action="store_true", help="generate the starting hand's full design, as the Build "
+                                                            "folder's button does")
     args = ap.parse_args(argv)
     server = viser.ViserServer(host=args.host, port=args.port, label="grammar viewer")
     app = GrammarViewer(server, build_initial=not (args.hand or args.hand_file))
@@ -765,6 +767,8 @@ def main(argv=None) -> int:
         app.load_commercial(args.hand, wait=True)
     elif args.hand_file:
         app.load_hand(hand_from_json(Path(args.hand_file).read_text()), wait=True)
+    if args.generate:
+        app.generate_design()
     print(f"grammar viewer at http://{args.host}:{args.port}", flush=True)
     try:
         server.sleep_forever()

@@ -169,10 +169,43 @@ def test_every_part_renders_and_every_check_passes(name, tmp_path):
     kit = package.generate(HANDS[name](), tmp_path)
     assert kit.report.ok, kit.report.summary()
     assert kit.zip_path.exists()
+    import trimesh
+
     for n in kit.parts:
-        assert (kit.folder / "print" / f"{n}.stl").exists()
+        printed = trimesh.load(kit.folder / "print" / f"{n}.stl", force="mesh")
+        P = np.asarray(printed.vertices)
+        across = max(np.ptp(P[:, :2] @ [np.cos(t), np.sin(t)]) for t in np.linspace(0.0, np.pi, 12, endpoint=False))
+        assert abs(printed.bounds[0, 2]) < 1e-6 and printed.extents[2] <= across + 1e-6     # never on its long side
         solids, faces, _, closed = _step_shell(kit.folder / "step" / f"{n}.step")
         assert solids == 1 and faces > 0 and closed
+
+
+def test_each_part_prints_the_way_up_it_is_strongest():
+    """Print orientation (Martin, 11/06: for strength, not supports): a link
+    stands on the axis most of the torques it carries turn about (its own
+    joint's and every joint's beyond it), never on its long side; the palm
+    lies on its face."""
+    h = kinds_hand()
+    d = Design(h)
+    ups = {}
+    for p in d.part_list():
+        if p.body[0] == "palm":
+            ups[p.name] = package.print_up(d, p, np.zeros((1, 3)))
+            continue
+        _, i, j = p.body
+        verts, _ = dv.shape_points(dv.link_shape_mm(h.fingers[i], j))     # the simulator's body stands in for the mesh
+        ups[p.name] = package.print_up(d, p, np.asarray(verts, float))
+    z, y = [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]
+    assert np.allclose(ups["palm"], [1.0, 0.0, 0.0])
+    # bend, spread (a side mount), bend, twist: the bends carry most, the twist's axis runs along the fingertip
+    assert all(np.allclose(np.abs(ups[f"f0_l{j}"]), z) for j in range(3)) and np.allclose(np.abs(ups["f0_tip"]), z)
+    # a turned bend, then a bend fingertip
+    assert np.allclose(np.abs(ups["f1_l0"]), z) and np.allclose(np.abs(ups["f1_tip"]), z)
+    # a spread-only finger stands on the spread axis
+    g = _finger(0, 40, (("hinge", ABD, 60), ("hinge", ABD, 50)), facing=90, tilt=90)
+    dg = Design(Hand(fingers=(g, _finger(0, -40, BENDS, facing=180))))
+    p = dg.parts[("link", 0, 0)]
+    assert np.allclose(np.abs(package.print_up(dg, p, np.asarray(dv.link_box_mm(g, 0).corners(), float))), y)
 
 
 def _step_shell(path):

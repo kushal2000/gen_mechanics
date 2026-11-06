@@ -708,3 +708,25 @@ Results (`outputs/cad/batch/v45_*`, built before the last two fixes to the colum
 - 5 housings keeping 0 or 2 of their 4 screw bosses, the failure every batch since v29 has had.
 
 Tests: grammar 191 and 5 expected failures (the round trips' known fitter limits: seed 7 under the Feetech rules now draws a standing spread-first finger, seed 0 no longer does), CAD 18 and the cut hand's expected failure, viewer 19, in-hand 523. The viewer (five copies from earlier restarts were running on ports 8080-8084, the one on 8080 from the morning) runs once, on 8080, with this code.
+
+## Print files turned for strength; the evolved hand g0058_c00's kit (2026-11-06)
+
+Martin: "take this hand, generate a cad model using the current method, then throw it up on the viewer for me. simultaneously, make sure that for our system, the stl print files are already in their optimal print orientation for STRENGTH (not for support material)."
+
+The print orientation (`package.print_up`, `lay_for_strength`):
+- A printed part is weakest across its layers: they peel apart under tension, and the shear between them is weaker than along the lines.
+- A link carries the torque of its own joint and, through it, those of every joint beyond it; a finger closing on something also bends it about its bend axis. So a link stands on whichever of its joints' axes those torques mostly turn about (each joint counted by how closely its axis lines up with the candidate, the link's bend axis at half), and the moments turn within its layers.
+- A link never stands on its long side (its extent along the axis more than its widest span across), which would put its length across the layers.
+- For most links that is the bend axis: the U's arms lie flat, the upper one over supports, and every layer is a whole copy of the link as it bends. A short fingertip on a twist stands on the twist's horn plate (the twist's torque in its layers); a long one lies on its side. The palm lies on its face, as before.
+- Of a part's two sides across that axis, it lies on the one with more of it flat on the bed.
+- Until now each part lay on the face of its hull that needed the fewest supports. On g0058_c00 that stood 7 of the 17 finger parts on end (f2_l0 82 mm tall, f0_l1 62), their length across the layers; now no finger part is taller than 35 mm (a U across its arms).
+- `ASSEMBLY.md` gains a printing note (why, and that the parts need supports); `BOM.md` gives each part's size as printed.
+
+The hand: g0058_c00 (`g0058_c00.zip`: the map-elites run's generation 58, drawn under `FEETECH_COARSE_RULES` on 11/03), its genotype from the zip's `design.json`. The zip's URDF palm is the grammar's own for that genotype, not mirrored (its spec says "left").
+- Under today's rules it passes C1, but three fingertips are under today's floors: fingers 1-3 have 30, 40 and 30 mm against 38, 45 and 39. The run's grammar predates the cylinder-and-dome tips of 11/02-11/03 (its URDF has 33 mm capsules). Its other links are off today's coarse grid (20 mm steps from the floors at whole mm, 11/04) but on the fine stage's.
+- As given (`outputs/designs/85a364beba`): 18 parts, every check passing, but the short tips squeeze the dome onto the yoke: finger 1's is a ball on its U, finger 3's a dome cap screwed to the twist's horn through its crown.
+- With the three tips raised to their floors (`operators.fit_lengths`; finger 1 is then 228 mm, 3 over the fine stage's 225): 18 parts, every check passing, the tips whole (`outputs/designs/b3536ba89d`).
+- The board finds no room on either palm's back and floats.
+- The viewer shows the hand as given on port 8080 and the raised tips on 8081. Its new `--generate` builds the starting hand's design at startup, as the Build folder's button does.
+
+Tests: CAD 19 and the cut hand's expected failure (a new one: which way up each part of a hand prints; every example hand's printed parts sit on the bed, none on its long side), viewer 19.
