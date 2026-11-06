@@ -84,9 +84,23 @@ def _mutate_sharded(d: Path, jobs: list, n: int) -> list:
     for k, part in enumerate(parts):
         (d / f"shard_{k:03d}_in.json").write_text(json.dumps(part))
         (d / f"shard_{k:03d}_out.json").unlink(missing_ok=True)
-    subprocess.run(["sbatch", "--wait", f"--array=0-{n - 1}", "--export", f"ALL,JOBS={d}",
-                    str(REPO / "experiments/05nov_noevolution/studies/mutate_shard.sub")], check=False,
-                   stdout=subprocess.DEVNULL)
+    out = lambda k: d / f"shard_{k:03d}_out.json"            # noqa: E731  (written atomically by the shard)
+    for attempt in range(6):
+        missing = [k for k in range(n) if not out(k).exists()]
+        if not missing:
+            break
+        r = subprocess.run(["sbatch", "--wait", f"--array={','.join(map(str, missing))}", "--export", f"ALL,JOBS={d}",
+                            str(REPO / "experiments/05nov_noevolution/studies/mutate_shard.sub")], check=False,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        # a busy controller can time out and report a failed submission (or drop --wait) for an array it did queue
+        # (5 Nov: the K=50 search died this way): give such shards time to land before resubmitting what is missing
+        t0 = time.time()
+        while time.time() - t0 < 600 and not all(out(k).exists() for k in missing):
+            time.sleep(15)
+        if not all(out(k).exists() for k in missing):
+            print(f"[mutate] attempt {attempt + 1}: shards {[k for k in missing if not out(k).exists()]} missing "
+                  f"({r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'no sbatch error'}); resubmitting",
+                  flush=True)
     kids = {}
     for k in range(n):
         f = d / f"shard_{k:03d}_out.json"

@@ -71,16 +71,42 @@ def main() -> None:
                     help="draw each chunk at one finger count (2-6 in turn): the same distribution within a finger "
                          "count, 5x the rate into a row's rare cells")
     ap.add_argument("--out", default=None, help="output folder (default debug_outputs/noevolution/seed_<n>)")
+    ap.add_argument("--phase", choices=("all", "draw", "merge"), default="all",
+                    help="draw: chunks --chunk-range into --rows-dir (one CPU job of an array); merge: consume every "
+                         "chunk file in --rows-dir in chunk order and build -- the same population as 'all'")
+    ap.add_argument("--chunk-range", default=None, help="draw: a:b, the chunks to draw")
+    ap.add_argument("--rows-dir", default=None)
     args = ap.parse_args()
     from coevolution.evolution.descriptors import NICHES32
     need = args.per_niche
     kept = {n: [] for n in NICHES32}
     keys = set()
     t0 = time.time()
-    with Pool(args.workers) as pool:
+    job_of = lambda k: (args.seed, k, args.chunk) + ((2 + k % 5,) if args.by_fingers else ())  # noqa: E731
+    if args.phase == "draw":
+        a, b = (int(v) for v in args.chunk_range.split(":"))
+        rd = Path(args.rows_dir)
+        rd.mkdir(parents=True, exist_ok=True)
+        with Pool(args.workers) as pool:
+            for chunk, rows in pool.imap(_draw, [job_of(k) for k in range(a, b)]):
+                tmp = rd / f".chunk_{chunk:05d}.json"
+                tmp.write_text(json.dumps(rows))
+                tmp.rename(rd / f"chunk_{chunk:05d}.json")
+        print(f"[seed] drew chunks {a}-{b - 1} in {time.time() - t0:.0f} s", flush=True)
+        return
+    if args.phase == "merge":
+        rd = Path(args.rows_dir)
+        files = sorted(rd.glob("chunk_*.json"))
+        ks = [int(f.stem.split("_")[1]) for f in files]
+        if ks != list(range(len(ks))):
+            raise SystemExit(f"[seed] chunk files are not 0..{len(ks) - 1} without gaps (missing shard?)")
+        stream = ((k, json.loads(f.read_text())) for k, f in zip(ks, files))
+    else:
+        pool0 = Pool(args.workers)
+        stream = pool0.imap(_draw, (job_of(k) for k in range(args.max_chunks)))
+    if True:                                         # consume the chunks in order: the population is the seed's alone
         draws = 0
-        jobs = ((args.seed, k, args.chunk) + ((2 + k % 5,) if args.by_fingers else ()) for k in range(args.max_chunks))
-        for chunk, rows in pool.imap(_draw, jobs):
+        for chunk, rows in stream:
             draws += args.chunk
             for cell, key, d in rows:
                 if len(kept[cell]) < need and key not in keys:
@@ -92,7 +118,8 @@ def main() -> None:
                       + (f"; short {dict(sorted(short.items(), key=lambda kv: -kv[1])[:4])}" if short else ""),
                       flush=True)
             if not short:
-                pool.terminate()
+                if args.phase == "all":
+                    pool0.terminate()
                 break
     missing = {n: need - len(v) for n, v in kept.items() if len(v) < need}
     if missing:

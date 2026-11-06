@@ -112,6 +112,7 @@ def fit_transformer(designs: list[dict], labels, steps: int = 15000, seed: int =
                 Xc, Mc, Hc = (t.to(dev) for t in batch(ds[k:k + 2048]))
                 out.append(net(Xc, Mc, Hc).cpu().numpy())
         return np.concatenate(out) if out else np.zeros(0)
+    predict.net = net                                  # for saving (coevolve.py writes value_net.pt)
     return predict
 
 
