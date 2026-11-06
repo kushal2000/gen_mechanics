@@ -1,0 +1,23 @@
+#!/bin/bash
+#SBATCH --job-name=CO_seeds
+#SBATCH --partition=default_partition
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=32000
+#SBATCH --time=2:00:00
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevolve/%x-%A_%a.log
+# The v1 seed population, sharded: PHASE=draw (array task k draws chunks [10k, 10k+10) into rows/), then PHASE=merge
+# (one job: every chunk in order, the first 128 distinct designs per niche, built) -- the same population as one job.
+#   sbatch --array=0-15 --export=ALL,PHASE=draw make_seeds.sub; sbatch --dependency=afterok:<id> --export=ALL,PHASE=merge make_seeds.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+O=debug_outputs/coevolve/v1/seeds
+A=$(( ${SLURM_ARRAY_TASK_ID:-0} * 10 ))
+if [ "$PHASE" = draw ]; then
+  exec .venv_isaacsim/bin/python -u experiments/05nov_noevolution/make_seed.py --phase draw --chunk-range $A:$((A + 10)) \
+      --rows-dir $O/rows --seed 0 --by-fingers --workers 16
+else
+  exec .venv_isaacsim/bin/python -u experiments/05nov_noevolution/make_seed.py --phase merge --rows-dir $O/rows \
+      --per-niche 128 --seed 0 --by-fingers --workers 16 --out $O
+fi

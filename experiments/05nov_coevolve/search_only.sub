@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH --job-name=CO_search
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=96000
+#SBATCH --time=6:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevolve/%x-%j.log
+# One design search with no training: coevolve.py next on a fork (RUN, at its trained gen G), then the 100-env eval
+# of the proposed gen G+1 archive with gen G's policy (async). For House of Dextra: a K-round search after the fixed
+# population's policy has trained.
+#   sbatch --export=ALL,RUN=debug_outputs/coevolve/studies/hod_search_5b experiments/05nov_coevolve/search_only.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+P=.venv_isaacsim/bin/python
+C=experiments/05nov_coevolve/coevolve.py
+G=$($P -c "import json; print(json.load(open('$RUN/state.json'))['generation'])")
+$P -u $C next --run "$RUN"
+$P -u $C eval --run "$RUN" --gen $((G + 1)) --policy-gen "$G" --envs "${EVAL_ENVS:-100}"
