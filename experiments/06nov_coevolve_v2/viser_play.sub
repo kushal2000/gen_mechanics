@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH --job-name=VISER_play
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+#SBATCH --time=6:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/coevolve/%x-%j.log
+# The interactive policy player (experiments/05nov_noevolution/viser_play_design.py) as a GPU job.
+#   sbatch --export=ALL,VRUN=debug_outputs/coevolve/studies/wuji_zero_shot/viewer_run,ITER=7,PORT=8099 experiments/06nov_coevolve_v2/viser_play.sub
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+echo "[viser] node $(hostname) port ${PORT:-8099}"
+exec .venv_isaacsim/bin/python -u experiments/05nov_noevolution/viser_play_design.py --run "$VRUN" --iteration "${ITER:-7}" --port "${PORT:-8099}"

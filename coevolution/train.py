@@ -170,6 +170,17 @@ def main() -> None:
             agent_cfg["params"]["config"]["multi_gpu"] = True
             env_cfg.seed = int(agent_cfg["params"]["seed"]) + global_rank
 
+        # campaign pins (coevolution/utils/campaign_pins.py): a running campaign keeps the settings it started with
+        # when a yaml default changes (6 Nov: expl_reward_coef_scale 0.002 -> 0.001; v1 pins 0.002)
+        from coevolution.utils.campaign_pins import apply_pins
+        try:
+            _cli = list(HydraConfig.get().overrides.task)
+        except Exception:                                  # no override record: pins apply to every key
+            _cli = []
+        _pinned = apply_pins(getattr(getattr(env_cfg, "hand", None), "robot_spec", ""), agent_cfg, _cli)
+        if _pinned:
+            print(f"[train] campaign pins applied: {_pinned}", flush=True)
+
         # render_mode="rgb_array" makes DirectRLEnv.render() lazily create a
         # single omni.replicator render_product at cfg.viewer.cam_prim_path —
         # one buffer, num_envs-independent. The custom attach_record_camera

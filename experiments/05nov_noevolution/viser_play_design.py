@@ -75,6 +75,8 @@ def label(h: dict) -> str:
 
 
 def describe(spec_rel: str) -> str:
+    if not (spec_rel.endswith(".spec.json") and "design" in json.loads((REPO / spec_rel).read_text())):
+        return f"registered robot `{spec_rel}` (its own URDF: no grammar design)"
     spec = json.loads((REPO / spec_rel).read_text())
     d = spec["design"] if isinstance(spec["design"], dict) else json.loads(spec["design"])
     lines = [f"{len(d['fingers'])} fingers, {sum(len(f['joints']) for f in d['fingers'])} motors"]
@@ -127,16 +129,21 @@ def _work(args, conn) -> None:
     env_d = full["env"]
     for k in ("observation_space", "state_space", "action_space"):
         env_d.pop(k, None)
-    ref = f"multi:template:{plan['manifest']}"
+    # a registered robot (vendor URDF, mesh colliders) cannot go on the template: same 6 x 5 finger grid, own articulation
+    grammar = plan["spec"].endswith(".spec.json") and "design" in json.loads((REPO / plan["spec"]).read_text())
+    ref = f"multi:template:{plan['manifest']}" if grammar else f"multi:finger:{plan['spec']}"
     cfg = InHandOlympicsEnvCfg()
     cfg.from_dict(env_d)
     cfg.hand.robot_spec = ref
     cfg.scene.num_envs = args.envs
     cfg.reset.stagger_initial_episodes = False
+    if not (plan["spec"].endswith(".spec.json") and "design" in json.loads((REPO / plan["spec"]).read_text())):
+        cfg.reset.table_safe = False
     cfg.log.group_stats = False
     cfg.log.design_stats = False
     cfg.seed = 0
-    conn.send({"kind": "status", "text": f"building the scene: {plan['spec'].split('/')[-2]} x {args.envs} env(s)"})
+    shown = plan["spec"].split("/")[-2] if plan["spec"].endswith(".spec.json") else plan["spec"]
+    conn.send({"kind": "status", "text": f"building the scene: {shown} x {args.envs} env(s)"})
     env = InHandOlympicsEnv(cfg)
     obs, _ = env.reset()
     n_act = env.action_space.shape[-1]
@@ -155,10 +162,13 @@ def _work(args, conn) -> None:
                                      sapg_expl_coef=0.0, num_envs=env.num_envs)
         return players[path]
 
-    spec = json.loads((REPO / plan["spec"]).read_text())
-    design = spec["design"] if isinstance(spec["design"], dict) else json.loads(spec["design"])
     src = pathlib.Path(env.hand_urdf_paths[0])
-    text = colour_urdf_text(src.read_text(), design)
+    if plan["spec"].endswith(".spec.json") and "design" in json.loads((REPO / plan["spec"]).read_text()):
+        spec = json.loads((REPO / plan["spec"]).read_text())
+        design = spec["design"] if isinstance(spec["design"], dict) else json.loads(spec["design"])
+        text = colour_urdf_text(src.read_text(), design)
+    else:                                                # registered robot (vendor URDF): its own colours
+        text = src.read_text()
     if getattr(env.hand_set.specs[0], "replace_cylinders_with_capsules", False):
         text = _cylinders_as_capsules(text)
     drawn = src.with_name("hand_on_wrist_viser.urdf")             # mesh paths in it are absolute

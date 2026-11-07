@@ -735,7 +735,8 @@ class InHandOlympicsEnv(DirectRLEnv):
         + reset.table_clearance; negative = that far inside the margin."""
         r = self.cfg.reset
         top = self.cfg.table.top_height
-        T = self.robot.root_physx_view.get_link_transforms()                      # (N, B, 7) world
+        T = (self.robot.slot_link_transforms() if hasattr(self.robot, "slot_link_transforms")   # multi:finger:
+             else self.robot.root_physx_view.get_link_transforms())             # (N, B, 7) world
         oz = self.scene.env_origins[env, 2:3]
         lz = T[env.unsqueeze(1), self.reset_link_idx.unsqueeze(0), 2] - oz - top - r.link_clearance
         lz = torch.where(self.reset_link_valid[env], lz, torch.full_like(lz, 9.0))

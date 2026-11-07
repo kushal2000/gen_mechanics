@@ -311,6 +311,10 @@ def search(run: Path, cfg: dict, reg: dict, man: dict, lab: dict, g: int, nd: Pa
 # ---------------------------------------------------------------- evaluation
 def evaluate(args) -> None:
     run = Path(args.run)
+    stop = [f for f in (run / "NO_EVAL", run.parent / "NO_EVAL") if f.exists()]
+    if stop and not args.force:                       # 6 Nov: per-generation evals off; training logs are the record
+        print(f"[coevolve] {run.name} gen {args.gen}: eval skipped ({stop[0]}; --force to run it)", flush=True)
+        return
     S = load(run, "state.json")
     g = args.gen
     gd = gen_dir(run, g)
@@ -372,6 +376,7 @@ def main() -> None:
     ap.add_argument("--checkpoint")
     ap.add_argument("--envs", type=int, default=100, help="eval: envs per design")
     ap.add_argument("--policy-gen", type=int, help="eval: score gen --gen's designs with this gen's policy")
+    ap.add_argument("--force", action="store_true", help="eval: run even when a NO_EVAL file switches evals off")
     args = ap.parse_args()
     {"init": init, "fork": fork, "fork-all": fork_all, "next": next_gen, "trained": trained, "eval": evaluate,
      "report": report}[args.phase](args)

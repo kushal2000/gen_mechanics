@@ -1,0 +1,640 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="wujihand2-beta2-left"><link name="l_wrist">
+    <inertial><origin xyz="-0.00780662259 0.00762704721 -0.0785093418" rpy="0 0 0" /><mass value="2.4735304" /><inertia ixx="0.00507819517" ixy="2.59109439e-05" ixz="0.000241402347" iyy="0.00798167028" iyz="0.000376206739" izz="0.0040613981" /></inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_wrist.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_wrist.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_thumb_proximal">
+    <inertial><origin xyz="0.000959827 0.0015555738 -0.015634784" rpy="0 0 0" /><mass value="0.12071957" /><inertia ixx="4.22105137e-05" ixy="3.03614376e-07" ixz="8.60800846e-07" iyy="4.1808685e-05" iyz="5.4062115e-07" izz="2.42232042e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.627450980392157 0.627450980392157 0.627450980392157 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_thumb_proximal_abd">
+    <inertial><origin xyz="-2.83316e-05 2.235684e-05 -0.03864102" rpy="0 0 0" /><mass value="0.196931566" /><inertia ixx="0.000162347138" ixy="9.30519179e-07" ixz="-1.29762785e-07" iyy="0.000163347974" iyz="7.56991236e-08" izz="3.64490623e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.627450980392157 0.627450980392157 0.627450980392157 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_thumb_middle">
+    <inertial><origin xyz="-6.968412e-07 3.501146e-07 -0.04041642" rpy="0 0 0" /><mass value="0.20465243" /><inertia ixx="0.000178951625" ixy="-6.73095261e-10" ixz="-1.9062151e-09" iyy="0.000181273852" iyz="1.19295243e-09" izz="3.81489363e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.627450980392157 0.627450980392157 0.627450980392157 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_thumb_distal">
+    <inertial><origin xyz="9.899406e-05 0.0045276 -0.016627402" rpy="0 0 0" /><mass value="0.0848573194" /><inertia ixx="3.50968008e-05" ixy="-4.00397523e-08" ixz="7.78234507e-08" iyy="3.63780968e-05" iyz="6.42735215e-06" izz="1.23309922e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_thumb_tip"><inertial><origin xyz="0 0 0" rpy="0 0 0" /><mass value="0.010648" /><inertia ixx="5.153632e-07" ixy="0" ixz="0" iyy="5.153632e-07" iyz="0" izz="5.153632e-07" /></inertial></link>
+  <link name="l_thumb_tip_sensor_frame">
+    <inertial><origin xyz="-4.97552e-07 -0.002483316 -0.0352231" rpy="0 0 0" /><mass value="0.096369511" /><inertia ixx="2.6289656e-05" ixy="-4.11725207e-10" ixz="2.80771417e-10" iyy="2.93327211e-05" iyz="4.33483841e-06" izz="1.89105311e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.55 0.78 0.95 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_thumb_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_index_finger_proximal">
+    <inertial><origin xyz="-4.469454e-18 0.0019548452 -0.015684086" rpy="0 0 0" /><mass value="0.121393589" /><inertia ixx="4.34819662e-05" ixy="-4.47989254e-21" ixz="-3.61328355e-21" iyy="4.3583132e-05" iyz="1.64218938e-06" izz="2.43175672e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_index_finger_proximal_abd">
+    <inertial><origin xyz="-7.397984e-07 -2.537744e-06 -0.04136" rpy="0 0 0" /><mass value="0.173715731" /><inertia ixx="0.000172162746" ixy="2.96882186e-10" ixz="2.08503067e-10" iyy="0.000172157592" iyz="-9.3467816e-10" izz="2.56733332e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_index_finger_middle">
+    <inertial><origin xyz="1.793528e-07 1.5517942e-05 -0.0305272" rpy="0 0 0" /><mass value="0.157465818" /><inertia ixx="0.000113609756" ixy="-1.87504078e-10" ixz="6.27202168e-10" iyy="0.000115402189" iyz="-4.99535881e-08" izz="2.56327226e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_index_finger_distal">
+    <inertial><origin xyz="0.00012227952 0.00299189 -0.011594924" rpy="0 0 0" /><mass value="0.0807537931" /><inertia ixx="2.62409027e-05" ixy="7.85629969e-09" ixz="-7.22549514e-08" iyy="2.85060785e-05" iyz="4.22652968e-06" izz="1.24454028e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_index_finger_tip"><inertial><origin xyz="0 0 0" rpy="0 0 0" /><mass value="0.010648" /><inertia ixx="5.153632e-07" ixy="0" ixz="0" iyy="5.153632e-07" iyz="0" izz="5.153632e-07" /></inertial></link>
+  <link name="l_index_finger_tip_sensor_frame">
+    <inertial><origin xyz="-1.3534708e-06 -0.0017724542 -0.03161246" rpy="0 0 0" /><mass value="0.0471187842" /><inertia ixx="8.57399449e-06" ixy="-2.70680606e-11" ixz="-6.15451887e-11" iyy="8.86661771e-06" iyz="1.92182029e-06" izz="5.93641716e-06" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.55 0.78 0.95 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_index_finger_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_middle_finger_proximal">
+    <inertial><origin xyz="-4.376328e-18 0.0019548452 -0.015684086" rpy="0 0 0" /><mass value="0.121393589" /><inertia ixx="4.34819662e-05" ixy="-4.61321699e-21" ixz="-3.79056849e-21" iyy="4.3583132e-05" iyz="1.64218938e-06" izz="2.43175672e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_middle_finger_proximal_abd">
+    <inertial><origin xyz="-7.397984e-07 -2.537744e-06 -0.04136" rpy="0 0 0" /><mass value="0.173715731" /><inertia ixx="0.000172162746" ixy="2.96882186e-10" ixz="2.08503067e-10" iyy="0.000172157592" iyz="-9.3467816e-10" izz="2.56733332e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_middle_finger_middle">
+    <inertial><origin xyz="1.793528e-07 1.5517942e-05 -0.0305272" rpy="0 0 0" /><mass value="0.157465818" /><inertia ixx="0.000113609756" ixy="-1.87504078e-10" ixz="6.27202168e-10" iyy="0.000115402189" iyz="-4.99535881e-08" izz="2.56327226e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_middle_finger_distal">
+    <inertial><origin xyz="0.00012227952 0.00299189 -0.011594924" rpy="0 0 0" /><mass value="0.0807537931" /><inertia ixx="2.62409027e-05" ixy="7.85629969e-09" ixz="-7.22549514e-08" iyy="2.85060785e-05" iyz="4.22652968e-06" izz="1.24454028e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_middle_finger_tip"><inertial><origin xyz="0 0 0" rpy="0 0 0" /><mass value="0.010648" /><inertia ixx="5.153632e-07" ixy="0" ixz="0" iyy="5.153632e-07" iyz="0" izz="5.153632e-07" /></inertial></link>
+  <link name="l_middle_finger_tip_sensor_frame">
+    <inertial><origin xyz="-1.3534708e-06 -0.0017724542 -0.03161246" rpy="0 0 0" /><mass value="0.0471187842" /><inertia ixx="8.57399449e-06" ixy="-2.70680606e-11" ixz="-6.15451887e-11" iyy="8.86661771e-06" iyz="1.92182029e-06" izz="5.93641716e-06" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.55 0.78 0.95 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_middle_finger_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_ring_finger_proximal">
+    <inertial><origin xyz="-4.283224e-18 0.0019548452 -0.015684086" rpy="0 0 0" /><mass value="0.121393589" /><inertia ixx="4.34819662e-05" ixy="-4.59112337e-21" ixz="-4.27868959e-21" iyy="4.3583132e-05" iyz="1.64218938e-06" izz="2.43175672e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_ring_finger_proximal_abd">
+    <inertial><origin xyz="-7.397984e-07 -2.537744e-06 -0.04136" rpy="0 0 0" /><mass value="0.173715731" /><inertia ixx="0.000172162746" ixy="2.96882186e-10" ixz="2.08503067e-10" iyy="0.000172157592" iyz="-9.3467816e-10" izz="2.56733332e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_ring_finger_middle">
+    <inertial><origin xyz="1.793528e-07 1.5517942e-05 -0.0305272" rpy="0 0 0" /><mass value="0.157465818" /><inertia ixx="0.000113609756" ixy="-1.87504078e-10" ixz="6.27202168e-10" iyy="0.000115402189" iyz="-4.99535881e-08" izz="2.56327226e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_ring_finger_distal">
+    <inertial><origin xyz="0.00012227952 0.00299189 -0.011594924" rpy="0 0 0" /><mass value="0.0807537931" /><inertia ixx="2.62409027e-05" ixy="7.85629969e-09" ixz="-7.22549514e-08" iyy="2.85060785e-05" iyz="4.22652968e-06" izz="1.24454028e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_ring_finger_tip"><inertial><origin xyz="0 0 0" rpy="0 0 0" /><mass value="0.010648" /><inertia ixx="5.153632e-07" ixy="0" ixz="0" iyy="5.153632e-07" iyz="0" izz="5.153632e-07" /></inertial></link>
+  <link name="l_ring_finger_tip_sensor_frame">
+    <inertial><origin xyz="-1.3534708e-06 -0.0017724542 -0.03161246" rpy="0 0 0" /><mass value="0.0471187842" /><inertia ixx="8.57399449e-06" ixy="-2.70680606e-11" ixz="-6.15451887e-11" iyy="8.86661771e-06" iyz="1.92182029e-06" izz="5.93641716e-06" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.55 0.78 0.95 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_ring_finger_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_pinky_proximal">
+    <inertial><origin xyz="-2.474956e-16 0.0019548474 -0.015684086" rpy="0 0 0" /><mass value="0.121393589" /><inertia ixx="4.34819662e-05" ixy="1.58701459e-20" ixz="-9.31616903e-19" iyy="4.3583132e-05" iyz="1.64219453e-06" izz="2.43175672e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_proximal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_pinky_proximal_abd">
+    <inertial><origin xyz="5.756234e-09 -2.200792e-06 -0.03693272" rpy="0 0 0" /><mass value="0.15875955" /><inertia ixx="0.000134369616" ixy="1.42361869e-10" ixz="6.50939797e-10" iyy="0.000134371678" iyz="9.16135392e-11" izz="2.33207002e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_proximal_abd.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_pinky_middle">
+    <inertial><origin xyz="3.11839e-07 2.305116e-05 -0.02839452" rpy="0 0 0" /><mass value="0.149478754" /><inertia ixx="9.86008335e-05" ixy="-3.8103069e-10" ixz="7.01574231e-10" iyy="0.000100378837" iyz="-6.31422993e-08" izz="2.42734521e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_middle.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_pinky_distal">
+    <inertial><origin xyz="0.00012227952 0.00299189 -0.011594924" rpy="0 0 0" /><mass value="0.0807537931" /><inertia ixx="2.62409027e-05" ixy="7.85629969e-09" ixz="-7.22549514e-08" iyy="2.85060785e-05" iyz="4.22652968e-06" izz="1.24454028e-05" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_distal.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_pinky_tip"><inertial><origin xyz="0 0 0" rpy="0 0 0" /><mass value="0.010648" /><inertia ixx="5.153632e-07" ixy="0" ixz="0" iyy="5.153632e-07" iyz="0" izz="5.153632e-07" /></inertial></link>
+  <link name="l_pinky_tip_sensor_frame">
+    <inertial><origin xyz="-1.353473e-06 -0.0017724542 -0.03161246" rpy="0 0 0" /><mass value="0.0471187842" /><inertia ixx="8.57399449e-06" ixy="-2.70774402e-11" ixz="-6.14972599e-11" iyy="8.86661771e-06" iyz="1.92182029e-06" izz="5.93641716e-06" /></inertial><visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+      <material name="">
+        <color rgba="0.55 0.78 0.95 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/wuji2/vendor_left/meshes/l_pinky_tip_sensor_frame.STL" scale="2.2 2.2 2.2" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="l_thumb_cmc_flex" type="revolute">
+    <origin xyz="0.0378576 -0.0179036 -0.036212" rpy="1.6615 -1.0591 -1.9919" />
+    <parent link="l_wrist" />
+    <child link="l_thumb_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.187" upper="1.291" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_thumb_cmc_abd" type="revolute">
+    <origin xyz="0.000567358 0.001389674 -0.0311542" rpy="-0.20529 0.70051 -0.025238" />
+    <parent link="l_thumb_proximal" />
+    <child link="l_thumb_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.484" upper="0.698" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_thumb_mcp" type="revolute">
+    <origin xyz="-9.49002133e-05 5.47907084e-05 -0.0736904129" rpy="0 0.0872664625997161 -0.523598775598299" />
+    <parent link="l_thumb_proximal_abd" />
+    <child link="l_thumb_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_thumb_ip" type="revolute">
+    <origin xyz="0 0 -0.077" rpy="0 0 0" />
+    <parent link="l_thumb_middle" />
+    <child link="l_thumb_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_thumb_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.0655314" rpy="0 0 0" />
+    <parent link="l_thumb_distal" />
+    <child link="l_thumb_tip" />
+  </joint>
+  <joint name="l_thumb_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="l_thumb_distal" />
+    <child link="l_thumb_tip_sensor_frame" />
+  </joint>
+  <joint name="l_index_finger_mcp_flex" type="revolute">
+    <origin xyz="0.0498353131 0.00731534946 -0.153951653" rpy="0.0397801377022703 -0.136929341252724 -0.100403924639931" />
+    <parent link="l_wrist" />
+    <child link="l_index_finger_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_index_finger_mcp_abd" type="revolute">
+    <origin xyz="0 0.00264215642 -0.0319" rpy="0 0 0" />
+    <parent link="l_index_finger_proximal" />
+    <child link="l_index_finger_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.698" upper="0.698" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_index_finger_pip" type="revolute">
+    <origin xyz="0 0 -0.08272" rpy="0 0 0" />
+    <parent link="l_index_finger_proximal_abd" />
+    <child link="l_index_finger_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="2.094" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_index_finger_dip" type="revolute">
+    <origin xyz="0 0 -0.0649" rpy="0 0 0" />
+    <parent link="l_index_finger_middle" />
+    <child link="l_index_finger_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_index_finger_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.05445" rpy="0 0 0" />
+    <parent link="l_index_finger_distal" />
+    <child link="l_index_finger_tip" />
+  </joint>
+  <joint name="l_index_finger_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="l_index_finger_distal" />
+    <child link="l_index_finger_tip_sensor_frame" />
+  </joint>
+  <joint name="l_middle_finger_mcp_flex" type="revolute">
+    <origin xyz="0.00207480602 0.0182666297 -0.162613973" rpy="0.033913594707111 0.011157971722942 0.000715284906568205" />
+    <parent link="l_wrist" />
+    <child link="l_middle_finger_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_middle_finger_mcp_abd" type="revolute">
+    <origin xyz="0 0.00264215642 -0.0319" rpy="0 0 0" />
+    <parent link="l_middle_finger_proximal" />
+    <child link="l_middle_finger_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.698" upper="0.698" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_middle_finger_pip" type="revolute">
+    <origin xyz="0 0 -0.08272" rpy="0 0 0" />
+    <parent link="l_middle_finger_proximal_abd" />
+    <child link="l_middle_finger_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="2.094" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_middle_finger_dip" type="revolute">
+    <origin xyz="0 0 -0.0649" rpy="0 0 0" />
+    <parent link="l_middle_finger_middle" />
+    <child link="l_middle_finger_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_middle_finger_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.05445" rpy="0 0 0" />
+    <parent link="l_middle_finger_distal" />
+    <child link="l_middle_finger_tip" />
+  </joint>
+  <joint name="l_middle_finger_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="l_middle_finger_distal" />
+    <child link="l_middle_finger_tip_sensor_frame" />
+  </joint>
+  <joint name="l_ring_finger_mcp_flex" type="revolute">
+    <origin xyz="-0.0434544 0.01230438 -0.1438734" rpy="0.016663 0.14175 0.068321" />
+    <parent link="l_wrist" />
+    <child link="l_ring_finger_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_ring_finger_mcp_abd" type="revolute">
+    <origin xyz="0 0.00264215642 -0.0319" rpy="0 0 0" />
+    <parent link="l_ring_finger_proximal" />
+    <child link="l_ring_finger_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.698" upper="0.698" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_ring_finger_pip" type="revolute">
+    <origin xyz="0 0 -0.08272" rpy="0 0 0" />
+    <parent link="l_ring_finger_proximal_abd" />
+    <child link="l_ring_finger_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="2.094" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_ring_finger_dip" type="revolute">
+    <origin xyz="0 0 -0.0649" rpy="0 0 0" />
+    <parent link="l_ring_finger_middle" />
+    <child link="l_ring_finger_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_ring_finger_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.05445" rpy="0 0 0" />
+    <parent link="l_ring_finger_distal" />
+    <child link="l_ring_finger_tip" />
+  </joint>
+  <joint name="l_ring_finger_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="l_ring_finger_distal" />
+    <child link="l_ring_finger_tip_sensor_frame" />
+  </joint>
+  <joint name="l_pinky_mcp_flex" type="revolute">
+    <origin xyz="-0.082186032 0.00161427183 -0.121641742" rpy="0.00981701706873381 0.248975826730062 0.13602514715951" />
+    <parent link="l_wrist" />
+    <child link="l_pinky_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_pinky_mcp_abd" type="revolute">
+    <origin xyz="0 0.00264215658 -0.0319000001" rpy="0 0 0" />
+    <parent link="l_pinky_proximal" />
+    <child link="l_pinky_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.698" upper="0.698" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_pinky_pip" type="revolute">
+    <origin xyz="-0.00022 0 -0.07392" rpy="0 0 0" />
+    <parent link="l_pinky_proximal_abd" />
+    <child link="l_pinky_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="2.094" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_pinky_dip" type="revolute">
+    <origin xyz="0 0 -0.0605" rpy="0 0 0" />
+    <parent link="l_pinky_middle" />
+    <child link="l_pinky_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.047" upper="1.57" effort="1.39" velocity="5.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="l_pinky_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.05445" rpy="0 0 0" />
+    <parent link="l_pinky_distal" />
+    <child link="l_pinky_tip" />
+  </joint>
+  <joint name="l_pinky_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="l_pinky_distal" />
+    <child link="l_pinky_tip_sensor_frame" />
+  </joint>
+</robot>

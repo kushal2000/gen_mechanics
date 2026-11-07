@@ -1,0 +1,338 @@
+{
+ "hand": "wuji2",
+ "side": "left",
+ "urdf": "assets/urdf/unified_dynamics_commercial_hands/wuji2/wuji2_left_x2p2.urdf",
+ "palm_body": "l_wrist",
+ "hand_joint_names": [
+  "l_thumb_cmc_flex",
+  "l_thumb_cmc_abd",
+  "l_thumb_mcp",
+  "l_thumb_ip",
+  "l_index_finger_mcp_flex",
+  "l_index_finger_mcp_abd",
+  "l_index_finger_pip",
+  "l_index_finger_dip",
+  "l_middle_finger_mcp_flex",
+  "l_middle_finger_mcp_abd",
+  "l_middle_finger_pip",
+  "l_middle_finger_dip",
+  "l_ring_finger_mcp_flex",
+  "l_ring_finger_mcp_abd",
+  "l_ring_finger_pip",
+  "l_ring_finger_dip",
+  "l_pinky_mcp_flex",
+  "l_pinky_mcp_abd",
+  "l_pinky_pip",
+  "l_pinky_dip"
+ ],
+ "joint_limits": {
+  "l_thumb_cmc_flex": [
+   -1.187,
+   1.291
+  ],
+  "l_thumb_cmc_abd": [
+   -1.484,
+   0.698
+  ],
+  "l_thumb_mcp": [
+   -1.047,
+   1.57
+  ],
+  "l_thumb_ip": [
+   -1.047,
+   1.57
+  ],
+  "l_index_finger_mcp_flex": [
+   -1.047,
+   1.57
+  ],
+  "l_index_finger_mcp_abd": [
+   -0.698,
+   0.698
+  ],
+  "l_index_finger_pip": [
+   -1.047,
+   2.094
+  ],
+  "l_index_finger_dip": [
+   -1.047,
+   1.57
+  ],
+  "l_middle_finger_mcp_flex": [
+   -1.047,
+   1.57
+  ],
+  "l_middle_finger_mcp_abd": [
+   -0.698,
+   0.698
+  ],
+  "l_middle_finger_pip": [
+   -1.047,
+   2.094
+  ],
+  "l_middle_finger_dip": [
+   -1.047,
+   1.57
+  ],
+  "l_ring_finger_mcp_flex": [
+   -1.047,
+   1.57
+  ],
+  "l_ring_finger_mcp_abd": [
+   -0.698,
+   0.698
+  ],
+  "l_ring_finger_pip": [
+   -1.047,
+   2.094
+  ],
+  "l_ring_finger_dip": [
+   -1.047,
+   1.57
+  ],
+  "l_pinky_mcp_flex": [
+   -1.047,
+   1.57
+  ],
+  "l_pinky_mcp_abd": [
+   -0.698,
+   0.698
+  ],
+  "l_pinky_pip": [
+   -1.047,
+   2.094
+  ],
+  "l_pinky_dip": [
+   -1.047,
+   1.57
+  ]
+ },
+ "hand_default_joint_pos": {
+  "l_thumb_cmc_flex": 0.0,
+  "l_thumb_cmc_abd": 0.0,
+  "l_thumb_mcp": 0.0,
+  "l_thumb_ip": 0.0,
+  "l_index_finger_mcp_flex": 0.0,
+  "l_index_finger_mcp_abd": 0.0,
+  "l_index_finger_pip": 0.0,
+  "l_index_finger_dip": 0.0,
+  "l_middle_finger_mcp_flex": 0.0,
+  "l_middle_finger_mcp_abd": 0.0,
+  "l_middle_finger_pip": 0.0,
+  "l_middle_finger_dip": 0.0,
+  "l_ring_finger_mcp_flex": 0.0,
+  "l_ring_finger_mcp_abd": 0.0,
+  "l_ring_finger_pip": 0.0,
+  "l_ring_finger_dip": 0.0,
+  "l_pinky_mcp_flex": 0.0,
+  "l_pinky_mcp_abd": 0.0,
+  "l_pinky_pip": 0.0,
+  "l_pinky_dip": 0.0
+ },
+ "fingertip_body_names": [
+  "l_thumb_distal",
+  "l_index_finger_distal",
+  "l_middle_finger_distal",
+  "l_ring_finger_distal",
+  "l_pinky_distal"
+ ],
+ "fingertip_offsets": [
+  [
+   0.0,
+   0.0,
+   -0.0655314
+  ],
+  [
+   0.0,
+   0.0,
+   -0.054450000000000005
+  ],
+  [
+   0.0,
+   0.0,
+   -0.054450000000000005
+  ],
+  [
+   0.0,
+   0.0,
+   -0.054450000000000005
+  ],
+  [
+   0.0,
+   0.0,
+   -0.054450000000000005
+  ]
+ ],
+ "thumb_tip": "l_thumb_distal",
+ "palm_frame": [
+  [
+   0.0,
+   -1.0,
+   0.0
+  ],
+  [
+   -1.0,
+   -0.0,
+   0.0
+  ],
+  [
+   0.0,
+   -0.0,
+   -1.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_frame_snapped": [
+  "x->-y",
+  "z->-z"
+ ],
+ "palm_centre_in_palm_body": [
+  -0.016057288646698,
+  0.0015292180702090265,
+  -0.0813704445026815
+ ],
+ "palm_extents_ours": [
+  0.07792146466672421,
+  0.16828824430704117,
+  0.19356341976672412
+ ],
+ "palm_centre_ours": [
+  -0.0015292180702090265,
+  0.016057288646698,
+  0.0813704445026815
+ ],
+ "adjacent_links": {
+  "l_index_finger_distal": [
+   "l_index_finger_middle"
+  ],
+  "l_index_finger_middle": [
+   "l_index_finger_distal",
+   "l_index_finger_proximal_abd"
+  ],
+  "l_index_finger_proximal": [
+   "l_index_finger_proximal_abd",
+   "l_wrist"
+  ],
+  "l_index_finger_proximal_abd": [
+   "l_index_finger_middle",
+   "l_index_finger_proximal",
+   "l_wrist"
+  ],
+  "l_middle_finger_distal": [
+   "l_middle_finger_middle"
+  ],
+  "l_middle_finger_middle": [
+   "l_middle_finger_distal",
+   "l_middle_finger_proximal_abd"
+  ],
+  "l_middle_finger_proximal": [
+   "l_middle_finger_proximal_abd",
+   "l_wrist"
+  ],
+  "l_middle_finger_proximal_abd": [
+   "l_middle_finger_middle",
+   "l_middle_finger_proximal",
+   "l_wrist"
+  ],
+  "l_pinky_distal": [
+   "l_pinky_middle"
+  ],
+  "l_pinky_middle": [
+   "l_pinky_distal",
+   "l_pinky_proximal_abd"
+  ],
+  "l_pinky_proximal": [
+   "l_pinky_proximal_abd",
+   "l_wrist"
+  ],
+  "l_pinky_proximal_abd": [
+   "l_pinky_middle",
+   "l_pinky_proximal",
+   "l_wrist"
+  ],
+  "l_ring_finger_distal": [
+   "l_ring_finger_middle"
+  ],
+  "l_ring_finger_middle": [
+   "l_ring_finger_distal",
+   "l_ring_finger_proximal_abd"
+  ],
+  "l_ring_finger_proximal": [
+   "l_ring_finger_proximal_abd",
+   "l_wrist"
+  ],
+  "l_ring_finger_proximal_abd": [
+   "l_ring_finger_middle",
+   "l_ring_finger_proximal",
+   "l_wrist"
+  ],
+  "l_thumb_distal": [
+   "l_thumb_middle"
+  ],
+  "l_thumb_middle": [
+   "l_thumb_distal",
+   "l_thumb_proximal_abd"
+  ],
+  "l_thumb_proximal": [
+   "l_thumb_proximal_abd",
+   "l_wrist"
+  ],
+  "l_thumb_proximal_abd": [
+   "l_thumb_middle",
+   "l_thumb_proximal",
+   "l_wrist"
+  ],
+  "l_wrist": [
+   "l_index_finger_proximal",
+   "l_middle_finger_proximal",
+   "l_pinky_proximal",
+   "l_pinky_proximal_abd",
+   "l_ring_finger_proximal",
+   "l_ring_finger_proximal_abd",
+   "l_thumb_proximal",
+   "l_middle_finger_proximal_abd",
+   "l_index_finger_proximal_abd",
+   "l_thumb_proximal_abd"
+  ]
+ },
+ "overlap_at_home_mm": {
+  "l_wrist x l_pinky_proximal_abd": 2.8820000000000006,
+  "l_wrist x l_ring_finger_proximal_abd": 2.3760000000000003
+ },
+ "fingertip_pos_home_ours": {
+  "l_thumb_distal": [
+   0.04114,
+   -0.19976000000000002,
+   0.047080000000000004
+  ],
+  "l_index_finger_distal": [
+   -0.01298,
+   -0.0913,
+   0.25014000000000003
+  ],
+  "l_middle_finger_distal": [
+   -0.02552,
+   -0.01606,
+   0.26048000000000004
+  ],
+  "l_ring_finger_distal": [
+   -0.014740000000000001,
+   0.053020000000000005,
+   0.24024000000000004
+  ],
+  "l_pinky_distal": [
+   0.00132,
+   0.10758000000000001,
+   0.2013
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.0775033248319064,
+ "armature": 0.00058,
+ "palm_filter_depth": 2,
+ "effort_limit": 1.39,
+ "velocity_limit": 5.0,
+ "link_density_kg_m3": 1750.0,
+ "friction": 0.5,
+ "notes_scaled": "uniform x2.2 copy of wuji2_left.spec.json (scale_vendor_hand.py): geometry x2.2, mass x10.648, inertia x51.5363, effort 1.39 N m; the original is unchanged"
+}

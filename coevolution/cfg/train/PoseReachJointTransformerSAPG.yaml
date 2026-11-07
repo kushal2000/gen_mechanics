@@ -187,7 +187,7 @@ params:
     expl_type: mixed_expl_learn_param
     expl_reward_type: entropy
     expl_reward_coef_embd_size: 32
-    expl_reward_coef_scale: 0.002
+    expl_reward_coef_scale: 0.001    # 6 Nov: was 0.002, which left SAPG blocks 0-1 (bonus 0.001 / 0.0008) at zero goals
     expl_coef_block_size: 4096
 
     player:

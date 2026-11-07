@@ -39,6 +39,8 @@ def main() -> None:
     ap.add_argument("--envs-per-hand", type=int, default=4)
     ap.add_argument("--max-steps", type=int, default=30000)
     ap.add_argument("--seed", type=int, default=3)
+    ap.add_argument("--no-finger-table-safe", action="store_true", help="the pre-7-Nov workaround")
+    ap.add_argument("--wrist-z", type=float, default=None, help="override the wrist start height (m)")
     ap.add_argument("--table-clearance", type=float, default=None,
                     help="reset.table_clearance (default: the run's saved value; the 6 Nov fix uses 0.02)")
     args = ap.parse_args()
@@ -66,14 +68,31 @@ def main() -> None:
     for k in ("observation_space", "state_space", "action_space"):
         env_d.pop(k, None)
     manifest = json.loads(Path(args.manifest).read_text())
-    ref = f"multi:template:{args.manifest}"
+    # grammar specs share one template articulation; a registered robot (a vendor URDF with mesh colliders) cannot be
+    # placed on the template, so such a manifest runs as multi:finger: -- the same finger-major 6 x 5 token grid,
+    # an articulation per hand (6 Nov, the Wuji v2 zero-shot test)
+    def _grammar(spec):                                  # a grammar design (template-able), not a vendor spec JSON
+        if not spec.endswith(".spec.json"):
+            return False
+        p = Path(spec) if Path(spec).is_absolute() else REPO / spec
+        return "design" in json.loads(p.read_text())
+    if all(_grammar(h["spec"]) for h in manifest["hands"]):
+        ref = f"multi:template:{args.manifest}"
+    else:
+        ref = "multi:finger:" + "+".join(h["spec"] for h in manifest["hands"])
     cfg = InHandOlympicsEnvCfg()
     cfg.from_dict(env_d)
     cfg.hand.robot_spec = ref
     cfg.scene.num_envs = args.envs_per_hand * len(manifest["hands"])
     cfg.reset.stagger_initial_episodes = False
+    if ref.startswith("multi:finger:") and args.no_finger_table_safe:   # fixed 7 Nov (slot_link_transforms)
+        cfg.reset.table_safe = False
     if args.table_clearance is not None:
         cfg.reset.table_clearance = args.table_clearance
+    if args.wrist_z is not None:
+        pose = list(cfg.wrist.default_pose)
+        pose[2] = args.wrist_z
+        cfg.wrist.default_pose = tuple(pose)
     cfg.seed = args.seed
     t0 = time.time()
     env = InHandOlympicsEnv(cfg)

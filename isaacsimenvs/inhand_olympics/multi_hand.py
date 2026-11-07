@@ -225,6 +225,16 @@ class OlympicsMultiHand:
         for art in self.arts:
             art.write_data_to_sim()
 
+    def slot_link_transforms(self) -> torch.Tensor:
+        """(N, len(body_names), 7) PhysX link transforms (world, quats xyzw) in slot body order, gathered per
+        articulation -- what root_physx_view.get_link_transforms() is in a template scene. (The table-safe reset read
+        arts[0]'s view with slot body indices before 7 Nov, so every multi:finger: reset checked the wrong links.)"""
+        out = torch.empty((self.num_envs, len(self.body_names), 7), device=self.device)
+        for h, art in enumerate(self.arts):
+            T = art.root_physx_view.get_link_transforms()        # rows = the block's envs (checked in resolve)
+            out[self.blocks[h]] = T[:, self.body_ids[h]]
+        return out
+
     @property
     def num_instances(self) -> int:
         return self.num_envs
