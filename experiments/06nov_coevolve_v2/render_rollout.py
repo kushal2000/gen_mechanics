@@ -19,7 +19,7 @@ def quat_mat(q):                                      # wxyz
                      [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
 
 
-def posed_tris(urdf, q):
+def posed_tris(urdf, q, kind_of=None):
     import trimesh, yourdfpy
     from plot_morph_gallery import KIND_RGB, PALM_RGB
     u = yourdfpy.URDF.load(str(urdf), load_meshes=False, build_scene_graph=True, build_collision_scene_graph=False)
@@ -45,7 +45,9 @@ def posed_tris(urdf, q):
                 continue
             T = T_link @ (vis.origin if vis.origin is not None else np.eye(4))
             v = (np.c_[m.vertices, np.ones(len(m.vertices))] @ T.T)[:, :3]
-            tris.append(v[m.faces]); cols.append(np.repeat(np.array(PALM_RGB if link.name == u.base_link else KIND_RGB["flex"])[None], len(m.faces), 0))
+            pj = next((j.name for j in u.robot.joints if j.child == link.name and j.type != "fixed"), None)
+            rgb = PALM_RGB if pj is None else KIND_RGB.get(kind_of(pj) if kind_of else "flex", KIND_RGB["flex"])
+            tris.append(v[m.faces]); cols.append(np.repeat(np.array(rgb)[None], len(m.faces), 0))
     return np.concatenate(tris), np.concatenate(cols)
 
 

@@ -33,7 +33,7 @@ def snap(name: str):
     from hand_sampler.grammar import hand as gh, v3
     from isaacsimenvs.common.robots import get_robot_spec
     from isaacsimenvs.common.robots.finger_layout import finger_layout
-    from coevolution.evolution.descriptors_v3 import _frames
+    from coevolution.evolution.descriptors_v3 import _frames, joint_kinds
     s = get_robot_spec(f"{name}_left_uniform_handonly")
     pose, child_of = _frames(s)
     kp = np.asarray(s.palm_keypoints)
@@ -54,10 +54,19 @@ def snap(name: str):
         y, z = float(b @ w_ax) * 1000, float(b @ l_ax) * 1000
         facing = math.degrees(math.atan2(d @ w_ax, d @ l_ax)) % 360
         tilt = math.degrees(math.atan2(d @ n_ax, math.hypot(d @ w_ax, d @ l_ax)))
-        kinds = []
-        for j in joints:
-            a = pose(child_of[s.hand_joint_names[j]])[:3, :3] @ ax[j]
-            kinds.append(v3.ABD if abs(a @ n_ax) > 0.7 else v3.FLEX)
+        kl = joint_kinds(s, pose, child_of, ax, joints, d)                 # roll-invariant (7 Nov)
+        if "R" in kl:
+            notes.append(f"finger {f_i}: roll joint(s) {kl} -> flexion")
+        kinds = ["flex" if k in ("F", "R") else "abd" for k in kl]
+        # the finger's roll: its flexion axis (the last joint's) turned about the finger, against an un-rolled
+        # finger of the same facing / tilt (canonical palm frame: x normal, y width, z length)
+        to_c = np.stack([n_ax, w_ax, l_ax])                              # palm-body -> canonical
+        a_last = to_c @ (pose(child_of[s.hand_joint_names[joints[-1]]])[:3, :3] @ ax[joints[-1]])
+        fa_s = int(round((math.degrees(math.atan2(d @ w_ax, d @ l_ax)) % 360) / 30) * 30) % 360
+        t_s = int(round(math.degrees(math.atan2(d @ n_ax, math.hypot(d @ w_ax, d @ l_ax))) / 30) * 30)
+        B0 = v3.finger_frame(gh.Finger(y=0, z=0, facing=fa_s, tilt=max(0, min(v3.MAX_TILT_DEG, t_s))))
+        phi = math.degrees(math.atan2(float(a_last @ B0[:, 1]), float(a_last @ B0[:, 2])))
+        roll = v3.wrap_roll(round(phi / 30) * 30)                       # the axis direction kept: which way it bends
         lens = [float(L[j]) for j in joints]
         snapped = []
         for k, (kd, Lk) in enumerate(zip(kinds, lens)):
@@ -66,11 +75,11 @@ def snap(name: str):
             else:
                 snapped.append(int(min(v3.LINKS_MM, key=lambda x: abs(x - Lk))))
         fingers.append({"y": y, "z": z, "facing": facing, "tilt": tilt, "kinds": kinds, "lens": snapped,
-                        "raw_lens": [round(x) for x in lens]})
+                        "raw_lens": [round(x) for x in lens], "roll": roll, "roll_raw": round(phi)})
     # one base type for the hand: the majority; a finger off it is converted (knuckle <-> 1-DOF first link)
     def btype(fd):
         if fd["lens"][0] == 0:
-            return "knFA" if fd["kinds"][0] == v3.FLEX else "knAF"
+            return "knFA" if fd["kinds"][0] == "flex" else "knAF"
         return "kn1dof"
     cnt = Counter(btype(fd) for fd in fingers)
     target = max(cnt, key=lambda t: (cnt[t], t == "kn1dof"))
@@ -83,18 +92,21 @@ def snap(name: str):
             if target == "kn1dof":
                 lens[0] = int(min(v3.LINKS_MM))
             else:
-                kinds[0], kinds[1] = ((v3.FLEX, v3.ABD) if target == "knFA" else (v3.ABD, v3.FLEX))
+                kinds[0], kinds[1] = (("flex", "abd") if target == "knFA" else ("abd", "flex"))
                 lens[0] = 0
-        joints = tuple(gh.Joint("hinge", k, Lk) for k, Lk in zip(kinds, lens))
+        joints = tuple(gh.Joint("hinge", v3.axis_for(k, fd["roll"]), Lk) for k, Lk in zip(kinds, lens))
         tilt = int(round(fd["tilt"] / 30) * 30)
-        if not (target == "kn1dof" and kinds[0] == v3.ABD):
+        if not (target == "kn1dof" and kinds[0] == "abd"):
             tilt = 0
         tilt = max(0, min(v3.MAX_TILT_DEG, tilt))
-        hand_f.append(gh.Finger(y=int(round(fd["y"] / v3.BASE_PITCH_MM) * v3.BASE_PITCH_MM),
+        hand_f.append(v3.Finger(y=int(round(fd["y"] / v3.BASE_PITCH_MM) * v3.BASE_PITCH_MM),
                                 z=int(round(fd["z"] / v3.BASE_PITCH_MM) * v3.BASE_PITCH_MM),
-                                facing=int(round(fd["facing"] / 30) * 30) % 360, tilt=tilt, joints=joints))
+                                facing=int(round(fd["facing"] / 30) * 30) % 360, tilt=tilt, joints=joints,
+                                roll=fd["roll"]))
     hand = v3.centred(gh.Hand(fingers=tuple(hand_f)))
-    return hand, notes + [f"raw links {[fd['raw_lens'] for fd in fingers]}"]
+    return hand, notes + [f"raw links {[fd['raw_lens'] for fd in fingers]}",
+                          f"rolls (raw -> snapped) {[(fd['roll_raw'], fd['roll']) for fd in fingers]}",
+                          f"kinds {[''.join(k[0].upper() for k in fd['kinds']) for fd in fingers]}"]
 
 
 def main() -> None:
@@ -118,7 +130,7 @@ def main() -> None:
         snapped_cell = cell(features(row["spec"]))
         print(f"{h:8s} vendor {vendor_cell}  ->  v3 {snapped_cell}  valid {ok} {viol[:2] if viol else ''}")
         print(f"          {' | '.join(notes)}")
-        print(f"          v3 fingers {[(f.y, f.z, f.facing, f.tilt, [j.length for j in f.joints]) for f in hand.fingers]}")
+        print(f"          v3 fingers {[(f.y, f.z, f.facing, f.tilt, v3.roll_of(f), [j.length for j in f.joints]) for f in hand.fingers]}")
         manifest.append({"id": f"{h}_v3", "spec": row["spec"], "niche": snapped_cell, "valid": ok,
                          "vendor": f"{h}_left_uniform_handonly", "vendor_cell": vendor_cell})
     (out / "manifest.json").write_text(json.dumps({"generation": 0, "grid": {"n_rigid": 6, "n_moving": 0, "n_slots": 5},

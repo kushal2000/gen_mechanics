@@ -8,8 +8,8 @@ hand's URDF the same way for a grammar design and a vendor hand, so commercial h
             >= 240 deg (the user's bins, 7 Nov; >= 240 is House of Dextra's "anthropomorphic": one-sided, opposing
             thumb). n fingers always leave a gap >= 360 / n, so 2 fingers have only the top two bins, 3 no < 120
   knuckles  each finger's base is one of three types (the user's definition, 7 Nov): 1-DOF, or a CO-LOCATED 2-DOF
-            knuckle (first link < 2 mm, the grammar's 0 mm link) of a flexion and an abduction (axis along the palm
-            normal) in either order, FE->AbAd or AbAd->FE; near-but-not-co-located joints (Wuji's 14 mm stub) and
+            knuckle (first link < 2 mm, the grammar's 0 mm link) of a flexion and an abduction in either order -- kinds
+            roll-invariant (joint_kinds: flexion parallel to the finger's last joint; for a v3 hand its own design), FE->AbAd or AbAd->FE; near-but-not-co-located joints (Wuji's 14 mm stub) and
             roll joints count as 1-DOF. Every finger of a design has the SAME base type (the user's
             simplification, 7 Nov): kn1dof / knFA / knAF; a mixed hand is outside the map
   reach     MAX palm-centre -> fingertip-pad distance over the fingers at q = 0 (mm; the joint tokens' frame): the
@@ -58,6 +58,44 @@ def _frames(spec):
     return pose, child_of
 
 
+def joint_kinds(s, pose, child_of, ax_local, joints, d) -> list:
+    """Each joint of a finger as "F" flexion / "A" abduction / "R" roll, ROLL-INVARIANTLY (7 Nov): roll if its axis
+    lies along the finger (base -> fingertip), flexion if parallel to the finger's LAST joint axis (a commercial finger
+    always ends in a flexion), abduction otherwise (square to both). Unlike an axis-vs-palm-normal rule it does not
+    call a rolled thumb's flexions abductions (Wuji's MCP / IP axes are 25 deg off the palm normal)."""
+    dirn = d / max(np.linalg.norm(d), 1e-9)
+    A = [pose(child_of[s.hand_joint_names[j]])[:3, :3] @ ax_local[j] for j in joints]
+    A = [a / max(np.linalg.norm(a), 1e-9) for a in A]
+    last = A[-1]
+    out = []
+    for a in A:
+        if abs(a @ dirn) > 0.7:
+            out.append("R")
+        elif abs(a @ last) > 0.7:
+            out.append("F")
+        else:
+            out.append("A")
+    return out
+
+
+def _design_knuckles(spec_path: str):
+    """(FA, AF) knuckle counts from a v3 hand's own design (its kinds relative to each finger's roll), or None for any
+    other hand."""
+    import json
+    from pathlib import Path
+    from hand_sampler import REPO_ROOT
+    p = Path(spec_path)
+    p = p if p.is_absolute() else REPO_ROOT / p
+    if not str(spec_path).endswith(".spec.json") or not p.exists():
+        return None
+    d = json.loads(p.read_text())
+    if d.get("rules") != "V3" or "design" not in d:
+        return None
+    from hand_sampler.grammar import v3
+    h = v3.hand_from_dict(d["design"])
+    return (sum(v3.base_type(f) == "knFA" for f in h.fingers), sum(v3.base_type(f) == "knAF" for f in h.fingers))
+
+
 def features(name_or_spec: str) -> dict:
     from hand_sampler.design_space import joint_axes_and_link_vectors
     from isaacsimenvs.common.robots import get_robot_spec
@@ -83,16 +121,15 @@ def features(name_or_spec: str) -> dict:
         angs.append(np.degrees(np.arctan2(d @ w_ax, d @ l_ax)))
         reach.append(float(np.linalg.norm(pad - c)))
         if len(joints) >= 2:
-            dirn = d / max(np.linalg.norm(d), 1e-9)
-            kinds = []
-            for j in joints[:2]:
-                a_w = pose(child_of[s.hand_joint_names[j]])[:3, :3] @ ax_local[j]
-                kinds.append("A" if abs(a_w @ n_ax) > 0.7 else ("R" if abs(a_w @ dirn) > 0.7 else "F"))
+            kinds = joint_kinds(s, pose, child_of, ax_local, joints, d)[:2]
             if set(kinds) == {"F", "A"} and np.linalg.norm(lv[joints[0]]) * 1000 < KNUCKLE_LINK_MM:
                 fa += kinds[0] == "F"
                 af += kinds[0] == "A"
             elif kinds[0] != kinds[1] and "R" in kinds and np.linalg.norm(lv[joints[0]]) * 1000 < KNUCKLE_LINK_MM:
                 rk += 1                                     # recorded, not a cell type (roll: Allegro, an outlier)
+    dk = _design_knuckles(name_or_spec)
+    if dk is not None:                                   # a v3 hand: its kinds by construction (rolls included)
+        fa, af = dk
     a = np.sort(np.mod(angs, 360))
     gap = round(float(np.diff(np.concatenate([a, a[:1] + 360])).max()), 3) if len(a) > 1 else 360.0   # edges are on the 30 deg grid: no float drift across them
     return {"fingers": len(s.fingertip_body_names), "motors": len(s.hand_joint_names), "gap": gap,

@@ -19,7 +19,7 @@ SLOTS, MAX_FINGERS = 5, 6
 def finger_tokens(design: dict):
     from hand_sampler.grammar import hand as gh
     from hand_sampler.grammar import v3
-    hand = gh.hand_from_dict(design)
+    hand = v3.hand_from_dict(design)
     c = v3.palm_centre_mm(hand)
     toks = []
     for f in hand.fingers:
@@ -30,8 +30,8 @@ def finger_tokens(design: dict):
         for j in range(SLOTS):
             if j < len(f.joints):
                 jt = f.joints[j]
-                ax = B[:, 2] if tuple(jt.axis) == v3.FLEX else B[:, 1]
-                lo, hi = (math.radians(v) for v in v3.KIND_RANGE_DEG[tuple(jt.axis)])
+                ax = B @ gh.axis_unit(tuple(jt.axis))            # the link frame is the finger frame (rolled axes)
+                lo, hi = (math.radians(v) for v in v3.KIND_RANGE_DEG[v3.kind_of(f, jt)])
                 link = x * float(jt.length)
                 t += [*(p / 100.0), *ax, *(link / 100.0), lo, hi, 1.0]
                 p = p + link

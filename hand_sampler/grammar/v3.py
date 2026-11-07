@@ -19,6 +19,11 @@ Rules:
   * every finger of a hand has the same base type: 1-DOF, FE->AbAd (flexion first) or AbAd->FE;
   * a finger may tilt out of the plate (0 / 30 / 60 deg, never 90: a finger straight up has no direction in the plate
     and no layout) only on a 1-DOF base whose first joint is an abduction;
+  * a finger may ROLL about its own length (ROLLS: the full circle on the 30 deg grid -- the axis direction sets which
+    way flexion bends; seeds draw SEED_ROLLS, -90..90, the grasp-side half; 7 Nov, the user's call: opposable
+    thumbs -- Wuji's is rolled ~60 deg): every joint axis turns about the link by the roll, so a joint's kind is
+    relative to it -- flexion at the roll angle, abduction 90 deg from it (kind_of). The roll lives on v3.Finger and
+    in the design dict ("roll"; v3.hand_to_dict / hand_from_dict -- the grammar's own serialiser drops it);
   * facings on the 30 deg grid; bases on a 20 mm grid within BASE_DISTANCE_MAX_MM of the palm centre; a finger may
     point any way in the plate (7 Nov, the user's call: no outward-facing rule -- an opposable thumb points across the
     palm; the clearance check rejects any finger that runs into the palm or another finger). The seed generator still
@@ -35,7 +40,7 @@ from __future__ import annotations
 import json
 import math
 import xml.etree.ElementTree as ET
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -55,7 +60,56 @@ BASE_PITCH_MM = 20
 BASE_RADII_MM = (20, 40, 60, 80)
 EDGE_SPACINGS_MM = (20, 30, 40)
 BASE_DISTANCE_MAX_MM = 90
-KIND_RANGE_DEG = {FLEX: (-30.0, 90.0), ABD: (-30.0, 30.0)}
+KIND_RANGE_DEG = {"flex": (-30.0, 90.0), "abd": (-30.0, 30.0)}
+ROLLS = tuple(range(-150, 181, 30))             # the full circle: the axis DIRECTION sets which way +q bends
+SEED_ROLLS = (-90, -60, -30, 0, 30, 60, 90)     # seeds: the half that bends toward the grasp side
+
+
+def wrap_roll(r: int) -> int:
+    """A roll into (-180, 180]."""
+    r = ((int(r) + 180) % 360) - 180
+    return 180 if r == -180 else r
+
+
+@dataclass(frozen=True)
+class Finger(gh.Finger):
+    """A grammar finger plus its roll about its own length (deg)."""
+    roll: int = 0
+
+
+def roll_of(f) -> int:
+    return int(getattr(f, "roll", 0))
+
+
+def axis_for(kind: str, roll: int) -> Tuple[int, int]:
+    """A joint axis (az, el) in the link frame: flexion at the roll angle about the link, abduction 90 deg from it
+    (gh.axis_unit: az turns the axis from z toward y about the link)."""
+    return (int(roll) + (0 if kind == "flex" else 90), 0)
+
+
+def kind_of(f, jt) -> str:
+    """'flex' / 'abd' relative to the finger's roll, or 'bad' (off the two lines, or tipped toward the link)."""
+    if jt.axis[1] != 0:
+        return "bad"
+    rel = (int(jt.axis[0]) - roll_of(f)) % 180
+    return "flex" if rel == 0 else ("abd" if rel == 90 else "bad")
+
+
+def as_v3(f, roll: Optional[int] = None) -> Finger:
+    return Finger(y=f.y, z=f.z, facing=f.facing, tilt=f.tilt, joints=f.joints,
+                  roll=roll_of(f) if roll is None else int(roll))
+
+
+def hand_to_dict(hand: gh.Hand) -> dict:
+    d = gh.hand_to_dict(hand)
+    for fd, f in zip(d["fingers"], hand.fingers):
+        fd["roll"] = roll_of(f)
+    return d
+
+
+def hand_from_dict(d: dict) -> gh.Hand:
+    h = gh.hand_from_dict(d)
+    return gh.Hand(fingers=tuple(as_v3(f, fd.get("roll", 0)) for f, fd in zip(h.fingers, d["fingers"])))
 MAX_TILT_DEG = 60
 MM = 1e-3
 
@@ -82,7 +136,10 @@ def finger_solids_mm(f: gh.Finger, centre_yz=(0.0, 0.0)) -> List[Optional[Tuple[
     distance: a box's 8 corners (radius 0), the fingertip capsule's two segment ends (radius TIP_RADIUS_MM); None for a
     0 mm link."""
     B = finger_frame(f)
-    d, a, z = B[:, 0], B[:, 1], B[:, 2]
+    d, a0, z0 = B[:, 0], B[:, 1], B[:, 2]
+    rr = math.radians(roll_of(f))
+    z = math.cos(rr) * z0 + math.sin(rr) * a0               # the box turns with the roll (as the joint axes do)
+    a = math.cos(rr) * a0 - math.sin(rr) * z0
     p = np.array([0.0, f.y - centre_yz[0], f.z - centre_yz[1]])
     w = LINK_WIDTH_MM / 2.0
     out = []
@@ -166,9 +223,10 @@ def clear(hand: gh.Hand, gap_mm: float = -CONTACT_TOL_MM) -> bool:
 def base_type(f: gh.Finger) -> str:
     j = f.joints
     if len(j) >= 2 and j[0].length == KNUCKLE_LINK_MM:
-        if tuple(j[0].axis) == FLEX and tuple(j[1].axis) == ABD:
+        k0, k1 = kind_of(f, j[0]), kind_of(f, j[1])
+        if (k0, k1) == ("flex", "abd"):
             return "knFA"
-        if tuple(j[0].axis) == ABD and tuple(j[1].axis) == FLEX:
+        if (k0, k1) == ("abd", "flex"):
             return "knAF"
         return "bad"
     return "kn1dof"
@@ -193,7 +251,9 @@ def violations(hand: gh.Hand, slack_deg: float = 0.0, max_base_mm: float = BASE_
         types.add(t)
         if t == "bad":
             out.append(f"finger {i}: a 0 mm base link that is not a flexion / abduction knuckle")
-        if f.tilt != 0 and not (t == "kn1dof" and f.joints and tuple(f.joints[0].axis) == ABD):
+        if roll_of(f) not in ROLLS:
+            out.append(f"finger {i}: roll {roll_of(f)} (one of {ROLLS})")
+        if f.tilt != 0 and not (t == "kn1dof" and f.joints and kind_of(f, f.joints[0]) == "abd"):
             out.append(f"finger {i}: tilt {f.tilt} on a {t} base (only a 1-DOF base with an abduction first)")
         if not (0 <= f.tilt <= MAX_TILT_DEG):
             out.append(f"finger {i}: tilt {f.tilt} outside 0-{MAX_TILT_DEG}")
@@ -203,8 +263,9 @@ def violations(hand: gh.Hand, slack_deg: float = 0.0, max_base_mm: float = BASE_
             out.append(f"finger {i}: base shared with another finger")
         bases.add((f.y, f.z))
         for j, jt in enumerate(f.joints):
-            if jt.type != "hinge" or tuple(jt.axis) not in (FLEX, ABD):
-                out.append(f"finger {i} joint {j}: {jt.type} {jt.axis} (flexion / abduction hinges only)")
+            if jt.type != "hinge" or kind_of(f, jt) == "bad":
+                out.append(f"finger {i} joint {j}: {jt.type} {jt.axis} at roll {roll_of(f)} "
+                           f"(flexion / abduction hinges only)")
             if jt.length == 0 and not (j == 0 and t in ("knFA", "knAF")):
                 out.append(f"finger {i} joint {j}: 0 mm link off the base knuckle")
             elif jt.length != 0 and jt.length not in LINKS_MM:
@@ -225,7 +286,7 @@ def centred(hand: gh.Hand) -> gh.Hand:
     c = np.round(palm_centre_mm(hand)).astype(int)
     if not c.any():
         return hand
-    return gh.Hand(fingers=tuple(replace(f, y=int(f.y - c[0]), z=int(f.z - c[1])) for f in hand.fingers))
+    return gh.Hand(fingers=tuple(replace(f, y=int(f.y - c[0]), z=int(f.z - c[1])) for f in hand.fingers))  # keeps roll
 
 
 # ------------------------------------------------------------------ design-level descriptors (fast; the URDF is exact)
@@ -342,23 +403,23 @@ def _bases(rng, facings) -> Optional[List[Tuple[int, int]]]:
     return out
 
 
-def _chain(rng, nj: int, base: str) -> List[gh.Joint]:
+def _chain(rng, nj: int, base: str, roll: int = 0) -> List[gh.Joint]:
     if base == "knFA":
-        kinds, lens = [FLEX, ABD], [KNUCKLE_LINK_MM]
+        kinds, lens = ["flex", "abd"], [KNUCKLE_LINK_MM]
     elif base == "knAF":
-        kinds, lens = [ABD, FLEX], [KNUCKLE_LINK_MM]
+        kinds, lens = ["abd", "flex"], [KNUCKLE_LINK_MM]
     else:
-        kinds, lens = [FLEX if rng.random() < 0.5 else ABD], []
+        kinds, lens = ["flex" if rng.random() < 0.5 else "abd"], []
     while len(kinds) < nj:
-        kinds.append(FLEX if rng.random() < 0.5 else ABD)       # 50 / 50 after the base (no roll)
+        kinds.append("flex" if rng.random() < 0.5 else "abd")   # 50 / 50 after the base
     while len(lens) < nj:
         lens.append(int(rng.choice(LINKS_MM)))
-    return [gh.Joint("hinge", k, L) for k, L in zip(kinds, lens)]
+    return [gh.Joint("hinge", axis_for(k, roll), L) for k, L in zip(kinds, lens)]
 
 
-def _tilt(rng, base: str, first_axis) -> int:
+def _tilt(rng, base: str, first_kind: str) -> int:
     """0 unless the base is 1-DOF with an abduction first; then 0 / 30 / 60."""
-    if base != "kn1dof" or tuple(first_axis) != ABD:
+    if base != "kn1dof" or first_kind != "abd":
         return 0
     return int(rng.choice(range(0, MAX_TILT_DEG + 1, gh.GRID_DEG)))
 
@@ -448,8 +509,9 @@ def random_hand_in_cell(rng: np.random.Generator, cell: str, attempts: int = 200
                 break
         if B is None:
             continue
-        chains = [_chain(rng, nj, base) for nj in js]
-        tilts = [_tilt(rng, base, ch[0].axis) for ch in chains]
+        rolls = [int(rng.choice(SEED_ROLLS)) for _ in js]
+        chains = [_chain(rng, nj, base, r_) for nj, r_ in zip(js, rolls)]
+        tilts = [_tilt(rng, base, "flex" if (ch[0].axis[0] - r_) % 180 == 0 else "abd") for ch, r_ in zip(chains, rolls)]
         # 4. lengths: each finger's allowed totals (tip < r1), at least one finger with its tip >= r0
         allowed = []
         for (y, z), fa, t, nj in zip(B, fac, tilts, js):
@@ -467,11 +529,11 @@ def random_hand_in_cell(rng: np.random.Generator, cell: str, attempts: int = 200
             opts = [T for T in a if _tip_dist((y, z), fa, t, T) >= r0] if i == k else a
             totals.append(int(rng.choice(opts)))
         fingers = []
-        for (y, z), fa, t, ch, T, nj in zip(B, fac, tilts, chains, totals, js):
+        for (y, z), fa, t, ch, T, nj, r_ in zip(B, fac, tilts, chains, totals, js, rolls):
             links = _split(rng, T, nlinks(nj))
             lens = ([KNUCKLE_LINK_MM] if base in ("knFA", "knAF") else []) + links
             joints = tuple(replace(jt, length=L) for jt, L in zip(ch, lens))
-            fingers.append(gh.Finger(y=int(y), z=int(z), facing=int(fa), tilt=int(t), joints=joints))
+            fingers.append(Finger(y=int(y), z=int(z), facing=int(fa), tilt=int(t), joints=joints, roll=int(r_)))
         hand = gh.Hand(fingers=tuple(fingers))
         if valid(hand) and d3.cell(design_features(hand)) == cell:
             return hand
@@ -538,7 +600,8 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: str = "V3") -> di
             body = f"f{i}_link{j}"
             link = ET.SubElement(root, "link", name=body)
             L = jt.length * MM
-            rgba = FLEX_RGBA if tuple(jt.axis) == FLEX else ABD_RGBA
+            kd = kind_of(f, jt)
+            rgba = FLEX_RGBA if kd == "flex" else ABD_RGBA
             if L <= 0:
                 _inertial(link, 1e-4, [0, 0, 0], [1e-9, 1e-9, 1e-9])
             elif j == n - 1:                               # the fingertip: a capsule (cylinder + the importer's caps)
@@ -547,7 +610,7 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: str = "V3") -> di
                 m = DENSITY * (math.pi * r * r * cyl + 4.0 / 3.0 * math.pi * r ** 3)
                 _inertial(link, m, [L / 2, 0, 0], [0.5 * m * r * r, m * (3 * r * r + L * L) / 12, m * (3 * r * r + L * L) / 12])
             else:                                          # a box from this joint to the next
-                _shape(link, ("box", {"size": [L, w, w]}), [L / 2, 0, 0], [0, 0, 0], rgba)
+                _shape(link, ("box", {"size": [L, w, w]}), [L / 2, 0, 0], [math.radians(roll_of(f)), 0, 0], rgba)
                 m = DENSITY * L * w * w
                 _inertial(link, m, [L / 2, 0, 0], [m * (2 * w * w) / 12, m * (L * L + w * w) / 12, m * (L * L + w * w) / 12])
             jn = f"f{i}_j{j}"
@@ -558,8 +621,8 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: str = "V3") -> di
                 ET.SubElement(el, "origin", xyz=_fmt(base), rpy=_fmt(_rpy(B)))
             else:
                 ET.SubElement(el, "origin", xyz=_fmt([f.joints[j - 1].length * MM, 0, 0]), rpy="0 0 0")
-            ET.SubElement(el, "axis", xyz=_fmt([0, 0, 1] if tuple(jt.axis) == FLEX else [0, 1, 0]))
-            lo, hi = (math.radians(v) for v in KIND_RANGE_DEG[tuple(jt.axis)])
+            ET.SubElement(el, "axis", xyz=_fmt(gh.axis_unit(tuple(jt.axis))))
+            lo, hi = (math.radians(v) for v in KIND_RANGE_DEG[kd])
             ET.SubElement(el, "limit", effort=f"{EFFORT:g}", lower=f"{lo:.9g}", upper=f"{hi:.9g}",
                           velocity=f"{VELOCITY:g}")
             ET.SubElement(el, "dynamics", damping=f"{DAMPING:.6g}", friction="0")
@@ -592,16 +655,17 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: str = "V3") -> di
         "adjacent_links": {b: sorted(v) for b, v in adj.items()},
         "stiffness": STIFFNESS, "damping": DAMPING, "armature": ARMATURE,
         "effort_limit": EFFORT, "velocity_limit": VELOCITY, "link_density_kg_m3": DENSITY, "friction": FRICTION,
-        "replace_cylinders_with_capsules": True, "rules": rules_name, "design": gh.hand_to_dict(hand),
+        "replace_cylinders_with_capsules": True, "rules": rules_name, "design": hand_to_dict(hand),
         "mount_in_root_m": [0.0, 0.0, 0.0],
         "geometry": {"link_width_mm": LINK_WIDTH_MM, "tip_radius_mm": TIP_RADIUS_MM,
                      "palm_thickness_mm": PALM_THICKNESS_MM},
     }
     (out_dir / f"{name}.spec.json").write_text(json.dumps(spec, indent=1))
-    (out_dir / f"{name}.design.json").write_text(json.dumps(gh.hand_to_dict(hand), indent=1))
+    (out_dir / f"{name}.design.json").write_text(json.dumps(hand_to_dict(hand), indent=1))
     return {"name": name, "spec": spec["urdf"].replace(".urdf", ".spec.json"), "fingers": len(hand.fingers),
             "joints": len(joints), "joints_per_finger": [len(f.joints) for f in hand.fingers]}
 
 
-__all__ = ["LINK_WIDTH_MM", "PALM_THICKNESS_MM", "TIP_RADIUS_MM", "build", "clear", "design_features", "parse_cell",
-           "random_hand_in_cell", "valid", "violations"]
+__all__ = ["Finger", "LINK_WIDTH_MM", "PALM_THICKNESS_MM", "ROLLS", "TIP_RADIUS_MM", "axis_for", "build", "clear",
+           "design_features", "hand_from_dict", "hand_to_dict", "kind_of", "parse_cell", "random_hand_in_cell",
+           "roll_of", "valid", "violations"]

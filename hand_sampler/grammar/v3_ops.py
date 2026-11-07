@@ -10,6 +10,7 @@
   remove_finger  remove a finger (>= 2 left)
   add_joint      insert a joint (kind 50 / 50) carrying a new 30-50 mm link (<= 4 joints; never inside a knuckle)
   remove_joint   remove a joint and its link (>= 2 joints; never a knuckle joint)
+  roll_finger    a finger's roll about its own length +-30 deg (the full circle), every joint axis turning with it
   base_type      every finger's base switched together: 1-DOF <-> FE->AbAd <-> AbAd->FE. To a knuckle: the first joint
                  becomes the co-located pair (+1 joint; a finger at 4 joints drops its last); FA <-> AF: the pair's
                  axes swap; to 1-DOF: the 0 mm joint goes (a finger left with 1 joint gets a 30 mm link appended)
@@ -28,7 +29,6 @@ import numpy as np
 from . import hand as gh
 from . import v3
 
-FLEX, ABD = v3.FLEX, v3.ABD
 GRID = v3.BASE_PITCH_MM
 LINKS = v3.LINKS_MM
 
@@ -68,7 +68,7 @@ def _turn(h, mv):
 def _tilt_moves(h):
     out = []
     for i, f in enumerate(h.fingers):
-        if v3.base_type(f) == "kn1dof" and tuple(f.joints[0].axis) == ABD:
+        if v3.base_type(f) == "kn1dof" and v3.kind_of(f, f.joints[0]) == "abd":
             out += [(i, s) for s in (30, -30) if 0 <= f.tilt + s <= v3.MAX_TILT_DEG]
     return out
 
@@ -106,9 +106,11 @@ def _kind(h, mv):
     i, j = mv
     f = h.fingers[i]
     js = list(f.joints)
-    js[j] = replace(js[j], axis=FLEX if tuple(js[j].axis) == ABD else ABD)
-    tilt = f.tilt if (j > 0 or tuple(js[0].axis) == ABD) else 0
-    return _set_finger(h, i, replace(f, joints=tuple(js), tilt=tilt))
+    new = "flex" if v3.kind_of(f, js[j]) == "abd" else "abd"
+    js[j] = replace(js[j], axis=v3.axis_for(new, v3.roll_of(f)))
+    g = replace(f, joints=tuple(js))
+    tilt = f.tilt if v3.kind_of(g, js[0]) == "abd" else 0
+    return _set_finger(h, i, replace(g, tilt=tilt))
 
 
 def _add_finger_moves(h):
@@ -142,7 +144,7 @@ def _add_joint_moves(h):
         if len(f.joints) >= v3.MAX_JOINTS:
             continue
         for pos in range(max(_knuckle_len(f), 1), len(f.joints) + 1):    # after the base (and the knuckle)
-            out += [(i, pos, k, L) for k in (FLEX, ABD) for L in LINKS]
+            out += [(i, pos, k, L) for k in ("flex", "abd") for L in LINKS]
     return out
 
 
@@ -150,7 +152,7 @@ def _add_joint(h, mv):
     i, pos, kind, L = mv
     f = h.fingers[i]
     js = list(f.joints)
-    js.insert(pos, gh.Joint("hinge", kind, L))
+    js.insert(pos, gh.Joint("hinge", v3.axis_for(kind, v3.roll_of(f)), L))
     return _set_finger(h, i, replace(f, joints=tuple(js)))
 
 
@@ -168,8 +170,9 @@ def _remove_joint(h, mv):
     i, j = mv
     f = h.fingers[i]
     js = [jt for k, jt in enumerate(f.joints) if k != j]
-    tilt = f.tilt if (js and tuple(js[0].axis) == ABD and v3.base_type(replace(f, joints=tuple(js))) == "kn1dof") else 0
-    return _set_finger(h, i, replace(f, joints=tuple(js), tilt=tilt))
+    g = replace(f, joints=tuple(js))
+    tilt = f.tilt if (js and v3.kind_of(g, js[0]) == "abd" and v3.base_type(g) == "kn1dof") else 0
+    return _set_finger(h, i, replace(g, tilt=tilt))
 
 
 def _base_type_moves(h):
@@ -180,7 +183,8 @@ def _base_type_moves(h):
 def _to_base(f: gh.Finger, target: str) -> gh.Finger:
     cur = v3.base_type(f)
     js = list(f.joints)
-    pair = {"knFA": (FLEX, ABD), "knAF": (ABD, FLEX)}
+    r = v3.roll_of(f)
+    pair = {"knFA": (v3.axis_for("flex", r), v3.axis_for("abd", r)), "knAF": (v3.axis_for("abd", r), v3.axis_for("flex", r))}
     if cur == target:
         return f
     if cur == "kn1dof":                                   # first joint -> the co-located pair (+1 joint)
@@ -195,12 +199,23 @@ def _to_base(f: gh.Finger, target: str) -> gh.Finger:
         return replace(f, joints=tuple(js), tilt=0)
     js = js[1:]                                           # knuckle -> 1-DOF: the 0 mm joint goes (-1 joint)
     if len(js) < v3.MIN_JOINTS:
-        js.append(gh.Joint("hinge", FLEX, min(LINKS)))
+        js.append(gh.Joint("hinge", v3.axis_for("flex", r), min(LINKS)))
     return replace(f, joints=tuple(js), tilt=0)
 
 
 def _base_type(h, target):
     return gh.Hand(fingers=tuple(_to_base(f, target) for f in h.fingers))
+
+
+def _roll_moves(h):
+    return [(i, s) for i, f in enumerate(h.fingers) for s in (30, -30)]           # the full circle (wrapped)
+
+
+def _roll(h, mv):
+    i, s = mv
+    f = h.fingers[i]
+    js = tuple(replace(jt, axis=(int(jt.axis[0]) + s, int(jt.axis[1]))) for jt in f.joints)
+    return _set_finger(h, i, v3.as_v3(replace(f, joints=js), v3.wrap_roll(v3.roll_of(f) + s)))
 
 
 class Op(NamedTuple):
@@ -214,7 +229,7 @@ OPERATORS: Tuple[Op, ...] = (
     Op("length", _length_moves, _length), Op("kind", _kind_moves, _kind),
     Op("add_finger", _add_finger_moves, _add_finger), Op("remove_finger", _remove_finger_moves, _remove_finger),
     Op("add_joint", _add_joint_moves, _add_joint), Op("remove_joint", _remove_joint_moves, _remove_joint),
-    Op("base_type", _base_type_moves, _base_type),
+    Op("roll_finger", _roll_moves, _roll), Op("base_type", _base_type_moves, _base_type),
 )
 OPERATOR_BY_NAME = {o.name: o for o in OPERATORS}
 

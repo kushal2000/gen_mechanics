@@ -33,7 +33,7 @@ def _draw(job):
     h = v3.random_hand_in_cell(np.random.default_rng(seed), cell)
     if h is None:
         return cell, seed, None, None
-    d = gh.hand_to_dict(h)
+    d = v3.hand_to_dict(h)
     return cell, seed, json.dumps(d, sort_keys=True), d
 
 
@@ -42,7 +42,7 @@ def _build(job):
     from hand_sampler.grammar import hand as gh, v3
     from coevolution.evolution.descriptors_v3 import cell as cell_of, features
     try:
-        hand = gh.hand_from_dict(design)
+        hand = v3.hand_from_dict(design)
         row = v3.build(hand, rid, Path(out_dir) / rid)
         got = cell_of(v3.design_features(hand))
         urdf = cell_of(features(row["spec"])) if verify else None

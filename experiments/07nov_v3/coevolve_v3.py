@@ -2,6 +2,7 @@
 (coevolution/evolution/descriptors_v3.py; the niche list debug_outputs/coevolve/v3/feasible_cells.json), link-only hands
 (hand_sampler/grammar/v3.py) and the v3 operators (hand_sampler/grammar/v3_ops.py).
 
+Fingers may roll about their own length (v3.ROLLS); designs are read and written with v3.hand_to_dict / hand_from_dict.
 Each iteration trains a stratified 4,096 of the archive (an equal share from every occupied cell: the top of each cell
 by the value net's prediction; gen 0: the seed script's stratified sample). Then: labels from the training logs -> the
 design value net (v3 tokens, coevolution/evolution/value_tokens_v3.py) -> K rounds, each applying ALL ten operators to
@@ -133,27 +134,27 @@ def labels_from_logs(train_run: Path, manifest: dict) -> dict:
 def _children(job):
     """Every operator applied once to one parent: [(operator, design, move)]."""
     pid, design, seed = job
-    from hand_sampler.grammar import hand as gh, v3_ops
+    from hand_sampler.grammar import v3, v3_ops
     rng = np.random.default_rng(seed)
-    h = gh.hand_from_dict(design)
+    h = v3.hand_from_dict(design)
     out = []
     for op in v3_ops.OPERATORS:
         res = v3_ops.apply_operator(h, op.name, rng)
         if res is not None:
-            out.append((op.name, gh.hand_to_dict(res[0]), list(res[1]) if isinstance(res[1], tuple) else res[1]))
+            out.append((op.name, v3.hand_to_dict(res[0]), list(res[1]) if isinstance(res[1], tuple) else res[1]))
     return pid, out
 
 
 def _cell(design: dict):
-    from hand_sampler.grammar import hand as gh, v3
+    from hand_sampler.grammar import v3
     from coevolution.evolution.descriptors_v3 import cell
-    return cell(v3.design_features(gh.hand_from_dict(design)))
+    return cell(v3.design_features(v3.hand_from_dict(design)))
 
 
 def _build(job):
     rid, design, out_dir = job
-    from hand_sampler.grammar import hand as gh, v3
-    row = v3.build(gh.hand_from_dict(design), rid, Path(out_dir) / rid)
+    from hand_sampler.grammar import v3
+    row = v3.build(v3.hand_from_dict(design), rid, Path(out_dir) / rid)
     return rid, row["spec"]
 
 

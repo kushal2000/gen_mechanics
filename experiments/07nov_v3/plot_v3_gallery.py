@@ -44,7 +44,7 @@ def main():
         axs[r, 0].set_ylabel(c.replace("_", "\n"), fontsize=6.5, rotation=0, ha="right", va="center", labelpad=4)
         for k, (p, got) in enumerate(by[c][: a.per_cell]):
             spec = json.loads(p.read_text())
-            kinds = {f"f{i}_j{j}": ("flex" if tuple(jt["axis"]) == (0, 0) else "abd")
+            kinds = {f"f{i}_j{j}": ("flex" if (int(jt["axis"][0]) - int(f.get("roll", 0))) % 180 == 0 else "abd")
                      for i, f in enumerate(spec["design"]["fingers"]) for j, jt in enumerate(f["joints"])}
             rs, ctr, R = canon(str(p.relative_to(REPO)))
             tris, cols = mesh_tris(REPO / rs.urdf_path, lambda jn: kinds.get(jn, "flex"))
