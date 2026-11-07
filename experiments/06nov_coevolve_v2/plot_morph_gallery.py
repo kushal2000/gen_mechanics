@@ -57,8 +57,8 @@ def mesh_tris(urdf: Path, kind_of_joint):
                     m.apply_scale(np.asarray(g.mesh.scale, float))
             elif g.box is not None:
                 m = trimesh.creation.box(extents=g.box.size)
-            elif g.cylinder is not None:
-                m = trimesh.creation.cylinder(radius=g.cylinder.radius, height=g.cylinder.length, sections=16)
+            elif g.cylinder is not None:                 # the importer makes capsules of cylinders (the sim's shape)
+                m = trimesh.creation.capsule(radius=g.cylinder.radius, height=g.cylinder.length, count=[16, 8])
             elif g.sphere is not None:
                 m = trimesh.creation.icosphere(radius=g.sphere.radius, subdivisions=1)
             else:
