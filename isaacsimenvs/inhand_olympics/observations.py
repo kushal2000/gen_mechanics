@@ -62,7 +62,7 @@ def width(fields, sizes: dict[str, int]) -> int:
 def build_observations(env) -> dict[str, torch.Tensor]:
     origins = env.scene.env_origins
     perm = env.perm_lab_to_canon
-    lower, upper = env.joint_lower_canon, env.joint_upper_canon
+    lower, upper = env.obs_lower_canon, env.obs_upper_canon      # each joint's limits, or obs.fixed_joint_range_deg
 
     palm = env.robot.data.body_state_w[:, env.palm_body]
     palm_pos_w, palm_rot_body, palm_vel = palm[:, 0:3], palm[:, 3:7], palm[:, 7:13]

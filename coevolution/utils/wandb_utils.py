@@ -48,6 +48,31 @@ def _logcode_exclude(path: str, root: str = "") -> bool:
     return any(part in _LOGCODE_SKIP for part in rel.split(os.sep))
 
 
+def _log_code(run, root: str) -> int:
+    """The run's source (.py under `root`) as wandb's code artifact, walking with _LOGCODE_SKIP pruned.
+
+    wandb's run.log_code applies exclude_fn per file, after walking every directory -- debug_outputs (hundreds of GB)
+    included: 6 min of init by 8 Nov 2026 and growing each co-evolution generation, past 15 min on some starts (the
+    run looked hung right after "View run"). Same artifact name and type as log_code, so unchanged source still
+    dedupes. Returns the number of files."""
+    import wandb
+    from wandb.sdk.artifacts._internal_artifact import InternalArtifact   # what log_code builds ("code" is reserved)
+    name = wandb.util.make_artifact_name_safe(f"source-{run.project}-{run.settings.program_relpath}")
+    art = InternalArtifact(name, "code")
+    n = 0
+    for dirpath, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in _LOGCODE_SKIP and not d.startswith("."))
+        for f in sorted(files):
+            if f.endswith(".py"):
+                path = os.path.join(dirpath, f)
+                art.add_file(path, name=os.path.relpath(path, root))
+                n += 1
+    if n:
+        artifact = run._log_artifact(art)
+        run.config.update({"_wandb": {"code_path": artifact.name}}, allow_val_change=True)
+    return n
+
+
 class WandbAlgoObserver(AlgoObserver):
     """Initialize wandb before rl_games' summary writer so sync_tensorboard works."""
 
@@ -94,8 +119,8 @@ class WandbAlgoObserver(AlgoObserver):
                 resume=True,
                 settings=wandb.Settings(start_method="fork"),
             )
-            wandb.run.log_code(root=logcode_dir, exclude_fn=_logcode_exclude)
-            print(f"[Wandb] run dir: {wandb.run.dir} (log_code root: {logcode_dir})")
+            n_code = _log_code(wandb.run, logcode_dir)
+            print(f"[Wandb] run dir: {wandb.run.dir} (code: {n_code} .py files under {logcode_dir})")
 
         print("[Wandb] initializing...")
         try:

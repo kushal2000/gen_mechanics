@@ -89,7 +89,7 @@ def _design_knuckles(spec_path: str):
     if not str(spec_path).endswith(".spec.json") or not p.exists():
         return None
     d = json.loads(p.read_text())
-    if d.get("rules") != "V3" or "design" not in d:
+    if d.get("rules") not in ("V3", "V4") or "design" not in d:          # V4: v3.configure("v4")
         return None
     from hand_sampler.grammar import v3
     h = v3.hand_from_dict(d["design"])

@@ -34,10 +34,11 @@ params:
   network:
     name: joint_transformer
     separate: False
-    # Action log-std capped at 2 (std 7.4) in every run since 31 Oct (the user's call): uncapped, rarely used joint slots'
-    # noise ran away to log-std 9.6 in many-hand runs and overflowed fp16 (the NaN crashes).
-    # experiments/oct_2026_experiments/30oct_evolution_evaluation/log_std_cap/README.md
-    max_log_std: 2.0
+    # Action log-std capped at 0 (std 1, never noisier than a fresh policy) by default since 7 Nov (the user's call: a
+    # SAPG block whose exploration bonus outweighed the task reward ran its log-std to the old cap of 2 and scored 0 --
+    # v2's House of Dextra block 0). 31 Oct - 7 Nov the cap was 2 (std 7.4), against the fp16 NaN crashes; the v1 / v2
+    # campaigns keep 2 through their TRAIN_PINS.json. experiments/oct_2026_experiments/30oct_evolution_evaluation/log_std_cap/README.md
+    max_log_std: 0.0
     # and floored at -5 (std 0.007): below ~-4.9, ((a - mu) / sigma)^2 overflows fp16 for actions in [-1, 1] (31 Oct).
     min_log_std: -5.0
     # One learned log-std for every action dimension (per SAPG block) since 1 Nov (the user's call): a padded slot is a
@@ -88,7 +89,7 @@ params:
           name: default
         sigma_init:
           name: const_initializer
-          val: 0
+          val: -1    # initial log-std -1 (std 0.37) by default since 7 Nov (the user's call; was 0)
         fixed_sigma: coef_cond    # SAPG requires coef_cond (not 'fixed')
 
   load_checkpoint: False

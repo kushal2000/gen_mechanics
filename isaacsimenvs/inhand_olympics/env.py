@@ -96,6 +96,25 @@ class InHandOlympicsEnv(DirectRLEnv):
         self.joint_lower_hand = self.joint_lower_canon[:, hand]
         self.joint_upper_hand = self.joint_upper_canon[:, hand]
         self.joint_enabled = (self.joint_upper_hand - self.joint_lower_hand > 1e-6).float()
+        # The ranges finger actions map through and joint positions are normalised with: each joint's own limits, or
+        # one fixed range for every (enabled) hand joint (cfg.action.fixed_finger_range_deg / obs.fixed_joint_range_deg)
+        def _fixed(lo_lab, hi_lab, rng_deg):
+            if not rng_deg:
+                return lo_lab, hi_lab
+            lo, hi = lo_lab.clone(), hi_lab.clone()
+            h_ids = torch.tensor(self.hand_ids, device=dev)
+            on = (hi[:, h_ids] - lo[:, h_ids]) > 1e-6
+            lo[:, h_ids] = torch.where(on, math.radians(rng_deg[0]), lo[:, h_ids])
+            hi[:, h_ids] = torch.where(on, math.radians(rng_deg[1]), hi[:, h_ids])
+            return lo, hi
+        self.act_lower, self.act_upper = _fixed(self.joint_lower, self.joint_upper, self.cfg.action.fixed_finger_range_deg)
+        obs_lo, obs_hi = _fixed(self.joint_lower, self.joint_upper, self.cfg.obs.fixed_joint_range_deg)
+        self.obs_lower_canon = obs_lo[:, self.perm_lab_to_canon].clone()
+        self.obs_upper_canon = obs_hi[:, self.perm_lab_to_canon].clone()
+        if self.cfg.action.fixed_finger_range_deg or self.cfg.obs.fixed_joint_range_deg:
+            print(f"[olympics] fixed joint ranges (deg): actions {self.cfg.action.fixed_finger_range_deg}, joint_pos "
+                  f"{self.cfg.obs.fixed_joint_range_deg}; obs {'with' if 'joint_lower' in self.cfg.obs.obs_list else 'without'}"
+                  f" joint limits", flush=True)
         self.prev_joint_pos_canon = self.robot.data.joint_pos[:, self.perm_lab_to_canon].clone()
         self.prev_joint_vel_canon = torch.zeros_like(self.prev_joint_pos_canon)
         a = self.cfg.action
@@ -316,13 +335,16 @@ class InHandOlympicsEnv(DirectRLEnv):
     # --- actions --------------------------------------------------------------------------------------------
     def target_to_action(self, targets: torch.Tensor) -> torch.Tensor:
         """Absolute joint positions (Lab order) -> the finger action in [-1, 1] (ActionCfg.finger_target)."""
-        return action_map.target_to_action(targets, self.joint_lower, self.joint_upper, self.joint_home,
+        return action_map.target_to_action(targets, self.act_lower, self.act_upper, self.joint_home,
                                            self.cfg.action.finger_target)
 
     def action_to_target(self, actions: torch.Tensor) -> torch.Tensor:
         """The finger action in [-1, 1] (Lab order) -> absolute joint positions (ActionCfg.finger_target)."""
-        return action_map.action_to_target(actions, self.joint_lower, self.joint_upper, self.joint_home,
-                                           self.cfg.action.finger_target)
+        t = action_map.action_to_target(actions, self.act_lower, self.act_upper, self.joint_home,
+                                        self.cfg.action.finger_target)
+        if self.cfg.action.fixed_finger_range_deg:      # the fixed range can exceed a joint's own: its real limits
+            t = torch.maximum(torch.minimum(t, self.joint_upper), self.joint_lower)
+        return t
 
     def wrist_action_toward(self, pose: torch.Tensor) -> torch.Tensor:
         """The wrist action that moves the integrated command toward ``pose`` (N, 6) as fast as allowed."""
@@ -533,7 +555,10 @@ class InHandOlympicsEnv(DirectRLEnv):
             self.episode_length_buf[hit] = 0
             self.closest_goal_dist[hit] = math.nan
         self.extras["log"] = {f"reward/{k}": v.mean() for k, v in self.reward_terms.items()}
-        self.extras["log"]["successes"] = self.successes.mean()
+        # The in-progress goal count averaged over every env (all SAPG blocks), not goals per episode -- that is
+        # episode_final/successes. Logged as episode/successes until 8 Nov 2026, which read ~10x below the per-episode
+        # rate (a goal episode then ends ~tens of steps later on "dropped", so a count > 0 is rarely in progress).
+        self.extras["log"]["successes_running"] = self.successes.mean()
         for task in self.tasks:                          # a task's own scalars (e.g. a curriculum's level)
             if hasattr(task, "log"):
                 self.extras["log"].update(task.log())

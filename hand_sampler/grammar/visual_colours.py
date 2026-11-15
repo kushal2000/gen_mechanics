@@ -13,20 +13,36 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-KIND_RGBA = {(0, 0): "0.16 0.42 0.85 1", (90, 0): "0.86 0.20 0.18 1", (0, 90): "0.15 0.65 0.30 1"}
+KIND_RGBA = {"flex": "0.16 0.42 0.85 1", "abd": "0.86 0.20 0.18 1", "roll": "0.15 0.65 0.30 1"}
+_V2_KINDS = {(0, 0): "flex", (90, 0): "abd", (0, 90): "roll"}
 GREY_RGBA = "0.62 0.62 0.64 1"
 ROLL_TIP_RGBA = "0.60 0.92 0.60 1"
 STRIPES = 8
 
 
+def joint_kind(axis, finger: dict):
+    """A joint's kind from its design axis. v3 fingers (a "roll" key) carry their roll in the axis -- (roll, 0)
+    flexion, (roll + 90, 0) abduction (hand_sampler/grammar/v3.py axis_for) -- so kinds are read relative to the roll
+    (before 7 Nov 2026 rolled v3 fingers matched no entry and were drawn grey, roll +-90 swapped blue / red); older
+    grammars use the fixed axes."""
+    axis = tuple(int(v) for v in axis)
+    if "roll" not in finger:
+        return _V2_KINDS.get(axis)
+    if axis[1] != 0:
+        return None
+    d = (axis[0] - int(finger["roll"])) % 180
+    return "flex" if d == 0 else "abd" if d == 90 else None
+
+
 def _link_kind(name: str, design: dict):
-    """(axis, is the finger's last joint) for a finger link f<i>_link<j>, else None."""
+    """(kind, is the finger's last joint) for a finger link f<i>_link<j>, else None."""
     if not name.startswith("f") or "_link" not in name:
         return None
     try:
         i, j = (int(v) for v in name[1:].split("_link"))
-        joints = design["fingers"][i]["joints"]
-        return tuple(joints[j]["axis"]), j == len(joints) - 1
+        finger = design["fingers"][i]
+        joints = finger["joints"]
+        return joint_kind(joints[j]["axis"], finger), j == len(joints) - 1
     except (ValueError, IndexError, KeyError):
         return None
 
@@ -52,11 +68,11 @@ def colour_by_joint_kind(root: ET.Element, design: dict, stripes: bool = True, r
                 for vis in link.findall("visual"):
                     _set_colour(vis, GREY_RGBA, f"{link.get('name')}_grey")
             continue
-        axis, last = kind
-        roll_tip = last and axis == (0, 90)
+        kind, last = kind
+        roll_tip = last and kind == "roll"
         for vis in link.findall("visual"):
             is_tip = vis.find("geometry/cylinder") is not None
-            _set_colour(vis, ROLL_TIP_RGBA if (roll_tip and is_tip) else KIND_RGBA.get(axis, GREY_RGBA),
+            _set_colour(vis, ROLL_TIP_RGBA if (roll_tip and is_tip) else KIND_RGBA.get(kind, GREY_RGBA),
                         f"{link.get('name')}_kind")
         if not (stripes and roll_tip):
             continue
@@ -92,4 +108,4 @@ def colour_urdf_text(text: str, design: dict, stripes: bool = True) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
-__all__ = ["GREY_RGBA", "KIND_RGBA", "colour_by_joint_kind", "colour_urdf_text"]
+__all__ = ["GREY_RGBA", "KIND_RGBA", "colour_by_joint_kind", "colour_urdf_text", "joint_kind"]

@@ -96,6 +96,10 @@ class ActionCfg:
     # home + a * (home - lower) for a < 0. The default stays "range" because a run's saved config is replayed
     # as is (eval_tasks, the viewers) and every run before 28 Oct trained on "range"; new runs set "home".
     finger_target: str = "range"
+    # (lo, hi) deg, or None (default: each joint's own limits). Set (8 Nov 2026, v4): finger actions map through this
+    # one range for every hand joint -- a in [-1, 1] means the same angle on every hand -- and the target is then
+    # clamped to the joint's real limits; with obs.fixed_joint_range_deg the policy needs no limits in its tokens.
+    fixed_finger_range_deg: tuple | None = None
 
 
 @configclass
@@ -202,6 +206,10 @@ class ObsCfg:
     # joint_origin -- every config saved before 27 Oct -- gets "ordered" whatever this says (env.py), so an old
     # checkpoint replayed from its saved config sees exactly its training inputs.
     joint_box: str = "extent"
+    # (lo, hi) deg, or None (default: each joint's own limits). Set (8 Nov 2026, v4): joint_pos / prev_joint_pos are
+    # normalised with this one range on every hand, so a value is the same angle on every hand (a joint past it
+    # reads past +-1) -- drop joint_lower / joint_upper from the lists then.
+    fixed_joint_range_deg: tuple | None = None
 
 
 @configclass

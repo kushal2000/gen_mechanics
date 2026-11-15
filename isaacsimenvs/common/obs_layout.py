@@ -123,8 +123,11 @@ HAND_TOKEN_FIELDS: dict[str, int] = {
 # required, so an accidental omission still raises. Without object_keypoints_rel_joint a joint
 # token carries only the joint's own state and geometry, and the object reaches it through the
 # global token by attention.
+# joint_lower / joint_upper too since 8 Nov 2026 (v4: angles and actions on one fixed range, obs.fixed_joint_range_deg /
+# action.fixed_finger_range_deg, so a token needs no limits).
 OPTIONAL_HAND_TOKEN_FIELDS: frozenset[str] = frozenset({"object_keypoints_rel_joint", "joint_origin", "joint_moving",
-                                                        "joint_axis", "joint_link_vec", "joint_link_bbox"})
+                                                        "joint_axis", "joint_link_vec", "joint_link_bbox",
+                                                        "joint_lower", "joint_upper"})
 
 # Gathered per joint but never a token feature: only the attention mask reads it, raw.
 MASK_FIELD = "joint_enabled"

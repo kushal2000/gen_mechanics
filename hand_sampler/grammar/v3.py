@@ -61,6 +61,20 @@ BASE_RADII_MM = (20, 40, 60, 80)
 EDGE_SPACINGS_MM = (20, 30, 40)
 BASE_DISTANCE_MAX_MM = 90
 KIND_RANGE_DEG = {"flex": (-30.0, 90.0), "abd": (-30.0, 30.0)}
+VARIANT = "v3"
+
+
+def configure(variant: str) -> None:
+    """This process's grammar variant (default v3). "v4" (8 Nov 2026): every joint -30..90 deg, abduction too, so a
+    joint's kind is only its axis -- which joints of a finger are parallel, which orthogonal; and each finger's last joint
+    is a flexion. With equal ranges, flipping every kind of a finger and adding 90 deg to its roll is the same finger,
+    so the last-joint rule drops the duplicate encoding and nothing else; it is the vendor classifier's convention
+    (descriptors_v3.joint_kinds: flexion = parallel to the finger's last joint). Specs built under v4 say "V4"."""
+    global VARIANT
+    if variant not in ("v3", "v4"):
+        raise ValueError(f"grammar variant must be v3 or v4, got {variant!r}")
+    VARIANT = variant
+    KIND_RANGE_DEG["abd"] = (-30.0, 90.0) if variant == "v4" else (-30.0, 30.0)
 ROLLS = tuple(range(-150, 181, 30))             # the full circle: the axis DIRECTION sets which way +q bends
 SEED_ROLLS = (-90, -60, -30, 0, 30, 60, 90)     # seeds: the half that bends toward the grasp side
 
@@ -253,6 +267,8 @@ def violations(hand: gh.Hand, slack_deg: float = 0.0, max_base_mm: float = BASE_
             out.append(f"finger {i}: a 0 mm base link that is not a flexion / abduction knuckle")
         if roll_of(f) not in ROLLS:
             out.append(f"finger {i}: roll {roll_of(f)} (one of {ROLLS})")
+        if VARIANT == "v4" and f.joints and kind_of(f, f.joints[-1]) != "flex":
+            out.append(f"finger {i}: last joint {kind_of(f, f.joints[-1])} (v4: a flexion)")
         if f.tilt != 0 and not (t == "kn1dof" and f.joints and kind_of(f, f.joints[0]) == "abd"):
             out.append(f"finger {i}: tilt {f.tilt} on a {t} base (only a 1-DOF base with an abduction first)")
         if not (0 <= f.tilt <= MAX_TILT_DEG):
@@ -412,6 +428,8 @@ def _chain(rng, nj: int, base: str, roll: int = 0) -> List[gh.Joint]:
         kinds, lens = ["flex" if rng.random() < 0.5 else "abd"], []
     while len(kinds) < nj:
         kinds.append("flex" if rng.random() < 0.5 else "abd")   # 50 / 50 after the base
+    if VARIANT == "v4":
+        kinds[-1] = "flex"                                        # v4: the last joint a flexion (a knFA finger: 3+ joints)
     while len(lens) < nj:
         lens.append(int(rng.choice(LINKS_MM)))
     return [gh.Joint("hinge", axis_for(k, roll), L) for k, L in zip(kinds, lens)]
@@ -489,7 +507,8 @@ def random_hand_in_cell(rng: np.random.Generator, cell: str, attempts: int = 200
     c = parse_cell(cell)
     n, (mlo, mhi), (g0, g1), base, (r0, r1) = c["fingers"], c["motors"], c["gap"], c["base"], c["reach"]
     nlinks = (lambda nj: nj - 1) if base in ("knFA", "knAF") else (lambda nj: nj)
-    comps = [js for js in __import__("itertools").product(range(MIN_JOINTS, MAX_JOINTS + 1), repeat=n)
+    jmin = 3 if (VARIANT == "v4" and base == "knFA") else MIN_JOINTS    # v4: F, A, ..., F
+    comps = [js for js in __import__("itertools").product(range(jmin, MAX_JOINTS + 1), repeat=n)
              if mlo <= sum(js) <= mhi]
     if not comps:
         return None
@@ -572,7 +591,7 @@ def _shape(link, geom: Tuple[str, dict], xyz, rpy, rgba: str):
 FLEX_RGBA, ABD_RGBA, PALM_RGBA = "0.16 0.42 0.85 1", "0.86 0.20 0.18 1", "0.62 0.62 0.64 1"
 
 
-def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: str = "V3") -> dict:
+def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: Optional[str] = None) -> dict:
     """Write the hand's URDF (palm plate, a box per link, a capsule fingertip), spec and design under `out_dir`; the
     root frame at the palm's centroid (where the wrist attaches)."""
     import trimesh
@@ -655,7 +674,7 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: str = "V3") -> di
         "adjacent_links": {b: sorted(v) for b, v in adj.items()},
         "stiffness": STIFFNESS, "damping": DAMPING, "armature": ARMATURE,
         "effort_limit": EFFORT, "velocity_limit": VELOCITY, "link_density_kg_m3": DENSITY, "friction": FRICTION,
-        "replace_cylinders_with_capsules": True, "rules": rules_name, "design": hand_to_dict(hand),
+        "replace_cylinders_with_capsules": True, "rules": rules_name or VARIANT.upper(), "design": hand_to_dict(hand),
         "mount_in_root_m": [0.0, 0.0, 0.0],
         "geometry": {"link_width_mm": LINK_WIDTH_MM, "tip_radius_mm": TIP_RADIUS_MM,
                      "palm_thickness_mm": PALM_THICKNESS_MM},

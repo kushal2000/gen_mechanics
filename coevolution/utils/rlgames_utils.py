@@ -81,19 +81,28 @@ def _slice_env_axis(value, start: int):
     return value[start:]
 
 
-def _remove_env_boundary_from_info(infos: dict, boundary: int) -> dict:
-    """Drop SAPG non-leader env stats while preserving scalar log values."""
+PER_BLOCK_KEYS = ("successes", "closest_keypoint_max_dist")
+
+
+def _remove_env_boundary_from_info(infos: dict, boundary: int, top: bool = True) -> dict:
+    """Drop SAPG non-leader env stats while preserving scalar log values.
+
+    Top-level PER_BLOCK_KEYS (a value per env, logged as its mean) also get a per-block copy here. Nested ones
+    (episode_final: read at the finished envs) get theirs in EnvStatsAlgoObserver._process_episode_final_per_block,
+    from each block's own finished envs: until 8 Nov 2026 they were sliced here and then read at the leader's finished
+    envs, so blocks 0-4 logged other envs' mid-episode values (wandb episode_final/successes_per_block ~0.03 while the
+    per-episode logs had every block at the leader's ~0.28)."""
     trimmed = {}
     for key, value in infos.items():
         if isinstance(value, dict):
-            trimmed[key] = _remove_env_boundary_from_info(value, boundary)
+            trimmed[key] = _remove_env_boundary_from_info(value, boundary, top=False)
             continue
 
         if not _has_env_axis(value, boundary):
             trimmed[key] = value
             continue
 
-        if key in {"successes", "closest_keypoint_max_dist"}:
+        if top and key in PER_BLOCK_KEYS:
             block_size = len(value) - boundary
             if block_size > 0 and len(value) % block_size == 0:
                 for i in range(len(value) // block_size):
@@ -129,6 +138,7 @@ class EnvStatsAlgoObserver(AlgoObserver):
 
         ignore_env_boundary = kwargs.get("ignore_env_boundary", 0)
         if ignore_env_boundary > 0:
+            self._process_episode_final_per_block(infos.get("episode_final"), done_indices, ignore_env_boundary)
             infos = _remove_env_boundary_from_info(copy.deepcopy(infos), ignore_env_boundary)
             done_indices = done_indices[done_indices >= ignore_env_boundary] - ignore_env_boundary
 
@@ -202,6 +212,33 @@ class EnvStatsAlgoObserver(AlgoObserver):
         for key in keys:
             self.episode_cumulative_avg[key].extend(rows[key])
             self.episode_cumulative[key][done_index_tensor] = 0
+
+    def _process_episode_final_per_block(self, values, done_indices, boundary: int) -> None:
+        """episode_final/<key>_per_block/block_<i> for PER_BLOCK_KEYS: each SAPG block's own finished episodes
+        (block size = the leader's, num_envs - boundary), before the leader-only filter."""
+        if not values or done_indices is None:
+            return
+        done = done_indices.reshape(-1).detach()
+        if done.numel() == 0:
+            return
+        for key in PER_BLOCK_KEYS:
+            value = values.get(key)
+            if not isinstance(value, torch.Tensor) or value.ndim != 1 or len(value) <= boundary:
+                continue
+            block = len(value) - boundary
+            if len(value) % block:
+                continue
+            rows = value.float()[done].cpu().numpy()
+            blocks = (done // block).cpu().numpy()
+            for i in range(len(value) // block):
+                sel = rows[blocks == i]
+                if not len(sel):
+                    continue
+                name = f"{key}_per_block/block_{i}"
+                if name not in self.episode_final_avg:
+                    self.episode_final_avg[name] = deque([], maxlen=self.algo.games_to_track)
+                self.episode_final_avg[name].extend(sel.tolist())
+            self.new_finished_episodes = True
 
     def _process_episode_final(
         self, values, done_indices: list[int], done_index_tensor
