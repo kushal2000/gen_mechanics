@@ -1,0 +1,299 @@
+<robot name="leap_left"><link name="palm_lower_left">
+    <visual>
+      <origin xyz="-0.0955 -0.1170 0.0207" rpy="1.57079 0 3.14159" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/palm_lower_left.obj" />
+      </geometry>
+    </visual>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.202023" />
+      <inertia ixx="0.000301752" ixy="-1.19753e-06" ixz="-5.96614e-07" iyy="0.000449786" iyz="-2.65209e-06" izz="0.000220933" />
+    </inertial>
+  
+    <collision><origin xyz="-0.124800 -0.055029 0.013896" rpy="-0.000000 1.570796 0.000000" /><geometry><box size="0.020 0.1209 0.1020" /></geometry></collision>
+  </link>
+  <link name="mcp_joint">
+    <inertial><origin xyz="-0.0225157 0.0338821 0.0163587" rpy="0 0 0" /><mass value="0.0301" /><inertia ixx="9.00287e-06" ixy="2.91832e-06" ixz="3.46872e-07" iyy="7.04698e-06" iyz="-1.10527e-07" izz="1.1903e-05" /></inertial><visual>
+      <origin xyz="0.0084 0.0077 0.01465" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/mcp_joint.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="-0.006100 0.019050 0.007250" rpy="0.000000 -0.347722 1.880690" /><geometry><box size="0.04255 0.020 0.020" /></geometry></collision></link>
+  <link name="pip">
+    <inertial><origin xyz="0.0075 -0.0002 -0.011" rpy="0 0 0" /><mass value="0.0168" /><inertia ixx="1.624e-06" ixy="3.34947e-23" ixz="-3.57277e-22" iyy="2.296e-06" iyz="5.0242e-23" izz="2.5648e-06" /></inertial><visual>
+      <origin xyz="0.0096 0.0002 0.0007" rpy="-1.57079 -1.57079 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/pip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.007500 0.007150 -0.006500" rpy="-0.000000 0.560243 0.761512" /><geometry><box size="0.02446 0.020 0.020" /></geometry></collision></link>
+  <link name="dip">
+    <inertial><origin xyz="0.0054215 -0.0291481 0.015" rpy="0 0 0" /><mass value="0.0252" /><inertia ixx="5.22783e-06" ixy="7.99499e-07" ixz="2.55017e-22" iyy="4.08606e-06" iyz="4.1387e-21" izz="5.55752e-06" /></inertial><visual>
+      <origin xyz="0.0211 -0.0084 0.0097" rpy="-3.1415926 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/dip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 -0.018050 0.000100" rpy="0.000000 -0.005540 -1.570796" /><geometry><box size="0.03610 0.020 0.020" /></geometry></collision></link>
+  <link name="fingertip">
+    <inertial><origin xyz="-0.000879404 -0.0270187 0.014594" rpy="0 0 0" /><mass value="0.0238237" /><inertia ixx="5.52576e-06" ixy="-1.85467e-07" ixz="-1.87482e-09" iyy="2.47091e-06" iyz="-2.22638e-08" izz="4.50243e-06" /></inertial><visual>
+      <origin xyz="0.0132 -0.0061 0.0144" rpy="3.1415926 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/fingertip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 -0.024000 0.007500" rpy="0.000000 -0.302885 -1.570796" /><geometry><box size="0.05029 0.020 0.020" /></geometry></collision></link>
+
+  <link name="mcp_joint_2">
+    <inertial><origin xyz="-0.0225157 0.0338821 0.0163587" rpy="0 0 0" /><mass value="0.0301" /><inertia ixx="9.00287e-06" ixy="2.91832e-06" ixz="3.46872e-07" iyy="7.04698e-06" iyz="-1.10527e-07" izz="1.1903e-05" /></inertial><visual>
+      <origin xyz="0.0084 0.0077 0.01465" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/mcp_joint.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="-0.006100 0.019050 0.007250" rpy="0.000000 -0.347722 1.880690" /><geometry><box size="0.04255 0.020 0.020" /></geometry></collision></link>
+  <link name="pip_2">
+    <inertial><origin xyz="0.0075 -0.0002 -0.011" rpy="0 0 0" /><mass value="0.0168" /><inertia ixx="1.624e-06" ixy="3.34947e-23" ixz="-3.57277e-22" iyy="2.296e-06" iyz="5.0242e-23" izz="2.5648e-06" /></inertial><visual>
+      <origin xyz="0.0096 0.0003 0.0007" rpy="-1.57079 -1.57079 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/pip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.007500 0.007150 -0.006500" rpy="-0.000000 0.560243 0.761512" /><geometry><box size="0.02446 0.020 0.020" /></geometry></collision></link>
+  <link name="dip_2">
+    <inertial><origin xyz="0.0054215 -0.0291481 0.015" rpy="0 0 0" /><mass value="0.0252" /><inertia ixx="5.22783e-06" ixy="7.99499e-07" ixz="2.55017e-22" iyy="4.08606e-06" iyz="4.1387e-21" izz="5.55752e-06" /></inertial><visual>
+      <origin xyz="0.0211 -0.0084 0.0097" rpy="-3.14159 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/dip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 -0.018050 0.000100" rpy="0.000000 -0.005540 -1.570796" /><geometry><box size="0.03610 0.020 0.020" /></geometry></collision></link>
+  <link name="fingertip_2">
+    <inertial><origin xyz="-0.000879404 -0.0270187 0.014594" rpy="0 0 0" /><mass value="0.0238237" /><inertia ixx="5.52576e-06" ixy="-1.85467e-07" ixz="-1.87482e-09" iyy="2.47091e-06" iyz="-2.22638e-08" izz="4.50243e-06" /></inertial><visual>
+      <origin xyz="0.0132 -0.0061 0.01450" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/fingertip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 -0.024000 0.007500" rpy="0.000000 -0.302885 -1.570796" /><geometry><box size="0.05029 0.020 0.020" /></geometry></collision></link>
+  <link name="mcp_joint_3">
+    <inertial><origin xyz="-0.0225157 0.0338821 0.0163587" rpy="0 0 0" /><mass value="0.0301" /><inertia ixx="9.00287e-06" ixy="2.91832e-06" ixz="3.46872e-07" iyy="7.04698e-06" iyz="-1.10527e-07" izz="1.1903e-05" /></inertial><visual>
+      <origin xyz="0.0084 0.0077 0.01465" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/mcp_joint.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="-0.006100 0.019050 0.007250" rpy="0.000000 -0.347722 1.880690" /><geometry><box size="0.04255 0.020 0.020" /></geometry></collision></link>
+  <link name="pip_3">
+    <inertial><origin xyz="0.0075 -0.0002 -0.011" rpy="0 0 0" /><mass value="0.0168" /><inertia ixx="1.624e-06" ixy="3.34947e-23" ixz="-3.57277e-22" iyy="2.296e-06" iyz="5.0242e-23" izz="2.5648e-06" /></inertial><visual>
+      <origin xyz="0.0096 0.0003 0.0007" rpy="-1.57079 -1.57079 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/pip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.007500 0.007150 -0.006500" rpy="-0.000000 0.560243 0.761512" /><geometry><box size="0.02446 0.020 0.020" /></geometry></collision></link>
+  <link name="dip_3">
+    <inertial><origin xyz="0.0054215 -0.0291481 0.015" rpy="0 0 0" /><mass value="0.0252" /><inertia ixx="5.22783e-06" ixy="7.99499e-07" ixz="2.55017e-22" iyy="4.08606e-06" iyz="4.1387e-21" izz="5.55752e-06" /></inertial><visual>
+      <origin xyz="0.0211 -0.0084 0.0097" rpy="-3.14159 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/dip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 -0.018045 0.000100" rpy="0.000000 -0.005542 -1.570796" /><geometry><box size="0.03609 0.020 0.020" /></geometry></collision></link>
+  <link name="fingertip_3">
+    <inertial><origin xyz="-0.000879404 -0.0270187 0.014594" rpy="0 0 0" /><mass value="0.0238237" /><inertia ixx="5.52576e-06" ixy="-1.85467e-07" ixz="-1.87482e-09" iyy="2.47091e-06" iyz="-2.22638e-08" izz="4.50243e-06" /></inertial><visual>
+      <origin xyz="0.0132 -0.0061 0.0145" rpy="3.14159 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/fingertip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 -0.024000 0.007500" rpy="0.000000 -0.302885 -1.570796" /><geometry><box size="0.05029 0.020 0.020" /></geometry></collision></link>
+  <link name="thumb_left_temp_base">
+    <inertial><origin xyz="-0.0069 0 -0.0109" rpy="0 0 0" /><mass value="0.0133" /><inertia ixx="1.28567e-06" ixy="0" ixz="2.82844e-22" iyy="1.81767e-06" iyz="7.54252e-23" izz="2.03047e-06" /></inertial><visual>
+      <origin xyz="0.0439 0.0068 0.02146" rpy="1.57079 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/pip_left.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 -0.007150 -0.006500" rpy="0.000000 0.737815 -1.570796" /><geometry><box size="0.01933 0.020 0.020" /></geometry></collision></link>
+  <link name="thumb_pip">
+    <inertial><origin xyz="0 8.38854e-19 -0.00708059" rpy="0 0 0" /><mass value="0.0154" /><inertia ixx="3.17917e-06" ixy="0" ixz="0" iyy="1.10448e-06" iyz="-1.51387e-22" izz="2.74687e-06" /></inertial><visual>
+      <origin xyz="0.01196 0 -0.0158" rpy="1.57079 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/thumb_pip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 0.007250 -0.008500" rpy="0.000000 0.864597 1.570796" /><geometry><box size="0.02234 0.020 0.020" /></geometry></collision></link>
+  <link name="thumb_dip">
+    <inertial><origin xyz="-0.00205932 0.0159124 -0.0137328" rpy="0 0 0" /><mass value="0.0329" /><inertia ixx="8.49678e-06" ixy="1.0756e-07" ixz="1.40709e-07" iyy="3.7792e-06" iyz="2.61949e-08" izz="8.12177e-06" /></inertial><visual>
+      <origin xyz="0.0439 0.0579 -0.0086" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/thumb_dip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 0.023300 0.000100" rpy="0.000000 -0.004292 1.570796" /><geometry><box size="0.04660 0.020 0.020" /></geometry></collision></link>
+  <link name="thumb_fingertip">
+    <inertial><origin xyz="0.00096191 -0.0242028 -0.0144191" rpy="0 0 0" /><mass value="0.0304211" /><inertia ixx="1.2715e-05" ixy="-6.26616e-07" ixz="-1.27879e-07" iyy="2.96662e-06" iyz="6.04266e-08" izz="1.28611e-05" /></inertial><visual>
+      <origin xyz="0.0625 0.0784 0.0489" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../unified_commercial_hands/leap/vendor_left/meshes/thumb_fingertip.obj" />
+      </geometry>
+    </visual>
+    <collision><origin xyz="0.000000 -0.030000 -0.007500" rpy="0.000000 0.244979 -1.570796" /><geometry><box size="0.06185 0.020 0.020" /></geometry></collision></link>
+  <link name="thumb_tip_head"><inertial><origin xyz="0 0 0" rpy="0 0 0" /><mass value="0.001" /><inertia ixx="1e-08" ixy="0" ixz="0" iyy="1e-08" iyz="0" izz="1e-08" /></inertial></link>
+  <link name="index_tip_head"><inertial><origin xyz="0 0 0" rpy="0 0 0" /><mass value="0.001" /><inertia ixx="1e-08" ixy="0" ixz="0" iyy="1e-08" iyz="0" izz="1e-08" /></inertial></link>
+  <link name="middle_tip_head"><inertial><origin xyz="0 0 0" rpy="0 0 0" /><mass value="0.001" /><inertia ixx="1e-08" ixy="0" ixz="0" iyy="1e-08" iyz="0" izz="1e-08" /></inertial></link>
+  <link name="ring_tip_head"><inertial><origin xyz="0 0 0" rpy="0 0 0" /><mass value="0.001" /><inertia ixx="1e-08" ixy="0" ixz="0" iyy="1e-08" iyz="0" izz="1e-08" /></inertial></link>
+  <joint name="j0" type="revolute">
+    <origin xyz="-0.0122 0.03810 0.01450" rpy="-1.57079 0 1.57079" />
+    <parent link="mcp_joint" />
+    <child link="pip" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.523599" upper="0.523599" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j1" type="revolute">
+    <origin xyz="-0.0825 -0.0857 0.0078" rpy="1.57079 1.57079 0" />
+    <parent link="palm_lower_left" />
+    <child link="mcp_joint" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.314" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j2" type="revolute">
+    <origin xyz="0.015 0.0143 -0.013" rpy="1.57079 -1.57079 0" />
+    <parent link="pip" />
+    <child link="dip" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.506" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j3" type="revolute">
+    <origin xyz="0 -0.0361 0.0002" rpy="0 0 0" />
+    <parent link="dip" />
+    <child link="fingertip" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.366" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j4" type="revolute">
+    <origin xyz="-0.0122 0.0381 0.0145" rpy="-1.57079 0 1.57079" />
+    <parent link="mcp_joint_2" />
+    <child link="pip_2" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.523599" upper="0.523599" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j5" type="revolute">
+    <origin xyz="-0.0825 -0.0403 0.0078" rpy="1.57079 1.57079 0" />
+    <parent link="palm_lower_left" />
+    <child link="mcp_joint_2" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.314" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j6" type="revolute">
+    <origin xyz="0.015 0.0143 -0.013" rpy="1.57079 -1.57079 0" />
+    <parent link="pip_2" />
+    <child link="dip_2" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.506" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j7" type="revolute">
+    <origin xyz="0 -0.0361 0.0002" rpy="0 0 0" />
+    <parent link="dip_2" />
+    <child link="fingertip_2" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.366" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j8" type="revolute">
+    <origin xyz="-0.0122 0.0381 0.0145" rpy="-1.57079 0 1.57079" />
+    <parent link="mcp_joint_3" />
+    <child link="pip_3" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.523599" upper="0.523599" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j9" type="revolute">
+    <origin xyz="-0.0825 0.0051 0.0078" rpy="1.57079 1.57079 0" />
+    <parent link="palm_lower_left" />
+    <child link="mcp_joint_3" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.314" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j10" type="revolute">
+    <origin xyz="0.015 0.0143 -0.013" rpy="1.57079 -1.57079 0" />
+    <parent link="pip_3" />
+    <child link="dip_3" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.506" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j11" type="revolute">
+    <origin xyz="0 -0.03609 0.0002" rpy="0 0 0" />
+    <parent link="dip_3" />
+    <child link="fingertip_3" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.366" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j12" type="revolute">
+    <origin xyz="-0.1448 -0.0900 0.0049" rpy="0 1.57079 0" />
+    <parent link="palm_lower_left" />
+    <child link="thumb_left_temp_base" />
+    <axis xyz="-0 -0 1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.349" upper="0.523599" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j13" type="revolute">
+    <origin xyz="0 -0.0143 -0.013" rpy="-1.57079 -1.57079 0" />
+    <parent link="thumb_left_temp_base" />
+    <child link="thumb_pip" />
+    <axis xyz="-0 -0 1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.47" upper="0.523599" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j14" type="revolute">
+    <origin xyz="0 0.0145 -0.017" rpy="-1.57079 0 0" />
+    <parent link="thumb_pip" />
+    <child link="thumb_dip" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.523599" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+  <joint name="j15" type="revolute">
+    <origin xyz="0 0.0466 0.0002" rpy="0 0 3.14159" />
+    <parent link="thumb_dip" />
+    <child link="thumb_fingertip" />
+    <axis xyz="0 0 -1" />
+    <limit effort="0.5" velocity="5.0" lower="-0.523599" upper="1.5708" />
+    <joint_properties friction="0.0" />
+  <dynamics damping="0.0775033" friction="0" /></joint>
+
+  
+  <joint name="thumb_tip" type="fixed">
+    <parent link="thumb_fingertip" />
+    <child link="thumb_tip_head" />
+    <origin rpy="0 0 0" xyz="0 -0.06 -0.015" />
+  </joint>
+  <joint name="index_tip" type="fixed">
+    <parent link="fingertip" />
+    <child link="index_tip_head" />
+    <origin rpy="0 0 0" xyz="0 -0.048 0.015" />
+  </joint>
+  <joint name="middle_tip" type="fixed">
+    <parent link="fingertip_2" />
+    <child link="middle_tip_head" />
+    <origin rpy="0 0 0" xyz="0 -0.048 0.015" />
+  </joint>
+  <joint name="ring_tip" type="fixed">
+    <parent link="fingertip_3" />
+    <child link="ring_tip_head" />
+    <origin rpy="0 0 0" xyz="0 -0.048 0.015" />
+  </joint>
+</robot>

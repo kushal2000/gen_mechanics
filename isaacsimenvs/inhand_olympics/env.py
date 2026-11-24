@@ -108,6 +108,15 @@ class InHandOlympicsEnv(DirectRLEnv):
             hi[:, h_ids] = torch.where(on, math.radians(rng_deg[1]), hi[:, h_ids])
             return lo, hi
         self.act_lower, self.act_upper = _fixed(self.joint_lower, self.joint_upper, self.cfg.action.fixed_finger_range_deg)
+        # Random finger resets draw inside each joint's limits, and -- with the fixed range on (v4+) -- inside that range
+        # too (15 Nov 2026): a vendor joint can reach past it (Wuji's thumb CMC abduction to -85 deg) and started
+        # episodes at angles no training hand has; a grammar joint's limits ARE the range, so it is unchanged there.
+        self.reset_lower, self.reset_upper = self.joint_lower, self.joint_upper
+        if self.cfg.action.fixed_finger_range_deg:
+            lo_i, hi_i = torch.maximum(self.joint_lower, self.act_lower), torch.minimum(self.joint_upper, self.act_upper)
+            ok = lo_i <= hi_i                                  # no overlap: the joint's own limits
+            self.reset_lower = torch.where(ok, lo_i, self.joint_lower)
+            self.reset_upper = torch.where(ok, hi_i, self.joint_upper)
         obs_lo, obs_hi = _fixed(self.joint_lower, self.joint_upper, self.cfg.obs.fixed_joint_range_deg)
         self.obs_lower_canon = obs_lo[:, self.perm_lab_to_canon].clone()
         self.obs_upper_canon = obs_hi[:, self.perm_lab_to_canon].clone()
@@ -793,7 +802,7 @@ class InHandOlympicsEnv(DirectRLEnv):
             rows = rows[bad]
             env = ids[rows]
             qb = self.robot.data.default_joint_pos[env].clone()
-            lo, hi = self.joint_lower[env][:, h], self.joint_upper[env][:, h]
+            lo, hi = self.reset_lower[env][:, h], self.reset_upper[env][:, h]
             draw = lo + (hi - lo) * torch.rand(len(env), len(h), device=self.device)
             qb[:, h] = torch.lerp(qb[:, h], draw, r.finger_pos_fraction).clamp(lo, hi)
             qdb = torch.zeros_like(qb)
@@ -835,7 +844,7 @@ class InHandOlympicsEnv(DirectRLEnv):
         q = self.robot.data.default_joint_pos[ids].clone()
         qd = torch.zeros_like(q)
         h, r = self.hand_ids, self.cfg.reset
-        lo, hi = self.joint_lower[ids][:, h], self.joint_upper[ids][:, h]
+        lo, hi = self.reset_lower[ids][:, h], self.reset_upper[ids][:, h]
         draw = lo + (hi - lo) * torch.rand(len(ids), len(h), device=self.device)
         q[:, h] = torch.lerp(q[:, h], draw, r.finger_pos_fraction).clamp(lo, hi)
         qd[:, h] = torch.empty(len(ids), len(h), device=self.device).uniform_(-r.finger_vel, r.finger_vel)

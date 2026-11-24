@@ -28,6 +28,8 @@ def joint_kind(axis, finger: dict):
     axis = tuple(int(v) for v in axis)
     if "roll" not in finger:
         return _V2_KINDS.get(axis)
+    if axis[1] == 90:                                      # v7 twist joint: axis along the finger
+        return "roll"
     if axis[1] != 0:
         return None
     d = (axis[0] - int(finger["roll"])) % 180

@@ -1,0 +1,285 @@
+{
+ "hand": "leap",
+ "side": "left",
+ "urdf": "assets/urdf/unified_dynamics_commercial_hands/leap/leap_left_mass.urdf",
+ "palm_body": "palm_lower_left",
+ "hand_joint_names": [
+  "j1",
+  "j0",
+  "j2",
+  "j3",
+  "j5",
+  "j4",
+  "j6",
+  "j7",
+  "j9",
+  "j8",
+  "j10",
+  "j11",
+  "j12",
+  "j13",
+  "j14",
+  "j15"
+ ],
+ "joint_limits": {
+  "j1": [
+   -0.314,
+   1.5707963267948966
+  ],
+  "j0": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "j2": [
+   -0.506,
+   1.5707963267948966
+  ],
+  "j3": [
+   -0.366,
+   1.5707963267948966
+  ],
+  "j5": [
+   -0.314,
+   1.5707963267948966
+  ],
+  "j4": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "j6": [
+   -0.506,
+   1.5707963267948966
+  ],
+  "j7": [
+   -0.366,
+   1.5707963267948966
+  ],
+  "j9": [
+   -0.314,
+   1.5707963267948966
+  ],
+  "j8": [
+   -0.5235987755982988,
+   0.5235987755982988
+  ],
+  "j10": [
+   -0.506,
+   1.5707963267948966
+  ],
+  "j11": [
+   -0.366,
+   1.5707963267948966
+  ],
+  "j12": [
+   -0.349,
+   0.5235987755982988
+  ],
+  "j13": [
+   -0.47,
+   0.5235987755982988
+  ],
+  "j14": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ],
+  "j15": [
+   -0.5235987755982988,
+   1.5707963267948966
+  ]
+ },
+ "hand_default_joint_pos": {
+  "j1": 0.0,
+  "j0": 0.0,
+  "j2": 0.0,
+  "j3": 0.0,
+  "j5": 0.0,
+  "j4": 0.0,
+  "j6": 0.0,
+  "j7": 0.0,
+  "j9": 0.0,
+  "j8": 0.0,
+  "j10": 0.0,
+  "j11": 0.0,
+  "j12": 0.0,
+  "j13": 0.0,
+  "j14": 0.0,
+  "j15": 0.0
+ },
+ "fingertip_body_names": [
+  "fingertip",
+  "fingertip_2",
+  "fingertip_3",
+  "thumb_fingertip"
+ ],
+ "fingertip_offsets": [
+  [
+   0.0,
+   -0.048,
+   0.015
+  ],
+  [
+   0.0,
+   -0.048,
+   0.015
+  ],
+  [
+   0.0,
+   -0.048,
+   0.015
+  ],
+  [
+   0.0,
+   -0.06,
+   -0.015
+  ]
+ ],
+ "thumb_tip": "thumb_fingertip",
+ "palm_frame": [
+  [
+   0.0,
+   -0.0,
+   1.0
+  ],
+  [
+   0.0,
+   1.0,
+   0.0
+  ],
+  [
+   -1.0,
+   0.0,
+   0.0
+  ]
+ ],
+ "palm_frame_det": 1.0,
+ "palm_frame_snapped": [
+  "x->-z",
+  "z->+x"
+ ],
+ "palm_centre_in_palm_body": [
+  -0.1106505931122575,
+  -0.051723317426105433,
+  0.007237560698112234
+ ],
+ "palm_extents_ours": [
+  0.04860800859719883,
+  0.12094167881538229,
+  0.10200000000000001
+ ],
+ "palm_centre_ours": [
+  -0.007237560698112234,
+  -0.051723317426105433,
+  -0.1106505931122575
+ ],
+ "adjacent_links": {
+  "dip": [
+   "fingertip",
+   "pip"
+  ],
+  "dip_2": [
+   "fingertip_2",
+   "pip_2"
+  ],
+  "dip_3": [
+   "fingertip_3",
+   "pip_3"
+  ],
+  "fingertip": [
+   "dip"
+  ],
+  "fingertip_2": [
+   "dip_2"
+  ],
+  "fingertip_3": [
+   "dip_3"
+  ],
+  "mcp_joint": [
+   "palm_lower_left",
+   "pip"
+  ],
+  "mcp_joint_2": [
+   "palm_lower_left",
+   "pip_2"
+  ],
+  "mcp_joint_3": [
+   "palm_lower_left",
+   "pip_3"
+  ],
+  "palm_lower_left": [
+   "mcp_joint",
+   "mcp_joint_2",
+   "mcp_joint_3",
+   "thumb_left_temp_base",
+   "thumb_pip",
+   "pip_3",
+   "pip_2",
+   "pip"
+  ],
+  "pip": [
+   "dip",
+   "mcp_joint",
+   "palm_lower_left"
+  ],
+  "pip_2": [
+   "dip_2",
+   "mcp_joint_2",
+   "palm_lower_left"
+  ],
+  "pip_3": [
+   "dip_3",
+   "mcp_joint_3",
+   "palm_lower_left"
+  ],
+  "thumb_dip": [
+   "thumb_fingertip",
+   "thumb_pip"
+  ],
+  "thumb_fingertip": [
+   "thumb_dip"
+  ],
+  "thumb_left_temp_base": [
+   "palm_lower_left",
+   "thumb_pip"
+  ],
+  "thumb_pip": [
+   "thumb_dip",
+   "thumb_left_temp_base",
+   "palm_lower_left"
+  ]
+ },
+ "overlap_at_home_mm": {},
+ "fingertip_pos_home_ours": {
+  "fingertip": [
+   0.0069,
+   -0.0311,
+   0.1315
+  ],
+  "fingertip_2": [
+   0.0069,
+   0.0143,
+   0.1315
+  ],
+  "fingertip_3": [
+   0.0069,
+   0.0597,
+   0.1315
+  ],
+  "thumb_fingertip": [
+   0.0237,
+   -0.1129,
+   -0.033
+  ]
+ },
+ "stiffness": 3.0,
+ "damping": 0.0775033248319064,
+ "armature": 0.00058,
+ "palm_filter_depth": 2,
+ "effort_limit": 0.5,
+ "velocity_limit": 5.0,
+ "link_density_kg_m3": 1750.0,
+ "friction": 0.5,
+ "notes_canon": "canonical joint signs (23nov_replica_gap/make_canon.py): flipped ['j0', 'j4', 'j8']",
+ "notes_clip": "limits clipped to the v9 grammar's kind ranges (23nov_replica_gap/make_clip.py): ['j1(F) -18..128->-18..90', 'j0(A) -60..60->-30..30', 'j2(F) -29..108->-29..90', 'j3(F) -21..117->-21..90', 'j5(F) -18..128->-18..90', 'j4(A) -60..60->-30..30', 'j6(F) -29..108->-29..90', 'j7(F) -21..117->-21..90', 'j9(F) -18..128->-18..90', 'j8(A) -60..60->-30..30', 'j10(F) -29..108->-29..90', 'j11(F) -21..117->-21..90', 'j12(A) -20..120->-20..30', 'j13(R) -27..140->-27..30', 'j14(F) -69..109->-30..90', 'j15(F) -77..108->-30..90']",
+ "notes_centred": "palm centre moved [-6.7, -3.3, -14.1] mm (canonical n, w, l) to the grammar's",
+ "notes_mass": "23nov_replica_gap/make_physical.py: masses scaled to the exact replica's (931 g -> ~582 g)"
+}

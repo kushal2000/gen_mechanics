@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --job-name=SANITY_commercial
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=96000
+#SBATCH --time=30:00:00
+#SBATCH --partition=portal
+#SBATCH --exclude=portal-compute-01
+#SBATCH --gres=gpu:1
+#SBATCH --output=/share/portal/kk837/gen_mechanics/debug_outputs/train_logs/sanity/%x-%j.log
+# Sanity check (16 Nov 2026, the user's question): one multi-robot policy trained DIRECTLY on the 7 commercial hands
+# (multi:finger:<the 7 *_left_uniform_handonly> -- the unchanged uniform-dynamics vendor URDFs: Wuji, Tesollo, XHand, LEAP, Dex3, Allegro,
+# Shadow), with exactly the v5 co-evolution env / observation / network / learner settings (experiments/14nov_v5/
+# coevolve_v5.sub: pen repose, fixed -30..90 deg joint range, no joint limits in the tokens, per-finger transformer,
+# SAPG). If this cannot reach >= 1 goal / episode on the commercial hands, zero-shot transfer to them cannot either,
+# and the bottleneck is the interface, not the evolution loop.
+#   sbatch experiments/16nov_v6/sanity_commercial.sub        [EPOCHS=13020 (~5B steps)]
+set -euo pipefail
+cd /share/portal/kk837/gen_mechanics
+OBS="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_origin,joint_axis,joint_link_vec,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot]"
+STATE="[joint_pos,joint_vel,prev_joint_pos,prev_joint_vel,prev_action_targets,joint_origin,joint_axis,joint_link_vec,joint_enabled,keypoints_rel_ee,keypoints_rel_goal,object_vel,palm_extents,task_onehot,object_keypoints_rel_joint,palm_keypoints,ee_pos,ee_rot,ee_vel,object_rot,fingertip_pos_rel_palm,closest_keypoint_max_dist,closest_fingertip_dist,progress,successes,reward]"
+ENV="env.goal.first_goal_tolerance=0.03 env.pen_repose.random_first_goal=True env.pen_repose.goal_sampling=uniform env.action.wrist_max_speed_ang=0.0 env.action.finger_target=home env.action.use_action_delay=False env.reset.table_safe=True env.obs.obs_list=$OBS env.obs.state_list=$STATE env.log.group_stats=False env.log.design_stats=True env.obs.fixed_joint_range_deg=[-30.0,90.0] env.action.fixed_finger_range_deg=[-30.0,90.0]"
+NET="agent.params.network.token_mode=finger agent.params.network.d_model=128 agent.params.network.n_layers=2 agent.params.network.n_heads=4 agent.params.network.ff_mult=4 agent.params.network.decoder_units=[256] agent.params.network.arm_head_units=[1024,512] agent.params.network.value_head_units=[512,256] agent.params.network.compile_net=true agent.params.network.affine_norm=false agent.params.network.packed_tokens=true agent.params.network.mask_ghost_actions=true agent.params.network.masked_arm_dims=[3,4,5]"
+LEARN="agent.params.config.rollout_autocast=true agent.params.config.minibatch_size=16384 agent.params.config.mini_epochs=2 agent.params.config.expl_reward_coef_scale=0.001"
+env TASKS=pen_repose PEN_SHAPE=box ARCH=transformer NUM_ENVS=24576 SEED="${SEED:-100}" GAMMA=0.99 FINGER_RESET=1.0 \
+    KEYPOINT=best_so_far HAND="multi:finger:wuji2_left_uniform_handonly+tesollo_left_uniform_handonly+xhand_left_uniform_handonly+leap_left_uniform_handonly+dex3_left_uniform_handonly+allegro_left_uniform_handonly+shadow_left_uniform_handonly" HAND_TAG=commercial RUN_TAG="sanity_commercial" \
+    LOG_GROUP="sanity/commercial_v5_interface" EPOCHS="${EPOCHS:-13020}" EXTRA_HYDRA="$ENV $NET $LEARN" \
+    WANDB="${WANDB:-1}" WANDB_PROJECT="${WANDB_PROJECT:-v5_coevolve}" WANDB_NAME="sanity_commercial_v5_interface" \
+    WANDB_GROUP="sanity" VIEWER_INTERVAL="${VIEWER_INTERVAL:-40000}" VIEWER_LEN=600 \
+    bash experiments/oct_2026_experiments/12oct_inhand_olympics/olympics_sapg_mlp.sub

@@ -106,7 +106,11 @@ def _kind(h, mv):
     i, j = mv
     f = h.fingers[i]
     js = list(f.joints)
-    new = "flex" if v3.kind_of(f, js[j]) == "abd" else "abd"
+    cur = v3.kind_of(f, js[j])
+    if v3.VARIANT in ("v7", "v8", "v9") and j == 0 and js[0].length != 0:      # v7: a non-knuckle base cycles flex -> abd -> roll
+        new = {"flex": "abd", "abd": "roll", "roll": "flex"}.get(cur, "flex")
+    else:
+        new = "flex" if cur == "abd" else "abd"
     js[j] = replace(js[j], axis=v3.axis_for(new, v3.roll_of(f)))
     g = replace(f, joints=tuple(js))
     tilt = f.tilt if v3.kind_of(g, js[0]) == "abd" else 0
@@ -218,6 +222,18 @@ def _roll(h, mv):
     return _set_finger(h, i, v3.as_v3(replace(f, joints=js), v3.wrap_roll(v3.roll_of(f) + s)))
 
 
+def _width_moves(h):
+    """v6 (16 Nov 2026): the hand's finger thickness to another of LINK_WIDTHS_V6 (no moves in v3-v5)."""
+    if v3.VARIANT != "v6":
+        return []
+    cur = {v3.width_of(f) for f in h.fingers}
+    return [w for w in v3.LINK_WIDTHS_V6 if cur != {w}]
+
+
+def _width(h, w):
+    return gh.Hand(fingers=tuple(v3.as_v3(f, width=w) for f in h.fingers))
+
+
 class Op(NamedTuple):
     name: str
     moves: Callable
@@ -230,6 +246,7 @@ OPERATORS: Tuple[Op, ...] = (
     Op("add_finger", _add_finger_moves, _add_finger), Op("remove_finger", _remove_finger_moves, _remove_finger),
     Op("add_joint", _add_joint_moves, _add_joint), Op("remove_joint", _remove_joint_moves, _remove_joint),
     Op("roll_finger", _roll_moves, _roll), Op("base_type", _base_type_moves, _base_type),
+    Op("width", _width_moves, _width),
 )
 OPERATOR_BY_NAME = {o.name: o for o in OPERATORS}
 

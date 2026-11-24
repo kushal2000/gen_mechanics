@@ -28,6 +28,13 @@ import numpy as np
 
 LAYOUT_EDGES = (0.0, 120.0, 180.0, 240.0, 361.0)
 LAYOUT_NAMES = ("gap0-120", "gap120-180", "gap180-240", "gap240-360")
+# v5 (14 Nov 2026): the same bins labelled by the facings' spread (360 - the largest gap): spread0-120 = human-like
+LAYOUT_SPREAD_NAMES = ("spread240-360", "spread180-240", "spread120-180", "spread0-120")
+
+
+def layout_names() -> tuple:
+    from hand_sampler.grammar import v3
+    return LAYOUT_SPREAD_NAMES if v3.VARIANT in ("v5", "v6", "v7", "v8", "v9") else LAYOUT_NAMES
 REACH_EDGES = (0.0, 120.0, 175.0, 1e9)            # MAX reach: tiny (no commercial hand) / Dex3 135, Wuji 145,
                                                   # Tesollo 151, Shadow 153, XHand 165 / LEAP 185, Allegro 202 + longer
 REACH_NAMES = ("tiny", "mid", "large")
@@ -89,7 +96,7 @@ def _design_knuckles(spec_path: str):
     if not str(spec_path).endswith(".spec.json") or not p.exists():
         return None
     d = json.loads(p.read_text())
-    if d.get("rules") not in ("V3", "V4") or "design" not in d:          # V4: v3.configure("v4")
+    if d.get("rules") not in ("V3", "V4", "V5", "V6", "V7", "V8", "V9") or "design" not in d:   # V4-V8: v3.configure(...)
         return None
     from hand_sampler.grammar import v3
     h = v3.hand_from_dict(d["design"])
@@ -160,7 +167,7 @@ def cell(f: dict) -> str | None:
         kn = "knAF"
     else:
         return None                                                    # mixed base types: outside the map
-    return (f"f{f['fingers']}_m{lo}-{hi}_{LAYOUT_NAMES[b(f['gap'], LAYOUT_EDGES)]}_{kn}_"
+    return (f"f{f['fingers']}_m{lo}-{hi}_{layout_names()[b(f['gap'], LAYOUT_EDGES)]}_{kn}_"
             f"{REACH_NAMES[b(f['reach_mm'], REACH_EDGES)]}")
 
 
@@ -207,7 +214,7 @@ def analytic_cells() -> list[str]:
     out = []
     for n in FINGERS:
         for lo, hi in motor_bins(n):
-            for li, lay in enumerate(LAYOUT_NAMES):
+            for li, lay in enumerate(layout_names()):
                 if LAYOUT_EDGES[li + 1] <= 360.0 / n:          # the largest gap is >= 360 / n
                     continue
                 for kn in knuckle_compositions(n):

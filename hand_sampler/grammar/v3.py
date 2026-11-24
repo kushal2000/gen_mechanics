@@ -71,10 +71,74 @@ def configure(variant: str) -> None:
     so the last-joint rule drops the duplicate encoding and nothing else; it is the vendor classifier's convention
     (descriptors_v3.joint_kinds: flexion = parallel to the finger's last joint). Specs built under v4 say "V4"."""
     global VARIANT
-    if variant not in ("v3", "v4"):
-        raise ValueError(f"grammar variant must be v3 or v4, got {variant!r}")
+    if variant not in ("v3", "v4", "v5", "v6", "v7", "v8", "v9"):
+        raise ValueError(f"grammar variant must be v3 - v9, got {variant!r}")
     VARIANT = variant
-    KIND_RANGE_DEG["abd"] = (-30.0, 90.0) if variant == "v4" else (-30.0, 30.0)
+    KIND_RANGE_DEG["abd"] = (-30.0, 90.0) if variant in ("v4", "v5", "v6") else (-30.0, 30.0)
+    # v7 (18 Nov 2026), from the replica-fidelity probes (a policy trained on the commercial hands, ~1 goal / episode on
+    # them, scored ~0 on their grammar replicas until the replicas had real joint axes, real limits and the vendor
+    # palm filtering): abduction back to +-30 deg, a twist ("roll", axis along the finger) joint allowed as a non-knuckle
+    # finger's FIRST joint (Allegro's), and the palm filtered against each finger's first TWO links (build).
+    if variant in ("v7", "v8", "v9"):
+        KIND_RANGE_DEG["roll"] = (-30.0, 30.0)
+    else:
+        KIND_RANGE_DEG.pop("roll", None)
+
+
+# v5 (14 Nov 2026): v4 plus a palm-width rule -- with 3+ fingers the palm outline (the bases' hull grown by half a link
+# width) is at least PALM_MIN_WIDTH_MM across at its narrowest. v4's MAP-Elites archive kept every facing-layout cell
+# while its bases slid onto a line (36% of gen-48 hands under 40 mm, the policy specialised to slivers); the six
+# commercial replicas measure 58-71 mm. Layout cells are labelled by the spread of the facings (360 - the largest gap):
+# spread0-120 is the human-like, one-sided layout.
+PALM_MIN_WIDTH_MM = 50.0
+EDGE_DEPTHS_MM = (0, 20, 40, 60)          # v5: each base of a clustered layout set back by one of these (a curved row)
+
+
+# v9 (23 Nov 2026): fingers point away from the palm. v5 / v7 archives drifted to fingers pointing sideways / back over
+# the palm (outwardness, a finger's direction dotted with its base's direction from the palm centre: seeds 0.92, the
+# top evolved designs 0.38 -- cages the co-evolved policy learned to use; v7 top-300: 117 hands with >= 2 such
+# fingers). Every commercial hand has all fingers but at most one (the thumb) at >= 0.23. Rule: at most one finger
+# below OUTWARD_MIN.
+OUTWARD_MIN = 0.0         # pointing back over the palm (the Wuji grid replica has fingers at 0.02 and 0.14)
+
+
+def outwardness(hand) -> List[float]:
+    c = palm_centre_mm(hand)
+    out = []
+    for f in hand.fingers:
+        b = np.array([f.y - c[0], f.z - c[1]], float)
+        d = np.array([math.sin(math.radians(f.facing)), math.cos(math.radians(f.facing))])
+        out.append(float(d @ b / (np.linalg.norm(b) + 1e-9)))
+    return out
+
+
+PALM_MIN_ASPECT = 0.5    # v9 (23 Nov): palm narrowest width / longest extent, 3+ fingers -- v7's top designs were
+                         # rakes (0.36: a long thin plate, fingers along one edge); commercial hands 0.74 (p10 0.6)
+
+
+def palm_aspect(hand_or_bases) -> float:
+    """The palm outline's narrowest width over its longest extent (its diameter)."""
+    if isinstance(hand_or_bases, gh.Hand):
+        P = palm_outline_mm(hand_or_bases)
+    else:
+        P = palm_outline_mm(gh.Hand(fingers=tuple(gh.Finger(y=int(y), z=int(z)) for y, z in hand_or_bases)))
+    diam = float(np.max(np.linalg.norm(P[:, None, :] - P[None, :, :], axis=-1)))
+    return palm_min_width_mm(hand_or_bases) / max(diam, 1e-9)
+
+
+def palm_min_width_mm(hand_or_bases) -> float:
+    """The palm outline's narrowest width (rotating calipers over its hull edges)."""
+    if isinstance(hand_or_bases, gh.Hand):
+        P = palm_outline_mm(hand_or_bases)
+    else:
+        P = palm_outline_mm(gh.Hand(fingers=tuple(gh.Finger(y=int(y), z=int(z)) for y, z in hand_or_bases)))
+    best = float("inf")
+    for i in range(len(P)):
+        e = P[(i + 1) % len(P)] - P[i]
+        nrm = np.array([-e[1], e[0]]) / (np.linalg.norm(e) + 1e-12)
+        d = P @ nrm
+        best = min(best, float(d.max() - d.min()))
+    return best
 ROLLS = tuple(range(-150, 181, 30))             # the full circle: the axis DIRECTION sets which way +q bends
 SEED_ROLLS = (-90, -60, -30, 0, 30, 60, 90)     # seeds: the half that bends toward the grasp side
 
@@ -87,8 +151,65 @@ def wrap_roll(r: int) -> int:
 
 @dataclass(frozen=True)
 class Finger(gh.Finger):
-    """A grammar finger plus its roll about its own length (deg)."""
+    """A grammar finger plus its roll about its own length (deg) and (v6) its link width (mm)."""
     roll: int = 0
+    width: int = 20
+    part: str = ""             # v7 (18 Nov 2026): "<hand>/f<i>" -- this finger's links built from that commercial finger's
+                               # real link geometry (debug_outputs/coevolve/v7/parts.json), scaled to each link's length
+
+
+LINK_WIDTHS_V6 = (20, 30, 40)    # v6 (16 Nov 2026): finger thickness a design choice -- a policy trained on 20 mm fingers
+                                 # lost the pen on 30-40 mm ones (the commercial hands' bulk)
+
+
+def width_of(f) -> int:
+    return int(getattr(f, "width", 20))
+
+
+def part_of(f) -> str:
+    return str(getattr(f, "part", "") or "")
+
+
+PARTS_PATH = Path(__file__).resolve().parents[2] / "debug_outputs/coevolve/v7/parts.json"
+_PARTS: dict = {}
+
+
+def parts_lib() -> dict:
+    if not _PARTS:
+        import json as _json
+        _PARTS.update(_json.loads(PARTS_PATH.read_text()))
+    return _PARTS
+
+
+def part_link(template: str, j: int, n: int) -> dict:
+    """The library link a grammar finger's link j (of n) takes from template finger "<hand>/f<i>": the same index when
+    the finger has the template's link count, else first -> first, last -> last, the rest -> the template's middles."""
+    lib = parts_lib()
+    nt = lib[f"{template}/0"]["n_links"]
+    if n == nt:
+        k = j
+    elif j == 0:
+        k = 0
+    elif j == n - 1:
+        k = nt - 1
+    else:
+        k = min(j, nt - 2) if nt > 2 else nt - 1
+    return lib[f"{template}/{k}"]
+
+
+def part_vertices_mm(f, j: int, L: float):
+    """Library part of finger f's link j, scaled to length L (mm), in the LINK frame (x along the link, z the finger's
+    rolled flexion axis): a list of (V (k, 3) mm, faces)."""
+    pl = part_link(part_of(f), j, len(f.joints))
+    sx = L / pl["length_mm"] if pl["length_mm"] > 1e-6 else 1.0
+    x = np.array([1.0, 0.0, 0.0]); z = np.asarray(gh.axis_unit(axis_for("flex", roll_of(f))), float)
+    z = z - (z @ x) * x; z /= np.linalg.norm(z); y = np.cross(z, x)
+    R = np.stack([x, y, z], axis=1)                            # canonical (x, y, z) -> link frame
+    out = []
+    for m in pl["meshes"]:
+        V = np.asarray(m["v"], float) * np.array([sx, 1.0, 1.0])
+        out.append((V @ R.T, np.asarray(m["f"], int)))
+    return out
 
 
 def roll_of(f) -> int:
@@ -98,32 +219,42 @@ def roll_of(f) -> int:
 def axis_for(kind: str, roll: int) -> Tuple[int, int]:
     """A joint axis (az, el) in the link frame: flexion at the roll angle about the link, abduction 90 deg from it
     (gh.axis_unit: az turns the axis from z toward y about the link)."""
+    if kind == "roll":
+        return (int(roll), 90)                             # along the link (axis_unit: elevation 90)
     return (int(roll) + (0 if kind == "flex" else 90), 0)
 
 
 def kind_of(f, jt) -> str:
     """'flex' / 'abd' relative to the finger's roll, or 'bad' (off the two lines, or tipped toward the link)."""
+    if jt.axis[1] == 90:
+        return "roll"
     if jt.axis[1] != 0:
         return "bad"
     rel = (int(jt.axis[0]) - roll_of(f)) % 180
     return "flex" if rel == 0 else ("abd" if rel == 90 else "bad")
 
 
-def as_v3(f, roll: Optional[int] = None) -> Finger:
+def as_v3(f, roll: Optional[int] = None, width: Optional[int] = None, part: Optional[str] = None) -> Finger:
     return Finger(y=f.y, z=f.z, facing=f.facing, tilt=f.tilt, joints=f.joints,
-                  roll=roll_of(f) if roll is None else int(roll))
+                  roll=roll_of(f) if roll is None else int(roll), width=width_of(f) if width is None else int(width),
+                  part=part_of(f) if part is None else str(part))
 
 
 def hand_to_dict(hand: gh.Hand) -> dict:
     d = gh.hand_to_dict(hand)
     for fd, f in zip(d["fingers"], hand.fingers):
         fd["roll"] = roll_of(f)
+        if width_of(f) != 20:                              # only v6 writes it: older designs keep their exact keys
+            fd["width"] = width_of(f)
+        if part_of(f):                                     # only v7 writes it
+            fd["part"] = part_of(f)
     return d
 
 
 def hand_from_dict(d: dict) -> gh.Hand:
     h = gh.hand_from_dict(d)
-    return gh.Hand(fingers=tuple(as_v3(f, fd.get("roll", 0)) for f, fd in zip(h.fingers, d["fingers"])))
+    return gh.Hand(fingers=tuple(as_v3(f, fd.get("roll", 0), fd.get("width", 20), fd.get("part", ""))
+                                 for f, fd in zip(h.fingers, d["fingers"])))
 MAX_TILT_DEG = 60
 MM = 1e-3
 
@@ -155,15 +286,20 @@ def finger_solids_mm(f: gh.Finger, centre_yz=(0.0, 0.0)) -> List[Optional[Tuple[
     z = math.cos(rr) * z0 + math.sin(rr) * a0               # the box turns with the roll (as the joint axes do)
     a = math.cos(rr) * a0 - math.sin(rr) * z0
     p = np.array([0.0, f.y - centre_yz[0], f.z - centre_yz[1]])
-    w = LINK_WIDTH_MM / 2.0
+    w = width_of(f) / 2.0
     out = []
     n = len(f.joints)
     for j, jt in enumerate(f.joints):
         q = p + jt.length * d
+        if part_of(f) and jt.length > 0:                  # v7: the real part's vertices (one convex body per link)
+            pts = np.concatenate([V for V, _ in part_vertices_mm(f, j, float(jt.length))])
+            out.append((p + pts @ B.T, 0.0))
+            p = q
+            continue
         if jt.length == 0:
             out.append(None)
         elif j == n - 1:
-            r = TIP_RADIUS_MM
+            r = width_of(f) / 2.0
             out.append((np.array([p + min(r, jt.length / 2) * d, q - min(r, jt.length / 2) * d]), r))
         else:
             corners = np.array([e + sa * w * a + sz * w * z for e in (p, q) for sa in (-1, 1) for sz in (-1, 1)])
@@ -181,8 +317,8 @@ def palm_outline_mm(hand: gh.Hand, n_pts: int = 16) -> np.ndarray:
     """The palm's outline in the plate (y, z): the convex hull of the bases grown by half a link width."""
     from scipy.spatial import ConvexHull
     ang = np.linspace(0, 2 * math.pi, n_pts, endpoint=False)
-    ring = (LINK_WIDTH_MM / 2.0) * np.column_stack([np.cos(ang), np.sin(ang)])
-    pts = np.concatenate([np.array([f.y, f.z], float) + ring for f in hand.fingers])
+    ring = np.column_stack([np.cos(ang), np.sin(ang)])
+    pts = np.concatenate([np.array([f.y, f.z], float) + (width_of(f) / 2.0) * ring for f in hand.fingers])
     return pts[ConvexHull(pts).vertices]
 
 
@@ -267,7 +403,7 @@ def violations(hand: gh.Hand, slack_deg: float = 0.0, max_base_mm: float = BASE_
             out.append(f"finger {i}: a 0 mm base link that is not a flexion / abduction knuckle")
         if roll_of(f) not in ROLLS:
             out.append(f"finger {i}: roll {roll_of(f)} (one of {ROLLS})")
-        if VARIANT == "v4" and f.joints and kind_of(f, f.joints[-1]) != "flex":
+        if VARIANT in ("v4", "v5", "v6", "v7", "v8", "v9") and f.joints and kind_of(f, f.joints[-1]) != "flex":
             out.append(f"finger {i}: last joint {kind_of(f, f.joints[-1])} (v4: a flexion)")
         if f.tilt != 0 and not (t == "kn1dof" and f.joints and kind_of(f, f.joints[0]) == "abd"):
             out.append(f"finger {i}: tilt {f.tilt} on a {t} base (only a 1-DOF base with an abduction first)")
@@ -279,6 +415,8 @@ def violations(hand: gh.Hand, slack_deg: float = 0.0, max_base_mm: float = BASE_
             out.append(f"finger {i}: base shared with another finger")
         bases.add((f.y, f.z))
         for j, jt in enumerate(f.joints):
+            if kind_of(f, jt) == "roll" and not (VARIANT in ("v7", "v8", "v9") and j == 0 and jt.length != 0):
+                out.append(f"finger {i} joint {j}: a twist joint (v7: only a non-knuckle finger's first joint)")
             if jt.type != "hinge" or kind_of(f, jt) == "bad":
                 out.append(f"finger {i} joint {j}: {jt.type} {jt.axis} at roll {roll_of(f)} "
                            f"(flexion / abduction hinges only)")
@@ -288,6 +426,13 @@ def violations(hand: gh.Hand, slack_deg: float = 0.0, max_base_mm: float = BASE_
                 out.append(f"finger {i} joint {j}: link {jt.length} mm (one of {LINKS_MM})")
     if len(types) > 1:
         out.append(f"mixed base types {sorted(types)}")
+    if VARIANT == "v9" and len(hand.fingers) >= 3 and palm_aspect(hand) < PALM_MIN_ASPECT - 1e-6:
+        out.append(f"palm aspect {palm_aspect(hand):.2f} (v9: >= {PALM_MIN_ASPECT})")
+    if VARIANT == "v9" and sum(o < OUTWARD_MIN for o in outwardness(hand)) > 1:
+        out.append(f"{sum(o < OUTWARD_MIN for o in outwardness(hand))} fingers not pointing away from the palm "
+                   f"(v9: at most one, the thumb)")
+    if VARIANT in ("v5", "v6", "v7", "v8", "v9") and len(hand.fingers) >= 3 and palm_min_width_mm(hand) < PALM_MIN_WIDTH_MM - 1e-6:
+        out.append(f"palm {palm_min_width_mm(hand):.0f} mm across at its narrowest (v5: >= {PALM_MIN_WIDTH_MM:.0f})")
     return out
 
 
@@ -331,7 +476,11 @@ def parse_cell(cell: str) -> dict:
     from coevolution.evolution import descriptors_v3 as d3
     f, m, gap, kn, rc = cell.split("_")
     lo, hi = (int(x) for x in m[1:].split("-"))
-    g0, g1 = (float(x) for x in gap[3:].split("-"))
+    if gap.startswith("spread"):                          # v5 labels: the same bins named by spread = 360 - gap
+        li = d3.LAYOUT_SPREAD_NAMES.index(gap)
+        g0, g1 = d3.LAYOUT_EDGES[li], d3.LAYOUT_EDGES[li + 1]
+    else:
+        g0, g1 = (float(x) for x in gap[3:].split("-"))
     ri = d3.REACH_NAMES.index(rc)
     return {"fingers": int(f[1:]), "motors": (lo, hi), "gap": (g0, g1), "base": kn,
             "reach": (d3.REACH_EDGES[ri], d3.REACH_EDGES[ri + 1])}
@@ -393,6 +542,8 @@ def _edge_bases(rng, facings) -> Optional[List[Tuple[int, int]]]:
     pos = [None] * len(facings)
     for k, i in enumerate(np.argsort(rel)):
         q = r * d + (k - (len(facings) - 1) / 2.0) * s * t
+        if VARIANT in ("v5", "v6", "v7", "v8", "v9"):                       # a curved / staggered row, so the palm has width
+            q = q - float(rng.choice(EDGE_DEPTHS_MM)) * d
         pos[i] = (_snap(q[0]), _snap(q[1]))
     return pos if len(set(pos)) == len(pos) else None
 
@@ -425,10 +576,13 @@ def _chain(rng, nj: int, base: str, roll: int = 0) -> List[gh.Joint]:
     elif base == "knAF":
         kinds, lens = ["abd", "flex"], [KNUCKLE_LINK_MM]
     else:
-        kinds, lens = ["flex" if rng.random() < 0.5 else "abd"], []
+        if VARIANT in ("v7", "v8", "v9") and rng.random() < 0.25:
+            kinds, lens = ["roll"], []
+        else:
+            kinds, lens = ["flex" if rng.random() < 0.5 else "abd"], []
     while len(kinds) < nj:
         kinds.append("flex" if rng.random() < 0.5 else "abd")   # 50 / 50 after the base
-    if VARIANT == "v4":
+    if VARIANT in ("v4", "v5", "v6", "v7", "v8", "v9"):
         kinds[-1] = "flex"                                        # v4: the last joint a flexion (a knFA finger: 3+ joints)
     while len(lens) < nj:
         lens.append(int(rng.choice(LINKS_MM)))
@@ -449,7 +603,7 @@ def _centred_bases(bases) -> np.ndarray:
     return np.asarray(bases, float) - c
 
 
-def _bases_ok(B: np.ndarray, facings) -> bool:
+def _bases_ok(B: np.ndarray, facings, width: float = LINK_WIDTH_MM) -> bool:
     """Base-level rules, before any chain is drawn: distinct, within BASE_DISTANCE_MAX_MM of the palm centre, facing
     outward, and neighbouring bases at least a link width apart."""
     if len({(int(y), int(z)) for y, z in B}) < len(B):
@@ -462,7 +616,11 @@ def _bases_ok(B: np.ndarray, facings) -> bool:
             return False
     d = np.linalg.norm(B[:, None, :] - B[None, :, :], axis=-1)
     np.fill_diagonal(d, 1e9)
-    return bool(d.min() >= LINK_WIDTH_MM)
+    if VARIANT in ("v5", "v6", "v7", "v8", "v9") and len(B) >= 3 and palm_min_width_mm(B) < PALM_MIN_WIDTH_MM - 1e-6:
+        return False                                      # v5's palm rule depends on the bases only: checked here
+    if VARIANT == "v9" and len(B) >= 3 and palm_aspect(B) < PALM_MIN_ASPECT - 1e-6:
+        return False                                      # v9: no rakes (bases only, so here too)
+    return bool(d.min() >= width)
 
 
 def _length_range(b: np.ndarray, fa: float, tilt: float, r_hi: float) -> float:
@@ -507,11 +665,12 @@ def random_hand_in_cell(rng: np.random.Generator, cell: str, attempts: int = 200
     c = parse_cell(cell)
     n, (mlo, mhi), (g0, g1), base, (r0, r1) = c["fingers"], c["motors"], c["gap"], c["base"], c["reach"]
     nlinks = (lambda nj: nj - 1) if base in ("knFA", "knAF") else (lambda nj: nj)
-    jmin = 3 if (VARIANT == "v4" and base == "knFA") else MIN_JOINTS    # v4: F, A, ..., F
+    jmin = 3 if (VARIANT in ("v4", "v5", "v6", "v7", "v8", "v9") and base == "knFA") else MIN_JOINTS    # v4: F, A, ..., F
     comps = [js for js in __import__("itertools").product(range(jmin, MAX_JOINTS + 1), repeat=n)
              if mlo <= sum(js) <= mhi]
     if not comps:
         return None
+    W = int(rng.choice(LINK_WIDTHS_V6)) if VARIANT == "v6" else int(LINK_WIDTH_MM)   # once per call: no bias to 20
     for _ in range(attempts):
         js = list(comps[int(rng.integers(len(comps)))])
         fac = _facings(rng, n, g0, g1)
@@ -523,7 +682,7 @@ def random_hand_in_cell(rng: np.random.Generator, cell: str, attempts: int = 200
             if raw is None:
                 continue
             Bc = _centred_bases(raw)
-            if _bases_ok(Bc, fac):
+            if _bases_ok(Bc, fac, W):
                 B = Bc
                 break
         if B is None:
@@ -552,7 +711,7 @@ def random_hand_in_cell(rng: np.random.Generator, cell: str, attempts: int = 200
             links = _split(rng, T, nlinks(nj))
             lens = ([KNUCKLE_LINK_MM] if base in ("knFA", "knAF") else []) + links
             joints = tuple(replace(jt, length=L) for jt, L in zip(ch, lens))
-            fingers.append(Finger(y=int(y), z=int(z), facing=int(fa), tilt=int(t), joints=joints, roll=int(r_)))
+            fingers.append(Finger(y=int(y), z=int(z), facing=int(fa), tilt=int(t), joints=joints, roll=int(r_), width=W))
         hand = gh.Hand(fingers=tuple(fingers))
         if valid(hand) and d3.cell(design_features(hand)) == cell:
             return hand
@@ -591,6 +750,24 @@ def _shape(link, geom: Tuple[str, dict], xyz, rpy, rgba: str):
 FLEX_RGBA, ABD_RGBA, PALM_RGBA = "0.16 0.42 0.85 1", "0.86 0.20 0.18 1", "0.62 0.62 0.64 1"
 
 
+JITTER = {"length": 0.15, "axis_deg": 10.0, "offset_mm": 3.0}   # v8 (22 Nov 2026)
+
+
+def _jitter_rng(hand: gh.Hand) -> np.random.Generator:
+    """v8: one deterministic generator per design (its JSON), so a design always builds the same hand."""
+    import hashlib, json as _json
+    h = hashlib.sha256(_json.dumps(hand_to_dict(hand), sort_keys=True).encode()).digest()
+    return np.random.default_rng(int.from_bytes(h[:8], "little"))
+
+
+def _tilt_axis(a: np.ndarray, rng, max_deg: float) -> np.ndarray:
+    """a turned by an angle up to max_deg about a random axis square to it."""
+    a = np.asarray(a, float) / np.linalg.norm(a)
+    r = rng.normal(size=3); r -= (r @ a) * a; r /= np.linalg.norm(r) + 1e-12
+    th = math.radians(rng.uniform(0.0, max_deg))
+    return math.cos(th) * a + math.sin(th) * r
+
+
 def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: Optional[str] = None) -> dict:
     """Write the hand's URDF (palm plate, a box per link, a capsule fingertip), spec and design under `out_dir`; the
     root frame at the palm's centroid (where the wrist attaches)."""
@@ -610,19 +787,42 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: Optional[str] = N
     mesh.density = DENSITY
     _inertial(palm, float(mesh.mass), mesh.center_mass, np.diag(mesh.moment_inertia))
     joints, limits, adj = [], {}, {"palm": set()}
-    w, r = LINK_WIDTH_MM * MM, TIP_RADIUS_MM * MM
+    jr = _jitter_rng(hand) if VARIANT == "v8" else None    # v8: this design's continuous kinematic jitter
+    tip_len = []
     for i, f in enumerate(hand.fingers):
+        w = width_of(f) * MM                               # v6: each finger its own thickness (20 mm before)
+        r = w / 2.0
         B = finger_frame(f)
         base = np.array([0.0, f.y - c[0], f.z - c[1]]) * MM
         parent, n = "palm", len(f.joints)
+        if jr is not None:
+            Ljit = [float(jt.length) * jr.uniform(1 - JITTER["length"], 1 + JITTER["length"]) for jt in f.joints]
+            offs = [jr.uniform(-JITTER["offset_mm"], JITTER["offset_mm"], 2) for _ in f.joints]
+        else:
+            Ljit, offs = [float(jt.length) for jt in f.joints], [np.zeros(2) for _ in f.joints]
+        tip_len.append(Ljit[-1])
         for j, jt in enumerate(f.joints):
             body = f"f{i}_link{j}"
             link = ET.SubElement(root, "link", name=body)
-            L = jt.length * MM
+            L = Ljit[j] * MM
             kd = kind_of(f, jt)
             rgba = FLEX_RGBA if kd == "flex" else ABD_RGBA
             if L <= 0:
                 _inertial(link, 1e-4, [0, 0, 0], [1e-9, 1e-9, 1e-9])
+            elif part_of(f):                               # v7: the real link geometry, scaled to L, one mesh per primitive
+                import trimesh
+                pd = out_dir / "parts"
+                pd.mkdir(parents=True, exist_ok=True)
+                allv = []
+                for k, (V, F_) in enumerate(part_vertices_mm(f, j, Ljit[j])):
+                    mesh = trimesh.Trimesh(V * MM, F_, process=False)
+                    fn = f"{body}_{k}.obj"
+                    mesh.export(pd / fn)
+                    _shape(link, ("mesh", {"filename": f"parts/{fn}"}), [0, 0, 0], [0, 0, 0], rgba)
+                    allv.append(V * MM)
+                hull = trimesh.Trimesh(np.concatenate(allv)).convex_hull
+                hull.density = DENSITY
+                _inertial(link, float(hull.mass), hull.center_mass, np.maximum(np.diag(hull.moment_inertia), 1e-9))
             elif j == n - 1:                               # the fingertip: a capsule (cylinder + the importer's caps)
                 cyl = max(L - 2 * r, 1e-4) if L > 2 * r else 1e-4
                 _shape(link, ("cylinder", {"radius": r, "length": cyl}), [L / 2, 0, 0], [0, math.pi / 2, 0], rgba)
@@ -639,9 +839,17 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: Optional[str] = N
             if j == 0:
                 ET.SubElement(el, "origin", xyz=_fmt(base), rpy=_fmt(_rpy(B)))
             else:
-                ET.SubElement(el, "origin", xyz=_fmt([f.joints[j - 1].length * MM, 0, 0]), rpy="0 0 0")
-            ET.SubElement(el, "axis", xyz=_fmt(gh.axis_unit(tuple(jt.axis))))
-            lo, hi = (math.radians(v) for v in KIND_RANGE_DEG[kd])
+                ET.SubElement(el, "origin", xyz=_fmt([Ljit[j - 1] * MM, offs[j][0] * MM, offs[j][1] * MM]), rpy="0 0 0")
+            ax_u = gh.axis_unit(tuple(jt.axis))
+            if jr is not None:
+                ax_u = _tilt_axis(ax_u, jr, JITTER["axis_deg"])
+            ET.SubElement(el, "axis", xyz=_fmt(ax_u))
+            lo, hi = (math.radians(v) for v in KIND_RANGE_DEG.get(kd, KIND_RANGE_DEG["flex"]))   # an exact axis: "bad" kind
+            if jr is not None:                             # v8: each joint its own range
+                if kd == "flex":
+                    lo, hi = math.radians(-jr.uniform(10, 35)), math.radians(jr.uniform(70, 110))
+                else:
+                    lo = math.radians(-jr.uniform(15, 40)); hi = -lo
             ET.SubElement(el, "limit", effort=f"{EFFORT:g}", lower=f"{lo:.9g}", upper=f"{hi:.9g}",
                           velocity=f"{VELOCITY:g}")
             ET.SubElement(el, "dynamics", damping=f"{DAMPING:.6g}", friction="0")
@@ -649,7 +857,7 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: Optional[str] = N
             limits[jn] = [lo, hi]
             adj.setdefault(body, set()).add(parent)
             adj.setdefault(parent, set()).add(body)
-            if j == 0 or (j == 1 and f.joints[0].length == 0):   # the palm and a finger's first body (+ a knuckle's)
+            if j == 0 or (j == 1 and (f.joints[0].length == 0 or VARIANT in ("v7", "v8", "v9"))):   # palm + first body (+ 2nd: knuckle / v7)
                 adj["palm"].add(body)
                 adj[body].add("palm")
             if j >= 2 and f.joints[j - 1].length == 0:     # neighbours across a co-located knuckle
@@ -666,7 +874,7 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: Optional[str] = N
         "palm_body": "palm", "hand_joint_names": joints, "joint_limits": limits,
         "hand_default_joint_pos": {j: 0.0 for j in joints},
         "fingertip_body_names": [f"f{i}_link{len(f.joints) - 1}" for i, f in enumerate(hand.fingers)],
-        "fingertip_offsets": [[f.joints[-1].length * MM, 0.0, 0.0] for f in hand.fingers],
+        "fingertip_offsets": [[tip_len[i] * MM, 0.0, 0.0] for i, f in enumerate(hand.fingers)],
         "palm_frame": np.eye(3).tolist(), "palm_frame_det": 1.0,
         "palm_centre_in_palm_body": [0.0, 0.0, 0.0],
         "palm_extents_ours": [PALM_THICKNESS_MM * MM, *(hi_yz - lo_yz).tolist()],
@@ -676,7 +884,7 @@ def build(hand: gh.Hand, name: str, out_dir: Path, rules_name: Optional[str] = N
         "effort_limit": EFFORT, "velocity_limit": VELOCITY, "link_density_kg_m3": DENSITY, "friction": FRICTION,
         "replace_cylinders_with_capsules": True, "rules": rules_name or VARIANT.upper(), "design": hand_to_dict(hand),
         "mount_in_root_m": [0.0, 0.0, 0.0],
-        "geometry": {"link_width_mm": LINK_WIDTH_MM, "tip_radius_mm": TIP_RADIUS_MM,
+        "geometry": {"link_width_mm": [width_of(f) for f in hand.fingers], "tip_radius_mm": [width_of(f) / 2 for f in hand.fingers],
                      "palm_thickness_mm": PALM_THICKNESS_MM},
     }
     (out_dir / f"{name}.spec.json").write_text(json.dumps(spec, indent=1))
